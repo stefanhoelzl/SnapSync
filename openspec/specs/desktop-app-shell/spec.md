@@ -14,9 +14,9 @@ The system SHALL provide a JVM desktop application built with Compose Desktop th
 - **WHEN** the desktop application is launched via `./gradlew :app:desktop:run`
 - **THEN** a single application window opens with the title "SnapSync"
 
-#### Scenario: Window is empty in this change
+#### Scenario: Window hosts the test harness
 - **WHEN** the application window is open
-- **THEN** the window presents an empty Compose surface with no content, reserved as the future host for the application UI
+- **THEN** the window presents the dual-pane desktop test harness (phone-framed status screen + control panel) as its content
 
 ### Requirement: Application lifecycle
 
