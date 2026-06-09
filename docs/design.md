@@ -57,9 +57,13 @@ the same shared `:domain:sync` logic. The desktop app drives that same logic wit
 :domain:model          models (AssetRef, ObjectKey, UploadJob, SyncStatus, SyncError…). no deps.
 :domain:sync           → :domain:model + the capability interfaces. The upload-cycle orchestration
                          (retry → acknowledge → create-new-jobs) called from the iOS extension and
-                         the desktop fake alike.
+                         the desktop fake alike. Also home of the presentation-facing snapshot seam:
+                         SyncStatus + SyncStatusSource (§2.3).
 :domain:presentation   → :domain:sync. Orbit MVI container(s) + UiState. COMPOSE-FREE.
-:domain:ui             → :domain:presentation. Compose screens via the design-system abstraction.
+:domain:ui             → :domain:presentation + :domain:ui:components. Compose screens, written
+                         exclusively against the App* design system.
+:domain:ui:components  semantic App* components + the Material 3 skin — the ONLY module allowed to
+                         import Material 3 (§5).
 
 :capability:gallery    → :domain:model. GalleryService iface (permission + change-feed discovery)
                          | iosMain: PhotoKit (PHPhotoLibrary, PHPersistentChangeToken)
@@ -103,6 +107,28 @@ and `:capability:store` are pure-common).
 
 The controllable **fakes live in each capability's `commonMain`** (so both `:domain:sync`'s
 `commonTest` and `:app:desktop` reuse them; unused on iOS, DCE-stripped).
+
+### 2.3 Sync → presentation seam: state snapshots, not events
+
+`:domain:sync` exposes progress to presentation as a **snapshot contract** — `SyncStatus` (counts;
+fields are demand-driven, initially just `pending`/`completed`) observed via
+`SyncStatusSource { val status: Flow<SyncStatus> }` — **not** an event stream. Why (decided 2026-06-09):
+
+- **The iOS process topology forbids events.** Uploads run in the extension while the app is
+  suspended or dead; the app learns what happened by reading the App Group + job system. The UI is
+  inherently a projection of persisted state — no continuous event stream can cross that boundary.
+- **The fold lives with the engine.** state = fold(events): whoever integrates events needs engine
+  knowledge (retry semantics, `jobLimit`, paging), and the engine must persist its truth anyway. An
+  event seam duplicates the fold into presentation — two accumulators with drift risk and no arbiter.
+- **Snapshots are self-healing** (every emission is the whole truth): no late-subscriber problem, no
+  missed-event corruption, safe conflation (`StateFlow`), and initial render is the same code path
+  as any update. Same reason Kubernetes controllers are level-triggered and Compose is `UI = f(state)`.
+- Platform signals (`photoLibraryDidChange`, Darwin notifications, foreground entry, polling) are
+  **invalidation dings handled inside the iOS impl** — each triggers re-read + a fresh emission;
+  none leaks into the contract. "Uploading X of N" is a derivation from counts (the engine can never
+  know totals upfront: paged change feed + `jobLimit`).
+- One-shot effects (e.g. a "backup completed" toast, later) are derived **downstream** by diffing
+  consecutive snapshots in the Orbit container (`postSideEffect`) — the seam stays level-triggered.
 
 ---
 
@@ -242,8 +268,22 @@ re-derive from properties on restore, so they need nothing.
 ## 5. UI
 
 - **Compose Multiplatform**, single codebase, rendered on iOS (Skia) and JVM desktop.
-- **Design-system abstraction** (in-house `App*` components): screens are written against it; the
-  **initial skin is Material 3** (zero dependency risk). A Cupertino skin (the
+- **Design-system abstraction** in `:domain:ui:components` — the **only module that may import
+  Material 3**; mechanical rule: **no M3 type may appear in any `App*` signature**. Components are
+  **semantic, not customizable primitives** (decided 2026-06-09): parameters carry **data and
+  meaning, never appearance** — `text`, `done/total`, closed roles yes; `color`/`textStyle`/`shape`
+  never; **no `Modifier` params** (re-opens appearance by the back door) until a call site forces
+  one, then layout-only by convention. **Distinct components over role enums** (`PrimaryButton(...)`,
+  not `AppButton(role=...)`); buttons named at **emphasis level** (Primary/Secondary = prominence;
+  the skin maps to filled/outlined or Cupertino bold/plain), intent-level names (`DestructiveButton`)
+  added only when an intent recurs. **Convention-bearing arrangement is skin too**: where platforms
+  hold layout opinions (dialog-button order/stacking, grouped lists, title placement), screens use
+  **semantic slotted containers** (`ScreenLayout(title) {…}`, `ActionArea(primary=, secondary=)`)
+  that own insets/ordering; raw `Column`/`Spacer` only for meaning-free geometry. NOT full per-screen
+  templates (every screen change would touch the design system). **No exposed theme tokens** —
+  components and containers own all spacing/color/typography internally. Inventory is
+  **demand-driven**; single-call-site components are fine (the inventory IS the app's vocabulary).
+  The **initial skin is Material 3** (zero dependency risk). A Cupertino skin (the
   [slanos/schott compose-cupertino fork](https://github.com/schott12521/compose-cupertino), or
   hand-rolled) can be added **later without touching screens**. (All Cupertino libs are ~10 months
   stale; the abstraction contains that risk.)
@@ -257,10 +297,23 @@ re-derive from properties on restore, so they need nothing.
 
 ### 5.1 Desktop test harness (dual UI)
 
-`:app:desktop` wires **controllable in-memory fakes** (set the change-feed assets, force job
-success/failure/retry, flip permission, simulate `jobLimit`) and renders **side-by-side**: left = the
-real `:domain:ui` status screen; right = a **control panel** that drives the fakes, invokes
-`runUploadCycle()` on demand, and inspects/forces `UiState`. Both bind the same Orbit container.
+`:app:desktop` renders **side-by-side**: left = the real `:domain:ui` status screen inside a fixed
+**phone-sized frame** (~390×844, visible bezel — preview at ship proportions); right = a **control
+panel** (utilitarian raw Material 3, never `App*` — asymmetric investment: the panel is long-lived
+test equipment, not product). Both panes bind the same Orbit container. The panel has **two
+permanent sections** (decided 2026-06-09):
+
+- **Display overrides** (born in the UI-mock slice, before the engine exists): buttons that set
+  `SyncStatus` snapshots into a `MutableStateFlow` standing in for the engine — forge any display
+  state for UI iteration. All mutations go through one small `PanelController` (no inline mutations
+  in composables). Forever outside the scenario system — no command indirection, no tests.
+- **World controls** (born with the engine + capability fakes): arrange/act on the **controllable
+  in-memory fakes** (set change-feed assets, force job success/failure/retry, flip permission,
+  simulate `jobLimit`) and invoke `runUploadCycle()` on demand — real `SyncStatus` then *derives*
+  from the engine. From their first appearance, every button routes through a sealed
+  `ScenarioStep`-style command → single interpreter → append-only log: the cheap indirection that
+  later makes saved/recorded/generated scenarios (scripted scenario runner; assemble from
+  orbit-test/jqwik, evaluate Gherkin before inventing a DSL) nearly free.
 
 ---
 
@@ -278,7 +331,12 @@ real `:domain:ui` status screen; right = a **control panel** that drives the fak
   simulator). Plan: **manual on-device testing** now; move the extension into **simulator XCTest/CI
   once Apple adds simulator support** (expected by GA). Gallery/app (non-extension) parts can be
   simulator-tested earlier.
-- **Desktop** — manual exploration via the control panel.
+- **Desktop** — container reduction via `orbit-test` + Compose UI tests on the status screen. Test
+  only MVP-permanent code: the panel, `PanelController`, and fake wiring are test equipment and get
+  no tests (until the ScenarioStep interpreter becomes load-bearing test infra — then it does).
+  CI: Compose Desktop UI tests touch AWT and **require a display on Linux — add an Xvfb step**
+  (copy JetBrains' own compose-tests workflow incantation, incl. `+extension GLX`). Manual
+  exploration via the control panel.
 
 ---
 
@@ -287,7 +345,7 @@ real `:domain:ui` status screen; right = a **control panel** that drives the fak
 | Concern | Choice | Notes |
 |---|---|---|
 | UI | Compose Multiplatform | single codebase; Material 3 behind a design-system abstraction |
-| State | **Orbit MVI** (~1.3k★) | cleanest/most-modern MVI DSL; Compose-free; Decompose-able later |
+| State | **Orbit MVI** (10.0.0, 2026-05: full KMP + CMP support) | cleanest/most-modern MVI DSL; Compose-free; Decompose-able later; built w/ Kotlin 2.1.21 — fine for JVM, recheck klibs at the iOS slice |
 | DI | **Manual composition root** | no deps, compile-safe; Koin if it grows |
 | HTTP | **Ktor** (multiplatform) | SigV4 **presign only**; **not** the upload PUT (iOS does that); app never `LIST`s |
 | Crypto/IO | **okio** (+ KotlinCrypto if needed) | App-Group file IO + HMAC-SHA256 for SigV4 |
@@ -314,14 +372,18 @@ real `:domain:ui` status screen; right = a **control panel** that drives the fak
 - Required **entitlements**; exact `PHAssetResource` ↔ job ↔ key association; `creationRequestForJob` semantics.
 - App Group wiring (config + change token + bookkeeping shared by app and extension; framework in both targets).
 - Timing of **simulator support** for the extension (affects when iOS tests move into CI).
+- Does the job system expose **change observation** (KVO/delegate) for live job-state updates while
+  the app is foreground, or is liveness poll-only (re-`fetchJobs` + `photoLibraryDidChange` + Darwin
+  notify)? Affects only the iOS `SyncStatusSource` impl — the snapshot seam absorbs either (§2.3).
 
 **Resolved — other:**
 - Limited photo access: v1 **requires full `.authorized`** (the Job extension needs it); `.limited`/`.denied`/`.restricted` → "full access required" + Settings deep link. No limited-subset support.
 - Signing validation: **s3mock only** (accepted risk, §6); revisit Garage/real-AWS only if a real upload fails.
 
 **Resolved — ops:**
-- CI: **none yet** — run tests locally for now; add GitHub Actions (KMP/desktop tests on a Linux
-  runner) and iOS CI once iOS 27 ships and hosted runners carry Xcode 27.
+- CI: push-only `build.yml` shipped with the bootstrap (single JDK 25 Linux runner). Desktop Compose
+  UI tests will need the **Xvfb step** (§6). iOS CI once iOS 27 ships and hosted runners carry
+  Xcode 27.
 - TestFlight: **manual archive + upload from Xcode** while on beta; automate with fastlane (gym+pilot)
   at GA.
 
