@@ -15,21 +15,54 @@ class StatusScreenTest {
     val rule = createComposeRule()
 
     @Test
-    fun `idle state shows title and idle status with no progress indication`() {
-        rule.setContent { StatusScreen(UiState.Idle) }
+    fun `never synced shows bare warning headline`() {
+        rule.setContent { StatusScreen(UiState.NeverSynced) }
 
         rule.onNodeWithText("SnapSync").assertExists()
-        rule.onNodeWithText("Up to date").assertExists()
+        rule.onNodeWithText("No sync yet").assertExists()
         rule.onNode(hasAnyProgressIndication()).assertDoesNotExist()
     }
 
     @Test
-    fun `uploading state shows progress 3 of 10 at 30 percent`() {
-        rule.setContent { StatusScreen(UiState.Uploading(done = 3, total = 10)) }
+    fun `in progress shows headline, estimate, and indicator fraction without textual counts`() {
+        rule.setContent { StatusScreen(UiState.InProgress(fraction = 0.35f, estimate = "~2 min left")) }
 
-        rule.onNodeWithText("Uploading…").assertExists()
-        rule.onNodeWithText("3 of 10").assertExists()
-        rule.onNode(hasProgress(0.3f)).assertExists()
+        rule.onNodeWithText("Sync in progress").assertExists()
+        rule.onNodeWithText("~2 min left").assertExists()
+        rule.onNode(hasProgress(0.35f)).assertExists()
+        rule.onNodeWithText("of", substring = true).assertDoesNotExist()
+    }
+
+    @Test
+    fun `suspended shows bare waiting headline`() {
+        rule.setContent { StatusScreen(UiState.Suspended) }
+
+        rule.onNodeWithText("Waiting to sync").assertExists()
+        rule.onNode(hasAnyProgressIndication()).assertDoesNotExist()
+    }
+
+    @Test
+    fun `complete shows headline with relative time`() {
+        rule.setContent { StatusScreen(UiState.Complete(finishedAgo = "5 min ago")) }
+
+        rule.onNodeWithText("Sync complete").assertExists()
+        rule.onNodeWithText("5 min ago").assertExists()
+    }
+
+    @Test
+    fun `incomplete shows headline with relative time`() {
+        rule.setContent { StatusScreen(UiState.Incomplete(finishedAgo = "5 min ago")) }
+
+        rule.onNodeWithText("Sync incomplete").assertExists()
+        rule.onNodeWithText("5 min ago").assertExists()
+    }
+
+    @Test
+    fun `failed shows headline with relative time`() {
+        rule.setContent { StatusScreen(UiState.Failed(finishedAgo = "5 min ago")) }
+
+        rule.onNodeWithText("Sync failed").assertExists()
+        rule.onNodeWithText("5 min ago").assertExists()
     }
 
     private fun hasAnyProgressIndication(): SemanticsMatcher =

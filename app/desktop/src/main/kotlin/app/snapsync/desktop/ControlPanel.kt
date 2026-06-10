@@ -18,9 +18,12 @@ fun ControlPanel(controller: PanelController) {
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
         Text("Display overrides")
-        Button(onClick = { controller.showIdle() }) { Text("Idle") }
-        Button(onClick = { controller.showUploading(done = 0, total = 10) }) { Text("Upload started (0 of 10)") }
-        Button(onClick = { controller.showUploading(done = 3, total = 10) }) { Text("Uploading (3 of 10)") }
-        Button(onClick = { controller.showUploading(done = 9, total = 10) }) { Text("Almost done (9 of 10)") }
+        Button(onClick = { controller.showNeverSynced() }) { Text("Never synced") }
+        Button(onClick = { controller.showInProgress() }) { Text("In progress (~2 min left)") }
+        Button(onClick = { controller.showInProgressEstimating() }) { Text("In progress (estimating…)") }
+        Button(onClick = { controller.showSuspended() }) { Text("Suspended (waiting)") }
+        Button(onClick = { controller.showComplete() }) { Text("Complete (5 min ago)") }
+        Button(onClick = { controller.showIncomplete() }) { Text("Incomplete (5 min ago)") }
+        Button(onClick = { controller.showFailed() }) { Text("Failed (5 min ago)") }
     }
 }

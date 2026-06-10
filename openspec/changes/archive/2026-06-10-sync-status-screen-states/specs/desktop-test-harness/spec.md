@@ -1,22 +1,6 @@
-# desktop test harness Specification
+# desktop-test-harness — delta
 
-## Purpose
-
-The desktop dual-pane harness that previews the real shared status screen in a phone-sized frame and drives it into any supported state via a control panel.
-
-## Requirements
-
-### Requirement: Dual-pane harness layout
-
-The desktop application SHALL render two panes side by side: on the left, the real shared status screen inside a fixed phone-sized frame (~390×844 with a visible bezel) so it is previewed at ship proportions; on the right, a control panel. The phone frame's content MUST be the same status-screen composable that the iOS app will ship — not a copy.
-
-#### Scenario: Harness opens with both panes
-- **WHEN** the desktop application is launched
-- **THEN** the window shows the status screen inside a phone-sized frame on the left and the control panel on the right
-
-#### Scenario: Phone frame keeps ship proportions
-- **WHEN** the desktop window is resized
-- **THEN** the phone frame retains its fixed ~390×844 content size
+## MODIFIED Requirements
 
 ### Requirement: Display-override controls
 

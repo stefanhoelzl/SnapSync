@@ -1,10 +1,6 @@
-# sync status screen Specification
+# sync-status-screen — delta
 
-## Purpose
-
-The shared status screen that observes sync status snapshots and shows the user, pass-level and truthfully, what state their backup is in: never synced, in progress, waiting, complete, incomplete, or failed.
-
-## Requirements
+## MODIFIED Requirements
 
 ### Requirement: Sync status snapshots reduce to UI state
 
@@ -73,6 +69,8 @@ The status screen SHALL render each of the six states as a centered two-line her
 - **THEN** the screen shows the error indicator, "Sync failed", and the muted detail "5 min ago"
 
 The screen is composed under the rules of the `design-system` capability (semantic components only; Material 3 containment; `ScreenLayout` owns screen structure).
+
+## ADDED Requirements
 
 ### Requirement: Presentation formats and ticks relative time
 
