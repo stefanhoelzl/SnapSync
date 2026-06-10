@@ -5,14 +5,51 @@ import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.performClick
 import app.snapsync.presentation.UiState
 import kotlin.test.Test
+import kotlin.test.assertEquals
 import org.junit.Rule
 
 class StatusScreenTest {
 
     @get:Rule
     val rule = createComposeRule()
+
+    @Test
+    fun `permission ask shows invitation copy and the allow action`() {
+        var requests = 0
+        rule.setContent {
+            StatusScreen(UiState.PermissionAsk, onRequestPermission = { requests++ })
+        }
+
+        rule.onNodeWithText("Sync your photos").assertExists()
+        rule.onNodeWithText("SnapSync needs access to your photo library").assertExists()
+        rule.onNodeWithText("Allow access").performClick()
+        assertEquals(1, requests)
+    }
+
+    @Test
+    fun `permission denied shows problem copy and the settings action`() {
+        var settingsOpens = 0
+        rule.setContent {
+            StatusScreen(UiState.PermissionDenied, onOpenSettings = { settingsOpens++ })
+        }
+
+        rule.onNodeWithText("Photo access denied").assertExists()
+        rule.onNodeWithText("Turn on photo access in system settings").assertExists()
+        rule.onNodeWithText("Open Settings").performClick()
+        assertEquals(1, settingsOpens)
+    }
+
+    @Test
+    fun `gate states show no sync status hero`() {
+        rule.setContent { StatusScreen(UiState.PermissionDenied) }
+
+        rule.onNodeWithText("Sync failed").assertDoesNotExist()
+        rule.onNodeWithText("No sync yet").assertDoesNotExist()
+        rule.onNode(hasAnyProgressIndication()).assertDoesNotExist()
+    }
 
     @Test
     fun `never synced shows bare warning headline`() {

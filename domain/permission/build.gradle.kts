@@ -7,14 +7,10 @@ kotlin {
     jvm()
     sourceSets {
         commonMain.dependencies {
-            api(project(":domain:permission"))
-            api(project(":domain:sync"))
-            api(libs.orbit.core)
+            api(libs.coroutines.core)
         }
         commonTest.dependencies {
             implementation(kotlin("test"))
-            implementation(libs.orbit.test)
-            implementation(libs.coroutines.test)
         }
     }
 }

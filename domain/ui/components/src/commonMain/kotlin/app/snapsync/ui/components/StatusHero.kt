@@ -11,7 +11,9 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
@@ -31,6 +33,9 @@ sealed interface StatusIndicator {
     data object Warning : StatusIndicator
     data object Error : StatusIndicator
     data object Waiting : StatusIndicator
+
+    /** Neutral photo-library glyph: an ask, not a fault. */
+    data object Photos : StatusIndicator
     data class Progress(val fraction: Float) : StatusIndicator
 }
 
@@ -76,6 +81,7 @@ private fun IndicatorIcon(indicator: StatusIndicator) {
         StatusIndicator.Warning -> Glyph(MaterialTheme.colorScheme.tertiary) { warningGlyph() }
         StatusIndicator.Error -> Glyph(MaterialTheme.colorScheme.error) { errorGlyph() }
         StatusIndicator.Waiting -> Glyph(MaterialTheme.colorScheme.onSurfaceVariant) { waitingGlyph() }
+        StatusIndicator.Photos -> Glyph(MaterialTheme.colorScheme.onSurfaceVariant) { photosGlyph() }
     }
 }
 
@@ -124,6 +130,25 @@ private fun GlyphScope.waitingGlyph() {
     circle()
     draw.drawLine(color, Offset(x(0.5f), y(0.5f)), Offset(x(0.5f), y(0.28f)), stroke.width, StrokeCap.Round)
     draw.drawLine(color, Offset(x(0.5f), y(0.5f)), Offset(x(0.66f), y(0.58f)), stroke.width, StrokeCap.Round)
+}
+
+private fun GlyphScope.photosGlyph() {
+    draw.drawRoundRect(
+        color,
+        topLeft = Offset(x(0.08f), y(0.16f)),
+        size = Size(x(0.84f), y(0.68f)),
+        cornerRadius = CornerRadius(x(0.1f)),
+        style = stroke,
+    )
+    val mountains = Path().apply {
+        moveTo(x(0.18f), y(0.72f))
+        lineTo(x(0.4f), y(0.46f))
+        lineTo(x(0.55f), y(0.62f))
+        lineTo(x(0.67f), y(0.5f))
+        lineTo(x(0.82f), y(0.72f))
+    }
+    draw.drawPath(mountains, color, style = stroke)
+    draw.drawCircle(color, radius = stroke.width * 0.7f, center = Offset(x(0.68f), y(0.32f)))
 }
 
 private fun GlyphScope.warningGlyph() {

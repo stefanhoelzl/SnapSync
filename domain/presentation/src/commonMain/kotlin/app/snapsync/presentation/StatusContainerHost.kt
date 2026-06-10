@@ -1,5 +1,8 @@
 package app.snapsync.presentation
 
+import app.snapsync.permission.PermissionRequester
+import app.snapsync.permission.PermissionStatus
+import app.snapsync.permission.PermissionStatusSource
 import app.snapsync.sync.SyncState
 import app.snapsync.sync.SyncStatus
 import app.snapsync.sync.SyncStatusSource
@@ -19,22 +22,39 @@ import org.orbitmvi.orbit.ContainerHost
 import org.orbitmvi.orbit.container
 
 class StatusContainerHost(
-    source: SyncStatusSource,
+    syncSource: SyncStatusSource,
+    permissionSource: PermissionStatusSource,
+    private val requester: PermissionRequester,
     scope: CoroutineScope,
     private val clock: Clock = Clock.System,
 ) : ContainerHost<UiState, Nothing> {
 
     override val container: Container<UiState, Nothing> =
-        scope.container(UiState.NeverSynced) {
+        scope.container(
+            // Both seams hold their current truth synchronously, so the first state the
+            // screen can ever render derives from real values — never a guess or a
+            // loading placeholder.
+            reduceFrom(permissionSource.permission.value, syncSource.status.value, clock.now()),
+        ) {
             intent {
                 // The tick only re-renders the past (relative time). Estimates come from the
                 // snapshot verbatim and are never aged here — if one should change, that's the
                 // source's job via a new snapshot. Equal reductions are conflated by the
                 // container's StateFlow, so a tick re-emits only when visible text changed.
-                combine(source.status, minuteTicker()) { snapshot, _ -> snapshot }
-                    .collect { snapshot -> reduce { snapshot.toUiState(clock.now()) } }
+                combine(
+                    permissionSource.permission,
+                    syncSource.status,
+                    minuteTicker(),
+                ) { permission, snapshot, _ -> permission to snapshot }
+                    .collect { (permission, snapshot) ->
+                        reduce { reduceFrom(permission, snapshot, clock.now()) }
+                    }
             }
         }
+
+    fun onRequestPermission() = intent { requester.request() }
+
+    fun onOpenSettings() = intent { requester.openSettings() }
 }
 
 private fun minuteTicker(): Flow<Unit> = flow {
@@ -43,6 +63,15 @@ private fun minuteTicker(): Flow<Unit> = flow {
         delay(1.minutes)
     }
 }
+
+// Permission-first precedence: without a full grant there is no meaningful sync state to
+// show — the gate replaces the hero regardless of the snapshot.
+private fun reduceFrom(permission: PermissionStatus, snapshot: SyncStatus, now: Instant): UiState =
+    when (permission) {
+        PermissionStatus.NOT_DETERMINED -> UiState.PermissionAsk
+        PermissionStatus.DENIED -> UiState.PermissionDenied
+        PermissionStatus.GRANTED -> snapshot.toUiState(now)
+    }
 
 private fun SyncStatus.toUiState(now: Instant): UiState = when (state) {
     SyncState.NEVER_SYNCED -> UiState.NeverSynced
