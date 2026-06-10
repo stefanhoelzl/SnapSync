@@ -11,6 +11,7 @@ kotlin {
 }
 
 dependencies {
+    implementation(project(":domain:permission"))
     implementation(project(":domain:sync"))
     implementation(project(":domain:presentation"))
     implementation(project(":domain:ui"))

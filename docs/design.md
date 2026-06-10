@@ -287,11 +287,22 @@ re-derive from properties on restore, so they need nothing.
   [slanos/schott compose-cupertino fork](https://github.com/schott12521/compose-cupertino), or
   hand-rolled) can be added **later without touching screens**. (All Cupertino libs are ~10 months
   stale; the abstraction contains that risk.)
-- **v1 screens: minimal** — a permission gate (inline) + a single **status screen** (idle / uploading
-  X of N / last-sync time / "back up now" / error states; an enable-backup toggle). No nav.
+- **v1 screens: minimal** — a single **status screen** (six sync states + last-sync time) whose hero
+  is **replaced by an inline permission gate** whenever photo permission ≠ granted. No nav. Backup is
+  **always-on once permission is granted**: no enable-backup toggle, no manual "back up now" — the
+  gate's CTA is the only button in the app (decided 2026-06-10). Permission is three-state
+  (`NOT_DETERMINED` / `DENIED` / `GRANTED`) in `:domain:permission`; **full library access required**
+  — iOS `.limited` and `.restricted` map to `DENIED`. ⚠️ **Accepted risk:** on managed/restricted
+  devices the Denied gate's "Open Settings" CTA is a dead end; revisit only if such a report appears.
 - **State: MVI via Orbit** in `:domain:presentation` (Compose-free). The `:presentation → :ui`
   contract is `StateFlow<UiState>` + actions, so the state model can evolve (MVIKotlin, or Decompose
   navigation — state-lib-agnostic) without touching the UI.
+- **Seams are `StateFlow` state holders** (`SyncStatusSource`, `PermissionStatusSource`): the current
+  truth is available synchronously, and the container computes its **initial state from real source
+  values** — the screen never renders a guess or loading placeholder. Composition-root ordering
+  constraint for the engine slice: read the bookkeeping store → construct sources → construct
+  container. Command ports (`PermissionRequester.request()/openSettings()`) are fire-and-forget CQS:
+  truth only ever arrives via the state ports.
 - **Errors: sealed domain errors → `UiState`**, exceptions converted at capability boundaries, logged
   via **Kermit**. Errors-as-reduced-state lets the control panel force any failure state.
 
@@ -303,10 +314,13 @@ panel** (utilitarian raw Material 3, never `App*` — asymmetric investment: the
 test equipment, not product). Both panes bind the same Orbit container. The panel has **two
 permanent sections** (decided 2026-06-09):
 
-- **Display overrides** (born in the UI-mock slice, before the engine exists): buttons that set
-  `SyncStatus` snapshots into a `MutableStateFlow` standing in for the engine — forge any display
-  state for UI iteration. All mutations go through one small `PanelController` (no inline mutations
-  in composables). Forever outside the scenario system — no command indirection, no tests.
+- **Display overrides** (born in the UI-mock slice, before the engine exists): buttons that forge
+  display state for UI iteration, in two groups plus a behavior knob (permission-gate slice):
+  **Permission** presets write the permission cell only; **Sync** presets write the sync cell *and
+  force permission to Granted* (a preset means "show me this screen", impossible while gated); an
+  armed **"next request →"** control decides what the fake `PermissionRequester` resolves. All
+  mutations go through one small `PanelController` (no inline mutations in composables). Forever
+  outside the scenario system — no command indirection, no tests.
 - **World controls** (born with the engine + capability fakes): arrange/act on the **controllable
   in-memory fakes** (set change-feed assets, force job success/failure/retry, flip permission,
   simulate `jobLimit`) and invoke `runUploadCycle()` on demand — real `SyncStatus` then *derives*

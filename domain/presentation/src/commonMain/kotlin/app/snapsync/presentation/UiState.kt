@@ -6,6 +6,12 @@ package app.snapsync.presentation
  * presentation so tests assert exact visible text.
  */
 sealed interface UiState {
+    /** Permission not yet asked: the gate invites the first system request. */
+    data object PermissionAsk : UiState
+
+    /** Permission denied (or partial/restricted): the gate points at system settings. */
+    data object PermissionDenied : UiState
+
     data object NeverSynced : UiState
 
     data class InProgress(val fraction: Float, val estimate: String) : UiState

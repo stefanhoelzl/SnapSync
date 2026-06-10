@@ -21,6 +21,7 @@ dependencyResolutionManagement {
 rootProject.name = "snapsync"
 
 include(":app:desktop")
+include(":domain:permission")
 include(":domain:sync")
 include(":domain:presentation")
 include(":domain:ui")

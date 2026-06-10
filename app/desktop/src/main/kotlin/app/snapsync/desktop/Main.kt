@@ -25,13 +25,22 @@ fun main() = application {
     ) {
         val controller = remember { PanelController() }
         val scope = rememberCoroutineScope()
-        val host = remember { StatusContainerHost(controller.source, scope) }
+        val host = remember {
+            StatusContainerHost(
+                controller.syncSource,
+                controller.permissionSource,
+                controller.requester,
+                scope,
+            )
+        }
         val state by host.container.stateFlow.collectAsState()
 
         MaterialTheme {
             Surface {
                 Row(modifier = Modifier.padding(16.dp)) {
-                    PhoneFrame { StatusScreen(state) }
+                    PhoneFrame {
+                        StatusScreen(state, host::onRequestPermission, host::onOpenSettings)
+                    }
                     ControlPanel(controller)
                 }
             }
