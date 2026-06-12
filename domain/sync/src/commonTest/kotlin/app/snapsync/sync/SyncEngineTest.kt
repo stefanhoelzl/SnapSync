@@ -1,71 +1,133 @@
 package app.snapsync.sync
 
-import kotlinx.coroutines.async
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
+import kotlin.test.assertIs
 import kotlin.test.assertNotSame
+import kotlin.test.assertNull
 import kotlin.test.assertSame
 
 class SyncEngineTest {
 
     private val provider = RecordingUploadRequestProvider()
-    private val engine = SyncEngine(provider)
+    private val ledger = LedgerWriter(InMemoryLedgerBackend())
+    private val engine = SyncEngine(provider, ledger)
 
-    private fun resource(filename: String = "cloud-1-ios.photo.heic") = Resource(
+    private fun resource(
+        filename: String = "cloud-1-ios.photo.heic",
+        version: String = "2026-06-12T10:00:00Z",
+    ) = Resource(
         filename = filename,
         contentType = "image/heic",
+        version = version,
         metadata = mapOf("asset-id" to "cloud-1", "created" to "2026-06-12T10:00:00Z"),
         data = byteArrayOf(1, 2, 3),
     )
 
+    private suspend fun completeUpload(resource: Resource): UploadJob {
+        val work = assertIs<SyncDecision.Work>(engine.handle(SyncEvent.ResourceChanged(resource)))
+        engine.handle(SyncEvent.UploadCompleted(work.job))
+        return work.job
+    }
+
     @Test
-    fun `resource change yields one first-attempt job`() = runTest {
+    fun `unknown resource uploads with first attempt and a requested ledger entry`() = runTest {
         val resource = resource()
 
-        val job = engine.handle(SyncEvent.ResourceChanged(resource))
+        val decision = engine.handle(SyncEvent.ResourceChanged(resource))
 
-        assertEquals(0, job.attempt)
+        val upload = assertIs<SyncDecision.Upload>(decision)
+        assertEquals(0, upload.job.attempt)
+        assertEquals(
+            LedgerEntry(resource.filename, LedgerState.REQUESTED, 0, resource.version),
+            ledger.entry(resource.filename),
+        )
     }
 
     @Test
     fun `provider is invoked exactly once with the platform's resource instance`() = runTest {
         val resource = resource()
 
-        engine.handle(SyncEvent.ResourceChanged(resource))
+        val decision = engine.handle(SyncEvent.ResourceChanged(resource))
 
         assertEquals(1, provider.invocations.size)
         assertSame(resource, provider.invocations.single())
+        assertSame(provider.returned.single(), assertIs<SyncDecision.Work>(decision).job.request)
     }
 
     @Test
-    fun `job carries the provider's request unmodified`() = runTest {
-        val job = engine.handle(SyncEvent.ResourceChanged(resource()))
-
-        assertSame(provider.returned.single(), job.request)
-    }
-
-    @Test
-    fun `resource instance round-trips onto the job's request`() = runTest {
+    fun `resource instance round-trips onto the decision's job`() = runTest {
         val resource = resource()
 
-        val job = engine.handle(SyncEvent.ResourceChanged(resource))
+        val decision = engine.handle(SyncEvent.ResourceChanged(resource))
 
-        assertSame(resource, job.request.resource)
+        assertSame(resource, assertIs<SyncDecision.Work>(decision).job.request.resource)
+    }
+
+    @Test
+    fun `completed and unchanged skips without minting or touching the ledger`() = runTest {
+        val resource = resource()
+        completeUpload(resource)
+        val before = ledger.entry(resource.filename)
+        val mintsBefore = provider.invocations.size
+
+        val decision = engine.handle(SyncEvent.ResourceChanged(resource()))
+
+        assertIs<SyncDecision.AlreadyUploaded>(decision)
+        assertEquals(mintsBefore, provider.invocations.size)
+        assertEquals(before, ledger.entry(resource.filename))
+    }
+
+    @Test
+    fun `completed but changed re-uploads under the new version`() = runTest {
+        completeUpload(resource(version = "v1"))
+        val changed = resource(version = "v2")
+
+        val decision = engine.handle(SyncEvent.ResourceChanged(changed))
+
+        val reUpload = assertIs<SyncDecision.ReUpload>(decision)
+        assertEquals(0, reUpload.job.attempt)
+        assertEquals(
+            LedgerEntry(changed.filename, LedgerState.REQUESTED, 0, "v2"),
+            ledger.entry(changed.filename),
+        )
+    }
+
+    @Test
+    fun `version is compared for equality only`() = runTest {
+        completeUpload(resource(version = "zebra"))
+
+        val decision = engine.handle(SyncEvent.ResourceChanged(resource(version = "aardvark")))
+
+        assertIs<SyncDecision.ReUpload>(decision)
+    }
+
+    @Test
+    fun `a hope never skips - requested keys re-upload on re-submission`() = runTest {
+        engine.handle(SyncEvent.ResourceChanged(resource()))
+
+        val decision = engine.handle(SyncEvent.ResourceChanged(resource()))
+
+        assertIs<SyncDecision.Upload>(decision)
     }
 
     @Test
     fun `failed upload yields a retry with incremented attempt and a fresh request`() = runTest {
         val resource = resource()
-        val failed = engine.handle(SyncEvent.ResourceChanged(resource))
+        val failed = assertIs<SyncDecision.Work>(engine.handle(SyncEvent.ResourceChanged(resource))).job
 
-        val retry = engine.handle(SyncEvent.UploadFailed(failed, UploadError.Http(403)))
+        val decision = engine.handle(SyncEvent.UploadFailed(failed, UploadError.Http(403)))
 
-        assertEquals(1, retry.attempt)
-        assertNotSame(failed.request, retry.request)
-        assertSame(resource, retry.request.resource)
-        assertSame(resource, provider.invocations.last())
+        val retry = assertIs<SyncDecision.Retry>(decision)
+        assertEquals(1, retry.job.attempt)
+        assertNotSame(failed.request, retry.job.request)
+        assertSame(resource, retry.job.request.resource)
+        assertEquals(
+            LedgerEntry(resource.filename, LedgerState.REQUESTED, 1, resource.version),
+            ledger.entry(resource.filename),
+        )
     }
 
     @Test
@@ -76,37 +138,73 @@ class SyncEngineTest {
             UploadError.Cancelled,
             UploadError.Unknown("boom"),
         )
-        var job = engine.handle(SyncEvent.ResourceChanged(resource()))
+        var job = assertIs<SyncDecision.Work>(engine.handle(SyncEvent.ResourceChanged(resource()))).job
 
         for ((index, error) in errors.withIndex()) {
-            job = engine.handle(SyncEvent.UploadFailed(job, error))
-            assertEquals(index + 1, job.attempt)
+            val retry = assertIs<SyncDecision.Retry>(engine.handle(SyncEvent.UploadFailed(job, error)))
+            assertEquals(index + 1, retry.job.attempt)
+            job = retry.job
         }
     }
 
     @Test
-    fun `provider failure propagates unswallowed and the event can be re-handled`() = runTest {
+    fun `provider failure propagates and leaves no trace in the ledger`() = runTest {
         val event = SyncEvent.ResourceChanged(resource())
         val failure = IllegalStateException("mint failed")
         provider.nextFailure = failure
 
         val thrown = assertFailsWith<IllegalStateException> { engine.handle(event) }
-        assertSame(failure, thrown)
 
-        val job = engine.handle(event)
-        assertEquals(0, job.attempt)
+        assertSame(failure, thrown)
+        assertNull(ledger.entry(resource().filename))
+        assertIs<SyncDecision.Upload>(engine.handle(event))
     }
 
     @Test
-    fun `concurrent handle calls return exactly their own resources' jobs`() = runTest {
-        val first = resource("cloud-1-ios.photo.heic")
-        val second = resource("cloud-2-ios.pairedVideo.mov")
+    fun `completion marks the key done and answers already-uploaded`() = runTest {
+        val resource = resource()
+        val job = assertIs<SyncDecision.Work>(engine.handle(SyncEvent.ResourceChanged(resource))).job
 
-        val firstJob = async { engine.handle(SyncEvent.ResourceChanged(first)) }
-        val secondJob = async { engine.handle(SyncEvent.ResourceChanged(second)) }
+        val decision = engine.handle(SyncEvent.UploadCompleted(job))
 
-        assertSame(first, firstJob.await().request.resource)
-        assertSame(second, secondJob.await().request.resource)
-        assertEquals(2, provider.invocations.size)
+        assertIs<SyncDecision.AlreadyUploaded>(decision)
+        assertEquals(
+            LedgerEntry(resource.filename, LedgerState.COMPLETED, 0, resource.version),
+            ledger.entry(resource.filename),
+        )
+    }
+
+    @Test
+    fun `duplicate completion is a no-op`() = runTest {
+        val job = completeUpload(resource())
+        val once = ledger.entry(resource().filename)
+
+        val decision = engine.handle(SyncEvent.UploadCompleted(job))
+
+        assertIs<SyncDecision.AlreadyUploaded>(decision)
+        assertEquals(once, ledger.entry(resource().filename))
+    }
+
+    @Test
+    fun `replaying any suffix of an event history converges to the same ledger state`() = runTest {
+        val resource = resource()
+        val job0 = assertIs<SyncDecision.Work>(engine.handle(SyncEvent.ResourceChanged(resource))).job
+        val job1 = assertIs<SyncDecision.Retry>(
+            engine.handle(SyncEvent.UploadFailed(job0, UploadError.Network)),
+        ).job
+        engine.handle(SyncEvent.UploadCompleted(job1))
+        val history = listOf<SyncEvent>(
+            SyncEvent.ResourceChanged(resource),
+            SyncEvent.UploadFailed(job0, UploadError.Network),
+            SyncEvent.UploadCompleted(job1),
+        )
+        val settled = ledger.entry(resource.filename)
+
+        for (start in history.indices) {
+            for (event in history.subList(start, history.size)) {
+                engine.handle(event)
+            }
+            assertEquals(settled, ledger.entry(resource.filename))
+        }
     }
 }

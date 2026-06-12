@@ -1,0 +1,15 @@
+CREATE TABLE ledgerRow (
+    key TEXT NOT NULL PRIMARY KEY,
+    state TEXT NOT NULL,
+    attempt INTEGER NOT NULL,
+    version TEXT NOT NULL
+);
+
+get:
+SELECT key, state, attempt, version
+FROM ledgerRow
+WHERE key = :key;
+
+put:
+INSERT OR REPLACE INTO ledgerRow (key, state, attempt, version)
+VALUES (:key, :state, :attempt, :version);
