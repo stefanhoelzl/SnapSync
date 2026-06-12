@@ -49,8 +49,6 @@ fun StatusScreen(
                     StatusHero(StatusIndicator.Success, "Sync complete", state.finishedAgo)
                 is UiState.Incomplete ->
                     StatusHero(StatusIndicator.Warning, "Sync incomplete", state.finishedAgo)
-                is UiState.Failed ->
-                    StatusHero(StatusIndicator.Error, "Sync failed", state.finishedAgo)
             }
         }
     }

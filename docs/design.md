@@ -51,7 +51,7 @@ root), *not* `expect`/`actual`. Rationale: the JVM target needs **multiple** imp
 seam (in-memory fake for tests, the controllable fake for the desktop app), which `expect`/`actual`
 (one impl per compile target) cannot express; a plain `interface` + DI can.
 
-The iOS extension's `processJobs()` **drives** the shared `:domain:sync` decision core with events;
+The iOS extension's `processJobs()` **drives** the shared `:domain:engine` decision core with events;
 the desktop test app drives that identical core from an engine console (§5.1), so every shared
 decision path is exercised off-device. Orchestration (loops, backpressure, job execution) is
 deliberately **platform-side** — the shared core decides and remembers.
@@ -59,17 +59,22 @@ deliberately **platform-side** — the shared core decides and remembers.
 ### 2.1 Module graph
 
 ```
-:domain:sync           the shared sync vocabulary + logic; no platform deps:
+:domain:engine         the shared sync vocabulary + logic; no platform deps:
                          • platform seam (§2.2), resources-only: Resource (concrete value type
                            with opaque platform payload + version), SyncEvent, SyncDecision,
                            UploadJob, UploadRequest, UploadError, UploadRequestProvider.
                            (Asset layer = later slice above.)
                          • SyncEngine — the ledgered decision core (§2.2) + its ledger
-                           (LedgerBackend storage seam, LedgerReader/LedgerWriter, SQLDelight)
-                         • status projection (§2.4): read-only ledger queries (status slice)
-                         • presentation-facing snapshot seam (§2.3): SyncStatus + SyncStatusSource
+                           (LedgerBackend storage seam, LedgerReader/LedgerWriter/LedgerWatcher,
+                           SQLDelight)
+:domain:status         → :domain:engine + :domain:permission (BOTH implementation-scoped — neither
+                         leaks to status's consumers). The status projection (§2.4): SyncStatus +
+                         SyncState + SyncStatusSource (snapshot seam, §2.3) and
+                         LedgerSyncStatusSource — ledger aggregates × permission → snapshots.
 :domain:permission     PermissionStatus / PermissionStatusSource / PermissionRequester.
-:domain:presentation   → :domain:sync + :domain:permission. Orbit MVI container(s) + UiState. COMPOSE-FREE.
+:domain:presentation   → :domain:status + :domain:permission. Orbit MVI container(s) + UiState.
+                         COMPOSE-FREE. NO engine dependency — engine types never reach
+                         presentation's compile classpath.
 :domain:ui             → :domain:presentation + :domain:ui:components. Compose screens, written
                          exclusively against the App* design system.
 :domain:ui:components  semantic App* components + the Material 3 skin — the ONLY module allowed to
@@ -87,7 +92,7 @@ iosApp/                Xcode project (not Gradle): the app target (Swift host + 
                        presign/SigV4 + config). App and extension share an App Group container.
 ```
 
-Dependency flow: `:domain:sync ← presentation ← ui`; app modules wire the concrete platform
+Dependency flow: `:domain:engine ← status ← presentation ← ui`; app modules wire the concrete platform
 adapters. Every boundary is **compiler-enforced**, and the backend swap is **structural**
 (`:app:ios` wires the PhotoKit-backed adapter; the desktop wires the engine console).
 
@@ -170,16 +175,28 @@ interface UploadRequestProvider {            // impls: dumb-HTTP (test platform)
 }
 
 interface LedgerBackend {                    // storage seam: dumb row store, last write wins
+    val changes: Flow<Unit>                  // ding after every put; "re-read the truth" — where
+                                             //   another process writes, feeding this is that
+                                             //   backend's concern (iOS: Darwin observer)
     suspend fun get(key: String): LedgerEntry?
     suspend fun put(entry: LedgerEntry)      // single-row upsert = the unit of atomicity
+    suspend fun aggregates(): LedgerAggregates  // one snapshot-consistent SQL round-trip
 }
-open class LedgerReader(backend)             // entry(key) — the read-only face; narrowing = upcast
-class LedgerWriter(backend) : LedgerReader   // recordRequested / recordCompleted / recordFailed
+open class LedgerReader(backend)             // entry(key) — the per-key read-only face (engine's)
+class LedgerWriter(backend, clock = System) : LedgerReader
+                                             // recordRequested / recordCompleted / recordFailed;
+                                             // stamps updatedAt — the SINGLE stamping point
+                                             // (engine clock-free, backends store verbatim).
                                              // ONE writer per platform, by construction: only the
                                              // engine-hosting composition root constructs it
-class LedgerEntry(key, state /* REQUESTED|COMPLETED|FAILED */, attempt, version)
-                                             // schema: key PRIMARY KEY, state, attempt, version —
-                                             // no timestamps (status slice adds its column)
+class LedgerWatcher(backend)                 // aggregates: Flow<LedgerAggregates> — cold: current
+                                             //   truth on collect, re-query per conflated ding,
+                                             //   deduped; the ONLY type surfacing aggregates/dings
+class LedgerEntry(key, state /* REQUESTED|COMPLETED|FAILED */, attempt, version, updatedAt)
+class LedgerAggregates(pending, completed, newestCompletionAt /* null = never completed */)
+                                             // schema: key PRIMARY KEY, state, attempt, version,
+                                             // updatedAt (epoch millis; SQLDelight typed columns,
+                                             // adapters hidden in one factory)
 
 class SyncEngine(provider: UploadRequestProvider, ledger: LedgerWriter) {
     suspend fun handle(event: SyncEvent): SyncDecision
@@ -242,9 +259,9 @@ terminally-failed resource is only resurrected when its asset changes again.
 
 ### 2.3 Sync → presentation seam: state snapshots, not events
 
-`:domain:sync` exposes progress to presentation as a **snapshot contract** — `SyncStatus` (counts;
-fields are demand-driven, initially just `pending`/`completed`) observed via
-`SyncStatusSource { val status: Flow<SyncStatus> }` — **not** an event stream. Why (decided 2026-06-09):
+`:domain:status` exposes progress to presentation as a **snapshot contract** — `SyncStatus`
+(lifetime counts, §2.4) observed via `SyncStatusSource { val status: StateFlow<SyncStatus> }` —
+**not** an event stream. Why (decided 2026-06-09):
 
 - **The iOS process topology forbids events.** Uploads run in the extension while the app is
   suspended or dead; the app learns what happened by reading the App Group + job system. The UI is
@@ -264,34 +281,46 @@ fields are demand-driven, initially just `pending`/`completed`) observed via
 
 ### 2.4 Status projection: read-only queries over the engine's ledger
 
-How `SyncStatusSource` (§2.3) gets its truth (re-decided 2026-06-12 — the ledgered engine
-supersedes the earlier StatusEvent-fold + maildir-inbox design; the per-key state those needed
-now lives in the ledger, §2.2). The UI seam stays a level-triggered `StateFlow<SyncStatus>`;
-behind it, the source is **read-only SQL queries over the ledger** plus platform-known
-operational state. Details belong to the status slice; the locked shape:
+How `SyncStatusSource` (§2.3) gets its truth (re-decided 2026-06-12, implemented in the
+status-core change — the ledgered engine supersedes the earlier StatusEvent-fold +
+maildir-inbox design). The UI seam stays a level-triggered `StateFlow<SyncStatus>`; behind it,
+`LedgerSyncStatusSource` (in `:domain:status`) combines the ledger's `LedgerWatcher` stream with
+the permission seam and mints snapshots — constructed via a suspend factory that reads the
+current truth first, so the seam's synchronous-first-value promise holds. The ledger signals its
+own changes (`LedgerBackend.changes` dings after every put), so no platform plumbs a refresh
+trigger: writes ding, the watcher re-queries, the source re-mints.
 
 - **Counts are lifetime aggregates** over ledger rows (`pending` = non-`COMPLETED` keys,
-  `completed` = `COMPLETED` keys); `lastFinishedAt` = the newest completion (the status slice
-  adds its timestamp column — a free migration while only tests consume the DB). `ReUpload`
-  flips a row back to `REQUESTED`, so re-uploads are visible in status (repealing the old
-  "invisible re-uploads" cost).
-- **`active` is operational state, not a liveness heuristic** (re-decided 2026-06-12, replacing
-  the event-recency rule): *backup machinery is operational* — derived from the permission seam
-  (`permission == GRANTED`; the extension is enabled at grant, v1 has no toggle). Shared logic,
-  no clocks, no thresholds. Consequences, accepted: SUSPENDED renders only via harness display
-  overrides in v1 (the gate covers it whenever `active` is false), and a wedged-but-enabled
-  pipeline shows IN_PROGRESS rather than aging into SUSPENDED.
+  `completed` = `COMPLETED` keys); `lastFinishedAt` = the newest completion's `updatedAt`.
+  `ReUpload` flips a row back to `REQUESTED`, so re-uploads are visible in status (repealing the
+  old "invisible re-uploads" cost). `failed` ≡ 0 from the real source (retry-forever never gives
+  a key up; an attempt budget fills it in v2) and `estimatedRemaining` ≡ null (v1 never
+  estimates) — both fields exist for classification and fakes.
+- **Classification is suspended-first** (re-decided at implementation, replacing the
+  pending-first table): `!active → SUSPENDED; pending > 0 → IN_PROGRESS; lastFinishedAt == null
+  → NEVER_SYNCED; failed > 0 → INCOMPLETE; else COMPLETE`. **There is no FAILED state** — its
+  old condition (`completed == 0 && lastFinishedAt != null`) became self-contradictory once
+  `lastFinishedAt` means "newest completion"; the whole vertical (SyncState.FAILED,
+  UiState.Failed, hero row, harness preset) was deleted. v2's attempt budget can reintroduce it
+  with real semantics.
+- **`active` is operational state, not a liveness heuristic** (replacing the event-recency
+  rule): *backup machinery is allowed to run* — `permission == GRANTED`, derived once inside
+  `LedgerSyncStatusSource` (the extension is enabled at grant, v1 has no toggle). Shared logic,
+  no clocks, no thresholds. Consequences, accepted: SUSPENDED is preset-only in v1 (the gate
+  covers the hero whenever `active` is false), and a wedged-but-enabled pipeline shows
+  IN_PROGRESS rather than aging into SUSPENDED.
 - **Cross-process topology (iOS):** the extension hosts the engine and the single `LedgerWriter`
   (WAL, short single-statement writes); the app opens the database **read-only** — the
   Apple-documented-safe configuration (`0xdead10cc` applies to write transactions held at
-  suspension; the app never writes). Re-read triggers (Darwin ding, foreground entry) are an
-  iOS-slice detail. **Staleness detection is read-only:** the app compares the photo library's
-  `currentChangeToken` with the ledger's last token — mismatch ⇒ undiscovered work ⇒ status can
-  say "waiting for system" instead of a false COMPLETE (replaces "foreground catch-up cycles" as
-  the dead-discovery mitigation).
-- Count semantics: `failed` ≡ 0 under retry-forever, so `FAILED`/`INCOMPLETE` stay unreachable in
-  v1 (by design — the screen states exist, the harness exercises them). Uninstall wipes the App
-  Group → status resets to never-synced; re-sync is idempotent (accepted).
+  suspension; the app never writes). The app-side backend feeds its `changes` flow from the
+  Darwin notification the extension posts — where dings come from is each backend's
+  implementation detail; seam, watcher, and source never know (iOS slice). **Staleness detection
+  is read-only:** the app compares the photo library's `currentChangeToken` with the platform
+  bookkeeping's last token — mismatch ⇒ undiscovered work ⇒ status can say "waiting for system"
+  instead of a false COMPLETE (replaces "foreground catch-up cycles" as the dead-discovery
+  mitigation; later slice).
+- Uninstall wipes the App Group → status resets to never-synced; re-sync is idempotent
+  (accepted).
 
 ---
 
@@ -549,9 +578,12 @@ permanent sections** (decided 2026-06-09):
   version change; retry re-mint chains with `attempt` counting; provider-failure rethrow leaving
   the ledger untouched; suffix-replay convergence — duplicate reports converge instead of
   drifting); `LedgerBackend` contract tests run against BOTH the in-memory backend and the
-  SQLDelight backend on a JVM sqlite driver; provider-impl tests own the encoding/placement
-  contract (slice ③ onward); status-query tests arrive with the status slice; SigV4 presign;
-  Orbit reducers. The bulk of the logic is here, off-device.
+  SQLDelight backend on a JVM sqlite driver (incl. aggregate reads, the change ding, and
+  writer stamping under a fixed clock); `LedgerWatcher` stream tests; the five-row
+  classification decision table and `LedgerSyncStatusSource` tests (real watcher + in-memory
+  backend + fake permission source); provider-impl tests own the encoding/placement
+  contract (slice ③ onward); SigV4 presign; Orbit reducers. The bulk of the logic is here,
+  off-device.
 - **Integration** — `:capability:s3` against **s3mock** (Testcontainers): mint a presigned PUT, do
   the PUT via Ktor, assert via `LIST`. ⚠️ **Accepted risk:** s3mock does **not validate signatures**,
   so SigV4 is only truly exercised by the on-device extension upload. If a first real upload fails,
@@ -601,7 +633,8 @@ permanent sections** (decided 2026-06-09):
 - **Platform-driven decision core** replaces the planned `GalleryService`/`UploadJobService`
   pull-seams: platforms submit `SyncEvent`s, the stateless `SyncEngine` answers with one
   `UploadJob` per event (§2.2). `:capability:gallery`/`uploader`/`store` dissolved; `:capability:s3`
-  returns later as one `UploadRequestProvider` impl; no `:domain:model` — all types live in `:domain:sync`.
+  returns later as one `UploadRequestProvider` impl; no `:domain:model` — all types live in `:domain:sync`
+  (renamed `:domain:engine` in the status-core pass, which also split out `:domain:status`).
 - **Resources-only sync domain** (2026-06-12): the engine knows only `Resource` — a concrete
   value type (filename, contentType, metadata, `data: Any` — the opaque platform payload:
   `PHAssetResource`, bytes, path; always present; engine and provider never read it; `Any` by
@@ -652,6 +685,23 @@ StatusEvent/inbox design above):**
   re-upload-all-bytes-on-metadata-change; re-uploads become **visible** in status.
 - A middleware decomposition of the engine was explored and deferred (see the sync-engine-ledger
   change's design.md, D10) — revisit when the console journal or an attempt budget demands it.
+
+**Resolved (status-core pass, 2026-06-12 — slice ②, implements the status projection):**
+- **Modules renamed and split**: `:domain:sync` → `:domain:engine`; new `:domain:status`
+  (seam types + `LedgerSyncStatusSource`, engine/permission deps implementation-scoped);
+  presentation dropped its engine dependency — the api() leak of engine types is plugged (§2.1).
+- **The ledger signals its own changes**: `LedgerBackend` grew `changes` (ding per put) and
+  `aggregates()` (one snapshot-consistent read); third ledger type `LedgerWatcher` streams
+  deduped aggregates; `LedgerEntry` grew writer-stamped `updatedAt` (injected clock — engine
+  stays clock-free, backends verbatim; duplicate records converge on state/attempt/version, the
+  timestamp moves). SQLDelight typed columns, adapters hidden in one factory (§2.2).
+- **Classification went suspended-first and FAILED was deleted** (§2.4): `!active` outranks
+  everything; the FAILED vertical (state, UI state, hero, preset) is untellable under
+  retry-forever + lastFinishedAt-as-newest-completion. Harness finished-presets forge
+  `active = true`.
+- **Slice ④ (JVM status feed/source) absorbed**: status is shared SQL over the ledger — what
+  remains is wiring, owned by slices ③ (harness DB instance) and ⑥ (source↔screen composition).
+  Ladder: ② → ③ → ⑤ → ⑥.
 
 **Still open — iOS 27 API verification (on device / Xcode):**
 - **TOP RISK:** resumable-upload `OPTIONS` preflight vs raw S3 — does the system fall back to plain `PUT`, or is a tiny edge endpoint needed? (§3.3). Spike first.

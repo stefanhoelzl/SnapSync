@@ -3,9 +3,9 @@ package app.snapsync.presentation
 import app.snapsync.permission.PermissionRequester
 import app.snapsync.permission.PermissionStatus
 import app.snapsync.permission.PermissionStatusSource
-import app.snapsync.sync.SyncState
-import app.snapsync.sync.SyncStatus
-import app.snapsync.sync.SyncStatusSource
+import app.snapsync.status.SyncState
+import app.snapsync.status.SyncStatus
+import app.snapsync.status.SyncStatusSource
 import kotlin.time.Clock
 import kotlin.time.Duration
 import kotlin.time.Duration.Companion.days
@@ -84,7 +84,6 @@ private fun SyncStatus.toUiState(now: Instant): UiState = when (state) {
     SyncState.SUSPENDED -> UiState.Suspended
     SyncState.COMPLETE -> UiState.Complete(finishedAgo(now))
     SyncState.INCOMPLETE -> UiState.Incomplete(finishedAgo(now))
-    SyncState.FAILED -> UiState.Failed(finishedAgo(now))
 }
 
 // Finished outcomes guarantee lastFinishedAt != null (classification branch order).

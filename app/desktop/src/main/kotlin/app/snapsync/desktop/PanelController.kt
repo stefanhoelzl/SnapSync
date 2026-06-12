@@ -3,8 +3,8 @@ package app.snapsync.desktop
 import app.snapsync.permission.PermissionRequester
 import app.snapsync.permission.PermissionStatus
 import app.snapsync.permission.PermissionStatusSource
-import app.snapsync.sync.SyncStatus
-import app.snapsync.sync.SyncStatusSource
+import app.snapsync.status.SyncStatus
+import app.snapsync.status.SyncStatusSource
 import kotlin.time.Clock
 import kotlin.time.Duration.Companion.minutes
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -104,10 +104,6 @@ class PanelController(private val clock: Clock = Clock.System) {
         forgeSync(finishedPass(completed = 31, failed = 3))
     }
 
-    fun showFailed() {
-        forgeSync(finishedPass(completed = 0, failed = 34))
-    }
-
     // A sync preset's intent is "show me this screen" — impossible while gated, so it
     // forces its precondition.
     private fun forgeSync(status: SyncStatus) {
@@ -115,15 +111,17 @@ class PanelController(private val clock: Clock = Clock.System) {
         syncState.value = status
     }
 
+    // Finished presets forge active = true: under suspended-first classification an inactive
+    // snapshot is Suspended regardless of history.
     private fun finishedPass(completed: Int, failed: Int) = SyncStatus(
         pending = 0, completed = completed, failed = failed,
-        active = false, estimatedRemaining = null, lastFinishedAt = clock.now() - 5.minutes,
+        active = true, estimatedRemaining = null, lastFinishedAt = clock.now() - 5.minutes,
     )
 
     private companion object {
         val NEVER_SYNCED = SyncStatus(
             pending = 0, completed = 0, failed = 0,
-            active = false, estimatedRemaining = null, lastFinishedAt = null,
+            active = true, estimatedRemaining = null, lastFinishedAt = null,
         )
     }
 }

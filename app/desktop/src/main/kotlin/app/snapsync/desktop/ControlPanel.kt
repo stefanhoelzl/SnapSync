@@ -50,6 +50,5 @@ fun ControlPanel(controller: PanelController) {
         Button(onClick = { controller.showSuspended() }) { Text("Suspended (waiting)") }
         Button(onClick = { controller.showComplete() }) { Text("Complete (5 min ago)") }
         Button(onClick = { controller.showIncomplete() }) { Text("Incomplete (5 min ago)") }
-        Button(onClick = { controller.showFailed() }) { Text("Failed (5 min ago)") }
     }
 }
