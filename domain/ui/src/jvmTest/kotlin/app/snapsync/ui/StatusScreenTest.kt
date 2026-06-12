@@ -94,14 +94,6 @@ class StatusScreenTest {
         rule.onNodeWithText("5 min ago").assertExists()
     }
 
-    @Test
-    fun `failed shows headline with relative time`() {
-        rule.setContent { StatusScreen(UiState.Failed(finishedAgo = "5 min ago")) }
-
-        rule.onNodeWithText("Sync failed").assertExists()
-        rule.onNodeWithText("5 min ago").assertExists()
-    }
-
     private fun hasAnyProgressIndication(): SemanticsMatcher =
         SemanticsMatcher.keyIsDefined(SemanticsProperties.ProgressBarRangeInfo)
 

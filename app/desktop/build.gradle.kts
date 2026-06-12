@@ -12,7 +12,7 @@ kotlin {
 
 dependencies {
     implementation(project(":domain:permission"))
-    implementation(project(":domain:sync"))
+    implementation(project(":domain:status"))
     implementation(project(":domain:presentation"))
     implementation(project(":domain:ui"))
     // The control panel is deliberately raw Material 3, not App* (design.md §5.1).

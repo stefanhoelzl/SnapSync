@@ -1,13 +1,6 @@
-# sync status screen Specification
+# sync status screen — delta
 
-## Purpose
-
-The shared status screen that observes sync status snapshots and shows the user, truthfully,
-what state their backup is in: never synced, in progress, waiting, complete, or incomplete.
-The snapshot contract and its classification are owned by the `sync-status` capability; this
-screen reduces and renders.
-
-## Requirements
+## MODIFIED Requirements
 
 ### Requirement: Sync status snapshots reduce to UI state
 
@@ -69,27 +62,3 @@ conveys the rough fraction.
 
 The screen is composed under the rules of the `design-system` capability (semantic components
 only; Material 3 containment; `ScreenLayout` owns screen structure).
-
-### Requirement: Presentation formats and ticks relative time
-
-The presentation layer SHALL format `lastFinishedAt` into coarse relative-time text (e.g. "just now", "5 min ago", "2 h ago") using an injected `Clock`, and SHALL re-emit the UI state periodically (~once per minute) only when the visible text would change. The UI layer MUST NOT perform time formatting or own a clock.
-
-#### Scenario: Relative time ages on screen
-- **WHEN** the displayed state is Complete with "just now" and 5 minutes pass with no new snapshot
-- **THEN** the displayed detail becomes "5 min ago" without any snapshot being observed
-
-#### Scenario: Tests control time
-- **WHEN** presentation tests advance the injected clock
-- **THEN** the emitted relative-time text changes deterministically
-
-### Requirement: Estimates are minted at snapshot emission
-
-`estimatedRemaining` SHALL be valid as of the snapshot's emission: sources MUST compute it when emitting a snapshot and MUST NOT persist a previously computed estimate; a source that cannot estimate SHALL emit `null`. The presentation layer SHALL render the estimate verbatim in coarse buckets (e.g. "less than a minute left", "~2 min left") and MUST NOT age it between snapshots. While InProgress with a `null` estimate, the detail line SHALL show "estimating…"; estimates are never rendered outside InProgress.
-
-#### Scenario: Null estimate renders as placeholder
-- **WHEN** a snapshot classifies as InProgress with `estimatedRemaining = null`
-- **THEN** the detail line shows "estimating…"
-
-#### Scenario: Estimate is not aged by presentation
-- **WHEN** an InProgress snapshot with a 2-minute estimate is displayed and time passes with no new snapshot
-- **THEN** the displayed estimate text remains "~2 min left" until a new snapshot replaces it

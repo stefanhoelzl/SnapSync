@@ -21,6 +21,4 @@ sealed interface UiState {
     data class Complete(val finishedAgo: String) : UiState
 
     data class Incomplete(val finishedAgo: String) : UiState
-
-    data class Failed(val finishedAgo: String) : UiState
 }

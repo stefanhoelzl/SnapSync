@@ -22,7 +22,8 @@ rootProject.name = "snapsync"
 
 include(":app:desktop")
 include(":domain:permission")
-include(":domain:sync")
+include(":domain:engine")
+include(":domain:status")
 include(":domain:presentation")
 include(":domain:ui")
 include(":domain:ui:components")

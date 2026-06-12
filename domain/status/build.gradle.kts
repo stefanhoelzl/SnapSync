@@ -7,13 +7,14 @@ kotlin {
     jvm()
     sourceSets {
         commonMain.dependencies {
-            api(project(":domain:permission"))
-            api(project(":domain:status"))
-            api(libs.orbit.core)
+            // Implementation scope on purpose: status is a consumer of the engine's ledger and
+            // of permission, but neither may leak through to status's own consumers.
+            implementation(project(":domain:engine"))
+            implementation(project(":domain:permission"))
+            api(libs.coroutines.core)
         }
         commonTest.dependencies {
             implementation(kotlin("test"))
-            implementation(libs.orbit.test)
             implementation(libs.coroutines.test)
         }
     }

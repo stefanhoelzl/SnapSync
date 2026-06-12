@@ -1,0 +1,26 @@
+import app.snapsync.engine.LedgerState;
+import kotlin.time.Instant;
+
+CREATE TABLE ledgerRow (
+    key TEXT NOT NULL PRIMARY KEY,
+    state TEXT AS LedgerState NOT NULL,
+    attempt INTEGER NOT NULL,
+    version TEXT NOT NULL,
+    updatedAt INTEGER AS Instant NOT NULL
+);
+
+get:
+SELECT key, state, attempt, version, updatedAt
+FROM ledgerRow
+WHERE key = :key;
+
+put:
+INSERT OR REPLACE INTO ledgerRow (key, state, attempt, version, updatedAt)
+VALUES (:key, :state, :attempt, :version, :updatedAt);
+
+aggregates:
+SELECT
+    COUNT(CASE WHEN state != 'COMPLETED' THEN 1 END) AS pending,
+    COUNT(CASE WHEN state = 'COMPLETED' THEN 1 END) AS completed,
+    MAX(CASE WHEN state = 'COMPLETED' THEN updatedAt END) AS newestCompletionAt
+FROM ledgerRow;

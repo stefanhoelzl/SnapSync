@@ -3,8 +3,8 @@ package app.snapsync.presentation
 import app.snapsync.permission.PermissionRequester
 import app.snapsync.permission.PermissionStatus
 import app.snapsync.permission.PermissionStatusSource
-import app.snapsync.sync.SyncStatus
-import app.snapsync.sync.SyncStatusSource
+import app.snapsync.status.SyncStatus
+import app.snapsync.status.SyncStatusSource
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.time.Clock
@@ -58,7 +58,7 @@ private fun snapshot(
     pending: Int = 0,
     completed: Int = 0,
     failed: Int = 0,
-    active: Boolean = false,
+    active: Boolean = true,
     estimatedRemaining: Duration? = null,
     lastFinishedAt: Instant? = null,
 ) = SyncStatus(pending, completed, failed, active, estimatedRemaining, lastFinishedAt)
@@ -118,8 +118,6 @@ class StatusContainerHostTest {
             expectState(UiState.Complete("5 min ago"))
             source.status.value = snapshot(completed = 31, failed = 3, lastFinishedAt = fiveMinAgo)
             expectState(UiState.Incomplete("5 min ago"))
-            source.status.value = snapshot(failed = 34, lastFinishedAt = fiveMinAgo)
-            expectState(UiState.Failed("5 min ago"))
             cancelAndIgnoreRemainingItems()
         }
     }
@@ -187,7 +185,7 @@ class StatusContainerHostTest {
         val source = FakeSyncStatusSource(snapshot(failed = 34, lastFinishedAt = EPOCH - 5.minutes))
         val container = host(source, backgroundScope).container
 
-        assertEquals(UiState.Failed("5 min ago"), container.stateFlow.value)
+        assertEquals(UiState.Incomplete("5 min ago"), container.stateFlow.value)
     }
 
     @Test
@@ -207,7 +205,7 @@ class StatusContainerHostTest {
         host(source, backgroundScope, clock, permission).test(this) {
             runOnCreate()
             permission.permission.value = PermissionStatus.GRANTED
-            expectState(UiState.Failed("5 min ago"))
+            expectState(UiState.Incomplete("5 min ago"))
             cancelAndIgnoreRemainingItems()
         }
     }
