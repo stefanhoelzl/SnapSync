@@ -17,7 +17,8 @@ gallery backup** to an S3 bucket, iOS-only, shipped via TestFlight.
 - **Background uploads via `PHBackgroundResourceUploadJobExtension`** (iOS 27+) — the system
   schedules and **performs** the uploads on the app's behalf, even when suspended/locked. (See §3.)
 - S3 target configured **at build time**.
-- A **local desktop (JVM) test app** with a controllable fake backend + side-by-side control panel.
+- A **local desktop (JVM) test app** — phone-frame preview + side-by-side control panel
+  (display overrides + engine console; §5.1).
 
 **Explicit non-goals / deferred:**
 - No Android app yet (architecture keeps the door open).
@@ -38,46 +39,43 @@ gallery backup** to an S3 bucket, iOS-only, shipped via TestFlight.
 desktop test app. Layering, top to bottom:
 
 - **UI** — Compose, written against an in-house **design-system abstraction** (so the skin is swappable).
-- **Platform-independent backend** — domain models, sync orchestration, and the MVI presentation
-  layer. Knows nothing about the platform.
-- **Platform backend** — gallery/discovery and the upload-job system, behind **two injected interfaces**.
+- **Platform-independent backend** — the sync vocabulary, the stateless **decision core**
+  (`SyncEngine`), the status projection (events + pure reducer), and the MVI presentation layer.
+  Knows nothing about the platform.
+- **Platform adapters** — own discovery, upload execution, persistence and all bookkeeping; they
+  **drive** the shared decision core with events and execute the upload jobs it returns (§2.2).
 
 Implementations are selected by **dependency injection in the app modules** (manual composition
 root), *not* `expect`/`actual`. Rationale: the JVM target needs **multiple** impls of the same
 seam (in-memory fake for tests, the controllable fake for the desktop app), which `expect`/`actual`
 (one impl per compile target) cannot express; a plain `interface` + DI can.
 
-A large share of the orchestration runs **inside the iOS extension's `processJobs()`**, which calls
-the same shared `:domain:sync` logic. The desktop app drives that same logic with fakes (simulating
-`processJobs()` invocations), so the orchestration is exercised off-device.
+The iOS extension's `processJobs()` **drives** the shared `:domain:sync` decision core with events;
+the desktop test app drives that identical core from an engine console (§5.1), so every shared
+decision path is exercised off-device. Orchestration (loops, backpressure, persistence) is
+deliberately **platform-side** — the shared core only decides.
 
 ### 2.1 Module graph
 
 ```
-:domain:model          models (AssetRef, ObjectKey, UploadJob, SyncStatus, SyncError…). no deps.
-:domain:sync           → :domain:model + the capability interfaces. The upload-cycle orchestration
-                         (retry → acknowledge → create-new-jobs) called from the iOS extension and
-                         the desktop fake alike. Also home of the presentation-facing snapshot seam:
-                         SyncStatus + SyncStatusSource (§2.3).
-:domain:presentation   → :domain:sync. Orbit MVI container(s) + UiState. COMPOSE-FREE.
+:domain:sync           the shared sync vocabulary + logic; no platform deps:
+                         • platform seam (§2.2), resources-only: Resource (concrete value type
+                           with opaque platform payload), SyncEvent, UploadJob, UploadRequest,
+                           UploadError, UploadRequestProvider. (Asset layer = later slice above.)
+                         • SyncEngine — the stateless decision core (§2.2)
+                         • status projection (§2.4): StatusEvent + pure StatusReducer + fold state
+                         • presentation-facing snapshot seam (§2.3): SyncStatus + SyncStatusSource
+:domain:permission     PermissionStatus / PermissionStatusSource / PermissionRequester.
+:domain:presentation   → :domain:sync + :domain:permission. Orbit MVI container(s) + UiState. COMPOSE-FREE.
 :domain:ui             → :domain:presentation + :domain:ui:components. Compose screens, written
                          exclusively against the App* design system.
 :domain:ui:components  semantic App* components + the Material 3 skin — the ONLY module allowed to
                          import Material 3 (§5).
 
-:capability:gallery    → :domain:model. GalleryService iface (permission + change-feed discovery)
-                         | iosMain: PhotoKit (PHPhotoLibrary, PHPersistentChangeToken)
-                         | jvmMain: controllable fake  | (androidMain later)
-:capability:uploader   → :domain:model. UploadJobService iface (create/fetch/retry/ack/cancel jobs)
-                         | iosMain: PHAssetResourceUploadJob APIs  | jvmMain: controllable fake
-:capability:s3         → :domain:model. pure common: SigV4 presigned-PUT URL generation (+ optional
-                         ListObjectsV2 backstop) over Ktor. NOTE: the actual PUT is performed by iOS,
-                         not by us — we only mint the destination URL.
-:capability:store      → :domain:model. pure common (okio): tiny App-Group-backed persistence
-                         (the PHPersistentChangeToken bytes, last-sync timestamp, bookkeeping).
-
-:app:ios               wires impls + Darwin Ktor engine + framework export → iosApp/ (Xcode)
-:app:desktop           wires fake impls + JVM Ktor engine + side-by-side control panel
+:app:desktop           desktop harness: phone-frame preview + control panel (display overrides today,
+                       engine console later — §5.1). The JVM platform pieces (EngineConsole core,
+                       DumbHttpRequestProvider) land with the platform-integration slices.
+:app:ios               (later) wires the iOS adapter + Darwin Ktor engine + framework export → iosApp/
 
 iosApp/                Xcode project (not Gradle): the app target (Swift host + Info.plist) AND a
                        PHBackgroundResourceUploadJobExtension target (Generic Extension; extension
@@ -86,27 +84,112 @@ iosApp/                Xcode project (not Gradle): the app target (Swift host + 
                        presign/SigV4 + config). App and extension share an App Group container.
 ```
 
-Dependency flow: `:domain:model ← everything`; capabilities depend only on `:domain:model`;
-`:domain:sync` depends on the capability **interfaces**; app modules wire the concrete impls.
-Every boundary is **compiler-enforced** (e.g. `:domain:ui` cannot see the S3 client), and the
-backend swap is **structural** (`:app:ios` wires PhotoKit impls; `:app:desktop` wires fakes).
+Dependency flow: `:domain:sync ← presentation ← ui`; app modules wire the concrete platform
+adapters. Every boundary is **compiler-enforced**, and the backend swap is **structural**
+(`:app:ios` wires the PhotoKit-backed adapter; the desktop wires the engine console).
 
-The **capability modules follow the okio model**: organized by *what they do*, with per-platform
-impls hidden inside as source sets. "Has platform code or not" is an internal detail (`:capability:s3`
-and `:capability:store` are pure-common).
+The formerly planned `:capability:*` modules are **dissolved** (2026-06-11): gallery/uploader became
+the event seam below (discovery and upload execution are platform-adapter internals); `:capability:s3`
+returns later as one `UploadRequestProvider` implementation; `:capability:store` dissolved into
+**platform-private persistence** (the iOS App-Group bookkeeping is an adapter detail, §2.4/§3.3).
 
-### 2.2 Platform seam (two interfaces)
+### 2.2 Platform seam: event → job decision core
 
-- **`GalleryService`** — `requestAccess()`/`authorizationStatus()`, and **change-feed discovery**:
-  `changedAssets(sinceToken): (assets, newToken)` (iOS: `PHPhotoLibrary.fetchPersistentChanges`).
-  No `exportOriginal` — the system reads the bytes during upload, not us.
-- **`UploadJobService`** — wraps the upload-job system: `createJob(asset, destinationRequest)`,
-  `fetchJobs(action)`, `retry(job, destination?)`, `acknowledge(job)`, `cancel(job)`, plus
-  `jobLimit` and per-job `state`/`error`/`responseHeaders`. iOS maps to `PHAssetResourceUploadJob*`;
-  desktop is a controllable fake.
+**The platform drives, the engine decides** (decided 2026-06-11; replaces the earlier
+`GalleryService`/`UploadJobService` pull-interfaces). Platform adapters (iOS extension, desktop
+engine console, Android later) observe the world — changed resources, failed uploads — report each
+observation to the shared core as an **event**, and execute the **upload jobs** the core answers
+with. The engine is **stateless**: no ledger, no store, no discovery, no bookkeeping — it leans on
+the platform's own guarantees (durable system jobs, change-token discovery). Its single dependency
+seam is the request provider.
 
-The controllable **fakes live in each capability's `commonMain`** (so both `:domain:sync`'s
-`commonTest` and `:app:desktop` reuse them; unused on iOS, DCE-stripped).
+**The sync domain knows only resources** (decided 2026-06-12). Since only resources are ever
+transported, the engine's vocabulary stops there: the asset→resource fan-out, the **filename
+layout** (`<cloudId>-<kind>.<ext>` encodes asset identity), and asset-metadata duplication all
+belong to a **later asset layer above this seam** (platform-side until that layer exists). The
+platform hands each resource a single opaque `filename` — pure *identity*, a plain string. Its
+*representation* (percent-encoding into a URL path, a placement prefix like `photos/`, or even a
+header on transports that carry identity differently) is **the provider's responsibility**, under
+one contract: the filename→destination mapping must be **deterministic and injective** — that is
+where upload idempotency lives.
+
+```kotlin
+class Resource(                              // concrete domain type, platform-constructed
+    val filename: String,                    // identity; layout is the platform/asset layer's
+    val contentType: String,                 //   (iOS: "<cloudId>-<kind>.<ext>")
+    val metadata: Map<String, String>,       // opaque to the engine, becomes headers
+    val data: Any,                           // opaque platform payload: PHAssetResource, bytes,
+)                                            //   file path… always present; engine and provider
+                                             //   NEVER read it — only the platform that wrote it
+                                             //   does, at its execution edge. Deliberately Any,
+                                             //   not a generic: a type param would infect all six
+                                             //   seam types and erase to `id` in the ObjC header
+                                             //   anyway (writer == reader, risk is contained).
+
+sealed interface SyncEvent {
+    class ResourceChanged(val resource: Resource) : SyncEvent
+    class UploadFailed(val job: UploadJob, val error: UploadError) : SyncEvent
+}
+
+class UploadRequest(                         // complete, executable: PUT resource → url
+    val url: String,
+    val headers: Map<String, String>,        // exactly these headers
+    val resource: Resource,                  // rides whole for the failure round-trip
+)
+class UploadJob(val request: UploadRequest, val attempt: Int)
+                                             // attempt: 0 = create platform job, >0 = retry
+
+interface UploadRequestProvider {            // impls: dumb-HTTP (test platform), S3 presigner (later)
+    suspend fun provide(resource: Resource): UploadRequest
+    // owns encoding AND placement of resource.filename (e.g. percent-encode + "photos/" prefix
+    // for S3; other transports may carry identity as a header with different escaping).
+    // CONTRACT: filename → destination is deterministic and injective; signs resource.metadata
+    // as headers; returns the full request carrying the same resource instance.
+}
+
+class SyncEngine(private val provider: UploadRequestProvider) {
+    suspend fun handle(event: SyncEvent): UploadJob
+    // ResourceChanged(r)   → UploadJob(provide(r), attempt = 0)
+    // UploadFailed(job, e) → UploadJob(provide(job.request.resource), job.attempt + 1) — forever
+}
+
+sealed interface UploadError {               // platform maps raw errors in; v1 policy ignores, logs only
+    object Network : UploadError
+    class Http(val status: Int) : UploadError
+    object Cancelled : UploadError
+    class Unknown(val detail: String) : UploadError
+}
+```
+
+**Engine behavior.** `ResourceChanged(r)` → one `UploadJob` (`attempt = 0`) with the request
+minted by the provider from the resource. `UploadFailed(job, e)` → one fresh job (`attempt + 1`,
+**newly minted request** re-provided from `job.request.resource` — expired presigned URLs heal
+automatically; the resource carries its own mint inputs, so the engine stays stateless). **Retry
+forever in v1** — no attempt budget, no give-up (`FAILED`/`INCOMPLETE` are unreachable until a
+budget policy arrives). Provider failures **rethrow** from `handle()`; the event counts as
+unprocessed, and **re-handling any event is always safe** (the provider's
+deterministic-and-injective mapping makes destinations idempotent; the engine is stateless).
+`handle()` may be called concurrently; providers must tolerate concurrent `provide()` calls.
+
+**Platform contract.** Submit events at the driver's own pace; on `limitExceeded` simply stop
+submitting `ResourceChanged` events for the cycle (the engine holds nothing in flight). `attempt
+== 0` → create a platform job; `> 0` → retry the existing one *or* acknowledge-and-recreate
+(platform's choice — iOS allows one retry per job). **Jobs are idempotent instructions:** the
+platform may skip executing one when it can prove equivalent work is already submitted (this
+legalizes the within-batch progress cursor + job-system dedup of §3.3). Retention: the platform
+must be able to **produce the newest `UploadJob` for each platform job on demand** (iOS: persist
+the serializable values — filename, contentType, metadata, url/headers, attempt — and rehydrate
+the `Resource`, re-attaching its payload via `assetResource(forUploadJob:)`; an unresolvable
+handle — asset deleted mid-sync — is acknowledged and dropped, so a payload-less `Resource` never
+exists. Minting reads only the string fields, so retries work from the snapshot). Completions are
+acknowledged platform-side; the engine never hears them. Scope filtering (photos yes, standalone
+video no) sits above the seam — the engine is media-type-blind by construction.
+
+**Accepted costs** (eyes open): metadata-only changes (favorite, caption) re-upload all of an
+asset's bytes — without a ledger nothing can prove resources unchanged; platforms may later skip
+provably-header-only change events with no seam change. Crash-window duplicates are idempotent
+overwrites. Retry-forever churns a job slot on a permanently-broken resource, and a terminally-failed
+resource is only resurrected when its asset changes again.
 
 ### 2.3 Sync → presentation seam: state snapshots, not events
 
@@ -130,6 +213,46 @@ fields are demand-driven, initially just `pending`/`completed`) observed via
 - One-shot effects (e.g. a "backup completed" toast, later) are derived **downstream** by diffing
   consecutive snapshots in the Orbit container (`postSideEffect`) — the seam stays level-triggered.
 
+### 2.4 Status projection: events in, pure fold, platform-private persistence
+
+How `SyncStatusSource` (§2.3) gets its truth (decided 2026-06-11). **The events are the interface;
+persistence is platform-private.** This does *not* contradict §2.3's snapshots-not-events rule: the
+UI seam stays a level-triggered `StateFlow<SyncStatus>`; events are the persistence/transport format
+*behind* the source, never an API anyone subscribes to. `:domain:sync` ships:
+
+- **`StatusEvent`** — `Requested(key, attempt, at)` / `Completed(key, attempt, at)` /
+  `Failed(key, attempt, at)`. Platforms emit them at the same edges where they act (job created /
+  completion acked / failure observed). Preferred emission point for `Requested` is
+  job-emission time — when the engine emits the `UploadJob` (truer backlog visibility; the fold
+  self-heals either way).
+- **`StatusReducer`** — a pure incremental fold (`state + event → state`); the projection
+  `status(state, now)` takes `now` as an explicit input. **Contract: order-free and
+  duplicate-tolerant** — per-key state = max event by (`attempt`, precedence
+  `requested < failed < completed`), `completed` terminal. This contract is what frees persistence:
+  any platform storage is correct as long as every event is eventually delivered at least once, in
+  any order.
+- The fold state is a **serializable value** — "compaction" is just persisting it; long-term storage
+  is O(state), never O(history).
+- **`active` is derived, not probed:** `pending > 0 && (now − lastEventAt) < threshold`. No
+  Started/Stopped markers (a dying process never writes its Stopped) and no liveness probe —
+  "extension running" is the wrong question anyway: the system uploads for hours while no app
+  process is alive. A stall ages into `SUSPENDED`; resumed completions heal it. Cost: a single huge
+  file's quiet stretch can briefly misread as `SUSPENDED` (mitigate with a generous threshold; later
+  enrich from foregrounded job-system queries).
+- Count semantics: `failed` ≡ 0 under retry-forever, so `FAILED`/`INCOMPLETE` are unreachable in v1
+  (by design — the screen states exist, the harness exercises them). A silently-dead discovery shows
+  a stale `COMPLETE` — undetectable from inside (silence-because-idle ≡ silence-because-dead);
+  mitigated structurally by foreground catch-up cycles.
+
+**iOS reference pattern — the event inbox** (maildir-style; an adapter detail, not a contract):
+each writer (extension, app) drops **one batch file per cycle** (write-tmp + atomic rename, unique
+names — no locks anywhere, no cross-process SQLite, no `0xdead10cc` exposure) into an App-Group
+inbox and posts a Darwin ding. The app is the **sole consumer**: fold → persist compacted state
+(atomic) → delete consumed files. Crash windows are covered by at-least-once delivery + the
+idempotent fold. Core Data / SwiftData / SQLite remain legal substitutes under the same contract
+(an iOS-slice choice). Uninstall wipes the App Group → status resets to never-synced; re-sync is
+idempotent (accepted).
+
 ---
 
 ## 3. Sync design
@@ -145,8 +268,17 @@ immutable), `.fullSizePhoto` (edited render, if any), `.adjustmentData` (edit in
 **and Live Photo `.pairedVideo`/`.fullSizePairedVideo`** (full fidelity, accepted despite "photos
 only" — standalone *video assets* remain out of scope).
 
-- **`photos/<sanitized assetLocalId>/<resourceType>.<ext>`** (localId slashes → `_`; the resource
-  type disambiguates resources that share a filename), `Content-Type` from the resource's UTI.
+- **`photos/<encoded filename>`** where the filename is **`<cloudId>-<kind>.<ext>`**, composed
+  platform-side (asset-layer knowledge, until that layer exists): `<cloudId>` =
+  `PHCloudIdentifier.stringValue` (decided 2026-06-12 — survives backup restores and device
+  migrations, so no duplicate trees; the per-device `localIdentifier` never appears in keys);
+  `<kind>` = the open platform resource-kind string (e.g. `ios.photo`, `ios.fullSizePhoto`);
+  `Content-Type` from the resource's UTI. The filename is pure *identity*; the **S3 provider**
+  owns its representation — percent-encoding (bytes outside `[A-Za-z0-9._-]` → `%XX`) and the
+  `photos/` placement prefix — under the deterministic-and-injective contract (§2.2; distinct
+  filenames never collide). The bucket is **flat** (decided 2026-06-12): asset grouping rides the
+  `asset-id` metadata header plus exact filename-prefix LISTs; cheap delimiter-based asset
+  enumeration is given up (accepted — restore reads headers anyway).
 - **Edit-handling dissolves:** the original resource is immutable (no re-upload churn); an edit just
   **adds** `.fullSizePhoto` + `.adjustmentData` resources, which surface via the change feed as *new*
   jobs under *new* keys. Nothing is overwritten or lost.
@@ -154,19 +286,26 @@ only" — standalone *video assets* remain out of scope).
   destination request — so it's **as reliable as the bytes, no app turn required** (§3.5): resource-level
   fields (`original-filename`, `resource-type`, `uti`) plus **duplicated asset-level fields** (`asset-id`,
   `created`, `modified`, `location`, `favorite`, `mediaSubtypes`, `pixels`, `duration`). The
-  asset↔resources **relationship is the shared `photos/<localId>/` prefix**. Sign `host` +
+  asset↔resources **relationship is the shared `<cloudId>-` filename prefix**, with the
+  `asset-id` header as the authoritative grouping. Sign `host` +
   `content-type` + the `x-amz-meta-*` headers; values URL-encoded/base64 (ASCII, ~2 KB cap — fits
   easily). **No sidecar; albums out of scope.**
-- Trade-offs (accepted for v1): **no content dedup**, and **re-upload after a device restore**
-  (`localIdentifier` changes). PUT-by-key is idempotent, so re-uploads are just bandwidth.
+- Trade-offs (accepted for v1): **no content dedup**. Assets whose cloud identifier is not yet
+  resolvable (`identifierNotFound` — e.g. freshly created, not yet reconciled) are **deferred to a
+  later cycle**, never keyed by a fallback (a local-id fallback would make keys nondeterministic
+  over time → duplicate objects, the exact failure keys exist to prevent). PUT-by-key stays
+  idempotent. ⚠ The cloud-identifier choice is **conditional on two on-device verifications**
+  (§8): provisional-window determinism and batch-lookup cost in the extension; if either fails,
+  fall back to `localIdentifier` keys and re-accept the duplicate-tree-on-restore cost.
 
 ### 3.2 Discovery & state (PhotoKit-native)
 
 - **Discovery** is the `PHPersistentChangeToken`: `fetchPersistentChanges(since:)` yields new/changed
   assets incrementally. The token is persisted in `:capability:store` (App Group) between runs.
 - **State / source of truth** is the **job system itself**: job states + `acknowledge()` (which frees
-  an inflight `jobLimit`) + the App-Group processed-set. The app never `LIST`s the bucket
-  (`PutObject`-only); restore-side `LIST` is a separate admin path (§4).
+  an inflight `jobLimit`) + platform-private App-Group bookkeeping (within-batch progress cursor,
+  retained upload jobs, status inbox — §2.2/§2.4; there is **no per-resource ledger**). The app
+  never `LIST`s the bucket (`PutObject`-only); restore-side `LIST` is a separate admin path (§4).
 
 ### 3.3 Flow
 
@@ -175,24 +314,41 @@ only" — standalone *video assets* remain out of scope).
 (resource bytes + their metadata headers) goes through the extension's jobs. (Disable the extension if
 the user ever turns backup off.)
 
-**Extension — `processJobs()` (system-invoked, calls shared `:domain:sync.runUploadCycle()`):** the
+**Extension — `processJobs()` (system-invoked, drives the shared `SyncEngine` with events):** the
 system downloads each resource (incl. from iCloud) and performs `job.destination` with the **resource
 bytes as the request body**. We only manage the queue, in three phases:
-1. **Retry failed** — `fetchJobs(action: .retry)`; inspect `job.error`. ⚠️ **One retry per job only**
-   (`retry` requires failed + unacknowledged + *not previously retried*): transient & not-yet-retried
-   → `retry(destination: <fresh presigned URL>)`; permanent **or already-retried** → `acknowledge()`
-   (give up; record failure; optionally re-create a fresh job on a later cycle).
-2. **Acknowledge completed** — `fetchJobs(action: .acknowledge)`; read `job.responseHeaderFields`
-   (record the S3 **ETag** for verification), map back via `PHAssetResource.assetResource(forUploadJob:)`
-   (note: `job.resource` is deprecated), mark processed, `acknowledge()` to free a slot.
+1. **Adjudicate failures** — `fetchJobs(action: .retry)`; produce the retained `UploadJob`
+   (rehydrate a snapshot `Resource` from the persisted values), map the error → `UploadError`,
+   submit `UploadFailed(job, error)`; the
+   engine answers with a fresh `UploadJob` (`attempt + 1`, freshly presigned request). ⚠️ **One
+   retry per system job only** (`retry` requires failed + unacknowledged + *not previously
+   retried*): first failure → `retry(destination: fresh URL)`; already-retried → `acknowledge()` +
+   re-create a fresh system job from the same `UploadJob`. Update the retained job; write `Failed`
+   + `Requested` status events.
+2. **Acknowledge completed** — `fetchJobs(action: .acknowledge)`; write a `Completed` status event
+   (key + attempt from the retained job), `acknowledge()` to free a slot, prune the retention
+   map. The engine is not consulted (no `UploadCompleted` event exists — by design).
 3. **Create new jobs** — discovery: initial run enumerates the whole library (`PHAsset.fetchAssets`);
-   steady state uses `fetchPersistentChanges(since: token)` deltas. For each not-yet-processed
-   `PHAssetResource`: derive its per-resource key → mint a **presigned S3 PUT URL** → `URLRequest`
-   (PUT + `Content-Type` + signed `x-amz-meta-*` metadata) → `creationRequestForJob(destination:resource:)` in `performChanges {}`,
-   tracking `placeholderForCreatedAssetResourceUploadJob`. On `limitExceeded` stop and return
-   `.processing`. Persist the new change token + processed-set in the App Group.
+   steady state uses `fetchPersistentChanges(since: token)` deltas. **Batch-resolve cloud
+   identifiers** for the cycle's changed assets (`cloudIdentifierMappings(forLocalIdentifiers:)` —
+   "very expensive, use sparingly for batch lookup" per Apple, so exactly once per cycle);
+   `identifierNotFound` → leave that asset unsubmitted (the within-batch cursor keeps it pending
+   for a later cycle). For each resolved asset, expand
+   to its `PHAssetResource`s and wrap each as a `Resource` impl — filename
+   `"<cloudId>-<kind>.<ext>"`, metadata = asset facts merged with
+   resource facts (asset-layer duties, done platform-side until that layer exists). Submit
+   `ResourceChanged` per resource; for each returned `UploadJob`: take the `PHAssetResource` from
+   `job.request.resource.data`, build the `URLRequest` from `job.request` (PUT + `Content-Type` +
+   signed `x-amz-meta-*`) → `creationRequestForJob(destination:resource:)`
+   in `performChanges {}`, tracking `placeholderForCreatedAssetResourceUploadJob`. On `limitExceeded`
+   stop submitting for this cycle and return `.processing`. **Persist the change token only
+   after the batch is fully submitted**, and keep a **within-batch progress cursor** so re-entry
+   skips already-submitted assets — without it every `limitExceeded` re-entry would re-create
+   duplicate jobs for the whole batch (a *common-path* event during initial backup, not a rare crash
+   window). Write `Requested` status events; drop the inbox batch file + Darwin ding at cycle end.
 4. Return `.completed` (drained → system monitors) / `.processing` (call me again) / `.failure`.
-   `willTerminate()` sets a cancellation flag so `processJobs()` bails cleanly and resumes next time.
+   `willTerminate()` cancels the in-flight collection; an unadvanced token makes the next wake
+   resume identically to a limit-hit (re-handling events is always safe).
 
 **Presigned-URL expiry:** the system may run a job much later, so a presigned URL minted at creation
 can expire. Use a **long expiry** (SigV4 presigned allows up to 7 days), and the **retry path
@@ -228,8 +384,9 @@ system's reliable resource uploads as **signed `x-amz-meta-*` headers** (§3.1):
 - **Asset-level** fields, **duplicated onto every resource object** of the asset: `asset-id`,
   `created`, `modified`, `location`, `favorite`, `mediaSubtypes`, `pixels`, `duration`. Duplication is
   tiny and means **any** uploaded resource carries the full asset facts (robust against partial uploads).
-- **Relationship is implicit:** all objects under `photos/<localId>/` are one asset. Restore (admin
-  creds) does `LIST photos/<localId>/` → that's the complete resource set → reads asset-level meta from
+- **Relationship is implicit:** all objects whose filename starts with `<cloudId>-` are one asset
+  (the `asset-id` header is authoritative). Restore (admin
+  creds) does `LIST` with prefix `photos/<encoded cloudId>-` → that's the complete resource set → reads asset-level meta from
   any object → rebuilds via `PHAssetCreationRequest.addResource(...)` + `PHAssetChangeRequest` for
   metadata (best-effort; `localIdentifier` can't be forced).
 
@@ -321,21 +478,28 @@ permanent sections** (decided 2026-06-09):
   armed **"next request →"** control decides what the fake `PermissionRequester` resolves. All
   mutations go through one small `PanelController` (no inline mutations in composables). Forever
   outside the scenario system — no command indirection, no tests.
-- **World controls** (born with the engine + capability fakes): arrange/act on the **controllable
-  in-memory fakes** (set change-feed assets, force job success/failure/retry, flip permission,
-  simulate `jobLimit`) and invoke `runUploadCycle()` on demand — real `SyncStatus` then *derives*
-  from the engine. From their first appearance, every button routes through a sealed
-  `ScenarioStep`-style command → single interpreter → append-only log: the cheap indirection that
-  later makes saved/recorded/generated scenarios (scripted scenario runner; assemble from
-  orbit-test/jqwik, evaluate Gherkin before inventing a DSL) nearly free.
+- **Engine console** (mode B; replaces the earlier "world controls" idea — there is **no world
+  simulator**, decided 2026-06-11): an event composer (build `ResourceChanged` test resources; push
+  `UploadFailed` with a chosen error; auto-responder with configurable delay/failure modes) driving
+  a **real `SyncEngine`**, plus a **jobs journal** pane listing every `UploadJob` the engine
+  emitted (retry chains visible as `attempt 0 → 1 → …`). The UI is skin over a plain
+  `EngineConsole` core (`submit()` / `journal: StateFlow<List<JournalEntry>>` / injectable clock)
+  that tests drive directly — and the same API the future `ScenarioStep` indirection wraps
+  (scripted scenario runner; assemble from orbit-test/jqwik, evaluate Gherkin before inventing a
+  DSL). Display overrides and the console stay **unconnected** until the status-track app slice
+  bridges fold → `SyncStatusSource` → phone frame.
 
 ---
 
 ## 6. Testing strategy
 
-- **Unit (JVM)** — `:domain:sync.runUploadCycle()` orchestration (retry/ack/create across `jobLimit`,
-  change-feed paging) with fakes; SigV4 presign + key derivation; Orbit reducers. The bulk of the
-  logic is here, off-device.
+- **Unit (JVM)** — `SyncEngine` decision tests with a fake `UploadRequestProvider` (events in →
+  jobs asserted: retry re-mint chains with
+  `attempt` counting, provider-failure rethrow, concurrent calls); provider-impl tests own the
+  encoding/placement contract (slice ③ onward); `StatusReducer` contract
+  tests (order-shuffled + duplicated event sets must fold to identical `SyncStatus`;
+  recency-derived `active` against an explicit `now`); SigV4 presign; Orbit reducers. The bulk of
+  the logic is here, off-device.
 - **Integration** — `:capability:s3` against **s3mock** (Testcontainers): mint a presigned PUT, do
   the PUT via Ktor, assert via `LIST`. ⚠️ **Accepted risk:** s3mock does **not validate signatures**,
   so SigV4 is only truly exercised by the on-device extension upload. If a first real upload fails,
@@ -374,11 +538,45 @@ permanent sections** (decided 2026-06-09):
 ## 8. Open / deferred decisions
 
 **Resolved (deferred-items pass):**
-- Object key = `photos/<sanitized localId>/<resourceType>.<ext>` (per-resource metadata, no content-hash/hashing/cache); `Content-Type` from resource UTI.
+- Object key = `photos/` + encoded filename `<cloudId>-<kind>.<ext>` (flat bucket; per-resource metadata keys, no content-hash/hashing/cache; key identity = `PHCloudIdentifier`, 2026-06-12); `Content-Type` from resource UTI.
 - Back up **all `PHAssetResource`s** per photo asset incl. Live Photo paired video → edit-handling dissolves (edits add resources, never overwrite).
 - Min iOS **27.0**, `PHBackgroundResourceUploadJobExtension`; discovery via `PHPersistentChangeToken`; job system is source of truth.
-- Reconstruction metadata via **signed `x-amz-meta-*` headers** on each resource (resource-level + duplicated asset-level); relationship via `photos/<localId>/` prefix; restore = `LIST` prefix. **No sidecar — the app uploads nothing.** Albums skipped (cosmetic). App IAM = `PutObject` only; restore = separate admin path (`ListBucket`+`GetObject`).
+- Reconstruction metadata via **signed `x-amz-meta-*` headers** on each resource (resource-level + duplicated asset-level); relationship via `photos/<assetId>/` prefix (cloud identifier); restore = `LIST` prefix. **No sidecar — the app uploads nothing.** Albums skipped (cosmetic). App IAM = `PutObject` only; restore = separate admin path (`ListBucket`+`GetObject`).
 - These dissolve the old temp-file, throttling, hashing-cache, iCloud-download-for-hashing, first-sync-cost, edit-handling, periodic-trigger, sidecar, and app-side-BGTask-upload items.
+
+**Resolved (sync-engine architecture pass, 2026-06-11):**
+- **Platform-driven decision core** replaces the planned `GalleryService`/`UploadJobService`
+  pull-seams: platforms submit `SyncEvent`s, the stateless `SyncEngine` answers with one
+  `UploadJob` per event (§2.2). `:capability:gallery`/`uploader`/`store` dissolved; `:capability:s3`
+  returns later as one `UploadRequestProvider` impl; no `:domain:model` — all types live in `:domain:sync`.
+- **Resources-only sync domain** (2026-06-12): the engine knows only `Resource` — a concrete
+  value type (filename, contentType, metadata, `data: Any` — the opaque platform payload:
+  `PHAssetResource`, bytes, path; always present; engine and provider never read it; `Any` by
+  choice — a generic would infect all six seam types and erase to `id` in the ObjC header). The
+  **asset layer** — asset→resource fan-out, filename *layout* (`<cloudId>-<kind>.<ext>`),
+  asset-metadata duplication, an `AssetChanged`-style event — is a later shared slice **above**
+  this seam, performed platform-side until it exists. The filename is pure identity (plain
+  string); **encoding and placement are the provider's** (per-transport: URL path vs header),
+  under the deterministic-and-injective filename→destination contract — idempotency lives there.
+  Resource kinds in the filename layout remain **open platform strings** (semantic hints
+  deferred); restore stays door-open (no format spec yet).
+- **Retry forever in v1** (no attempt budget, no GiveUp); every retry re-mints from
+  `job.request.resource`, so expired presigned URLs heal. ETag recording dropped (no v1 consumer).
+- **Key identity = `PHCloudIdentifier.stringValue`** (2026-06-12): survives restores and device
+  migrations — no duplicate trees in the bucket. Unresolvable ids defer the asset (no local-id
+  fallback in keys — nondeterministic identity would duplicate objects). One batched
+  `cloudIdentifierMappings` call per cycle. Conditional on two on-device verifications (below);
+  fallback if they fail: `localIdentifier` keys + re-accept duplicate-tree-on-restore. The sync
+  domain is unaffected either way (key identity is asset-layer/platform business).
+- **Status projection = `StatusEvent`s + pure order-free/duplicate-tolerant reducer**; persistence
+  platform-private (iOS reference: maildir-style inbox + compacted fold state); `active` derived
+  from event recency, no liveness probe, no Started/Stopped markers (§2.4).
+- Desktop harness gains an **engine console** instead of a world simulator (§5.1); display overrides
+  and console stay separate modes.
+- Delivery sliced as a **2-track × 3-rung matrix** (engine/status × shared/platform/app), one
+  OpenSpec proposal per cell, sequenced: ① engine shared core → ② status shared core → ③ JVM engine
+  console + DumbHttpRequestProvider → ④ JVM status feed/source → ⑤ harness mode B UI → ⑥ status↔screen
+  bridge. iOS adapter slices follow the same two-part shape later.
 
 **Still open — iOS 27 API verification (on device / Xcode):**
 - **TOP RISK:** resumable-upload `OPTIONS` preflight vs raw S3 — does the system fall back to plain `PUT`, or is a tiny edge endpoint needed? (§3.3). Spike first.
@@ -389,6 +587,18 @@ permanent sections** (decided 2026-06-09):
 - Does the job system expose **change observation** (KVO/delegate) for live job-state updates while
   the app is foreground, or is liveness poll-only (re-`fetchJobs` + `photoLibraryDidChange` + Darwin
   notify)? Affects only the iOS `SyncStatusSource` impl — the snapshot seam absorbs either (§2.3).
+- Can `fetchJobs` **enumerate in-flight jobs** (duplicate-job dedup on batch re-entry, §3.3)? The
+  within-batch progress cursor works regardless; dedup is belt-and-braces.
+- `creationRequestForJob` with **iCloud-offloaded (non-local) resources**.
+- **App Group file-protection class** for inbox writes from a locked-device extension
+  (`NSFileProtectionCompleteUntilFirstUserAuthentication`).
+- **Swift ↔ `Flow` interop** for collecting `handle()` from the extension (SKIE or a thin wrapper).
+- **Cloud-identifier prerequisites (key identity — verify BEFORE the first real upload):**
+  (a) **provisional-window determinism** — is `PHCloudIdentifier.stringValue` for an asset
+  identical before/after iCloud reconciliation (freshly created assets, offline, never-signed-in
+  devices)? If a provisional value can change, cloud-id keys are disqualified;
+  (b) **batch-lookup cost** — does one `cloudIdentifierMappings` call per cycle fit the
+  extension's time budget at initial-backup scale (~50k assets)?
 
 **Resolved — other:**
 - Limited photo access: v1 **requires full `.authorized`** (the Job extension needs it); `.limited`/`.denied`/`.restricted` → "full access required" + Settings deep link. No limited-subset support.
