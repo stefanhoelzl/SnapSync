@@ -8,6 +8,10 @@ package app.snapsync.sync
  * asset layer; iOS composes `<cloudId>-<kind>.<ext>`). How it is represented at the transport
  * — encoding, placement — is the [UploadRequestProvider]'s responsibility.
  *
+ * [version] is the platform's proof of content identity (iOS: the asset's modification date;
+ * tests and the console: any string). The engine compares versions for equality only, never
+ * parses them — equal means "the bytes the ledger remembers are the bytes you'd upload now".
+ *
  * [metadata] is opaque to the engine; the provider turns it into upload headers.
  *
  * [data] is the opaque platform payload backing this resource (iOS: `PHAssetResource`; tests:
@@ -20,23 +24,33 @@ package app.snapsync.sync
 class Resource(
     val filename: String,
     val contentType: String,
+    val version: String,
     val metadata: Map<String, String>,
     val data: Any,
 )
 
 /**
- * What the platform observed (design.md §2.2). The platform drives: it submits events at its
- * own pace and executes the [UploadJob]s the engine answers with. On platform backpressure
- * (e.g. iOS `limitExceeded`) it simply stops submitting for the cycle — the engine holds
- * nothing in flight.
+ * What the platform observed (design.md §2.2). The platform drives: it reports observations at
+ * its own pace and acts on the [SyncDecision]s the engine answers with. Events are observations,
+ * never bookkeeping — reports may arrive more than once (at-least-once delivery is structural:
+ * the platform cannot commit its actions and its reports atomically), and the engine's ledger
+ * absorbs duplicates per key. On platform backpressure (e.g. iOS `limitExceeded`) the platform
+ * simply stops reporting for the cycle — the engine holds nothing in flight.
  */
 sealed interface SyncEvent {
 
-    /** A resource needs backing up (newly discovered or changed). */
+    /** A resource exists with this content state (newly discovered, changed, or re-enumerated). */
     class ResourceChanged(val resource: Resource) : SyncEvent
 
     /** A previously issued upload failed; [job] is the newest retained job for it. */
     class UploadFailed(val job: UploadJob, val error: UploadError) : SyncEvent
+
+    /**
+     * A previously issued upload was observed to have succeeded; [job] is the newest retained
+     * job for it. Reported at the platform's acknowledge edge, BEFORE acknowledging — the
+     * write-then-act ordering makes the report duplicable rather than losable.
+     */
+    class UploadCompleted(val job: UploadJob) : SyncEvent
 }
 
 /**
@@ -63,7 +77,7 @@ class UploadRequest(
 )
 
 /**
- * The engine's answer to an event (design.md §2.2): one unit of platform work.
+ * One unit of platform work (design.md §2.2), carried by the [SyncDecision.Work] arms.
  *
  * [attempt] discriminates execution: `0` → create a new platform upload job; `> 0` → retry the
  * existing one (or acknowledge-and-recreate it, the platform's choice).
@@ -78,7 +92,35 @@ class UploadJob(
 )
 
 /**
- * The engine's single dependency seam (design.md §2.2): mints the executable request for a
+ * The engine's answer to an event: what, if anything, the platform should do. The arms name
+ * their provenance — platforms treat every [Work] identically (execute the job); the
+ * distinction exists for logs, the harness journal, and future policy.
+ */
+sealed interface SyncDecision {
+
+    /** The decision carries a job to execute. */
+    sealed interface Work : SyncDecision {
+        val job: UploadJob
+    }
+
+    /** Not (provably) uploaded yet — includes re-answers for unconfirmed hopes. */
+    class Upload(override val job: UploadJob) : Work
+
+    /** Uploaded before, but the content changed ([Resource.version] differs). */
+    class ReUpload(override val job: UploadJob) : Work
+
+    /** The answer to a failure: the same resource, attempt + 1, freshly minted request. */
+    class Retry(override val job: UploadJob) : Work
+
+    /**
+     * The ledger proves this content is already backed up — nothing to do. Also the answer to
+     * an [SyncEvent.UploadCompleted] report, once recorded: by then it is literally true.
+     */
+    data object AlreadyUploaded : SyncDecision
+}
+
+/**
+ * The engine's request-minting seam (design.md §2.2): mints the executable request for a
  * resource. Implementations: S3 presigner, dumb-HTTP test provider.
  *
  * Contract:
@@ -87,34 +129,74 @@ class UploadJob(
  *   identity as a header on transports that do) are the provider's alone.
  * - The returned request carries the **same [Resource] instance** it was given.
  *   [Resource.data] is never read.
- * - Must tolerate concurrent [provide] calls.
  * - Failures are thrown, never masked — the engine doesn't catch (the event counts as
- *   unprocessed and may be re-handled safely).
+ *   unprocessed, the ledger is left untouched, and re-handling is safe).
+ * - The provider is invoked only for [SyncDecision.Work] answers — never when the engine
+ *   skips ([SyncDecision.AlreadyUploaded]).
  */
 interface UploadRequestProvider {
     suspend fun provide(resource: Resource): UploadRequest
 }
 
 /**
- * The stateless decision core (design.md §2.2): platforms drive it with [SyncEvent]s, it
- * answers with [UploadJob]s to execute.
+ * The decision core (design.md §2.2): platforms drive it with [SyncEvent] observations, it
+ * answers with [SyncDecision]s. Its only state is the [ledger] — the durable per-key memory of
+ * what was requested, completed, and failed, written exclusively by this engine.
  *
- * Statelessness is the contract: no ledger, no store, no discovery — every answer derives only
- * from the event itself, so **re-handling any event is always safe** (the provider's injective
- * filename→destination mapping makes duplicate executions idempotent overwrites). [handle] may
- * be called concurrently; the engine is exactly as thread-safe as its provider. Provider
- * failures propagate — an event whose handling threw counts as unprocessed.
+ * Decision rules: a key is skipped **only on proof** — a `COMPLETED` ledger entry with the same
+ * [Resource.version]. A `REQUESTED` entry is a hope (the engine cannot verify its answer was
+ * ever executed) and never justifies skipping: re-submission of unproven work always yields
+ * work, and duplicate executions are idempotent overwrites at the provider's destination.
  *
- * Policy (v1): **retry forever** — every failure yields a fresh job with a newly minted
- * request, so expired destinations heal on retry. No attempt budget, no give-up.
+ * Recording happens only after minting succeeds, so a provider failure leaves no trace and the
+ * event counts as unprocessed. Recording is an idempotent per-key upsert, so reports arriving
+ * at-least-once converge instead of drifting.
+ *
+ * Concurrency: at most one [handle] call in flight per engine — all known drivers are
+ * sequential loops; a concurrent driver must serialize (or a future slice reintroduces the
+ * guarantee it pays for).
+ *
+ * Policy (v1): **retry forever** — every failure yields [SyncDecision.Retry] with a newly
+ * minted request, so expired destinations heal on retry. No attempt budget, no give-up.
  */
-class SyncEngine(private val provider: UploadRequestProvider) {
+class SyncEngine(
+    private val provider: UploadRequestProvider,
+    private val ledger: LedgerWriter,
+) {
 
-    suspend fun handle(event: SyncEvent): UploadJob = when (event) {
-        is SyncEvent.ResourceChanged ->
-            UploadJob(provider.provide(event.resource), attempt = 0)
+    suspend fun handle(event: SyncEvent): SyncDecision = when (event) {
+        is SyncEvent.ResourceChanged -> decide(event.resource)
+        is SyncEvent.UploadFailed -> retry(event.job)
+        is SyncEvent.UploadCompleted -> complete(event.job)
+    }
 
-        is SyncEvent.UploadFailed ->
-            UploadJob(provider.provide(event.job.request.resource), attempt = event.job.attempt + 1)
+    private suspend fun decide(resource: Resource): SyncDecision {
+        val entry = ledger.entry(resource.filename)
+        val completed = entry?.state == LedgerState.COMPLETED
+        return when {
+            completed && entry?.version == resource.version -> SyncDecision.AlreadyUploaded
+            completed -> SyncDecision.ReUpload(mintAndRecord(resource, attempt = 0))
+            else -> SyncDecision.Upload(mintAndRecord(resource, attempt = 0))
+        }
+    }
+
+    private suspend fun retry(failed: UploadJob): SyncDecision {
+        val resource = failed.request.resource
+        val job = UploadJob(provider.provide(resource), failed.attempt + 1)
+        ledger.recordFailed(resource.filename, failed.attempt, resource.version)
+        ledger.recordRequested(resource.filename, job.attempt, resource.version)
+        return SyncDecision.Retry(job)
+    }
+
+    private suspend fun complete(job: UploadJob): SyncDecision {
+        val resource = job.request.resource
+        ledger.recordCompleted(resource.filename, job.attempt, resource.version)
+        return SyncDecision.AlreadyUploaded
+    }
+
+    private suspend fun mintAndRecord(resource: Resource, attempt: Int): UploadJob {
+        val job = UploadJob(provider.provide(resource), attempt)
+        ledger.recordRequested(resource.filename, attempt, resource.version)
+        return job
     }
 }

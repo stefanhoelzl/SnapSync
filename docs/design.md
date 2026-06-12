@@ -39,11 +39,12 @@ gallery backup** to an S3 bucket, iOS-only, shipped via TestFlight.
 desktop test app. Layering, top to bottom:
 
 - **UI** — Compose, written against an in-house **design-system abstraction** (so the skin is swappable).
-- **Platform-independent backend** — the sync vocabulary, the stateless **decision core**
-  (`SyncEngine`), the status projection (events + pure reducer), and the MVI presentation layer.
-  Knows nothing about the platform.
-- **Platform adapters** — own discovery, upload execution, persistence and all bookkeeping; they
-  **drive** the shared decision core with events and execute the upload jobs it returns (§2.2).
+- **Platform-independent backend** — the sync vocabulary, the ledgered **decision core**
+  (`SyncEngine` + its SQL ledger, the engine's only state), the status projection (read-only
+  ledger queries), and the MVI presentation layer. Knows nothing about the platform.
+- **Platform adapters** — own discovery, upload execution, and small lossy-tolerant bookkeeping;
+  they **drive** the shared decision core with observation events and act on the decisions it
+  returns (§2.2). Upload memory lives in the engine's ledger, not the platform.
 
 Implementations are selected by **dependency injection in the app modules** (manual composition
 root), *not* `expect`/`actual`. Rationale: the JVM target needs **multiple** impls of the same
@@ -52,18 +53,20 @@ seam (in-memory fake for tests, the controllable fake for the desktop app), whic
 
 The iOS extension's `processJobs()` **drives** the shared `:domain:sync` decision core with events;
 the desktop test app drives that identical core from an engine console (§5.1), so every shared
-decision path is exercised off-device. Orchestration (loops, backpressure, persistence) is
-deliberately **platform-side** — the shared core only decides.
+decision path is exercised off-device. Orchestration (loops, backpressure, job execution) is
+deliberately **platform-side** — the shared core decides and remembers.
 
 ### 2.1 Module graph
 
 ```
 :domain:sync           the shared sync vocabulary + logic; no platform deps:
                          • platform seam (§2.2), resources-only: Resource (concrete value type
-                           with opaque platform payload), SyncEvent, UploadJob, UploadRequest,
-                           UploadError, UploadRequestProvider. (Asset layer = later slice above.)
-                         • SyncEngine — the stateless decision core (§2.2)
-                         • status projection (§2.4): StatusEvent + pure StatusReducer + fold state
+                           with opaque platform payload + version), SyncEvent, SyncDecision,
+                           UploadJob, UploadRequest, UploadError, UploadRequestProvider.
+                           (Asset layer = later slice above.)
+                         • SyncEngine — the ledgered decision core (§2.2) + its ledger
+                           (LedgerBackend storage seam, LedgerReader/LedgerWriter, SQLDelight)
+                         • status projection (§2.4): read-only ledger queries (status slice)
                          • presentation-facing snapshot seam (§2.3): SyncStatus + SyncStatusSource
 :domain:permission     PermissionStatus / PermissionStatusSource / PermissionRequester.
 :domain:presentation   → :domain:sync + :domain:permission. Orbit MVI container(s) + UiState. COMPOSE-FREE.
@@ -93,15 +96,21 @@ the event seam below (discovery and upload execution are platform-adapter intern
 returns later as one `UploadRequestProvider` implementation; `:capability:store` dissolved into
 **platform-private persistence** (the iOS App-Group bookkeeping is an adapter detail, §2.4/§3.3).
 
-### 2.2 Platform seam: event → job decision core
+### 2.2 Platform seam: event → decision core (ledgered)
 
-**The platform drives, the engine decides** (decided 2026-06-11; replaces the earlier
-`GalleryService`/`UploadJobService` pull-interfaces). Platform adapters (iOS extension, desktop
-engine console, Android later) observe the world — changed resources, failed uploads — report each
-observation to the shared core as an **event**, and execute the **upload jobs** the core answers
-with. The engine is **stateless**: no ledger, no store, no discovery, no bookkeeping — it leans on
-the platform's own guarantees (durable system jobs, change-token discovery). Its single dependency
-seam is the request provider.
+**The platform drives, the engine decides** (decided 2026-06-11; **ledgered** 2026-06-12,
+replacing the stateless core). Platform adapters (iOS extension, desktop engine console, Android
+later) observe the world — discovered/changed resources, failed uploads, completed uploads —
+report each observation to the shared core as an **event**, and act on the **decision** the core
+answers with. **Events are observations, never bookkeeping** ("trust events as observations, not
+as bookkeeping"): platforms do not filter, dedupe, or track what was uploaded — the engine owns
+that in its **ledger**, a SQL-backed per-key store written exclusively by the engine. Rationale
+(2026-06-12 research): change-token expiry is routine and Apple's remedy is full re-enumeration —
+without an uploaded-memory that re-uploads the whole library; and Apple's own upload-job guidance
+prescribes write-then-acknowledge with per-key idempotent tracking (exactly-once across the file
+system and the job system is impossible — reports are at-least-once by construction). The ledger
+consolidates what would otherwise be three platform-side stores (status fold, discovery ledger,
+event inbox) into one shared, desktop-testable one.
 
 **The sync domain knows only resources** (decided 2026-06-12). Since only resources are ever
 transported, the engine's vocabulary stops there: the asset→resource fan-out, the **filename
@@ -117,18 +126,30 @@ where upload idempotency lives.
 class Resource(                              // concrete domain type, platform-constructed
     val filename: String,                    // identity; layout is the platform/asset layer's
     val contentType: String,                 //   (iOS: "<cloudId>-<kind>.<ext>")
+    val version: String,                     // content-identity proof (iOS: asset modificationDate);
+                                             //   engine compares EQUALITY ONLY, never parses
     val metadata: Map<String, String>,       // opaque to the engine, becomes headers
     val data: Any,                           // opaque platform payload: PHAssetResource, bytes,
 )                                            //   file path… always present; engine and provider
                                              //   NEVER read it — only the platform that wrote it
                                              //   does, at its execution edge. Deliberately Any,
-                                             //   not a generic: a type param would infect all six
+                                             //   not a generic: a type param would infect the
                                              //   seam types and erase to `id` in the ObjC header
                                              //   anyway (writer == reader, risk is contained).
 
-sealed interface SyncEvent {
+sealed interface SyncEvent {                 // observations, at-least-once, never bookkeeping
     class ResourceChanged(val resource: Resource) : SyncEvent
     class UploadFailed(val job: UploadJob, val error: UploadError) : SyncEvent
+    class UploadCompleted(val job: UploadJob) : SyncEvent
+                                             // reported at the ack edge, BEFORE acknowledge()
+}                                            //   (write-then-act: duplicable, never losable)
+
+sealed interface SyncDecision {              // the engine's answer: what, if anything, to do
+    sealed interface Work : SyncDecision { val job: UploadJob }
+    class Upload(override val job: UploadJob) : Work      // not (provably) uploaded yet
+    class ReUpload(override val job: UploadJob) : Work    // completed, but version changed
+    class Retry(override val job: UploadJob) : Work       // answer to UploadFailed, attempt + 1
+    data object AlreadyUploaded : SyncDecision            // ledger proof: nothing to do
 }
 
 class UploadRequest(                         // complete, executable: PUT resource → url
@@ -144,13 +165,29 @@ interface UploadRequestProvider {            // impls: dumb-HTTP (test platform)
     // owns encoding AND placement of resource.filename (e.g. percent-encode + "photos/" prefix
     // for S3; other transports may carry identity as a header with different escaping).
     // CONTRACT: filename → destination is deterministic and injective; signs resource.metadata
-    // as headers; returns the full request carrying the same resource instance.
+    // as headers; returns the full request carrying the same resource instance. Called only for
+    // Work answers — never on a skip.
 }
 
-class SyncEngine(private val provider: UploadRequestProvider) {
-    suspend fun handle(event: SyncEvent): UploadJob
-    // ResourceChanged(r)   → UploadJob(provide(r), attempt = 0)
-    // UploadFailed(job, e) → UploadJob(provide(job.request.resource), job.attempt + 1) — forever
+interface LedgerBackend {                    // storage seam: dumb row store, last write wins
+    suspend fun get(key: String): LedgerEntry?
+    suspend fun put(entry: LedgerEntry)      // single-row upsert = the unit of atomicity
+}
+open class LedgerReader(backend)             // entry(key) — the read-only face; narrowing = upcast
+class LedgerWriter(backend) : LedgerReader   // recordRequested / recordCompleted / recordFailed
+                                             // ONE writer per platform, by construction: only the
+                                             // engine-hosting composition root constructs it
+class LedgerEntry(key, state /* REQUESTED|COMPLETED|FAILED */, attempt, version)
+                                             // schema: key PRIMARY KEY, state, attempt, version —
+                                             // no timestamps (status slice adds its column)
+
+class SyncEngine(provider: UploadRequestProvider, ledger: LedgerWriter) {
+    suspend fun handle(event: SyncEvent): SyncDecision
+    // ResourceChanged(r):  ledger absent/REQUESTED/FAILED        → Upload(mint, attempt = 0)
+    //                      COMPLETED + version == r.version      → AlreadyUploaded (no mint)
+    //                      COMPLETED + version != r.version      → ReUpload(mint, attempt = 0)
+    // UploadFailed(j, e):  → Retry(mint, j.attempt + 1) — forever; records FAILED then REQUESTED
+    // UploadCompleted(j):  → records COMPLETED, answers AlreadyUploaded (by then literally true)
 }
 
 sealed interface UploadError {               // platform maps raw errors in; v1 policy ignores, logs only
@@ -161,35 +198,47 @@ sealed interface UploadError {               // platform maps raw errors in; v1 
 }
 ```
 
-**Engine behavior.** `ResourceChanged(r)` → one `UploadJob` (`attempt = 0`) with the request
-minted by the provider from the resource. `UploadFailed(job, e)` → one fresh job (`attempt + 1`,
-**newly minted request** re-provided from `job.request.resource` — expired presigned URLs heal
-automatically; the resource carries its own mint inputs, so the engine stays stateless). **Retry
-forever in v1** — no attempt budget, no give-up (`FAILED`/`INCOMPLETE` are unreachable until a
-budget policy arrives). Provider failures **rethrow** from `handle()`; the event counts as
-unprocessed, and **re-handling any event is always safe** (the provider's
-deterministic-and-injective mapping makes destinations idempotent; the engine is stateless).
-`handle()` may be called concurrently; providers must tolerate concurrent `provide()` calls.
+**Engine behavior.** A key is skipped **only on proof** — a `COMPLETED` ledger entry with the
+same `version`. A `REQUESTED` entry is a **hope** (the engine cannot verify its answer was ever
+executed — engine-write vs platform-job-creation is a two-generals pair), and a hope never
+justifies skipping: re-submission of unproven work always yields work, because skipping a hope
+risks silent permanent loss while a duplicate execution is just an idempotent overwrite at the
+provider's injective destination. **Retry forever in v1** — no attempt budget, no give-up; every
+retry re-mints, so expired presigned URLs heal. Provider failures **rethrow** from `handle()`
+with the **ledger untouched** (the engine records only after minting succeeds); the event counts
+as unprocessed and re-handling is safe (idempotent per-key upserts). **Sequential contract:** at
+most one `handle()` in flight per engine — all known drivers are sequential loops; concurrency is
+the caller's responsibility (a future concurrent driver pays for the guarantee in its own slice;
+single-statement upserts already make a future second WAL writer cheap, but cross-process
+read-decide-write races would then need re-examination).
 
-**Platform contract.** Submit events at the driver's own pace; on `limitExceeded` simply stop
-submitting `ResourceChanged` events for the cycle (the engine holds nothing in flight). `attempt
-== 0` → create a platform job; `> 0` → retry the existing one *or* acknowledge-and-recreate
-(platform's choice — iOS allows one retry per job). **Jobs are idempotent instructions:** the
-platform may skip executing one when it can prove equivalent work is already submitted (this
-legalizes the within-batch progress cursor + job-system dedup of §3.3). Retention: the platform
+**Platform contract.** Report observations at the driver's own pace; on `limitExceeded` simply
+stop reporting `ResourceChanged` for the cycle (the engine holds nothing in flight; skips don't
+consume job slots). Act on decisions: `Work` → execute the job (`attempt == 0` → create a
+platform job; `> 0` → retry the existing one *or* acknowledge-and-recreate — platform's choice;
+iOS allows one retry per job); `AlreadyUploaded` → continue. **Report completions at the
+acknowledge edge, BEFORE acknowledging** (`UploadCompleted(job)` → then `acknowledge()`) — the
+Apple-prescribed write-then-act ordering: a crash between the two re-presents the job and
+duplicates the report (absorbed by the ledger) instead of losing it (unrecoverable — after ack
+the record is gone from PhotoKit). **Jobs are idempotent instructions:** the platform may skip
+executing one when it can prove equivalent work is already submitted. Retention: the platform
 must be able to **produce the newest `UploadJob` for each platform job on demand** (iOS: persist
-the serializable values — filename, contentType, metadata, url/headers, attempt — and rehydrate
-the `Resource`, re-attaching its payload via `assetResource(forUploadJob:)`; an unresolvable
-handle — asset deleted mid-sync — is acknowledged and dropped, so a payload-less `Resource` never
-exists. Minting reads only the string fields, so retries work from the snapshot). Completions are
-acknowledged platform-side; the engine never hears them. Scope filtering (photos yes, standalone
-video no) sits above the seam — the engine is media-type-blind by construction.
+the serializable values — filename, contentType, version, metadata, url/headers, attempt — and
+rehydrate the `Resource`, re-attaching its payload via `assetResource(forUploadJob:)`; an
+unresolvable handle — asset deleted mid-sync — is acknowledged and dropped, so a payload-less
+`Resource` never exists. Minting reads only the string fields, so retries work from the
+snapshot). **One ledger writer per platform:** the engine (and its `LedgerWriter`) is hosted
+where uploads are decided — on iOS, the extension; the app holds only a read-only ledger view
+(justification: the app observes nothing and has nothing to report, not lock safety — see §2.4).
+Scope filtering (photos yes, standalone video no) sits above the seam — the engine is
+media-type-blind by construction.
 
-**Accepted costs** (eyes open): metadata-only changes (favorite, caption) re-upload all of an
-asset's bytes — without a ledger nothing can prove resources unchanged; platforms may later skip
-provably-header-only change events with no seam change. Crash-window duplicates are idempotent
-overwrites. Retry-forever churns a job slot on a permanently-broken resource, and a terminally-failed
-resource is only resurrected when its asset changes again.
+**Accepted costs** (eyes open): metadata-only changes that don't move the `version` leave
+**stale `x-amz-meta-*` headers** on the remote objects forever (the bytes are right; the headers
+aren't — milder than the byte-churn it replaced; a header-refresh job kind is possible future
+work). Crash-window duplicate jobs are idempotent overwrites, bounded by the platform's residue
+bookkeeping (§3.3). Retry-forever churns a job slot on a permanently-broken resource, and a
+terminally-failed resource is only resurrected when its asset changes again.
 
 ### 2.3 Sync → presentation seam: state snapshots, not events
 
@@ -213,45 +262,36 @@ fields are demand-driven, initially just `pending`/`completed`) observed via
 - One-shot effects (e.g. a "backup completed" toast, later) are derived **downstream** by diffing
   consecutive snapshots in the Orbit container (`postSideEffect`) — the seam stays level-triggered.
 
-### 2.4 Status projection: events in, pure fold, platform-private persistence
+### 2.4 Status projection: read-only queries over the engine's ledger
 
-How `SyncStatusSource` (§2.3) gets its truth (decided 2026-06-11). **The events are the interface;
-persistence is platform-private.** This does *not* contradict §2.3's snapshots-not-events rule: the
-UI seam stays a level-triggered `StateFlow<SyncStatus>`; events are the persistence/transport format
-*behind* the source, never an API anyone subscribes to. `:domain:sync` ships:
+How `SyncStatusSource` (§2.3) gets its truth (re-decided 2026-06-12 — the ledgered engine
+supersedes the earlier StatusEvent-fold + maildir-inbox design; the per-key state those needed
+now lives in the ledger, §2.2). The UI seam stays a level-triggered `StateFlow<SyncStatus>`;
+behind it, the source is **read-only SQL queries over the ledger** plus platform-known
+operational state. Details belong to the status slice; the locked shape:
 
-- **`StatusEvent`** — `Requested(key, attempt, at)` / `Completed(key, attempt, at)` /
-  `Failed(key, attempt, at)`. Platforms emit them at the same edges where they act (job created /
-  completion acked / failure observed). Preferred emission point for `Requested` is
-  job-emission time — when the engine emits the `UploadJob` (truer backlog visibility; the fold
-  self-heals either way).
-- **`StatusReducer`** — a pure incremental fold (`state + event → state`); the projection
-  `status(state, now)` takes `now` as an explicit input. **Contract: order-free and
-  duplicate-tolerant** — per-key state = max event by (`attempt`, precedence
-  `requested < failed < completed`), `completed` terminal. This contract is what frees persistence:
-  any platform storage is correct as long as every event is eventually delivered at least once, in
-  any order.
-- The fold state is a **serializable value** — "compaction" is just persisting it; long-term storage
-  is O(state), never O(history).
-- **`active` is derived, not probed:** `pending > 0 && (now − lastEventAt) < threshold`. No
-  Started/Stopped markers (a dying process never writes its Stopped) and no liveness probe —
-  "extension running" is the wrong question anyway: the system uploads for hours while no app
-  process is alive. A stall ages into `SUSPENDED`; resumed completions heal it. Cost: a single huge
-  file's quiet stretch can briefly misread as `SUSPENDED` (mitigate with a generous threshold; later
-  enrich from foregrounded job-system queries).
-- Count semantics: `failed` ≡ 0 under retry-forever, so `FAILED`/`INCOMPLETE` are unreachable in v1
-  (by design — the screen states exist, the harness exercises them). A silently-dead discovery shows
-  a stale `COMPLETE` — undetectable from inside (silence-because-idle ≡ silence-because-dead);
-  mitigated structurally by foreground catch-up cycles.
-
-**iOS reference pattern — the event inbox** (maildir-style; an adapter detail, not a contract):
-each writer (extension, app) drops **one batch file per cycle** (write-tmp + atomic rename, unique
-names — no locks anywhere, no cross-process SQLite, no `0xdead10cc` exposure) into an App-Group
-inbox and posts a Darwin ding. The app is the **sole consumer**: fold → persist compacted state
-(atomic) → delete consumed files. Crash windows are covered by at-least-once delivery + the
-idempotent fold. Core Data / SwiftData / SQLite remain legal substitutes under the same contract
-(an iOS-slice choice). Uninstall wipes the App Group → status resets to never-synced; re-sync is
-idempotent (accepted).
+- **Counts are lifetime aggregates** over ledger rows (`pending` = non-`COMPLETED` keys,
+  `completed` = `COMPLETED` keys); `lastFinishedAt` = the newest completion (the status slice
+  adds its timestamp column — a free migration while only tests consume the DB). `ReUpload`
+  flips a row back to `REQUESTED`, so re-uploads are visible in status (repealing the old
+  "invisible re-uploads" cost).
+- **`active` is operational state, not a liveness heuristic** (re-decided 2026-06-12, replacing
+  the event-recency rule): *backup machinery is operational* — derived from the permission seam
+  (`permission == GRANTED`; the extension is enabled at grant, v1 has no toggle). Shared logic,
+  no clocks, no thresholds. Consequences, accepted: SUSPENDED renders only via harness display
+  overrides in v1 (the gate covers it whenever `active` is false), and a wedged-but-enabled
+  pipeline shows IN_PROGRESS rather than aging into SUSPENDED.
+- **Cross-process topology (iOS):** the extension hosts the engine and the single `LedgerWriter`
+  (WAL, short single-statement writes); the app opens the database **read-only** — the
+  Apple-documented-safe configuration (`0xdead10cc` applies to write transactions held at
+  suspension; the app never writes). Re-read triggers (Darwin ding, foreground entry) are an
+  iOS-slice detail. **Staleness detection is read-only:** the app compares the photo library's
+  `currentChangeToken` with the ledger's last token — mismatch ⇒ undiscovered work ⇒ status can
+  say "waiting for system" instead of a false COMPLETE (replaces "foreground catch-up cycles" as
+  the dead-discovery mitigation).
+- Count semantics: `failed` ≡ 0 under retry-forever, so `FAILED`/`INCOMPLETE` stay unreachable in
+  v1 (by design — the screen states exist, the harness exercises them). Uninstall wipes the App
+  Group → status resets to never-synced; re-sync is idempotent (accepted).
 
 ---
 
@@ -298,14 +338,24 @@ only" — standalone *video assets* remain out of scope).
   (§8): provisional-window determinism and batch-lookup cost in the extension; if either fails,
   fall back to `localIdentifier` keys and re-accept the duplicate-tree-on-restore cost.
 
-### 3.2 Discovery & state (PhotoKit-native)
+### 3.2 Discovery & state (PhotoKit-native discovery, engine-owned memory)
 
-- **Discovery** is the `PHPersistentChangeToken`: `fetchPersistentChanges(since:)` yields new/changed
-  assets incrementally. The token is persisted in `:capability:store` (App Group) between runs.
-- **State / source of truth** is the **job system itself**: job states + `acknowledge()` (which frees
-  an inflight `jobLimit`) + platform-private App-Group bookkeeping (within-batch progress cursor,
-  retained upload jobs, status inbox — §2.2/§2.4; there is **no per-resource ledger**). The app
-  never `LIST`s the bucket (`PutObject`-only); restore-side `LIST` is a separate admin path (§4).
+- **Discovery** is the `PHPersistentChangeToken`: `fetchPersistentChanges(since:)` yields change
+  **records**, each carrying its own serializable token — so the durable cursor advances **per
+  record** (research-verified 2026-06-12; finer than "per batch"). The initial backup has no
+  tokens at all (`PHAsset.fetchAssets` over the whole library + capture `currentChangeToken` as
+  baseline). **Token expiry is routine** (`persistentChangeTokenExpired`; retention undocumented,
+  illustrated in days) — the remedy is full re-enumeration, which is harmless because the
+  **engine's ledger** answers `AlreadyUploaded` for everything already backed up (§2.2).
+- **State**: upload memory is the **engine's ledger** (the durable per-key store; single writer =
+  the extension). The platform keeps only small, **lossy-tolerant** discovery bookkeeping in the
+  App Group: `{lastToken, residueIds (rest of a partially-handled record), deferredIds
+  (cloudId-unresolved assets)}` — losing the residue costs one record's worth of duplicate jobs,
+  absorbed downstream; it exists to keep in-flight work from re-submitting in the *common* path
+  (a re-submitted hope is answered with `Upload` again, by design). Retained upload jobs ride
+  beside it (§2.2 retention rule). The job system remains the execution authority
+  (`acknowledge()` frees `jobLimit` slots). The app never `LIST`s the bucket (`PutObject`-only);
+  restore-side `LIST` is a separate admin path (§4).
 
 ### 3.3 Flow
 
@@ -314,41 +364,42 @@ only" — standalone *video assets* remain out of scope).
 (resource bytes + their metadata headers) goes through the extension's jobs. (Disable the extension if
 the user ever turns backup off.)
 
-**Extension — `processJobs()` (system-invoked, drives the shared `SyncEngine` with events):** the
-system downloads each resource (incl. from iCloud) and performs `job.destination` with the **resource
-bytes as the request body**. We only manage the queue, in three phases:
+**Extension — `processJobs()` (system-invoked, hosts the shared `SyncEngine` + `LedgerWriter`):**
+the system downloads each resource (incl. from iCloud) and performs `job.destination` with the
+**resource bytes as the request body**. We only manage the queue, in three phases:
 1. **Adjudicate failures** — `fetchJobs(action: .retry)`; produce the retained `UploadJob`
    (rehydrate a snapshot `Resource` from the persisted values), map the error → `UploadError`,
-   submit `UploadFailed(job, error)`; the
-   engine answers with a fresh `UploadJob` (`attempt + 1`, freshly presigned request). ⚠️ **One
-   retry per system job only** (`retry` requires failed + unacknowledged + *not previously
-   retried*): first failure → `retry(destination: fresh URL)`; already-retried → `acknowledge()` +
-   re-create a fresh system job from the same `UploadJob`. Update the retained job; write `Failed`
-   + `Requested` status events.
-2. **Acknowledge completed** — `fetchJobs(action: .acknowledge)`; write a `Completed` status event
-   (key + attempt from the retained job), `acknowledge()` to free a slot, prune the retention
-   map. The engine is not consulted (no `UploadCompleted` event exists — by design).
-3. **Create new jobs** — discovery: initial run enumerates the whole library (`PHAsset.fetchAssets`);
-   steady state uses `fetchPersistentChanges(since: token)` deltas. **Batch-resolve cloud
-   identifiers** for the cycle's changed assets (`cloudIdentifierMappings(forLocalIdentifiers:)` —
-   "very expensive, use sparingly for batch lookup" per Apple, so exactly once per cycle);
-   `identifierNotFound` → leave that asset unsubmitted (the within-batch cursor keeps it pending
-   for a later cycle). For each resolved asset, expand
-   to its `PHAssetResource`s and wrap each as a `Resource` impl — filename
-   `"<cloudId>-<kind>.<ext>"`, metadata = asset facts merged with
-   resource facts (asset-layer duties, done platform-side until that layer exists). Submit
-   `ResourceChanged` per resource; for each returned `UploadJob`: take the `PHAssetResource` from
-   `job.request.resource.data`, build the `URLRequest` from `job.request` (PUT + `Content-Type` +
-   signed `x-amz-meta-*`) → `creationRequestForJob(destination:resource:)`
-   in `performChanges {}`, tracking `placeholderForCreatedAssetResourceUploadJob`. On `limitExceeded`
-   stop submitting for this cycle and return `.processing`. **Persist the change token only
-   after the batch is fully submitted**, and keep a **within-batch progress cursor** so re-entry
-   skips already-submitted assets — without it every `limitExceeded` re-entry would re-create
-   duplicate jobs for the whole batch (a *common-path* event during initial backup, not a rare crash
-   window). Write `Requested` status events; drop the inbox batch file + Darwin ding at cycle end.
+   report `UploadFailed(job, error)`; the engine answers `Retry` (`attempt + 1`, freshly
+   presigned request) and records `FAILED`+`REQUESTED` in its ledger. ⚠️ **One retry per system
+   job only** (`retry` requires failed + unacknowledged + *not previously retried*): first
+   failure → `retry(destination: fresh URL)`; already-retried → `acknowledge()` + re-create a
+   fresh system job from the same `UploadJob`. Update the retained job.
+2. **Acknowledge completed** — `fetchJobs(action: .acknowledge)`; report
+   `UploadCompleted(retainedJob)` (the engine records `COMPLETED` — write-then-act), **then**
+   `acknowledge()` to free a slot and prune the retention map. A crash between the two
+   re-presents the job next cycle → a duplicate report, absorbed by the idempotent ledger.
+3. **Create new jobs** — discovery: initial run enumerates the whole library
+   (`PHAsset.fetchAssets`); steady state uses `fetchPersistentChanges(since: token)`, advancing
+   the persisted token **per change record**; after `persistentChangeTokenExpired`, re-enumerate
+   from scratch — the ledger skips everything already done. **Batch-resolve cloud identifiers**
+   for the cycle's changed assets (`cloudIdentifierMappings(forLocalIdentifiers:)` — "very
+   expensive, use sparingly for batch lookup" per Apple, so exactly once per cycle);
+   `identifierNotFound` → leave that asset in the persisted **deferred set** for a later cycle.
+   For each resolved asset, expand to its `PHAssetResource`s and wrap each as a `Resource` —
+   filename `"<cloudId>-<kind>.<ext>"`, `version` = the asset's `modificationDate`, metadata =
+   asset facts merged with resource facts (asset-layer duties, done platform-side until that
+   layer exists). Report `ResourceChanged` per resource and act on the decision:
+   `AlreadyUploaded` → continue (costs no job slot); `Work` → take the `PHAssetResource` from
+   `decision.job.request.resource.data`, build the `URLRequest` from the request (PUT +
+   `Content-Type` + signed `x-amz-meta-*`) → `creationRequestForJob(destination:resource:)` in
+   `performChanges {}`, tracking `placeholderForCreatedAssetResourceUploadJob`. On
+   `limitExceeded` stop reporting for this cycle, persist the **residue** (the record's
+   not-yet-jobbed identifiers) beside the token, and return `.processing` — re-entry resumes
+   from the residue instead of re-submitting in-flight hopes (lost residue = one record of
+   duplicate jobs, absorbed).
 4. Return `.completed` (drained → system monitors) / `.processing` (call me again) / `.failure`.
-   `willTerminate()` cancels the in-flight collection; an unadvanced token makes the next wake
-   resume identically to a limit-hit (re-handling events is always safe).
+   `willTerminate()` cancels the in-flight collection; an unadvanced token/residue makes the next
+   wake resume identically to a limit-hit (re-handling events is always safe).
 
 **Presigned-URL expiry:** the system may run a job much later, so a presigned URL minted at creation
 can expire. Use a **long expiry** (SigV4 presigned allows up to 7 days), and the **retry path
@@ -493,13 +544,14 @@ permanent sections** (decided 2026-06-09):
 
 ## 6. Testing strategy
 
-- **Unit (JVM)** — `SyncEngine` decision tests with a fake `UploadRequestProvider` (events in →
-  jobs asserted: retry re-mint chains with
-  `attempt` counting, provider-failure rethrow, concurrent calls); provider-impl tests own the
-  encoding/placement contract (slice ③ onward); `StatusReducer` contract
-  tests (order-shuffled + duplicated event sets must fold to identical `SyncStatus`;
-  recency-derived `active` against an explicit `now`); SigV4 presign; Orbit reducers. The bulk of
-  the logic is here, off-device.
+- **Unit (JVM)** — `SyncEngine` decision tests with a fake `UploadRequestProvider` and an
+  in-memory `LedgerBackend` (the decision table: skip on proof, hope-never-skips, re-upload on
+  version change; retry re-mint chains with `attempt` counting; provider-failure rethrow leaving
+  the ledger untouched; suffix-replay convergence — duplicate reports converge instead of
+  drifting); `LedgerBackend` contract tests run against BOTH the in-memory backend and the
+  SQLDelight backend on a JVM sqlite driver; provider-impl tests own the encoding/placement
+  contract (slice ③ onward); status-query tests arrive with the status slice; SigV4 presign;
+  Orbit reducers. The bulk of the logic is here, off-device.
 - **Integration** — `:capability:s3` against **s3mock** (Testcontainers): mint a presigned PUT, do
   the PUT via Ktor, assert via `LIST`. ⚠️ **Accepted risk:** s3mock does **not validate signatures**,
   so SigV4 is only truly exercised by the on-device extension upload. If a first real upload fails,
@@ -527,7 +579,8 @@ permanent sections** (decided 2026-06-09):
 | DI | **Manual composition root** | no deps, compile-safe; Koin if it grows |
 | HTTP | **Ktor** (multiplatform) | SigV4 **presign only**; **not** the upload PUT (iOS does that); app never `LIST`s |
 | Crypto/IO | **okio** (+ KotlinCrypto if needed) | App-Group file IO + HMAC-SHA256 for SigV4 |
-| Persistence | **okio + kotlinx.serialization** | tiny App-Group store: change token, last-sync, bookkeeping |
+| Engine ledger | **SQLDelight** (2.3.2) | the engine's per-key upload memory; single writer (extension), read-only app connection; JVM sqlite driver for tests, native driver at the iOS slice |
+| Persistence | **okio + kotlinx.serialization** | tiny App-Group store: change token, residue, deferred set |
 | Config | **BuildKonfig** | typed build-time config; secrets from env/CI |
 | Logging | **Kermit** (~1k★, active) | multiplatform |
 | iOS integration | **direct framework integration** | `embedAndSignAppleFrameworkForXcode`; framework in app + extension |
@@ -568,15 +621,37 @@ permanent sections** (decided 2026-06-09):
   `cloudIdentifierMappings` call per cycle. Conditional on two on-device verifications (below);
   fallback if they fail: `localIdentifier` keys + re-accept duplicate-tree-on-restore. The sync
   domain is unaffected either way (key identity is asset-layer/platform business).
-- **Status projection = `StatusEvent`s + pure order-free/duplicate-tolerant reducer**; persistence
-  platform-private (iOS reference: maildir-style inbox + compacted fold state); `active` derived
-  from event recency, no liveness probe, no Started/Stopped markers (§2.4).
+- ~~Status projection = `StatusEvent`s + reducer~~ (superseded 2026-06-12 — see the
+  ledgered-engine pass below).
 - Desktop harness gains an **engine console** instead of a world simulator (§5.1); display overrides
   and console stay separate modes.
 - Delivery sliced as a **2-track × 3-rung matrix** (engine/status × shared/platform/app), one
   OpenSpec proposal per cell, sequenced: ① engine shared core → ② status shared core → ③ JVM engine
   console + DumbHttpRequestProvider → ④ JVM status feed/source → ⑤ harness mode B UI → ⑥ status↔screen
   bridge. iOS adapter slices follow the same two-part shape later.
+
+**Resolved (ledgered-engine pass, 2026-06-12 — supersedes "stateless engine" and the
+StatusEvent/inbox design above):**
+- **The engine owns a SQL ledger** (§2.2): `SyncDecision` (`Upload`/`ReUpload`/`Retry` as `Work`,
+  `AlreadyUploaded`), skip only on `COMPLETED` + same `Resource.version` (hopes never skip — the
+  loss direction is unforgivable, duplicates are absorbed), `UploadCompleted` reported
+  write-then-ack. Driven by research: token expiry is routine and full re-enumeration must be
+  harmless; Apple prescribes per-key idempotent tracking; exactly-once across file system and job
+  system is impossible. The status fold, the event inbox, and a would-be platform discovery
+  ledger consolidate into this one store.
+- **Sequential `handle()`** (one in flight per engine; all drivers are sequential loops);
+  no transactions; rules in plain Kotlin; dumb single-row upserts. A future second writer (e.g.
+  app-side foreground acknowledging) is cheap with single-statement WAL writes but must
+  re-examine read-decide-write races (`ON CONFLICT` precedence) in its own slice.
+- **Single ledger writer per platform** — the extension on iOS; justified by "the app observes
+  nothing and has nothing to report", not by lock mechanics. The app reads the DB read-only
+  (status) and detects discovery staleness read-only (library token vs ledger token, §2.4).
+- **`active` = operational state derived from permission** (replaces event-recency; §2.4) —
+  shared logic, no clocks; SUSPENDED becomes display-override-only in v1.
+- Accepted-cost swap: stale remote metadata headers (version unchanged ⇒ skip) replaces
+  re-upload-all-bytes-on-metadata-change; re-uploads become **visible** in status.
+- A middleware decomposition of the engine was explored and deferred (see the sync-engine-ledger
+  change's design.md, D10) — revisit when the console journal or an attempt budget demands it.
 
 **Still open — iOS 27 API verification (on device / Xcode):**
 - **TOP RISK:** resumable-upload `OPTIONS` preflight vs raw S3 — does the system fall back to plain `PUT`, or is a tiny edge endpoint needed? (§3.3). Spike first.
@@ -587,11 +662,14 @@ permanent sections** (decided 2026-06-09):
 - Does the job system expose **change observation** (KVO/delegate) for live job-state updates while
   the app is foreground, or is liveness poll-only (re-`fetchJobs` + `photoLibraryDidChange` + Darwin
   notify)? Affects only the iOS `SyncStatusSource` impl — the snapshot seam absorbs either (§2.3).
-- Can `fetchJobs` **enumerate in-flight jobs** (duplicate-job dedup on batch re-entry, §3.3)? The
-  within-batch progress cursor works regardless; dedup is belt-and-braces.
+- Can `fetchJobs` **enumerate in-flight jobs** (duplicate-job dedup on re-entry, §3.3)? The
+  residue bookkeeping works regardless; dedup is belt-and-braces.
+- **SQLite WAL cross-process behavior in the App Group**: app read-only connection reading while
+  the extension writes (expected safe — single writer, short single-statement transactions — but
+  verify on device).
 - `creationRequestForJob` with **iCloud-offloaded (non-local) resources**.
-- **App Group file-protection class** for inbox writes from a locked-device extension
-  (`NSFileProtectionCompleteUntilFirstUserAuthentication`).
+- **App Group file-protection class** for ledger-DB and bookkeeping writes from a locked-device
+  extension (`NSFileProtectionCompleteUntilFirstUserAuthentication`).
 - **Swift ↔ `Flow` interop** for collecting `handle()` from the extension (SKIE or a thin wrapper).
 - **Cloud-identifier prerequisites (key identity — verify BEFORE the first real upload):**
   (a) **provisional-window determinism** — is `PHCloudIdentifier.stringValue` for an asset

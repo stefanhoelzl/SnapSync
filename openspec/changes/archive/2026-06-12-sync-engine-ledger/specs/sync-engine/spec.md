@@ -1,16 +1,6 @@
-# sync engine Specification
+# sync engine Specification (delta)
 
-## Purpose
-
-The shared decision core of the sync backend: platform adapters drive it with observation events
-(a resource exists with this content state, an upload failed, an upload completed) and act on the
-decisions it answers with. The engine's only state is its ledger — the durable per-key memory of
-what was requested, completed, and failed — written exclusively by the engine. The sync domain
-knows only resources — asset handling lives in a later layer above the seam; encoding and
-placement of identity live below it, in the upload-request provider. Authoritative design:
-docs/design.md §2.2.
-
-## Requirements
+## MODIFIED Requirements
 
 ### Requirement: Resource-changed decision
 When a platform submits `ResourceChanged(resource)`, the engine SHALL answer one `SyncDecision`
@@ -98,6 +88,8 @@ recording is an idempotent per-key upsert.
 - **THEN** the caller receives the provider's exception unswallowed, the ledger still has no entry
   for the key, and a subsequent `handle` of the same event succeeds when the provider does
 
+## ADDED Requirements
+
 ### Requirement: Completion recording
 When a platform submits `UploadCompleted(job)` — reported at the platform's acknowledge edge,
 before acknowledging — the engine SHALL record `COMPLETED` for the key (with the job's attempt
@@ -127,3 +119,12 @@ parse them.
 - **WHEN** two resources differ only in `version` (any two distinct strings)
 - **THEN** the second submitted after the first completes yields `ReUpload` — the strings'
   structure is irrelevant
+
+## REMOVED Requirements
+
+### Requirement: Concurrent calls
+**Reason**: Concurrency was free under statelessness; with the ledger it would cost transactions
+or SQL-encoded precedence, and no existing or planned driver submits concurrently (extension
+`processJobs()` and the engine console are sequential loops).
+**Migration**: Callers SHALL serialize: at most one `handle()` call in flight per engine instance.
+A future concurrent driver reintroduces the guarantee in its own slice.
