@@ -6,6 +6,7 @@ jdk = "25"
 orbit = "10.0.0"
 coroutines = "1.10.2"
 sqldelight = "2.3.2"
+kermit = "2.0.6"
 
 [libraries]
 orbit-core = { module = "org.orbit-mvi:orbit-core", version.ref = "orbit" }
@@ -14,6 +15,7 @@ coroutines-core = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-core", ve
 coroutines-test = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-test", version.ref = "coroutines" }
 sqldelight-runtime = { module = "app.cash.sqldelight:runtime", version.ref = "sqldelight" }
 sqldelight-driver-sqlite = { module = "app.cash.sqldelight:sqlite-driver", version.ref = "sqldelight" }
+kermit = { module = "co.touchlab:kermit", version.ref = "kermit" }
 
 [plugins]
 kotlin-jvm = { id = "org.jetbrains.kotlin.jvm", version.ref = "kotlin" }

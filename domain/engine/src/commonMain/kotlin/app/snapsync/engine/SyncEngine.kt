@@ -1,5 +1,7 @@
 package app.snapsync.engine
 
+import co.touchlab.kermit.Logger
+
 /**
  * The unit the sync domain transports (design.md §2.2). Constructed by the platform, never by
  * the engine — the sync domain knows only resources; assets live in a later layer above it.
@@ -60,9 +62,9 @@ sealed interface SyncEvent {
  */
 sealed interface UploadError {
     data object Network : UploadError
-    class Http(val status: Int) : UploadError
+    data class Http(val status: Int) : UploadError
     data object Cancelled : UploadError
-    class Unknown(val detail: String) : UploadError
+    data class Unknown(val detail: String) : UploadError
 }
 
 /**
@@ -164,10 +166,41 @@ class SyncEngine(
     private val ledger: LedgerWriter,
 ) {
 
-    suspend fun handle(event: SyncEvent): SyncDecision = when (event) {
-        is SyncEvent.ResourceChanged -> decide(event.resource)
-        is SyncEvent.UploadFailed -> retry(event.job)
-        is SyncEvent.UploadCompleted -> complete(event.job)
+    private val log = Logger.withTag("SyncEngine")
+
+    /**
+     * Logging (design.md §7, field diagnostics — the headless iOS extension's only observability):
+     * a failure WARNs with its mapped error, every issued [SyncDecision.Work] INFOs its arm + key +
+     * attempt, and an [SyncEvent.UploadCompleted] confirmation INFOs "completed". The skip on
+     * re-enumeration ([SyncDecision.AlreadyUploaded] for [SyncEvent.ResourceChanged]) is silent — it
+     * fires per change-cycle and would drown the signal. Logs are diagnostics, never asserted: the
+     * decision methods stay pure, all logging lives here at the dispatch seam.
+     */
+    suspend fun handle(event: SyncEvent): SyncDecision {
+        if (event is SyncEvent.UploadFailed) {
+            val resource = event.job.request.resource
+            log.w { "failed key=${resource.filename} attempt=${event.job.attempt} error=${event.error}" }
+        }
+        val decision = when (event) {
+            is SyncEvent.ResourceChanged -> decide(event.resource)
+            is SyncEvent.UploadFailed -> retry(event.job)
+            is SyncEvent.UploadCompleted -> complete(event.job)
+        }
+        when (decision) {
+            is SyncDecision.Upload -> logWork("Upload", decision)
+            is SyncDecision.ReUpload -> logWork("ReUpload", decision)
+            is SyncDecision.Retry -> logWork("Retry", decision)
+            SyncDecision.AlreadyUploaded -> if (event is SyncEvent.UploadCompleted) {
+                val resource = event.job.request.resource
+                log.i { "completed key=${resource.filename} attempt=${event.job.attempt}" }
+            }
+        }
+        return decision
+    }
+
+    private fun logWork(arm: String, decision: SyncDecision.Work) {
+        val resource = decision.job.request.resource
+        log.i { "$arm key=${resource.filename} attempt=${decision.job.attempt}" }
     }
 
     private suspend fun decide(resource: Resource): SyncDecision {

@@ -10,6 +10,7 @@ kotlin {
         commonMain.dependencies {
             api(libs.coroutines.core)
             implementation(libs.sqldelight.runtime)
+            implementation(libs.kermit)
         }
         commonTest.dependencies {
             implementation(kotlin("test"))
