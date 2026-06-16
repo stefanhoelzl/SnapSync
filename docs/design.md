@@ -122,7 +122,7 @@ transported, the engine's vocabulary stops there: the asset→resource fan-out, 
 layout** (`<cloudId>-<kind>.<ext>` encodes asset identity), and asset-metadata duplication all
 belong to a **later asset layer above this seam** (platform-side until that layer exists). The
 platform hands each resource a single opaque `filename` — pure *identity*, a plain string. Its
-*representation* (percent-encoding into a URL path, a placement prefix like `photos/`, or even a
+*representation* (percent-encoding into a URL path, a placement prefix like `resources/`, or even a
 header on transports that carry identity differently) is **the provider's responsibility**, under
 one contract: the filename→destination mapping must be **deterministic and injective** — that is
 where upload idempotency lives.
@@ -167,7 +167,7 @@ class UploadJob(val request: UploadRequest, val attempt: Int)
 
 interface UploadRequestProvider {            // impls: dumb-HTTP (test platform), S3 presigner (later)
     suspend fun provide(resource: Resource): UploadRequest
-    // owns encoding AND placement of resource.filename (e.g. percent-encode + "photos/" prefix
+    // owns encoding AND placement of resource.filename (e.g. percent-encode + "resources/" prefix
     // for S3; other transports may carry identity as a header with different escaping).
     // CONTRACT: filename → destination is deterministic and injective; signs resource.metadata
     // as headers; returns the full request carrying the same resource instance. Called only for
@@ -337,15 +337,16 @@ immutable), `.fullSizePhoto` (edited render, if any), `.adjustmentData` (edit in
 **and Live Photo `.pairedVideo`/`.fullSizePairedVideo`** (full fidelity, accepted despite "photos
 only" — standalone *video assets* remain out of scope).
 
-- **`photos/<encoded filename>`** where the filename is **`<cloudId>-<kind>.<ext>`**, composed
+- **`resources/<encoded filename>`** where the filename is **`<cloudId>-<kind>.<ext>`**, composed
   platform-side (asset-layer knowledge, until that layer exists): `<cloudId>` =
   `PHCloudIdentifier.stringValue` (decided 2026-06-12 — survives backup restores and device
   migrations, so no duplicate trees; the per-device `localIdentifier` never appears in keys);
   `<kind>` = the open platform resource-kind string (e.g. `ios.photo`, `ios.fullSizePhoto`);
   `Content-Type` from the resource's UTI. The filename is pure *identity*; the **S3 provider**
   owns its representation — percent-encoding (bytes outside `[A-Za-z0-9._-]` → `%XX`) and the
-  `photos/` placement prefix — under the deterministic-and-injective contract (§2.2; distinct
-  filenames never collide). The bucket is **flat** (decided 2026-06-12): asset grouping rides the
+  `resources/` placement prefix (the bucket holds **every `PHAssetResource`** — originals, edited
+  renders, `.adjustmentData`, Live Photo paired videos — not only photos) — under the
+  deterministic-and-injective contract (§2.2; distinct filenames never collide). The bucket is **flat** (decided 2026-06-12): asset grouping rides the
   `asset-id` metadata header plus exact filename-prefix LISTs; cheap delimiter-based asset
   enumeration is given up (accepted — restore reads headers anyway).
 - **Edit-handling dissolves:** the original resource is immutable (no re-upload churn); an edit just
@@ -466,7 +467,7 @@ system's reliable resource uploads as **signed `x-amz-meta-*` headers** (§3.1):
   tiny and means **any** uploaded resource carries the full asset facts (robust against partial uploads).
 - **Relationship is implicit:** all objects whose filename starts with `<cloudId>-` are one asset
   (the `asset-id` header is authoritative). Restore (admin
-  creds) does `LIST` with prefix `photos/<encoded cloudId>-` → that's the complete resource set → reads asset-level meta from
+  creds) does `LIST` with prefix `resources/<encoded cloudId>-` → that's the complete resource set → reads asset-level meta from
   any object → rebuilds via `PHAssetCreationRequest.addResource(...)` + `PHAssetChangeRequest` for
   metadata (best-effort; `localIdentifier` can't be forced).
 
@@ -584,11 +585,18 @@ permanent sections** (decided 2026-06-09):
   backend + fake permission source); provider-impl tests own the encoding/placement
   contract (slice ③ onward); SigV4 presign; Orbit reducers. The bulk of the logic is here,
   off-device.
-- **Integration** — `:capability:s3` against **s3mock** (Testcontainers): mint a presigned PUT, do
-  the PUT via Ktor, assert via `LIST`. ⚠️ **Accepted risk:** s3mock does **not validate signatures**,
-  so SigV4 is only truly exercised by the on-device extension upload. If a first real upload fails,
-  signing is the prime suspect — the quick follow-up is a Garage (SigV4-validating) Testcontainers
-  test or a real-AWS smoke test. Not adding that now (per decision).
+- **SigV4 signature guard (v1) = golden/known-answer tests** — the `:capability:s3` presigner is
+  pinned in commonTest to the output of an **independent, from-spec SigV4 reference that is itself
+  verified against AWS's published known-answer vector** (so matching it means matching AWS, not just
+  itself; the reference + its regeneration command live in the change folder). The golden also pins
+  the full URL string (path/key encoding, query params, `SignedHeaders`), so request *shape* is
+  covered as string construction.
+- **Integration (deferred)** — a `:capability:s3` round-trip against **s3mock** (Testcontainers)
+  is **not** in the presigner slice. Because s3mock does **not validate signatures**, it would only
+  exercise request *shape* and live-server acceptance / metadata round-trip — useful, but not a SigV4
+  check. It returns as a later slice, alongside an optional SigV4-validating path (Garage
+  Testcontainers or a real-AWS smoke test). The on-device extension upload remains the ultimate
+  signature check; if a first real upload fails, signing is the prime suspect.
 - **iOS** — the upload extension is **physical-device only** in the current iOS 27 beta (no
   simulator). Plan: **manual on-device testing** now; move the extension into **simulator XCTest/CI
   once Apple adds simulator support** (expected by GA). Gallery/app (non-extension) parts can be
@@ -609,24 +617,24 @@ permanent sections** (decided 2026-06-09):
 | UI | Compose Multiplatform | single codebase; Material 3 behind a design-system abstraction |
 | State | **Orbit MVI** (10.0.0, 2026-05: full KMP + CMP support) | cleanest/most-modern MVI DSL; Compose-free; Decompose-able later; built w/ Kotlin 2.1.21 — fine for JVM, recheck klibs at the iOS slice |
 | DI | **Manual composition root** | no deps, compile-safe; Koin if it grows |
-| HTTP | **Ktor** (multiplatform) | SigV4 **presign only**; **not** the upload PUT (iOS does that); app never `LIST`s |
-| Crypto/IO | **okio** (+ KotlinCrypto if needed) | App-Group file IO + HMAC-SHA256 for SigV4 |
+| HTTP | **Ktor** (multiplatform) | **not used by the presigner** (pure crypto, no network); reserved for the restore-side `ListObjectsV2` path. The upload PUT is iOS's; app never `LIST`s |
+| Crypto/IO | **KotlinCrypto** (presign) + **okio** (App-Group IO) | hand-rolled SigV4 uses KotlinCrypto SHA-256 + HMAC-SHA256 (`sha2`, `hmac-sha2`) and `kotlinx-datetime`; okio is for App-Group file IO |
 | Engine ledger | **SQLDelight** (2.3.2) | the engine's per-key upload memory; single writer (extension), read-only app connection; JVM sqlite driver for tests, native driver at the iOS slice |
 | Persistence | **okio + kotlinx.serialization** | tiny App-Group store: change token, residue, deferred set |
 | Config | **BuildKonfig** | typed build-time config; secrets from env/CI |
 | Logging | **Kermit** (~1k★, active) | multiplatform |
 | iOS integration | **direct framework integration** | `embedAndSignAppleFrameworkForXcode`; framework in app + extension |
-| Test S3 | **adobe/s3mock** (Testcontainers) | logic only; doesn't validate SigV4 (accepted risk) |
+| Test S3 | **golden/known-answer** (v1); **adobe/s3mock** (Testcontainers) deferred | golden pins presign output to an AWS-vector-verified independent SigV4 reference; s3mock validates shape only, not SigV4 |
 
 ---
 
 ## 8. Open / deferred decisions
 
 **Resolved (deferred-items pass):**
-- Object key = `photos/` + encoded filename `<cloudId>-<kind>.<ext>` (flat bucket; per-resource metadata keys, no content-hash/hashing/cache; key identity = `PHCloudIdentifier`, 2026-06-12); `Content-Type` from resource UTI.
+- Object key = `resources/` + encoded filename `<cloudId>-<kind>.<ext>` (flat bucket; per-resource metadata keys, no content-hash/hashing/cache; key identity = `PHCloudIdentifier`, 2026-06-12); `Content-Type` from resource UTI.
 - Back up **all `PHAssetResource`s** per photo asset incl. Live Photo paired video → edit-handling dissolves (edits add resources, never overwrite).
 - Min iOS **27.0**, `PHBackgroundResourceUploadJobExtension`; discovery via `PHPersistentChangeToken`; job system is source of truth.
-- Reconstruction metadata via **signed `x-amz-meta-*` headers** on each resource (resource-level + duplicated asset-level); relationship via `photos/<assetId>/` prefix (cloud identifier); restore = `LIST` prefix. **No sidecar — the app uploads nothing.** Albums skipped (cosmetic). App IAM = `PutObject` only; restore = separate admin path (`ListBucket`+`GetObject`).
+- Reconstruction metadata via **signed `x-amz-meta-*` headers** on each resource (resource-level + duplicated asset-level); relationship via `resources/<assetId>-` prefix (cloud identifier); restore = `LIST` prefix. **No sidecar — the app uploads nothing.** Albums skipped (cosmetic). App IAM = `PutObject` only; restore = separate admin path (`ListBucket`+`GetObject`).
 - These dissolve the old temp-file, throttling, hashing-cache, iCloud-download-for-hashing, first-sync-cost, edit-handling, periodic-trigger, sidecar, and app-side-BGTask-upload items.
 
 **Resolved (sync-engine architecture pass, 2026-06-11):**

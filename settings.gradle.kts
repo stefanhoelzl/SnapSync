@@ -21,6 +21,7 @@ dependencyResolutionManagement {
 rootProject.name = "snapsync"
 
 include(":app:desktop")
+include(":capability:s3")
 include(":domain:permission")
 include(":domain:engine")
 include(":domain:status")
