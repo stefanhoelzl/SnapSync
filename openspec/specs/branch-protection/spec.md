@@ -3,12 +3,10 @@
 ## Purpose
 
 Protection of the default branch via a committed ruleset (required build check, rebase-only, linear history, PR-gated), applied during ship.
-
 ## Requirements
-
 ### Requirement: Default branch ruleset
 
-The default branch SHALL be protected by a committed ruleset (`.github/rulesets/main.json`) that requires the `build` status check, allows only rebase merges, requires linear history, requires a pull request, and forbids branch deletion and non-fast-forward (force) pushes.
+The default branch SHALL be protected by a committed ruleset (`.github/rulesets/main.json`) that requires the `build` status check **and the iOS build status check reported by Codemagic**, allows only rebase merges, requires linear history, requires a pull request, and forbids branch deletion and non-fast-forward (force) pushes.
 
 #### Scenario: Direct push to the default branch is rejected
 - **WHEN** someone attempts to push directly to `master`
@@ -16,6 +14,10 @@ The default branch SHALL be protected by a committed ruleset (`.github/rulesets/
 
 #### Scenario: A PR cannot merge without the build check passing
 - **WHEN** a PR's `build` status check has not passed
+- **THEN** the PR cannot be merged
+
+#### Scenario: A PR cannot merge without the iOS build check passing
+- **WHEN** a PR's iOS build status check (reported by Codemagic) has not passed
 - **THEN** the PR cannot be merged
 
 #### Scenario: Non-rebase merges are disallowed
@@ -33,3 +35,4 @@ The ruleset SHALL be applied from the committed `.github/rulesets/*.json` during
 #### Scenario: Repositories without rulesets are unaffected
 - **WHEN** ship runs in a repository that has no `.github/rulesets` directory
 - **THEN** the ruleset-apply step is a no-op
+
