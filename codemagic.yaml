@@ -19,6 +19,10 @@ workflows:
     triggering:
       events:
         - push
+      branch_patterns:
+        - pattern: '*'        # build on push to any branch (explicit; avoids no-match on push)
+          include: true
+          source: true
       cancel_previous_builds: true   # a newer push to a ref cancels its in-progress build
     scripts:
       - name: Build iOS simulator app (unsigned, build-only)
