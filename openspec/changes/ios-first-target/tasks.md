@@ -31,13 +31,14 @@
 ## 5. Connect Codemagic and capture the gating check (footguns R1 + R2)
 
 - [x] 5.1 Operator connects Codemagic ↔ GitHub — DONE (Codemagic is already connected to the SnapSync repo; only the build config remains)
-- [ ] 5.2 Confirm Codemagic picks up the committed `codemagic.yaml`, runs the workflow on this change's PR, and a green iOS check appears
-- [ ] 5.3 Record the EXACT status-check context string Codemagic posts (observed from the real run) — this is the string the ruleset must require
+- [x] 5.1a CI-fix: auto-triggering didn't fire (first build was started manually; repo had NO webhook). Cause: missing webhook to Codemagic. Operator added the webhook in the Codemagic UI; also added explicit `branch_patterns: ['*']` to `codemagic.yaml`. Confirmed: push of `baa4baa` AUTO-triggered the Codemagic build with no manual action.
+- [x] 5.2 Confirmed — Codemagic auto-ran the `codemagic.yaml` workflow on push and the iOS check concluded **green** (commit `baa4baa`).
+- [x] 5.3 Captured exact identifiers: context = `iOS simulator build`, app slug `codemagic-ci-cd`, integration_id `34548`.
 
 ## 6. Make the iOS check required (branch-protection)
 
-- [ ] 6.1 Add the exact check string from 5.3 to `.github/rulesets/main.json` as a required status check, alongside `build`
-- [ ] 6.2 Verify the ruleset reapplies during `/ship` and that a PR cannot merge while the iOS check is red — only after 5.2 confirms the check reports green (avoids the R2 deadlock)
+- [x] 6.1 Added `{ "context": "iOS simulator build", "integration_id": 34548 }` to `.github/rulesets/main.json` alongside `build`. Safe now (R2 cleared — the check is already green on the branch).
+- [~] 6.2 Ruleset source-of-truth updated and committed; the live enforcement (PR cannot merge while iOS red) is APPLIED during `/ship` (per branch-protection: ruleset applied when the PR is first in the merge queue). Full gate verification happens at ship time.
 
 ## 7. Forward-readiness and follow-ups
 
