@@ -62,7 +62,7 @@ class S3PresignGoldenTest {
 
     /** Localized asserts on the core, so a failure points at the exact SigV4 stage that broke. */
     @Test
-    fun `core reproduces the independent reference, stage by stage`() {
+    fun `core reproduces the independent reference stage by stage`() {
         val result = S3SigV4Presigner(config).presign(
             httpMethod = "PUT",
             key = "resources/AB%2Fcd-ios.photo.jpg",

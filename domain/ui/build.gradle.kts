@@ -12,6 +12,8 @@ kotlin {
             jvmArgs("--enable-native-access=ALL-UNNAMED")
         }
     }
+    iosArm64()
+    iosSimulatorArm64()
     sourceSets {
         commonMain.dependencies {
             api(project(":domain:presentation"))

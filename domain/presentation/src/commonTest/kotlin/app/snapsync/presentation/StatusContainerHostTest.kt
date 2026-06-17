@@ -181,7 +181,7 @@ class StatusContainerHostTest {
     }
 
     @Test
-    fun `initial state derives from source values, never a guess`() = runTest {
+    fun `initial state derives from source values and never a guess`() = runTest {
         val source = FakeSyncStatusSource(snapshot(failed = 34, lastFinishedAt = EPOCH - 5.minutes))
         val container = host(source, backgroundScope).container
 

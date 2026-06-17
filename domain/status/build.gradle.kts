@@ -5,6 +5,8 @@ plugins {
 kotlin {
     jvmToolchain(libs.versions.jdk.get().toInt())
     jvm()
+    iosArm64()
+    iosSimulatorArm64()
     sourceSets {
         commonMain.dependencies {
             // Implementation scope on purpose: status is a consumer of the engine's ledger and
