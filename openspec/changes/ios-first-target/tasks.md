@@ -19,6 +19,7 @@
 - [x] 3.2 Added "Compile Kotlin Framework" Run Script build phase = `./gradlew :app:ios:embedAndSignAppleFrameworkForXcode`; `FRAMEWORK_SEARCH_PATHS` + `OTHER_LDFLAGS -framework SnapSyncKit` link the framework
 - [x] 3.3 Deployment target iOS 16.0; bundle id `app.snapsync` (via `Config.xcconfig` `BUNDLE_ID`). SwiftUI App lifecycle (scene-based) chosen to satisfy the iOS 27 SDK's mandatory UIScene adoption.
 - [x] 3.4 `ContentView` hosts `MainViewControllerKt.MainViewController()` via `UIViewControllerRepresentable`
+- [x] 3.5 CI-fix (1st Codemagic run, exit 65): `:app:ios:syncComposeResourcesForIos` failed with "Unknown iOS simulator arch: 'x86_64'" — `xcodebuild` generic-simulator build requested both arm64 + x86_64, but only `iosSimulatorArm64` is declared (design D6). Added `"EXCLUDED_ARCHS[sdk=iphonesimulator*]" = x86_64` to both target build configs so only arm64 is built (runners are Apple-Silicon M2). Note: GitHub Actions Linux `build` was GREEN on the same push — iOS-targets did not break it (R4 confirmed on real CI). Codemagic check identifiers captured: context `iOS simulator build`, integration_id `34548`.
 
 ## 4. Codemagic pipeline
 
