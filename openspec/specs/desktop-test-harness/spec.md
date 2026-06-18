@@ -18,25 +18,42 @@ The desktop application SHALL render two panes side by side: on the left, the re
 - **WHEN** the desktop window is resized
 - **THEN** the phone frame retains its fixed ~390×844 content size
 
+### Requirement: Config presence toggle
+
+The control panel SHALL provide a single config toggle, mutating harness state exclusively through
+`PanelController`, which holds a stand-in config cell (`MutableStateFlow<S3Config?>`) and implements
+the stand-in `ConfigSource`. Toggling on SHALL set a canned `S3Config`; toggling off SHALL set
+`null`. This lets the harness reach both setup-gate config states (present / absent) without a real
+deeplink. The decode/validate and invalid-link error paths are out of scope for the harness — they
+are covered by `commonTest` against the pure `deeplink-config` decoder.
+
+#### Scenario: Toggling config off shows the storage step unsatisfied
+- **WHEN** the toggle is off (config `null`) and permission is `GRANTED`
+- **THEN** the status screen shows the setup gate with the "Connect your storage" card unsatisfied
+
+#### Scenario: Toggling config on satisfies the storage step
+- **WHEN** the toggle is on (canned config) and permission is `GRANTED`
+- **THEN** the storage step is satisfied and, with permission granted, the sync hero is revealed
+
 ### Requirement: Display-override controls
 
-The control panel SHALL provide display-override presets in two labeled groups plus one behavior
-control, all mutating harness state exclusively through a single `PanelController` (which holds
-the stand-in permission and sync state cells and implements both the stand-in sources and the
+The control panel SHALL provide display-override presets in two labeled groups plus behavior
+controls, all mutating harness state exclusively through a single `PanelController` (which holds
+the stand-in permission, config, and sync state cells and implements the stand-in sources and the
 fake `PermissionRequester`); composables MUST NOT mutate harness state inline. Display overrides
 remain outside any scenario/command system.
 
 - **Permission group** — presets for `NOT_DETERMINED`, `DENIED`, and `GRANTED` that write the
-  permission cell **only**, leaving the sync cell untouched (so a forged sync state survives a
-  revoke-and-restore walk).
+  permission cell **only**, leaving the sync and config cells untouched (so a forged sync state
+  survives a revoke-and-restore walk).
 - **Sync group** — presets that set `SyncStatus` snapshots into the stand-in `SyncStatusSource`
-  **and additionally force permission to `GRANTED`** (a preset's intent is "show me this screen",
-  which is impossible while gated). All five states (NeverSynced, InProgress, Suspended,
-  Complete, Incomplete) SHALL be reachable, including forged timestamps (e.g.
-  `lastFinishedAt = now − 5 min`) and forged estimates — with at least one InProgress preset
-  carrying a `null` estimate so the "estimating…" placeholder is reachable. Finished presets
-  (Complete, Incomplete) SHALL forge `active = true` — under suspended-first classification an
-  inactive snapshot classifies as Suspended regardless of history.
+  **and additionally force permission to `GRANTED` and config to present** (a preset's intent is
+  "show me this screen", which is impossible while the setup gate is up). All five states
+  (NeverSynced, InProgress, Suspended, Complete, Incomplete) SHALL be reachable, including forged
+  timestamps (e.g. `lastFinishedAt = now − 5 min`) and forged estimates — with at least one
+  InProgress preset carrying a `null` estimate so the "estimating…" placeholder is reachable.
+  Finished presets (Complete, Incomplete) SHALL forge `active = true` — under suspended-first
+  classification an inactive snapshot classifies as Suspended regardless of history.
 - **Armed request outcome** — a control choosing whether the next `request()` resolves to
   `GRANTED` or `DENIED`; the fake `PermissionRequester.request()` writes the armed outcome into
   the permission cell, and its `openSettings()` only logs.
@@ -69,23 +86,23 @@ truth.
 - **THEN** the status screen immediately shows "No sync yet"
 
 #### Scenario: Sync presets force their precondition
-- **WHEN** permission is `DENIED` and the user activates the Incomplete preset
-- **THEN** permission becomes `GRANTED` and the status screen immediately shows
-  "Sync incomplete" (no invisible state change)
+- **WHEN** permission is `DENIED`, config is absent, and the user activates the Incomplete preset
+- **THEN** permission becomes `GRANTED`, config becomes present, and the status screen immediately
+  shows "Sync incomplete" (no invisible state change)
 
 #### Scenario: Permission presets show the gate
 - **WHEN** the user activates the Denied permission preset
-- **THEN** the status screen immediately shows the Denied gate, regardless of the forged sync
-  state
+- **THEN** the status screen immediately shows the setup gate with the denied permission card,
+  regardless of the forged sync state
 
 #### Scenario: Walking ask-to-granted via the armed outcome
-- **WHEN** the armed outcome is "grants", permission is `NOT_DETERMINED`, and the user clicks
-  "Allow access" in the phone frame
+- **WHEN** the armed outcome is "grants", config is present, permission is `NOT_DETERMINED`, and the
+  user clicks "Allow access" in the phone frame
 - **THEN** permission becomes `GRANTED` and the status screen reveals the hero for the current
   forged sync state
 
 #### Scenario: Walking the revoked-and-restored journey
-- **WHEN** the user forges Incomplete, then activates the Denied permission preset (gate shows
-  "Photo access denied"), then activates the Granted preset (playing "the user in Settings")
-- **THEN** the Incomplete hero re-emerges unchanged, because permission presets never touched
-  the sync cell
+- **WHEN** the user forges Incomplete, then activates the Denied permission preset (gate shows the
+  denied permission card), then activates the Granted preset (playing "the user in Settings")
+- **THEN** the Incomplete hero re-emerges unchanged, because permission presets never touched the
+  sync or config cells
