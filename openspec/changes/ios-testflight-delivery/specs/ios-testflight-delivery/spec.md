@@ -2,39 +2,39 @@
 
 ### Requirement: Signed device build delivered to TestFlight on every push to main
 
-The system SHALL provide a GitHub Actions workflow (`.github/workflows/ios-release.yml`) that, on every push to `main`, builds the iOS **device** app (`iosArm64`), code-signs it, archives it, exports a signed IPA, and uploads it to **TestFlight** via App Store Connect. The trigger SHALL be `push` to `main` with **no path filter**, so every commit on `main` produces a TestFlight build. The workflow SHALL run on a `macos-26` hosted runner with the runner's GM Xcode.
+The system SHALL provide a GitHub Actions job (`ios-release` in `.github/workflows/ios.yml`) that, on every push to `main`, builds the iOS **device** app (`iosArm64`), code-signs it, archives it, exports a signed IPA, and uploads it to **TestFlight** via App Store Connect. The job SHALL be gated to `main` (`if: github.ref == 'refs/heads/main'`) and SHALL run only after the `ios-build` and `ios-test` gates pass (`needs: [ios-build, ios-test]`), with **no path filter**, so every green `main` commit produces a TestFlight build. The job SHALL run on a `macos-26` hosted runner with the runner's GM Xcode.
 
-#### Scenario: A push to main uploads a build to TestFlight
-- **WHEN** a commit is pushed to `main`
-- **THEN** the `ios-release.yml` workflow builds, signs, archives, and uploads a signed IPA to TestFlight via App Store Connect
+#### Scenario: A green push to main uploads a build to TestFlight
+- **WHEN** a commit is pushed to `main` and the `ios-build` and `ios-test` gates pass
+- **THEN** the `ios-release` job builds, signs, archives, and uploads a signed IPA to TestFlight via App Store Connect
 
 #### Scenario: A push to a non-main branch does not upload
 - **WHEN** a commit is pushed to a branch other than `main`
-- **THEN** the release workflow does not run and no TestFlight upload occurs
+- **THEN** the `ios-release` job is skipped and no TestFlight upload occurs, while the `ios-build` and `ios-test` gates still run
 
-#### Scenario: Release is additive to the merge gate
-- **WHEN** a commit is pushed to `main`
-- **THEN** the unsigned simulator gate (`ios-ci` / the `ios-build` check) still runs unchanged, and the release workflow runs independently without altering that gate
+#### Scenario: Release does not gate merges
+- **WHEN** the iOS workflow runs on a pull-request branch
+- **THEN** the `ios-release` job is skipped and is not a required status check; only `ios-build` and `ios-test` gate merges
 
-### Requirement: Code signing via official Apple Actions and an auto-managed profile
+### Requirement: Cloud-managed code signing
 
-The workflow SHALL import the Apple **Distribution** certificate using `Apple-Actions/import-codesign-certs` from a base64-encoded `.p12` GitHub Secret into a temporary keychain, and SHALL obtain the provisioning profile by running `xcodebuild` with `-allowProvisioningUpdates` authenticated by the App Store Connect API key (auto-managed profile). The pipeline SHALL NOT use fastlane or `match`, SHALL NOT pre-create or store a provisioning profile, and SHALL NOT create a Distribution certificate on the runner (the imported certificate is the signing identity).
+The `ios-release` job SHALL sign via **cloud-managed signing**: `xcodebuild -allowProvisioningUpdates` authenticated by an App Store Connect API key with the **Admin** role, which manages **both** the distribution certificate and the App Store provisioning profile in the cloud, for the archive and the export. The pipeline SHALL NOT use fastlane or `match`, SHALL NOT import or store a distribution certificate, and SHALL NOT pre-create or store a provisioning profile. The signed IPA SHALL be uploaded to TestFlight via `Apple-Actions/upload-testflight-build`.
 
-#### Scenario: Certificate imported from a secret into a temporary keychain
-- **WHEN** the release workflow runs
-- **THEN** the Distribution certificate is imported from the base64 `.p12` secret into a temporary keychain via `Apple-Actions/import-codesign-certs`
+#### Scenario: Signing assets are cloud-managed, not stored
+- **WHEN** the device app is archived and exported
+- **THEN** `xcodebuild -allowProvisioningUpdates` obtains the distribution certificate and App Store profile via the Admin App Store Connect API key, with no certificate or profile imported, committed, or stored as a secret
 
-#### Scenario: Provisioning profile is auto-managed, not stored
-- **WHEN** the device app is signed
-- **THEN** `xcodebuild -allowProvisioningUpdates` obtains/refreshes the provisioning profile using the App Store Connect API key, with no profile committed to the repo or stored as a secret
+#### Scenario: Upload uses the official Apple action
+- **WHEN** the signed IPA is ready
+- **THEN** it is uploaded to TestFlight via `Apple-Actions/upload-testflight-build` authenticated by the same API key
 
-### Requirement: Signing certificate is never stored in the Actions cache
+### Requirement: Signing credentials are never stored in the Actions cache
 
-The Distribution certificate and all signing/upload credentials SHALL exist only as **encrypted GitHub Secrets**. The certificate `.p12` SHALL NOT be written to, or restored from, the GitHub Actions cache.
+All signing and upload credentials (the App Store Connect API key) SHALL exist only as **encrypted GitHub Secrets** and SHALL NOT be written to, or restored from, the GitHub Actions cache. Only the Kotlin/Native (`~/.konan`) toolchain is cached.
 
-#### Scenario: No certificate in cache
-- **WHEN** the release workflow runs
-- **THEN** the certificate is sourced from a GitHub Secret and is never stored in or restored from the Actions cache
+#### Scenario: No credentials in cache
+- **WHEN** the `ios-release` job runs
+- **THEN** the App Store Connect API key is sourced from a GitHub Secret and is never stored in or restored from the Actions cache; only `~/.konan` is cached
 
 ### Requirement: Monotonic build numbers from the CI run
 
@@ -62,8 +62,8 @@ The app `Info.plist` SHALL set `ITSAppUsesNonExemptEncryption` to `NO`, and the 
 
 ### Requirement: Signing and upload credentials are configured as secrets
 
-The workflow SHALL source all Apple credentials from GitHub Secrets — the Distribution certificate (`DIST_CERT_P12_BASE64`, base64-encoded), its password (`DIST_CERT_PASSWORD`), and the App Store Connect API key (`ASC_KEY_ID`, `ASC_ISSUER_ID`, and `ASC_API_PRIVATE_KEY` holding the raw `.p8` PEM contents). The Apple **Team ID** SHALL be committed in `Config.xcconfig` (it is not a secret).
+The `ios-release` job SHALL source all Apple credentials from GitHub Secrets — the **Admin** App Store Connect API key (`ASC_KEY_ID`, `ASC_ISSUER_ID`, and `ASC_API_PRIVATE_KEY` holding the raw `.p8` PEM contents). The Apple **Team ID** SHALL be committed in `Config.xcconfig` (it is not a secret).
 
 #### Scenario: Credentials come from secrets, Team ID from config
-- **WHEN** the release workflow signs and uploads
-- **THEN** the certificate, certificate password, and App Store Connect API key are read from GitHub Secrets, and the Team ID is read from the committed `Config.xcconfig`
+- **WHEN** the `ios-release` job signs and uploads
+- **THEN** the App Store Connect API key is read from GitHub Secrets, and the Team ID is read from the committed `Config.xcconfig`
