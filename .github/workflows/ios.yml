@@ -1,0 +1,58 @@
+# iOS CI (capability: ios-ci). Builds the iOS simulator app on every push using the macos-26
+# hosted runner's GM Xcode (no beta SDK), and reports the `ios-build` status check that gates
+# merges (branch-protection). Build-only and unsigned — the build IS the gate. The Linux-buildable
+# work (JVM/desktop + all unit tests) stays in build.yml; this runner does only the irreducible
+# Apple delta: the Kotlin/Native framework link + xcodebuild. Replaces the former Codemagic
+# pipeline now that the iOS 27 beta SDK is no longer required.
+name: ios
+
+on:
+  push:
+
+permissions:
+  contents: read
+
+# Namespaced group (NOT the bare github.ref used by build.yml) so the Linux build and the iOS
+# build do not share a concurrency group and cancel each other. A newer push to a ref still
+# cancels its own in-progress iOS build.
+concurrency:
+  group: ios-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  ios-build:
+    # This display name is the status-check context required by .github/rulesets/main.json.
+    # Changing it without updating the ruleset would freeze merges (the required check would
+    # never be posted).
+    name: ios-build
+    runs-on: macos-26
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: 25
+      - uses: gradle/actions/setup-gradle@v5
+      # Cache the Kotlin/Native toolchain + compiled klibs (cold ~12 min -> warm a few min).
+      # Keyed on libs.versions.toml so a Kotlin/Native version bump invalidates the cache.
+      - name: Cache Kotlin/Native (~/.konan)
+        uses: actions/cache@v4
+        with:
+          path: ~/.konan
+          key: konan-${{ runner.os }}-${{ hashFiles('gradle/libs.versions.toml') }}
+          restore-keys: |
+            konan-${{ runner.os }}-
+      - name: Build iOS simulator app (unsigned, build-only)
+        run: |
+          # The xcodebuild invocation triggers the project's "Compile Kotlin Framework" Run Script
+          # phase (./gradlew :app:ios:embedAndSignAppleFrameworkForXcode), so no separate gradle
+          # step is needed. No tests, no simulator boot, no signing — the build IS the gate.
+          xcodebuild \
+            -project iosApp/iosApp.xcodeproj \
+            -scheme iosApp \
+            -configuration Debug \
+            -sdk iphonesimulator \
+            -destination 'generic/platform=iOS Simulator' \
+            -derivedDataPath build/ios \
+            CODE_SIGNING_ALLOWED=NO \
+            build
