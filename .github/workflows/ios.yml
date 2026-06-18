@@ -1,9 +1,12 @@
-# iOS CI (capability: ios-ci). Builds the iOS simulator app on every push using the macos-26
-# hosted runner's GM Xcode (no beta SDK), and reports the `ios-build` status check that gates
-# merges (branch-protection). Build-only and unsigned — the build IS the gate. The Linux-buildable
-# work (JVM/desktop + all unit tests) stays in build.yml; this runner does only the irreducible
-# Apple delta: the Kotlin/Native framework link + xcodebuild. Replaces the former Codemagic
-# pipeline now that the iOS 27 beta SDK is no longer required.
+# iOS CI (capability: ios-ci). Two parallel jobs on the macos-26 hosted runner (GM Xcode, no
+# beta SDK), each reporting a status check that gates merges (branch-protection):
+#   * ios-build — builds the iOS DEVICE (iphoneos, arm64) app unsigned. Build-only: no tests,
+#     no simulator boot, no signing. Links the iosArm64 framework (the shipping target).
+#   * ios-test  — runs the shared commonTest compiled to Kotlin/Native on a booted simulator
+#     (./gradlew iosSimulatorArm64Test), validating the iosSimulatorArm64 target.
+# Together the two jobs exercise BOTH Kotlin/Native targets (device via build, simulator via
+# test) with no redundant work. The Linux-buildable work (JVM/desktop + the JVM run of all unit
+# tests) stays in build.yml; this workflow does only the irreducible Apple delta.
 name: ios
 
 on:
@@ -13,8 +16,8 @@ permissions:
   contents: read
 
 # Namespaced group (NOT the bare github.ref used by build.yml) so the Linux build and the iOS
-# build do not share a concurrency group and cancel each other. A newer push to a ref still
-# cancels its own in-progress iOS build.
+# workflow do not share a concurrency group and cancel each other. A newer push to a ref cancels
+# its own in-progress iOS run — both jobs, since the group is workflow-wide.
 concurrency:
   group: ios-${{ github.ref }}
   cancel-in-progress: true
@@ -42,17 +45,51 @@ jobs:
           key: konan-${{ runner.os }}-${{ hashFiles('gradle/libs.versions.toml') }}
           restore-keys: |
             konan-${{ runner.os }}-
-      - name: Build iOS simulator app (unsigned, build-only)
+      - name: Build iOS device app (unsigned, build-only)
         run: |
-          # The xcodebuild invocation triggers the project's "Compile Kotlin Framework" Run Script
-          # phase (./gradlew :app:ios:embedAndSignAppleFrameworkForXcode), so no separate gradle
-          # step is needed. No tests, no simulator boot, no signing — the build IS the gate.
+          # Builds for a generic iOS DEVICE destination, so xcodebuild's "Compile Kotlin Framework"
+          # Run Script phase links the iosArm64 framework (the target that ships to phones /
+          # TestFlight) — a distinct Kotlin/Native target from the simulator one the ios-test job
+          # exercises. No tests, no simulator boot, no signing — the build IS the gate.
+          # CODE_SIGN* flags build unsigned with the empty TEAM_ID in Config.xcconfig (no profile).
           xcodebuild \
             -project iosApp/iosApp.xcodeproj \
             -scheme iosApp \
             -configuration Debug \
-            -sdk iphonesimulator \
-            -destination 'generic/platform=iOS Simulator' \
+            -sdk iphoneos \
+            -destination 'generic/platform=iOS' \
             -derivedDataPath build/ios \
             CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY="" \
             build
+
+  ios-test:
+    # Display name = the status-check context required by .github/rulesets/main.json. Runs in
+    # parallel with ios-build (no `needs:`). Same macos-26 + caching scaffolding as ios-build;
+    # the two jobs compile different Kotlin/Native targets, so the heavy per-target work is not
+    # duplicated — only checkout/setup + the commonMain klib compile is re-paid.
+    name: ios-test
+    runs-on: macos-26
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: 25
+      - uses: gradle/actions/setup-gradle@v5
+      - name: Cache Kotlin/Native (~/.konan)
+        uses: actions/cache@v4
+        with:
+          path: ~/.konan
+          key: konan-${{ runner.os }}-${{ hashFiles('gradle/libs.versions.toml') }}
+          restore-keys: |
+            konan-${{ runner.os }}-
+      - name: Run Kotlin/Native unit tests on the iOS simulator
+        run: |
+          # Boots an iOS simulator (iOS 26 runtime on macos-26) and runs the commonTest of
+          # :domain:status, :domain:engine, :domain:presentation compiled to Kotlin/Native for
+          # iosSimulatorArm64 — the same shared logic build.yml runs as JVM bytecode, now
+          # validated on Native. Kotlin auto-selects a standalone simulator; if a run fails with
+          # "no matching device", pin one via testRuns["test"].deviceId in the module build.
+          ./gradlew iosSimulatorArm64Test
