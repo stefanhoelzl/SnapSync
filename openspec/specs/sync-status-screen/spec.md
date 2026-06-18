@@ -6,25 +6,28 @@ The shared status screen that observes sync status snapshots and shows the user,
 what state their backup is in: never synced, in progress, waiting, complete, or incomplete.
 The snapshot contract and its classification are owned by the `sync-status` capability; this
 screen reduces and renders.
-
 ## Requirements
-
 ### Requirement: Sync status snapshots reduce to UI state
 
-`SyncStatus`, its `SyncStatusSource` seam, and the five-state classification are owned by the
-`sync-status` capability — this screen consumes them. The presentation layer SHALL reduce each
-observed snapshot to a display-ready `UiState` mirroring the five `SyncState` values (the
-permission gate's variants and their permission-first precedence are specified by the
-`permission-gate` capability), carrying only final display data (pre-formatted strings and, for
-InProgress, a progress fraction computed as processed-of-total:
-`(completed + failed) / (pending + completed + failed)`). The reduction MUST depend only on the
-latest snapshot (no event history), so any missed intermediate snapshot cannot corrupt the
-displayed state. The container's initial UI state SHALL be computed from the sources' current
-values at construction — the screen MUST NOT render any state (placeholder, guess, or loading
-indicator) that was not derived from actual source values.
+The presentation layer SHALL reduce each observed `SyncStatus` to a display-ready `UiState`.
+`SyncProgress`, its `SyncStatusSource` seam, the `SyncStatus` vocabulary, and the five-state
+classification are owned by the `sync-status` capability — this screen consumes them. A `Ready`
+snapshot reduces to one of the five states mirroring `SyncState` (the permission gate's variants
+and their permission-first precedence are specified by the `permission-gate` capability), and a
+`Loading` snapshot reduces to `UiState.Loading` **only when permission is GRANTED** (any
+non-`GRANTED` permission short-circuits to the gate regardless of the snapshot). `UiState` carries
+only final display data (pre-formatted strings and, for InProgress, a progress fraction computed as
+processed-of-total: `(completed + failed) / (pending + completed + failed)`).
+
+The reduction MUST depend only on the latest snapshot (no event history), so any missed
+intermediate snapshot cannot corrupt the displayed state. The container's initial UI state SHALL be
+computed from the sources' current values at construction. The screen MUST NOT render any state
+that was **not derived from actual source values** — but `UiState.Loading` *is* such a
+derived state (it is the reduction of a real `SyncStatus.Loading`), and is therefore permitted;
+the prohibition is against guesses and placeholders that no source value produced.
 
 #### Scenario: In-progress snapshot carries a fraction
-- **WHEN** a snapshot with `pending = 22, completed = 12, failed = 0, active = true` is observed
+- **WHEN** a `Ready` snapshot with `pending = 22, completed = 12, failed = 0, active = true` is observed
 - **THEN** the UI state is InProgress with fraction ≈ 12/34
 
 #### Scenario: A newer snapshot replaces the displayed state entirely
@@ -33,25 +36,40 @@ indicator) that was not derived from actual source values.
 - **THEN** the UI state derives from the latest snapshot alone
 
 #### Scenario: No cold-start guess
-- **WHEN** the container is constructed while the sync source already holds an Incomplete
-  snapshot (and permission is granted)
+- **WHEN** the container is constructed while the sync source already holds `Ready(Incomplete)`
+  (and permission is granted)
 - **THEN** the first state the screen can ever render is Incomplete — never an intermediate
-  NeverSynced or loading placeholder
+  NeverSynced, and never Loading (Loading appears only for a `SyncStatus.Loading` value)
+
+#### Scenario: Loading snapshot under granted permission reduces to Loading
+- **WHEN** the sync source holds `SyncStatus.Loading` and permission is GRANTED
+- **THEN** the UI state is `UiState.Loading`
+
+#### Scenario: Permission gate outranks a Loading snapshot
+- **WHEN** the sync source holds `SyncStatus.Loading` and permission is `NOT_DETERMINED`
+- **THEN** the UI state is the permission ask gate, not Loading
 
 ### Requirement: Status screen renders UI state
 
-The status screen SHALL render each of the five states as a centered two-line hero (icon +
+The status screen SHALL render each state as a centered two-line hero (icon +
 headline, with an optional muted detail line) via the design system's `StatusHero`. Item counts
 and progress bars MUST NOT appear as text anywhere on the screen; the progress indicator alone
-conveys the rough fraction.
+conveys the rough fraction. `UiState.Loading` SHALL render an **indeterminate** progress indicator
+with the headline "Loading …", no detail line and no button (the user has no action; it auto-resolves).
 
 | State | Indicator | Headline | Detail |
 |---|---|---|---|
+| Loading | Loading (indeterminate) | "Loading …" | — |
 | NeverSynced | Warning | "No sync yet" | — |
 | InProgress | Progress(fraction) | "Sync in progress" | estimate text |
 | Suspended | Waiting | "Waiting to sync" | — |
 | Complete | Success | "Sync complete" | relative time |
 | Incomplete | Warning | "Sync incomplete" | relative time |
+
+#### Scenario: Loading state shows an indeterminate indicator
+- **WHEN** the UI state is Loading
+- **THEN** the screen shows an indeterminate progress indicator and the headline "Loading …",
+  with no detail line and no button
 
 #### Scenario: In-progress state
 - **WHEN** the UI state is InProgress with fraction 0.35 and estimate text "~2 min left"
@@ -93,3 +111,4 @@ The presentation layer SHALL format `lastFinishedAt` into coarse relative-time t
 #### Scenario: Estimate is not aged by presentation
 - **WHEN** an InProgress snapshot with a 2-minute estimate is displayed and time passes with no new snapshot
 - **THEN** the displayed estimate text remains "~2 min left" until a new snapshot replaces it
+
