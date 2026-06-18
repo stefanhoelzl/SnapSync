@@ -22,6 +22,7 @@ rootProject.name = "snapsync"
 
 include(":app:desktop")
 include(":app:ios")
+include(":app:ios:photokit-extension")
 include(":capability:s3")
 include(":capability:config")
 include(":domain:permission")

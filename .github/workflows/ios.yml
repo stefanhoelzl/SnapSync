@@ -61,6 +61,13 @@ jobs:
           restore-keys: |
             konan-${{ runner.os }}-
 
+      # Compile the background-upload extension's Kotlin core (the shipping iosArm64 framework). It
+      # is not yet reachable from the iosApp Xcode project (no extension target), so the archive
+      # below would not touch it — compile it here, in the device-BUILD job, so it stays a merge
+      # gate. Removed once the Xcode extension target links SnapSyncUploadKit into the archive.
+      - name: Compile the background-upload extension framework
+        run: ./gradlew :app:ios:photokit-extension:compileKotlinIosArm64
+
       # The signed archive both compiles iosArm64 (so it IS the build gate) AND is the delivery
       # source. Write the App Store Connect API key (.p8) for xcodebuild's auth flags.
       - name: Prepare App Store Connect API key
@@ -177,9 +184,11 @@ jobs:
             konan-${{ runner.os }}-
       - name: Run Kotlin/Native unit tests on the iOS simulator
         run: |
-          # Boots an iOS simulator (iOS 26 runtime on macos-26) and runs the commonTest of
-          # :domain:status, :domain:engine, :domain:presentation compiled to Kotlin/Native for
-          # iosSimulatorArm64 — the same shared logic build.yml runs as JVM bytecode, now
-          # validated on Native. Kotlin auto-selects a standalone simulator; if a run fails with
-          # "no matching device", pin one via testRuns["test"].deviceId in the module build.
+          # Boots an iOS simulator (iOS 26 runtime on macos-26) and runs every module's
+          # iosSimulatorArm64 tests: the shared commonTest of :domain:status, :domain:engine,
+          # :domain:presentation (the same logic build.yml runs as JVM bytecode, now on Native),
+          # plus :app:ios:photokit-extension's UploadCycle/UploadKeys logic tests and its
+          # PhotoKitSmokeTest (general PhotoKit is callable on the sim; the cloud-id + upload-job
+          # subsystems are device-only and not exercised here). Kotlin auto-selects a standalone
+          # simulator; if a run fails with "no matching device", pin testRuns["test"].deviceId.
           ./gradlew iosSimulatorArm64Test

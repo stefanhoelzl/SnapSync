@@ -4,8 +4,9 @@ BUNDLE_ID = app.snapsync
 // Apple Team ID — drives DEVELOPMENT_TEAM for signed device/TestFlight builds.
 // Not a secret (visible in any shipped IPA); the simulator gate ignores it (CODE_SIGNING_ALLOWED=NO).
 TEAM_ID = E9Z8BADH58
-// Keychain-sharing entitlement (deeplink-config). Path is relative to SRCROOT (iosApp/). Keychain
-// groups need no portal registration, so signed device/TestFlight builds need no capability change;
-// the simulator gate ignores signing entirely. (The App Group for the extension's shared ledger is
-// added with that later slice.)
+// Entitlements (path relative to SRCROOT = iosApp/): keychain-sharing (deeplink-config) AND the App
+// Group group.app.snapsync (the background-upload extension's shared ledger container). Keychain
+// groups need no portal registration; the App Group DOES — it must be registered in the Developer
+// portal and enabled on the app.snapsync App ID, or signed device/TestFlight builds fail to
+// provision (see the ios-background-upload change, task 2.x). The simulator gate ignores signing.
 CODE_SIGN_ENTITLEMENTS = iosApp/iosApp.entitlements
