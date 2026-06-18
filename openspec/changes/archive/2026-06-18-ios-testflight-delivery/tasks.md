@@ -4,7 +4,7 @@
 - [x] 1.2 Create an **App Store Connect API key** (Users and Access → Integrations → Keys) with the **App Manager** role; save the `.p8`, Key ID, and Issuer ID
 - [x] 1.3 Register the **`app.snapsync`** bundle id in the Developer portal (no special capabilities for the shell); if the id is taken, pick an alternative and note it for task 2.1
 - [x] 1.4 Create the **app record** in App Store Connect for that bundle id
-- [ ] 1.5 Add yourself as an **internal TestFlight tester** (internal testing needs no Beta App Review)
+- [x] 1.5 Add yourself as an **internal TestFlight tester** (internal testing needs no Beta App Review)
 - [x] 1.6 Look up the 10-character **Team ID** (Developer portal → Membership) for task 2.1
 
 ## 2. Xcode project signing & versioning
@@ -36,7 +36,7 @@
 
 - [ ] 5.1 Push to `main`; confirm the `ios-release` job builds, signs, archives, and uploads, while the `ios-build`/`ios-test` gates still run unchanged
 - [ ] 5.2 Confirm the build appears in App Store Connect / TestFlight with `CFBundleVersion` = the run number and no export-compliance hold
-- [ ] 5.3 Install via the TestFlight app on the physical iPhone and confirm the shared `StatusScreen` launches on real hardware
+- [x] 5.3 Install via the TestFlight app on the physical iPhone and confirm the shared `StatusScreen` launches on real hardware
 - [ ] 5.4 Push a second commit to `main` and confirm a new build with a strictly greater build number (no duplicate-build-number rejection)
 
 ## 7. Implementation revisions (discovered during branch validation)
@@ -48,4 +48,4 @@
 
 ## 6. Archive
 
-- [ ] 6.1 After verification, sync specs and run `openspec archive ios-testflight-delivery`; update memory (`ios-testflight-delivery` shipped)
+- [x] 6.1 After verification, sync specs and run `openspec archive ios-testflight-delivery`; update memory (`ios-testflight-delivery` shipped)
