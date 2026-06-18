@@ -1,9 +1,9 @@
 # iOS release (capability: ios-testflight-delivery). On every push to main, builds the SIGNED iOS
 # device app on macos-26, archives + exports a signed IPA, and uploads it to TestFlight via the
 # App Store Connect API. This is separate from ios.yml (the unsigned simulator merge gate, which
-# stays untouched). Credentials come exclusively from encrypted GitHub Secrets — the distribution
-# certificate is NEVER cached. The provisioning profile is auto-managed by xcodebuild
-# (-allowProvisioningUpdates) against the imported cert; no fastlane, no match, no stored profile.
+# stays untouched). Signing is fully CLOUD-MANAGED: xcodebuild -allowProvisioningUpdates uses the
+# App Store Connect API key (Admin role) to manage the distribution certificate AND provisioning
+# profile in the cloud — no imported cert, no stored/cached signing assets, no fastlane, no match.
 name: ios-release
 
 on:
@@ -40,13 +40,6 @@ jobs:
           key: konan-${{ runner.os }}-${{ hashFiles('gradle/libs.versions.toml') }}
           restore-keys: |
             konan-${{ runner.os }}-
-
-      # Import the Apple Distribution certificate from a base64 .p12 secret into a temp keychain.
-      - name: Import signing certificate
-        uses: apple-actions/import-codesign-certs@v3
-        with:
-          p12-file-base64: ${{ secrets.DIST_CERT_P12_BASE64 }}
-          p12-password: ${{ secrets.DIST_CERT_PASSWORD }}
 
       # Write the App Store Connect API key (.p8) to disk for xcodebuild's auth flags.
       - name: Prepare App Store Connect API key
