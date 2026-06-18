@@ -13,9 +13,9 @@
 
 ## 3. Verify on the PR before requiring the check (R1 + R2)
 
-- [ ] 3.1 Push the branch; confirm `ios.yml` runs both jobs and they conclude **green**. If `ios-test` errors with "no matching device", pin a simulator (R2) and re-push
-- [ ] 3.2 Confirm the device `ios-build` build links `iosArm64` and stays green; confirm the Linux `build` check is unaffected
-- [ ] 3.3 Capture the exact posted `ios-test` context (expected `ios-test`) and `integration_id` (expected `15368`) — must match the ruleset entry from 4.1 before relying on the gate
+- [x] 3.1 Push the branch; confirm `ios.yml` runs both jobs and they conclude **green**. If `ios-test` errors with "no matching device", pin a simulator (R2) and re-push — both jobs green on first run (commit `2c9a24c`, run `27758465404`, ~5.5 min cold). No "no matching device" — R2 did NOT materialize; Kotlin's auto-selected simulator worked on `macos-26`, no device pin needed
+- [x] 3.2 Confirm the device `ios-build` build links `iosArm64` and stays green; confirm the Linux `build` check is unaffected — `ios-build` (device, `-sdk iphoneos`) succeeded; Linux `build` check stayed green on the same commit
+- [x] 3.3 Capture the exact posted `ios-test` context (expected `ios-test`) and `integration_id` (expected `15368`) — must match the ruleset entry from 4.1 before relying on the gate — CAPTURED via `check-runs` API: context = `ios-test`, app = github-actions, `integration_id` = `15368`. EXACTLY matches the 4.1 ruleset entry. R1 cleared
 
 ## 4. Add the branch-protection required check
 
@@ -24,4 +24,4 @@
 
 ## 5. Spec sync
 
-- [ ] 5.1 At archive time, sync the `ios-ci` and `branch-protection` deltas into `openspec/specs/`, including updating the `ios-ci` **Purpose** (it currently says "builds the iOS simulator app … Build-only and unsigned" — now: builds the device app **and** runs Kotlin/Native unit tests on the simulator). Verify the synced specs match the shipped `ios.yml` + `main.json`
+- [x] 5.1 At archive time, sync the `ios-ci` and `branch-protection` deltas into `openspec/specs/`, including updating the `ios-ci` **Purpose** (it currently says "builds the iOS simulator app … Build-only and unsigned" — now: builds the device app **and** runs Kotlin/Native unit tests on the simulator). Verify the synced specs match the shipped `ios.yml` + `main.json` — done via `openspec archive` (1 added + 2 modified requirements); Purpose hand-updated; both `ios-ci` and `branch-protection` strict-valid and match the shipped `ios.yml` + `main.json`
