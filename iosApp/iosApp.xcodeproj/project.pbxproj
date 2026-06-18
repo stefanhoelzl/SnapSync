@@ -400,7 +400,7 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				"EXCLUDED_ARCHS[sdk=iphonesimulator*]" = x86_64;
-				CODE_SIGN_ENTITLEMENTS = iosApp/BackgroundUploadExtension/BackgroundUploadExtension.entitlements;
+				CODE_SIGN_ENTITLEMENTS = BackgroundUploadExtension/BackgroundUploadExtension.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = "$(TEAM_ID)";
@@ -409,7 +409,7 @@
 					"$(SRCROOT)/../app/ios/photokit-extension/build/xcode-frameworks/$(CONFIGURATION)/$(SDK_NAME)",
 				);
 				GENERATE_INFOPLIST_FILE = NO;
-				INFOPLIST_FILE = iosApp/BackgroundUploadExtension/Info.plist;
+				INFOPLIST_FILE = BackgroundUploadExtension/Info.plist;
 				IPHONEOS_DEPLOYMENT_TARGET = 26.1;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
@@ -436,7 +436,7 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				"EXCLUDED_ARCHS[sdk=iphonesimulator*]" = x86_64;
-				CODE_SIGN_ENTITLEMENTS = iosApp/BackgroundUploadExtension/BackgroundUploadExtension.entitlements;
+				CODE_SIGN_ENTITLEMENTS = BackgroundUploadExtension/BackgroundUploadExtension.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = "$(TEAM_ID)";
@@ -445,7 +445,7 @@
 					"$(SRCROOT)/../app/ios/photokit-extension/build/xcode-frameworks/$(CONFIGURATION)/$(SDK_NAME)",
 				);
 				GENERATE_INFOPLIST_FILE = NO;
-				INFOPLIST_FILE = iosApp/BackgroundUploadExtension/Info.plist;
+				INFOPLIST_FILE = BackgroundUploadExtension/Info.plist;
 				IPHONEOS_DEPLOYMENT_TARGET = 26.1;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
