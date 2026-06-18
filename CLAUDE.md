@@ -20,12 +20,20 @@ Stack: Kotlin 2.4.0 · Compose MP 1.11.1 · JDK 25 · min iOS 27.0 · Orbit MVI 
 ## Build & test
 
 - `./gradlew build` — the canonical check (compiles all targets + runs JVM tests).
-- **Needs a display on Linux.** Compose Desktop UI tests touch AWT, so the build wants an X
-  server. Run under Xvfb, same as CI:
+- **Needs a display on Linux.** Compose Desktop UI tests (`:domain:ui:jvmTest`) touch AWT, so the
+  build needs a **live** X server. Start Xvfb on a fresh display and **verify it is up before
+  building** — a stale `/tmp/.X<n>-lock` from a prior session makes Xvfb fail to start while
+  `DISPLAY` still points at the dead display, and `:domain:ui:jvmTest` then **hangs forever**
+  (silent hang, not an error). Locally, pick an unused display number (e.g. `:99`) and clear any
+  stale lock first:
   ```
-  Xvfb :1 -screen 0 1920x1080x24 -extension RANDR +extension GLX &
-  DISPLAY=:1.0 ./gradlew build
+  rm -f /tmp/.X99-lock /tmp/.X11-unix/X99
+  Xvfb :99 -screen 0 1920x1080x24 -extension RANDR +extension GLX &
+  DISPLAY=:99 xdpyinfo >/dev/null 2>&1 && echo "display up" || echo "display DEAD"
+  DISPLAY=:99 ./gradlew build
   ```
+  Do not pipe the build through `tail`/`head` — it buffers all output until Gradle exits, hiding a
+  hang. (CI uses `:1` on a clean runner, so it never hits the stale lock.)
 - `./gradlew compileIosMainKotlinMetadata` — the **Linux-runnable proxy** for the iOS source
   sets: it compiles `iosMain`/`commonMain` (and cinterop) without a Mac, so you can catch
   iOS-only breakage here. The actual iOS tests (`iosSimulatorArm64Test`, etc.) are **macOS-only**
