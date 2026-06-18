@@ -4,35 +4,48 @@ import app.snapsync.engine.LedgerAggregates
 import app.snapsync.engine.LedgerWatcher
 import app.snapsync.permission.PermissionStatus
 import app.snapsync.permission.PermissionStatusSource
+import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
-import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.launch
 
 /**
  * The real [SyncStatusSource]: read-only ledger aggregates × permission, minted into snapshots.
- * The factory suspends for the watcher's current truth before constructing, so the seam's
- * synchronous-first-value promise holds. `active = permission == GRANTED` is the shared
- * operational-state rule — it lives here and only here. The v1 source never estimates
- * (`estimatedRemaining = null`) and never gives up (`failed = 0`, retry-forever).
+ * Unlike a synchronous fake, a SQLite-backed source cannot read its truth at construction, so the
+ * factory does NOT suspend: it seeds [SyncStatus.Loading] and, on [scope], collects the ledger's
+ * aggregates combined with permission, emitting [SyncStatus.Ready] once the first read lands and
+ * on every change after. The aggregate reads run on [dispatcher] (default [Dispatchers.Default]),
+ * so the backend's SQL never executes on whatever dispatcher [scope] uses (e.g. the iOS main
+ * thread); tests inject a test dispatcher to keep virtual-time control.
+ *
+ * `active = permission == GRANTED` is the shared operational-state rule — it lives here and only
+ * here. The v1 source never estimates (`estimatedRemaining = null`) and never gives up
+ * (`failed = 0`, retry-forever).
  */
-suspend fun LedgerSyncStatusSource(
+fun LedgerSyncStatusSource(
     watcher: LedgerWatcher,
     permission: PermissionStatusSource,
     scope: CoroutineScope,
+    dispatcher: CoroutineDispatcher = Dispatchers.Default,
 ): SyncStatusSource {
-    val status = MutableStateFlow(mint(watcher.aggregates.first(), permission.permission.value))
+    val status = MutableStateFlow<SyncStatus>(SyncStatus.Loading)
     scope.launch {
-        combine(watcher.aggregates, permission.permission, ::mint).collect { status.value = it }
+        combine(
+            watcher.aggregates.flowOn(dispatcher),
+            permission.permission,
+            ::mint,
+        ).collect { status.value = SyncStatus.Ready(it) }
     }
     return object : SyncStatusSource {
         override val status: StateFlow<SyncStatus> = status
     }
 }
 
-private fun mint(aggregates: LedgerAggregates, permission: PermissionStatus) = SyncStatus(
+private fun mint(aggregates: LedgerAggregates, permission: PermissionStatus) = SyncProgress(
     pending = aggregates.pending,
     completed = aggregates.completed,
     failed = 0,

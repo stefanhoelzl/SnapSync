@@ -36,6 +36,9 @@ sealed interface StatusIndicator {
 
     /** Neutral photo-library glyph: an ask, not a fault. */
     data object Photos : StatusIndicator
+
+    /** Indeterminate spinner: work with no measurable progress (e.g. reading persisted state). */
+    data object Loading : StatusIndicator
     data class Progress(val fraction: Float) : StatusIndicator
 }
 
@@ -77,6 +80,7 @@ private fun IndicatorIcon(indicator: StatusIndicator) {
             progress = { indicator.fraction },
             modifier = Modifier.size(IndicatorSize),
         )
+        StatusIndicator.Loading -> CircularProgressIndicator(modifier = Modifier.size(IndicatorSize))
         StatusIndicator.Success -> Glyph(MaterialTheme.colorScheme.primary) { successGlyph() }
         StatusIndicator.Warning -> Glyph(MaterialTheme.colorScheme.tertiary) { warningGlyph() }
         StatusIndicator.Error -> Glyph(MaterialTheme.colorScheme.error) { errorGlyph() }

@@ -19,6 +19,11 @@ kotlin {
     sourceSets {
         iosMain.dependencies {
             implementation(project(":domain:ui"))
+            implementation(project(":domain:presentation"))
+            implementation(project(":domain:status"))
+            implementation(project(":domain:engine"))
+            implementation(project(":domain:permission"))
+            implementation(libs.coroutines.core)
             implementation(compose.runtime)
             implementation(compose.foundation)
             implementation(compose.ui)

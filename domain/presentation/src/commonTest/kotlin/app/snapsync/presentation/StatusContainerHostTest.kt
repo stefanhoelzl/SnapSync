@@ -4,6 +4,7 @@ import app.snapsync.permission.PermissionRequester
 import app.snapsync.permission.PermissionStatus
 import app.snapsync.permission.PermissionStatusSource
 import app.snapsync.status.SyncStatus
+import app.snapsync.status.SyncProgress
 import app.snapsync.status.SyncStatusSource
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -14,15 +15,27 @@ import kotlin.time.Duration.Companion.seconds
 import kotlin.time.Instant
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.runTest
 import org.orbitmvi.orbit.test.test
 
 // StateFlow fakes mirror the seam contract exactly: the current truth is available
-// synchronously at construction, and every assignment is the whole truth.
-private class FakeSyncStatusSource(initial: SyncStatus = snapshot()) : SyncStatusSource {
-    override val status = MutableStateFlow(initial)
+// synchronously at construction, and every assignment is the whole truth. The fake knows its
+// truth synchronously, so it seeds Ready and never shows Loading; `value` wraps in Ready for
+// readable call sites.
+private class FakeSyncStatusSource(initial: SyncStatus = SyncStatus.Ready(snapshot())) :
+    SyncStatusSource {
+    constructor(initial: SyncProgress) : this(SyncStatus.Ready(initial))
+
+    private val flow = MutableStateFlow(initial)
+    override val status: StateFlow<SyncStatus> = flow
+    var value: SyncProgress
+        get() = (flow.value as SyncStatus.Ready).progress
+        set(v) {
+            flow.value = SyncStatus.Ready(v)
+        }
 }
 
 private class FakePermissionSource(
@@ -61,7 +74,7 @@ private fun snapshot(
     active: Boolean = true,
     estimatedRemaining: Duration? = null,
     lastFinishedAt: Instant? = null,
-) = SyncStatus(pending, completed, failed, active, estimatedRemaining, lastFinishedAt)
+) = SyncProgress(pending, completed, failed, active, estimatedRemaining, lastFinishedAt)
 
 private fun host(
     source: FakeSyncStatusSource,
@@ -78,7 +91,7 @@ class StatusContainerHostTest {
         val source = FakeSyncStatusSource()
         host(source, backgroundScope).test(this) {
             runOnCreate()
-            source.status.value =
+            source.value =
                 snapshot(pending = 7, completed = 2, failed = 1, active = true, estimatedRemaining = 2.minutes)
             expectState(UiState.InProgress(fraction = 0.3f, estimate = "~2 min left"))
             cancelAndIgnoreRemainingItems()
@@ -90,7 +103,7 @@ class StatusContainerHostTest {
         val source = FakeSyncStatusSource()
         host(source, backgroundScope).test(this) {
             runOnCreate()
-            source.status.value = snapshot(pending = 7, completed = 3, active = true)
+            source.value = snapshot(pending = 7, completed = 3, active = true)
             expectState(UiState.InProgress(fraction = 0.3f, estimate = "estimating…"))
             cancelAndIgnoreRemainingItems()
         }
@@ -101,7 +114,7 @@ class StatusContainerHostTest {
         val source = FakeSyncStatusSource()
         host(source, backgroundScope).test(this) {
             runOnCreate()
-            source.status.value = snapshot(pending = 22, completed = 12, active = false)
+            source.value = snapshot(pending = 22, completed = 12, active = false)
             expectState(UiState.Suspended)
             cancelAndIgnoreRemainingItems()
         }
@@ -114,9 +127,9 @@ class StatusContainerHostTest {
         host(source, backgroundScope, clock).test(this) {
             runOnCreate()
             val fiveMinAgo = clock.now() - 5.minutes
-            source.status.value = snapshot(completed = 34, lastFinishedAt = fiveMinAgo)
+            source.value = snapshot(completed = 34, lastFinishedAt = fiveMinAgo)
             expectState(UiState.Complete("5 min ago"))
-            source.status.value = snapshot(completed = 31, failed = 3, lastFinishedAt = fiveMinAgo)
+            source.value = snapshot(completed = 31, failed = 3, lastFinishedAt = fiveMinAgo)
             expectState(UiState.Incomplete("5 min ago"))
             cancelAndIgnoreRemainingItems()
         }
@@ -127,7 +140,7 @@ class StatusContainerHostTest {
         val source = FakeSyncStatusSource(snapshot(completed = 34, lastFinishedAt = EPOCH))
         host(source, backgroundScope).test(this) {
             runOnCreate()
-            source.status.value = snapshot()
+            source.value = snapshot()
             expectState(UiState.NeverSynced)
             cancelAndIgnoreRemainingItems()
         }
@@ -139,7 +152,7 @@ class StatusContainerHostTest {
         val source = FakeSyncStatusSource()
         host(source, backgroundScope, clock).test(this) {
             runOnCreate()
-            source.status.value = snapshot(completed = 34, lastFinishedAt = clock.now())
+            source.value = snapshot(completed = 34, lastFinishedAt = clock.now())
             expectState(UiState.Complete("just now"))
             clock.advance(61.seconds)
             advanceTimeBy(61.seconds)
@@ -154,14 +167,14 @@ class StatusContainerHostTest {
         val source = FakeSyncStatusSource()
         host(source, backgroundScope, clock).test(this) {
             runOnCreate()
-            source.status.value =
+            source.value =
                 snapshot(pending = 7, completed = 3, active = true, estimatedRemaining = 2.minutes)
             expectState(UiState.InProgress(fraction = 0.3f, estimate = "~2 min left"))
             // Ticks fire, but the estimate is rendered verbatim from the snapshot: the very
             // next observed state is the new snapshot's, with nothing in between.
             clock.advance(3.minutes)
             advanceTimeBy(3.minutes)
-            source.status.value = snapshot(completed = 10, lastFinishedAt = clock.now())
+            source.value = snapshot(completed = 10, lastFinishedAt = clock.now())
             expectState(UiState.Complete("just now"))
             cancelAndIgnoreRemainingItems()
         }
@@ -172,9 +185,9 @@ class StatusContainerHostTest {
         val source = FakeSyncStatusSource()
         host(source, backgroundScope).test(this) {
             runOnCreate()
-            source.status.value = snapshot(pending = 9, completed = 1, active = true)
+            source.value = snapshot(pending = 9, completed = 1, active = true)
             expectState(UiState.InProgress(fraction = 0.1f, estimate = "estimating…"))
-            source.status.value = snapshot(pending = 5, completed = 5, active = true)
+            source.value = snapshot(pending = 5, completed = 5, active = true)
             expectState(UiState.InProgress(fraction = 0.5f, estimate = "estimating…"))
             cancelAndIgnoreRemainingItems()
         }
@@ -195,6 +208,24 @@ class StatusContainerHostTest {
         val container = host(source, backgroundScope, permission = permission).container
 
         assertEquals(UiState.PermissionDenied, container.stateFlow.value)
+    }
+
+    @Test
+    fun `loading snapshot under granted permission maps to Loading`() = runTest {
+        val source = FakeSyncStatusSource(SyncStatus.Loading)
+        val permission = FakePermissionSource(PermissionStatus.GRANTED)
+        val container = host(source, backgroundScope, permission = permission).container
+
+        assertEquals(UiState.Loading, container.stateFlow.value)
+    }
+
+    @Test
+    fun `permission gate outranks a loading snapshot`() = runTest {
+        val source = FakeSyncStatusSource(SyncStatus.Loading)
+        val permission = FakePermissionSource(PermissionStatus.NOT_DETERMINED)
+        val container = host(source, backgroundScope, permission = permission).container
+
+        assertEquals(UiState.PermissionAsk, container.stateFlow.value)
     }
 
     @Test

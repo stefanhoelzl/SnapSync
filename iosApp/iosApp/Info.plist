@@ -24,6 +24,8 @@
 	     is absent or not true. Also unlocks 120 Hz rendering on ProMotion devices. -->
 	<key>CADisableMinimumFrameDurationOnPhone</key>
 	<true/>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>SnapSync backs up your photo library to your private cloud storage.</string>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
 	<key>UILaunchScreen</key>

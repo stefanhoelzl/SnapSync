@@ -21,6 +21,8 @@ fun StatusScreen(
     AppTheme {
         ScreenLayout(title = "SnapSync") {
             when (state) {
+                UiState.Loading ->
+                    StatusHero(StatusIndicator.Loading, "Loading …")
                 UiState.PermissionAsk -> {
                     StatusHero(
                         StatusIndicator.Photos,

@@ -1,17 +1,19 @@
 package app.snapsync.ios
 
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.window.ComposeUIViewController
-import app.snapsync.presentation.UiState
 import app.snapsync.ui.StatusScreen
 
 /**
  * The iOS entry point. The Swift app (iosApp/) calls [MainViewController] to obtain the root
- * UIViewController. For this first target the screen renders a single static [UiState] — there is
- * no live data source, matching the desktop app, which also has no live-ledger wiring yet.
- *
- * `StatusScreen` already wraps itself in `AppTheme`, so nothing else is assembled here.
+ * UIViewController. The screen now renders **live** state from the real stack assembled in
+ * [SnapSyncRoot]: the Orbit container's `stateFlow`, with the gate intents routed back to the host
+ * (which calls the PhotoKit permission adapter). `StatusScreen` wraps itself in `AppTheme`.
  */
 @Suppress("FunctionName", "unused")
 fun MainViewController() = ComposeUIViewController {
-    StatusScreen(UiState.InProgress(fraction = 0.6f, estimate = "about 2 min left"))
+    val host = SnapSyncRoot.host
+    val state by host.container.stateFlow.collectAsState()
+    StatusScreen(state, host::onRequestPermission, host::onOpenSettings)
 }
