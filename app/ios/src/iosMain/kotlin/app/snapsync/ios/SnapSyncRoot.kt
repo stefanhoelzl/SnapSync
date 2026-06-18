@@ -7,6 +7,7 @@ import app.snapsync.permission.PermissionStatus
 import app.snapsync.permission.PhotoLibraryPermission
 import app.snapsync.presentation.StatusContainerHost
 import app.snapsync.status.LedgerSyncStatusSource
+import co.touchlab.kermit.Logger
 import kotlinx.cinterop.ExperimentalForeignApi
 import kotlinx.cinterop.cValue
 import kotlinx.coroutines.CoroutineScope
@@ -34,6 +35,7 @@ import platform.Photos.PHPhotoLibrary
  */
 object SnapSyncRoot {
 
+    private val log = Logger.withTag("SnapSyncRoot")
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
 
     val host: StatusContainerHost by lazy {
@@ -69,7 +71,7 @@ object SnapSyncRoot {
                 if (status == PermissionStatus.GRANTED && backgroundUploadSupported()) {
                     val enabled = PHPhotoLibrary.sharedPhotoLibrary()
                         .setUploadJobExtensionEnabled(true, error = null)
-                    println("SnapSyncRoot: background-upload extension enabled=$enabled")
+                    log.i { "background-upload extension enabled=$enabled" }
                 }
             }
         }
