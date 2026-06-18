@@ -1,12 +1,15 @@
-@file:OptIn(ExperimentalForeignApi::class)
+@file:OptIn(ExperimentalForeignApi::class, BetaInteropApi::class)
 
 package app.snapsync.config
 
 import app.snapsync.s3.S3Config
+import kotlinx.cinterop.BetaInteropApi
 import kotlinx.cinterop.ExperimentalForeignApi
+import kotlinx.cinterop.addressOf
 import kotlinx.cinterop.alloc
 import kotlinx.cinterop.memScoped
 import kotlinx.cinterop.ptr
+import kotlinx.cinterop.usePinned
 import kotlinx.cinterop.value
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -23,9 +26,7 @@ import platform.CoreFoundation.kCFTypeDictionaryValueCallBacks
 import platform.Foundation.CFBridgingRelease
 import platform.Foundation.CFBridgingRetain
 import platform.Foundation.NSData
-import platform.Foundation.NSString
-import platform.Foundation.NSUTF8StringEncoding
-import platform.Foundation.dataUsingEncoding
+import platform.Foundation.create
 import platform.Security.SecItemAdd
 import platform.Security.SecItemCopyMatching
 import platform.Security.SecItemDelete
@@ -38,11 +39,13 @@ import platform.Security.kSecMatchLimit
 import platform.Security.kSecMatchLimitOne
 import platform.Security.kSecReturnData
 import platform.Security.kSecValueData
+import platform.posix.memcpy
 
 /**
  * The iOS [ConfigSource]/[ConfigStore]: persists the config as a single Keychain generic-password
  * item (encrypted at rest, survives app updates and process death). The value stored is the
- * canonical deeplink URL — reusing the one codec, so persistence rides the same format as the wire.
+ * canonical deeplink URL's UTF-8 bytes — reusing the one codec, so persistence rides the same
+ * format as the wire.
  *
  * No `kSecAttrAccessGroup` is set: with the app's `keychain-access-groups` entitlement declaring the
  * shared group as its (only/first) entry, items land in that shared group by default, so the future
@@ -81,7 +84,7 @@ class KeychainConfigStore(
         CFRelease(query)
         if (status != errSecSuccess) return@memScoped null
         val data = CFBridgingRelease(result.value) as? NSData ?: return@memScoped null
-        NSString.create(data, NSUTF8StringEncoding) as String?
+        data.toByteArray().decodeToString()
     }
 
     private fun writeUrl(url: String) {
@@ -90,10 +93,8 @@ class KeychainConfigStore(
         SecItemDelete(deleteQuery)
         CFRelease(deleteQuery)
 
-        val data = (url as NSString).dataUsingEncoding(NSUTF8StringEncoding)
-            ?: error("could not encode config url")
         val addQuery = baseQuery()
-        val cfData = CFBridgingRetain(data)
+        val cfData = CFBridgingRetain(url.encodeToByteArray().toNSData())
         CFDictionaryAddValue(addQuery, kSecValueData, cfData)
         val status = SecItemAdd(addQuery, null)
         CFRelease(addQuery)
@@ -113,4 +114,17 @@ class KeychainConfigStore(
 
     private fun cfString(value: String) =
         CFStringCreateWithCString(null, value, kCFStringEncodingUTF8)
+}
+
+private fun ByteArray.toNSData(): NSData =
+    if (isEmpty()) {
+        NSData()
+    } else {
+        usePinned { NSData.create(bytes = it.addressOf(0), length = size.toULong()) }
+    }
+
+private fun NSData.toByteArray(): ByteArray {
+    val size = length.toInt()
+    if (size == 0) return ByteArray(0)
+    return ByteArray(size).apply { usePinned { memcpy(it.addressOf(0), bytes, length) } }
 }
