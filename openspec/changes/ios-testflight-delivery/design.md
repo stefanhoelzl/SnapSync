@@ -62,3 +62,16 @@ A new `.github/workflows/ios-release.yml`, independent of `ios.yml`. On a push t
 - **Double Kotlin/Native link per merge (gate + release)** → accepted; `~/.konan` cache mitigates; revisit if minutes become a constraint.
 - **iOS-27 background-upload entitlement may later defeat auto-provisioning** → deferred with the extension; at that point hand-make a profile for the extension target (D3). Does not affect the shell.
 - **Manual one-time Apple-account prerequisites** (cert, ASC key, bundle id, app record, internal tester) are outside CI and must be done by the developer → captured as explicit, ordered tasks.
+
+## Implementation revisions (validated end-to-end on a branch before merge)
+
+These supersede D2/D3/D6 after the pipeline was proven on the `ios-deploy` branch (temporary every-push trigger) — exactly the failure-flushing the "ship the shell first" milestone exists for.
+
+### D9 — Full cloud-managed signing + Admin API key (supersedes D2/D3)
+The first signed run **archived** fine with the hand-minted cert but **failed at export**: `exportArchive Cloud signing permission error / No profiles for 'app.snapsync' were found`. Cause (Apple-confirmed): automatic signing at export reaches for **cloud signing**, and an **App Manager** API key cannot access cloud-managed distribution certificates. Resolution: regenerate the API key with the **Admin** role. With that, `xcodebuild -allowProvisioningUpdates` cloud-manages **both** the distribution certificate and the App Store profile — so the hand-minted cert (and `import-codesign-certs` + the two `DIST_CERT_*` secrets) became redundant and were removed after a green pure-cloud-signing run proved it. Net: no imported cert, no stored signing assets, 3 secrets (the Admin ASC key). Trade-off accepted: an Admin-scoped key (broader than App Manager) in exchange for zero stored signing material and self-renewing cert+profile.
+
+### D10 — `ios-release` is a gated job inside `ios.yml` (supersedes D6)
+Rather than a separate `ios-release.yml`, release is a third job in `ios.yml` alongside `ios-build`/`ios-test`, with `if: github.ref == 'refs/heads/main'` + `needs: [ios-build, ios-test]`. Benefits over the separate workflow: delivery only fires from a **green** main commit (the gates must pass first), one workflow file, and the every-push-vs-main-only split is expressed as a job condition instead of a second trigger. The build number now derives from the **`ios` workflow's** `run_number` (a different, higher counter than the old `ios-release.yml`), which stays monotonic, so TestFlight build numbers jump up once but never collide.
+
+### Runtime fix surfaced on first device launch (ios-app-shell)
+The build/CI path never *runs* the app; the first real TestFlight launch hard-aborted in Compose's `PlistSanityCheck` because `CADisableMinimumFrameDurationOnPhone` was absent. Added it (`true`) to `Info.plist` — required by Compose Multiplatform ≥1.7 and also unlocks 120 Hz rendering.

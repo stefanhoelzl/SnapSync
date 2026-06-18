@@ -7,6 +7,10 @@
 # Together the two jobs exercise BOTH Kotlin/Native targets (device via build, simulator via
 # test) with no redundant work. The Linux-buildable work (JVM/desktop + the JVM run of all unit
 # tests) stays in build.yml; this workflow does only the irreducible Apple delta.
+#
+# A THIRD job, ios-release (capability: ios-testflight-delivery), runs ONLY on main and ONLY after
+# both gates pass (needs: [ios-build, ios-test]): it signs the device app and uploads it to
+# TestFlight. It is delivery, NOT a merge gate, and is skipped on every non-main branch.
 name: ios
 
 on:
@@ -17,7 +21,7 @@ permissions:
 
 # Namespaced group (NOT the bare github.ref used by build.yml) so the Linux build and the iOS
 # workflow do not share a concurrency group and cancel each other. A newer push to a ref cancels
-# its own in-progress iOS run — both jobs, since the group is workflow-wide.
+# its own in-progress iOS run — all jobs, since the group is workflow-wide.
 concurrency:
   group: ios-${{ github.ref }}
   cancel-in-progress: true
@@ -93,3 +97,82 @@ jobs:
           # validated on Native. Kotlin auto-selects a standalone simulator; if a run fails with
           # "no matching device", pin one via testRuns["test"].deviceId in the module build.
           ./gradlew iosSimulatorArm64Test
+
+  ios-release:
+    # Delivery (capability: ios-testflight-delivery), NOT a merge gate. Gated to main and to the
+    # two gates passing, so a TestFlight build is only cut from a green main commit. Signing is
+    # fully CLOUD-MANAGED: xcodebuild -allowProvisioningUpdates uses the App Store Connect API key
+    # (Admin role) to manage the distribution certificate AND provisioning profile in the cloud —
+    # no imported cert, no stored/cached signing assets, no fastlane, no match.
+    name: ios-release
+    needs: [ios-build, ios-test]
+    if: github.ref == 'refs/heads/main'
+    runs-on: macos-26
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: 25
+      - uses: gradle/actions/setup-gradle@v5
+      - name: Cache Kotlin/Native (~/.konan)
+        uses: actions/cache@v4
+        with:
+          path: ~/.konan
+          key: konan-${{ runner.os }}-${{ hashFiles('gradle/libs.versions.toml') }}
+          restore-keys: |
+            konan-${{ runner.os }}-
+
+      # Write the App Store Connect API key (.p8) to disk for xcodebuild's auth flags.
+      - name: Prepare App Store Connect API key
+        env:
+          ASC_API_PRIVATE_KEY: ${{ secrets.ASC_API_PRIVATE_KEY }}
+        run: |
+          mkdir -p "$RUNNER_TEMP/asc"
+          printf '%s' "$ASC_API_PRIVATE_KEY" > "$RUNNER_TEMP/asc/AuthKey.p8"
+          echo "ASC_KEY_PATH=$RUNNER_TEMP/asc/AuthKey.p8" >> "$GITHUB_ENV"
+
+      # Archive the signed device app. The xcodebuild invocation triggers the project's "Compile
+      # Kotlin Framework" Run Script phase (./gradlew :app:ios:embedAndSign...) for iosArm64.
+      # Build number = the monotonic run number; -allowProvisioningUpdates cloud-manages cert+profile.
+      - name: Archive signed device app
+        env:
+          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+        run: |
+          xcodebuild \
+            -project iosApp/iosApp.xcodeproj \
+            -scheme iosApp \
+            -configuration Release \
+            -sdk iphoneos \
+            -destination 'generic/platform=iOS' \
+            -archivePath "$RUNNER_TEMP/SnapSync.xcarchive" \
+            -derivedDataPath build/ios \
+            -allowProvisioningUpdates \
+            -authenticationKeyPath "$ASC_KEY_PATH" \
+            -authenticationKeyID "$ASC_KEY_ID" \
+            -authenticationKeyIssuerID "$ASC_ISSUER_ID" \
+            CURRENT_PROJECT_VERSION=${{ github.run_number }} \
+            archive
+
+      - name: Export signed IPA
+        env:
+          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+        run: |
+          xcodebuild -exportArchive \
+            -archivePath "$RUNNER_TEMP/SnapSync.xcarchive" \
+            -exportPath "$RUNNER_TEMP/export" \
+            -exportOptionsPlist iosApp/ExportOptions.plist \
+            -allowProvisioningUpdates \
+            -authenticationKeyPath "$ASC_KEY_PATH" \
+            -authenticationKeyID "$ASC_KEY_ID" \
+            -authenticationKeyIssuerID "$ASC_ISSUER_ID"
+
+      - name: Upload to TestFlight
+        uses: apple-actions/upload-testflight-build@v3
+        with:
+          app-path: ${{ runner.temp }}/export/SnapSync.ipa
+          issuer-id: ${{ secrets.ASC_ISSUER_ID }}
+          api-key-id: ${{ secrets.ASC_KEY_ID }}
+          api-private-key: ${{ secrets.ASC_API_PRIVATE_KEY }}
