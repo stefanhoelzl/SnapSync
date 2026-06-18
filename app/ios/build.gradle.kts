@@ -25,6 +25,7 @@ kotlin {
             implementation(project(":domain:permission"))
             implementation(project(":capability:config"))
             implementation(libs.coroutines.core)
+            implementation(libs.kermit)
             implementation(compose.runtime)
             implementation(compose.foundation)
             implementation(compose.ui)
