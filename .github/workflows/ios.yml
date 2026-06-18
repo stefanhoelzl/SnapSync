@@ -13,9 +13,12 @@
 # test). The Linux-buildable work (JVM/desktop + the JVM run of all unit tests) stays in build.yml;
 # this workflow does only the irreducible Apple delta.
 #
-# Signing is fully CLOUD-MANAGED: xcodebuild -allowProvisioningUpdates uses the App Store Connect
-# API key (Admin role) to manage the distribution certificate AND provisioning profile in the
-# cloud — no imported cert, no stored/cached signing assets, no fastlane, no match.
+# Signing: a single persistent Apple Distribution cert (stored as the SIGNING_CERT_* secrets) is
+# imported into a temp keychain each run, and xcodebuild -allowProvisioningUpdates uses the App
+# Store Connect API key (Admin role) to manage the provisioning PROFILE in the cloud. Importing one
+# fixed cert is deliberate: without it, each ephemeral runner's empty keychain makes automatic
+# signing mint a NEW cert every run, exhausting Apple's per-account cert cap under every-push
+# delivery. No fastlane, no match.
 name: ios
 
 on:
@@ -65,7 +68,17 @@ jobs:
           printf '%s' "$ASC_API_PRIVATE_KEY" > "$RUNNER_TEMP/asc/AuthKey.p8"
           echo "ASC_KEY_PATH=$RUNNER_TEMP/asc/AuthKey.p8" >> "$GITHUB_ENV"
 
-      # Build number = the monotonic run number; -allowProvisioningUpdates cloud-manages cert+profile.
+      # Import ONE persistent Apple Distribution cert into a temp keychain so automatic signing
+      # reuses it instead of minting a fresh cert every run (which would exhaust Apple's per-account
+      # cert cap under every-push delivery). Pinned to the exact release, not the floating major.
+      - name: Import signing certificate
+        uses: apple-actions/import-codesign-certs@v7.0.0
+        with:
+          p12-file-base64: ${{ secrets.SIGNING_CERT_P12_BASE64 }}
+          p12-password: ${{ secrets.SIGNING_CERT_PASSWORD }}
+
+      # Build number = the monotonic run number. -allowProvisioningUpdates still cloud-manages the
+      # provisioning PROFILE, but now reuses the imported cert above rather than creating a new one.
       # This is the required merge gate: it compiles the shipping iosArm64 framework.
       - name: Archive signed device app
         env:
