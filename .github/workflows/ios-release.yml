@@ -7,8 +7,10 @@
 name: ios-release
 
 on:
+  # TEMP(testing): runs on EVERY push (any branch) to validate the signed pipeline
+  # on the ios-deploy branch before merging. REVERT to `branches: [main]` before
+  # this lands on main — we do not want a TestFlight upload on every branch push.
   push:
-    branches: [main]
 
 permissions:
   contents: read
