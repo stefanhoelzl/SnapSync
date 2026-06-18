@@ -6,6 +6,7 @@ import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import app.snapsync.permission.PermissionStatus
 import app.snapsync.presentation.UiState
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -25,14 +26,39 @@ class StatusScreenTest {
     }
 
     @Test
+    fun `unconnected storage shows the scan instruction`() {
+        rule.setContent {
+            StatusScreen(UiState.Setup(storageConnected = false, permission = PermissionStatus.GRANTED))
+        }
+
+        rule.onNodeWithText("Connect your storage").assertExists()
+        rule.onNodeWithText("Open the Camera app and scan your SnapSync QR code.").assertExists()
+    }
+
+    @Test
+    fun `invalid deeplink error replaces the storage instruction`() {
+        rule.setContent {
+            StatusScreen(
+                UiState.Setup(storageConnected = false, permission = PermissionStatus.GRANTED),
+                transientError = "That QR code wasn't valid.",
+            )
+        }
+
+        rule.onNodeWithText("That QR code wasn't valid.").assertExists()
+    }
+
+    @Test
     fun `permission ask shows invitation copy and the allow action`() {
         var requests = 0
         rule.setContent {
-            StatusScreen(UiState.PermissionAsk, onRequestPermission = { requests++ })
+            StatusScreen(
+                UiState.Setup(storageConnected = true, permission = PermissionStatus.NOT_DETERMINED),
+                onRequestPermission = { requests++ },
+            )
         }
 
-        rule.onNodeWithText("Sync your photos").assertExists()
-        rule.onNodeWithText("SnapSync needs access to your photo library").assertExists()
+        rule.onNodeWithText("Storage connected").assertExists()
+        rule.onNodeWithText("Allow photo access").assertExists()
         rule.onNodeWithText("Allow access").performClick()
         assertEquals(1, requests)
     }
@@ -41,20 +67,25 @@ class StatusScreenTest {
     fun `permission denied shows problem copy and the settings action`() {
         var settingsOpens = 0
         rule.setContent {
-            StatusScreen(UiState.PermissionDenied, onOpenSettings = { settingsOpens++ })
+            StatusScreen(
+                UiState.Setup(storageConnected = true, permission = PermissionStatus.DENIED),
+                onOpenSettings = { settingsOpens++ },
+            )
         }
 
         rule.onNodeWithText("Photo access denied").assertExists()
-        rule.onNodeWithText("Turn on photo access in system settings").assertExists()
+        rule.onNodeWithText("Turn on photo access in Settings.").assertExists()
         rule.onNodeWithText("Open Settings").performClick()
         assertEquals(1, settingsOpens)
     }
 
     @Test
-    fun `gate states show no sync status hero`() {
-        rule.setContent { StatusScreen(UiState.PermissionDenied) }
+    fun `setup gate shows no sync status hero`() {
+        rule.setContent {
+            StatusScreen(UiState.Setup(storageConnected = true, permission = PermissionStatus.DENIED))
+        }
 
-        rule.onNodeWithText("Sync failed").assertDoesNotExist()
+        rule.onNodeWithText("Sync incomplete").assertDoesNotExist()
         rule.onNodeWithText("No sync yet").assertDoesNotExist()
         rule.onNode(hasAnyProgressIndication()).assertDoesNotExist()
     }

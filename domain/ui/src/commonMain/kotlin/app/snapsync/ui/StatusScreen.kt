@@ -1,14 +1,17 @@
 package app.snapsync.ui
 
-import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import app.snapsync.permission.PermissionStatus
 import app.snapsync.presentation.UiState
 import app.snapsync.ui.components.AppTheme
 import app.snapsync.ui.components.PrimaryButton
 import app.snapsync.ui.components.ScreenLayout
+import app.snapsync.ui.components.SetupCard
 import app.snapsync.ui.components.StatusHero
 import app.snapsync.ui.components.StatusIndicator
 
@@ -17,30 +20,15 @@ fun StatusScreen(
     state: UiState,
     onRequestPermission: () -> Unit = {},
     onOpenSettings: () -> Unit = {},
+    transientError: String? = null,
 ) {
     AppTheme {
         ScreenLayout(title = "SnapSync") {
             when (state) {
                 UiState.Loading ->
                     StatusHero(StatusIndicator.Loading, "Loading …")
-                UiState.PermissionAsk -> {
-                    StatusHero(
-                        StatusIndicator.Photos,
-                        "Sync your photos",
-                        "SnapSync needs access to your photo library",
-                    )
-                    Spacer(Modifier.height(24.dp))
-                    PrimaryButton("Allow access", onRequestPermission)
-                }
-                UiState.PermissionDenied -> {
-                    StatusHero(
-                        StatusIndicator.Error,
-                        "Photo access denied",
-                        "Turn on photo access in system settings",
-                    )
-                    Spacer(Modifier.height(24.dp))
-                    PrimaryButton("Open Settings", onOpenSettings)
-                }
+                is UiState.Setup ->
+                    SetupGate(state, onRequestPermission, onOpenSettings, transientError)
                 UiState.NeverSynced ->
                     StatusHero(StatusIndicator.Warning, "No sync yet")
                 is UiState.InProgress ->
@@ -52,6 +40,53 @@ fun StatusScreen(
                 is UiState.Incomplete ->
                     StatusHero(StatusIndicator.Warning, "Sync incomplete", state.finishedAgo)
             }
+        }
+    }
+}
+
+/**
+ * The setup gate: a stack of two checkable cards. Storage is passive (completed by an external QR
+ * scan, so no button) — its detail flips to [transientError] when a bad deeplink arrives. Photo
+ * access carries the permission CTA. Each card collapses to a check once satisfied.
+ */
+@Composable
+private fun SetupGate(
+    state: UiState.Setup,
+    onRequestPermission: () -> Unit,
+    onOpenSettings: () -> Unit,
+    transientError: String?,
+) {
+    Column(
+        modifier = Modifier.fillMaxWidth(),
+        verticalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        if (state.storageConnected) {
+            SetupCard(StatusIndicator.Success, "Storage connected")
+        } else {
+            SetupCard(
+                indicator = if (transientError != null) StatusIndicator.Error else StatusIndicator.Waiting,
+                title = "Connect your storage",
+                detail = transientError ?: "Open the Camera app and scan your SnapSync QR code.",
+            )
+        }
+
+        when (state.permission) {
+            PermissionStatus.GRANTED ->
+                SetupCard(StatusIndicator.Success, "Photo access granted")
+            PermissionStatus.NOT_DETERMINED ->
+                SetupCard(
+                    indicator = StatusIndicator.Photos,
+                    title = "Allow photo access",
+                    detail = "SnapSync needs your photo library to back it up.",
+                    action = { PrimaryButton("Allow access", onRequestPermission) },
+                )
+            PermissionStatus.DENIED ->
+                SetupCard(
+                    indicator = StatusIndicator.Error,
+                    title = "Photo access denied",
+                    detail = "Turn on photo access in Settings.",
+                    action = { PrimaryButton("Open Settings", onOpenSettings) },
+                )
         }
     }
 }

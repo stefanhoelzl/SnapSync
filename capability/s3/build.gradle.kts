@@ -5,6 +5,11 @@ plugins {
 kotlin {
     jvmToolchain(libs.versions.jdk.get().toInt())
     jvm()
+    // iOS targets so S3Config and the pure presigner compile for the native app/extension (and so
+    // :capability:config's iosMain can persist an S3Config to the Keychain). The presigner is pure
+    // string-building + kotlincrypto (which supports Kotlin/Native), so no platform code is needed.
+    iosArm64()
+    iosSimulatorArm64()
     sourceSets {
         commonMain.dependencies {
             // `api` on purpose: the presigner implements the engine's UploadRequestProvider and

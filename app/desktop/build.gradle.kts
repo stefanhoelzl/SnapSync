@@ -15,6 +15,8 @@ dependencies {
     implementation(project(":domain:status"))
     implementation(project(":domain:presentation"))
     implementation(project(":domain:ui"))
+    implementation(project(":capability:config"))
+    implementation(project(":capability:s3"))
     // The control panel is deliberately raw Material 3, not App* (design.md §5.1).
     implementation(compose.material3)
     implementation(compose.desktop.currentOs)

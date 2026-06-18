@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Button
 import androidx.compose.material3.RadioButton
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
@@ -27,6 +28,13 @@ fun ControlPanel(controller: PanelController) {
         modifier = Modifier.fillMaxHeight().padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
+        Text("Config")
+        val config by controller.currentConfig.collectAsState()
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Switch(checked = config != null, onCheckedChange = { controller.setConfigPresent(it) })
+            Text(if (config != null) "Config set" else "No config")
+        }
+
         Text("Permission")
         Button(onClick = { controller.showPermissionNotDetermined() }) { Text("Not determined") }
         Button(onClick = { controller.showPermissionDenied() }) { Text("Denied") }

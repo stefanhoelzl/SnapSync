@@ -1,8 +1,12 @@
 package app.snapsync.presentation
 
+import app.snapsync.config.ConfigSource
+import app.snapsync.config.ConfigStore
+import app.snapsync.config.encodeConfigUrl
 import app.snapsync.permission.PermissionRequester
 import app.snapsync.permission.PermissionStatus
 import app.snapsync.permission.PermissionStatusSource
+import app.snapsync.s3.S3Config
 import app.snapsync.status.SyncStatus
 import app.snapsync.status.SyncProgress
 import app.snapsync.status.SyncStatusSource
@@ -44,6 +48,21 @@ private class FakePermissionSource(
     override val permission = MutableStateFlow(initial)
 }
 
+// Config seam + store as one fake: save writes the cell, which is exactly how the real Keychain
+// adapter behaves (its change arrives back via ConfigSource). Defaults to present so the sync-state
+// tests fall through the setup gate.
+private val SAMPLE_CONFIG = S3Config(
+    bucket = "b", region = "r", endpoint = "e", accessKeyId = "a", secretAccessKey = "s",
+)
+
+private class FakeConfig(initial: S3Config? = SAMPLE_CONFIG) : ConfigSource, ConfigStore {
+    private val flow = MutableStateFlow(initial)
+    override val config: StateFlow<S3Config?> = flow
+    override suspend fun save(config: S3Config) {
+        flow.value = config
+    }
+}
+
 private class SpyRequester : PermissionRequester {
     var requests = 0
     var settingsOpens = 0
@@ -82,7 +101,8 @@ private fun host(
     clock: Clock = FakeClock(EPOCH),
     permission: FakePermissionSource = FakePermissionSource(),
     requester: PermissionRequester = SpyRequester(),
-) = StatusContainerHost(source, permission, requester, scope, clock)
+    configFake: FakeConfig = FakeConfig(),
+) = StatusContainerHost(source, permission, requester, configFake, configFake, scope, clock)
 
 class StatusContainerHostTest {
 
@@ -202,16 +222,32 @@ class StatusContainerHostTest {
     }
 
     @Test
-    fun `permission wins over any sync snapshot`() = runTest {
+    fun `denied permission shows the setup gate over any sync snapshot`() = runTest {
         val source = FakeSyncStatusSource(snapshot(failed = 34, lastFinishedAt = EPOCH))
         val permission = FakePermissionSource(PermissionStatus.DENIED)
         val container = host(source, backgroundScope, permission = permission).container
 
-        assertEquals(UiState.PermissionDenied, container.stateFlow.value)
+        assertEquals(
+            UiState.Setup(storageConnected = true, permission = PermissionStatus.DENIED),
+            container.stateFlow.value,
+        )
     }
 
     @Test
-    fun `loading snapshot under granted permission maps to Loading`() = runTest {
+    fun `absent config shows the setup gate even when granted`() = runTest {
+        val source = FakeSyncStatusSource(SyncStatus.Loading)
+        val permission = FakePermissionSource(PermissionStatus.GRANTED)
+        val container =
+            host(source, backgroundScope, permission = permission, configFake = FakeConfig(null)).container
+
+        assertEquals(
+            UiState.Setup(storageConnected = false, permission = PermissionStatus.GRANTED),
+            container.stateFlow.value,
+        )
+    }
+
+    @Test
+    fun `loading snapshot with config and granted permission maps to Loading`() = runTest {
         val source = FakeSyncStatusSource(SyncStatus.Loading)
         val permission = FakePermissionSource(PermissionStatus.GRANTED)
         val container = host(source, backgroundScope, permission = permission).container
@@ -220,16 +256,19 @@ class StatusContainerHostTest {
     }
 
     @Test
-    fun `permission gate outranks a loading snapshot`() = runTest {
+    fun `setup gate outranks a loading snapshot`() = runTest {
         val source = FakeSyncStatusSource(SyncStatus.Loading)
         val permission = FakePermissionSource(PermissionStatus.NOT_DETERMINED)
         val container = host(source, backgroundScope, permission = permission).container
 
-        assertEquals(UiState.PermissionAsk, container.stateFlow.value)
+        assertEquals(
+            UiState.Setup(storageConnected = true, permission = PermissionStatus.NOT_DETERMINED),
+            container.stateFlow.value,
+        )
     }
 
     @Test
-    fun `granted permission reveals the current sync state`() = runTest {
+    fun `both gates satisfied reveals the current sync state`() = runTest {
         val clock = FakeClock(EPOCH)
         val source = FakeSyncStatusSource(snapshot(failed = 34, lastFinishedAt = clock.now() - 5.minutes))
         val permission = FakePermissionSource(PermissionStatus.NOT_DETERMINED)
@@ -237,6 +276,32 @@ class StatusContainerHostTest {
             runOnCreate()
             permission.permission.value = PermissionStatus.GRANTED
             expectState(UiState.Incomplete("5 min ago"))
+            cancelAndIgnoreRemainingItems()
+        }
+    }
+
+    @Test
+    fun `a valid deeplink saves config and advances the gate`() = runTest {
+        val source = FakeSyncStatusSource(SyncStatus.Loading)
+        val permission = FakePermissionSource(PermissionStatus.GRANTED)
+        val configFake = FakeConfig(null)
+        host(source, backgroundScope, permission = permission, configFake = configFake).test(this) {
+            runOnCreate()
+            containerHost.onOpenUrl(encodeConfigUrl(SAMPLE_CONFIG))
+            // config now present + granted + Loading snapshot -> Loading
+            expectState(UiState.Loading)
+            cancelAndIgnoreRemainingItems()
+        }
+    }
+
+    @Test
+    fun `an invalid deeplink emits the transient error and changes nothing`() = runTest {
+        val source = FakeSyncStatusSource(SyncStatus.Loading)
+        val permission = FakePermissionSource(PermissionStatus.GRANTED)
+        host(source, backgroundScope, permission = permission, configFake = FakeConfig(null)).test(this) {
+            runOnCreate()
+            containerHost.onOpenUrl("not a config link")
+            expectSideEffect(SetupEffect.InvalidConfigLink)
             cancelAndIgnoreRemainingItems()
         }
     }
