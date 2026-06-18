@@ -11,6 +11,9 @@ kotlin {
         commonMain.dependencies {
             api(project(":domain:permission"))
             api(project(":domain:status"))
+            // The container consumes the config seam + decoder (onOpenUrl), and ConfigSource/
+            // ConfigStore appear in its constructor — so they surface in this module's API.
+            api(project(":capability:config"))
             api(libs.orbit.core)
         }
         commonTest.dependencies {

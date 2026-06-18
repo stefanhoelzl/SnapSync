@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<!-- Shared keychain group: the config Keychain item lands here (it is the only/default group),
+	     so the future background upload extension — declaring the same group — reads the same S3
+	     credentials. KeychainConfigStore omits kSecAttrAccessGroup and relies on this default. -->
+	<key>keychain-access-groups</key>
+	<array>
+		<string>$(AppIdentifierPrefix)app.snapsync.shared</string>
+	</array>
+	<!-- App Group: shared container for the ledger DB the upload extension will write (set up now
+	     per design.md D5; consumed by a later slice). -->
+	<key>com.apple.security.application-groups</key>
+	<array>
+		<string>group.app.snapsync</string>
+	</array>
+</dict>
+</plist>

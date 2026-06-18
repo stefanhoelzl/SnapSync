@@ -1,5 +1,6 @@
 package app.snapsync.ios
 
+import app.snapsync.config.KeychainConfigStore
 import app.snapsync.engine.LedgerWatcher
 import app.snapsync.engine.iosLedgerBackend
 import app.snapsync.permission.PhotoLibraryPermission
@@ -28,7 +29,17 @@ object SnapSyncRoot {
     val host: StatusContainerHost by lazy {
         val watcher = LedgerWatcher(iosLedgerBackend())
         val permission = PhotoLibraryPermission()
+        val config = KeychainConfigStore()
         val syncSource = LedgerSyncStatusSource(watcher, permission, scope)
-        StatusContainerHost(syncSource, permission, permission, scope)
+        // `config` is passed as both ports (one Keychain adapter implements both), as `permission` is.
+        StatusContainerHost(syncSource, permission, permission, config, config, scope)
+    }
+
+    /**
+     * A `snapsync://` deeplink arrived (forwarded raw from the Swift entry point). Routed through
+     * the container's intent so decode/validate/persist all happen in shared Kotlin.
+     */
+    fun onOpenUrl(url: String) {
+        host.onOpenUrl(url)
     }
 }

@@ -74,7 +74,7 @@ fun StatusHero(indicator: StatusIndicator, headline: String, detail: String? = n
 private val IndicatorSize = 28.dp
 
 @Composable
-private fun IndicatorIcon(indicator: StatusIndicator) {
+internal fun IndicatorIcon(indicator: StatusIndicator) {
     when (indicator) {
         is StatusIndicator.Progress -> CircularProgressIndicator(
             progress = { indicator.fraction },

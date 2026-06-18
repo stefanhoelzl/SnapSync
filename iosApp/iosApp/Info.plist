@@ -20,6 +20,21 @@
 	<string>$(CURRENT_PROJECT_VERSION)</string>
 	<key>ITSAppUsesNonExemptEncryption</key>
 	<false/>
+	<!-- Custom URL scheme: a QR scanned by the stock Camera app opens snapsync://config?… which
+	     deeplinks into the app carrying the S3 config (see deeplink-config capability). -->
+	<key>CFBundleURLTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleURLName</key>
+			<string>app.snapsync.config</string>
+			<key>CFBundleTypeRole</key>
+			<string>Viewer</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>snapsync</string>
+			</array>
+		</dict>
+	</array>
 	<!-- Required by Compose Multiplatform (>=1.7): the runtime hard-aborts at launch if this
 	     is absent or not true. Also unlocks 120 Hz rendering on ProMotion devices. -->
 	<key>CADisableMinimumFrameDurationOnPhone</key>

@@ -1,8 +1,13 @@
 package app.snapsync.presentation
 
+import app.snapsync.config.ConfigDecodeResult
+import app.snapsync.config.ConfigSource
+import app.snapsync.config.ConfigStore
+import app.snapsync.config.decodeConfigUrl
 import app.snapsync.permission.PermissionRequester
 import app.snapsync.permission.PermissionStatus
 import app.snapsync.permission.PermissionStatusSource
+import app.snapsync.s3.S3Config
 import app.snapsync.status.SyncStatus
 import app.snapsync.status.SyncState
 import app.snapsync.status.SyncProgress
@@ -26,16 +31,23 @@ class StatusContainerHost(
     syncSource: SyncStatusSource,
     permissionSource: PermissionStatusSource,
     private val requester: PermissionRequester,
+    configSource: ConfigSource,
+    private val store: ConfigStore,
     scope: CoroutineScope,
     private val clock: Clock = Clock.System,
-) : ContainerHost<UiState, Nothing> {
+) : ContainerHost<UiState, SetupEffect> {
 
-    override val container: Container<UiState, Nothing> =
+    override val container: Container<UiState, SetupEffect> =
         scope.container(
-            // Both seams hold their current truth synchronously, so the first state the
+            // All three seams hold their current truth synchronously, so the first state the
             // screen can ever render derives from real values — never a guess or a
             // loading placeholder.
-            reduceFrom(permissionSource.permission.value, syncSource.status.value, clock.now()),
+            reduceFrom(
+                configSource.config.value,
+                permissionSource.permission.value,
+                syncSource.status.value,
+                clock.now(),
+            ),
         ) {
             intent {
                 // The tick only re-renders the past (relative time). Estimates come from the
@@ -43,12 +55,13 @@ class StatusContainerHost(
                 // source's job via a new snapshot. Equal reductions are conflated by the
                 // container's StateFlow, so a tick re-emits only when visible text changed.
                 combine(
+                    configSource.config,
                     permissionSource.permission,
                     syncSource.status,
                     minuteTicker(),
-                ) { permission, snapshot, _ -> permission to snapshot }
-                    .collect { (permission, snapshot) ->
-                        reduce { reduceFrom(permission, snapshot, clock.now()) }
+                ) { config, permission, snapshot, _ -> Triple(config, permission, snapshot) }
+                    .collect { (config, permission, snapshot) ->
+                        reduce { reduceFrom(config, permission, snapshot, clock.now()) }
                     }
             }
         }
@@ -56,6 +69,18 @@ class StatusContainerHost(
     fun onRequestPermission() = intent { requester.request() }
 
     fun onOpenSettings() = intent { requester.openSettings() }
+
+    /**
+     * A deeplink arrived (forwarded raw from the platform). Decode it with the shared codec; a
+     * valid config is persisted via the store (its change arrives back through ConfigSource), an
+     * invalid one flashes the transient error without touching persisted state.
+     */
+    fun onOpenUrl(raw: String) = intent {
+        when (val result = decodeConfigUrl(raw)) {
+            is ConfigDecodeResult.Success -> store.save(result.config)
+            is ConfigDecodeResult.Failure -> postSideEffect(SetupEffect.InvalidConfigLink)
+        }
+    }
 }
 
 private fun minuteTicker(): Flow<Unit> = flow {
@@ -65,19 +90,26 @@ private fun minuteTicker(): Flow<Unit> = flow {
     }
 }
 
-// Permission-first precedence: without a full grant there is no meaningful sync state to
-// show — the gate replaces the hero regardless of the snapshot.
-private fun reduceFrom(permission: PermissionStatus, snapshot: SyncStatus, now: Instant): UiState =
-    when (permission) {
-        PermissionStatus.NOT_DETERMINED -> UiState.PermissionAsk
-        PermissionStatus.DENIED -> UiState.PermissionDenied
-        // Loading is reachable only here: a non-GRANTED permission short-circuits to the gate
-        // regardless of the snapshot, so "reading the ledger" is shown only once access is granted.
-        PermissionStatus.GRANTED -> when (snapshot) {
-            SyncStatus.Loading -> UiState.Loading
-            is SyncStatus.Ready -> snapshot.progress.toUiState(now)
-        }
+// Two-input setup precedence (setup-gate): without both a connected storage and a full permission
+// grant there is no meaningful sync state to show — the setup gate replaces the hero regardless of
+// the snapshot.
+private fun reduceFrom(
+    config: S3Config?,
+    permission: PermissionStatus,
+    snapshot: SyncStatus,
+    now: Instant,
+): UiState {
+    val storageConnected = config != null
+    if (!storageConnected || permission != PermissionStatus.GRANTED) {
+        return UiState.Setup(storageConnected, permission)
     }
+    // Loading is reachable only here: an absent config or non-GRANTED permission short-circuits to
+    // the gate regardless of the snapshot, so "reading the ledger" is shown only once both pass.
+    return when (snapshot) {
+        SyncStatus.Loading -> UiState.Loading
+        is SyncStatus.Ready -> snapshot.progress.toUiState(now)
+    }
+}
 
 private fun SyncProgress.toUiState(now: Instant): UiState = when (state) {
     SyncState.NEVER_SYNCED -> UiState.NeverSynced

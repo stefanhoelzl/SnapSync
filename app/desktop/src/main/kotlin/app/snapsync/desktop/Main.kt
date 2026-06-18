@@ -30,6 +30,8 @@ fun main() = application {
                 controller.syncSource,
                 controller.permissionSource,
                 controller.requester,
+                controller.configSource,
+                controller.configStore,
                 scope,
             )
         }
