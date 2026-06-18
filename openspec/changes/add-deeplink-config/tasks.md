@@ -73,5 +73,8 @@
   macOS build of `KeychainConfigStore`.
 - Keychain sharing is achieved by the entitlement's shared `keychain-access-groups` (the default
   group), so `KeychainConfigStore` sets no `kSecAttrAccessGroup` and no team-id prefix is hardcoded.
-- `3.2` also requires enabling Keychain Sharing + App Groups (`group.app.snapsync`) capabilities on
-  the App ID so cloud-managed signing can provision them.
+- App Group trimmed from entitlements for now (registered with the extension slice that needs it).
+  Keychain groups need no portal registration, so `3.2` has **no manual App Store / Developer-portal
+  step** — cloud-managed signing carries the keychain-only entitlement as-is.
+- iosMain compiles verified on Linux via `compileIosMainKotlinMetadata` (the same task the Linux
+  `build` job runs): `:capability:config` and `:app:ios` both green.
