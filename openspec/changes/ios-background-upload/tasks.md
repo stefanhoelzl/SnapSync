@@ -8,8 +8,8 @@
 
 ## 2. Manual setup checklist (Apple Developer portal / ASC / signing — must precede first signed build)
 
-- [ ] 2.1 Register App Group `group.app.snapsync` in the Developer portal (Identifiers → App Groups).
-- [ ] 2.2 Enable the **App Groups** capability on the existing `app.snapsync` App ID and assign `group.app.snapsync`.
+- [x] 2.1 Register App Group `group.app.snapsync` in the Developer portal (Identifiers → App Groups). *(done)*
+- [x] 2.2 Enable the **App Groups** capability on the `app.snapsync` App ID and assign `group.app.snapsync`. *(done — verified: the signed `ios-build` archive provisioned the group and uploaded to TestFlight, run 27780918346)*
 - [ ] 2.3 Create the extension App ID (e.g. `app.snapsync.BackgroundUpload`) with the **App Groups** capability, assign the same group.
 - [ ] 2.4 Confirm cloud-managed signing (ASC Admin API key, Team `E9Z8BADH58`) provisions **both** bundle ids with App Groups; regenerate/refresh profiles if needed.
 - [ ] 2.5 Confirm **no new App Store Connect app record** is needed (the extension ships inside the `app.snapsync` archive) and no new privacy/review questionnaire is triggered.
@@ -18,9 +18,9 @@
 ## 3. Xcode target + module scaffolding
 
 - [x] 3.1 Add the `:app:ios:photokit-extension` KMP module (iosArm64 + iosSimulatorArm64) depending only on `:domain:engine`, producing its own static framework; wire it into `settings.gradle.kts`. *(compile-verified on Linux: configures + `SnapSyncUploadKit` framework tasks generated)*
-- [ ] 3.2 **[Xcode/macOS]** Add the ExtensionKit "Generic Extension" Xcode target (`app.snapsync.BackgroundUpload`), deployment target **26.1**. The **app** target stays at **iOS 18** (done in pbxproj); the app-side `setUploadJobExtensionEnabled` call is runtime-guarded (`SnapSyncRoot.backgroundUploadSupported()`), so background upload is simply inactive on iOS 18–25.
-- [ ] 3.3 **[Xcode/macOS]** Extension Info.plist: `NSExtensionPointIdentifier = com.apple.photos.background-upload`, principal class, `BackgroundUploadURLBase`.
-- [~] 3.4 Add `com.apple.security.application-groups → [group.app.snapsync]` entitlements. **App target: done** (`iosApp/iosApp/iosApp.entitlements` + `CODE_SIGN_ENTITLEMENTS` in both build configs) — this is the fix for the launch crash where `iosLedgerBackend()` aborted on a nil App-Group container (TestFlight build 38, iOS 18.7.9): the container is now provisioned. **[Xcode/macOS] still pending:** the same entitlement on the extension target, embedding the extension, and linking `SnapSyncUploadKit` (with 3.2). `iosLedgerBackend()` keeps failing fast (no sandbox fallback) — a missing App Group means no shared ledger, so the feature is broken and a loud crash is correct.
+- [ ] 3.2 **[Xcode/macOS]** Add the extension Xcode target — must be done in Xcode (hand-editing `project.pbxproj` is unverifiable here and risks the green build). The source/plist/entitlements are **drafted** (see below); in Xcode: (a) add a new target via the PhotoKit background-upload / Generic Extension template, bundle id `app.snapsync.BackgroundUpload`, deployment target **26.1**; (b) set its principal source to `iosApp/BackgroundUploadExtension/BackgroundUploadExtension.swift`, Info.plist to the drafted one, `CODE_SIGN_ENTITLEMENTS` to the drafted `.entitlements`; (c) add a "Compile Kotlin Framework" run-script phase that runs `./gradlew :app:ios:photokit-extension:embedAndSignAppleFrameworkForXcode` and link the resulting **`SnapSyncUploadKit`** framework; (d) embed the extension in the app target (Copy into PlugIns/Extensions). The **app** target stays at **iOS 18** (the app-side `setUploadJobExtensionEnabled` is runtime-guarded by `SnapSyncRoot.backgroundUploadSupported()` to 26.1+).
+- [~] 3.3 Extension Info.plist — **drafted** at `iosApp/BackgroundUploadExtension/Info.plist` (`NSExtensionPointIdentifier = com.apple.photos.background-upload`, principal class, `BackgroundUploadURLBase = https://dummy.invalid`). **[Xcode/macOS]** verify against the 26.1 SDK (classic `NSExtension` dict vs ExtensionKit `EXAppExtensionAttributes`) and wire into the target.
+- [~] 3.4 App Group entitlements. **App target: done** — `iosApp/iosApp/iosApp.entitlements` carries `application-groups` (+ main's `keychain-access-groups`), wired via `Config.xcconfig`'s `CODE_SIGN_ENTITLEMENTS`; **verified** by the green signed `ios-build` (provisioned `group.app.snapsync`, fixing the launch crash). **Extension entitlements drafted** at `iosApp/BackgroundUploadExtension/BackgroundUploadExtension.entitlements` (App Group + keychain). **[Xcode/macOS]** wire onto the extension target (3.2). `iosLedgerBackend()` keeps failing fast on a nil container (no fallback) — a missing App Group means no shared ledger.
 
 ## 4. App-Group ledger backend (`:domain:engine` iosMain)
 
@@ -40,7 +40,7 @@
 
 ## 6. Swift shell + app-side enablement
 
-- [ ] 6.1 **[Xcode/macOS]** Implement the thin `@main` Swift principal class conforming to `PHBackgroundResourceUploadExtension`; forward `process()`/`notifyTermination()` into `UploadExtensionRoot.process()`. *(Kotlin side returns a plain `Boolean` — no Flow/suspend bridge, so no SKIE needed; resolves spike 1.5)*
+- [~] 6.1 Thin `@main` Swift principal class — **drafted** at `iosApp/BackgroundUploadExtension/BackgroundUploadExtension.swift`: conforms to `PHBackgroundResourceUploadExtension`, forwards `process()` → `UploadExtensionRoot.shared.process()` (plain `Bool` → `.completed`/`.failure`), no-op `notifyTermination()`. *(Kotlin side returns a `Boolean` — no Flow/suspend bridge, no SKIE.)* **[Xcode/macOS] pending:** never compiled here (no Swift toolchain); verify the exact 26.1 protocol shape (`process()` sync vs async, `@main`/`AppExtension` vs `NSExtensionPrincipalClass`, result-case names) against the SDK when wiring the target (3.2).
 - [x] 6.2 In `:app:ios`, call `setUploadJobExtensionEnabled(true)` when photo access becomes `GRANTED` (idempotent-safe), in `SnapSyncRoot`; the app still holds only `LedgerReader`/`LedgerWatcher`. *(compile-verified)*
 - [ ] ~~6.3 app-side ignition seed~~ — **dropped**: chose Model B (no ignition; trust the system to call `process()` after enable). Revisit only if an on-device test shows `process()` never fires.
 
