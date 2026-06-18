@@ -8,7 +8,7 @@ import kotlin.time.Instant
  * The five-row classification decision table (sync-status spec) — each row plus the precedence
  * facts the order encodes.
  */
-class SyncStatusTest {
+class SyncProgressTest {
 
     private val finishedAt = Instant.fromEpochMilliseconds(1_000_000)
 
@@ -18,7 +18,7 @@ class SyncStatusTest {
         failed: Int = 0,
         active: Boolean = true,
         lastFinishedAt: Instant? = null,
-    ) = SyncStatus(pending, completed, failed, active, estimatedRemaining = null, lastFinishedAt)
+    ) = SyncProgress(pending, completed, failed, active, estimatedRemaining = null, lastFinishedAt)
 
     @Test
     fun `machinery off outranks everything`() {

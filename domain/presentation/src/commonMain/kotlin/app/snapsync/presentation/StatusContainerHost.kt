@@ -3,8 +3,9 @@ package app.snapsync.presentation
 import app.snapsync.permission.PermissionRequester
 import app.snapsync.permission.PermissionStatus
 import app.snapsync.permission.PermissionStatusSource
-import app.snapsync.status.SyncState
 import app.snapsync.status.SyncStatus
+import app.snapsync.status.SyncState
+import app.snapsync.status.SyncProgress
 import app.snapsync.status.SyncStatusSource
 import kotlin.time.Clock
 import kotlin.time.Duration
@@ -70,10 +71,15 @@ private fun reduceFrom(permission: PermissionStatus, snapshot: SyncStatus, now: 
     when (permission) {
         PermissionStatus.NOT_DETERMINED -> UiState.PermissionAsk
         PermissionStatus.DENIED -> UiState.PermissionDenied
-        PermissionStatus.GRANTED -> snapshot.toUiState(now)
+        // Loading is reachable only here: a non-GRANTED permission short-circuits to the gate
+        // regardless of the snapshot, so "reading the ledger" is shown only once access is granted.
+        PermissionStatus.GRANTED -> when (snapshot) {
+            SyncStatus.Loading -> UiState.Loading
+            is SyncStatus.Ready -> snapshot.progress.toUiState(now)
+        }
     }
 
-private fun SyncStatus.toUiState(now: Instant): UiState = when (state) {
+private fun SyncProgress.toUiState(now: Instant): UiState = when (state) {
     SyncState.NEVER_SYNCED -> UiState.NeverSynced
     SyncState.IN_PROGRESS -> UiState.InProgress(
         // Processed-of-total: the indicator always reaches the end of a pass; the outcome
@@ -87,7 +93,7 @@ private fun SyncStatus.toUiState(now: Instant): UiState = when (state) {
 }
 
 // Finished outcomes guarantee lastFinishedAt != null (classification branch order).
-private fun SyncStatus.finishedAgo(now: Instant): String = relativeTime(now - lastFinishedAt!!)
+private fun SyncProgress.finishedAgo(now: Instant): String = relativeTime(now - lastFinishedAt!!)
 
 private fun relativeTime(elapsed: Duration): String = when {
     elapsed < 1.minutes -> "just now"

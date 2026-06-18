@@ -10,6 +10,7 @@ import app.snapsync.permission.PermissionStatus
 import app.snapsync.permission.PermissionStatusSource
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertIs
 import kotlin.time.Clock
 import kotlin.time.Instant
 import kotlinx.coroutines.channels.BufferOverflow
@@ -17,6 +18,7 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 
@@ -35,53 +37,70 @@ class LedgerSyncStatusSourceTest {
         completed: Int = 0,
         active: Boolean = true,
         lastFinishedAt: Instant? = null,
-    ) = SyncStatus(pending, completed, failed = 0, active, estimatedRemaining = null, lastFinishedAt)
+    ) = SyncProgress(pending, completed, failed = 0, active, estimatedRemaining = null, lastFinishedAt)
+
+    private fun ready(
+        pending: Int = 0,
+        completed: Int = 0,
+        active: Boolean = true,
+        lastFinishedAt: Instant? = null,
+    ) = SyncStatus.Ready(snapshot(pending, completed, active, lastFinishedAt))
 
     @Test
-    fun `initial snapshot reflects the ledger at construction`() = runTest {
+    fun `initial value is Loading before the first read`() = runTest {
+        writer.recordCompleted("a", attempt = 0, version = "v1")
+
+        val source = LedgerSyncStatusSource(watcher, permission, backgroundScope, StandardTestDispatcher(testScheduler))
+
+        assertEquals(SyncStatus.Loading, source.status.value)
+    }
+
+    @Test
+    fun `first Ready reflects the ledger`() = runTest {
         writer.recordCompleted("a", attempt = 0, version = "v1")
         writer.recordCompleted("b", attempt = 0, version = "v1")
         writer.recordRequested("c", attempt = 0, version = "v1")
 
-        val source = LedgerSyncStatusSource(watcher, permission, backgroundScope)
+        val source = LedgerSyncStatusSource(watcher, permission, backgroundScope, StandardTestDispatcher(testScheduler))
+        runCurrent()
 
-        assertEquals(snapshot(pending = 1, completed = 2, lastFinishedAt = t0), source.status.value)
+        assertEquals(ready(pending = 1, completed = 2, lastFinishedAt = t0), source.status.value)
     }
 
     @Test
-    fun `a ledger change re-mints the snapshot`() = runTest {
-        val source = LedgerSyncStatusSource(watcher, permission, backgroundScope)
+    fun `a ledger change re-mints a Ready snapshot`() = runTest {
+        val source = LedgerSyncStatusSource(watcher, permission, backgroundScope, StandardTestDispatcher(testScheduler))
         runCurrent()
-        assertEquals(snapshot(), source.status.value)
+        assertEquals(ready(), source.status.value)
 
         writer.recordCompleted("a", attempt = 0, version = "v1")
         runCurrent()
 
-        assertEquals(snapshot(completed = 1, lastFinishedAt = t0), source.status.value)
+        assertEquals(ready(completed = 1, lastFinishedAt = t0), source.status.value)
     }
 
     @Test
-    fun `a permission flip re-mints the snapshot with unchanged counts`() = runTest {
+    fun `a permission flip re-mints a Ready snapshot with unchanged counts`() = runTest {
         writer.recordCompleted("a", attempt = 0, version = "v1")
-        val source = LedgerSyncStatusSource(watcher, permission, backgroundScope)
+        val source = LedgerSyncStatusSource(watcher, permission, backgroundScope, StandardTestDispatcher(testScheduler))
         runCurrent()
 
         permission.state.value = PermissionStatus.DENIED
         runCurrent()
 
-        assertEquals(snapshot(completed = 1, active = false, lastFinishedAt = t0), source.status.value)
+        assertEquals(ready(completed = 1, active = false, lastFinishedAt = t0), source.status.value)
     }
 
     @Test
     fun `the v1 source never estimates and never gives up`() = runTest {
         writer.recordFailed("a", attempt = 3, version = "v1")
-        val source = LedgerSyncStatusSource(watcher, permission, backgroundScope)
+        val source = LedgerSyncStatusSource(watcher, permission, backgroundScope, StandardTestDispatcher(testScheduler))
         runCurrent()
 
-        val status = source.status.value
-        assertEquals(0, status.failed)
-        assertEquals(null, status.estimatedRemaining)
-        assertEquals(1, status.pending)
+        val progress = assertIs<SyncStatus.Ready>(source.status.value).progress
+        assertEquals(0, progress.failed)
+        assertEquals(null, progress.estimatedRemaining)
+        assertEquals(1, progress.pending)
     }
 }
 

@@ -4,6 +4,7 @@ import app.snapsync.permission.PermissionRequester
 import app.snapsync.permission.PermissionStatus
 import app.snapsync.permission.PermissionStatusSource
 import app.snapsync.status.SyncStatus
+import app.snapsync.status.SyncProgress
 import app.snapsync.status.SyncStatusSource
 import kotlin.time.Clock
 import kotlin.time.Duration.Companion.minutes
@@ -17,7 +18,8 @@ import kotlinx.coroutines.flow.asStateFlow
  * the stand-in sources and the fake [PermissionRequester].
  */
 class PanelController(private val clock: Clock = Clock.System) {
-    private val syncState = MutableStateFlow(NEVER_SYNCED)
+    // The harness knows its truth synchronously, so it seeds Ready and never shows Loading.
+    private val syncState = MutableStateFlow<SyncStatus>(SyncStatus.Ready(NEVER_SYNCED))
     private val permissionState = MutableStateFlow(PermissionStatus.NOT_DETERMINED)
     private val armedGrants = MutableStateFlow(true)
 
@@ -65,13 +67,20 @@ class PanelController(private val clock: Clock = Clock.System) {
         permissionState.value = PermissionStatus.GRANTED
     }
 
+    // Loading has no SyncProgress payload, so it bypasses forgeSync; like the others it forces
+    // Granted, since the reducer only surfaces Loading once permission is granted.
+    fun showLoading() {
+        permissionState.value = PermissionStatus.GRANTED
+        syncState.value = SyncStatus.Loading
+    }
+
     fun showNeverSynced() {
         forgeSync(NEVER_SYNCED)
     }
 
     fun showInProgress() {
         forgeSync(
-            SyncStatus(
+            SyncProgress(
                 pending = 22, completed = 12, failed = 0,
                 active = true, estimatedRemaining = 2.minutes, lastFinishedAt = null,
             ),
@@ -80,7 +89,7 @@ class PanelController(private val clock: Clock = Clock.System) {
 
     fun showInProgressEstimating() {
         forgeSync(
-            SyncStatus(
+            SyncProgress(
                 pending = 22, completed = 12, failed = 0,
                 active = true, estimatedRemaining = null, lastFinishedAt = null,
             ),
@@ -89,7 +98,7 @@ class PanelController(private val clock: Clock = Clock.System) {
 
     fun showSuspended() {
         forgeSync(
-            SyncStatus(
+            SyncProgress(
                 pending = 22, completed = 12, failed = 0,
                 active = false, estimatedRemaining = null, lastFinishedAt = null,
             ),
@@ -106,20 +115,20 @@ class PanelController(private val clock: Clock = Clock.System) {
 
     // A sync preset's intent is "show me this screen" — impossible while gated, so it
     // forces its precondition.
-    private fun forgeSync(status: SyncStatus) {
+    private fun forgeSync(status: SyncProgress) {
         permissionState.value = PermissionStatus.GRANTED
-        syncState.value = status
+        syncState.value = SyncStatus.Ready(status)
     }
 
     // Finished presets forge active = true: under suspended-first classification an inactive
     // snapshot is Suspended regardless of history.
-    private fun finishedPass(completed: Int, failed: Int) = SyncStatus(
+    private fun finishedPass(completed: Int, failed: Int) = SyncProgress(
         pending = 0, completed = completed, failed = failed,
         active = true, estimatedRemaining = null, lastFinishedAt = clock.now() - 5.minutes,
     )
 
     private companion object {
-        val NEVER_SYNCED = SyncStatus(
+        val NEVER_SYNCED = SyncProgress(
             pending = 0, completed = 0, failed = 0,
             active = true, estimatedRemaining = null, lastFinishedAt = null,
         )

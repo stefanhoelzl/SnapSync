@@ -17,6 +17,14 @@ class StatusScreenTest {
     val rule = createComposeRule()
 
     @Test
+    fun `loading shows loading copy and an indeterminate indicator`() {
+        rule.setContent { StatusScreen(UiState.Loading) }
+
+        rule.onNodeWithText("Loading …").assertExists()
+        rule.onNode(hasAnyProgressIndication()).assertExists()
+    }
+
+    @Test
     fun `permission ask shows invitation copy and the allow action`() {
         var requests = 0
         rule.setContent {

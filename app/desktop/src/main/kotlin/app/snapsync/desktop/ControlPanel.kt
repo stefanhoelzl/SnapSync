@@ -44,6 +44,7 @@ fun ControlPanel(controller: PanelController) {
         }
 
         Text("Sync")
+        Button(onClick = { controller.showLoading() }) { Text("Loading") }
         Button(onClick = { controller.showNeverSynced() }) { Text("Never synced") }
         Button(onClick = { controller.showInProgress() }) { Text("In progress (~2 min left)") }
         Button(onClick = { controller.showInProgressEstimating() }) { Text("In progress (estimating…)") }
