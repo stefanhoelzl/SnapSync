@@ -574,7 +574,24 @@ permanent sections** (decided 2026-06-09):
 
 ## 6. Testing strategy
 
-- **Unit (JVM)** — `SyncEngine` decision tests with a fake `UploadRequestProvider` and an
+**Coverage principles (2026-06-18).** Three standing rules:
+1. **Every unit test runs on the iOS simulator too.** Logic tests live in `commonTest` so they
+   execute on **both** JVM and `iosSimulatorArm64` — the JVM run is just the fast inner loop, not
+   the only coverage. Per-platform test source sets (`jvmTest`/`iosTest`) hold **only** driver/
+   cinterop wiring, exercised through a shared contract (e.g. the SQLDelight JVM-sqlite vs native
+   driver behind `LedgerBackendContract`).
+2. **`:app:ios` and the `iosApp/` Swift host are a thin, untestable wiring layer.** All logic —
+   shared *or* iOS-specific — lives in `domain`/`capability` modules under test; nothing testable
+   is parked in `:app:ios`. iOS-specific code that carries behavior belongs in a domain/capability
+   module with an `iosTest` (or `commonTest`) suite, not in the app shell.
+3. **Platform-seam ↔ UI-state integration tests** assemble the real `engine → status →
+   presentation` stack and assert `UiState` from injected `SyncEvent`s, faking only the execution
+   edge (in-memory `LedgerBackend`, fake `UploadRequestProvider`). They live in a dedicated
+   **test-only `:test:integration`** module (`commonTest`, so the suite also runs on the
+   simulator). The module exists precisely so the test may cross the `engine → presentation`
+   boundary that production deliberately forbids (presentation has no engine dep, §2.1).
+
+- **Unit (JVM + simulator)** — `SyncEngine` decision tests with a fake `UploadRequestProvider` and an
   in-memory `LedgerBackend` (the decision table: skip on proof, hope-never-skips, re-upload on
   version change; retry re-mint chains with `attempt` counting; provider-failure rethrow leaving
   the ledger untouched; suffix-replay convergence — duplicate reports converge instead of
@@ -583,8 +600,8 @@ permanent sections** (decided 2026-06-09):
   writer stamping under a fixed clock); `LedgerWatcher` stream tests; the five-row
   classification decision table and `LedgerSyncStatusSource` tests (real watcher + in-memory
   backend + fake permission source); provider-impl tests own the encoding/placement
-  contract (slice ③ onward); SigV4 presign; Orbit reducers. The bulk of the logic is here,
-  off-device.
+  contract (slice ③ onward); SigV4 presign; Orbit reducers. The bulk of the logic is here —
+  written in `commonTest`, it runs on both JVM (fast loop) and the iOS simulator (rule 1).
 - **SigV4 signature guard (v1) = golden/known-answer tests** — the `:capability:s3` presigner is
   pinned in commonTest to the output of an **independent, from-spec SigV4 reference that is itself
   verified against AWS's published known-answer vector** (so matching it means matching AWS, not just
