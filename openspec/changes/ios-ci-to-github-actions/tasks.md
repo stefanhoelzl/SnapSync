@@ -13,6 +13,7 @@
 
 ## 3. Verify on the PR before requiring the check (R1 + R2)
 
+- [x] 3.0 CI-fix (1st macos-26 run, exit 65): `:app:ios:linkDebugFrameworkIosSimulatorArm64` failed with `java.lang.OutOfMemoryError: Java heap space` in the Kotlin/Native IR compiler. Cause: `gradle.properties` set no `org.gradle.jvmargs`, so the Gradle daemon used its ~512m default; GitHub's ~7 GB macos-26 runner lacks the implicit heap Codemagic's machines provided. Fix: pin `org.gradle.jvmargs=-Xmx4g -XX:MaxMetaspaceSize=1g -Dfile.encoding=UTF-8` in `gradle.properties` (CMP-template default). R4 amended: cold-build risk includes heap, not just Konan download.
 - [ ] 3.1 Push the change's PR; confirm `ios.yml` auto-runs on `macos-26` and the iOS build concludes **green**
 - [ ] 3.2 Confirm the Linux `build` check stays **green** on the same PR (iOS workflow is independent — D2)
 - [ ] 3.3 Capture the EXACT posted status-check context string and the GitHub Actions `integration_id` (expected `ios-build` / `15368`); reconcile with task 4.1 before the ruleset requires it (R1)
