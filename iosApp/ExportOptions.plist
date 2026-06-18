@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<!-- TestFlight / App Store distribution export. -->
+	<key>method</key>
+	<string>app-store-connect</string>
+	<!-- Apple Team ID (same value as TEAM_ID in Config.xcconfig). -->
+	<key>teamID</key>
+	<string>E9Z8BADH58</string>
+	<!-- Auto-managed signing (xcodebuild -allowProvisioningUpdates picks the imported Distribution cert). -->
+	<key>signingStyle</key>
+	<string>automatic</string>
+	<key>destination</key>
+	<string>export</string>
+	<!-- We own the build number (github.run_number); do not let Xcode rewrite it. -->
+	<key>manageAppVersionAndBuildNumber</key>
+	<false/>
+	<key>uploadSymbols</key>
+	<true/>
+</dict>
+</plist>

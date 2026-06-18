@@ -1,5 +1,6 @@
 // Shared build configuration consumed by iosApp.xcodeproj.
 APP_NAME = SnapSync
 BUNDLE_ID = app.snapsync
-// Empty on purpose: simulator builds need no signing. Set a Team for device/TestFlight later.
-TEAM_ID =
+// Apple Team ID — drives DEVELOPMENT_TEAM for signed device/TestFlight builds.
+// Not a secret (visible in any shipped IPA); the simulator gate ignores it (CODE_SIGNING_ALLOWED=NO).
+TEAM_ID = E9Z8BADH58

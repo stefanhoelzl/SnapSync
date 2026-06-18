@@ -1,0 +1,101 @@
+# iOS release (capability: ios-testflight-delivery). On every push to main, builds the SIGNED iOS
+# device app on macos-26, archives + exports a signed IPA, and uploads it to TestFlight via the
+# App Store Connect API. This is separate from ios.yml (the unsigned simulator merge gate, which
+# stays untouched). Credentials come exclusively from encrypted GitHub Secrets — the distribution
+# certificate is NEVER cached. The provisioning profile is auto-managed by xcodebuild
+# (-allowProvisioningUpdates) against the imported cert; no fastlane, no match, no stored profile.
+name: ios-release
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+# Separate from the ios.yml / build.yml groups so it doesn't cancel the gate. A newer push to main
+# cancels its own in-progress release build.
+concurrency:
+  group: ios-release-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  ios-release:
+    name: ios-release
+    runs-on: macos-26
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: 25
+      - uses: gradle/actions/setup-gradle@v5
+      # Cache only the toolchain — NOT signing assets. Keyed on libs.versions.toml, matching ios.yml.
+      - name: Cache Kotlin/Native (~/.konan)
+        uses: actions/cache@v4
+        with:
+          path: ~/.konan
+          key: konan-${{ runner.os }}-${{ hashFiles('gradle/libs.versions.toml') }}
+          restore-keys: |
+            konan-${{ runner.os }}-
+
+      # Import the Apple Distribution certificate from a base64 .p12 secret into a temp keychain.
+      - name: Import signing certificate
+        uses: apple-actions/import-codesign-certs@v3
+        with:
+          p12-file-base64: ${{ secrets.DIST_CERT_P12_BASE64 }}
+          p12-password: ${{ secrets.DIST_CERT_PASSWORD }}
+
+      # Write the App Store Connect API key (.p8) to disk for xcodebuild's auth flags.
+      - name: Prepare App Store Connect API key
+        env:
+          ASC_API_PRIVATE_KEY: ${{ secrets.ASC_API_PRIVATE_KEY }}
+        run: |
+          mkdir -p "$RUNNER_TEMP/asc"
+          printf '%s' "$ASC_API_PRIVATE_KEY" > "$RUNNER_TEMP/asc/AuthKey.p8"
+          echo "ASC_KEY_PATH=$RUNNER_TEMP/asc/AuthKey.p8" >> "$GITHUB_ENV"
+
+      # Archive the signed device app. The xcodebuild invocation triggers the project's
+      # "Compile Kotlin Framework" Run Script phase (./gradlew :app:ios:embedAndSign...) for iosArm64.
+      # Build number = the monotonic run number; -allowProvisioningUpdates auto-manages the profile.
+      - name: Archive signed device app
+        env:
+          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+        run: |
+          xcodebuild \
+            -project iosApp/iosApp.xcodeproj \
+            -scheme iosApp \
+            -configuration Release \
+            -sdk iphoneos \
+            -destination 'generic/platform=iOS' \
+            -archivePath "$RUNNER_TEMP/SnapSync.xcarchive" \
+            -derivedDataPath build/ios \
+            -allowProvisioningUpdates \
+            -authenticationKeyPath "$ASC_KEY_PATH" \
+            -authenticationKeyID "$ASC_KEY_ID" \
+            -authenticationKeyIssuerID "$ASC_ISSUER_ID" \
+            CURRENT_PROJECT_VERSION=${{ github.run_number }} \
+            archive
+
+      - name: Export signed IPA
+        env:
+          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+        run: |
+          xcodebuild -exportArchive \
+            -archivePath "$RUNNER_TEMP/SnapSync.xcarchive" \
+            -exportPath "$RUNNER_TEMP/export" \
+            -exportOptionsPlist iosApp/ExportOptions.plist \
+            -allowProvisioningUpdates \
+            -authenticationKeyPath "$ASC_KEY_PATH" \
+            -authenticationKeyID "$ASC_KEY_ID" \
+            -authenticationKeyIssuerID "$ASC_ISSUER_ID"
+
+      - name: Upload to TestFlight
+        uses: apple-actions/upload-testflight-build@v3
+        with:
+          app-path: ${{ runner.temp }}/export/SnapSync.ipa
+          issuer-id: ${{ secrets.ASC_ISSUER_ID }}
+          api-key-id: ${{ secrets.ASC_KEY_ID }}
+          api-private-key: ${{ secrets.ASC_API_PRIVATE_KEY }}
