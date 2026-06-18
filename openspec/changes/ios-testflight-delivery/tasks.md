@@ -44,7 +44,7 @@
 - [x] 7.1 Switch to **full cloud signing**: regenerate the App Store Connect API key with the **Admin** role (App Manager can't cloud-sign at export — "Cloud signing permission error"); update the 3 ASC secrets
 - [x] 7.2 Drop `import-codesign-certs` + the `DIST_CERT_P12_BASE64`/`DIST_CERT_PASSWORD` secrets — cloud signing manages cert + profile; proven on a green pure-cloud-signing branch build
 - [x] 7.3 Delete the now-redundant hand-minted distribution cert, the old App Manager API key, the 2 `DIST_CERT_*` secrets, and local key material
-- [x] 7.4 Consolidate `ios-release` into `.github/workflows/ios.yml` as a `main`-gated job (`if: github.ref == 'refs/heads/main'`, `needs: [ios-build, ios-test]`); delete `ios-release.yml`
+- [x] 7.4 Fold delivery into the single `ios-build` job — unsigned device build on non-`main` (the gate), signed archive + export + TestFlight upload on `main` (steps gated `if: github.ref == 'refs/heads/main'`). One device compile per push; no separate `ios-release` job/workflow. Scope the `ios-ci` "build-only/no-signing" requirement to non-`main`.
 
 ## 6. Archive
 
