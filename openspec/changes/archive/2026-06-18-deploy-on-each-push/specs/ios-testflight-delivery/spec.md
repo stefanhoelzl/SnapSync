@@ -1,8 +1,5 @@
-# ios-testflight-delivery Specification
+## ADDED Requirements
 
-## Purpose
-Builds, signs, and uploads the iOS device app to **TestFlight** on every push (any ref), so any branch is installable on a physical iPhone via **internal testing** (no Beta App Review) before merge. Signing is fully **cloud-managed** (App Store Connect Admin API key — no stored certificate or profile, no fastlane/`match`); the signed archive doubles as the `ios-build` merge gate (capability `ios-ci`), while export and upload are **decoupled** (non-blocking, so delivery flakiness never blocks merges). Covers build numbering, export options, and the required signing credentials.
-## Requirements
 ### Requirement: Signed device build delivered to TestFlight on every push
 
 The system SHALL deliver a signed iOS build to **TestFlight** on every push, on **any** ref, as part of the `ios-build` job in `.github/workflows/ios.yml`. On every ref the job SHALL archive the iOS **device** app (`iosArm64`) with cloud-managed signing, export a signed IPA, and upload it to TestFlight via App Store Connect. There SHALL be **no path filter and no ref filter**, so every commit on any branch produces a TestFlight build installable via **internal testing** (no Beta App Review). The device app SHALL be compiled exactly **once** per push (the signed archive doubles as the `ios-build` merge gate — see capability `ios-ci`). The job SHALL run on a `macos-26` hosted runner with the runner's GM Xcode.
@@ -26,6 +23,8 @@ The export-IPA and upload-to-TestFlight steps SHALL NOT fail the `ios-build` sta
 #### Scenario: A compile failure still fails the gate
 - **WHEN** the signed archive fails to compile
 - **THEN** the `ios-build` status check concludes as failure (red)
+
+## MODIFIED Requirements
 
 ### Requirement: Cloud-managed code signing
 
@@ -55,22 +54,6 @@ The app's `CURRENT_PROJECT_VERSION` (CFBundleVersion) SHALL be injected at build
 - **WHEN** two commits are pushed in sequence (to the same or different branches)
 - **THEN** each produces a TestFlight build whose `CFBundleVersion` equals its `github.run_number`, and the second is strictly greater than the first
 
-### Requirement: The build is App-Store-Connect uploadable
-
-The app SHALL include a **1024×1024 opaque** (no alpha channel) app icon in its asset catalog, so the uploaded build is not rejected for a missing or invalid app icon.
-
-#### Scenario: Upload is not rejected for a missing icon
-- **WHEN** a build is uploaded to TestFlight
-- **THEN** App Store Connect accepts it without a missing-/invalid-app-icon rejection
-
-### Requirement: Export compliance is pre-declared
-
-The app `Info.plist` SHALL set `ITSAppUsesNonExemptEncryption` to `NO`, and the export SHALL use an `ExportOptions.plist` with `method` `app-store-connect`, so uploads do not block on a manual export-compliance prompt.
-
-#### Scenario: Upload does not block on export compliance
-- **WHEN** a build is uploaded to TestFlight
-- **THEN** it is not held for a manual export-compliance answer, because `ITSAppUsesNonExemptEncryption` is already declared `NO`
-
 ### Requirement: Signing and upload credentials are configured as secrets
 
 On every ref, the `ios-build` job SHALL source all Apple credentials from GitHub Secrets — the **Admin** App Store Connect API key (`ASC_KEY_ID`, `ASC_ISSUER_ID`, and `ASC_API_PRIVATE_KEY` holding the raw `.p8` PEM contents). The Apple **Team ID** SHALL be committed in `Config.xcconfig` (it is not a secret).
@@ -78,3 +61,11 @@ On every ref, the `ios-build` job SHALL source all Apple credentials from GitHub
 #### Scenario: Credentials come from secrets, Team ID from config
 - **WHEN** the `ios-build` job signs and uploads on any ref
 - **THEN** the App Store Connect API key is read from GitHub Secrets, and the Team ID is read from the committed `Config.xcconfig`
+
+## REMOVED Requirements
+
+### Requirement: Signed device build delivered to TestFlight on every push to main
+
+**Reason**: Delivery is no longer scoped to `main` — it now runs on every push to any ref (replaced by "Signed device build delivered to TestFlight on every push" and "Delivery is decoupled from the merge gate").
+
+**Migration**: Branch pushes that previously skipped delivery (built unsigned as the merge gate) now archive, sign, and upload like `main`; the separate unsigned non-`main` build step is removed.

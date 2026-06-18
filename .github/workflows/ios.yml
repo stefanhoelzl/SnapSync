@@ -1,19 +1,21 @@
 # iOS CI. Two parallel jobs on the macos-26 hosted runner (GM Xcode, no beta SDK), each reporting
 # a status check that gates merges (branch-protection):
-#   * ios-build — builds the iOS DEVICE (iphoneos, arm64) app, linking the iosArm64 framework (the
-#     shipping target). On every NON-main ref (branches / PRs) it builds UNSIGNED (cheap, no
-#     secrets) — that build IS the merge gate. On MAIN the same job instead produces a SIGNED
-#     archive (which still compiles iosArm64, so it remains the gate) and uploads it to TestFlight
-#     (capability: ios-testflight-delivery). One device compile per push, never two.
+#   * ios-build — on EVERY push (any ref) produces a SIGNED archive of the iOS DEVICE (iphoneos,
+#     arm64) app, linking the iosArm64 framework (the shipping target). The archive step compiles
+#     iosArm64, so it IS the merge gate. It then exports the IPA and uploads to TestFlight so every
+#     branch is installable on device before merge (internal testing, no Beta App Review). Builds
+#     are identified by build number = github.run_number; cross-reference it to the branch/commit
+#     via the Actions run. Export + upload are continue-on-error: a flaky ASC delivery leaves the
+#     gate green and merges unblocked (the failure is still visible in the run).
 #   * ios-test  — runs the shared commonTest compiled to Kotlin/Native on a booted simulator
 #     (./gradlew iosSimulatorArm64Test), validating the iosSimulatorArm64 target.
 # Together the two jobs exercise BOTH Kotlin/Native targets (device via build, simulator via
 # test). The Linux-buildable work (JVM/desktop + the JVM run of all unit tests) stays in build.yml;
 # this workflow does only the irreducible Apple delta.
 #
-# Signing (main only) is fully CLOUD-MANAGED: xcodebuild -allowProvisioningUpdates uses the App
-# Store Connect API key (Admin role) to manage the distribution certificate AND provisioning
-# profile in the cloud — no imported cert, no stored/cached signing assets, no fastlane, no match.
+# Signing is fully CLOUD-MANAGED: xcodebuild -allowProvisioningUpdates uses the App Store Connect
+# API key (Admin role) to manage the distribution certificate AND provisioning profile in the
+# cloud — no imported cert, no stored/cached signing assets, no fastlane, no match.
 name: ios
 
 on:
@@ -53,28 +55,9 @@ jobs:
           restore-keys: |
             konan-${{ runner.os }}-
 
-      # NON-main (branches / PRs): the merge gate. Builds for a generic iOS DEVICE destination, so
-      # xcodebuild's "Compile Kotlin Framework" Run Script phase links the iosArm64 framework (the
-      # target that ships) — UNSIGNED, no secrets. No tests, no simulator boot, no signing.
-      - name: Build iOS device app (unsigned gate)
-        if: github.ref != 'refs/heads/main'
-        run: |
-          xcodebuild \
-            -project iosApp/iosApp.xcodeproj \
-            -scheme iosApp \
-            -configuration Debug \
-            -sdk iphoneos \
-            -destination 'generic/platform=iOS' \
-            -derivedDataPath build/ios \
-            CODE_SIGNING_ALLOWED=NO \
-            CODE_SIGNING_REQUIRED=NO \
-            CODE_SIGN_IDENTITY="" \
-            build
-
-      # MAIN only: the signed archive both compiles iosArm64 (so it remains the build gate) AND is
-      # the delivery source. Write the App Store Connect API key (.p8) for xcodebuild's auth flags.
+      # The signed archive both compiles iosArm64 (so it IS the build gate) AND is the delivery
+      # source. Write the App Store Connect API key (.p8) for xcodebuild's auth flags.
       - name: Prepare App Store Connect API key
-        if: github.ref == 'refs/heads/main'
         env:
           ASC_API_PRIVATE_KEY: ${{ secrets.ASC_API_PRIVATE_KEY }}
         run: |
@@ -83,8 +66,8 @@ jobs:
           echo "ASC_KEY_PATH=$RUNNER_TEMP/asc/AuthKey.p8" >> "$GITHUB_ENV"
 
       # Build number = the monotonic run number; -allowProvisioningUpdates cloud-manages cert+profile.
-      - name: Archive signed device app (main)
-        if: github.ref == 'refs/heads/main'
+      # This is the required merge gate: it compiles the shipping iosArm64 framework.
+      - name: Archive signed device app
         env:
           ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
           ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
@@ -104,8 +87,10 @@ jobs:
             CURRENT_PROJECT_VERSION=${{ github.run_number }} \
             archive
 
-      - name: Export signed IPA (main)
-        if: github.ref == 'refs/heads/main'
+      # Export + upload are decoupled from the gate: continue-on-error keeps the job green (and the
+      # merge unblocked) if Apple's delivery flakes — the failure is still visible in the run.
+      - name: Export signed IPA
+        continue-on-error: true
         env:
           ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
           ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
@@ -119,8 +104,8 @@ jobs:
             -authenticationKeyID "$ASC_KEY_ID" \
             -authenticationKeyIssuerID "$ASC_ISSUER_ID"
 
-      - name: Upload to TestFlight (main)
-        if: github.ref == 'refs/heads/main'
+      - name: Upload to TestFlight
+        continue-on-error: true
         uses: apple-actions/upload-testflight-build@v5
         with:
           app-path: ${{ runner.temp }}/export/SnapSync.ipa
