@@ -4,7 +4,7 @@ The iOS app currently only builds as an **unsigned simulator app** in CI (`ios-c
 
 ## What Changes
 
-- Add a **signed iOS release pipeline** as a new `ios-release` **job in `.github/workflows/ios.yml`** that, on every green push to `main` (gated `if: github.ref == 'refs/heads/main'`, `needs: [ios-build, ios-test]`), builds the device app (`iosArm64`), code-signs it, archives it, and uploads it to **TestFlight internal testing**.
+- Add **signed TestFlight delivery** as the `main`-only portion of the existing `ios-build` job in `.github/workflows/ios.yml`: non-`main` refs build the device app unsigned (the merge gate); `main` instead archives-signs-and-uploads it to **TestFlight internal testing** — so `iosArm64` is compiled only once per push (no separate `ios-release` job, no double build).
 - Signing is **cloud-managed**: `xcodebuild -allowProvisioningUpdates` with an **Admin** App Store Connect API key manages the distribution certificate *and* provisioning profile in the cloud; `Apple-Actions/upload-testflight-build` uploads. All credentials are **encrypted GitHub Secrets** — no imported certificate, nothing in the Actions cache, no fastlane, no `match`.
 - Fill in `TEAM_ID` in `Config.xcconfig` (committed — a Team ID is not a secret) so device builds can sign.
 - Switch the app target from automatic to **CI-managed signing** for the device/release build, while the simulator gate (`ios-ci`) stays unsigned and untouched.
@@ -19,10 +19,11 @@ The iOS app currently only builds as an **unsigned simulator app** in CI (`ios-c
 
 ### Modified Capabilities
 - `ios-app-shell`: Its "No code signing required" requirement is scoped to the *simulator* build only; clarify that a **signed device archive** is now also produced (by the new capability) so the two framings do not contradict.
+- `ios-ci`: The `ios-build` job's "unsigned, build-only, no signing" behavior is scoped to **non-`main`** refs; on `main` the same job produces a signed archive and delivers it (the `ios-build` check still reflects whether the device app compiles).
 
 ## Impact
 
-- **New CI:** an `ios-release` job added to `.github/workflows/ios.yml` (alongside the `ios-build` and `ios-test` gates), gated to `main` and to those gates passing; it links the `iosArm64` framework and signs on its own runner.
+- **CI:** the existing `ios-build` job in `.github/workflows/ios.yml` gains `main`-only sign/archive/upload steps (no new job, no second device compile). `ios-test` is unchanged.
 - **Xcode project:** `iosApp/Configuration/Config.xcconfig` (TEAM_ID), `iosApp/iosApp.xcodeproj/project.pbxproj` (signing + version settings), `iosApp/iosApp/Info.plist` (export-compliance key), new `iosApp/ExportOptions.plist`.
 - **GitHub Secrets (3):** the **Admin** App Store Connect API key — `ASC_KEY_ID`, `ASC_ISSUER_ID`, `ASC_API_PRIVATE_KEY` (raw `.p8` PEM). (No certificate secrets: cloud signing manages the cert.)
 - **Manual Apple-account prerequisites** (outside the repo, one-time): mint a Distribution certificate (`openssl` CSR on Linux → Developer portal → `.p12`); create an App Store Connect API key (App Manager role); register the `app.snapsync` bundle id and create the app record; add the developer as an internal TestFlight tester.
