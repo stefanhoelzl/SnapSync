@@ -1,9 +1,8 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<!-- Draft Info.plist for the background-upload extension target. Adding the target through Xcode's
-     extension template generates the canonical version; this is a reference for the required keys.
-     VERIFY against the iOS 26.1 SDK: the NSExtensionPointIdentifier value, and whether the 26.1
-     extension uses this classic NSExtension dict (NSExtensionPrincipalClass) or an ExtensionKit
-     EXAppExtensionAttributes dict instead. -->
+<!-- Info.plist for the ExtensionKit background-upload extension. The extension point is declared via
+     EXAppExtensionAttributes (ExtensionKit, iOS 26 model); the principal type is the @main
+     BackgroundUploadExtension in code (no NSExtensionPrincipalClass). ⚠️ VERIFY the
+     EXExtensionPointIdentifier value against the iOS 26.1 SDK when the target first builds on CI. -->
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
@@ -29,12 +28,10 @@
 	     uploads to destinations under this host. Dummy host for this slice (nothing really uploads). -->
 	<key>BackgroundUploadURLBase</key>
 	<string>https://dummy.invalid</string>
-	<key>NSExtension</key>
+	<key>EXAppExtensionAttributes</key>
 	<dict>
-		<key>NSExtensionPointIdentifier</key>
+		<key>EXExtensionPointIdentifier</key>
 		<string>com.apple.photos.background-upload</string>
-		<key>NSExtensionPrincipalClass</key>
-		<string>$(PRODUCT_MODULE_NAME).BackgroundUploadExtension</string>
 	</dict>
 </dict>
 </plist>
