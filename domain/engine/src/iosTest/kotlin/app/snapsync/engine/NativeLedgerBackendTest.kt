@@ -12,11 +12,20 @@ import app.snapsync.engine.db.LedgerDatabase
 class NativeLedgerBackendTest : LedgerBackendContract() {
 
     override fun createBackend(): LedgerBackend {
+        // A UNIQUE name per backend. An in-memory NativeSqliteDriver keyed by a fixed name uses a
+        // shared-cache `:memory:` db, so every createBackend() would reuse one database and leak
+        // rows across tests (unlike JdbcSqliteDriver.IN_MEMORY, which is private per driver — why
+        // the JVM contract passed). The counter is process-global (companion) because kotlin.test
+        // builds a fresh test-class instance per @Test.
         val driver = NativeSqliteDriver(
             LedgerDatabase.Schema,
-            "test.db",
+            "test-${nextDb++}.db",
             onConfiguration = { it.copy(inMemory = true) },
         )
         return SqlDelightLedgerBackend(LedgerDatabase(driver))
+    }
+
+    private companion object {
+        var nextDb = 0
     }
 }
