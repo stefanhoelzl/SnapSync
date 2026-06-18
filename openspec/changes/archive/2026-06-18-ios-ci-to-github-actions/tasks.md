@@ -14,9 +14,9 @@
 ## 3. Verify on the PR before requiring the check (R1 + R2)
 
 - [x] 3.0 CI-fix (1st macos-26 run, exit 65): `:app:ios:linkDebugFrameworkIosSimulatorArm64` failed with `java.lang.OutOfMemoryError: Java heap space` in the Kotlin/Native IR compiler. Cause: `gradle.properties` set no `org.gradle.jvmargs`, so the Gradle daemon used its ~512m default; GitHub's ~7 GB macos-26 runner lacks the implicit heap Codemagic's machines provided. Fix: pin `org.gradle.jvmargs=-Xmx4g -XX:MaxMetaspaceSize=1g -Dfile.encoding=UTF-8` in `gradle.properties` (CMP-template default). R4 amended: cold-build risk includes heap, not just Konan download.
-- [ ] 3.1 Push the change's PR; confirm `ios.yml` auto-runs on `macos-26` and the iOS build concludes **green**
-- [ ] 3.2 Confirm the Linux `build` check stays **green** on the same PR (iOS workflow is independent — D2)
-- [ ] 3.3 Capture the EXACT posted status-check context string and the GitHub Actions `integration_id` (expected `ios-build` / `15368`); reconcile with task 4.1 before the ruleset requires it (R1)
+- [x] 3.1 Pushed to `ios-app`; `ios.yml` auto-ran on `macos-26` and the iOS build concluded **green** (commit `e03beb5`, after the 3.0 heap fix)
+- [x] 3.2 Confirmed the Linux `build` check stayed **green** on the same commit (iOS workflow is independent — D2)
+- [x] 3.3 Captured: posted context = `ios-build`, app = GitHub Actions, `integration_id` = `15368` — EXACTLY matches the ruleset entry from 4.1. R1 cleared.
 
 ## 4. Repoint the branch-protection required check
 
@@ -26,4 +26,4 @@
 
 ## 5. Spec sync
 
-- [ ] 5.1 Confirm the `ios-ci` and `branch-protection` spec deltas in this change match the shipped workflow + ruleset; archive on `/ship`
+- [x] 5.1 Synced the `ios-ci` and `branch-protection` deltas into `openspec/specs/` (incl. updating the `ios-ci` Purpose from TBD) and archived the change. Verified the deltas match the shipped `ios.yml` + `main.json`.
