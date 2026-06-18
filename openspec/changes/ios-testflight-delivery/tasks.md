@@ -15,6 +15,7 @@
 - [x] 2.4 Add `ITSAppUsesNonExemptEncryption` = `NO` to `iosApp/iosApp/Info.plist`
 - [x] 2.5 Add `iosApp/ExportOptions.plist` with `method` = `app-store-connect` and the Team ID reference
 - [x] 2.6 Provide a 1024×1024 **opaque** (no-alpha) app icon in `AppIcon.appiconset` so App Store Connect accepts the upload (the scaffolded icon set declared the slot but shipped no image)
+- [x] 2.7 Add `CADisableMinimumFrameDurationOnPhone` = `true` to `Info.plist` — Compose Multiplatform (≥1.7) hard-aborts at launch without it; surfaced on the first real on-device launch (the build/CI path never runs the app)
 
 ## 3. Release workflow (`.github/workflows/ios-release.yml`)
 
