@@ -9,12 +9,12 @@
 
 - [x] 2.1 Implement `KeychainConfigStore` (iosMain) implementing both `ConfigSource` and `ConfigStore`: serialize `S3Config` to one Keychain item under the shared keychain-access-group
 - [x] 2.2 Seed `config` StateFlow synchronously at construction (missing item → `null`); `save` writes then emits; identical-config save is a no-op, different config replaces silently
-- [ ] 2.3 Verify persistence across reconstruction (save → reconstruct → value present) in an iOS test or harness check
+- [x] 2.3 Verify persistence across reconstruction (save → reconstruct → value present) in an iOS test or harness check
 
 ## 3. iOS entitlements / signing
 
 - [x] 3.1 Add the App Group + shared keychain-access-group entitlement to the iOS app target
-- [ ] 3.2 Thread the entitlement through the cloud-managed signing pipeline (provisioning/ASC) so device builds still sign
+- [x] 3.2 Thread the entitlement through the cloud-managed signing pipeline (provisioning/ASC) so device builds still sign
 - [x] 3.3 Register the `snapsync` URL scheme in `Info.plist` (`CFBundleURLTypes`)
 
 ## 4. design-system — SetupCard
@@ -56,8 +56,8 @@
 
 ## 10. Verification
 
-- [ ] 10.1 Desktop harness: toggle config off/on and walk the gate → hero transitions
-- [ ] 10.2 iOS: generate a QR, scan with the stock Camera app, confirm cold-launch deeplink provisions config and the gate advances
+- [x] 10.1 Desktop harness: toggle config off/on and walk the gate → hero transitions
+- [x] 10.2 iOS: generate a QR, scan with the stock Camera app, confirm cold-launch deeplink provisions config and the gate advances
 - [x] 10.3 `openspec validate add-deeplink-config --strict` passes; full build + tests green
 
 ## Notes

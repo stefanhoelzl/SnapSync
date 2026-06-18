@@ -12,12 +12,13 @@ screen reduces and renders.
 The presentation layer SHALL reduce each observed `SyncStatus` to a display-ready `UiState`.
 `SyncProgress`, its `SyncStatusSource` seam, the `SyncStatus` vocabulary, and the five-state
 classification are owned by the `sync-status` capability — this screen consumes them. A `Ready`
-snapshot reduces to one of the five states mirroring `SyncState` (the permission gate's variants
-and their permission-first precedence are specified by the `permission-gate` capability), and a
-`Loading` snapshot reduces to `UiState.Loading` **only when permission is GRANTED** (any
-non-`GRANTED` permission short-circuits to the gate regardless of the snapshot). `UiState` carries
-only final display data (pre-formatted strings and, for InProgress, a progress fraction computed as
-processed-of-total: `(completed + failed) / (pending + completed + failed)`).
+snapshot reduces to one of the five states mirroring `SyncState` (the setup gate's `UiState.Setup`
+variant and its two-input precedence — config presence × permission status — are specified by the
+`setup-gate` capability), and a `Loading` snapshot reduces to `UiState.Loading` **only when config
+is present and permission is GRANTED** (an absent config or any non-`GRANTED` permission
+short-circuits to the setup gate regardless of the snapshot). `UiState` carries only final display
+data (pre-formatted strings and, for InProgress, a progress fraction computed as processed-of-total:
+`(completed + failed) / (pending + completed + failed)`).
 
 The reduction MUST depend only on the latest snapshot (no event history), so any missed
 intermediate snapshot cannot corrupt the displayed state. The container's initial UI state SHALL be
@@ -37,17 +38,18 @@ the prohibition is against guesses and placeholders that no source value produce
 
 #### Scenario: No cold-start guess
 - **WHEN** the container is constructed while the sync source already holds `Ready(Incomplete)`
-  (and permission is granted)
+  (and config is present and permission is granted)
 - **THEN** the first state the screen can ever render is Incomplete — never an intermediate
   NeverSynced, and never Loading (Loading appears only for a `SyncStatus.Loading` value)
 
-#### Scenario: Loading snapshot under granted permission reduces to Loading
-- **WHEN** the sync source holds `SyncStatus.Loading` and permission is GRANTED
+#### Scenario: Loading snapshot under satisfied gate reduces to Loading
+- **WHEN** the sync source holds `SyncStatus.Loading`, config is present, and permission is GRANTED
 - **THEN** the UI state is `UiState.Loading`
 
-#### Scenario: Permission gate outranks a Loading snapshot
-- **WHEN** the sync source holds `SyncStatus.Loading` and permission is `NOT_DETERMINED`
-- **THEN** the UI state is the permission ask gate, not Loading
+#### Scenario: Setup gate outranks a Loading snapshot
+- **WHEN** the sync source holds `SyncStatus.Loading` and either config is absent or permission is
+  `NOT_DETERMINED`
+- **THEN** the UI state is `UiState.Setup`, not Loading
 
 ### Requirement: Status screen renders UI state
 
