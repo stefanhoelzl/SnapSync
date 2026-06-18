@@ -44,15 +44,18 @@ internal class S3SigV4Presigner(private val config: S3Config) {
         val scope = "$dateStamp/${config.region}/$SERVICE/$TERMINATOR"
 
         // Full signed set = host + caller headers, sorted by (lowercase) name for canonicalization.
-        val signed = sortedMapOf<String, String>().apply {
+        // A plain map deduplicates (caller "host" overrides), then sortedBy gives the lexicographic
+        // order SigV4 requires — multiplatform-safe (the JVM-only sortedMapOf doesn't exist on
+        // Kotlin/Native, and this module now also targets iOS).
+        val signed = LinkedHashMap<String, String>().apply {
             put("host", authority)
             putAll(headers)
-        }
-        val signedHeaderNames = signed.keys.joinToString(";")
+        }.entries.sortedBy { it.key }
+        val signedHeaderNames = signed.joinToString(";") { it.key }
         val canonicalQuery = canonicalQuery(amzDate, scope, expiresSeconds, signedHeaderNames)
         val canonicalUri = "/${config.bucket}/$key"
 
-        val canonicalHeaders = signed.entries.joinToString("") { "${it.key}:${it.value.trim()}\n" }
+        val canonicalHeaders = signed.joinToString("") { "${it.key}:${it.value.trim()}\n" }
         val canonicalRequest = buildString {
             append(httpMethod).append('\n')
             append(canonicalUri).append('\n')
