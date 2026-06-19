@@ -1,7 +1,8 @@
 ## 1. Spike: BackgroundUploadURLBase host validation (gates the HTTP decision)
 
 - [x] 1.1 Built dev IPA (CI run #65) with `upload_host=http://192.168.178.21:9000` baked (verified in both app + extension `Info.plist`); installed on iPhone SE2 (iOS 26.5) over usbmux.
-- [~] 1.2 **Spike BLOCKED — undeterminable on iOS 26.5.** The background-upload **extension is never invoked** by the system (no `BackgroundUploadExtension` process ever launches; the upload worker runs and cancels with `PLBackgroundJobAssetResourceUploadJobWorkerError.cancelled`). This is the confirmed **iOS 26.2+ regression** of the deprecated `PHBackgroundResourceUploadExtension` (Apple Developer Forums thread 815316: works on 26.1, broken on 26.2+, no Apple fix/workaround). So whether `BackgroundUploadURLBase` accepts `http://`+IP can't be tested until the extension runs (downgrade to 26.1, an Apple fix, or the iOS 27 `PHBackgroundResourceUploadJobExtension` path). The S3 side was instead verified directly — see 7.x.
+- [x] 1.2 **Spike ANSWERED on device: `BackgroundUploadURLBase` accepts `http://` + bare IP + port.** The system PUT real photos to `http://192.168.178.21:9000` and got HTTP 200. (Earlier "extension never invoked" turned out to be a **stale registration wedge**, not an iOS regression — cleared by the disable→enable toggle; see 1.4.)
+- [x] 1.4 **On-device blockers found + fixed** (not anticipated in design): (a) the system's `AssetResourceUploadJobConfiguration` persists across delete/reinstall/reboot and a stale one blocks extension launch with `PHPhotosError 3202` → **disable→enable toggle**; (b) `PHCloudIdentifier` requires iCloud (signed-out device skipped everything) → **key by `localIdentifier`**; (c) os_log redacts our logs as `<private>` → **PublicNSLogWriter**; (d) `localIdentifier` slashes → `%2F` → SigV4 `SignatureDoesNotMatch` → **strip `/`→`_`**.
 
 ## 2. Config model: host leaves the runtime payload (`deeplink-config`)
 
@@ -41,8 +42,8 @@
 ## 7. End-to-end on-device verification
 
 - [x] 7.1 Ran `scripts/local-s3.sh` (MinIO on `192.168.178.21:9000`); dispatched dev IPA build #65 with the baked host; installed over usbmux.
-- [~] 7.2 **PhotoKit delivery blocked by the iOS 26.2+ extension regression (see 1.2)** — the extension never runs, so no asset PUT is attempted on-device. Instead **verified the owned surface directly**: minted a real presigned PUT with the exact device config (`http://192.168.178.21:9000`, path-style, SigV4) and uploaded from the JVM — MinIO **validated the signature and returned 200**, object `resources/JVM-LIVE-TEST.jpg` landed (confirmed in `mc watch` + `mc ls`). Proves presigner + real S3 + http + LAN-IP + signed headers all work end-to-end.
-- [~] 7.3 Absent-config skip can't be exercised on-device (extension not invoked); covered by the off-device unit test `UploadConfigTest` (null payload / blank host → skip).
+- [x] 7.2 **Verified end-to-end on device (build 70).** The extension launched, discovered the library by `localIdentifier`, minted real presigned PUTs, and the system uploaded **16 photos + paired videos (58 MiB) to MinIO, all HTTP 200, 0 failures** — confirmed in `mc ls` (keys `resources/<uuid>_L0_001-ios.{photo.heic,pairedVideo.mov}`) and the device `nsurlsessiond` 200s.
+- [x] 7.3 Absent-config skip covered by the off-device unit test `UploadConfigTest` (null payload / blank host → skip).
 
 ## 8. Docs
 
