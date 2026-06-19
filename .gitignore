@@ -5,3 +5,6 @@ local.properties
 *.hprof
 .idea/
 .kotlin/
+
+# proton-env local secret-injection config (references Proton vault)
+.proton.yaml
