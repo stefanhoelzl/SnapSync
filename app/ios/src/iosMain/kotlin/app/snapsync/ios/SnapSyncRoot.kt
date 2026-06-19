@@ -8,6 +8,7 @@ import app.snapsync.permission.PhotoLibraryPermission
 import app.snapsync.presentation.StatusContainerHost
 import app.snapsync.status.LedgerSyncStatusSource
 import co.touchlab.kermit.Logger
+import co.touchlab.kermit.NSLogWriter
 import kotlinx.cinterop.ExperimentalForeignApi
 import kotlinx.cinterop.cValue
 import kotlinx.coroutines.CoroutineScope
@@ -34,6 +35,12 @@ import platform.Photos.PHPhotoLibrary
  * extension where supported.
  */
 object SnapSyncRoot {
+
+    init {
+        // Route kermit through NSLog so logs are visible via `idevicesyslog` (Mac-less debugging):
+        // the default os_log writer emits at `.info`, which the device syslog stream drops.
+        Logger.setLogWriters(NSLogWriter())
+    }
 
     private val log = Logger.withTag("SnapSyncRoot")
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
