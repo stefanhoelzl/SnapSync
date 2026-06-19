@@ -1,7 +1,7 @@
 # ios-ci Specification
 
 ## Purpose
-Continuous integration that, on every push, builds the iOS device app and runs the shared Kotlin/Native unit tests on a simulator, each reporting a merge-gating status check. Runs on GitHub Actions (`macos-26`, GM Xcode) — the same provider as the Linux build — via two parallel jobs doing only the irreducible Apple delta: `ios-build` produces a **signed archive** of the device (`iosArm64`) app via `xcodebuild` — the archive is the merge gate and doubles as the TestFlight delivery source — and `ios-test` runs `iosSimulatorArm64Test` on a booted simulator. Together they exercise both Kotlin/Native targets. Code signing and TestFlight delivery are detailed in a separate capability (`ios-testflight-delivery`).
+Continuous integration that, on every push, builds the iOS device app and runs the shared Kotlin/Native unit tests on a simulator, each reporting a merge-gating status check. Runs on GitHub Actions (`macos-26`, GM Xcode) — the same provider as the Linux build — via two parallel jobs doing only the irreducible Apple delta: `ios-build` produces a **signed archive** of the device (`iosArm64`) app via `xcodebuild` — the archive is the merge gate and feeds two delivery channels from that single compile (a development-IPA artifact on every ref, capability `ios-sideload-delivery`; a TestFlight upload on `main`, capability `ios-testflight-delivery`) — and `ios-test` runs `iosSimulatorArm64Test` on a booted simulator. Together they exercise both Kotlin/Native targets. Code signing and delivery are detailed in separate capabilities (`ios-sideload-delivery`, `ios-testflight-delivery`).
 ## Requirements
 ### Requirement: Build iOS on every push
 

@@ -1,7 +1,7 @@
 # ios-testflight-delivery Specification
 
 ## Purpose
-Builds, signs, and uploads the iOS device app to **TestFlight** on every push (any ref), so any branch is installable on a physical iPhone via **internal testing** (no Beta App Review) before merge. Signing is fully **cloud-managed** (App Store Connect Admin API key — no stored certificate or profile, no fastlane/`match`); the signed archive doubles as the `ios-build` merge gate (capability `ios-ci`), while export and upload are **decoupled** (non-blocking, so delivery flakiness never blocks merges). Covers build numbering, export options, and the required signing credentials.
+Builds, signs, and uploads the iOS device app to **TestFlight** on pushes to **`main` only**, as a release trail (no Beta App Review). Per-branch installability before merge is served by the development-IPA artifact, not TestFlight (capability `ios-sideload-delivery`). Signing combines **two imported persistent certificates** (Apple Distribution + Apple Development, from GitHub Secrets) with **cloud-managed provisioning profiles** (App Store Connect Admin API key, no fastlane/`match`); the signed archive doubles as the `ios-build` merge gate (capability `ios-ci`), while export and upload are **decoupled** (non-blocking, so delivery flakiness never blocks merges). Covers build numbering, export options, and the required signing credentials.
 ## Requirements
 ### Requirement: Signed device build delivered to TestFlight on every push
 

@@ -63,6 +63,30 @@ idevicedebug         # launch/debug an installed app
 idevicecrashreport   # pull crash reports
 ```
 
+### Sideload a dev IPA (skip TestFlight)
+
+CI publishes a **development-signed IPA** as a GitHub Actions artifact on every push
+(`snapsync-dev-ipa-<run_number>`, 1-day retention) — install it straight onto a registered device,
+no TestFlight. This is an **operator runbook, not CI behavior**. See `openspec/specs/ios-sideload-delivery`.
+
+One-time setup (per device):
+- Register the device UDID at developer.apple.com → Devices (SE2 is `00008030-0018703A1A7A402E`,
+  obtainable via `ideviceinfo -k UniqueDeviceID`). The dev profile only includes registered UDIDs.
+- Enable Developer Mode (dev-signed apps won't launch without it). Note `pymobiledevice3 amfi
+  enable-developer-mode` **hangs over the usbmux bridge** and the Settings → Privacy & Security →
+  **Developer Mode menu only appears after a dev-signed app is installed** — so install the IPA
+  first (below), then toggle Developer Mode on in Settings (software restart, no hardware buttons).
+
+Per build (run Python tools via `uvx`, never a global install — note pymobiledevice3 wants the
+**bare** socket path, no `UNIX:` prefix):
+```
+export USBMUXD_SOCKET_ADDRESS=/run/host/run/usbmuxd
+gh run download <run-id> -n snapsync-dev-ipa-<run_number> -D /tmp/ipa   # the run's build number
+uvx pymobiledevice3 apps install /tmp/ipa/SnapSync.ipa
+```
+(Install goes over `installation_proxy`/lockdownd — no CoreDevice developer tunnel needed; only
+launching *under a debugger* or screenshots/DDI would.)
+
 ## App Store Connect via API (agent-driven portal chores)
 
 Apple Developer portal tasks that are otherwise GUI-only — code-signing certs, devices,
