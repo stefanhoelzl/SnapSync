@@ -13,12 +13,15 @@
 # test). The Linux-buildable work (JVM/desktop + the JVM run of all unit tests) stays in build.yml;
 # this workflow does only the irreducible Apple delta.
 #
-# Signing: a single persistent Apple Distribution cert (stored as the SIGNING_CERT_* secrets) is
-# imported into a temp keychain each run, and xcodebuild -allowProvisioningUpdates uses the App
-# Store Connect API key (Admin role) to manage the provisioning PROFILE in the cloud. Importing one
-# fixed cert is deliberate: without it, each ephemeral runner's empty keychain makes automatic
-# signing mint a NEW cert every run, exhausting Apple's per-account cert cap under every-push
-# delivery. No fastlane, no match.
+# Signing: TWO persistent certs — an Apple Distribution (SIGNING_CERT_* secrets) and an Apple
+# Development (SIGNING_DEV_CERT_* secrets) — are imported into one shared keychain each run, and
+# xcodebuild -allowProvisioningUpdates uses the App Store Connect API key (Admin role) to manage the
+# provisioning PROFILES in the cloud (profiles have no cap). Importing BOTH fixed certs is
+# deliberate: an empty runner keychain makes automatic signing mint a NEW cert every run, exhausting
+# Apple's per-account cert cap under every-push delivery. The Development cert matters because
+# `xcodebuild archive` provisions a development identity for the team in addition to the
+# distribution one — persisting only Distribution (the prior state) still churned Development certs.
+# No fastlane, no match.
 name: ios
 
 on:
@@ -68,14 +71,39 @@ jobs:
           printf '%s' "$ASC_API_PRIVATE_KEY" > "$RUNNER_TEMP/asc/AuthKey.p8"
           echo "ASC_KEY_PATH=$RUNNER_TEMP/asc/AuthKey.p8" >> "$GITHUB_ENV"
 
-      # Import ONE persistent Apple Distribution cert into a temp keychain so automatic signing
-      # reuses it instead of minting a fresh cert every run (which would exhaust Apple's per-account
-      # cert cap under every-push delivery). Pinned to the exact release, not the floating major.
-      - name: Import signing certificate
+      # Mint a fresh random password for the throwaway signing keychain and share it across both
+      # import steps via $GITHUB_ENV (masked so it never prints). The keychain dies with the
+      # ephemeral runner, so the password protects nothing — a per-run random value just avoids a
+      # hardcoded credential in this file.
+      - name: Generate ephemeral keychain password
+        run: |
+          PW="$(openssl rand -base64 24)"
+          echo "::add-mask::$PW"
+          echo "KEYCHAIN_PW=$PW" >> "$GITHUB_ENV"
+
+      # Import BOTH persistent signing certs into ONE keychain so automatic signing reuses them
+      # instead of minting fresh certs every run (which would exhaust Apple's per-account cert cap
+      # under every-push delivery). Distribution alone is not enough: `xcodebuild archive
+      # -allowProvisioningUpdates` also provisions a DEVELOPMENT identity for the team, and an empty
+      # runner keychain made it mint a new Development cert each run — the actual cap-exhaustion bug.
+      # A shared explicit keychain (not the default auto-password `signing_temp`) lets the second
+      # import target the same keychain with the password minted above. Both pinned to the exact
+      # release, not the float.
+      - name: Import Distribution signing certificate
         uses: apple-actions/import-codesign-certs@v7.0.0
         with:
           p12-file-base64: ${{ secrets.SIGNING_CERT_P12_BASE64 }}
           p12-password: ${{ secrets.SIGNING_CERT_PASSWORD }}
+          keychain: snapsync-signing
+          keychain-password: ${{ env.KEYCHAIN_PW }}
+      - name: Import Development signing certificate
+        uses: apple-actions/import-codesign-certs@v7.0.0
+        with:
+          p12-file-base64: ${{ secrets.SIGNING_DEV_CERT_P12_BASE64 }}
+          p12-password: ${{ secrets.SIGNING_DEV_CERT_PASSWORD }}
+          keychain: snapsync-signing
+          create-keychain: false
+          keychain-password: ${{ env.KEYCHAIN_PW }}
 
       # Build number = the monotonic run number. -allowProvisioningUpdates still cloud-manages the
       # provisioning PROFILE, but now reuses the imported cert above rather than creating a new one.
