@@ -6,7 +6,6 @@ import app.snapsync.engine.SyncEngine
 import app.snapsync.engine.iosLedgerBackend
 import app.snapsync.s3.S3UploadRequestProvider
 import co.touchlab.kermit.Logger
-import co.touchlab.kermit.NSLogWriter
 import kotlinx.coroutines.runBlocking
 
 /**
@@ -26,9 +25,10 @@ import kotlinx.coroutines.runBlocking
 object UploadExtensionRoot {
 
     init {
-        // Route kermit through NSLog so the extension's logs show in `idevicesyslog` (the default
-        // os_log writer emits at `.info`, which the device syslog stream drops).
-        Logger.setLogWriters(NSLogWriter())
+        // Route kermit through a public NSLog writer so the extension's logs show in
+        // `idevicesyslog` un-redacted (the default os_log path drops `.info` and redacts dynamic
+        // content as `<private>`).
+        Logger.setLogWriters(PublicNSLogWriter())
     }
 
     private val log = Logger.withTag("UploadExtension")

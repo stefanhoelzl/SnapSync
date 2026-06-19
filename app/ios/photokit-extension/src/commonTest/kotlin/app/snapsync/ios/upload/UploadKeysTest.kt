@@ -6,8 +6,8 @@ import kotlin.test.assertEquals
 class UploadKeysTest {
 
     @Test
-    fun key_is_cloudid_kind_and_lowercased_extension() {
-        assertEquals("CLOUD1-ios.photo.heic", uploadKey("CLOUD1", 1L, "IMG_0001.HEIC"))
+    fun key_is_assetid_kind_and_lowercased_extension() {
+        assertEquals("ASSET1-ios.photo.heic", uploadKey("ASSET1", 1L, "IMG_0001.HEIC"))
     }
 
     @Test

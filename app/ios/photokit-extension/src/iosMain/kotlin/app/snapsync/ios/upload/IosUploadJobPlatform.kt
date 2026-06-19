@@ -15,11 +15,9 @@ import platform.Photos.PHAssetResourceUploadJob
 import platform.Photos.PHAssetResourceUploadJobActionAcknowledge
 import platform.Photos.PHAssetResourceUploadJobActionRetry
 import platform.Photos.PHAssetResourceUploadJobChangeRequest
-import platform.Photos.PHCloudIdentifierMapping
 import platform.Photos.PHFetchResult
 import platform.Photos.PHObjectTypeAsset
 import platform.Photos.PHPhotoLibrary
-import platform.Photos.cloudIdentifierMappingsForLocalIdentifiers
 
 /**
  * The PhotoKit implementation of [UploadJobPlatform] — the **only** place that touches PhotoKit, so
@@ -58,29 +56,25 @@ class IosUploadJobPlatform(
         val localIdentifiers = changedLocalIdentifiers()
         if (localIdentifiers.isEmpty()) return emptyList()
 
-        val mappings = library.cloudIdentifierMappingsForLocalIdentifiers(localIdentifiers)
         val assets = PHAsset.fetchAssetsWithLocalIdentifiers(localIdentifiers, null)
         val resources = mutableListOf<Resource>()
         var index = 0uL
         while (index < assets.count) {
             val asset = assets.objectAtIndex(index) as PHAsset
             index++
-            val cloudId = (mappings[asset.localIdentifier] as? PHCloudIdentifierMapping)
-                ?.cloudIdentifier?.stringValue
-            if (cloudId == null) {
-                // identifierNotFound — never key by the per-device localIdentifier. Skip; the
-                // routine full re-enumeration retries once the cloud id resolves.
-                log.i { "skipping asset with no resolvable cloud identifier" }
-                continue
-            }
+            // Key by the PHAsset's localIdentifier. v1 is a single-device, one-way backup, so the
+            // per-device localIdentifier is a fine, always-available identity — and unlike
+            // PHCloudIdentifier it needs no iCloud account, so the engine never skips an asset for
+            // an unresolved cloud id.
+            val assetId = asset.localIdentifier
             val version = (asset.modificationDate?.timeIntervalSince1970 ?: 0.0).toString()
             for (any in PHAssetResource.assetResourcesForAsset(asset)) {
                 val resource = any as PHAssetResource
                 resources += Resource(
-                    filename = uploadKey(cloudId, resource.type, resource.originalFilename),
+                    filename = uploadKey(assetId, resource.type, resource.originalFilename),
                     contentType = resource.uniformTypeIdentifier,
                     version = version,
-                    metadata = emptyMap(), // asset-layer metadata is out of scope for the dummy slice
+                    metadata = emptyMap(), // asset-layer metadata is out of scope for this slice
                     data = resource,
                 )
             }

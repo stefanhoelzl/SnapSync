@@ -36,6 +36,18 @@ The extension SHALL acknowledge every system upload job it is handed regardless 
 - **WHEN** a re-handed job maps to a key the ledger already holds
 - **THEN** the job is acknowledged and no destination is emitted and nothing is written
 
+### Requirement: Resource identity and fan-out
+
+For each discovered asset the extension SHALL fan the asset out to its `PHAssetResource`s, wrapping each as an engine `Resource` with `filename = "<localId>-<kind>.<ext>"` (the PHAsset's `localIdentifier`), `version = the asset's modificationDate`, and the `PHAssetResource` as opaque `data`. v1 is a **single-device, one-way backup**, so the per-device `localIdentifier` is the resource identity: it requires **no iCloud account** and is always available. The extension SHALL NOT resolve `PHCloudIdentifier` and SHALL NOT skip any asset for an unresolved cloud id.
+
+#### Scenario: Each resource becomes a distinct key
+- **WHEN** an asset with localIdentifier `L` has multiple resources (e.g. original photo and edited render)
+- **THEN** each resource is wrapped as a `Resource` whose `filename` is `L-<kind>.<ext>`, yielding distinct ledger keys
+
+#### Scenario: No iCloud account required
+- **WHEN** the device has no iCloud account (no asset has a resolvable cloud identifier)
+- **THEN** assets are still discovered and keyed by their `localIdentifier`, and uploads proceed — none are skipped for a missing cloud id
+
 ## ADDED Requirements
 
 ### Requirement: Extension assembles config from the Keychain payload and compile-time host
@@ -57,3 +69,20 @@ On launch, when a config payload is present, the host app SHALL make a throwaway
 #### Scenario: Priming touches the configured host at launch
 - **WHEN** the app launches with a config payload present
 - **THEN** it issues one fire-and-forget request to the `BackgroundUploadURLBase` host, ignoring the result, and continues startup regardless of outcome
+
+### Requirement: Extension registration is a disable→enable toggle
+
+On a full photo-access grant the app SHALL register the background-upload extension with a
+**disable→enable toggle** — `setUploadJobExtensionEnabled(false)` then `setUploadJobExtensionEnabled(true)` — rather than a bare enable. The system's `AssetResourceUploadJobConfiguration` is keyed by bundle id and **persists across app delete/reinstall and device reboot**; a stale record (e.g. left by a differently-signed build) makes a bare `enable(true)` fail with `PHPhotosError 3202` ("existing configuration record"), after which the system never launches the extension. The leading `enable(false)` deletes the stale record so `enable(true)` re-creates it cleanly for the currently-installed extension.
+
+#### Scenario: Stale registration is replaced, not rejected
+- **WHEN** the app registers the extension on a grant and a configuration record already exists
+- **THEN** the existing record is deleted and a fresh one is inserted (no `3202` rejection), and the system can launch the extension
+
+### Requirement: Device-visible (un-redacted) logging
+
+Both the app and the extension SHALL route Kermit through a log writer whose messages appear **un-redacted** in the device unified log / `idevicesyslog` (the default os_log path redacts dynamic content as `<private>`), so on-device discovery/decision/upload logs are readable without a Mac.
+
+#### Scenario: Log content is readable on device
+- **WHEN** the extension logs a message containing dynamic content (e.g. a key or URL) on device
+- **THEN** the message text appears verbatim in `idevicesyslog`, not as `<private>`
