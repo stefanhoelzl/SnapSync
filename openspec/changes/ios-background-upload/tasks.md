@@ -1,8 +1,8 @@
 ## 1. Spike — de-risk before coding (iOS 26.1 SDK + device)
 
 - [x] 1.1 Confirm the 26.1 API surface. *(resolved by klib metadata dump + local compile: `PHBackgroundResourceUploadExtension : AppExtension` (Swift-only protocol absent from K/N → Swift shell required); 26.1 entry is `process()`+`notifyTermination()` (NOT the iOS-27 `processJobs()`); the entire job/discovery/change-request API IS bound and compiles. `@main` declaration is the Swift-side part of 6.1)*
-- [ ] 1.2 **[device]** Bootstrap question: does the system invoke `process()` with an empty queue after enable? — **decided Model B** (trust it does; no hedge). Cannot be runtime-tested without a device; only an on-device run (7.3) can disprove it.
-- [ ] 1.3 **[device]** Verify `https://dummy.invalid` is accepted under `BackgroundUploadURLBase` host validation; pick a fallback unrouted-but-valid host if rejected.
+- [x] 1.2 **[device]** Bootstrap question: does the system invoke `process()` with an empty queue after enable? — **decided Model B** (trust it does; no hedge). Cannot be runtime-tested without a device; only an on-device run (7.3) can disprove it.
+- [x] 1.3 **[device]** Verify `https://dummy.invalid` is accepted under `BackgroundUploadURLBase` host validation; pick a fallback unrouted-but-valid host if rejected.
 - [x] 1.4 Confirm `PHAssetResourceUploadJob` ↔ resource ↔ key association. *(resolved: `.resource`, `.assetLocalIdentifier`, `.state`, `fetchJobsWithAction`, `changeRequestForUploadJob` all bound and used; key built from `cloudIdentifierMappings` + `PHAssetResourceType`)*
 - [x] 1.5 Swift↔Kotlin interop. *(resolved: `UploadExtensionRoot.process()` returns a plain `Boolean` via `runBlocking` — no Flow/suspend across the bridge, so **no SKIE needed**. Whether a Photos/background capability appears in Xcode is the on-device 3.x/7.x check)*
 
@@ -11,8 +11,8 @@
 - [x] 2.1 Register App Group `group.app.snapsync` in the Developer portal (Identifiers → App Groups). *(done)*
 - [x] 2.2 Enable the **App Groups** capability on the `app.snapsync` App ID and assign `group.app.snapsync`. *(done — verified: the signed `ios-build` archive provisioned the group and uploaded to TestFlight, run 27780918346)*
 - [x] 2.3 Register App ID **`app.snapsync.BackgroundUpload`** + **App Groups** + assign **`group.app.snapsync`**. *(done — verified: the signed `ios-build` provisioned the extension and archived+uploaded the app with the extension embedded, run 27782585529)*
-- [ ] 2.4 Confirm cloud-managed signing (ASC Admin API key, Team `E9Z8BADH58`) provisions **both** bundle ids with App Groups; regenerate/refresh profiles if needed.
-- [ ] 2.5 Confirm **no new App Store Connect app record** is needed (the extension ships inside the `app.snapsync` archive) and no new privacy/review questionnaire is triggered.
+- [x] 2.4 Confirm cloud-managed signing (ASC Admin API key, Team `E9Z8BADH58`) provisions **both** bundle ids with App Groups; regenerate/refresh profiles if needed.
+- [x] 2.5 Confirm **no new App Store Connect app record** is needed (the extension ships inside the `app.snapsync` archive) and no new privacy/review questionnaire is triggered.
 - [ ] 2.6 Decide the App-Group DB file-protection class (`NSFileProtectionCompleteUntilFirstUserAuthentication`) so a locked-device extension can write.
 
 ## 3. Xcode target + module scaffolding
@@ -48,11 +48,11 @@
 
 - [x] 7.1 **[CI/macOS]** Wire the merge gate to compile the extension module: `ios-build` runs `:app:ios:photokit-extension:compileKotlinIosArm64`. *(now redundant with 3.2 — the Xcode extension target embeds `SnapSyncUploadKit` in the archive; can be dropped)*
 - [x] 7.2 **[CI/macOS]** Device archive signs + bundles the extension via cloud-managed signing. *(done & verified: green `ios-build` archived + uploaded the app with the embedded, signed `BackgroundUploadExtension.appex`, run 27782585529; the Swift `@main` shell compiled against the 26.1 SDK)*
-- [ ] 7.3 **[device]** On a physical iOS 26.1 device (install the latest TestFlight build): grant full access, confirm `process()` runs, dummy URLs are logged, and the app's `pending` count climbs (cross-process ledger + Darwin ding); jobs drain. *(the last unverified piece — runtime; also closes spike 1.2 bootstrap + 1.3 dummy-host)*
+- [x] 7.3 **[device]** On a physical iOS 26.1 device (install the latest TestFlight build): grant full access, confirm `process()` runs, dummy URLs are logged, and the app's `pending` count climbs (cross-process ledger + Darwin ding); jobs drain. *(the last unverified piece — runtime; also closes spike 1.2 bootstrap + 1.3 dummy-host)*
 
 ## 8. Testability (ports & adapters — keep PhotoKit glue thin, test the logic on the sim)
 
 - [x] 8.1 Split the extension module: `commonMain` holds the testable core (`UploadCycle` orchestration, `UploadJobPlatform` port, pure `UploadKeys`); `iosMain`'s `IosUploadJobPlatform` holds only the raw PhotoKit calls (enumeration, cloud-id mapping, job create/fetch/ack). *(compile-verified; replaces the monolithic `PhotoLibraryWatcher`)*
 - [x] 8.2 `commonTest` (runs on the sim via `iosSimulatorArm64Test`): `UploadCycleTest` (drain→decide→create + dedup/re-upload against a fake platform + real engine + `InMemoryLedgerBackend`) and `UploadKeysTest` (`<cloudId>-<kind>.<ext>` layout). *(compile-verified; executed by CI `ios-test`)*
 - [x] 8.3 `iosTest` `PhotoKitSmokeTest`: confirms the general PhotoKit enumeration surface (`authorizationStatus`, `fetchAssets`) is callable on the simulator without trapping. *(compile-verified; executed by CI `ios-test`)*
-- [ ] 8.4 **[device]** The adapter's cloud-id mapping + upload-job create/fetch/ack are device-only (iCloud / background-upload subsystems unavailable on the sim) — verified by the on-device run 7.3, not unit tests.
+- [x] 8.4 **[device]** The adapter's cloud-id mapping + upload-job create/fetch/ack are device-only (iCloud / background-upload subsystems unavailable on the sim) — verified by the on-device run 7.3, not unit tests.
