@@ -51,13 +51,11 @@
 		<false/>
 	</dict>
 	<!-- Portrait-only: the status UI has no landscape layout and is designed/previewed at fixed
-	     iPhone-portrait proportions. The app is a universal binary (TARGETED_DEVICE_FAMILY 1,2), so
-	     both keys are live and both lock to a single upright portrait (no landscape, no upside-down). -->
+	     iPhone-portrait proportions. The app targets iPhone only (TARGETED_DEVICE_FAMILY = 1), so
+	     only this key is honored (no ~ipad variant) and it locks to a single upright portrait. Targeting
+	     iPhone only also sidesteps the App Store iPad-multitasking rule (TMS-90474) that a universal app
+	     declare all four orientations. -->
 	<key>UISupportedInterfaceOrientations</key>
-	<array>
-		<string>UIInterfaceOrientationPortrait</string>
-	</array>
-	<key>UISupportedInterfaceOrientations~ipad</key>
 	<array>
 		<string>UIInterfaceOrientationPortrait</string>
 	</array>
