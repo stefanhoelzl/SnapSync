@@ -25,10 +25,10 @@
 ## 6. One-time operator prerequisites (out of CI — verify, do not automate)
 
 - [x] 6.1 Register UDID `00008030-0018703A1A7A402E` at developer.apple.com → Devices (manual, one-time).
-- [ ] 6.2 Enable Developer Mode on the SE2. NOTE: arming over the usbmux bridge hangs (reboot fires but the bit never flips) and the Settings → Privacy & Security → Developer Mode menu does not appear until a dev-signed app is installed. Deferred to first install (7.3): install the dev IPA → iOS prompts for Developer Mode → toggle on (software restart, no buttons).
+- [x] 6.2 Enable Developer Mode on the SE2. DONE — enabled on-device after install (status reads `true`, DDI mounts). NOTE: arming over the usbmux bridge hangs (reboot fires but the bit never flips) and the Settings → Privacy & Security → Developer Mode menu only appears once a dev-signed app is installed; so it was enabled via the first install (7.3): install dev IPA → toggle Developer Mode on in Settings → software restart (no buttons).
 
 ## 7. Verify
 
-- [ ] 7.1 Push the branch; confirm `ios-build` is green and a `snapsync-dev-ipa-<run_number>` artifact is published with 1-day retention, and that the dev export step succeeded (the verify-during-apply item: `method=development` mints the dev profile from the imported Development cert + ASC key on the runner).
-- [ ] 7.2 Confirm a non-main branch push does **not** upload to TestFlight (app-store export + upload steps skipped), while a `main` build still does.
-- [ ] 7.3 `gh run download` the artifact and `uvx pymobiledevice3 apps install` onto the SE2 over the usbmuxd bridge; confirm the app installs and launches (Developer Mode on).
+- [x] 7.1 DONE — run 60 (`ios-build`) green; "Export development IPA" succeeded first try (dev profile minted from the imported Development cert + ASC key on the runner); artifact `snapsync-dev-ipa-60` published, 1-day retention.
+- [x] 7.2 DONE — on branch `ipa`, "Export signed IPA" and "Upload to TestFlight" both reported **skipped** (the `main`-only gate works).
+- [x] 7.3 DONE (install) — `gh run download` + `uvx pymobiledevice3 apps install` succeeded (`app.snapsync` + `.config`/`.shared` present); IPA verified dev-signed with the SE2 UDID in the embedded profile; Developer Mode on. App-launch screenshot skipped per operator (DDI screenshot needs a root tunnel; unrelated to delivery).
