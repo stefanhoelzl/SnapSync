@@ -48,6 +48,11 @@ For each discovered asset the extension SHALL fan the asset out to its `PHAssetR
 - **WHEN** the device has no iCloud account (no asset has a resolvable cloud identifier)
 - **THEN** assets are still discovered and keyed by their `localIdentifier`, and uploads proceed — none are skipped for a missing cloud id
 
+## RENAMED Requirements
+
+- FROM: `### Requirement: Engine-gated dummy job creation`
+- TO: `### Requirement: Engine-gated real upload-job creation`
+
 ## ADDED Requirements
 
 ### Requirement: Extension assembles config from the Keychain payload and compile-time host
