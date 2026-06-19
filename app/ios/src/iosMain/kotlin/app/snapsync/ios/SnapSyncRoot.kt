@@ -67,9 +67,17 @@ object SnapSyncRoot {
     }
 
     /**
-     * The app's only producer-side responsibility: once photo access is full (`GRANTED`), enable
-     * the background-upload extension so the system can invoke its `process()`. Idempotent-safe to
-     * repeat (re-grant, foreground refresh). The app performs no discovery or upload itself.
+     * The app's only producer-side responsibility: once photo access is full (`GRANTED`), register
+     * the background-upload extension so the system can invoke its `process()`. The app performs no
+     * discovery or upload itself.
+     *
+     * Registration is a **disable→enable toggle**, not a bare `enable(true)`. The system's
+     * `AssetResourceUploadJobConfiguration` is keyed by bundle id and **persists across app
+     * delete/reinstall and device reboot**; a stale one (e.g. left by a differently-signed build)
+     * makes a plain `enable(true)` fail with `PHPhotosError 3202` ("existing configuration record")
+     * and the extension is then never launched. Calling `enable(false)` first tears the stale
+     * record down so `enable(true)` re-creates it cleanly, matching the currently-installed
+     * extension. Safe to repeat.
      */
     @OptIn(ExperimentalForeignApi::class)
     private fun enableBackgroundUploadOnGrant(permission: PhotoLibraryPermission) {
@@ -79,9 +87,10 @@ object SnapSyncRoot {
                 // call so it never traps on older systems — there the app simply runs without
                 // background upload.
                 if (status == PermissionStatus.GRANTED && backgroundUploadSupported()) {
-                    val enabled = PHPhotoLibrary.sharedPhotoLibrary()
-                        .setUploadJobExtensionEnabled(true, error = null)
-                    log.i { "background-upload extension enabled=$enabled" }
+                    val lib = PHPhotoLibrary.sharedPhotoLibrary()
+                    val disabled = lib.setUploadJobExtensionEnabled(false, error = null)
+                    val enabled = lib.setUploadJobExtensionEnabled(true, error = null)
+                    log.i { "background-upload extension re-registered: disabled=$disabled enabled=$enabled" }
                 }
             }
         }
