@@ -1,7 +1,7 @@
 ## 1. Spike: BackgroundUploadURLBase host validation (gates the HTTP decision)
 
-- [ ] 1.1 Build a dev IPA via `workflow_dispatch` with `upload_host=http://<lan-ip>:9000` (this depends on task 5 being in place; until then, hand-edit the extension `Info.plist` host locally for the spike build), install on device, and watch `idevicesyslog` while a real upload job is created.
-- [ ] 1.2 Determine whether `BackgroundUploadURLBase` accepts `http://` + bare IP + port (job accepted) or rejects it (host-validation error) — record the verdict in the change. If `https`-only, switch the test rig (task 6) to MinIO-over-TLS and adjust D4.
+- [x] 1.1 Built dev IPA (CI run #65) with `upload_host=http://192.168.178.21:9000` baked (verified in both app + extension `Info.plist`); installed on iPhone SE2 (iOS 26.5) over usbmux.
+- [~] 1.2 **Spike BLOCKED — undeterminable on iOS 26.5.** The background-upload **extension is never invoked** by the system (no `BackgroundUploadExtension` process ever launches; the upload worker runs and cancels with `PLBackgroundJobAssetResourceUploadJobWorkerError.cancelled`). This is the confirmed **iOS 26.2+ regression** of the deprecated `PHBackgroundResourceUploadExtension` (Apple Developer Forums thread 815316: works on 26.1, broken on 26.2+, no Apple fix/workaround). So whether `BackgroundUploadURLBase` accepts `http://`+IP can't be tested until the extension runs (downgrade to 26.1, an Apple fix, or the iOS 27 `PHBackgroundResourceUploadJobExtension` path). The S3 side was instead verified directly — see 7.x.
 
 ## 2. Config model: host leaves the runtime payload (`deeplink-config`)
 
@@ -40,9 +40,9 @@
 
 ## 7. End-to-end on-device verification
 
-- [ ] 7.1 Run `scripts/local-s3.sh`; dispatch a dev IPA build with the printed `upload_host`; download + install the artifact over usbmuxd.
-- [ ] 7.2 Scan the QR (bucket/region/creds → Keychain), trigger an upload cycle, and confirm objects appear in the `mc watch` stream and the MinIO browser; capture `idevicesyslog` evidence.
-- [ ] 7.3 Confirm the absent-config path (fresh install, no QR) skips cleanly with no crash.
+- [x] 7.1 Ran `scripts/local-s3.sh` (MinIO on `192.168.178.21:9000`); dispatched dev IPA build #65 with the baked host; installed over usbmux.
+- [~] 7.2 **PhotoKit delivery blocked by the iOS 26.2+ extension regression (see 1.2)** — the extension never runs, so no asset PUT is attempted on-device. Instead **verified the owned surface directly**: minted a real presigned PUT with the exact device config (`http://192.168.178.21:9000`, path-style, SigV4) and uploaded from the JVM — MinIO **validated the signature and returned 200**, object `resources/JVM-LIVE-TEST.jpg` landed (confirmed in `mc watch` + `mc ls`). Proves presigner + real S3 + http + LAN-IP + signed headers all work end-to-end.
+- [~] 7.3 Absent-config skip can't be exercised on-device (extension not invoked); covered by the off-device unit test `UploadConfigTest` (null payload / blank host → skip).
 
 ## 8. Docs
 
