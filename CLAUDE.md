@@ -63,6 +63,38 @@ idevicedebug         # launch/debug an installed app
 idevicecrashreport   # pull crash reports
 ```
 
+## App Store Connect via API (agent-driven portal chores)
+
+Apple Developer portal tasks that are otherwise GUI-only — code-signing certs, devices,
+provisioning profiles, bundle-id capabilities, and App Store / TestFlight text metadata — are
+driven through the **App Store Connect API** via the `codemagic-cli-tools` `app-store-connect`
+command, run with **uvx** (no install). Credentials are injected as env vars by **`proton-env`**,
+which requires **user sign-off on each run** — that approval is the only mutation guardrail (no
+bespoke protection on the CI certs), so prefer read-only subcommands and keep mutations
+deliberate.
+
+```
+# proton-env injects these three (same values as the CI secrets
+# ASC_ISSUER_ID / ASC_KEY_ID / ASC_API_PRIVATE_KEY):
+#   APP_STORE_CONNECT_ISSUER_ID
+#   APP_STORE_CONNECT_KEY_IDENTIFIER
+#   APP_STORE_CONNECT_PRIVATE_KEY   # full .p8 PEM content (not a path)
+
+proton-env -- uvx --from codemagic-cli-tools app-store-connect certificates list --json
+proton-env -- uvx --from codemagic-cli-tools app-store-connect devices list --json
+proton-env -- uvx --from codemagic-cli-tools app-store-connect profiles list --json
+proton-env -- uvx --from codemagic-cli-tools app-store-connect bundle-ids list --json
+# metadata: app-store-version-localizations (descriptions/keywords),
+#           beta-build-localizations (TestFlight "what to test")
+```
+
+Covers certs (list/create/revoke), devices (register/enable/disable — Apple has **no delete**),
+profiles, bundle-ids + capabilities, and App Store / TestFlight **text** metadata. **Gap:**
+screenshot upload (reserve→chunk→commit) has no subcommand — drop to raw REST when a real App
+Store listing needs it. The CI key is **Admin** (needed for cloud signing); if an agent should not
+reach app metadata / user management, mint a narrower **App Manager** or **Developer** key for
+agent use and inject that one instead.
+
 ## Modules
 
 ```
