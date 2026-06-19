@@ -1,20 +1,24 @@
 package app.snapsync.config
 
-import app.snapsync.s3.S3Config
 import com.google.zxing.BarcodeFormat
+import com.google.zxing.EncodeHintType
 import com.google.zxing.MultiFormatWriter
+import com.google.zxing.qrcode.decoder.ErrorCorrectionLevel
+import com.google.zxing.qrcode.encoder.Encoder
 import java.awt.image.BufferedImage
 import java.io.File
 import java.util.Properties
 import javax.imageio.ImageIO
 
 /**
- * The authoritative QR generator (design.md D10): encodes the five S3 fields into the canonical
- * `snapsync://config?v=1&d=…` URL via [encodeConfigUrl] — the same codec the app decodes with, so
- * the wire format cannot drift — and renders a scannable QR PNG.
+ * The authoritative QR generator (design.md D10): encodes the four runtime config fields into the
+ * canonical `snapsync://config?v=2&d=…` URL via [encodeConfigUrl] — the same codec the app decodes
+ * with, so the wire format cannot drift — and renders a scannable QR to the terminal (and a PNG
+ * fallback). The upload **host** is not encoded here; it is baked into the IPA at compile time
+ * (`BackgroundUploadURLBase`).
  *
- * Field values come from env vars (`SNAPSYNC_S3_BUCKET`, `_REGION`, `_ENDPOINT`, `_ACCESS_KEY_ID`,
- * `_SECRET_ACCESS_KEY`) or a gitignored `local.properties` (`s3.bucket`, `s3.region`, `s3.endpoint`,
+ * Field values come from env vars (`SNAPSYNC_S3_BUCKET`, `_REGION`, `_ACCESS_KEY_ID`,
+ * `_SECRET_ACCESS_KEY`) or a gitignored `local.properties` (`s3.bucket`, `s3.region`,
  * `s3.accessKeyId`, `s3.secretAccessKey`); env wins. The secret is never read from a tracked file.
  * Output PNG path: `SNAPSYNC_QR_OUT` / `qr.out`, default `build/snapsync-config-qr.png`.
  */
@@ -27,22 +31,57 @@ fun main() {
         System.getenv(env) ?: props.getProperty(prop)
         ?: error("missing $env (or $prop in local.properties)")
 
-    val config = S3Config(
+    val payload = S3ConfigPayload(
         bucket = value("SNAPSYNC_S3_BUCKET", "s3.bucket"),
         region = value("SNAPSYNC_S3_REGION", "s3.region"),
-        endpoint = value("SNAPSYNC_S3_ENDPOINT", "s3.endpoint"),
         accessKeyId = value("SNAPSYNC_S3_ACCESS_KEY_ID", "s3.accessKeyId"),
         secretAccessKey = value("SNAPSYNC_S3_SECRET_ACCESS_KEY", "s3.secretAccessKey"),
     )
 
-    val url = encodeConfigUrl(config)
+    val url = encodeConfigUrl(payload)
     val out = System.getenv("SNAPSYNC_QR_OUT") ?: props.getProperty("qr.out") ?: "build/snapsync-config-qr.png"
 
     writeQrPng(url, File(out))
 
     println("SnapSync config deeplink:")
     println(url)
-    println("QR written to: ${File(out).absolutePath}")
+    println()
+    println(renderQrToTerminal(url))
+    println("QR also written to: ${File(out).absolutePath}")
+}
+
+private val ESC = 27.toChar().toString()
+
+/**
+ * Render the QR to the terminal with Unicode upper-half blocks (`▀`), two QR modules per text row.
+ * Each cell sets the foreground to the top module's colour and the background to the bottom module's
+ * — black for dark modules, white for light — so the result is a real black-on-white code (not
+ * theme-dependent) at ~1 column per module. A 2-module quiet zone frames it for reliable scanning.
+ */
+private fun renderQrToTerminal(content: String): String {
+    val code = Encoder.encode(content, ErrorCorrectionLevel.M, mapOf(EncodeHintType.CHARACTER_SET to "UTF-8"))
+    val m = code.matrix
+    val quiet = 2
+    val w = m.width + quiet * 2
+    val h = m.height + quiet * 2
+    fun dark(x: Int, y: Int): Boolean {
+        val mx = x - quiet
+        val my = y - quiet
+        if (mx < 0 || my < 0 || mx >= m.width || my >= m.height) return false
+        return m.get(mx, my).toInt() == 1
+    }
+    val sb = StringBuilder()
+    var y = 0
+    while (y < h) {
+        for (x in 0 until w) {
+            val fg = if (dark(x, y)) "30" else "37"          // top module: black=dark, white=light
+            val bg = if (dark(x, y + 1)) "40" else "47"      // bottom module
+            sb.append(ESC).append('[').append(fg).append(';').append(bg).append('m').append('▀')
+        }
+        sb.append(ESC).append("[0m\n")
+        y += 2
+    }
+    return sb.toString()
 }
 
 private fun writeQrPng(content: String, out: File, size: Int = 512) {

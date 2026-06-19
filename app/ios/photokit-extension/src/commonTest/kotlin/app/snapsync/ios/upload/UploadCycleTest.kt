@@ -5,12 +5,19 @@ import app.snapsync.engine.LedgerWriter
 import app.snapsync.engine.Resource
 import app.snapsync.engine.SyncEngine
 import app.snapsync.engine.UploadRequest
+import app.snapsync.engine.UploadRequestProvider
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 
 class UploadCycleTest {
+
+    /** A no-network provider returning a throwaway destination — the cycle never inspects the URL. */
+    private class StubUploadRequestProvider : UploadRequestProvider {
+        override suspend fun provide(resource: Resource): UploadRequest =
+            UploadRequest(url = "https://stub.invalid/${resource.filename}", headers = emptyMap(), resource = resource)
+    }
 
     /** Records what the cycle asked the platform to do, and serves canned discovered resources. */
     private class FakePlatform(private val discovered: List<Resource>) : UploadJobPlatform {
@@ -35,7 +42,7 @@ class UploadCycleTest {
         )
 
     private fun engineOver(backend: InMemoryLedgerBackend) =
-        SyncEngine(DummyUploadRequestProvider(), LedgerWriter(backend))
+        SyncEngine(StubUploadRequestProvider(), LedgerWriter(backend))
 
     @Test
     fun drains_then_creates_a_job_per_new_resource_and_records_requested() = runTest {

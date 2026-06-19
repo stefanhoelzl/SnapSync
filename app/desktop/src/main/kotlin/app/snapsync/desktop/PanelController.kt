@@ -5,7 +5,7 @@ import app.snapsync.config.ConfigStore
 import app.snapsync.permission.PermissionRequester
 import app.snapsync.permission.PermissionStatus
 import app.snapsync.permission.PermissionStatusSource
-import app.snapsync.s3.S3Config
+import app.snapsync.config.S3ConfigPayload
 import app.snapsync.status.SyncStatus
 import app.snapsync.status.SyncProgress
 import app.snapsync.status.SyncStatusSource
@@ -24,7 +24,7 @@ class PanelController(private val clock: Clock = Clock.System) {
     // The harness knows its truth synchronously, so it seeds Ready and never shows Loading.
     private val syncState = MutableStateFlow<SyncStatus>(SyncStatus.Ready(NEVER_SYNCED))
     private val permissionState = MutableStateFlow(PermissionStatus.NOT_DETERMINED)
-    private val configState = MutableStateFlow<S3Config?>(null)
+    private val configState = MutableStateFlow<S3ConfigPayload?>(null)
     private val armedGrants = MutableStateFlow(true)
 
     val syncSource: SyncStatusSource = object : SyncStatusSource {
@@ -42,7 +42,7 @@ class PanelController(private val clock: Clock = Clock.System) {
     }
 
     val configStore: ConfigStore = object : ConfigStore {
-        override suspend fun save(config: S3Config) {
+        override suspend fun save(config: S3ConfigPayload) {
             configState.value = config
         }
     }
@@ -159,10 +159,9 @@ class PanelController(private val clock: Clock = Clock.System) {
         )
 
         // A stand-in config so the storage step shows connected; never used to sign anything.
-        val CANNED_CONFIG = S3Config(
+        val CANNED_CONFIG = S3ConfigPayload(
             bucket = "harness-bucket",
             region = "eu-central-1",
-            endpoint = "https://example.invalid",
             accessKeyId = "HARNESS",
             secretAccessKey = "HARNESS",
         )

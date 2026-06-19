@@ -3,8 +3,9 @@ plugins {
 }
 
 kotlin {
-    // Lean background-upload extension core. Depends only on :domain:engine (no Compose/UI), so the
-    // extension binary stays small. Each target exposes a static framework "SnapSyncUploadKit" that
+    // Lean background-upload extension core: :domain:engine + the S3/config capabilities, no
+    // Compose/UI, so the extension binary stays small. Each target exposes a static framework
+    // "SnapSyncUploadKit" that
     // the Xcode app-extension target links — separate from the app's "SnapSyncKit", so the two
     // process binaries never both statically pull :domain:engine into one image.
     listOf(iosArm64(), iosSimulatorArm64()).forEach { target ->
@@ -17,6 +18,11 @@ kotlin {
     sourceSets {
         commonMain.dependencies {
             implementation(project(":domain:engine"))
+            // The real upload provider + the runtime config seam: the extension assembles an
+            // S3Config from the Keychain payload (:capability:config) and the compile-time host,
+            // and mints presigned PUTs with S3UploadRequestProvider (:capability:s3).
+            implementation(project(":capability:s3"))
+            implementation(project(":capability:config"))
             implementation(libs.coroutines.core)
             implementation(libs.kermit)
         }

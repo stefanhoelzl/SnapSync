@@ -3,11 +3,11 @@ package app.snapsync.presentation
 import app.snapsync.config.ConfigDecodeResult
 import app.snapsync.config.ConfigSource
 import app.snapsync.config.ConfigStore
+import app.snapsync.config.S3ConfigPayload
 import app.snapsync.config.decodeConfigUrl
 import app.snapsync.permission.PermissionRequester
 import app.snapsync.permission.PermissionStatus
 import app.snapsync.permission.PermissionStatusSource
-import app.snapsync.s3.S3Config
 import app.snapsync.status.SyncStatus
 import app.snapsync.status.SyncState
 import app.snapsync.status.SyncProgress
@@ -77,7 +77,7 @@ class StatusContainerHost(
      */
     fun onOpenUrl(raw: String) = intent {
         when (val result = decodeConfigUrl(raw)) {
-            is ConfigDecodeResult.Success -> store.save(result.config)
+            is ConfigDecodeResult.Success -> store.save(result.payload)
             is ConfigDecodeResult.Failure -> postSideEffect(SetupEffect.InvalidConfigLink)
         }
     }
@@ -94,7 +94,7 @@ private fun minuteTicker(): Flow<Unit> = flow {
 // grant there is no meaningful sync state to show — the setup gate replaces the hero regardless of
 // the snapshot.
 private fun reduceFrom(
-    config: S3Config?,
+    config: S3ConfigPayload?,
     permission: PermissionStatus,
     snapshot: SyncStatus,
     now: Instant,
