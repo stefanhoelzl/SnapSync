@@ -66,7 +66,12 @@ class IosUploadJobPlatform(
             // per-device localIdentifier is a fine, always-available identity — and unlike
             // PHCloudIdentifier it needs no iCloud account, so the engine never skips an asset for
             // an unresolved cloud id.
-            val assetId = asset.localIdentifier
+            //
+            // localIdentifier looks like "<uuid>/L0/001"; its `/`s would percent-encode to `%2F` in
+            // the object key, and S3/MinIO decode `%2F` back to `/` before re-canonicalizing for
+            // SigV4 — diverging from our single-encoded signed URI → SignatureDoesNotMatch. Replace
+            // `/` with `_` so the key is a single slash-free segment.
+            val assetId = asset.localIdentifier.replace('/', '_')
             val version = (asset.modificationDate?.timeIntervalSince1970 ?: 0.0).toString()
             for (any in PHAssetResource.assetResourcesForAsset(asset)) {
                 val resource = any as PHAssetResource

@@ -38,7 +38,7 @@ The extension SHALL acknowledge every system upload job it is handed regardless 
 
 ### Requirement: Resource identity and fan-out
 
-For each discovered asset the extension SHALL fan the asset out to its `PHAssetResource`s, wrapping each as an engine `Resource` with `filename = "<localId>-<kind>.<ext>"` (the PHAsset's `localIdentifier`), `version = the asset's modificationDate`, and the `PHAssetResource` as opaque `data`. v1 is a **single-device, one-way backup**, so the per-device `localIdentifier` is the resource identity: it requires **no iCloud account** and is always available. The extension SHALL NOT resolve `PHCloudIdentifier` and SHALL NOT skip any asset for an unresolved cloud id.
+For each discovered asset the extension SHALL fan the asset out to its `PHAssetResource`s, wrapping each as an engine `Resource` with `filename = "<localId>-<kind>.<ext>"` (the PHAsset's `localIdentifier` with `/` replaced by `_`), `version = the asset's modificationDate`, and the `PHAssetResource` as opaque `data`. v1 is a **single-device, one-way backup**, so the per-device `localIdentifier` is the resource identity: it requires **no iCloud account** and is always available. The `/`→`_` substitution keeps the object key a single slash-free segment (a `/` would percent-encode to `%2F`, which S3/MinIO decode back to `/` before re-canonicalizing for SigV4 → a signature mismatch). The extension SHALL NOT resolve `PHCloudIdentifier` and SHALL NOT skip any asset for an unresolved cloud id.
 
 #### Scenario: Each resource becomes a distinct key
 - **WHEN** an asset with localIdentifier `L` has multiple resources (e.g. original photo and edited render)
