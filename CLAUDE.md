@@ -87,6 +87,30 @@ uvx pymobiledevice3 apps install /tmp/ipa/SnapSync.ipa
 (Install goes over `installation_proxy`/lockdownd — no CoreDevice developer tunnel needed; only
 launching *under a debugger* or screenshots/DDI would.)
 
+### Verify real uploads against a local S3 (the `real-s3-upload` loop)
+
+`scripts/local-s3.sh` is the on-device upload test rig (test equipment, no spec). It starts a
+**MinIO** S3 server on the LAN via podman, creates the bucket, prints the **upload host** and a
+config **QR** (terminal + PNG), and streams every uploaded object live (`mc watch`). The upload
+host is **compile-time** (PhotoKit's `BackgroundUploadURLBase` cannot be runtime-configured), so the
+loop is:
+
+```
+scripts/local-s3.sh                                   # prints UPLOAD_HOST + the QR, then watches
+gh workflow run ios.yml --ref <branch> \              # bake that host into a dev IPA
+  -f upload_host=http://<lan-ip>:9000
+# download + install the dev IPA (sideload steps above), scan the QR (bucket/region/creds),
+# trigger a sync — uploaded objects print live in the script's terminal.
+```
+
+The QR carries only `bucket`/`region`/`accessKeyId`/`secretAccessKey` (`v=2` payload); the host is
+baked. A plain push (no dispatch input) bakes the inert `https://dummy.invalid`, so `main`/TestFlight
+is unaffected. **Drain-all is kept** — the ledger stays at `REQUESTED`, so success is confirmed by
+the object landing in the bucket (the live stream / MinIO console at `:9001`), **not** by the app
+status screen. ATS `NSAllowsLocalNetworking` permits the plaintext PUT; the app primes the Local
+Network permission at launch. (Open spike: whether `BackgroundUploadURLBase` accepts `http://` + IP
+— if it demands `https`, run MinIO with TLS.)
+
 ## App Store Connect via API (agent-driven portal chores)
 
 Apple Developer portal tasks that are otherwise GUI-only — code-signing certs, devices,

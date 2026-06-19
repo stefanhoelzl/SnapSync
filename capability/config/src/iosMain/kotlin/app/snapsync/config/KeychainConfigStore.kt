@@ -2,7 +2,6 @@
 
 package app.snapsync.config
 
-import app.snapsync.s3.S3Config
 import kotlinx.cinterop.BetaInteropApi
 import kotlinx.cinterop.ExperimentalForeignApi
 import kotlinx.cinterop.addressOf
@@ -61,18 +60,18 @@ class KeychainConfigStore(
 ) : ConfigSource, ConfigStore {
 
     private val state = MutableStateFlow(readConfig())
-    override val config: StateFlow<S3Config?> = state
+    override val config: StateFlow<S3ConfigPayload?> = state
 
-    override suspend fun save(config: S3Config) {
+    override suspend fun save(config: S3ConfigPayload) {
         // Idempotent: re-scanning the same config is a no-op; a different one replaces silently.
         if (state.value?.sameAs(config) == true) return
         writeUrl(encodeConfigUrl(config))
         state.value = config
     }
 
-    private fun readConfig(): S3Config? {
+    private fun readConfig(): S3ConfigPayload? {
         val url = readUrl() ?: return null
-        return (decodeConfigUrl(url) as? ConfigDecodeResult.Success)?.config
+        return (decodeConfigUrl(url) as? ConfigDecodeResult.Success)?.payload
     }
 
     private fun readUrl(): String? = memScoped {
