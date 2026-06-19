@@ -4,6 +4,8 @@ import app.cash.sqldelight.driver.native.NativeSqliteDriver
 import app.snapsync.engine.db.LedgerDatabase
 import kotlinx.cinterop.ExperimentalForeignApi
 import platform.Foundation.NSFileManager
+import platform.Foundation.NSFileProtectionCompleteUntilFirstUserAuthentication
+import platform.Foundation.NSFileProtectionKey
 
 /** The App Group shared by the host app and the background-upload extension. */
 const val LEDGER_APP_GROUP: String = "group.app.snapsync"
@@ -31,7 +33,28 @@ fun iosLedgerBackend(): LedgerBackend {
             )
         },
     )
+    protectLedgerFiles(basePath)
     return DarwinCrossProcessLedgerBackend(SqlDelightLedgerBackend(LedgerDatabase(driver)))
+}
+
+/**
+ * Mark the ledger DB files `NSFileProtectionCompleteUntilFirstUserAuthentication` (data-protection
+ * Class C) so the background-upload extension can open the ledger when the system runs it on a
+ * **locked** device (Class C files are readable after the first unlock since boot). This is the iOS
+ * default today, but set it explicitly so the locked-device guarantee does not silently depend on
+ * the absence of a `default-data-protection = NSFileProtectionComplete` entitlement — which would
+ * flip the files to Class A (unreadable while locked) and break the extension. WAL mode means three
+ * files; protect each (best-effort: `-wal`/`-shm` may not exist until the first write, and a missing
+ * file is a harmless no-op).
+ */
+@OptIn(ExperimentalForeignApi::class)
+private fun protectLedgerFiles(basePath: String) {
+    val attributes = mapOf<Any?, Any?>(
+        NSFileProtectionKey to NSFileProtectionCompleteUntilFirstUserAuthentication,
+    )
+    for (suffix in listOf("", "-wal", "-shm")) {
+        NSFileManager.defaultManager.setAttributes(attributes, "$basePath/ledger.db$suffix", error = null)
+    }
 }
 
 /**
