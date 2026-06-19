@@ -35,6 +35,18 @@ parsing in Swift.
 - **THEN** Swift `onOpenURL` forwards the raw URL string to `SnapSyncRoot.onOpenUrl(_:)` without
   parsing it
 
+### Requirement: Portrait-only orientation
+
+The iOS app SHALL be presented in upright portrait orientation only. Its `Info.plist` SHALL declare both `UISupportedInterfaceOrientations` and `UISupportedInterfaceOrientations~ipad` as exactly `[UIInterfaceOrientationPortrait]`, so that on both iPhone and iPad — the app is a universal binary (`TARGETED_DEVICE_FAMILY = "1,2"`) — the UI never rotates to landscape or to upside-down portrait. The lock SHALL be the static plist declaration; no runtime per-view-controller orientation override is used.
+
+#### Scenario: Rotating an iPhone to landscape does not rotate the UI
+- **WHEN** the app is running on an iPhone and the device is turned to a landscape orientation
+- **THEN** the UI stays in upright portrait and does not rotate to landscape or upside-down
+
+#### Scenario: Rotating an iPad does not rotate the UI
+- **WHEN** the app is running on an iPad and the device is turned to landscape or rotated 180°
+- **THEN** the UI stays in upright portrait and does not rotate to landscape or upside-down portrait
+
 ### Requirement: Buildable for the iOS simulator
 
 The `:app:ios` module and its full module dependency closure SHALL compile for the `iosSimulatorArm64` target, and an Xcode project (`iosApp/`) SHALL build a runnable simulator `.app` via `xcodebuild`. The shared modules SHALL also declare the `iosArm64` (device) target. The **simulator** build SHALL require no code signing; a signed **device** archive is produced separately by the `ios-testflight-delivery` capability and is not part of the simulator build or the merge gate.
