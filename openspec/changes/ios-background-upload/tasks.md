@@ -13,7 +13,7 @@
 - [x] 2.3 Register App ID **`app.snapsync.BackgroundUpload`** + **App Groups** + assign **`group.app.snapsync`**. *(done — verified: the signed `ios-build` provisioned the extension and archived+uploaded the app with the extension embedded, run 27782585529)*
 - [x] 2.4 Confirm cloud-managed signing (ASC Admin API key, Team `E9Z8BADH58`) provisions **both** bundle ids with App Groups; regenerate/refresh profiles if needed.
 - [x] 2.5 Confirm **no new App Store Connect app record** is needed (the extension ships inside the `app.snapsync` archive) and no new privacy/review questionnaire is triggered.
-- [ ] 2.6 Decide the App-Group DB file-protection class (`NSFileProtectionCompleteUntilFirstUserAuthentication`) so a locked-device extension can write.
+- [x] 2.6 Decide the App-Group DB file-protection class (`NSFileProtectionCompleteUntilFirstUserAuthentication`) so a locked-device extension can write. *(done: iosLedgerBackend sets NSFileProtectionCompleteUntilFirstUserAuthentication on ledger.db/-wal/-shm — explicit, not relying on the OS default)*
 
 ## 3. Xcode target + module scaffolding
 
