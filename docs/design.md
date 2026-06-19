@@ -621,9 +621,9 @@ permanent sections** (decided 2026-06-09):
 - **Desktop** — container reduction via `orbit-test` + Compose UI tests on the status screen. Test
   only MVP-permanent code: the panel, `PanelController`, and fake wiring are test equipment and get
   no tests (until the ScenarioStep interpreter becomes load-bearing test infra — then it does).
-  CI: Compose Desktop UI tests touch AWT and **require a display on Linux — add an Xvfb step**
-  (copy JetBrains' own compose-tests workflow incantation, incl. `+extension GLX`). Manual
-  exploration via the control panel.
+  CI: Compose Desktop UI tests render offscreen under `-Djava.awt.headless=true` (set on
+  `:domain:ui`'s test task), so **no display / Xvfb is needed** on Linux. Manual exploration via
+  the control panel (the `:app:desktop:run` harness opens a real window and does need a display).
 
 ---
 
@@ -759,8 +759,8 @@ StatusEvent/inbox design above):**
 
 **Resolved — ops:**
 - CI: push-only `build.yml` shipped with the bootstrap (single JDK 25 Linux runner). Desktop Compose
-  UI tests will need the **Xvfb step** (§6). iOS CI once iOS 27 ships and hosted runners carry
-  Xcode 27.
+  UI tests run **headless** (`-Djava.awt.headless=true`, §6) — no Xvfb step. iOS CI once iOS 27
+  ships and hosted runners carry Xcode 27.
 - TestFlight: **manual archive + upload from Xcode** while on beta; automate with fastlane (gym+pilot)
   at GA.
 

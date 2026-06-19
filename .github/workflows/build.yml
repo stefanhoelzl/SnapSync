@@ -20,10 +20,6 @@ jobs:
           distribution: temurin
           java-version: 25
       - uses: gradle/actions/setup-gradle@v5
-      # Compose Desktop UI tests touch AWT and need a display on Linux; same
-      # incantation as JetBrains' own compose-tests workflow.
-      - name: Start X server
-        run: |
-          sudo Xvfb :1 -screen 0 1920x1080x24 -extension RANDR +extension GLX &
-          echo "DISPLAY=:1.0" >> $GITHUB_ENV
+      # Compose Desktop UI tests render offscreen under -Djava.awt.headless=true
+      # (set on :domain:ui's test task), so no X server is needed.
       - run: ./gradlew build
