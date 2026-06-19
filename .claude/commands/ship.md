@@ -94,8 +94,11 @@ Archive them before shipping.
 **1.4. Check auto-merge is allowed on the repo:**
 
 ```bash
-gh repo view <repo> --json autoMergeAllowed --jq '.autoMergeAllowed'
+gh api repos/<repo> --jq '.allow_auto_merge'
 ```
+
+(`autoMergeAllowed` is not a `gh repo view --json` field; the repo-level
+auto-merge flag is the REST API's `allow_auto_merge`.)
 
 If `false`: ABORT with:
 
