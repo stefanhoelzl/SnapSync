@@ -64,9 +64,17 @@ class IosUploadJobPlatform(
         while (index < jobs.count) {
             val job = jobs.objectAtIndex(index) as PHAssetResourceUploadJob
             index++
-            val resource = job.resource
+            // `resource`/`assetLocalIdentifier` are ObjC-`nonnull` but can be nil at runtime for some
+            // job states (capture as nullable so the runtime null-check is real, not elided). A job we
+            // cannot map back to a key is skipped — never dereferenced.
+            val resource: PHAssetResource? = job.resource
+            val assetLocalId: String? = resource?.assetLocalIdentifier
+            if (resource == null || assetLocalId == null) {
+                log.w { "upload job has no resource/assetLocalIdentifier — skipping" }
+                continue
+            }
             out += PlatformUploadJob(
-                key = uploadKey(resource.assetLocalIdentifier.replace('/', '_'), resource.type, resource.originalFilename),
+                key = uploadKey(assetLocalId.replace('/', '_'), resource.type, resource.originalFilename),
                 contentType = resource.uniformTypeIdentifier,
                 state = mapState(job.state),
                 error = job.error?.let(::mapError),
@@ -74,8 +82,12 @@ class IosUploadJobPlatform(
                 handle = job,
             )
         }
+        log.i { "fetch(${actionName(action)}): ${out.size} job(s)" }
         return out
     }
+
+    private fun actionName(action: PHAssetResourceUploadJobAction): String =
+        if (action == PHAssetResourceUploadJobActionRetry) "retry" else "acknowledge"
 
     override suspend fun retryJob(job: PlatformUploadJob, request: UploadRequest) {
         val systemJob = job.handle as PHAssetResourceUploadJob

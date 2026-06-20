@@ -63,6 +63,7 @@ class UploadCycle(
 
         // Phase 3 — discover new/changed resources; REQUESTED-skip filters everything in flight.
         val discovery = platform.discoverResources(store.loadToken())
+        log.i { "discovered ${discovery.resources.size} resource(s)" }
         for (resource in discovery.resources) {
             val decision = engine.handle(SyncEvent.ResourceChanged(resource))
             if (decision is SyncDecision.Work) {

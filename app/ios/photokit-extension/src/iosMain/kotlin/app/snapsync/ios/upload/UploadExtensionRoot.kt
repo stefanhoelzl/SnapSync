@@ -55,9 +55,11 @@ object UploadExtensionRoot {
             log.i { "skipping cycle — payload present=${payload != null}, host present=${!host.isNullOrEmpty()}" }
             return@runBlocking CycleResult.COMPLETED
         }
+        log.i { "process: config present — running cycle" }
         val engine = SyncEngine(S3UploadRequestProvider(config), ledger)
         val cycle = UploadCycle(engine, ledger, platform, discoveryStore, log)
         runCatching { cycle.run() }
+            .onSuccess { log.i { "process: cycle finished — $it" } }
             .getOrElse {
                 log.e(it) { "process cycle failed" }
                 CycleResult.FAILED
