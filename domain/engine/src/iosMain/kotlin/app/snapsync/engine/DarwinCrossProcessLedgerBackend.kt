@@ -56,6 +56,11 @@ class DarwinCrossProcessLedgerBackend(
         notify_post(notificationName)
     }
 
+    override suspend fun clear() {
+        delegate.clear()
+        notify_post(notificationName)
+    }
+
     companion object {
         /** The Darwin notify name both processes agree on for "the ledger changed". */
         const val LEDGER_CHANGED_NOTIFICATION: String = "group.app.snapsync.ledger.changed"

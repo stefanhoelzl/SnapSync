@@ -75,6 +75,12 @@ interface LedgerBackend {
     suspend fun get(key: String): LedgerEntry?
     suspend fun put(entry: LedgerEntry)
     suspend fun aggregates(): LedgerAggregates
+
+    /**
+     * Delete every row — a deliberate reset (the app re-provisioning config), not a sync write.
+     * Dings [changes] like a [put] so watchers re-read the now-empty truth.
+     */
+    suspend fun clear()
 }
 
 /**

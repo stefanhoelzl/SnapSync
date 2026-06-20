@@ -1,6 +1,10 @@
 package app.snapsync.ios
 
+import app.snapsync.config.ConfigDecodeResult
 import app.snapsync.config.KeychainConfigStore
+import app.snapsync.config.decodeConfigUrl
+import app.snapsync.engine.LEDGER_APP_GROUP
+import app.snapsync.engine.LedgerBackend
 import app.snapsync.engine.LedgerWatcher
 import app.snapsync.engine.iosLedgerBackend
 import app.snapsync.permission.PermissionStatus
@@ -17,6 +21,7 @@ import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.launch
 import platform.Foundation.NSOperatingSystemVersion
 import platform.Foundation.NSProcessInfo
+import platform.Foundation.NSUserDefaults
 import platform.Photos.PHPhotoLibrary
 
 /**
@@ -44,9 +49,10 @@ object SnapSyncRoot {
 
     private val log = Logger.withTag("SnapSyncRoot")
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
+    private val ledgerBackend: LedgerBackend by lazy { iosLedgerBackend() }
 
     val host: StatusContainerHost by lazy {
-        val watcher = LedgerWatcher(iosLedgerBackend())
+        val watcher = LedgerWatcher(ledgerBackend)
         val permission = PhotoLibraryPermission()
         val config = KeychainConfigStore()
         val syncSource = LedgerSyncStatusSource(watcher, permission, scope)
@@ -61,9 +67,35 @@ object SnapSyncRoot {
     /**
      * A `snapsync://` deeplink arrived (forwarded raw from the Swift entry point). Routed through
      * the container's intent so decode/validate/persist all happen in shared Kotlin.
+     *
+     * A **valid (re)scan re-provisions**: the ledger and discovery cursor are reset and the
+     * extension is re-registered, so the (possibly new) config re-uploads the whole library from
+     * scratch. We decode here only to gate the reset on a valid deeplink — the host still performs
+     * the authoritative decode/validate/persist. (Resetting an already-empty ledger on the first
+     * scan is a harmless no-op.)
      */
     fun onOpenUrl(url: String) {
+        if (decodeConfigUrl(url) is ConfigDecodeResult.Success) {
+            scope.launch { resetForReprovision() }
+        }
         host.onOpenUrl(url)
+    }
+
+    private suspend fun resetForReprovision() {
+        ledgerBackend.clear()
+        clearDiscoveryCursor()
+        reRegisterExtension()
+        log.i { "re-provisioned: ledger + discovery cursor reset, extension re-registered" }
+    }
+
+    /**
+     * Clear the extension's persisted discovery cursor so the next cycle re-enumerates the whole
+     * library. The suite and key MUST match the extension's `IosDiscoveryStore`
+     * (`group.app.snapsync` / `discovery.changeToken`).
+     */
+    @OptIn(ExperimentalForeignApi::class)
+    private fun clearDiscoveryCursor() {
+        NSUserDefaults(suiteName = LEDGER_APP_GROUP).removeObjectForKey("discovery.changeToken")
     }
 
     /**
@@ -79,21 +111,26 @@ object SnapSyncRoot {
      * record down so `enable(true)` re-creates it cleanly, matching the currently-installed
      * extension. Safe to repeat.
      */
-    @OptIn(ExperimentalForeignApi::class)
     private fun enableBackgroundUploadOnGrant(permission: PhotoLibraryPermission) {
         scope.launch {
             permission.permission.collect { status ->
-                // `setUploadJobExtensionEnabled` is iOS 26.1+, but the app deploys lower. Guard the
-                // call so it never traps on older systems — there the app simply runs without
-                // background upload.
-                if (status == PermissionStatus.GRANTED && backgroundUploadSupported()) {
-                    val lib = PHPhotoLibrary.sharedPhotoLibrary()
-                    val disabled = lib.setUploadJobExtensionEnabled(false, error = null)
-                    val enabled = lib.setUploadJobExtensionEnabled(true, error = null)
-                    log.i { "background-upload extension re-registered: disabled=$disabled enabled=$enabled" }
-                }
+                if (status == PermissionStatus.GRANTED) reRegisterExtension()
             }
         }
+    }
+
+    /**
+     * The disable→enable toggle (see above). `setUploadJobExtensionEnabled` is iOS 26.1+, but the
+     * app deploys lower, so the call is guarded — on older systems the app simply runs without
+     * background upload. Safe to repeat; called on a full grant and on every re-provision.
+     */
+    @OptIn(ExperimentalForeignApi::class)
+    private fun reRegisterExtension() {
+        if (!backgroundUploadSupported()) return
+        val lib = PHPhotoLibrary.sharedPhotoLibrary()
+        val disabled = lib.setUploadJobExtensionEnabled(false, error = null)
+        val enabled = lib.setUploadJobExtensionEnabled(true, error = null)
+        log.i { "background-upload extension re-registered: disabled=$disabled enabled=$enabled" }
     }
 
     /** Whether the iOS 26.1 background-upload API is present on this system. */

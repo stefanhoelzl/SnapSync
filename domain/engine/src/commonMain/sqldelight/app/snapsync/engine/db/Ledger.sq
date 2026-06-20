@@ -18,6 +18,9 @@ put:
 INSERT OR REPLACE INTO ledgerRow (key, state, attempt, version, updatedAt)
 VALUES (:key, :state, :attempt, :version, :updatedAt);
 
+deleteAll:
+DELETE FROM ledgerRow;
+
 aggregates:
 SELECT
     COUNT(CASE WHEN state != 'COMPLETED' THEN 1 END) AS pending,
