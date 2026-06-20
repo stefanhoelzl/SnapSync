@@ -26,6 +26,11 @@ class InMemoryLedgerBackend : LedgerBackend {
         dings.tryEmit(Unit)
     }
 
+    override suspend fun clear() {
+        rows.clear()
+        dings.tryEmit(Unit)
+    }
+
     override suspend fun aggregates(): LedgerAggregates {
         val completed = rows.values.filter { it.state == LedgerState.COMPLETED }
         return LedgerAggregates(
