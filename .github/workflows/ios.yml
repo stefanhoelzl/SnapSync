@@ -127,6 +127,21 @@ jobs:
           create-keychain: false
           keychain-password: ${{ env.KEYCHAIN_PW }}
 
+      # Pick the build configuration. The on-demand real-s3-upload loop — a workflow_dispatch with a
+      # real `upload_host` baked in — builds DEBUG so the Kotlin/Native framework link skips the
+      # LLVM optimizer (the bulk of the ~6 min archive). The dev/sideload IPA needs no optimization,
+      # and `-configuration Debug` makes embedAndSignAppleFrameworkForXcode build linkDebugFramework
+      # via $(CONFIGURATION). EVERY push (the merge gate) and any plain dispatch (empty upload_host)
+      # stay RELEASE — the gate's codegen is unchanged. To get a Release-representative IPA from a
+      # manual run, leave `upload_host` empty.
+      - name: Select build configuration
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ] && [ -n "${{ inputs.upload_host }}" ]; then
+            echo "BUILD_CONFIG=Debug" >> "$GITHUB_ENV"
+          else
+            echo "BUILD_CONFIG=Release" >> "$GITHUB_ENV"
+          fi
+
       # Build number = the monotonic run number. -allowProvisioningUpdates still cloud-manages the
       # provisioning PROFILE, but now reuses the imported cert above rather than creating a new one.
       # This is the required merge gate: it compiles the shipping iosArm64 framework.
@@ -138,7 +153,7 @@ jobs:
           xcodebuild \
             -project iosApp/iosApp.xcodeproj \
             -scheme iosApp \
-            -configuration Release \
+            -configuration "$BUILD_CONFIG" \
             -sdk iphoneos \
             -destination 'generic/platform=iOS' \
             -archivePath "$RUNNER_TEMP/SnapSync.xcarchive" \
