@@ -24,7 +24,20 @@ final class BackgroundUploadExtension: PHBackgroundResourceUploadExtension {
     required init() {}
 
     func process() -> PHBackgroundResourceUploadProcessingResult {
-        return UploadExtensionRoot.shared.process() ? .completed : .failure
+        // Map the Kotlin tri-state cycle result to the system result. The Kotlin enum entries
+        // COMPLETED/PROCESSING/FAILED export to Swift as .completed/.processing/.failed.
+        switch UploadExtensionRoot.shared.process() {
+        case .processing:
+            // The in-flight cap was hit — ask the system to run us again. ⚠️ VERIFY `.processing`
+            // exists on the iOS 26.1 `PHBackgroundResourceUploadProcessingResult`; if it does not,
+            // return `.completed` here — the un-advanced cursor still drains the remainder on the
+            // next system-scheduled wake (only promptness is lost).
+            return .processing
+        case .failed:
+            return .failure
+        default:
+            return .completed
+        }
     }
 
     func notifyTermination() {

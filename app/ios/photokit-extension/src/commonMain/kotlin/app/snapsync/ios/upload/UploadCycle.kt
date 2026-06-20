@@ -1,38 +1,103 @@
 package app.snapsync.ios.upload
 
+import app.snapsync.engine.LedgerReader
+import app.snapsync.engine.LedgerState
+import app.snapsync.engine.Resource
 import app.snapsync.engine.SyncDecision
 import app.snapsync.engine.SyncEngine
 import app.snapsync.engine.SyncEvent
+import app.snapsync.engine.UploadError
+import app.snapsync.engine.UploadJob
+import app.snapsync.engine.UploadRequest
 import co.touchlab.kermit.Logger
 
 /**
- * One background-upload cycle, platform-free: drain the system queue, discover changed resources,
- * and for each one let the [engine] decide whether to create a (dummy-destination) upload job. This
- * is the testable core — it depends only on the [SyncEngine] and the [UploadJobPlatform] port, so a
- * fake platform + a real engine exercise the whole discover→decide→create→drain flow on the
- * simulator without touching PhotoKit.
+ * One background-upload cycle, platform-free: adjudicate the system's returned jobs (completion +
+ * retry), then discover new/changed resources and create jobs — all gated by the [engine]. This is
+ * the testable core: it depends only on the [engine], a read-only [ledger] (to reconstruct lifecycle
+ * jobs), the [UploadJobPlatform] port, and the [DiscoveryStore] cursor, so a fake platform + a real
+ * engine exercise the whole flow on the simulator without touching PhotoKit.
  *
- * The engine's decision is what gates job creation: `AlreadyUploaded` (a `COMPLETED` ledger proof
- * for the same version) creates nothing; any `Work` answer mints a job. Nothing records `COMPLETED`
- * in this slice — success is `REQUESTED` accumulating.
+ * Write-after-act: the engine records `REQUESTED` only on [SyncEvent.UploadStarted], reported *after*
+ * a job is created/retried — so an in-flight `REQUESTED` always implies a real job and discovery can
+ * safely skip it. The cursor advances only when the cycle fully drains (no `limitExceeded`), so a
+ * cap-truncated cycle re-derives next time and the engine's `REQUESTED`-skip prevents duplicates —
+ * no residue store.
  */
 class UploadCycle(
     private val engine: SyncEngine,
+    private val ledger: LedgerReader,
     private val platform: UploadJobPlatform,
+    private val store: DiscoveryStore,
     private val log: Logger = Logger.withTag("UploadCycle"),
 ) {
-    suspend fun run() {
-        platform.drainJobs()
-        val resources = platform.discoverResources()
-        if (resources.isEmpty()) {
-            log.i { "no new resources this cycle" }
-            return
+    suspend fun run(): CycleResult {
+        // Phase 1 — first failures: re-point the system's single retry at a freshly presigned URL.
+        for (job in platform.fetchRetryJobs()) {
+            val retry = adjudicateFailure(job) ?: continue
+            platform.retryJob(job, retry.job.request)
+            engine.handle(SyncEvent.UploadStarted(retry.job))
         }
-        for (resource in resources) {
-            when (val decision = engine.handle(SyncEvent.ResourceChanged(resource))) {
-                is SyncDecision.Work -> platform.createJob(decision.job.request, resource)
-                SyncDecision.AlreadyUploaded -> Unit
+
+        // Phase 2 — terminal jobs: record completion, or re-create a retry-spent failure.
+        for (job in platform.fetchAckJobs()) {
+            when {
+                job.state == PlatformJobState.SUCCEEDED -> {
+                    engine.handle(SyncEvent.UploadCompleted(reconstruct(job)))
+                    platform.acknowledge(job)
+                }
+                ledger.entry(job.key)?.state == LedgerState.COMPLETED -> platform.acknowledge(job)
+                else -> {
+                    val retry = adjudicateFailure(job) ?: continue
+                    when (platform.createJob(retry.job.request, retry.job.request.resource)) {
+                        CreateResult.CREATED -> {
+                            platform.acknowledge(job)
+                            engine.handle(SyncEvent.UploadStarted(retry.job))
+                        }
+                        // Leave un-acknowledged: the system re-presents it next cycle (retry "residue").
+                        CreateResult.LIMIT_EXCEEDED -> return CycleResult.PROCESSING
+                    }
+                }
             }
         }
+
+        // Phase 3 — discover new/changed resources; REQUESTED-skip filters everything in flight.
+        val discovery = platform.discoverResources(store.loadToken())
+        for (resource in discovery.resources) {
+            val decision = engine.handle(SyncEvent.ResourceChanged(resource))
+            if (decision is SyncDecision.Work) {
+                when (platform.createJob(decision.job.request, resource)) {
+                    CreateResult.CREATED -> engine.handle(SyncEvent.UploadStarted(decision.job))
+                    CreateResult.LIMIT_EXCEEDED -> return CycleResult.PROCESSING // cursor NOT advanced
+                }
+            }
+        }
+
+        store.saveToken(discovery.nextToken) // advance only on a fully-drained cycle
+        return CycleResult.COMPLETED
+    }
+
+    /** Report a failure to the engine and return its `Retry` (records `FAILED`; `REQUESTED` deferred). */
+    private suspend fun adjudicateFailure(job: PlatformUploadJob): SyncDecision.Retry? {
+        val failed = reconstruct(job)
+        val error = job.error ?: UploadError.Unknown("unspecified")
+        return engine.handle(SyncEvent.UploadFailed(failed, error)) as? SyncDecision.Retry
+    }
+
+    /**
+     * Rebuild the engine [UploadJob] for a returned platform job from the ledger (version/attempt) and
+     * the job's own facts. The request URL/headers are placeholders — completion never reads them, and
+     * the retry path re-mints a fresh request via the provider.
+     */
+    private suspend fun reconstruct(job: PlatformUploadJob): UploadJob {
+        val entry = ledger.entry(job.key)
+        val resource = Resource(
+            filename = job.key,
+            contentType = job.contentType,
+            version = entry?.version ?: "",
+            metadata = emptyMap(),
+            data = job.data,
+        )
+        return UploadJob(UploadRequest(url = "", headers = emptyMap(), resource = resource), entry?.attempt ?: 0)
     }
 }

@@ -1,9 +1,19 @@
 package app.snapsync.ios.upload
 
 import app.snapsync.engine.Resource
+import app.snapsync.engine.UploadError
 import app.snapsync.engine.UploadRequest
 import co.touchlab.kermit.Logger
+import kotlinx.cinterop.BetaInteropApi
 import kotlinx.cinterop.ExperimentalForeignApi
+import kotlinx.cinterop.ObjCObjectVar
+import kotlinx.cinterop.alloc
+import kotlinx.cinterop.memScoped
+import kotlinx.cinterop.ptr
+import kotlinx.cinterop.value
+import platform.Foundation.NSError
+import platform.Foundation.NSKeyedArchiver
+import platform.Foundation.NSKeyedUnarchiver
 import platform.Foundation.NSMutableURLRequest
 import platform.Foundation.NSURL
 import platform.Foundation.setHTTPMethod
@@ -12,65 +22,135 @@ import platform.Foundation.timeIntervalSince1970
 import platform.Photos.PHAsset
 import platform.Photos.PHAssetResource
 import platform.Photos.PHAssetResourceUploadJob
+import platform.Photos.PHAssetResourceUploadJobAction
 import platform.Photos.PHAssetResourceUploadJobActionAcknowledge
 import platform.Photos.PHAssetResourceUploadJobActionRetry
 import platform.Photos.PHAssetResourceUploadJobChangeRequest
+import platform.Photos.PHAssetResourceUploadJobState
+import platform.Photos.PHAssetResourceUploadJobStateCancelled
+import platform.Photos.PHAssetResourceUploadJobStateFailed
+import platform.Photos.PHAssetResourceUploadJobStateRegistered
+import platform.Photos.PHAssetResourceUploadJobStateSucceeded
 import platform.Photos.PHFetchResult
 import platform.Photos.PHObjectTypeAsset
+import platform.Photos.PHPersistentChangeToken
 import platform.Photos.PHPhotoLibrary
+import platform.Photos.PHPhotosErrorLimitExceeded
 
 /**
  * The PhotoKit implementation of [UploadJobPlatform] — the **only** place that touches PhotoKit, so
- * it stays as dumb as possible: raw enumeration, cloud-id resolution, field extraction, and the
- * system-job create/fetch/acknowledge calls. All decisions live in [UploadCycle]; key layout lives
- * in [uploadKey]. None of this is unit-tested (the cloud-identifier and upload-job subsystems are
- * device-only); it is verified on a real device. A [PhotoKitSmokeTest] only confirms the general
- * enumeration surface is callable on the simulator.
+ * it stays as dumb as possible: fetch/retry/acknowledge system jobs, enumerate changes, and create
+ * jobs. All decisions live in [UploadCycle]; key layout lives in [uploadKey]. A returned job's ledger
+ * key is recomputed from its own `assetLocalIdentifier` + `resource` facts (no URL parsing), and its
+ * `resource` (the `PHAssetResource`) is reused directly to re-create a retry-spent job — no asset
+ * re-fetch. None of this is unit-tested (the upload-job subsystem is device-only); it is verified on a
+ * real device. A [PhotoKitSmokeTest] only confirms enumeration is callable on the simulator.
  */
-@OptIn(ExperimentalForeignApi::class)
+@OptIn(ExperimentalForeignApi::class, BetaInteropApi::class)
 class IosUploadJobPlatform(
-    private val store: DiscoveryStore,
     private val log: Logger,
 ) : UploadJobPlatform {
 
     private val library: PHPhotoLibrary get() = PHPhotoLibrary.sharedPhotoLibrary()
 
-    override suspend fun drainJobs() {
-        for (action in listOf(PHAssetResourceUploadJobActionAcknowledge, PHAssetResourceUploadJobActionRetry)) {
-            val jobs = PHAssetResourceUploadJob.fetchJobsWithAction(action, options = null)
-            var index = 0uL
-            while (index < jobs.count) {
-                val job = jobs.objectAtIndex(index) as PHAssetResourceUploadJob
-                library.performChangesAndWait(
-                    changeBlock = {
-                        PHAssetResourceUploadJobChangeRequest.changeRequestForUploadJob(job)?.acknowledge()
-                    },
-                    error = null,
-                )
-                index++
+    override suspend fun fetchRetryJobs(): List<PlatformUploadJob> = fetch(PHAssetResourceUploadJobActionRetry)
+
+    override suspend fun fetchAckJobs(): List<PlatformUploadJob> = fetch(PHAssetResourceUploadJobActionAcknowledge)
+
+    private fun fetch(action: PHAssetResourceUploadJobAction): List<PlatformUploadJob> {
+        val jobs = PHAssetResourceUploadJob.fetchJobsWithAction(action, options = null)
+        val out = ArrayList<PlatformUploadJob>(jobs.count.toInt())
+        var index = 0uL
+        while (index < jobs.count) {
+            val job = jobs.objectAtIndex(index) as PHAssetResourceUploadJob
+            index++
+            val resource = job.resource
+            out += PlatformUploadJob(
+                key = uploadKey(resource.assetLocalIdentifier.replace('/', '_'), resource.type, resource.originalFilename),
+                contentType = resource.uniformTypeIdentifier,
+                state = mapState(job.state),
+                error = job.error?.let(::mapError),
+                data = resource,
+                handle = job,
+            )
+        }
+        return out
+    }
+
+    override suspend fun retryJob(job: PlatformUploadJob, request: UploadRequest) {
+        val systemJob = job.handle as PHAssetResourceUploadJob
+        val url = NSURL.URLWithString(request.url) ?: return
+        val urlRequest = buildRequest(url, request)
+        library.performChangesAndWait(
+            changeBlock = {
+                PHAssetResourceUploadJobChangeRequest.changeRequestForUploadJob(systemJob)?.retryWithDestination(urlRequest)
+            },
+            error = null,
+        )
+    }
+
+    override suspend fun acknowledge(job: PlatformUploadJob) {
+        val systemJob = job.handle as PHAssetResourceUploadJob
+        library.performChangesAndWait(
+            changeBlock = {
+                PHAssetResourceUploadJobChangeRequest.changeRequestForUploadJob(systemJob)?.acknowledge()
+            },
+            error = null,
+        )
+    }
+
+    override suspend fun createJob(request: UploadRequest, resource: Resource): CreateResult {
+        val phResource = resource.data as PHAssetResource
+        val url = NSURL.URLWithString(request.url) ?: return CreateResult.CREATED
+        val urlRequest = buildRequest(url, request)
+        return memScoped {
+            val errorVar = alloc<ObjCObjectVar<NSError?>>()
+            library.performChangesAndWait(
+                changeBlock = {
+                    PHAssetResourceUploadJobChangeRequest.creationRequestForJobWithDestination(urlRequest, phResource)
+                },
+                error = errorVar.ptr,
+            )
+            val error = errorVar.value
+            if (error != null && error.code == PHPhotosErrorLimitExceeded) {
+                log.w { "job limit exceeded — deferring remaining work this cycle" }
+                CreateResult.LIMIT_EXCEEDED
+            } else {
+                CreateResult.CREATED
             }
         }
     }
 
-    override suspend fun discoverResources(): List<Resource> {
-        val localIdentifiers = changedLocalIdentifiers()
-        if (localIdentifiers.isEmpty()) return emptyList()
+    override suspend fun discoverResources(sinceToken: ByteArray?): Discovery {
+        val token = sinceToken?.let(::unarchiveToken)
+        val identifiers = if (token == null) {
+            PHAsset.fetchAssetsWithOptions(null).localIdentifiers()
+        } else {
+            val changes = library.fetchPersistentChangesSinceToken(token, error = null)
+            if (changes == null) {
+                PHAsset.fetchAssetsWithOptions(null).localIdentifiers()
+            } else {
+                val identifiers = linkedSetOf<String>()
+                changes.enumerateChangesWithBlock { change, _ ->
+                    val details = change?.changeDetailsForObjectType(PHObjectTypeAsset, error = null)
+                        ?: return@enumerateChangesWithBlock
+                    details.insertedLocalIdentifiers().forEach { identifiers.add(it as String) }
+                    details.updatedLocalIdentifiers().forEach { identifiers.add(it as String) }
+                }
+                identifiers.toList()
+            }
+        }
+        return Discovery(resourcesFor(identifiers), archiveToken(library.currentChangeToken))
+    }
 
+    private fun resourcesFor(localIdentifiers: List<String>): List<Resource> {
+        if (localIdentifiers.isEmpty()) return emptyList()
         val assets = PHAsset.fetchAssetsWithLocalIdentifiers(localIdentifiers, null)
         val resources = mutableListOf<Resource>()
         var index = 0uL
         while (index < assets.count) {
             val asset = assets.objectAtIndex(index) as PHAsset
             index++
-            // Key by the PHAsset's localIdentifier. v1 is a single-device, one-way backup, so the
-            // per-device localIdentifier is a fine, always-available identity — and unlike
-            // PHCloudIdentifier it needs no iCloud account, so the engine never skips an asset for
-            // an unresolved cloud id.
-            //
-            // localIdentifier looks like "<uuid>/L0/001"; its `/`s would percent-encode to `%2F` in
-            // the object key, and S3/MinIO decode `%2F` back to `/` before re-canonicalizing for
-            // SigV4 — diverging from our single-encoded signed URI → SignatureDoesNotMatch. Replace
-            // `/` with `_` so the key is a single slash-free segment.
             val assetId = asset.localIdentifier.replace('/', '_')
             val version = (asset.modificationDate?.timeIntervalSince1970 ?: 0.0).toString()
             for (any in PHAssetResource.assetResourcesForAsset(asset)) {
@@ -79,7 +159,7 @@ class IosUploadJobPlatform(
                     filename = uploadKey(assetId, resource.type, resource.originalFilename),
                     contentType = resource.uniformTypeIdentifier,
                     version = version,
-                    metadata = emptyMap(), // asset-layer metadata is out of scope for this slice
+                    metadata = emptyMap(),
                     data = resource,
                 )
             }
@@ -87,44 +167,30 @@ class IosUploadJobPlatform(
         return resources
     }
 
-    override suspend fun createJob(request: UploadRequest, resource: Resource) {
-        val phResource = resource.data as PHAssetResource
-        val url = NSURL.URLWithString(request.url) ?: return
+    private fun buildRequest(url: NSURL, request: UploadRequest): NSMutableURLRequest {
         val urlRequest = NSMutableURLRequest(uRL = url)
         urlRequest.setHTTPMethod("PUT")
         request.headers.forEach { (name, value) -> urlRequest.setValue(value, forHTTPHeaderField = name) }
-        library.performChangesAndWait(
-            changeBlock = {
-                PHAssetResourceUploadJobChangeRequest.creationRequestForJobWithDestination(urlRequest, phResource)
-            },
-            error = null,
-        )
+        return urlRequest
     }
 
-    /** Local identifiers changed since the last cycle (first run / token expiry: the whole library). */
-    private fun changedLocalIdentifiers(): List<String> {
-        val token = store.loadToken()
-        if (token == null) {
-            val all = PHAsset.fetchAssetsWithOptions(null)
-            store.saveToken(library.currentChangeToken)
-            return all.localIdentifiers()
-        }
-        val changes = library.fetchPersistentChangesSinceToken(token, error = null)
-        if (changes == null) {
-            val all = PHAsset.fetchAssetsWithOptions(null)
-            store.saveToken(library.currentChangeToken)
-            return all.localIdentifiers()
-        }
-        val identifiers = linkedSetOf<String>()
-        changes.enumerateChangesWithBlock { change, _ ->
-            val details = change?.changeDetailsForObjectType(PHObjectTypeAsset, error = null)
-                ?: return@enumerateChangesWithBlock
-            details.insertedLocalIdentifiers().forEach { identifiers.add(it as String) }
-            details.updatedLocalIdentifiers().forEach { identifiers.add(it as String) }
-        }
-        store.saveToken(library.currentChangeToken)
-        return identifiers.toList()
+    private fun mapState(state: PHAssetResourceUploadJobState): PlatformJobState = when (state) {
+        PHAssetResourceUploadJobStateSucceeded -> PlatformJobState.SUCCEEDED
+        PHAssetResourceUploadJobStateFailed -> PlatformJobState.FAILED
+        PHAssetResourceUploadJobStateCancelled -> PlatformJobState.CANCELLED
+        PHAssetResourceUploadJobStateRegistered -> PlatformJobState.REGISTERED
+        else -> PlatformJobState.PENDING
     }
+
+    private fun mapError(error: NSError): UploadError = UploadError.Unknown("${error.domain}:${error.code}")
+
+    private fun archiveToken(token: PHPersistentChangeToken): ByteArray =
+        NSKeyedArchiver.archivedDataWithRootObject(token, requiringSecureCoding = true, error = null)?.toByteArray()
+            ?: ByteArray(0)
+
+    private fun unarchiveToken(bytes: ByteArray): PHPersistentChangeToken? =
+        NSKeyedUnarchiver.unarchivedObjectOfClass(PHPersistentChangeToken, bytes.toNSData(), error = null)
+            as? PHPersistentChangeToken
 
     private fun PHFetchResult.localIdentifiers(): List<String> {
         val out = ArrayList<String>(count.toInt())
