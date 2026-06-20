@@ -41,17 +41,18 @@ interface UploadJobPlatform {
 enum class PlatformJobState { SUCCEEDED, FAILED, CANCELLED, PENDING, REGISTERED }
 
 /**
- * A platform-neutral view of a returned system upload job. [key] is recomputed from the job's own
- * fields (no URL parsing); [data] is the opaque `PHAssetResource` (used to rebuild an engine
- * [Resource] and to re-create a job); [handle] is the opaque underlying system job (handed back to
- * [UploadJobPlatform.retryJob] / [UploadJobPlatform.acknowledge]).
+ * A platform-neutral view of a returned system upload job. [key] is recovered from the job's own
+ * destination URL (the only field reliably present across the whole lifecycle — `resource` is nil
+ * for succeeded jobs). [data] is the opaque `PHAssetResource` *when still available* (used to
+ * re-create a retry-spent job; null for succeeded/released jobs). [handle] is the opaque underlying
+ * system job (handed back to [UploadJobPlatform.retryJob] / [UploadJobPlatform.acknowledge]).
  */
 class PlatformUploadJob(
     val key: String,
     val contentType: String,
     val state: PlatformJobState,
     val error: UploadError?,
-    val data: Any,
+    val data: Any?,
     val handle: Any,
 )
 

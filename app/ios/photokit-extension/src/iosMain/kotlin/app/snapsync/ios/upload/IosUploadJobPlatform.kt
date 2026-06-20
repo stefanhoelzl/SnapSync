@@ -16,6 +16,7 @@ import platform.Foundation.NSKeyedArchiver
 import platform.Foundation.NSKeyedUnarchiver
 import platform.Foundation.NSMutableURLRequest
 import platform.Foundation.NSURL
+import platform.Foundation.NSURLRequest
 import platform.Foundation.setHTTPMethod
 import platform.Foundation.setValue
 import platform.Foundation.timeIntervalSince1970
@@ -41,10 +42,11 @@ import platform.Photos.PHPhotosErrorLimitExceeded
  * The PhotoKit implementation of [UploadJobPlatform] — the **only** place that touches PhotoKit, so
  * it stays as dumb as possible: fetch/retry/acknowledge system jobs, enumerate changes, and create
  * jobs. All decisions live in [UploadCycle]; key layout lives in [uploadKey]. A returned job's ledger
- * key is recomputed from its own `assetLocalIdentifier` + `resource` facts (no URL parsing), and its
- * `resource` (the `PHAssetResource`) is reused directly to re-create a retry-spent job — no asset
- * re-fetch. None of this is unit-tested (the upload-job subsystem is device-only); it is verified on a
- * real device. A [PhotoKitSmokeTest] only confirms enumeration is callable on the simulator.
+ * key is read from its **destination URL** (the last path segment) — the only field reliably present
+ * for every job state (`resource` is nil for succeeded jobs); the `resource`, when still available, is
+ * reused to re-create a retry-spent job. None of this is unit-tested (the upload-job subsystem is
+ * device-only); it is verified on a real device. A [PhotoKitSmokeTest] only confirms enumeration is
+ * callable on the simulator.
  */
 @OptIn(ExperimentalForeignApi::class, BetaInteropApi::class)
 class IosUploadJobPlatform(
@@ -64,18 +66,25 @@ class IosUploadJobPlatform(
         while (index < jobs.count) {
             val job = jobs.objectAtIndex(index) as PHAssetResourceUploadJob
             index++
-            // `resource`/`assetLocalIdentifier` are ObjC-`nonnull` but can be nil at runtime for some
-            // job states (capture as nullable so the runtime null-check is real, not elided). A job we
-            // cannot map back to a key is skipped — never dereferenced.
-            val resource: PHAssetResource? = job.resource
-            val assetLocalId: String? = resource?.assetLocalIdentifier
-            if (resource == null || assetLocalId == null) {
-                log.w { "upload job has no resource/assetLocalIdentifier — skipping" }
+            // Map the job to its ledger key via the destination URL's last path segment — the ONLY
+            // field reliably present for every state. `resource` is **nil for succeeded jobs** (the
+            // system releases it after upload), so it can't be the key source; keep it only as an
+            // optional payload for re-creating a retry-spent job.
+            // Capture ObjC-`nonnull`-but-actually-nilable values as nullable locals so the runtime
+            // null-checks are emitted, not optimized away (`resource` IS nil for succeeded jobs).
+            val destination: NSURLRequest? = job.destination
+            val key = destination?.URL?.lastPathComponent
+            if (key == null) {
+                // Unmappable — but EVERY presented job must be acknowledged or the system reports
+                // `appex failed to acknowledge jobs for processing state` (error 50008).
+                log.w { "upload job without destination URL — acknowledging to drain" }
+                acknowledgeJob(job)
                 continue
             }
+            val resource: PHAssetResource? = job.resource
             out += PlatformUploadJob(
-                key = uploadKey(assetLocalId.replace('/', '_'), resource.type, resource.originalFilename),
-                contentType = resource.uniformTypeIdentifier,
+                key = key,
+                contentType = resource?.uniformTypeIdentifier ?: "application/octet-stream",
                 state = mapState(job.state),
                 error = job.error?.let(::mapError),
                 data = resource,
@@ -88,6 +97,13 @@ class IosUploadJobPlatform(
 
     private fun actionName(action: PHAssetResourceUploadJobAction): String =
         if (action == PHAssetResourceUploadJobActionRetry) "retry" else "acknowledge"
+
+    private fun acknowledgeJob(job: PHAssetResourceUploadJob) {
+        library.performChangesAndWait(
+            changeBlock = { PHAssetResourceUploadJobChangeRequest.changeRequestForUploadJob(job)?.acknowledge() },
+            error = null,
+        )
+    }
 
     override suspend fun retryJob(job: PlatformUploadJob, request: UploadRequest) {
         val systemJob = job.handle as PHAssetResourceUploadJob
@@ -102,13 +118,7 @@ class IosUploadJobPlatform(
     }
 
     override suspend fun acknowledge(job: PlatformUploadJob) {
-        val systemJob = job.handle as PHAssetResourceUploadJob
-        library.performChangesAndWait(
-            changeBlock = {
-                PHAssetResourceUploadJobChangeRequest.changeRequestForUploadJob(systemJob)?.acknowledge()
-            },
-            error = null,
-        )
+        acknowledgeJob(job.handle as PHAssetResourceUploadJob)
     }
 
     override suspend fun createJob(request: UploadRequest, resource: Resource): CreateResult {
