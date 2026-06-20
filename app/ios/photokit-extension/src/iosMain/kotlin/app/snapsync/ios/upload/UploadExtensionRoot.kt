@@ -34,28 +34,33 @@ object UploadExtensionRoot {
     private val log = Logger.withTag("UploadExtension")
 
     private val ledger: LedgerWriter by lazy { LedgerWriter(iosLedgerBackend()) }
-    private val platform: IosUploadJobPlatform by lazy { IosUploadJobPlatform(DiscoveryStore(), log) }
+    private val platform: IosUploadJobPlatform by lazy { IosUploadJobPlatform(log) }
+    private val discoveryStore: IosDiscoveryStore by lazy { IosDiscoveryStore() }
     private val configSource: KeychainConfigStore by lazy { KeychainConfigStore() }
 
     /**
-     * Run one discovery/drain cycle. Returns `true` when it completed (the Swift shell maps this to
-     * a terminal `PHBackgroundResourceUploadProcessingResult`). Blocks the extension's worker until
-     * done — appropriate for the synchronous `process()` contract.
+     * Run one adjudicate→discover cycle and return its [CycleResult] — `COMPLETED` (drained, cursor
+     * advanced), `PROCESSING` (the in-flight cap was hit; call me again, cursor un-advanced), or
+     * `FAILED`. The Swift shell maps it to the system's terminal/processing result. Blocks the
+     * extension's worker until done — appropriate for the synchronous `process()` contract. The
+     * engine is the sole ledger writer; the cycle reads the same ledger to reconstruct lifecycle jobs.
      */
-    fun process(): Boolean = runBlocking {
+    fun process(): CycleResult = runBlocking {
         val payload = configSource.config.value
         val host = uploadHostFromBundle()
         val config = buildS3Config(payload, host)
         if (config == null) {
             // Setup not done (no payload) or a missing baked host — nothing to upload. A clean
-            // no-op, never a failure; the run re-tries once config is present.
+            // no-op completion, never a failure; the run re-tries once config is present.
             log.i { "skipping cycle — payload present=${payload != null}, host present=${!host.isNullOrEmpty()}" }
-            return@runBlocking true
+            return@runBlocking CycleResult.COMPLETED
         }
         val engine = SyncEngine(S3UploadRequestProvider(config), ledger)
-        val cycle = UploadCycle(engine, platform, log)
+        val cycle = UploadCycle(engine, ledger, platform, discoveryStore, log)
         runCatching { cycle.run() }
-            .onFailure { log.e(it) { "process cycle failed" } }
-            .isSuccess
+            .getOrElse {
+                log.e(it) { "process cycle failed" }
+                CycleResult.FAILED
+            }
     }
 }

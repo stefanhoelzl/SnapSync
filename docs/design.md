@@ -143,8 +143,10 @@ class Resource(                              // concrete domain type, platform-c
                                              //   anyway (writer == reader, risk is contained).
 
 sealed interface SyncEvent {                 // observations, at-least-once, never bookkeeping
-    class ResourceChanged(val resource: Resource) : SyncEvent
-    class UploadFailed(val job: UploadJob, val error: UploadError) : SyncEvent
+    class ResourceChanged(val resource: Resource) : SyncEvent  // a pure QUERY: writes nothing
+    class UploadStarted(val job: UploadJob) : SyncEvent   // platform CREATED the job → records REQUESTED
+                                             //   (write-AFTER-act; the only REQUESTED writer)
+    class UploadFailed(val job: UploadJob, val error: UploadError) : SyncEvent  // → records FAILED
     class UploadCompleted(val job: UploadJob) : SyncEvent
                                              // reported at the ack edge, BEFORE acknowledge()
 }                                            //   (write-then-act: duplicable, never losable)
@@ -199,11 +201,12 @@ class LedgerAggregates(pending, completed, newestCompletionAt /* null = never co
                                              // adapters hidden in one factory)
 
 class SyncEngine(provider: UploadRequestProvider, ledger: LedgerWriter) {
-    suspend fun handle(event: SyncEvent): SyncDecision
-    // ResourceChanged(r):  ledger absent/REQUESTED/FAILED        → Upload(mint, attempt = 0)
-    //                      COMPLETED + version == r.version      → AlreadyUploaded (no mint)
-    //                      COMPLETED + version != r.version      → ReUpload(mint, attempt = 0)
-    // UploadFailed(j, e):  → Retry(mint, j.attempt + 1) — forever; records FAILED then REQUESTED
+    suspend fun handle(event: SyncEvent): SyncDecision    // ResourceChanged = pure query (no write)
+    // ResourceChanged(r):  ledger absent/FAILED                  → Upload(mint, attempt = 0)
+    //                      COMPLETED/REQUESTED + version == r     → AlreadyUploaded (no mint, in flight/done)
+    //                      COMPLETED/REQUESTED + version != r     → ReUpload(mint, attempt = 0)
+    // UploadStarted(j):    → records REQUESTED (write-after-act), answers AlreadyUploaded
+    // UploadFailed(j, e):  → Retry(mint, j.attempt + 1) — forever; records FAILED (not REQUESTED)
     // UploadCompleted(j):  → records COMPLETED, answers AlreadyUploaded (by then literally true)
 }
 
@@ -215,36 +218,46 @@ sealed interface UploadError {               // platform maps raw errors in; v1 
 }
 ```
 
-**Engine behavior.** A key is skipped **only on proof** — a `COMPLETED` ledger entry with the
-same `version`. A `REQUESTED` entry is a **hope** (the engine cannot verify its answer was ever
-executed — engine-write vs platform-job-creation is a two-generals pair), and a hope never
-justifies skipping: re-submission of unproven work always yields work, because skipping a hope
-risks silent permanent loss while a duplicate execution is just an idempotent overwrite at the
-provider's injective destination. **Retry forever in v1** — no attempt budget, no give-up; every
-retry re-mints, so expired presigned URLs heal. Provider failures **rethrow** from `handle()`
-with the **ledger untouched** (the engine records only after minting succeeds); the event counts
-as unprocessed and re-handling is safe (idempotent per-key upserts). **Sequential contract:** at
-most one `handle()` in flight per engine — all known drivers are sequential loops; concurrency is
-the caller's responsibility (a future concurrent driver pays for the guarantee in its own slice;
-single-statement upserts already make a future second WAL writer cheap, but cross-process
-read-decide-write races would then need re-examination).
+**Engine behavior** (ledger-authoritative, write-after-act; revised 2026-06-20, superseding the
+original "a `REQUESTED` hope never skips"). `ResourceChanged` is a **pure query** — it reads the
+ledger and mints a request for `Work` answers but **writes nothing**. A key is skipped when the
+ledger holds it `COMPLETED` **or** `REQUESTED` at the same `version`: `REQUESTED` now means **a job
+is in flight**, so re-deriving the change feed is idempotent (the cap-resume path needs no residue
+store — §3.3). This is sound only because `REQUESTED` is recorded **after** the platform creates the
+job: the three lifecycle events — `UploadStarted`→`REQUESTED`, `UploadFailed`→`FAILED`,
+`UploadCompleted`→`COMPLETED` — are the **only** ledger writers, each an unconditional idempotent
+upsert. A crash between create and `UploadStarted` leaves no `REQUESTED`, which a later
+`ResourceChanged` re-derivation re-issues as a **bounded, idempotent duplicate** (one extra upload)
+rather than a stranded photo. (This trades the original record-before-act crash-safety for skip-
+ability; it relies on the system surfacing **every** created job's terminal result under
+`.retry`/`.acknowledge` — true for PhotoKit background uploads — so a `FAILED`/`REQUESTED` row never
+leaks out of the drain's reach. No staleness sweep; the general `FAILED → Work` discovery rule
+stays for correctness but is effectively dead on iOS, since the drain re-creates a failure before
+discovery runs.) **Retry forever in v1** — no attempt budget; every retry re-mints, so expired
+presigned URLs heal. Provider failures **rethrow** from `handle()` with the **ledger untouched**;
+the event counts as unprocessed and re-handling is safe (idempotent per-key upserts). The
+convergence property is preserved and simplified: replaying any suffix of an event history converges
+to the same ledger state, because the final lifecycle write determines it. **Sequential contract:**
+at most one `handle()` in flight per engine — all known drivers are sequential loops; concurrency is
+the caller's responsibility.
 
-**Platform contract.** Report observations at the driver's own pace; on `limitExceeded` simply
-stop reporting `ResourceChanged` for the cycle (the engine holds nothing in flight; skips don't
-consume job slots). Act on decisions: `Work` → execute the job (`attempt == 0` → create a
-platform job; `> 0` → retry the existing one *or* acknowledge-and-recreate — platform's choice;
-iOS allows one retry per job); `AlreadyUploaded` → continue. **Report completions at the
-acknowledge edge, BEFORE acknowledging** (`UploadCompleted(job)` → then `acknowledge()`) — the
-Apple-prescribed write-then-act ordering: a crash between the two re-presents the job and
-duplicates the report (absorbed by the ledger) instead of losing it (unrecoverable — after ack
-the record is gone from PhotoKit). **Jobs are idempotent instructions:** the platform may skip
-executing one when it can prove equivalent work is already submitted. Retention: the platform
-must be able to **produce the newest `UploadJob` for each platform job on demand** (iOS: persist
-the serializable values — filename, contentType, version, metadata, url/headers, attempt — and
-rehydrate the `Resource`, re-attaching its payload via `assetResource(forUploadJob:)`; an
-unresolvable handle — asset deleted mid-sync — is acknowledged and dropped, so a payload-less
-`Resource` never exists. Minting reads only the string fields, so retries work from the
-snapshot). **One ledger writer per platform:** the engine (and its `LedgerWriter`) is hosted
+**Platform contract.** Act on decisions: `Work` → execute the job, **then report
+`UploadStarted(job)`** so `REQUESTED` is recorded after the job exists (`attempt == 0` → create a
+platform job; `> 0` → retry the existing one *or* acknowledge-and-recreate — platform's choice; iOS
+allows one retry per job); `AlreadyUploaded` → continue. On `limitExceeded` the platform stops
+creating jobs for the cycle, **does not advance its discovery cursor**, and returns a *processing*
+result so it is re-invoked; re-derivation plus the engine's `REQUESTED`-skip resumes exactly the
+un-created remainder — **no residue store** (§3.3). **Report completions at the acknowledge edge,
+BEFORE acknowledging** (`UploadCompleted(job)` → then `acknowledge()`) — the Apple-prescribed
+write-then-act ordering: a crash between the two re-presents the job and duplicates the report
+(absorbed by the ledger) instead of losing it. Failures are reported as `UploadFailed(job, error)`
+and answered with `Retry`; the platform re-points the system's single retry or, once spent,
+acknowledges-and-recreates. **Retention is the ledger itself, not a side store** (revised
+2026-06-20): a returned system job is mapped back to its key by **recomputing** it from the job's
+own asset/resource facts (the same `uploadKey` discovery uses — no URL parsing), and its
+version/attempt come from the ledger row; the job's `resource` (the `PHAssetResource`) supplies the
+payload directly for a re-create, so no asset re-fetch and no persisted `UploadJob` snapshot are
+needed. **One ledger writer per platform:** the engine (and its `LedgerWriter`) is hosted
 where uploads are decided — on iOS, the extension; the app holds only a read-only ledger view
 (justification: the app observes nothing and has nothing to report, not lock safety — see §2.4).
 Scope filtering (photos yes, standalone video no) sits above the seam — the engine is
@@ -253,9 +266,12 @@ media-type-blind by construction.
 **Accepted costs** (eyes open): metadata-only changes that don't move the `version` leave
 **stale `x-amz-meta-*` headers** on the remote objects forever (the bytes are right; the headers
 aren't — milder than the byte-churn it replaced; a header-refresh job kind is possible future
-work). Crash-window duplicate jobs are idempotent overwrites, bounded by the platform's residue
-bookkeeping (§3.3). Retry-forever churns a job slot on a permanently-broken resource, and a
-terminally-failed resource is only resurrected when its asset changes again.
+work). A crash in the write-after-act window (job created, but the extension dies before
+`UploadStarted`) yields **one bounded, idempotent duplicate** upload on the next re-derivation — never
+a stranded photo. Retry-forever churns a job slot on a permanently-broken resource. The
+system-surfaces-all-results assumption (§2.2) means a silently-dropped job — if PhotoKit ever did
+that — would leave a `REQUESTED` row unrescued until a full re-enumeration; deferred until observed
+on device (a `updatedAt` staleness sweep is the mitigation).
 
 ### 2.3 Sync → presentation seam: state snapshots, not events
 
@@ -388,6 +404,18 @@ only" — standalone *video assets* remain out of scope).
   restore-side `LIST` is a separate admin path (§4).
 
 ### 3.3 Flow
+
+> **Revised 2026-06-20 (`sync-completion-retry`).** The phases below are as-implemented with three
+> changes from the original sketch, all flowing from the ledger-authoritative model (§2.2): **(a)
+> retention is the ledger, not a retained `UploadJob` map** — a returned job is mapped back by
+> recomputing `uploadKey` from its own `assetLocalIdentifier` + `resource` facts (no URL parsing),
+> with version/attempt read from the ledger and the job's `resource` reused directly to re-create;
+> **(b) no residue store** — on `limitExceeded` the cycle stops and does *not* advance the persisted
+> change-token cursor, so re-derivation + the engine's `REQUESTED`-skip resumes the remainder without
+> duplicates; **(c) `REQUESTED` is recorded after the job is created** (`UploadStarted`), and the
+> cursor is persisted in App-Group `NSUserDefaults`, advanced only on a fully-drained cycle. Keys are
+> the asset `localIdentifier` (cloud-identifier resolution is not used). The cycle returns a tri-state
+> (`completed`/`processing`/`failure`) the Swift shell maps.
 
 **App (foreground):** request `.readWrite` photo authorization → `setUploadJobExtensionEnabled(true)`
 → show status (job states + App-Group progress). **The app uploads nothing itself** — every upload
