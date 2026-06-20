@@ -196,13 +196,20 @@ class IosUploadJobPlatform(
 
     private fun mapError(error: NSError): UploadError = UploadError.Unknown("${error.domain}:${error.code}")
 
+    // Token (un)archiving is best-effort efficiency only: any failure degrades to a full
+    // re-enumeration (null token), which the ledger makes harmless — it must never fail the cycle.
     private fun archiveToken(token: PHPersistentChangeToken): ByteArray =
-        NSKeyedArchiver.archivedDataWithRootObject(token, requiringSecureCoding = true, error = null)?.toByteArray()
-            ?: ByteArray(0)
+        runCatching {
+            NSKeyedArchiver.archivedDataWithRootObject(token, requiringSecureCoding = true, error = null)?.toByteArray()
+        }.onFailure { log.w(it) { "archiveToken failed — cursor will not advance this cycle" } }
+            .getOrNull() ?: ByteArray(0)
 
     private fun unarchiveToken(bytes: ByteArray): PHPersistentChangeToken? =
-        NSKeyedUnarchiver.unarchivedObjectOfClass(PHPersistentChangeToken, bytes.toNSData(), error = null)
-            as? PHPersistentChangeToken
+        runCatching {
+            NSKeyedUnarchiver.unarchivedObjectOfClass(PHPersistentChangeToken, bytes.toNSData(), error = null)
+                as? PHPersistentChangeToken
+        }.onFailure { log.w(it) { "unarchiveToken failed — re-enumerating from scratch" } }
+            .getOrNull()
 
     private fun PHFetchResult.localIdentifiers(): List<String> {
         val out = ArrayList<String>(count.toInt())

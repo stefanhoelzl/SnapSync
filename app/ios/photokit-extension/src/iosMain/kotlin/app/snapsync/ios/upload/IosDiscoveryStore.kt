@@ -21,10 +21,11 @@ class IosDiscoveryStore(
 
     private val defaults = NSUserDefaults(suiteName = suiteName)
 
-    override fun loadToken(): ByteArray? = defaults.dataForKey(TOKEN_KEY)?.toByteArray()
+    // Best-effort: a defaults failure must not fail the cycle (degrades to full re-enumeration).
+    override fun loadToken(): ByteArray? = runCatching { defaults.dataForKey(TOKEN_KEY)?.toByteArray() }.getOrNull()
 
     override fun saveToken(token: ByteArray) {
-        defaults.setObject(token.toNSData(), forKey = TOKEN_KEY)
+        runCatching { defaults.setObject(token.toNSData(), forKey = TOKEN_KEY) }
     }
 
     private companion object {
