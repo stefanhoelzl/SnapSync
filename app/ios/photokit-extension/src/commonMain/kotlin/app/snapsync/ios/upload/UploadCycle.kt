@@ -39,7 +39,10 @@ class UploadCycle(
             engine.handle(SyncEvent.UploadStarted(retry.job))
         }
 
-        // Phase 2 — terminal jobs: record completion, or re-create a retry-spent failure.
+        // Phase 2 — terminal jobs. EVERY job MUST be acknowledged (the system errors 50008 —
+        // "appex failed to acknowledge jobs for processing state" — for any it presents that we
+        // leave un-acknowledged), so all arms acknowledge.
+        var capHit = false
         for (job in platform.fetchAckJobs()) {
             when {
                 job.state == PlatformJobState.SUCCEEDED -> {
@@ -48,18 +51,21 @@ class UploadCycle(
                 }
                 ledger.entry(job.key)?.state == LedgerState.COMPLETED -> platform.acknowledge(job)
                 else -> {
-                    val retry = adjudicateFailure(job) ?: continue
-                    when (platform.createJob(retry.job.request, retry.job.request.resource)) {
-                        CreateResult.CREATED -> {
-                            platform.acknowledge(job)
+                    // Retry-spent failure: record FAILED, then re-create a fresh job — but only if the
+                    // resource is still available (nil for released jobs) and the cap is not yet hit.
+                    val retry = adjudicateFailure(job)
+                    if (retry != null && job.data != null && !capHit) {
+                        if (platform.createJob(retry.job.request, retry.job.request.resource) == CreateResult.CREATED) {
                             engine.handle(SyncEvent.UploadStarted(retry.job))
+                        } else {
+                            capHit = true // cap reached; rediscovery will retry this key later
                         }
-                        // Leave un-acknowledged: the system re-presents it next cycle (retry "residue").
-                        CreateResult.LIMIT_EXCEEDED -> return CycleResult.PROCESSING
                     }
+                    platform.acknowledge(job) // always — never leave a presented job un-acknowledged
                 }
             }
         }
+        if (capHit) return CycleResult.PROCESSING // cursor NOT advanced
 
         // Phase 3 — discover new/changed resources; REQUESTED-skip filters everything in flight.
         val discovery = platform.discoverResources(store.loadToken())
@@ -97,7 +103,7 @@ class UploadCycle(
             contentType = job.contentType,
             version = entry?.version ?: "",
             metadata = emptyMap(),
-            data = job.data,
+            data = job.data ?: Unit, // engine [Resource.data] is non-null; payload unused for completion
         )
         return UploadJob(UploadRequest(url = "", headers = emptyMap(), resource = resource), entry?.attempt ?: 0)
     }

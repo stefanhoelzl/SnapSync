@@ -199,7 +199,7 @@ class UploadCycleTest {
     }
 
     @Test
-    fun cap_during_re_create_leaves_the_job_unacknowledged() = runTest {
+    fun cap_during_re_create_still_acknowledges_and_returns_processing() = runTest {
         val backend = InMemoryLedgerBackend()
         LedgerWriter(backend).recordRequested("a", attempt = 0, version = "v1")
         val job = platformJob("a", PlatformJobState.FAILED, UploadError.Network)
@@ -209,7 +209,8 @@ class UploadCycleTest {
         val result = cycleOver(backend, platform, store).run()
 
         assertEquals(CycleResult.PROCESSING, result)
-        assertTrue(platform.acknowledged.isEmpty(), "leave un-acked so the system re-presents it")
-        assertNull(store.saved)
+        // Every presented job is acknowledged (else the system errors 50008); rediscovery retries it.
+        assertEquals(listOf(job), platform.acknowledged)
+        assertNull(store.saved, "cursor must NOT advance on a cap-truncated cycle")
     }
 }

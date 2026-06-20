@@ -61,9 +61,8 @@ object UploadExtensionRoot {
         runCatching { cycle.run() }
             .onSuccess { log.i { "process: cycle finished — $it" } }
             .getOrElse {
-                // DIAGNOSTIC (temporary — revert to `CycleResult.FAILED`): device logs are redacted
-                // to `<private>`, so surface the swallowed exception via the crash report instead.
-                throw IllegalStateException("CYCLE-FAIL ${it::class.simpleName}: ${it.message}", it)
+                log.e(it) { "process cycle failed" }
+                CycleResult.FAILED
             }
     }
 }
