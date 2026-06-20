@@ -1,6 +1,7 @@
 package app.snapsync.ios.upload
 
 import app.snapsync.config.KeychainConfigStore
+import app.snapsync.engine.LedgerBackend
 import app.snapsync.engine.LedgerWriter
 import app.snapsync.engine.SyncEngine
 import app.snapsync.engine.iosLedgerBackend
@@ -33,7 +34,8 @@ object UploadExtensionRoot {
 
     private val log = Logger.withTag("UploadExtension")
 
-    private val ledger: LedgerWriter by lazy { LedgerWriter(iosLedgerBackend()) }
+    private val ledgerBackend: LedgerBackend by lazy { iosLedgerBackend() }
+    private val ledger: LedgerWriter by lazy { LedgerWriter(ledgerBackend) }
     private val platform: IosUploadJobPlatform by lazy { IosUploadJobPlatform(log) }
     private val discoveryStore: IosDiscoveryStore by lazy { IosDiscoveryStore() }
     private val configSource: KeychainConfigStore by lazy { KeychainConfigStore() }
@@ -58,11 +60,25 @@ object UploadExtensionRoot {
         log.i { "process: config present — running cycle" }
         val engine = SyncEngine(S3UploadRequestProvider(config), ledger)
         val cycle = UploadCycle(engine, ledger, platform, discoveryStore, log)
-        runCatching { cycle.run() }
+        val result = runCatching { cycle.run() }
             .onSuccess { log.i { "process: cycle finished — $it" } }
             .getOrElse {
                 log.e(it) { "process cycle failed" }
                 CycleResult.FAILED
             }
+        // The OS invokes the extension lazily (on library changes), not when an upload quietly
+        // finishes — so a drained cycle that returns COMPLETED leaves already-succeeded jobs
+        // un-acknowledged until the next change. While the ledger still has pending (in-flight)
+        // rows, return PROCESSING to request another invocation so their completions are recorded
+        // promptly; report COMPLETED only once everything is backed up (pending == 0), so the system
+        // then rests. (The OS throttles re-invocation, so this polls at its cadence, not in a loop.)
+        if (result == CycleResult.COMPLETED) {
+            val pending = ledgerBackend.aggregates().pending
+            if (pending > 0) {
+                log.i { "process: $pending pending — requesting re-invocation" }
+                return@runBlocking CycleResult.PROCESSING
+            }
+        }
+        result
     }
 }
