@@ -376,8 +376,10 @@ alternates, **and Live Photo `.pairedVideo`/`.fullSizePairedVideo`**. "Qualifyin
   collection) where the filename is **`<localId>-<kind>.<ext>`**, composed platform-side:
   - **`<eventId>`** — from the joined event config (deeplink, §4). **High-entropy/unguessable** — it
     doubles as the upload capability, since the edge endpoint authorizes by event id alone (no token).
-  - **`<deviceId>`** — a random UUID generated at first launch and persisted in the App Group, stable
-    across events; identifies the **contributing device** (the only attribution; no display name).
+  - **`<deviceId>`** — a random UUID **lazily minted** (Foundation `NSUUID`, no UIKit) and persisted
+    in the App Group the first time the extension needs it, stable across events; identifies the
+    **contributing device** (the only attribution; no display name). Minting in the extension (not
+    `identifierForVendor`) keeps it available even when the extension wakes on a locked device.
   - **`<localId>`** = the asset's `PHAsset.localIdentifier` (**no `PHCloudIdentifier` resolution** —
     dropped with its batch-lookup cost and provisional-window risk; matches the device-verified impl).
     Per-device namespacing makes the local id sufficient — no cross-device dedup is attempted.
@@ -401,6 +403,13 @@ alternates, **and Live Photo `.pairedVideo`/`.fullSizePairedVideo`**. "Qualifyin
   preserved** (cosmetic; deferred).
 
 ### 3.2 Discovery & state (date-filtered PhotoKit discovery, engine-owned memory)
+
+> **Migration scope (v1 of the bunny pivot, `migrate-ios-upload-to-bunny`):** date-filtered
+> discovery is **deferred** — the shipped pivot enumerates the **whole library** (no `creationDate`
+> predicate), and the deeplink carries **`{ eventId }` only** (no `startDate`/`name`; §4). The
+> date-filter design below is the target end-state; it returns once `startDate` is provisioned. The
+> credential-free edge upload, the `<eventId>/<deviceId>/` placement, and the lazy-minted `deviceId`
+> ship now.
 
 - **Discovery** is the `PHPersistentChangeToken`, **filtered to capture date ≥ event start**:
   - **Initial join:** `PHAsset.fetchAssets` over the library with a `creationDate >= startDate`
@@ -531,6 +540,10 @@ bytes). The proxy sidesteps signing entirely: the endpoint, not the device, writ
   **`{ eventId, name, startDate }`**. Scanning with the native Camera opens the app, which provisions
   the event into the shared Keychain and re-provisions sync (§3.2). `name` is carried for possible
   future display; the status screen shows **progress only** (§5).
+  > **Migration scope (v1 of the bunny pivot):** the shipped payload is **`{ eventId }` only**, on
+  > version **`v=3`** (the legacy `v=1`/`v=2` S3 payloads are rejected — an upgraded device falls
+  > through to "not joined" and rescans). `eventId` is validated as a canonical UUID at scan.
+  > `name`/`startDate` (and the date-filtered discovery they drive, §3.2) are **deferred**.
 - **Networking:** the **upload PUT is performed by iOS** directly against the edge endpoint; no
   on-device HTTP client mediates it, and there is **no mint round-trip** (the URL is built locally).
   The **hand-rolled SigV4 presigner is retired** on-device — all storage auth is the edge's job.

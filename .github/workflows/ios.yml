@@ -30,14 +30,14 @@ name: ios
 
 on:
   push:
-  # Manual dispatch to bake a compile-time upload host into the dev IPA (PhotoKit forces the host
-  # to be compile-time). A plain push supplies no input → the archive bakes the inert dummy host,
-  # so main/TestFlight is never affected; only a deliberate dispatch with `upload_host` set bakes a
-  # real host (e.g. a local MinIO on the LAN) into that run's development IPA.
+  # Manual dispatch to override the compile-time upload host (PhotoKit forces the host to be
+  # compile-time). A plain push supplies no input → the archive bakes the deployed bunny edge URL,
+  # which all builds (incl. main/TestFlight) target — safe because the device holds no credential.
+  # Set `upload_host` only to point a dev IPA at a local Deno backend on the LAN.
   workflow_dispatch:
     inputs:
       upload_host:
-        description: "Compile-time S3 upload host for the dev IPA, e.g. http://192.168.1.2:9000 (empty = inert dummy host)"
+        description: "Override the compile-time edge host for the dev IPA, e.g. http://192.168.1.2:9000 (empty = deployed bunny edge URL)"
         required: false
         default: ""
         type: string
@@ -127,8 +127,8 @@ jobs:
           create-keychain: false
           keychain-password: ${{ env.KEYCHAIN_PW }}
 
-      # Pick the build configuration. The on-demand real-s3-upload loop — a workflow_dispatch with a
-      # real `upload_host` baked in — builds DEBUG so the Kotlin/Native framework link skips the
+      # Pick the build configuration. The on-demand local-backend upload loop — a workflow_dispatch
+      # with a LAN `upload_host` baked in — builds DEBUG so the Kotlin/Native framework link skips the
       # LLVM optimizer (the bulk of the ~6 min archive). The dev/sideload IPA needs no optimization,
       # and `-configuration Debug` makes embedAndSignAppleFrameworkForXcode build linkDebugFramework
       # via $(CONFIGURATION). EVERY push (the merge gate) and any plain dispatch (empty upload_host)
@@ -163,7 +163,7 @@ jobs:
             -authenticationKeyID "$ASC_KEY_ID" \
             -authenticationKeyIssuerID "$ASC_ISSUER_ID" \
             CURRENT_PROJECT_VERSION=${{ github.run_number }} \
-            BACKGROUND_UPLOAD_URL_BASE=${{ inputs.upload_host || 'https://dummy.invalid' }} \
+            BACKGROUND_UPLOAD_URL_BASE=${{ inputs.upload_host || 'https://snap-sync-n8xmz.bunny.run' }} \
             archive
 
       # Sideload channel (EVERY ref): export a DEVELOPMENT-signed IPA from the same archive and

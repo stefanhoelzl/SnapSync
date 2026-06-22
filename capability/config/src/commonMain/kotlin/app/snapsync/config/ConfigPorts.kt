@@ -4,14 +4,14 @@ import kotlinx.coroutines.flow.StateFlow
 
 /**
  * The state port for the active config payload: a level-triggered holder whose current value is
- * always available synchronously — the persisted [S3ConfigPayload], or `null` when none has been
- * provisioned yet. The setup gate observes this to decide whether the "storage" step is satisfied.
- * Like the permission seam, truth arrives here and nowhere else. Combining the payload with the
- * compile-time upload host into the provider's `S3Config` is the consuming composition root's job,
- * not this seam's.
+ * always available synchronously — the persisted [EventConfigPayload], or `null` when none has been
+ * provisioned yet. The setup gate observes this to decide whether the "joined an event" step is
+ * satisfied. Like the permission seam, truth arrives here and nowhere else. Combining the `eventId`
+ * with the compile-time upload host and the device id into the edge upload URL is the consuming
+ * composition root's job, not this seam's.
  */
 interface ConfigSource {
-    val config: StateFlow<S3ConfigPayload?>
+    val config: StateFlow<EventConfigPayload?>
 }
 
 /**
@@ -22,5 +22,5 @@ interface ConfigSource {
  * depend on each port separately.
  */
 interface ConfigStore {
-    suspend fun save(config: S3ConfigPayload)
+    suspend fun save(config: EventConfigPayload)
 }

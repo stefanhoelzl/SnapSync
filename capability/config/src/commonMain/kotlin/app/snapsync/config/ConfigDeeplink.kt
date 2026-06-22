@@ -8,21 +8,30 @@ import kotlinx.serialization.SerializationException
 import kotlinx.serialization.json.Json
 
 /**
- * The `snapsync://config?v=2&d=<base64url(json)>` wire format (design.md D1/D2): the runtime config
- * payload — bucket, region, and credentials (secret included) — carried in a single opaque,
- * versioned param. The upload **host** is not here: it is fixed at compile time by the extension's
- * `BackgroundUploadURLBase`. This file is the one authoritative codec: the QR generator encodes with
- * [encodeConfigUrl] and the app decodes with [decodeConfigUrl], so the format cannot drift between
- * producer and consumer. [S3ConfigPayload] is the wire DTO (its property names are the JSON keys).
+ * The `snapsync://config?v=3&d=<base64url(json)>` wire format (design.md D1/D2): the runtime config
+ * payload — just the **event id** — carried in a single opaque, versioned param. The device holds no
+ * storage credential; the event id is the upload capability. The upload **host** is not here: it is
+ * fixed at compile time by the extension's `BackgroundUploadURLBase`. This file is the one
+ * authoritative codec: the QR generator encodes with [encodeConfigUrl] and the app decodes with
+ * [decodeConfigUrl], so the format cannot drift between producer and consumer. [EventConfigPayload]
+ * is the wire DTO (its property name is the JSON key).
  */
 
 const val CONFIG_SCHEME: String = "snapsync"
 const val CONFIG_HOST: String = "config"
 
-/** Bumped to `2` for the four-key payload (host removed). A stale `v=1` QR is rejected, not mis-read. */
-const val CONFIG_VERSION: Int = 2
+/**
+ * Bumped to `3` for the single-key `{eventId}` payload (the v1/v2 S3 credential payloads are gone).
+ * A stale `v=1`/`v=2` QR is rejected, not mis-read — so an upgraded device falls through to the
+ * "not joined" setup gate and the user rescans the new event QR.
+ */
+const val CONFIG_VERSION: Int = 3
 
 private const val PREFIX = "$CONFIG_SCHEME://$CONFIG_HOST?"
+
+/** Canonical UUID (`8-4-4-4-12` hex, case-insensitive). The edge endpoint validates `eventId` likewise. */
+private val UUID_REGEX =
+    Regex("^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$")
 
 /** Strict by default: unknown or missing keys are a parse failure, never a silent partial. */
 private val json = Json { ignoreUnknownKeys = false; isLenient = false }
@@ -33,21 +42,21 @@ private val decoder = Base64.UrlSafe.withPadding(Base64.PaddingOption.PRESENT_OP
 
 /** The outcome of decoding a deeplink: a valid payload, or a typed reason it was rejected. */
 sealed interface ConfigDecodeResult {
-    data class Success(val payload: S3ConfigPayload) : ConfigDecodeResult
+    data class Success(val payload: EventConfigPayload) : ConfigDecodeResult
     data class Failure(val reason: String) : ConfigDecodeResult
 }
 
 /** Encodes a payload into its canonical deeplink URL. The inverse of [decodeConfigUrl]. */
-fun encodeConfigUrl(payload: S3ConfigPayload): String {
-    val payloadJson = json.encodeToString(S3ConfigPayload.serializer(), payload)
+fun encodeConfigUrl(payload: EventConfigPayload): String {
+    val payloadJson = json.encodeToString(EventConfigPayload.serializer(), payload)
     val d = encoder.encode(payloadJson.encodeToByteArray())
     return "$PREFIX" + "v=$CONFIG_VERSION&d=$d"
 }
 
 /**
- * Decodes a raw `snapsync://` URL into an [S3ConfigPayload], performing structural-only validation
- * (scheme/host, `v == 2`, base64url, UTF-8 JSON, all four keys present and non-empty, no stray
- * keys) and **no** network I/O. Never throws: every deviation becomes a [ConfigDecodeResult.Failure].
+ * Decodes a raw `snapsync://` URL into an [EventConfigPayload], performing structural-only validation
+ * (scheme/host, `v == 3`, base64url, UTF-8 JSON, exactly the `eventId` key, non-empty, canonical
+ * UUID) and **no** network I/O. Never throws: every deviation becomes a [ConfigDecodeResult.Failure].
  */
 fun decodeConfigUrl(raw: String): ConfigDecodeResult {
     val trimmed = raw.trim()
@@ -66,18 +75,15 @@ fun decodeConfigUrl(raw: String): ConfigDecodeResult {
     }
 
     val payload = try {
-        json.decodeFromString(S3ConfigPayload.serializer(), jsonBytes.decodeToString())
+        json.decodeFromString(EventConfigPayload.serializer(), jsonBytes.decodeToString())
     } catch (_: SerializationException) {
         return fail("payload is not valid config JSON")
     } catch (_: IllegalArgumentException) {
         return fail("payload is not valid config JSON")
     }
 
-    if (payload.bucket.isEmpty() || payload.region.isEmpty() ||
-        payload.accessKeyId.isEmpty() || payload.secretAccessKey.isEmpty()
-    ) {
-        return fail("config has one or more empty fields")
-    }
+    if (payload.eventId.isEmpty()) return fail("config has an empty eventId")
+    if (!UUID_REGEX.matches(payload.eventId)) return fail("eventId is not a canonical UUID")
 
     return ConfigDecodeResult.Success(payload)
 }

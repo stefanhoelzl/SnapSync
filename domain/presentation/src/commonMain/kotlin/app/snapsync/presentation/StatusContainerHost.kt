@@ -3,7 +3,7 @@ package app.snapsync.presentation
 import app.snapsync.config.ConfigDecodeResult
 import app.snapsync.config.ConfigSource
 import app.snapsync.config.ConfigStore
-import app.snapsync.config.S3ConfigPayload
+import app.snapsync.config.EventConfigPayload
 import app.snapsync.config.decodeConfigUrl
 import app.snapsync.permission.PermissionRequester
 import app.snapsync.permission.PermissionStatus
@@ -94,7 +94,7 @@ private fun minuteTicker(): Flow<Unit> = flow {
 // grant there is no meaningful sync state to show — the setup gate replaces the hero regardless of
 // the snapshot.
 private fun reduceFrom(
-    config: S3ConfigPayload?,
+    config: EventConfigPayload?,
     permission: PermissionStatus,
     snapshot: SyncStatus,
     now: Instant,

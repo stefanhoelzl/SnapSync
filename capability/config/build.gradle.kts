@@ -10,9 +10,6 @@ kotlin {
     iosSimulatorArm64()
     sourceSets {
         commonMain.dependencies {
-            // `api`: S3Config is the payload of both ports and the decoder, so it surfaces in the
-            // public API.
-            api(project(":capability:s3"))
             api(libs.coroutines.core)
             implementation(libs.kotlinx.serialization.json)
         }
@@ -29,10 +26,10 @@ kotlin {
 }
 
 // The authoritative QR generator: runs the jvmMain main() so the encoder stays in lockstep with
-// the app's decoder. Reads secrets from env / gitignored local.properties (never committed).
+// the app's decoder. Reads the event id from env / gitignored local.properties.
 val generateConfigQr by tasks.registering(JavaExec::class) {
     group = "snapsync"
-    description = "Encode an S3Config into a snapsync:// deeplink and render a QR PNG."
+    description = "Encode an event id into a snapsync:// deeplink and render a QR PNG."
     val jvmMain = kotlin.targets.getByName("jvm").compilations.getByName("main")
     dependsOn(jvmMain.compileTaskProvider)
     classpath(jvmMain.output.allOutputs, jvmMain.runtimeDependencyFiles)

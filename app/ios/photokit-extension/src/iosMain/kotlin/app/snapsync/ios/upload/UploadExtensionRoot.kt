@@ -5,7 +5,7 @@ import app.snapsync.engine.LedgerBackend
 import app.snapsync.engine.LedgerWriter
 import app.snapsync.engine.SyncEngine
 import app.snapsync.engine.iosLedgerBackend
-import app.snapsync.s3.S3UploadRequestProvider
+import app.snapsync.uploadurl.EdgeUploadRequestProvider
 import co.touchlab.kermit.Logger
 import kotlinx.coroutines.runBlocking
 
@@ -14,11 +14,11 @@ import kotlinx.coroutines.runBlocking
  * writer, the engine, the real S3 upload provider, the PhotoKit platform adapter, and the
  * [UploadCycle]. The Swift `@main` principal class calls [process] from its `process()` callback.
  *
- * Config is sourced fresh each cycle: the runtime payload (bucket/region/creds) from the shared
- * Keychain ([KeychainConfigStore]) combined with the compile-time upload host
- * ([uploadHostFromBundle], `BackgroundUploadURLBase`) into the provider's [S3Config]. When no config
- * has been provisioned yet (the extension woke before setup), the cycle is skipped as a clean
- * success — no job, no ledger write, no crash.
+ * Config is sourced fresh each cycle: the runtime event id from the shared Keychain
+ * ([KeychainConfigStore]) combined with the compile-time upload host ([uploadHostFromBundle],
+ * `BackgroundUploadURLBase`) and the App-Group device id ([iosDeviceIdProvider]) into the edge
+ * upload provider. When no event has been joined yet (the extension woke before setup) or the device
+ * id is unavailable, the cycle is skipped as a clean success — no job, no ledger write, no crash.
  *
  * The ledger writer and platform are process-lifetime singletons (the extension is the single
  * `LedgerWriter`); only the engine, which depends on config, is built per cycle.
@@ -39,6 +39,7 @@ object UploadExtensionRoot {
     private val platform: IosUploadJobPlatform by lazy { IosUploadJobPlatform(log) }
     private val discoveryStore: IosDiscoveryStore by lazy { IosDiscoveryStore() }
     private val configSource: KeychainConfigStore by lazy { KeychainConfigStore() }
+    private val deviceIdProvider: DeviceIdProvider by lazy { iosDeviceIdProvider() }
 
     /**
      * Run one adjudicate→discover cycle and return its [CycleResult] — `COMPLETED` (drained, cursor
@@ -50,15 +51,22 @@ object UploadExtensionRoot {
     fun process(): CycleResult = runBlocking {
         val payload = configSource.config.value
         val host = uploadHostFromBundle()
-        val config = buildS3Config(payload, host)
+        val deviceId = deviceIdProvider.deviceId()
+        val config = buildUploadConfig(payload?.eventId, host, deviceId)
         if (config == null) {
-            // Setup not done (no payload) or a missing baked host — nothing to upload. A clean
-            // no-op completion, never a failure; the run re-tries once config is present.
-            log.i { "skipping cycle — payload present=${payload != null}, host present=${!host.isNullOrEmpty()}" }
+            // Not joined yet (no event id), a missing baked host, or no device id — nothing to
+            // upload. A clean no-op completion, never a failure; the run re-tries once config is present.
+            log.i {
+                "skipping cycle — eventId present=${payload != null}, host present=${!host.isNullOrEmpty()}, " +
+                    "deviceId present=${deviceId.isNotEmpty()}"
+            }
             return@runBlocking CycleResult.COMPLETED
         }
         log.i { "process: config present — running cycle" }
-        val engine = SyncEngine(S3UploadRequestProvider(config), ledger)
+        val engine = SyncEngine(
+            EdgeUploadRequestProvider(config.host, config.eventId, config.deviceId),
+            ledger,
+        )
         val cycle = UploadCycle(engine, ledger, platform, discoveryStore, log)
         val result = runCatching { cycle.run() }
             .onSuccess { log.i { "process: cycle finished — $it" } }

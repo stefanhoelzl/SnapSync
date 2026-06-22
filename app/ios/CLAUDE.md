@@ -18,9 +18,9 @@ module exporting its own **static** framework that the Xcode project links:
 
 Two frameworks, not one, so the two binaries never both statically pull `:domain:engine` into a
 single image. The app framework carries Compose/UI + the full `domain` stack; the extension
-framework is lean (engine only today; `:capability:s3` + `:capability:config` are added by the
-`real-s3-upload` change). Both are `isStatic = true` — the Compose-iOS norm (avoids dynamic-linking
-issues with the bundled Skiko/Compose native libs).
+framework is lean (`:domain:engine` + `:capability:upload-url` + `:capability:config`). Both are
+`isStatic = true` — the Compose-iOS norm (avoids dynamic-linking issues with the bundled
+Skiko/Compose native libs).
 
 ## The Gradle ↔ Xcode boundary
 
@@ -71,7 +71,7 @@ constructs only reader/watcher. Never construct a `LedgerWriter` in `:app:ios`.
   ledger DB the extension writes and the app reads (`iosLedgerBackend`). **Must be registered in
   the Developer portal** and enabled on both App IDs, or signed builds fail to provision.
 - **Keychain group `$(AppIdentifierPrefix)app.snapsync.shared`** (both `*.entitlements`): lets the
-  extension read the S3 config the app stores (`KeychainConfigStore`, which omits
+  extension read the event config (the `eventId`) the app stores (`KeychainConfigStore`, which omits
   `kSecAttrAccessGroup` and relies on this default group). Keychain groups need **no** portal step.
 - **App `Info.plist`**: `CFBundleURLTypes` registers the `snapsync` scheme (Camera-scanned QR
   deeplink); `CADisableMinimumFrameDurationOnPhone = true` is **mandatory** — Compose MP ≥1.7
