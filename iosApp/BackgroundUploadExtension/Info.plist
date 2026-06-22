@@ -1,8 +1,8 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!-- Info.plist for the ExtensionKit background-upload extension. The extension point is declared via
      EXAppExtensionAttributes (ExtensionKit, iOS 26 model); the principal type is the @main
-     BackgroundUploadExtension in code (no NSExtensionPrincipalClass). ⚠️ VERIFY the
-     EXExtensionPointIdentifier value against the iOS 26.1 SDK when the target first builds on CI. -->
+     BackgroundUploadExtension in code (no NSExtensionPrincipalClass). The EXExtensionPointIdentifier
+     value is verified on device (real-s3-upload, build 70). -->
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>

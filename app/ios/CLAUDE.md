@@ -35,9 +35,9 @@ You cannot build or run any of this on Linux. Use the proxy:
 
 - `./gradlew compileIosMainKotlinMetadata` — **Linux-runnable** compile of `iosMain`/`commonMain`
   (+ cinterop) for both modules; catches iOS-only Kotlin breakage without a Mac.
-- The Swift shells and the Xcode project compile **only on macOS CI** (`macos-26`). Swift files
-  here have never been compiled on this machine — treat the `⚠️ VERIFY` comments in them as real;
-  there is no Swift toolchain locally.
+- The Swift shells and the Xcode project compile **only on macOS CI** (`macos-26`); there is no
+  Swift toolchain locally, so they cannot be built or run on this machine. The extension shell is
+  verified on device (real-s3-upload, build 70) — keep edits to it minimal and lean on CI.
 
 ## The Swift ↔ Kotlin seam (keep Swift thin)
 
@@ -92,9 +92,9 @@ confined to the Swift shell + deployment target.
 
 ## Gotchas
 
-- **Device logs:** both composition roots set `Logger.setLogWriters(NSLogWriter())` — the default
-  kermit os_log writer emits at `.info`, which `idevicesyslog` drops. Keep new entry points doing
-  the same or device logs go silent.
+- **Device logs:** both composition roots set `Logger.setLogWriters(PublicNSLogWriter())` — the
+  default kermit os_log writer emits at `.info` (which `idevicesyslog` drops) and redacts dynamic
+  content as `<private>`. Keep new entry points doing the same or device logs go silent.
 - **`-lsqlite3`:** required in each target's `OTHER_LDFLAGS` (above). A new linked target needs it.
 - **In-memory SQLite on Native:** `NativeSqliteDriver` shares an in-memory DB across connections via
   shared-cache — give each backend a **unique db name** to avoid cross-test/instance leakage.

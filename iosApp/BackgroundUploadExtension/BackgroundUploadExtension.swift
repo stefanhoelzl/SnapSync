@@ -6,18 +6,13 @@ import SnapSyncUploadKit
 /// All logic lives in Kotlin (`SnapSyncUploadKit` → `UploadExtensionRoot`); this Swift shell only
 /// conforms to the system protocol and forwards. The system calls `process()` when it is time to
 /// handle uploads; we run one discover → engine → dummy-job → drain cycle (blocking, in Kotlin) and
-/// map the boolean result to the system's processing result.
+/// map the tri-state result to the system's processing result.
 ///
-/// ⚠️ VERIFY against the installed iOS 26.1 SDK when wiring the Xcode target (this file is a draft —
-/// it has never been compiled on this machine; there is no Swift toolchain here):
-///   * Protocol: `PHBackgroundResourceUploadExtension` is the iOS 26.1 (deprecated) type; iOS 27
-///     replaces it with the async `PHBackgroundResourceUploadJobExtension` (`processJobs() async`).
-///   * Whether `process()` is synchronous (as written) or takes a completion handler / is `async`.
-///   * Whether conformance is declared with `@main` (ExtensionKit `AppExtension`, as written) or via
-///     a classic `NSExtensionPrincipalClass` in Info.plist — adding the target through Xcode's
-///     extension template generates the canonical principal-class wiring and Info.plist for you.
-///   * `PHBackgroundResourceUploadProcessingResult` case names (`.completed` / `.failure` /
-///     `.processing`).
+/// Verified on device (real-s3-upload, build 70): the `@main` ExtensionKit conformance, the
+/// synchronous `process()`, and the `.completed` / `.failure` / `.processing` result cases all work
+/// against the iOS 26.1 `PHBackgroundResourceUploadExtension`. iOS 27 replaces this with the async
+/// `PHBackgroundResourceUploadJobExtension` (`processJobs() async` + `willTerminate()`); because all
+/// logic is Kotlin, that migration is confined to this shell and the deployment target.
 @main
 final class BackgroundUploadExtension: PHBackgroundResourceUploadExtension {
 
@@ -28,10 +23,7 @@ final class BackgroundUploadExtension: PHBackgroundResourceUploadExtension {
         // COMPLETED/PROCESSING/FAILED export to Swift as .completed/.processing/.failed.
         switch UploadExtensionRoot.shared.process() {
         case .processing:
-            // The in-flight cap was hit — ask the system to run us again. ⚠️ VERIFY `.processing`
-            // exists on the iOS 26.1 `PHBackgroundResourceUploadProcessingResult`; if it does not,
-            // return `.completed` here — the un-advanced cursor still drains the remainder on the
-            // next system-scheduled wake (only promptness is lost).
+            // The in-flight cap was hit, or pending jobs remain — ask the system to run us again.
             return .processing
         case .failed:
             return .failure
