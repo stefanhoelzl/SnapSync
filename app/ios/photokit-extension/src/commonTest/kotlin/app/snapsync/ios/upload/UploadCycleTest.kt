@@ -30,6 +30,8 @@ class UploadCycleTest {
         private val nextToken: ByteArray = byteArrayOf(9),
         private val limitAfter: Int = Int.MAX_VALUE,
         private val failCreate: Boolean = false,
+        private val removedAssetIds: List<String> = emptyList(),
+        private val fullEnumeration: Boolean = false,
     ) : UploadJobPlatform {
         val created = mutableListOf<Resource>()
         val retried = mutableListOf<PlatformUploadJob>()
@@ -43,7 +45,7 @@ class UploadCycleTest {
         override suspend fun acknowledge(job: PlatformUploadJob) { acknowledged += job }
         override suspend fun discoverResources(sinceToken: ByteArray?): Discovery {
             discoverTokenArg = sinceToken
-            return Discovery(discovered, nextToken)
+            return Discovery(discovered, nextToken, removedAssetIds, fullEnumeration)
         }
         override suspend fun createJob(request: UploadRequest, resource: Resource): CreateResult {
             if (failCreate) return CreateResult.FAILED
@@ -211,6 +213,98 @@ class UploadCycleTest {
         assertEquals(CycleResult.PROCESSING, result)
         assertEquals(listOf("a", "b"), platform.created.map { it.filename })
         assertNull(store.saved, "cursor must NOT advance on a cap-truncated cycle")
+    }
+
+    @Test
+    fun removed_asset_rows_are_pruned_incrementally_by_prefix() = runTest {
+        val backend = InMemoryLedgerBackend()
+        LedgerWriter(backend).recordCompleted("A_1-photo.jpg", attempt = 0, version = "v1")
+        LedgerWriter(backend).recordRequested("A_1-video.mov", attempt = 0, version = "v1")
+        LedgerWriter(backend).recordCompleted("B-photo.jpg", attempt = 0, version = "v1")
+        val platform = FakePlatform(removedAssetIds = listOf("A_1"))
+
+        cycleOver(backend, platform).run()
+
+        assertNull(backend.get("A_1-photo.jpg"), "deleted asset's rows are pruned")
+        assertNull(backend.get("A_1-video.mov"))
+        assertEquals(LedgerState.COMPLETED, backend.get("B-photo.jpg")?.state, "other assets untouched")
+    }
+
+    @Test
+    fun mid_upload_deletion_clears_the_stuck_pending_row() = runTest {
+        val backend = InMemoryLedgerBackend()
+        // A photo deleted before its upload finished: a REQUESTED row discovery never revisits.
+        LedgerWriter(backend).recordRequested("gone-photo.jpg", attempt = 0, version = "v1")
+        assertEquals(1, backend.aggregates().pending)
+        val platform = FakePlatform(removedAssetIds = listOf("gone"))
+
+        val result = cycleOver(backend, platform).run()
+
+        assertEquals(CycleResult.COMPLETED, result)
+        assertNull(backend.get("gone-photo.jpg"))
+        assertEquals(0, backend.aggregates().pending, "no phantom pending pins the extension awake")
+    }
+
+    @Test
+    fun full_enumeration_reconciles_the_ledger_against_the_live_library() = runTest {
+        val backend = InMemoryLedgerBackend()
+        LedgerWriter(backend).recordCompleted("old-photo.jpg", attempt = 0, version = "v1") // absent now
+        val platform = FakePlatform(discovered = listOf(resource("a-photo.jpg")), fullEnumeration = true)
+        val store = FakeStore()
+
+        val result = cycleOver(backend, platform, store).run()
+
+        assertEquals(CycleResult.COMPLETED, result)
+        assertNull(backend.get("old-photo.jpg"), "row for an asset no longer present is reconciled away")
+        assertEquals(LedgerState.REQUESTED, backend.get("a-photo.jpg")?.state, "live resource kept/uploaded")
+    }
+
+    @Test
+    fun reconcile_is_skipped_on_a_cap_truncated_full_enumeration() = runTest {
+        val backend = InMemoryLedgerBackend()
+        LedgerWriter(backend).recordCompleted("old-photo.jpg", attempt = 0, version = "v1")
+        val platform = FakePlatform(
+            discovered = listOf(resource("a-photo.jpg"), resource("b-photo.jpg")),
+            fullEnumeration = true,
+            limitAfter = 1, // cap mid-create → PROCESSING before reconcile
+        )
+        val store = FakeStore()
+
+        val result = cycleOver(backend, platform, store).run()
+
+        assertEquals(CycleResult.PROCESSING, result)
+        assertEquals(LedgerState.COMPLETED, backend.get("old-photo.jpg")?.state, "no reconcile on a cap-truncated cycle")
+        assertNull(store.saved, "cursor must NOT advance")
+    }
+
+    @Test
+    fun reconcile_does_not_run_on_an_incremental_cycle() = runTest {
+        val backend = InMemoryLedgerBackend()
+        LedgerWriter(backend).recordCompleted("untouched-photo.jpg", attempt = 0, version = "v1")
+        // Incremental (fullEnumeration = false): `discovered` is only the changed subset, never the
+        // live key-set, so retainKeys must NOT run or it would wipe everything not just-changed.
+        val platform = FakePlatform(discovered = listOf(resource("a-photo.jpg")), fullEnumeration = false)
+
+        cycleOver(backend, platform).run()
+
+        assertEquals(LedgerState.COMPLETED, backend.get("untouched-photo.jpg")?.state)
+    }
+
+    @Test
+    fun pruned_then_rediscovered_asset_is_uploaded_fresh() = runTest {
+        val backend = InMemoryLedgerBackend()
+        // Was backed up, then deleted (pruned), then recovered from "Recently Deleted" (re-appears).
+        LedgerWriter(backend).recordCompleted("x-photo.jpg", attempt = 0, version = "v1")
+        val platform = FakePlatform(
+            discovered = listOf(resource("x-photo.jpg", version = "v1")),
+            removedAssetIds = listOf("x"),
+        )
+
+        cycleOver(backend, platform).run()
+
+        // Prune dropped the COMPLETED proof, so the re-discovered key is fresh work, not AlreadyUploaded.
+        assertEquals(listOf("x-photo.jpg"), platform.created.map { it.filename })
+        assertEquals(LedgerState.REQUESTED, backend.get("x-photo.jpg")?.state)
     }
 
     @Test

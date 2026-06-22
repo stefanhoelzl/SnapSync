@@ -21,6 +21,20 @@ VALUES (:key, :state, :attempt, :version, :updatedAt);
 deleteAll:
 DELETE FROM ledgerRow;
 
+selectAllKeys:
+SELECT key FROM ledgerRow;
+
+deleteKey:
+DELETE FROM ledgerRow
+WHERE key = :key;
+
+-- Half-open key range [:lo, :hi): a prefix match that rides the TEXT PRIMARY KEY (BINARY) index
+-- and is wildcard-safe (the key embeds `_`, which would over-match under LIKE). The backend passes
+-- lo = prefix and hi = prefix with its last char incremented.
+deleteByKeyPrefix:
+DELETE FROM ledgerRow
+WHERE key >= :lo AND key < :hi;
+
 aggregates:
 SELECT
     COUNT(CASE WHEN state != 'COMPLETED' THEN 1 END) AS pending,

@@ -47,6 +47,25 @@ class SqlDelightLedgerBackend(database: LedgerDatabase) : LedgerBackend {
         queries.deleteAll()
         dings.tryEmit(Unit)
     }
+
+    override suspend fun deleteByKeyPrefix(prefix: String) {
+        if (prefix.isEmpty()) return
+        // [prefix, successor): successor is prefix with its last char bumped by one, so it is the
+        // least string greater than every key beginning with prefix — a half-open range scan.
+        val successor = prefix.dropLast(1) + (prefix.last() + 1)
+        queries.deleteByKeyPrefix(lo = prefix, hi = successor)
+        dings.tryEmit(Unit)
+    }
+
+    override suspend fun retainKeys(keep: Set<String>) {
+        // Delete the complement, one key per statement, so the (possibly huge) keep-set is never
+        // bound into a single SQL `IN`/`NOT IN` — it stays in Kotlin set math. The complement is
+        // small in practice (only the assets removed since the last reconcile).
+        val toDelete = queries.selectAllKeys().executeAsList().filterNot(keep::contains)
+        if (toDelete.isEmpty()) return
+        queries.transaction { toDelete.forEach { queries.deleteKey(it) } }
+        dings.tryEmit(Unit)
+    }
 }
 
 /**

@@ -81,6 +81,20 @@ interface LedgerBackend {
      * Dings [changes] like a [put] so watchers re-read the now-empty truth.
      */
     suspend fun clear()
+
+    /**
+     * Delete every row whose [key] begins with [prefix]. A verbatim key-string match — the backend
+     * interprets no structure within a key (any asset/resource grouping a key encodes is the
+     * caller's convention, unknown to the seam). Dings [changes] like a [put].
+     */
+    suspend fun deleteByKeyPrefix(prefix: String)
+
+    /**
+     * Delete every row whose [key] is **not** in [keep] (retain the intersection). Dings [changes]
+     * like a [put]. The keep-set is used only to compute the complement — it is never bound into a
+     * single SQL statement, so an arbitrarily large set stays within driver bind-variable limits.
+     */
+    suspend fun retainKeys(keep: Set<String>)
 }
 
 /**
@@ -113,6 +127,17 @@ class LedgerWriter(
 
     suspend fun recordFailed(key: String, attempt: Int, version: String) =
         record(key, LedgerState.FAILED, attempt, version)
+
+    /**
+     * Prune every row whose key begins with [prefix] — a sync write by the single writer (distinct
+     * from the app-side [LedgerBackend.clear] reset). Unlike the record operations it stamps no
+     * `updatedAt` and reads nothing first; it just removes. Exposed only here on the writer, never
+     * on [LedgerReader], so read-only holders cannot prune.
+     */
+    suspend fun deleteByKeyPrefix(prefix: String) = backend.deleteByKeyPrefix(prefix)
+
+    /** Prune every row whose key is not in [keep] (writer-only; see [deleteByKeyPrefix]). */
+    suspend fun retainKeys(keep: Set<String>) = backend.retainKeys(keep)
 
     private suspend fun record(key: String, state: LedgerState, attempt: Int, version: String) =
         backend.put(LedgerEntry(key, state, attempt, version, clock.now()))
