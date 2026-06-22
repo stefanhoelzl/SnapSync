@@ -97,8 +97,8 @@ baked. A plain push (no dispatch input) bakes the inert `https://dummy.invalid`,
 is unaffected. **Drain-all is kept** — the ledger stays at `REQUESTED`, so success is confirmed by
 the object landing in the bucket (the live stream / MinIO console at `:9001`), **not** by the app
 status screen. ATS `NSAllowsLocalNetworking` permits the plaintext PUT; the app primes the Local
-Network permission at launch. (Open spike: whether `BackgroundUploadURLBase` accepts `http://` + IP
-— if it demands `https`, run MinIO with TLS.)
+Network permission at launch. (`BackgroundUploadURLBase` accepts `http://` + IP — verified on
+device, no TLS needed.)
 
 ## App Store Connect via API (agent-driven portal chores)
 
