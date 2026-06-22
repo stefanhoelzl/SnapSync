@@ -4,58 +4,61 @@ import kotlin.time.Duration
 import kotlin.time.Instant
 
 /**
- * Snapshot of backup truth, projected from the engine's ledger (design.md §2.4).
+ * Snapshot of backup truth, projected from the engine's ledger and the live photo library
+ * (design.md §2.4).
  *
- * Counts are lifetime aggregates by **photo (asset), not resource row**: [pending] = photos with
- * any resource not yet proven uploaded (absent proof, `REQUESTED` hopes, transient `FAILED`),
- * [completed] = photos whose resources are all `COMPLETED`. A re-upload flips its photo back to
- * pending — re-uploads are visible here. (The sync-state classification is unaffected: "any
- * resource pending" ⟺ "any photo pending".)
+ * [completed] is a lifetime aggregate over the ledger, counted by **photo (asset), not resource
+ * row**: photos all of whose resources are `COMPLETED`. A re-upload flips its photo back to pending
+ * — re-uploads are visible here. [pending] (ledger photos not yet complete) remains available but
+ * does **not** drive classification.
  *
- * [failed] is structurally 0 from the ledger-backed source: retry-forever means no key is ever
- * given up on (an attempt budget would change that). The field exists for classification and
- * fakes; INCOMPLETE is harness-reachable only in v1.
+ * [total] is the live photo-library count (the gallery size, `N`) — NOT a ledger count, so it
+ * reflects photos the ledger has not yet discovered. This is what makes "n of N" honest the instant
+ * a photo is taken, before the background extension records anything.
+ *
+ * [failed] is structurally 0 from the ledger-backed source (retry-forever never gives up a key) and
+ * [estimatedRemaining] is always null (this version never estimates). Both fields exist for fakes.
  *
  * [active] is operational state — "the backup machinery is allowed to run" — derived from
- * permission, never from event recency. No clocks, no thresholds.
+ * permission. It no longer drives classification (the setup gate shadows every inactive case), but
+ * is retained as the shared operational-state rule's output.
  *
- * [estimatedRemaining] is valid as of the snapshot's emission: sources mint it per snapshot and
- * never persist it (a stored estimate is stale the moment it is written); `null` means not
- * estimable — the v1 source always reports null.
- *
- * [lastFinishedAt] is the newest completion recorded in the ledger; `null` means nothing has
- * ever completed.
+ * [lastFinishedAt] is the newest completion recorded in the ledger; `null` means nothing has ever
+ * completed.
  */
 data class SyncProgress(
     val pending: Int,
     val completed: Int,
+    val total: Int,
     val failed: Int,
     val active: Boolean,
     val estimatedRemaining: Duration?,
     val lastFinishedAt: Instant?,
 ) {
     /**
-     * Single source of truth for classifying a snapshot, in decision-table order: machinery off
-     * outranks everything; outstanding work outranks history; the rest reads the ledger's
-     * lifetime verdict. Branch order guarantees `lastFinishedAt != null` for INCOMPLETE and
-     * COMPLETE. There is no FAILED state — retry-forever never gives up on a key, and "nothing
-     * ever completed but something finished" is untellable when [lastFinishedAt] is the newest
-     * completion.
+     * The displayed synced count: [completed] clamped to [total]. A photo uploaded then deleted
+     * stays `COMPLETED` in the ledger until the next extension prune while [total] drops instantly,
+     * so without the clamp `completed` could exceed `total` and read as a nonsensical "6 of 5".
+     */
+    val synced: Int get() = minOf(completed, total)
+
+    /**
+     * Single source of truth for classifying a snapshot, driven by the live total `N` versus the
+     * (clamped) synced count `n` — ledger `pending` is deliberately ignored so a not-yet-pruned
+     * deleted photo cannot pin the screen to IN_PROGRESS. There is no SUSPENDED state (the setup
+     * gate shadows every inactive case), no NEVER_SYNCED (it folds into IN_PROGRESS at n=0 or
+     * NOTHING_TO_SYNC at N=0), and no INCOMPLETE/FAILED (untellable under retry-forever).
      */
     val state: SyncState
         get() = when {
-            !active -> SyncState.SUSPENDED
-            pending > 0 -> SyncState.IN_PROGRESS
-            lastFinishedAt == null -> SyncState.NEVER_SYNCED
-            failed > 0 -> SyncState.INCOMPLETE
-            else -> SyncState.COMPLETE
+            total == 0 -> SyncState.NOTHING_TO_SYNC
+            synced >= total -> SyncState.COMPLETE
+            else -> SyncState.IN_PROGRESS
         }
 }
 
 enum class SyncState {
-    NEVER_SYNCED,
     IN_PROGRESS,
-    SUSPENDED,
     COMPLETE,
-    INCOMPLETE,
+    NOTHING_TO_SYNC,
 }

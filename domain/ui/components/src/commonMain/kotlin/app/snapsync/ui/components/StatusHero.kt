@@ -30,7 +30,6 @@ import androidx.compose.ui.unit.dp
  */
 sealed interface StatusIndicator {
     data object Success : StatusIndicator
-    data object Warning : StatusIndicator
     data object Error : StatusIndicator
     data object Waiting : StatusIndicator
 
@@ -39,7 +38,12 @@ sealed interface StatusIndicator {
 
     /** Indeterminate spinner: work with no measurable progress (e.g. reading persisted state). */
     data object Loading : StatusIndicator
-    data class Progress(val fraction: Float) : StatusIndicator
+
+    /** LED dot: sync underway. The skin paints it amber/yellow. */
+    data object InProgress : StatusIndicator
+
+    /** LED dot: caught up (everything synced, or nothing to sync). The skin paints it green. */
+    data object Complete : StatusIndicator
 }
 
 /**
@@ -73,19 +77,29 @@ fun StatusHero(indicator: StatusIndicator, headline: String, detail: String? = n
 
 private val IndicatorSize = 28.dp
 
+// The LED palette: this skin's mapping of the two semantic sync states to color. A future
+// (e.g. Cupertino) skin may paint them differently; the screens never see these.
+private val LedYellow = Color(0xFFE0A100)
+private val LedGreen = Color(0xFF2E9B53)
+
 @Composable
 internal fun IndicatorIcon(indicator: StatusIndicator) {
     when (indicator) {
-        is StatusIndicator.Progress -> CircularProgressIndicator(
-            progress = { indicator.fraction },
-            modifier = Modifier.size(IndicatorSize),
-        )
         StatusIndicator.Loading -> CircularProgressIndicator(modifier = Modifier.size(IndicatorSize))
+        StatusIndicator.InProgress -> LedDot(LedYellow)
+        StatusIndicator.Complete -> LedDot(LedGreen)
         StatusIndicator.Success -> Glyph(MaterialTheme.colorScheme.primary) { successGlyph() }
-        StatusIndicator.Warning -> Glyph(MaterialTheme.colorScheme.tertiary) { warningGlyph() }
         StatusIndicator.Error -> Glyph(MaterialTheme.colorScheme.error) { errorGlyph() }
         StatusIndicator.Waiting -> Glyph(MaterialTheme.colorScheme.onSurfaceVariant) { waitingGlyph() }
         StatusIndicator.Photos -> Glyph(MaterialTheme.colorScheme.onSurfaceVariant) { photosGlyph() }
+    }
+}
+
+/** A small filled disc — the status LED. */
+@Composable
+private fun LedDot(color: Color) {
+    Canvas(Modifier.size(IndicatorSize)) {
+        drawCircle(color, radius = size.minDimension * 0.3f)
     }
 }
 
@@ -153,16 +167,4 @@ private fun GlyphScope.photosGlyph() {
     }
     draw.drawPath(mountains, color, style = stroke)
     draw.drawCircle(color, radius = stroke.width * 0.7f, center = Offset(x(0.68f), y(0.32f)))
-}
-
-private fun GlyphScope.warningGlyph() {
-    val triangle = Path().apply {
-        moveTo(x(0.5f), y(0.14f))
-        lineTo(x(0.9f), y(0.84f))
-        lineTo(x(0.1f), y(0.84f))
-        close()
-    }
-    draw.drawPath(triangle, color, style = stroke)
-    draw.drawLine(color, Offset(x(0.5f), y(0.42f)), Offset(x(0.5f), y(0.6f)), stroke.width, StrokeCap.Round)
-    draw.drawCircle(color, radius = stroke.width / 2, center = Offset(x(0.5f), y(0.72f)))
 }

@@ -8,6 +8,7 @@ import app.snapsync.engine.LEDGER_APP_GROUP
 import app.snapsync.engine.LedgerBackend
 import app.snapsync.engine.LedgerWatcher
 import app.snapsync.engine.iosLedgerBackend
+import app.snapsync.gallery.PhotoLibraryGalleryStatus
 import app.snapsync.permission.PermissionStatus
 import app.snapsync.permission.PhotoLibraryPermission
 import app.snapsync.presentation.StatusContainerHost
@@ -52,11 +53,14 @@ object SnapSyncRoot {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
     private val ledgerBackend: LedgerBackend by lazy { iosLedgerBackend() }
 
+    // The live photo-library count (N), held so a re-provision can ding it to re-read.
+    private val gallery: PhotoLibraryGalleryStatus by lazy { PhotoLibraryGalleryStatus() }
+
     val host: StatusContainerHost by lazy {
         val watcher = LedgerWatcher(ledgerBackend)
         val permission = PhotoLibraryPermission()
         val config = KeychainConfigStore()
-        val syncSource = LedgerSyncStatusSource(watcher, permission, scope)
+        val syncSource = LedgerSyncStatusSource(watcher, permission, gallery, scope)
         enableBackgroundUploadOnGrant(permission)
         // Surface the Local Network permission now (the background extension cannot prompt). No-op
         // against a public HTTPS endpoint; needed when the upload host is a private/local address.
@@ -85,6 +89,7 @@ object SnapSyncRoot {
     private suspend fun resetForReprovision() {
         ledgerBackend.clear()
         clearDiscoveryCursor()
+        gallery.refresh() // new event baseline → re-read the gallery total (N)
         reRegisterExtension()
         log.i { "re-provisioned: ledger + discovery cursor reset, extension re-registered" }
     }

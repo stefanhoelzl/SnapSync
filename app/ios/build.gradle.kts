@@ -23,6 +23,7 @@ kotlin {
             implementation(project(":domain:status"))
             implementation(project(":domain:engine"))
             implementation(project(":domain:permission"))
+            implementation(project(":domain:gallery"))
             implementation(project(":capability:config"))
             implementation(libs.coroutines.core)
             implementation(libs.kermit)
