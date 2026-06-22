@@ -9,25 +9,27 @@ import kotlinx.coroutines.flow.flow
 
 /**
  * One key's durable upload memory. The ledger is the engine's only state: per-resource entries
- * keyed by [Resource.filename], holding the last recorded lifecycle [state], the [attempt] it
- * belongs to, the content-identity [version] it was recorded for, and [updatedAt] — when the
+ * keyed by [Resource.filename], holding the [assetId] the resource belongs to (an opaque grouping
+ * id, several resources of one photo share it), the last recorded lifecycle [state], the [attempt]
+ * it belongs to, the content-identity [version] it was recorded for, and [updatedAt] — when the
  * record operation ran (stamped by [LedgerWriter], never by callers or backends).
  */
 class LedgerEntry(
     val key: String,
+    val assetId: String,
     val state: LedgerState,
     val attempt: Int,
     val version: String,
     val updatedAt: Instant,
 ) {
     override fun equals(other: Any?): Boolean = other is LedgerEntry &&
-        key == other.key && state == other.state && attempt == other.attempt &&
-        version == other.version && updatedAt == other.updatedAt
+        key == other.key && assetId == other.assetId && state == other.state &&
+        attempt == other.attempt && version == other.version && updatedAt == other.updatedAt
 
     override fun hashCode(): Int = key.hashCode()
 
     override fun toString(): String =
-        "LedgerEntry($key, $state, attempt=$attempt, version=$version, updatedAt=$updatedAt)"
+        "LedgerEntry($key, assetId=$assetId, $state, attempt=$attempt, version=$version, updatedAt=$updatedAt)"
 }
 
 enum class LedgerState {
@@ -42,9 +44,10 @@ enum class LedgerState {
 }
 
 /**
- * The ledger's lifetime truth in one snapshot-consistent read: [pending] = keys not yet proven
- * uploaded (anything non-`COMPLETED`), [completed] = keys with proof, [newestCompletionAt] =
- * the latest completion's [LedgerEntry.updatedAt], null when nothing has ever completed.
+ * The ledger's lifetime truth in one snapshot-consistent read, counted by **photo (assetId), not
+ * resource row**: [pending] = photos with any non-`COMPLETED` resource, [completed] = photos whose
+ * resources are all `COMPLETED`, [newestCompletionAt] = the newest fully-completed photo's latest
+ * [LedgerEntry.updatedAt], null when no photo is fully completed.
  */
 class LedgerAggregates(
     val pending: Int,
@@ -83,18 +86,19 @@ interface LedgerBackend {
     suspend fun clear()
 
     /**
-     * Delete every row whose [key] begins with [prefix]. A verbatim key-string match — the backend
-     * interprets no structure within a key (any asset/resource grouping a key encodes is the
-     * caller's convention, unknown to the seam). Dings [changes] like a [put].
+     * Delete every row whose [LedgerEntry.assetId] equals [assetId]. The backend matches by
+     * equality and never interprets the value — `assetId` is a second opaque grouping field (it
+     * does not know what an "asset" means). Dings [changes] like a [put].
      */
-    suspend fun deleteByKeyPrefix(prefix: String)
+    suspend fun deleteByAssetId(assetId: String)
 
     /**
-     * Delete every row whose [key] is **not** in [keep] (retain the intersection). Dings [changes]
-     * like a [put]. The keep-set is used only to compute the complement — it is never bound into a
-     * single SQL statement, so an arbitrarily large set stays within driver bind-variable limits.
+     * Delete every row whose [LedgerEntry.assetId] is **not** in [keep] (retain the intersection).
+     * Dings [changes] like a [put]. The keep-set is used only to compute the complement — it is
+     * never bound into a single SQL statement, so an arbitrarily large set stays within driver
+     * bind-variable limits.
      */
-    suspend fun retainKeys(keep: Set<String>)
+    suspend fun retainAssets(keep: Set<String>)
 }
 
 /**
@@ -119,28 +123,28 @@ class LedgerWriter(
     private val clock: Clock = Clock.System,
 ) : LedgerReader(backend) {
 
-    suspend fun recordRequested(key: String, attempt: Int, version: String) =
-        record(key, LedgerState.REQUESTED, attempt, version)
+    suspend fun recordRequested(key: String, assetId: String, attempt: Int, version: String) =
+        record(key, assetId, LedgerState.REQUESTED, attempt, version)
 
-    suspend fun recordCompleted(key: String, attempt: Int, version: String) =
-        record(key, LedgerState.COMPLETED, attempt, version)
+    suspend fun recordCompleted(key: String, assetId: String, attempt: Int, version: String) =
+        record(key, assetId, LedgerState.COMPLETED, attempt, version)
 
-    suspend fun recordFailed(key: String, attempt: Int, version: String) =
-        record(key, LedgerState.FAILED, attempt, version)
+    suspend fun recordFailed(key: String, assetId: String, attempt: Int, version: String) =
+        record(key, assetId, LedgerState.FAILED, attempt, version)
 
     /**
-     * Prune every row whose key begins with [prefix] — a sync write by the single writer (distinct
-     * from the app-side [LedgerBackend.clear] reset). Unlike the record operations it stamps no
-     * `updatedAt` and reads nothing first; it just removes. Exposed only here on the writer, never
-     * on [LedgerReader], so read-only holders cannot prune.
+     * Prune every row for [assetId] — a sync write by the single writer (distinct from the app-side
+     * [LedgerBackend.clear] reset). At the writer layer it stamps no `updatedAt` and consults no
+     * engine state; it just removes. Exposed only here on the writer, never on [LedgerReader], so
+     * read-only holders cannot prune.
      */
-    suspend fun deleteByKeyPrefix(prefix: String) = backend.deleteByKeyPrefix(prefix)
+    suspend fun deleteByAssetId(assetId: String) = backend.deleteByAssetId(assetId)
 
-    /** Prune every row whose key is not in [keep] (writer-only; see [deleteByKeyPrefix]). */
-    suspend fun retainKeys(keep: Set<String>) = backend.retainKeys(keep)
+    /** Prune every row whose assetId is not in [keep] (writer-only; see [deleteByAssetId]). */
+    suspend fun retainAssets(keep: Set<String>) = backend.retainAssets(keep)
 
-    private suspend fun record(key: String, state: LedgerState, attempt: Int, version: String) =
-        backend.put(LedgerEntry(key, state, attempt, version, clock.now()))
+    private suspend fun record(key: String, assetId: String, state: LedgerState, attempt: Int, version: String) =
+        backend.put(LedgerEntry(key, assetId, state, attempt, version, clock.now()))
 }
 
 /**

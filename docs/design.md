@@ -158,19 +158,26 @@ uploaded-memory that re-uploads everything; and Apple's own upload-job guidance 
 write-then-acknowledge with per-key idempotent tracking (exactly-once across the file system and the
 job system is impossible — reports are at-least-once by construction).
 
-**The sync domain knows only resources** (decided 2026-06-12). Since only resources are ever
-transported, the engine's vocabulary stops there: the asset→resource fan-out, the **filename layout**
-(`<localId>-<kind>.<ext>` encodes resource identity within the device), the **event/device key
-placement**, and asset-metadata are all **the platform/provider's** business. The platform hands each
-resource a single opaque `filename` — pure *identity*, a plain string. Its *representation* and
-*placement* (percent-encoding into a URL path, the `events/<eventId>/<deviceId>/` prefix, the mint
-call) are **the provider's responsibility**, under one contract: the filename→destination mapping must
-be **deterministic and injective** — that is where upload idempotency lives.
+**The sync domain transports resources, grouped by an opaque `assetId`** (resources-only decided
+2026-06-12; an opaque per-resource `assetId` added 2026-06-22 so the ledger can count/prune by
+photo). Since only resources are ever transported, the engine's vocabulary stops there: the
+asset→resource fan-out, the **filename layout** (`<localId>-<kind>.<ext>` encodes resource identity
+within the device), the **event/device key placement**, and asset-metadata are all **the
+platform/provider's** business. The engine carries `assetId` through to the ledger but **never
+interprets it** — like `filename` it is pure identity whose meaning is the platform's (iOS: the
+asset's `localIdentifier`, normalized). The platform hands each resource a single opaque `filename`
+— pure *identity*, a plain string. Its *representation* and *placement* (percent-encoding into a URL
+path, the `events/<eventId>/<deviceId>/` prefix, the mint call) are **the provider's
+responsibility**, under one contract: the filename→destination mapping must be **deterministic and
+injective** — that is where upload idempotency lives.
 
 ```kotlin
 class Resource(                              // concrete domain type, platform-constructed
     val filename: String,                    // identity; layout + event/device placement is the
-    val contentType: String,                 //   platform/provider's (iOS: "<localId>-<kind>.<ext>")
+    val assetId: String,                     //   platform/provider's (iOS: "<localId>-<kind>.<ext>")
+                                             // opaque grouping id (iOS: normalized localIdentifier);
+                                             //   engine carries it to the ledger, NEVER interprets
+    val contentType: String,                 //
     val version: String,                     // content-identity proof (iOS: asset modificationDate);
                                              //   engine compares EQUALITY ONLY, never parses
     val metadata: Map<String, String>,       // opaque to the engine (carried for the platform's use;
@@ -210,20 +217,34 @@ interface UploadRequestProvider {            // impl: the mint-endpoint HTTP cli
 }
 
 interface LedgerBackend {                    // storage seam: dumb row store, last write wins
-    val changes: Flow<Unit>                  // ding after every put; "re-read the truth"
-    suspend fun get(key: String): LedgerEntry?
+    val changes: Flow<Unit>                  // ding after every put; "re-read the truth" — where
+                                             //   another process writes, feeding this is that
+                                             //   backend's concern (iOS: Darwin observer)
+    suspend fun get(key: String): LedgerEntry?  // LedgerEntry carries an opaque assetId column
     suspend fun put(entry: LedgerEntry)      // single-row upsert = the unit of atomicity
-    suspend fun aggregates(): LedgerAggregates  // one snapshot-consistent SQL round-trip
+    suspend fun aggregates(): LedgerAggregates  // one round-trip, counted by PHOTO (assetId): a
+                                             //   photo is complete only when all its rows are
     suspend fun clear()                      // wipe all rows (re-provision on join — §3.2)
+    suspend fun deleteByAssetId(assetId: String)   // prune one asset's rows (incremental deletion)
+    suspend fun retainAssets(keep: Set<String>)    // prune assets ∉ keep (full-enum reconcile);
+                                             //   both still dumb: assetId is a 2nd opaque field
 }
 open class LedgerReader(backend)             // entry(key) — the per-key read-only face (engine's)
 class LedgerWriter(backend, clock = System) : LedgerReader
-                                             // recordRequested / recordCompleted / recordFailed;
-                                             // stamps updatedAt — the SINGLE stamping point.
-                                             // ONE writer per platform (the engine-hosting root).
-class LedgerWatcher(backend)                 // aggregates: Flow<LedgerAggregates> — cold, deduped
-class LedgerEntry(key, state /* REQUESTED|COMPLETED|FAILED */, attempt, version, updatedAt)
-class LedgerAggregates(pending, completed, newestCompletionAt /* null = never completed */)
+                                             // recordRequested / recordCompleted / recordFailed
+                                             //   (each takes assetId); deleteByAssetId / retainAssets;
+                                             // stamps updatedAt — the SINGLE stamping point
+                                             // (engine clock-free, backends store verbatim).
+                                             // ONE writer per platform, by construction: only the
+                                             // engine-hosting composition root constructs it
+class LedgerWatcher(backend)                 // aggregates: Flow<LedgerAggregates> — cold: current
+                                             //   truth on collect, re-query per conflated ding,
+                                             //   deduped; the ONLY type surfacing aggregates/dings
+class LedgerEntry(key, assetId, state /* REQUESTED|COMPLETED|FAILED */, attempt, version, updatedAt)
+class LedgerAggregates(pending, completed, newestCompletionAt /* by PHOTO; null = no photo done */)
+                                             // schema: key PRIMARY KEY, assetId (+index), state,
+                                             // attempt, version, updatedAt (epoch millis; SQLDelight
+                                             // typed columns, adapters hidden in one factory)
 
 class SyncEngine(provider: UploadRequestProvider, ledger: LedgerWriter) {
     suspend fun handle(event: SyncEvent): SyncDecision    // ResourceChanged = pure query (no write)
@@ -305,10 +326,13 @@ ledger's `LedgerWatcher` stream with the permission seam **and the event-config 
 mints snapshots — constructed via a suspend factory that reads the current truth first, so the seam's
 synchronous-first-value promise holds. Writes ding, the watcher re-queries, the source re-mints.
 
-- **Counts are lifetime aggregates** over ledger rows (`pending` = non-`COMPLETED`, `completed` =
-  `COMPLETED`); `lastFinishedAt` = the newest completion's `updatedAt`. `ReUpload` flips a row back to
-  `REQUESTED`, so re-uploads are visible. `failed` ≡ 0 from the real source (retry-forever) and
-  `estimatedRemaining` ≡ null (never estimates) — both fields exist for classification and fakes.
+- **Counts are lifetime aggregates by PHOTO (assetId), not resource row** (added 2026-06-22):
+  `pending` = photos with any non-`COMPLETED` resource, `completed` = photos whose resources are
+  all `COMPLETED`; `lastFinishedAt` = the newest fully-completed photo's `updatedAt`. (The state
+  classification is unaffected — "any resource pending" ⟺ "any photo pending".) `ReUpload` flips a
+  row back to `REQUESTED`, so re-uploads are visible. `failed` ≡ 0 from the real source
+  (retry-forever) and `estimatedRemaining` ≡ null (never estimates) — both fields exist for
+  classification and fakes.
 - **Classification is suspended-first**: `!active → SUSPENDED; pending > 0 → IN_PROGRESS;
   lastFinishedAt == null → NEVER_SYNCED; failed > 0 → INCOMPLETE; else COMPLETE`. **There is no FAILED
   state** (untellable under retry-forever).

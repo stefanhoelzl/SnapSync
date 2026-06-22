@@ -3,41 +3,50 @@ import kotlin.time.Instant;
 
 CREATE TABLE ledgerRow (
     key TEXT NOT NULL PRIMARY KEY,
+    assetId TEXT NOT NULL,
     state TEXT AS LedgerState NOT NULL,
     attempt INTEGER NOT NULL,
     version TEXT NOT NULL,
     updatedAt INTEGER AS Instant NOT NULL
 );
 
+CREATE INDEX ledgerRow_assetId ON ledgerRow(assetId);
+
 get:
-SELECT key, state, attempt, version, updatedAt
+SELECT key, assetId, state, attempt, version, updatedAt
 FROM ledgerRow
 WHERE key = :key;
 
 put:
-INSERT OR REPLACE INTO ledgerRow (key, state, attempt, version, updatedAt)
-VALUES (:key, :state, :attempt, :version, :updatedAt);
+INSERT OR REPLACE INTO ledgerRow (key, assetId, state, attempt, version, updatedAt)
+VALUES (:key, :assetId, :state, :attempt, :version, :updatedAt);
 
 deleteAll:
 DELETE FROM ledgerRow;
 
-selectAllKeys:
-SELECT key FROM ledgerRow;
-
-deleteKey:
+-- Prune one asset's rows by equality (rides the assetId index). Used for the incremental
+-- deletion path and, per-straggler, by retainAssets.
+deleteByAssetId:
 DELETE FROM ledgerRow
-WHERE key = :key;
+WHERE assetId = :assetId;
 
--- Half-open key range [:lo, :hi): a prefix match that rides the TEXT PRIMARY KEY (BINARY) index
--- and is wildcard-safe (the key embeds `_`, which would over-match under LIKE). The backend passes
--- lo = prefix and hi = prefix with its last char incremented.
-deleteByKeyPrefix:
-DELETE FROM ledgerRow
-WHERE key >= :lo AND key < :hi;
+-- The distinct assets currently present — read by retainAssets to compute the complement in
+-- Kotlin (so an arbitrarily large keep-set is never bound into one statement).
+selectAllAssetIds:
+SELECT DISTINCT assetId FROM ledgerRow;
 
+-- Aggregates counted by PHOTO (assetId), not resource row: collapse rows to assets first, then
+-- count. A photo is complete only when none of its rows is non-COMPLETED.
 aggregates:
+WITH perAsset AS (
+    SELECT assetId,
+           SUM(CASE WHEN state != 'COMPLETED' THEN 1 ELSE 0 END) AS notDone,
+           MAX(updatedAt) AS lastTouch
+    FROM ledgerRow
+    GROUP BY assetId
+)
 SELECT
-    COUNT(CASE WHEN state != 'COMPLETED' THEN 1 END) AS pending,
-    COUNT(CASE WHEN state = 'COMPLETED' THEN 1 END) AS completed,
-    MAX(CASE WHEN state = 'COMPLETED' THEN updatedAt END) AS newestCompletionAt
-FROM ledgerRow;
+    COUNT(CASE WHEN notDone > 0 THEN 1 END) AS pending,
+    COUNT(CASE WHEN notDone = 0 THEN 1 END) AS completed,
+    MAX(CASE WHEN notDone = 0 THEN lastTouch END) AS newestCompletionAt
+FROM perAsset;

@@ -194,6 +194,7 @@ class IosUploadJobPlatform(
                 val resource = any as PHAssetResource
                 resources += Resource(
                     filename = uploadKey(assetId, resource.type, resource.originalFilename),
+                    assetId = assetId,
                     contentType = resource.uniformTypeIdentifier,
                     version = version,
                     metadata = emptyMap(),

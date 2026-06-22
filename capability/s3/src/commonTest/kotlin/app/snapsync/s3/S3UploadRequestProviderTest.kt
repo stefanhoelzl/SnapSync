@@ -31,7 +31,7 @@ class S3UploadRequestProviderTest {
         filename: String = "id-ios.photo.jpg",
         contentType: String = "image/jpeg",
         metadata: Map<String, String> = emptyMap(),
-    ) = Resource(filename, contentType, version = "v1", metadata = metadata, data = Unit)
+    ) = Resource(filename, assetId = "id", contentType = contentType, version = "v1", metadata = metadata, data = Unit)
 
     // --- 5.1 Object-key encoding -----------------------------------------------------------------
 

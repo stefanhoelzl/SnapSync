@@ -61,13 +61,13 @@ class DarwinCrossProcessLedgerBackend(
         notify_post(notificationName)
     }
 
-    override suspend fun deleteByKeyPrefix(prefix: String) {
-        delegate.deleteByKeyPrefix(prefix)
+    override suspend fun deleteByAssetId(assetId: String) {
+        delegate.deleteByAssetId(assetId)
         notify_post(notificationName)
     }
 
-    override suspend fun retainKeys(keep: Set<String>) {
-        delegate.retainKeys(keep)
+    override suspend fun retainAssets(keep: Set<String>) {
+        delegate.retainAssets(keep)
         notify_post(notificationName)
     }
 

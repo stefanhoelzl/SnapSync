@@ -48,7 +48,7 @@ class LedgerSyncStatusSourceTest {
 
     @Test
     fun `initial value is Loading before the first read`() = runTest {
-        writer.recordCompleted("a", attempt = 0, version = "v1")
+        writer.recordCompleted("a", assetId = "a", attempt = 0, version = "v1")
 
         val source = LedgerSyncStatusSource(watcher, permission, backgroundScope, StandardTestDispatcher(testScheduler))
 
@@ -57,9 +57,9 @@ class LedgerSyncStatusSourceTest {
 
     @Test
     fun `first Ready reflects the ledger`() = runTest {
-        writer.recordCompleted("a", attempt = 0, version = "v1")
-        writer.recordCompleted("b", attempt = 0, version = "v1")
-        writer.recordRequested("c", attempt = 0, version = "v1")
+        writer.recordCompleted("a", assetId = "a", attempt = 0, version = "v1")
+        writer.recordCompleted("b", assetId = "b", attempt = 0, version = "v1")
+        writer.recordRequested("c", assetId = "c", attempt = 0, version = "v1")
 
         val source = LedgerSyncStatusSource(watcher, permission, backgroundScope, StandardTestDispatcher(testScheduler))
         runCurrent()
@@ -73,7 +73,7 @@ class LedgerSyncStatusSourceTest {
         runCurrent()
         assertEquals(ready(), source.status.value)
 
-        writer.recordCompleted("a", attempt = 0, version = "v1")
+        writer.recordCompleted("a", assetId = "a", attempt = 0, version = "v1")
         runCurrent()
 
         assertEquals(ready(completed = 1, lastFinishedAt = t0), source.status.value)
@@ -81,7 +81,7 @@ class LedgerSyncStatusSourceTest {
 
     @Test
     fun `a permission flip re-mints a Ready snapshot with unchanged counts`() = runTest {
-        writer.recordCompleted("a", attempt = 0, version = "v1")
+        writer.recordCompleted("a", assetId = "a", attempt = 0, version = "v1")
         val source = LedgerSyncStatusSource(watcher, permission, backgroundScope, StandardTestDispatcher(testScheduler))
         runCurrent()
 
@@ -93,7 +93,7 @@ class LedgerSyncStatusSourceTest {
 
     @Test
     fun `the v1 source never estimates and never gives up`() = runTest {
-        writer.recordFailed("a", attempt = 3, version = "v1")
+        writer.recordFailed("a", assetId = "a", attempt = 3, version = "v1")
         val source = LedgerSyncStatusSource(watcher, permission, backgroundScope, StandardTestDispatcher(testScheduler))
         runCurrent()
 
@@ -128,22 +128,24 @@ private class RowStore : LedgerBackend {
         dings.tryEmit(Unit)
     }
 
-    override suspend fun deleteByKeyPrefix(prefix: String) {
-        rows.keys.retainAll { !it.startsWith(prefix) }
+    override suspend fun deleteByAssetId(assetId: String) {
+        rows.values.removeAll { it.assetId == assetId }
         dings.tryEmit(Unit)
     }
 
-    override suspend fun retainKeys(keep: Set<String>) {
-        rows.keys.retainAll(keep)
+    override suspend fun retainAssets(keep: Set<String>) {
+        rows.values.removeAll { it.assetId !in keep }
         dings.tryEmit(Unit)
     }
 
     override suspend fun aggregates(): LedgerAggregates {
-        val completed = rows.values.filter { it.state == LedgerState.COMPLETED }
+        // Counted by photo (assetId): a photo is complete only when all its rows are COMPLETED.
+        val byAsset = rows.values.groupBy { it.assetId }
+        val complete = byAsset.values.filter { group -> group.all { it.state == LedgerState.COMPLETED } }
         return LedgerAggregates(
-            pending = rows.size - completed.size,
-            completed = completed.size,
-            newestCompletionAt = completed.maxOfOrNull { it.updatedAt },
+            pending = byAsset.size - complete.size,
+            completed = complete.size,
+            newestCompletionAt = complete.flatten().maxOfOrNull { it.updatedAt },
         )
     }
 }

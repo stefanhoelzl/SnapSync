@@ -86,6 +86,7 @@ class S3PresignGoldenTest {
         val provider = S3UploadRequestProvider(config, clock = FixedClock(timestamp))
         val resource = Resource(
             filename = "AB/cd-ios.photo.jpg",
+            assetId = "ABC123",
             contentType = "image/jpeg",
             version = "v1",
             metadata = mapOf("asset-id" to "ABC123", "original-filename" to "IMG_0001.HEIC"),

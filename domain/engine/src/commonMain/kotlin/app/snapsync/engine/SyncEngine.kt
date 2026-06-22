@@ -16,6 +16,11 @@ import co.touchlab.kermit.Logger
  *
  * [metadata] is opaque to the engine; the provider turns it into upload headers.
  *
+ * [assetId] is the opaque identity of the asset this resource belongs to (several resources of one
+ * photo share it). Like [filename] it is pure identity whose layout belongs to the caller (iOS: the
+ * asset's `localIdentifier`, normalized; tests/console: any string). The engine carries it through
+ * to the ledger but never interprets it — it plays no part in the decision.
+ *
  * [data] is the opaque platform payload backing this resource (iOS: `PHAssetResource`; tests:
  * bytes) — always present, and never read by the engine or the provider: only the platform
  * that wrote it reads it back, at its own execution edge. Deliberately `Any`, not a generic —
@@ -25,6 +30,7 @@ import co.touchlab.kermit.Logger
  */
 class Resource(
     val filename: String,
+    val assetId: String,
     val contentType: String,
     val version: String,
     val metadata: Map<String, String>,
@@ -245,20 +251,20 @@ class SyncEngine(
         val job = UploadJob(provider.provide(resource), failed.attempt + 1)
         // Record FAILED only. The retry's REQUESTED is written when the platform reports
         // UploadStarted for the freshly created retry job (write-after-act).
-        ledger.recordFailed(resource.filename, failed.attempt, resource.version)
+        ledger.recordFailed(resource.filename, resource.assetId, failed.attempt, resource.version)
         return SyncDecision.Retry(job)
     }
 
     private suspend fun complete(job: UploadJob): SyncDecision {
         val resource = job.request.resource
-        ledger.recordCompleted(resource.filename, job.attempt, resource.version)
+        ledger.recordCompleted(resource.filename, resource.assetId, job.attempt, resource.version)
         return SyncDecision.AlreadyUploaded
     }
 
     /** The sole site that records REQUESTED: the platform created/retried the job (write-after-act). */
     private suspend fun started(job: UploadJob): SyncDecision {
         val resource = job.request.resource
-        ledger.recordRequested(resource.filename, job.attempt, resource.version)
+        ledger.recordRequested(resource.filename, resource.assetId, job.attempt, resource.version)
         return SyncDecision.AlreadyUploaded
     }
 
