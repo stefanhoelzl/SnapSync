@@ -53,11 +53,15 @@ fun ControlPanel(controller: PanelController) {
 
         Text("Sync")
         Button(onClick = { controller.showLoading() }) { Text("Loading") }
-        Button(onClick = { controller.showNeverSynced() }) { Text("Never synced") }
-        Button(onClick = { controller.showInProgress() }) { Text("In progress (~2 min left)") }
-        Button(onClick = { controller.showInProgressEstimating() }) { Text("In progress (estimating…)") }
-        Button(onClick = { controller.showSuspended() }) { Text("Suspended (waiting)") }
+        Button(onClick = { controller.showNothingToSync() }) { Text("Nothing to sync (N=0)") }
+        Button(onClick = { controller.showInProgress() }) { Text("In progress (12 of 47)") }
         Button(onClick = { controller.showComplete() }) { Text("Complete (5 min ago)") }
-        Button(onClick = { controller.showIncomplete() }) { Text("Incomplete (5 min ago)") }
+        Button(onClick = { controller.showOvershoot() }) { Text("Overshoot (6 of 5 → clamps)") }
+
+        Text("Gallery size (N)")
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Button(onClick = { controller.adjustGalleryBy(-1) }) { Text("N −") }
+            Button(onClick = { controller.adjustGalleryBy(+1) }) { Text("N +") }
+        }
     }
 }

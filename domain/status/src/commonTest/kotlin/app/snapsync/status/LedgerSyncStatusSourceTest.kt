@@ -6,6 +6,7 @@ import app.snapsync.engine.LedgerEntry
 import app.snapsync.engine.LedgerState
 import app.snapsync.engine.LedgerWatcher
 import app.snapsync.engine.LedgerWriter
+import app.snapsync.gallery.InMemoryGalleryStatusSource
 import app.snapsync.permission.PermissionStatus
 import app.snapsync.permission.PermissionStatusSource
 import kotlin.test.Test
@@ -31,76 +32,102 @@ class LedgerSyncStatusSourceTest {
     })
     private val watcher = LedgerWatcher(backend)
     private val permission = FakePermissionSource(PermissionStatus.GRANTED)
+    private val gallery = InMemoryGalleryStatusSource(initial = 0)
 
     private fun snapshot(
         pending: Int = 0,
         completed: Int = 0,
+        total: Int = 0,
         active: Boolean = true,
         lastFinishedAt: Instant? = null,
-    ) = SyncProgress(pending, completed, failed = 0, active, estimatedRemaining = null, lastFinishedAt)
+    ) = SyncProgress(pending, completed, total, failed = 0, active, estimatedRemaining = null, lastFinishedAt)
 
     private fun ready(
         pending: Int = 0,
         completed: Int = 0,
+        total: Int = 0,
         active: Boolean = true,
         lastFinishedAt: Instant? = null,
-    ) = SyncStatus.Ready(snapshot(pending, completed, active, lastFinishedAt))
+    ) = SyncStatus.Ready(snapshot(pending, completed, total, active, lastFinishedAt))
+
+    private fun source(testScheduler: kotlinx.coroutines.test.TestCoroutineScheduler, scope: kotlinx.coroutines.CoroutineScope) =
+        LedgerSyncStatusSource(watcher, permission, gallery, scope, StandardTestDispatcher(testScheduler))
 
     @Test
     fun `initial value is Loading before the first read`() = runTest {
         writer.recordCompleted("a", assetId = "a", attempt = 0, version = "v1")
+        gallery.set(3)
 
-        val source = LedgerSyncStatusSource(watcher, permission, backgroundScope, StandardTestDispatcher(testScheduler))
+        val source = source(testScheduler, backgroundScope)
 
         assertEquals(SyncStatus.Loading, source.status.value)
     }
 
     @Test
-    fun `first Ready reflects the ledger`() = runTest {
+    fun `first Ready reflects ledger and gallery`() = runTest {
         writer.recordCompleted("a", assetId = "a", attempt = 0, version = "v1")
         writer.recordCompleted("b", assetId = "b", attempt = 0, version = "v1")
         writer.recordRequested("c", assetId = "c", attempt = 0, version = "v1")
+        gallery.set(5)
 
-        val source = LedgerSyncStatusSource(watcher, permission, backgroundScope, StandardTestDispatcher(testScheduler))
+        val source = source(testScheduler, backgroundScope)
         runCurrent()
 
-        assertEquals(ready(pending = 1, completed = 2, lastFinishedAt = t0), source.status.value)
+        assertEquals(ready(pending = 1, completed = 2, total = 5, lastFinishedAt = t0), source.status.value)
     }
 
     @Test
     fun `a ledger change re-mints a Ready snapshot`() = runTest {
-        val source = LedgerSyncStatusSource(watcher, permission, backgroundScope, StandardTestDispatcher(testScheduler))
+        gallery.set(4)
+        val source = source(testScheduler, backgroundScope)
         runCurrent()
-        assertEquals(ready(), source.status.value)
+        assertEquals(ready(total = 4), source.status.value)
 
         writer.recordCompleted("a", assetId = "a", attempt = 0, version = "v1")
         runCurrent()
 
-        assertEquals(ready(completed = 1, lastFinishedAt = t0), source.status.value)
+        assertEquals(ready(completed = 1, total = 4, lastFinishedAt = t0), source.status.value)
+    }
+
+    @Test
+    fun `a gallery change re-mints a Ready snapshot with unchanged counts`() = runTest {
+        writer.recordCompleted("a", assetId = "a", attempt = 0, version = "v1")
+        gallery.set(4)
+        val source = source(testScheduler, backgroundScope)
+        runCurrent()
+        assertEquals(ready(completed = 1, total = 4, lastFinishedAt = t0), source.status.value)
+
+        gallery.set(9)
+        runCurrent()
+
+        assertEquals(ready(completed = 1, total = 9, lastFinishedAt = t0), source.status.value)
     }
 
     @Test
     fun `a permission flip re-mints a Ready snapshot with unchanged counts`() = runTest {
         writer.recordCompleted("a", assetId = "a", attempt = 0, version = "v1")
-        val source = LedgerSyncStatusSource(watcher, permission, backgroundScope, StandardTestDispatcher(testScheduler))
+        gallery.set(4)
+        val source = source(testScheduler, backgroundScope)
         runCurrent()
 
         permission.state.value = PermissionStatus.DENIED
         runCurrent()
 
-        assertEquals(ready(completed = 1, active = false, lastFinishedAt = t0), source.status.value)
+        assertEquals(ready(completed = 1, total = 4, active = false, lastFinishedAt = t0), source.status.value)
     }
 
     @Test
-    fun `the v1 source never estimates and never gives up`() = runTest {
+    fun `the source never estimates and never gives up`() = runTest {
         writer.recordFailed("a", assetId = "a", attempt = 3, version = "v1")
-        val source = LedgerSyncStatusSource(watcher, permission, backgroundScope, StandardTestDispatcher(testScheduler))
+        gallery.set(1)
+        val source = source(testScheduler, backgroundScope)
         runCurrent()
 
         val progress = assertIs<SyncStatus.Ready>(source.status.value).progress
         assertEquals(0, progress.failed)
         assertEquals(null, progress.estimatedRemaining)
         assertEquals(1, progress.pending)
+        assertEquals(1, progress.total)
     }
 }
 

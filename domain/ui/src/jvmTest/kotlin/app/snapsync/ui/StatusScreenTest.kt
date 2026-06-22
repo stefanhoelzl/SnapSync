@@ -1,6 +1,5 @@
 package app.snapsync.ui
 
-import androidx.compose.ui.semantics.ProgressBarRangeInfo
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.junit4.v2.createComposeRule
@@ -85,60 +84,46 @@ class StatusScreenTest {
             StatusScreen(UiState.Setup(storageConnected = true, permission = PermissionStatus.DENIED))
         }
 
-        rule.onNodeWithText("Sync incomplete").assertDoesNotExist()
-        rule.onNodeWithText("No sync yet").assertDoesNotExist()
+        rule.onNodeWithText("images synced", substring = true).assertDoesNotExist()
+        rule.onNodeWithText("Nothing to sync yet").assertDoesNotExist()
         rule.onNode(hasAnyProgressIndication()).assertDoesNotExist()
     }
 
     @Test
-    fun `never synced shows bare warning headline`() {
-        rule.setContent { StatusScreen(UiState.NeverSynced) }
+    fun `in progress shows the n of N count and last-sync time as text`() {
+        rule.setContent { StatusScreen(UiState.InProgress(synced = 12, total = 47, finishedAgo = "5 min ago")) }
+
+        rule.onNodeWithText("12 of 47 images synced").assertExists()
+        rule.onNodeWithText("5 min ago").assertExists()
+        // The LED dot is not a progress indicator (no spinner, no ring).
+        rule.onNode(hasAnyProgressIndication()).assertDoesNotExist()
+    }
+
+    @Test
+    fun `in progress with no prior completion shows no detail line`() {
+        rule.setContent { StatusScreen(UiState.InProgress(synced = 0, total = 47, finishedAgo = null)) }
+
+        rule.onNodeWithText("0 of 47 images synced").assertExists()
+    }
+
+    @Test
+    fun `nothing to sync shows the idle line`() {
+        rule.setContent { StatusScreen(UiState.NothingToSync) }
 
         rule.onNodeWithText("SnapSync").assertExists()
-        rule.onNodeWithText("No sync yet").assertExists()
+        rule.onNodeWithText("Nothing to sync yet").assertExists()
         rule.onNode(hasAnyProgressIndication()).assertDoesNotExist()
     }
 
     @Test
-    fun `in progress shows headline, estimate, and indicator fraction without textual counts`() {
-        rule.setContent { StatusScreen(UiState.InProgress(fraction = 0.35f, estimate = "~2 min left")) }
+    fun `completed shows the total and relative time`() {
+        rule.setContent { StatusScreen(UiState.Completed(total = 47, finishedAgo = "5 min ago")) }
 
-        rule.onNodeWithText("Sync in progress").assertExists()
-        rule.onNodeWithText("~2 min left").assertExists()
-        rule.onNode(hasProgress(0.35f)).assertExists()
-        rule.onNodeWithText("of", substring = true).assertDoesNotExist()
-    }
-
-    @Test
-    fun `suspended shows bare waiting headline`() {
-        rule.setContent { StatusScreen(UiState.Suspended) }
-
-        rule.onNodeWithText("Waiting to sync").assertExists()
+        rule.onNodeWithText("47 images synced").assertExists()
+        rule.onNodeWithText("5 min ago").assertExists()
         rule.onNode(hasAnyProgressIndication()).assertDoesNotExist()
-    }
-
-    @Test
-    fun `complete shows headline with relative time`() {
-        rule.setContent { StatusScreen(UiState.Complete(finishedAgo = "5 min ago")) }
-
-        rule.onNodeWithText("Sync complete").assertExists()
-        rule.onNodeWithText("5 min ago").assertExists()
-    }
-
-    @Test
-    fun `incomplete shows headline with relative time`() {
-        rule.setContent { StatusScreen(UiState.Incomplete(finishedAgo = "5 min ago")) }
-
-        rule.onNodeWithText("Sync incomplete").assertExists()
-        rule.onNodeWithText("5 min ago").assertExists()
     }
 
     private fun hasAnyProgressIndication(): SemanticsMatcher =
         SemanticsMatcher.keyIsDefined(SemanticsProperties.ProgressBarRangeInfo)
-
-    private fun hasProgress(fraction: Float): SemanticsMatcher =
-        SemanticsMatcher.expectValue(
-            SemanticsProperties.ProgressBarRangeInfo,
-            ProgressBarRangeInfo(current = fraction, range = 0f..1f),
-        )
 }

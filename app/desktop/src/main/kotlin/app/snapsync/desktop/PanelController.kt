@@ -11,6 +11,7 @@ import app.snapsync.status.SyncProgress
 import app.snapsync.status.SyncStatusSource
 import kotlin.time.Clock
 import kotlin.time.Duration.Companion.minutes
+import kotlin.time.Instant
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 
@@ -22,7 +23,14 @@ import kotlinx.coroutines.flow.asStateFlow
  */
 class PanelController(private val clock: Clock = Clock.System) {
     // The harness knows its truth synchronously, so it seeds Ready and never shows Loading.
-    private val syncState = MutableStateFlow<SyncStatus>(SyncStatus.Ready(NEVER_SYNCED))
+    private val syncState = MutableStateFlow<SyncStatus>(
+        SyncStatus.Ready(
+            SyncProgress(
+                pending = 0, completed = 0, total = 0, failed = 0,
+                active = true, estimatedRemaining = null, lastFinishedAt = null,
+            ),
+        ),
+    )
     private val permissionState = MutableStateFlow(PermissionStatus.NOT_DETERMINED)
     private val configState = MutableStateFlow<S3ConfigPayload?>(null)
     private val armedGrants = MutableStateFlow(true)
@@ -98,43 +106,28 @@ class PanelController(private val clock: Clock = Clock.System) {
         syncState.value = SyncStatus.Loading
     }
 
-    fun showNeverSynced() {
-        forgeSync(NEVER_SYNCED)
+    fun showNothingToSync() {
+        forgeSync(progress(completed = 0, total = 0, lastFinishedAt = null))
     }
 
     fun showInProgress() {
-        forgeSync(
-            SyncProgress(
-                pending = 22, completed = 12, failed = 0,
-                active = true, estimatedRemaining = 2.minutes, lastFinishedAt = null,
-            ),
-        )
-    }
-
-    fun showInProgressEstimating() {
-        forgeSync(
-            SyncProgress(
-                pending = 22, completed = 12, failed = 0,
-                active = true, estimatedRemaining = null, lastFinishedAt = null,
-            ),
-        )
-    }
-
-    fun showSuspended() {
-        forgeSync(
-            SyncProgress(
-                pending = 22, completed = 12, failed = 0,
-                active = false, estimatedRemaining = null, lastFinishedAt = null,
-            ),
-        )
+        forgeSync(progress(completed = 12, total = 47, lastFinishedAt = clock.now() - 5.minutes))
     }
 
     fun showComplete() {
-        forgeSync(finishedPass(completed = 34, failed = 0))
+        forgeSync(progress(completed = 34, total = 34, lastFinishedAt = clock.now() - 5.minutes))
     }
 
-    fun showIncomplete() {
-        forgeSync(finishedPass(completed = 31, failed = 3))
+    // A deleted-but-unpruned photo: completed overshoots the live total; the screen clamps to N.
+    fun showOvershoot() {
+        forgeSync(progress(completed = 6, total = 5, lastFinishedAt = clock.now()))
+    }
+
+    // The settable gallery size (N): nudge the live total of whatever sync state is showing, so the
+    // discovery-lag (N > n) → completed (N == n) → overshoot (N < n) walk is forgeable by hand.
+    fun adjustGalleryBy(delta: Int) {
+        val current = (syncState.value as? SyncStatus.Ready)?.progress ?: return
+        forgeSync(current.copy(total = (current.total + delta).coerceAtLeast(0)))
     }
 
     // A sync preset's intent is "show me this screen" — impossible while the setup gate is up, so
@@ -145,19 +138,12 @@ class PanelController(private val clock: Clock = Clock.System) {
         syncState.value = SyncStatus.Ready(status)
     }
 
-    // Finished presets forge active = true: under suspended-first classification an inactive
-    // snapshot is Suspended regardless of history.
-    private fun finishedPass(completed: Int, failed: Int) = SyncProgress(
-        pending = 0, completed = completed, failed = failed,
-        active = true, estimatedRemaining = null, lastFinishedAt = clock.now() - 5.minutes,
+    private fun progress(completed: Int, total: Int, lastFinishedAt: Instant?) = SyncProgress(
+        pending = 0, completed = completed, total = total, failed = 0,
+        active = true, estimatedRemaining = null, lastFinishedAt = lastFinishedAt,
     )
 
     private companion object {
-        val NEVER_SYNCED = SyncProgress(
-            pending = 0, completed = 0, failed = 0,
-            active = true, estimatedRemaining = null, lastFinishedAt = null,
-        )
-
         // A stand-in config so the storage step shows connected; never used to sign anything.
         val CANNED_CONFIG = S3ConfigPayload(
             bucket = "harness-bucket",

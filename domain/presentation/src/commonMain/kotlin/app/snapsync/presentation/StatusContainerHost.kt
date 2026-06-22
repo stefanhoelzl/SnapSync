@@ -112,31 +112,24 @@ private fun reduceFrom(
 }
 
 private fun SyncProgress.toUiState(now: Instant): UiState = when (state) {
-    SyncState.NEVER_SYNCED -> UiState.NeverSynced
     SyncState.IN_PROGRESS -> UiState.InProgress(
-        // Processed-of-total: the indicator always reaches the end of a pass; the outcome
-        // headline delivers the verdict.
-        fraction = (completed + failed).toFloat() / (pending + completed + failed),
-        estimate = estimateText(estimatedRemaining),
+        synced = synced,
+        total = total,
+        // The last completion's age (null before anything completes — a bare "0 of N").
+        finishedAgo = lastFinishedAt?.let { relativeTime(now - it) },
     )
-    SyncState.SUSPENDED -> UiState.Suspended
-    SyncState.COMPLETE -> UiState.Complete(finishedAgo(now))
-    SyncState.INCOMPLETE -> UiState.Incomplete(finishedAgo(now))
+    SyncState.NOTHING_TO_SYNC -> UiState.NothingToSync
+    SyncState.COMPLETE -> UiState.Completed(total = total, finishedAgo = finishedAgo(now))
 }
 
-// Finished outcomes guarantee lastFinishedAt != null (classification branch order).
-private fun SyncProgress.finishedAgo(now: Instant): String = relativeTime(now - lastFinishedAt!!)
+// COMPLETE implies a completed photo, so the ledger always has a completion timestamp; the
+// null-guard keeps a forged/inconsistent snapshot from crashing the screen.
+private fun SyncProgress.finishedAgo(now: Instant): String =
+    lastFinishedAt?.let { relativeTime(now - it) } ?: "just now"
 
 private fun relativeTime(elapsed: Duration): String = when {
     elapsed < 1.minutes -> "just now"
     elapsed < 1.hours -> "${elapsed.inWholeMinutes} min ago"
     elapsed < 1.days -> "${elapsed.inWholeHours} h ago"
     else -> "${elapsed.inWholeDays} d ago"
-}
-
-private fun estimateText(remaining: Duration?): String = when {
-    remaining == null -> "estimating…"
-    remaining < 1.minutes -> "less than a minute left"
-    remaining < 1.hours -> "~${remaining.inWholeMinutes} min left"
-    else -> "~${remaining.inWholeHours} h left"
 }

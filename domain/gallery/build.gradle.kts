@@ -9,11 +9,6 @@ kotlin {
     iosSimulatorArm64()
     sourceSets {
         commonMain.dependencies {
-            // Implementation scope on purpose: status is a consumer of the engine's ledger and
-            // of permission, but neither may leak through to status's own consumers.
-            implementation(project(":domain:engine"))
-            implementation(project(":domain:permission"))
-            implementation(project(":domain:gallery"))
             api(libs.coroutines.core)
         }
         commonTest.dependencies {

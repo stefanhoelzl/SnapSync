@@ -29,16 +29,12 @@ fun StatusScreen(
                     StatusHero(StatusIndicator.Loading, "Loading …")
                 is UiState.Setup ->
                     SetupGate(state, onRequestPermission, onOpenSettings, transientError)
-                UiState.NeverSynced ->
-                    StatusHero(StatusIndicator.Warning, "No sync yet")
                 is UiState.InProgress ->
-                    StatusHero(StatusIndicator.Progress(state.fraction), "Sync in progress", state.estimate)
-                UiState.Suspended ->
-                    StatusHero(StatusIndicator.Waiting, "Waiting to sync")
-                is UiState.Complete ->
-                    StatusHero(StatusIndicator.Success, "Sync complete", state.finishedAgo)
-                is UiState.Incomplete ->
-                    StatusHero(StatusIndicator.Warning, "Sync incomplete", state.finishedAgo)
+                    StatusHero(StatusIndicator.InProgress, "${state.synced} of ${state.total} images synced", state.finishedAgo)
+                UiState.NothingToSync ->
+                    StatusHero(StatusIndicator.Complete, "Nothing to sync yet")
+                is UiState.Completed ->
+                    StatusHero(StatusIndicator.Complete, "${state.total} images synced", state.finishedAgo)
             }
         }
     }

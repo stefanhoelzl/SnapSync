@@ -89,11 +89,12 @@ private val EPOCH = Instant.fromEpochMilliseconds(0)
 private fun snapshot(
     pending: Int = 0,
     completed: Int = 0,
+    total: Int = 0,
     failed: Int = 0,
     active: Boolean = true,
     estimatedRemaining: Duration? = null,
     lastFinishedAt: Instant? = null,
-) = SyncProgress(pending, completed, failed, active, estimatedRemaining, lastFinishedAt)
+) = SyncProgress(pending, completed, total, failed, active, estimatedRemaining, lastFinishedAt)
 
 private fun host(
     source: FakeSyncStatusSource,
@@ -107,61 +108,77 @@ private fun host(
 class StatusContainerHostTest {
 
     @Test
-    fun `active pass maps to InProgress with fraction and bucketed estimate`() = runTest {
-        val source = FakeSyncStatusSource()
-        host(source, backgroundScope).test(this) {
-            runOnCreate()
-            source.value =
-                snapshot(pending = 7, completed = 2, failed = 1, active = true, estimatedRemaining = 2.minutes)
-            expectState(UiState.InProgress(fraction = 0.3f, estimate = "~2 min left"))
-            cancelAndIgnoreRemainingItems()
-        }
-    }
-
-    @Test
-    fun `active pass without estimate shows the estimating placeholder`() = runTest {
-        val source = FakeSyncStatusSource()
-        host(source, backgroundScope).test(this) {
-            runOnCreate()
-            source.value = snapshot(pending = 7, completed = 3, active = true)
-            expectState(UiState.InProgress(fraction = 0.3f, estimate = "estimating…"))
-            cancelAndIgnoreRemainingItems()
-        }
-    }
-
-    @Test
-    fun `inactive pass maps to Suspended`() = runTest {
-        val source = FakeSyncStatusSource()
-        host(source, backgroundScope).test(this) {
-            runOnCreate()
-            source.value = snapshot(pending = 22, completed = 12, active = false)
-            expectState(UiState.Suspended)
-            cancelAndIgnoreRemainingItems()
-        }
-    }
-
-    @Test
-    fun `finished outcomes map by yield with relative time`() = runTest {
+    fun `fewer synced than present maps to InProgress with the counts and last-sync time`() = runTest {
         val clock = FakeClock(EPOCH)
         val source = FakeSyncStatusSource()
         host(source, backgroundScope, clock).test(this) {
             runOnCreate()
-            val fiveMinAgo = clock.now() - 5.minutes
-            source.value = snapshot(completed = 34, lastFinishedAt = fiveMinAgo)
-            expectState(UiState.Complete("5 min ago"))
-            source.value = snapshot(completed = 31, failed = 3, lastFinishedAt = fiveMinAgo)
-            expectState(UiState.Incomplete("5 min ago"))
+            source.value = snapshot(pending = 35, completed = 12, total = 47, lastFinishedAt = clock.now() - 5.minutes)
+            expectState(UiState.InProgress(synced = 12, total = 47, finishedAgo = "5 min ago"))
             cancelAndIgnoreRemainingItems()
         }
     }
 
     @Test
-    fun `virgin snapshot maps to NeverSynced`() = runTest {
-        val source = FakeSyncStatusSource(snapshot(completed = 34, lastFinishedAt = EPOCH))
+    fun `virgin ledger with photos maps to InProgress zero of N with no last-sync time`() = runTest {
+        val source = FakeSyncStatusSource()
         host(source, backgroundScope).test(this) {
             runOnCreate()
-            source.value = snapshot()
-            expectState(UiState.NeverSynced)
+            source.value = snapshot(completed = 0, total = 5)
+            expectState(UiState.InProgress(synced = 0, total = 5, finishedAgo = null))
+            cancelAndIgnoreRemainingItems()
+        }
+    }
+
+    @Test
+    fun `in-progress last-sync time ages on tick`() = runTest {
+        val clock = FakeClock(EPOCH)
+        val source = FakeSyncStatusSource()
+        host(source, backgroundScope, clock).test(this) {
+            runOnCreate()
+            source.value = snapshot(completed = 1, total = 5, lastFinishedAt = clock.now())
+            expectState(UiState.InProgress(synced = 1, total = 5, finishedAgo = "just now"))
+            clock.advance(61.seconds)
+            advanceTimeBy(61.seconds)
+            expectState(UiState.InProgress(synced = 1, total = 5, finishedAgo = "1 min ago"))
+            cancelAndIgnoreRemainingItems()
+        }
+    }
+
+    @Test
+    fun `empty library maps to NothingToSync`() = runTest {
+        // Seed a non-empty state so the transition to total=0 is a real change (equal UI states
+        // are conflated by the container's StateFlow).
+        val source = FakeSyncStatusSource(snapshot(completed = 1, total = 3))
+        host(source, backgroundScope).test(this) {
+            runOnCreate()
+            source.value = snapshot(completed = 0, total = 0)
+            expectState(UiState.NothingToSync)
+            cancelAndIgnoreRemainingItems()
+        }
+    }
+
+    @Test
+    fun `all present photos synced maps to Completed with relative time`() = runTest {
+        val clock = FakeClock(EPOCH)
+        val source = FakeSyncStatusSource()
+        host(source, backgroundScope, clock).test(this) {
+            runOnCreate()
+            source.value = snapshot(completed = 34, total = 34, lastFinishedAt = clock.now() - 5.minutes)
+            expectState(UiState.Completed(total = 34, finishedAgo = "5 min ago"))
+            cancelAndIgnoreRemainingItems()
+        }
+    }
+
+    @Test
+    fun `overshoot clamps the displayed synced count and maps to Completed`() = runTest {
+        val clock = FakeClock(EPOCH)
+        val source = FakeSyncStatusSource()
+        host(source, backgroundScope, clock).test(this) {
+            runOnCreate()
+            // A deleted photo still COMPLETED in the ledger: completed 6 over a live total of 5.
+            source.value = snapshot(completed = 6, total = 5, lastFinishedAt = clock.now())
+            expectState(UiState.Completed(total = 5, finishedAgo = "just now"))
             cancelAndIgnoreRemainingItems()
         }
     }
@@ -172,30 +189,11 @@ class StatusContainerHostTest {
         val source = FakeSyncStatusSource()
         host(source, backgroundScope, clock).test(this) {
             runOnCreate()
-            source.value = snapshot(completed = 34, lastFinishedAt = clock.now())
-            expectState(UiState.Complete("just now"))
+            source.value = snapshot(completed = 34, total = 34, lastFinishedAt = clock.now())
+            expectState(UiState.Completed(total = 34, finishedAgo = "just now"))
             clock.advance(61.seconds)
             advanceTimeBy(61.seconds)
-            expectState(UiState.Complete("1 min ago"))
-            cancelAndIgnoreRemainingItems()
-        }
-    }
-
-    @Test
-    fun `estimate is never aged between snapshots`() = runTest {
-        val clock = FakeClock(EPOCH)
-        val source = FakeSyncStatusSource()
-        host(source, backgroundScope, clock).test(this) {
-            runOnCreate()
-            source.value =
-                snapshot(pending = 7, completed = 3, active = true, estimatedRemaining = 2.minutes)
-            expectState(UiState.InProgress(fraction = 0.3f, estimate = "~2 min left"))
-            // Ticks fire, but the estimate is rendered verbatim from the snapshot: the very
-            // next observed state is the new snapshot's, with nothing in between.
-            clock.advance(3.minutes)
-            advanceTimeBy(3.minutes)
-            source.value = snapshot(completed = 10, lastFinishedAt = clock.now())
-            expectState(UiState.Complete("just now"))
+            expectState(UiState.Completed(total = 34, finishedAgo = "1 min ago"))
             cancelAndIgnoreRemainingItems()
         }
     }
@@ -205,25 +203,25 @@ class StatusContainerHostTest {
         val source = FakeSyncStatusSource()
         host(source, backgroundScope).test(this) {
             runOnCreate()
-            source.value = snapshot(pending = 9, completed = 1, active = true)
-            expectState(UiState.InProgress(fraction = 0.1f, estimate = "estimating…"))
-            source.value = snapshot(pending = 5, completed = 5, active = true)
-            expectState(UiState.InProgress(fraction = 0.5f, estimate = "estimating…"))
+            source.value = snapshot(completed = 1, total = 10)
+            expectState(UiState.InProgress(synced = 1, total = 10, finishedAgo = null))
+            source.value = snapshot(completed = 5, total = 10)
+            expectState(UiState.InProgress(synced = 5, total = 10, finishedAgo = null))
             cancelAndIgnoreRemainingItems()
         }
     }
 
     @Test
     fun `initial state derives from source values and never a guess`() = runTest {
-        val source = FakeSyncStatusSource(snapshot(failed = 34, lastFinishedAt = EPOCH - 5.minutes))
+        val source = FakeSyncStatusSource(snapshot(completed = 34, total = 34, lastFinishedAt = EPOCH - 5.minutes))
         val container = host(source, backgroundScope).container
 
-        assertEquals(UiState.Incomplete("5 min ago"), container.stateFlow.value)
+        assertEquals(UiState.Completed(total = 34, finishedAgo = "5 min ago"), container.stateFlow.value)
     }
 
     @Test
     fun `denied permission shows the setup gate over any sync snapshot`() = runTest {
-        val source = FakeSyncStatusSource(snapshot(failed = 34, lastFinishedAt = EPOCH))
+        val source = FakeSyncStatusSource(snapshot(completed = 34, total = 34, lastFinishedAt = EPOCH))
         val permission = FakePermissionSource(PermissionStatus.DENIED)
         val container = host(source, backgroundScope, permission = permission).container
 
@@ -270,12 +268,12 @@ class StatusContainerHostTest {
     @Test
     fun `both gates satisfied reveals the current sync state`() = runTest {
         val clock = FakeClock(EPOCH)
-        val source = FakeSyncStatusSource(snapshot(failed = 34, lastFinishedAt = clock.now() - 5.minutes))
+        val source = FakeSyncStatusSource(snapshot(completed = 34, total = 34, lastFinishedAt = clock.now() - 5.minutes))
         val permission = FakePermissionSource(PermissionStatus.NOT_DETERMINED)
         host(source, backgroundScope, clock, permission).test(this) {
             runOnCreate()
             permission.permission.value = PermissionStatus.GRANTED
-            expectState(UiState.Incomplete("5 min ago"))
+            expectState(UiState.Completed(total = 34, finishedAgo = "5 min ago"))
             cancelAndIgnoreRemainingItems()
         }
     }
