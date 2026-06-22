@@ -9,13 +9,16 @@ status-facing) — and self-contained idempotent record operations. The ledger i
 skipping provable, reports absorbable (at-least-once), full re-enumeration harmless, and status
 a read-only projection. Authoritative design: docs/design.md §2.2.
 ## Requirements
+
 ### Requirement: Storage seam — dumb row store
 The ledger SHALL access storage exclusively through a `LedgerBackend` interface with the row
 operations `get(key): LedgerEntry?` and `put(entry)` (a single-row upsert), the aggregate read
-`aggregates(): LedgerAggregates`, and a change signal `changes: Flow<Unit>`. Backends SHALL store
-entries verbatim (no interpretation, no precedence logic, last write wins, no clocks of their
-own). A `LedgerEntry` SHALL carry `key`, `state` (`REQUESTED` | `COMPLETED` | `FAILED`),
-`attempt`, `version`, and `updatedAt: Instant`.
+`aggregates(): LedgerAggregates`, a change signal `changes: Flow<Unit>`, and `clear()` — a
+delete-all reset. Backends SHALL store entries verbatim (no interpretation, no precedence logic,
+last write wins, no clocks of their own). A `LedgerEntry` SHALL carry `key`, `state` (`REQUESTED` |
+`COMPLETED` | `FAILED`), `attempt`, `version`, and `updatedAt: Instant`. `clear()` SHALL remove every
+row and signal `changes` like a `put` (so watchers re-read the now-empty truth); it is a deliberate
+reset (e.g. the app re-provisioning config), distinct from the engine's record writes.
 
 #### Scenario: Put then get round-trips
 - **WHEN** `put(entry)` is called and then `get(entry.key)`
@@ -28,6 +31,11 @@ own). A `LedgerEntry` SHALL carry `key`, `state` (`REQUESTED` | `COMPLETED` | `F
 #### Scenario: Unknown key reads null
 - **WHEN** `get` is called for a key never put
 - **THEN** it returns null
+
+#### Scenario: Clear empties the store and signals
+- **WHEN** `clear()` is called on a store holding rows
+- **THEN** every subsequent `get` returns null, `aggregates()` reports zero pending and completed,
+  and a `changes` signal is emitted
 
 ### Requirement: Aggregate reads
 `LedgerBackend.aggregates()` SHALL answer `LedgerAggregates(pending, completed,
@@ -148,4 +156,3 @@ native (iOS) driver wiring is out of scope.
 - **WHEN** the storage-seam, aggregate, and change-signal scenarios run against the SQLDelight
   backend on a JVM sqlite driver
 - **THEN** they pass unchanged
-
