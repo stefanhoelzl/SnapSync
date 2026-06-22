@@ -1,4 +1,14 @@
-## ADDED Requirements
+# backend deployment Specification
+
+## Purpose
+
+The CI pipeline that ships the `backend/` Edge Scripting endpoint (capability
+`bunny-upload-endpoint`) to bunny.net: a path-scoped GitHub Actions workflow that runs the Deno
+checks on every branch, bundles to a single file, and deploys to the one live Edge Script on `main`
+only. Isolated from the Gradle/iOS workflows; no Bunny credential in source. Authoritative design:
+docs/design.md §4, §7.
+
+## Requirements
 
 ### Requirement: Path-scoped, isolated workflow; deploy on main only
 
@@ -41,10 +51,23 @@ pass. Any failing check SHALL block deployment.
 - **WHEN** every check passes
 - **THEN** the deploy step runs
 
+### Requirement: Deploy a bundled single file
+
+The deploy action uploads the given `file` **verbatim** — it does NOT bundle — so the workflow SHALL
+bundle the project entry and all its imports into one self-contained file (`deno bundle src/main.ts
+-o dist/main.js`) and deploy **that bundle**. The bundle SHALL stay within the Edge Scripting 1 MB
+script limit. (Deploying the raw entry leaves `import` specifiers unresolved and the script errors on
+every request.)
+
+#### Scenario: A single bundled file is deployed
+
+- **WHEN** the deploy step runs
+- **THEN** it uploads one self-contained bundle (no unresolved imports), not the raw entry file
+
 ### Requirement: Deploy with secret-held, script-scoped credentials
 
-The workflow SHALL deploy the Edge Scripting project to the configured Edge Scripting app
-(bundling the entry file's imports) using a **script-scoped deploy key** and the **script id**,
+The workflow SHALL deploy the bundled file to the configured Edge Scripting app using a
+**script-scoped deploy key** and the **script id**,
 each supplied **only** as a GitHub Actions secret. The Bunny **account API key** SHALL NOT be used
 by the deploy workflow (it is needed only to provision the zone/app). No Bunny credential SHALL
 appear in source or in the workflow file. The storage-zone `AccessKey` SHALL be configured as an
