@@ -29,10 +29,11 @@ jobs:
         working-directory: backend
         run: deno lint
 
-      # Type-checks main.ts + the SDK wiring, which `deno test` does not reach (no test imports it).
+      # Type-check all source explicitly. `deno test` only checks test-reachable code, so this
+      # covers main.ts/SDK wiring (no test imports it) and any future orphan source file.
       - name: Type check
         working-directory: backend
-        run: deno check src/main.ts
+        run: deno check src/*.ts
 
       - name: Test
         working-directory: backend
