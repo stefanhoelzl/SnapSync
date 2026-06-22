@@ -108,10 +108,10 @@ recording is an idempotent per-key upsert.
   for the key, and a subsequent `handle` of the same event succeeds when the provider does
 
 ### Requirement: Completion recording
-When a platform submits `UploadCompleted(job)` — reported at the platform's acknowledge edge,
-before acknowledging — the engine SHALL record `COMPLETED` for the key (with the job's attempt
-and the resource's version) and answer `AlreadyUploaded`. Completion reports arrive at-least-once;
-duplicates SHALL converge to the same ledger entry.
+When a platform submits `UploadCompleted(job)`, the engine SHALL record `COMPLETED` for the key
+(with the job's attempt and the resource's version) and answer `AlreadyUploaded`. The report is
+made at the platform's acknowledge edge, before acknowledging. Completion reports arrive
+at-least-once; duplicates SHALL converge to the same ledger entry.
 
 #### Scenario: Completion marks the key done
 - **WHEN** `handle(UploadCompleted(job))` is called
