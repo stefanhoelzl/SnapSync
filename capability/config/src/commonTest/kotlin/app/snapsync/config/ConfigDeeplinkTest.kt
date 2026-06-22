@@ -10,14 +10,10 @@ import kotlin.test.assertTrue
 
 class ConfigDeeplinkTest {
 
-    private val sample = S3ConfigPayload(
-        bucket = "my-bucket",
-        region = "eu-central-1",
-        accessKeyId = "AKIAEXAMPLE",
-        secretAccessKey = "wJalrXUtnFEMI/K7MDENG+bPxRfiCYEXAMPLEKEY",
-    )
+    private val eventId = "11111111-1111-4111-8111-111111111111"
+    private val sample = EventConfigPayload(eventId = eventId)
 
-    private fun success(raw: String): S3ConfigPayload {
+    private fun success(raw: String): EventConfigPayload {
         val result = decodeConfigUrl(raw)
         assertTrue(result is ConfigDecodeResult.Success, "expected success, got $result")
         return result.payload
@@ -31,75 +27,81 @@ class ConfigDeeplinkTest {
         Base64.UrlSafe.withPadding(Base64.PaddingOption.ABSENT).encode(json.encodeToByteArray())
 
     @Test
-    fun `encode then decode round-trips every field`() {
-        val decoded = success(encodeConfigUrl(sample))
-        assertEquals(sample.bucket, decoded.bucket)
-        assertEquals(sample.region, decoded.region)
-        assertEquals(sample.accessKeyId, decoded.accessKeyId)
-        assertEquals(sample.secretAccessKey, decoded.secretAccessKey)
+    fun `encode then decode round-trips the event id`() {
+        assertEquals(eventId, success(encodeConfigUrl(sample)).eventId)
     }
 
     @Test
     fun `encoded url has the canonical shape`() {
-        assertTrue(encodeConfigUrl(sample).startsWith("snapsync://config?v=2&d="))
+        assertTrue(encodeConfigUrl(sample).startsWith("snapsync://config?v=3&d="))
     }
 
     @Test
     fun `payload with optional padding still decodes`() {
         val padded = Base64.UrlSafe.withPadding(Base64.PaddingOption.PRESENT)
-            .encode("""{"bucket":"b","region":"r","accessKeyId":"a","secretAccessKey":"s"}""".encodeToByteArray())
-        success("snapsync://config?v=2&d=$padded")
+            .encode("""{"eventId":"$eventId"}""".encodeToByteArray())
+        assertEquals(eventId, success("snapsync://config?v=3&d=$padded").eventId)
     }
 
     @Test
     fun `wrong scheme or host fails`() {
-        assertFailure("https://config?v=2&d=x")
-        assertFailure("snapsync://setup?v=2&d=x")
+        assertFailure("https://config?v=3&d=x")
+        assertFailure("snapsync://setup?v=3&d=x")
         assertFailure("totally not a url")
     }
 
     @Test
-    fun `wrong or missing version fails`() {
-        val d = absent("""{"bucket":"b","region":"r","accessKeyId":"a","secretAccessKey":"s"}""")
-        // The old four-field-less v=1 contract is rejected, not silently mis-read.
-        assertFailure("snapsync://config?v=1&d=$d")
-        assertFailure("snapsync://config?v=3&d=$d")
-        assertFailure("snapsync://config?d=$d")
+    fun `legacy v1 and v2 configs are rejected`() {
+        // A stale v=2 S3 payload must be rejected, not silently mis-read — the device re-provisions.
+        val s3 = absent("""{"bucket":"b","region":"r","accessKeyId":"a","secretAccessKey":"s"}""")
+        assertFailure("snapsync://config?v=2&d=$s3")
+        assertFailure("snapsync://config?v=1&d=$s3")
+    }
+
+    @Test
+    fun `missing version fails`() {
+        assertFailure("snapsync://config?d=${absent("""{"eventId":"$eventId"}""")}")
     }
 
     @Test
     fun `missing payload fails`() {
-        assertFailure("snapsync://config?v=2")
+        assertFailure("snapsync://config?v=3")
     }
 
     @Test
     fun `undecodable base64url fails`() {
-        assertFailure("snapsync://config?v=2&d=!!!not base64!!!")
+        assertFailure("snapsync://config?v=3&d=!!!not base64!!!")
     }
 
     @Test
     fun `non-json payload fails`() {
-        assertFailure("snapsync://config?v=2&d=${absent("not json")}")
+        assertFailure("snapsync://config?v=3&d=${absent("not json")}")
     }
 
     @Test
-    fun `missing key fails`() {
-        assertFailure("snapsync://config?v=2&d=${absent("""{"bucket":"b","region":"r","accessKeyId":"a"}""")}")
+    fun `missing eventId key fails`() {
+        assertFailure("snapsync://config?v=3&d=${absent("""{}""")}")
     }
 
     @Test
-    fun `empty field fails`() {
-        assertFailure("snapsync://config?v=2&d=${absent("""{"bucket":"","region":"r","accessKeyId":"a","secretAccessKey":"s"}""")}")
+    fun `empty eventId fails`() {
+        assertFailure("snapsync://config?v=3&d=${absent("""{"eventId":""}""")}")
+    }
+
+    @Test
+    fun `non-uuid eventId fails`() {
+        assertFailure("snapsync://config?v=3&d=${absent("""{"eventId":"not-a-uuid"}""")}")
+        assertFailure("snapsync://config?v=3&d=${absent("""{"eventId":"1234"}""")}")
+    }
+
+    @Test
+    fun `uppercase uuid is accepted`() {
+        val upper = eventId.uppercase()
+        assertEquals(upper, success("snapsync://config?v=3&d=${absent("""{"eventId":"$upper"}""")}").eventId)
     }
 
     @Test
     fun `unknown extra key fails`() {
-        assertFailure("snapsync://config?v=2&d=${absent("""{"bucket":"b","region":"r","accessKeyId":"a","secretAccessKey":"s","extra":"x"}""")}")
-    }
-
-    @Test
-    fun `stray endpoint key fails`() {
-        // A stale host-carrying payload (the v=1 shape) must be rejected: the host is compile-time now.
-        assertFailure("snapsync://config?v=2&d=${absent("""{"bucket":"b","region":"r","endpoint":"e","accessKeyId":"a","secretAccessKey":"s"}""")}")
+        assertFailure("snapsync://config?v=3&d=${absent("""{"eventId":"$eventId","extra":"x"}""")}")
     }
 }

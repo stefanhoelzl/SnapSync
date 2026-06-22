@@ -56,20 +56,20 @@ import platform.posix.memcpy
  */
 class KeychainConfigStore(
     private val service: String = "app.snapsync.config",
-    private val account: String = "s3config",
+    private val account: String = "eventconfig",
 ) : ConfigSource, ConfigStore {
 
     private val state = MutableStateFlow(readConfig())
-    override val config: StateFlow<S3ConfigPayload?> = state
+    override val config: StateFlow<EventConfigPayload?> = state
 
-    override suspend fun save(config: S3ConfigPayload) {
+    override suspend fun save(config: EventConfigPayload) {
         // Idempotent: re-scanning the same config is a no-op; a different one replaces silently.
         if (state.value?.sameAs(config) == true) return
         writeUrl(encodeConfigUrl(config))
         state.value = config
     }
 
-    private fun readConfig(): S3ConfigPayload? {
+    private fun readConfig(): EventConfigPayload? {
         val url = readUrl() ?: return null
         return (decodeConfigUrl(url) as? ConfigDecodeResult.Success)?.payload
     }

@@ -5,7 +5,7 @@ import app.snapsync.config.ConfigStore
 import app.snapsync.permission.PermissionRequester
 import app.snapsync.permission.PermissionStatus
 import app.snapsync.permission.PermissionStatusSource
-import app.snapsync.config.S3ConfigPayload
+import app.snapsync.config.EventConfigPayload
 import app.snapsync.status.SyncStatus
 import app.snapsync.status.SyncProgress
 import app.snapsync.status.SyncStatusSource
@@ -32,7 +32,7 @@ class PanelController(private val clock: Clock = Clock.System) {
         ),
     )
     private val permissionState = MutableStateFlow(PermissionStatus.NOT_DETERMINED)
-    private val configState = MutableStateFlow<S3ConfigPayload?>(null)
+    private val configState = MutableStateFlow<EventConfigPayload?>(null)
     private val armedGrants = MutableStateFlow(true)
 
     val syncSource: SyncStatusSource = object : SyncStatusSource {
@@ -50,7 +50,7 @@ class PanelController(private val clock: Clock = Clock.System) {
     }
 
     val configStore: ConfigStore = object : ConfigStore {
-        override suspend fun save(config: S3ConfigPayload) {
+        override suspend fun save(config: EventConfigPayload) {
             configState.value = config
         }
     }
@@ -144,12 +144,9 @@ class PanelController(private val clock: Clock = Clock.System) {
     )
 
     private companion object {
-        // A stand-in config so the storage step shows connected; never used to sign anything.
-        val CANNED_CONFIG = S3ConfigPayload(
-            bucket = "harness-bucket",
-            region = "eu-central-1",
-            accessKeyId = "HARNESS",
-            secretAccessKey = "HARNESS",
+        // A stand-in config so the "joined an event" step shows connected; never used to upload.
+        val CANNED_CONFIG = EventConfigPayload(
+            eventId = "00000000-0000-4000-8000-000000000000",
         )
     }
 }

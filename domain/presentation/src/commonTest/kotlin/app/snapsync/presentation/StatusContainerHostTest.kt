@@ -2,7 +2,7 @@ package app.snapsync.presentation
 
 import app.snapsync.config.ConfigSource
 import app.snapsync.config.ConfigStore
-import app.snapsync.config.S3ConfigPayload
+import app.snapsync.config.EventConfigPayload
 import app.snapsync.config.encodeConfigUrl
 import app.snapsync.permission.PermissionRequester
 import app.snapsync.permission.PermissionStatus
@@ -51,14 +51,14 @@ private class FakePermissionSource(
 // Config seam + store as one fake: save writes the cell, which is exactly how the real Keychain
 // adapter behaves (its change arrives back via ConfigSource). Defaults to present so the sync-state
 // tests fall through the setup gate.
-private val SAMPLE_CONFIG = S3ConfigPayload(
-    bucket = "b", region = "r", accessKeyId = "a", secretAccessKey = "s",
+private val SAMPLE_CONFIG = EventConfigPayload(
+    eventId = "11111111-1111-4111-8111-111111111111",
 )
 
-private class FakeConfig(initial: S3ConfigPayload? = SAMPLE_CONFIG) : ConfigSource, ConfigStore {
+private class FakeConfig(initial: EventConfigPayload? = SAMPLE_CONFIG) : ConfigSource, ConfigStore {
     private val flow = MutableStateFlow(initial)
-    override val config: StateFlow<S3ConfigPayload?> = flow
-    override suspend fun save(config: S3ConfigPayload) {
+    override val config: StateFlow<EventConfigPayload?> = flow
+    override suspend fun save(config: EventConfigPayload) {
         flow.value = config
     }
 }

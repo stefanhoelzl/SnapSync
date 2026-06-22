@@ -40,7 +40,8 @@ class UploadCycle(
     private val log: Logger = Logger.withTag("UploadCycle"),
 ) {
     suspend fun run(): CycleResult {
-        // Phase 1 — first failures: re-point the system's single retry at a freshly presigned URL.
+        // Phase 1 — first failures: re-point the system's single retry at a rebuilt edge URL
+        // (stable, no expiry — the provider re-derives the identical destination locally).
         for (job in platform.fetchRetryJobs()) {
             val retry = adjudicateFailure(job) ?: continue
             platform.retryJob(job, retry.job.request)

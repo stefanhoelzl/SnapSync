@@ -141,8 +141,8 @@ agent use and inject that one instead.
 :domain:presentation   Orbit MVI container + UiState (Compose-free, no engine dep)
 :domain:ui             Compose screens (written against App* only)
 :domain:ui:components   App* design system + the Material 3 skin
-:capability:s3         hand-rolled SigV4 presigner
-:capability:config     deeplink config provisioning
+:capability:upload-url local edge-URL builder (no network/crypto) — the UploadRequestProvider
+:capability:config     deeplink config provisioning (eventId)
 :app:desktop           test harness (phone frame + control panel)
 :app:ios               iOS wiring + framework export (thin, untested)
 :test:integration      test-only: seam → UI-state integration (planned)
@@ -189,8 +189,9 @@ Three standing rules (full detail: `docs/design.md §6`):
    module (`commonTest` → runs on JVM and simulator), which exists so the test may cross the
    `engine → presentation` boundary production forbids.
 
-The SigV4 presigner is additionally pinned by **golden/known-answer tests** verified against AWS's
-published vector.
+The edge-URL builder (`:capability:upload-url`) is pinned by `commonMain` tests on URL composition,
+filename percent-encoding (deterministic + injective), and the Content-Type-only header set — pure
+string-building, no network or crypto.
 
 ## Workflow
 

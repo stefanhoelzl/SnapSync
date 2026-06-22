@@ -11,16 +11,15 @@ import java.util.Properties
 import javax.imageio.ImageIO
 
 /**
- * The authoritative QR generator (design.md D10): encodes the four runtime config fields into the
- * canonical `snapsync://config?v=2&d=…` URL via [encodeConfigUrl] — the same codec the app decodes
- * with, so the wire format cannot drift — and renders a scannable QR to the terminal (and a PNG
- * fallback). The upload **host** is not encoded here; it is baked into the IPA at compile time
- * (`BackgroundUploadURLBase`).
+ * The authoritative QR generator (design.md D10): encodes the runtime config — just the **event id**
+ * — into the canonical `snapsync://config?v=3&d=…` URL via [encodeConfigUrl] — the same codec the app
+ * decodes with, so the wire format cannot drift — and renders a scannable QR to the terminal (and a
+ * PNG fallback). No storage credential is encoded (the device holds none); the upload **host** is not
+ * encoded either — it is baked into the IPA at compile time (`BackgroundUploadURLBase`).
  *
- * Field values come from env vars (`SNAPSYNC_S3_BUCKET`, `_REGION`, `_ACCESS_KEY_ID`,
- * `_SECRET_ACCESS_KEY`) or a gitignored `local.properties` (`s3.bucket`, `s3.region`,
- * `s3.accessKeyId`, `s3.secretAccessKey`); env wins. The secret is never read from a tracked file.
- * Output PNG path: `SNAPSYNC_QR_OUT` / `qr.out`, default `build/snapsync-config-qr.png`.
+ * The event id comes from env var `SNAPSYNC_EVENT_ID` or a gitignored `local.properties`
+ * (`snapsync.eventId`); env wins. Output PNG path: `SNAPSYNC_QR_OUT` / `qr.out`, default
+ * `build/snapsync-config-qr.png`.
  */
 fun main() {
     val props = Properties().apply {
@@ -31,11 +30,8 @@ fun main() {
         System.getenv(env) ?: props.getProperty(prop)
         ?: error("missing $env (or $prop in local.properties)")
 
-    val payload = S3ConfigPayload(
-        bucket = value("SNAPSYNC_S3_BUCKET", "s3.bucket"),
-        region = value("SNAPSYNC_S3_REGION", "s3.region"),
-        accessKeyId = value("SNAPSYNC_S3_ACCESS_KEY_ID", "s3.accessKeyId"),
-        secretAccessKey = value("SNAPSYNC_S3_SECRET_ACCESS_KEY", "s3.secretAccessKey"),
+    val payload = EventConfigPayload(
+        eventId = value("SNAPSYNC_EVENT_ID", "snapsync.eventId"),
     )
 
     val url = encodeConfigUrl(payload)
