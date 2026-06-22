@@ -5,6 +5,7 @@
   "tasks": {
     "test": "deno test",
     "check": "deno check src/*.ts",
+    "bundle": "deno bundle src/main.ts -o dist/main.js",
     "lint": "deno lint",
     "fmt": "deno fmt"
   },

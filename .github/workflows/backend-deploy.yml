@@ -39,6 +39,12 @@ jobs:
         working-directory: backend
         run: deno test
 
+      # Bundle to a single file — the deploy action uploads the file as-is (no bundling), and the
+      # SDK's serve() is runtime-aware (bundles a `case "bunny"` path).
+      - name: Bundle
+        working-directory: backend
+        run: deno bundle src/main.ts -o dist/main.js
+
       # --- TEMPORARY: deploy on EVERY push to test the pipeline from this branch.
       #     REVERT before /ship (restore `if: github.ref == 'refs/heads/main'`). ---
       - name: Deploy to bunny Edge Scripting
@@ -46,4 +52,4 @@ jobs:
         with:
           script_id: ${{ secrets.BUNNY_SCRIPT_ID }}
           deploy_key: ${{ secrets.BUNNY_DEPLOY_KEY }}
-          file: backend/src/main.ts
+          file: backend/dist/main.js

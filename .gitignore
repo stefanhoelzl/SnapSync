@@ -5,3 +5,6 @@ local.properties
 *.hprof
 .idea/
 .kotlin/
+
+# backend bundle output (built in CI, deployed; never committed)
+backend/dist/
