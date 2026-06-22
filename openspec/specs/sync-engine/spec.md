@@ -6,9 +6,10 @@ The shared decision core of the sync backend: platform adapters drive it with ob
 (a resource exists with this content state, an upload failed, an upload completed) and act on the
 decisions it answers with. The engine's only state is its ledger — the durable per-key memory of
 what was requested, completed, and failed — written exclusively by the engine. The sync domain
-knows only resources — asset handling lives in a later layer above the seam; encoding and
-placement of identity live below it, in the upload-request provider. Authoritative design:
-docs/design.md §2.2.
+transports resources grouped by an opaque `assetId` — the engine carries the `assetId` through to
+the ledger but does not interpret it; richer asset handling lives in a later layer above the seam;
+encoding and placement of identity live below it, in the upload-request provider. Authoritative
+design: docs/design.md §2.2.
 
 ## Requirements
 
@@ -163,3 +164,20 @@ no `REQUESTED`, which a later `ResourceChanged` re-derivation safely re-issues a
   resource is later re-submitted as `ResourceChanged`
 - **THEN** the engine returns `Work` again (the key has no `REQUESTED`), so the create is retried
   rather than skipped
+
+### Requirement: Resource asset identity
+`Resource` SHALL carry `assetId: String` — an opaque grouping identifier for the asset a resource
+belongs to (several resources of one photo share it). The engine SHALL carry `assetId` through to
+the ledger (via the record operations) but SHALL NOT interpret it — like `filename`, it is pure
+identity whose meaning belongs to the platform (iOS: the asset's `localIdentifier`, normalized;
+tests/console: any string). It plays no part in the decision: a `ResourceChanged` is still decided
+solely from the ledger entry for `filename` and the `version`.
+
+#### Scenario: assetId is carried into the recorded entry
+- **WHEN** a resource with `assetId = "A"` is uploaded and the platform reports `UploadStarted`
+- **THEN** the ledger entry for its key has `assetId == "A"`
+
+#### Scenario: assetId does not change the decision
+- **WHEN** a `ResourceChanged` is handled for a resource whose key is absent from the ledger
+- **THEN** the answer is `Upload` regardless of the resource's `assetId` (the decision reads only
+  `filename` and `version`)
