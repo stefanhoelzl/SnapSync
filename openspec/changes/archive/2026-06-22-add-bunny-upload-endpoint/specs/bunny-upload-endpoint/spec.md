@@ -22,16 +22,16 @@ the body. Exactly **one** upstream subrequest SHALL be made per upload.
 
 ### Requirement: Object key from the URL path
 
-The endpoint SHALL derive the object key from the request URL path, which SHALL match the template
-`/event/<eventId>/device/<deviceId>/file/<filename>` (the literal labels `event`, `device`, and
-`file` are required). `eventId` and `deviceId` MUST each match a UUID pattern; `filename` is a
-single path segment that the client percent-encodes and the endpoint SHALL forward to bunny as
-received (it SHALL NOT re-encode or decode it). From these the endpoint SHALL compose the **storage
-key** as the bare `<eventId>/<deviceId>/<filename>` — the URL labels (`event`/`device`/`file`) are
-**not** part of the stored key. A request whose path does not match the template SHALL yield `404`;
-a path that matches the template but whose `eventId` or `deviceId` is not a UUID, or whose
-`filename` segment is empty or contains `..`, SHALL yield `400`. Neither case SHALL make an upstream
-request.
+The endpoint SHALL derive `eventId`, `deviceId`, and `filename` from the decoded path params of the
+route `/event/<eventId>/device/<deviceId>/file/<filename>` (the literal labels `event`, `device`, and
+`file` are required). `eventId` and `deviceId` MUST each match a UUID pattern; `filename` MUST be a
+single, non-empty segment containing no path separator (`/`, encoded or literal) and no `..`. The
+endpoint SHALL write the object at the bare key `<eventId>/<deviceId>/<filename>` — the URL labels
+(`event`/`device`/`file`) are **not** part of the stored key — percent-encoding each segment when
+building the storage request URL so the key stays a single flat path. A request whose path does not
+match the route (missing label, wrong depth, or no filename) SHALL yield `404`; a matched request
+whose `eventId`/`deviceId` is not a UUID or whose `filename` is unsafe SHALL yield `400`. Neither
+case SHALL make an upstream request.
 
 #### Scenario: Valid path accepted, bare key composed
 
@@ -44,15 +44,15 @@ request.
 - **WHEN** the `eventId` or `deviceId` segment is not a UUID
 - **THEN** the endpoint responds `400` and makes no upstream request
 
-#### Scenario: Unmatched path rejected
+#### Scenario: Unmatched path rejected (incl. empty filename)
 
-- **WHEN** the path does not match `/event/<eventId>/device/<deviceId>/file/<filename>` (missing a
-  label, wrong depth, or no filename)
+- **WHEN** the path does not match the route (missing a label, wrong depth, or no filename — e.g.
+  ends in `/file/`)
 - **THEN** the endpoint responds `404` and makes no upstream request
 
-#### Scenario: Traversal or empty filename rejected
+#### Scenario: Unsafe filename rejected
 
-- **WHEN** the `filename` segment is empty or contains `..`
+- **WHEN** the `filename` segment contains `..` or a separator (`/` or its encoded `%2F`)
 - **THEN** the endpoint responds `400` and makes no upstream request
 
 ### Requirement: bunny native Storage target and authorization
