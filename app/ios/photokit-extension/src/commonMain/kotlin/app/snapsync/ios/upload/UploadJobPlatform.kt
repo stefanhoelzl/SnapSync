@@ -10,8 +10,9 @@ import app.snapsync.engine.UploadRequest
  * orchestration in [UploadCycle] stays pure and testable on the simulator with a fake.
  *
  * Returned system jobs are surfaced as [PlatformUploadJob]s whose [PlatformUploadJob.key] the
- * platform recomputes from the job's own asset/resource facts — the same `uploadKey` discovery uses
- * — so the cycle maps a job back to the ledger without parsing the destination URL.
+ * platform reads from the job's **destination URL** (its last path segment) — the only field
+ * reliably present across the whole job lifecycle (`resource` is nil for succeeded jobs) — so the
+ * cycle maps a job back to the ledger without depending on the released resource.
  */
 interface UploadJobPlatform {
 
