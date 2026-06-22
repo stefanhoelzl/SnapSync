@@ -57,8 +57,9 @@
 
 - [x] 4.1 Add `.github/workflows/backend-deploy.yml`: trigger path-scoped to `backend/**` + the
       workflow file; isolated from the Gradle/iOS workflows.
-- [x] 4.2 Run `deno fmt --check` / `deno lint` / `deno check src/main.ts` / `deno test`; **gate** the
-      deploy step on all passing (`deno check` covers `main.ts`/SDK wiring that `deno test` misses).
+- [x] 4.2 Run `deno fmt --check` / `deno lint` / `deno check src/*.ts` / `deno test`; **gate** the
+      deploy step on all passing (`deno check` covers all source incl. `main.ts`/SDK wiring that
+      `deno test` misses).
 - [x] 4.3 Deploy via `BunnyWay/actions/deploy-script` (`script_id`, `deploy_key`,
       `file: backend/src/main.ts`); idempotent (same script overwritten); deploy step `main`-only.
 - [x] 4.4 GH secrets set on `stefanhoelzl/SnapSync`: `BUNNY_SCRIPT_ID=79725` and `BUNNY_DEPLOY_KEY`

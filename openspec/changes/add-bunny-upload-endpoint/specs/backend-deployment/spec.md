@@ -27,13 +27,13 @@ workflows (its own workflow file; it SHALL NOT couple to the Gradle build or iOS
 ### Requirement: Deploy is gated on green checks
 
 The workflow SHALL run, before the deploy step, the full check set — `deno fmt --check`, `deno lint`,
-`deno check` (type-check, including `src/main.ts` which the test run does not reach), and the
-`Deno.test` suite — and the deploy step SHALL execute **only** when all of them pass. Any failing
-check SHALL block deployment.
+`deno check src/*.ts` (type-checks all source, incl. `main.ts`/SDK wiring the test run does not
+reach), and the `Deno.test` suite — and the deploy step SHALL execute **only** when all of them
+pass. Any failing check SHALL block deployment.
 
 #### Scenario: A failing check blocks deploy
 
-- **WHEN** any of `deno fmt --check`, `deno lint`, `deno check src/main.ts`, or `deno test` fails
+- **WHEN** any of `deno fmt --check`, `deno lint`, `deno check src/*.ts`, or `deno test` fails
 - **THEN** the deploy step does not run and the workflow fails
 
 #### Scenario: All checks green permit deploy
