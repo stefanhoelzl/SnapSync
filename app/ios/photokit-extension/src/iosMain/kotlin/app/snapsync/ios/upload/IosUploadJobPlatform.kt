@@ -151,24 +151,33 @@ class IosUploadJobPlatform(
 
     override suspend fun discoverResources(sinceToken: ByteArray?): Discovery {
         val token = sinceToken?.let(::unarchiveToken)
-        val identifiers = if (token == null) {
-            PHAsset.fetchAssetsWithOptions(null).localIdentifiers()
-        } else {
-            val changes = library.fetchPersistentChangesSinceToken(token, error = null)
-            if (changes == null) {
-                PHAsset.fetchAssetsWithOptions(null).localIdentifiers()
-            } else {
-                val identifiers = linkedSetOf<String>()
-                changes.enumerateChangesWithBlock { change, _ ->
-                    val details = change?.changeDetailsForObjectType(PHObjectTypeAsset, error = null)
-                        ?: return@enumerateChangesWithBlock
-                    details.insertedLocalIdentifiers().forEach { identifiers.add(it as String) }
-                    details.updatedLocalIdentifiers().forEach { identifiers.add(it as String) }
-                }
-                identifiers.toList()
-            }
+        val changes = token?.let { library.fetchPersistentChangesSinceToken(it, error = null) }
+        if (token == null || changes == null) {
+            // Full enumeration: `resources` is every current resource key — the live set the cycle
+            // reconciles against. No change feed, so no incremental removals.
+            val resources = resourcesFor(PHAsset.fetchAssetsWithOptions(null).localIdentifiers())
+            return Discovery(
+                resources = resources,
+                nextToken = archiveToken(library.currentChangeToken),
+                fullEnumeration = true,
+            )
         }
-        return Discovery(resourcesFor(identifiers), archiveToken(library.currentChangeToken))
+        // Incremental: derive changed assets to (re)upload and removed assets to prune. Removed ids
+        // are normalized `/`→`_` so they match the `<localId>-…` key scheme.
+        val identifiers = linkedSetOf<String>()
+        val removed = linkedSetOf<String>()
+        changes.enumerateChangesWithBlock { change, _ ->
+            val details = change?.changeDetailsForObjectType(PHObjectTypeAsset, error = null)
+                ?: return@enumerateChangesWithBlock
+            details.insertedLocalIdentifiers().forEach { identifiers.add(it as String) }
+            details.updatedLocalIdentifiers().forEach { identifiers.add(it as String) }
+            details.deletedLocalIdentifiers().forEach { removed.add((it as String).replace('/', '_')) }
+        }
+        return Discovery(
+            resources = resourcesFor(identifiers.toList()),
+            nextToken = archiveToken(library.currentChangeToken),
+            removedAssetIds = removed.toList(),
+        )
     }
 
     private fun resourcesFor(localIdentifiers: List<String>): List<Resource> {

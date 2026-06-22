@@ -1,7 +1,7 @@
 package app.snapsync.ios.upload
 
-import app.snapsync.engine.LedgerReader
 import app.snapsync.engine.LedgerState
+import app.snapsync.engine.LedgerWriter
 import app.snapsync.engine.Resource
 import app.snapsync.engine.SyncDecision
 import app.snapsync.engine.SyncEngine
@@ -14,19 +14,27 @@ import co.touchlab.kermit.Logger
 /**
  * One background-upload cycle, platform-free: adjudicate the system's returned jobs (completion +
  * retry), then discover new/changed resources and create jobs — all gated by the [engine]. This is
- * the testable core: it depends only on the [engine], a read-only [ledger] (to reconstruct lifecycle
- * jobs), the [UploadJobPlatform] port, and the [DiscoveryStore] cursor, so a fake platform + a real
- * engine exercise the whole flow on the simulator without touching PhotoKit.
+ * the testable core: it depends only on the [engine], the [ledger] (to reconstruct lifecycle jobs
+ * and to prune rows for deleted assets), the [UploadJobPlatform] port, and the [DiscoveryStore]
+ * cursor, so a fake platform + a real engine exercise the whole flow on the simulator without
+ * touching PhotoKit.
  *
  * Write-after-act: the engine records `REQUESTED` only on [SyncEvent.UploadStarted], reported *after*
  * a job is created/retried — so an in-flight `REQUESTED` always implies a real job and discovery can
  * safely skip it. The cursor advances only when the cycle fully drains (no `limitExceeded`), so a
  * cap-truncated cycle re-derives next time and the engine's `REQUESTED`-skip prevents duplicates —
  * no residue store.
+ *
+ * Deleted-asset pruning keeps the ledger honest about what still exists on device (and stops a row
+ * left non-`COMPLETED` by an asset deleted mid-upload from pinning `pending > 0` forever): removed
+ * assets reported by the change feed are pruned by key prefix each cycle, and a fully-drained full
+ * enumeration reconciles the whole ledger against the live key-set. Pruning is the one direct
+ * `LedgerWriter` write the cycle makes (everything else flows through the [engine]); the extension
+ * is the single writer, so this preserves the invariant. No S3 object is ever deleted.
  */
 class UploadCycle(
     private val engine: SyncEngine,
-    private val ledger: LedgerReader,
+    private val ledger: LedgerWriter,
     private val platform: UploadJobPlatform,
     private val store: DiscoveryStore,
     private val log: Logger = Logger.withTag("UploadCycle"),
@@ -70,6 +78,14 @@ class UploadCycle(
         // Phase 3 — discover new/changed resources; REQUESTED-skip filters everything in flight.
         val discovery = platform.discoverResources(store.loadToken())
         log.i { "discovered ${discovery.resources.size} resource(s)" }
+
+        // Prune rows for assets the change feed reported removed (incremental, every cycle — even a
+        // cap-truncated one — so a mid-upload deletion's stuck row is cleared promptly).
+        for (assetId in discovery.removedAssetIds) {
+            log.i { "pruning deleted asset $assetId" }
+            ledger.deleteByKeyPrefix("$assetId-")
+        }
+
         for (resource in discovery.resources) {
             val decision = engine.handle(SyncEvent.ResourceChanged(resource))
             if (decision is SyncDecision.Work) {
@@ -79,6 +95,14 @@ class UploadCycle(
                     CreateResult.FAILED -> Unit // not created → no UploadStarted; retried next discovery
                 }
             }
+        }
+
+        // Reconcile only on a fully-drained full enumeration (the same gate that advances the
+        // cursor): `resources` then holds every current key, so retainKeys prunes rows for assets
+        // no longer present — the backstop for deletions missed while the change token was expired.
+        // Skipped on incremental cycles and on cap-truncated ones (which returned PROCESSING above).
+        if (discovery.fullEnumeration) {
+            ledger.retainKeys(discovery.resources.mapTo(mutableSetOf()) { it.filename })
         }
 
         store.saveToken(discovery.nextToken) // advance only on a fully-drained cycle

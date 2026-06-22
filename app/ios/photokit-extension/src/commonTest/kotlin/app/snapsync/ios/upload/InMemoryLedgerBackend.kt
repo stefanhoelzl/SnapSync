@@ -31,6 +31,16 @@ class InMemoryLedgerBackend : LedgerBackend {
         dings.tryEmit(Unit)
     }
 
+    override suspend fun deleteByKeyPrefix(prefix: String) {
+        entries.keys.retainAll { !it.startsWith(prefix) }
+        dings.tryEmit(Unit)
+    }
+
+    override suspend fun retainKeys(keep: Set<String>) {
+        entries.keys.retainAll(keep)
+        dings.tryEmit(Unit)
+    }
+
     override suspend fun aggregates(): LedgerAggregates {
         val completed = entries.values.filter { it.state == LedgerState.COMPLETED }
         return LedgerAggregates(

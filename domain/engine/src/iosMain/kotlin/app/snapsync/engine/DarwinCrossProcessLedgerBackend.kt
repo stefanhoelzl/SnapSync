@@ -61,6 +61,16 @@ class DarwinCrossProcessLedgerBackend(
         notify_post(notificationName)
     }
 
+    override suspend fun deleteByKeyPrefix(prefix: String) {
+        delegate.deleteByKeyPrefix(prefix)
+        notify_post(notificationName)
+    }
+
+    override suspend fun retainKeys(keep: Set<String>) {
+        delegate.retainKeys(keep)
+        notify_post(notificationName)
+    }
+
     companion object {
         /** The Darwin notify name both processes agree on for "the ledger changed". */
         const val LEDGER_CHANGED_NOTIFICATION: String = "group.app.snapsync.ledger.changed"

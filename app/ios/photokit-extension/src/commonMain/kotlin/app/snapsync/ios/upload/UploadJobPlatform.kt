@@ -65,8 +65,21 @@ class PlatformUploadJob(
  */
 enum class CreateResult { CREATED, LIMIT_EXCEEDED, FAILED }
 
-/** Discovered resources plus the opaque cursor to persist once the cycle fully drains. */
-class Discovery(val resources: List<Resource>, val nextToken: ByteArray)
+/**
+ * Discovered resources plus the opaque cursor to persist once the cycle fully drains.
+ *
+ * [removedAssetIds] are the asset identifiers reported removed by the change feed this cycle
+ * (normalized `/`→`_` to match the key scheme), used to prune their ledger rows incrementally;
+ * empty on a full enumeration (the change feed isn't consulted). [fullEnumeration] is true when
+ * this discovery enumerated the whole library (no/expired token), so [resources] holds **every**
+ * current resource key — the live key-set the cycle reconciles the ledger against.
+ */
+class Discovery(
+    val resources: List<Resource>,
+    val nextToken: ByteArray,
+    val removedAssetIds: List<String> = emptyList(),
+    val fullEnumeration: Boolean = false,
+)
 
 /** The terminal disposition of one cycle; the Swift shell maps it to the system result. */
 enum class CycleResult { COMPLETED, PROCESSING, FAILED }

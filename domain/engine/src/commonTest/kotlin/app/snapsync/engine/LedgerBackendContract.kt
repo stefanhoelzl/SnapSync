@@ -112,6 +112,99 @@ abstract class LedgerBackendContract {
     }
 
     @Test
+    fun `deleteByKeyPrefix removes only the matching rows`() = runTest {
+        val backend = createBackend()
+        // `A_1` and `A_2` differ only in the `_`-adjacent char: a LIKE 'A_1-%' match would treat
+        // `_` as a wildcard and wrongly delete `A_2`. The half-open range match must not.
+        backend.put(entry(key = "A_1-photo.jpg"))
+        backend.put(entry(key = "A_1-video.mov"))
+        backend.put(entry(key = "A_2-photo.jpg"))
+        backend.put(entry(key = "B-photo.jpg"))
+
+        backend.deleteByKeyPrefix("A_1-")
+
+        assertNull(backend.get("A_1-photo.jpg"))
+        assertNull(backend.get("A_1-video.mov"))
+        assertEquals("A_2-photo.jpg", backend.get("A_2-photo.jpg")?.key)
+        assertEquals("B-photo.jpg", backend.get("B-photo.jpg")?.key)
+    }
+
+    @Test
+    fun `deleteByKeyPrefix dings an active changes collector`() = runTest {
+        val backend = createBackend()
+        backend.put(entry(key = "A-photo.jpg"))
+        var dings = 0
+        backgroundScope.launch(start = CoroutineStart.UNDISPATCHED) { backend.changes.collect { dings++ } }
+
+        backend.deleteByKeyPrefix("A-")
+        runCurrent()
+
+        assertEquals(1, dings)
+    }
+
+    @Test
+    fun `retainKeys removes the complement and keeps the members`() = runTest {
+        val backend = createBackend()
+        backend.put(entry(key = "a"))
+        backend.put(entry(key = "b"))
+        backend.put(entry(key = "c"))
+
+        backend.retainKeys(setOf("a", "c"))
+
+        assertEquals("a", backend.get("a")?.key)
+        assertNull(backend.get("b"))
+        assertEquals("c", backend.get("c")?.key)
+    }
+
+    @Test
+    fun `retainKeys with empty set empties the store`() = runTest {
+        val backend = createBackend()
+        backend.put(entry(key = "a"))
+        backend.put(entry(key = "b"))
+
+        backend.retainKeys(emptySet())
+
+        assertEquals(LedgerAggregates(0, 0, null), backend.aggregates())
+    }
+
+    @Test
+    fun `retainKeys dings an active changes collector`() = runTest {
+        val backend = createBackend()
+        backend.put(entry(key = "a"))
+        backend.put(entry(key = "b"))
+        var dings = 0
+        backgroundScope.launch(start = CoroutineStart.UNDISPATCHED) { backend.changes.collect { dings++ } }
+
+        backend.retainKeys(setOf("a"))
+        runCurrent()
+
+        assertEquals(1, dings)
+    }
+
+    @Test
+    fun `writer prunes by prefix and retains a key set - reader cannot`() = runTest {
+        val backend = createBackend()
+        val writer = LedgerWriter(backend, FixedClock(t0))
+        writer.recordRequested("X-photo.jpg", attempt = 0, version = "v1")
+        writer.recordRequested("X-video.mov", attempt = 0, version = "v1")
+        writer.recordRequested("Y-photo.jpg", attempt = 0, version = "v1")
+
+        writer.deleteByKeyPrefix("X-")
+        assertNull(writer.entry("X-photo.jpg"))
+        assertNull(writer.entry("X-video.mov"))
+        assertEquals("Y-photo.jpg", writer.entry("Y-photo.jpg")?.key)
+
+        writer.recordRequested("Z-photo.jpg", attempt = 0, version = "v1")
+        writer.retainKeys(setOf("Y-photo.jpg"))
+        assertNull(writer.entry("Z-photo.jpg"))
+        assertEquals("Y-photo.jpg", writer.entry("Y-photo.jpg")?.key)
+
+        // Compile-time guard: prune ops are absent from the read-only face.
+        @Suppress("UNUSED_VARIABLE")
+        val reader: LedgerReader = writer // narrowing compiles; `reader.deleteByKeyPrefix(...)` would not
+    }
+
+    @Test
     fun `recording converges on state attempt and version - only the timestamp moves`() = runTest {
         val backend = createBackend()
         val clock = FixedClock(t0)
