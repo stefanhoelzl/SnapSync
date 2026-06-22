@@ -1,0 +1,18 @@
+-- v1 -> v2: add the `assetId` column (and its index).
+--
+-- The ledger is rebuildable from a full enumeration, so this is DESTRUCTIVE — it drops and
+-- recreates the table rather than `ALTER TABLE ADD COLUMN assetId DEFAULT ''`, which would leave
+-- pre-migration rows ungroupable (empty assetId). The next discovery cycle repopulates every row
+-- with a proper assetId. Migration SQL is raw (no `AS LedgerState`/`AS Instant` type annotations).
+DROP TABLE ledgerRow;
+
+CREATE TABLE ledgerRow (
+    key TEXT NOT NULL PRIMARY KEY,
+    assetId TEXT NOT NULL,
+    state TEXT NOT NULL,
+    attempt INTEGER NOT NULL,
+    version TEXT NOT NULL,
+    updatedAt INTEGER NOT NULL
+);
+
+CREATE INDEX ledgerRow_assetId ON ledgerRow(assetId);

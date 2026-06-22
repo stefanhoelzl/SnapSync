@@ -6,9 +6,11 @@ import kotlin.time.Instant
 /**
  * Snapshot of backup truth, projected from the engine's ledger (design.md §2.4).
  *
- * Counts are lifetime aggregates over ledger keys: [pending] = keys not yet proven uploaded
- * (absent proof, `REQUESTED` hopes, transient `FAILED`), [completed] = keys with `COMPLETED`
- * proof. A re-upload flips its key back to pending — re-uploads are visible here.
+ * Counts are lifetime aggregates by **photo (asset), not resource row**: [pending] = photos with
+ * any resource not yet proven uploaded (absent proof, `REQUESTED` hopes, transient `FAILED`),
+ * [completed] = photos whose resources are all `COMPLETED`. A re-upload flips its photo back to
+ * pending — re-uploads are visible here. (The sync-state classification is unaffected: "any
+ * resource pending" ⟺ "any photo pending".)
  *
  * [failed] is structurally 0 from the ledger-backed source: retry-forever means no key is ever
  * given up on (an attempt budget would change that). The field exists for classification and

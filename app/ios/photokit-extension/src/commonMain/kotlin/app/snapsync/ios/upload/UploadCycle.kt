@@ -83,7 +83,7 @@ class UploadCycle(
         // cap-truncated one — so a mid-upload deletion's stuck row is cleared promptly).
         for (assetId in discovery.removedAssetIds) {
             log.i { "pruning deleted asset $assetId" }
-            ledger.deleteByKeyPrefix("$assetId-")
+            ledger.deleteByAssetId(assetId)
         }
 
         for (resource in discovery.resources) {
@@ -98,11 +98,11 @@ class UploadCycle(
         }
 
         // Reconcile only on a fully-drained full enumeration (the same gate that advances the
-        // cursor): `resources` then holds every current key, so retainKeys prunes rows for assets
+        // cursor): `resources` then covers every current asset, so retainAssets prunes rows for assets
         // no longer present — the backstop for deletions missed while the change token was expired.
         // Skipped on incremental cycles and on cap-truncated ones (which returned PROCESSING above).
         if (discovery.fullEnumeration) {
-            ledger.retainKeys(discovery.resources.mapTo(mutableSetOf()) { it.filename })
+            ledger.retainAssets(discovery.resources.mapTo(mutableSetOf()) { it.assetId })
         }
 
         store.saveToken(discovery.nextToken) // advance only on a fully-drained cycle
@@ -125,6 +125,7 @@ class UploadCycle(
         val entry = ledger.entry(job.key)
         val resource = Resource(
             filename = job.key,
+            assetId = entry?.assetId ?: "",
             contentType = job.contentType,
             version = entry?.version ?: "",
             metadata = emptyMap(),

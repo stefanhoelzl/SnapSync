@@ -18,7 +18,7 @@ class LedgerWatcherTest {
 
     @Test
     fun `collection starts with current truth - no write needed`() = runTest {
-        writer.recordCompleted("k", attempt = 0, version = "v1")
+        writer.recordCompleted("k", assetId = "k", attempt = 0, version = "v1")
 
         val first = watcher.aggregates.first()
 
@@ -33,7 +33,7 @@ class LedgerWatcherTest {
         }
         runCurrent()
 
-        writer.recordCompleted("k", attempt = 0, version = "v1")
+        writer.recordCompleted("k", assetId = "k", attempt = 0, version = "v1")
         runCurrent()
 
         assertEquals(
@@ -47,14 +47,14 @@ class LedgerWatcherTest {
 
     @Test
     fun `writes that leave the aggregates unchanged stay silent`() = runTest {
-        writer.recordRequested("k", attempt = 0, version = "v1")
+        writer.recordRequested("k", assetId = "k", attempt = 0, version = "v1")
         val emissions = mutableListOf<LedgerAggregates>()
         backgroundScope.launch(start = CoroutineStart.UNDISPATCHED) {
             watcher.aggregates.collect { emissions += it }
         }
         runCurrent()
 
-        writer.recordRequested("k", attempt = 1, version = "v1")
+        writer.recordRequested("k", assetId = "k", attempt = 1, version = "v1")
         runCurrent()
 
         assertEquals(listOf(LedgerAggregates(pending = 1, completed = 0, newestCompletionAt = null)), emissions)

@@ -31,22 +31,24 @@ class InMemoryLedgerBackend : LedgerBackend {
         dings.tryEmit(Unit)
     }
 
-    override suspend fun deleteByKeyPrefix(prefix: String) {
-        rows.keys.retainAll { !it.startsWith(prefix) }
+    override suspend fun deleteByAssetId(assetId: String) {
+        rows.values.removeAll { it.assetId == assetId }
         dings.tryEmit(Unit)
     }
 
-    override suspend fun retainKeys(keep: Set<String>) {
-        rows.keys.retainAll(keep)
+    override suspend fun retainAssets(keep: Set<String>) {
+        rows.values.removeAll { it.assetId !in keep }
         dings.tryEmit(Unit)
     }
 
     override suspend fun aggregates(): LedgerAggregates {
-        val completed = rows.values.filter { it.state == LedgerState.COMPLETED }
+        // Counted by photo (assetId): a photo is complete only when all its rows are COMPLETED.
+        val byAsset = rows.values.groupBy { it.assetId }
+        val complete = byAsset.values.filter { group -> group.all { it.state == LedgerState.COMPLETED } }
         return LedgerAggregates(
-            pending = rows.size - completed.size,
-            completed = completed.size,
-            newestCompletionAt = completed.maxOfOrNull { it.updatedAt },
+            pending = byAsset.size - complete.size,
+            completed = complete.size,
+            newestCompletionAt = complete.flatten().maxOfOrNull { it.updatedAt },
         )
     }
 }
