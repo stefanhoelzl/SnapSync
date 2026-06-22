@@ -1,0 +1,49 @@
+name: backend-deploy
+
+# Deploys the backend/ upload endpoint to bunny Edge Scripting.
+# Path-scoped to the backend sources, isolated from the Gradle/iOS workflows, and gated on green
+# Deno fmt/lint/check/test. Capability: backend-deployment.
+
+on:
+  push:
+    paths:
+      - "backend/**"
+      - ".github/workflows/backend-deploy.yml"
+
+jobs:
+  test-and-deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.x
+
+      # --- Test gate: deploy runs only if these pass ---
+      - name: Format check
+        working-directory: backend
+        run: deno fmt --check
+
+      - name: Lint
+        working-directory: backend
+        run: deno lint
+
+      # Type-checks main.ts + the SDK wiring, which `deno test` does not reach (no test imports it).
+      - name: Type check
+        working-directory: backend
+        run: deno check src/main.ts
+
+      - name: Test
+        working-directory: backend
+        run: deno test
+
+      # --- Deploy: main only. Feature-branch pushes run the checks but do not ship to the single
+      #     live script. Idempotent: re-deploys overwrite the same script_id. ---
+      - name: Deploy to bunny Edge Scripting
+        if: github.ref == 'refs/heads/main'
+        uses: BunnyWay/actions/deploy-script@main
+        with:
+          script_id: ${{ secrets.BUNNY_SCRIPT_ID }}
+          deploy_key: ${{ secrets.BUNNY_DEPLOY_KEY }}
+          file: backend/src/main.ts

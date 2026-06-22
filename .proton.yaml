@@ -1,0 +1,7 @@
+snap-sync:
+  ASC_KEY_ID: appstore-connect/key-id
+  ASC_ISSUER_ID: appstore-connect/issuer-id
+  ASC_AUTH_KEY: appstore-connect/auth-key
+  BUNNY_API_KEY: bunny/api-key
+  BUNNY_STORAGE_ACCESS_KEY: bunny/storage-access-key
+  BUNNY_SCRIPT_DEPLOYMENT_KEY: bunny/script-deployment-key
