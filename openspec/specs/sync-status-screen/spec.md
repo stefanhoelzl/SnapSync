@@ -3,22 +3,24 @@
 ## Purpose
 
 The shared status screen that observes sync status snapshots and shows the user, truthfully,
-what state their backup is in: never synced, in progress, waiting, complete, or incomplete.
-The snapshot contract and its classification are owned by the `sync-status` capability; this
-screen reduces and renders.
+what state their backup is in: in progress ("n of N images synced"), complete ("N images synced"),
+or nothing to sync. The snapshot contract and its classification are owned by the `sync-status`
+capability; this screen reduces and renders.
 ## Requirements
 ### Requirement: Sync status snapshots reduce to UI state
 
 The presentation layer SHALL reduce each observed `SyncStatus` to a display-ready `UiState`.
-`SyncProgress`, its `SyncStatusSource` seam, the `SyncStatus` vocabulary, and the five-state
+`SyncProgress`, its `SyncStatusSource` seam, the `SyncStatus` vocabulary, and the three-state
 classification are owned by the `sync-status` capability — this screen consumes them. A `Ready`
-snapshot reduces to one of the five states mirroring `SyncState` (the setup gate's `UiState.Setup`
-variant and its two-input precedence — config presence × permission status — are specified by the
-`setup-gate` capability), and a `Loading` snapshot reduces to `UiState.Loading` **only when config
-is present and permission is GRANTED** (an absent config or any non-`GRANTED` permission
-short-circuits to the setup gate regardless of the snapshot). `UiState` carries only final display
-data (pre-formatted strings and, for InProgress, a progress fraction computed as processed-of-total:
-`(completed + failed) / (pending + completed + failed)`).
+snapshot reduces to one of the three states mirroring `SyncState` — `InProgress(synced, total, finishedAgo)`,
+`Completed(total, finishedAgo)`, or `NothingToSync` (the setup gate's `UiState.Setup` variant and its
+two-input precedence — config presence × permission status — are specified by the `setup-gate`
+capability), and a `Loading` snapshot reduces to `UiState.Loading` **only when config is present and
+permission is GRANTED** (an absent config or any non-`GRANTED` permission short-circuits to the setup
+gate regardless of the snapshot). `UiState` carries only final display data: the displayed synced count
+`synced = min(completed, total)`, the `total`, and the pre-formatted relative time of the most recent
+completion for InProgress (`finishedAgo`, **null** when nothing has completed yet — a bare "0 of N");
+the `total` and pre-formatted relative time for Completed.
 
 The reduction MUST depend only on the latest snapshot (no event history), so any missed
 intermediate snapshot cannot corrupt the displayed state. The container's initial UI state SHALL be
@@ -27,9 +29,21 @@ that was **not derived from actual source values** — but `UiState.Loading` *is
 derived state (it is the reduction of a real `SyncStatus.Loading`), and is therefore permitted;
 the prohibition is against guesses and placeholders that no source value produced.
 
-#### Scenario: In-progress snapshot carries a fraction
-- **WHEN** a `Ready` snapshot with `pending = 22, completed = 12, failed = 0, active = true` is observed
-- **THEN** the UI state is InProgress with fraction ≈ 12/34
+#### Scenario: In-progress snapshot carries the synced and total counts
+- **WHEN** a `Ready` snapshot with `completed = 12, total = 47, active = true` is observed
+- **THEN** the UI state is `InProgress` with `synced = 12` and `total = 47`
+
+#### Scenario: Completed snapshot carries the total
+- **WHEN** a `Ready` snapshot with `completed = 47, total = 47` is observed
+- **THEN** the UI state is `Completed` with `total = 47`
+
+#### Scenario: Empty library reduces to nothing-to-sync
+- **WHEN** a `Ready` snapshot with `total = 0` is observed
+- **THEN** the UI state is `NothingToSync`
+
+#### Scenario: Overshoot clamps the displayed synced count
+- **WHEN** a `Ready` snapshot with `completed = 6, total = 5` is observed
+- **THEN** the UI state is `Completed` with `total = 5` (the synced count never displays as `6`)
 
 #### Scenario: A newer snapshot replaces the displayed state entirely
 - **WHEN** a snapshot is observed after any earlier snapshots, regardless of any snapshots missed
@@ -37,10 +51,10 @@ the prohibition is against guesses and placeholders that no source value produce
 - **THEN** the UI state derives from the latest snapshot alone
 
 #### Scenario: No cold-start guess
-- **WHEN** the container is constructed while the sync source already holds `Ready(Incomplete)`
+- **WHEN** the container is constructed while the sync source already holds `Ready(Completed)`
   (and config is present and permission is granted)
-- **THEN** the first state the screen can ever render is Incomplete — never an intermediate
-  NeverSynced, and never Loading (Loading appears only for a `SyncStatus.Loading` value)
+- **THEN** the first state the screen can ever render is Completed — never an intermediate state, and
+  never Loading (Loading appears only for a `SyncStatus.Loading` value)
 
 #### Scenario: Loading snapshot under satisfied gate reduces to Loading
 - **WHEN** the sync source holds `SyncStatus.Loading`, config is present, and permission is GRANTED
@@ -53,39 +67,45 @@ the prohibition is against guesses and placeholders that no source value produce
 
 ### Requirement: Status screen renders UI state
 
-The status screen SHALL render each state as a centered two-line hero (icon +
-headline, with an optional muted detail line) via the design system's `StatusHero`. Item counts
-and progress bars MUST NOT appear as text anywhere on the screen; the progress indicator alone
-conveys the rough fraction. `UiState.Loading` SHALL render an **indeterminate** progress indicator
-with the headline "Loading …", no detail line and no button (the user has no action; it auto-resolves).
+The status screen SHALL render each state as a centered hero via the design system's `StatusHero`: a
+single LED-style status dot above one count line, with an optional muted detail line. The dot is carried
+by a **semantic** `StatusIndicator` — no color, shape, or style appears in any `App*` signature; the
+Material 3 skin in `:domain:ui:components` maps the semantic indicator to pixels (`InProgress` → a
+yellow dot, `Complete` → a green dot). `NothingToSync` uses the `Complete` (green) indicator. There is
+no headline line and no progress ring. `UiState.Loading` SHALL render an **indeterminate** progress
+indicator with the text "Loading …", no dot, no detail line and no button (the user has no action; it
+auto-resolves).
 
-| State | Indicator | Headline | Detail |
+The synced and total counts SHALL appear as text. The screen renders:
+
+| State | Indicator | Count line | Detail |
 |---|---|---|---|
-| Loading | Loading (indeterminate) | "Loading …" | — |
-| NeverSynced | Warning | "No sync yet" | — |
-| InProgress | Progress(fraction) | "Sync in progress" | estimate text |
-| Suspended | Waiting | "Waiting to sync" | — |
-| Complete | Success | "Sync complete" | relative time |
-| Incomplete | Warning | "Sync incomplete" | relative time |
+| Loading | Loading (indeterminate), no dot | "Loading …" | — |
+| InProgress | InProgress (yellow dot) | "{synced} of {total} images synced" | relative time, or none when `finishedAgo` is null |
+| NothingToSync | Complete (green dot) | "Nothing to sync yet" | — |
+| Completed | Complete (green dot) | "{total} images synced" | relative time |
 
 #### Scenario: Loading state shows an indeterminate indicator
 - **WHEN** the UI state is Loading
-- **THEN** the screen shows an indeterminate progress indicator and the headline "Loading …",
-  with no detail line and no button
+- **THEN** the screen shows an indeterminate progress indicator and the text "Loading …",
+  with no dot, no detail line and no button
 
-#### Scenario: In-progress state
-- **WHEN** the UI state is InProgress with fraction 0.35 and estimate text "~2 min left"
-- **THEN** the screen shows a progress indicator at roughly 35%, the headline "Sync in
-  progress", and the detail "~2 min left", with no textual count
+#### Scenario: In-progress state shows the count and last-sync time as text
+- **WHEN** the UI state is InProgress with `synced = 12`, `total = 47`, and `finishedAgo = "5 min ago"`
+- **THEN** the screen shows the yellow dot, the line "12 of 47 images synced", and the muted detail
+  "5 min ago", with no headline and no progress ring
 
-#### Scenario: Suspended state shows a bare headline
-- **WHEN** the UI state is Suspended
-- **THEN** the screen shows the waiting indicator and "Waiting to sync" with no detail line
+#### Scenario: In-progress with no prior completion shows no detail line
+- **WHEN** the UI state is InProgress with `finishedAgo = null`
+- **THEN** the screen shows the yellow dot and the count line only, with no detail line
 
-#### Scenario: Finished outcome shows relative time
-- **WHEN** the UI state is Incomplete with relative time "5 min ago"
-- **THEN** the screen shows the warning indicator, "Sync incomplete", and the muted detail
-  "5 min ago"
+#### Scenario: Nothing-to-sync state
+- **WHEN** the UI state is NothingToSync
+- **THEN** the screen shows the green dot and the line "Nothing to sync yet" with no detail line
+
+#### Scenario: Completed state shows total and relative time
+- **WHEN** the UI state is Completed with `total = 47` and relative time "5 min ago"
+- **THEN** the screen shows the green dot, the line "47 images synced", and the muted detail "5 min ago"
 
 The screen is composed under the rules of the `design-system` capability (semantic components
 only; Material 3 containment; `ScreenLayout` owns screen structure).
@@ -101,16 +121,4 @@ The presentation layer SHALL format `lastFinishedAt` into coarse relative-time t
 #### Scenario: Tests control time
 - **WHEN** presentation tests advance the injected clock
 - **THEN** the emitted relative-time text changes deterministically
-
-### Requirement: Estimates are minted at snapshot emission
-
-`estimatedRemaining` SHALL be valid as of the snapshot's emission: sources MUST compute it when emitting a snapshot and MUST NOT persist a previously computed estimate; a source that cannot estimate SHALL emit `null`. The presentation layer SHALL render the estimate verbatim in coarse buckets (e.g. "less than a minute left", "~2 min left") and MUST NOT age it between snapshots. While InProgress with a `null` estimate, the detail line SHALL show "estimating…"; estimates are never rendered outside InProgress.
-
-#### Scenario: Null estimate renders as placeholder
-- **WHEN** a snapshot classifies as InProgress with `estimatedRemaining = null`
-- **THEN** the detail line shows "estimating…"
-
-#### Scenario: Estimate is not aged by presentation
-- **WHEN** an InProgress snapshot with a 2-minute estimate is displayed and time passes with no new snapshot
-- **THEN** the displayed estimate text remains "~2 min left" until a new snapshot replaces it
 
