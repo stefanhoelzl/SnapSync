@@ -14,9 +14,10 @@ A **scope pivot** (2026-06-22) of SnapSync, from a *personal one-way library bac
 >   `:capability:config` deeplink-provisioning** path that used to carry `S3Config`.
 > - Once joined, the device uploads its **photos taken since the event's start date**, scoped to that
 >   event, exactly like v1's always-on backup — but to a **per-event/per-device key namespace**.
-> - The storage credential **no longer ships in the app**. An external **edge "mint" endpoint**
->   (bunny.net Edge Scripting) issues short-lived **presigned PUT URLs** keyed by event id; the
->   device holds no storage secret.
+> - The storage credential **no longer ships in the app**. An external **edge upload endpoint**
+>   (bunny.net Edge Scripting) **proxies** each upload: the device PUTs bytes to it and it streams
+>   them into the bucket via bunny's **native** Storage API, keyed by event id. The device holds no
+>   storage secret. *(Consequence — see Honest framing: the edge now **sees the bytes** in transit.)*
 > - Collected photos are **viewed elsewhere** (an external tool), never in this app.
 >
 > **Honest framing.** Because this version is **contribute-only** (no in-app viewing), photos
@@ -44,8 +45,9 @@ A **scope pivot** (2026-06-22) of SnapSync, from a *personal one-way library bac
   *video assets* are out of scope.
 - **Background uploads via `PHBackgroundResourceUploadJobExtension`** (iOS 27+) — the system
   schedules and **performs** the uploads on the app's behalf, even when suspended/locked. (§3.)
-- **Upload destinations are minted on demand** by an external edge endpoint (presigned PUT to
-  bunny.net Storage's S3-compatible API). **The device holds no storage credential.**
+- **Uploads are proxied** by an external edge endpoint: the device PUTs to a deterministic per-resource
+  URL and the endpoint streams the bytes into bunny.net Storage via its **native** Storage API.
+  **The device holds no storage credential.**
 - A **local desktop (JVM) test app** — phone-frame preview + side-by-side control panel
   (display overrides + engine console; §5.1).
 
@@ -57,7 +59,9 @@ A **scope pivot** (2026-06-22) of SnapSync, from a *personal one-way library bac
   external tool**.
 - **No multi-event membership**, no event creation in-app, no in-app QR generation.
 - No Android app yet (architecture keeps the door open).
-- No encryption (plaintext upload; the edge endpoint sees no bytes — uploads go device→bucket).
+- No encryption (plaintext upload). **The edge endpoint sees the bytes in transit** (device→edge→bucket)
+  — a deliberate trade of the v1 byte-blind direct-to-bucket path for sidestepping presigned-PUT signing
+  on the background extension (§4). No at-rest or in-transit-to-edge encryption beyond TLS.
 - No bidirectional sync, no remote deletes, no content-dedup.
 - No video assets, no album selection, no settings screen.
 - **No TTL / purge** — photos persist indefinitely.
@@ -92,8 +96,8 @@ decision path is exercised off-device. Orchestration (loops, backpressure, job e
 deliberately **platform-side** — the shared core decides and remembers.
 
 **The event is platform context, not engine vocabulary.** The engine still knows only *resources*
-(§2.2). Event scoping (the `events/<eventId>/<deviceId>/` key placement, the capture-date discovery
-filter, the mint-endpoint call) lives **above and beside** the seam, in the platform adapter and the
+(§2.2). Event scoping (the `<eventId>/<deviceId>/` key placement, the capture-date discovery
+filter, the edge URL build) lives **above and beside** the seam, in the platform adapter and the
 `UploadRequestProvider` impl — the engine and ledger are event-blind by construction.
 
 ### 2.1 Module graph
@@ -124,25 +128,25 @@ filter, the mint-endpoint call) lives **above and beside** the seam, in the plat
 
 :app:desktop           desktop harness: phone-frame preview + control panel (display overrides +
                        engine console — §5.1). The JVM platform pieces (EngineConsole core, the
-                       mint-client fake) live with the platform-integration slices.
+                       URL-builder provider fake) live with the platform-integration slices.
 :app:ios               wires the iOS adapter + Darwin Ktor engine + framework export → iosApp/
 
 iosApp/                Xcode project (not Gradle): the app target (Swift host + Info.plist, registers
                        the snapsync:// scheme) AND a PHBackgroundResourceUploadJobExtension target
                        (Generic Extension; extension point com.apple.photos.background-upload;
-                       BackgroundUploadURLBase = the bunny S3 region host). The :app:ios framework is
-                       embedded in BOTH targets (the extension needs the mint client + config). App
+                       BackgroundUploadURLBase = the edge host). The :app:ios framework is
+                       embedded in BOTH targets (the extension needs the URL-builder provider + config). App
                        and extension share an App Group container + a shared Keychain group.
 ```
 
 Dependency flow: `:domain:engine ← status ← presentation ← ui`; app modules wire the concrete platform
 adapters. Every boundary is **compiler-enforced**, and the backend swap is **structural**
-(`:app:ios` wires the PhotoKit-backed adapter + the mint-endpoint `UploadRequestProvider`; the
+(`:app:ios` wires the PhotoKit-backed adapter + the URL-builder `UploadRequestProvider`; the
 desktop wires the engine console).
 
 The `:capability:s3` hand-rolled **SigV4 presigner is retired** (it ran on-device in v1). With the
-device credential-free, **all signing moves to the external edge endpoint**; the on-device
-`UploadRequestProvider` becomes a thin **HTTP client to the mint endpoint** (§4). `:capability:gallery`/
+device credential-free, **all storage auth moves to the external edge endpoint**; the on-device
+`UploadRequestProvider` becomes a thin **local URL builder** (no network — §4). `:capability:gallery`/
 `uploader`/`store` remain dissolved (discovery and upload execution are platform-adapter internals).
 
 ### 2.2 Platform seam: event → decision core (ledgered)
@@ -167,7 +171,7 @@ platform/provider's** business. The engine carries `assetId` through to the ledg
 interprets it** — like `filename` it is pure identity whose meaning is the platform's (iOS: the
 asset's `localIdentifier`, normalized). The platform hands each resource a single opaque `filename`
 — pure *identity*, a plain string. Its *representation* and *placement* (percent-encoding into a URL
-path, the `events/<eventId>/<deviceId>/` prefix, the mint call) are **the provider's
+path, the `<eventId>/<deviceId>/` prefix, the edge URL build) are **the provider's
 responsibility**, under one contract: the filename→destination mapping must be **deterministic and
 injective** — that is where upload idempotency lives.
 
@@ -201,17 +205,17 @@ sealed interface SyncDecision {              // the engine's answer: what, if an
 }
 
 class UploadRequest(                         // complete, executable: PUT resource → url
-    val url: String,                         // a presigned PUT URL minted by the edge endpoint
-    val headers: Map<String, String>,        // exactly these headers (Content-Type; no x-amz-meta-*)
+    val url: String,                         // the edge endpoint URL for this resource (built locally)
+    val headers: Map<String, String>,        // exactly these headers (Content-Type; no custom metadata)
     val resource: Resource,                  // rides whole for the failure round-trip
 )
 class UploadJob(val request: UploadRequest, val attempt: Int)
                                              // attempt: 0 = create platform job, >0 = retry
 
-interface UploadRequestProvider {            // impl: the mint-endpoint HTTP client (test: dumb fake)
+interface UploadRequestProvider {            // impl: a LOCAL URL builder, no network (test: dumb fake)
     suspend fun provide(resource: Resource): UploadRequest
-    // builds the key (events/<eventId>/<deviceId>/<encoded filename>) from event config + device id,
-    // calls the external MINT ENDPOINT (event id + key) → presigned PUT URL, returns the full request.
+    // builds the key (<eventId>/<deviceId>/<encoded filename>) from event config + device id, composes
+    // the edge URL (/event/<id>/device/<id>/file/<filename>), returns the full request. NO network call.
     // CONTRACT: filename → destination is deterministic and injective; Content-Type set; called only
     // for Work answers — never on a skip.
 }
@@ -273,8 +277,8 @@ events — `UploadStarted`→`REQUESTED`, `UploadFailed`→`FAILED`, `UploadComp
 **only** ledger writers, each an unconditional idempotent upsert. A crash between create and
 `UploadStarted` leaves no `REQUESTED`, re-issued later as a **bounded, idempotent duplicate** (one
 extra upload) rather than a stranded photo. **Retry forever** — no attempt budget; every retry
-re-mints, so expired presigned URLs heal (the re-mint now re-calls the **edge endpoint** rather than
-re-signing locally). Provider failures (incl. a mint-endpoint error) **rethrow** from `handle()` with
+re-derives the request **locally** (a stable edge URL — no expiry to heal). Provider failures (e.g.
+malformed resource input) **rethrow** from `handle()` with
 the **ledger untouched**; the event counts as unprocessed and re-handling is safe. **Sequential
 contract:** at most one `handle()` in flight per engine.
 
@@ -285,8 +289,9 @@ not advance its discovery cursor**, and returns a *processing* result so it is r
 completions at the acknowledge edge, BEFORE acknowledging** (`UploadCompleted(job)` → then
 `acknowledge()`). Failures are reported as `UploadFailed(job, error)` and answered with `Retry`. **Every
 presented job is acknowledged** (iOS errors 50008 otherwise). **Retention is the ledger itself** — a
-returned system job is mapped back to its key from its **destination URL** (the last path segment),
-since `resource` is **nil for succeeded jobs**; version/attempt come from the ledger row. **One ledger
+returned system job is mapped back to its key by **parsing its destination URL path**
+(`/event/<id>/device/<id>/file/<name>` → `<id>/<id>/<name>`), since `resource` is **nil for succeeded
+jobs**; version/attempt come from the ledger row. **One ledger
 writer per platform:** the engine (and its `LedgerWriter`) is hosted where uploads are decided — on
 iOS, the extension; the app holds a read-only ledger view. Scope filtering (photos yes, standalone
 video no; **capture date ≥ event start**) sits above the seam — the engine is media-type- and
@@ -294,7 +299,7 @@ event-blind by construction.
 
 **Accepted costs** (eyes open): a crash in the write-after-act window yields **one bounded, idempotent
 duplicate** upload on the next re-derivation — never a stranded photo. Retry-forever churns a job slot
-on a permanently-broken resource (now also covers a permanently-failing mint endpoint). The
+on a permanently-broken resource (now also covers a permanently-failing edge endpoint). The
 system-surfaces-all-results assumption means a silently-dropped job would leave a `REQUESTED` row
 unrescued until a full re-enumeration; deferred until observed on device.
 
@@ -367,10 +372,10 @@ We upload **every `PHAssetResource` of each qualifying photo asset** (complete f
 alternates, **and Live Photo `.pairedVideo`/`.fullSizePairedVideo`**. "Qualifying" = the asset's
 **capture date ≥ the event start date** (§3.2).
 
-- **Key: `events/<eventId>/<deviceId>/<encoded filename>`** where the filename is
-  **`<localId>-<kind>.<ext>`**, composed platform-side:
+- **Key: `<eventId>/<deviceId>/<encoded filename>`** (no `events/` prefix — the zone is the event
+  collection) where the filename is **`<localId>-<kind>.<ext>`**, composed platform-side:
   - **`<eventId>`** — from the joined event config (deeplink, §4). **High-entropy/unguessable** — it
-    doubles as the upload capability, since the mint endpoint authorizes by event id alone (no token).
+    doubles as the upload capability, since the edge endpoint authorizes by event id alone (no token).
   - **`<deviceId>`** — a random UUID generated at first launch and persisted in the App Group, stable
     across events; identifies the **contributing device** (the only attribution; no display name).
   - **`<localId>`** = the asset's `PHAsset.localIdentifier` (**no `PHCloudIdentifier` resolution** —
@@ -379,16 +384,17 @@ alternates, **and Live Photo `.pairedVideo`/`.fullSizePairedVideo`**. "Qualifyin
   - **`<kind>`** = the open platform resource-kind string (e.g. `ios.photo`, `ios.fullSizePhoto`);
     `Content-Type` from the resource's UTI.
   - The filename is pure *identity*; the **provider** owns its representation — percent-encoding (bytes
-    outside `[A-Za-z0-9._-]` → `%XX`) and the `events/<eventId>/<deviceId>/` placement — under the
+    outside `[A-Za-z0-9._-]` → `%XX`) and the `<eventId>/<deviceId>/` placement — under the
     deterministic-and-injective contract (§2.2). The bucket is **flat within that prefix**.
 - **Edit-handling dissolves:** the original resource is immutable; an edit just **adds**
   `.fullSizePhoto` + `.adjustmentData` resources, which surface via the change feed as *new* jobs under
   *new* keys. Nothing is overwritten.
-- **No `x-amz-meta-*` reconstruction headers.** bunny Storage's S3-compatible API **does not support
-  custom metadata headers** (§4), so v1's signed-header reconstruction scheme is **removed**. The
-  downstream (external) viewer recovers what it needs from **(a)** the key path (event, device,
-  resource kind, original identity) and **(b)** the **EXIF/maker metadata already inside the image
-  bytes** (capture date, geolocation, camera). Sign only `host` + `content-type`.
+- **No custom metadata headers.** bunny Storage's native API **does not support custom metadata
+  headers** (§4), so v1's signed-header reconstruction scheme is **removed**. The downstream
+  (external) viewer recovers what it needs from **(a)** the key path (event, device, resource kind,
+  original identity) and **(b)** the **EXIF/maker metadata already inside the image bytes** (capture
+  date, geolocation, camera). There is **no signing at all** — the edge writes with its `AccessKey`;
+  the device sends only `Content-Type`.
 - Trade-offs (accepted): **no content dedup**; per-device key namespaces mean the *same* physical photo
   shared by two devices lands twice (once per device) — acceptable and arguably desirable for
   attribution. Asset-level facts not present in EXIF (favorite flag, album membership) are **not
@@ -415,14 +421,14 @@ alternates, **and Live Photo `.pairedVideo`/`.fullSizePairedVideo`**. "Qualifyin
   keeps only small, **lossy-tolerant** discovery bookkeeping in the App Group: `{lastToken,
   startDate, eventId, deviceId, deferredIds?}`. Losing the residue costs one record's worth of
   duplicate jobs, absorbed downstream. The job system remains the execution authority
-  (`acknowledge()` frees `jobLimit` slots). The app never `LIST`s the bucket (mint = `PutObject`-only
-  presigned URLs); restore/view-side `LIST` is a separate external admin path (§4).
+  (`acknowledge()` frees `jobLimit` slots). The app never `LIST`s the bucket (the edge endpoint is
+  PUT-only); restore/view-side `LIST` is a separate external admin path (§4).
 
 ### 3.3 Flow
 
 > Phases below carry over the device-verified v1 model (§2.2), with two deltas: discovery is
-> **date-filtered to the event start**, and the destination URL is **minted by the external edge
-> endpoint** (per resource, via the `UploadRequestProvider`) instead of signed on-device.
+> **date-filtered to the event start**, and the destination URL **points at the external edge
+> endpoint** (built locally per resource by the `UploadRequestProvider`) instead of signed on-device.
 
 **App (foreground):** request `.readWrite` photo authorization → (on a valid joined event config)
 `setUploadJobExtensionEnabled(true)` → show status (job states + App-Group progress). **The app
@@ -434,8 +440,8 @@ the system downloads each resource (incl. from iCloud) and performs `job.destina
 **resource bytes as the request body**. We manage the queue in three phases:
 1. **Adjudicate failures** — `fetchJobs(action: .retry)`; produce the `UploadJob` (key from the
    destination URL; version/attempt from the ledger), map the error → `UploadError`, report
-   `UploadFailed(job, error)`; the engine answers `Retry` (`attempt + 1`). The `Retry`'s fresh request
-   is minted by **re-calling the edge endpoint** (heals an expired presigned URL). ⚠️ **One retry per
+   `UploadFailed(job, error)`; the engine answers `Retry` (`attempt + 1`). The `Retry`'s request is
+   rebuilt **locally** (a stable edge URL — nothing to re-mint or expire). ⚠️ **One retry per
    system job only**: first failure → `retry(destination: fresh URL)`; already-retried → `acknowledge()`
    + re-create a fresh system job.
 2. **Acknowledge completed** — `fetchJobs(action: .acknowledge)`; report `UploadCompleted(job)` (engine
@@ -444,48 +450,44 @@ the system downloads each resource (incl. from iCloud) and performs `job.destina
 3. **Create new jobs** — discovery (§3.2, date-filtered). For each qualifying asset, expand to its
    `PHAssetResource`s and wrap each as a `Resource` — filename `"<localId>-<kind>.<ext>"`, `version` =
    the asset's `modificationDate`. Report `ResourceChanged` per resource and act on the decision:
-   `AlreadyUploaded` → continue (no job slot); `Work` → `provider.provide(resource)` **calls the mint
-   endpoint** (eventId + key) for a presigned PUT URL, then take the `PHAssetResource` from
+   `AlreadyUploaded` → continue (no job slot); `Work` → `provider.provide(resource)` **builds the edge
+   URL** (`/event/<eventId>/device/<deviceId>/file/<filename>`) locally, then take the `PHAssetResource` from
    `decision.job.request.resource.data`, build the `URLRequest` (PUT + `Content-Type`) →
    `creationRequestForJob(destination:resource:)` in `performChanges {}`. On `limitExceeded` stop
    reporting for this cycle, do **not** advance the cursor, and return `.processing`.
 4. Return `.completed` / `.processing` (incl. while the ledger still has pending rows, to flush
    completions) / `.failure`. `willTerminate()` cancels the in-flight collection.
 
-**Presigned-URL expiry:** the system may run a job much later. Mint with a **long expiry** (bunny S3
-allows up to **7 days**), and the **retry path re-mints** a fresh URL. (Header-based SigV4 would be
-~15 min — unsuitable.)
+**No URL expiry:** the system may run a job much later, but the destination is a **stable edge URL**
+built locally per resource — no presign, no expiry, no re-mint. A retry just re-PUTs the same URL.
 
-> ⚠️ **TOP RISK — UNSIGNED-PAYLOAD on bunny S3 presigned PUT.** bunny's S3-compatible docs do **not**
-> state that `UNSIGNED-PAYLOAD` (a body-less signed payload hash) is supported. We rely on it: the
-> extension **never sees the bytes**, so it cannot compute a content hash to bake into the signature.
-> If bunny demands a real payload hash, presigned PUT is unusable with the background extension (the
-> exact reason bunny's *native* presigning — which requires a SHA256 checksum — was rejected). **Spike
-> this first** against the S3-compatible endpoint before committing.
+> ✅ **Resolved — the UNSIGNED-PAYLOAD TOP RISK is gone.** Under the proxy the *edge*, not the device,
+> writes to bunny (native API + `AccessKey`, no payload hash). The background extension only PUTs bytes
+> to the edge URL, so there is no on-device signature to break. This is the whole reason for the pivot.
 >
-> ⚠️ **Also verify on device / in Xcode** (iOS 27 API): the system accepts a **query-string presigned
-> URL** destination under `BackgroundUploadURLBase` = the bunny S3 region host; whether the system
-> sends an **`OPTIONS` resumable-upload preflight** to a bunny endpoint (v1 verified raw S3 PUT needs
-> none — re-verify for bunny); required **entitlements**; `PHAssetResource ↔ job ↔ key` association;
-> `creationRequestForJob` semantics; and **mint-endpoint reachability/latency from the extension**.
+> ⚠️ **Still verify on device / in Xcode** (iOS 27 API): the system accepts the edge **destination URL**
+> under `BackgroundUploadURLBase` = the edge host; whether it sends an **`OPTIONS` resumable-upload
+> preflight** to the edge and falls back to a plain PUT (v1 verified raw S3 needs none — re-verify);
+> which `2xx` it treats as success; required **entitlements**; `PHAssetResource ↔ job ↔ key`
+> association; `creationRequestForJob` semantics; and **edge reachability/latency from the extension**.
 
 ### 3.4 Why this shape
 
 iOS 27's `PHBackgroundResourceUploadJobExtension` lets the **OS schedule and perform** uploads
 (power/network-aware, across suspension/lock) — dissolving temp-file handling, throttling, manual
 `URLSession`, and the periodic-trigger problem. We contribute only: **which assets** (date-filtered
-change feed), **where** (a presigned destination URL **minted by the external edge endpoint**), and
+change feed), **where** (a destination URL **pointing at the external edge endpoint**, built locally), and
 **retry/acknowledge** policy. The extension links the shared framework and reads the joined event
 config from the shared Keychain + bookkeeping from the App Group.
 
 ### 3.5 Downstream reconstruction (external, out of scope)
 
-There is **no sidecar and no app-side upload** — and now **no `x-amz-meta-*` headers** either (§3.1,
-unsupported by bunny S3). The collected photos are made sense of **externally**:
+There is **no sidecar and no app-side upload** — and now **no custom metadata headers** either (§3.1,
+unsupported by bunny native API). The collected photos are made sense of **externally**:
 
 - The **key path** carries event id, device id, resource kind, and the resource's original identity.
 - The **image bytes carry their own EXIF/maker metadata** (capture date, geolocation, camera, etc.).
-- An external tool (admin-credentialed, `ListBucket` + `GetObject`) can `LIST` `events/<eventId>/` to
+- An external tool (admin-credentialed, `ListBucket` + `GetObject`) can `LIST` `<eventId>/` to
   enumerate all contributions, group by `<deviceId>`, and read EXIF per object.
 
 The **event-creation tool**, the **QR minting**, and any **viewing/restore tool** are all **external,
@@ -496,22 +498,30 @@ out of scope** for this app. This doc specifies only the contracts the app depen
 ## 4. Storage, auth & config
 
 The device holds **no storage credential** (the v1 embedded IAM key is gone). Authorization to upload
-is mediated by an external **edge mint endpoint**.
+is mediated by an external **edge upload endpoint** that **proxies** bytes into storage. This pivots
+away from the earlier mint/presigned model — which carried an unresolved TOP RISK (whether a bunny
+S3-compatible presigned PUT accepts `UNSIGNED-PAYLOAD`, since the background extension never sees the
+bytes). The proxy sidesteps signing entirely: the endpoint, not the device, writes to bunny.
 
-- **Storage: bunny.net Storage via its S3-compatible API** ([docs](https://docs.bunny.net/storage/s3))
-  — SigV4, presigned URLs, path-style endpoint `https://<region>-s3.storage.bunnycdn.com`, expiry
-  ≤ 7 days. **Closed preview** as of mid-2026 (access required). Known limits we design around: **no
-  `x-amz-meta-*`** (§3.1), no versioning/ACL/SSE/tagging/lifecycle, no batch delete.
-- **Mint endpoint (external, bunny.net Edge Scripting / Deno):** the app's only backend dependency.
-  - **Request:** event id + the desired object key (`events/<eventId>/<deviceId>/<encoded filename>`)
-    + `Content-Type`.
-  - **Response:** a **presigned PUT URL** for that key (signed server-side with the bunny S3 storage-zone
-    credential, which lives only on the edge).
+- **Storage: bunny.net Storage via its native HTTP API** ([docs](https://docs.bunny.net/api-reference/storage))
+  — a plain authenticated `PUT https://<region-host>/<zone>/<key>` with header `AccessKey:
+  <storage-zone password>`. **No SigV4, no presigning, no payload hash.** DE/Falkenstein default host
+  `storage.bunnycdn.com`. Known limits we design around: **no custom metadata headers** (§3.1), no
+  versioning/ACL/SSE/tagging/lifecycle, no batch delete.
+- **Upload endpoint (external, bunny.net Edge Scripting / Deno + Hono — implemented in `backend/`):** the app's
+  only backend dependency. Capability specs: `bunny-upload-endpoint`, `backend-deployment`.
+  - **Request:** `PUT /event/<eventId>/device/<deviceId>/file/<filename>` with the resource bytes as
+    the body and `Content-Type`. The endpoint **streams** the body straight into the bunny native PUT
+    (one subrequest, never buffered).
+  - **Response:** `2xx` **only** when bunny confirms the stored object; any upstream error/abort →
+    `5xx` (so the engine retries). Never a false success.
   - **Authorization: by event id only** (no token — the QR carries no secret beyond the id). The event
-    id is high-entropy, so possession of it is the capability. **The edge MUST constrain the minted key
-    to the `events/<eventId>/` prefix** (and should reject overwrites of existing objects) so a holder
-    can't write outside the event or clobber others.
-  - **Base URL is compile-time-baked** (BuildKonfig) — a fixed host, not carried in the QR.
+    id is a high-entropy UUID, so possession of it is the capability. The endpoint validates the path
+    (UUID `eventId`/`deviceId`, safe filename) and writes the **bare** key `<eventId>/<deviceId>/<filename>`;
+    abuse protection (overwrite rejection, rate-limiting, a registry) is deferred (§8). The storage-zone
+    `AccessKey` lives only in the edge env.
+  - **Base URL is compile-time-baked** (BuildKonfig `BackgroundUploadURLBase` = the edge host), not
+    carried in the QR. The per-resource URL is built **locally** by the provider (no mint round-trip).
 - **Event creation + QR minting (external, out of scope):** a separate tool creates an event
   (high-entropy id, name, **start date = creation time**) and emits a `snapsync://` QR. Not implemented
   by this app; documented here only as the source of the deeplink payload.
@@ -521,12 +531,12 @@ is mediated by an external **edge mint endpoint**.
   **`{ eventId, name, startDate }`**. Scanning with the native Camera opens the app, which provisions
   the event into the shared Keychain and re-provisions sync (§3.2). `name` is carried for possible
   future display; the status screen shows **progress only** (§5).
-- **Networking: Ktor (Darwin engine)** for the mint-endpoint HTTP call (from both app and extension).
-  The **upload PUT is performed by iOS**, not by Ktor. The **hand-rolled SigV4 presigner is retired**
-  on-device (signing is the edge's job).
-- **Build-time config via BuildKonfig**: the **bunny S3 region host** (→ `BackgroundUploadURLBase`) and
-  the **mint-endpoint base URL**. **No secrets** are baked (the whole point of the mint endpoint). The
-  event id/name/start arrive at **runtime via the deeplink**, not at build time.
+- **Networking:** the **upload PUT is performed by iOS** directly against the edge endpoint; no
+  on-device HTTP client mediates it, and there is **no mint round-trip** (the URL is built locally).
+  The **hand-rolled SigV4 presigner is retired** on-device — all storage auth is the edge's job.
+- **Build-time config via BuildKonfig**: the **edge host** (→ `BackgroundUploadURLBase`). **No secrets**
+  are baked (the storage `AccessKey` lives only in the edge env). The event id/name/start arrive at
+  **runtime via the deeplink**, not at build time.
 
 ---
 
@@ -575,8 +585,8 @@ is mediated by an external **edge mint endpoint**.
 - **Engine console:** an event composer (build `ResourceChanged` test resources; push `UploadFailed`
   with a chosen error; auto-responder with configurable delay/failure modes) driving a **real
   `SyncEngine`**, plus a **jobs journal** pane listing every `UploadJob` (retry chains visible). The UI
-  is skin over a plain `EngineConsole` core that tests drive directly. The mint-endpoint provider is
-  faked here (a dumb URL builder) — no live edge calls in the harness.
+  is skin over a plain `EngineConsole` core that tests drive directly. The provider here is the same
+  local URL builder (no network in either harness or production) — no live edge calls in the harness.
 
 ---
 
@@ -594,28 +604,30 @@ is mediated by an external **edge mint endpoint**.
    module (`commonTest`).
 
 - **Unit (JVM + simulator)** — `SyncEngine` decision tests (skip on proof, hope-never-skips, re-upload
-  on version change, retry re-mint chains, provider-failure rethrow, suffix-replay convergence);
+  on version change, retry chains, provider-failure rethrow, suffix-replay convergence);
   `LedgerBackend` contract tests against the in-memory and SQLDelight (JVM sqlite) backends incl.
   **`clear()`** for re-provision; `LedgerWatcher` stream tests; the classification decision table and
   `LedgerSyncStatusSource` tests with **`active` = permission ∧ joined** (real watcher + in-memory
-  backend + fake permission + fake event-config source); **`UploadRequestProvider` (mint client) tests**
-  — key construction (`events/<eventId>/<deviceId>/<encoded filename>`, percent-encoding,
-  deterministic+injective), request shaping, mint-endpoint error → rethrow; **date-filter discovery
+  backend + fake permission + fake event-config source); **`UploadRequestProvider` (local URL builder)
+  tests** — key construction (`<eventId>/<deviceId>/<encoded filename>`, percent-encoding,
+  deterministic+injective), edge-URL shaping, invalid-input → rethrow; **date-filter discovery
   predicate tests** (capture ≥ start) where the logic is shared; `:capability:config` deeplink-parse
   tests (`snapsync://` → EventConfig); Orbit reducers.
-- **Mint client** is exercised against a **fake HTTP endpoint** (Ktor MockEngine) in commonTest — the
-  real edge endpoint is external. There is **no on-device SigV4 to golden-test** anymore (the v1 SigV4
-  golden suite retires with the presigner).
+- **The edge endpoint** is tested by its own `Deno.test` suite (`backend/`, against a mocked bunny
+  upstream — see `bunny-upload-endpoint`); the on-device provider is a pure local URL builder (no
+  HTTP). There is **no on-device SigV4 to golden-test** anymore (the v1 SigV4 golden suite retires
+  with the presigner).
 - **iOS** — the upload extension is **physical-device only** in the current iOS 27 beta. Plan: **manual
-  on-device testing** now; move into simulator XCTest/CI once Apple adds simulator support. The mint
-  call, deeplink provisioning, and date-filter discovery can be simulator/JVM-tested earlier.
+  on-device testing** now; move into simulator XCTest/CI once Apple adds simulator support. The URL
+  build, deeplink provisioning, and date-filter discovery can be simulator/JVM-tested earlier.
 - **Desktop** — container reduction via `orbit-test` + Compose UI tests on the status screen and the
   two gate states. Panel/`PanelController`/fakes are test equipment (no tests). CI: Compose Desktop UI
   tests render offscreen under `-Djava.awt.headless=true` — **no display / Xvfb needed**.
 
-The ultimate signature/preflight check is the **on-device extension upload** against the bunny S3
-endpoint (the UNSIGNED-PAYLOAD + OPTIONS spike, §3.3); if a first real upload fails, the mint signature
-or the preflight contract is the prime suspect.
+The ultimate check is the **on-device extension upload** against the edge endpoint (the OPTIONS /
+fall-back-to-plain-PUT + accepted-`2xx` verification, §3.3/§8); if a first real upload fails, the
+iOS↔edge contract (preflight, success code, reachability) is the prime suspect — the storage write
+itself is covered by the endpoint's `Deno.test` suite.
 
 ---
 
@@ -626,11 +638,12 @@ or the preflight contract is the prime suspect.
 | UI | Compose Multiplatform | single codebase; Material 3 behind a design-system abstraction |
 | State | **Orbit MVI** (10.0.0) | Compose-free; Decompose-able later |
 | DI | **Manual composition root** | no deps, compile-safe; Koin if it grows |
-| HTTP | **Ktor** (Darwin engine) | now **load-bearing**: the `UploadRequestProvider` calls the **mint endpoint** from app + extension. The upload PUT is iOS's; app never `LIST`s |
-| Crypto/IO | **okio** (App-Group IO) | hand-rolled SigV4 **retired** (signing moved to the edge); KotlinCrypto no longer needed on-device |
+| HTTP | **Ktor** (Darwin engine) | **not load-bearing for upload** — the PUT is iOS's (straight to the edge) and the `UploadRequestProvider` builds the URL **locally** (no HTTP). Retained only if a future on-device HTTP need arises; app never `LIST`s |
+| Crypto/IO | **okio** (App-Group IO) | hand-rolled SigV4 **retired** — signing is **eliminated** (the edge writes with its `AccessKey`); KotlinCrypto no longer needed on-device |
 | Engine ledger | **SQLDelight** (2.3.2) | per-key upload memory; single writer (extension), read-only app connection; `clear()` on re-provision |
 | Persistence | **okio + kotlinx.serialization** | tiny App-Group store: change token, start date, eventId, deviceId; event config in shared **Keychain** (via `:capability:config`) |
-| Config | **BuildKonfig** | bunny S3 region host + mint-endpoint base URL; **no secrets**. Event config is runtime (deeplink) |
+| Config | **BuildKonfig** | edge host (`BackgroundUploadURLBase`); **no secrets** (storage `AccessKey` lives on the edge). Event config is runtime (deeplink) |
+| Backend | **Deno + Hono + bunny Edge Scripting** | the `backend/` streaming proxy upload endpoint (`@bunny.net/edgescript-sdk` + Hono routing); native Storage `PUT` + `AccessKey`; deployed via GitHub Action |
 | Deeplink | **`:capability:config`** | `snapsync://` → EventConfig provisioning (was S3Config) |
 | Logging | **Kermit** | multiplatform |
 | iOS integration | **direct framework integration** | `embedAndSignAppleFrameworkForXcode`; framework in app + extension |
@@ -642,35 +655,39 @@ or the preflight contract is the prime suspect.
 **Resolved (the 2026-06-22 scope pivot):**
 - **Contributor-only, event-scoped.** App joins an externally-created event by scanning a `snapsync://`
   QR with the native Camera; uploads photos with **capture date ≥ event start** to
-  `events/<eventId>/<deviceId>/<localId>-<kind>.<ext>`. No in-app create/QR/viewing/Leave.
+  `<eventId>/<deviceId>/<localId>-<kind>.<ext>`. No in-app create/QR/viewing/Leave.
 - **Single event at a time**; **join re-provisions** (clear ledger + cursor, new start baseline,
   re-register extension). Multi-event and Leave **deferred**.
-- **Storage = bunny.net S3-compatible API**; **device holds no credential**; an external **edge mint
-  endpoint** issues presigned PUT URLs **by event id only** (event id = the capability; edge constrains
-  keys to the event prefix). Mint base + bunny S3 host are BuildKonfig; **no baked secrets**.
+- **Storage = bunny.net native Storage API**; **device holds no credential**; an external **edge proxy
+  endpoint** streams bytes into the bucket **by event id only** (event id = the capability). Edge host
+  is BuildKonfig; **no baked secrets** (the storage `AccessKey` lives only on the edge). *(2026-06-22
+  proxy pivot — replaces the earlier mint/presigned model and eliminates the UNSIGNED-PAYLOAD risk.)*
 - **`localIdentifier` keys** (no `PHCloudIdentifier` resolution); **device-id attribution**; **no
-  `x-amz-meta-*` headers** (unsupported by bunny S3) — downstream reconstruction uses the key path +
-  in-file EXIF; v1's §3.5 signed-header scheme **removed**.
+  custom metadata headers** (unsupported by bunny native API) — downstream reconstruction uses the key
+  path + in-file EXIF; v1's §3.5 signed-header scheme **removed**.
 - **Full fidelity retained** (all `PHAssetResource`s, incl. Live Photo paired video).
 - **`active` = permission ∧ joined**; "not joined" is the **setup-gate no-event state**, not a new
   `SyncState`. Status screen shows **progress only**.
-- **`:capability:s3` SigV4 presigner retires**; **Ktor becomes load-bearing** (mint calls); the SigV4
-  golden suite retires with it.
+- **`:capability:s3` SigV4 presigner retires**; signing is **eliminated** (the edge writes with its
+  `AccessKey`); Ktor is **no longer load-bearing** for upload (the provider builds URLs locally; the
+  edge is Deno); the SigV4 golden suite retires with it.
+- **Ack-path key recovery resolved:** the labeled edge URL carries the key in the path, recovered from
+  `job.destination.URL.path` — the field the shipped extension already proves survives a job re-fetch.
 
 **Carried forward unchanged (architecture):** the ledgered `SyncEngine` + platform seam (§2.2),
 snapshot status seam (§2.3), suspended-first classification with no FAILED state (§2.4), the
 design-system rules (§5), the dual-UI desktop harness (§5.1), and the three testing rules (§6).
 
-**Still open — verify on device / Xcode (iOS 27 + bunny S3):**
-- **TOP RISK:** does a **bunny S3 presigned PUT accept `UNSIGNED-PAYLOAD`** (no body hash)? If not, the
-  background-extension upload model is incompatible — spike first (§3.3).
-- Does the system send an **`OPTIONS` resumable-upload preflight** to bunny, and does it fall back to
-  plain `PUT`? (v1 verified no preflight against raw AWS S3; re-verify for bunny.)
-- System uploader accepts a **query-string presigned URL** destination + `BackgroundUploadURLBase` =
-  bunny S3 region host.
-- **Mint-endpoint reachability + latency from the extension** (one call per `Work` resource; consider
-  batching if chatty).
-- **bunny S3 closed-preview access**; confirm region, path-style signing, and 7-day expiry behavior.
+**Still open — verify on device / Xcode (iOS 27 + bunny native, the proxy's open assumptions):**
+- Does the system send an **`OPTIONS` resumable-upload preflight** to the edge, and does it fall back
+  to a plain `PUT`? (v1 verified no preflight against raw AWS S3; re-verify for our origin.) The
+  endpoint answers OPTIONS non-resumable; **resumable uploads are the deferred fix** if a large
+  paired-video exceeds the budget.
+- System uploader accepts the **edge destination URL** + `BackgroundUploadURLBase` = the edge host;
+  and which **`2xx`** it treats as success.
+- **Largest Live-Photo paired-video** completes within the edge **30 s CPU** budget (expected: yes —
+  pass-through is I/O-bound) and within any **undocumented wall-clock/idle timeout**.
+- **Edge reachability + latency from the extension** (one PUT per `Work` resource).
 - Required **entitlements**; exact `PHAssetResource ↔ job ↔ key` association; `creationRequestForJob`
   semantics (incl. iCloud-offloaded resources).
 - **App Group + shared Keychain** wiring (event config + change token + bookkeeping + ledger DB shared
@@ -685,5 +702,5 @@ design-system rules (§5), the dual-UI desktop harness (§5.1), and the three te
 - **Leave / deprovision-to-idle** (the opening brief's "stop uploading" — intentionally deferred).
 - **Multi-event** membership (fan-out a photo to N events; the engine/ledger become event-multiplexed).
 - **In-app viewing** (would reintroduce a read/download path the current design excludes).
-- **Backend hardening** (rate-limiting the open create/mint, abuse protection — App Attest is the
-  middle-ground option if needed).
+- **Backend hardening** (rate-limiting the open create/upload, overwrite rejection, abuse protection —
+  App Attest is the middle-ground option if needed).
