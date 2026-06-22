@@ -252,12 +252,14 @@ BEFORE acknowledging** (`UploadCompleted(job)` → then `acknowledge()`) — the
 write-then-act ordering: a crash between the two re-presents the job and duplicates the report
 (absorbed by the ledger) instead of losing it. Failures are reported as `UploadFailed(job, error)`
 and answered with `Retry`; the platform re-points the system's single retry or, once spent,
-acknowledges-and-recreates. **Retention is the ledger itself, not a side store** (revised
-2026-06-20): a returned system job is mapped back to its key by **recomputing** it from the job's
-own asset/resource facts (the same `uploadKey` discovery uses — no URL parsing), and its
-version/attempt come from the ledger row; the job's `resource` (the `PHAssetResource`) supplies the
-payload directly for a re-create, so no asset re-fetch and no persisted `UploadJob` snapshot are
-needed. **One ledger writer per platform:** the engine (and its `LedgerWriter`) is hosted
+acknowledges-and-recreates, and **every presented job is acknowledged** (iOS errors 50008 —
+`appex failed to acknowledge jobs for processing state` — for any it leaves un-acked). **Retention is
+the ledger itself, not a side store** (revised 2026-06-20, on-device): a returned system job is
+mapped back to its key from its **destination URL** (the last path segment) — the only field present
+for every job state, since `resource` is **nil for succeeded jobs**; version/attempt come from the
+ledger row, and the `resource`, when still present, is reused only to re-create a retry-spent job (no
+asset re-fetch, no persisted `UploadJob` snapshot). **One ledger writer per platform:** the engine
+(and its `LedgerWriter`) is hosted
 where uploads are decided — on iOS, the extension; the app holds only a read-only ledger view
 (justification: the app observes nothing and has nothing to report, not lock safety — see §2.4).
 Scope filtering (photos yes, standalone video no) sits above the seam — the engine is
@@ -405,17 +407,28 @@ only" — standalone *video assets* remain out of scope).
 
 ### 3.3 Flow
 
-> **Revised 2026-06-20 (`sync-completion-retry`).** The phases below are as-implemented with three
-> changes from the original sketch, all flowing from the ledger-authoritative model (§2.2): **(a)
-> retention is the ledger, not a retained `UploadJob` map** — a returned job is mapped back by
-> recomputing `uploadKey` from its own `assetLocalIdentifier` + `resource` facts (no URL parsing),
-> with version/attempt read from the ledger and the job's `resource` reused directly to re-create;
-> **(b) no residue store** — on `limitExceeded` the cycle stops and does *not* advance the persisted
-> change-token cursor, so re-derivation + the engine's `REQUESTED`-skip resumes the remainder without
-> duplicates; **(c) `REQUESTED` is recorded after the job is created** (`UploadStarted`), and the
-> cursor is persisted in App-Group `NSUserDefaults`, advanced only on a fully-drained cycle. Keys are
-> the asset `localIdentifier` (cloud-identifier resolution is not used). The cycle returns a tri-state
-> (`completed`/`processing`/`failure`) the Swift shell maps.
+> **Revised 2026-06-20 (`sync-completion-retry`, device-verified).** The phases below are
+> as-implemented, all flowing from the ledger-authoritative model (§2.2): **(a) retention is the
+> ledger, not a retained `UploadJob` map** — a returned job is mapped back to its key from its
+> **destination URL** (last path segment); `resource` is **nil for succeeded jobs**, so it can't be
+> the key source (it's reused only to re-create a retry-spent job). Version/attempt come from the
+> ledger. **(b) Every presented job is acknowledged** — iOS errors 50008 for any left un-acked; on a
+> re-create cap the job is still acked (rediscovery retries). **(c) No residue store** — on
+> `limitExceeded` the cycle stops and does *not* advance the cursor, so re-derivation + `REQUESTED`-skip
+> resumes the remainder without duplicates. **(d) `REQUESTED` is recorded after the job is created**
+> (`UploadStarted`); the cursor is persisted in App-Group `NSUserDefaults`, advanced only on a
+> fully-drained cycle. Keys are the asset `localIdentifier` (no cloud-identifier resolution). The
+> cycle returns a tri-state (`completed`/`processing`/`failure`); it returns `processing` while the
+> ledger still has pending rows (the OS invokes the extension lazily, so this requests re-invocation
+> to flush completions). A valid config **re-scan re-provisions**: clear the ledger
+> (`LedgerBackend.clear()`) + the cursor, then re-register the extension, so the library re-uploads
+> from scratch (re-upload begins on the OS's next invocation — a library change reliably triggers one).
+>
+> **On-device findings worth heeding:** raw-S3 `PUT` works (HTTP 200) with **no `OPTIONS` preflight**,
+> so the §3.3 resumable-upload TOP RISK did not materialize; ObjC-`nonnull` job fields (`resource`,
+> `destination`) are **nil at runtime** for some states and must be read into nullable locals or
+> Kotlin/Native elides the null-check (→ `EXC_BAD_ACCESS`); and `NSLog`/Kermit output is redacted to
+> `<private>` on this device (the format-string trick no longer un-redacts).
 
 **App (foreground):** request `.readWrite` photo authorization → `setUploadJobExtensionEnabled(true)`
 → show status (job states + App-Group progress). **The app uploads nothing itself** — every upload

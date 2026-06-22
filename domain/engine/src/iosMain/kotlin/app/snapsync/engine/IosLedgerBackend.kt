@@ -11,6 +11,12 @@ import platform.Foundation.NSFileProtectionKey
 const val LEDGER_APP_GROUP: String = "group.app.snapsync"
 
 /**
+ * The App-Group `NSUserDefaults` key the extension persists its discovery change-token cursor under.
+ * Shared here so the extension (which writes it) and the app's reset (which clears it) cannot drift.
+ */
+const val DISCOVERY_TOKEN_KEY: String = "discovery.changeToken"
+
+/**
  * The iOS [LedgerBackend]: the shared [SqlDelightLedgerBackend] over a native SQLite driver,
  * persisting **on disk in the [LEDGER_APP_GROUP] container** so the ledger is shared between the
  * host app (which reads it) and the background-upload extension (the single writer), and survives

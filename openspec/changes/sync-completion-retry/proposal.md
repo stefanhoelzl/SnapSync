@@ -72,10 +72,23 @@ self-correcting duplicate instead of a stuck photo.
   `UploadStarted`). Completion recording, request minting, and provider-failure semantics are
   unchanged.
 - `ios-background-upload`: "Drain-all job disposition" is **removed** and replaced by "Completion and
-  retry adjudication"; "Engine-gated real upload-job creation" adopts write-after-act and now records
-  `COMPLETED`; "In-extension discovery via persistent change token" persists the token in an App
-  Group store and advances it only on a fully-drained cycle; new requirements add cap-aware creation
-  with a tri-state `process()` result.
+  retry adjudication" (a returned job's key comes from its **destination URL** — `resource` is nil for
+  succeeded jobs — and **every presented job is acknowledged**, or iOS errors 50008); "Engine-gated
+  real upload-job creation" adopts write-after-act and now records `COMPLETED`; "In-extension
+  discovery via persistent change token" persists the token in an App Group store and advances it
+  only on a fully-drained cycle; new requirements add cap-aware creation with a tri-state `process()`
+  result that also returns `processing` while the ledger has pending rows (to flush completions, as
+  the OS invokes the extension lazily), and "Re-provision resets sync state" (a valid config re-scan
+  clears the ledger + cursor and re-registers the extension).
+- `sync-ledger`: the `LedgerBackend` storage seam gains `clear()` (delete-all + change signal) — the
+  one sanctioned app-side ledger reset, used by re-provision.
+
+> **On-device addendum (2026-06-22).** The retention design changed during device verification:
+> `job.resource` is nil for succeeded jobs, so the key is read from `job.destination` (not recomputed
+> via `uploadKey`); every presented job must be acknowledged (error 50008); ObjC-`nonnull` job fields
+> are nil at runtime and must be read into nullable locals; raw-S3 `PUT` works with no `OPTIONS`
+> preflight (the resumable-upload TOP RISK did not materialize). All behaviors verified end-to-end on
+> a physical device (reset → re-upload → completion accounting → status "backed up").
 
 ## Impact
 

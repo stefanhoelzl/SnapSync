@@ -77,28 +77,31 @@ already-`COMPLETED` job is preserved within the new requirement.
 
 The extension SHALL adjudicate the system's returned upload jobs each cycle, **before** discovering
 new work (so completed/failed slots are freed first), and reduce each outcome into the engine. It
-SHALL recover a returned `PHAssetResourceUploadJob`'s ledger key by recomputing
-`uploadKey(assetId = job.assetLocalIdentifier with '/'→'_', resourceType = job.resource.type,
-originalFilename = job.resource.originalFilename)` — the same key function discovery uses — and obtain
-that key's `version`/`attempt` from the ledger (`LedgerReader`); it SHALL NOT parse the destination
-URL and SHALL NOT keep a separate retention store. The two phases:
+SHALL recover a returned `PHAssetResourceUploadJob`'s ledger key from the job's **destination URL**
+(the last path segment) — the only field reliably present for every job state, since `resource` is
+**nil for succeeded jobs** (the system releases it after upload). Version/attempt come from the
+ledger (`LedgerReader`); the `resource`, when still present, is reused only to re-create a
+retry-spent job. **Every presented job SHALL be acknowledged** — including one whose key is
+unrecoverable — or the system reports `appex failed to acknowledge jobs for processing state`
+(error 50008). The two phases:
 
-- **`fetchJobsWithAction(.retry)` (first failures):** for each job, map `job.error` to an
-  `UploadError`, report `UploadFailed` (engine records `FAILED`, answers `Retry` with a freshly
-  presigned URL), call `retryWithDestination(:)` with that URL, then report `UploadStarted` (records
-  `REQUESTED` at the incremented attempt).
-- **`fetchJobsWithAction(.acknowledge)` (terminal):** if `job.state == Succeeded`, report
-  `UploadCompleted` (records `COMPLETED`) then `acknowledge`; if the key is already `COMPLETED` in the
-  ledger, `acknowledge` as an idempotent no-op; otherwise (a `Failed`/`Cancelled` job whose single
-  system retry is spent) report `UploadFailed` (records `FAILED`), create a fresh job with
-  `creationRequestForJob(freshURL, job.resource)`, and **acknowledge only if the re-create succeeded**
-  — on `limitExceeded` leave the job un-acknowledged so the system re-presents it next cycle — then
-  report `UploadStarted`. Retry has no attempt budget (retry forever).
+- **`fetchJobsWithAction(.retry)` (first failures):** map `job.error` → `UploadError`, report
+  `UploadFailed` (engine records `FAILED`, answers `Retry` with a freshly presigned URL), call
+  `retryWithDestination(:)`, then report `UploadStarted` (records `REQUESTED` at the incremented
+  attempt).
+- **`fetchJobsWithAction(.acknowledge)` (terminal):** `state == Succeeded` → `UploadCompleted`
+  (records `COMPLETED`) then `acknowledge`; already-`COMPLETED` in the ledger → `acknowledge`
+  (idempotent no-op); otherwise (a retry-spent `Failed`/`Cancelled` job) → `UploadFailed` (records
+  `FAILED`) and, **if `resource` is still available**, create a fresh job with
+  `creationRequestForJob(freshURL, job.resource)` then `UploadStarted`. The job SHALL be
+  acknowledged **regardless of the re-create outcome** (on the cap, acknowledge and let rediscovery
+  retry the key — never leave a presented job un-acknowledged). Retry has no attempt budget (retry
+  forever).
 
 #### Scenario: Succeeded job records COMPLETED
 - **WHEN** a job in the `.acknowledge` set has `state == Succeeded`
-- **THEN** the extension recomputes its key, reports `UploadCompleted` (the ledger becomes
-  `COMPLETED`), and acknowledges the job
+- **THEN** the extension reads its key from the job's destination URL, reports `UploadCompleted`
+  (the ledger becomes `COMPLETED`), and acknowledges the job
 
 #### Scenario: First failure retries with a fresh URL
 - **WHEN** a job is returned in the `.retry` set
@@ -107,14 +110,16 @@ URL and SHALL NOT keep a separate retention store. The two phases:
   `REQUESTED` at the incremented attempt
 
 #### Scenario: Retry-spent failure re-creates from the job's resource
-- **WHEN** a `Failed` job appears in the `.acknowledge` set (its one system retry is spent)
-- **THEN** the extension reports `UploadFailed`, creates a fresh job using `job.resource` directly,
-  acknowledges the original only after the re-create succeeds, and reports `UploadStarted`
+- **WHEN** a `Failed` job appears in the `.acknowledge` set (its one system retry is spent) and its
+  `resource` is still available
+- **THEN** the extension reports `UploadFailed`, creates a fresh job using `job.resource`, reports
+  `UploadStarted`, and acknowledges the original
 
-#### Scenario: Re-create hitting the cap is not acknowledged
-- **WHEN** the re-create of a retry-spent failure raises `limitExceeded`
-- **THEN** the original job is left un-acknowledged so the system re-presents it on a later cycle,
-  and the token is not advanced
+#### Scenario: Every presented job is acknowledged
+- **WHEN** a returned job's key cannot be recovered, or its re-create hits the cap, or its resource
+  is unavailable
+- **THEN** the job is still acknowledged (no `COMPLETED`/`UploadStarted` recorded), so the system
+  never reports error 50008
 
 #### Scenario: Already-completed re-handed job is a no-op
 - **WHEN** a returned job maps to a key the ledger already holds as `COMPLETED`
@@ -126,16 +131,35 @@ When `creationRequestForJob` raises `PHPhotosErrorLimitExceeded`, the extension 
 jobs for the remainder of the cycle, leave the change token un-advanced, and surface a **processing**
 result so the system re-invokes it promptly; on the next wake, re-derivation plus the engine's
 `REQUESTED`-skip resumes exactly the un-created remainder with no duplicate jobs and no persisted
-residue list. The Kotlin `process()` SHALL return a tri-state result (`completed` / `processing` /
-`failure`) that the Swift principal class maps to `PHBackgroundResourceUploadProcessingResult`
-(`.completed` / `.processing` / `.failure`); if the iOS 26.1 SDK lacks a `.processing` case the Swift
-shell SHALL fall back to `.completed` (correctness is unaffected — the un-advanced token drains the
-remainder on the next system-scheduled wake; only promptness is lost).
+residue list.
+
+Because the OS invokes the extension lazily (on library changes, not when an upload quietly
+finishes), a drained cycle that reported `completed` would leave already-succeeded jobs
+un-acknowledged until the next change. Therefore, whenever the cycle would otherwise complete but the
+ledger still has **pending** (in-flight) rows, the extension SHALL instead surface **processing** to
+request another invocation so those completions are recorded promptly; it reports `completed` only
+once the ledger has no pending rows (everything backed up), letting the system rest. (The OS
+throttles re-invocation, so this polls at its cadence rather than looping.)
+
+The Kotlin `process()` SHALL return a tri-state result (`completed` / `processing` / `failure`) that
+the Swift principal class maps to `PHBackgroundResourceUploadProcessingResult` (`.completed` /
+`.processing` / `.failure`); if the iOS 26.1 SDK lacks a `.processing` case the Swift shell SHALL
+fall back to `.completed` (correctness is unaffected — the un-advanced token / pending rows are
+drained on the next system-scheduled wake; only promptness is lost).
 
 #### Scenario: Cap during discovery yields a processing result
 - **WHEN** job creation hits `limitExceeded` partway through a cycle
 - **THEN** the extension stops creating jobs, does not advance the token, and `process()` returns a
   processing result (mapped to `.processing`, or `.completed` if unavailable)
+
+#### Scenario: Pending in-flight work requests re-invocation
+- **WHEN** a cycle drains and creates with no cap, but the ledger still has pending (in-flight) rows
+- **THEN** `process()` returns a processing result so the system re-invokes the extension to record
+  their completions, rather than resting until the next library change
+
+#### Scenario: Fully backed up reports completion
+- **WHEN** a cycle ends with no pending rows in the ledger
+- **THEN** `process()` returns `completed` and the system rests
 
 #### Scenario: Re-entry resumes the remainder without duplicates
 - **WHEN** a cap-truncated cycle is followed by another `process()` invocation
@@ -160,3 +184,28 @@ stored token re-enumerates the whole library, which the ledger makes harmless.
 #### Scenario: Missing token falls back to full enumeration
 - **WHEN** `process()` runs with no token in the App-Group store
 - **THEN** the extension enumerates the whole library and the ledger skips already-recorded keys
+
+### Requirement: Re-provision resets sync state
+
+On a **valid `snapsync://` config (re)scan**, the host app SHALL re-provision: clear the ledger
+(`LedgerBackend.clear()`), clear the persisted discovery cursor (remove the App-Group
+`NSUserDefaults` token under the shared key), and re-register the extension (the disable→enable
+toggle) — so the (possibly new) config re-uploads the whole library from scratch. The app decodes
+the deeplink only to gate this on a valid payload; the authoritative decode/validate/persist still
+happens in the shared container intent. Resetting an already-empty ledger on the first scan is a
+harmless no-op. The discovery-cursor suite/key are shared constants (`LEDGER_APP_GROUP` /
+`DISCOVERY_TOKEN_KEY`) so the app's reset and the extension's writer cannot drift.
+
+Note: clearing the ledger is the one sanctioned app-side ledger write (a deliberate reset, not a
+sync write); the engine remains the only writer of `REQUESTED`/`FAILED`/`COMPLETED`. Re-upload after
+a reset begins on the next OS extension invocation (a library change reliably triggers one; the OS
+owns scheduling).
+
+#### Scenario: Valid re-scan clears and re-registers
+- **WHEN** a valid `snapsync://` config URL is opened
+- **THEN** the ledger is cleared, the discovery cursor is removed, and the extension is
+  re-registered (disable→enable), so the next cycle re-enumerates and re-uploads the whole library
+
+#### Scenario: Invalid deeplink does not reset
+- **WHEN** an opened URL fails config decoding
+- **THEN** no reset occurs (the ledger and cursor are untouched)

@@ -122,8 +122,14 @@ class IosUploadJobPlatform(
     }
 
     override suspend fun createJob(request: UploadRequest, resource: Resource): CreateResult {
-        val phResource = resource.data as PHAssetResource
-        val url = NSURL.URLWithString(request.url) ?: return CreateResult.CREATED
+        val phResource = resource.data as? PHAssetResource ?: run {
+            log.w { "createJob: resource payload is not a PHAssetResource — not creating" }
+            return CreateResult.FAILED
+        }
+        val url = NSURL.URLWithString(request.url) ?: run {
+            log.w { "createJob: malformed destination URL — not creating" }
+            return CreateResult.FAILED
+        }
         val urlRequest = buildRequest(url, request)
         return memScoped {
             val errorVar = alloc<ObjCObjectVar<NSError?>>()
