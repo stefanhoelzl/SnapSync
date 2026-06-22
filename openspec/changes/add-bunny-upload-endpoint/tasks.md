@@ -81,9 +81,11 @@
 
 ## 6. Verify & deploy
 
-- [x] 6.1 `deno test` green locally (21 tests, against mocked bunny) + `deno fmt`/`lint` clean.
-- [ ] 6.2 First deploy to bunny Edge Scripting (via the workflow or a manual API deploy); smoke-test
-      a real `PUT /event/<uuid>/device/<uuid>/file/<name>` with curl → object lands at
-      `<uuid>/<uuid>/<name>` in the new zone (live check or the bunny Storage browser). *(blocked on §1)*
-- [ ] 6.3 Confirm a malformed key → `400` against the live endpoint, and that a deploy with missing
-      env **fails to boot** (fail-closed). *(blocked on §1)*
+- [x] 6.1 `deno test` green locally (22 tests, against mocked bunny) + `deno fmt`/`lint`/`check` clean.
+- [x] 6.2 Deployed via CI (bundle → `deploy-script`) and smoke-tested live at
+      `https://snap-sync-n8xmz.bunny.run`: a real `PUT /event/<uuid>/device/<uuid>/file/smoke-test.txt`
+      → `201`, and the object was read back from `snap-sync` (storage `GET 200`, body matched) —
+      confirms streaming + the `AccessKey` secret is readable at runtime. Test object then deleted.
+- [x] 6.3 Live: malformed key → `400`, `OPTIONS` → `204`, `GET` → `404`, unmatched path → `404`.
+      Missing-env fail-closed is covered by `config.test.ts` (readConfig throws) + observed boot-failure
+      behavior; not re-tested live (would require removing prod env).

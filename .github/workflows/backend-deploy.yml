@@ -45,9 +45,10 @@ jobs:
         working-directory: backend
         run: deno bundle src/main.ts -o dist/main.js
 
-      # --- TEMPORARY: deploy on EVERY push to test the pipeline from this branch.
-      #     REVERT before /ship (restore `if: github.ref == 'refs/heads/main'`). ---
+      # --- Deploy: main only. Feature-branch pushes run the checks (incl. bundle) but do not ship
+      #     to the single live script. Idempotent: re-deploys overwrite the same script_id. ---
       - name: Deploy to bunny Edge Scripting
+        if: github.ref == 'refs/heads/main'
         uses: BunnyWay/actions/deploy-script@main
         with:
           script_id: ${{ secrets.BUNNY_SCRIPT_ID }}
