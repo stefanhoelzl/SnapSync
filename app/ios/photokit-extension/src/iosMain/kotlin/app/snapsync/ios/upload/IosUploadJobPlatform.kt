@@ -209,6 +209,13 @@ class IosUploadJobPlatform(
         val urlRequest = NSMutableURLRequest(uRL = url)
         urlRequest.setHTTPMethod("PUT")
         request.headers.forEach { (name, value) -> urlRequest.setValue(value, forHTTPHeaderField = name) }
+        // Force HTTP/2-over-TCP: the system performs the background upload over HTTP/3 (QUIC) against
+        // the public edge endpoint, but that QUIC connection never completes on real networks (it
+        // hangs ~11s, cancels, and retries forever — nothing uploads), with no TCP fallback. The
+        // edge only offers h2/http1.1 anyway. Opting the stored request out of HTTP/3 keeps uploads
+        // on TCP, which works. (Verified on device: build 70's LAN MinIO never hit this — it had no
+        // QUIC endpoint.)
+        urlRequest.setAssumesHTTP3Capable(false)
         return urlRequest
     }
 
