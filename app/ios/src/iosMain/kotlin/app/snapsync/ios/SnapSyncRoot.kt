@@ -3,6 +3,7 @@ package app.snapsync.ios
 import app.snapsync.config.ConfigDecodeResult
 import app.snapsync.config.KeychainConfigStore
 import app.snapsync.config.decodeConfigUrl
+import app.snapsync.engine.DISCOVERY_TOKEN_KEY
 import app.snapsync.engine.LEDGER_APP_GROUP
 import app.snapsync.engine.LedgerBackend
 import app.snapsync.engine.LedgerWatcher
@@ -90,12 +91,11 @@ object SnapSyncRoot {
 
     /**
      * Clear the extension's persisted discovery cursor so the next cycle re-enumerates the whole
-     * library. The suite and key MUST match the extension's `IosDiscoveryStore`
-     * (`group.app.snapsync` / `discovery.changeToken`).
+     * library. Suite/key are the shared constants the extension's `IosDiscoveryStore` writes under.
      */
     @OptIn(ExperimentalForeignApi::class)
     private fun clearDiscoveryCursor() {
-        NSUserDefaults(suiteName = LEDGER_APP_GROUP).removeObjectForKey("discovery.changeToken")
+        NSUserDefaults(suiteName = LEDGER_APP_GROUP).removeObjectForKey(DISCOVERY_TOKEN_KEY)
     }
 
     /**

@@ -1,5 +1,7 @@
 package app.snapsync.ios.upload
 
+import app.snapsync.engine.DISCOVERY_TOKEN_KEY
+import app.snapsync.engine.LEDGER_APP_GROUP
 import kotlinx.cinterop.BetaInteropApi
 import kotlinx.cinterop.ExperimentalForeignApi
 import kotlinx.cinterop.addressOf
@@ -16,20 +18,17 @@ import platform.posix.memcpy
  */
 @OptIn(ExperimentalForeignApi::class)
 class IosDiscoveryStore(
-    suiteName: String = "group.app.snapsync",
+    suiteName: String = LEDGER_APP_GROUP,
 ) : DiscoveryStore {
 
     private val defaults = NSUserDefaults(suiteName = suiteName)
 
     // Best-effort: a defaults failure must not fail the cycle (degrades to full re-enumeration).
-    override fun loadToken(): ByteArray? = runCatching { defaults.dataForKey(TOKEN_KEY)?.toByteArray() }.getOrNull()
+    override fun loadToken(): ByteArray? =
+        runCatching { defaults.dataForKey(DISCOVERY_TOKEN_KEY)?.toByteArray() }.getOrNull()
 
     override fun saveToken(token: ByteArray) {
-        runCatching { defaults.setObject(token.toNSData(), forKey = TOKEN_KEY) }
-    }
-
-    private companion object {
-        const val TOKEN_KEY = "discovery.changeToken"
+        runCatching { defaults.setObject(token.toNSData(), forKey = DISCOVERY_TOKEN_KEY) }
     }
 }
 

@@ -29,6 +29,7 @@ class UploadCycleTest {
         private val ackJobs: List<PlatformUploadJob> = emptyList(),
         private val nextToken: ByteArray = byteArrayOf(9),
         private val limitAfter: Int = Int.MAX_VALUE,
+        private val failCreate: Boolean = false,
     ) : UploadJobPlatform {
         val created = mutableListOf<Resource>()
         val retried = mutableListOf<PlatformUploadJob>()
@@ -45,6 +46,7 @@ class UploadCycleTest {
             return Discovery(discovered, nextToken)
         }
         override suspend fun createJob(request: UploadRequest, resource: Resource): CreateResult {
+            if (failCreate) return CreateResult.FAILED
             if (creates >= limitAfter) return CreateResult.LIMIT_EXCEEDED
             creates++
             created += resource
@@ -166,6 +168,19 @@ class UploadCycleTest {
         assertEquals(listOf(job), platform.acknowledged) // acked only after the re-create succeeded
         assertEquals(LedgerState.REQUESTED, backend.get("a")?.state)
         assertEquals(1, backend.get("a")?.attempt)
+    }
+
+    @Test
+    fun create_failure_records_no_requested_and_does_not_cap() = runTest {
+        val backend = InMemoryLedgerBackend()
+        val platform = FakePlatform(discovered = listOf(resource("a")), failCreate = true)
+        val store = FakeStore()
+
+        val result = cycleOver(backend, platform, store).run()
+
+        assertEquals(CycleResult.COMPLETED, result) // a create FAILURE is not the cap
+        assertNull(backend.get("a")) // no REQUESTED recorded for a job that was never created
+        assertContentEquals(byteArrayOf(9), store.saved) // cursor still advances (no cap)
     }
 
     @Test

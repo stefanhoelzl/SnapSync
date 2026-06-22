@@ -56,8 +56,13 @@ class PlatformUploadJob(
     val handle: Any,
 )
 
-/** Outcome of a create attempt — [LIMIT_EXCEEDED] is the system's in-flight job cap. */
-enum class CreateResult { CREATED, LIMIT_EXCEEDED }
+/**
+ * Outcome of a create attempt. [CREATED] → the platform job exists (record `UploadStarted`);
+ * [LIMIT_EXCEEDED] → the system's in-flight job cap (defer, request re-invocation); [FAILED] → the
+ * job could not be created (e.g. a malformed destination or an unusable resource payload) and was
+ * NOT created, so the caller must NOT record `REQUESTED` for a job that does not exist.
+ */
+enum class CreateResult { CREATED, LIMIT_EXCEEDED, FAILED }
 
 /** Discovered resources plus the opaque cursor to persist once the cycle fully drains. */
 class Discovery(val resources: List<Resource>, val nextToken: ByteArray)

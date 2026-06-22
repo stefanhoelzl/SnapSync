@@ -55,10 +55,10 @@ class UploadCycle(
                     // resource is still available (nil for released jobs) and the cap is not yet hit.
                     val retry = adjudicateFailure(job)
                     if (retry != null && job.data != null && !capHit) {
-                        if (platform.createJob(retry.job.request, retry.job.request.resource) == CreateResult.CREATED) {
-                            engine.handle(SyncEvent.UploadStarted(retry.job))
-                        } else {
-                            capHit = true // cap reached; rediscovery will retry this key later
+                        when (platform.createJob(retry.job.request, retry.job.request.resource)) {
+                            CreateResult.CREATED -> engine.handle(SyncEvent.UploadStarted(retry.job))
+                            CreateResult.LIMIT_EXCEEDED -> capHit = true // rediscovery retries this key
+                            CreateResult.FAILED -> Unit // not created → no UploadStarted; job acked below
                         }
                     }
                     platform.acknowledge(job) // always — never leave a presented job un-acknowledged
@@ -76,6 +76,7 @@ class UploadCycle(
                 when (platform.createJob(decision.job.request, resource)) {
                     CreateResult.CREATED -> engine.handle(SyncEvent.UploadStarted(decision.job))
                     CreateResult.LIMIT_EXCEEDED -> return CycleResult.PROCESSING // cursor NOT advanced
+                    CreateResult.FAILED -> Unit // not created → no UploadStarted; retried next discovery
                 }
             }
         }

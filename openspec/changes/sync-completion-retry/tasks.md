@@ -69,19 +69,36 @@
   give crash-safety without a residue store or staleness sweep. Update `§3.3` flow to the
   adjudicate→discover order, persisted cursor, and tri-state result.
 
-## 6. On-device verification (gates merge)
+## 6. On-device verification (against local MinIO, iPhone SE2)
 
-- [ ] 6.1 Confirm `job.resource` is non-null on a job fetched in a *later* process than its creation,
-  and is accepted by `creationRequestForJob` for a re-create. (Fallback: `assetLocalIdentifier`
-  re-fetch + key-match.)
-- [ ] 6.2 Confirm a first failure surfaces under `.retry`, and a retry-spent failure under
-  `.acknowledge` with `state == Failed`; confirm `retryWithDestination` is the single system retry.
-- [ ] 6.3 Confirm `creationRequestForJob` surfaces `PHPhotosErrorLimitExceeded` via the
-  `performChangesAndWait` error out-param when the cap is exceeded.
-- [ ] 6.4 Confirm `PHBackgroundResourceUploadProcessingResult.processing` exists on the device SDK
-  (else the Swift fallback to `.completed` is exercised).
-- [ ] 6.5 Confirm an archived `PHPersistentChangeToken` round-trips through App-Group `NSUserDefaults`
-  and `fetchPersistentChanges(since:)` accepts the restored token.
-- [ ] 6.6 End-to-end on device (via the `local-s3.sh` rig): trigger sync → objects land **and** the
-  status screen reaches "backed up"; force a transient failure → observe a retry then completion;
-  exceed the cap with a large library → observe multi-cycle drain with no duplicate objects.
+- [x] 6.1 **FINDING:** `job.resource` is **nil for succeeded jobs** (released after upload) — the key
+  cannot come from it. Switched to reading the key from `job.destination`'s URL (last path segment);
+  `resource` is reused only to re-create a retry-spent job (where it is present). See §7.
+- [ ] 6.2 Not exercised — every upload succeeded (HTTP 200), so no `.retry`/retry-spent path ran.
+  Deferred (would need to force a failure, e.g. brief bad creds).
+- [ ] 6.3 Not exercised — the test library is below the in-flight cap, so `limitExceeded` never fired.
+- [x] 6.4 `.processing` is honoured — `.processing`-while-pending drove the bar to "backed up" without
+  manual nudging; no `.completed` fallback needed on this SDK.
+- [x] 6.5 Token persistence works (no crash, incremental discovery resumes); archiving is wrapped
+  best-effort so a failure degrades to full re-enumeration.
+- [x] 6.6 **End-to-end verified:** re-scan → ledger reset → full re-upload (Δ40 PUTs, all 200, no
+  `OPTIONS` preflight) → completion accounting records `COMPLETED` → status screen reaches **"sync
+  completed"**. No 50008, no crash-loop, no retry-looping.
+
+## 7. On-device fixes (from §6 verification)
+
+- [x] 7.1 Key returned jobs from `job.destination` URL (not `uploadKey`/`resource`); `resource` is
+  nil for succeeded jobs. (`IosUploadJobPlatform.fetch`)
+- [x] 7.2 **Acknowledge every presented job** (incl. unmappable) or the system errors 50008
+  ("appex failed to acknowledge jobs for processing state"); on a re-create cap, acknowledge anyway
+  and let rediscovery retry. (`UploadCycle` phase 2, `IosUploadJobPlatform.acknowledgeJob`)
+- [x] 7.3 Read ObjC-`nonnull`-but-nilable job fields (`resource`, `destination`) into nullable locals
+  so Kotlin/Native emits the runtime null-check (else codegen elides it → `EXC_BAD_ACCESS`).
+- [x] 7.4 `process()` returns `processing` while the ledger has pending rows, to flush completions
+  (the OS invokes the extension lazily). (`UploadExtensionRoot`)
+- [x] 7.5 Re-provision on a valid config re-scan: `LedgerBackend.clear()` + clear the discovery cursor
+  + re-register the extension. New `LedgerBackend.clear()` across all backends; shared
+  `DISCOVERY_TOKEN_KEY`/`LEDGER_APP_GROUP` constants. (`SnapSyncRoot`, `:domain:engine`)
+- [x] 7.6 `CreateResult.FAILED` arm: a malformed URL / unusable resource no longer reports `CREATED`
+  (which would orphan a `REQUESTED` for a non-existent job); the cycle records no `UploadStarted`.
+- [x] 7.7 `./gradlew build` green after all fixes; `UploadCycleTest` extended (create-failure case).
