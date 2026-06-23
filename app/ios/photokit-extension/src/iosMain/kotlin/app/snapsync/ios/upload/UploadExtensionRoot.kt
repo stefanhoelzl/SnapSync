@@ -26,10 +26,11 @@ import kotlinx.coroutines.runBlocking
 object UploadExtensionRoot {
 
     init {
-        // Route kermit through a public NSLog writer so the extension's logs show in
-        // `idevicesyslog` un-redacted (the default os_log path drops `.info` and redacts dynamic
-        // content as `<private>`).
-        Logger.setLogWriters(PublicNSLogWriter())
+        // Route kermit through a public NSLog writer AND a file writer. NSLog turns out to be
+        // redacted as `<private>` on current iOS (dynamic format strings are private), so the file
+        // writer (Documents/debug.log, pulled via `pymobiledevice3 apps pull`) is the reliable
+        // channel for reading the extension's logs on device.
+        Logger.setLogWriters(PublicNSLogWriter(), FileLogWriter())
     }
 
     private val log = Logger.withTag("UploadExtension")

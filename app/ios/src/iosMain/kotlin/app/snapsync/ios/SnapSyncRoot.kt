@@ -43,10 +43,10 @@ import platform.Photos.PHPhotoLibrary
 object SnapSyncRoot {
 
     init {
-        // Route kermit through a public NSLog writer so logs are visible via `idevicesyslog`
-        // un-redacted (the default os_log path drops `.info` and redacts dynamic content as
-        // `<private>`).
-        Logger.setLogWriters(PublicNSLogWriter())
+        // Route kermit through a public NSLog writer AND a file writer. NSLog is redacted as
+        // `<private>` on current iOS (dynamic format strings are private), so the file writer
+        // (Documents/debug.log, pulled via `pymobiledevice3 apps pull`) is the reliable channel.
+        Logger.setLogWriters(PublicNSLogWriter(), FileLogWriter())
     }
 
     private val log = Logger.withTag("SnapSyncRoot")
