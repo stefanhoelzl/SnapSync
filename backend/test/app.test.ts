@@ -150,3 +150,128 @@ Deno.test("empty filename (no resource) → 404 (route doesn't match)", async ()
   assertEquals(res.status, 404);
   assertEquals(calls.length, 0);
 });
+
+// ── GET /event/:eventId/files (capability `bunny-list-endpoint`) ─────────────────────────────────
+
+const D2 = "9c21aa00-0000-4000-8000-000000000003";
+const ZONE = `https://storage.bunnycdn.com/snapsync-zone`;
+const TOP = `${ZONE}/${E}/`; // event dir (device sub-dirs)
+const FILES = `/event/${E}/files`;
+
+const dir = (name: string) => ({ ObjectName: name, IsDirectory: true, Length: 0 });
+const file = (
+  name: string,
+  length: number,
+  ts: { LastChanged?: string; DateLastModified?: string },
+) => ({
+  ObjectName: name,
+  IsDirectory: false,
+  Length: length,
+  ...ts,
+});
+
+/** Serves canned bunny LIST JSON keyed by URL; any unmapped URL → 404 (→ "no objects"). */
+function listFake(routes: Record<string, { status?: number; body?: unknown }>) {
+  const calls: Call[] = [];
+  const fetchImpl: FetchLike = (url, init) => {
+    calls.push({ url, init });
+    const r = routes[url];
+    if (!r) return Promise.resolve(new Response("not found", { status: 404 }));
+    const body = r.body === undefined ? null : JSON.stringify(r.body);
+    return Promise.resolve(
+      new Response(body, {
+        status: r.status ?? 200,
+        headers: { "content-type": "application/json" },
+      }),
+    );
+  };
+  return { calls, fetchImpl };
+}
+
+Deno.test("GET files → flat array across all devices, normalized entries", async () => {
+  const { calls, fetchImpl } = listFake({
+    [TOP]: { body: [dir(D), dir(D2)] },
+    [`${ZONE}/${E}/${D}/`]: {
+      body: [file("IMG_0001-ios.photo.jpg", 1234, { LastChanged: "2026-06-20T10:31:00Z" })],
+    },
+    [`${ZONE}/${E}/${D2}/`]: {
+      // second device uses the alternate timestamp field name bunny's docs also show
+      body: [file("VID_0002-ios.video.mov", 5678, { DateLastModified: "2026-06-21T08:00:00Z" })],
+    },
+  });
+  const res = await createApp({ config: CONFIG, fetch: fetchImpl }).request(FILES);
+  assertEquals(res.status, 200);
+  assertEquals(await res.json(), [
+    {
+      filename: "IMG_0001-ios.photo.jpg",
+      deviceId: D,
+      size: 1234,
+      lastModified: "2026-06-20T10:31:00Z",
+    },
+    {
+      filename: "VID_0002-ios.video.mov",
+      deviceId: D2,
+      size: 5678,
+      lastModified: "2026-06-21T08:00:00Z",
+    },
+  ]);
+  // 1 + deviceCount subrequests, each carrying the AccessKey (never the account API key)
+  assertEquals(calls.length, 3);
+  for (const call of calls) {
+    assertEquals(new Headers(call.init.headers).get("AccessKey"), "zone-password");
+  }
+});
+
+Deno.test("GET files → directory entries inside a device dir are excluded", async () => {
+  const { fetchImpl } = listFake({
+    [TOP]: { body: [dir(D)] },
+    [`${ZONE}/${E}/${D}/`]: {
+      body: [file("IMG_0001-ios.photo.jpg", 10, { LastChanged: "t" }), dir("nested")],
+    },
+  });
+  const res = await createApp({ config: CONFIG, fetch: fetchImpl }).request(FILES);
+  assertEquals(res.status, 200);
+  assertEquals(await res.json(), [
+    { filename: "IMG_0001-ios.photo.jpg", deviceId: D, size: 10, lastModified: "t" },
+  ]);
+});
+
+Deno.test("GET files → empty event dir (200 []) → 200 []", async () => {
+  const { fetchImpl } = listFake({ [TOP]: { body: [] } });
+  const res = await createApp({ config: CONFIG, fetch: fetchImpl }).request(FILES);
+  assertEquals(res.status, 200);
+  assertEquals(await res.json(), []);
+});
+
+Deno.test("GET files → unknown event dir (bunny 404) → 200 []", async () => {
+  const { fetchImpl } = listFake({ [TOP]: { status: 404 } });
+  const res = await createApp({ config: CONFIG, fetch: fetchImpl }).request(FILES);
+  assertEquals(res.status, 200);
+  assertEquals(await res.json(), []);
+});
+
+Deno.test("GET files → non-UUID event id → 400, no upstream request", async () => {
+  const { calls, fetchImpl } = listFake({});
+  const res = await createApp({ config: CONFIG, fetch: fetchImpl }).request("/event/nope/files");
+  assertEquals(res.status, 400);
+  assertEquals(calls.length, 0);
+});
+
+Deno.test("GET files → a per-device LIST failure (500) → 502 (never partial)", async () => {
+  const { fetchImpl } = listFake({
+    [TOP]: { body: [dir(D), dir(D2)] },
+    [`${ZONE}/${E}/${D}/`]: { body: [file("IMG_0001-ios.photo.jpg", 1, { LastChanged: "t" })] },
+    [`${ZONE}/${E}/${D2}/`]: { status: 500 },
+  });
+  const res = await createApp({ config: CONFIG, fetch: fetchImpl }).request(FILES);
+  assertEquals(res.status, 502);
+});
+
+Deno.test("GET files → wrong method (POST) → 404, no upstream request", async () => {
+  const { calls, fetchImpl } = listFake({ [TOP]: { body: [] } });
+  const res = await createApp({ config: CONFIG, fetch: fetchImpl }).request(FILES, {
+    method: "POST",
+  });
+  assertEquals(res.status, 404);
+  assertEquals(calls.length, 0);
+});
