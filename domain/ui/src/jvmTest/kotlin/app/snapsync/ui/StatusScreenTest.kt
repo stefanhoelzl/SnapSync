@@ -114,6 +114,18 @@ class StatusScreenTest {
     }
 
     @Test
+    fun `in progress with nothing actively uploading omits the in-progress label`() {
+        rule.setContent {
+            StatusScreen(UiState.InProgress(synced = 3, total = 5, inProgress = 0, finishedAgo = "2 min ago"))
+        }
+
+        rule.onNodeWithText("3 of 5 images synced").assertExists()
+        // 0 actively uploading → no "0 in progress" noise, just the last-sync age.
+        rule.onNodeWithText("2 min ago").assertExists()
+        rule.onNodeWithText("in progress", substring = true).assertDoesNotExist()
+    }
+
+    @Test
     fun `nothing to sync shows the idle line`() {
         rule.setContent { StatusScreen(UiState.NothingToSync) }
 
