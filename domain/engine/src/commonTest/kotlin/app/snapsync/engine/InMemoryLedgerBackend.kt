@@ -51,4 +51,7 @@ class InMemoryLedgerBackend : LedgerBackend {
             newestCompletionAt = complete.flatten().maxOfOrNull { it.updatedAt },
         )
     }
+
+    override suspend fun pendingResources(): List<PendingResource> =
+        rows.values.filter { it.state != LedgerState.COMPLETED }.map { PendingResource(it.assetId, it.key) }
 }

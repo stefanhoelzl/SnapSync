@@ -43,6 +43,9 @@ class SqlDelightLedgerBackend(database: LedgerDatabase) : LedgerBackend {
             LedgerAggregates(pending.toInt(), completed.toInt(), newestCompletionAt)
         }.executeAsOne()
 
+    override suspend fun pendingResources(): List<PendingResource> =
+        queries.selectPending { assetId, key -> PendingResource(assetId, key) }.executeAsList()
+
     override suspend fun clear() {
         queries.deleteAll()
         dings.tryEmit(Unit)

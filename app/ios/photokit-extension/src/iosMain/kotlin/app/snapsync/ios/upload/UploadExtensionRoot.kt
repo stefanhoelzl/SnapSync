@@ -5,6 +5,7 @@ import app.snapsync.engine.LedgerBackend
 import app.snapsync.engine.LedgerWriter
 import app.snapsync.engine.SyncEngine
 import app.snapsync.engine.iosLedgerBackend
+import app.snapsync.engine.postLedgerChangedNotification
 import app.snapsync.uploadurl.EdgeUploadRequestProvider
 import co.touchlab.kermit.Logger
 import kotlinx.coroutines.runBlocking
@@ -75,6 +76,9 @@ object UploadExtensionRoot {
                 log.e(it) { "process cycle failed" }
                 CycleResult.FAILED
             }
+        // One coalesced cross-process ding per cycle (not per ledger put): the app re-reads the
+        // ledger once for the whole batch this cycle wrote. Harmless if the cycle wrote nothing.
+        postLedgerChangedNotification()
         // The OS invokes the extension lazily (on library changes), not when an upload quietly
         // finishes — so a drained cycle that returns COMPLETED leaves already-succeeded jobs
         // un-acknowledged until the next change. While the ledger still has pending (in-flight)
