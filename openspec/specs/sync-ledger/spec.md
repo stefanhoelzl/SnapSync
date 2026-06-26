@@ -9,7 +9,6 @@ status-facing) — and self-contained idempotent record operations. The ledger i
 skipping provable, reports absorbable (at-least-once), full re-enumeration harmless, and status
 a read-only projection. Authoritative design: docs/design.md §2.2.
 ## Requirements
-
 ### Requirement: Storage seam — dumb row store
 The ledger SHALL access storage exclusively through a `LedgerBackend` interface with the row
 operations `get(key): LedgerEntry?` and `put(entry)` (a single-row upsert), the aggregate read
@@ -83,22 +82,31 @@ PHOTOS (assets), not resource rows. `LedgerAggregates` SHALL have value equality
   partially-done asset never contributes to it
 
 ### Requirement: Change signal
+
 `LedgerBackend.changes` SHALL emit `Unit` after every successful `put`. A ding carries no payload
 and promises nothing beyond "re-read the truth" — consumers MUST treat it as a level trigger
 (conflation, duplicate dings, and signals missed while busy are all safe because every re-read
 queries current state). Where the underlying store is written by another process, the backend SHALL
-feed `changes` from a cross-process notification: the iOS App-Group backend SHALL post a Darwin
-notification (a `CFNotificationCenter` darwin-notify name) after every successful `put` and SHALL
-merge an observer of that notification into its `changes` flow, so a `put` performed by the
-extension process dings a collector in the app process. The seam itself does not change.
+feed `changes` from a cross-process notification — but that cross-process notification is the
+**writer process's** signal that its work is durable, and SHALL be posted **once per writer work
+cycle**, not after every `put`: the iOS App-Group backend SHALL NOT post a Darwin notification on
+each `put`; instead the writer process (the extension) SHALL post one Darwin notification
+(a `CFNotificationCenter` darwin-notify name) after its `process()` cycle completes, and the app-process
+backend SHALL merge an observer of that notification into its `changes` flow. The in-process `changes`
+ding on every `put` is unchanged (it has no in-writer-process consumer). The seam itself does not
+change. A missed cross-process notification is harmless (the app re-reads on its next trigger).
 
 #### Scenario: Put dings
+
 - **WHEN** a collector is active on `changes` and `put` completes
 - **THEN** the collector receives an emission
 
-#### Scenario: Cross-process put dings the other process
-- **WHEN** the extension process performs a `put` on the App-Group ledger and a collector in the app process is active on `changes`
-- **THEN** the app-process collector receives an emission (via the Darwin notification) and re-reads current truth
+#### Scenario: A writer cycle dings the other process once
+
+- **WHEN** the extension process performs several `put`s within one `process()` cycle and a collector
+  in the app process is active on `changes`
+- **THEN** the app-process collector receives one emission (via the single end-of-cycle Darwin
+  notification) and re-reads current truth, rather than one emission per `put`
 
 ### Requirement: Reader and writer capability split
 The ledger SHALL expose a concrete shared `LedgerReader` (query: `entry(key): LedgerEntry?`) and a
@@ -116,24 +124,32 @@ and read-only access is granted by handing out the writer typed as `LedgerReader
 - **THEN** no record operation is available to it at compile time
 
 ### Requirement: Ledger watcher
+
 The ledger SHALL expose a third user-facing type alongside reader and writer: `LedgerWatcher`,
-whose `aggregates: Flow<LedgerAggregates>` is a cold flow that emits the current aggregates on
-collection and re-queries on every backend ding, with equal consecutive values deduplicated.
-Each collection starts with current truth — collectors share nothing. The watcher is the only
-ledger type that surfaces aggregates or dings; `LedgerReader` stays per-key
-(`entry(key)` only).
+whose `snapshot: Flow<LedgerSnapshot>` is a cold flow that emits the current snapshot on collection
+and re-queries on every backend ding, with equal consecutive values deduplicated. A `LedgerSnapshot`
+SHALL carry `completed` and `newestCompletionAt` (the same scalars as `LedgerAggregates`, reused) and
+`pendingByAsset: Map<assetId, Set<key>>` (the backlog grouped by photo), all read **point-in-time
+consistently** within one ding so the scalars and the backlog never disagree. Each collection starts
+with current truth — collectors share nothing. The watcher is the only ledger type that surfaces the
+snapshot or dings; `LedgerReader` stays per-key (`entry(key)` only).
 
 #### Scenario: Collection starts with current truth
-- **WHEN** `aggregates` is collected over a store holding one `COMPLETED` key
-- **THEN** the first emission reports `completed = 1` without any write occurring
 
-#### Scenario: A write re-emits
-- **WHEN** a key is recorded while `aggregates` is collected
-- **THEN** a new `LedgerAggregates` reflecting the write is emitted
+- **WHEN** `snapshot` is collected over a store holding one `COMPLETED` key
+- **THEN** the first emission reports `completed = 1` and an empty `pendingByAsset`, without any write
+  occurring
 
-#### Scenario: Unchanged aggregates stay silent
-- **WHEN** a write does not change the aggregate values (e.g. a `REQUESTED` key re-recorded with
-  a new attempt)
+#### Scenario: A write re-emits a consistent snapshot
+
+- **WHEN** a `REQUESTED` key for a new asset is recorded while `snapshot` is collected
+- **THEN** a new `LedgerSnapshot` is emitted whose `pendingByAsset` contains that asset's key and
+  whose `completed` is unchanged, both from the same read
+
+#### Scenario: Unchanged snapshot stays silent
+
+- **WHEN** a write does not change the snapshot values (e.g. a `REQUESTED` key re-recorded with a new
+  attempt that leaves the backlog and counts identical)
 - **THEN** no new emission is observed
 
 ### Requirement: Record operations
@@ -243,3 +259,24 @@ sqlite driver via the shared backend contract.
 - **WHEN** `retainAssets` is called on the SQLDelight backend with a keep-set larger than the
   driver's single-statement bind-variable limit
 - **THEN** the complement is deleted with no bind-variable error
+
+### Requirement: Pending-resource read
+
+`LedgerBackend` SHALL expose a read of the non-`COMPLETED` rows as `(assetId, key)` pairs (the
+backlog), so a status projection can group outstanding resources by photo without materializing the
+whole table. The read SHALL return exactly the rows whose `state` is not `COMPLETED` and SHALL
+interpret nothing else (the backend remains a dumb row store). On the SQLDelight backend it SHALL be
+a single query (`SELECT assetId, key FROM ledgerRow WHERE state != 'COMPLETED'`).
+
+#### Scenario: Returns only outstanding rows
+
+- **WHEN** asset `A` has two `COMPLETED` rows and asset `B` has one `REQUESTED` and one `FAILED` row,
+  and the pending-resource read is called
+- **THEN** it returns only `B`'s two rows (`B`'s `REQUESTED` and `FAILED` keys), each paired with
+  assetId `B`, and none of `A`'s
+
+#### Scenario: Empty when nothing is outstanding
+
+- **WHEN** every row is `COMPLETED`
+- **THEN** the pending-resource read returns no rows
+
