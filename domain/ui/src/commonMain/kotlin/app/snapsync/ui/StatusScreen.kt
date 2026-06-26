@@ -30,7 +30,13 @@ fun StatusScreen(
                 is UiState.Setup ->
                     SetupGate(state, onRequestPermission, onOpenSettings, transientError)
                 is UiState.InProgress ->
-                    StatusHero(StatusIndicator.InProgress, "${state.synced} of ${state.total} images synced", state.finishedAgo)
+                    StatusHero(
+                        StatusIndicator.InProgress,
+                        "${state.synced} of ${state.total} images synced",
+                        // Second caption: how many are uploading right now, then the last-sync age
+                        // (absent at a virgin "0 of N", where nothing has completed yet).
+                        "${state.inProgress} in progress" + (state.finishedAgo?.let { " · $it" } ?: ""),
+                    )
                 UiState.NothingToSync ->
                     StatusHero(StatusIndicator.Complete, "Nothing to sync yet")
                 is UiState.Completed ->

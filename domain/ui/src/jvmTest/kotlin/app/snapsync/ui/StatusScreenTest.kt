@@ -90,20 +90,27 @@ class StatusScreenTest {
     }
 
     @Test
-    fun `in progress shows the n of N count and last-sync time as text`() {
-        rule.setContent { StatusScreen(UiState.InProgress(synced = 12, total = 47, finishedAgo = "5 min ago")) }
+    fun `in progress shows the n of N count and the in-progress count with last-sync time`() {
+        rule.setContent {
+            StatusScreen(UiState.InProgress(synced = 12, total = 47, inProgress = 35, finishedAgo = "5 min ago"))
+        }
 
         rule.onNodeWithText("12 of 47 images synced").assertExists()
-        rule.onNodeWithText("5 min ago").assertExists()
+        // Second caption: in-progress count and the last-sync age on one merged line.
+        rule.onNodeWithText("35 in progress · 5 min ago").assertExists()
         // The LED dot is not a progress indicator (no spinner, no ring).
         rule.onNode(hasAnyProgressIndication()).assertDoesNotExist()
     }
 
     @Test
-    fun `in progress with no prior completion shows no detail line`() {
-        rule.setContent { StatusScreen(UiState.InProgress(synced = 0, total = 47, finishedAgo = null)) }
+    fun `in progress with no prior completion shows the in-progress count and no time`() {
+        rule.setContent {
+            StatusScreen(UiState.InProgress(synced = 0, total = 47, inProgress = 47, finishedAgo = null))
+        }
 
         rule.onNodeWithText("0 of 47 images synced").assertExists()
+        // At a virgin "0 of N" the second caption is just the count — no "· x min ago".
+        rule.onNodeWithText("47 in progress").assertExists()
     }
 
     @Test

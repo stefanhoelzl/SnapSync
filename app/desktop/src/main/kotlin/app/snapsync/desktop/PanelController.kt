@@ -111,7 +111,7 @@ class PanelController(private val clock: Clock = Clock.System) {
     }
 
     fun showInProgress() {
-        forgeSync(progress(completed = 12, total = 47, lastFinishedAt = clock.now() - 5.minutes))
+        forgeSync(progress(pending = 35, completed = 12, total = 47, lastFinishedAt = clock.now() - 5.minutes))
     }
 
     fun showComplete() {
@@ -138,8 +138,8 @@ class PanelController(private val clock: Clock = Clock.System) {
         syncState.value = SyncStatus.Ready(status)
     }
 
-    private fun progress(completed: Int, total: Int, lastFinishedAt: Instant?) = SyncProgress(
-        pending = 0, completed = completed, total = total, failed = 0,
+    private fun progress(pending: Int = 0, completed: Int, total: Int, lastFinishedAt: Instant?) = SyncProgress(
+        pending = pending, completed = completed, total = total, failed = 0,
         active = true, estimatedRemaining = null, lastFinishedAt = lastFinishedAt,
     )
 

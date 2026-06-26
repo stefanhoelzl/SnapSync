@@ -115,6 +115,8 @@ private fun SyncProgress.toUiState(now: Instant): UiState = when (state) {
     SyncState.IN_PROGRESS -> UiState.InProgress(
         synced = synced,
         total = total,
+        // Ledger photos still uploading (asset-counted pending) — the second caption's count.
+        inProgress = pending,
         // The last completion's age (null before anything completes — a bare "0 of N").
         finishedAgo = lastFinishedAt?.let { relativeTime(now - it) },
     )
