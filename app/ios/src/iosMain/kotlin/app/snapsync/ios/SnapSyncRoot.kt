@@ -62,9 +62,6 @@ object SnapSyncRoot {
         val config = KeychainConfigStore()
         val syncSource = LedgerSyncStatusSource(watcher, permission, gallery, scope)
         enableBackgroundUploadOnGrant(permission)
-        // Surface the Local Network permission now (the background extension cannot prompt). No-op
-        // against a public HTTPS endpoint; needed when the upload host is a private/local address.
-        primeLocalNetwork(config, log)
         // `config` is passed as both ports (one Keychain adapter implements both), as `permission` is.
         StatusContainerHost(syncSource, permission, permission, config, config, scope)
     }

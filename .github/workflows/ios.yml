@@ -31,14 +31,15 @@ name: ios
 on:
   push:
   # Manual dispatch to override the compile-time upload host (PhotoKit forces the host to be
-  # compile-time). A plain push supplies no input → the archive bakes the deployed Deno Deploy URL
-  # (the device-facing host while bunny's edge drops iOS's zero-window upload SYNs — see
-  # backend-deploy.yml), which all builds (incl. main/TestFlight) target — safe because the device
-  # holds no credential. Set `upload_host` only to point a dev IPA at a local Deno backend on the LAN.
+  # compile-time). A plain push supplies no input → the archive does NOT override the build setting,
+  # so it bakes the Config.xcconfig default (the deployed HTTPS backend, the single source of the
+  # host literal), which all builds (incl. main/TestFlight) target — safe because the device holds no
+  # credential. Set `upload_host` only to point a dev IPA at an alternate HTTPS host (e.g. staging);
+  # it is HTTPS-only and a non-https value fails the run (default ATS forbids plaintext anyway).
   workflow_dispatch:
     inputs:
       upload_host:
-        description: "Override the compile-time edge host for the dev IPA, e.g. http://192.168.1.2:9000 (empty = deployed Deno Deploy URL)"
+        description: "Override the compile-time host for the dev IPA, HTTPS-only e.g. https://staging.example (empty = Config.xcconfig default)"
         required: false
         default: ""
         type: string
@@ -128,19 +129,36 @@ jobs:
           create-keychain: false
           keychain-password: ${{ env.KEYCHAIN_PW }}
 
-      # Pick the build configuration. The on-demand local-backend upload loop — a workflow_dispatch
-      # with a LAN `upload_host` baked in — builds DEBUG so the Kotlin/Native framework link skips the
-      # LLVM optimizer (the bulk of the ~6 min archive). The dev/sideload IPA needs no optimization,
-      # and `-configuration Debug` makes embedAndSignAppleFrameworkForXcode build linkDebugFramework
-      # via $(CONFIGURATION). EVERY push (the merge gate) and any plain dispatch (empty upload_host)
-      # stay RELEASE — the gate's codegen is unchanged, and the baked host is the deployed Deno Deploy
-      # URL. To get a Release-representative IPA from a manual run, leave `upload_host` empty.
-      - name: Select build configuration
+      # Reject a non-HTTPS upload_host before archiving: default ATS (HTTPS-only) forbids plaintext,
+      # so a baked http:// host would silently fail every upload on device. Empty input = no override
+      # (the archive uses the Config.xcconfig default), so this is a no-op for ordinary pushes.
+      - name: Validate upload_host is HTTPS
+        env:
+          UPLOAD_HOST: ${{ inputs.upload_host }}
         run: |
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ] && [ -n "${{ inputs.upload_host }}" ]; then
+          if [ -n "$UPLOAD_HOST" ] && [ "${UPLOAD_HOST#https://}" = "$UPLOAD_HOST" ]; then
+            echo "::error::upload_host must be HTTPS (got: $UPLOAD_HOST)"
+            exit 1
+          fi
+
+      # Pick the build configuration and compute the optional host override. A workflow_dispatch with
+      # an (HTTPS) `upload_host` builds DEBUG so the Kotlin/Native framework link skips the LLVM
+      # optimizer (the bulk of the ~6 min archive); the dev/sideload IPA needs no optimization, and
+      # `-configuration Debug` makes embedAndSignAppleFrameworkForXcode build linkDebugFramework via
+      # $(CONFIGURATION). EVERY push (the merge gate) and any plain dispatch (empty upload_host) stay
+      # RELEASE and set NO override, so the archive bakes the Config.xcconfig default (the deployed
+      # HTTPS backend, the single source of the host literal). To get a Release-representative IPA
+      # from a manual run, leave `upload_host` empty.
+      - name: Select build configuration and host override
+        env:
+          UPLOAD_HOST: ${{ inputs.upload_host }}
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ] && [ -n "$UPLOAD_HOST" ]; then
             echo "BUILD_CONFIG=Debug" >> "$GITHUB_ENV"
+            echo "UPLOAD_HOST_OVERRIDE=BACKGROUND_UPLOAD_URL_BASE=$UPLOAD_HOST" >> "$GITHUB_ENV"
           else
             echo "BUILD_CONFIG=Release" >> "$GITHUB_ENV"
+            echo "UPLOAD_HOST_OVERRIDE=" >> "$GITHUB_ENV"
           fi
 
       # Build number = the monotonic run number. -allowProvisioningUpdates still cloud-manages the
@@ -164,7 +182,7 @@ jobs:
             -authenticationKeyID "$ASC_KEY_ID" \
             -authenticationKeyIssuerID "$ASC_ISSUER_ID" \
             CURRENT_PROJECT_VERSION=${{ github.run_number }} \
-            BACKGROUND_UPLOAD_URL_BASE=${{ inputs.upload_host || 'https://snapsync.stefanhoelzl.deno.net' }} \
+            $UPLOAD_HOST_OVERRIDE \
             archive
 
       # Sideload channel (EVERY ref): export a DEVELOPMENT-signed IPA from the same archive and

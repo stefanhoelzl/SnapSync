@@ -27,20 +27,11 @@
 	<!-- Required by the background-upload subsystem for network-access validation; the system only
 	     uploads to destinations under this host. Compile-time (a runtime-configurable host is
 	     impossible with this API): driven by the BACKGROUND_UPLOAD_URL_BASE build setting, which
-	     defaults to the inert dummy host locally but is always overridden by CI's archive step — the
-	     deployed Deno Deploy URL by default, or a LAN test host from the workflow_dispatch
-	     `upload_host` input for a dev IPA. -->
+	     defaults to the deployed HTTPS backend (Config.xcconfig) and is overridden only by a
+	     workflow_dispatch `upload_host` (HTTPS-only) for a dev IPA. Must be an HTTPS endpoint —
+	     default ATS (HTTPS-only) applies, no NSAllowsLocalNetworking exception. -->
 	<key>BackgroundUploadURLBase</key>
 	<string>$(BACKGROUND_UPLOAD_URL_BASE)</string>
-	<!-- Permit a plaintext PUT to a private/local upload host (the local-S3 test rig). Narrow:
-	     relaxes ATS only for private/local/.local addresses; the public HTTPS endpoint is
-	     unaffected, so this is safe to ship in every config (the dev IPA is exported from the same
-	     Release archive as TestFlight). -->
-	<key>NSAppTransportSecurity</key>
-	<dict>
-		<key>NSAllowsLocalNetworking</key>
-		<true/>
-	</dict>
 	<key>EXAppExtensionAttributes</key>
 	<dict>
 		<key>EXExtensionPointIdentifier</key>
