@@ -24,6 +24,14 @@ import kotlinx.coroutines.launch
 import platform.Foundation.NSOperatingSystemVersion
 import platform.Foundation.NSProcessInfo
 import platform.Foundation.NSUserDefaults
+import platform.Photos.PHAssetResourceUploadJob
+import platform.Photos.PHAssetResourceUploadJobAction
+import platform.Photos.PHAssetResourceUploadJobActionAcknowledge
+import platform.Photos.PHAssetResourceUploadJobActionRetry
+import platform.Photos.PHAssetResourceUploadJobStateCancelled
+import platform.Photos.PHAssetResourceUploadJobStateFailed
+import platform.Photos.PHAssetResourceUploadJobStateRegistered
+import platform.Photos.PHAssetResourceUploadJobStateSucceeded
 import platform.Photos.PHPhotoLibrary
 
 /**
@@ -159,6 +167,54 @@ object SnapSyncRoot {
         val disabled = lib.setUploadJobExtensionEnabled(false, error = null)
         val enabled = lib.setUploadJobExtensionEnabled(true, error = null)
         log.i { "background-upload extension re-registered: disabled=$disabled enabled=$enabled" }
+    }
+
+    /**
+     * SPIKE — remove once the question is answered. Can the **main app process** (not just the
+     * background-upload extension) enumerate the system's upload jobs via
+     * `PHAssetResourceUploadJob.fetchJobsWithAction`? Called on every foreground (from the Swift
+     * scene's `.active` transition).
+     *
+     * Strictly **read-only**: it fetches and logs counts + a state breakdown, and NEVER
+     * acknowledges, retries, or otherwise mutates a job. So it cannot consume jobs the extension
+     * still needs to acknowledge — the extension stays the single ledger writer. The route is
+     * viable iff (a) this logs non-zero counts while uploads are in flight, and (b) the extension
+     * keeps seeing/acking the same jobs afterwards (cross-check the extension's own
+     * `fetch(acknowledge): N job(s)` logs and the ledger reaching COMPLETED).
+     */
+    @OptIn(ExperimentalForeignApi::class)
+    fun probeUploadJobs() {
+        if (!backgroundUploadSupported()) {
+            log.i { "probeUploadJobs skipped: background-upload API unavailable on this OS" }
+            return
+        }
+        logFetchedJobs("acknowledge", PHAssetResourceUploadJobActionAcknowledge)
+        logFetchedJobs("retry", PHAssetResourceUploadJobActionRetry)
+    }
+
+    private fun logFetchedJobs(name: String, action: PHAssetResourceUploadJobAction) {
+        val jobs = PHAssetResourceUploadJob.fetchJobsWithAction(action, options = null)
+        var succeeded = 0
+        var failed = 0
+        var cancelled = 0
+        var registered = 0
+        var other = 0
+        var index = 0uL
+        while (index < jobs.count) {
+            val job = jobs.objectAtIndex(index) as PHAssetResourceUploadJob
+            index++
+            when (job.state) {
+                PHAssetResourceUploadJobStateSucceeded -> succeeded++
+                PHAssetResourceUploadJobStateFailed -> failed++
+                PHAssetResourceUploadJobStateCancelled -> cancelled++
+                PHAssetResourceUploadJobStateRegistered -> registered++
+                else -> other++
+            }
+        }
+        log.i {
+            "probeUploadJobs fetch($name) from APP: count=${jobs.count} succeeded=$succeeded " +
+                "failed=$failed cancelled=$cancelled registered=$registered other=$other"
+        }
     }
 
     /** Whether the iOS 26.1 background-upload API is present on this system. */
