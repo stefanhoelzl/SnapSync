@@ -21,17 +21,10 @@
 	<key>ITSAppUsesNonExemptEncryption</key>
 	<false/>
 	<!-- The compile-time upload host, shared with the extension via the BACKGROUND_UPLOAD_URL_BASE
-	     build setting. The app reads it at launch only to prime the Local Network permission (the
-	     background extension cannot prompt); the app itself never uploads. -->
+	     build setting. The app itself never uploads; the extension does. Must be an HTTPS endpoint —
+	     default ATS (HTTPS-only) applies, no NSAllowsLocalNetworking exception. -->
 	<key>BackgroundUploadURLBase</key>
 	<string>$(BACKGROUND_UPLOAD_URL_BASE)</string>
-	<!-- Permit the plaintext Local-Network priming touch to a private/local upload host. Narrow
-	     (private/local addresses only); the public HTTPS endpoint is unaffected. -->
-	<key>NSAppTransportSecurity</key>
-	<dict>
-		<key>NSAllowsLocalNetworking</key>
-		<true/>
-	</dict>
 	<!-- Custom URL scheme: a QR scanned by the stock Camera app opens snapsync://config?… which
 	     deeplinks into the app carrying the S3 config (see deeplink-config capability). -->
 	<key>CFBundleURLTypes</key>

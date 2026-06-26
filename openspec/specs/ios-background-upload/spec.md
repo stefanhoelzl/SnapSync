@@ -3,14 +3,13 @@
 ## Purpose
 TBD - created by archiving change ios-background-upload. Update Purpose after archive.
 ## Requirements
-
 ### Requirement: Background upload extension target
 
-The system SHALL provide an iOS app-extension target conforming to the iOS 26.1 `PHBackgroundResourceUploadExtension` protocol (an ExtensionKit `AppExtension`, declared via a `@main` Swift principal class), embedded in the host app with `NSExtensionPointIdentifier = com.apple.photos.background-upload`. The extension's logic SHALL live in a lean Kotlin Multiplatform module (`:app:ios:photokit-extension`) that depends on `:domain:engine`, `:capability:upload-url` (the real `EdgeUploadRequestProvider`), and `:capability:config` (the Keychain-backed `ConfigSource`) — no Compose/UI — packaged as its own static framework. The Swift shell SHALL be a thin pass-through that forwards `process()` and `notifyTermination()` into the Kotlin core; all discovery, decision, ledger, and job-disposition logic SHALL be Kotlin/Native. The extension `Info.plist` SHALL declare `BackgroundUploadURLBase` as the build setting `$(BACKGROUND_UPLOAD_URL_BASE)` (the compile-time edge host the system permits), and SHALL include an App Transport Security `NSAllowsLocalNetworking` exception so a plaintext `PUT` to a private/local host (a local Deno backend on the LAN) is permitted (the public HTTPS edge endpoint is unaffected).
+The system SHALL provide an iOS app-extension target conforming to the iOS 26.1 `PHBackgroundResourceUploadExtension` protocol (an ExtensionKit `AppExtension`, declared via a `@main` Swift principal class), embedded in the host app with `NSExtensionPointIdentifier = com.apple.photos.background-upload`. The extension's logic SHALL live in a lean Kotlin Multiplatform module (`:app:ios:photokit-extension`) that depends on `:domain:engine`, `:capability:upload-url` (the real `EdgeUploadRequestProvider`), and `:capability:config` (the Keychain-backed `ConfigSource`) — no Compose/UI — packaged as its own static framework. The Swift shell SHALL be a thin pass-through that forwards `process()` and `notifyTermination()` into the Kotlin core; all discovery, decision, ledger, and job-disposition logic SHALL be Kotlin/Native. The extension `Info.plist` SHALL declare `BackgroundUploadURLBase` as the build setting `$(BACKGROUND_UPLOAD_URL_BASE)` (the compile-time edge host the system permits). The extension SHALL NOT relax App Transport Security: the `Info.plist` SHALL declare no `NSAppTransportSecurity` exception (no `NSAllowsLocalNetworking`, no `NSAllowsArbitraryLoads`), so default ATS applies and the upload host MUST be a valid HTTPS endpoint. Supplying a non-HTTPS host is a build/configuration error; iOS blocks the plaintext request at the platform level.
 
 #### Scenario: Extension declares the PhotoKit background-upload point
 - **WHEN** the extension target is built
-- **THEN** its Info.plist declares `NSExtensionPointIdentifier = com.apple.photos.background-upload`, a principal class, `BackgroundUploadURLBase = $(BACKGROUND_UPLOAD_URL_BASE)`, and `NSAllowsLocalNetworking`, and it links the `:app:ios:photokit-extension` framework
+- **THEN** its Info.plist declares `NSExtensionPointIdentifier = com.apple.photos.background-upload`, a principal class, and `BackgroundUploadURLBase = $(BACKGROUND_UPLOAD_URL_BASE)`, it links the `:app:ios:photokit-extension` framework, and it declares **no** `NSAppTransportSecurity` exception (default HTTPS-only ATS)
 
 #### Scenario: Logic is Kotlin, shell is thin
 - **WHEN** the system invokes `process()` on the Swift principal class
@@ -121,14 +120,6 @@ The extension SHALL assemble the inputs it hands to `EdgeUploadRequestProvider` 
 #### Scenario: Device id unavailable — cycle skipped cleanly
 - **WHEN** `process()` runs but the device id cannot be obtained
 - **THEN** the extension logs and returns a terminal success, creating no upload job and writing nothing
-
-### Requirement: App primes Local Network access for the upload host
-
-On launch, when a config payload is present, the host app SHALL make a throwaway connection to the compile-time upload host (`BackgroundUploadURLBase`) to surface and satisfy the iOS Local Network permission prompt before the background extension — which cannot present a prompt — runs. Against a public HTTPS endpoint this is a harmless no-op (no Local Network permission applies); against a private/local host it grants the app-wide permission the extension's uploads depend on. A failure of this throwaway connection SHALL NOT affect app startup or sync.
-
-#### Scenario: Priming touches the configured host at launch
-- **WHEN** the app launches with a config payload present
-- **THEN** it issues one fire-and-forget request to the `BackgroundUploadURLBase` host, ignoring the result, and continues startup regardless of outcome
 
 ### Requirement: Extension registration is a disable→enable toggle
 
@@ -364,3 +355,4 @@ exercised on the simulator with a fake; the `NSUserDefaults` access is untested 
 - **WHEN** a valid `snapsync://` config rescan re-provisions sync
 - **THEN** the stored device id is left unchanged, so this device keeps the same `<deviceId>` folder
   under the (possibly new) event
+

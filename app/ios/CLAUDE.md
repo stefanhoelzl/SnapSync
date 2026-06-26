@@ -77,9 +77,9 @@ constructs only reader/watcher. Never construct a `LedgerWriter` in `:app:ios`.
   deeplink); `CADisableMinimumFrameDurationOnPhone = true` is **mandatory** — Compose MP ≥1.7
   hard-aborts at launch without it. Portrait-only, iPhone-only.
 - **Extension `Info.plist`**: `EXExtensionPointIdentifier = com.apple.photos.background-upload` and
-  `BackgroundUploadURLBase` — the compile-time host the system permits uploads to (a
-  user-configurable upload host is impossible with this API; see the `real-s3-upload` change, which
-  makes it `$(BACKGROUND_UPLOAD_URL_BASE)` and adds an `NSAllowsLocalNetworking` ATS exception).
+  `BackgroundUploadURLBase = $(BACKGROUND_UPLOAD_URL_BASE)` — the compile-time host the system
+  permits uploads to (a user-configurable upload host is impossible with this API). It must be an
+  HTTPS endpoint: default ATS (HTTPS-only) applies, no `NSAllowsLocalNetworking` exception.
 
 ## iOS-version deviation
 

@@ -11,9 +11,10 @@ TEAM_ID = E9Z8BADH58
 // provision (see the ios-background-upload change, task 2.x). The simulator gate ignores signing.
 CODE_SIGN_ENTITLEMENTS = iosApp/iosApp.entitlements
 // The compile-time upload host (PhotoKit forces BackgroundUploadURLBase to be baked, not runtime).
-// Default here is the inert dummy host, so a plain *local* Xcode build uploads nowhere. CI's archive
-// step always overrides it: a plain push (incl. main → TestFlight) bakes the deployed Deno Deploy URL
-// (the device-facing host — see ios.yml / backend-deploy.yml), and a workflow_dispatch `upload_host`
-// bakes a LAN test host (e.g. http://192.168.x.y:9000) into a dev IPA instead. The `$()` splits the
-// `//` so xcconfig does not treat the rest of the line as a comment (CLI overrides need no such trick).
-BACKGROUND_UPLOAD_URL_BASE = https:/$()/dummy.invalid
+// This is the SINGLE SOURCE of the deployed device-facing host: it defaults to the deployed HTTPS
+// backend, so a plain *local* Xcode build and every plain push/TestFlight build target it (CI does
+// NOT restate the literal — it overrides only when a workflow_dispatch `upload_host` is supplied,
+// which must be HTTPS). Must be HTTPS: default ATS (HTTPS-only) applies — no NSAllowsLocalNetworking
+// exception ships. The `$()` splits the `//` so xcconfig does not treat the rest of the line as a
+// comment (CLI overrides need no such trick).
+BACKGROUND_UPLOAD_URL_BASE = https:/$()/snapsync.stefanhoelzl.deno.net
