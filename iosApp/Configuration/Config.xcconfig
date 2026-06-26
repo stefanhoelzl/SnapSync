@@ -11,8 +11,9 @@ TEAM_ID = E9Z8BADH58
 // provision (see the ios-background-upload change, task 2.x). The simulator gate ignores signing.
 CODE_SIGN_ENTITLEMENTS = iosApp/iosApp.entitlements
 // The compile-time upload host (PhotoKit forces BackgroundUploadURLBase to be baked, not runtime).
-// Default is the inert dummy host: a plain push (incl. main → TestFlight) ships this and uploads
-// nowhere. CI's archive step overrides it from the workflow_dispatch `upload_host` input to bake a
-// local test host (e.g. http://192.168.x.y:9000) into a dev IPA. The `$()` splits the `//` so
-// xcconfig does not treat the rest of the line as a comment (CLI overrides need no such trick).
+// Default here is the inert dummy host, so a plain *local* Xcode build uploads nowhere. CI's archive
+// step always overrides it: a plain push (incl. main → TestFlight) bakes the deployed Deno Deploy URL
+// (the device-facing host — see ios.yml / backend-deploy.yml), and a workflow_dispatch `upload_host`
+// bakes a LAN test host (e.g. http://192.168.x.y:9000) into a dev IPA instead. The `$()` splits the
+// `//` so xcconfig does not treat the rest of the line as a comment (CLI overrides need no such trick).
 BACKGROUND_UPLOAD_URL_BASE = https:/$()/dummy.invalid
