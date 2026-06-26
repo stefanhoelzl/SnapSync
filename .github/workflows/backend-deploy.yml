@@ -1,8 +1,10 @@
 name: backend-deploy
 
-# Deploys the backend/ upload endpoint to bunny Edge Scripting.
-# Path-scoped to the backend sources, isolated from the Gradle/iOS workflows, and gated on green
-# Deno fmt/lint/check/test. Capability: backend-deployment.
+# Deploys the backend/ upload endpoint to BOTH bunny Edge Scripting and Deno Deploy. Deno Deploy is
+# the device-facing host while bunny.net investigates dropping iOS's zero-window upload SYNs (the
+# single main.ts serves both runtimes — bunny via the SDK, Deno Deploy via Deno.serve). Path-scoped
+# to the backend sources, isolated from the Gradle/iOS workflows, and gated on green Deno
+# fmt/lint/check/test. Capability: backend-deployment.
 
 on:
   push:
@@ -54,3 +56,15 @@ jobs:
           script_id: ${{ secrets.BUNNY_SCRIPT_ID }}
           deploy_key: ${{ secrets.BUNNY_DEPLOY_KEY }}
           file: backend/dist/main.js
+
+      # Deno Deploy (the active iOS-facing host for now). The app's entrypoint (src/main.ts) and env
+      # (BUNNY_STORAGE_*) are configured server-side; `deno deploy` uses the stored build config and
+      # the --org/--app to target the app. It persists a `deploy:` block into deno.json on the
+      # ephemeral runner (never committed). Requires the DENO_DEPLOY_TOKEN secret (the `ddo_` org
+      # token). Revert path: when bunny fixes the SYN drop, drop this step + repoint the iOS host.
+      - name: Deploy to Deno Deploy
+        if: github.ref == 'refs/heads/main'
+        working-directory: backend
+        env:
+          DENO_DEPLOY_TOKEN: ${{ secrets.DENO_DEPLOY_TOKEN }}
+        run: deno deploy --org stefanhoelzl --app snapsync --prod
