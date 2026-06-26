@@ -76,9 +76,16 @@ forwards it through the same path as a scanned QR, re-provisioning the event. It
 process** — relaunch with it set to re-trigger a fresh whole-library upload — and is inert in
 production (a launch env var is only injectable via a developer launch).
 
+**Restarting the app (black-screen trap).** `dvt launch --kill-existing` — and `dvt kill`/`pkill` —
+only send **SIGTERM**, which SnapSync ignores; a relaunch then layers a new instance on the
+still-alive old one and the app sticks on a **black launch screen** (status bar visible, content
+black). To truly restart: `dvt signal <pid> 9` (SIGKILL) **then** `dvt launch` (verified recovery).
+Take the screenshot promptly after a single launch; avoid rapid relaunch cycles.
+
 **The headless per-build loop:** CI builds the dev IPA → `apps install` → `dvt launch --env
-SNAPSYNC_DEEPLINK=…` → the OS invokes the upload extension on its own cadence → confirm via the
-MinIO object stream (the `real-s3-upload` loop below) + `dvt screenshot`. **Still gated:** taps / UI
+SNAPSYNC_DEEPLINK=…` → the OS invokes the upload extension on its own cadence → confirm the objects
+landed in the backend's bunny storage zone (see *Verify real uploads* below; the `dvt screenshot`
+status counts are informational, not the authoritative landing check). **Still gated:** taps / UI
 gestures need a signed **WebDriverAgent** (`developer wda`), and `processJobs()` **timing** is
 OS-owned — a re-provision reliably triggers an invocation but you cannot force *when* it runs.
 
