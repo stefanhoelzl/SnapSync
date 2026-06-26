@@ -24,6 +24,10 @@ fun MainViewController() = ComposeUIViewController {
     val host = SnapSyncRoot.host
     val state by host.container.stateFlow.collectAsState()
 
+    // Dev/test: apply a `SNAPSYNC_DEEPLINK` launch-env deeplink once per process (no-op in
+    // production, where no such env var exists). Runs after `host` is realized; safe to repeat.
+    LaunchedEffect(Unit) { SnapSyncRoot.applyLaunchEnvDeeplink() }
+
     var transientError by remember { mutableStateOf<String?>(null) }
     LaunchedEffect(host) {
         host.container.sideEffectFlow.collect { effect ->

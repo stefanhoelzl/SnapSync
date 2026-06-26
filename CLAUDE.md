@@ -36,21 +36,51 @@ is test equipment, never `App*`). The panel **forges any display state** — per
 sync-state presets, and the engine console — so you can review and test all UI states without a
 device. See `docs/design.md §5.1`.
 
-## On-device iOS (manual testing)
+## On-device iOS (agent-driveable over USB)
 
-The iOS upload extension is **physical-device-only** on the iOS 27 beta (`docs/design.md §6`), so
-on-device testing is manual. Reach a connected iPhone through the host's usbmuxd — **this is
-specific to the codehydra sandbox** (the host socket is bridged at `/run/host/run/usbmuxd`):
+The iOS upload extension is **physical-device-only** on the iOS 27 beta (`docs/design.md §6`), and
+its *upload trigger* (`processJobs()`) is OS-scheduled — it cannot be forced. But everything around
+it — install, **launch**, **screenshot**, event-subscribe, logs — is **scriptable headless over
+USB, no root and no Mac**. Reach a connected iPhone through the host's usbmuxd — **this is specific
+to the codehydra sandbox** (the host socket is bridged at `/run/host/run/usbmuxd`).
+
+Lockdown-level tools (no developer tunnel needed):
 
 ```
 export USBMUXD_SOCKET_ADDRESS=UNIX:/run/host/run/usbmuxd
-idevice_id -l        # list connected devices
-ideviceinfo          # device details (UDID, model, iOS version)
-idevicesyslog        # live device log — watch the app/extension at runtime
-idevicescreenshot    # capture the screen
-idevicedebug         # launch/debug an installed app
-idevicecrashreport   # pull crash reports
+idevice_id -l          # list connected devices
+ideviceinfo            # device details (UDID, model, iOS version)
+idevicesyslog          # live device log — watch the app/extension at runtime
+idevicecrashreport .   # pull crash reports
 ```
+
+**Developer services — the `--userspace` unlock.** Launch, screenshot, and the rest of the DVT
+surface need iOS 17+'s RemoteXPC tunnel + a mounted DeveloperDiskImage, which normally want root
+and **hang over the usbmux bridge** (`idevicescreenshot`/`idevicedebug` fail here for this reason).
+`pymobiledevice3 --userspace` builds the tunnel **in-process — no root** — and auto-mounts the DDI;
+it needs **Python ≥3.14**, so pin it via `uvx --python 3.14`. Use the **bare** socket path (no
+`UNIX:` prefix). Verified on the SE2 (iOS 26.5):
+
+```
+export USBMUXD_SOCKET_ADDRESS=/run/host/run/usbmuxd
+P="uvx --python 3.14 pymobiledevice3"
+$P developer dvt launch app.snapsync --userspace                 # launch (prints the pid)
+$P developer dvt screenshot shot.png --userspace                 # real screen capture (auto-mounts the DDI)
+$P developer dvt launch app.snapsync \                           # subscribe to an event headlessly:
+  --env SNAPSYNC_DEEPLINK="snapsync://config?v=3&d=<base64url({\"eventId\":\"<uuid>\"})>" --userspace
+uvx pymobiledevice3 apps pull app.snapsync Documents/debug.log   # pull the file logger (re-provision line, etc.)
+```
+
+`SNAPSYNC_DEEPLINK` is a **dev/test trigger** (capability `ios-app-shell`): on launch the app
+forwards it through the same path as a scanned QR, re-provisioning the event. It is read **once per
+process** — relaunch with it set to re-trigger a fresh whole-library upload — and is inert in
+production (a launch env var is only injectable via a developer launch).
+
+**The headless per-build loop:** CI builds the dev IPA → `apps install` → `dvt launch --env
+SNAPSYNC_DEEPLINK=…` → the OS invokes the upload extension on its own cadence → confirm via the
+MinIO object stream (the `real-s3-upload` loop below) + `dvt screenshot`. **Still gated:** taps / UI
+gestures need a signed **WebDriverAgent** (`developer wda`), and `processJobs()` **timing** is
+OS-owned — a re-provision reliably triggers an invocation but you cannot force *when* it runs.
 
 ### Sideload a dev IPA (skip TestFlight)
 
@@ -73,8 +103,8 @@ export USBMUXD_SOCKET_ADDRESS=/run/host/run/usbmuxd
 gh run download <run-id> -n snapsync-dev-ipa-<run_number> -D /tmp/ipa   # the run's build number
 uvx pymobiledevice3 apps install /tmp/ipa/SnapSync.ipa
 ```
-(Install goes over `installation_proxy`/lockdownd — no CoreDevice developer tunnel needed; only
-launching *under a debugger* or screenshots/DDI would.)
+(Install goes over `installation_proxy`/lockdownd — no developer tunnel needed. Launch, screenshot,
+and other DVT services do need the tunnel + DDI, reached headless via `--userspace` above.)
 
 ### Verify real uploads
 
