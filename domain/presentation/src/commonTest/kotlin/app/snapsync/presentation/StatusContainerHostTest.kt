@@ -114,7 +114,7 @@ class StatusContainerHostTest {
         host(source, backgroundScope, clock).test(this) {
             runOnCreate()
             source.value = snapshot(pending = 35, completed = 12, total = 47, lastFinishedAt = clock.now() - 5.minutes)
-            expectState(UiState.InProgress(synced = 12, total = 47, finishedAgo = "5 min ago"))
+            expectState(UiState.InProgress(synced = 12, total = 47, inProgress = 35, finishedAgo = "5 min ago"))
             cancelAndIgnoreRemainingItems()
         }
     }
@@ -125,7 +125,7 @@ class StatusContainerHostTest {
         host(source, backgroundScope).test(this) {
             runOnCreate()
             source.value = snapshot(completed = 0, total = 5)
-            expectState(UiState.InProgress(synced = 0, total = 5, finishedAgo = null))
+            expectState(UiState.InProgress(synced = 0, total = 5, inProgress = 0, finishedAgo = null))
             cancelAndIgnoreRemainingItems()
         }
     }
@@ -137,10 +137,10 @@ class StatusContainerHostTest {
         host(source, backgroundScope, clock).test(this) {
             runOnCreate()
             source.value = snapshot(completed = 1, total = 5, lastFinishedAt = clock.now())
-            expectState(UiState.InProgress(synced = 1, total = 5, finishedAgo = "just now"))
+            expectState(UiState.InProgress(synced = 1, total = 5, inProgress = 0, finishedAgo = "just now"))
             clock.advance(61.seconds)
             advanceTimeBy(61.seconds)
-            expectState(UiState.InProgress(synced = 1, total = 5, finishedAgo = "1 min ago"))
+            expectState(UiState.InProgress(synced = 1, total = 5, inProgress = 0, finishedAgo = "1 min ago"))
             cancelAndIgnoreRemainingItems()
         }
     }
@@ -204,9 +204,9 @@ class StatusContainerHostTest {
         host(source, backgroundScope).test(this) {
             runOnCreate()
             source.value = snapshot(completed = 1, total = 10)
-            expectState(UiState.InProgress(synced = 1, total = 10, finishedAgo = null))
+            expectState(UiState.InProgress(synced = 1, total = 10, inProgress = 0, finishedAgo = null))
             source.value = snapshot(completed = 5, total = 10)
-            expectState(UiState.InProgress(synced = 5, total = 10, finishedAgo = null))
+            expectState(UiState.InProgress(synced = 5, total = 10, inProgress = 0, finishedAgo = null))
             cancelAndIgnoreRemainingItems()
         }
     }

@@ -1,12 +1,5 @@
-# sync status screen Specification
+## MODIFIED Requirements
 
-## Purpose
-
-The shared status screen that observes sync status snapshots and shows the user, truthfully,
-what state their backup is in: in progress ("n of N images synced"), complete ("N images synced"),
-or nothing to sync. The snapshot contract and its classification are owned by the `sync-status`
-capability; this screen reduces and renders.
-## Requirements
 ### Requirement: Sync status snapshots reduce to UI state
 
 The presentation layer SHALL reduce each observed `SyncStatus` to a display-ready `UiState`.
@@ -114,16 +107,3 @@ only when a completion exists (`finishedAgo` non-null). The screen renders:
 
 The screen is composed under the rules of the `design-system` capability (semantic components
 only; Material 3 containment; `ScreenLayout` owns screen structure).
-
-### Requirement: Presentation formats and ticks relative time
-
-The presentation layer SHALL format `lastFinishedAt` into coarse relative-time text (e.g. "just now", "5 min ago", "2 h ago") using an injected `Clock`, and SHALL re-emit the UI state periodically (~once per minute) only when the visible text would change. The UI layer MUST NOT perform time formatting or own a clock.
-
-#### Scenario: Relative time ages on screen
-- **WHEN** the displayed state is Complete with "just now" and 5 minutes pass with no new snapshot
-- **THEN** the displayed detail becomes "5 min ago" without any snapshot being observed
-
-#### Scenario: Tests control time
-- **WHEN** presentation tests advance the injected clock
-- **THEN** the emitted relative-time text changes deterministically
-
