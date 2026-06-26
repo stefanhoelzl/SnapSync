@@ -11,12 +11,12 @@
 
 ## 3. On-device verification (gate ①+②)
 
-- [ ] 3.1 Push the branch; download the CI dev IPA artifact (`snapsync-dev-ipa-<run_number>`) and sideload it (`uvx pymobiledevice3 apps install`)
-- [ ] 3.2 Launch with a valid event deeplink: `uvx --python 3.14 pymobiledevice3 developer dvt launch app.snapsync --env SNAPSYNC_DEEPLINK="snapsync://config?v=3&d=<base64url({\"eventId\":\"<canonical-uuid>\"})>" --userspace`
-- [ ] 3.3 ① Pull `Documents/debug.log` (`uvx pymobiledevice3 apps pull app.snapsync Documents/debug.log`) and confirm the `"re-provisioned: ledger + discovery cursor reset, extension re-registered"` line
-- [ ] 3.4 ② Screenshot (`uvx --python 3.14 pymobiledevice3 developer dvt screenshot … --userspace`) and confirm the status screen reflects the ledger reset
-- [ ] 3.5 Relaunch in a fresh process with the variable still set and confirm it re-provisions (a second re-provision log line) — the per-build re-trigger
-- [ ] 3.6 Launch once with no `SNAPSYNC_DEEPLINK` set and confirm no re-provision occurs (inert path)
+- [x] 3.1 Push the branch; download the CI dev IPA artifact (`snapsync-dev-ipa-131`) and sideload it (`uvx pymobiledevice3 apps install`) — install succeeded
+- [x] 3.2 Launch with a valid event deeplink (`dvt launch … --env SNAPSYNC_DEEPLINK="snapsync://config?v=3&d=eyJ…" --userspace`) — pid 2813
+- [x] 3.3 ① Pulled `Documents/debug.log` — confirmed `"applying SNAPSYNC_DEEPLINK launch-env deeplink"` + `"re-provisioned: ledger + discovery cursor reset, extension re-registered"` (delta +1/+1 over baseline)
+- [x] 3.4 ② Screenshot — status flipped from "3 images synced" (green) to "0 of 3 images synced · 3 in progress" (amber): ledger reset confirmed
+- [x] 3.5 Relaunched with the variable still set — second `applying`/`re-provisioned` pair (delta +2/+2): per-build re-trigger confirmed
+- [x] 3.6 Launched once with no `SNAPSYNC_DEEPLINK` — markers unchanged at 2/2: inert path confirmed
 
 ## 4. Documentation (root `CLAUDE.md`)
 

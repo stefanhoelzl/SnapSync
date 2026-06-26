@@ -70,9 +70,9 @@ explicitly.
 `SnapSyncRoot.resetForReprovision()` logs `"re-provisioned: ledger + discovery cursor reset,
 extension re-registered"` to `Documents/debug.log`, pulled via
 `pymobiledevice3 apps pull app.snapsync Documents/debug.log`. The merge gate is ① that log line +
-② a screenshot showing the ledger reset. End-to-end object-landing-in-MinIO is a separate concern
-(the existing `real-s3-upload` loop) that tests the upload pipeline and depends on OS trigger
-latency — deliberately excluded from this change's gate.
+② a screenshot showing the ledger reset. End-to-end upload verification (objects landing in the edge
+storage, reflected on the status screen as `N images synced`) is a separate concern that tests the
+upload pipeline and depends on OS trigger latency — deliberately excluded from this change's gate.
 
 ## Risks / Trade-offs
 
