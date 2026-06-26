@@ -34,7 +34,11 @@
 
 ## 6. Desktop harness (`:app:desktop`)
 
-- [x] 6.1 Update `Main.kt` to construct `StatusContainerHost` with the no-op `ObservedCompletionsSource` and an always-true foreground flow (`flowOf(true)`), so the harness still compiles and every forged UI state renders as before.
+- [x] 6.1 Update `Main.kt` to construct `StatusContainerHost` with the no-op `ObservedCompletionsSource` and an always-true foreground flow (`flowOf(true)`), so the harness still compiles and every forged UI state renders as before. (Satisfied by trailing-default constructor params — no edit needed.)
+
+## 6b. In-progress caption (`:domain:ui`, `sync-status-screen`)
+
+- [x] 6b.1 `StatusScreen` omits the `"{inProgress} in progress"` label when `inProgress == 0` (show only the last-sync age, or no detail line); add a UI test for the 0-in-progress case.
 
 ## 7. Verify
 

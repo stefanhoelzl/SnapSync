@@ -51,6 +51,9 @@ can surface live progress between the extension's coarse runs without changing w
   `cycle.run()`.
 - `ios-app-shell`: the SwiftUI scene's foreground transition feeds an injected foreground signal into
   the status stack (replacing the spike).
+- `sync-status-screen`: the in-progress caption omits the `"{inProgress} in progress"` label when
+  nothing is actively uploading (`inProgress == 0`) — the overlay makes a zero in-progress count a
+  common, noisy state.
 
 ## Impact
 
