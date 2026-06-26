@@ -518,10 +518,18 @@ bytes). The proxy sidesteps signing entirely: the endpoint, not the device, writ
   `storage.bunnycdn.com`. Known limits we design around: **no custom metadata headers** (§3.1), no
   versioning/ACL/SSE/tagging/lifecycle, no batch delete.
 - **Upload endpoint (external, bunny.net Edge Scripting / Deno + Hono — implemented in `backend/`):** the app's
-  only backend dependency. Capability specs: `bunny-upload-endpoint`, `backend-deployment`.
+  only backend dependency. Capability specs: `bunny-upload-endpoint`, `bunny-list-endpoint`, `backend-deployment`.
   - **Request:** `PUT /event/<eventId>/device/<deviceId>/file/<filename>` with the resource bytes as
     the body and `Content-Type`. The endpoint **streams** the body straight into the bunny native PUT
     (one subrequest, never buffered).
+  - **Read (list):** `GET /event/<eventId>/files` returns a flat JSON array of every stored object
+    for the event, across all devices — `{ filename, deviceId, size, lastModified }` per entry. It
+    walks bunny native Storage LIST per-directory (event dir → each device dir), authorized by the
+    event id alone. `200 []` for an empty/unknown event (no registry to distinguish), `400` for a
+    malformed id, `502` on any upstream LIST failure (never a partial list). Motivating consumer
+    (separate change): a re-joined device pre-seeding its ledger — `deviceId` rotates on reinstall,
+    so it reconciles across all devices by the reinstall-stable `filename`. Capability:
+    `bunny-list-endpoint`.
   - **Response:** `2xx` **only** when bunny confirms the stored object; any upstream error/abort →
     `5xx` (so the engine retries). Never a false success.
   - **Authorization: by event id only** (no token — the QR carries no secret beyond the id). The event
