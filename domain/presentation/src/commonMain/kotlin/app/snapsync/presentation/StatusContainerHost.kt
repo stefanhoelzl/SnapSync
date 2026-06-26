@@ -8,6 +8,8 @@ import app.snapsync.config.decodeConfigUrl
 import app.snapsync.permission.PermissionRequester
 import app.snapsync.permission.PermissionStatus
 import app.snapsync.permission.PermissionStatusSource
+import app.snapsync.status.ObservedCompletionsSource
+import app.snapsync.status.NoObservedCompletions
 import app.snapsync.status.SyncStatus
 import app.snapsync.status.SyncState
 import app.snapsync.status.SyncProgress
@@ -17,16 +19,23 @@ import kotlin.time.Duration
 import kotlin.time.Duration.Companion.days
 import kotlin.time.Duration.Companion.hours
 import kotlin.time.Duration.Companion.minutes
+import kotlin.time.Duration.Companion.seconds
 import kotlin.time.Instant
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.emptyFlow
+import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.flow.flowOf
 import org.orbitmvi.orbit.Container
 import org.orbitmvi.orbit.ContainerHost
 import org.orbitmvi.orbit.container
 
+@OptIn(ExperimentalCoroutinesApi::class)
 class StatusContainerHost(
     syncSource: SyncStatusSource,
     permissionSource: PermissionStatusSource,
@@ -35,6 +44,12 @@ class StatusContainerHost(
     private val store: ConfigStore,
     scope: CoroutineScope,
     private val clock: Clock = Clock.System,
+    // The observed-completions overlay refresh and the platform foreground signal. Defaults make the
+    // overlay inert (no-op source, always-foreground) so non-iOS hosts and tests construct unchanged;
+    // iOS injects the real PhotoKit-backed source and a scenePhase-driven foreground signal.
+    observed: ObservedCompletionsSource = NoObservedCompletions,
+    foreground: Flow<Boolean> = flowOf(true),
+    pollInterval: Duration = 10.seconds,
 ) : ContainerHost<UiState, SetupEffect> {
 
     override val container: Container<UiState, SetupEffect> =
@@ -64,6 +79,19 @@ class StatusContainerHost(
                         reduce { reduceFrom(config, permission, snapshot, clock.now()) }
                     }
             }
+            intent {
+                // Keep progress live while the screen is shown: refresh the observed-completions
+                // overlay whenever the app is foreground AND work is still pending, on a bounded
+                // interval (job success has no notification — polling is the only way to observe it
+                // between the extension's coarse runs). Refreshing stops the moment pending hits zero
+                // (the projection drained) or foreground is lost, and resumes immediately on return.
+                combine(foreground, syncSource.status) { fg, snapshot ->
+                    fg && snapshot is SyncStatus.Ready && snapshot.progress.pending > 0
+                }
+                    .distinctUntilChanged()
+                    .flatMapLatest { active -> if (active) pollTicks(pollInterval) else emptyFlow() }
+                    .collect { observed.refresh() }
+            }
         }
 
     fun onRequestPermission() = intent { requester.request() }
@@ -87,6 +115,15 @@ private fun minuteTicker(): Flow<Unit> = flow {
     while (true) {
         emit(Unit)
         delay(1.minutes)
+    }
+}
+
+// Emits immediately (refresh on activation) then every [interval] until the collector is cancelled
+// (which flatMapLatest does the moment foreground/pending goes false).
+private fun pollTicks(interval: Duration): Flow<Unit> = flow {
+    while (true) {
+        emit(Unit)
+        delay(interval)
     }
 }
 

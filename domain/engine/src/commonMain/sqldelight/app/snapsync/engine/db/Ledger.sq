@@ -35,6 +35,13 @@ WHERE assetId = :assetId;
 selectAllAssetIds:
 SELECT DISTINCT assetId FROM ledgerRow;
 
+-- The non-COMPLETED rows (the backlog) as (assetId, key) pairs. The status overlay groups these by
+-- photo in Kotlin to intersect outstanding resources with observed completions, without
+-- materializing the (large, static) completed set. Shrinks as sync drains.
+selectPending:
+SELECT assetId, key FROM ledgerRow
+WHERE state != 'COMPLETED';
+
 -- Aggregates counted by PHOTO (assetId), not resource row: collapse rows to assets first, then
 -- count. A photo is complete only when none of its rows is non-COMPLETED.
 aggregates:

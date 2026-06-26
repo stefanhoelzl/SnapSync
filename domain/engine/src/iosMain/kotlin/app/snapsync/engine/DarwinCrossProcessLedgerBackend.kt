@@ -18,12 +18,19 @@ import platform.posix.int32_tVar
  * The cross-process face of the iOS ledger. SQLite shares the rows between the app and extension
  * processes, but the [SqlDelightLedgerBackend.changes] ding is in-process only — a `put` by the
  * extension never wakes a watcher in the app. This decorator closes that gap with a Darwin
- * notification (`notify(3)`, the iOS cross-process signal): every [put] posts it, and [changes]
- * merges an observer of it with the delegate's own in-process dings.
+ * notification (`notify(3)`, the iOS cross-process signal): [changes] merges an observer of it with
+ * the delegate's own in-process dings.
  *
- * The ding is a pure level trigger (no payload) exactly like the seam promises, so the
- * self-delivered echo a writer receives for its own post is harmless (the watcher just re-reads).
- * The observer is registered for process lifetime and never removed (v1 has no teardown).
+ * The cross-process notification is **coalesced to once per writer work cycle**, not posted per
+ * write: the extension calls [postLedgerChangedNotification] once after its `process()` cycle (see
+ * `UploadExtensionRoot`). Per-`put` posting would make the app re-read the (now heavier) snapshot for
+ * every row; one ding per cycle bounds it to one re-read for the whole batch. The app's own writes
+ * (a re-provision `clear`) need no cross-process post — the extension reads fresh each cycle, and the
+ * app's own watcher is woken by the in-process delegate ding.
+ *
+ * The ding is a pure level trigger (no payload) exactly like the seam promises, so a missed or
+ * self-delivered notification is harmless (the watcher just re-reads on its next trigger). The
+ * observer is registered for process lifetime and never removed (v1 has no teardown).
  */
 @OptIn(ExperimentalForeignApi::class)
 class DarwinCrossProcessLedgerBackend(
@@ -51,28 +58,33 @@ class DarwinCrossProcessLedgerBackend(
 
     override suspend fun aggregates(): LedgerAggregates = delegate.aggregates()
 
-    override suspend fun put(entry: LedgerEntry) {
-        delegate.put(entry)
-        notify_post(notificationName)
-    }
+    override suspend fun pendingResources(): List<PendingResource> = delegate.pendingResources()
 
-    override suspend fun clear() {
-        delegate.clear()
-        notify_post(notificationName)
-    }
+    // Writes delegate straight through; they no longer post the cross-process notification. The
+    // writer process posts it once per cycle via postLedgerChangedNotification(); in-process watchers
+    // are still woken by the delegate's own per-put ding (merged into `changes`).
+    override suspend fun put(entry: LedgerEntry) = delegate.put(entry)
 
-    override suspend fun deleteByAssetId(assetId: String) {
-        delegate.deleteByAssetId(assetId)
-        notify_post(notificationName)
-    }
+    override suspend fun clear() = delegate.clear()
 
-    override suspend fun retainAssets(keep: Set<String>) {
-        delegate.retainAssets(keep)
-        notify_post(notificationName)
-    }
+    override suspend fun deleteByAssetId(assetId: String) = delegate.deleteByAssetId(assetId)
+
+    override suspend fun retainAssets(keep: Set<String>) = delegate.retainAssets(keep)
 
     companion object {
         /** The Darwin notify name both processes agree on for "the ledger changed". */
         const val LEDGER_CHANGED_NOTIFICATION: String = "group.app.snapsync.ledger.changed"
     }
+}
+
+/**
+ * Post the cross-process "ledger changed" Darwin notification once. The extension calls this after
+ * its `process()` cycle so the app re-reads the ledger once for the whole batch the cycle wrote
+ * (the per-`put` post was removed — see [DarwinCrossProcessLedgerBackend]).
+ */
+@OptIn(ExperimentalForeignApi::class)
+fun postLedgerChangedNotification(
+    notificationName: String = DarwinCrossProcessLedgerBackend.LEDGER_CHANGED_NOTIFICATION,
+) {
+    notify_post(notificationName)
 }

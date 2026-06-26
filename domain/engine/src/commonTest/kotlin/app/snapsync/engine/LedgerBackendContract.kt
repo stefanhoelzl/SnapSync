@@ -105,6 +105,28 @@ abstract class LedgerBackendContract {
     }
 
     @Test
+    fun `pendingResources returns only non-COMPLETED rows paired with their asset`() = runTest {
+        val backend = createBackend()
+        backend.put(entry(key = "A-photo.jpg", assetId = "A", state = LedgerState.COMPLETED))
+        backend.put(entry(key = "A-video.mov", assetId = "A", state = LedgerState.COMPLETED))
+        backend.put(entry(key = "B-photo.jpg", assetId = "B", state = LedgerState.REQUESTED))
+        backend.put(entry(key = "B-edit.jpg", assetId = "B", state = LedgerState.FAILED))
+
+        assertEquals(
+            setOf(PendingResource("B", "B-photo.jpg"), PendingResource("B", "B-edit.jpg")),
+            backend.pendingResources().toSet(),
+        )
+    }
+
+    @Test
+    fun `pendingResources is empty when every row is complete`() = runTest {
+        val backend = createBackend()
+        backend.put(entry(key = "A-photo.jpg", assetId = "A", state = LedgerState.COMPLETED))
+
+        assertEquals(emptyList(), backend.pendingResources())
+    }
+
+    @Test
     fun `put dings an active changes collector`() = runTest {
         val backend = createBackend()
         var dings = 0

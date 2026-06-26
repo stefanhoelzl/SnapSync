@@ -6,6 +6,7 @@ import app.snapsync.engine.LedgerEntry
 import app.snapsync.engine.LedgerState
 import app.snapsync.engine.LedgerWatcher
 import app.snapsync.engine.LedgerWriter
+import app.snapsync.engine.PendingResource
 import app.snapsync.gallery.InMemoryGalleryStatusSource
 import app.snapsync.permission.PermissionStatus
 import app.snapsync.permission.PermissionStatusSource
@@ -33,6 +34,7 @@ class LedgerSyncStatusSourceTest {
     private val watcher = LedgerWatcher(backend)
     private val permission = FakePermissionSource(PermissionStatus.GRANTED)
     private val gallery = InMemoryGalleryStatusSource(initial = 0)
+    private val observed = FakeObservedCompletions()
 
     private fun snapshot(
         pending: Int = 0,
@@ -51,7 +53,7 @@ class LedgerSyncStatusSourceTest {
     ) = SyncStatus.Ready(snapshot(pending, completed, total, active, lastFinishedAt))
 
     private fun source(testScheduler: kotlinx.coroutines.test.TestCoroutineScheduler, scope: kotlinx.coroutines.CoroutineScope) =
-        LedgerSyncStatusSource(watcher, permission, gallery, scope, StandardTestDispatcher(testScheduler))
+        LedgerSyncStatusSource(watcher, permission, gallery, observed, scope, StandardTestDispatcher(testScheduler))
 
     @Test
     fun `initial value is Loading before the first read`() = runTest {
@@ -117,6 +119,41 @@ class LedgerSyncStatusSourceTest {
     }
 
     @Test
+    fun `an observed completion promotes a pending photo before any ledger write`() = runTest {
+        writer.recordRequested("P-photo.jpg", assetId = "P", attempt = 0, version = "v1")
+        writer.recordRequested("P-video.mov", assetId = "P", attempt = 0, version = "v1")
+        gallery.set(1)
+        val source = source(testScheduler, backgroundScope)
+        runCurrent()
+        assertEquals(ready(pending = 1, completed = 0, total = 1), source.status.value)
+
+        // All of P's outstanding resources are observed succeeded — P promotes, with no ledger write
+        // and no fabricated timestamp.
+        observed.state.value = setOf("P-photo.jpg", "P-video.mov")
+        runCurrent()
+
+        assertEquals(ready(pending = 0, completed = 1, total = 1, lastFinishedAt = null), source.status.value)
+    }
+
+    @Test
+    fun `a released observed key does not revert its photo while still outstanding`() = runTest {
+        writer.recordRequested("P-photo.jpg", assetId = "P", attempt = 0, version = "v1")
+        gallery.set(1)
+        val source = source(testScheduler, backgroundScope)
+        runCurrent()
+        observed.state.value = setOf("P-photo.jpg")
+        runCurrent()
+        assertEquals(ready(pending = 0, completed = 1, total = 1), source.status.value)
+
+        // The platform releases the key (e.g. acknowledged) but the ledger ding has not yet recorded
+        // it — sticky retention keeps P complete rather than blinking it back to pending.
+        observed.state.value = emptySet()
+        runCurrent()
+
+        assertEquals(ready(pending = 0, completed = 1, total = 1), source.status.value)
+    }
+
+    @Test
     fun `the source never estimates and never gives up`() = runTest {
         writer.recordFailed("a", assetId = "a", attempt = 3, version = "v1")
         gallery.set(1)
@@ -175,9 +212,18 @@ private class RowStore : LedgerBackend {
             newestCompletionAt = complete.flatten().maxOfOrNull { it.updatedAt },
         )
     }
+
+    override suspend fun pendingResources(): List<PendingResource> =
+        rows.values.filter { it.state != LedgerState.COMPLETED }.map { PendingResource(it.assetId, it.key) }
 }
 
 private class FakePermissionSource(initial: PermissionStatus) : PermissionStatusSource {
     val state = MutableStateFlow(initial)
     override val permission: StateFlow<PermissionStatus> = state
+}
+
+private class FakeObservedCompletions : ObservedCompletionsSource {
+    val state = MutableStateFlow<Set<String>>(emptySet())
+    override val keys: StateFlow<Set<String>> = state
+    override suspend fun refresh() = Unit
 }

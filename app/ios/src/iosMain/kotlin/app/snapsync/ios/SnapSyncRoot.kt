@@ -19,19 +19,12 @@ import kotlinx.cinterop.cValue
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.launch
 import platform.Foundation.NSOperatingSystemVersion
 import platform.Foundation.NSProcessInfo
 import platform.Foundation.NSUserDefaults
-import platform.Photos.PHAssetResourceUploadJob
-import platform.Photos.PHAssetResourceUploadJobAction
-import platform.Photos.PHAssetResourceUploadJobActionAcknowledge
-import platform.Photos.PHAssetResourceUploadJobActionRetry
-import platform.Photos.PHAssetResourceUploadJobStateCancelled
-import platform.Photos.PHAssetResourceUploadJobStateFailed
-import platform.Photos.PHAssetResourceUploadJobStateRegistered
-import platform.Photos.PHAssetResourceUploadJobStateSucceeded
 import platform.Photos.PHPhotoLibrary
 
 /**
@@ -64,14 +57,35 @@ object SnapSyncRoot {
     // The live photo-library count (N), held so a re-provision can ding it to re-read.
     private val gallery: PhotoLibraryGalleryStatus by lazy { PhotoLibraryGalleryStatus() }
 
+    // The platform foreground signal driving the observed-completions poll. Seeded false; the Swift
+    // scene flips it via onForeground()/onBackground() on its scene-phase transitions.
+    private val foreground = MutableStateFlow(false)
+
     val host: StatusContainerHost by lazy {
         val watcher = LedgerWatcher(ledgerBackend)
         val permission = PhotoLibraryPermission()
         val config = KeychainConfigStore()
-        val syncSource = LedgerSyncStatusSource(watcher, permission, gallery, scope)
+        // The read-only PhotoKit upload-job reader: succeeded-but-unacknowledged jobs the ledger does
+        // not yet know about. The overlay in the status source projects them onto live progress.
+        val observed = IosObservedCompletionsSource(log) { backgroundUploadSupported() }
+        val syncSource = LedgerSyncStatusSource(watcher, permission, gallery, observed, scope)
         enableBackgroundUploadOnGrant(permission)
         // `config` is passed as both ports (one Keychain adapter implements both), as `permission` is.
-        StatusContainerHost(syncSource, permission, permission, config, config, scope)
+        StatusContainerHost(syncSource, permission, permission, config, config, scope, observed = observed, foreground = foreground)
+    }
+
+    /**
+     * The SwiftUI scene's foreground transitions (forwarded from the `@main` scene's scenePhase).
+     * They gate the observed-completions poll: foreground + pending work → refresh on an interval.
+     * Touching [host] ensures the stack is assembled before the first transition arrives.
+     */
+    fun onForeground() {
+        host
+        foreground.value = true
+    }
+
+    fun onBackground() {
+        foreground.value = false
     }
 
     /**
@@ -167,54 +181,6 @@ object SnapSyncRoot {
         val disabled = lib.setUploadJobExtensionEnabled(false, error = null)
         val enabled = lib.setUploadJobExtensionEnabled(true, error = null)
         log.i { "background-upload extension re-registered: disabled=$disabled enabled=$enabled" }
-    }
-
-    /**
-     * SPIKE — remove once the question is answered. Can the **main app process** (not just the
-     * background-upload extension) enumerate the system's upload jobs via
-     * `PHAssetResourceUploadJob.fetchJobsWithAction`? Called on every foreground (from the Swift
-     * scene's `.active` transition).
-     *
-     * Strictly **read-only**: it fetches and logs counts + a state breakdown, and NEVER
-     * acknowledges, retries, or otherwise mutates a job. So it cannot consume jobs the extension
-     * still needs to acknowledge — the extension stays the single ledger writer. The route is
-     * viable iff (a) this logs non-zero counts while uploads are in flight, and (b) the extension
-     * keeps seeing/acking the same jobs afterwards (cross-check the extension's own
-     * `fetch(acknowledge): N job(s)` logs and the ledger reaching COMPLETED).
-     */
-    @OptIn(ExperimentalForeignApi::class)
-    fun probeUploadJobs() {
-        if (!backgroundUploadSupported()) {
-            log.i { "probeUploadJobs skipped: background-upload API unavailable on this OS" }
-            return
-        }
-        logFetchedJobs("acknowledge", PHAssetResourceUploadJobActionAcknowledge)
-        logFetchedJobs("retry", PHAssetResourceUploadJobActionRetry)
-    }
-
-    private fun logFetchedJobs(name: String, action: PHAssetResourceUploadJobAction) {
-        val jobs = PHAssetResourceUploadJob.fetchJobsWithAction(action, options = null)
-        var succeeded = 0
-        var failed = 0
-        var cancelled = 0
-        var registered = 0
-        var other = 0
-        var index = 0uL
-        while (index < jobs.count) {
-            val job = jobs.objectAtIndex(index) as PHAssetResourceUploadJob
-            index++
-            when (job.state) {
-                PHAssetResourceUploadJobStateSucceeded -> succeeded++
-                PHAssetResourceUploadJobStateFailed -> failed++
-                PHAssetResourceUploadJobStateCancelled -> cancelled++
-                PHAssetResourceUploadJobStateRegistered -> registered++
-                else -> other++
-            }
-        }
-        log.i {
-            "probeUploadJobs fetch($name) from APP: count=${jobs.count} succeeded=$succeeded " +
-                "failed=$failed cancelled=$cancelled registered=$registered other=$other"
-        }
     }
 
     /** Whether the iOS 26.1 background-upload API is present on this system. */

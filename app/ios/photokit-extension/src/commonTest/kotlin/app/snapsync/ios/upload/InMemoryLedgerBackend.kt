@@ -4,6 +4,7 @@ import app.snapsync.engine.LedgerAggregates
 import app.snapsync.engine.LedgerBackend
 import app.snapsync.engine.LedgerEntry
 import app.snapsync.engine.LedgerState
+import app.snapsync.engine.PendingResource
 import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableSharedFlow
@@ -51,4 +52,7 @@ class InMemoryLedgerBackend : LedgerBackend {
             newestCompletionAt = complete.flatten().maxOfOrNull { it.updatedAt },
         )
     }
+
+    override suspend fun pendingResources(): List<PendingResource> =
+        entries.values.filter { it.state != LedgerState.COMPLETED }.map { PendingResource(it.assetId, it.key) }
 }

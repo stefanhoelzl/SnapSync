@@ -20,43 +20,47 @@ class LedgerWatcherTest {
     fun `collection starts with current truth - no write needed`() = runTest {
         writer.recordCompleted("k", assetId = "k", attempt = 0, version = "v1")
 
-        val first = watcher.aggregates.first()
+        val first = watcher.snapshot.first()
 
-        assertEquals(LedgerAggregates(pending = 0, completed = 1, newestCompletionAt = t0), first)
+        assertEquals(LedgerSnapshot(completed = 1, newestCompletionAt = t0, pendingByAsset = emptyMap()), first)
     }
 
     @Test
-    fun `a write re-emits the new aggregates`() = runTest {
-        val emissions = mutableListOf<LedgerAggregates>()
+    fun `a write re-emits a consistent snapshot`() = runTest {
+        val emissions = mutableListOf<LedgerSnapshot>()
         backgroundScope.launch(start = CoroutineStart.UNDISPATCHED) {
-            watcher.aggregates.collect { emissions += it }
+            watcher.snapshot.collect { emissions += it }
         }
         runCurrent()
 
-        writer.recordCompleted("k", assetId = "k", attempt = 0, version = "v1")
+        // A new asset's first resource is REQUESTED — it joins the backlog, completed stays 0.
+        writer.recordRequested("k", assetId = "k", attempt = 0, version = "v1")
         runCurrent()
 
         assertEquals(
             listOf(
-                LedgerAggregates(0, 0, null),
-                LedgerAggregates(pending = 0, completed = 1, newestCompletionAt = t0),
+                LedgerSnapshot(completed = 0, newestCompletionAt = null, pendingByAsset = emptyMap()),
+                LedgerSnapshot(completed = 0, newestCompletionAt = null, pendingByAsset = mapOf("k" to setOf("k"))),
             ),
             emissions,
         )
     }
 
     @Test
-    fun `writes that leave the aggregates unchanged stay silent`() = runTest {
+    fun `writes that leave the snapshot unchanged stay silent`() = runTest {
         writer.recordRequested("k", assetId = "k", attempt = 0, version = "v1")
-        val emissions = mutableListOf<LedgerAggregates>()
+        val emissions = mutableListOf<LedgerSnapshot>()
         backgroundScope.launch(start = CoroutineStart.UNDISPATCHED) {
-            watcher.aggregates.collect { emissions += it }
+            watcher.snapshot.collect { emissions += it }
         }
         runCurrent()
 
         writer.recordRequested("k", assetId = "k", attempt = 1, version = "v1")
         runCurrent()
 
-        assertEquals(listOf(LedgerAggregates(pending = 1, completed = 0, newestCompletionAt = null)), emissions)
+        assertEquals(
+            listOf(LedgerSnapshot(completed = 0, newestCompletionAt = null, pendingByAsset = mapOf("k" to setOf("k")))),
+            emissions,
+        )
     }
 }

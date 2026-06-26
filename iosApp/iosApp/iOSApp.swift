@@ -17,11 +17,13 @@ struct iOSApp: App {
                     SnapSyncRoot.shared.onOpenUrl(url: url.absoluteString)
                 }
         }
-        // SPIKE (remove later): on every foreground, ask Kotlin to enumerate the system's upload
-        // jobs from the APP process and log the counts. Pass-through only — no logic in Swift.
+        // Forward the scene's foreground transitions to Kotlin, which gates the observed-completions
+        // poll that keeps upload progress live while the screen is shown. Pass-through only.
         .onChange(of: scenePhase) { _, newPhase in
             if newPhase == .active {
-                SnapSyncRoot.shared.probeUploadJobs()
+                SnapSyncRoot.shared.onForeground()
+            } else {
+                SnapSyncRoot.shared.onBackground()
             }
         }
     }

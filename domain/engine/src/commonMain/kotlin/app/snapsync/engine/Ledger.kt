@@ -65,6 +65,20 @@ class LedgerAggregates(
 }
 
 /**
+ * One outstanding resource: the [assetId] (photo) a non-`COMPLETED` [key] belongs to. The backlog
+ * read returns these so a status projection can group outstanding resources by photo; the backend
+ * never interprets them (it just reports the rows whose state is not `COMPLETED`).
+ */
+class PendingResource(val assetId: String, val key: String) {
+    override fun equals(other: Any?): Boolean =
+        other is PendingResource && assetId == other.assetId && key == other.key
+
+    override fun hashCode(): Int = 31 * assetId.hashCode() + key.hashCode()
+
+    override fun toString(): String = "PendingResource(assetId=$assetId, key=$key)"
+}
+
+/**
  * The ledger's storage seam — a dumb row store. Backends store entries verbatim: no
  * interpretation, no precedence, no clocks of their own, last write wins. [put] is a single-row
  * upsert and the unit of atomicity; record semantics live above, in [LedgerWriter], written once
@@ -78,6 +92,12 @@ interface LedgerBackend {
     suspend fun get(key: String): LedgerEntry?
     suspend fun put(entry: LedgerEntry)
     suspend fun aggregates(): LedgerAggregates
+
+    /**
+     * The non-`COMPLETED` rows (the backlog) as [PendingResource]s. Returns exactly the rows whose
+     * state is not `COMPLETED`, interpreting nothing else — the backend stays a dumb row store.
+     */
+    suspend fun pendingResources(): List<PendingResource>
 
     /**
      * Delete every row — a deliberate reset (the app re-provisioning config), not a sync write.
@@ -148,16 +168,49 @@ class LedgerWriter(
 }
 
 /**
- * The status-facing face of the ledger: a cold stream of [LedgerAggregates]. Every collection
- * starts with the current truth, then re-queries on each backend ding — collectors share
- * nothing. Dings are conflated (each re-query reads latest state, skipped signals lose nothing)
- * and equal consecutive aggregates are deduplicated. This is the only ledger type that surfaces
- * aggregates or change signals; per-key reads stay on [LedgerReader].
+ * A point-in-time read of the ledger for the status projection: the [completed]/[newestCompletionAt]
+ * scalars (reused from [LedgerAggregates]) plus [pendingByAsset] — the backlog grouped by photo
+ * (assetId → its outstanding resource keys). The scalars and the backlog come from one watcher read
+ * so they never disagree. The overlay intersects [pendingByAsset] with observed completions; the
+ * scalars stay authoritative.
+ */
+class LedgerSnapshot(
+    val completed: Int,
+    val newestCompletionAt: Instant?,
+    val pendingByAsset: Map<String, Set<String>>,
+) {
+    override fun equals(other: Any?): Boolean = other is LedgerSnapshot &&
+        completed == other.completed && newestCompletionAt == other.newestCompletionAt &&
+        pendingByAsset == other.pendingByAsset
+
+    override fun hashCode(): Int =
+        31 * (31 * completed + newestCompletionAt.hashCode()) + pendingByAsset.hashCode()
+
+    override fun toString(): String =
+        "LedgerSnapshot(completed=$completed, newestCompletionAt=$newestCompletionAt, pendingByAsset=$pendingByAsset)"
+}
+
+/**
+ * The status-facing face of the ledger: a cold stream of [LedgerSnapshot]s. Every collection starts
+ * with the current truth, then re-queries on each backend ding — collectors share nothing. Dings are
+ * conflated (each re-query reads latest state, skipped signals lose nothing) and equal consecutive
+ * snapshots are deduplicated. This is the only ledger type that surfaces the snapshot or change
+ * signals; per-key reads stay on [LedgerReader].
  */
 class LedgerWatcher(private val backend: LedgerBackend) {
 
-    val aggregates: Flow<LedgerAggregates> = flow {
-        emit(backend.aggregates())
-        backend.changes.conflate().collect { emit(backend.aggregates()) }
+    val snapshot: Flow<LedgerSnapshot> = flow {
+        emit(read())
+        backend.changes.conflate().collect { emit(read()) }
     }.distinctUntilChanged()
+
+    // The scalars come from aggregates() (which the extension also reads for `pending`), the backlog
+    // from pendingResources(); grouped here so the backend stays a dumb row store.
+    private suspend fun read(): LedgerSnapshot {
+        val aggregates = backend.aggregates()
+        val pendingByAsset = backend.pendingResources()
+            .groupBy { it.assetId }
+            .mapValues { (_, rows) -> rows.mapTo(mutableSetOf()) { it.key } }
+        return LedgerSnapshot(aggregates.completed, aggregates.newestCompletionAt, pendingByAsset)
+    }
 }
