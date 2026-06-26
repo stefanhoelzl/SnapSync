@@ -83,6 +83,32 @@ object SnapSyncRoot {
         host.onOpenUrl(url)
     }
 
+    /**
+     * Realize [launchEnvDeeplinkApplied] once on first view creation (called from
+     * [MainViewController]). Touching the `by lazy` runs the env read exactly once per process.
+     */
+    fun applyLaunchEnvDeeplink() {
+        launchEnvDeeplinkApplied
+    }
+
+    /**
+     * Dev/test trigger: if a `SNAPSYNC_DEEPLINK` process-environment variable is present, forward its
+     * value through [onOpenUrl] exactly as a scanned QR would, provisioning the event headlessly over
+     * USB. The variable is only injectable via a developer launch
+     * (`pymobiledevice3 developer dvt launch --env …`); SpringBoard and TestFlight launches carry a
+     * clean environment, so this is inert in production with no compile-time guard. Read **once per
+     * process** (`by lazy`): a fresh cold launch with the variable still set re-provisions (the
+     * intended per-build re-trigger); a mere view recreation within the same process does not.
+     */
+    private val launchEnvDeeplinkApplied: Boolean by lazy {
+        val raw = NSProcessInfo.processInfo.environment["SNAPSYNC_DEEPLINK"] as? String
+        if (raw != null) {
+            log.i { "applying SNAPSYNC_DEEPLINK launch-env deeplink" }
+            onOpenUrl(raw)
+        }
+        true
+    }
+
     private suspend fun resetForReprovision() {
         ledgerBackend.clear()
         clearDiscoveryCursor()
