@@ -79,13 +79,14 @@ indicator with the text "Loading …", no dot, no detail line and no button (the
 auto-resolves).
 
 The synced and total counts SHALL appear as text. For InProgress, the detail line SHALL carry a second
-caption: the in-progress count rendered as `"{inProgress} in progress"`, followed by `" · {finishedAgo}"`
-only when a completion exists (`finishedAgo` non-null). The screen renders:
+caption: the in-progress count rendered as `"{inProgress} in progress"` **only when `inProgress > 0`**
+(omitted when nothing is actively uploading), followed by `" · {finishedAgo}"` only when a completion
+exists (`finishedAgo` non-null). When both are absent there is **no detail line**. The screen renders:
 
 | State | Indicator | Count line | Detail |
 |---|---|---|---|
 | Loading | Loading (indeterminate), no dot | "Loading …" | — |
-| InProgress | InProgress (yellow dot) | "{synced} of {total} images synced" | "{inProgress} in progress", plus " · {finishedAgo}" when not null |
+| InProgress | InProgress (yellow dot) | "{synced} of {total} images synced" | "{inProgress} in progress" when inProgress > 0, joined by " · " to "{finishedAgo}" when not null; absent when neither applies |
 | NothingToSync | Complete (green dot) | "Nothing to sync yet" | — |
 | Completed | Complete (green dot) | "{total} images synced" | relative time |
 
@@ -103,6 +104,14 @@ only when a completion exists (`finishedAgo` non-null). The screen renders:
 - **WHEN** the UI state is InProgress with `synced = 0`, `total = 47`, `inProgress = 47`, and `finishedAgo = null`
 - **THEN** the screen shows the yellow dot, the count line, and the muted detail "47 in progress" with
   no relative time appended
+
+#### Scenario: In-progress with nothing actively uploading omits the in-progress label
+- **WHEN** the UI state is InProgress with `synced = 3`, `total = 5`, `inProgress = 0`, and `finishedAgo = "2 min ago"`
+- **THEN** the detail line shows just "2 min ago" — the "0 in progress" label is omitted
+
+#### Scenario: In-progress with nothing uploading and no completion shows no detail line
+- **WHEN** the UI state is InProgress with `inProgress = 0` and `finishedAgo = null`
+- **THEN** the screen shows the count line with no detail line
 
 #### Scenario: Nothing-to-sync state
 - **WHEN** the UI state is NothingToSync
