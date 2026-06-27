@@ -1,0 +1,8 @@
+{
+  "tasks": {
+    "reset-storage": "deno run -A scripts/reset-storage.ts"
+  },
+  "fmt": {
+    "lineWidth": 100
+  }
+}
