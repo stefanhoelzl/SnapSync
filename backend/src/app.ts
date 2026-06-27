@@ -1,5 +1,5 @@
 // Hono app for the backend (capabilities `event-creation` + `bunny-upload-endpoint` +
-// `bunny-list-endpoint`).
+// `bunny-list-endpoint` + `bunny-download-endpoint`, over the shared `backend-config`).
 //
 //   POST /event
 //     → mints an event: writes the marker `events/<id>.json`, returns {eventId,name,createdAt}.
@@ -7,8 +7,12 @@
 //     → returns the event marker (existence check); 404 when absent.
 //   PUT /event/:eventId/file/:filename
 //     → streams the request body into ONE bunny native Storage PUT (gated on event existence).
+//   GET /event/:eventId/file/:filename
+//     → streams ONE bunny native Storage GET of the object straight back. NOT gated on the marker:
+//       a missing object and an unknown event are indistinguishably 404 by design (see below).
 //   GET /event/:eventId/files
-//     → lists every stored object for the event (gated on event existence).
+//     → lists every stored object for the event (gated on event existence); each entry carries a
+//       `url`, the absolute download URL for that object.
 //
 // EVENT REGISTRY: an event exists iff the object `events/<id>.json` is present. The `events/` prefix
 // is disjoint from any event's photo dir `<id>/` (an eventId is a UUID, never the literal "events"),
@@ -16,13 +20,18 @@
 // both read the marker first (a `GET`, since bunny's Edge Storage API has no HEAD) and 404 when it is
 // absent; a non-404 read failure surfaces as 502 (a transient failure is never mistaken for absence).
 //
-// The upload route is defined once on a child Hono and mounted under the upload path via
-// app.route(), so PUT and OPTIONS share it. `eventId`/`filename` are Hono's decoded path
-// params (typed `string | undefined` through a mount, hence the guard); the filename is re-encoded
-// per-segment when building the bunny URL, so the stored object is the real filename and keys stay
-// flat. Config is injected (validated at startup), so the handler has no config path. Invariants:
-// pass-through only (never buffer/hash), faithful outcome (2xx only on confirmed store),
-// last-write-wins.
+// The per-object routes are defined once on a child Hono (`file`) and mounted under
+// `/event/:eventId/file/:filename` via app.route(), so PUT (upload), OPTIONS, and GET (download)
+// share it. `eventId`/`filename` are Hono's decoded path params (typed `string | undefined` through
+// a mount, hence the guard); the filename is re-encoded per-segment when building the bunny URL, so
+// the stored object is the real filename and keys stay flat. Config is injected (validated at
+// startup), so the handlers have no config path. Upload invariants: pass-through only (never
+// buffer/hash), faithful outcome (2xx only on confirmed store), last-write-wins. Download is
+// ungated: it issues a single object GET and streams the body through; bunny 200 → 200, bunny 404 →
+// 404 (missing object and unknown event collapse here — see the read-faithfulness note below), any
+// other status / connect error / pre-body timeout → 502. Read-faithfulness is narrower than the
+// upload's: status+headers commit before the body, so a mid-body upstream abort surfaces as a
+// truncated 200 (not a 5xx); the relayed Content-Length makes that a client-detectable short-read.
 //
 // The list route reads instead: files live directly under `<eventId>/` (flat key), so a single
 // bunny native Storage LIST of the event dir returns them. Faithful too: any genuine LIST failure →
@@ -72,14 +81,27 @@ type BunnyEntry = {
   DateLastModified?: string;
 };
 
-// One normalized object in our response — the three fields the contract promises. `contentType` is
-// intentionally absent (bunny's canonical List schema doesn't return it, and the consumer only needs
-// the filename).
+// One normalized object in our response — the four fields the contract promises (a closed shape).
+// `url` is the absolute download URL (per `bunny-download-endpoint`); the storage key itself stays
+// hidden. `contentType` is intentionally absent (bunny's canonical List schema doesn't return it).
 type FileEntry = {
   filename: string;
   size: number;
   lastModified: string | null;
+  url: string;
 };
+
+/**
+ * The public download URL for a stored object: `<baseUrl>/event/<eventId>/file/<filename>`, each path
+ * segment percent-encoded so the filename stays a single flat segment (eventId is a UUID, so its
+ * encoding is identity). This is the sole builder of that URL — the list endpoint uses it and the
+ * download route serves the matching path, so they agree by construction.
+ */
+function downloadUrl(config: Config, eventId: string, filename: string): string {
+  return `${config.baseUrl}/event/${encodeURIComponent(eventId)}/file/${
+    encodeURIComponent(filename)
+  }`;
+}
 
 /**
  * List one bunny native Storage directory (trailing slash required). Returns the parsed entries, or
@@ -137,9 +159,9 @@ async function readMarker(
 }
 
 export function createApp({ fetch: fetchImpl, config }: Deps): Hono {
-  const upload = new Hono();
+  const file = new Hono();
 
-  upload.put("/", async (c) => {
+  file.put("/", async (c) => {
     const eventId = c.req.param("eventId");
     const filename = c.req.param("filename");
     if (
@@ -191,9 +213,55 @@ export function createApp({ fetch: fetchImpl, config }: Deps): Hono {
     return c.body(null, 201);
   });
 
+  // Download (capability `bunny-download-endpoint`). A single bunny object GET, streamed straight
+  // back. UNGATED — no marker read: the object GET already yields faithful absence (bunny 404 → 404),
+  // so an unknown event and a missing object are indistinguishably 404 by design. Faithful read is
+  // narrower than the upload's: status+headers commit before the body, so a mid-body upstream abort
+  // is a truncated 200 (not a 5xx); the relayed Content-Length makes it a client-detectable short-read.
+  file.get("/", async (c) => {
+    const eventId = c.req.param("eventId");
+    const filename = c.req.param("filename");
+    if (
+      !eventId || !filename ||
+      !validateUUID(eventId) || !validateFilename(filename)
+    ) {
+      return c.text("invalid key", 400);
+    }
+
+    // Same flat key the upload route writes: encode the filename per-segment (eventId is a UUID).
+    const storageKey = `${eventId}/${encodeURIComponent(filename)}`;
+    const target = `https://${config.host}/${config.zone}/${storageKey}`;
+
+    let upstream: Response;
+    try {
+      upstream = await fetchImpl(target, {
+        method: "GET",
+        headers: { AccessKey: config.accessKey },
+      });
+    } catch (e) {
+      console.error(`download: upstream GET errored for ${storageKey}: ${e}`);
+      return c.text("upstream error", 502);
+    }
+    if (upstream.status === 404) return c.text("not found", 404); // missing object OR unknown event
+    if (!upstream.ok) {
+      console.error(`download: bunny returned ${upstream.status} for ${storageKey}`);
+      return c.text("upstream error", 502);
+    }
+
+    // 200: stream the body through and relay the content + cache-validator headers. Content-Length is
+    // relayed so a truncated stream is a client-detectable short-read.
+    const headers = new Headers();
+    headers.set("Content-Type", upstream.headers.get("content-type") ?? "application/octet-stream");
+    for (const name of ["content-length", "etag", "last-modified", "cache-control"]) {
+      const value = upstream.headers.get(name);
+      if (value !== null) headers.set(name, value);
+    }
+    return new Response(upstream.body, { status: 200, headers });
+  });
+
   // OPTIONS: do NOT advertise resumable uploads → the iOS uploader falls back to a plain PUT.
-  upload.options("/", (c) => {
-    c.header("Allow", "PUT, OPTIONS");
+  file.options("/", (c) => {
+    c.header("Allow", "GET, PUT, OPTIONS");
     return c.body(null, 204);
   });
 
@@ -286,11 +354,15 @@ export function createApp({ fetch: fetchImpl, config }: Deps): Hono {
       if (entries === null) return c.json([] as FileEntry[]);
       const files: FileEntry[] = entries
         .filter((e) => !e.IsDirectory)
-        .map((e) => ({
-          filename: decodeObjectName(e.ObjectName),
-          size: e.Length,
-          lastModified: e.LastChanged ?? e.DateLastModified ?? null,
-        }));
+        .map((e) => {
+          const filename = decodeObjectName(e.ObjectName);
+          return {
+            filename,
+            size: e.Length,
+            lastModified: e.LastChanged ?? e.DateLastModified ?? null,
+            url: downloadUrl(config, eventId, filename),
+          };
+        });
       return c.json(files);
     } catch (e) {
       console.error(`list: bunny LIST failed for event ${eventId}: ${e}`);
@@ -298,7 +370,7 @@ export function createApp({ fetch: fetchImpl, config }: Deps): Hono {
     }
   });
 
-  // Mount once under the upload path; any unmatched path or wrong method → Hono's 404.
-  app.route("/event/:eventId/file/:filename", upload);
+  // Mount once under the per-object path; any unmatched path or wrong method → Hono's 404.
+  app.route("/event/:eventId/file/:filename", file);
   return app;
 }
