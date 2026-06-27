@@ -15,8 +15,11 @@ import kotlin.test.assertNull
 import kotlin.test.assertTrue
 import kotlin.time.Clock
 import kotlin.time.Instant
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.async
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 
 class JoinEventTest {
@@ -155,6 +158,37 @@ class JoinEventTest {
         val files = FakeFiles(Result.success(emptyList()))
         assertFalse(join(files, InMemoryGalleryResourceEnumerator(), FakeLedgerBackend(), FakeConfig(null), MutableEventStatusSource()).ensureJoined())
         assertEquals(0, files.calls)
+    }
+
+    @Test
+    fun `concurrent gate calls run the join at most once`() = runTest {
+        // A list fetch that parks until released, so both ensureJoined coroutines are in flight at the
+        // same time — the scenario where the grant collector and a deeplink both fire the gate at launch.
+        val release = CompletableDeferred<Unit>()
+        val gatedFiles = object : EventFilesSource {
+            var calls = 0
+            override suspend fun list(eventId: String): Result<List<RemoteFile>> {
+                calls++
+                release.await()
+                return Result.success(listOf(RemoteFile("A-ios.photo.heic", null)))
+            }
+        }
+        val enumerator = InMemoryGalleryResourceEnumerator(listOf(res("A-ios.photo.heic", "A", "v1")))
+        val ledger = FakeLedgerBackend()
+        val j = join(gatedFiles, enumerator, ledger, FakeConfig("E1"), MutableEventStatusSource())
+
+        val a = async { j.ensureJoined() }
+        val b = async { j.ensureJoined() }
+        runCurrent() // both start; the mutex lets only one past the gate into the fetch
+
+        assertEquals(1, gatedFiles.calls) // the second is parked on the lock, not fetching in parallel
+
+        release.complete(Unit)
+        runCurrent()
+        assertTrue(a.await())
+        assertTrue(b.await())
+        assertEquals(1, gatedFiles.calls) // still one: the second saw joinedThisSession and short-circuited
+        assertEquals(LedgerState.COMPLETED, ledger.get("A-ios.photo.heic")!!.state)
     }
 
     @Test
