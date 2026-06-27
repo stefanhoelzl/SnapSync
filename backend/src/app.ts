@@ -1,9 +1,20 @@
-// Hono app for the backend (capabilities `bunny-upload-endpoint` + `bunny-list-endpoint`).
+// Hono app for the backend (capabilities `event-creation` + `bunny-upload-endpoint` +
+// `bunny-list-endpoint`).
 //
+//   POST /event
+//     → mints an event: writes the marker `events/<id>.json`, returns {eventId,name,createdAt}.
+//   GET /event/:eventId
+//     → returns the event marker (existence check); 404 when absent.
 //   PUT /event/:eventId/file/:filename
-//     → streams the request body into ONE bunny native Storage PUT.
+//     → streams the request body into ONE bunny native Storage PUT (gated on event existence).
 //   GET /event/:eventId/files
-//     → lists every stored object for the event.
+//     → lists every stored object for the event (gated on event existence).
+//
+// EVENT REGISTRY: an event exists iff the object `events/<id>.json` is present. The `events/` prefix
+// is disjoint from any event's photo dir `<id>/` (an eventId is a UUID, never the literal "events"),
+// so the marker never appears in a per-event listing and never collides with a photo. List and upload
+// both read the marker first (a `GET`, since bunny's Edge Storage API has no HEAD) and 404 when it is
+// absent; a non-404 read failure surfaces as 502 (a transient failure is never mistaken for absence).
 //
 // The upload route is defined once on a child Hono and mounted under the upload path via
 // app.route(), so PUT and OPTIONS share it. `eventId`/`filename` are Hono's decoded path
@@ -19,8 +30,24 @@
 // are indistinguishable without a registry).
 
 import { Hono } from "hono";
-import { validateFilename, validateUUID } from "./validators.ts";
+import { validateEventName, validateFilename, validateUUID } from "./validators.ts";
 import type { Config } from "./config.ts";
+
+// The event registry's marker prefix. Disjoint from any `<eventId>/` photo dir because an eventId is
+// a UUID and can never be the literal string `events`.
+const MARKER_PREFIX = "events";
+
+/** Storage key of an event's marker object: `events/<eventId>.json`. */
+function markerKey(eventId: string): string {
+  return `${MARKER_PREFIX}/${encodeURIComponent(eventId)}.json`;
+}
+
+/** The event marker's contents — the registry record written on create. */
+type EventMarker = {
+  eventId: string;
+  name: string;
+  createdAt: string;
+};
 
 export type FetchLike = (url: string, init: RequestInit) => Promise<Response>;
 
@@ -87,6 +114,28 @@ function decodeObjectName(objectName: string): string {
   }
 }
 
+/**
+ * Read an event's marker (the existence check). Returns the parsed marker when present (bunny `200`),
+ * `null` when absent (bunny `404`), and THROWS on any other status, network error, or abort — so the
+ * caller surfaces a faithful `502` and never mistakes a transient read failure for "event absent".
+ * Bunny's Edge Storage API has no `HEAD`, so existence is a small `GET` of the marker; the marker is
+ * tiny, and the same read serves the `GET /event/:eventId` metadata response.
+ */
+async function readMarker(
+  fetchImpl: FetchLike,
+  config: Config,
+  eventId: string,
+): Promise<EventMarker | null> {
+  const url = `https://${config.host}/${config.zone}/${markerKey(eventId)}`;
+  const res = await fetchImpl(url, {
+    method: "GET",
+    headers: { AccessKey: config.accessKey, Accept: "application/json" },
+  });
+  if (res.status === 404) return null; // event was never created
+  if (!res.ok) throw new Error(`bunny marker GET returned ${res.status} for ${eventId}`);
+  return await res.json() as EventMarker;
+}
+
 export function createApp({ fetch: fetchImpl, config }: Deps): Hono {
   const upload = new Hono();
 
@@ -99,6 +148,19 @@ export function createApp({ fetch: fetchImpl, config }: Deps): Hono {
     ) {
       return c.text("invalid key", 400);
     }
+
+    // Gate on event existence: read the marker before streaming a single byte. Absent → 404 (no
+    // upstream object PUT); a non-404 read failure → 502 (never mistaken for absence). The check reads
+    // the EVENT marker, not the object key, so last-write-wins on the object write is unchanged.
+    let marker: EventMarker | null;
+    try {
+      marker = await readMarker(fetchImpl, config, eventId);
+    } catch (e) {
+      console.error(`upload: marker read failed for ${eventId}: ${e}`);
+      return c.text("upstream error", 502);
+    }
+    if (marker === null) return c.text("event not found", 404);
+
     // eventId is a UUID (encoding is identity); encode the filename so the key stays a single flat
     // segment on the wire.
     const storageKey = `${eventId}/${encodeURIComponent(filename)}`;
@@ -137,6 +199,67 @@ export function createApp({ fetch: fetchImpl, config }: Deps): Hono {
 
   const app = new Hono();
 
+  // Create an event (capability `event-creation`). Open (no token, matching the possession-is-
+  // capability model). Validates the name, mints a server-side UUID, and writes the marker. Faithful
+  // outcome: 201 only after bunny confirms the marker store; any upstream failure → 502.
+  app.post("/event", async (c) => {
+    let body: unknown;
+    try {
+      body = await c.req.json();
+    } catch {
+      return c.text("invalid body", 400); // not JSON
+    }
+    const name = validateEventName((body as { name?: unknown } | null)?.name);
+    if (name === null) {
+      return c.text("invalid name", 400); // missing/empty/whitespace/too long
+    }
+    // The server is the source of truth for existence, so it mints the id; any client-supplied id is
+    // ignored (we only read `name` above).
+    const marker: EventMarker = {
+      eventId: crypto.randomUUID(),
+      name,
+      createdAt: new Date().toISOString(),
+    };
+
+    const target = `https://${config.host}/${config.zone}/${markerKey(marker.eventId)}`;
+    let upstream: Response;
+    try {
+      upstream = await fetchImpl(target, {
+        method: "PUT",
+        headers: { AccessKey: config.accessKey, "Content-Type": "application/json" },
+        body: JSON.stringify(marker),
+      });
+    } catch (e) {
+      console.error(`create: marker PUT errored for ${marker.eventId}: ${e}`);
+      return c.text("upstream error", 502);
+    }
+    if (!upstream.ok) {
+      console.error(`create: bunny returned ${upstream.status} for marker ${marker.eventId}`);
+      return c.text("upstream rejected", 502);
+    }
+    // Bunny confirmed the marker — only now is the event created.
+    return c.json(marker, 201);
+  });
+
+  // Event metadata / existence (capability `event-creation`). Returns the marker, or 404 when the
+  // event was never created; a non-404 marker read failure → 502. This is the canonical existence
+  // check the list and upload gates rely on.
+  app.get("/event/:eventId", async (c) => {
+    const eventId = c.req.param("eventId");
+    if (!validateUUID(eventId)) {
+      return c.text("invalid event", 400);
+    }
+    let marker: EventMarker | null;
+    try {
+      marker = await readMarker(fetchImpl, config, eventId);
+    } catch (e) {
+      console.error(`metadata: marker read failed for ${eventId}: ${e}`);
+      return c.text("upstream error", 502);
+    }
+    if (marker === null) return c.text("event not found", 404);
+    return c.json(marker);
+  });
+
   // List every stored object for an event (capability `bunny-list-endpoint`). Files live directly
   // under `<eventId>/` (flat key), so a single LIST of the event dir returns them. Authorization is
   // the event id alone (same as upload). A non-UUID id → 400; any other method / unmatched path →
@@ -146,6 +269,16 @@ export function createApp({ fetch: fetchImpl, config }: Deps): Hono {
     if (!validateUUID(eventId)) {
       return c.text("invalid event", 400);
     }
+    // Gate on event existence: an unknown event → 404 (no LIST); a non-404 marker read failure → 502.
+    // A created event with no objects still returns 200 [] below (existence ≠ emptiness).
+    let marker: EventMarker | null;
+    try {
+      marker = await readMarker(fetchImpl, config, eventId);
+    } catch (e) {
+      console.error(`list: marker read failed for ${eventId}: ${e}`);
+      return c.text("upstream error", 502);
+    }
+    if (marker === null) return c.text("event not found", 404);
     try {
       // Single LIST of the event dir → its files. 404/absent → no objects → []. Any other failure
       // throws → 502, so a partial list is never returned.
