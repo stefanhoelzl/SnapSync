@@ -118,7 +118,7 @@ class UploadCycle(
     }
 
     /**
-     * Rebuild the engine [UploadJob] for a returned platform job from the ledger (version/attempt) and
+     * Rebuild the engine [UploadJob] for a returned platform job from the ledger (attempt) and
      * the job's own facts. The request URL/headers are placeholders — completion never reads them, and
      * the retry path re-mints a fresh request via the provider.
      */
@@ -128,7 +128,6 @@ class UploadCycle(
             filename = job.key,
             assetId = entry?.assetId ?: "",
             contentType = job.contentType,
-            version = entry?.version ?: "",
             metadata = emptyMap(),
             data = job.data ?: Unit, // engine [Resource.data] is non-null; payload unused for completion
         )

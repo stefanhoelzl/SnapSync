@@ -9,10 +9,10 @@ import platform.Photos.PHFetchResult
 
 /**
  * The PhotoKit-backed [GalleryResourceEnumerator]: enumerates `PHAssetResource`s and derives each
- * resource's `(filename, assetId, version)` via the shared [uploadKey]/[assetVersion] derivation,
- * carrying the `PHAssetResource` itself as [Resource.data] so the producer can create a job from it.
+ * resource's `(filename, assetId)` via the shared [uploadKey] derivation, carrying the
+ * `PHAssetResource` itself as [Resource.data] so the producer can create a job from it.
  * This is the **single** PhotoKit resource-enumeration site — both the upload producer and the
- * re-join seed go through it, so their keys/versions never diverge.
+ * re-join seed go through it, so their keys never diverge.
  *
  * Wiring-only and untestable (PhotoKit, device/simulator only); the pure derivation it calls is
  * unit-tested in `commonTest`, and [PhotoKitSmokeTest] confirms the enumeration glue runs on the sim.
@@ -35,14 +35,12 @@ class PhotoLibraryResourceEnumerator : GalleryResourceEnumerator {
             val asset = assets.objectAtIndex(index) as PHAsset
             index++
             val assetId = asset.localIdentifier.replace('/', '_')
-            val version = assetVersion(asset.modificationDate?.timeIntervalSince1970)
             for (any in PHAssetResource.assetResourcesForAsset(asset)) {
                 val resource = any as PHAssetResource
                 resources += Resource(
                     filename = uploadKey(assetId, resource.type, resource.originalFilename),
                     assetId = assetId,
                     contentType = resource.uniformTypeIdentifier,
-                    version = version,
                     metadata = emptyMap(),
                     data = resource,
                 )

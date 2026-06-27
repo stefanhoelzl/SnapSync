@@ -18,13 +18,11 @@ class SyncEngineTest {
 
     private fun resource(
         filename: String = "cloud-1-ios.photo.heic",
-        version: String = "2026-06-12T10:00:00Z",
         assetId: String = "cloud-1",
     ) = Resource(
         filename = filename,
         assetId = assetId,
         contentType = "image/heic",
-        version = version,
         metadata = mapOf("asset-id" to "cloud-1", "created" to "2026-06-12T10:00:00Z"),
         data = byteArrayOf(1, 2, 3),
     )
@@ -47,7 +45,7 @@ class SyncEngineTest {
 
         engine.handle(SyncEvent.UploadStarted(upload.job))
         assertEquals(
-            LedgerEntry(resource.filename, resource.assetId, LedgerState.REQUESTED, 0, resource.version, t0),
+            LedgerEntry(resource.filename, resource.assetId, LedgerState.REQUESTED, 0, t0),
             ledger.entry(resource.filename),
         )
     }
@@ -87,35 +85,20 @@ class SyncEngineTest {
     }
 
     @Test
-    fun `completed but changed re-uploads under the new version`() = runTest {
-        completeUpload(resource(version = "v1"))
-        val changed = resource(version = "v2")
+    fun `completed key skips even when re-submitted — an uploaded resource is immutable`() = runTest {
+        val resource = resource()
+        completeUpload(resource)
+        val before = ledger.entry(resource.filename)
 
-        val decision = engine.handle(SyncEvent.ResourceChanged(changed))
+        // Re-submitting the same key never re-uploads; there is no content version to differ.
+        val decision = engine.handle(SyncEvent.ResourceChanged(resource()))
 
-        val reUpload = assertIs<SyncDecision.ReUpload>(decision)
-        assertEquals(0, reUpload.job.attempt)
-        // decide() writes nothing — the ledger still holds the completed v1 entry until UploadStarted
-        assertEquals(LedgerState.COMPLETED, ledger.entry(changed.filename)?.state)
-
-        engine.handle(SyncEvent.UploadStarted(reUpload.job))
-        assertEquals(
-            LedgerEntry(changed.filename, changed.assetId, LedgerState.REQUESTED, 0, "v2", t0),
-            ledger.entry(changed.filename),
-        )
+        assertIs<SyncDecision.AlreadyUploaded>(decision)
+        assertEquals(before, ledger.entry(resource.filename))
     }
 
     @Test
-    fun `version is compared for equality only`() = runTest {
-        completeUpload(resource(version = "zebra"))
-
-        val decision = engine.handle(SyncEvent.ResourceChanged(resource(version = "aardvark")))
-
-        assertIs<SyncDecision.ReUpload>(decision)
-    }
-
-    @Test
-    fun `in-flight request skips re-submission at the same version`() = runTest {
+    fun `in-flight request skips re-submission`() = runTest {
         val work = assertIs<SyncDecision.Work>(engine.handle(SyncEvent.ResourceChanged(resource())))
         engine.handle(SyncEvent.UploadStarted(work.job)) // ledger now REQUESTED
         val mintsBefore = provider.invocations.size
@@ -161,13 +144,13 @@ class SyncEngineTest {
         assertSame(resource, retry.job.request.resource)
         // UploadFailed records FAILED only; the retry's REQUESTED comes via UploadStarted.
         assertEquals(
-            LedgerEntry(resource.filename, resource.assetId, LedgerState.FAILED, 0, resource.version, t0),
+            LedgerEntry(resource.filename, resource.assetId, LedgerState.FAILED, 0, t0),
             ledger.entry(resource.filename),
         )
 
         engine.handle(SyncEvent.UploadStarted(retry.job))
         assertEquals(
-            LedgerEntry(resource.filename, resource.assetId, LedgerState.REQUESTED, 1, resource.version, t0),
+            LedgerEntry(resource.filename, resource.assetId, LedgerState.REQUESTED, 1, t0),
             ledger.entry(resource.filename),
         )
     }
@@ -211,7 +194,7 @@ class SyncEngineTest {
 
         assertIs<SyncDecision.AlreadyUploaded>(decision)
         assertEquals(
-            LedgerEntry(resource.filename, resource.assetId, LedgerState.COMPLETED, 0, resource.version, t0),
+            LedgerEntry(resource.filename, resource.assetId, LedgerState.COMPLETED, 0, t0),
             ledger.entry(resource.filename),
         )
     }
@@ -266,7 +249,7 @@ class SyncEngineTest {
 
     @Test
     fun `assetId does not change the decision`() = runTest {
-        // Absent ledger entry → Upload, regardless of assetId (decide reads only filename + version).
+        // Absent ledger entry → Upload, regardless of assetId (decide reads only filename).
         val decision = engine.handle(SyncEvent.ResourceChanged(resource(assetId = "anything")))
         assertIs<SyncDecision.Upload>(decision)
     }

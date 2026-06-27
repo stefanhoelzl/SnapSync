@@ -4,9 +4,9 @@ import app.snapsync.engine.Resource
 
 /**
  * The library resource-enumeration seam: the single shared derivation of each resource's
- * `(filename, assetId, version)` (plus the platform `data`/`contentType` the producer needs to build
+ * `(filename, assetId)` (plus the platform `data`/`contentType` the producer needs to build
  * a job). Both the iOS background-upload producer's enumeration and the re-join seed go through this,
- * so an app-seeded key/version is byte-identical to what the producer later recomputes.
+ * so an app-seeded key is byte-identical to what the producer later recomputes.
  *
  * Lives in `:domain:gallery` so the app (which never depends on the extension module) can enumerate
  * for the join; PhotoKit-backed on iOS, a settable in-memory implementation for the JVM harness and

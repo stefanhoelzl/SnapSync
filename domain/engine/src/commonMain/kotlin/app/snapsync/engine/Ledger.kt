@@ -11,25 +11,25 @@ import kotlinx.coroutines.flow.flow
  * One key's durable upload memory. The ledger is the engine's only state: per-resource entries
  * keyed by [Resource.filename], holding the [assetId] the resource belongs to (an opaque grouping
  * id, several resources of one photo share it), the last recorded lifecycle [state], the [attempt]
- * it belongs to, the content-identity [version] it was recorded for, and [updatedAt] — when the
- * record operation ran (stamped by [LedgerWriter], never by callers or backends).
+ * it belongs to, and [updatedAt] — when the record operation ran (stamped by [LedgerWriter], never
+ * by callers or backends). An uploaded resource is immutable, so a `COMPLETED` entry's mere
+ * existence is the proof of backup; there is no content version.
  */
 class LedgerEntry(
     val key: String,
     val assetId: String,
     val state: LedgerState,
     val attempt: Int,
-    val version: String,
     val updatedAt: Instant,
 ) {
     override fun equals(other: Any?): Boolean = other is LedgerEntry &&
         key == other.key && assetId == other.assetId && state == other.state &&
-        attempt == other.attempt && version == other.version && updatedAt == other.updatedAt
+        attempt == other.attempt && updatedAt == other.updatedAt
 
     override fun hashCode(): Int = key.hashCode()
 
     override fun toString(): String =
-        "LedgerEntry($key, assetId=$assetId, $state, attempt=$attempt, version=$version, updatedAt=$updatedAt)"
+        "LedgerEntry($key, assetId=$assetId, $state, attempt=$attempt, updatedAt=$updatedAt)"
 }
 
 enum class LedgerState {
@@ -109,7 +109,7 @@ interface LedgerBackend {
      * Atomically replace the entire store with [entries] (delete-all then insert-all in one
      * transaction): either all prior rows go and all [entries] land, or — on failure — the store is
      * left exactly as it was (no partial baseline is ever observable). Entries are stored verbatim
-     * (the caller supplies `state`/`version`/`updatedAt`; no clock stamping here). Dings [changes]
+     * (the caller supplies `state`/`updatedAt`; no clock stamping here). Dings [changes]
      * **once** on success, like a [put]. This is a reset-family op (alongside [clear]) — the app-side
      * join seed uses it; it is **not** a per-key record, so it does not breach the single-record-writer
      * invariant.
@@ -145,7 +145,7 @@ open class LedgerReader(protected val backend: LedgerBackend) {
 /**
  * The ledger's single writer (one per platform, hosted with the engine). Each record operation
  * upserts a complete, self-contained entry in one backend [LedgerBackend.put] — no operation
- * depends on a prior read, so duplicate records converge per key on state, attempt, and version;
+ * depends on a prior read, so duplicate records converge per key on state and attempt;
  * only the [clock]-stamped timestamp moves forward. The writer is the single stamping point:
  * the engine stays clock-free and backends store verbatim.
  */
@@ -154,14 +154,14 @@ class LedgerWriter(
     private val clock: Clock = Clock.System,
 ) : LedgerReader(backend) {
 
-    suspend fun recordRequested(key: String, assetId: String, attempt: Int, version: String) =
-        record(key, assetId, LedgerState.REQUESTED, attempt, version)
+    suspend fun recordRequested(key: String, assetId: String, attempt: Int) =
+        record(key, assetId, LedgerState.REQUESTED, attempt)
 
-    suspend fun recordCompleted(key: String, assetId: String, attempt: Int, version: String) =
-        record(key, assetId, LedgerState.COMPLETED, attempt, version)
+    suspend fun recordCompleted(key: String, assetId: String, attempt: Int) =
+        record(key, assetId, LedgerState.COMPLETED, attempt)
 
-    suspend fun recordFailed(key: String, assetId: String, attempt: Int, version: String) =
-        record(key, assetId, LedgerState.FAILED, attempt, version)
+    suspend fun recordFailed(key: String, assetId: String, attempt: Int) =
+        record(key, assetId, LedgerState.FAILED, attempt)
 
     /**
      * Prune every row for [assetId] — a sync write by the single writer (distinct from the app-side
@@ -174,8 +174,8 @@ class LedgerWriter(
     /** Prune every row whose assetId is not in [keep] (writer-only; see [deleteByAssetId]). */
     suspend fun retainAssets(keep: Set<String>) = backend.retainAssets(keep)
 
-    private suspend fun record(key: String, assetId: String, state: LedgerState, attempt: Int, version: String) =
-        backend.put(LedgerEntry(key, assetId, state, attempt, version, clock.now()))
+    private suspend fun record(key: String, assetId: String, state: LedgerState, attempt: Int) =
+        backend.put(LedgerEntry(key, assetId, state, attempt, clock.now()))
 }
 
 /**

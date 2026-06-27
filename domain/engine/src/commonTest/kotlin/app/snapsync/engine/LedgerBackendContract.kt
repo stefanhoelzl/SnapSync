@@ -28,14 +28,13 @@ abstract class LedgerBackendContract {
         assetId: String = key,
         state: LedgerState = LedgerState.REQUESTED,
         attempt: Int = 0,
-        version: String = "2026-06-12T10:00:00Z",
         updatedAt: Instant = t0,
-    ) = LedgerEntry(key, assetId, state, attempt, version, updatedAt)
+    ) = LedgerEntry(key, assetId, state, attempt, updatedAt)
 
     @Test
     fun `put then get round-trips field for field`() = runTest {
         val backend = createBackend()
-        val entry = entry(assetId = "A", state = LedgerState.COMPLETED, attempt = 3, version = "v7", updatedAt = t1)
+        val entry = entry(assetId = "A", state = LedgerState.COMPLETED, attempt = 3, updatedAt = t1)
 
         backend.put(entry)
 
@@ -146,16 +145,16 @@ abstract class LedgerBackendContract {
         val clock = FixedClock(t0)
         val writer = LedgerWriter(backend, clock)
 
-        writer.recordRequested("k", "A", attempt = 0, version = "v1")
-        assertEquals(entry("k", "A", LedgerState.REQUESTED, 0, "v1", t0), writer.entry("k"))
+        writer.recordRequested("k", "A", attempt = 0)
+        assertEquals(entry("k", "A", LedgerState.REQUESTED, 0, t0), writer.entry("k"))
 
         clock.instant = t1
-        writer.recordFailed("k", "A", attempt = 0, version = "v1")
-        assertEquals(entry("k", "A", LedgerState.FAILED, 0, "v1", t1), writer.entry("k"))
+        writer.recordFailed("k", "A", attempt = 0)
+        assertEquals(entry("k", "A", LedgerState.FAILED, 0, t1), writer.entry("k"))
 
         clock.instant = t2
-        writer.recordCompleted("k", "A", attempt = 1, version = "v1")
-        assertEquals(entry("k", "A", LedgerState.COMPLETED, 1, "v1", t2), writer.entry("k"))
+        writer.recordCompleted("k", "A", attempt = 1)
+        assertEquals(entry("k", "A", LedgerState.COMPLETED, 1, t2), writer.entry("k"))
     }
 
     @Test
@@ -233,8 +232,8 @@ abstract class LedgerBackendContract {
         backend.put(entry(key = "old-2", assetId = "old"))
 
         val seed = listOf(
-            entry(key = "A-photo.jpg", assetId = "A", state = LedgerState.COMPLETED, version = "v1", updatedAt = t1),
-            entry(key = "B-photo.jpg", assetId = "B", state = LedgerState.COMPLETED, version = "v2", updatedAt = t2),
+            entry(key = "A-photo.jpg", assetId = "A", state = LedgerState.COMPLETED, updatedAt = t1),
+            entry(key = "B-photo.jpg", assetId = "B", state = LedgerState.COMPLETED, updatedAt = t2),
         )
         backend.resetTo(seed)
 
@@ -273,16 +272,16 @@ abstract class LedgerBackendContract {
     fun `writer prunes by assetId and retains an asset set - reader cannot`() = runTest {
         val backend = createBackend()
         val writer = LedgerWriter(backend, FixedClock(t0))
-        writer.recordRequested("X-photo.jpg", "X", attempt = 0, version = "v1")
-        writer.recordRequested("X-video.mov", "X", attempt = 0, version = "v1")
-        writer.recordRequested("Y-photo.jpg", "Y", attempt = 0, version = "v1")
+        writer.recordRequested("X-photo.jpg", "X", attempt = 0)
+        writer.recordRequested("X-video.mov", "X", attempt = 0)
+        writer.recordRequested("Y-photo.jpg", "Y", attempt = 0)
 
         writer.deleteByAssetId("X")
         assertNull(writer.entry("X-photo.jpg"))
         assertNull(writer.entry("X-video.mov"))
         assertEquals("Y-photo.jpg", writer.entry("Y-photo.jpg")?.key)
 
-        writer.recordRequested("Z-photo.jpg", "Z", attempt = 0, version = "v1")
+        writer.recordRequested("Z-photo.jpg", "Z", attempt = 0)
         writer.retainAssets(setOf("Y"))
         assertNull(writer.entry("Z-photo.jpg"))
         assertEquals("Y-photo.jpg", writer.entry("Y-photo.jpg")?.key)
@@ -293,20 +292,19 @@ abstract class LedgerBackendContract {
     }
 
     @Test
-    fun `recording converges on assetId state attempt and version - only the timestamp moves`() = runTest {
+    fun `recording converges on assetId state and attempt - only the timestamp moves`() = runTest {
         val backend = createBackend()
         val clock = FixedClock(t0)
         val writer = LedgerWriter(backend, clock)
 
-        writer.recordCompleted("k", "A", attempt = 2, version = "v1")
+        writer.recordCompleted("k", "A", attempt = 2)
         clock.instant = t1
-        writer.recordCompleted("k", "A", attempt = 2, version = "v1")
+        writer.recordCompleted("k", "A", attempt = 2)
 
         val entry = writer.entry("k")!!
         assertEquals("A", entry.assetId)
         assertEquals(LedgerState.COMPLETED, entry.state)
         assertEquals(2, entry.attempt)
-        assertEquals("v1", entry.version)
         assertEquals(t1, entry.updatedAt)
     }
 }

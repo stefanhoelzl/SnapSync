@@ -209,15 +209,10 @@ const MARKER_BODY = { eventId: E, name: "Party", createdAt: "2026-06-27T00:00:00
 const markerPresent = { [MARKER_URL]: { body: MARKER_BODY } };
 
 const dir = (name: string) => ({ ObjectName: name, IsDirectory: true, Length: 0 });
-const file = (
-  name: string,
-  length: number,
-  ts: { LastChanged?: string; DateLastModified?: string },
-) => ({
+const file = (name: string, length: number) => ({
   ObjectName: name,
   IsDirectory: false,
   Length: length,
-  ...ts,
 });
 
 /** Serves canned bunny LIST JSON keyed by URL; any unmapped URL → 404 (→ "no objects"). */
@@ -243,9 +238,8 @@ Deno.test("GET files → flat array from a single event-dir LIST, normalized ent
     ...markerPresent,
     [TOP]: {
       body: [
-        file("IMG_0001-ios.photo.jpg", 1234, { LastChanged: "2026-06-20T10:31:00Z" }),
-        // the alternate timestamp field name bunny's docs also show
-        file("VID_0002-ios.video.mov", 5678, { DateLastModified: "2026-06-21T08:00:00Z" }),
+        file("IMG_0001-ios.photo.jpg", 1234),
+        file("VID_0002-ios.video.mov", 5678),
       ],
     },
   });
@@ -255,13 +249,11 @@ Deno.test("GET files → flat array from a single event-dir LIST, normalized ent
     {
       filename: "IMG_0001-ios.photo.jpg",
       size: 1234,
-      lastModified: "2026-06-20T10:31:00Z",
       url: `https://dl.example/event/${E}/file/IMG_0001-ios.photo.jpg`,
     },
     {
       filename: "VID_0002-ios.video.mov",
       size: 5678,
-      lastModified: "2026-06-21T08:00:00Z",
       url: `https://dl.example/event/${E}/file/VID_0002-ios.video.mov`,
     },
   ]);
@@ -275,7 +267,7 @@ Deno.test("GET files → directory entries are excluded", async () => {
   const { fetchImpl } = listFake({
     ...markerPresent,
     [TOP]: {
-      body: [file("IMG_0001-ios.photo.jpg", 10, { LastChanged: "t" }), dir("nested")],
+      body: [file("IMG_0001-ios.photo.jpg", 10), dir("nested")],
     },
   });
   const res = await createApp({ config: CONFIG, fetch: fetchImpl }).request(FILES);
@@ -284,7 +276,6 @@ Deno.test("GET files → directory entries are excluded", async () => {
     {
       filename: "IMG_0001-ios.photo.jpg",
       size: 10,
-      lastModified: "t",
       url: `https://dl.example/event/${E}/file/IMG_0001-ios.photo.jpg`,
     },
   ]);
@@ -348,7 +339,7 @@ Deno.test("GET files → listed filename round-trips a percent-encoded upload na
   const { fetchImpl } = listFake({
     ...markerPresent,
     [TOP]: {
-      body: [file("IMG%20001.jpg", 7, { LastChanged: "2026-06-20T10:31:00Z" })],
+      body: [file("IMG%20001.jpg", 7)],
     },
   });
   const res = await createApp({ config: CONFIG, fetch: fetchImpl }).request(FILES);

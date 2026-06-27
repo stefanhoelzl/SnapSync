@@ -57,7 +57,7 @@ class LedgerSyncStatusSourceTest {
 
     @Test
     fun `initial value is Loading before the first read`() = runTest {
-        writer.recordCompleted("a", assetId = "a", attempt = 0, version = "v1")
+        writer.recordCompleted("a", assetId = "a", attempt = 0)
         gallery.set(3)
 
         val source = source(testScheduler, backgroundScope)
@@ -67,9 +67,9 @@ class LedgerSyncStatusSourceTest {
 
     @Test
     fun `first Ready reflects ledger and gallery`() = runTest {
-        writer.recordCompleted("a", assetId = "a", attempt = 0, version = "v1")
-        writer.recordCompleted("b", assetId = "b", attempt = 0, version = "v1")
-        writer.recordRequested("c", assetId = "c", attempt = 0, version = "v1")
+        writer.recordCompleted("a", assetId = "a", attempt = 0)
+        writer.recordCompleted("b", assetId = "b", attempt = 0)
+        writer.recordRequested("c", assetId = "c", attempt = 0)
         gallery.set(5)
 
         val source = source(testScheduler, backgroundScope)
@@ -85,7 +85,7 @@ class LedgerSyncStatusSourceTest {
         runCurrent()
         assertEquals(ready(total = 4), source.status.value)
 
-        writer.recordCompleted("a", assetId = "a", attempt = 0, version = "v1")
+        writer.recordCompleted("a", assetId = "a", attempt = 0)
         runCurrent()
 
         assertEquals(ready(completed = 1, total = 4, lastFinishedAt = t0), source.status.value)
@@ -93,7 +93,7 @@ class LedgerSyncStatusSourceTest {
 
     @Test
     fun `a gallery change re-mints a Ready snapshot with unchanged counts`() = runTest {
-        writer.recordCompleted("a", assetId = "a", attempt = 0, version = "v1")
+        writer.recordCompleted("a", assetId = "a", attempt = 0)
         gallery.set(4)
         val source = source(testScheduler, backgroundScope)
         runCurrent()
@@ -107,7 +107,7 @@ class LedgerSyncStatusSourceTest {
 
     @Test
     fun `a permission flip re-mints a Ready snapshot with unchanged counts`() = runTest {
-        writer.recordCompleted("a", assetId = "a", attempt = 0, version = "v1")
+        writer.recordCompleted("a", assetId = "a", attempt = 0)
         gallery.set(4)
         val source = source(testScheduler, backgroundScope)
         runCurrent()
@@ -120,8 +120,8 @@ class LedgerSyncStatusSourceTest {
 
     @Test
     fun `an observed completion promotes a pending photo before any ledger write`() = runTest {
-        writer.recordRequested("P-photo.jpg", assetId = "P", attempt = 0, version = "v1")
-        writer.recordRequested("P-video.mov", assetId = "P", attempt = 0, version = "v1")
+        writer.recordRequested("P-photo.jpg", assetId = "P", attempt = 0)
+        writer.recordRequested("P-video.mov", assetId = "P", attempt = 0)
         gallery.set(1)
         val source = source(testScheduler, backgroundScope)
         runCurrent()
@@ -137,7 +137,7 @@ class LedgerSyncStatusSourceTest {
 
     @Test
     fun `a released observed key does not revert its photo while still outstanding`() = runTest {
-        writer.recordRequested("P-photo.jpg", assetId = "P", attempt = 0, version = "v1")
+        writer.recordRequested("P-photo.jpg", assetId = "P", attempt = 0)
         gallery.set(1)
         val source = source(testScheduler, backgroundScope)
         runCurrent()
@@ -155,7 +155,7 @@ class LedgerSyncStatusSourceTest {
 
     @Test
     fun `the source never estimates and never gives up`() = runTest {
-        writer.recordFailed("a", assetId = "a", attempt = 3, version = "v1")
+        writer.recordFailed("a", assetId = "a", attempt = 3)
         gallery.set(1)
         val source = source(testScheduler, backgroundScope)
         runCurrent()

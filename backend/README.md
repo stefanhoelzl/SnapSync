@@ -44,7 +44,7 @@ GET  /event/<eventId>/file/<filename>
 
 GET  /event/<eventId>/files
     →  [gate] GET events/<eventId>.json  → 404? respond 404
-    →  200 [ {filename, size, lastModified, url}, … ]  (200 [] for a created-but-empty event)
+    →  200 [ {filename, size, url}, … ]  (200 [] for a created-but-empty event)
        url = <PUBLIC_BASE_URL>/event/<eventId>/file/<filename>  (the download route above)
 ```
 
