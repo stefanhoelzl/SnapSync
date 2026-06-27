@@ -25,8 +25,8 @@ class HttpEventFilesSourceTest {
             requested = request.url.toString()
             respond(
                 content = """[
-                  {"filename":"A-ios.photo.heic","deviceId":"d1","size":1,"lastModified":"2026-06-20T10:31:00Z"},
-                  {"filename":"B-ios.video.mov","deviceId":"d2","size":2,"lastModified":null}
+                  {"filename":"A-ios.photo.heic","size":1,"lastModified":"2026-06-20T10:31:00Z"},
+                  {"filename":"B-ios.video.mov","size":2,"lastModified":null}
                 ]""",
                 status = HttpStatusCode.OK,
                 headers = headersOf(HttpHeaders.ContentType, "application/json"),

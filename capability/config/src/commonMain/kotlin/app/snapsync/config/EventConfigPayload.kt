@@ -8,7 +8,7 @@ import kotlinx.serialization.Serializable
  * authorizes by event id alone, and the device holds no storage credential (the v1 S3 keys are
  * gone). The upload **host** is deliberately NOT here: it is fixed at compile time by the
  * extension's `BackgroundUploadURLBase`. The consuming iOS composition root combines this `eventId`
- * with the baked host and the App-Group device id into the edge upload URL.
+ * with the baked host into the edge upload URL.
  *
  * This class is also the wire DTO: its property name is the exact JSON key of the deeplink payload.
  */
