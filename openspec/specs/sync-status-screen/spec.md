@@ -123,19 +123,28 @@ to the hero once the join succeeds). `UiState.JoinFailed` SHALL render the `Erro
 failure message and a detail line prompting the user to scan the event QR again, with no spinner and
 **no automatic retry** (re-scanning is the only retry) and no button.
 
+In the **joined layer** — the `InProgress`, `NothingToSync`, and `Completed` states — the screen
+SHALL additionally render a flat, icon-only **leave** action in the bottom-right, carried through the
+design system's bottom-right action slot and the flat icon button (see `design-system`; the glyph is
+a semantic "leave" affordance, not styled by the screen). Activating it SHALL raise the leave
+confirmation ("Leave event?", confirm / cancel; see `leave-event`); confirming SHALL invoke the
+screen's `onLeaveEvent` callback and dismissing SHALL change nothing. The leave action SHALL NOT
+appear in the loading, setup-gate, joining, or join-failed states. The confirmation's open/closed
+state is local screen state; `UiState` and the snapshot→state reduction are unchanged by this action.
+
 The synced and total counts SHALL appear as text. For InProgress, the detail line SHALL carry a second
 caption: the in-progress count rendered as `"{inProgress} in progress"` **only when `inProgress > 0`**
 (omitted when nothing is actively uploading), followed by `" · {finishedAgo}"` only when a completion
 exists (`finishedAgo` non-null). When both are absent there is **no detail line**. The screen renders:
 
-| State | Indicator | Count line | Detail |
-|---|---|---|---|
-| Loading | Loading (indeterminate), no dot | "Loading …" | — |
-| Joining | Loading (indeterminate), no dot | "Checking what's already backed up …" | — |
-| JoinFailed | Error (red dot) | "Couldn't reach the server" | "Scan the event QR code again" |
-| InProgress | InProgress (yellow dot) | "{synced} of {total} images synced" | "{inProgress} in progress" when inProgress > 0, joined by " · " to "{finishedAgo}" when not null; absent when neither applies |
-| NothingToSync | Complete (green dot) | "Nothing to sync yet" | — |
-| Completed | Complete (green dot) | "{total} images synced" | relative time |
+| State | Indicator | Count line | Detail | Leave action |
+|---|---|---|---|---|
+| Loading | Loading (indeterminate), no dot | "Loading …" | — | no |
+| Joining | Loading (indeterminate), no dot | "Checking what's already backed up …" | — | no |
+| JoinFailed | Error (red dot) | "Couldn't reach the server" | "Scan the event QR code again" | no |
+| InProgress | InProgress (yellow dot) | "{synced} of {total} images synced" | "{inProgress} in progress" when inProgress > 0, joined by " · " to "{finishedAgo}" when not null; absent when neither applies | yes (bottom-right) |
+| NothingToSync | Complete (green dot) | "Nothing to sync yet" | — | yes (bottom-right) |
+| Completed | Complete (green dot) | "{total} images synced" | relative time | yes (bottom-right) |
 
 #### Scenario: Loading state shows an indeterminate indicator
 - **WHEN** the UI state is Loading
@@ -177,6 +186,22 @@ exists (`finishedAgo` non-null). When both are absent there is **no detail line*
 #### Scenario: Completed state shows total and relative time
 - **WHEN** the UI state is Completed with `total = 47` and relative time "5 min ago"
 - **THEN** the screen shows the green dot, the line "47 images synced", and the muted detail "5 min ago"
+
+#### Scenario: Joined-layer states show the leave action
+- **WHEN** the UI state is InProgress, NothingToSync, or Completed
+- **THEN** the screen renders a flat icon-only leave action in the bottom-right
+
+#### Scenario: Non-joined states hide the leave action
+- **WHEN** the UI state is Loading, Setup, Joining, or JoinFailed
+- **THEN** no leave action is rendered
+
+#### Scenario: Confirming the leave invokes the callback
+- **WHEN** the user activates the leave action and confirms the "Leave event?" prompt
+- **THEN** the screen invokes its `onLeaveEvent` callback
+
+#### Scenario: Cancelling the leave changes nothing
+- **WHEN** the user activates the leave action and cancels the prompt
+- **THEN** the prompt is dismissed and `onLeaveEvent` is not invoked
 
 The screen is composed under the rules of the `design-system` capability (semantic components
 only; Material 3 containment; `ScreenLayout` owns screen structure).

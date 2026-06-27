@@ -66,6 +66,9 @@ private class FakeConfig(initial: EventConfigPayload? = SAMPLE_CONFIG) : ConfigS
     override suspend fun save(config: EventConfigPayload) {
         flow.value = config
     }
+    override suspend fun clear() {
+        flow.value = null
+    }
 }
 
 private class CountingObserved : ObservedCompletionsSource {
@@ -408,6 +411,31 @@ class StatusContainerHostTest {
 
         assertEquals(1, requester.requests)
         assertEquals(1, requester.settingsOpens)
+    }
+
+    @Test
+    fun `onLeaveEvent invokes the injected leave action`() = runTest {
+        var leaves = 0
+        val configFake = FakeConfig()
+        val containerHost = StatusContainerHost(
+            FakeSyncStatusSource(), FakePermissionSource(), SpyRequester(), configFake, configFake,
+            backgroundScope, FakeClock(EPOCH), leave = { leaves++ },
+        )
+        containerHost.test(this) {
+            containerHost.onLeaveEvent()
+        }
+        advanceUntilIdle()
+
+        assertEquals(1, leaves)
+    }
+
+    @Test
+    fun `onLeaveEvent with the default no-op leave is inert`() = runTest {
+        // Construction without injecting a leave action succeeds, and a confirmed leave does nothing.
+        host(FakeSyncStatusSource(), backgroundScope).test(this) {
+            containerHost.onLeaveEvent()
+        }
+        advanceUntilIdle()
     }
 
     @Test

@@ -55,6 +55,10 @@ class PanelController(private val clock: Clock = Clock.System) {
         override suspend fun save(config: EventConfigPayload) {
             configState.value = config
         }
+
+        override suspend fun clear() {
+            configState.value = null
+        }
     }
 
     // The re-join status cell, injected into the container so the join presets can forge Joining /

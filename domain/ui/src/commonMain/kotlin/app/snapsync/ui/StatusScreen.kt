@@ -4,12 +4,18 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import app.snapsync.permission.PermissionStatus
 import app.snapsync.presentation.UiState
+import app.snapsync.ui.components.AppConfirmDialog
 import app.snapsync.ui.components.AppTheme
+import app.snapsync.ui.components.LeaveButton
 import app.snapsync.ui.components.PrimaryButton
 import app.snapsync.ui.components.ScreenLayout
 import app.snapsync.ui.components.SetupCard
@@ -21,10 +27,21 @@ fun StatusScreen(
     state: UiState,
     onRequestPermission: () -> Unit = {},
     onOpenSettings: () -> Unit = {},
+    onLeaveEvent: () -> Unit = {},
     transientError: String? = null,
 ) {
     AppTheme {
-        ScreenLayout(title = "SnapSync") {
+        // Local UI state only: the confirm dialog's visibility never enters UiState or the reduction.
+        var confirmingLeave by remember { mutableStateOf(false) }
+        // The leave affordance lives in the joined layer only (InProgress / NothingToSync / Completed);
+        // the loading, setup-gate, joining, and join-failed states show none.
+        val leaveAction: (@Composable () -> Unit)? = if (state.isJoinedLayer) {
+            { LeaveButton(description = "Leave event", onClick = { confirmingLeave = true }) }
+        } else {
+            null
+        }
+
+        ScreenLayout(title = "SnapSync", bottomEndAction = leaveAction) {
             when (state) {
                 UiState.Loading ->
                     StatusHero(StatusIndicator.Loading, "Loading …")
@@ -51,8 +68,26 @@ fun StatusScreen(
                     StatusHero(StatusIndicator.Complete, "${state.total} images synced", state.finishedAgo)
             }
         }
+
+        if (confirmingLeave) {
+            AppConfirmDialog(
+                title = "Leave event?",
+                confirmLabel = "Confirm",
+                cancelLabel = "Cancel",
+                onConfirm = {
+                    confirmingLeave = false
+                    onLeaveEvent()
+                },
+                onDismiss = { confirmingLeave = false },
+            )
+        }
     }
 }
+
+// The joined layer — config + permission satisfied and the join settled — is the only place the
+// leave affordance appears. Loading, the setup gate, and the join phase (Joining/JoinFailed) show none.
+private val UiState.isJoinedLayer: Boolean
+    get() = this is UiState.InProgress || this == UiState.NothingToSync || this is UiState.Completed
 
 // The InProgress detail line: the "{n} in progress" label only when something is actively uploading,
 // joined to the last-sync age with " · ". Null (no detail line) when neither is present.

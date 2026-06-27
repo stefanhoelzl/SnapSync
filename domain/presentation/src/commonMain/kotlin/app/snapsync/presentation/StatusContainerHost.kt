@@ -57,6 +57,11 @@ class StatusContainerHost(
     // don't exercise the join construct unchanged (Idle falls through to the sync hero); iOS injects
     // the same instance the JoinEvent drives.
     eventStatusSource: EventStatusSource = MutableEventStatusSource(),
+    // The leave action, injected as a plain suspend lambda (not the `LeaveEvent` type) so this
+    // Compose-free module gains no engine/gallery dependency. Defaults to a no-op so non-iOS hosts
+    // and tests construct unchanged and a confirmed leave there is inert; iOS binds it to
+    // `LeaveEvent.leave`.
+    private val leave: suspend () -> Unit = {},
 ) : ContainerHost<UiState, SetupEffect> {
 
     override val container: Container<UiState, SetupEffect> =
@@ -106,6 +111,14 @@ class StatusContainerHost(
     fun onRequestPermission() = intent { requester.request() }
 
     fun onOpenSettings() = intent { requester.openSettings() }
+
+    /**
+     * Leave the configured event (confirmed in the UI before this fires). Delegates to the injected
+     * leave action, which disables the producer, resets the ledger, clears the discovery cursor and
+     * the persisted config, and returns the event status to `Idle`. The config going `null` makes the
+     * reduction fall back to the setup gate — no new `UiState` and no reduction branch here.
+     */
+    fun onLeaveEvent() = intent { leave() }
 
     /**
      * A deeplink arrived (forwarded raw from the platform). Decode it with the shared codec; a

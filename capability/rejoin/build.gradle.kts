@@ -19,6 +19,7 @@ kotlin {
             implementation(project(":domain:gallery"))
             implementation(project(":domain:engine"))
             implementation(project(":capability:config"))
+            implementation(libs.kermit)
             implementation(libs.ktor.client.core)
             implementation(libs.kotlinx.serialization.json)
         }
