@@ -1,0 +1,10 @@
+-- v2 -> v3: drop the `version` column.
+--
+-- Uploaded resources are now immutable — the engine no longer compares a content version, so a
+-- COMPLETED row's mere existence is the proof of backup. Unlike 1.sqm this migration is
+-- ROW-PRESERVING: existing rows (especially COMPLETED ones) MUST survive, because a surviving
+-- COMPLETED row is exactly what stops the next discovery cycle from re-uploading an already-stored
+-- resource. `ALTER TABLE … DROP COLUMN` is SQLite 3.35 grammar (see the dialect bump in
+-- domain/engine/build.gradle.kts); both drivers execute it natively. Migration SQL is raw (no
+-- `AS LedgerState`/`AS Instant` type annotations).
+ALTER TABLE ledgerRow DROP COLUMN version;

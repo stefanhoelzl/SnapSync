@@ -40,8 +40,8 @@ class JoinEventTest {
         override val config: StateFlow<EventConfigPayload?> = flow
     }
 
-    private fun res(filename: String, assetId: String, version: String) =
-        Resource(filename, assetId, "image/heic", version, emptyMap(), Unit)
+    private fun res(filename: String, assetId: String) =
+        Resource(filename, assetId, "image/heic", emptyMap(), Unit)
 
     private fun join(
         files: EventFilesSource,
@@ -53,10 +53,10 @@ class JoinEventTest {
     ) = JoinEvent(files, enumerator, ledger, config, status, { onCursorClear() }, fixedClock)
 
     @Test
-    fun `empty ledger seeds only filename matches as completed at the local version`() = runTest {
-        val files = FakeFiles(Result.success(listOf(RemoteFile("A-ios.photo.heic", "2026-06-20T10:31:00Z"))))
+    fun `empty ledger seeds only filename matches as completed at the join time`() = runTest {
+        val files = FakeFiles(Result.success(listOf(RemoteFile("A-ios.photo.heic"))))
         val enumerator = InMemoryGalleryResourceEnumerator(
-            listOf(res("A-ios.photo.heic", "A", "v1"), res("B-ios.photo.heic", "B", "v2")),
+            listOf(res("A-ios.photo.heic", "A"), res("B-ios.photo.heic", "B")),
         )
         val ledger = FakeLedgerBackend()
         val status = MutableEventStatusSource()
@@ -66,17 +66,16 @@ class JoinEventTest {
 
         val seeded = ledger.get("A-ios.photo.heic")!!
         assertEquals(LedgerState.COMPLETED, seeded.state)
-        assertEquals("v1", seeded.version)
-        assertEquals(Instant.parse("2026-06-20T10:31:00Z"), seeded.updatedAt)
+        assertEquals(t0, seeded.updatedAt) // updatedAt is the join time (no listed date is consulted)
         assertNull(ledger.get("B-ios.photo.heic")) // not in the remote list → not seeded
         assertEquals(EventStatus.Joined, status.status.value)
         assertEquals(1, cursorCleared)
     }
 
     @Test
-    fun `seed falls back to join time when lastModified is absent or unparseable`() = runTest {
-        val files = FakeFiles(Result.success(listOf(RemoteFile("A-ios.photo.heic", null))))
-        val enumerator = InMemoryGalleryResourceEnumerator(listOf(res("A-ios.photo.heic", "A", "v1")))
+    fun `seed timestamps every row with the join time`() = runTest {
+        val files = FakeFiles(Result.success(listOf(RemoteFile("A-ios.photo.heic"))))
+        val enumerator = InMemoryGalleryResourceEnumerator(listOf(res("A-ios.photo.heic", "A")))
         val ledger = FakeLedgerBackend()
 
         join(files, enumerator, ledger, FakeConfig("E1"), MutableEventStatusSource()).ensureJoined()
@@ -88,7 +87,7 @@ class JoinEventTest {
     fun `non-empty ledger is a no-op without fetching and leaves status unchanged`() = runTest {
         val files = FakeFiles(Result.success(emptyList()))
         val ledger = FakeLedgerBackend().apply {
-            put(LedgerEntry("X", "X", LedgerState.COMPLETED, 0, "v", t0))
+            put(LedgerEntry("X", "X", LedgerState.COMPLETED, 0, t0))
         }
         val status = MutableEventStatusSource()
 
@@ -116,13 +115,13 @@ class JoinEventTest {
     @Test
     fun `a re-scan clears the session flags so a failed join retries`() = runTest {
         val files = FakeFiles(Result.failure(RuntimeException("net")))
-        val enumerator = InMemoryGalleryResourceEnumerator(listOf(res("A-ios.photo.heic", "A", "v1")))
+        val enumerator = InMemoryGalleryResourceEnumerator(listOf(res("A-ios.photo.heic", "A")))
         val ledger = FakeLedgerBackend()
         val j = join(files, enumerator, ledger, FakeConfig("E1"), MutableEventStatusSource())
         assertFalse(j.ensureJoined())
 
         j.onProvision(previousEventId = "E1", newEventId = "E1") // same event re-scan
-        files.result = Result.success(listOf(RemoteFile("A-ios.photo.heic", null)))
+        files.result = Result.success(listOf(RemoteFile("A-ios.photo.heic")))
 
         assertTrue(j.ensureJoined())
         assertEquals(2, files.calls)
@@ -131,7 +130,7 @@ class JoinEventTest {
 
     @Test
     fun `switching events resets the ledger and clears the cursor`() = runTest {
-        val ledger = FakeLedgerBackend().apply { put(LedgerEntry("old", "old", LedgerState.COMPLETED, 0, "v", t0)) }
+        val ledger = FakeLedgerBackend().apply { put(LedgerEntry("old", "old", LedgerState.COMPLETED, 0, t0)) }
         var cursorCleared = 0
         val j = join(FakeFiles(Result.success(emptyList())), InMemoryGalleryResourceEnumerator(), ledger, FakeConfig("NEW"), MutableEventStatusSource()) { cursorCleared++ }
 
@@ -143,7 +142,7 @@ class JoinEventTest {
 
     @Test
     fun `same-event provision leaves the ledger intact`() = runTest {
-        val ledger = FakeLedgerBackend().apply { put(LedgerEntry("k", "k", LedgerState.COMPLETED, 0, "v", t0)) }
+        val ledger = FakeLedgerBackend().apply { put(LedgerEntry("k", "k", LedgerState.COMPLETED, 0, t0)) }
         var cursorCleared = 0
         val j = join(FakeFiles(Result.success(emptyList())), InMemoryGalleryResourceEnumerator(), ledger, FakeConfig("E1"), MutableEventStatusSource()) { cursorCleared++ }
 
@@ -170,10 +169,10 @@ class JoinEventTest {
             override suspend fun list(eventId: String): Result<List<RemoteFile>> {
                 calls++
                 release.await()
-                return Result.success(listOf(RemoteFile("A-ios.photo.heic", null)))
+                return Result.success(listOf(RemoteFile("A-ios.photo.heic")))
             }
         }
-        val enumerator = InMemoryGalleryResourceEnumerator(listOf(res("A-ios.photo.heic", "A", "v1")))
+        val enumerator = InMemoryGalleryResourceEnumerator(listOf(res("A-ios.photo.heic", "A")))
         val ledger = FakeLedgerBackend()
         val j = join(gatedFiles, enumerator, ledger, FakeConfig("E1"), MutableEventStatusSource())
 
@@ -196,7 +195,7 @@ class JoinEventTest {
         val files = FakeFiles(Result.success(emptyList()))
         val ledger = FakeLedgerBackend()
         val status = MutableEventStatusSource()
-        val j = join(files, InMemoryGalleryResourceEnumerator(listOf(res("A-ios.photo.heic", "A", "v1"))), ledger, FakeConfig("E1"), status)
+        val j = join(files, InMemoryGalleryResourceEnumerator(listOf(res("A-ios.photo.heic", "A"))), ledger, FakeConfig("E1"), status)
 
         assertTrue(j.ensureJoined())
         assertEquals(EventStatus.Joined, status.status.value)

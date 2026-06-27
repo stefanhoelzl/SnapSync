@@ -70,24 +70,22 @@ export type Deps = {
   config: Config;
 };
 
-// A single entry from bunny's native Storage "List Files" response. We read only these fields; the
-// timestamp field name differs across bunny's own docs (`LastChanged` vs `DateLastModified`), so we
-// accept either. Everything else (Guid, ServerId, …) is ignored.
+// A single entry from bunny's native Storage "List Files" response. We read only these fields;
+// everything else (Guid, ServerId, the last-modified timestamps, …) is ignored.
 type BunnyEntry = {
   ObjectName: string;
   Length: number;
   IsDirectory: boolean;
-  LastChanged?: string;
-  DateLastModified?: string;
 };
 
-// One normalized object in our response — the four fields the contract promises (a closed shape).
+// One normalized object in our response — the three fields the contract promises (a closed shape).
 // `url` is the absolute download URL (per `bunny-download-endpoint`); the storage key itself stays
 // hidden. `contentType` is intentionally absent (bunny's canonical List schema doesn't return it).
+// No `lastModified`: it was a storage-clock timestamp with no consumer (the re-join seed timestamps
+// its rows with the join time, and uploaded resources are immutable).
 type FileEntry = {
   filename: string;
   size: number;
-  lastModified: string | null;
   url: string;
 };
 
@@ -359,7 +357,6 @@ export function createApp({ fetch: fetchImpl, config }: Deps): Hono {
           return {
             filename,
             size: e.Length,
-            lastModified: e.LastChanged ?? e.DateLastModified ?? null,
             url: downloadUrl(config, eventId, filename),
           };
         });

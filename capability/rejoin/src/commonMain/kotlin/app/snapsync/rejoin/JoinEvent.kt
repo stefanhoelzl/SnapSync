@@ -8,7 +8,6 @@ import app.snapsync.eventstatus.EventStatus
 import app.snapsync.eventstatus.MutableEventStatusSource
 import app.snapsync.gallery.GalleryResourceEnumerator
 import kotlin.time.Clock
-import kotlin.time.Instant
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 
@@ -87,18 +86,17 @@ class JoinEvent(
             status.set(EventStatus.JoinFailed)
             return false
         }
-        val lastModifiedByName = remote.associate { it.filename to it.lastModified }
+        val storedFilenames = remote.mapTo(mutableSetOf()) { it.filename }
         val joinTime = clock.now()
         val seeds = enumerator.enumerate()
-            .filter { it.filename in lastModifiedByName }
+            .filter { it.filename in storedFilenames }
             .map { resource ->
                 LedgerEntry(
                     key = resource.filename,
                     assetId = resource.assetId,
                     state = LedgerState.COMPLETED,
                     attempt = 0,
-                    version = resource.version,
-                    updatedAt = parseInstant(lastModifiedByName[resource.filename]) ?: joinTime,
+                    updatedAt = joinTime,
                 )
             }
         ledger.resetTo(seeds)
@@ -110,7 +108,4 @@ class JoinEvent(
 
     private suspend fun ledgerHasRows(): Boolean =
         ledger.aggregates().let { it.pending + it.completed > 0 }
-
-    private fun parseInstant(value: String?): Instant? =
-        value?.let { runCatching { Instant.parse(it) }.getOrNull() }
 }

@@ -18,7 +18,7 @@ asset-targeted bulk removals: `deleteByAssetId(assetId)` — delete every row wh
 the argument — and `retainAssets(keep)` — delete every row whose `assetId` is not in the `keep` set.
 Backends SHALL store entries verbatim (no interpretation, no precedence logic, last write wins, no
 clocks of their own). A `LedgerEntry` SHALL carry `key`, `assetId`, `state` (`REQUESTED` |
-`COMPLETED` | `FAILED`), `attempt`, `version`, and `updatedAt: Instant`. `clear()`, `resetTo`,
+`COMPLETED` | `FAILED`), `attempt`, and `updatedAt: Instant`. `clear()`, `resetTo`,
 `deleteByAssetId`, and `retainAssets` SHALL each remove (and, for `resetTo`, then insert) the matching
 rows and signal `changes` **once** like a `put` (so watchers re-read the now-current truth).
 `clear()`, `resetTo`, `deleteByAssetId`, and `retainAssets` are **reset/bulk** operations, not the
@@ -163,26 +163,26 @@ snapshot or dings; `LedgerReader` stays per-key (`entry(key)` only).
 
 ### Requirement: Record operations
 `LedgerWriter` SHALL provide `recordRequested`, `recordCompleted`, and `recordFailed`. Each SHALL
-upsert a complete, self-contained entry for the key (assetId, state, attempt, version as supplied
+upsert a complete, self-contained entry for the key (assetId, state, attempt as supplied
 by the caller) — no operation depends on a prior read, and each maps to a single backend `put`.
-`assetId` is supplied positionally as `recordX(key, assetId, attempt, version)` (the writer stays
+`assetId` is supplied positionally as `recordX(key, assetId, attempt)` (the writer stays
 on primitives, decoupled from the engine's `Resource`). The writer SHALL stamp `updatedAt` on
 every record operation from an injected `Clock` (default: the system clock) — the writer is the
 single stamping point; engine and backends stay clock-free. Duplicate record operations with
-identical arguments SHALL converge on assetId, state, attempt, and version; the timestamp moves
+identical arguments SHALL converge on assetId, state, and attempt; the timestamp moves
 forward with each application.
 
 #### Scenario: Requested entry
-- **WHEN** `recordRequested(key, assetId, attempt, version)` is called
-- **THEN** `entry(key)` has state `REQUESTED` with that assetId, attempt, and version
+- **WHEN** `recordRequested(key, assetId, attempt)` is called
+- **THEN** `entry(key)` has state `REQUESTED` with that assetId and attempt
 
 #### Scenario: Completed entry
-- **WHEN** `recordCompleted(key, assetId, attempt, version)` is called
-- **THEN** `entry(key)` has state `COMPLETED` with that assetId, attempt, and version
+- **WHEN** `recordCompleted(key, assetId, attempt)` is called
+- **THEN** `entry(key)` has state `COMPLETED` with that assetId and attempt
 
 #### Scenario: Failed entry
-- **WHEN** `recordFailed(key, assetId, attempt, version)` is called
-- **THEN** `entry(key)` has state `FAILED` with that assetId, attempt, and version
+- **WHEN** `recordFailed(key, assetId, attempt)` is called
+- **THEN** `entry(key)` has state `FAILED` with that assetId and attempt
 
 #### Scenario: Record operations stamp the time
 - **WHEN** a record operation runs with a fixed injected clock
@@ -190,14 +190,14 @@ forward with each application.
 
 #### Scenario: Recording converges
 - **WHEN** the same record operation is applied twice with identical arguments
-- **THEN** `entry(key)` has the same assetId, state, attempt, and version as after one application
+- **THEN** `entry(key)` has the same assetId, state, and attempt as after one application
   — only `updatedAt` may differ
 
 ### Requirement: SQLDelight backend
 A SQLDelight-backed `LedgerBackend` SHALL be provided in `:domain:engine` commonMain (SQLDelight
 package `app.snapsync.engine.db`) with the schema
 `key TEXT PRIMARY KEY, assetId TEXT NOT NULL, state TEXT NOT NULL, attempt INTEGER NOT NULL,
-version TEXT NOT NULL, updatedAt INTEGER NOT NULL` (epoch milliseconds) plus an index on `assetId`
+updatedAt INTEGER NOT NULL` (epoch milliseconds) plus an index on `assetId`
 (backing `deleteByAssetId` and the `assetId`-grouped aggregate). `state` and `updatedAt` SHALL be
 SQLDelight typed columns (`AS LedgerState` via the built-in enum adapter, `AS Instant` via an
 epoch-millis adapter); adapter wiring SHALL be hidden in a single factory function so construction
@@ -211,22 +211,24 @@ SQL round-trip (an `assetId`-grouped query). JVM/sqlite driver wiring exists for
 - **THEN** they pass unchanged
 
 ### Requirement: Ledger schema migration
-The SQLDelight schema SHALL be versioned and ship a migration that brings an existing on-device
-`ledger.db` (in the App-Group container, which survives app reinstall) to the `assetId` schema.
-Because the ledger is rebuildable from a full enumeration, the migration SHALL be **destructive** —
-it drops and recreates `ledgerRow` with the `assetId` column and index rather than preserving rows;
-no data is migrated. A fresh install SHALL create the current schema directly. After the migration
-the ledger is empty and the next discovery cycle repopulates it with `assetId`s.
+The SQLDelight schema SHALL be versioned and ship migrations that bring an existing on-device
+`ledger.db` (in the App-Group container, which survives app reinstall) to the current schema. The
+migration that drops the `version` column SHALL be **row-preserving** — existing rows, including
+`COMPLETED` ones, SHALL survive it, because an uploaded resource is immutable and a surviving
+`COMPLETED` row is exactly what keeps the next discovery cycle from re-uploading it. A fresh install
+SHALL create the current (versionless) schema directly. (Dropping a column requires the SQLite
+3.35+ grammar, so the SQLDelight dialect floor is raised accordingly — a build detail, not part of
+the on-device contract.)
 
-#### Scenario: Existing ledger migrates to the assetId schema
-- **WHEN** a database created under the pre-`assetId` schema (holding rows) is opened under the
-  current schema version
-- **THEN** the migration runs without error, `ledgerRow` has the `assetId` column, and the table is
-  empty (rows are rebuilt by re-enumeration, not preserved)
+#### Scenario: Existing ledger drops the version column but keeps its rows
+- **WHEN** a database created under the pre-immutable schema (holding `COMPLETED` rows with a
+  `version` column) is opened under the current schema version
+- **THEN** the migration runs without error, `ledgerRow` no longer has a `version` column, and the
+  pre-existing rows (their `key`, `assetId`, `state`, `attempt`, `updatedAt`) are preserved
 
 #### Scenario: Fresh database is created at the current schema
 - **WHEN** a database is created from scratch
-- **THEN** it has the `assetId` column and index with no migration step required
+- **THEN** it has no `version` column and requires no migration step
 
 ### Requirement: Prune operations are writer-only
 The two asset-keyed bulk removals (`deleteByAssetId`, `retainAssets`) SHALL be exposed on
@@ -294,8 +296,8 @@ a single query (`SELECT assetId, key FROM ledgerRow WHERE state != 'COMPLETED'`)
 `LedgerBackend.resetTo(entries)` SHALL replace the entire store with `entries` in a single atomic
 transaction: either all prior rows are removed and all `entries` inserted, or — on failure or
 interruption — the store is left unchanged (no partial replacement is ever observable). It SHALL emit
-exactly one `changes` signal on success. Entries are stored verbatim (the caller supplies `state`,
-`version`, and `updatedAt`); `resetTo` performs no clock stamping of its own. On the SQLDelight
+exactly one `changes` signal on success. Entries are stored verbatim (the caller supplies `state`
+and `updatedAt`); `resetTo` performs no clock stamping of its own. On the SQLDelight
 backend it SHALL execute as one transaction.
 
 #### Scenario: Interrupted reset leaves the store unchanged

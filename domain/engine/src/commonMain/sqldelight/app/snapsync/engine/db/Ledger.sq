@@ -6,20 +6,19 @@ CREATE TABLE ledgerRow (
     assetId TEXT NOT NULL,
     state TEXT AS LedgerState NOT NULL,
     attempt INTEGER NOT NULL,
-    version TEXT NOT NULL,
     updatedAt INTEGER AS Instant NOT NULL
 );
 
 CREATE INDEX ledgerRow_assetId ON ledgerRow(assetId);
 
 get:
-SELECT key, assetId, state, attempt, version, updatedAt
+SELECT key, assetId, state, attempt, updatedAt
 FROM ledgerRow
 WHERE key = :key;
 
 put:
-INSERT OR REPLACE INTO ledgerRow (key, assetId, state, attempt, version, updatedAt)
-VALUES (:key, :assetId, :state, :attempt, :version, :updatedAt);
+INSERT OR REPLACE INTO ledgerRow (key, assetId, state, attempt, updatedAt)
+VALUES (:key, :assetId, :state, :attempt, :updatedAt);
 
 deleteAll:
 DELETE FROM ledgerRow;

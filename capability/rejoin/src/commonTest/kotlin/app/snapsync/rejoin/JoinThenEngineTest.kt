@@ -40,15 +40,15 @@ class JoinThenEngineTest {
             UploadRequest("https://edge.example/file/${resource.filename}", emptyMap(), resource)
     }
 
-    private fun res(filename: String, assetId: String, version: String) =
-        Resource(filename, assetId, "image/heic", version, emptyMap(), Unit)
+    private fun res(filename: String, assetId: String) =
+        Resource(filename, assetId, "image/heic", emptyMap(), Unit)
 
     @Test
     fun `a photo seeded by the join is skipped by the engine`() = runTest {
         val ledger = FakeLedgerBackend()
-        val joined = res("A-ios.photo.heic", "A", "v1")
+        val joined = res("A-ios.photo.heic", "A")
         JoinEvent(
-            files = FakeFilesOnce(listOf(RemoteFile("A-ios.photo.heic", "2026-06-20T10:31:00Z"))),
+            files = FakeFilesOnce(listOf(RemoteFile("A-ios.photo.heic"))),
             enumerator = InMemoryGalleryResourceEnumerator(listOf(joined)),
             ledger = ledger,
             config = FakeConfig("E1"),
@@ -66,9 +66,9 @@ class JoinThenEngineTest {
         val ledger = FakeLedgerBackend()
         // Only A is stored remotely; B exists locally but is not in the manifest → not seeded.
         JoinEvent(
-            files = FakeFilesOnce(listOf(RemoteFile("A-ios.photo.heic", null))),
+            files = FakeFilesOnce(listOf(RemoteFile("A-ios.photo.heic"))),
             enumerator = InMemoryGalleryResourceEnumerator(
-                listOf(res("A-ios.photo.heic", "A", "v1"), res("B-ios.photo.heic", "B", "v2")),
+                listOf(res("A-ios.photo.heic", "A"), res("B-ios.photo.heic", "B")),
             ),
             ledger = ledger,
             config = FakeConfig("E1"),
@@ -78,7 +78,7 @@ class JoinThenEngineTest {
         ).ensureJoined()
 
         val engine = SyncEngine(FakeProvider, LedgerWriter(ledger))
-        val decision = engine.handle(SyncEvent.ResourceChanged(res("B-ios.photo.heic", "B", "v2")))
+        val decision = engine.handle(SyncEvent.ResourceChanged(res("B-ios.photo.heic", "B")))
         assertTrue(decision is SyncDecision.Upload, "un-seeded resource must upload, got $decision")
     }
 

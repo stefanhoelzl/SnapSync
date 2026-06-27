@@ -23,8 +23,8 @@ class LeaveEventTest {
     }
 
     private suspend fun seededLedger() = FakeLedgerBackend().apply {
-        put(LedgerEntry("A", "A", LedgerState.COMPLETED, 0, "v", t0))
-        put(LedgerEntry("B", "B", LedgerState.REQUESTED, 0, "v", t0))
+        put(LedgerEntry("A", "A", LedgerState.COMPLETED, 0, t0))
+        put(LedgerEntry("B", "B", LedgerState.REQUESTED, 0, t0))
     }
 
     @Test

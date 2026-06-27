@@ -35,10 +35,4 @@ class UploadKeysTest {
         assertEquals("bin", fileExtension("noextension"))
         assertEquals("dng", fileExtension("Photo.DNG"))
     }
-
-    @Test
-    fun asset_version_renders_modification_seconds_deterministically() {
-        assertEquals("0.0", assetVersion(null))
-        assertEquals(1_234.5.toString(), assetVersion(1_234.5))
-    }
 }

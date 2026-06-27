@@ -29,12 +29,12 @@ class SqlDelightLedgerBackend(database: LedgerDatabase) : LedgerBackend {
     override val changes: Flow<Unit> = dings
 
     override suspend fun get(key: String): LedgerEntry? =
-        queries.get(key) { _, assetId, state, attempt, version, updatedAt ->
-            LedgerEntry(key, assetId, state, attempt.toInt(), version, updatedAt)
+        queries.get(key) { _, assetId, state, attempt, updatedAt ->
+            LedgerEntry(key, assetId, state, attempt.toInt(), updatedAt)
         }.executeAsOneOrNull()
 
     override suspend fun put(entry: LedgerEntry) {
-        queries.put(entry.key, entry.assetId, entry.state, entry.attempt.toLong(), entry.version, entry.updatedAt)
+        queries.put(entry.key, entry.assetId, entry.state, entry.attempt.toLong(), entry.updatedAt)
         dings.tryEmit(Unit)
     }
 
@@ -58,7 +58,7 @@ class SqlDelightLedgerBackend(database: LedgerDatabase) : LedgerBackend {
         queries.transaction {
             queries.deleteAll()
             entries.forEach {
-                queries.put(it.key, it.assetId, it.state, it.attempt.toLong(), it.version, it.updatedAt)
+                queries.put(it.key, it.assetId, it.state, it.attempt.toLong(), it.updatedAt)
             }
         }
         dings.tryEmit(Unit)

@@ -18,7 +18,7 @@ class LedgerWatcherTest {
 
     @Test
     fun `collection starts with current truth - no write needed`() = runTest {
-        writer.recordCompleted("k", assetId = "k", attempt = 0, version = "v1")
+        writer.recordCompleted("k", assetId = "k", attempt = 0)
 
         val first = watcher.snapshot.first()
 
@@ -34,7 +34,7 @@ class LedgerWatcherTest {
         runCurrent()
 
         // A new asset's first resource is REQUESTED — it joins the backlog, completed stays 0.
-        writer.recordRequested("k", assetId = "k", attempt = 0, version = "v1")
+        writer.recordRequested("k", assetId = "k", attempt = 0)
         runCurrent()
 
         assertEquals(
@@ -48,14 +48,14 @@ class LedgerWatcherTest {
 
     @Test
     fun `writes that leave the snapshot unchanged stay silent`() = runTest {
-        writer.recordRequested("k", assetId = "k", attempt = 0, version = "v1")
+        writer.recordRequested("k", assetId = "k", attempt = 0)
         val emissions = mutableListOf<LedgerSnapshot>()
         backgroundScope.launch(start = CoroutineStart.UNDISPATCHED) {
             watcher.snapshot.collect { emissions += it }
         }
         runCurrent()
 
-        writer.recordRequested("k", assetId = "k", attempt = 1, version = "v1")
+        writer.recordRequested("k", assetId = "k", attempt = 1)
         runCurrent()
 
         assertEquals(

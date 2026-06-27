@@ -1,17 +1,4 @@
-# sync engine Specification
-
-## Purpose
-
-The shared decision core of the sync backend: platform adapters drive it with observation events
-(a resource exists with this content state, an upload failed, an upload completed) and act on the
-decisions it answers with. The engine's only state is its ledger — the durable per-key memory of
-what was requested, completed, and failed — written exclusively by the engine. The sync domain
-transports resources grouped by an opaque `assetId` — the engine carries the `assetId` through to
-the ledger but does not interpret it; richer asset handling lives in a later layer above the seam;
-encoding and placement of identity live below it, in the upload-request provider. Authoritative
-design: docs/design.md §2.2.
-
-## Requirements
+## MODIFIED Requirements
 
 ### Requirement: Resource-changed decision
 When a platform submits `ResourceChanged(resource)`, the engine SHALL answer one `SyncDecision`
@@ -54,52 +41,6 @@ ledger SHALL be left untouched (the same as every `ResourceChanged` answer, whic
 - **WHEN** a `Work` decision is returned for a resource
 - **THEN** `decision.job.request.resource` is the identical instance the platform supplied (no
   copying), so the platform can read its opaque `data` payload back at the execution edge
-
-### Requirement: Request minting via the request provider
-For every `Work` decision the engine SHALL obtain the request by calling
-`UploadRequestProvider.provide(resource)` with the platform's resource instance, and SHALL carry
-the returned `UploadRequest` on the job unmodified. The provider SHALL NOT be called when the
-answer is `AlreadyUploaded`. Encoding and placement of the filename remain the provider's
-responsibility under the deterministic-and-injective filename→destination contract.
-
-#### Scenario: Provider receives the resource
-- **WHEN** `handle(ResourceChanged(resource))` yields a `Work` decision
-- **THEN** the provider was invoked exactly once with that same resource instance, and
-  `job.request` is its return value, unmodified
-
-#### Scenario: No minting for skipped work
-- **WHEN** `handle(ResourceChanged(resource))` yields `AlreadyUploaded`
-- **THEN** the provider was not invoked
-
-### Requirement: Failure adjudication — retry forever
-When a platform submits `UploadFailed(job, error)`, the engine SHALL answer `Retry` carrying one
-fresh `UploadJob` with `attempt` incremented by one and a request newly minted via
-`provide(job.request.resource)` — for every `UploadError` variant, with no attempt budget — and
-SHALL record `FAILED` (the failed attempt) for the key. The engine SHALL NOT record `REQUESTED` for
-the retry here; the ledger is left in `FAILED` until the platform creates the retry job and reports
-`UploadStarted` (write-after-act). Recording `FAILED` is an unconditional idempotent upsert.
-
-#### Scenario: Fresh request on retry, ledger left FAILED
-- **WHEN** `handle(UploadFailed(job, Http(403)))` is called
-- **THEN** `Retry` is returned with `attempt == job.attempt + 1` and a request newly obtained from
-  the provider for the same resource instance, and the ledger entry for the key is `FAILED` with the
-  failed attempt (the new `REQUESTED` is written only when the platform reports `UploadStarted`)
-
-#### Scenario: Every error kind retries
-- **WHEN** failures with `Network`, `Http(500)`, `Cancelled`, and `Unknown("x")` are each handled
-- **THEN** each yields exactly one `Retry` — none is dropped
-
-### Requirement: Provider failures rethrow
-If the request provider throws, the engine SHALL NOT catch it: `handle` fails with that exception
-and the ledger SHALL be left unchanged for that event (the engine records only after minting
-succeeds). The event counts as unprocessed; re-handling the same event later is safe because
-recording is an idempotent per-key upsert.
-
-#### Scenario: Provider failure propagates and leaves no trace
-- **WHEN** the provider throws during `handle(ResourceChanged(resource))` for a key with no ledger
-  entry
-- **THEN** the caller receives the provider's exception unswallowed, the ledger still has no entry
-  for the key, and a subsequent `handle` of the same event succeeds when the provider does
 
 ### Requirement: Completion recording
 When a platform submits `UploadCompleted(job)`, the engine SHALL record `COMPLETED` for the key
@@ -161,3 +102,13 @@ solely from the ledger entry for `filename`.
 - **WHEN** a `ResourceChanged` is handled for a resource whose key is absent from the ledger
 - **THEN** the answer is `Upload` regardless of the resource's `assetId` (the decision reads only
   `filename`)
+
+## REMOVED Requirements
+
+### Requirement: Resource version
+**Reason**: Uploaded resources are now immutable — the engine never compares content versions. A
+`COMPLETED` key is backed up for good; only new (absent) or `FAILED` keys produce `Work`. `Resource`
+no longer carries `version` and `SyncDecision.ReUpload` no longer exists.
+**Migration**: The behavior the version comparison provided (skip a re-seen resource) is subsumed by
+the state-only "Resource-changed decision": `COMPLETED`/`REQUESTED` → `AlreadyUploaded`. There is no
+replacement signal; re-editing an already-uploaded resource is an accepted blind spot.

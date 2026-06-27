@@ -1,13 +1,12 @@
 package app.snapsync.gallery
 
 /**
- * Pure construction of an asset resource's ledger key / object name and its content-version — the
- * single place the `"<assetId>-<kind>.<ext>"` layout (design.md §3.1) and the version derivation
- * live, where `assetId` is the PHAsset's `localIdentifier` (v1, single-device). Kept platform-free
- * so the layout is unit-tested on the simulator instead of trapped inside the PhotoKit adapter; the
- * adapter (and the join seed) only supply the raw fields. Shared by both the upload producer
- * (`:app:ios:photokit-extension`) and the re-join seed, so an app-seeded key/version is byte-identical
- * to what the producer later recomputes.
+ * Pure construction of an asset resource's ledger key / object name — the single place the
+ * `"<assetId>-<kind>.<ext>"` layout (design.md §3.1) lives, where `assetId` is the PHAsset's
+ * `localIdentifier` (v1, single-device). Kept platform-free so the layout is unit-tested on the
+ * simulator instead of trapped inside the PhotoKit adapter; the adapter (and the join seed) only
+ * supply the raw fields. Shared by both the upload producer (`:app:ios:photokit-extension`) and the
+ * re-join seed, so an app-seeded key is byte-identical to what the producer later recomputes.
  */
 fun uploadKey(assetId: String, resourceType: Long, originalFilename: String): String =
     "$assetId-${resourceKind(resourceType)}.${fileExtension(originalFilename)}"
@@ -34,11 +33,3 @@ fun resourceKind(resourceType: Long): String = when (resourceType) {
 /** The lowercased filename extension, or `bin` when the original filename carries none. */
 fun fileExtension(originalFilename: String): String =
     originalFilename.substringAfterLast('.', "").ifEmpty { "bin" }.lowercase()
-
-/**
- * The content-identity version for an asset, derived from its modification time in seconds since the
- * Unix epoch (PhotoKit's `modificationDate.timeIntervalSince1970`), or `0.0` when absent. The engine
- * compares versions for equality only, so the exact string form just has to be deterministic and
- * identical across the producer and the re-join seed.
- */
-fun assetVersion(modificationEpochSeconds: Double?): String = (modificationEpochSeconds ?: 0.0).toString()

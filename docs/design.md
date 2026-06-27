@@ -201,8 +201,6 @@ class Resource(                              // concrete domain type, platform-c
                                              // opaque grouping id (iOS: normalized localIdentifier);
                                              //   engine carries it to the ledger, NEVER interprets
     val contentType: String,                 //
-    val version: String,                     // content-identity proof (iOS: asset modificationDate);
-                                             //   engine compares EQUALITY ONLY, never parses
     val metadata: Map<String, String>,       // opaque to the engine (carried for the platform's use;
     val data: Any,                           //   NOT uploaded as headers — see §3.1)
 )                                            // data: opaque platform payload (PHAssetResource, bytes,
@@ -217,8 +215,7 @@ sealed interface SyncEvent {                 // observations, at-least-once, nev
 
 sealed interface SyncDecision {              // the engine's answer: what, if anything, to do
     sealed interface Work : SyncDecision { val job: UploadJob }
-    class Upload(override val job: UploadJob) : Work      // not (provably) uploaded yet
-    class ReUpload(override val job: UploadJob) : Work    // completed, but version changed
+    class Upload(override val job: UploadJob) : Work      // not (provably) uploaded yet (new key)
     class Retry(override val job: UploadJob) : Work       // answer to UploadFailed, attempt + 1
     data object AlreadyUploaded : SyncDecision            // ledger proof: nothing to do
 }
@@ -263,17 +260,17 @@ class LedgerWriter(backend, clock = System) : LedgerReader
 class LedgerWatcher(backend)                 // aggregates: Flow<LedgerAggregates> — cold: current
                                              //   truth on collect, re-query per conflated ding,
                                              //   deduped; the ONLY type surfacing aggregates/dings
-class LedgerEntry(key, assetId, state /* REQUESTED|COMPLETED|FAILED */, attempt, version, updatedAt)
+class LedgerEntry(key, assetId, state /* REQUESTED|COMPLETED|FAILED */, attempt, updatedAt)
 class LedgerAggregates(pending, completed, newestCompletionAt /* by PHOTO; null = no photo done */)
                                              // schema: key PRIMARY KEY, assetId (+index), state,
-                                             // attempt, version, updatedAt (epoch millis; SQLDelight
+                                             // attempt, updatedAt (epoch millis; SQLDelight
                                              // typed columns, adapters hidden in one factory)
 
 class SyncEngine(provider: UploadRequestProvider, ledger: LedgerWriter) {
     suspend fun handle(event: SyncEvent): SyncDecision    // ResourceChanged = pure query (no write)
     // ResourceChanged(r):  ledger absent/FAILED                  → Upload(mint, attempt = 0)
-    //                      COMPLETED/REQUESTED + version == r     → AlreadyUploaded (in flight/done)
-    //                      COMPLETED/REQUESTED + version != r     → ReUpload(mint, attempt = 0)
+    //                      COMPLETED/REQUESTED                    → AlreadyUploaded (done/in flight;
+    //                                                               an uploaded resource is immutable)
     // UploadStarted(j):    → records REQUESTED (write-after-act), answers AlreadyUploaded
     // UploadFailed(j, e):  → Retry(mint, j.attempt + 1) — forever; records FAILED
     // UploadCompleted(j):  → records COMPLETED, answers AlreadyUploaded
@@ -287,10 +284,11 @@ sealed interface UploadError {               // platform maps raw errors in; pol
 }
 ```
 
-**Engine behavior** (ledger-authoritative, write-after-act; unchanged from v1). `ResourceChanged` is a
+**Engine behavior** (ledger-authoritative, write-after-act). `ResourceChanged` is a
 **pure query** — it reads the ledger and mints a request for `Work` answers but **writes nothing**. A
-key is skipped when the ledger holds it `COMPLETED` **or** `REQUESTED` at the same `version`:
-`REQUESTED` means **a job is in flight**, so re-deriving the change feed is idempotent. This is sound
+key is skipped when the ledger holds it `COMPLETED` **or** `REQUESTED`: an uploaded resource is
+**immutable** (a `COMPLETED` key is never re-uploaded — there is no content version), and `REQUESTED`
+means **a job is in flight**, so re-deriving the change feed is idempotent. This is sound
 only because `REQUESTED` is recorded **after** the platform creates the job: the three lifecycle
 events — `UploadStarted`→`REQUESTED`, `UploadFailed`→`FAILED`, `UploadCompleted`→`COMPLETED` — are the
 **only** ledger writers, each an unconditional idempotent upsert. A crash between create and
@@ -310,7 +308,7 @@ completions at the acknowledge edge, BEFORE acknowledging** (`UploadCompleted(jo
 presented job is acknowledged** (iOS errors 50008 otherwise). **Retention is the ledger itself** — a
 returned system job is mapped back to its key by **parsing its destination URL path**
 (`/event/<id>/file/<name>` → `<id>/<name>`), since `resource` is **nil for succeeded
-jobs**; version/attempt come from the ledger row. **One ledger
+jobs**; the attempt comes from the ledger row. **One ledger
 writer per platform:** the engine (and its `LedgerWriter`) is hosted where uploads are decided — on
 iOS, the extension; the app holds a read-only ledger view. Scope filtering (photos yes, standalone
 video no; **capture date ≥ event start**) sits above the seam — the engine is media-type- and
@@ -353,10 +351,10 @@ synchronous-first-value promise holds. Writes ding, the watcher re-queries, the 
 - **Counts are lifetime aggregates by PHOTO (assetId), not resource row** (added 2026-06-22):
   `pending` = photos with any non-`COMPLETED` resource, `completed` = photos whose resources are
   all `COMPLETED`; `lastFinishedAt` = the newest fully-completed photo's `updatedAt`. (The state
-  classification is unaffected — "any resource pending" ⟺ "any photo pending".) `ReUpload` flips a
-  row back to `REQUESTED`, so re-uploads are visible. `failed` ≡ 0 from the real source
-  (retry-forever) and `estimatedRemaining` ≡ null (never estimates) — both fields exist for
-  classification and fakes.
+  classification is unaffected — "any resource pending" ⟺ "any photo pending".) A `COMPLETED` key is
+  never re-uploaded (an uploaded resource is immutable), so counts only ever climb. `failed` ≡ 0 from
+  the real source (retry-forever) and `estimatedRemaining` ≡ null (never estimates) — both fields
+  exist for classification and fakes.
 - **Classification is suspended-first**: `!active → SUSPENDED; pending > 0 → IN_PROGRESS;
   lastFinishedAt == null → NEVER_SYNCED; failed > 0 → INCOMPLETE; else COMPLETE`. **There is no FAILED
   state** (untellable under retry-forever).
@@ -483,7 +481,7 @@ toggle and no Leave** — contribution is on whenever permission is granted *and
 the system downloads each resource (incl. from iCloud) and performs `job.destination` with the
 **resource bytes as the request body**. We manage the queue in three phases:
 1. **Adjudicate failures** — `fetchJobs(action: .retry)`; produce the `UploadJob` (key from the
-   destination URL; version/attempt from the ledger), map the error → `UploadError`, report
+   destination URL; attempt from the ledger), map the error → `UploadError`, report
    `UploadFailed(job, error)`; the engine answers `Retry` (`attempt + 1`). The `Retry`'s request is
    rebuilt **locally** (a stable edge URL — nothing to re-mint or expire). ⚠️ **One retry per
    system job only**: first failure → `retry(destination: fresh URL)`; already-retried → `acknowledge()`
@@ -492,8 +490,8 @@ the system downloads each resource (incl. from iCloud) and performs `job.destina
    records `COMPLETED` — write-then-act), **then** `acknowledge()`. A crash between the two re-presents
    the job → a duplicate report, absorbed by the idempotent ledger.
 3. **Create new jobs** — discovery (§3.2, date-filtered). For each qualifying asset, expand to its
-   `PHAssetResource`s and wrap each as a `Resource` — filename `"<localId>-<kind>.<ext>"`, `version` =
-   the asset's `modificationDate`. Report `ResourceChanged` per resource and act on the decision:
+   `PHAssetResource`s and wrap each as a `Resource` — filename `"<localId>-<kind>.<ext>"` (no content
+   version: an uploaded resource is immutable). Report `ResourceChanged` per resource and act on the decision:
    `AlreadyUploaded` → continue (no job slot); `Work` → `provider.provide(resource)` **builds the edge
    URL** (`/event/<eventId>/file/<filename>`) locally, then take the `PHAssetResource` from
    `decision.job.request.resource.data`, build the `URLRequest` (PUT + `Content-Type`) →
@@ -558,7 +556,8 @@ bytes). The proxy sidesteps signing entirely: the endpoint, not the device, writ
     the body and `Content-Type`. The endpoint **streams** the body straight into the bunny native PUT
     (one subrequest, never buffered).
   - **Read (list):** `GET /event/<eventId>/files` returns a flat JSON array of every stored object
-    for the event — `{ filename, size, lastModified }` per entry. It does a **single** bunny native
+    for the event — `{ filename, size, url }` per entry (no `lastModified`: an uploaded resource is
+    immutable and the re-join seed timestamps rows with the join time). It does a **single** bunny native
     Storage LIST of the event dir (files are direct children), authorized by the event id alone.
     `200 []` for an empty/unknown event (no registry to distinguish), `400` for a malformed id, `502`
     on any upstream LIST failure (never a partial list). The listed `filename` is decoded back to the
@@ -680,8 +679,9 @@ bytes). The proxy sidesteps signing entirely: the endpoint, not the device, writ
    `LedgerBackend`, fake `UploadRequestProvider`). They live in the test-only **`:test:integration`**
    module (`commonTest`).
 
-- **Unit (JVM + simulator)** — `SyncEngine` decision tests (skip on proof, hope-never-skips, re-upload
-  on version change, retry chains, provider-failure rethrow, suffix-replay convergence);
+- **Unit (JVM + simulator)** — `SyncEngine` decision tests (skip on proof — a `COMPLETED` key is
+  immutable and never re-uploaded, hope-never-skips, retry chains, provider-failure rethrow,
+  suffix-replay convergence);
   `LedgerBackend` contract tests against the in-memory and SQLDelight (JVM sqlite) backends incl.
   **`clear()`** for re-provision; `LedgerWatcher` stream tests; the classification decision table and
   `LedgerSyncStatusSource` tests with **`active` = permission ∧ joined** (real watcher + in-memory

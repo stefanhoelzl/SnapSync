@@ -25,8 +25,8 @@ class HttpEventFilesSourceTest {
             requested = request.url.toString()
             respond(
                 content = """[
-                  {"filename":"A-ios.photo.heic","size":1,"lastModified":"2026-06-20T10:31:00Z"},
-                  {"filename":"B-ios.video.mov","size":2,"lastModified":null}
+                  {"filename":"A-ios.photo.heic","size":1,"url":"https://edge.example/event/$eventId/file/A-ios.photo.heic"},
+                  {"filename":"B-ios.video.mov","size":2,"url":"https://edge.example/event/$eventId/file/B-ios.video.mov"}
                 ]""",
                 status = HttpStatusCode.OK,
                 headers = headersOf(HttpHeaders.ContentType, "application/json"),
@@ -36,9 +36,8 @@ class HttpEventFilesSourceTest {
 
         assertEquals("https://edge.example/event/$eventId/files", requested)
         val files = result.getOrThrow()
+        // The join parses only `filename`; `size`/`url` are ignored unknown keys.
         assertEquals(listOf("A-ios.photo.heic", "B-ios.video.mov"), files.map { it.filename })
-        assertEquals("2026-06-20T10:31:00Z", files[0].lastModified)
-        assertEquals(null, files[1].lastModified)
     }
 
     @Test

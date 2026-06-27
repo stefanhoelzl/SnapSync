@@ -62,8 +62,8 @@ class UploadCycleTest {
         override fun saveToken(token: ByteArray) { saved = token }
     }
 
-    private fun resource(name: String, version: String = "v1", assetId: String = name) =
-        Resource(filename = name, assetId = assetId, contentType = "image/jpeg", version = version, metadata = emptyMap(), data = Unit)
+    private fun resource(name: String, assetId: String = name) =
+        Resource(filename = name, assetId = assetId, contentType = "image/jpeg", metadata = emptyMap(), data = Unit)
 
     private fun platformJob(key: String, state: PlatformJobState, error: UploadError? = null) =
         PlatformUploadJob(key = key, contentType = "image/jpeg", state = state, error = error, data = Unit, handle = Unit)
@@ -95,8 +95,8 @@ class UploadCycleTest {
     @Test
     fun discovery_skips_in_flight_and_completed_resources() = runTest {
         val backend = InMemoryLedgerBackend()
-        LedgerWriter(backend).recordRequested("a", assetId = "a", attempt = 0, version = "v1") // in flight
-        LedgerWriter(backend).recordCompleted("b", assetId = "b", attempt = 0, version = "v1") // done
+        LedgerWriter(backend).recordRequested("a", assetId = "a", attempt = 0) // in flight
+        LedgerWriter(backend).recordCompleted("b", assetId = "b", attempt = 0) // done
         val platform = FakePlatform(discovered = listOf(resource("a"), resource("b")))
 
         cycleOver(backend, platform).run()
@@ -105,14 +105,16 @@ class UploadCycleTest {
     }
 
     @Test
-    fun discovery_re_uploads_when_the_version_changed() = runTest {
+    fun discovery_does_not_re_upload_a_completed_key() = runTest {
+        // Uploaded resources are immutable: a COMPLETED key is never re-uploaded, even when the same
+        // asset is re-discovered (e.g. after a metadata-only change).
         val backend = InMemoryLedgerBackend()
-        LedgerWriter(backend).recordCompleted("a", assetId = "a", attempt = 0, version = "v1")
-        val platform = FakePlatform(discovered = listOf(resource("a", version = "v2")))
+        LedgerWriter(backend).recordCompleted("a", assetId = "a", attempt = 0)
+        val platform = FakePlatform(discovered = listOf(resource("a")))
 
         cycleOver(backend, platform).run()
 
-        assertEquals(listOf("a"), platform.created.map { it.filename })
+        assertTrue(platform.created.isEmpty(), "a COMPLETED key must never be re-uploaded")
     }
 
     @Test
@@ -129,7 +131,7 @@ class UploadCycleTest {
     @Test
     fun succeeded_job_records_completed_and_is_acknowledged() = runTest {
         val backend = InMemoryLedgerBackend()
-        LedgerWriter(backend).recordRequested("a", assetId = "a", attempt = 0, version = "v1")
+        LedgerWriter(backend).recordRequested("a", assetId = "a", attempt = 0)
         val job = platformJob("a", PlatformJobState.SUCCEEDED)
         val platform = FakePlatform(ackJobs = listOf(job))
 
@@ -143,7 +145,7 @@ class UploadCycleTest {
     @Test
     fun first_failure_retries_with_a_fresh_url_and_records_requested() = runTest {
         val backend = InMemoryLedgerBackend()
-        LedgerWriter(backend).recordRequested("a", assetId = "a", attempt = 0, version = "v1")
+        LedgerWriter(backend).recordRequested("a", assetId = "a", attempt = 0)
         val job = platformJob("a", PlatformJobState.FAILED, UploadError.Network)
         val platform = FakePlatform(retryJobs = listOf(job))
 
@@ -159,7 +161,7 @@ class UploadCycleTest {
     @Test
     fun retry_spent_failure_re_creates_from_the_job_resource_and_is_acknowledged() = runTest {
         val backend = InMemoryLedgerBackend()
-        LedgerWriter(backend).recordRequested("a", assetId = "a", attempt = 0, version = "v1")
+        LedgerWriter(backend).recordRequested("a", assetId = "a", attempt = 0)
         val job = platformJob("a", PlatformJobState.FAILED, UploadError.Network)
         val platform = FakePlatform(ackJobs = listOf(job))
 
@@ -188,7 +190,7 @@ class UploadCycleTest {
     @Test
     fun already_completed_re_handed_job_is_a_noop_acknowledge() = runTest {
         val backend = InMemoryLedgerBackend()
-        LedgerWriter(backend).recordCompleted("a", assetId = "a", attempt = 0, version = "v1")
+        LedgerWriter(backend).recordCompleted("a", assetId = "a", attempt = 0)
         val job = platformJob("a", PlatformJobState.FAILED, UploadError.Network)
         val platform = FakePlatform(ackJobs = listOf(job))
 
@@ -218,9 +220,9 @@ class UploadCycleTest {
     @Test
     fun removed_asset_rows_are_pruned_incrementally_by_assetId() = runTest {
         val backend = InMemoryLedgerBackend()
-        LedgerWriter(backend).recordCompleted("A_1-photo.jpg", assetId = "A_1", attempt = 0, version = "v1")
-        LedgerWriter(backend).recordRequested("A_1-video.mov", assetId = "A_1", attempt = 0, version = "v1")
-        LedgerWriter(backend).recordCompleted("B-photo.jpg", assetId = "B", attempt = 0, version = "v1")
+        LedgerWriter(backend).recordCompleted("A_1-photo.jpg", assetId = "A_1", attempt = 0)
+        LedgerWriter(backend).recordRequested("A_1-video.mov", assetId = "A_1", attempt = 0)
+        LedgerWriter(backend).recordCompleted("B-photo.jpg", assetId = "B", attempt = 0)
         val platform = FakePlatform(removedAssetIds = listOf("A_1"))
 
         cycleOver(backend, platform).run()
@@ -234,7 +236,7 @@ class UploadCycleTest {
     fun mid_upload_deletion_clears_the_stuck_pending_row() = runTest {
         val backend = InMemoryLedgerBackend()
         // A photo deleted before its upload finished: a REQUESTED row discovery never revisits.
-        LedgerWriter(backend).recordRequested("gone-photo.jpg", assetId = "gone", attempt = 0, version = "v1")
+        LedgerWriter(backend).recordRequested("gone-photo.jpg", assetId = "gone", attempt = 0)
         assertEquals(1, backend.aggregates().pending)
         val platform = FakePlatform(removedAssetIds = listOf("gone"))
 
@@ -248,7 +250,7 @@ class UploadCycleTest {
     @Test
     fun full_enumeration_reconciles_the_ledger_against_the_live_library() = runTest {
         val backend = InMemoryLedgerBackend()
-        LedgerWriter(backend).recordCompleted("old-photo.jpg", assetId = "old", attempt = 0, version = "v1") // absent now
+        LedgerWriter(backend).recordCompleted("old-photo.jpg", assetId = "old", attempt = 0) // absent now
         val platform = FakePlatform(discovered = listOf(resource("a-photo.jpg")), fullEnumeration = true)
         val store = FakeStore()
 
@@ -262,7 +264,7 @@ class UploadCycleTest {
     @Test
     fun reconcile_is_skipped_on_a_cap_truncated_full_enumeration() = runTest {
         val backend = InMemoryLedgerBackend()
-        LedgerWriter(backend).recordCompleted("old-photo.jpg", assetId = "old", attempt = 0, version = "v1")
+        LedgerWriter(backend).recordCompleted("old-photo.jpg", assetId = "old", attempt = 0)
         val platform = FakePlatform(
             discovered = listOf(resource("a-photo.jpg"), resource("b-photo.jpg")),
             fullEnumeration = true,
@@ -280,7 +282,7 @@ class UploadCycleTest {
     @Test
     fun reconcile_does_not_run_on_an_incremental_cycle() = runTest {
         val backend = InMemoryLedgerBackend()
-        LedgerWriter(backend).recordCompleted("untouched-photo.jpg", assetId = "untouched", attempt = 0, version = "v1")
+        LedgerWriter(backend).recordCompleted("untouched-photo.jpg", assetId = "untouched", attempt = 0)
         // Incremental (fullEnumeration = false): `discovered` is only the changed subset, never the
         // live asset set, so retainAssets must NOT run or it would wipe everything not just-changed.
         val platform = FakePlatform(discovered = listOf(resource("a-photo.jpg")), fullEnumeration = false)
@@ -294,9 +296,9 @@ class UploadCycleTest {
     fun pruned_then_rediscovered_asset_is_uploaded_fresh() = runTest {
         val backend = InMemoryLedgerBackend()
         // Was backed up, then deleted (pruned), then recovered from "Recently Deleted" (re-appears).
-        LedgerWriter(backend).recordCompleted("x-photo.jpg", assetId = "x", attempt = 0, version = "v1")
+        LedgerWriter(backend).recordCompleted("x-photo.jpg", assetId = "x", attempt = 0)
         val platform = FakePlatform(
-            discovered = listOf(resource("x-photo.jpg", version = "v1")),
+            discovered = listOf(resource("x-photo.jpg")),
             removedAssetIds = listOf("x"),
         )
 
@@ -310,7 +312,7 @@ class UploadCycleTest {
     @Test
     fun cap_during_re_create_still_acknowledges_and_returns_processing() = runTest {
         val backend = InMemoryLedgerBackend()
-        LedgerWriter(backend).recordRequested("a", assetId = "a", attempt = 0, version = "v1")
+        LedgerWriter(backend).recordRequested("a", assetId = "a", attempt = 0)
         val job = platformJob("a", PlatformJobState.FAILED, UploadError.Network)
         val platform = FakePlatform(ackJobs = listOf(job), limitAfter = 0)
         val store = FakeStore()

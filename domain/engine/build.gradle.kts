@@ -44,6 +44,11 @@ sqldelight {
     databases {
         create("LedgerDatabase") {
             packageName.set("app.snapsync.engine.db")
+            // The default non-Android dialect is SQLite 3.18, whose grammar rejects
+            // `ALTER TABLE … DROP COLUMN` (a 3.35 feature) used by the version-drop migration
+            // (2.sqm). Both drivers run SQLite ≫ 3.35 at runtime; this only raises the compile-time
+            // parser floor.
+            dialect(libs.sqldelight.dialect.sqlite)
         }
     }
 }

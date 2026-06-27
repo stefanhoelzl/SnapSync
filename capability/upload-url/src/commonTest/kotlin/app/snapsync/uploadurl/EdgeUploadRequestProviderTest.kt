@@ -15,7 +15,6 @@ class EdgeUploadRequestProviderTest {
         filename = filename,
         assetId = "asset-1",
         contentType = contentType,
-        version = "v1",
         metadata = mapOf("ignored" to "value"),
         data = ByteArray(0),
     )
