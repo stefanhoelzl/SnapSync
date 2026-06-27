@@ -4,6 +4,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import app.snapsync.permission.PermissionStatus
@@ -33,6 +34,8 @@ fun StatusScreen(
                     StatusHero(StatusIndicator.Error, "Couldn't reach the server", "Scan the event QR code again")
                 is UiState.Setup ->
                     SetupGate(state, onRequestPermission, onOpenSettings, transientError)
+                is UiState.PermissionBlocked ->
+                    PermissionBlocked(state.permission, onRequestPermission, onOpenSettings)
                 is UiState.InProgress ->
                     StatusHero(
                         StatusIndicator.InProgress,
@@ -56,6 +59,46 @@ fun StatusScreen(
 private fun inProgressCaption(inProgress: Int, finishedAgo: String?): String? {
     val active = if (inProgress > 0) "$inProgress in progress" else null
     return listOfNotNull(active, finishedAgo).joinToString(" · ").ifEmpty { null }
+}
+
+/**
+ * Permission blocked while an event is connected: the status screen hosts the permission affordance
+ * as a hero plus a single CTA, switching on the (non-granted) status. NOT_DETERMINED primes the
+ * first grant (neutral photos glyph, "Allow access"); DENIED points at Settings (error glyph). No
+ * counts — the live gallery total is unavailable without photo access.
+ */
+@Composable
+private fun PermissionBlocked(
+    permission: PermissionStatus,
+    onRequestPermission: () -> Unit,
+    onOpenSettings: () -> Unit,
+) {
+    Column(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(16.dp),
+    ) {
+        when (permission) {
+            PermissionStatus.NOT_DETERMINED -> {
+                StatusHero(
+                    StatusIndicator.Photos,
+                    "Allow photo access",
+                    "SnapSync needs your photo library to back it up.",
+                )
+                PrimaryButton("Allow access", onRequestPermission)
+            }
+            // GRANTED never reaches this screen (the reduction falls through to the sync hero); render
+            // the DENIED settings path for it too rather than introduce an unreachable branch.
+            PermissionStatus.DENIED, PermissionStatus.GRANTED -> {
+                StatusHero(
+                    StatusIndicator.Error,
+                    "Photo access turned off",
+                    "SnapSync needs photo access to continue backing up your library.",
+                )
+                PrimaryButton("Open Settings", onOpenSettings)
+            }
+        }
+    }
 }
 
 /**

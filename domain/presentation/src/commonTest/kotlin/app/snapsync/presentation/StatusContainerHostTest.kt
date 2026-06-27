@@ -272,15 +272,44 @@ class StatusContainerHostTest {
     }
 
     @Test
-    fun `denied permission shows the setup gate over any sync snapshot`() = runTest {
+    fun `denied permission with config present blocks over any sync snapshot`() = runTest {
         val source = FakeSyncStatusSource(snapshot(completed = 34, total = 34, lastFinishedAt = EPOCH))
         val permission = FakePermissionSource(PermissionStatus.DENIED)
         val container = host(source, backgroundScope, permission = permission).container
 
-        assertEquals(
-            UiState.Setup(storageConnected = true, permission = PermissionStatus.DENIED),
-            container.stateFlow.value,
+        assertEquals(UiState.PermissionBlocked(PermissionStatus.DENIED), container.stateFlow.value)
+    }
+
+    @Test
+    fun `not-determined permission with config present blocks the hero`() = runTest {
+        val source = FakeSyncStatusSource(snapshot(completed = 34, total = 34, lastFinishedAt = EPOCH))
+        val permission = FakePermissionSource(PermissionStatus.NOT_DETERMINED)
+        val container = host(source, backgroundScope, permission = permission).container
+
+        assertEquals(UiState.PermissionBlocked(PermissionStatus.NOT_DETERMINED), container.stateFlow.value)
+    }
+
+    @Test
+    fun `permission outranks a join in flight`() = runTest {
+        val host = joinHost(
+            EventStatus.Joining,
+            permission = FakePermissionSource(PermissionStatus.DENIED),
+            scope = backgroundScope,
         )
+        assertEquals(UiState.PermissionBlocked(PermissionStatus.DENIED), host.container.stateFlow.value)
+    }
+
+    @Test
+    fun `revoking permission mid-sync blocks the running hero`() = runTest {
+        val source = FakeSyncStatusSource(snapshot(completed = 34, total = 34, lastFinishedAt = EPOCH))
+        val permission = FakePermissionSource(PermissionStatus.GRANTED)
+        host(source, backgroundScope, permission = permission).test(this) {
+            runOnCreate()
+            // Synced and showing the hero, then access is revoked in system Settings.
+            permission.permission.value = PermissionStatus.DENIED
+            expectState(UiState.PermissionBlocked(PermissionStatus.DENIED))
+            cancelAndIgnoreRemainingItems()
+        }
     }
 
     @Test
@@ -306,13 +335,23 @@ class StatusContainerHostTest {
     }
 
     @Test
-    fun `setup gate outranks a loading snapshot`() = runTest {
+    fun `permission blocks a loading snapshot when config is present`() = runTest {
         val source = FakeSyncStatusSource(SyncStatus.Loading)
         val permission = FakePermissionSource(PermissionStatus.NOT_DETERMINED)
         val container = host(source, backgroundScope, permission = permission).container
 
+        assertEquals(UiState.PermissionBlocked(PermissionStatus.NOT_DETERMINED), container.stateFlow.value)
+    }
+
+    @Test
+    fun `absent config outranks a loading snapshot`() = runTest {
+        val source = FakeSyncStatusSource(SyncStatus.Loading)
+        val permission = FakePermissionSource(PermissionStatus.NOT_DETERMINED)
+        val container =
+            host(source, backgroundScope, permission = permission, configFake = FakeConfig(null)).container
+
         assertEquals(
-            UiState.Setup(storageConnected = true, permission = PermissionStatus.NOT_DETERMINED),
+            UiState.Setup(storageConnected = false, permission = PermissionStatus.NOT_DETERMINED),
             container.stateFlow.value,
         )
     }

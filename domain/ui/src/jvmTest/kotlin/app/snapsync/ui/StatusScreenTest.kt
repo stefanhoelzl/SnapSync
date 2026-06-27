@@ -107,6 +107,41 @@ class StatusScreenTest {
     }
 
     @Test
+    fun `permission blocked not-determined shows allow-access priming on the status screen`() {
+        var requests = 0
+        rule.setContent {
+            StatusScreen(
+                UiState.PermissionBlocked(PermissionStatus.NOT_DETERMINED),
+                onRequestPermission = { requests++ },
+            )
+        }
+
+        rule.onNodeWithText("Allow photo access").assertExists()
+        rule.onNodeWithText("SnapSync needs your photo library to back it up.").assertExists()
+        // No progress counts while blocked.
+        rule.onNodeWithText("images synced", substring = true).assertDoesNotExist()
+        rule.onNodeWithText("Allow access").performClick()
+        assertEquals(1, requests)
+    }
+
+    @Test
+    fun `permission blocked denied shows the settings path on the status screen`() {
+        var settingsOpens = 0
+        rule.setContent {
+            StatusScreen(
+                UiState.PermissionBlocked(PermissionStatus.DENIED),
+                onOpenSettings = { settingsOpens++ },
+            )
+        }
+
+        rule.onNodeWithText("Photo access turned off").assertExists()
+        rule.onNodeWithText("SnapSync needs photo access to continue backing up your library.").assertExists()
+        rule.onNodeWithText("images synced", substring = true).assertDoesNotExist()
+        rule.onNodeWithText("Open Settings").performClick()
+        assertEquals(1, settingsOpens)
+    }
+
+    @Test
     fun `in progress shows the n of N count and the in-progress count with last-sync time`() {
         rule.setContent {
             StatusScreen(UiState.InProgress(synced = 12, total = 47, inProgress = 35, finishedAgo = "5 min ago"))

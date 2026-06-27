@@ -1,14 +1,12 @@
 # setup-gate Specification
 
-## Purpose
+## RENAMED Requirements
 
-The setup gate that stands between the user and the rest of the status screen, shown solely while no
-event is connected (`config == null`): the screen reduces to a stack of two checkable `SetupCard`s
-(connect storage × allow photo access), and the gate's intents — including the incoming config
-deeplink — route through the presentation container. Once config is present, permission is no longer
-a gate concern — a non-`GRANTED` status surfaces on the status screen as `UiState.PermissionBlocked`
-(see `sync-status-screen`).
-## Requirements
+- FROM: `### Requirement: Two-input setup precedence`
+- TO: `### Requirement: Setup gate precedence on config presence`
+
+## MODIFIED Requirements
+
 ### Requirement: Setup gate precedence on config presence
 
 The presentation layer SHALL gate the status screen on a **single** input: the `ConfigSource`
@@ -84,43 +82,3 @@ The two steps are independent and satisfiable in any order. The screen is compos
 - **WHEN** config is absent and permission is `GRANTED`
 - **THEN** the permission card collapses to a check glyph with "Photo access granted", while the storage
   card remains pending with its scan instruction
-
-### Requirement: Gate intents route through the container
-
-The presentation container SHALL expose the gate intents `onRequestPermission` and `onOpenSettings`,
-which call the injected `PermissionRequester`'s `request()` and `openSettings()` respectively, and
-an `onOpenUrl(raw: String)` intent that decodes an incoming deeplink via the `deeplink-config`
-decoder and, on success, calls `ConfigStore.save`. The UI layer MUST NOT call platform permission
-or config APIs directly. The system permission dialog SHALL fire only from the "Allow access"
-button (CTA-only priming); observing `NOT_DETERMINED` MUST NOT trigger an automatic request.
-
-#### Scenario: Allow access requests permission
-- **WHEN** the user activates "Allow access"
-- **THEN** the container invokes `PermissionRequester.request()` as a pass-through, and the result
-  arrives via the permission source
-
-#### Scenario: A valid deeplink saves config through the store
-- **WHEN** `onOpenUrl` receives a structurally-valid `snapsync://config?…` URL
-- **THEN** the decoded `S3Config` is handed to `ConfigStore.save`, and the resulting config change
-  arrives via the `ConfigSource`
-
-#### Scenario: No auto-request on launch
-- **WHEN** the container starts observing and permission is `NOT_DETERMINED`
-- **THEN** `request()` is not invoked until the user activates the CTA
-
-### Requirement: Invalid deeplink shows a transient error
-
-When `onOpenUrl` receives a URL the decoder rejects, the container SHALL emit a transient,
-self-clearing error surfaced on the storage card (e.g. "That QR code wasn't valid") and SHALL NOT
-change the persisted config. To carry this, the container's side-effect type SHALL widen from
-`Nothing` to a small effect type representing the transient invalid-link error.
-
-#### Scenario: Malformed deeplink surfaces an error and changes nothing
-- **WHEN** `onOpenUrl` receives a URL the decoder rejects
-- **THEN** a transient invalid-link error is emitted, the storage step stays unsatisfied, and the
-  persisted config is unchanged
-
-#### Scenario: A later valid deeplink still succeeds
-- **WHEN** an invalid deeplink is followed by a valid one
-- **THEN** the valid one decodes and saves normally; the earlier error does not block it
-

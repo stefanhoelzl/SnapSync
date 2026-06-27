@@ -104,6 +104,20 @@ class PanelController(private val clock: Clock = Clock.System) {
         permissionState.value = PermissionStatus.GRANTED
     }
 
+    // PermissionBlocked presets: an event is connected (config present) but permission is not
+    // granted, so the status screen hosts the permission affordance instead of the sync hero. These
+    // force config present (unlike the bare permission presets above) to land on PermissionBlocked
+    // in one click — the not-determined priming and the revoked/denied settings path.
+    fun showPermissionBlockedNotDetermined() {
+        configState.value = CANNED_CONFIG
+        permissionState.value = PermissionStatus.NOT_DETERMINED
+    }
+
+    fun showPermissionBlockedDenied() {
+        configState.value = CANNED_CONFIG
+        permissionState.value = PermissionStatus.DENIED
+    }
+
     // Loading has no SyncProgress payload, so it bypasses forgeSync; like the others it forces
     // both gates (Granted + config present), since the reducer only surfaces Loading once both pass.
     fun showLoading() {

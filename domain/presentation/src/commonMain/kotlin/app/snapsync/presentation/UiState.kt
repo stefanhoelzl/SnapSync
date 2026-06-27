@@ -38,6 +38,16 @@ sealed interface UiState {
     data class Setup(val storageConnected: Boolean, val permission: PermissionStatus) : UiState
 
     /**
+     * Permission is not `GRANTED` while an event is connected (config present): the status screen
+     * hosts the permission affordance instead of the sync hero. [permission] is one of
+     * `NOT_DETERMINED` (never asked — the QR was scanned first; shows the "Allow access" priming) or
+     * `DENIED` (revoked or refused; shows the "Open Settings" path). It carries **no** counts — the
+     * live gallery total is unavailable without photo access. (Setup-gate precedence: this outranks
+     * the join/sync chain but is itself outranked by an absent config, which shows the gate.)
+     */
+    data class PermissionBlocked(val permission: PermissionStatus) : UiState
+
+    /**
      * Sync underway: [synced] of [total] photos uploaded (`synced` is already clamped to `total`).
      * [inProgress] is how many photos the ledger is actively uploading right now (the asset-counted
      * `pending` — photos with any not-yet-`COMPLETED` resource); it can be lower than `total - synced`
