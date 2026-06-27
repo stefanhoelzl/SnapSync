@@ -3,9 +3,7 @@
 ## Purpose
 
 The semantic `App*` component layer that screens compose from, containing all Material 3 styling so a future skin swap is a components-module change only.
-
 ## Requirements
-
 ### Requirement: Semantic-only components
 
 Design-system (`App*`) components SHALL expose parameters that carry data and meaning only — text, fractions, sealed semantic values, and action callbacks. They MUST NOT expose appearance parameters (colors, text styles, shapes, elevations) and MUST NOT expose `Modifier` parameters. No Material 3 type may appear in any design-system signature. Inventory after this change: `AppTheme`, `ScreenLayout(title, bottomEndActions?)` (the optional slot carries a container-arranged cluster of bottom-right action composables), `StatusHero(indicator, headline, detail?)` with sealed `StatusIndicator` (`Success`, `Warning`, `Error`, `Waiting`, `Photos`, `Progress(fraction)`), `PrimaryButton(label, onClick)`, a flat icon-only **leave** action component (label/`onClick` only — the glyph is chosen by the skin, not passed in), a flat icon-only **share** action component (label/`onClick` only — likewise glyph-by-skin), `AppQrCode(content, caption?)` (renders a scannable QR of the `content` string plus an optional caption beneath it — the QR-rendering library is the skin's choice, not a parameter), and `AppConfirmDialog(title, confirmLabel, cancelLabel, onConfirm, onDismiss)`. Emphasis and role remain design-time choices expressed as distinct components, never appearance parameters. The inventory grows demand-driven with the screens that need it.
@@ -86,29 +84,26 @@ Variant axes that are design-time choices (a call site statically picks one, e.g
 - **WHEN** the status screen branches on UI state to render the hero
 - **THEN** it selects a `StatusIndicator` value (not a different component per state), and only the `Progress` variant carries data
 
-### Requirement: SetupCard semantic container
+### Requirement: AppTextField semantic component
 
-The design-system SHALL provide a `SetupCard` semantic container that the setup gate composes its
-steps from. `SetupCard(indicator, title, detail?) { actionSlot }` SHALL expose data-and-meaning
-parameters only — a sealed `StatusIndicator` glyph, a `title` string, an optional `detail` string,
-and an optional trailing action slot (filled by an `App*` action component such as `PrimaryButton`).
-It MUST NOT expose appearance parameters (colors, text styles, shapes, elevations) or a `Modifier`
-parameter, and no Material 3 type may appear in its signature; the Material 3 card containment lives
-inside the component. `SetupCard` SHALL own its internal arrangement (glyph inline-left of the title,
-optional detail beneath, optional action beneath) and SHALL render compactly when no detail and no
-action are supplied (a satisfied, collapsed step). If a neutral "pending step" glyph is required, the
-sealed `StatusIndicator` inventory grows demand-driven per the existing convention.
+The design system SHALL provide an `AppTextField` semantic component — the app's first text input —
+that the create-event screen composes from. `AppTextField(value, onValueChange, placeholder, enabled,
+maxLength)` SHALL expose data-and-meaning parameters only: the current string value, a change
+callback, a placeholder string, an enabled flag, and a maximum character count. It MUST NOT expose
+appearance parameters (colors, text styles, shapes, elevations) or a `Modifier` parameter, and no
+Material 3 type may appear in its signature; the Material 3 text-field containment lives inside the
+component. The component SHALL enforce `maxLength` by refusing input beyond it.
 
-#### Scenario: SetupCard signature is appearance-free
-- **WHEN** the public signature of `SetupCard` is inspected
-- **THEN** it carries only a `StatusIndicator`, a title, an optional detail, and an action slot — no
+#### Scenario: AppTextField signature is appearance-free
+- **WHEN** the public signature of `AppTextField` is inspected
+- **THEN** it carries only the value, change callback, placeholder, enabled flag, and max length — no
   colors, text styles, shapes, elevations, or `Modifier`, and no Material 3 type
 
-#### Scenario: Satisfied step renders compact
-- **WHEN** a `SetupCard` is given a Success indicator and a title but no detail and no action
-- **THEN** it renders as a compact glyph-plus-title row, with the card containment supplied by the
-  component, not the screen
+#### Scenario: Max length is enforced by the component
+- **WHEN** the field already holds `maxLength` characters and more input arrives
+- **THEN** the value does not grow beyond `maxLength`
 
-#### Scenario: Pending step renders detail and action
-- **WHEN** a `SetupCard` is given a title, a detail, and a `PrimaryButton` in its action slot
-- **THEN** it renders the glyph, title, detail, and action with arrangement owned by `SetupCard`
+#### Scenario: Disabled field rejects input
+- **WHEN** `AppTextField` is rendered with `enabled = false`
+- **THEN** it does not invoke `onValueChange`
+

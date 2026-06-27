@@ -17,11 +17,11 @@ import app.snapsync.permission.PermissionStatus
 import app.snapsync.presentation.UiState
 import app.snapsync.ui.components.AppConfirmDialog
 import app.snapsync.ui.components.AppQrCode
+import app.snapsync.ui.components.AppTextField
 import app.snapsync.ui.components.AppTheme
 import app.snapsync.ui.components.LeaveButton
 import app.snapsync.ui.components.PrimaryButton
 import app.snapsync.ui.components.ScreenLayout
-import app.snapsync.ui.components.SetupCard
 import app.snapsync.ui.components.ShareButton
 import app.snapsync.ui.components.StatusHero
 import app.snapsync.ui.components.StatusIndicator
@@ -34,6 +34,7 @@ fun StatusScreen(
     onLeaveEvent: () -> Unit = {},
     onShareInvite: () -> Unit = {},
     inviteUrl: String? = null,
+    onCreateEvent: (String) -> Unit = {},
     transientError: String? = null,
 ) {
     AppTheme {
@@ -67,8 +68,10 @@ fun StatusScreen(
                     StatusHero(StatusIndicator.Loading, "Checking what's already backed up …")
                 UiState.JoinFailed ->
                     StatusHero(StatusIndicator.Error, "Couldn't reach the server", "Scan the event QR code again")
-                is UiState.Setup ->
-                    SetupGate(state, onRequestPermission, onOpenSettings, transientError)
+                is UiState.CreateEvent ->
+                    CreateEventScreen(state, onCreateEvent, transientError)
+                UiState.CreatingEvent ->
+                    StatusHero(StatusIndicator.Loading, "Creating your event …")
                 is UiState.PermissionBlocked ->
                     PermissionBlocked(state.permission, onRequestPermission, onOpenSettings)
                 is UiState.InProgress ->
@@ -155,48 +158,43 @@ private fun PermissionBlocked(
 }
 
 /**
- * The setup gate: a stack of two checkable cards. Storage is passive (completed by an external QR
- * scan, so no button) — its detail flips to [transientError] when a bad deeplink arrives. Photo
- * access carries the permission CTA. Each card collapses to a check once satisfied.
+ * The create-event landing layer (event-creation-ui): shown while no event is connected. A name
+ * field + Create button mint and auto-join a new event, with a passive hint that scanning a QR in
+ * Camera joins an existing one. The name lives in local Compose state (only the submitted, trimmed
+ * value crosses the container); Create is disabled until the trimmed name is non-empty, and the
+ * field caps at 100 characters. The single inline error beneath the field carries either a transient
+ * invalid-deeplink flash ([transientError]) or the last create failure's copy ([UiState.CreateEvent.error]).
  */
 @Composable
-private fun SetupGate(
-    state: UiState.Setup,
-    onRequestPermission: () -> Unit,
-    onOpenSettings: () -> Unit,
+private fun CreateEventScreen(
+    state: UiState.CreateEvent,
+    onCreateEvent: (String) -> Unit,
     transientError: String?,
 ) {
+    var name by remember { mutableStateOf("") }
     Column(
         modifier = Modifier.fillMaxWidth(),
-        verticalArrangement = Arrangement.spacedBy(12.dp),
+        verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
-        if (state.storageConnected) {
-            SetupCard(StatusIndicator.Success, "Storage connected")
-        } else {
-            SetupCard(
-                indicator = if (transientError != null) StatusIndicator.Error else StatusIndicator.Waiting,
-                title = "Connect your storage",
-                detail = transientError ?: "Open the Camera app and scan your SnapSync QR code.",
-            )
-        }
-
-        when (state.permission) {
-            PermissionStatus.GRANTED ->
-                SetupCard(StatusIndicator.Success, "Photo access granted")
-            PermissionStatus.NOT_DETERMINED ->
-                SetupCard(
-                    indicator = StatusIndicator.Photos,
-                    title = "Allow photo access",
-                    detail = "SnapSync needs your photo library to back it up.",
-                    action = { PrimaryButton("Allow access", onRequestPermission) },
-                )
-            PermissionStatus.DENIED ->
-                SetupCard(
-                    indicator = StatusIndicator.Error,
-                    title = "Photo access denied",
-                    detail = "Turn on photo access in Settings.",
-                    action = { PrimaryButton("Open Settings", onOpenSettings) },
-                )
-        }
+        StatusHero(
+            StatusIndicator.Photos,
+            "Create an event",
+            "Or scan an event's QR code in the Camera app to join it.",
+        )
+        AppTextField(
+            value = name,
+            onValueChange = { name = it },
+            placeholder = "Event name",
+            maxLength = EVENT_NAME_MAX_LENGTH,
+            errorText = transientError ?: state.error,
+        )
+        PrimaryButton(
+            label = "Create event",
+            onClick = { onCreateEvent(name) },
+            enabled = name.isNotBlank(),
+        )
     }
 }
+
+// Mirrors the backend's name cap (trimmed, non-empty, ≤100) so a server 400 is near-unreachable.
+private const val EVENT_NAME_MAX_LENGTH = 100

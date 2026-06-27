@@ -1,8 +1,13 @@
 package app.snapsync.ios
 
 import app.snapsync.config.ConfigDecodeResult
+import app.snapsync.config.EventConfigPayload
 import app.snapsync.config.KeychainConfigStore
 import app.snapsync.config.decodeConfigUrl
+import app.snapsync.eventcreation.CreateEvent
+import app.snapsync.eventcreation.EventCreator
+import app.snapsync.eventcreation.HttpEventCreationClient
+import app.snapsync.eventcreation.MutableCreationStatusSource
 import app.snapsync.engine.DISCOVERY_TOKEN_KEY
 import app.snapsync.engine.LEDGER_APP_GROUP
 import app.snapsync.engine.LedgerBackend
@@ -108,6 +113,22 @@ object SnapSyncRoot {
     // scene flips it via onForeground()/onBackground() on its scene-phase transitions.
     private val foreground = MutableStateFlow(false)
 
+    // The create-event status the use-case drives and the container reads (same instance).
+    private val creationStatus = MutableCreationStatusSource()
+
+    // The create-event use-case: mint via the deployed backend (Darwin HTTPS, host from Info.plist —
+    // the same base the rejoin client uses), then provision the returned event id through the very
+    // same path a scanned QR takes ([provisionEvent]).
+    private val eventCreator: EventCreator by lazy {
+        val host = NSBundle.mainBundle.objectForInfoDictionaryKey("BackgroundUploadURLBase") as? String ?: ""
+        CreateEvent(
+            client = HttpEventCreationClient(darwinHttpClient(), host),
+            status = creationStatus,
+            provision = { eventId -> provisionEvent(eventId) },
+            scope = scope,
+        )
+    }
+
     val host: StatusContainerHost by lazy {
         val watcher = LedgerWatcher(ledgerBackend)
         val permission = PhotoLibraryPermission()
@@ -121,6 +142,7 @@ object SnapSyncRoot {
         StatusContainerHost(
             syncSource, permission, permission, config, config, scope,
             observed = observed, foreground = foreground, eventStatusSource = eventStatus,
+            creationStatusSource = creationStatus, creator = eventCreator,
             leave = leaveEvent::leave,
             // Fire-and-forget share of the invite deeplink (the host owns the URL). Wiring-only:
             // present the system share sheet over the current top view controller.
@@ -151,15 +173,23 @@ object SnapSyncRoot {
      */
     fun onOpenUrl(url: String) {
         when (val decoded = decodeConfigUrl(url)) {
-            is ConfigDecodeResult.Success -> scope.launch {
-                val previous = config.config.value?.eventId
-                joinEvent.onProvision(previous, decoded.payload.eventId) // switch reset (before save)
-                config.save(decoded.payload) // persist; the container's ConfigSource is this instance
-                gallery.refresh() // (re)joined event → re-read the gallery total (N)
-                reconcileThenEnable()
-            }
+            is ConfigDecodeResult.Success -> scope.launch { provisionEvent(decoded.payload.eventId) }
             is ConfigDecodeResult.Failure -> host.onOpenUrl(url) // flashes the invalid-link error
         }
+    }
+
+    /**
+     * Provision an event id — the shared join path for both a scanned/typed deeplink and a freshly
+     * created event. Captures the previous event id *before* saving the new one (so [JoinEvent] can
+     * detect a switch and reset the ledger), persists the config (the container's `ConfigSource` is
+     * this instance), re-reads the gallery total, then runs the reconcile-then-enable gate.
+     */
+    private suspend fun provisionEvent(eventId: String) {
+        val previous = config.config.value?.eventId
+        joinEvent.onProvision(previous, eventId) // switch reset (before save)
+        config.save(EventConfigPayload(eventId)) // persist; the container's ConfigSource is this instance
+        gallery.refresh() // (re)joined event → re-read the gallery total (N)
+        reconcileThenEnable()
     }
 
     /**

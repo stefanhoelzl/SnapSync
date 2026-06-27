@@ -16,6 +16,9 @@ kotlin {
             api(project(":capability:config"))
             // The join status seam folded into the reduction; surfaces in the container's API.
             api(project(":capability:event-status"))
+            // The create-event seams (CreationStatusSource/EventCreator) folded into the reduction and
+            // the container's constructor — so they surface in this module's API.
+            api(project(":capability:event-creation-ui"))
             api(libs.orbit.core)
         }
         commonTest.dependencies {

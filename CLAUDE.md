@@ -169,6 +169,7 @@ agent use and inject that one instead.
 :domain:ui:components   App* design system + the Material 3 skin
 :capability:upload-url local edge-URL builder (no network/crypto) — the UploadRequestProvider
 :capability:config     deeplink config provisioning (eventId)
+:capability:event-creation-ui  create-event screen seams: EventCreator/CreationStatusSource + HTTP creator
 :app:desktop           test harness (phone frame + control panel)
 :app:ios               iOS wiring + framework export (thin, untested)
 :test:integration      test-only: seam → UI-state integration (planned)

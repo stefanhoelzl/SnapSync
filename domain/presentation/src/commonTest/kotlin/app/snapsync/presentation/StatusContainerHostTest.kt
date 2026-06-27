@@ -6,6 +6,13 @@ import app.snapsync.config.ConfigStore
 import app.snapsync.config.EventConfigPayload
 import app.snapsync.config.decodeConfigUrl
 import app.snapsync.config.encodeConfigUrl
+import app.snapsync.eventcreation.CreateEvent
+import app.snapsync.eventcreation.CreateOutcome
+import app.snapsync.eventcreation.CreationFailureReason
+import app.snapsync.eventcreation.CreationStatus
+import app.snapsync.eventcreation.EventCreationClient
+import app.snapsync.eventcreation.EventCreator
+import app.snapsync.eventcreation.MutableCreationStatusSource
 import app.snapsync.eventstatus.EventStatus
 import app.snapsync.eventstatus.MutableEventStatusSource
 import app.snapsync.permission.PermissionRequester
@@ -24,8 +31,10 @@ import kotlin.time.Duration.Companion.minutes
 import kotlin.time.Duration.Companion.seconds
 import kotlin.time.Instant
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.runCurrent
@@ -93,6 +102,13 @@ private class SpyRequester : PermissionRequester {
 
     override fun openSettings() {
         settingsOpens++
+    }
+}
+
+private class SpyCreator : EventCreator {
+    val created = mutableListOf<String>()
+    override fun create(name: String) {
+        created += name
     }
 }
 
@@ -182,9 +198,131 @@ class StatusContainerHostTest {
     }
 
     @Test
-    fun `setup gate outranks a join in flight`() = runTest {
+    fun `create layer outranks a join in flight when config is absent`() = runTest {
         val host = joinHost(EventStatus.Joining, config = FakeConfig(null), scope = backgroundScope)
-        assertEquals(UiState.Setup(storageConnected = false, permission = PermissionStatus.GRANTED), host.container.stateFlow.value)
+        assertEquals(UiState.CreateEvent(), host.container.stateFlow.value)
+    }
+
+    // The create layer is the top rung: config absent, reduced from the creation status.
+    private fun createHost(
+        creation: CreationStatus,
+        permission: FakePermissionSource = FakePermissionSource(PermissionStatus.GRANTED),
+        creator: EventCreator = SpyCreator(),
+        scope: CoroutineScope,
+    ): StatusContainerHost {
+        val config = FakeConfig(null)
+        return StatusContainerHost(
+            FakeSyncStatusSource(), permission, SpyRequester(), config, config, scope, FakeClock(EPOCH),
+            creationStatusSource = MutableCreationStatusSource(creation), creator = creator,
+        )
+    }
+
+    @Test
+    fun `config absent with idle creation shows the create input`() = runTest {
+        val host = createHost(CreationStatus.Idle, scope = backgroundScope)
+        assertEquals(UiState.CreateEvent(error = null), host.container.stateFlow.value)
+    }
+
+    @Test
+    fun `config absent with in-flight creation shows the creating state`() = runTest {
+        val host = createHost(CreationStatus.InFlight, scope = backgroundScope)
+        assertEquals(UiState.CreatingEvent, host.container.stateFlow.value)
+    }
+
+    @Test
+    fun `config absent with an invalid-name failure shows the input with the name error`() = runTest {
+        val host = createHost(CreationStatus.Failed(CreationFailureReason.INVALID_NAME), scope = backgroundScope)
+        assertEquals(UiState.CreateEvent(error = "That name isn't valid."), host.container.stateFlow.value)
+    }
+
+    @Test
+    fun `config absent with a server failure shows the input with the server error`() = runTest {
+        val host = createHost(CreationStatus.Failed(CreationFailureReason.SERVER), scope = backgroundScope)
+        assertEquals(UiState.CreateEvent(error = "Couldn't reach the server."), host.container.stateFlow.value)
+    }
+
+    @Test
+    fun `create layer ignores permission`() = runTest {
+        val host = createHost(
+            CreationStatus.Idle,
+            permission = FakePermissionSource(PermissionStatus.DENIED),
+            scope = backgroundScope,
+        )
+        // Config absent outranks a non-granted permission — still the create input, not PermissionBlocked.
+        assertEquals(UiState.CreateEvent(), host.container.stateFlow.value)
+    }
+
+    @Test
+    fun `onCreateEvent delegates to the creator`() = runTest {
+        val creator = SpyCreator()
+        val host = createHost(CreationStatus.Idle, creator = creator, scope = backgroundScope)
+        host.test(this) {
+            containerHost.onCreateEvent("My Party")
+        }
+        advanceUntilIdle()
+        assertEquals(listOf("My Party"), creator.created)
+    }
+
+    // Integration: the real CreateEvent use-case wired into the real container reduction. (The
+    // event-creation-ui → presentation dependency is allowed in production, so this needs no special
+    // boundary-crossing module — just the assembled stack with the network edge faked.)
+    private class StubClient(private val outcome: CreateOutcome) : EventCreationClient {
+        override suspend fun create(name: String) = outcome
+    }
+
+    @OptIn(ExperimentalCoroutinesApi::class)
+    @Test
+    fun `a successful create flows through the use-case to a joined downstream state`() = runTest {
+        val config = FakeConfig(null)
+        val creationStatus = MutableCreationStatusSource()
+        val eventStatus = MutableEventStatusSource()
+        // Eager dispatcher so the fire-and-forget create mutates the seams synchronously.
+        val creator = CreateEvent(
+            client = StubClient(CreateOutcome.Created("evt-1")),
+            status = creationStatus,
+            // The provision path a scanned QR also takes: config goes present and the join starts.
+            provision = { config.save(EventConfigPayload("evt-1")); eventStatus.set(EventStatus.Joining) },
+            scope = CoroutineScope(UnconfinedTestDispatcher(testScheduler)),
+        )
+        val host = StatusContainerHost(
+            FakeSyncStatusSource(), FakePermissionSource(PermissionStatus.GRANTED), SpyRequester(),
+            config, config, backgroundScope, FakeClock(EPOCH),
+            eventStatusSource = eventStatus, creationStatusSource = creationStatus, creator = creator,
+        )
+        host.test(this) {
+            runOnCreate()
+            // Drive the real use-case (the onCreateEvent → creator hop is covered separately).
+            creator.create("My Party")
+            // minted → provisioned (config present + join started) → the downstream Joining state.
+            expectState(UiState.Joining)
+            cancelAndIgnoreRemainingItems()
+        }
+    }
+
+    @OptIn(ExperimentalCoroutinesApi::class)
+    @Test
+    fun `a failed create surfaces the inline error and stays on the create layer`() = runTest {
+        val config = FakeConfig(null)
+        val creationStatus = MutableCreationStatusSource()
+        var provisioned = false
+        val creator = CreateEvent(
+            client = StubClient(CreateOutcome.Transient),
+            status = creationStatus,
+            provision = { provisioned = true },
+            scope = CoroutineScope(UnconfinedTestDispatcher(testScheduler)),
+        )
+        val host = StatusContainerHost(
+            FakeSyncStatusSource(), FakePermissionSource(PermissionStatus.GRANTED), SpyRequester(),
+            config, config, backgroundScope, FakeClock(EPOCH),
+            creationStatusSource = creationStatus, creator = creator,
+        )
+        host.test(this) {
+            runOnCreate()
+            creator.create("My Party")
+            expectState(UiState.CreateEvent(error = "Couldn't reach the server."))
+            cancelAndIgnoreRemainingItems()
+        }
+        assertEquals(false, provisioned) // config never flipped
     }
 
     @Test
@@ -318,16 +456,13 @@ class StatusContainerHostTest {
     }
 
     @Test
-    fun `absent config shows the setup gate even when granted`() = runTest {
+    fun `absent config shows the create layer even when granted`() = runTest {
         val source = FakeSyncStatusSource(SyncStatus.Loading)
         val permission = FakePermissionSource(PermissionStatus.GRANTED)
         val container =
             host(source, backgroundScope, permission = permission, configFake = FakeConfig(null)).container
 
-        assertEquals(
-            UiState.Setup(storageConnected = false, permission = PermissionStatus.GRANTED),
-            container.stateFlow.value,
-        )
+        assertEquals(UiState.CreateEvent(), container.stateFlow.value)
     }
 
     @Test
@@ -355,10 +490,7 @@ class StatusContainerHostTest {
         val container =
             host(source, backgroundScope, permission = permission, configFake = FakeConfig(null)).container
 
-        assertEquals(
-            UiState.Setup(storageConnected = false, permission = PermissionStatus.NOT_DETERMINED),
-            container.stateFlow.value,
-        )
+        assertEquals(UiState.CreateEvent(), container.stateFlow.value)
     }
 
     @Test

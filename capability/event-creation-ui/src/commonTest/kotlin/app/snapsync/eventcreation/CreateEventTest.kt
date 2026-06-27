@@ -1,0 +1,68 @@
+package app.snapsync.eventcreation
+
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlin.test.Test
+import kotlin.test.assertEquals
+import kotlin.test.assertNull
+import kotlinx.coroutines.test.UnconfinedTestDispatcher
+import kotlinx.coroutines.test.runTest
+
+@OptIn(ExperimentalCoroutinesApi::class)
+class CreateEventTest {
+
+    private val eventId = "11111111-1111-4111-8111-111111111111"
+
+    private class FakeClient(private val outcome: CreateOutcome) : EventCreationClient {
+        var lastName: String? = null
+        override suspend fun create(name: String): CreateOutcome {
+            lastName = name
+            return outcome
+        }
+    }
+
+    @Test
+    fun `success provisions the event and returns to idle without a success status`() = runTest {
+        val client = FakeClient(CreateOutcome.Created(eventId))
+        val status = MutableCreationStatusSource()
+        var provisioned: String? = null
+        val scope = CoroutineScope(UnconfinedTestDispatcher(testScheduler))
+        val useCase = CreateEvent(client, status, provision = { provisioned = it }, scope = scope)
+
+        useCase.create("  My Party  ")
+
+        assertEquals("My Party", client.lastName) // trimmed before the call
+        assertEquals(eventId, provisioned) // funneled into the provision path
+        assertEquals(CreationStatus.Idle, status.creationStatus.value) // no success state
+    }
+
+    @Test
+    fun `an invalid name fails with the invalid-name reason and does not provision`() = runTest {
+        val status = MutableCreationStatusSource()
+        var provisioned: String? = null
+        val scope = CoroutineScope(UnconfinedTestDispatcher(testScheduler))
+        val useCase = CreateEvent(
+            FakeClient(CreateOutcome.InvalidName), status, provision = { provisioned = it }, scope = scope,
+        )
+
+        useCase.create("x")
+
+        assertEquals(CreationStatus.Failed(CreationFailureReason.INVALID_NAME), status.creationStatus.value)
+        assertNull(provisioned)
+    }
+
+    @Test
+    fun `a transient failure fails with the server reason and does not provision`() = runTest {
+        val status = MutableCreationStatusSource()
+        var provisioned: String? = null
+        val scope = CoroutineScope(UnconfinedTestDispatcher(testScheduler))
+        val useCase = CreateEvent(
+            FakeClient(CreateOutcome.Transient), status, provision = { provisioned = it }, scope = scope,
+        )
+
+        useCase.create("x")
+
+        assertEquals(CreationStatus.Failed(CreationFailureReason.SERVER), status.creationStatus.value)
+        assertNull(provisioned)
+    }
+}

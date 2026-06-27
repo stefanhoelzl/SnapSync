@@ -13,12 +13,13 @@ The presentation layer SHALL reduce each observed `SyncStatus` to a display-read
 `SyncProgress`, its `SyncStatusSource` seam, the `SyncStatus` vocabulary, and the three-state
 classification are owned by the `sync-status` capability — this screen consumes them. A `Ready`
 snapshot reduces to one of the three states mirroring `SyncState` — `InProgress(synced, total, inProgress, finishedAgo)`,
-`Completed(total, finishedAgo)`, or `NothingToSync` (the setup gate's `UiState.Setup` variant and its
-single-input precedence on config presence, and the `UiState.PermissionBlocked(permission)` permission
-states shown when config is present but permission is not `GRANTED`, are specified by the `setup-gate`
-capability), and a `Loading` snapshot reduces to `UiState.Loading` **only when config is present and
-permission is GRANTED** (an absent config short-circuits to the setup gate, and a present config with
-permission not `GRANTED` short-circuits to `UiState.PermissionBlocked`, regardless of the snapshot). `UiState` carries only final display data: the displayed synced count
+`Completed(total, finishedAgo)`, or `NothingToSync` (the config-absent create layer and its top-rung
+precedence on config presence are specified by the `event-creation-ui` capability; the
+`UiState.PermissionBlocked(permission)` permission states shown when config is present but permission
+is not `GRANTED` are specified below), and a `Loading` snapshot reduces to `UiState.Loading` **only
+when config is present and permission is GRANTED** (an absent config short-circuits to the create
+layer, and a present config with permission not `GRANTED` short-circuits to `UiState.PermissionBlocked`,
+regardless of the snapshot). `UiState` carries only final display data: the displayed synced count
 `synced = min(completed, total)`, the `total`, the count of photos actively uploading for InProgress
 (`inProgress`, taken from `SyncProgress.pending` — it does **not** classify and need not equal
 `total - synced`), and the pre-formatted relative time of the most recent completion for InProgress
@@ -31,7 +32,7 @@ reduction. `UiState.PermissionBlocked` is a derived state (the reduction of a re
 `PermissionStatus`) and is therefore permitted under the no-placeholder rule.
 
 The reduction SHALL additionally consume the `EventStatusSource` (see `event-rejoin-reconciliation`
-and `setup-gate` for the full precedence): once config is present and permission is `GRANTED`,
+and `event-creation-ui` for the full precedence): once config is present and permission is `GRANTED`,
 `EventStatus.Joining` SHALL reduce to `UiState.Joining` and `EventStatus.JoinFailed` to
 `UiState.JoinFailed`, both outranking any sync snapshot; `EventStatus.Joined` and `EventStatus.Idle`
 fall through to the snapshot reduction above. `UiState.Joining` and `UiState.JoinFailed` are derived
@@ -77,8 +78,8 @@ the prohibition is against guesses and placeholders that no source value produce
 - **THEN** the UI state is `UiState.Loading`
 
 #### Scenario: Absent config outranks a Loading snapshot
-- **WHEN** the sync source holds `SyncStatus.Loading` and config is absent
-- **THEN** the UI state is `UiState.Setup`, not Loading
+- **WHEN** the sync source holds `SyncStatus.Loading` and config is absent (creation status `Idle`)
+- **THEN** the UI state is the create-input state (the create layer), not Loading
 
 #### Scenario: Permission blocks a Loading snapshot when config is present
 - **WHEN** the sync source holds `SyncStatus.Loading`, config is present, and permission is `DENIED` or `NOT_DETERMINED`
@@ -86,11 +87,11 @@ the prohibition is against guesses and placeholders that no source value produce
 
 #### Scenario: Denied permission with config present reduces to PermissionBlocked
 - **WHEN** config is present, permission is `DENIED`, and any snapshot is observed (e.g. `Ready(Completed)`)
-- **THEN** the UI state is `UiState.PermissionBlocked(DENIED)`, not a sync hero and not `Setup`
+- **THEN** the UI state is `UiState.PermissionBlocked(DENIED)`, not a sync hero and not the create layer
 
 #### Scenario: Undetermined permission with config present reduces to PermissionBlocked
 - **WHEN** config is present and permission is `NOT_DETERMINED`
-- **THEN** the UI state is `UiState.PermissionBlocked(NOT_DETERMINED)`, not a sync hero and not `Setup`
+- **THEN** the UI state is `UiState.PermissionBlocked(NOT_DETERMINED)`, not a sync hero and not the create layer
 
 #### Scenario: Permission outranks join status
 - **WHEN** config is present, permission is `DENIED`, and `EventStatus` is `Joining`
