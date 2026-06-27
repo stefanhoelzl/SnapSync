@@ -136,9 +136,11 @@ private fun pollTicks(interval: Duration): Flow<Unit> = flow {
     }
 }
 
-// Two-input setup precedence (setup-gate): without both a connected storage and a full permission
-// grant there is no meaningful sync state to show — the setup gate replaces the hero regardless of
-// the snapshot.
+// Setup-gate precedence (config-presence only): the gate stands between the user and the rest of the
+// screen solely on config — without a connected event there is nothing to back up, so the gate
+// replaces the hero regardless of permission or snapshot. Once config is present, a permission that
+// is not fully granted has no meaningful sync state to show, so it surfaces on the status screen as
+// PermissionBlocked (NOT_DETERMINED priming / DENIED settings path), outranking the join/sync chain.
 private fun reduceFrom(
     config: EventConfigPayload?,
     permission: PermissionStatus,
@@ -147,19 +149,23 @@ private fun reduceFrom(
     now: Instant,
 ): UiState {
     val storageConnected = config != null
-    if (!storageConnected || permission != PermissionStatus.GRANTED) {
+    if (!storageConnected) {
         return UiState.Setup(storageConnected, permission)
     }
-    // The join phase sits below the setup gate and above the sync hero (setup-gate precedence): once
-    // config + permission pass, a join in flight/failed outranks the snapshot; Joined/Idle fall
-    // through to the hero.
+    if (permission != PermissionStatus.GRANTED) {
+        return UiState.PermissionBlocked(permission)
+    }
+    // The join phase sits below the setup gate + permission and above the sync hero (setup-gate
+    // precedence): once config + permission pass, a join in flight/failed outranks the snapshot;
+    // Joined/Idle fall through to the hero.
     when (eventStatus) {
         EventStatus.Joining -> return UiState.Joining
         EventStatus.JoinFailed -> return UiState.JoinFailed
         EventStatus.Joined, EventStatus.Idle -> Unit
     }
-    // Loading is reachable only here: an absent config or non-GRANTED permission short-circuits to
-    // the gate regardless of the snapshot, so "reading the ledger" is shown only once both pass.
+    // Loading is reachable only here: an absent config short-circuits to the gate and a non-GRANTED
+    // permission to PermissionBlocked, regardless of the snapshot, so "reading the ledger" is shown
+    // only once config + permission both pass.
     return when (snapshot) {
         SyncStatus.Loading -> UiState.Loading
         is SyncStatus.Ready -> snapshot.progress.toUiState(now)

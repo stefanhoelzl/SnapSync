@@ -51,6 +51,10 @@ fun ControlPanel(controller: PanelController) {
             Text("denies")
         }
 
+        Text("Permission blocked (event joined)")
+        Button(onClick = { controller.showPermissionBlockedNotDetermined() }) { Text("Allow access (priming)") }
+        Button(onClick = { controller.showPermissionBlockedDenied() }) { Text("Photo access turned off") }
+
         Text("Re-join")
         Button(onClick = { controller.showJoining() }) { Text("Joining (preparing)") }
         Button(onClick = { controller.showJoinFailed() }) { Text("Join failed (re-scan)") }
