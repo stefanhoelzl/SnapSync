@@ -3,6 +3,7 @@ package app.snapsync.ios.upload
 import app.snapsync.engine.Resource
 import app.snapsync.engine.UploadError
 import app.snapsync.engine.UploadRequest
+import app.snapsync.gallery.GalleryResourceEnumerator
 import co.touchlab.kermit.Logger
 import kotlinx.cinterop.BetaInteropApi
 import kotlinx.cinterop.ExperimentalForeignApi
@@ -19,8 +20,6 @@ import platform.Foundation.NSURL
 import platform.Foundation.NSURLRequest
 import platform.Foundation.setHTTPMethod
 import platform.Foundation.setValue
-import platform.Foundation.timeIntervalSince1970
-import platform.Photos.PHAsset
 import platform.Photos.PHAssetResource
 import platform.Photos.PHAssetResourceUploadJob
 import platform.Photos.PHAssetResourceUploadJobAction
@@ -32,7 +31,6 @@ import platform.Photos.PHAssetResourceUploadJobStateCancelled
 import platform.Photos.PHAssetResourceUploadJobStateFailed
 import platform.Photos.PHAssetResourceUploadJobStateRegistered
 import platform.Photos.PHAssetResourceUploadJobStateSucceeded
-import platform.Photos.PHFetchResult
 import platform.Photos.PHObjectTypeAsset
 import platform.Photos.PHPersistentChangeToken
 import platform.Photos.PHPhotoLibrary
@@ -41,16 +39,18 @@ import platform.Photos.PHPhotosErrorLimitExceeded
 /**
  * The PhotoKit implementation of [UploadJobPlatform] — the **only** place that touches PhotoKit, so
  * it stays as dumb as possible: fetch/retry/acknowledge system jobs, enumerate changes, and create
- * jobs. All decisions live in [UploadCycle]; key layout lives in [uploadKey]. A returned job's ledger
- * key is read from its **destination URL** (the last path segment) — the only field reliably present
- * for every job state (`resource` is nil for succeeded jobs); the `resource`, when still available, is
- * reused to re-create a retry-spent job. None of this is unit-tested (the upload-job subsystem is
- * device-only); it is verified on a real device. A [PhotoKitSmokeTest] only confirms enumeration is
- * callable on the simulator.
+ * jobs. All decisions live in [UploadCycle]; resource enumeration + key/version layout live in the
+ * shared `:domain:gallery` [GalleryResourceEnumerator] (so the producer and the re-join seed never
+ * diverge). A returned job's ledger key is read from its **destination URL** (the last path segment)
+ * — the only field reliably present for every job state (`resource` is nil for succeeded jobs); the
+ * `resource`, when still available, is reused to re-create a retry-spent job. None of this is
+ * unit-tested (the upload-job subsystem is device-only); it is verified on a real device. A
+ * [PhotoKitSmokeTest] only confirms enumeration is callable on the simulator.
  */
 @OptIn(ExperimentalForeignApi::class, BetaInteropApi::class)
 class IosUploadJobPlatform(
     private val log: Logger,
+    private val enumerator: GalleryResourceEnumerator,
 ) : UploadJobPlatform {
 
     private val library: PHPhotoLibrary get() = PHPhotoLibrary.sharedPhotoLibrary()
@@ -154,8 +154,9 @@ class IosUploadJobPlatform(
         val changes = token?.let { library.fetchPersistentChangesSinceToken(it, error = null) }
         if (token == null || changes == null) {
             // Full enumeration: `resources` is every current resource key — the live set the cycle
-            // reconciles against. No change feed, so no incremental removals.
-            val resources = resourcesFor(PHAsset.fetchAssetsWithOptions(null).localIdentifiers())
+            // reconciles against. No change feed, so no incremental removals. Delegated to the shared
+            // gallery enumerator (same derivation the re-join seed uses).
+            val resources = enumerator.enumerate()
             return Discovery(
                 resources = resources,
                 nextToken = archiveToken(library.currentChangeToken),
@@ -174,35 +175,10 @@ class IosUploadJobPlatform(
             details.deletedLocalIdentifiers().forEach { removed.add((it as String).replace('/', '_')) }
         }
         return Discovery(
-            resources = resourcesFor(identifiers.toList()),
+            resources = enumerator.resources(identifiers.toList()),
             nextToken = archiveToken(library.currentChangeToken),
             removedAssetIds = removed.toList(),
         )
-    }
-
-    private fun resourcesFor(localIdentifiers: List<String>): List<Resource> {
-        if (localIdentifiers.isEmpty()) return emptyList()
-        val assets = PHAsset.fetchAssetsWithLocalIdentifiers(localIdentifiers, null)
-        val resources = mutableListOf<Resource>()
-        var index = 0uL
-        while (index < assets.count) {
-            val asset = assets.objectAtIndex(index) as PHAsset
-            index++
-            val assetId = asset.localIdentifier.replace('/', '_')
-            val version = (asset.modificationDate?.timeIntervalSince1970 ?: 0.0).toString()
-            for (any in PHAssetResource.assetResourcesForAsset(asset)) {
-                val resource = any as PHAssetResource
-                resources += Resource(
-                    filename = uploadKey(assetId, resource.type, resource.originalFilename),
-                    assetId = assetId,
-                    contentType = resource.uniformTypeIdentifier,
-                    version = version,
-                    metadata = emptyMap(),
-                    data = resource,
-                )
-            }
-        }
-        return resources
     }
 
     private fun buildRequest(url: NSURL, request: UploadRequest): NSMutableURLRequest {
@@ -232,6 +208,7 @@ class IosUploadJobPlatform(
     // Token (un)archiving is best-effort efficiency only: any failure degrades to a full
     // re-enumeration (null token), which the ledger makes harmless — it must never fail the cycle.
     private fun archiveToken(token: PHPersistentChangeToken): ByteArray =
+
         runCatching {
             NSKeyedArchiver.archivedDataWithRootObject(token, requiringSecureCoding = true, error = null)?.toByteArray()
         }.onFailure { log.w(it) { "archiveToken failed — cursor will not advance this cycle" } }
@@ -243,14 +220,4 @@ class IosUploadJobPlatform(
                 as? PHPersistentChangeToken
         }.onFailure { log.w(it) { "unarchiveToken failed — re-enumerating from scratch" } }
             .getOrNull()
-
-    private fun PHFetchResult.localIdentifiers(): List<String> {
-        val out = ArrayList<String>(count.toInt())
-        var index = 0uL
-        while (index < count) {
-            out.add((objectAtIndex(index) as PHAsset).localIdentifier)
-            index++
-        }
-        return out
-    }
 }

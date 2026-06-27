@@ -33,6 +33,7 @@ fun main() = application {
                 controller.configSource,
                 controller.configStore,
                 scope,
+                eventStatusSource = controller.eventStatusSource,
             )
         }
         val state by host.container.stateFlow.collectAsState()

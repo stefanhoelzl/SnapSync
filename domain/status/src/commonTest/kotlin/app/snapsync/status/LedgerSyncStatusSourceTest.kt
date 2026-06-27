@@ -192,6 +192,13 @@ private class RowStore : LedgerBackend {
         dings.tryEmit(Unit)
     }
 
+    override suspend fun resetTo(entries: List<LedgerEntry>) {
+        val next = entries.associateByTo(mutableMapOf()) { it.key }
+        rows.clear()
+        rows.putAll(next)
+        dings.tryEmit(Unit)
+    }
+
     override suspend fun deleteByAssetId(assetId: String) {
         rows.values.removeAll { it.assetId == assetId }
         dings.tryEmit(Unit)

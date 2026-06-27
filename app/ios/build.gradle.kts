@@ -25,6 +25,9 @@ kotlin {
             implementation(project(":domain:permission"))
             implementation(project(":domain:gallery"))
             implementation(project(":capability:config"))
+            // The re-join reconciliation: the list fetch + JoinEvent gate, and the join status seam
+            // (re-exported by :capability:rejoin) wired into the container.
+            implementation(project(":capability:rejoin"))
             implementation(libs.coroutines.core)
             implementation(libs.kermit)
             implementation(compose.runtime)

@@ -31,6 +31,16 @@ class InMemoryLedgerBackend : LedgerBackend {
         dings.tryEmit(Unit)
     }
 
+    override suspend fun resetTo(entries: List<LedgerEntry>) {
+        // Build the next state fully before swapping, so the replacement is atomic from any
+        // collector's view (mirrors the SQL transaction) and a failure before the swap leaves the
+        // store unchanged.
+        val next = entries.associateByTo(mutableMapOf()) { it.key }
+        rows.clear()
+        rows.putAll(next)
+        dings.tryEmit(Unit)
+    }
+
     override suspend fun deleteByAssetId(assetId: String) {
         rows.values.removeAll { it.assetId == assetId }
         dings.tryEmit(Unit)

@@ -51,6 +51,10 @@ fun ControlPanel(controller: PanelController) {
             Text("denies")
         }
 
+        Text("Re-join")
+        Button(onClick = { controller.showJoining() }) { Text("Joining (preparing)") }
+        Button(onClick = { controller.showJoinFailed() }) { Text("Join failed (re-scan)") }
+
         Text("Sync")
         Button(onClick = { controller.showLoading() }) { Text("Loading") }
         Button(onClick = { controller.showNothingToSync() }) { Text("Nothing to sync (N=0)") }

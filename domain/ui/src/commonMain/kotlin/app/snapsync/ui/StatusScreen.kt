@@ -27,6 +27,10 @@ fun StatusScreen(
             when (state) {
                 UiState.Loading ->
                     StatusHero(StatusIndicator.Loading, "Loading …")
+                UiState.Joining ->
+                    StatusHero(StatusIndicator.Loading, "Checking what's already backed up …")
+                UiState.JoinFailed ->
+                    StatusHero(StatusIndicator.Error, "Couldn't reach the server", "Scan the event QR code again")
                 is UiState.Setup ->
                     SetupGate(state, onRequestPermission, onOpenSettings, transientError)
                 is UiState.InProgress ->

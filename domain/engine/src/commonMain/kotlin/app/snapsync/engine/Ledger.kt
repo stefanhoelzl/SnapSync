@@ -106,6 +106,17 @@ interface LedgerBackend {
     suspend fun clear()
 
     /**
+     * Atomically replace the entire store with [entries] (delete-all then insert-all in one
+     * transaction): either all prior rows go and all [entries] land, or — on failure — the store is
+     * left exactly as it was (no partial baseline is ever observable). Entries are stored verbatim
+     * (the caller supplies `state`/`version`/`updatedAt`; no clock stamping here). Dings [changes]
+     * **once** on success, like a [put]. This is a reset-family op (alongside [clear]) — the app-side
+     * join seed uses it; it is **not** a per-key record, so it does not breach the single-record-writer
+     * invariant.
+     */
+    suspend fun resetTo(entries: List<LedgerEntry>)
+
+    /**
      * Delete every row whose [LedgerEntry.assetId] equals [assetId]. The backend matches by
      * equality and never interprets the value — `assetId` is a second opaque grouping field (it
      * does not know what an "asset" means). Dings [changes] like a [put].

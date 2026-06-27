@@ -7,6 +7,7 @@ import app.snapsync.engine.SyncEngine
 import app.snapsync.engine.iosLedgerBackend
 import app.snapsync.engine.postLedgerChangedNotification
 import app.snapsync.uploadurl.EdgeUploadRequestProvider
+import app.snapsync.gallery.PhotoLibraryResourceEnumerator
 import co.touchlab.kermit.Logger
 import kotlinx.coroutines.runBlocking
 
@@ -38,7 +39,9 @@ object UploadExtensionRoot {
 
     private val ledgerBackend: LedgerBackend by lazy { iosLedgerBackend() }
     private val ledger: LedgerWriter by lazy { LedgerWriter(ledgerBackend) }
-    private val platform: IosUploadJobPlatform by lazy { IosUploadJobPlatform(log) }
+    private val platform: IosUploadJobPlatform by lazy {
+        IosUploadJobPlatform(log, PhotoLibraryResourceEnumerator())
+    }
     private val discoveryStore: IosDiscoveryStore by lazy { IosDiscoveryStore() }
     private val configSource: KeychainConfigStore by lazy { KeychainConfigStore() }
     private val deviceIdProvider: DeviceIdProvider by lazy { iosDeviceIdProvider() }

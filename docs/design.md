@@ -353,9 +353,12 @@ synchronous-first-value promise holds. Writes ding, the watcher re-queries, the 
 - **Staleness detection is read-only:** the app compares the photo library's `currentChangeToken` with
   the platform bookkeeping's last token — mismatch ⇒ undiscovered work ⇒ status can say "waiting for
   system" instead of a false COMPLETE (later slice).
-- **Joining re-provisions** (§3.2): on a new event deeplink, the platform clears the ledger and the
-  discovery cursor and sets the new start-date baseline, so status resets to never-synced for the new
-  event. Uninstall wipes the App Group → same reset. Re-sync is idempotent.
+- **Joining (re)provisions** (§3.2): switching to a **different** event clears the ledger and the
+  discovery cursor; **re-joining the same event is a no-op**. On any (re)join the app first
+  **reconciles against storage** — seeding already-stored photos as `COMPLETED` (the
+  `event-rejoin-reconciliation` capability) — so status reflects what is already backed up rather than
+  resetting to never-synced and re-uploading. Uninstall (or a destructive ledger migration) leaves an
+  empty ledger → the next join reconciles. Re-sync is idempotent.
 
 ---
 
@@ -420,12 +423,16 @@ alternates, **and Live Photo `.pairedVideo`/`.fullSizePairedVideo`**. "Qualifyin
     even if added/changed later.
   - **Token expiry is routine** (`persistentChangeTokenExpired`) — the remedy is full (date-filtered)
     re-enumeration, harmless because the ledger answers `AlreadyUploaded` for everything already done.
-- **Joining re-provisions** (the device-verified path): on a new event deeplink, **clear the ledger**
-  (`LedgerBackend.clear()`) + the discovery cursor, persist the new `{eventId, startDate}`, and
-  **re-register the extension**, so the library re-uploads from scratch into the new event's namespace.
-  (No Leave: there is no deprovision-to-idle path in this version; switching events is the only
-  transition.) Re-upload begins on the OS's next extension invocation — a library change reliably
-  triggers one.
+- **Joining (re)provisions** (the device-verified path): on a deeplink the app detects a **switch**
+  (a different `eventId`, compared against the Keychain config) and clears the ledger
+  (`LedgerBackend.resetTo`) + the discovery cursor; re-joining the **same** event with a non-empty
+  ledger is a no-op. Before re-registering the extension it **reconciles**
+  (`event-rejoin-reconciliation`): fetch the event's stored files, enumerate the library, and **seed
+  already-stored photos as `COMPLETED`** (an atomic `resetTo`, with the extension disabled), so a
+  re-join does **not** re-upload from scratch — only genuinely-un-stored photos upload, on the OS's
+  next extension invocation. The same gate runs before the on-grant enable, keyed on ledger
+  emptiness, so a reinstall or a destructive ledger migration self-heals. (No Leave: switching events
+  is the only transition.)
 - **State**: upload memory is the **engine's ledger** (single writer = the extension). The platform
   keeps only small, **lossy-tolerant** discovery bookkeeping in the App Group: `{lastToken,
   startDate, eventId, deviceId, deferredIds?}`. Losing the residue costs one record's worth of
@@ -526,10 +533,12 @@ bytes). The proxy sidesteps signing entirely: the endpoint, not the device, writ
     for the event, across all devices — `{ filename, deviceId, size, lastModified }` per entry. It
     walks bunny native Storage LIST per-directory (event dir → each device dir), authorized by the
     event id alone. `200 []` for an empty/unknown event (no registry to distinguish), `400` for a
-    malformed id, `502` on any upstream LIST failure (never a partial list). Motivating consumer
-    (separate change): a re-joined device pre-seeding its ledger — `deviceId` rotates on reinstall,
-    so it reconciles across all devices by the reinstall-stable `filename`. Capability:
-    `bunny-list-endpoint`.
+    malformed id, `502` on any upstream LIST failure (never a partial list). The listed `filename` is
+    decoded back to the uploaded name so a device matches by it. Consumer (implemented): a re-joined
+    device pre-seeds its ledger before enabling uploads — `deviceId` rotates on reinstall (and a
+    destructive ledger migration empties the ledger), so it reconciles across all devices by the
+    reinstall-stable `filename`. Capabilities: `bunny-list-endpoint` (read) +
+    `event-rejoin-reconciliation` (the on-device join).
   - **Response:** `2xx` **only** when bunny confirms the stored object; any upstream error/abort →
     `5xx` (so the engine retries). Never a false success.
   - **Authorization: by event id only** (no token — the QR carries no secret beyond the id). The event
@@ -677,8 +686,9 @@ itself is covered by the endpoint's `Deno.test` suite.
 - **Contributor-only, event-scoped.** App joins an externally-created event by scanning a `snapsync://`
   QR with the native Camera; uploads photos with **capture date ≥ event start** to
   `<eventId>/<deviceId>/<localId>-<kind>.<ext>`. No in-app create/QR/viewing/Leave.
-- **Single event at a time**; **join re-provisions** (clear ledger + cursor, new start baseline,
-  re-register extension). Multi-event and Leave **deferred**.
+- **Single event at a time**; **join reconciles** (seed already-stored photos before enabling, clear
+  cursor, re-register extension); a **switch** clears the ledger; same-event re-join is a no-op.
+  Multi-event and Leave **deferred**.
 - **Storage = bunny.net native Storage API**; **device holds no credential**; an external **edge proxy
   endpoint** streams bytes into the bucket **by event id only** (event id = the capability). Edge host
   is BuildKonfig; **no baked secrets** (the storage `AccessKey` lives only on the edge). *(2026-06-22
