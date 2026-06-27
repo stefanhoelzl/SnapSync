@@ -1,8 +1,10 @@
 package app.snapsync.presentation
 
+import app.snapsync.config.ConfigDecodeResult
 import app.snapsync.config.ConfigSource
 import app.snapsync.config.ConfigStore
 import app.snapsync.config.EventConfigPayload
+import app.snapsync.config.decodeConfigUrl
 import app.snapsync.config.encodeConfigUrl
 import app.snapsync.eventstatus.EventStatus
 import app.snapsync.eventstatus.MutableEventStatusSource
@@ -434,6 +436,71 @@ class StatusContainerHostTest {
         // Construction without injecting a leave action succeeds, and a confirmed leave does nothing.
         host(FakeSyncStatusSource(), backgroundScope).test(this) {
             containerHost.onLeaveEvent()
+        }
+        advanceUntilIdle()
+    }
+
+    @Test
+    fun `invite url derives from config and round-trips to the same event`() = runTest {
+        val configFake = FakeConfig(SAMPLE_CONFIG)
+        val host = StatusContainerHost(
+            FakeSyncStatusSource(), FakePermissionSource(), SpyRequester(), configFake, configFake,
+            backgroundScope, FakeClock(EPOCH),
+        )
+        // Same URL a scanner of the event's QR would receive, and it decodes back to the same eventId.
+        assertEquals(encodeConfigUrl(SAMPLE_CONFIG), host.inviteUrl.value)
+        val decoded = decodeConfigUrl(host.inviteUrl.value!!)
+        assertTrue(decoded is ConfigDecodeResult.Success)
+        assertEquals(SAMPLE_CONFIG.eventId, decoded.payload.eventId)
+    }
+
+    @Test
+    fun `invite url is null when no event is configured`() = runTest {
+        val configFake = FakeConfig(null)
+        val host = StatusContainerHost(
+            FakeSyncStatusSource(), FakePermissionSource(), SpyRequester(), configFake, configFake,
+            backgroundScope, FakeClock(EPOCH),
+        )
+        assertEquals(null, host.inviteUrl.value)
+    }
+
+    @Test
+    fun `onShareInvite hands the invite url to the injected share`() = runTest {
+        val shared = mutableListOf<String>()
+        val configFake = FakeConfig(SAMPLE_CONFIG)
+        val containerHost = StatusContainerHost(
+            FakeSyncStatusSource(), FakePermissionSource(), SpyRequester(), configFake, configFake,
+            backgroundScope, FakeClock(EPOCH), share = { shared += it },
+        )
+        containerHost.test(this) {
+            containerHost.onShareInvite()
+        }
+        advanceUntilIdle()
+
+        assertEquals(listOf(encodeConfigUrl(SAMPLE_CONFIG)), shared)
+    }
+
+    @Test
+    fun `onShareInvite with no configured event does not share`() = runTest {
+        val shared = mutableListOf<String>()
+        val configFake = FakeConfig(null)
+        val containerHost = StatusContainerHost(
+            FakeSyncStatusSource(), FakePermissionSource(), SpyRequester(), configFake, configFake,
+            backgroundScope, FakeClock(EPOCH), share = { shared += it },
+        )
+        containerHost.test(this) {
+            containerHost.onShareInvite()
+        }
+        advanceUntilIdle()
+
+        assertTrue(shared.isEmpty())
+    }
+
+    @Test
+    fun `onShareInvite with the default no-op share is inert`() = runTest {
+        // Construction without injecting a share action succeeds, and a share does nothing.
+        host(FakeSyncStatusSource(), backgroundScope).test(this) {
+            containerHost.onShareInvite()
         }
         advanceUntilIdle()
     }

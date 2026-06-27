@@ -5,6 +5,7 @@ import app.snapsync.config.ConfigSource
 import app.snapsync.config.ConfigStore
 import app.snapsync.config.EventConfigPayload
 import app.snapsync.config.decodeConfigUrl
+import app.snapsync.config.encodeConfigUrl
 import app.snapsync.eventstatus.EventStatus
 import app.snapsync.eventstatus.EventStatusSource
 import app.snapsync.eventstatus.MutableEventStatusSource
@@ -28,12 +29,16 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.emptyFlow
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.stateIn
 import org.orbitmvi.orbit.Container
 import org.orbitmvi.orbit.ContainerHost
 import org.orbitmvi.orbit.container
@@ -62,6 +67,10 @@ class StatusContainerHost(
     // and tests construct unchanged and a confirmed leave there is inert; iOS binds it to
     // `LeaveEvent.leave`.
     private val leave: suspend () -> Unit = {},
+    // The share action, injected as a plain `(String) -> Unit` lambda (not a named seam type) — the
+    // same shape as `leave`. Defaults to a no-op so non-iOS hosts and tests construct unchanged and a
+    // share there is inert; iOS binds it to a `UIActivityViewController` presentation.
+    private val share: (String) -> Unit = {},
 ) : ContainerHost<UiState, SetupEffect> {
 
     override val container: Container<UiState, SetupEffect> =
@@ -108,6 +117,21 @@ class StatusContainerHost(
             }
         }
 
+    /**
+     * The event's invite deeplink, derived from the persisted config (`eventId -> encodeConfigUrl`,
+     * the inverse of the decode run on a scanned QR). One source feeding both the rendered QR and the
+     * share action so the two can never drift; `null` whenever no event is configured. Deterministic —
+     * the same URL a scanner of the event's QR would receive.
+     */
+    val inviteUrl: StateFlow<String?> =
+        configSource.config
+            .map { it?.let { payload -> encodeConfigUrl(payload) } }
+            .stateIn(
+                scope,
+                SharingStarted.Eagerly,
+                configSource.config.value?.let { encodeConfigUrl(it) },
+            )
+
     fun onRequestPermission() = intent { requester.request() }
 
     fun onOpenSettings() = intent { requester.openSettings() }
@@ -119,6 +143,14 @@ class StatusContainerHost(
      * reduction fall back to the setup gate — no new `UiState` and no reduction branch here.
      */
     fun onLeaveEvent() = intent { leave() }
+
+    /**
+     * Share the event's invite deeplink (the joined-layer share action). Hands the current invite URL
+     * to the injected platform share; fire-and-forget — no result is observed, and `UiState` is
+     * unaffected (the system share UI is presented over the screen, not part of it). Inert when no
+     * event is configured (no URL) or no real share is bound (the no-op default).
+     */
+    fun onShareInvite() = intent { inviteUrl.value?.let { share(it) } }
 
     /**
      * A deeplink arrived (forwarded raw from the platform). Decode it with the shared codec; a

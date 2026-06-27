@@ -2,7 +2,9 @@ package app.snapsync.ui
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -14,11 +16,13 @@ import androidx.compose.ui.unit.dp
 import app.snapsync.permission.PermissionStatus
 import app.snapsync.presentation.UiState
 import app.snapsync.ui.components.AppConfirmDialog
+import app.snapsync.ui.components.AppQrCode
 import app.snapsync.ui.components.AppTheme
 import app.snapsync.ui.components.LeaveButton
 import app.snapsync.ui.components.PrimaryButton
 import app.snapsync.ui.components.ScreenLayout
 import app.snapsync.ui.components.SetupCard
+import app.snapsync.ui.components.ShareButton
 import app.snapsync.ui.components.StatusHero
 import app.snapsync.ui.components.StatusIndicator
 
@@ -28,20 +32,34 @@ fun StatusScreen(
     onRequestPermission: () -> Unit = {},
     onOpenSettings: () -> Unit = {},
     onLeaveEvent: () -> Unit = {},
+    onShareInvite: () -> Unit = {},
+    inviteUrl: String? = null,
     transientError: String? = null,
 ) {
     AppTheme {
         // Local UI state only: the confirm dialog's visibility never enters UiState or the reduction.
         var confirmingLeave by remember { mutableStateOf(false) }
-        // The leave affordance lives in the joined layer only (InProgress / NothingToSync / Completed);
-        // the loading, setup-gate, joining, and join-failed states show none.
-        val leaveAction: (@Composable () -> Unit)? = if (state.isJoinedLayer) {
-            { LeaveButton(description = "Leave event", onClick = { confirmingLeave = true }) }
+        // The invite + leave affordances live in the joined layer only (InProgress / NothingToSync /
+        // Completed); the loading, setup-gate, permission-blocked, joining, and join-failed states show
+        // none. Share renders only when an invite URL exists (always true in the joined layer, where
+        // config is present); both ride the bottom-end action cluster, share before leave.
+        val bottomEndActions: (@Composable () -> Unit)? = if (state.isJoinedLayer) {
+            {
+                if (inviteUrl != null) {
+                    ShareButton(description = "Share invite link", onClick = onShareInvite)
+                }
+                LeaveButton(description = "Leave event", onClick = { confirmingLeave = true })
+            }
         } else {
             null
         }
 
-        ScreenLayout(title = "SnapSync", bottomEndAction = leaveAction) {
+        ScreenLayout(title = "SnapSync", bottomEndActions = bottomEndActions) {
+            // In the joined layer the join QR sits above the status hero, so others can scan to join.
+            if (state.isJoinedLayer && inviteUrl != null) {
+                AppQrCode(content = inviteUrl, caption = "Scan to join this event")
+                Spacer(Modifier.height(24.dp))
+            }
             when (state) {
                 UiState.Loading ->
                     StatusHero(StatusIndicator.Loading, "Loading …")

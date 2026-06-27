@@ -72,14 +72,17 @@ and SHALL own a foreground signal (a `Flow<Boolean>`) injected into the `StatusC
 refresh cadence is gated on it. It SHALL construct the `LeaveEvent` use-case — injecting the
 `ConfigStore`, the `LedgerBackend`, the `EventStatusSource`, and as suspend lambdas the producer
 disable (`setUploadJobExtensionEnabled(false)`) and the discovery-cursor clear — and inject it into
-the `StatusContainerHost`. The scope SHALL outlive Compose recomposition so the source collector
-and container are not torn down with the view. `MainViewController` SHALL render
-`host.container.stateFlow` and route the gate intents to `host.onRequestPermission` /
-`host.onOpenSettings`, and the leave action to `host.onLeaveEvent`. `SnapSyncRoot` SHALL expose
-`onOpenUrl(String)` that forwards to the container's `onOpenUrl` intent, and SHALL expose a foreground
-entry point (e.g. `onForeground()`/`onBackground()`) that the SwiftUI scene calls on its scene-phase
-transitions to drive the foreground signal. No temporary upload-job probe SHALL remain (the spike is
-removed).
+the `StatusContainerHost`. It SHALL bind the **share action** as a `share: (String) -> Unit` lambda
+that presents a `UIActivityViewController` carrying the given invite deeplink string (from the
+current top view controller) and inject it into the `StatusContainerHost`. The scope SHALL outlive
+Compose recomposition so the source collector and container are not torn down with the view.
+`MainViewController` SHALL render `host.container.stateFlow` and route the gate intents to
+`host.onRequestPermission` / `host.onOpenSettings`, the leave action to `host.onLeaveEvent`, and the
+share action to `host.onShareInvite`; it SHALL collect the container's invite URL (`host.inviteUrl`)
+and pass it to `StatusScreen`. `SnapSyncRoot` SHALL expose `onOpenUrl(String)` that forwards to the
+container's `onOpenUrl` intent, and SHALL expose a foreground entry point (e.g.
+`onForeground()`/`onBackground()`) that the SwiftUI scene calls on its scene-phase transitions to
+drive the foreground signal. No temporary upload-job probe SHALL remain (the spike is removed).
 
 #### Scenario: The root assembles the real stack
 
@@ -108,6 +111,19 @@ removed).
   disabling the extension via the injected lambda, resetting the ledger, clearing the discovery
   cursor, clearing the Keychain config, and setting `EventStatus` to `Idle` — and the screen returns
   to the setup gate
+
+#### Scenario: The share action flows through the container into the platform share
+
+- **WHEN** the user activates the share action in the joined layer
+- **THEN** `MainViewController` invokes `host.onShareInvite`, which calls the injected `share` lambda
+  with the invite deeplink, and `SnapSyncRoot` presents a `UIActivityViewController` carrying that
+  deeplink — the UI never constructs UIKit directly and observes no result
+
+#### Scenario: The invite URL is supplied to the screen
+
+- **WHEN** an event is configured
+- **THEN** `MainViewController` collects `host.inviteUrl` and passes it to `StatusScreen`, which renders
+  the join QR for it in the joined layer
 
 #### Scenario: Foreground transition drives the refresh cadence
 

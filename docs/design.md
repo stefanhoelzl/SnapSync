@@ -38,8 +38,9 @@ A **scope pivot** (2026-06-22) of SnapSync, from a *personal one-way library bac
 - **One event at a time.** Joining a new event **re-provisions** (replaces) the current one
   (§2.4/§3.2). Multi-event membership is a later concern.
 - **Join by scanning an externally-minted QR with the native Camera** → `snapsync://` deeplink →
-  event config provisioned via `:capability:config`. The app **does not create events, does not
-  display QR codes**.
+  event config provisioned via `:capability:config`. The app **does not create events**, but **does
+  display the join QR** for the event it has joined (§5/`event-invite-qr`) — a joined device already
+  holds the `eventId`, so it can re-encode and show the same deeplink for inviting others.
 - **Photo assets, whole library, filtered by capture date** — **all `PHAssetResource`s** of each
   qualifying photo asset (original + edits + adjustments + Live Photo paired video). Standalone
   *video assets* are out of scope.
@@ -55,13 +56,20 @@ A **scope pivot** (2026-06-22) of SnapSync, from a *personal one-way library bac
   producer is disabled, the ledger wiped, the discovery cursor cleared, and the `eventId` forgotten
   from the Keychain — returning to the setup gate. It is **local-only**: already-uploaded objects
   stay in storage, so re-scanning the same QR re-joins and reconciles them back (no re-upload).
+- **Invite by showing the join QR** (`event-invite-qr`): in the joined layer the status screen shows
+  the event's join QR ("Scan to join this event") and a share action — the deeplink is re-encoded
+  from the stored `eventId` (`encodeConfigUrl`), so any joined participant can invite others without
+  the external tool. The displayed QR **is** the join capability (any scanner becomes an uploader; an
+  existing member re-scanning reconciles and uploads nothing new) — an accepted trade-off for a
+  personal TestFlight app.
 
 **Explicit non-goals / deferred:**
 - **Leave does not delete remote objects.** Leaving forgets the event on-device only; removing the
   event's already-uploaded objects from storage is out of scope (no backend delete path).
 - **No in-app viewing / download** — contribute-only. Collected photos are viewed by a **separate
   external tool**.
-- **No multi-event membership**, no event creation in-app, no in-app QR generation.
+- **No multi-event membership**, no event creation in-app. (The app *does* display the joined
+  event's QR for inviting — `event-invite-qr` — but mints no **new** event QRs.)
 - No Android app yet (architecture keeps the door open).
 - No encryption (plaintext upload). **The edge endpoint sees the bytes in transit** (device→edge→bucket)
   — a deliberate trade of the v1 byte-blind direct-to-bucket path for sidestepping presigned-PUT signing
@@ -613,6 +621,16 @@ bytes). The proxy sidesteps signing entirely: the endpoint, not the device, writ
   transient network state recovered by re-scan/relaunch.) The leave button and the confirm dialog are
   new semantic `App*` components (`LeaveButton`, `AppConfirmDialog`) plus a bottom-right action slot on
   `ScreenLayout`; the `Logout` glyph stays contained in `:domain:ui:components`.
+- **Invite affordance in the joined layer** (`event-invite-qr`). In the same joined layer the screen
+  shows the event's **join QR** ("Scan to join this event") above the hero and a flat icon-only
+  **share** action, alongside Leave. The invite deeplink is re-encoded from the stored `eventId`
+  (`encodeConfigUrl`) and exposed by the container as `inviteUrl` — a screen-level param (like the
+  transient invalid-link error), so `UiState` and the reduction are untouched. Share is a
+  fire-and-forget `share: (String) -> Unit` lambda on the container (the `leave` shape, not a named
+  seam): iOS presents `UIActivityViewController`, the desktop harness copies to the clipboard. New
+  semantic `App*` components (`AppQrCode`, `ShareButton`); the bottom-right slot becomes a
+  container-arranged **action cluster** (share + leave); the QR-rendering library (`qrose`) stays
+  contained in `:domain:ui:components`. The displayed QR is the join capability — see §1.
 - **State: MVI via Orbit** in `:domain:presentation` (Compose-free). The `:presentation → :ui` contract
   is `StateFlow<UiState>` + actions.
 - **Seams are `StateFlow` state holders** (`SyncStatusSource`, `PermissionStatusSource`): current truth

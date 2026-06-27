@@ -4,6 +4,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -21,9 +22,10 @@ import androidx.compose.ui.unit.dp
 
 /**
  * Owns the screen's convention-bearing structure: edge insets, title placement, the vertical
- * centering of the body content (the screen is a glanceable status display), and the placement of an
- * optional [bottomEndAction] anchored bottom-right. Screens supply the action composable but never
- * hardcode screen-level geometry themselves (design.md §5).
+ * centering of the body content (the screen is a glanceable status display), and the placement and
+ * arrangement of an optional bottom-right [bottomEndActions] cluster. Screens supply one or more
+ * action composables; this container row-arranges them end-aligned with consistent spacing, so the
+ * screen never hardcodes bottom-anchor or row geometry itself (design.md §5).
  *
  * The background `Surface` fills the whole screen (painting edge-to-edge under the iOS notch /
  * home indicator), while the content `Column` insets past the safe-area before applying the
@@ -33,7 +35,7 @@ import androidx.compose.ui.unit.dp
 @Composable
 fun ScreenLayout(
     title: String,
-    bottomEndAction: (@Composable () -> Unit)? = null,
+    bottomEndActions: (@Composable () -> Unit)? = null,
     content: @Composable ColumnScope.() -> Unit,
 ) {
     Surface(modifier = Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
@@ -55,9 +57,14 @@ fun ScreenLayout(
                 horizontalAlignment = Alignment.CenterHorizontally,
                 content = content,
             )
-            if (bottomEndAction != null) {
+            if (bottomEndActions != null) {
                 Box(modifier = Modifier.fillMaxWidth(), contentAlignment = Alignment.CenterEnd) {
-                    bottomEndAction()
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        bottomEndActions()
+                    }
                 }
             }
         }
