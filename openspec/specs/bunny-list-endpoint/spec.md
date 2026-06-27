@@ -46,7 +46,9 @@ The endpoint SHALL return the objects stored under the event as a single flat ar
 Files are direct children of the event directory (the key is `<eventId>/<filename>`), so no
 sub-directory discovery or per-directory fan-out is performed. Directory entries (if any) SHALL NOT
 appear in the result (only files). The List request SHALL carry the storage zone's `AccessKey`
-header from configuration and never the account API key.
+header from configuration and never the account API key. A single event-existence read (the marker
+`GET` of `events/<eventId>.json`) precedes this List per the existence gate; that read is separate
+from and does not relax the single-LIST rule for the file listing itself.
 
 #### Scenario: Event directory files are returned
 
@@ -73,18 +75,6 @@ entry SHALL NOT include a `deviceId`, a content type, or the full storage key.
 - **WHEN** a stored object is listed
 - **THEN** its entry is `{ filename, size, lastModified }` and carries no other fields (no `deviceId`)
 
-### Requirement: Empty or unknown event yields an empty array
-
-A valid event id with no stored objects SHALL yield `200` with an empty array `[]` — whether the
-event was never used or simply has no uploads yet. The endpoint SHALL NOT distinguish an unknown
-event from an empty one (there is no event registry) and SHALL NOT respond `404` for a well-formed
-event id that has no objects.
-
-#### Scenario: No objects under the event
-
-- **WHEN** a valid event id has no stored objects (the event directory lists nothing)
-- **THEN** the endpoint responds `200` with `[]`
-
 ### Requirement: Faithful outcome — no partial list
 
 The endpoint SHALL return a `2xx` array **only** when the event-directory List succeeds. If that
@@ -104,13 +94,20 @@ NOT return a partial or truncated array, and SHALL NEVER return `2xx` for a fail
 ### Requirement: Authorization by event id only
 
 Authorization to list an event SHALL be possession of the event id alone — the endpoint SHALL NOT
-require any token and SHALL NOT consult an event registry, matching the upload endpoint's capability
-model. The endpoint SHALL NOT expose or forward the bunny account API key.
+require any token. The endpoint now consults the event registry (the marker) to determine
+**existence** and SHALL respond `404` for an event that was never created; consulting the registry is
+an existence check, not an authorization step — any caller possessing a valid, existing event id is
+authorized to list it. The endpoint SHALL NOT expose or forward the bunny account API key.
 
 #### Scenario: No token required
 
-- **WHEN** a `GET /event/<uuid>/files` carries a valid event id but no authorization token
+- **WHEN** a `GET /event/<uuid>/files` carries a valid, existing event id but no authorization token
 - **THEN** the listing is returned (the event id is the capability)
+
+#### Scenario: Account API key never exposed
+
+- **WHEN** the endpoint lists an event
+- **THEN** no response or upstream-facing surface exposes the bunny account API key
 
 ### Requirement: Listed filename round-trips with the uploaded filename
 
@@ -136,4 +133,34 @@ follow continuation to preserve completeness rather than return a partial page a
 #### Scenario: An event directory with many files returns them all
 - **WHEN** the event directory holds a large number of files and the event is listed
 - **THEN** the response includes every file in that directory (no page cap)
+
+### Requirement: Listing gated on event existence
+
+The endpoint SHALL determine whether the event exists before listing, by reading the event marker
+`events/<eventId>.json` (a bunny native Storage `GET` carrying the configured `AccessKey`). When the
+marker is absent, the endpoint SHALL respond `404` and SHALL NOT perform the directory LIST. When the
+marker is present, the endpoint SHALL proceed to list the event directory. A genuine upstream failure
+reading the marker (any non-`404` error or timeout) SHALL be surfaced as `5xx` and SHALL NOT be
+treated as "event absent". A created event with no stored objects SHALL still respond `200` with an
+empty array `[]` — existence (marker present) and emptiness (no objects) are distinct.
+
+#### Scenario: Unknown event yields 404
+
+- **WHEN** a `GET /event/<uuid>/files` arrives for an event whose marker `events/<uuid>.json` is absent
+- **THEN** the endpoint responds `404` and performs no directory LIST
+
+#### Scenario: Created-but-empty event yields empty array
+
+- **WHEN** a valid event's marker exists but its directory `<uuid>/` contains no objects
+- **THEN** the endpoint responds `200` with `[]`
+
+#### Scenario: Created event with objects yields the array
+
+- **WHEN** a valid event's marker exists and its directory contains files
+- **THEN** the endpoint responds `200` with the flat array of those files
+
+#### Scenario: Marker read failure is not treated as absence
+
+- **WHEN** the marker read returns a non-`404` upstream error or times out
+- **THEN** the endpoint responds `5xx` and does not return `404` or an array
 
