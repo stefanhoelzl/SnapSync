@@ -42,7 +42,14 @@ fun main() = application {
             Surface {
                 Row(modifier = Modifier.padding(16.dp)) {
                     PhoneFrame {
-                        StatusScreen(state, host::onRequestPermission, host::onOpenSettings)
+                        // The container's `leave` defaults to a no-op (no leave fake wired), so the
+                        // dialog is reviewable but Confirm is inert — the harness exercises UI only.
+                        StatusScreen(
+                            state,
+                            host::onRequestPermission,
+                            host::onOpenSettings,
+                            onLeaveEvent = host::onLeaveEvent,
+                        )
                     }
                     ControlPanel(controller)
                 }

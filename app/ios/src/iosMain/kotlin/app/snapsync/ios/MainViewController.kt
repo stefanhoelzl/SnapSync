@@ -44,5 +44,11 @@ fun MainViewController() = ComposeUIViewController {
         }
     }
 
-    StatusScreen(state, host::onRequestPermission, host::onOpenSettings, transientError)
+    StatusScreen(
+        state,
+        host::onRequestPermission,
+        host::onOpenSettings,
+        onLeaveEvent = host::onLeaveEvent,
+        transientError = transientError,
+    )
 }

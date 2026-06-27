@@ -1,6 +1,7 @@
 package app.snapsync.ui.components
 
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.WindowInsets
@@ -19,9 +20,10 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 
 /**
- * Owns the screen's convention-bearing structure: edge insets, title placement, and the
- * vertical centering of the body content (the screen is a glanceable status display).
- * Screens never hardcode screen-level geometry themselves (design.md §5).
+ * Owns the screen's convention-bearing structure: edge insets, title placement, the vertical
+ * centering of the body content (the screen is a glanceable status display), and the placement of an
+ * optional [bottomEndAction] anchored bottom-right. Screens supply the action composable but never
+ * hardcode screen-level geometry themselves (design.md §5).
  *
  * The background `Surface` fills the whole screen (painting edge-to-edge under the iOS notch /
  * home indicator), while the content `Column` insets past the safe-area before applying the
@@ -29,7 +31,11 @@ import androidx.compose.ui.unit.dp
  * without system insets (the desktop harness) `safeDrawing` is zero, so this is a no-op there.
  */
 @Composable
-fun ScreenLayout(title: String, content: @Composable ColumnScope.() -> Unit) {
+fun ScreenLayout(
+    title: String,
+    bottomEndAction: (@Composable () -> Unit)? = null,
+    content: @Composable ColumnScope.() -> Unit,
+) {
     Surface(modifier = Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
         Column(
             modifier = Modifier
@@ -49,6 +55,11 @@ fun ScreenLayout(title: String, content: @Composable ColumnScope.() -> Unit) {
                 horizontalAlignment = Alignment.CenterHorizontally,
                 content = content,
             )
+            if (bottomEndAction != null) {
+                Box(modifier = Modifier.fillMaxWidth(), contentAlignment = Alignment.CenterEnd) {
+                    bottomEndAction()
+                }
+            }
         }
     }
 }

@@ -3,6 +3,7 @@ package app.snapsync.ui
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.junit4.v2.createComposeRule
+import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import app.snapsync.permission.PermissionStatus
@@ -193,6 +194,86 @@ class StatusScreenTest {
         rule.onNodeWithText("47 images synced").assertExists()
         rule.onNodeWithText("5 min ago").assertExists()
         rule.onNode(hasAnyProgressIndication()).assertDoesNotExist()
+    }
+
+    @Test
+    fun `in progress shows the leave action`() {
+        rule.setContent {
+            StatusScreen(UiState.InProgress(synced = 3, total = 5, inProgress = 0, finishedAgo = "2 min ago"))
+        }
+        rule.onNodeWithContentDescription("Leave event").assertExists()
+    }
+
+    @Test
+    fun `nothing to sync shows the leave action`() {
+        rule.setContent { StatusScreen(UiState.NothingToSync) }
+        rule.onNodeWithContentDescription("Leave event").assertExists()
+    }
+
+    @Test
+    fun `completed shows the leave action`() {
+        rule.setContent { StatusScreen(UiState.Completed(total = 47, finishedAgo = "5 min ago")) }
+        rule.onNodeWithContentDescription("Leave event").assertExists()
+    }
+
+    @Test
+    fun `loading hides the leave action`() {
+        rule.setContent { StatusScreen(UiState.Loading) }
+        rule.onNodeWithContentDescription("Leave event").assertDoesNotExist()
+    }
+
+    @Test
+    fun `joining hides the leave action`() {
+        rule.setContent { StatusScreen(UiState.Joining) }
+        rule.onNodeWithContentDescription("Leave event").assertDoesNotExist()
+    }
+
+    @Test
+    fun `join failed hides the leave action`() {
+        rule.setContent { StatusScreen(UiState.JoinFailed) }
+        rule.onNodeWithContentDescription("Leave event").assertDoesNotExist()
+    }
+
+    @Test
+    fun `setup gate hides the leave action`() {
+        rule.setContent {
+            StatusScreen(UiState.Setup(storageConnected = true, permission = PermissionStatus.GRANTED))
+        }
+        rule.onNodeWithContentDescription("Leave event").assertDoesNotExist()
+    }
+
+    @Test
+    fun `activating leave shows the confirm dialog`() {
+        rule.setContent { StatusScreen(UiState.Completed(total = 47, finishedAgo = "5 min ago")) }
+
+        rule.onNodeWithText("Leave event?").assertDoesNotExist()
+        rule.onNodeWithContentDescription("Leave event").performClick()
+        rule.onNodeWithText("Leave event?").assertExists()
+    }
+
+    @Test
+    fun `confirming leave invokes the callback`() {
+        var leaves = 0
+        rule.setContent {
+            StatusScreen(UiState.NothingToSync, onLeaveEvent = { leaves++ })
+        }
+
+        rule.onNodeWithContentDescription("Leave event").performClick()
+        rule.onNodeWithText("Confirm").performClick()
+        assertEquals(1, leaves)
+    }
+
+    @Test
+    fun `cancelling leave does not invoke the callback and dismisses the dialog`() {
+        var leaves = 0
+        rule.setContent {
+            StatusScreen(UiState.NothingToSync, onLeaveEvent = { leaves++ })
+        }
+
+        rule.onNodeWithContentDescription("Leave event").performClick()
+        rule.onNodeWithText("Cancel").performClick()
+        assertEquals(0, leaves)
+        rule.onNodeWithText("Leave event?").assertDoesNotExist()
     }
 
     private fun hasAnyProgressIndication(): SemanticsMatcher =

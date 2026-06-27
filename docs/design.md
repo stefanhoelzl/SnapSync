@@ -51,10 +51,14 @@ A **scope pivot** (2026-06-22) of SnapSync, from a *personal one-way library bac
 - A **local desktop (JVM) test app** — phone-frame preview + side-by-side control panel
   (display overrides + engine console; §5.1).
 
+- **Leave is the local-only inverse of join** (§3.2): a joined device can leave the event — the
+  producer is disabled, the ledger wiped, the discovery cursor cleared, and the `eventId` forgotten
+  from the Keychain — returning to the setup gate. It is **local-only**: already-uploaded objects
+  stay in storage, so re-scanning the same QR re-joins and reconciles them back (no re-upload).
+
 **Explicit non-goals / deferred:**
-- **No Leave** in this version (deferred). A joined device contributes until it joins a different
-  event. *(This contradicts the opening brief's "users can leave to stop uploading" — consciously
-  deferred, not an oversight.)*
+- **Leave does not delete remote objects.** Leaving forgets the event on-device only; removing the
+  event's already-uploaded objects from storage is out of scope (no backend delete path).
 - **No in-app viewing / download** — contribute-only. Collected photos are viewed by a **separate
   external tool**.
 - **No multi-event membership**, no event creation in-app, no in-app QR generation.
@@ -435,8 +439,13 @@ alternates, **and Live Photo `.pairedVideo`/`.fullSizePairedVideo`**. "Qualifyin
   already-stored photos as `COMPLETED`** (an atomic `resetTo`, with the extension disabled), so a
   re-join does **not** re-upload from scratch — only genuinely-un-stored photos upload, on the OS's
   next extension invocation. The same gate runs before the on-grant enable, keyed on ledger
-  emptiness, so a reinstall or a destructive ledger migration self-heals. (No Leave: switching events
-  is the only transition.)
+  emptiness, so a reinstall or a destructive ledger migration self-heals.
+- **Leaving** (`leave-event`) is the local-only inverse: a tested `LeaveEvent` use-case runs, in
+  order and best-effort, `disable producer → resetTo([]) + clear discovery cursor → ConfigStore.clear()
+  → EventStatus = Idle` (disable-first, mirroring the enable gate, so there is never a concurrent
+  ledger writer). It touches **no storage** — already-uploaded objects remain, and a later re-scan
+  re-joins and reconciles them back. Platform effects (the extension disable, the cursor clear) are
+  injected lambdas, so the use-case stays in a tested capability and `:app:ios` keeps wiring-only.
 - **State**: upload memory is the **engine's ledger** (single writer = the extension). The platform
   keeps only small, **lossy-tolerant** discovery bookkeeping in the App Group: `{lastToken,
   startDate, eventId, deferredIds?}`. Losing the residue costs one record's worth of
@@ -592,8 +601,18 @@ bytes). The proxy sidesteps signing entirely: the endpoint, not the device, writ
     Camera**. *(The app shows no scanner of its own — joining is native-Camera → `snapsync://`
     deeplink. The gate explains this.)*
   Once permission is granted **and** an event is joined, the hero is the **status screen, progress
-  only** — no event name, no Leave, no enable toggle, no manual "sync now". (Leave + event identity are
-  deferred.)
+  only** — no event name, no enable toggle, no manual "sync now". (Event identity is still deferred.)
+- **Four-layer screen model + the leave affordance.** The screen is a progression —
+  `loading → gate → joining → joined` (the `UiState` families: `Loading`; `Setup`; `Joining`/`JoinFailed`;
+  `InProgress`/`NothingToSync`/`Completed`). A flat, icon-only **Leave** button (Material `Logout`) sits
+  bottom-right **only in the joined layer**; it is absent in loading, the gate, and the join phase.
+  Scoping it to the joined layer means no join is ever in flight when a leave runs, so the leave needs
+  no cancellation. Tapping it raises a **"Leave event?"** confirmation (confirm/cancel) whose confirm
+  fires the container's `onLeaveEvent()` intent; the dialog's visibility is **local screen state**, so
+  no `UiState` variant or reduction branch is added. (Consequence: no leave from `JoinFailed` — a
+  transient network state recovered by re-scan/relaunch.) The leave button and the confirm dialog are
+  new semantic `App*` components (`LeaveButton`, `AppConfirmDialog`) plus a bottom-right action slot on
+  `ScreenLayout`; the `Logout` glyph stays contained in `:domain:ui:components`.
 - **State: MVI via Orbit** in `:domain:presentation` (Compose-free). The `:presentation → :ui` contract
   is `StateFlow<UiState>` + actions.
 - **Seams are `StateFlow` state holders** (`SyncStatusSource`, `PermissionStatusSource`): current truth
@@ -688,10 +707,13 @@ itself is covered by the endpoint's `Deno.test` suite.
 **Resolved (the 2026-06-22 scope pivot):**
 - **Contributor-only, event-scoped.** App joins an externally-created event by scanning a `snapsync://`
   QR with the native Camera; uploads photos with **capture date ≥ event start** to
-  `<eventId>/<localId>-<kind>.<ext>`. No in-app create/QR/viewing/Leave.
+  `<eventId>/<localId>-<kind>.<ext>`. No in-app create/QR/viewing.
 - **Single event at a time**; **join reconciles** (seed already-stored photos before enabling, clear
   cursor, re-register extension); a **switch** clears the ledger; same-event re-join is a no-op.
-  Multi-event and Leave **deferred**.
+  Multi-event **deferred**.
+- **Leave is supported** (`leave-event`), local-only: `disable → resetTo([]) → clear cursor →
+  ConfigStore.clear() → Idle`, surfaced as a joined-layer button + confirm dialog. Already-uploaded
+  objects stay in storage (no remote delete); re-scanning the QR re-joins and reconciles them back.
 - **Storage = bunny.net native Storage API**; **device holds no credential**; an external **edge proxy
   endpoint** streams bytes into the bucket **by event id only** (event id = the capability). Edge host
   is BuildKonfig; **no baked secrets** (the storage `AccessKey` lives only on the edge). *(2026-06-22

@@ -16,6 +16,7 @@ import app.snapsync.permission.PhotoLibraryPermission
 import app.snapsync.presentation.StatusContainerHost
 import app.snapsync.rejoin.HttpEventFilesSource
 import app.snapsync.rejoin.JoinEvent
+import app.snapsync.rejoin.LeaveEvent
 import app.snapsync.rejoin.darwinHttpClient
 import app.snapsync.status.LedgerSyncStatusSource
 import co.touchlab.kermit.Logger
@@ -85,6 +86,20 @@ object SnapSyncRoot {
         )
     }
 
+    // The leave use-case: the local-only inverse of the join. Disables the producer first (no
+    // concurrent ledger writer), then resets the ledger, clears the discovery cursor, clears the
+    // Keychain config, and returns the status to Idle. Platform effects are the same ones the enable
+    // gate uses, injected as lambdas so the use-case stays pure/tested.
+    private val leaveEvent: LeaveEvent by lazy {
+        LeaveEvent(
+            config = config,
+            ledger = ledgerBackend,
+            status = eventStatus,
+            disableExtension = { setUploadExtensionEnabled(false) },
+            clearDiscoveryCursor = { clearDiscoveryCursor() },
+        )
+    }
+
     // The platform foreground signal driving the observed-completions poll. Seeded false; the Swift
     // scene flips it via onForeground()/onBackground() on its scene-phase transitions.
     private val foreground = MutableStateFlow(false)
@@ -102,6 +117,7 @@ object SnapSyncRoot {
         StatusContainerHost(
             syncSource, permission, permission, config, config, scope,
             observed = observed, foreground = foreground, eventStatusSource = eventStatus,
+            leave = leaveEvent::leave,
         )
     }
 
@@ -177,15 +193,25 @@ object SnapSyncRoot {
     @OptIn(ExperimentalForeignApi::class)
     private suspend fun reconcileThenEnable() {
         if (!backgroundUploadSupported()) return
-        val lib = PHPhotoLibrary.sharedPhotoLibrary()
-        lib.setUploadJobExtensionEnabled(false, error = null)
+        setUploadExtensionEnabled(false)
         val ok = joinEvent.ensureJoined()
         if (ok) {
-            lib.setUploadJobExtensionEnabled(true, error = null)
+            setUploadExtensionEnabled(true)
             log.i { "background-upload extension enabled (join satisfied)" }
         } else {
             log.i { "join not satisfied — extension left disabled (user re-scans to retry)" }
         }
+    }
+
+    /**
+     * Toggle the background-upload extension registration, guarded so the iOS 26.1 call never traps on
+     * lower systems. Shared by the enable gate ([reconcileThenEnable]) and the leave use-case's
+     * disable lambda, so both go through one guarded path.
+     */
+    @OptIn(ExperimentalForeignApi::class)
+    private fun setUploadExtensionEnabled(enabled: Boolean) {
+        if (!backgroundUploadSupported()) return
+        PHPhotoLibrary.sharedPhotoLibrary().setUploadJobExtensionEnabled(enabled, error = null)
     }
 
     /**

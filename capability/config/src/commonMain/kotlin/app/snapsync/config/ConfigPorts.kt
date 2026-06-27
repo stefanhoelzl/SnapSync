@@ -18,9 +18,14 @@ interface ConfigSource {
  * The command port for provisioning config: persist [config] and update the [ConfigSource].
  * Saving a payload equal (field-for-field) to the current one is an idempotent no-op; saving a
  * different one replaces it silently (the ledger is deliberately left untouched — see design.md
- * D6). Implementations typically also implement [ConfigSource] as one platform adapter; consumers
+ * D6). [clear] is the inverse: it removes the persisted payload and updates the [ConfigSource] to
+ * `null` (an idempotent no-op when none is persisted), and — like [save] — leaves the ledger
+ * untouched (the caller orchestrates any ledger reset; see the `leave-event` capability).
+ * Implementations typically also implement [ConfigSource] as one platform adapter; consumers
  * depend on each port separately.
  */
 interface ConfigStore {
     suspend fun save(config: EventConfigPayload)
+
+    suspend fun clear()
 }

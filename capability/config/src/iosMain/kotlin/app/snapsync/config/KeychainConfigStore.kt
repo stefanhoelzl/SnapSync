@@ -69,6 +69,12 @@ class KeychainConfigStore(
         state.value = config
     }
 
+    override suspend fun clear() {
+        // Idempotent: deleting an absent item is treated as success (the leave path tolerates it).
+        deleteItem()
+        state.value = null
+    }
+
     private fun readConfig(): EventConfigPayload? {
         val url = readUrl() ?: return null
         return (decodeConfigUrl(url) as? ConfigDecodeResult.Success)?.payload
@@ -88,9 +94,7 @@ class KeychainConfigStore(
 
     private fun writeUrl(url: String) {
         // Replace-by-delete-then-add keeps the write idempotent regardless of prior presence.
-        val deleteQuery = baseQuery()
-        SecItemDelete(deleteQuery)
-        CFRelease(deleteQuery)
+        deleteItem()
 
         val addQuery = baseQuery()
         val cfData = CFBridgingRetain(url.encodeToByteArray().toNSData())
@@ -99,6 +103,13 @@ class KeychainConfigStore(
         CFRelease(addQuery)
         CFBridgingRelease(cfData)
         check(status == errSecSuccess) { "keychain add failed: $status" }
+    }
+
+    private fun deleteItem() {
+        // Deleting an absent item returns errSecItemNotFound, which we tolerate (idempotent).
+        val deleteQuery = baseQuery()
+        SecItemDelete(deleteQuery)
+        CFRelease(deleteQuery)
     }
 
     private fun baseQuery(): CFMutableDictionaryRef {
