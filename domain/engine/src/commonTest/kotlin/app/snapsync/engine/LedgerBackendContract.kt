@@ -227,6 +227,49 @@ abstract class LedgerBackendContract {
     }
 
     @Test
+    fun `resetTo replaces every row with the baseline verbatim`() = runTest {
+        val backend = createBackend()
+        backend.put(entry(key = "old-1", assetId = "old"))
+        backend.put(entry(key = "old-2", assetId = "old"))
+
+        val seed = listOf(
+            entry(key = "A-photo.jpg", assetId = "A", state = LedgerState.COMPLETED, version = "v1", updatedAt = t1),
+            entry(key = "B-photo.jpg", assetId = "B", state = LedgerState.COMPLETED, version = "v2", updatedAt = t2),
+        )
+        backend.resetTo(seed)
+
+        assertNull(backend.get("old-1"))
+        assertNull(backend.get("old-2"))
+        assertEquals(seed[0], backend.get("A-photo.jpg"))
+        assertEquals(seed[1], backend.get("B-photo.jpg"))
+        assertEquals(LedgerAggregates(pending = 0, completed = 2, newestCompletionAt = t2), backend.aggregates())
+    }
+
+    @Test
+    fun `resetTo dings an active changes collector exactly once`() = runTest {
+        val backend = createBackend()
+        var dings = 0
+        backgroundScope.launch(start = CoroutineStart.UNDISPATCHED) { backend.changes.collect { dings++ } }
+
+        backend.resetTo(listOf(entry(key = "A-photo.jpg", assetId = "A", state = LedgerState.COMPLETED)))
+        runCurrent()
+
+        assertEquals(1, dings)
+    }
+
+    @Test
+    fun `resetTo with an empty baseline empties the store`() = runTest {
+        val backend = createBackend()
+        backend.put(entry(key = "a", assetId = "a"))
+        backend.put(entry(key = "b", assetId = "b"))
+
+        backend.resetTo(emptyList())
+
+        assertNull(backend.get("a"))
+        assertEquals(LedgerAggregates(0, 0, null), backend.aggregates())
+    }
+
+    @Test
     fun `writer prunes by assetId and retains an asset set - reader cannot`() = runTest {
         val backend = createBackend()
         val writer = LedgerWriter(backend, FixedClock(t0))

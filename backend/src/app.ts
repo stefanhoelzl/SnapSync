@@ -76,6 +76,18 @@ async function listDir(
   return await res.json() as BunnyEntry[];
 }
 
+// The stored object name is `encodeURIComponent(filename)` (see the upload handler), so decode it
+// back to the filename the client uploaded — the reinstall-stable key a re-joining device reconciles
+// against. Malformed escapes (never produced by our own encoder) fall back to the raw name rather
+// than throw.
+function decodeObjectName(objectName: string): string {
+  try {
+    return decodeURIComponent(objectName);
+  } catch {
+    return objectName;
+  }
+}
+
 export function createApp({ fetch: fetchImpl, config }: Deps): Hono {
   const upload = new Hono();
 
@@ -156,7 +168,7 @@ export function createApp({ fetch: fetchImpl, config }: Deps): Hono {
           return entries
             .filter((e) => !e.IsDirectory)
             .map((e) => ({
-              filename: e.ObjectName,
+              filename: decodeObjectName(e.ObjectName),
               deviceId,
               size: e.Length,
               lastModified: e.LastChanged ?? e.DateLastModified ?? null,

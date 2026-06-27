@@ -14,6 +14,8 @@ kotlin {
             // The container consumes the config seam + decoder (onOpenUrl), and ConfigSource/
             // ConfigStore appear in its constructor — so they surface in this module's API.
             api(project(":capability:config"))
+            // The join status seam folded into the reduction; surfaces in the container's API.
+            api(project(":capability:event-status"))
             api(libs.orbit.core)
         }
         commonTest.dependencies {

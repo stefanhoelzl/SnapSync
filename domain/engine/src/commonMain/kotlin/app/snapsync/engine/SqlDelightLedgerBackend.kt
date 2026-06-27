@@ -51,6 +51,19 @@ class SqlDelightLedgerBackend(database: LedgerDatabase) : LedgerBackend {
         dings.tryEmit(Unit)
     }
 
+    override suspend fun resetTo(entries: List<LedgerEntry>) {
+        // One transaction: delete-all then insert each. If any statement throws, SQLDelight rolls
+        // back the whole transaction, so the store is left unchanged and the ding below is skipped —
+        // a partial baseline is never observable. One ding on success, like clear()/put().
+        queries.transaction {
+            queries.deleteAll()
+            entries.forEach {
+                queries.put(it.key, it.assetId, it.state, it.attempt.toLong(), it.version, it.updatedAt)
+            }
+        }
+        dings.tryEmit(Unit)
+    }
+
     override suspend fun deleteByAssetId(assetId: String) {
         queries.deleteByAssetId(assetId)
         dings.tryEmit(Unit)

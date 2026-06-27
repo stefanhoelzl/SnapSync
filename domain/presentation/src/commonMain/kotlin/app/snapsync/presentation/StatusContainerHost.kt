@@ -5,6 +5,9 @@ import app.snapsync.config.ConfigSource
 import app.snapsync.config.ConfigStore
 import app.snapsync.config.EventConfigPayload
 import app.snapsync.config.decodeConfigUrl
+import app.snapsync.eventstatus.EventStatus
+import app.snapsync.eventstatus.EventStatusSource
+import app.snapsync.eventstatus.MutableEventStatusSource
 import app.snapsync.permission.PermissionRequester
 import app.snapsync.permission.PermissionStatus
 import app.snapsync.permission.PermissionStatusSource
@@ -50,6 +53,10 @@ class StatusContainerHost(
     observed: ObservedCompletionsSource = NoObservedCompletions,
     foreground: Flow<Boolean> = flowOf(true),
     pollInterval: Duration = 10.seconds,
+    // The re-join status seam. Defaults to an always-`Idle` source so non-iOS hosts and tests that
+    // don't exercise the join construct unchanged (Idle falls through to the sync hero); iOS injects
+    // the same instance the JoinEvent drives.
+    eventStatusSource: EventStatusSource = MutableEventStatusSource(),
 ) : ContainerHost<UiState, SetupEffect> {
 
     override val container: Container<UiState, SetupEffect> =
@@ -60,6 +67,7 @@ class StatusContainerHost(
             reduceFrom(
                 configSource.config.value,
                 permissionSource.permission.value,
+                eventStatusSource.status.value,
                 syncSource.status.value,
                 clock.now(),
             ),
@@ -72,12 +80,13 @@ class StatusContainerHost(
                 combine(
                     configSource.config,
                     permissionSource.permission,
+                    eventStatusSource.status,
                     syncSource.status,
                     minuteTicker(),
-                ) { config, permission, snapshot, _ -> Triple(config, permission, snapshot) }
-                    .collect { (config, permission, snapshot) ->
-                        reduce { reduceFrom(config, permission, snapshot, clock.now()) }
-                    }
+                ) { config, permission, eventStatus, snapshot, _ ->
+                    reduceFrom(config, permission, eventStatus, snapshot, clock.now())
+                }
+                    .collect { ui -> reduce { ui } }
             }
             intent {
                 // Keep progress live while the screen is shown: refresh the observed-completions
@@ -133,12 +142,21 @@ private fun pollTicks(interval: Duration): Flow<Unit> = flow {
 private fun reduceFrom(
     config: EventConfigPayload?,
     permission: PermissionStatus,
+    eventStatus: EventStatus,
     snapshot: SyncStatus,
     now: Instant,
 ): UiState {
     val storageConnected = config != null
     if (!storageConnected || permission != PermissionStatus.GRANTED) {
         return UiState.Setup(storageConnected, permission)
+    }
+    // The join phase sits below the setup gate and above the sync hero (setup-gate precedence): once
+    // config + permission pass, a join in flight/failed outranks the snapshot; Joined/Idle fall
+    // through to the hero.
+    when (eventStatus) {
+        EventStatus.Joining -> return UiState.Joining
+        EventStatus.JoinFailed -> return UiState.JoinFailed
+        EventStatus.Joined, EventStatus.Idle -> Unit
     }
     // Loading is reachable only here: an absent config or non-GRANTED permission short-circuits to
     // the gate regardless of the snapshot, so "reading the ledger" is shown only once both pass.

@@ -25,6 +25,23 @@ class StatusScreenTest {
     }
 
     @Test
+    fun `joining shows the preparing copy and an indeterminate indicator`() {
+        rule.setContent { StatusScreen(UiState.Joining) }
+
+        rule.onNodeWithText("Checking what's already backed up …").assertExists()
+        rule.onNode(hasAnyProgressIndication()).assertExists()
+    }
+
+    @Test
+    fun `join failed shows the failure copy and a re-scan prompt with no spinner`() {
+        rule.setContent { StatusScreen(UiState.JoinFailed) }
+
+        rule.onNodeWithText("Couldn't reach the server").assertExists()
+        rule.onNodeWithText("Scan the event QR code again").assertExists()
+        rule.onNode(hasAnyProgressIndication()).assertDoesNotExist()
+    }
+
+    @Test
     fun `unconnected storage shows the scan instruction`() {
         rule.setContent {
             StatusScreen(UiState.Setup(storageConnected = false, permission = PermissionStatus.GRANTED))

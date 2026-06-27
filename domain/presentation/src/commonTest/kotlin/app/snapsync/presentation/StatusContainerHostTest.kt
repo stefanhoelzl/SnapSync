@@ -4,6 +4,8 @@ import app.snapsync.config.ConfigSource
 import app.snapsync.config.ConfigStore
 import app.snapsync.config.EventConfigPayload
 import app.snapsync.config.encodeConfigUrl
+import app.snapsync.eventstatus.EventStatus
+import app.snapsync.eventstatus.MutableEventStatusSource
 import app.snapsync.permission.PermissionRequester
 import app.snapsync.permission.PermissionStatus
 import app.snapsync.permission.PermissionStatusSource
@@ -141,6 +143,43 @@ class StatusContainerHostTest {
             expectState(UiState.InProgress(synced = 0, total = 5, inProgress = 0, finishedAgo = null))
             cancelAndIgnoreRemainingItems()
         }
+    }
+
+    // The initial state is reduced synchronously from the sources' current values at construction, so
+    // the join precedence is asserted directly on the container's first state.
+    private fun joinHost(
+        eventStatus: EventStatus,
+        config: FakeConfig = FakeConfig(),
+        permission: FakePermissionSource = FakePermissionSource(),
+        scope: CoroutineScope,
+    ) = StatusContainerHost(
+        FakeSyncStatusSource(), permission, SpyRequester(), config, config, scope, FakeClock(EPOCH),
+        eventStatusSource = MutableEventStatusSource(eventStatus),
+    )
+
+    @Test
+    fun `joining outranks the sync hero once both gates pass`() = runTest {
+        val host = joinHost(EventStatus.Joining, scope = backgroundScope)
+        assertEquals(UiState.Joining, host.container.stateFlow.value)
+    }
+
+    @Test
+    fun `join failed outranks the sync hero once both gates pass`() = runTest {
+        val host = joinHost(EventStatus.JoinFailed, scope = backgroundScope)
+        assertEquals(UiState.JoinFailed, host.container.stateFlow.value)
+    }
+
+    @Test
+    fun `joined falls through to the sync hero`() = runTest {
+        val host = joinHost(EventStatus.Joined, scope = backgroundScope)
+        // Default snapshot is total 0 → NothingToSync (the join status does not outrank a settled join).
+        assertEquals(UiState.NothingToSync, host.container.stateFlow.value)
+    }
+
+    @Test
+    fun `setup gate outranks a join in flight`() = runTest {
+        val host = joinHost(EventStatus.Joining, config = FakeConfig(null), scope = backgroundScope)
+        assertEquals(UiState.Setup(storageConnected = false, permission = PermissionStatus.GRANTED), host.container.stateFlow.value)
     }
 
     @Test

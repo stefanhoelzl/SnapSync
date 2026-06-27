@@ -6,6 +6,8 @@ import app.snapsync.permission.PermissionRequester
 import app.snapsync.permission.PermissionStatus
 import app.snapsync.permission.PermissionStatusSource
 import app.snapsync.config.EventConfigPayload
+import app.snapsync.eventstatus.EventStatus
+import app.snapsync.eventstatus.MutableEventStatusSource
 import app.snapsync.status.SyncStatus
 import app.snapsync.status.SyncProgress
 import app.snapsync.status.SyncStatusSource
@@ -55,6 +57,10 @@ class PanelController(private val clock: Clock = Clock.System) {
         }
     }
 
+    // The re-join status cell, injected into the container so the join presets can forge Joining /
+    // JoinFailed (which sit above the sync hero once both gates pass).
+    val eventStatusSource = MutableEventStatusSource()
+
     /** The current config cell, so the toggle can reflect whether storage is connected. */
     val currentConfig = configState.asStateFlow()
 
@@ -103,7 +109,21 @@ class PanelController(private val clock: Clock = Clock.System) {
     fun showLoading() {
         permissionState.value = PermissionStatus.GRANTED
         configState.value = CANNED_CONFIG
+        eventStatusSource.set(EventStatus.Idle)
         syncState.value = SyncStatus.Loading
+    }
+
+    // Join presets: force both gates, then forge the join cell (which outranks the sync hero).
+    fun showJoining() {
+        permissionState.value = PermissionStatus.GRANTED
+        configState.value = CANNED_CONFIG
+        eventStatusSource.set(EventStatus.Joining)
+    }
+
+    fun showJoinFailed() {
+        permissionState.value = PermissionStatus.GRANTED
+        configState.value = CANNED_CONFIG
+        eventStatusSource.set(EventStatus.JoinFailed)
     }
 
     fun showNothingToSync() {
@@ -135,6 +155,8 @@ class PanelController(private val clock: Clock = Clock.System) {
     private fun forgeSync(status: SyncProgress) {
         permissionState.value = PermissionStatus.GRANTED
         configState.value = CANNED_CONFIG
+        // Clear any forged join cell so the sync hero is visible (Joining/JoinFailed outrank it).
+        eventStatusSource.set(EventStatus.Idle)
         syncState.value = SyncStatus.Ready(status)
     }
 

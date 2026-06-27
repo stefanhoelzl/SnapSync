@@ -16,6 +16,20 @@ sealed interface UiState {
     data object Loading : UiState
 
     /**
+     * Re-join reconciliation in flight (event-rejoin-reconciliation capability): the app is fetching
+     * the event's already-stored files and seeding the ledger before enabling uploads. Shown once
+     * config and permission are satisfied, ahead of any sync hero; auto-resolves to a sync state on
+     * success. No action — a preparing spinner.
+     */
+    data object Joining : UiState
+
+    /**
+     * The re-join list fetch failed: uploads are not enabled. There is no auto-retry — the user
+     * re-scans the event QR to try again. A terminal-until-rescan message, no spinner, no button.
+     */
+    data object JoinFailed : UiState
+
+    /**
      * The setup gate (setup-gate capability): shown until storage is connected **and** photo
      * permission is GRANTED. Carries enough to render the two checkable cards — whether the storage
      * step is satisfied, and the current [permission] status driving the permission card's copy and

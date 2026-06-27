@@ -18,6 +18,9 @@ kotlin {
     sourceSets {
         commonMain.dependencies {
             implementation(project(":domain:engine"))
+            // The shared library resource-enumeration seam (one upload-key/version derivation for both
+            // the producer and the re-join seed); the producer delegates its enumeration to it.
+            implementation(project(":domain:gallery"))
             // The real upload provider + the runtime config seam: the extension assembles the edge
             // URL from the Keychain event id (:capability:config), the compile-time host, and the
             // App-Group device id, building the request with EdgeUploadRequestProvider

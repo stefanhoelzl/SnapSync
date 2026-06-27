@@ -72,9 +72,13 @@ uvx pymobiledevice3 apps pull app.snapsync Documents/debug.log   # pull the file
 ```
 
 `SNAPSYNC_DEEPLINK` is a **dev/test trigger** (capability `ios-app-shell`): on launch the app
-forwards it through the same path as a scanned QR, re-provisioning the event. It is read **once per
-process** — relaunch with it set to re-trigger a fresh whole-library upload — and is inert in
-production (a launch env var is only injectable via a developer launch).
+forwards it through the same path as a scanned QR, (re)provisioning the event. It is read **once per
+process** and is inert in production (a launch env var is only injectable via a developer launch).
+**Note:** re-provision no longer forces a fresh whole-library upload — it now **reconciles against
+storage** (the `event-rejoin-reconciliation` join seeds already-stored photos as `COMPLETED` before
+enabling), so a relaunch against an event that already has objects uploads **nothing new**. To
+observe real uploads in the dev loop, point at a **fresh event id** (or clear the event's objects in
+the bunny zone) so the reconcile finds nothing to seed.
 
 **Restarting the app (black-screen trap).** `dvt launch --kill-existing` — and `dvt kill`/`pkill` —
 only send **SIGTERM**, which SnapSync ignores; a relaunch then layers a new instance on the
@@ -83,11 +87,13 @@ black). To truly restart: `dvt signal <pid> 9` (SIGKILL) **then** `dvt launch` (
 Take the screenshot promptly after a single launch; avoid rapid relaunch cycles.
 
 **The headless per-build loop:** CI builds the dev IPA → `apps install` → `dvt launch --env
-SNAPSYNC_DEEPLINK=…` → the OS invokes the upload extension on its own cadence → confirm the objects
-landed in the backend's bunny storage zone (see *Verify real uploads* below; the `dvt screenshot`
-status counts are informational, not the authoritative landing check). **Still gated:** taps / UI
-gestures need a signed **WebDriverAgent** (`developer wda`), and `processJobs()` **timing** is
-OS-owned — a re-provision reliably triggers an invocation but you cannot force *when* it runs.
+SNAPSYNC_DEEPLINK=…` (use a **fresh event id**, per the note above, or the reconcile will seed
+already-stored photos and nothing uploads) → the OS invokes the upload extension on its own cadence →
+confirm the objects landed in the backend's bunny storage zone (see *Verify real uploads* below; the
+`dvt screenshot` status counts are informational, not the authoritative landing check). **Still
+gated:** taps / UI gestures need a signed **WebDriverAgent** (`developer wda`), and `processJobs()`
+**timing** is OS-owned — a re-provision reliably triggers an invocation but you cannot force *when* it
+runs.
 
 ### Sideload a dev IPA (skip TestFlight)
 

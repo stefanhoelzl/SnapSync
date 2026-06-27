@@ -67,6 +67,8 @@ class DarwinCrossProcessLedgerBackend(
 
     override suspend fun clear() = delegate.clear()
 
+    override suspend fun resetTo(entries: List<LedgerEntry>) = delegate.resetTo(entries)
+
     override suspend fun deleteByAssetId(assetId: String) = delegate.deleteByAssetId(assetId)
 
     override suspend fun retainAssets(keep: Set<String>) = delegate.retainAssets(keep)

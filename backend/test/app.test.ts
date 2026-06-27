@@ -275,3 +275,18 @@ Deno.test("GET files → wrong method (POST) → 404, no upstream request", asyn
   assertEquals(res.status, 404);
   assertEquals(calls.length, 0);
 });
+
+Deno.test("GET files → listed filename round-trips a percent-encoded upload name", async () => {
+  // The upload handler stores at encodeURIComponent(filename); bunny returns that as ObjectName.
+  // The listing SHALL decode it back to the filename the client uploaded, so a re-joining device can
+  // match by the reinstall-stable key (raw uploadKeys are encoding-safe; this guards the general case).
+  const { fetchImpl } = listFake({
+    [TOP]: { body: [dir(D)] },
+    [`${ZONE}/${E}/${D}/`]: {
+      body: [file("IMG%20001.jpg", 7, { LastChanged: "2026-06-20T10:31:00Z" })],
+    },
+  });
+  const res = await createApp({ config: CONFIG, fetch: fetchImpl }).request(FILES);
+  assertEquals(res.status, 200);
+  assertEquals((await res.json())[0].filename, "IMG 001.jpg");
+});

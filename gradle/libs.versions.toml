@@ -12,6 +12,7 @@ kotlincrypto-hash = "0.7.0"
 kotlincrypto-macs = "0.7.0"
 kotlinx-serialization = "1.9.0"
 zxing = "3.5.3"
+ktor = "3.2.0"
 
 [libraries]
 orbit-core = { module = "org.orbit-mvi:orbit-core", version.ref = "orbit" }
@@ -27,6 +28,9 @@ kotlincrypto-hash-sha2 = { module = "org.kotlincrypto.hash:sha2", version.ref = 
 kotlincrypto-macs-hmac-sha2 = { module = "org.kotlincrypto.macs:hmac-sha2", version.ref = "kotlincrypto-macs" }
 kotlinx-serialization-json = { module = "org.jetbrains.kotlinx:kotlinx-serialization-json", version.ref = "kotlinx-serialization" }
 zxing-core = { module = "com.google.zxing:core", version.ref = "zxing" }
+ktor-client-core = { module = "io.ktor:ktor-client-core", version.ref = "ktor" }
+ktor-client-darwin = { module = "io.ktor:ktor-client-darwin", version.ref = "ktor" }
+ktor-client-mock = { module = "io.ktor:ktor-client-mock", version.ref = "ktor" }
 
 [plugins]
 kotlin-jvm = { id = "org.jetbrains.kotlin.jvm", version.ref = "kotlin" }

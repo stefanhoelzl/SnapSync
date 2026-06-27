@@ -24,6 +24,14 @@ gate regardless of the snapshot). `UiState` carries only final display data: the
 (`finishedAgo`, **null** when nothing has completed yet — a bare "0 of N"); the `total` and
 pre-formatted relative time for Completed.
 
+The reduction SHALL additionally consume the `EventStatusSource` (see `event-rejoin-reconciliation`
+and `setup-gate` for the full precedence): once config is present and permission is `GRANTED`,
+`EventStatus.Joining` SHALL reduce to `UiState.Joining` and `EventStatus.JoinFailed` to
+`UiState.JoinFailed`, both outranking any sync snapshot; `EventStatus.Joined` and `EventStatus.Idle`
+fall through to the snapshot reduction above. `UiState.Joining` and `UiState.JoinFailed` are derived
+states (the reduction of real `EventStatus` values) and are therefore permitted under the
+no-placeholder rule.
+
 The reduction MUST depend only on the latest snapshot (no event history), so any missed
 intermediate snapshot cannot corrupt the displayed state. The container's initial UI state SHALL be
 computed from the sources' current values at construction. The screen MUST NOT render any state
@@ -67,6 +75,18 @@ the prohibition is against guesses and placeholders that no source value produce
   `NOT_DETERMINED`
 - **THEN** the UI state is `UiState.Setup`, not Loading
 
+#### Scenario: Joining status reduces to Joining
+- **WHEN** config is present, permission is `GRANTED`, and `EventStatus` is `Joining` (whatever the snapshot)
+- **THEN** the UI state is `UiState.Joining`
+
+#### Scenario: JoinFailed status reduces to JoinFailed
+- **WHEN** config is present, permission is `GRANTED`, and `EventStatus` is `JoinFailed`
+- **THEN** the UI state is `UiState.JoinFailed`
+
+#### Scenario: Joined falls through to the snapshot
+- **WHEN** config is present, permission is `GRANTED`, `EventStatus` is `Joined`, and the snapshot is `Ready(Completed)`
+- **THEN** the UI state is `Completed` (the join status does not outrank a settled join)
+
 ### Requirement: Status screen renders UI state
 
 The status screen SHALL render each state as a centered hero via the design system's `StatusHero`: a
@@ -76,7 +96,11 @@ Material 3 skin in `:domain:ui:components` maps the semantic indicator to pixels
 yellow dot, `Complete` → a green dot). `NothingToSync` uses the `Complete` (green) indicator. There is
 no headline line and no progress ring. `UiState.Loading` SHALL render an **indeterminate** progress
 indicator with the text "Loading …", no dot, no detail line and no button (the user has no action; it
-auto-resolves).
+auto-resolves). `UiState.Joining` SHALL render an **indeterminate** progress indicator with preparing
+text ("Checking what's already backed up …"), no dot, no detail line and no button (it auto-resolves
+to the hero once the join succeeds). `UiState.JoinFailed` SHALL render the `Error` indicator with a
+failure message and a detail line prompting the user to scan the event QR again, with no spinner and
+**no automatic retry** (re-scanning is the only retry) and no button.
 
 The synced and total counts SHALL appear as text. For InProgress, the detail line SHALL carry a second
 caption: the in-progress count rendered as `"{inProgress} in progress"` **only when `inProgress > 0`**
@@ -86,6 +110,8 @@ exists (`finishedAgo` non-null). When both are absent there is **no detail line*
 | State | Indicator | Count line | Detail |
 |---|---|---|---|
 | Loading | Loading (indeterminate), no dot | "Loading …" | — |
+| Joining | Loading (indeterminate), no dot | "Checking what's already backed up …" | — |
+| JoinFailed | Error (red dot) | "Couldn't reach the server" | "Scan the event QR code again" |
 | InProgress | InProgress (yellow dot) | "{synced} of {total} images synced" | "{inProgress} in progress" when inProgress > 0, joined by " · " to "{finishedAgo}" when not null; absent when neither applies |
 | NothingToSync | Complete (green dot) | "Nothing to sync yet" | — |
 | Completed | Complete (green dot) | "{total} images synced" | relative time |
@@ -94,6 +120,16 @@ exists (`finishedAgo` non-null). When both are absent there is **no detail line*
 - **WHEN** the UI state is Loading
 - **THEN** the screen shows an indeterminate progress indicator and the text "Loading …",
   with no dot, no detail line and no button
+
+#### Scenario: Joining state shows a preparing indicator
+- **WHEN** the UI state is Joining
+- **THEN** the screen shows an indeterminate progress indicator with preparing text, no dot, no detail
+  line and no button
+
+#### Scenario: JoinFailed state prompts a re-scan with no retry control
+- **WHEN** the UI state is JoinFailed
+- **THEN** the screen shows the failure message and a re-scan prompt, with no spinner and
+  no automatic retry
 
 #### Scenario: In-progress state shows the count and the in-progress caption with last-sync time
 - **WHEN** the UI state is InProgress with `synced = 12`, `total = 47`, `inProgress = 35`, and `finishedAgo = "5 min ago"`
