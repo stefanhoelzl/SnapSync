@@ -35,6 +35,8 @@ import platform.Foundation.NSUserDefaults
 import platform.Photos.PHPhotoLibrary
 import platform.UIKit.UIActivityViewController
 import platform.UIKit.UIApplication
+import platform.darwin.dispatch_async
+import platform.darwin.dispatch_get_main_queue
 
 /**
  * The iOS composition root (D7): a single app-lifetime singleton that assembles the real live
@@ -232,15 +234,21 @@ object SnapSyncRoot {
      * Present the system share sheet (`UIActivityViewController`) carrying the invite deeplink, from
      * the current top-most view controller. Wiring-only and fire-and-forget — no completion handler;
      * the host already holds the URL and `UiState` is unaffected. iPhone-only/portrait, so no popover
-     * source is needed. Runs on the main dispatcher (the Orbit intent's context).
+     * source is needed.
+     *
+     * Marshalled onto the **main queue**: the container invokes `share` from an Orbit intent, which
+     * runs on `Dispatchers.Default` (a background thread), and `UIActivityViewController` presentation
+     * asserts the main queue (`dispatch_assert_queue`) — presenting off-main traps (SIGTRAP).
      */
     private fun presentShareSheet(text: String) {
-        val activity = UIActivityViewController(activityItems = listOf(text), applicationActivities = null)
-        var presenter = UIApplication.sharedApplication.keyWindow?.rootViewController
-        while (presenter?.presentedViewController != null) {
-            presenter = presenter.presentedViewController
+        dispatch_async(dispatch_get_main_queue()) {
+            val activity = UIActivityViewController(activityItems = listOf(text), applicationActivities = null)
+            var presenter = UIApplication.sharedApplication.keyWindow?.rootViewController
+            while (presenter?.presentedViewController != null) {
+                presenter = presenter.presentedViewController
+            }
+            presenter?.presentViewController(activity, animated = true, completion = null)
         }
-        presenter?.presentViewController(activity, animated = true, completion = null)
     }
 
     /**
