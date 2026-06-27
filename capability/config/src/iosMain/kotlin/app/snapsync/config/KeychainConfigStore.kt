@@ -75,6 +75,16 @@ class KeychainConfigStore(
         state.value = null
     }
 
+    /**
+     * Re-read the Keychain into [config]. A writer in another process (the app saving a new event)
+     * does not notify this process's [StateFlow], so a cross-process **reader** — the upload
+     * extension, which lives across multiple `process()` cycles — must refresh before each read or it
+     * keeps serving the event it saw at construction (uploading to a stale, previously-joined event).
+     */
+    fun reload() {
+        state.value = readConfig()
+    }
+
     private fun readConfig(): EventConfigPayload? {
         val url = readUrl() ?: return null
         return (decodeConfigUrl(url) as? ConfigDecodeResult.Success)?.payload

@@ -53,6 +53,11 @@ object UploadExtensionRoot {
      * engine is the sole ledger writer; the cycle reads the same ledger to reconstruct lifecycle jobs.
      */
     fun process(): CycleResult = runBlocking {
+        // Re-read the Keychain each cycle: the extension process outlives a single invocation, and a
+        // new event joined by the app (another process) does not notify this StateFlow — without the
+        // refresh the extension keeps uploading to the event it read at construction (a stale,
+        // previously-joined event). This is what makes "config is sourced fresh each cycle" true.
+        configSource.reload()
         val payload = configSource.config.value
         val host = uploadHostFromBundle()
         val config = buildUploadConfig(payload?.eventId, host)
