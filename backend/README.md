@@ -6,7 +6,8 @@ straight into a bunny **native** Storage zone. It replaces the design's mint/pre
 no SigV4, no `UNSIGNED-PAYLOAD`, no per-resource mint round-trip.
 
 Authoritative contracts: `openspec/specs/event-creation`, `openspec/specs/bunny-upload-endpoint`,
-`openspec/specs/bunny-list-endpoint` (and `backend-deployment`); rationale in `docs/design.md` §4.
+`openspec/specs/bunny-list-endpoint`, `openspec/specs/bunny-download-endpoint`, and
+`openspec/specs/backend-config` (and `backend-deployment`); rationale in `docs/design.md` §4.
 
 ## Event registry
 
@@ -35,9 +36,16 @@ PUT  /event/<eventId>/file/<filename>
     →  bunny native PUT  https://<host>/<zone>/<eventId>/<filename>
        header  AccessKey: <storage-zone password>
 
+GET  /event/<eventId>/file/<filename>
+    →  bunny native GET  https://<host>/<zone>/<eventId>/<filename>   (UNGATED — no marker read)
+    →  200 streamed body + Content-Type/Content-Length/ETag/Last-Modified/Cache-Control
+       | 404 when the object is absent (missing object AND unknown event are both 404 here)
+       | 502 on any other upstream status / connect error / pre-body timeout
+
 GET  /event/<eventId>/files
     →  [gate] GET events/<eventId>.json  → 404? respond 404
-    →  200 [ {filename, size, lastModified}, … ]       (200 [] for a created-but-empty event)
+    →  200 [ {filename, size, lastModified, url}, … ]  (200 [] for a created-but-empty event)
+       url = <PUBLIC_BASE_URL>/event/<eventId>/file/<filename>  (the download route above)
 ```
 
 - `eventId` — a **UUID** (Hono route param, validated). The event UUID is the capability (no token);
@@ -51,10 +59,15 @@ GET  /event/<eventId>/files
 - **Faithful outcome** — `201` only when bunny confirms the store; any upstream error/abort → `502`
   (the iOS ledger then retries). Create is faithful too: `201` only after the marker store confirms,
   else `502`. Never a false success.
-- **Methods** — per route: `POST /event`, `GET /event/<id>`, `PUT`/`OPTIONS` on the upload path
-  (`OPTIONS` → `204`, no resumable advertised), `GET /event/<id>/files`. Any other method or
-  unmatched path → **`404`** (Hono's default — it does not emit `405`). Bad UUID / unsafe filename /
-  invalid name → `400`.
+- **Methods** — per route: `POST /event`, `GET /event/<id>`, `GET`/`PUT`/`OPTIONS` on the per-object
+  path (`GET` downloads, ungated; `OPTIONS` → `204`, no resumable advertised),
+  `GET /event/<id>/files`. Any other method or unmatched path → **`404`** (Hono's default — it does
+  not emit `405`). Bad UUID / unsafe filename / invalid name → `400`.
+- **Download is ungated & read-faithful** — no marker pre-check (the object GET already gives
+  faithful absence), so a missing object and an unknown event are indistinguishably `404`.
+  Status+headers commit before the body, so a mid-body upstream abort is a truncated `200`, not a
+  `5xx`; the relayed `Content-Length` makes that a client-detectable short-read (the consumer
+  retries).
 
 > **Deployment invariant.** `BUNNY_STORAGE_HOST` MUST be the storage zone's **main** region host
 > (where writes land), never a replica endpoint. Bunny replicates to other regions asynchronously;
@@ -70,21 +83,23 @@ GET  /event/<eventId>/files
 ## Layout
 
 ```
-src/app.ts        Hono app (createApp({config, fetch}) → routes); create + metadata + upload + list,
-                  the events/<id>.json marker helpers (markerKey, readMarker), the existence gates
+src/app.ts        Hono app (createApp({config, fetch}) → routes); create + metadata + upload +
+                  download + list, the events/<id>.json marker helpers (markerKey, readMarker), the
+                  existence gates, and downloadUrl() (the sole builder of each entry's download url)
 src/validators.ts validateUUID / validateFilename → boolean; validateEventName(raw) → trimmed | null
-src/config.ts     readConfig(env) → Config (THROWS on missing/blank var)
+src/config.ts     readConfig(env) → Config (zone/host/accessKey/PUBLIC_BASE_URL; THROWS on missing/blank)
 src/main.ts       Edge Scripting entry: reads config at startup, serves createApp(...).fetch
 test/*.test.ts    Deno tests (app via app.request(), upstream fetch + config injected)
 ```
 
 ## Configuration (env only — no secrets in source)
 
-| Var                        | Meaning                                                              |
-| -------------------------- | -------------------------------------------------------------------- |
-| `BUNNY_STORAGE_ZONE`       | storage zone name                                                    |
-| `BUNNY_STORAGE_HOST`       | native host, e.g. `storage.bunnycdn.com` (DE/Falkenstein default)    |
-| `BUNNY_STORAGE_ACCESS_KEY` | storage-zone **password** (the `AccessKey`; NOT the account API key) |
+| Var                        | Meaning                                                                                         |
+| -------------------------- | ----------------------------------------------------------------------------------------------- |
+| `BUNNY_STORAGE_ZONE`       | storage zone name                                                                               |
+| `BUNNY_STORAGE_HOST`       | native host, e.g. `storage.bunnycdn.com` (DE/Falkenstein default)                               |
+| `BUNNY_STORAGE_ACCESS_KEY` | storage-zone **password** (the `AccessKey`; NOT the account API key)                            |
+| `PUBLIC_BASE_URL`          | the backend's public origin (no trailing slash); list builds each file's download `url` from it |
 
 `main.ts` reads these once at startup via `readConfig(Deno.env.toObject())`, which **throws** on any
 missing/blank var → a misconfigured deployment **fails to boot** (fail-closed at deploy, never a
@@ -99,7 +114,7 @@ deno task lint
 deno fmt --check
 # run locally (listens on 127.0.0.1:8080 via the SDK):
 BUNNY_STORAGE_ZONE=z BUNNY_STORAGE_HOST=storage.bunnycdn.com BUNNY_STORAGE_ACCESS_KEY=k \
-  deno run --allow-net --allow-env src/main.ts
+  PUBLIC_BASE_URL=http://127.0.0.1:8080 deno run --allow-net --allow-env src/main.ts
 ```
 
 `createApp(deps)` takes injected `{ env, fetch }` so tests drive the real Hono app via

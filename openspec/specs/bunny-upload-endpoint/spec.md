@@ -138,20 +138,6 @@ support. (Server-side resumable uploads are a deferred future capability.)
 - **WHEN** an `OPTIONS` request is received for an upload path
 - **THEN** the response does not advertise resumable-upload support, signaling a plain `PUT` path
 
-### Requirement: Environment-only configuration, fail-closed
-
-The endpoint SHALL read the storage zone name, host, and `AccessKey` exclusively from Edge Script
-environment variables; no secret SHALL appear in source. Configuration SHALL be validated **once at
-startup**; a missing or blank required variable SHALL cause startup to fail (the parse throws), so a
-misconfigured deployment does not serve and never uploads against a wrong or unauthenticated target.
-The validated config is injected into the request handler, which therefore has no configuration
-failure path.
-
-#### Scenario: Missing config fails the boot
-
-- **WHEN** a required configuration value (zone, host, or `AccessKey`) is absent or blank at startup
-- **THEN** config parsing throws, the endpoint does not start, and no upload is ever attempted
-
 ### Requirement: Upload gated on event existence
 
 Before streaming the body, the endpoint SHALL determine whether the event exists by reading the event

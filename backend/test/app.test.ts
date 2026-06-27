@@ -5,7 +5,12 @@ const E = "7a3f9c21-0000-4000-8000-000000000001";
 const PATH = `/event/${E}/file/IMG_0001-photo.jpg`;
 const URLBASE = "https://edge.example";
 
-const CONFIG = { zone: "snapsync-zone", host: "storage.bunnycdn.com", accessKey: "zone-password" };
+const CONFIG = {
+  zone: "snapsync-zone",
+  host: "storage.bunnycdn.com",
+  accessKey: "zone-password",
+  baseUrl: "https://dl.example",
+};
 
 type Call = { url: string; init: RequestInit };
 
@@ -147,14 +152,7 @@ Deno.test("upstream throw/abort → 502", async () => {
   assertEquals(res.status, 502);
 });
 
-Deno.test("wrong method (GET) → 404 (Hono default), no upstream request", async () => {
-  const { calls, fetchImpl } = recorder();
-  const res = await createApp({ config: CONFIG, fetch: fetchImpl }).request(PATH, {
-    method: "GET",
-  });
-  assertEquals(res.status, 404);
-  assertEquals(calls.length, 0);
-});
+// (GET on the file path is now the download route — see the `bunny-download-endpoint` section below.)
 
 Deno.test("OPTIONS → 204, no resumable advertised, no upstream request", async () => {
   const { calls, fetchImpl } = recorder();
@@ -162,7 +160,7 @@ Deno.test("OPTIONS → 204, no resumable advertised, no upstream request", async
     method: "OPTIONS",
   });
   assertEquals(res.status, 204);
-  assertEquals(res.headers.get("Allow"), "PUT, OPTIONS");
+  assertEquals(res.headers.get("Allow"), "GET, PUT, OPTIONS");
   assertEquals(calls.length, 0);
   for (const [name] of res.headers) {
     if (name.toLowerCase().startsWith("upload-")) {
@@ -258,11 +256,13 @@ Deno.test("GET files → flat array from a single event-dir LIST, normalized ent
       filename: "IMG_0001-ios.photo.jpg",
       size: 1234,
       lastModified: "2026-06-20T10:31:00Z",
+      url: `https://dl.example/event/${E}/file/IMG_0001-ios.photo.jpg`,
     },
     {
       filename: "VID_0002-ios.video.mov",
       size: 5678,
       lastModified: "2026-06-21T08:00:00Z",
+      url: `https://dl.example/event/${E}/file/VID_0002-ios.video.mov`,
     },
   ]);
   // marker GET (existence) + one LIST; the LIST carries the AccessKey (never the account API key)
@@ -281,7 +281,12 @@ Deno.test("GET files → directory entries are excluded", async () => {
   const res = await createApp({ config: CONFIG, fetch: fetchImpl }).request(FILES);
   assertEquals(res.status, 200);
   assertEquals(await res.json(), [
-    { filename: "IMG_0001-ios.photo.jpg", size: 10, lastModified: "t" },
+    {
+      filename: "IMG_0001-ios.photo.jpg",
+      size: 10,
+      lastModified: "t",
+      url: `https://dl.example/event/${E}/file/IMG_0001-ios.photo.jpg`,
+    },
   ]);
 });
 
@@ -348,7 +353,10 @@ Deno.test("GET files → listed filename round-trips a percent-encoded upload na
   });
   const res = await createApp({ config: CONFIG, fetch: fetchImpl }).request(FILES);
   assertEquals(res.status, 200);
-  assertEquals((await res.json())[0].filename, "IMG 001.jpg");
+  const entry = (await res.json())[0];
+  assertEquals(entry.filename, "IMG 001.jpg");
+  // the url re-encodes the decoded filename back to a single flat segment (%20, not a raw space)
+  assertEquals(entry.url, `https://dl.example/event/${E}/file/IMG%20001.jpg`);
 });
 
 // ── POST /event + GET /event/:eventId (capability `event-creation`) ──────────────────────────────
@@ -485,4 +493,117 @@ Deno.test("GET /event/:id → 502 on non-404 marker read failure", async () => {
   const { fetchImpl } = listFake({ [MARKER_URL]: { status: 500 } });
   const res = await createApp({ config: CONFIG, fetch: fetchImpl }).request(`/event/${E}`);
   assertEquals(res.status, 502);
+});
+
+// ── GET /event/:eventId/file/:filename (capability `bunny-download-endpoint`) ─────────────────────
+
+const OBJ_URL = `${ZONE}/${E}/IMG_0001-photo.jpg`; // the object key the upload route writes
+
+/** Serves canned object responses keyed by URL; any unmapped URL → 404 (object absent). */
+function getFake(
+  routes: Record<
+    string,
+    { status?: number; body?: BodyInit; headers?: Record<string, string>; throws?: boolean }
+  >,
+) {
+  const calls: Call[] = [];
+  const fetchImpl: FetchLike = (url, init) => {
+    calls.push({ url, init });
+    const r = routes[url];
+    if (r?.throws) return Promise.reject(new Error("network boom"));
+    if (!r) return Promise.resolve(new Response("not found", { status: 404 }));
+    return Promise.resolve(
+      new Response(r.body ?? null, { status: r.status ?? 200, headers: r.headers }),
+    );
+  };
+  return { calls, fetchImpl };
+}
+
+Deno.test("GET file → 200 streams the body and relays content + cache headers (ungated, one GET)", async () => {
+  const { calls, fetchImpl } = getFake({
+    [OBJ_URL]: {
+      body: "img-bytes",
+      headers: {
+        "content-type": "image/jpeg",
+        "content-length": "9",
+        "etag": '"abc"',
+        "last-modified": "Wed, 20 Jun 2026 10:31:00 GMT",
+        "cache-control": "public, max-age=60",
+      },
+    },
+  });
+  const res = await createApp({ config: CONFIG, fetch: fetchImpl }).request(PATH);
+  assertEquals(res.status, 200);
+  assertEquals(await res.text(), "img-bytes");
+  assertEquals(res.headers.get("Content-Type"), "image/jpeg");
+  assertEquals(res.headers.get("Content-Length"), "9");
+  assertEquals(res.headers.get("ETag"), '"abc"');
+  assertEquals(res.headers.get("Last-Modified"), "Wed, 20 Jun 2026 10:31:00 GMT");
+  assertEquals(res.headers.get("Cache-Control"), "public, max-age=60");
+  // exactly one upstream call — the object GET — and NO marker read (download is ungated)
+  assertEquals(calls.length, 1);
+  assertEquals(calls[0].url, OBJ_URL);
+  assertEquals(calls[0].init.method, "GET");
+  assertEquals(new Headers(calls[0].init.headers).get("AccessKey"), "zone-password");
+});
+
+Deno.test("GET file → missing upstream content-type defaults to application/octet-stream", async () => {
+  // A typed-array body does NOT auto-set a content-type (a string body would set text/plain).
+  const { fetchImpl } = getFake({ [OBJ_URL]: { body: new Uint8Array([1, 2, 3]) } });
+  const res = await createApp({ config: CONFIG, fetch: fetchImpl }).request(PATH);
+  assertEquals(res.status, 200);
+  assertEquals(res.headers.get("Content-Type"), "application/octet-stream");
+});
+
+Deno.test("GET file → bunny 404 (missing object / unknown event) → 404, ungated (no marker read)", async () => {
+  const { calls, fetchImpl } = getFake({}); // OBJ_URL unmapped → 404
+  const res = await createApp({ config: CONFIG, fetch: fetchImpl }).request(PATH);
+  assertEquals(res.status, 404);
+  // exactly one upstream call — the object GET — never a marker GET of events/<id>.json
+  assertEquals(calls.length, 1);
+  assertEquals(calls[0].url, OBJ_URL);
+});
+
+Deno.test("GET file → bunny non-404 error (500) → 502", async () => {
+  const { fetchImpl } = getFake({ [OBJ_URL]: { status: 500 } });
+  const res = await createApp({ config: CONFIG, fetch: fetchImpl }).request(PATH);
+  assertEquals(res.status, 502);
+});
+
+Deno.test("GET file → upstream throw/abort → 502", async () => {
+  const { fetchImpl } = getFake({ [OBJ_URL]: { throws: true } });
+  const res = await createApp({ config: CONFIG, fetch: fetchImpl }).request(PATH);
+  assertEquals(res.status, 502);
+});
+
+Deno.test("GET file → non-UUID event id → 400, no upstream request", async () => {
+  const { calls, fetchImpl } = getFake({});
+  const res = await createApp({ config: CONFIG, fetch: fetchImpl }).request(
+    "/event/nope/file/a.jpg",
+  );
+  assertEquals(res.status, 400);
+  assertEquals(calls.length, 0);
+});
+
+Deno.test("GET file → unsafe filename (%2F) → 400, no upstream request", async () => {
+  const { calls, fetchImpl } = getFake({});
+  const res = await createApp({ config: CONFIG, fetch: fetchImpl }).request(
+    `/event/${E}/file/a%2Fb.jpg`,
+  );
+  assertEquals(res.status, 400);
+  assertEquals(calls.length, 0);
+});
+
+Deno.test("GET file → a list url round-trips: encoded filename → flat object key", async () => {
+  // The list builds `…/file/IMG%20001.jpg`; fetching that decodes to "IMG 001.jpg" and the handler
+  // re-encodes it → the single flat object key the upload route wrote. Closes the list→download loop.
+  const ENC_URL = `${ZONE}/${E}/IMG%20001.jpg`;
+  const { calls, fetchImpl } = getFake({
+    [ENC_URL]: { body: "x", headers: { "content-type": "image/jpeg" } },
+  });
+  const res = await createApp({ config: CONFIG, fetch: fetchImpl }).request(
+    `/event/${E}/file/IMG%20001.jpg`,
+  );
+  assertEquals(res.status, 200);
+  assertEquals(calls[0].url, ENC_URL); // single flat segment upstream (%20, not a raw space or split)
 });
