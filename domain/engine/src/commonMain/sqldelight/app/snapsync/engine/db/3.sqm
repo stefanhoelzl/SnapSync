@@ -1,0 +1,10 @@
+-- v3 -> v4: drop the `updatedAt` column.
+--
+-- The status surface no longer reports "last backed up N ago" — it shows completeness and live
+-- activity only — so the per-row record-operation timestamp has no consumer. Like 2.sqm this
+-- migration is ROW-PRESERVING: the dropped column is neither the primary key nor indexed (the index
+-- is on `assetId`), so existing rows (especially COMPLETED ones) survive and the upgrade forces no
+-- re-enumeration or re-reconcile. `ALTER TABLE … DROP COLUMN` is SQLite 3.35 grammar (the dialect
+-- floor was already raised in domain/engine/build.gradle.kts for 2.sqm). Migration SQL is raw (no
+-- `AS LedgerState` type annotations).
+ALTER TABLE ledgerRow DROP COLUMN updatedAt;

@@ -79,14 +79,13 @@ fun StatusScreen(
                         StatusIndicator.InProgress,
                         "${state.synced} of ${state.total} images synced",
                         // Second caption: how many are uploading right now (omitted at 0 — e.g.
-                        // photos discovered but not yet started), then the last-sync age (absent at a
-                        // virgin "0 of N"). When neither applies there is no detail line.
-                        inProgressCaption(state.inProgress, state.finishedAgo),
+                        // photos discovered but not yet started). When none are, there is no detail line.
+                        inProgressCaption(state.inProgress),
                     )
                 UiState.NothingToSync ->
                     StatusHero(StatusIndicator.Complete, "Nothing to sync yet")
                 is UiState.Completed ->
-                    StatusHero(StatusIndicator.Complete, "${state.total} images synced", state.finishedAgo)
+                    StatusHero(StatusIndicator.Complete, "${state.total} images synced")
             }
         }
 
@@ -111,11 +110,9 @@ private val UiState.isJoinedLayer: Boolean
     get() = this is UiState.InProgress || this == UiState.NothingToSync || this is UiState.Completed
 
 // The InProgress detail line: the "{n} in progress" label only when something is actively uploading,
-// joined to the last-sync age with " · ". Null (no detail line) when neither is present.
-private fun inProgressCaption(inProgress: Int, finishedAgo: String?): String? {
-    val active = if (inProgress > 0) "$inProgress in progress" else null
-    return listOfNotNull(active, finishedAgo).joinToString(" · ").ifEmpty { null }
-}
+// else null (no detail line).
+private fun inProgressCaption(inProgress: Int): String? =
+    if (inProgress > 0) "$inProgress in progress" else null
 
 /**
  * Permission blocked while an event is connected: the status screen hosts the permission affordance

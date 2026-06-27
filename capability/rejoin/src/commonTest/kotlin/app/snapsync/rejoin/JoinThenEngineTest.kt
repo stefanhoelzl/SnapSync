@@ -14,8 +14,6 @@ import app.snapsync.gallery.InMemoryGalleryResourceEnumerator
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
-import kotlin.time.Clock
-import kotlin.time.Instant
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.test.runTest
@@ -26,10 +24,6 @@ import kotlinx.coroutines.test.runTest
  * while an un-seeded resource (the migration-shaped case, cursor cleared) still uploads.
  */
 class JoinThenEngineTest {
-
-    private val fixedClock = object : Clock {
-        override fun now(): Instant = Instant.fromEpochMilliseconds(1_000)
-    }
 
     private class FakeConfig(eventId: String) : ConfigSource {
         override val config: StateFlow<EventConfigPayload?> = MutableStateFlow(EventConfigPayload(eventId))
@@ -54,7 +48,6 @@ class JoinThenEngineTest {
             config = FakeConfig("E1"),
             status = MutableEventStatusSource(),
             clearDiscoveryCursor = {},
-            clock = fixedClock,
         ).ensureJoined()
 
         val engine = SyncEngine(FakeProvider, LedgerWriter(ledger))
@@ -74,7 +67,6 @@ class JoinThenEngineTest {
             config = FakeConfig("E1"),
             status = MutableEventStatusSource(),
             clearDiscoveryCursor = {},
-            clock = fixedClock,
         ).ensureJoined()
 
         val engine = SyncEngine(FakeProvider, LedgerWriter(ledger))

@@ -250,21 +250,21 @@ interface LedgerBackend {                    // storage seam: dumb row store, la
                                              //   both still dumb: assetId is a 2nd opaque field
 }
 open class LedgerReader(backend)             // entry(key) — the per-key read-only face (engine's)
-class LedgerWriter(backend, clock = System) : LedgerReader
+class LedgerWriter(backend) : LedgerReader
                                              // recordRequested / recordCompleted / recordFailed
                                              //   (each takes assetId); deleteByAssetId / retainAssets;
-                                             // stamps updatedAt — the SINGLE stamping point
-                                             // (engine clock-free, backends store verbatim).
+                                             // records no timestamp — engine, writer, and backends
+                                             // are all clock-free and store verbatim.
                                              // ONE writer per platform, by construction: only the
                                              // engine-hosting composition root constructs it
 class LedgerWatcher(backend)                 // aggregates: Flow<LedgerAggregates> — cold: current
                                              //   truth on collect, re-query per conflated ding,
                                              //   deduped; the ONLY type surfacing aggregates/dings
-class LedgerEntry(key, assetId, state /* REQUESTED|COMPLETED|FAILED */, attempt, updatedAt)
-class LedgerAggregates(pending, completed, newestCompletionAt /* by PHOTO; null = no photo done */)
+class LedgerEntry(key, assetId, state /* REQUESTED|COMPLETED|FAILED */, attempt)
+class LedgerAggregates(pending, completed)   // counted by PHOTO (assetId)
                                              // schema: key PRIMARY KEY, assetId (+index), state,
-                                             // attempt, updatedAt (epoch millis; SQLDelight
-                                             // typed columns, adapters hidden in one factory)
+                                             // attempt (SQLDelight typed columns, adapters hidden
+                                             // in one factory)
 
 class SyncEngine(provider: UploadRequestProvider, ledger: LedgerWriter) {
     suspend fun handle(event: SyncEvent): SyncDecision    // ResourceChanged = pure query (no write)
@@ -350,14 +350,16 @@ synchronous-first-value promise holds. Writes ding, the watcher re-queries, the 
 
 - **Counts are lifetime aggregates by PHOTO (assetId), not resource row** (added 2026-06-22):
   `pending` = photos with any non-`COMPLETED` resource, `completed` = photos whose resources are
-  all `COMPLETED`; `lastFinishedAt` = the newest fully-completed photo's `updatedAt`. (The state
-  classification is unaffected — "any resource pending" ⟺ "any photo pending".) A `COMPLETED` key is
-  never re-uploaded (an uploaded resource is immutable), so counts only ever climb. `failed` ≡ 0 from
-  the real source (retry-forever) and `estimatedRemaining` ≡ null (never estimates) — both fields
-  exist for classification and fakes.
-- **Classification is suspended-first**: `!active → SUSPENDED; pending > 0 → IN_PROGRESS;
-  lastFinishedAt == null → NEVER_SYNCED; failed > 0 → INCOMPLETE; else COMPLETE`. **There is no FAILED
-  state** (untellable under retry-forever).
+  all `COMPLETED`. The status surface reports completeness and live activity only — there is **no
+  completion timestamp** (no "last backed up N ago"). A `COMPLETED` key is never re-uploaded (an
+  uploaded resource is immutable), so counts only ever climb. `failed` ≡ 0 from the real source
+  (retry-forever) and `estimatedRemaining` ≡ null (never estimates) — both fields exist for
+  classification and fakes.
+- **Classification is counts-only** — a pure function of the live total `N` and the clamped synced
+  count `n = min(completed, total)`: `total == 0 → NOTHING_TO_SYNC; n >= total → COMPLETE; else
+  IN_PROGRESS`. There is no SUSPENDED state (the setup gate shadows every inactive case), no
+  NEVER_SYNCED (it folds into IN_PROGRESS at `n = 0`), and no FAILED state (untellable under
+  retry-forever).
 - **`active` = operational state** (not a liveness heuristic): *contribution machinery is allowed to
   run* — `permission == GRANTED` **AND a valid event config is present (joined)**, derived once inside
   `LedgerSyncStatusSource`. Shared logic, no clocks. Consequence: **the setup gate covers the hero

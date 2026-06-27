@@ -1,33 +1,4 @@
-# sync status Specification
-
-## Purpose
-
-The status projection: the user-facing truth about the backup, minted from the engine's ledger.
-Defines the `SyncStatus` snapshot contract (lifetime counts × the live gallery total, three-state
-classification), the `SyncStatusSource` seam presentation consumes, and the ledger-backed source that
-combines the ledger's aggregate stream with permission-derived operational state and the live gallery
-size. Lives in `:domain:status`,
-which plugs the engine-type leak toward presentation. Authoritative design: docs/design.md §2.4.
-## Requirements
-### Requirement: SyncStatusSource seam
-The status domain SHALL define `SyncStatusSource` whose `status` is a `StateFlow<SyncStatus>` —
-a level-triggered state holder whose current value is always available synchronously. The current
-value is always a real `SyncStatus` (`Loading` or `Ready`); `Loading` is a genuine value
-("persisted state not yet read"), never a placeholder, guess, or default. Every `Ready` value is
-the whole truth; consumers never fold events.
-
-The seam no longer promises a synchronously-available `SyncProgress`: a source backed by persisted
-state cannot read it synchronously at construction, so the honest synchronous value at that moment
-is `Loading`.
-
-#### Scenario: First value without waiting
-- **WHEN** a consumer reads `status.value` immediately after obtaining a source
-- **THEN** it receives a real `SyncStatus` — either `Ready` with a real snapshot, or `Loading` —
-  never a placeholder or default
-
-#### Scenario: A source that knows its truth synchronously seeds Ready
-- **WHEN** an in-memory source already holds the whole truth at construction
-- **THEN** its `status.value` is `Ready(snapshot)` immediately, never `Loading`
+## MODIFIED Requirements
 
 ### Requirement: Ledger-backed source
 The status domain SHALL provide `LedgerSyncStatusSource`, constructed via a **non-suspending**
@@ -92,35 +63,6 @@ representation of those asynchronous first reads.
 - **WHEN** any `Ready` snapshot is minted by the ledger-backed source
 - **THEN** `progress.failed == 0` and `progress.estimatedRemaining == null`
 
-### Requirement: Module placement plugs the engine leak
-`SyncStatus`, `SyncState`, `SyncStatusSource`, and `LedgerSyncStatusSource` SHALL live in
-`:domain:status`, which depends on `:domain:engine`, `:domain:permission`, and `:domain:gallery` with
-**implementation** scope only. `:domain:presentation` SHALL depend on `:domain:status` (and
-`:domain:permission`) and SHALL NOT depend on `:domain:engine` or `:domain:gallery` — engine types
-(events, decisions, jobs, ledger) and gallery types stay off presentation's compile classpath.
-
-#### Scenario: Presentation compiles without the engine or gallery
-- **WHEN** `:domain:presentation` is compiled
-- **THEN** neither `:domain:engine` nor `:domain:gallery` is on its compile classpath, and no engine or
-  gallery type is reachable from presentation code
-
-### Requirement: SyncStatus — loading vs ready
-
-The status domain SHALL define a sealed `SyncStatus` in `:domain:status` (package `app.snapsync.status`) with exactly two cases:
-
-- `Loading` — the source has not yet read persisted state; the honest "I am reading the ledger and do not yet know the result." It is a real, source-derived value, **not** a placeholder guess.
-- `Ready(progress: SyncProgress)` — the source holds the whole truth as a minted `SyncProgress`.
-
-`SyncStatus` is the vocabulary of the `SyncStatusSource` seam (not the ledger's). A source MAY seed `Loading` and later transition to `Ready`; once `Ready`, a source MUST NOT regress to `Loading`.
-
-#### Scenario: Loading is a real value, not a placeholder
-- **WHEN** a source's current value is `SyncStatus.Loading`
-- **THEN** it is the genuine state "persisted state not yet read" — a consumer treats it as real data, not a default to be ignored
-
-#### Scenario: Ready carries the whole truth
-- **WHEN** a source's current value is `SyncStatus.Ready(progress)`
-- **THEN** `progress` is a complete `SyncProgress` snapshot (lifetime counts and classification), with no event folding by the consumer
-
 ### Requirement: SyncProgress contract — lifetime truth, three-state classification
 The status domain SHALL define
 `SyncProgress(pending, completed, total, failed, active, estimatedRemaining: Duration?)`
@@ -164,4 +106,3 @@ INCOMPLETE and no FAILED state (untellable under retry-forever, `failed ≡ 0`).
 #### Scenario: Completed overshooting total clamps and classifies as complete
 - **WHEN** a snapshot has `total = 5` and `completed = 6` (a deleted photo not yet pruned)
 - **THEN** the state is COMPLETE and the displayed `n` is `5`, never `6`
-

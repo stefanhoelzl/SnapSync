@@ -56,7 +56,6 @@ class InMemoryLedgerBackend : LedgerBackend {
         return LedgerAggregates(
             pending = byAsset.size - complete.size,
             completed = complete.size,
-            newestCompletionAt = complete.flatten().maxOfOrNull { it.updatedAt },
         )
     }
 

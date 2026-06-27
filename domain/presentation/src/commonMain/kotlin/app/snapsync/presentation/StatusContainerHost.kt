@@ -24,13 +24,8 @@ import app.snapsync.status.SyncStatus
 import app.snapsync.status.SyncState
 import app.snapsync.status.SyncProgress
 import app.snapsync.status.SyncStatusSource
-import kotlin.time.Clock
 import kotlin.time.Duration
-import kotlin.time.Duration.Companion.days
-import kotlin.time.Duration.Companion.hours
-import kotlin.time.Duration.Companion.minutes
 import kotlin.time.Duration.Companion.seconds
-import kotlin.time.Instant
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.delay
@@ -57,7 +52,6 @@ class StatusContainerHost(
     configSource: ConfigSource,
     private val store: ConfigStore,
     scope: CoroutineScope,
-    private val clock: Clock = Clock.System,
     // The observed-completions overlay refresh and the platform foreground signal. Defaults make the
     // overlay inert (no-op source, always-foreground) so non-iOS hosts and tests construct unchanged;
     // iOS injects the real PhotoKit-backed source and a scenePhase-driven foreground signal.
@@ -95,27 +89,20 @@ class StatusContainerHost(
                 eventStatusSource.status.value,
                 syncSource.status.value,
                 creationStatusSource.creationStatus.value,
-                clock.now(),
             ),
         ) {
             intent {
-                // The tick only re-renders the past (relative time). Estimates come from the
-                // snapshot verbatim and are never aged here — if one should change, that's the
-                // source's job via a new snapshot. Equal reductions are conflated by the
-                // container's StateFlow, so a tick re-emits only when visible text changed.
-                // Five sources combine into a holder (combine's max typed arity), then the holder
-                // combines with the minute ticker for relative-time re-renders.
-                val inputs = combine(
+                // Five sources combine into a holder (combine's max typed arity); each new value
+                // reduces straight to a UI state. The screen reports no relative time, so there is
+                // no clock and no periodic re-render — only a real source change re-emits.
+                combine(
                     configSource.config,
                     permissionSource.permission,
                     eventStatusSource.status,
                     syncSource.status,
                     creationStatusSource.creationStatus,
                 ) { config, permission, eventStatus, snapshot, creation ->
-                    Inputs(config, permission, eventStatus, snapshot, creation)
-                }
-                combine(inputs, minuteTicker()) { i, _ ->
-                    reduceFrom(i.config, i.permission, i.eventStatus, i.snapshot, i.creation, clock.now())
+                    reduceFrom(config, permission, eventStatus, snapshot, creation)
                 }
                     .collect { ui -> reduce { ui } }
             }
@@ -191,13 +178,6 @@ class StatusContainerHost(
     }
 }
 
-private fun minuteTicker(): Flow<Unit> = flow {
-    while (true) {
-        emit(Unit)
-        delay(1.minutes)
-    }
-}
-
 // Emits immediately (refresh on activation) then every [interval] until the collector is cancelled
 // (which flatMapLatest does the moment foreground/pending goes false).
 private fun pollTicks(interval: Duration): Flow<Unit> = flow {
@@ -206,16 +186,6 @@ private fun pollTicks(interval: Duration): Flow<Unit> = flow {
         delay(interval)
     }
 }
-
-// The five reduction inputs, bundled so the five-source combine (combine's max typed arity) can hand
-// a single value to the ticker combine without losing types.
-private class Inputs(
-    val config: EventConfigPayload?,
-    val permission: PermissionStatus,
-    val eventStatus: EventStatus,
-    val snapshot: SyncStatus,
-    val creation: CreationStatus,
-)
 
 // Create-layer precedence (config-presence only): without a connected event there is nothing to back
 // up, so the create layer replaces the hero regardless of permission, join, or snapshot — the top
@@ -228,7 +198,6 @@ private fun reduceFrom(
     eventStatus: EventStatus,
     snapshot: SyncStatus,
     creation: CreationStatus,
-    now: Instant,
 ): UiState {
     if (config == null) {
         return when (creation) {
@@ -253,37 +222,23 @@ private fun reduceFrom(
     // only once config + permission both pass.
     return when (snapshot) {
         SyncStatus.Loading -> UiState.Loading
-        is SyncStatus.Ready -> snapshot.progress.toUiState(now)
+        is SyncStatus.Ready -> snapshot.progress.toUiState()
     }
 }
 
-private fun SyncProgress.toUiState(now: Instant): UiState = when (state) {
+private fun SyncProgress.toUiState(): UiState = when (state) {
     SyncState.IN_PROGRESS -> UiState.InProgress(
         synced = synced,
         total = total,
         // Ledger photos still uploading (asset-counted pending) — the second caption's count.
         inProgress = pending,
-        // The last completion's age (null before anything completes — a bare "0 of N").
-        finishedAgo = lastFinishedAt?.let { relativeTime(now - it) },
     )
     SyncState.NOTHING_TO_SYNC -> UiState.NothingToSync
-    SyncState.COMPLETE -> UiState.Completed(total = total, finishedAgo = finishedAgo(now))
+    SyncState.COMPLETE -> UiState.Completed(total = total)
 }
-
-// COMPLETE implies a completed photo, so the ledger always has a completion timestamp; the
-// null-guard keeps a forged/inconsistent snapshot from crashing the screen.
-private fun SyncProgress.finishedAgo(now: Instant): String =
-    lastFinishedAt?.let { relativeTime(now - it) } ?: "just now"
 
 // The inline create-error copy, formatted in presentation (UiState carries final display strings).
 private fun CreationFailureReason.message(): String = when (this) {
     CreationFailureReason.INVALID_NAME -> "That name isn't valid."
     CreationFailureReason.SERVER -> "Couldn't reach the server."
-}
-
-private fun relativeTime(elapsed: Duration): String = when {
-    elapsed < 1.minutes -> "just now"
-    elapsed < 1.hours -> "${elapsed.inWholeMinutes} min ago"
-    elapsed < 1.days -> "${elapsed.inWholeHours} h ago"
-    else -> "${elapsed.inWholeDays} d ago"
 }

@@ -1,14 +1,5 @@
-# sync ledger Specification
+## MODIFIED Requirements
 
-## Purpose
-
-The engine's durable per-key upload memory: a backend storage seam (dumb row store that signals
-its own changes), a three-way capability split — reader (per-key, engine-facing), writer
-(records, single per platform, codified by construction), watcher (aggregate stream,
-status-facing) — and self-contained idempotent record operations. The ledger is what makes
-skipping provable, reports absorbable (at-least-once), full re-enumeration harmless, and status
-a read-only projection. Authoritative design: docs/design.md §2.2.
-## Requirements
 ### Requirement: Storage seam — dumb row store
 The ledger SHALL access storage exclusively through a `LedgerBackend` interface with the row
 operations `get(key): LedgerEntry?` and `put(entry)` (a single-row upsert), the aggregate read
@@ -82,48 +73,6 @@ have value equality.
 #### Scenario: Photos count by asset, not by row
 - **WHEN** asset `A` has two `COMPLETED` rows and asset `B` has one `COMPLETED` and one `FAILED` row
 - **THEN** `aggregates()` answers `pending = 1, completed = 1` (A complete, B pending)
-
-### Requirement: Change signal
-
-`LedgerBackend.changes` SHALL emit `Unit` after every successful `put`. A ding carries no payload
-and promises nothing beyond "re-read the truth" — consumers MUST treat it as a level trigger
-(conflation, duplicate dings, and signals missed while busy are all safe because every re-read
-queries current state). Where the underlying store is written by another process, the backend SHALL
-feed `changes` from a cross-process notification — but that cross-process notification is the
-**writer process's** signal that its work is durable, and SHALL be posted **once per writer work
-cycle**, not after every `put`: the iOS App-Group backend SHALL NOT post a Darwin notification on
-each `put`; instead the writer process (the extension) SHALL post one Darwin notification
-(a `CFNotificationCenter` darwin-notify name) after its `process()` cycle completes, and the app-process
-backend SHALL merge an observer of that notification into its `changes` flow. The in-process `changes`
-ding on every `put` is unchanged (it has no in-writer-process consumer). The seam itself does not
-change. A missed cross-process notification is harmless (the app re-reads on its next trigger).
-
-#### Scenario: Put dings
-
-- **WHEN** a collector is active on `changes` and `put` completes
-- **THEN** the collector receives an emission
-
-#### Scenario: A writer cycle dings the other process once
-
-- **WHEN** the extension process performs several `put`s within one `process()` cycle and a collector
-  in the app process is active on `changes`
-- **THEN** the app-process collector receives one emission (via the single end-of-cycle Darwin
-  notification) and re-reads current truth, rather than one emission per `put`
-
-### Requirement: Reader and writer capability split
-The ledger SHALL expose a concrete shared `LedgerReader` (query: `entry(key): LedgerEntry?`) and a
-concrete shared `LedgerWriter` that subclasses `LedgerReader` (record operations). Record and
-query semantics SHALL be implemented once in these shared classes, delegating storage to the
-injected `LedgerBackend` — so a `LedgerWriter` is usable wherever a `LedgerReader` is expected,
-and read-only access is granted by handing out the writer typed as `LedgerReader`.
-
-#### Scenario: Writer reads what it wrote
-- **WHEN** a `LedgerWriter` records an entry and `entry(key)` is called on the same instance
-- **THEN** the recorded entry is returned
-
-#### Scenario: Reader-typed access cannot record
-- **WHEN** a component receives the ledger typed as `LedgerReader`
-- **THEN** no record operation is available to it at compile time
 
 ### Requirement: Ledger watcher
 
@@ -217,67 +166,6 @@ timestamp column) directly.
 - **WHEN** a database is created from scratch
 - **THEN** it has the `assetId` index, no `updatedAt` column, and needs no migration step
 
-### Requirement: Prune operations are writer-only
-The two asset-keyed bulk removals (`deleteByAssetId`, `retainAssets`) SHALL be exposed on
-`LedgerWriter` (delegating to the backend), and SHALL NOT be reachable through `LedgerReader`.
-They are sync writes by the single ledger writer, not the app-side `clear()` reset, and at the
-writer layer they consult no engine state first (a backend may read its own rows to compute a
-complement — an implementation detail, not part of the seam contract).
-Granting read-only access by handing out the writer typed as `LedgerReader` SHALL therefore deny
-prune access at compile time, preserving the single-writer invariant.
-
-#### Scenario: Writer prunes by assetId
-- **WHEN** a `LedgerWriter` records a row for assetId `X` (key `X-photo.jpg`) and then calls
-  `deleteByAssetId("X")`
-- **THEN** `entry("X-photo.jpg")` returns null
-
-#### Scenario: Writer retains an asset set
-- **WHEN** a `LedgerWriter` holds rows for assetIds `X` and `Y` and calls `retainAssets({"X"})`
-- **THEN** the `Y` rows return null and the `X` rows are unchanged
-
-#### Scenario: Reader-typed access cannot prune
-- **WHEN** a component receives the ledger typed as `LedgerReader`
-- **THEN** neither `deleteByAssetId` nor `retainAssets` is available to it at compile time
-
-### Requirement: Prune operations hold on the SQLDelight backend
-The SQLDelight-backed `LedgerBackend` SHALL implement `deleteByAssetId` and `retainAssets`.
-`deleteByAssetId` SHALL be an indexed `DELETE … WHERE assetId = ?`. `retainAssets` SHALL delete
-the complement of the supplied set without relying on an unbounded SQL `IN`/`NOT IN` parameter
-list (so a multi-thousand-asset library does not exceed the driver's bind-variable limit) — e.g.
-read the present assetIds, diff against `keep` in Kotlin, and delete each straggler. The
-storage-seam scenarios for both operations SHALL pass against the SQLDelight backend on the JVM
-sqlite driver via the shared backend contract.
-
-#### Scenario: Backend prune contract holds on SQLite
-- **WHEN** the delete-by-assetId and retain-assets storage-seam scenarios run against the
-  SQLDelight backend on a JVM sqlite driver
-- **THEN** they pass unchanged
-
-#### Scenario: Retain assets over a large library stays within bind limits
-- **WHEN** `retainAssets` is called on the SQLDelight backend with a keep-set larger than the
-  driver's single-statement bind-variable limit
-- **THEN** the complement is deleted with no bind-variable error
-
-### Requirement: Pending-resource read
-
-`LedgerBackend` SHALL expose a read of the non-`COMPLETED` rows as `(assetId, key)` pairs (the
-backlog), so a status projection can group outstanding resources by photo without materializing the
-whole table. The read SHALL return exactly the rows whose `state` is not `COMPLETED` and SHALL
-interpret nothing else (the backend remains a dumb row store). On the SQLDelight backend it SHALL be
-a single query (`SELECT assetId, key FROM ledgerRow WHERE state != 'COMPLETED'`).
-
-#### Scenario: Returns only outstanding rows
-
-- **WHEN** asset `A` has two `COMPLETED` rows and asset `B` has one `REQUESTED` and one `FAILED` row,
-  and the pending-resource read is called
-- **THEN** it returns only `B`'s two rows (`B`'s `REQUESTED` and `FAILED` keys), each paired with
-  assetId `B`, and none of `A`'s
-
-#### Scenario: Empty when nothing is outstanding
-
-- **WHEN** every row is `COMPLETED`
-- **THEN** the pending-resource read returns no rows
-
 ### Requirement: Atomic baseline reset
 
 `LedgerBackend.resetTo(entries)` SHALL replace the entire store with `entries` in a single atomic
@@ -298,4 +186,3 @@ transaction.
 #### Scenario: Reset baseline holds on the SQLDelight backend
 - **WHEN** the reset scenarios run against the SQLDelight backend on a JVM sqlite driver
 - **THEN** they pass unchanged (a single-transaction replacement, one change signal)
-

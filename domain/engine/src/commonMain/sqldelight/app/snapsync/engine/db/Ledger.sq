@@ -1,24 +1,22 @@
 import app.snapsync.engine.LedgerState;
-import kotlin.time.Instant;
 
 CREATE TABLE ledgerRow (
     key TEXT NOT NULL PRIMARY KEY,
     assetId TEXT NOT NULL,
     state TEXT AS LedgerState NOT NULL,
-    attempt INTEGER NOT NULL,
-    updatedAt INTEGER AS Instant NOT NULL
+    attempt INTEGER NOT NULL
 );
 
 CREATE INDEX ledgerRow_assetId ON ledgerRow(assetId);
 
 get:
-SELECT key, assetId, state, attempt, updatedAt
+SELECT key, assetId, state, attempt
 FROM ledgerRow
 WHERE key = :key;
 
 put:
-INSERT OR REPLACE INTO ledgerRow (key, assetId, state, attempt, updatedAt)
-VALUES (:key, :assetId, :state, :attempt, :updatedAt);
+INSERT OR REPLACE INTO ledgerRow (key, assetId, state, attempt)
+VALUES (:key, :assetId, :state, :attempt);
 
 deleteAll:
 DELETE FROM ledgerRow;
@@ -46,13 +44,11 @@ WHERE state != 'COMPLETED';
 aggregates:
 WITH perAsset AS (
     SELECT assetId,
-           SUM(CASE WHEN state != 'COMPLETED' THEN 1 ELSE 0 END) AS notDone,
-           MAX(updatedAt) AS lastTouch
+           SUM(CASE WHEN state != 'COMPLETED' THEN 1 ELSE 0 END) AS notDone
     FROM ledgerRow
     GROUP BY assetId
 )
 SELECT
     COUNT(CASE WHEN notDone > 0 THEN 1 END) AS pending,
-    COUNT(CASE WHEN notDone = 0 THEN 1 END) AS completed,
-    MAX(CASE WHEN notDone = 0 THEN lastTouch END) AS newestCompletionAt
+    COUNT(CASE WHEN notDone = 0 THEN 1 END) AS completed
 FROM perAsset;

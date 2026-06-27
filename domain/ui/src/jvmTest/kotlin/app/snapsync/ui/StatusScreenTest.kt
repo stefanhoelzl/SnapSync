@@ -159,38 +159,36 @@ class StatusScreenTest {
     }
 
     @Test
-    fun `in progress shows the n of N count and the in-progress count with last-sync time`() {
+    fun `in progress shows the n of N count and the in-progress count`() {
         rule.setContent {
-            StatusScreen(UiState.InProgress(synced = 12, total = 47, inProgress = 35, finishedAgo = "5 min ago"))
+            StatusScreen(UiState.InProgress(synced = 12, total = 47, inProgress = 35))
         }
 
         rule.onNodeWithText("12 of 47 images synced").assertExists()
-        // Second caption: in-progress count and the last-sync age on one merged line.
-        rule.onNodeWithText("35 in progress · 5 min ago").assertExists()
+        // Second caption: the in-progress count.
+        rule.onNodeWithText("35 in progress").assertExists()
         // The LED dot is not a progress indicator (no spinner, no ring).
         rule.onNode(hasAnyProgressIndication()).assertDoesNotExist()
     }
 
     @Test
-    fun `in progress with no prior completion shows the in-progress count and no time`() {
+    fun `in progress shows the in-progress count`() {
         rule.setContent {
-            StatusScreen(UiState.InProgress(synced = 0, total = 47, inProgress = 47, finishedAgo = null))
+            StatusScreen(UiState.InProgress(synced = 0, total = 47, inProgress = 47))
         }
 
         rule.onNodeWithText("0 of 47 images synced").assertExists()
-        // At a virgin "0 of N" the second caption is just the count — no "· x min ago".
         rule.onNodeWithText("47 in progress").assertExists()
     }
 
     @Test
-    fun `in progress with nothing actively uploading omits the in-progress label`() {
+    fun `in progress with nothing actively uploading shows no detail line`() {
         rule.setContent {
-            StatusScreen(UiState.InProgress(synced = 3, total = 5, inProgress = 0, finishedAgo = "2 min ago"))
+            StatusScreen(UiState.InProgress(synced = 3, total = 5, inProgress = 0))
         }
 
         rule.onNodeWithText("3 of 5 images synced").assertExists()
-        // 0 actively uploading → no "0 in progress" noise, just the last-sync age.
-        rule.onNodeWithText("2 min ago").assertExists()
+        // 0 actively uploading → no detail line at all (no "0 in progress" noise, no time).
         rule.onNodeWithText("in progress", substring = true).assertDoesNotExist()
     }
 
@@ -204,18 +202,17 @@ class StatusScreenTest {
     }
 
     @Test
-    fun `completed shows the total and relative time`() {
-        rule.setContent { StatusScreen(UiState.Completed(total = 47, finishedAgo = "5 min ago")) }
+    fun `completed shows the total with no detail line`() {
+        rule.setContent { StatusScreen(UiState.Completed(total = 47)) }
 
         rule.onNodeWithText("47 images synced").assertExists()
-        rule.onNodeWithText("5 min ago").assertExists()
         rule.onNode(hasAnyProgressIndication()).assertDoesNotExist()
     }
 
     @Test
     fun `in progress shows the leave action`() {
         rule.setContent {
-            StatusScreen(UiState.InProgress(synced = 3, total = 5, inProgress = 0, finishedAgo = "2 min ago"))
+            StatusScreen(UiState.InProgress(synced = 3, total = 5, inProgress = 0))
         }
         rule.onNodeWithContentDescription("Leave event").assertExists()
     }
@@ -228,7 +225,7 @@ class StatusScreenTest {
 
     @Test
     fun `completed shows the leave action`() {
-        rule.setContent { StatusScreen(UiState.Completed(total = 47, finishedAgo = "5 min ago")) }
+        rule.setContent { StatusScreen(UiState.Completed(total = 47)) }
         rule.onNodeWithContentDescription("Leave event").assertExists()
     }
 
@@ -258,7 +255,7 @@ class StatusScreenTest {
 
     @Test
     fun `activating leave shows the confirm dialog`() {
-        rule.setContent { StatusScreen(UiState.Completed(total = 47, finishedAgo = "5 min ago")) }
+        rule.setContent { StatusScreen(UiState.Completed(total = 47)) }
 
         rule.onNodeWithText("Leave event?").assertDoesNotExist()
         rule.onNodeWithContentDescription("Leave event").performClick()
@@ -294,7 +291,7 @@ class StatusScreenTest {
     fun `in progress shows the invite QR and share action`() {
         rule.setContent {
             StatusScreen(
-                UiState.InProgress(synced = 3, total = 5, inProgress = 0, finishedAgo = "2 min ago"),
+                UiState.InProgress(synced = 3, total = 5, inProgress = 0),
                 inviteUrl = SAMPLE_INVITE,
             )
         }
@@ -312,7 +309,7 @@ class StatusScreenTest {
     @Test
     fun `completed shows the invite QR and share action`() {
         rule.setContent {
-            StatusScreen(UiState.Completed(total = 47, finishedAgo = "5 min ago"), inviteUrl = SAMPLE_INVITE)
+            StatusScreen(UiState.Completed(total = 47), inviteUrl = SAMPLE_INVITE)
         }
         rule.onNodeWithText("Scan to join this event").assertExists()
         rule.onNodeWithContentDescription("Share invite link").assertExists()

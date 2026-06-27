@@ -1,12 +1,5 @@
-# sync status screen Specification
+## MODIFIED Requirements
 
-## Purpose
-
-The shared status screen that observes sync status snapshots and shows the user, truthfully,
-what state their backup is in: in progress ("n of N images synced"), complete ("N images synced"),
-or nothing to sync. The snapshot contract and its classification are owned by the `sync-status`
-capability; this screen reduces and renders.
-## Requirements
 ### Requirement: Sync status snapshots reduce to UI state
 
 The presentation layer SHALL reduce each observed `SyncStatus` to a display-ready `UiState`.
@@ -214,36 +207,15 @@ finished, safe backup). No state renders a relative-time or "last … ago" line.
 - **WHEN** the user activates the leave action and cancels the prompt
 - **THEN** the prompt is dismissed and `onLeaveEvent` is not invoked
 
-### Requirement: Status screen renders permission-blocked states
+## REMOVED Requirements
 
-The status screen SHALL render `UiState.PermissionBlocked` as a centered `StatusHero` followed by a
-single `PrimaryButton`, switching on the carried `PermissionStatus`. **No progress counts** are shown
-(the live gallery total is unavailable without photo access). The hero indicator is **semantic**
-(no color/shape/style in any `App*` signature). The button activates an existing container intent —
-`onRequestPermission` (which calls `PermissionRequester.request()`) or `onOpenSettings` (which calls
-`PermissionRequester.openSettings()`). The system permission dialog SHALL fire only from the "Allow
-access" button (CTA-only priming, consistent with `setup-gate`); the screen MUST NOT auto-request on
-observing `NOT_DETERMINED`. The screen renders:
+### Requirement: Presentation formats and ticks relative time
 
-| Permission | Indicator | Count line | Detail | Button → intent |
-|---|---|---|---|---|
-| NOT_DETERMINED | Photos | "Allow photo access" | "SnapSync needs your photo library to back it up." | "Allow access" → `onRequestPermission` |
-| DENIED | Error | "Photo access turned off" | "SnapSync needs photo access to continue backing up your library." | "Open Settings" → `onOpenSettings` |
+**Reason**: The status screen no longer displays any relative-time / "last … ago" text. With
+`SyncProgress` carrying no completion timestamp, there is nothing to format or age, so the
+presentation layer no longer owns a `Clock`, no longer formats relative time, and no longer re-emits
+the UI state on a periodic (minute) tick.
 
-The screen is composed under the rules of the `design-system` capability (semantic components only;
-Material 3 containment; `ScreenLayout` owns screen structure).
-
-#### Scenario: Not-determined renders the allow-access priming
-- **WHEN** the UI state is `PermissionBlocked(NOT_DETERMINED)`
-- **THEN** the screen shows the Photos indicator, "Allow photo access", the detail line, and an "Allow
-  access" button that invokes `onRequestPermission`, with no progress counts
-
-#### Scenario: Denied renders the settings path
-- **WHEN** the UI state is `PermissionBlocked(DENIED)`
-- **THEN** the screen shows the Error indicator, "Photo access turned off", the detail line, and an
-  "Open Settings" button that invokes `onOpenSettings`, with no progress counts
-
-#### Scenario: No auto-request on a not-determined status
-- **WHEN** the UI state becomes `PermissionBlocked(NOT_DETERMINED)`
-- **THEN** `request()` is not invoked until the user activates the "Allow access" button
-
+**Migration**: Remove the `Clock`/`now` plumbing, the `relativeTime` formatter, and the minute ticker
+from `StatusContainerHost`; drop the `finishedAgo` field from `UiState.InProgress` and
+`UiState.Completed`. No replacement — the removed line had no consumer beyond the deleted text.

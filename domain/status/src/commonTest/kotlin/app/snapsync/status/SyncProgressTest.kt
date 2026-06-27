@@ -2,7 +2,6 @@ package app.snapsync.status
 
 import kotlin.test.Test
 import kotlin.test.assertEquals
-import kotlin.time.Instant
 
 /**
  * The three-row classification decision table (sync-status spec): driven by the live total `N`
@@ -10,16 +9,13 @@ import kotlin.time.Instant
  */
 class SyncProgressTest {
 
-    private val finishedAt = Instant.fromEpochMilliseconds(1_000_000)
-
     private fun status(
         pending: Int = 0,
         completed: Int = 0,
         total: Int = 0,
         failed: Int = 0,
         active: Boolean = true,
-        lastFinishedAt: Instant? = null,
-    ) = SyncProgress(pending, completed, total, failed, active, estimatedRemaining = null, lastFinishedAt)
+    ) = SyncProgress(pending, completed, total, failed, active, estimatedRemaining = null)
 
     @Test
     fun `no in-scope photos classifies as nothing to sync`() {
@@ -27,7 +23,7 @@ class SyncProgressTest {
         // Regardless of completed/pending history.
         assertEquals(
             SyncState.NOTHING_TO_SYNC,
-            status(pending = 0, completed = 9, total = 0, lastFinishedAt = finishedAt).state,
+            status(pending = 0, completed = 9, total = 0).state,
         )
     }
 
@@ -40,7 +36,7 @@ class SyncProgressTest {
 
     @Test
     fun `virgin ledger with photos classifies as in progress`() {
-        val s = status(completed = 0, total = 5, lastFinishedAt = null)
+        val s = status(completed = 0, total = 5)
         assertEquals(SyncState.IN_PROGRESS, s.state)
         assertEquals(0, s.synced)
     }
@@ -54,7 +50,7 @@ class SyncProgressTest {
 
     @Test
     fun `all present photos synced classifies as complete`() {
-        assertEquals(SyncState.COMPLETE, status(completed = 47, total = 47, lastFinishedAt = finishedAt).state)
+        assertEquals(SyncState.COMPLETE, status(completed = 47, total = 47).state)
     }
 
     @Test

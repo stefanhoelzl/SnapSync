@@ -1,17 +1,14 @@
 package app.snapsync.status
 
 import app.snapsync.engine.LedgerSnapshot
-import kotlin.time.Instant
 
 /**
  * The overlaid counts a [SyncProgress] is minted from: the ledger snapshot's completion count plus
- * the photos promoted by observation, the remaining backlog, and the ledger's completion timestamp
- * (the overlay never fabricates one).
+ * the photos promoted by observation, and the remaining backlog.
  */
 internal data class Overlaid(
     val completed: Int,
     val pending: Int,
-    val newestCompletionAt: Instant?,
 )
 
 /**
@@ -27,7 +24,6 @@ internal fun overlay(snapshot: LedgerSnapshot, observed: Set<String>): Overlaid 
     return Overlaid(
         completed = snapshot.completed + promoted,
         pending = snapshot.pendingByAsset.size - promoted,
-        newestCompletionAt = snapshot.newestCompletionAt,
     )
 }
 

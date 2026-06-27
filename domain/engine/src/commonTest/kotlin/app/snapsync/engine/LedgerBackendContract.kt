@@ -3,7 +3,6 @@ package app.snapsync.engine
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNull
-import kotlin.time.Instant
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.runCurrent
@@ -17,10 +16,6 @@ abstract class LedgerBackendContract {
 
     protected abstract fun createBackend(): LedgerBackend
 
-    private val t0 = Instant.fromEpochMilliseconds(1_000_000)
-    private val t1 = Instant.fromEpochMilliseconds(2_000_000)
-    private val t2 = Instant.fromEpochMilliseconds(3_000_000)
-
     // assetId defaults to the key, so a test that doesn't care about grouping gets one photo per
     // row (the historical per-row behaviour); multi-resource-photo tests pass an explicit assetId.
     private fun entry(
@@ -28,13 +23,12 @@ abstract class LedgerBackendContract {
         assetId: String = key,
         state: LedgerState = LedgerState.REQUESTED,
         attempt: Int = 0,
-        updatedAt: Instant = t0,
-    ) = LedgerEntry(key, assetId, state, attempt, updatedAt)
+    ) = LedgerEntry(key, assetId, state, attempt)
 
     @Test
     fun `put then get round-trips field for field`() = runTest {
         val backend = createBackend()
-        val entry = entry(assetId = "A", state = LedgerState.COMPLETED, attempt = 3, updatedAt = t1)
+        val entry = entry(assetId = "A", state = LedgerState.COMPLETED, attempt = 3)
 
         backend.put(entry)
 
@@ -57,8 +51,8 @@ abstract class LedgerBackendContract {
     }
 
     @Test
-    fun `empty ledger aggregates to zero counts and no completion`() = runTest {
-        assertEquals(LedgerAggregates(0, 0, null), createBackend().aggregates())
+    fun `empty ledger aggregates to zero counts`() = runTest {
+        assertEquals(LedgerAggregates(0, 0), createBackend().aggregates())
     }
 
     @Test
@@ -66,41 +60,30 @@ abstract class LedgerBackendContract {
         val backend = createBackend()
         backend.put(entry(key = "a", state = LedgerState.REQUESTED))
         backend.put(entry(key = "b", state = LedgerState.FAILED))
-        backend.put(entry(key = "c", state = LedgerState.COMPLETED, updatedAt = t1))
-        backend.put(entry(key = "d", state = LedgerState.COMPLETED, updatedAt = t2))
+        backend.put(entry(key = "c", state = LedgerState.COMPLETED))
+        backend.put(entry(key = "d", state = LedgerState.COMPLETED))
 
-        assertEquals(LedgerAggregates(pending = 2, completed = 2, newestCompletionAt = t2), backend.aggregates())
+        assertEquals(LedgerAggregates(pending = 2, completed = 2), backend.aggregates())
     }
 
     @Test
     fun `a photo counts complete only when all its resources are`() = runTest {
         val backend = createBackend()
-        backend.put(entry(key = "P-photo.jpg", assetId = "P", state = LedgerState.COMPLETED, updatedAt = t1))
-        backend.put(entry(key = "P-video.mov", assetId = "P", state = LedgerState.REQUESTED, updatedAt = t2))
+        backend.put(entry(key = "P-photo.jpg", assetId = "P", state = LedgerState.COMPLETED))
+        backend.put(entry(key = "P-video.mov", assetId = "P", state = LedgerState.REQUESTED))
 
-        assertEquals(LedgerAggregates(pending = 1, completed = 0, newestCompletionAt = null), backend.aggregates())
+        assertEquals(LedgerAggregates(pending = 1, completed = 0), backend.aggregates())
     }
 
     @Test
     fun `mixed photos - one complete and one partial`() = runTest {
         val backend = createBackend()
-        backend.put(entry(key = "A-photo.jpg", assetId = "A", state = LedgerState.COMPLETED, updatedAt = t1))
-        backend.put(entry(key = "A-video.mov", assetId = "A", state = LedgerState.COMPLETED, updatedAt = t1))
-        backend.put(entry(key = "B-photo.jpg", assetId = "B", state = LedgerState.COMPLETED, updatedAt = t2))
-        backend.put(entry(key = "B-edit.jpg", assetId = "B", state = LedgerState.FAILED, updatedAt = t2))
+        backend.put(entry(key = "A-photo.jpg", assetId = "A", state = LedgerState.COMPLETED))
+        backend.put(entry(key = "A-video.mov", assetId = "A", state = LedgerState.COMPLETED))
+        backend.put(entry(key = "B-photo.jpg", assetId = "B", state = LedgerState.COMPLETED))
+        backend.put(entry(key = "B-edit.jpg", assetId = "B", state = LedgerState.FAILED))
 
-        assertEquals(LedgerAggregates(pending = 1, completed = 1, newestCompletionAt = t1), backend.aggregates())
-    }
-
-    @Test
-    fun `newest completion is the latest fully-completed photo`() = runTest {
-        val backend = createBackend()
-        backend.put(entry(key = "A-photo.jpg", assetId = "A", state = LedgerState.COMPLETED, updatedAt = t0))
-        backend.put(entry(key = "B-photo.jpg", assetId = "B", state = LedgerState.COMPLETED, updatedAt = t1))
-        // A partially-done photo never contributes to newestCompletionAt.
-        backend.put(entry(key = "C-photo.jpg", assetId = "C", state = LedgerState.REQUESTED, updatedAt = t2))
-
-        assertEquals(t1, backend.aggregates().newestCompletionAt)
+        assertEquals(LedgerAggregates(pending = 1, completed = 1), backend.aggregates())
     }
 
     @Test
@@ -140,21 +123,18 @@ abstract class LedgerBackendContract {
     }
 
     @Test
-    fun `writer records are self-contained stamped entries`() = runTest {
+    fun `writer records are self-contained entries`() = runTest {
         val backend = createBackend()
-        val clock = FixedClock(t0)
-        val writer = LedgerWriter(backend, clock)
+        val writer = LedgerWriter(backend)
 
         writer.recordRequested("k", "A", attempt = 0)
-        assertEquals(entry("k", "A", LedgerState.REQUESTED, 0, t0), writer.entry("k"))
+        assertEquals(entry("k", "A", LedgerState.REQUESTED, 0), writer.entry("k"))
 
-        clock.instant = t1
         writer.recordFailed("k", "A", attempt = 0)
-        assertEquals(entry("k", "A", LedgerState.FAILED, 0, t1), writer.entry("k"))
+        assertEquals(entry("k", "A", LedgerState.FAILED, 0), writer.entry("k"))
 
-        clock.instant = t2
         writer.recordCompleted("k", "A", attempt = 1)
-        assertEquals(entry("k", "A", LedgerState.COMPLETED, 1, t2), writer.entry("k"))
+        assertEquals(entry("k", "A", LedgerState.COMPLETED, 1), writer.entry("k"))
     }
 
     @Test
@@ -208,7 +188,7 @@ abstract class LedgerBackendContract {
 
         backend.retainAssets(emptySet())
 
-        assertEquals(LedgerAggregates(0, 0, null), backend.aggregates())
+        assertEquals(LedgerAggregates(0, 0), backend.aggregates())
     }
 
     @Test
@@ -232,8 +212,8 @@ abstract class LedgerBackendContract {
         backend.put(entry(key = "old-2", assetId = "old"))
 
         val seed = listOf(
-            entry(key = "A-photo.jpg", assetId = "A", state = LedgerState.COMPLETED, updatedAt = t1),
-            entry(key = "B-photo.jpg", assetId = "B", state = LedgerState.COMPLETED, updatedAt = t2),
+            entry(key = "A-photo.jpg", assetId = "A", state = LedgerState.COMPLETED),
+            entry(key = "B-photo.jpg", assetId = "B", state = LedgerState.COMPLETED),
         )
         backend.resetTo(seed)
 
@@ -241,7 +221,7 @@ abstract class LedgerBackendContract {
         assertNull(backend.get("old-2"))
         assertEquals(seed[0], backend.get("A-photo.jpg"))
         assertEquals(seed[1], backend.get("B-photo.jpg"))
-        assertEquals(LedgerAggregates(pending = 0, completed = 2, newestCompletionAt = t2), backend.aggregates())
+        assertEquals(LedgerAggregates(pending = 0, completed = 2), backend.aggregates())
     }
 
     @Test
@@ -265,13 +245,13 @@ abstract class LedgerBackendContract {
         backend.resetTo(emptyList())
 
         assertNull(backend.get("a"))
-        assertEquals(LedgerAggregates(0, 0, null), backend.aggregates())
+        assertEquals(LedgerAggregates(0, 0), backend.aggregates())
     }
 
     @Test
     fun `writer prunes by assetId and retains an asset set - reader cannot`() = runTest {
         val backend = createBackend()
-        val writer = LedgerWriter(backend, FixedClock(t0))
+        val writer = LedgerWriter(backend)
         writer.recordRequested("X-photo.jpg", "X", attempt = 0)
         writer.recordRequested("X-video.mov", "X", attempt = 0)
         writer.recordRequested("Y-photo.jpg", "Y", attempt = 0)
@@ -292,20 +272,17 @@ abstract class LedgerBackendContract {
     }
 
     @Test
-    fun `recording converges on assetId state and attempt - only the timestamp moves`() = runTest {
+    fun `recording converges on assetId state and attempt`() = runTest {
         val backend = createBackend()
-        val clock = FixedClock(t0)
-        val writer = LedgerWriter(backend, clock)
+        val writer = LedgerWriter(backend)
 
         writer.recordCompleted("k", "A", attempt = 2)
-        clock.instant = t1
         writer.recordCompleted("k", "A", attempt = 2)
 
         val entry = writer.entry("k")!!
         assertEquals("A", entry.assetId)
         assertEquals(LedgerState.COMPLETED, entry.state)
         assertEquals(2, entry.attempt)
-        assertEquals(t1, entry.updatedAt)
     }
 }
 

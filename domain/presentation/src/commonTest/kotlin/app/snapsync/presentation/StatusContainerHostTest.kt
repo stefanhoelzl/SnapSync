@@ -25,11 +25,8 @@ import app.snapsync.status.SyncStatusSource
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
-import kotlin.time.Clock
 import kotlin.time.Duration
-import kotlin.time.Duration.Companion.minutes
 import kotlin.time.Duration.Companion.seconds
-import kotlin.time.Instant
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -112,16 +109,6 @@ private class SpyCreator : EventCreator {
     }
 }
 
-private class FakeClock(private var current: Instant) : Clock {
-    fun advance(duration: Duration) {
-        current += duration
-    }
-
-    override fun now(): Instant = current
-}
-
-private val EPOCH = Instant.fromEpochMilliseconds(0)
-
 private fun snapshot(
     pending: Int = 0,
     completed: Int = 0,
@@ -129,39 +116,36 @@ private fun snapshot(
     failed: Int = 0,
     active: Boolean = true,
     estimatedRemaining: Duration? = null,
-    lastFinishedAt: Instant? = null,
-) = SyncProgress(pending, completed, total, failed, active, estimatedRemaining, lastFinishedAt)
+) = SyncProgress(pending, completed, total, failed, active, estimatedRemaining)
 
 private fun host(
     source: FakeSyncStatusSource,
     scope: CoroutineScope,
-    clock: Clock = FakeClock(EPOCH),
     permission: FakePermissionSource = FakePermissionSource(),
     requester: PermissionRequester = SpyRequester(),
     configFake: FakeConfig = FakeConfig(),
-) = StatusContainerHost(source, permission, requester, configFake, configFake, scope, clock)
+) = StatusContainerHost(source, permission, requester, configFake, configFake, scope)
 
 class StatusContainerHostTest {
 
     @Test
-    fun `fewer synced than present maps to InProgress with the counts and last-sync time`() = runTest {
-        val clock = FakeClock(EPOCH)
+    fun `fewer synced than present maps to InProgress with the counts`() = runTest {
         val source = FakeSyncStatusSource()
-        host(source, backgroundScope, clock).test(this) {
+        host(source, backgroundScope).test(this) {
             runOnCreate()
-            source.value = snapshot(pending = 35, completed = 12, total = 47, lastFinishedAt = clock.now() - 5.minutes)
-            expectState(UiState.InProgress(synced = 12, total = 47, inProgress = 35, finishedAgo = "5 min ago"))
+            source.value = snapshot(pending = 35, completed = 12, total = 47)
+            expectState(UiState.InProgress(synced = 12, total = 47, inProgress = 35))
             cancelAndIgnoreRemainingItems()
         }
     }
 
     @Test
-    fun `virgin ledger with photos maps to InProgress zero of N with no last-sync time`() = runTest {
+    fun `virgin ledger with photos maps to InProgress zero of N`() = runTest {
         val source = FakeSyncStatusSource()
         host(source, backgroundScope).test(this) {
             runOnCreate()
             source.value = snapshot(completed = 0, total = 5)
-            expectState(UiState.InProgress(synced = 0, total = 5, inProgress = 0, finishedAgo = null))
+            expectState(UiState.InProgress(synced = 0, total = 5, inProgress = 0))
             cancelAndIgnoreRemainingItems()
         }
     }
@@ -174,7 +158,7 @@ class StatusContainerHostTest {
         permission: FakePermissionSource = FakePermissionSource(),
         scope: CoroutineScope,
     ) = StatusContainerHost(
-        FakeSyncStatusSource(), permission, SpyRequester(), config, config, scope, FakeClock(EPOCH),
+        FakeSyncStatusSource(), permission, SpyRequester(), config, config, scope,
         eventStatusSource = MutableEventStatusSource(eventStatus),
     )
 
@@ -212,7 +196,7 @@ class StatusContainerHostTest {
     ): StatusContainerHost {
         val config = FakeConfig(null)
         return StatusContainerHost(
-            FakeSyncStatusSource(), permission, SpyRequester(), config, config, scope, FakeClock(EPOCH),
+            FakeSyncStatusSource(), permission, SpyRequester(), config, config, scope,
             creationStatusSource = MutableCreationStatusSource(creation), creator = creator,
         )
     }
@@ -286,7 +270,7 @@ class StatusContainerHostTest {
         )
         val host = StatusContainerHost(
             FakeSyncStatusSource(), FakePermissionSource(PermissionStatus.GRANTED), SpyRequester(),
-            config, config, backgroundScope, FakeClock(EPOCH),
+            config, config, backgroundScope,
             eventStatusSource = eventStatus, creationStatusSource = creationStatus, creator = creator,
         )
         host.test(this) {
@@ -313,7 +297,7 @@ class StatusContainerHostTest {
         )
         val host = StatusContainerHost(
             FakeSyncStatusSource(), FakePermissionSource(PermissionStatus.GRANTED), SpyRequester(),
-            config, config, backgroundScope, FakeClock(EPOCH),
+            config, config, backgroundScope,
             creationStatusSource = creationStatus, creator = creator,
         )
         host.test(this) {
@@ -323,21 +307,6 @@ class StatusContainerHostTest {
             cancelAndIgnoreRemainingItems()
         }
         assertEquals(false, provisioned) // config never flipped
-    }
-
-    @Test
-    fun `in-progress last-sync time ages on tick`() = runTest {
-        val clock = FakeClock(EPOCH)
-        val source = FakeSyncStatusSource()
-        host(source, backgroundScope, clock).test(this) {
-            runOnCreate()
-            source.value = snapshot(completed = 1, total = 5, lastFinishedAt = clock.now())
-            expectState(UiState.InProgress(synced = 1, total = 5, inProgress = 0, finishedAgo = "just now"))
-            clock.advance(61.seconds)
-            advanceTimeBy(61.seconds)
-            expectState(UiState.InProgress(synced = 1, total = 5, inProgress = 0, finishedAgo = "1 min ago"))
-            cancelAndIgnoreRemainingItems()
-        }
     }
 
     @Test
@@ -354,41 +323,24 @@ class StatusContainerHostTest {
     }
 
     @Test
-    fun `all present photos synced maps to Completed with relative time`() = runTest {
-        val clock = FakeClock(EPOCH)
+    fun `all present photos synced maps to Completed`() = runTest {
         val source = FakeSyncStatusSource()
-        host(source, backgroundScope, clock).test(this) {
+        host(source, backgroundScope).test(this) {
             runOnCreate()
-            source.value = snapshot(completed = 34, total = 34, lastFinishedAt = clock.now() - 5.minutes)
-            expectState(UiState.Completed(total = 34, finishedAgo = "5 min ago"))
+            source.value = snapshot(completed = 34, total = 34)
+            expectState(UiState.Completed(total = 34))
             cancelAndIgnoreRemainingItems()
         }
     }
 
     @Test
     fun `overshoot clamps the displayed synced count and maps to Completed`() = runTest {
-        val clock = FakeClock(EPOCH)
         val source = FakeSyncStatusSource()
-        host(source, backgroundScope, clock).test(this) {
+        host(source, backgroundScope).test(this) {
             runOnCreate()
             // A deleted photo still COMPLETED in the ledger: completed 6 over a live total of 5.
-            source.value = snapshot(completed = 6, total = 5, lastFinishedAt = clock.now())
-            expectState(UiState.Completed(total = 5, finishedAgo = "just now"))
-            cancelAndIgnoreRemainingItems()
-        }
-    }
-
-    @Test
-    fun `relative time ages on tick without a new snapshot`() = runTest {
-        val clock = FakeClock(EPOCH)
-        val source = FakeSyncStatusSource()
-        host(source, backgroundScope, clock).test(this) {
-            runOnCreate()
-            source.value = snapshot(completed = 34, total = 34, lastFinishedAt = clock.now())
-            expectState(UiState.Completed(total = 34, finishedAgo = "just now"))
-            clock.advance(61.seconds)
-            advanceTimeBy(61.seconds)
-            expectState(UiState.Completed(total = 34, finishedAgo = "1 min ago"))
+            source.value = snapshot(completed = 6, total = 5)
+            expectState(UiState.Completed(total = 5))
             cancelAndIgnoreRemainingItems()
         }
     }
@@ -399,24 +351,24 @@ class StatusContainerHostTest {
         host(source, backgroundScope).test(this) {
             runOnCreate()
             source.value = snapshot(completed = 1, total = 10)
-            expectState(UiState.InProgress(synced = 1, total = 10, inProgress = 0, finishedAgo = null))
+            expectState(UiState.InProgress(synced = 1, total = 10, inProgress = 0))
             source.value = snapshot(completed = 5, total = 10)
-            expectState(UiState.InProgress(synced = 5, total = 10, inProgress = 0, finishedAgo = null))
+            expectState(UiState.InProgress(synced = 5, total = 10, inProgress = 0))
             cancelAndIgnoreRemainingItems()
         }
     }
 
     @Test
     fun `initial state derives from source values and never a guess`() = runTest {
-        val source = FakeSyncStatusSource(snapshot(completed = 34, total = 34, lastFinishedAt = EPOCH - 5.minutes))
+        val source = FakeSyncStatusSource(snapshot(completed = 34, total = 34))
         val container = host(source, backgroundScope).container
 
-        assertEquals(UiState.Completed(total = 34, finishedAgo = "5 min ago"), container.stateFlow.value)
+        assertEquals(UiState.Completed(total = 34), container.stateFlow.value)
     }
 
     @Test
     fun `denied permission with config present blocks over any sync snapshot`() = runTest {
-        val source = FakeSyncStatusSource(snapshot(completed = 34, total = 34, lastFinishedAt = EPOCH))
+        val source = FakeSyncStatusSource(snapshot(completed = 34, total = 34))
         val permission = FakePermissionSource(PermissionStatus.DENIED)
         val container = host(source, backgroundScope, permission = permission).container
 
@@ -425,7 +377,7 @@ class StatusContainerHostTest {
 
     @Test
     fun `not-determined permission with config present blocks the hero`() = runTest {
-        val source = FakeSyncStatusSource(snapshot(completed = 34, total = 34, lastFinishedAt = EPOCH))
+        val source = FakeSyncStatusSource(snapshot(completed = 34, total = 34))
         val permission = FakePermissionSource(PermissionStatus.NOT_DETERMINED)
         val container = host(source, backgroundScope, permission = permission).container
 
@@ -444,7 +396,7 @@ class StatusContainerHostTest {
 
     @Test
     fun `revoking permission mid-sync blocks the running hero`() = runTest {
-        val source = FakeSyncStatusSource(snapshot(completed = 34, total = 34, lastFinishedAt = EPOCH))
+        val source = FakeSyncStatusSource(snapshot(completed = 34, total = 34))
         val permission = FakePermissionSource(PermissionStatus.GRANTED)
         host(source, backgroundScope, permission = permission).test(this) {
             runOnCreate()
@@ -495,13 +447,12 @@ class StatusContainerHostTest {
 
     @Test
     fun `both gates satisfied reveals the current sync state`() = runTest {
-        val clock = FakeClock(EPOCH)
-        val source = FakeSyncStatusSource(snapshot(completed = 34, total = 34, lastFinishedAt = clock.now() - 5.minutes))
+        val source = FakeSyncStatusSource(snapshot(completed = 34, total = 34))
         val permission = FakePermissionSource(PermissionStatus.NOT_DETERMINED)
-        host(source, backgroundScope, clock, permission).test(this) {
+        host(source, backgroundScope, permission = permission).test(this) {
             runOnCreate()
             permission.permission.value = PermissionStatus.GRANTED
-            expectState(UiState.Completed(total = 34, finishedAgo = "5 min ago"))
+            expectState(UiState.Completed(total = 34))
             cancelAndIgnoreRemainingItems()
         }
     }
@@ -553,7 +504,7 @@ class StatusContainerHostTest {
         val configFake = FakeConfig()
         val containerHost = StatusContainerHost(
             FakeSyncStatusSource(), FakePermissionSource(), SpyRequester(), configFake, configFake,
-            backgroundScope, FakeClock(EPOCH), leave = { leaves++ },
+            backgroundScope, leave = { leaves++ },
         )
         containerHost.test(this) {
             containerHost.onLeaveEvent()
@@ -577,7 +528,7 @@ class StatusContainerHostTest {
         val configFake = FakeConfig(SAMPLE_CONFIG)
         val host = StatusContainerHost(
             FakeSyncStatusSource(), FakePermissionSource(), SpyRequester(), configFake, configFake,
-            backgroundScope, FakeClock(EPOCH),
+            backgroundScope,
         )
         // Same URL a scanner of the event's QR would receive, and it decodes back to the same eventId.
         assertEquals(encodeConfigUrl(SAMPLE_CONFIG), host.inviteUrl.value)
@@ -591,7 +542,7 @@ class StatusContainerHostTest {
         val configFake = FakeConfig(null)
         val host = StatusContainerHost(
             FakeSyncStatusSource(), FakePermissionSource(), SpyRequester(), configFake, configFake,
-            backgroundScope, FakeClock(EPOCH),
+            backgroundScope,
         )
         assertEquals(null, host.inviteUrl.value)
     }
@@ -602,7 +553,7 @@ class StatusContainerHostTest {
         val configFake = FakeConfig(SAMPLE_CONFIG)
         val containerHost = StatusContainerHost(
             FakeSyncStatusSource(), FakePermissionSource(), SpyRequester(), configFake, configFake,
-            backgroundScope, FakeClock(EPOCH), share = { shared += it },
+            backgroundScope, share = { shared += it },
         )
         containerHost.test(this) {
             containerHost.onShareInvite()
@@ -618,7 +569,7 @@ class StatusContainerHostTest {
         val configFake = FakeConfig(null)
         val containerHost = StatusContainerHost(
             FakeSyncStatusSource(), FakePermissionSource(), SpyRequester(), configFake, configFake,
-            backgroundScope, FakeClock(EPOCH), share = { shared += it },
+            backgroundScope, share = { shared += it },
         )
         containerHost.test(this) {
             containerHost.onShareInvite()
@@ -649,7 +600,6 @@ class StatusContainerHostTest {
             FakeConfig(),
             FakeConfig(),
             backgroundScope,
-            FakeClock(EPOCH),
             observed,
             foreground,
             pollInterval = 5.seconds,
