@@ -79,5 +79,4 @@ private fun mint(
     failed = 0,
     active = permission == PermissionStatus.GRANTED,
     estimatedRemaining = null,
-    lastFinishedAt = overlaid.newestCompletionAt,
 )

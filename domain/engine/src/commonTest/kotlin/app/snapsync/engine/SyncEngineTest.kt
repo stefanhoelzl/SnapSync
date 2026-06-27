@@ -11,9 +11,8 @@ import kotlin.test.assertSame
 
 class SyncEngineTest {
 
-    private val t0 = kotlin.time.Instant.fromEpochMilliseconds(1_000_000)
     private val provider = RecordingUploadRequestProvider()
-    private val ledger = LedgerWriter(InMemoryLedgerBackend(), FixedClock(t0))
+    private val ledger = LedgerWriter(InMemoryLedgerBackend())
     private val engine = SyncEngine(provider, ledger)
 
     private fun resource(
@@ -45,7 +44,7 @@ class SyncEngineTest {
 
         engine.handle(SyncEvent.UploadStarted(upload.job))
         assertEquals(
-            LedgerEntry(resource.filename, resource.assetId, LedgerState.REQUESTED, 0, t0),
+            LedgerEntry(resource.filename, resource.assetId, LedgerState.REQUESTED, 0),
             ledger.entry(resource.filename),
         )
     }
@@ -144,13 +143,13 @@ class SyncEngineTest {
         assertSame(resource, retry.job.request.resource)
         // UploadFailed records FAILED only; the retry's REQUESTED comes via UploadStarted.
         assertEquals(
-            LedgerEntry(resource.filename, resource.assetId, LedgerState.FAILED, 0, t0),
+            LedgerEntry(resource.filename, resource.assetId, LedgerState.FAILED, 0),
             ledger.entry(resource.filename),
         )
 
         engine.handle(SyncEvent.UploadStarted(retry.job))
         assertEquals(
-            LedgerEntry(resource.filename, resource.assetId, LedgerState.REQUESTED, 1, t0),
+            LedgerEntry(resource.filename, resource.assetId, LedgerState.REQUESTED, 1),
             ledger.entry(resource.filename),
         )
     }
@@ -194,7 +193,7 @@ class SyncEngineTest {
 
         assertIs<SyncDecision.AlreadyUploaded>(decision)
         assertEquals(
-            LedgerEntry(resource.filename, resource.assetId, LedgerState.COMPLETED, 0, t0),
+            LedgerEntry(resource.filename, resource.assetId, LedgerState.COMPLETED, 0),
             ledger.entry(resource.filename),
         )
     }

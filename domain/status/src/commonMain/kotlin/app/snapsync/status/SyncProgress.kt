@@ -1,7 +1,6 @@
 package app.snapsync.status
 
 import kotlin.time.Duration
-import kotlin.time.Instant
 
 /**
  * Snapshot of backup truth, projected from the engine's ledger and the live photo library
@@ -23,8 +22,8 @@ import kotlin.time.Instant
  * permission. It no longer drives classification (the setup gate shadows every inactive case), but
  * is retained as the shared operational-state rule's output.
  *
- * [lastFinishedAt] is the newest completion recorded in the ledger; `null` means nothing has ever
- * completed.
+ * There is no completion timestamp: the status surface reports completeness and live activity only,
+ * never how long ago anything happened.
  */
 data class SyncProgress(
     val pending: Int,
@@ -33,7 +32,6 @@ data class SyncProgress(
     val failed: Int,
     val active: Boolean,
     val estimatedRemaining: Duration?,
-    val lastFinishedAt: Instant?,
 ) {
     /**
      * The displayed synced count: [completed] clamped to [total]. A photo uploaded then deleted

@@ -3,8 +3,8 @@ package app.snapsync.rejoin
 /**
  * One object already stored for the event, as returned by the backend per-event listing
  * (`bunny-list-endpoint`). The join needs only the reinstall-stable [filename] — the upload key it
- * matches local resources against. (Seeded rows take their `updatedAt` from the join time; an
- * uploaded resource is immutable, so no stored timestamp or version is consulted.)
+ * matches local resources against. An uploaded resource is immutable and the ledger keeps no
+ * timestamp, so no stored time or version is consulted; a seeded row carries only its state.
  */
 class RemoteFile(val filename: String)
 

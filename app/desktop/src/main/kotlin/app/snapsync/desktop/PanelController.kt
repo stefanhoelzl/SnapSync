@@ -16,9 +16,6 @@ import app.snapsync.eventstatus.MutableEventStatusSource
 import app.snapsync.status.SyncStatus
 import app.snapsync.status.SyncProgress
 import app.snapsync.status.SyncStatusSource
-import kotlin.time.Clock
-import kotlin.time.Duration.Companion.minutes
-import kotlin.time.Instant
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 
@@ -28,13 +25,13 @@ import kotlinx.coroutines.flow.asStateFlow
  * Holds three cells (permission, config, sync) plus the armed request outcome, and implements
  * the stand-in sources and the fake [PermissionRequester].
  */
-class PanelController(private val clock: Clock = Clock.System) {
+class PanelController {
     // The harness knows its truth synchronously, so it seeds Ready and never shows Loading.
     private val syncState = MutableStateFlow<SyncStatus>(
         SyncStatus.Ready(
             SyncProgress(
                 pending = 0, completed = 0, total = 0, failed = 0,
-                active = true, estimatedRemaining = null, lastFinishedAt = null,
+                active = true, estimatedRemaining = null,
             ),
         ),
     )
@@ -175,20 +172,20 @@ class PanelController(private val clock: Clock = Clock.System) {
     }
 
     fun showNothingToSync() {
-        forgeSync(progress(completed = 0, total = 0, lastFinishedAt = null))
+        forgeSync(progress(completed = 0, total = 0))
     }
 
     fun showInProgress() {
-        forgeSync(progress(pending = 35, completed = 12, total = 47, lastFinishedAt = clock.now() - 5.minutes))
+        forgeSync(progress(pending = 35, completed = 12, total = 47))
     }
 
     fun showComplete() {
-        forgeSync(progress(completed = 34, total = 34, lastFinishedAt = clock.now() - 5.minutes))
+        forgeSync(progress(completed = 34, total = 34))
     }
 
     // A deleted-but-unpruned photo: completed overshoots the live total; the screen clamps to N.
     fun showOvershoot() {
-        forgeSync(progress(completed = 6, total = 5, lastFinishedAt = clock.now()))
+        forgeSync(progress(completed = 6, total = 5))
     }
 
     // The settable gallery size (N): nudge the live total of whatever sync state is showing, so the
@@ -208,9 +205,9 @@ class PanelController(private val clock: Clock = Clock.System) {
         syncState.value = SyncStatus.Ready(status)
     }
 
-    private fun progress(pending: Int = 0, completed: Int, total: Int, lastFinishedAt: Instant?) = SyncProgress(
+    private fun progress(pending: Int = 0, completed: Int, total: Int) = SyncProgress(
         pending = pending, completed = completed, total = total, failed = 0,
-        active = true, estimatedRemaining = null, lastFinishedAt = lastFinishedAt,
+        active = true, estimatedRemaining = null,
     )
 
     private companion object {

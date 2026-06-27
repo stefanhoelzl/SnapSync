@@ -13,8 +13,6 @@ import app.snapsync.permission.PermissionStatusSource
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertIs
-import kotlin.time.Clock
-import kotlin.time.Instant
 import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableSharedFlow
@@ -26,11 +24,8 @@ import kotlinx.coroutines.test.runTest
 
 class LedgerSyncStatusSourceTest {
 
-    private val t0 = Instant.fromEpochMilliseconds(1_000_000)
     private val backend = RowStore()
-    private val writer = LedgerWriter(backend, object : Clock {
-        override fun now(): Instant = t0
-    })
+    private val writer = LedgerWriter(backend)
     private val watcher = LedgerWatcher(backend)
     private val permission = FakePermissionSource(PermissionStatus.GRANTED)
     private val gallery = InMemoryGalleryStatusSource(initial = 0)
@@ -41,16 +36,14 @@ class LedgerSyncStatusSourceTest {
         completed: Int = 0,
         total: Int = 0,
         active: Boolean = true,
-        lastFinishedAt: Instant? = null,
-    ) = SyncProgress(pending, completed, total, failed = 0, active, estimatedRemaining = null, lastFinishedAt)
+    ) = SyncProgress(pending, completed, total, failed = 0, active, estimatedRemaining = null)
 
     private fun ready(
         pending: Int = 0,
         completed: Int = 0,
         total: Int = 0,
         active: Boolean = true,
-        lastFinishedAt: Instant? = null,
-    ) = SyncStatus.Ready(snapshot(pending, completed, total, active, lastFinishedAt))
+    ) = SyncStatus.Ready(snapshot(pending, completed, total, active))
 
     private fun source(testScheduler: kotlinx.coroutines.test.TestCoroutineScheduler, scope: kotlinx.coroutines.CoroutineScope) =
         LedgerSyncStatusSource(watcher, permission, gallery, observed, scope, StandardTestDispatcher(testScheduler))
@@ -75,7 +68,7 @@ class LedgerSyncStatusSourceTest {
         val source = source(testScheduler, backgroundScope)
         runCurrent()
 
-        assertEquals(ready(pending = 1, completed = 2, total = 5, lastFinishedAt = t0), source.status.value)
+        assertEquals(ready(pending = 1, completed = 2, total = 5), source.status.value)
     }
 
     @Test
@@ -88,7 +81,7 @@ class LedgerSyncStatusSourceTest {
         writer.recordCompleted("a", assetId = "a", attempt = 0)
         runCurrent()
 
-        assertEquals(ready(completed = 1, total = 4, lastFinishedAt = t0), source.status.value)
+        assertEquals(ready(completed = 1, total = 4), source.status.value)
     }
 
     @Test
@@ -97,12 +90,12 @@ class LedgerSyncStatusSourceTest {
         gallery.set(4)
         val source = source(testScheduler, backgroundScope)
         runCurrent()
-        assertEquals(ready(completed = 1, total = 4, lastFinishedAt = t0), source.status.value)
+        assertEquals(ready(completed = 1, total = 4), source.status.value)
 
         gallery.set(9)
         runCurrent()
 
-        assertEquals(ready(completed = 1, total = 9, lastFinishedAt = t0), source.status.value)
+        assertEquals(ready(completed = 1, total = 9), source.status.value)
     }
 
     @Test
@@ -115,7 +108,7 @@ class LedgerSyncStatusSourceTest {
         permission.state.value = PermissionStatus.DENIED
         runCurrent()
 
-        assertEquals(ready(completed = 1, total = 4, active = false, lastFinishedAt = t0), source.status.value)
+        assertEquals(ready(completed = 1, total = 4, active = false), source.status.value)
     }
 
     @Test
@@ -132,7 +125,7 @@ class LedgerSyncStatusSourceTest {
         observed.state.value = setOf("P-photo.jpg", "P-video.mov")
         runCurrent()
 
-        assertEquals(ready(pending = 0, completed = 1, total = 1, lastFinishedAt = null), source.status.value)
+        assertEquals(ready(pending = 0, completed = 1, total = 1), source.status.value)
     }
 
     @Test
@@ -216,7 +209,6 @@ private class RowStore : LedgerBackend {
         return LedgerAggregates(
             pending = byAsset.size - complete.size,
             completed = complete.size,
-            newestCompletionAt = complete.flatten().maxOfOrNull { it.updatedAt },
         )
     }
 

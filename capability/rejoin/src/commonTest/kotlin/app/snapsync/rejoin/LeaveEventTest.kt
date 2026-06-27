@@ -10,12 +10,9 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
-import kotlin.time.Instant
 import kotlinx.coroutines.test.runTest
 
 class LeaveEventTest {
-
-    private val t0 = Instant.fromEpochMilliseconds(5_000_000)
 
     private class FakeConfigStore(var cleared: Boolean = false) : ConfigStore {
         override suspend fun save(config: EventConfigPayload) {}
@@ -23,8 +20,8 @@ class LeaveEventTest {
     }
 
     private suspend fun seededLedger() = FakeLedgerBackend().apply {
-        put(LedgerEntry("A", "A", LedgerState.COMPLETED, 0, t0))
-        put(LedgerEntry("B", "B", LedgerState.REQUESTED, 0, t0))
+        put(LedgerEntry("A", "A", LedgerState.COMPLETED, 0))
+        put(LedgerEntry("B", "B", LedgerState.REQUESTED, 0))
     }
 
     @Test

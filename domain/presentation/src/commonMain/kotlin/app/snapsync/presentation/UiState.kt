@@ -59,19 +59,17 @@ sealed interface UiState {
      * Sync underway: [synced] of [total] photos uploaded (`synced` is already clamped to `total`).
      * [inProgress] is how many photos the ledger is actively uploading right now (the asset-counted
      * `pending` — photos with any not-yet-`COMPLETED` resource); it can be lower than `total - synced`
-     * when some photos are not yet discovered by the extension. [finishedAgo] is the relative time of
-     * the most recent completion, or `null` when nothing has completed yet (a virgin "0 of N").
+     * when some photos are not yet discovered by the extension. The screen reports no completion time.
      */
     data class InProgress(
         val synced: Int,
         val total: Int,
         val inProgress: Int,
-        val finishedAgo: String?,
     ) : UiState
 
     /** Nothing to upload yet — the library holds no in-scope photos (`total == 0`). */
     data object NothingToSync : UiState
 
-    /** Every present photo uploaded: [total] synced, finished [finishedAgo]. */
-    data class Completed(val total: Int, val finishedAgo: String) : UiState
+    /** Every present photo uploaded: [total] synced. */
+    data class Completed(val total: Int) : UiState
 }

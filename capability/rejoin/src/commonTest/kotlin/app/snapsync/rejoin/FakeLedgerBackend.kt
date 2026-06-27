@@ -30,7 +30,7 @@ class FakeLedgerBackend : LedgerBackend {
     override suspend fun aggregates(): LedgerAggregates {
         val byAsset = rows.values.groupBy { it.assetId }
         val complete = byAsset.values.filter { g -> g.all { it.state == LedgerState.COMPLETED } }
-        return LedgerAggregates(byAsset.size - complete.size, complete.size, complete.flatten().maxOfOrNull { it.updatedAt })
+        return LedgerAggregates(byAsset.size - complete.size, complete.size)
     }
 
     override suspend fun pendingResources(): List<PendingResource> =

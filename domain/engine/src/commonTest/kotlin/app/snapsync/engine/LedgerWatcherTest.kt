@@ -2,7 +2,6 @@ package app.snapsync.engine
 
 import kotlin.test.Test
 import kotlin.test.assertEquals
-import kotlin.time.Instant
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
@@ -11,9 +10,8 @@ import kotlinx.coroutines.test.runTest
 
 class LedgerWatcherTest {
 
-    private val t0 = Instant.fromEpochMilliseconds(1_000_000)
     private val backend = InMemoryLedgerBackend()
-    private val writer = LedgerWriter(backend, FixedClock(t0))
+    private val writer = LedgerWriter(backend)
     private val watcher = LedgerWatcher(backend)
 
     @Test
@@ -22,7 +20,7 @@ class LedgerWatcherTest {
 
         val first = watcher.snapshot.first()
 
-        assertEquals(LedgerSnapshot(completed = 1, newestCompletionAt = t0, pendingByAsset = emptyMap()), first)
+        assertEquals(LedgerSnapshot(completed = 1, pendingByAsset = emptyMap()), first)
     }
 
     @Test
@@ -39,8 +37,8 @@ class LedgerWatcherTest {
 
         assertEquals(
             listOf(
-                LedgerSnapshot(completed = 0, newestCompletionAt = null, pendingByAsset = emptyMap()),
-                LedgerSnapshot(completed = 0, newestCompletionAt = null, pendingByAsset = mapOf("k" to setOf("k"))),
+                LedgerSnapshot(completed = 0, pendingByAsset = emptyMap()),
+                LedgerSnapshot(completed = 0, pendingByAsset = mapOf("k" to setOf("k"))),
             ),
             emissions,
         )
@@ -59,7 +57,7 @@ class LedgerWatcherTest {
         runCurrent()
 
         assertEquals(
-            listOf(LedgerSnapshot(completed = 0, newestCompletionAt = null, pendingByAsset = mapOf("k" to setOf("k")))),
+            listOf(LedgerSnapshot(completed = 0, pendingByAsset = mapOf("k" to setOf("k")))),
             emissions,
         )
     }

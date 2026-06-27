@@ -7,7 +7,6 @@ import app.snapsync.engine.LedgerState
 import app.snapsync.eventstatus.EventStatus
 import app.snapsync.eventstatus.MutableEventStatusSource
 import app.snapsync.gallery.GalleryResourceEnumerator
-import kotlin.time.Clock
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 
@@ -34,7 +33,6 @@ class JoinEvent(
     private val config: ConfigSource,
     private val status: MutableEventStatusSource,
     private val clearDiscoveryCursor: suspend () -> Unit,
-    private val clock: Clock = Clock.System,
 ) {
 
     // In-memory only (dies with the process, so it can never desync from a wiped ledger):
@@ -87,7 +85,6 @@ class JoinEvent(
             return false
         }
         val storedFilenames = remote.mapTo(mutableSetOf()) { it.filename }
-        val joinTime = clock.now()
         val seeds = enumerator.enumerate()
             .filter { it.filename in storedFilenames }
             .map { resource ->
@@ -96,7 +93,6 @@ class JoinEvent(
                     assetId = resource.assetId,
                     state = LedgerState.COMPLETED,
                     attempt = 0,
-                    updatedAt = joinTime,
                 )
             }
         ledger.resetTo(seeds)

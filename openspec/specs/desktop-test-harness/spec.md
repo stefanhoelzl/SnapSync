@@ -41,7 +41,8 @@ The control panel SHALL provide display-override presets in two labeled groups p
 controls, all mutating harness state exclusively through a single `PanelController` (which holds
 the stand-in permission, config, and sync state cells and implements the stand-in sources and the
 fake `PermissionRequester`); composables MUST NOT mutate harness state inline. Display overrides
-remain outside any scenario/command system.
+remain outside any scenario/command system. The `PanelController` reads no clock — no preset forges
+a timestamp (the status screen no longer renders relative time).
 
 - **Permission group** — presets for `NOT_DETERMINED`, `DENIED`, and `GRANTED` that write the
   permission cell **only**, leaving the sync and config cells untouched (so a forged sync state
@@ -49,11 +50,11 @@ remain outside any scenario/command system.
 - **Sync group** — presets that set `SyncStatus` snapshots into the stand-in `SyncStatusSource`
   **and additionally force permission to `GRANTED` and config to present** (a preset's intent is
   "show me this screen", which is impossible while the setup gate is up). All five states
-  (NeverSynced, InProgress, Suspended, Complete, Incomplete) SHALL be reachable, including forged
-  timestamps (e.g. `lastFinishedAt = now − 5 min`) and forged estimates — with at least one
-  InProgress preset carrying a `null` estimate so the "estimating…" placeholder is reachable.
-  Finished presets (Complete, Incomplete) SHALL forge `active = true` — under suspended-first
-  classification an inactive snapshot classifies as Suspended regardless of history.
+  (NeverSynced, InProgress, Suspended, Complete, Incomplete) SHALL be reachable, with forged counts
+  and forged estimates — with at least one InProgress preset carrying a `null` estimate so the
+  "estimating…" placeholder is reachable. Finished presets (Complete, Incomplete) SHALL forge
+  `active = true` — under suspended-first classification an inactive snapshot classifies as Suspended
+  regardless of history.
 - **Armed request outcome** — a control choosing whether the next `request()` resolves to
   `GRANTED` or `DENIED`; the fake `PermissionRequester.request()` writes the armed outcome into
   the permission cell, and its `openSettings()` only logs.
@@ -75,14 +76,12 @@ truth.
 - **WHEN** the user activates a Suspended preset (`active = false`)
 - **THEN** the status screen immediately shows "Waiting to sync"
 
-#### Scenario: Forcing a finished outcome with a forged timestamp
-- **WHEN** the user activates the Incomplete preset with `lastFinishedAt = now − 5 min` and
-  `active = true`
-- **THEN** the status screen immediately shows "Sync incomplete" with "5 min ago"
+#### Scenario: Forcing a finished outcome
+- **WHEN** the user activates the Incomplete preset with `active = true`
+- **THEN** the status screen immediately shows "Sync incomplete" with no relative-time detail line
 
 #### Scenario: Forcing the virgin state
-- **WHEN** the user activates the NeverSynced preset (all counts zero, `lastFinishedAt = null`,
-  `active = true`)
+- **WHEN** the user activates the NeverSynced preset (all counts zero, `active = true`)
 - **THEN** the status screen immediately shows "No sync yet"
 
 #### Scenario: Sync presets force their precondition
@@ -158,6 +157,7 @@ fixed sample id suffices); the invite affordances live in the phone frame, like 
 - **WHEN** the user activates the share action in the phone frame
 - **THEN** the clipboard/log stub runs and no harness state changes (no config, ledger, or sync cell is
   mutated; no real platform share is performed)
+
 ### Requirement: Creation-state overrides
 
 The control panel SHALL let the operator forge each `CreationStatus` without a backend, mutating
@@ -179,3 +179,4 @@ precondition).
 #### Scenario: Creation presets require config absent
 - **WHEN** a creation preset is selected while config is present
 - **THEN** the create layer is not shown (config presence outranks the create layer)
+

@@ -3,31 +3,27 @@ package app.snapsync.status
 import app.snapsync.engine.LedgerSnapshot
 import kotlin.test.Test
 import kotlin.test.assertEquals
-import kotlin.time.Instant
 
 class ObservedCompletionOverlayTest {
 
-    private val t1 = Instant.fromEpochMilliseconds(2_000_000)
-
     private fun snapshot(
         completed: Int = 0,
-        newestCompletionAt: Instant? = null,
         pendingByAsset: Map<String, Set<String>> = emptyMap(),
-    ) = LedgerSnapshot(completed, newestCompletionAt, pendingByAsset)
+    ) = LedgerSnapshot(completed, pendingByAsset)
 
     @Test
     fun `empty observation is the identity`() {
-        val snap = snapshot(completed = 2, newestCompletionAt = t1, pendingByAsset = mapOf("P" to setOf("P-1", "P-2")))
+        val snap = snapshot(completed = 2, pendingByAsset = mapOf("P" to setOf("P-1", "P-2")))
 
-        assertEquals(Overlaid(completed = 2, pending = 1, newestCompletionAt = t1), overlay(snap, emptySet()))
+        assertEquals(Overlaid(completed = 2, pending = 1), overlay(snap, emptySet()))
     }
 
     @Test
     fun `a photo promotes only when all its outstanding resources are observed`() {
         val snap = snapshot(completed = 2, pendingByAsset = mapOf("P" to setOf("P-photo", "P-video")))
 
-        assertEquals(Overlaid(2, 1, null), overlay(snap, setOf("P-photo")), "partial does not promote")
-        assertEquals(Overlaid(3, 0, null), overlay(snap, setOf("P-photo", "P-video")), "all observed promotes")
+        assertEquals(Overlaid(2, 1), overlay(snap, setOf("P-photo")), "partial does not promote")
+        assertEquals(Overlaid(3, 0), overlay(snap, setOf("P-photo", "P-video")), "all observed promotes")
     }
 
     @Test
@@ -35,14 +31,7 @@ class ObservedCompletionOverlayTest {
         // pendingByAsset holds outstanding rows regardless of REQUESTED vs FAILED — observation wins.
         val snap = snapshot(completed = 0, pendingByAsset = mapOf("F" to setOf("F-photo")))
 
-        assertEquals(Overlaid(1, 0, null), overlay(snap, setOf("F-photo")))
-    }
-
-    @Test
-    fun `the overlay never fabricates a completion timestamp`() {
-        val snap = snapshot(completed = 0, newestCompletionAt = null, pendingByAsset = mapOf("P" to setOf("P-1")))
-
-        assertEquals(null, overlay(snap, setOf("P-1")).newestCompletionAt)
+        assertEquals(Overlaid(1, 0), overlay(snap, setOf("F-photo")))
     }
 
     @Test

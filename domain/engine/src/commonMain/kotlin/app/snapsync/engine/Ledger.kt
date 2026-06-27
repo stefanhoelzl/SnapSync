@@ -1,7 +1,5 @@
 package app.snapsync.engine
 
-import kotlin.time.Clock
-import kotlin.time.Instant
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.conflate
 import kotlinx.coroutines.flow.distinctUntilChanged
@@ -10,26 +8,24 @@ import kotlinx.coroutines.flow.flow
 /**
  * One key's durable upload memory. The ledger is the engine's only state: per-resource entries
  * keyed by [Resource.filename], holding the [assetId] the resource belongs to (an opaque grouping
- * id, several resources of one photo share it), the last recorded lifecycle [state], the [attempt]
- * it belongs to, and [updatedAt] — when the record operation ran (stamped by [LedgerWriter], never
- * by callers or backends). An uploaded resource is immutable, so a `COMPLETED` entry's mere
- * existence is the proof of backup; there is no content version.
+ * id, several resources of one photo share it), the last recorded lifecycle [state], and the
+ * [attempt] it belongs to. An uploaded resource is immutable, so a `COMPLETED` entry's mere
+ * existence is the proof of backup; there is no content version, and the ledger keeps no timestamp.
  */
 class LedgerEntry(
     val key: String,
     val assetId: String,
     val state: LedgerState,
     val attempt: Int,
-    val updatedAt: Instant,
 ) {
     override fun equals(other: Any?): Boolean = other is LedgerEntry &&
         key == other.key && assetId == other.assetId && state == other.state &&
-        attempt == other.attempt && updatedAt == other.updatedAt
+        attempt == other.attempt
 
     override fun hashCode(): Int = key.hashCode()
 
     override fun toString(): String =
-        "LedgerEntry($key, assetId=$assetId, $state, attempt=$attempt, updatedAt=$updatedAt)"
+        "LedgerEntry($key, assetId=$assetId, $state, attempt=$attempt)"
 }
 
 enum class LedgerState {
@@ -46,22 +42,19 @@ enum class LedgerState {
 /**
  * The ledger's lifetime truth in one snapshot-consistent read, counted by **photo (assetId), not
  * resource row**: [pending] = photos with any non-`COMPLETED` resource, [completed] = photos whose
- * resources are all `COMPLETED`, [newestCompletionAt] = the newest fully-completed photo's latest
- * [LedgerEntry.updatedAt], null when no photo is fully completed.
+ * resources are all `COMPLETED`.
  */
 class LedgerAggregates(
     val pending: Int,
     val completed: Int,
-    val newestCompletionAt: Instant?,
 ) {
     override fun equals(other: Any?): Boolean = other is LedgerAggregates &&
-        pending == other.pending && completed == other.completed &&
-        newestCompletionAt == other.newestCompletionAt
+        pending == other.pending && completed == other.completed
 
-    override fun hashCode(): Int = 31 * (31 * pending + completed) + newestCompletionAt.hashCode()
+    override fun hashCode(): Int = 31 * pending + completed
 
     override fun toString(): String =
-        "LedgerAggregates(pending=$pending, completed=$completed, newestCompletionAt=$newestCompletionAt)"
+        "LedgerAggregates(pending=$pending, completed=$completed)"
 }
 
 /**
@@ -109,7 +102,7 @@ interface LedgerBackend {
      * Atomically replace the entire store with [entries] (delete-all then insert-all in one
      * transaction): either all prior rows go and all [entries] land, or — on failure — the store is
      * left exactly as it was (no partial baseline is ever observable). Entries are stored verbatim
-     * (the caller supplies `state`/`updatedAt`; no clock stamping here). Dings [changes]
+     * (the caller supplies `state`; no clock stamping here). Dings [changes]
      * **once** on success, like a [put]. This is a reset-family op (alongside [clear]) — the app-side
      * join seed uses it; it is **not** a per-key record, so it does not breach the single-record-writer
      * invariant.
@@ -145,13 +138,11 @@ open class LedgerReader(protected val backend: LedgerBackend) {
 /**
  * The ledger's single writer (one per platform, hosted with the engine). Each record operation
  * upserts a complete, self-contained entry in one backend [LedgerBackend.put] — no operation
- * depends on a prior read, so duplicate records converge per key on state and attempt;
- * only the [clock]-stamped timestamp moves forward. The writer is the single stamping point:
- * the engine stays clock-free and backends store verbatim.
+ * depends on a prior read, so duplicate records converge per key on state and attempt. The writer
+ * keeps no clock; the engine and backends are all clock-free and store verbatim.
  */
 class LedgerWriter(
     backend: LedgerBackend,
-    private val clock: Clock = Clock.System,
 ) : LedgerReader(backend) {
 
     suspend fun recordRequested(key: String, assetId: String, attempt: Int) =
@@ -165,9 +156,9 @@ class LedgerWriter(
 
     /**
      * Prune every row for [assetId] — a sync write by the single writer (distinct from the app-side
-     * [LedgerBackend.clear] reset). At the writer layer it stamps no `updatedAt` and consults no
-     * engine state; it just removes. Exposed only here on the writer, never on [LedgerReader], so
-     * read-only holders cannot prune.
+     * [LedgerBackend.clear] reset). At the writer layer it consults no engine state; it just
+     * removes. Exposed only here on the writer, never on [LedgerReader], so read-only holders cannot
+     * prune.
      */
     suspend fun deleteByAssetId(assetId: String) = backend.deleteByAssetId(assetId)
 
@@ -175,30 +166,27 @@ class LedgerWriter(
     suspend fun retainAssets(keep: Set<String>) = backend.retainAssets(keep)
 
     private suspend fun record(key: String, assetId: String, state: LedgerState, attempt: Int) =
-        backend.put(LedgerEntry(key, assetId, state, attempt, clock.now()))
+        backend.put(LedgerEntry(key, assetId, state, attempt))
 }
 
 /**
- * A point-in-time read of the ledger for the status projection: the [completed]/[newestCompletionAt]
- * scalars (reused from [LedgerAggregates]) plus [pendingByAsset] — the backlog grouped by photo
- * (assetId → its outstanding resource keys). The scalars and the backlog come from one watcher read
- * so they never disagree. The overlay intersects [pendingByAsset] with observed completions; the
- * scalars stay authoritative.
+ * A point-in-time read of the ledger for the status projection: the [completed] scalar (reused from
+ * [LedgerAggregates]) plus [pendingByAsset] — the backlog grouped by photo (assetId → its
+ * outstanding resource keys). The scalar and the backlog come from one watcher read so they never
+ * disagree. The overlay intersects [pendingByAsset] with observed completions; the scalar stays
+ * authoritative.
  */
 class LedgerSnapshot(
     val completed: Int,
-    val newestCompletionAt: Instant?,
     val pendingByAsset: Map<String, Set<String>>,
 ) {
     override fun equals(other: Any?): Boolean = other is LedgerSnapshot &&
-        completed == other.completed && newestCompletionAt == other.newestCompletionAt &&
-        pendingByAsset == other.pendingByAsset
+        completed == other.completed && pendingByAsset == other.pendingByAsset
 
-    override fun hashCode(): Int =
-        31 * (31 * completed + newestCompletionAt.hashCode()) + pendingByAsset.hashCode()
+    override fun hashCode(): Int = 31 * completed + pendingByAsset.hashCode()
 
     override fun toString(): String =
-        "LedgerSnapshot(completed=$completed, newestCompletionAt=$newestCompletionAt, pendingByAsset=$pendingByAsset)"
+        "LedgerSnapshot(completed=$completed, pendingByAsset=$pendingByAsset)"
 }
 
 /**
@@ -222,6 +210,6 @@ class LedgerWatcher(private val backend: LedgerBackend) {
         val pendingByAsset = backend.pendingResources()
             .groupBy { it.assetId }
             .mapValues { (_, rows) -> rows.mapTo(mutableSetOf()) { it.key } }
-        return LedgerSnapshot(aggregates.completed, aggregates.newestCompletionAt, pendingByAsset)
+        return LedgerSnapshot(aggregates.completed, pendingByAsset)
     }
 }

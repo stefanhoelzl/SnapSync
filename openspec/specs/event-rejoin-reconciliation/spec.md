@@ -47,10 +47,10 @@ device-facing host.
 A triggered join SHALL: set status `Joining`; fetch the event file list; enumerate the local photo
 library for each resource's `(filename, assetId)`; compute the matched subset of local resources whose
 `filename` equals a listed filename; seed those as `COMPLETED` via a single atomic ledger reset
-(`resetTo`), with `updatedAt` set to the **join time**; clear the discovery cursor; then set status
-`Joined`. Matching SHALL be by `filename` equality only (no size or timestamp comparison). Local
-resources with no matching listed filename SHALL NOT be seeded (the producer uploads them later). The
-seed SHALL run with the producer disabled.
+(`resetTo`); clear the discovery cursor; then set status `Joined`. The seed records no timestamp — the
+join reads no clock. Matching SHALL be by `filename` equality only (no size or timestamp comparison).
+Local resources with no matching listed filename SHALL NOT be seeded (the producer uploads them
+later). The seed SHALL run with the producer disabled.
 
 #### Scenario: An already-stored photo is seeded completed
 - **WHEN** a local resource's filename appears in the event file list
@@ -152,3 +152,4 @@ drives the join).
 - **WHEN** the user has left an event (config absent, ledger empty) and then scans an event QR
 - **THEN** the event is provisioned and exactly one fresh join reconciliation runs, seeding any
   already-stored photos as `COMPLETED` before the producer is enabled
+
