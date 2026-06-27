@@ -6,6 +6,12 @@ import app.snapsync.config.ConfigStore
 import app.snapsync.config.EventConfigPayload
 import app.snapsync.config.decodeConfigUrl
 import app.snapsync.config.encodeConfigUrl
+import app.snapsync.eventcreation.CreationFailureReason
+import app.snapsync.eventcreation.CreationStatus
+import app.snapsync.eventcreation.CreationStatusSource
+import app.snapsync.eventcreation.EventCreator
+import app.snapsync.eventcreation.MutableCreationStatusSource
+import app.snapsync.eventcreation.NoOpEventCreator
 import app.snapsync.eventstatus.EventStatus
 import app.snapsync.eventstatus.EventStatusSource
 import app.snapsync.eventstatus.MutableEventStatusSource
@@ -62,6 +68,11 @@ class StatusContainerHost(
     // don't exercise the join construct unchanged (Idle falls through to the sync hero); iOS injects
     // the same instance the JoinEvent drives.
     eventStatusSource: EventStatusSource = MutableEventStatusSource(),
+    // The create-event seams. Defaults make the create layer inert (always-Idle source, no-op
+    // creator) so non-iOS hosts and tests that don't exercise create construct unchanged; iOS injects
+    // the same instance the create use-case drives, and the real `EventCreator`.
+    creationStatusSource: CreationStatusSource = MutableCreationStatusSource(),
+    private val creator: EventCreator = NoOpEventCreator,
     // The leave action, injected as a plain suspend lambda (not the `LeaveEvent` type) so this
     // Compose-free module gains no engine/gallery dependency. Defaults to a no-op so non-iOS hosts
     // and tests construct unchanged and a confirmed leave there is inert; iOS binds it to
@@ -83,6 +94,7 @@ class StatusContainerHost(
                 permissionSource.permission.value,
                 eventStatusSource.status.value,
                 syncSource.status.value,
+                creationStatusSource.creationStatus.value,
                 clock.now(),
             ),
         ) {
@@ -91,14 +103,19 @@ class StatusContainerHost(
                 // snapshot verbatim and are never aged here — if one should change, that's the
                 // source's job via a new snapshot. Equal reductions are conflated by the
                 // container's StateFlow, so a tick re-emits only when visible text changed.
-                combine(
+                // Five sources combine into a holder (combine's max typed arity), then the holder
+                // combines with the minute ticker for relative-time re-renders.
+                val inputs = combine(
                     configSource.config,
                     permissionSource.permission,
                     eventStatusSource.status,
                     syncSource.status,
-                    minuteTicker(),
-                ) { config, permission, eventStatus, snapshot, _ ->
-                    reduceFrom(config, permission, eventStatus, snapshot, clock.now())
+                    creationStatusSource.creationStatus,
+                ) { config, permission, eventStatus, snapshot, creation ->
+                    Inputs(config, permission, eventStatus, snapshot, creation)
+                }
+                combine(inputs, minuteTicker()) { i, _ ->
+                    reduceFrom(i.config, i.permission, i.eventStatus, i.snapshot, i.creation, clock.now())
                 }
                     .collect { ui -> reduce { ui } }
             }
@@ -131,6 +148,15 @@ class StatusContainerHost(
                 SharingStarted.Eagerly,
                 configSource.config.value?.let { encodeConfigUrl(it) },
             )
+
+    /**
+     * Create a new event with [name] (event-creation-ui). Delegates to the injected [EventCreator]
+     * (fire-and-forget): it mints the event and, on success, provisions it through the same path a
+     * scanned QR uses (config goes present, the reduction leaves the create layer). Permission is not
+     * consulted here — a missing grant surfaces afterward via `PermissionBlocked`. The in-flight and
+     * failure outcomes arrive back through `CreationStatusSource`; nothing is reduced here.
+     */
+    fun onCreateEvent(name: String) = intent { creator.create(name) }
 
     fun onRequestPermission() = intent { requester.request() }
 
@@ -181,21 +207,35 @@ private fun pollTicks(interval: Duration): Flow<Unit> = flow {
     }
 }
 
-// Setup-gate precedence (config-presence only): the gate stands between the user and the rest of the
-// screen solely on config — without a connected event there is nothing to back up, so the gate
-// replaces the hero regardless of permission or snapshot. Once config is present, a permission that
-// is not fully granted has no meaningful sync state to show, so it surfaces on the status screen as
-// PermissionBlocked (NOT_DETERMINED priming / DENIED settings path), outranking the join/sync chain.
+// The five reduction inputs, bundled so the five-source combine (combine's max typed arity) can hand
+// a single value to the ticker combine without losing types.
+private class Inputs(
+    val config: EventConfigPayload?,
+    val permission: PermissionStatus,
+    val eventStatus: EventStatus,
+    val snapshot: SyncStatus,
+    val creation: CreationStatus,
+)
+
+// Create-layer precedence (config-presence only): without a connected event there is nothing to back
+// up, so the create layer replaces the hero regardless of permission, join, or snapshot — the top
+// rung. Once config is present, a permission that is not fully granted has no meaningful sync state to
+// show, so it surfaces as PermissionBlocked (NOT_DETERMINED priming / DENIED settings path),
+// outranking the join/sync chain.
 private fun reduceFrom(
     config: EventConfigPayload?,
     permission: PermissionStatus,
     eventStatus: EventStatus,
     snapshot: SyncStatus,
+    creation: CreationStatus,
     now: Instant,
 ): UiState {
-    val storageConnected = config != null
-    if (!storageConnected) {
-        return UiState.Setup(storageConnected, permission)
+    if (config == null) {
+        return when (creation) {
+            CreationStatus.InFlight -> UiState.CreatingEvent
+            is CreationStatus.Failed -> UiState.CreateEvent(error = creation.reason.message())
+            CreationStatus.Idle -> UiState.CreateEvent()
+        }
     }
     if (permission != PermissionStatus.GRANTED) {
         return UiState.PermissionBlocked(permission)
@@ -234,6 +274,12 @@ private fun SyncProgress.toUiState(now: Instant): UiState = when (state) {
 // null-guard keeps a forged/inconsistent snapshot from crashing the screen.
 private fun SyncProgress.finishedAgo(now: Instant): String =
     lastFinishedAt?.let { relativeTime(now - it) } ?: "just now"
+
+// The inline create-error copy, formatted in presentation (UiState carries final display strings).
+private fun CreationFailureReason.message(): String = when (this) {
+    CreationFailureReason.INVALID_NAME -> "That name isn't valid."
+    CreationFailureReason.SERVER -> "Couldn't reach the server."
+}
 
 private fun relativeTime(elapsed: Duration): String = when {
     elapsed < 1.minutes -> "just now"

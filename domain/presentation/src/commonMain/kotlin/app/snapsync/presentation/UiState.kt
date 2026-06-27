@@ -16,6 +16,22 @@ sealed interface UiState {
     data object Loading : UiState
 
     /**
+     * The create-event landing layer (event-creation-ui), shown while no event is connected
+     * (`config == null`) and no create is in flight. Carries an optional pre-formatted inline
+     * [error] — the last create failure's copy (sticky until the next attempt) or a transient
+     * invalid-deeplink message — rendered beneath the name input. Config-absent outranks permission,
+     * join, and snapshot, so this is the top reduction rung.
+     */
+    data class CreateEvent(val error: String? = null) : UiState
+
+    /**
+     * A `POST /event` create request is in flight (`config == null`, creation status `InFlight`): a
+     * preparing spinner with no input. Auto-resolves — success provisions config (off this layer),
+     * failure returns to [CreateEvent] with an inline error.
+     */
+    data object CreatingEvent : UiState
+
+    /**
      * Re-join reconciliation in flight (event-rejoin-reconciliation capability): the app is fetching
      * the event's already-stored files and seeding the ledger before enabling uploads. Shown once
      * config and permission are satisfied, ahead of any sync hero; auto-resolves to a sync state on
@@ -28,14 +44,6 @@ sealed interface UiState {
      * re-scans the event QR to try again. A terminal-until-rescan message, no spinner, no button.
      */
     data object JoinFailed : UiState
-
-    /**
-     * The setup gate (setup-gate capability): shown until storage is connected **and** photo
-     * permission is GRANTED. Carries enough to render the two checkable cards — whether the storage
-     * step is satisfied, and the current [permission] status driving the permission card's copy and
-     * CTA.
-     */
-    data class Setup(val storageConnected: Boolean, val permission: PermissionStatus) : UiState
 
     /**
      * Permission is not `GRANTED` while an event is connected (config present): the status screen

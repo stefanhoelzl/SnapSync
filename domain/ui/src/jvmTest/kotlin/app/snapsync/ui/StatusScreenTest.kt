@@ -2,10 +2,14 @@ package app.snapsync.ui
 
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.SemanticsMatcher
+import androidx.compose.ui.test.assertIsEnabled
+import androidx.compose.ui.test.assertIsNotEnabled
+import androidx.compose.ui.test.hasSetTextAction
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performTextInput
 import app.snapsync.permission.PermissionStatus
 import app.snapsync.presentation.UiState
 import kotlin.test.Test
@@ -46,68 +50,77 @@ class StatusScreenTest {
     }
 
     @Test
-    fun `unconnected storage shows the scan instruction`() {
-        rule.setContent {
-            StatusScreen(UiState.Setup(storageConnected = false, permission = PermissionStatus.GRANTED))
-        }
+    fun `create screen shows the name input and the scan-to-join hint`() {
+        rule.setContent { StatusScreen(UiState.CreateEvent()) }
 
-        rule.onNodeWithText("Connect your storage").assertExists()
-        rule.onNodeWithText("Open the Camera app and scan your SnapSync QR code.").assertExists()
+        rule.onNodeWithText("Create an event").assertExists()
+        rule.onNodeWithText("Or scan an event's QR code in the Camera app to join it.").assertExists()
+        rule.onNodeWithText("Event name").assertExists() // the field placeholder
+        rule.onNodeWithText("Create event").assertExists()
     }
 
     @Test
-    fun `invalid deeplink error replaces the storage instruction`() {
+    fun `invalid deeplink error shows on the create screen`() {
         rule.setContent {
-            StatusScreen(
-                UiState.Setup(storageConnected = false, permission = PermissionStatus.GRANTED),
-                transientError = "That QR code wasn't valid.",
-            )
+            StatusScreen(UiState.CreateEvent(), transientError = "That QR code wasn't valid.")
         }
 
         rule.onNodeWithText("That QR code wasn't valid.").assertExists()
     }
 
     @Test
-    fun `permission ask shows invitation copy and the allow action`() {
-        var requests = 0
-        rule.setContent {
-            StatusScreen(
-                UiState.Setup(storageConnected = true, permission = PermissionStatus.NOT_DETERMINED),
-                onRequestPermission = { requests++ },
-            )
-        }
+    fun `a create failure shows its inline error on the create screen`() {
+        rule.setContent { StatusScreen(UiState.CreateEvent(error = "Couldn't reach the server.")) }
 
-        rule.onNodeWithText("Storage connected").assertExists()
-        rule.onNodeWithText("Allow photo access").assertExists()
-        rule.onNodeWithText("Allow access").performClick()
-        assertEquals(1, requests)
+        rule.onNodeWithText("Couldn't reach the server.").assertExists()
     }
 
     @Test
-    fun `permission denied shows problem copy and the settings action`() {
-        var settingsOpens = 0
-        rule.setContent {
-            StatusScreen(
-                UiState.Setup(storageConnected = true, permission = PermissionStatus.DENIED),
-                onOpenSettings = { settingsOpens++ },
-            )
-        }
+    fun `create is disabled until a name is typed`() {
+        rule.setContent { StatusScreen(UiState.CreateEvent()) }
 
-        rule.onNodeWithText("Photo access denied").assertExists()
-        rule.onNodeWithText("Turn on photo access in Settings.").assertExists()
-        rule.onNodeWithText("Open Settings").performClick()
-        assertEquals(1, settingsOpens)
+        rule.onNodeWithText("Create event").assertIsNotEnabled()
+        rule.onNode(hasSetTextAction()).performTextInput("My Party")
+        rule.onNodeWithText("Create event").assertIsEnabled()
     }
 
     @Test
-    fun `setup gate shows no sync status hero`() {
-        rule.setContent {
-            StatusScreen(UiState.Setup(storageConnected = true, permission = PermissionStatus.DENIED))
-        }
+    fun `tapping create submits the typed name`() {
+        var created: String? = null
+        rule.setContent { StatusScreen(UiState.CreateEvent(), onCreateEvent = { created = it }) }
+
+        rule.onNode(hasSetTextAction()).performTextInput("My Party")
+        rule.onNodeWithText("Create event").performClick()
+        assertEquals("My Party", created)
+    }
+
+    @Test
+    fun `the name field caps at 100 characters`() {
+        rule.setContent { StatusScreen(UiState.CreateEvent()) }
+
+        val field = rule.onNode(hasSetTextAction())
+        field.performTextInput("a".repeat(100))
+        field.performTextInput("b") // would be the 101st — refused
+        val text = field.fetchSemanticsNode().config[SemanticsProperties.EditableText].text
+        assertEquals(100, text.length)
+    }
+
+    @Test
+    fun `create screen shows no sync hero and no leave action`() {
+        rule.setContent { StatusScreen(UiState.CreateEvent()) }
 
         rule.onNodeWithText("images synced", substring = true).assertDoesNotExist()
         rule.onNodeWithText("Nothing to sync yet").assertDoesNotExist()
-        rule.onNode(hasAnyProgressIndication()).assertDoesNotExist()
+        rule.onNodeWithContentDescription("Leave event").assertDoesNotExist()
+    }
+
+    @Test
+    fun `creating event shows a preparing indicator and no input`() {
+        rule.setContent { StatusScreen(UiState.CreatingEvent) }
+
+        rule.onNodeWithText("Creating your event …").assertExists()
+        rule.onNode(hasAnyProgressIndication()).assertExists()
+        rule.onNodeWithText("Event name").assertDoesNotExist()
     }
 
     @Test
@@ -238,10 +251,8 @@ class StatusScreenTest {
     }
 
     @Test
-    fun `setup gate hides the leave action`() {
-        rule.setContent {
-            StatusScreen(UiState.Setup(storageConnected = true, permission = PermissionStatus.GRANTED))
-        }
+    fun `create layer hides the leave action`() {
+        rule.setContent { StatusScreen(UiState.CreateEvent()) }
         rule.onNodeWithContentDescription("Leave event").assertDoesNotExist()
     }
 
@@ -322,12 +333,9 @@ class StatusScreenTest {
     }
 
     @Test
-    fun `setup gate hides the invite affordances`() {
+    fun `create layer hides the invite affordances`() {
         rule.setContent {
-            StatusScreen(
-                UiState.Setup(storageConnected = true, permission = PermissionStatus.GRANTED),
-                inviteUrl = SAMPLE_INVITE,
-            )
+            StatusScreen(UiState.CreateEvent(), inviteUrl = SAMPLE_INVITE)
         }
         rule.onNodeWithText("Scan to join this event").assertDoesNotExist()
         rule.onNodeWithContentDescription("Share invite link").assertDoesNotExist()

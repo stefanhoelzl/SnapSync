@@ -35,6 +35,12 @@ fun ControlPanel(controller: PanelController) {
             Text(if (config != null) "Config set" else "No config")
         }
 
+        Text("Create event (config absent)")
+        Button(onClick = { controller.showCreateInput() }) { Text("Create input") }
+        Button(onClick = { controller.showCreating() }) { Text("Creating (in flight)") }
+        Button(onClick = { controller.showCreateFailedInvalidName() }) { Text("Failed: invalid name") }
+        Button(onClick = { controller.showCreateFailedServer() }) { Text("Failed: server error") }
+
         Text("Permission")
         Button(onClick = { controller.showPermissionNotDetermined() }) { Text("Not determined") }
         Button(onClick = { controller.showPermissionDenied() }) { Text("Denied") }

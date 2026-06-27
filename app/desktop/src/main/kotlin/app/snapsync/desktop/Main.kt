@@ -45,6 +45,8 @@ fun main() = application {
                     }
                     println("share invite → $url")
                 },
+                creationStatusSource = controller.creationStatusSource,
+                creator = controller.creator,
             )
         }
         val state by host.container.stateFlow.collectAsState()
@@ -65,6 +67,7 @@ fun main() = application {
                             onLeaveEvent = host::onLeaveEvent,
                             onShareInvite = host::onShareInvite,
                             inviteUrl = inviteUrl,
+                            onCreateEvent = host::onCreateEvent,
                         )
                     }
                     ControlPanel(controller)

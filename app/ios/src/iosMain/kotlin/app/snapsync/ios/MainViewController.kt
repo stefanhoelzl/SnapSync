@@ -54,6 +54,7 @@ fun MainViewController() = ComposeUIViewController {
         onLeaveEvent = host::onLeaveEvent,
         onShareInvite = host::onShareInvite,
         inviteUrl = inviteUrl,
+        onCreateEvent = host::onCreateEvent,
         transientError = transientError,
     )
 }

@@ -6,6 +6,11 @@ import app.snapsync.permission.PermissionRequester
 import app.snapsync.permission.PermissionStatus
 import app.snapsync.permission.PermissionStatusSource
 import app.snapsync.config.EventConfigPayload
+import app.snapsync.eventcreation.CreationFailureReason
+import app.snapsync.eventcreation.CreationStatus
+import app.snapsync.eventcreation.CreationStatusSource
+import app.snapsync.eventcreation.EventCreator
+import app.snapsync.eventcreation.NoOpEventCreator
 import app.snapsync.eventstatus.EventStatus
 import app.snapsync.eventstatus.MutableEventStatusSource
 import app.snapsync.status.SyncStatus
@@ -35,6 +40,7 @@ class PanelController(private val clock: Clock = Clock.System) {
     )
     private val permissionState = MutableStateFlow(PermissionStatus.NOT_DETERMINED)
     private val configState = MutableStateFlow<EventConfigPayload?>(null)
+    private val creationState = MutableStateFlow<CreationStatus>(CreationStatus.Idle)
     private val armedGrants = MutableStateFlow(true)
 
     val syncSource: SyncStatusSource = object : SyncStatusSource {
@@ -64,6 +70,13 @@ class PanelController(private val clock: Clock = Clock.System) {
     // The re-join status cell, injected into the container so the join presets can forge Joining /
     // JoinFailed (which sit above the sync hero once both gates pass).
     val eventStatusSource = MutableEventStatusSource()
+
+    // The create-status cell, injected so the create presets can forge the create layer (shown only
+    // while config is absent). The creator is a no-op — the harness forges states, it never mints.
+    val creationStatusSource: CreationStatusSource = object : CreationStatusSource {
+        override val creationStatus = creationState
+    }
+    val creator: EventCreator = NoOpEventCreator
 
     /** The current config cell, so the toggle can reflect whether storage is connected. */
     val currentConfig = configState.asStateFlow()
@@ -142,6 +155,23 @@ class PanelController(private val clock: Clock = Clock.System) {
         permissionState.value = PermissionStatus.GRANTED
         configState.value = CANNED_CONFIG
         eventStatusSource.set(EventStatus.JoinFailed)
+    }
+
+    // Create presets: force config absent (the create layer's only precondition), then forge the
+    // creation cell. Permission is irrelevant to the create layer, so it is left untouched.
+    fun showCreateInput() = forgeCreate(CreationStatus.Idle)
+
+    fun showCreating() = forgeCreate(CreationStatus.InFlight)
+
+    fun showCreateFailedInvalidName() =
+        forgeCreate(CreationStatus.Failed(CreationFailureReason.INVALID_NAME))
+
+    fun showCreateFailedServer() =
+        forgeCreate(CreationStatus.Failed(CreationFailureReason.SERVER))
+
+    private fun forgeCreate(status: CreationStatus) {
+        configState.value = null
+        creationState.value = status
     }
 
     fun showNothingToSync() {
