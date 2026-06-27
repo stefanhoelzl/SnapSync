@@ -83,7 +83,7 @@ The extension SHALL target iOS 26.1 and use the deprecated `PHBackgroundResource
 For each discovered `Resource` the extension SHALL drive the shared `SyncEngine` with
 `ResourceChanged` and act on the decision. On a `Work` decision (`Upload`/`ReUpload`) it SHALL build
 the destination request from the real `EdgeUploadRequestProvider` (a plain `PUT` to the locally-built
-edge URL `<host>/event/<eventId>/device/<deviceId>/file/<filename>`, no signing), create a system
+edge URL `<host>/event/<eventId>/file/<filename>`, no signing), create a system
 upload job via `creationRequestForJob(destination:resource:)`, and **then** report
 `UploadStarted(job)` to the engine so the ledger records `REQUESTED` (write-after-act — `REQUESTED`
 is recorded only after the job exists, never before). On `AlreadyUploaded` it SHALL create no job and
@@ -107,19 +107,15 @@ write nothing. Completion and failure outcomes are reduced into the ledger by th
 
 ### Requirement: Extension assembles config from the Keychain payload and compile-time host
 
-The extension SHALL assemble the inputs it hands to `EdgeUploadRequestProvider` from three sources: the runtime `EventConfigPayload` (`eventId`) read synchronously from the **shared Keychain** via the `:capability:config` `ConfigSource`; the compile-time edge **host** read from the extension bundle's `BackgroundUploadURLBase` (`NSBundle` info dictionary); and the **`deviceId`** obtained from the App-Group device-id store (see "Extension supplies an App-Group-persisted device id"). When the Keychain payload is **absent** (the extension woke before the user joined an event), or the `deviceId` cannot be obtained, the extension SHALL log and complete the cycle as a successful no-op — creating no job and writing nothing — never crashing.
+The extension SHALL assemble the inputs it hands to `EdgeUploadRequestProvider` from two sources: the runtime `EventConfigPayload` (`eventId`) read synchronously from the **shared Keychain** via the `:capability:config` `ConfigSource`; and the compile-time edge **host** read from the extension bundle's `BackgroundUploadURLBase` (`NSBundle` info dictionary). When the Keychain payload is **absent** (the extension woke before the user joined an event), the extension SHALL log and complete the cycle as a successful no-op — creating no job and writing nothing — never crashing.
 
-#### Scenario: Config present — provider built from host + eventId + deviceId
-- **WHEN** `process()` runs with an `EventConfigPayload` present in the shared Keychain and a device id available
-- **THEN** the extension builds `EdgeUploadRequestProvider` with `host` from `BackgroundUploadURLBase`, `eventId` from the payload, and the persisted `deviceId`
+#### Scenario: Config present — provider built from host + eventId
+- **WHEN** `process()` runs with an `EventConfigPayload` present in the shared Keychain
+- **THEN** the extension builds `EdgeUploadRequestProvider` with `host` from `BackgroundUploadURLBase` and `eventId` from the payload
 
 #### Scenario: Config absent — cycle skipped cleanly
 - **WHEN** `process()` runs with no `EventConfigPayload` in the shared Keychain
 - **THEN** the extension logs the absence and returns a terminal success, creating no upload job and writing nothing to the ledger
-
-#### Scenario: Device id unavailable — cycle skipped cleanly
-- **WHEN** `process()` runs but the device id cannot be obtained
-- **THEN** the extension logs and returns a terminal success, creating no upload job and writing nothing
 
 ### Requirement: Extension registration is a disable→enable toggle
 
@@ -327,34 +323,6 @@ as new work: discovery finds no ledger entry, so the engine returns `Upload` and
   "Recently Deleted")
 - **THEN** discovery finds no ledger entry for its resources, the engine returns `Upload`, and a
   fresh job is created (the idempotent PUT targets the unchanged key)
-
-### Requirement: Extension supplies an App-Group-persisted device id
-
-The extension SHALL obtain a stable `deviceId` — a **canonical UUID** that scopes this device's
-uploads within an event (the `<deviceId>` path segment) — from a shared App-Group store, **lazily
-minting** it on first need: read the device id from App-Group `NSUserDefaults` (suite
-`group.app.snapsync`); if absent, generate a new UUID with Foundation (`NSUUID`, **not** UIKit /
-`identifierForVendor`, so it is available even in a background-launched, locked-device extension and
-is never `nil`), persist it, and reuse it thereafter. The minted id SHALL be lowercase canonical
-UUID form accepted by the edge endpoint's validator. It is stable for the install and rotates only
-when the App Group is wiped (uninstall) — accepted; a re-provision does not change it. The
-mint/load orchestration over an opaque store port SHALL be platform-free (`commonMain`) so it is
-exercised on the simulator with a fake; the `NSUserDefaults` access is untested iosMain wiring.
-
-#### Scenario: First need mints and persists a device id
-- **WHEN** the extension needs a `deviceId` and none is stored in the App Group
-- **THEN** it generates a canonical UUID with `NSUUID`, persists it to App-Group `NSUserDefaults`,
-  and uses it — without any UIKit/`identifierForVendor` call
-
-#### Scenario: Subsequent cycles reuse the same device id
-- **WHEN** the extension needs a `deviceId` and one is already stored
-- **THEN** it reads and reuses the stored value (the same `<deviceId>` path segment across cycles
-  and across process restarts)
-
-#### Scenario: Re-provision preserves the device id
-- **WHEN** a valid `snapsync://` config rescan re-provisions sync
-- **THEN** the stored device id is left unchanged, so this device keeps the same `<deviceId>` folder
-  under the (possibly new) event
 
 ### Requirement: App reads succeeded upload jobs (read-only observation)
 

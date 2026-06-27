@@ -13,7 +13,7 @@ A **scope pivot** (2026-06-22) of SnapSync, from a *personal one-way library bac
 >   that carries the event config (id, name, start date). This **reuses the existing
 >   `:capability:config` deeplink-provisioning** path that used to carry `S3Config`.
 > - Once joined, the device uploads its **photos taken since the event's start date**, scoped to that
->   event, exactly like v1's always-on backup — but to a **per-event/per-device key namespace**.
+>   event, exactly like v1's always-on backup — but to a **per-event key namespace**.
 > - The storage credential **no longer ships in the app**. An external **edge upload endpoint**
 >   (bunny.net Edge Scripting) **proxies** each upload: the device PUTs bytes to it and it streams
 >   them into the bucket via bunny's **native** Storage API, keyed by event id. The device holds no
@@ -96,7 +96,7 @@ decision path is exercised off-device. Orchestration (loops, backpressure, job e
 deliberately **platform-side** — the shared core decides and remembers.
 
 **The event is platform context, not engine vocabulary.** The engine still knows only *resources*
-(§2.2). Event scoping (the `<eventId>/<deviceId>/` key placement, the capture-date discovery
+(§2.2). Event scoping (the `<eventId>/` key placement, the capture-date discovery
 filter, the edge URL build) lives **above and beside** the seam, in the platform adapter and the
 `UploadRequestProvider` impl — the engine and ledger are event-blind by construction.
 
@@ -171,7 +171,7 @@ platform/provider's** business. The engine carries `assetId` through to the ledg
 interprets it** — like `filename` it is pure identity whose meaning is the platform's (iOS: the
 asset's `localIdentifier`, normalized). The platform hands each resource a single opaque `filename`
 — pure *identity*, a plain string. Its *representation* and *placement* (percent-encoding into a URL
-path, the `<eventId>/<deviceId>/` prefix, the edge URL build) are **the provider's
+path, the `<eventId>/` prefix, the edge URL build) are **the provider's
 responsibility**, under one contract: the filename→destination mapping must be **deterministic and
 injective** — that is where upload idempotency lives.
 
@@ -214,8 +214,8 @@ class UploadJob(val request: UploadRequest, val attempt: Int)
 
 interface UploadRequestProvider {            // impl: a LOCAL URL builder, no network (test: dumb fake)
     suspend fun provide(resource: Resource): UploadRequest
-    // builds the key (<eventId>/<deviceId>/<encoded filename>) from event config + device id, composes
-    // the edge URL (/event/<id>/device/<id>/file/<filename>), returns the full request. NO network call.
+    // builds the key (<eventId>/<encoded filename>) from event config, composes
+    // the edge URL (/event/<id>/file/<filename>), returns the full request. NO network call.
     // CONTRACT: filename → destination is deterministic and injective; Content-Type set; called only
     // for Work answers — never on a skip.
 }
@@ -290,7 +290,7 @@ completions at the acknowledge edge, BEFORE acknowledging** (`UploadCompleted(jo
 `acknowledge()`). Failures are reported as `UploadFailed(job, error)` and answered with `Retry`. **Every
 presented job is acknowledged** (iOS errors 50008 otherwise). **Retention is the ledger itself** — a
 returned system job is mapped back to its key by **parsing its destination URL path**
-(`/event/<id>/device/<id>/file/<name>` → `<id>/<id>/<name>`), since `resource` is **nil for succeeded
+(`/event/<id>/file/<name>` → `<id>/<name>`), since `resource` is **nil for succeeded
 jobs**; version/attempt come from the ledger row. **One ledger
 writer per platform:** the engine (and its `LedgerWriter`) is hosted where uploads are decided — on
 iOS, the extension; the app holds a read-only ledger view. Scope filtering (photos yes, standalone
@@ -375,35 +375,39 @@ We upload **every `PHAssetResource` of each qualifying photo asset** (complete f
 alternates, **and Live Photo `.pairedVideo`/`.fullSizePairedVideo`**. "Qualifying" = the asset's
 **capture date ≥ the event start date** (§3.2).
 
-- **Key: `<eventId>/<deviceId>/<encoded filename>`** (no `events/` prefix — the zone is the event
+- **Key: `<eventId>/<encoded filename>`** (no `events/` prefix — the zone is the event
   collection) where the filename is **`<localId>-<kind>.<ext>`**, composed platform-side:
   - **`<eventId>`** — from the joined event config (deeplink, §4). **High-entropy/unguessable** — it
     doubles as the upload capability, since the edge endpoint authorizes by event id alone (no token).
-  - **`<deviceId>`** — a random UUID **lazily minted** (Foundation `NSUUID`, no UIKit) and persisted
-    in the App Group the first time the extension needs it, stable across events; identifies the
-    **contributing device** (the only attribution; no display name). Minting in the extension (not
-    `identifierForVendor`) keeps it available even when the extension wakes on a locked device.
   - **`<localId>`** = the asset's `PHAsset.localIdentifier` (**no `PHCloudIdentifier` resolution** —
     dropped with its batch-lookup cost and provisional-window risk; matches the device-verified impl).
-    Per-device namespacing makes the local id sufficient — no cross-device dedup is attempted.
+    `localIdentifier` is UUID-based, so it is sufficient as the per-event identity — no cross-device
+    dedup is attempted, and no device namespace is needed (see the collision note below).
   - **`<kind>`** = the open platform resource-kind string (e.g. `ios.photo`, `ios.fullSizePhoto`);
     `Content-Type` from the resource's UTI.
   - The filename is pure *identity*; the **provider** owns its representation — percent-encoding (bytes
-    outside `[A-Za-z0-9._-]` → `%XX`) and the `<eventId>/<deviceId>/` placement — under the
+    outside `[A-Za-z0-9._-]` → `%XX`) and the `<eventId>/` placement — under the
     deterministic-and-injective contract (§2.2). The bucket is **flat within that prefix**.
 - **Edit-handling dissolves:** the original resource is immutable; an edit just **adds**
   `.fullSizePhoto` + `.adjustmentData` resources, which surface via the change feed as *new* jobs under
   *new* keys. Nothing is overwritten.
 - **No custom metadata headers.** bunny Storage's native API **does not support custom metadata
   headers** (§4), so v1's signed-header reconstruction scheme is **removed**. The downstream
-  (external) viewer recovers what it needs from **(a)** the key path (event, device, resource kind,
-  original identity) and **(b)** the **EXIF/maker metadata already inside the image bytes** (capture
-  date, geolocation, camera). There is **no signing at all** — the edge writes with its `AccessKey`;
-  the device sends only `Content-Type`.
-- Trade-offs (accepted): **no content dedup**; per-device key namespaces mean the *same* physical photo
-  shared by two devices lands twice (once per device) — acceptable and arguably desirable for
-  attribution. Asset-level facts not present in EXIF (favorite flag, album membership) are **not
-  preserved** (cosmetic; deferred).
+  (external) viewer recovers what it needs from **(a)** the key path (event, resource kind, original
+  identity) and **(b)** the **EXIF/maker metadata already inside the image bytes** (capture date,
+  geolocation, camera). There is **no signing at all** — the edge writes with its `AccessKey`; the
+  device sends only `Content-Type`.
+- **Flat namespace, no device level (`flatten-event-namespace`).** Keys are not scoped by a device id.
+  The earlier `<eventId>/<deviceId>/` scheme hedged against a `localIdentifier` collision across
+  devices, but `localIdentifier` is UUID-based: in a flat `<eventId>/` namespace two devices collide
+  only on the *same* `localId`, which is either the same physical asset (identical bytes → harmless
+  idempotent overwrite) or a UUID collision (~0). The device level bought only anonymous
+  per-contributor grouping for an out-of-scope external viewer — not a v1 goal — so it is removed.
+  **Foreclosed (accepted):** per-contributor grouping and clean per-device deletion; reintroducing
+  either later needs a contributor id folded into the filename, not a directory level.
+- Trade-offs (accepted): **no content dedup** — the *same* physical photo shared by two devices lands
+  once per distinct `localId` (typically twice, since `localId` is device-local). Asset-level facts
+  not present in EXIF (favorite flag, album membership) are **not preserved** (cosmetic; deferred).
 
 ### 3.2 Discovery & state (date-filtered PhotoKit discovery, engine-owned memory)
 
@@ -411,8 +415,8 @@ alternates, **and Live Photo `.pairedVideo`/`.fullSizePairedVideo`**. "Qualifyin
 > discovery is **deferred** — the shipped pivot enumerates the **whole library** (no `creationDate`
 > predicate), and the deeplink carries **`{ eventId }` only** (no `startDate`/`name`; §4). The
 > date-filter design below is the target end-state; it returns once `startDate` is provisioned. The
-> credential-free edge upload, the `<eventId>/<deviceId>/` placement, and the lazy-minted `deviceId`
-> ship now.
+> credential-free edge upload and the `<eventId>/` placement ship now (the device level was later
+> removed — `flatten-event-namespace`).
 
 - **Discovery** is the `PHPersistentChangeToken`, **filtered to capture date ≥ event start**:
   - **Initial join:** `PHAsset.fetchAssets` over the library with a `creationDate >= startDate`
@@ -435,7 +439,7 @@ alternates, **and Live Photo `.pairedVideo`/`.fullSizePairedVideo`**. "Qualifyin
   is the only transition.)
 - **State**: upload memory is the **engine's ledger** (single writer = the extension). The platform
   keeps only small, **lossy-tolerant** discovery bookkeeping in the App Group: `{lastToken,
-  startDate, eventId, deviceId, deferredIds?}`. Losing the residue costs one record's worth of
+  startDate, eventId, deferredIds?}`. Losing the residue costs one record's worth of
   duplicate jobs, absorbed downstream. The job system remains the execution authority
   (`acknowledge()` frees `jobLimit` slots). The app never `LIST`s the bucket (the edge endpoint is
   PUT-only); restore/view-side `LIST` is a separate external admin path (§4).
@@ -467,7 +471,7 @@ the system downloads each resource (incl. from iCloud) and performs `job.destina
    `PHAssetResource`s and wrap each as a `Resource` — filename `"<localId>-<kind>.<ext>"`, `version` =
    the asset's `modificationDate`. Report `ResourceChanged` per resource and act on the decision:
    `AlreadyUploaded` → continue (no job slot); `Work` → `provider.provide(resource)` **builds the edge
-   URL** (`/event/<eventId>/device/<deviceId>/file/<filename>`) locally, then take the `PHAssetResource` from
+   URL** (`/event/<eventId>/file/<filename>`) locally, then take the `PHAssetResource` from
    `decision.job.request.resource.data`, build the `URLRequest` (PUT + `Content-Type`) →
    `creationRequestForJob(destination:resource:)` in `performChanges {}`. On `limitExceeded` stop
    reporting for this cycle, do **not** advance the cursor, and return `.processing`.
@@ -501,10 +505,10 @@ config from the shared Keychain + bookkeeping from the App Group.
 There is **no sidecar and no app-side upload** — and now **no custom metadata headers** either (§3.1,
 unsupported by bunny native API). The collected photos are made sense of **externally**:
 
-- The **key path** carries event id, device id, resource kind, and the resource's original identity.
+- The **key path** carries event id, resource kind, and the resource's original identity.
 - The **image bytes carry their own EXIF/maker metadata** (capture date, geolocation, camera, etc.).
 - An external tool (admin-credentialed, `ListBucket` + `GetObject`) can `LIST` `<eventId>/` to
-  enumerate all contributions, group by `<deviceId>`, and read EXIF per object.
+  enumerate all contributions and read EXIF per object.
 
 The **event-creation tool**, the **QR minting**, and any **viewing/restore tool** are all **external,
 out of scope** for this app. This doc specifies only the contracts the app depends on (§4).
@@ -526,24 +530,23 @@ bytes). The proxy sidesteps signing entirely: the endpoint, not the device, writ
   versioning/ACL/SSE/tagging/lifecycle, no batch delete.
 - **Upload endpoint (external, bunny.net Edge Scripting / Deno + Hono — implemented in `backend/`):** the app's
   only backend dependency. Capability specs: `bunny-upload-endpoint`, `bunny-list-endpoint`, `backend-deployment`.
-  - **Request:** `PUT /event/<eventId>/device/<deviceId>/file/<filename>` with the resource bytes as
+  - **Request:** `PUT /event/<eventId>/file/<filename>` with the resource bytes as
     the body and `Content-Type`. The endpoint **streams** the body straight into the bunny native PUT
     (one subrequest, never buffered).
   - **Read (list):** `GET /event/<eventId>/files` returns a flat JSON array of every stored object
-    for the event, across all devices — `{ filename, deviceId, size, lastModified }` per entry. It
-    walks bunny native Storage LIST per-directory (event dir → each device dir), authorized by the
-    event id alone. `200 []` for an empty/unknown event (no registry to distinguish), `400` for a
-    malformed id, `502` on any upstream LIST failure (never a partial list). The listed `filename` is
-    decoded back to the uploaded name so a device matches by it. Consumer (implemented): a re-joined
-    device pre-seeds its ledger before enabling uploads — `deviceId` rotates on reinstall (and a
-    destructive ledger migration empties the ledger), so it reconciles across all devices by the
-    reinstall-stable `filename`. Capabilities: `bunny-list-endpoint` (read) +
-    `event-rejoin-reconciliation` (the on-device join).
+    for the event — `{ filename, size, lastModified }` per entry. It does a **single** bunny native
+    Storage LIST of the event dir (files are direct children), authorized by the event id alone.
+    `200 []` for an empty/unknown event (no registry to distinguish), `400` for a malformed id, `502`
+    on any upstream LIST failure (never a partial list). The listed `filename` is decoded back to the
+    uploaded name so a device matches by it. Consumer (implemented): a re-joined device pre-seeds its
+    ledger before enabling uploads — a reinstall (and a destructive ledger migration) empties the
+    ledger, so it reconciles by the reinstall-stable `filename`. Capabilities: `bunny-list-endpoint`
+    (read) + `event-rejoin-reconciliation` (the on-device join).
   - **Response:** `2xx` **only** when bunny confirms the stored object; any upstream error/abort →
     `5xx` (so the engine retries). Never a false success.
   - **Authorization: by event id only** (no token — the QR carries no secret beyond the id). The event
     id is a high-entropy UUID, so possession of it is the capability. The endpoint validates the path
-    (UUID `eventId`/`deviceId`, safe filename) and writes the **bare** key `<eventId>/<deviceId>/<filename>`;
+    (UUID `eventId`, safe filename) and writes the **bare** key `<eventId>/<filename>`;
     abuse protection (overwrite rejection, rate-limiting, a registry) is deferred (§8). The storage-zone
     `AccessKey` lives only in the edge env.
   - **Base URL is compile-time-baked** (BuildKonfig `BackgroundUploadURLBase` = the edge host), not
@@ -639,7 +642,7 @@ bytes). The proxy sidesteps signing entirely: the endpoint, not the device, writ
   **`clear()`** for re-provision; `LedgerWatcher` stream tests; the classification decision table and
   `LedgerSyncStatusSource` tests with **`active` = permission ∧ joined** (real watcher + in-memory
   backend + fake permission + fake event-config source); **`UploadRequestProvider` (local URL builder)
-  tests** — key construction (`<eventId>/<deviceId>/<encoded filename>`, percent-encoding,
+  tests** — key construction (`<eventId>/<encoded filename>`, percent-encoding,
   deterministic+injective), edge-URL shaping, invalid-input → rethrow; **date-filter discovery
   predicate tests** (capture ≥ start) where the logic is shared; `:capability:config` deeplink-parse
   tests (`snapsync://` → EventConfig); Orbit reducers.
@@ -671,7 +674,7 @@ itself is covered by the endpoint's `Deno.test` suite.
 | HTTP | **Ktor** (Darwin engine) | **not load-bearing for upload** — the PUT is iOS's (straight to the edge) and the `UploadRequestProvider` builds the URL **locally** (no HTTP). Retained only if a future on-device HTTP need arises; app never `LIST`s |
 | Crypto/IO | **okio** (App-Group IO) | hand-rolled SigV4 **retired** — signing is **eliminated** (the edge writes with its `AccessKey`); KotlinCrypto no longer needed on-device |
 | Engine ledger | **SQLDelight** (2.3.2) | per-key upload memory; single writer (extension), read-only app connection; `clear()` on re-provision |
-| Persistence | **okio + kotlinx.serialization** | tiny App-Group store: change token, start date, eventId, deviceId; event config in shared **Keychain** (via `:capability:config`) |
+| Persistence | **okio + kotlinx.serialization** | tiny App-Group store: change token, start date, eventId; event config in shared **Keychain** (via `:capability:config`) |
 | Config | **BuildKonfig** | edge host (`BackgroundUploadURLBase`); **no secrets** (storage `AccessKey` lives on the edge). Event config is runtime (deeplink) |
 | Backend | **Deno + Hono + bunny Edge Scripting** | the `backend/` streaming proxy upload endpoint (`@bunny.net/edgescript-sdk` + Hono routing); native Storage `PUT` + `AccessKey`; deployed via GitHub Action |
 | Deeplink | **`:capability:config`** | `snapsync://` → EventConfig provisioning (was S3Config) |
@@ -685,7 +688,7 @@ itself is covered by the endpoint's `Deno.test` suite.
 **Resolved (the 2026-06-22 scope pivot):**
 - **Contributor-only, event-scoped.** App joins an externally-created event by scanning a `snapsync://`
   QR with the native Camera; uploads photos with **capture date ≥ event start** to
-  `<eventId>/<deviceId>/<localId>-<kind>.<ext>`. No in-app create/QR/viewing/Leave.
+  `<eventId>/<localId>-<kind>.<ext>`. No in-app create/QR/viewing/Leave.
 - **Single event at a time**; **join reconciles** (seed already-stored photos before enabling, clear
   cursor, re-register extension); a **switch** clears the ledger; same-event re-join is a no-op.
   Multi-event and Leave **deferred**.
@@ -693,9 +696,10 @@ itself is covered by the endpoint's `Deno.test` suite.
   endpoint** streams bytes into the bucket **by event id only** (event id = the capability). Edge host
   is BuildKonfig; **no baked secrets** (the storage `AccessKey` lives only on the edge). *(2026-06-22
   proxy pivot — replaces the earlier mint/presigned model and eliminates the UNSIGNED-PAYLOAD risk.)*
-- **`localIdentifier` keys** (no `PHCloudIdentifier` resolution); **device-id attribution**; **no
-  custom metadata headers** (unsupported by bunny native API) — downstream reconstruction uses the key
-  path + in-file EXIF; v1's §3.5 signed-header scheme **removed**.
+- **`localIdentifier` keys** (no `PHCloudIdentifier` resolution); **flat `<eventId>/` namespace, no
+  device level** (`flatten-event-namespace`); **no custom metadata headers** (unsupported by bunny
+  native API) — downstream reconstruction uses the key path + in-file EXIF; v1's §3.5 signed-header
+  scheme **removed**.
 - **Full fidelity retained** (all `PHAssetResource`s, incl. Live Photo paired video).
 - **`active` = permission ∧ joined**; "not joined" is the **setup-gate no-event state**, not a new
   `SyncState`. Status screen shows **progress only**.

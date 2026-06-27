@@ -12,8 +12,8 @@ import kotlinx.serialization.json.Json
  * The [EventFilesSource] over an injected Ktor [HttpClient] (the engine — Darwin on iOS — is supplied
  * by the composition root, so this stays platform-neutral and testable with `MockEngine`). It GETs
  * `<host>/event/<eventId>/files` (HTTPS, default ATS), maps any non-2xx / transport / parse error to
- * a failed [Result], and parses the flat array into [RemoteFile]s (ignoring the `deviceId`/`size`
- * fields the join does not need). The `eventId` is a UUID, so no path encoding is required.
+ * a failed [Result], and parses the flat array into [RemoteFile]s (ignoring the `size` field the
+ * join does not need). The `eventId` is a UUID, so no path encoding is required.
  */
 class HttpEventFilesSource(
     private val client: HttpClient,

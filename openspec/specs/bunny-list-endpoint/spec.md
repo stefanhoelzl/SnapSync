@@ -4,15 +4,13 @@
 
 A read-only, per-event file listing on the backend (Deno + Hono), served by the same app as
 `bunny-upload-endpoint`. `GET /event/<eventId>/files` returns a flat JSON array of every object
-stored for the event, aggregated across all devices, authorized by possession of the event id
-alone (no token, no registry — the same capability model as upload). Because bunny native Storage
-LIST is per-directory (non-recursive), the endpoint fans out — listing the event directory for its
-device sub-directories, then each device directory for its files — and flattens the result.
+stored for the event, authorized by possession of the event id alone (no token, no registry — the
+same capability model as upload). Files live directly under `<eventId>/` (the flat key scheme), so a
+single bunny native Storage LIST of the event directory returns them.
 
 Its motivating consumer (a separate change) is a re-joined device pre-seeding its ledger: a
-reinstall rotates the device's `deviceId` and wipes its ledger, so it reconciles against storage by
-the reinstall-stable `filename` (which embeds the PHAsset `localIdentifier`), which requires
-enumerating every device's objects for the event. Authoritative design: docs/design.md §3.1 (keys),
+reinstall wipes its ledger, so it reconciles against storage by the reinstall-stable `filename`
+(which embeds the PHAsset `localIdentifier`). Authoritative design: docs/design.md §3.1 (keys),
 §4 (storage/auth).
 ## Requirements
 ### Requirement: Per-event file listing route
@@ -41,42 +39,39 @@ configuration.
 - **WHEN** the path does not match `/event/<eventId>/files`, or the method is not `GET`
 - **THEN** the endpoint responds `404` and makes no upstream request
 
-### Requirement: Cross-device aggregation via per-directory walk
+### Requirement: Single-directory event listing
 
-The endpoint SHALL return the objects of **all** devices under the event as a single flat array. It
-SHALL obtain them from bunny native Storage's per-directory List Files API: first listing the event
-directory `<zone>/<eventId>/` to discover the device sub-directories (the entries marked as a
-directory), then listing each device directory `<zone>/<eventId>/<deviceId>/` to discover its files,
-and flattening the files of every device into one array. Directory entries themselves SHALL NOT
-appear in the result (only files). Each List request SHALL carry the storage zone's `AccessKey`
-header from configuration.
+The endpoint SHALL return the objects stored under the event as a single flat array obtained from a
+**single** bunny native Storage List Files request against the event directory `<zone>/<eventId>/`.
+Files are direct children of the event directory (the key is `<eventId>/<filename>`), so no
+sub-directory discovery or per-directory fan-out is performed. Directory entries (if any) SHALL NOT
+appear in the result (only files). The List request SHALL carry the storage zone's `AccessKey`
+header from configuration and never the account API key.
 
-#### Scenario: Files from every device are flattened
+#### Scenario: Event directory files are returned
 
-- **WHEN** the event directory lists two device directories and each contains files
-- **THEN** the response is one flat array containing the files of both devices, and no directory
-  entries
+- **WHEN** the event directory `<zone>/<eventId>/` contains files
+- **THEN** the response is a flat array of those files, with no directory entries, obtained from one
+  List request
 
 #### Scenario: Directory listing uses the storage AccessKey
 
-- **WHEN** the endpoint lists the event directory or a device directory
+- **WHEN** the endpoint lists the event directory
 - **THEN** the upstream List request carries the configured `AccessKey` header and never the account
   API key
 
 ### Requirement: Normalized entry shape
 
-Each array element SHALL be an object with exactly the fields `filename`, `deviceId`, `size`, and
-`lastModified`. `filename` SHALL be the object's name within its device directory (bunny's
-`ObjectName`); `deviceId` SHALL be the device directory the object was listed under; `size` SHALL be
-the object's byte length (bunny's `Length`); `lastModified` SHALL be the object's last-modified
-timestamp (whichever of bunny's last-modified fields is present). The entry SHALL NOT include a
-content type or the full storage key.
+Each array element SHALL be an object with exactly the fields `filename`, `size`, and
+`lastModified`. `filename` SHALL be the object's name within the event directory (bunny's
+`ObjectName`); `size` SHALL be the object's byte length (bunny's `Length`); `lastModified` SHALL be
+the object's last-modified timestamp (whichever of bunny's last-modified fields is present). The
+entry SHALL NOT include a `deviceId`, a content type, or the full storage key.
 
-#### Scenario: Entry carries the four normalized fields
+#### Scenario: Entry carries the three normalized fields
 
 - **WHEN** a stored object is listed
-- **THEN** its entry is `{ filename, deviceId, size, lastModified }`, where `deviceId` is the device
-  directory it was found under, and carries no other fields
+- **THEN** its entry is `{ filename, size, lastModified }` and carries no other fields (no `deviceId`)
 
 ### Requirement: Empty or unknown event yields an empty array
 
@@ -92,20 +87,19 @@ event id that has no objects.
 
 ### Requirement: Faithful outcome — no partial list
 
-The endpoint SHALL return a `2xx` array **only** when every required List request succeeds. If the
-event-directory List or **any** per-device List fails (upstream error, timeout, or aborted
-response), the endpoint SHALL respond `5xx` and SHALL NOT return a partial or truncated array, and
-SHALL NEVER return `2xx` for an incomplete walk.
+The endpoint SHALL return a `2xx` array **only** when the event-directory List succeeds. If that
+List fails (upstream error, timeout, or aborted response), the endpoint SHALL respond `5xx` and SHALL
+NOT return a partial or truncated array, and SHALL NEVER return `2xx` for a failed List.
 
-#### Scenario: A failed sub-listing fails the whole request
+#### Scenario: A failed listing fails the whole request
 
-- **WHEN** listing one device directory returns an error or times out
+- **WHEN** the event-directory List returns an error or times out
 - **THEN** the endpoint responds `5xx` and returns no array (not a partial list)
 
-#### Scenario: All listings succeed
+#### Scenario: The listing succeeds
 
-- **WHEN** the event-directory List and every per-device List succeed
-- **THEN** the endpoint responds `200` with the complete flattened array
+- **WHEN** the event-directory List succeeds
+- **THEN** the endpoint responds `200` with the complete array
 
 ### Requirement: Authorization by event id only
 
@@ -134,13 +128,12 @@ client uploaded — neither double-encoded nor left in an encoded form.
 
 ### Requirement: Listing completeness
 
-The returned array SHALL contain **every** object stored under the event across all devices — not a
-capped, sampled, or first-page subset. This completeness relies on bunny native Storage LIST
-returning a directory's full contents in a single response (it is non-paginated); should that cease
-to hold, the endpoint MUST follow continuation to preserve completeness rather than return a partial
-page as `2xx`.
+The returned array SHALL contain **every** object stored under the event — not a capped, sampled, or
+first-page subset. This completeness relies on bunny native Storage LIST returning a directory's full
+contents in a single response (it is non-paginated); should that cease to hold, the endpoint MUST
+follow continuation to preserve completeness rather than return a partial page as `2xx`.
 
-#### Scenario: A device directory with many files returns them all
-- **WHEN** a device directory holds a large number of files and the event is listed
+#### Scenario: An event directory with many files returns them all
+- **WHEN** the event directory holds a large number of files and the event is listed
 - **THEN** the response includes every file in that directory (no page cap)
 

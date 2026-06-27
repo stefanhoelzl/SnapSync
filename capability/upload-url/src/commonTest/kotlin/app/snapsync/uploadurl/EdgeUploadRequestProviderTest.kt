@@ -10,7 +10,6 @@ import kotlin.test.assertTrue
 class EdgeUploadRequestProviderTest {
 
     private val eventId = "11111111-1111-4111-8111-111111111111"
-    private val deviceId = "22222222-2222-4222-8222-222222222222"
 
     private fun resource(filename: String, contentType: String = "image/jpeg") = Resource(
         filename = filename,
@@ -22,13 +21,13 @@ class EdgeUploadRequestProviderTest {
     )
 
     private fun provider(host: String = "https://edge.example") =
-        EdgeUploadRequestProvider(host, eventId, deviceId)
+        EdgeUploadRequestProvider(host, eventId)
 
     @Test
     fun builds_the_edge_url_for_an_unreserved_filename() = runTest {
         val req = provider().provide(resource("ABC123_DEF-ios.photo.jpg"))
         assertEquals(
-            "https://edge.example/event/$eventId/device/$deviceId/file/ABC123_DEF-ios.photo.jpg",
+            "https://edge.example/event/$eventId/file/ABC123_DEF-ios.photo.jpg",
             req.url,
         )
     }
@@ -70,7 +69,7 @@ class EdgeUploadRequestProviderTest {
     fun trailing_slash_on_host_is_normalized() = runTest {
         val req = provider(host = "https://edge.example/").provide(resource("x.jpg"))
         assertEquals(
-            "https://edge.example/event/$eventId/device/$deviceId/file/x.jpg",
+            "https://edge.example/event/$eventId/file/x.jpg",
             req.url,
         )
     }
