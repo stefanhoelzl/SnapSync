@@ -9,6 +9,8 @@ import app.snapsync.eventstatus.MutableEventStatusSource
 import app.snapsync.gallery.GalleryResourceEnumerator
 import kotlin.time.Clock
 import kotlin.time.Instant
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 
 /**
  * The re-join reconciliation use-case: before the background-upload producer is enabled, seed the
@@ -41,6 +43,14 @@ class JoinEvent(
     private var joinedThisSession = false
     private var failedThisSession = false
 
+    // Serializes the session-flag/ledger mutations so concurrent gate calls cannot interleave at
+    // their suspension points (the list fetch, ledger ops) and each run a redundant join. Both enable
+    // triggers — the permission-grant collector's initial emission and a deeplink (re)provision — can
+    // fire `ensureJoined` at launch; without this they would both pass the `joinedThisSession` check
+    // before either set it, running the join twice (one losing → a spurious `JoinFailed` flap). The
+    // lock makes "exactly one attempt per process" actually hold.
+    private val gate = Mutex()
+
     /**
      * Apply a (re)provision at scan/deeplink time. [previousEventId] is the event configured *before*
      * the new id is saved. A switch (different id) resets the ledger to empty (its completions belong
@@ -48,7 +58,7 @@ class JoinEvent(
      * the same id leaves the ledger intact. Always clears the session flags so a re-scan retries a
      * failed join.
      */
-    suspend fun onProvision(previousEventId: String?, newEventId: String) {
+    suspend fun onProvision(previousEventId: String?, newEventId: String) = gate.withLock {
         if (previousEventId != null && previousEventId != newEventId) {
             ledger.resetTo(emptyList())
             clearDiscoveryCursor()
@@ -63,11 +73,11 @@ class JoinEvent(
      * - a join failed this session → `false` (do not enable; the user re-scans to retry);
      * - otherwise run the join and return its outcome.
      */
-    suspend fun ensureJoined(): Boolean {
-        val eventId = config.config.value?.eventId ?: return false
-        if (joinedThisSession || ledgerHasRows()) return true
-        if (failedThisSession) return false
-        return runJoin(eventId)
+    suspend fun ensureJoined(): Boolean = gate.withLock {
+        val eventId = config.config.value?.eventId ?: return@withLock false
+        if (joinedThisSession || ledgerHasRows()) return@withLock true
+        if (failedThisSession) return@withLock false
+        runJoin(eventId)
     }
 
     private suspend fun runJoin(eventId: String): Boolean {
