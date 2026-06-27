@@ -19,3 +19,19 @@ export function validateUUID(value: string): boolean {
 export function validateFilename(filename: string): boolean {
   return filename.length > 0 && !filename.includes("/") && !filename.includes("..");
 }
+
+/** Maximum allowed length (characters) of an event name (capability `event-creation`). */
+export const MAX_EVENT_NAME_LENGTH = 100;
+
+/**
+ * Validate and normalize an event name from a create request body. Returns the TRIMMED name when
+ * valid (a string, non-empty after trimming, at most {@link MAX_EVENT_NAME_LENGTH} characters), or
+ * `null` when the input is not a string, is empty/whitespace-only, or is too long. The trimmed value
+ * is what callers store and echo back.
+ */
+export function validateEventName(raw: unknown): string | null {
+  if (typeof raw !== "string") return null;
+  const name = raw.trim();
+  if (name.length === 0 || name.length > MAX_EVENT_NAME_LENGTH) return null;
+  return name;
+}
