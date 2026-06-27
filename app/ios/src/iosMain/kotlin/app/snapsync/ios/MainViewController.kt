@@ -23,6 +23,9 @@ import kotlinx.coroutines.delay
 fun MainViewController() = ComposeUIViewController {
     val host = SnapSyncRoot.host
     val state by host.container.stateFlow.collectAsState()
+    // The event's invite deeplink (null until an event is configured) — rendered as the join QR in the
+    // joined layer and handed to the share sheet.
+    val inviteUrl by host.inviteUrl.collectAsState()
 
     // Dev/test: apply a `SNAPSYNC_DEEPLINK` launch-env deeplink once per process (no-op in
     // production, where no such env var exists). Runs after `host` is realized; safe to repeat.
@@ -49,6 +52,8 @@ fun MainViewController() = ComposeUIViewController {
         host::onRequestPermission,
         host::onOpenSettings,
         onLeaveEvent = host::onLeaveEvent,
+        onShareInvite = host::onShareInvite,
+        inviteUrl = inviteUrl,
         transientError = transientError,
     )
 }

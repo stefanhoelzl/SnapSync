@@ -12,6 +12,7 @@ kotlincrypto-hash = "0.7.0"
 kotlincrypto-macs = "0.7.0"
 kotlinx-serialization = "1.9.0"
 zxing = "3.5.3"
+qrose = "1.1.2"
 ktor = "3.2.0"
 
 [libraries]
@@ -28,6 +29,7 @@ kotlincrypto-hash-sha2 = { module = "org.kotlincrypto.hash:sha2", version.ref = 
 kotlincrypto-macs-hmac-sha2 = { module = "org.kotlincrypto.macs:hmac-sha2", version.ref = "kotlincrypto-macs" }
 kotlinx-serialization-json = { module = "org.jetbrains.kotlinx:kotlinx-serialization-json", version.ref = "kotlinx-serialization" }
 zxing-core = { module = "com.google.zxing:core", version.ref = "zxing" }
+qrose = { module = "io.github.alexzhirkevich:qrose", version.ref = "qrose" }
 ktor-client-core = { module = "io.ktor:ktor-client-core", version.ref = "ktor" }
 ktor-client-darwin = { module = "io.ktor:ktor-client-darwin", version.ref = "ktor" }
 ktor-client-mock = { module = "io.ktor:ktor-client-mock", version.ref = "ktor" }

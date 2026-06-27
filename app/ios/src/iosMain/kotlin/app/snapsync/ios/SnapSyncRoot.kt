@@ -33,6 +33,8 @@ import platform.Foundation.NSOperatingSystemVersion
 import platform.Foundation.NSProcessInfo
 import platform.Foundation.NSUserDefaults
 import platform.Photos.PHPhotoLibrary
+import platform.UIKit.UIActivityViewController
+import platform.UIKit.UIApplication
 
 /**
  * The iOS composition root (D7): a single app-lifetime singleton that assembles the real live
@@ -118,6 +120,9 @@ object SnapSyncRoot {
             syncSource, permission, permission, config, config, scope,
             observed = observed, foreground = foreground, eventStatusSource = eventStatus,
             leave = leaveEvent::leave,
+            // Fire-and-forget share of the invite deeplink (the host owns the URL). Wiring-only:
+            // present the system share sheet over the current top view controller.
+            share = { url -> presentShareSheet(url) },
         )
     }
 
@@ -221,6 +226,21 @@ object SnapSyncRoot {
     @OptIn(ExperimentalForeignApi::class)
     private fun clearDiscoveryCursor() {
         NSUserDefaults(suiteName = LEDGER_APP_GROUP).removeObjectForKey(DISCOVERY_TOKEN_KEY)
+    }
+
+    /**
+     * Present the system share sheet (`UIActivityViewController`) carrying the invite deeplink, from
+     * the current top-most view controller. Wiring-only and fire-and-forget — no completion handler;
+     * the host already holds the URL and `UiState` is unaffected. iPhone-only/portrait, so no popover
+     * source is needed. Runs on the main dispatcher (the Orbit intent's context).
+     */
+    private fun presentShareSheet(text: String) {
+        val activity = UIActivityViewController(activityItems = listOf(text), applicationActivities = null)
+        var presenter = UIApplication.sharedApplication.keyWindow?.rootViewController
+        while (presenter?.presentedViewController != null) {
+            presenter = presenter.presentedViewController
+        }
+        presenter?.presentViewController(activity, animated = true, completion = null)
     }
 
     /**

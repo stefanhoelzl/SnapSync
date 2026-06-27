@@ -12,6 +12,9 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import org.junit.Rule
 
+// A representative invite deeplink — any string renders a QR; the encoding is pinned in capability:config.
+private const val SAMPLE_INVITE = "snapsync://config?v=3&d=eyJldmVudElkIjoiMSJ9"
+
 class StatusScreenTest {
 
     @get:Rule
@@ -274,6 +277,77 @@ class StatusScreenTest {
         rule.onNodeWithText("Cancel").performClick()
         assertEquals(0, leaves)
         rule.onNodeWithText("Leave event?").assertDoesNotExist()
+    }
+
+    @Test
+    fun `in progress shows the invite QR and share action`() {
+        rule.setContent {
+            StatusScreen(
+                UiState.InProgress(synced = 3, total = 5, inProgress = 0, finishedAgo = "2 min ago"),
+                inviteUrl = SAMPLE_INVITE,
+            )
+        }
+        rule.onNodeWithText("Scan to join this event").assertExists()
+        rule.onNodeWithContentDescription("Share invite link").assertExists()
+    }
+
+    @Test
+    fun `nothing to sync shows the invite QR and share action`() {
+        rule.setContent { StatusScreen(UiState.NothingToSync, inviteUrl = SAMPLE_INVITE) }
+        rule.onNodeWithText("Scan to join this event").assertExists()
+        rule.onNodeWithContentDescription("Share invite link").assertExists()
+    }
+
+    @Test
+    fun `completed shows the invite QR and share action`() {
+        rule.setContent {
+            StatusScreen(UiState.Completed(total = 47, finishedAgo = "5 min ago"), inviteUrl = SAMPLE_INVITE)
+        }
+        rule.onNodeWithText("Scan to join this event").assertExists()
+        rule.onNodeWithContentDescription("Share invite link").assertExists()
+    }
+
+    @Test
+    fun `loading hides the invite affordances`() {
+        rule.setContent { StatusScreen(UiState.Loading, inviteUrl = SAMPLE_INVITE) }
+        rule.onNodeWithText("Scan to join this event").assertDoesNotExist()
+        rule.onNodeWithContentDescription("Share invite link").assertDoesNotExist()
+    }
+
+    @Test
+    fun `join failed hides the invite affordances`() {
+        rule.setContent { StatusScreen(UiState.JoinFailed, inviteUrl = SAMPLE_INVITE) }
+        rule.onNodeWithText("Scan to join this event").assertDoesNotExist()
+        rule.onNodeWithContentDescription("Share invite link").assertDoesNotExist()
+    }
+
+    @Test
+    fun `setup gate hides the invite affordances`() {
+        rule.setContent {
+            StatusScreen(
+                UiState.Setup(storageConnected = true, permission = PermissionStatus.GRANTED),
+                inviteUrl = SAMPLE_INVITE,
+            )
+        }
+        rule.onNodeWithText("Scan to join this event").assertDoesNotExist()
+        rule.onNodeWithContentDescription("Share invite link").assertDoesNotExist()
+    }
+
+    @Test
+    fun `joined without an invite url hides the invite affordances`() {
+        rule.setContent { StatusScreen(UiState.NothingToSync, inviteUrl = null) }
+        rule.onNodeWithText("Scan to join this event").assertDoesNotExist()
+        rule.onNodeWithContentDescription("Share invite link").assertDoesNotExist()
+    }
+
+    @Test
+    fun `activating share invokes the callback`() {
+        var shares = 0
+        rule.setContent {
+            StatusScreen(UiState.NothingToSync, onShareInvite = { shares++ }, inviteUrl = SAMPLE_INVITE)
+        }
+        rule.onNodeWithContentDescription("Share invite link").performClick()
+        assertEquals(1, shares)
     }
 
     private fun hasAnyProgressIndication(): SemanticsMatcher =

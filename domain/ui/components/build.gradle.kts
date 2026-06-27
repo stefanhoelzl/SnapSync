@@ -18,6 +18,9 @@ kotlin {
             // Material icon glyphs (e.g. the leave action's Logout). Contained here like Material 3 —
             // the `Icons.*` import never leaves this module; no `App*` signature carries a glyph type.
             implementation(compose.materialIconsExtended)
+            // QR rendering for AppQrCode — Compose-MP-native, contained to this module like Material 3
+            // (the qrose import never leaves this module; no `App*` signature carries a QR type).
+            implementation(libs.qrose)
         }
     }
 }
