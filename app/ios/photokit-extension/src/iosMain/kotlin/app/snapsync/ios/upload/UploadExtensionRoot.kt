@@ -18,9 +18,9 @@ import kotlinx.coroutines.runBlocking
  *
  * Config is sourced fresh each cycle: the runtime event id from the shared Keychain
  * ([KeychainConfigStore]) combined with the compile-time upload host ([uploadHostFromBundle],
- * `BackgroundUploadURLBase`) and the App-Group device id ([iosDeviceIdProvider]) into the edge
- * upload provider. When no event has been joined yet (the extension woke before setup) or the device
- * id is unavailable, the cycle is skipped as a clean success — no job, no ledger write, no crash.
+ * `BackgroundUploadURLBase`) into the edge upload provider. When no event has been joined yet (the
+ * extension woke before setup), the cycle is skipped as a clean success — no job, no ledger write,
+ * no crash.
  *
  * The ledger writer and platform are process-lifetime singletons (the extension is the single
  * `LedgerWriter`); only the engine, which depends on config, is built per cycle.
@@ -44,7 +44,6 @@ object UploadExtensionRoot {
     }
     private val discoveryStore: IosDiscoveryStore by lazy { IosDiscoveryStore() }
     private val configSource: KeychainConfigStore by lazy { KeychainConfigStore() }
-    private val deviceIdProvider: DeviceIdProvider by lazy { iosDeviceIdProvider() }
 
     /**
      * Run one adjudicate→discover cycle and return its [CycleResult] — `COMPLETED` (drained, cursor
@@ -56,20 +55,18 @@ object UploadExtensionRoot {
     fun process(): CycleResult = runBlocking {
         val payload = configSource.config.value
         val host = uploadHostFromBundle()
-        val deviceId = deviceIdProvider.deviceId()
-        val config = buildUploadConfig(payload?.eventId, host, deviceId)
+        val config = buildUploadConfig(payload?.eventId, host)
         if (config == null) {
-            // Not joined yet (no event id), a missing baked host, or no device id — nothing to
-            // upload. A clean no-op completion, never a failure; the run re-tries once config is present.
+            // Not joined yet (no event id) or a missing baked host — nothing to upload. A clean
+            // no-op completion, never a failure; the run re-tries once config is present.
             log.i {
-                "skipping cycle — eventId present=${payload != null}, host present=${!host.isNullOrEmpty()}, " +
-                    "deviceId present=${deviceId.isNotEmpty()}"
+                "skipping cycle — eventId present=${payload != null}, host present=${!host.isNullOrEmpty()}"
             }
             return@runBlocking CycleResult.COMPLETED
         }
         log.i { "process: config present — running cycle" }
         val engine = SyncEngine(
-            EdgeUploadRequestProvider(config.host, config.eventId, config.deviceId),
+            EdgeUploadRequestProvider(config.host, config.eventId),
             ledger,
         )
         val cycle = UploadCycle(engine, ledger, platform, discoveryStore, log)

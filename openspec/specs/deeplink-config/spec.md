@@ -61,7 +61,7 @@ available synchronously — and a `ConfigStore` command port `suspend fun save(c
 that persists the payload and updates the source. `save` of a payload equal to the current one
 SHALL be an idempotent no-op; `save` of a different payload SHALL replace it silently (the ledger
 is not touched). Consumers SHALL depend on each port separately. Combining the `EventConfigPayload`
-with the compile-time upload host and the device id into a full upload destination is the
+with the compile-time upload host into a full upload destination is the
 responsibility of the consuming composition root, not these seams.
 
 #### Scenario: Source seeds the current payload synchronously

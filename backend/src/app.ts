@@ -1,22 +1,22 @@
 // Hono app for the backend (capabilities `bunny-upload-endpoint` + `bunny-list-endpoint`).
 //
-//   PUT /event/:eventId/device/:deviceId/file/:filename
+//   PUT /event/:eventId/file/:filename
 //     → streams the request body into ONE bunny native Storage PUT.
 //   GET /event/:eventId/files
-//     → lists every stored object for the event, flat across all devices.
+//     → lists every stored object for the event.
 //
 // The upload route is defined once on a child Hono and mounted under the upload path via
-// app.route(), so PUT and OPTIONS share it. `eventId`/`deviceId`/`filename` are Hono's decoded path
+// app.route(), so PUT and OPTIONS share it. `eventId`/`filename` are Hono's decoded path
 // params (typed `string | undefined` through a mount, hence the guard); the filename is re-encoded
 // per-segment when building the bunny URL, so the stored object is the real filename and keys stay
 // flat. Config is injected (validated at startup), so the handler has no config path. Invariants:
 // pass-through only (never buffer/hash), faithful outcome (2xx only on confirmed store),
 // last-write-wins.
 //
-// The list route reads instead: bunny native Storage LIST is per-directory (non-recursive), so it
-// fans out — list `<eventId>/` for device dirs, then each `<eventId>/<deviceId>/` for files — and
-// flattens. Faithful too: any genuine LIST failure → 502 (never a partial list); a 404 on the event
-// dir is "no objects" → 200 [] (empty/unknown event are indistinguishable without a registry).
+// The list route reads instead: files live directly under `<eventId>/` (flat key), so a single
+// bunny native Storage LIST of the event dir returns them. Faithful too: any genuine LIST failure →
+// 502 (never a partial list); a 404 on the event dir is "no objects" → 200 [] (empty/unknown event
+// are indistinguishable without a registry).
 
 import { Hono } from "hono";
 import { validateFilename, validateUUID } from "./validators.ts";
@@ -45,12 +45,11 @@ type BunnyEntry = {
   DateLastModified?: string;
 };
 
-// One normalized object in our response — the four fields the contract promises. `deviceId` is the
-// directory the file was found under (not a bunny field); `contentType` is intentionally absent
-// (bunny's canonical List schema doesn't return it, and the consumer only needs the filename).
+// One normalized object in our response — the three fields the contract promises. `contentType` is
+// intentionally absent (bunny's canonical List schema doesn't return it, and the consumer only needs
+// the filename).
 type FileEntry = {
   filename: string;
-  deviceId: string;
   size: number;
   lastModified: string | null;
 };
@@ -93,17 +92,16 @@ export function createApp({ fetch: fetchImpl, config }: Deps): Hono {
 
   upload.put("/", async (c) => {
     const eventId = c.req.param("eventId");
-    const deviceId = c.req.param("deviceId");
     const filename = c.req.param("filename");
     if (
-      !eventId || !deviceId || !filename ||
-      !validateUUID(eventId) || !validateUUID(deviceId) || !validateFilename(filename)
+      !eventId || !filename ||
+      !validateUUID(eventId) || !validateFilename(filename)
     ) {
       return c.text("invalid key", 400);
     }
-    // eventId/deviceId are UUIDs (encoding is identity); encode the filename so the key stays a
-    // single flat segment on the wire.
-    const storageKey = `${eventId}/${deviceId}/${encodeURIComponent(filename)}`;
+    // eventId is a UUID (encoding is identity); encode the filename so the key stays a single flat
+    // segment on the wire.
+    const storageKey = `${eventId}/${encodeURIComponent(filename)}`;
 
     const target = `https://${config.host}/${config.zone}/${storageKey}`;
     const init: StreamInit = {
@@ -139,43 +137,28 @@ export function createApp({ fetch: fetchImpl, config }: Deps): Hono {
 
   const app = new Hono();
 
-  // List every stored object for an event, flat across all devices (capability
-  // `bunny-list-endpoint`). Authorization is the event id alone (same as upload). A non-UUID id →
-  // 400; any other method / unmatched path → Hono's 404.
+  // List every stored object for an event (capability `bunny-list-endpoint`). Files live directly
+  // under `<eventId>/` (flat key), so a single LIST of the event dir returns them. Authorization is
+  // the event id alone (same as upload). A non-UUID id → 400; any other method / unmatched path →
+  // Hono's 404.
   app.get("/event/:eventId/files", async (c) => {
     const eventId = c.req.param("eventId");
     if (!validateUUID(eventId)) {
       return c.text("invalid event", 400);
     }
     try {
-      // 1) List the event dir → device sub-directories. 404/absent → no objects → [].
-      const top = await listDir(fetchImpl, config, `${encodeURIComponent(eventId)}/`);
-      if (top === null) return c.json([] as FileEntry[]);
-      const deviceIds = top
-        .filter((e) => e.IsDirectory)
-        .map((e) => e.ObjectName.replace(/\/$/, "")); // some bunny responses suffix dir names with /
-
-      // 2) List each device dir → files; flatten. Concurrent — any genuine failure rejects the
-      //    whole walk (→ 502), so a partial list is never returned.
-      const perDevice = await Promise.all(
-        deviceIds.map(async (deviceId): Promise<FileEntry[]> => {
-          const entries = await listDir(
-            fetchImpl,
-            config,
-            `${encodeURIComponent(eventId)}/${encodeURIComponent(deviceId)}/`,
-          );
-          if (entries === null) return []; // device dir vanished mid-walk → contributes nothing
-          return entries
-            .filter((e) => !e.IsDirectory)
-            .map((e) => ({
-              filename: decodeObjectName(e.ObjectName),
-              deviceId,
-              size: e.Length,
-              lastModified: e.LastChanged ?? e.DateLastModified ?? null,
-            }));
-        }),
-      );
-      return c.json(perDevice.flat());
+      // Single LIST of the event dir → its files. 404/absent → no objects → []. Any other failure
+      // throws → 502, so a partial list is never returned.
+      const entries = await listDir(fetchImpl, config, `${encodeURIComponent(eventId)}/`);
+      if (entries === null) return c.json([] as FileEntry[]);
+      const files: FileEntry[] = entries
+        .filter((e) => !e.IsDirectory)
+        .map((e) => ({
+          filename: decodeObjectName(e.ObjectName),
+          size: e.Length,
+          lastModified: e.LastChanged ?? e.DateLastModified ?? null,
+        }));
+      return c.json(files);
     } catch (e) {
       console.error(`list: bunny LIST failed for event ${eventId}: ${e}`);
       return c.text("upstream error", 502);
@@ -183,6 +166,6 @@ export function createApp({ fetch: fetchImpl, config }: Deps): Hono {
   });
 
   // Mount once under the upload path; any unmatched path or wrong method → Hono's 404.
-  app.route("/event/:eventId/device/:deviceId/file/:filename", upload);
+  app.route("/event/:eventId/file/:filename", upload);
   return app;
 }

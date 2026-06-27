@@ -1,44 +1,15 @@
-# edge-upload-provider Specification
-
-## Purpose
-
-The on-device, network-free `UploadRequestProvider` that builds the bunny edge upload URL
-(`/event/<eventId>/file/<filename>`) using only string-building — no crypto, no signing, no network
-I/O. It sets `Content-Type` only and carries the deterministic, injective filename→destination
-mapping that anchors upload idempotency. Lives in `:capability:upload-url`.
-
-## Requirements
-
-### Requirement: Pure URL-building provider
-
-The capability SHALL provide `EdgeUploadRequestProvider`, a concrete `UploadRequestProvider`
-(the sync-engine seam) that builds an executable `PUT` `UploadRequest` for a `Resource` using
-**only string-building** — no network I/O, no HTTP client, and **no cryptography** (no signing,
-no presigning, no payload hash). The returned `UploadRequest` SHALL carry the **same `Resource`
-instance** supplied and SHALL NOT read `Resource.data`. The provider SHALL live in
-`commonMain` so it is exercised on both the JVM and `iosSimulatorArm64`.
-
-#### Scenario: Builds without I/O or crypto
-- **WHEN** `provide(resource)` is called
-- **THEN** an `UploadRequest` is returned with no network access and no signing, carrying a plain
-  `PUT` URL
-
-#### Scenario: Resource instance round-trips
-- **WHEN** `provide(resource)` returns
-- **THEN** `request.resource` is the identical instance supplied (no copy), and `resource.data` was
-  never read
+## MODIFIED Requirements
 
 ### Requirement: Edge URL composition with injective filename encoding
 
 The provider SHALL map a `Resource` to the URL
-`<host>/event/<eventId>/file/<encoded-filename>`, where `host` is the injected compile-time base,
-and `<eventId>` is injected verbatim (already a canonical UUID, not re-encoded).
-`<encoded-filename>` SHALL be the percent-encoding of `resource.filename`'s UTF-8
-bytes, escaping every byte outside `[A-Za-z0-9._-]` as `%XX` with **uppercase** hex. The
-`filename → URL` mapping SHALL be **deterministic and injective** (distinct filenames never
-collide) — the contract where upload idempotency lives. The encoded filename SHALL be a single
-path segment: any `/` in the filename SHALL be escaped to `%2F` so the edge endpoint decodes it
-back to one slash-free segment.
+`<host>/event/<eventId>/file/<encoded-filename>`, where `host` is the injected compile-time base, and
+`<eventId>` is injected verbatim (already a canonical UUID, not re-encoded). `<encoded-filename>`
+SHALL be the percent-encoding of `resource.filename`'s UTF-8 bytes, escaping every byte outside
+`[A-Za-z0-9._-]` as `%XX` with **uppercase** hex. The `filename → URL` mapping SHALL be
+**deterministic and injective** (distinct filenames never collide) — the contract where upload
+idempotency lives. The encoded filename SHALL be a single path segment: any `/` in the filename SHALL
+be escaped to `%2F` so the edge endpoint decodes it back to one slash-free segment.
 
 #### Scenario: Unreserved filename passes through
 - **WHEN** the filename contains only `[A-Za-z0-9._-]`
@@ -67,8 +38,7 @@ the complete edge URL with no query string (no signature, no expiry parameters).
 
 #### Scenario: URL carries no auth query string
 - **WHEN** `provide` returns
-- **THEN** `url` is `<host>/event/<eventId>/file/<encoded-filename>` with no
-  `?`-query parameters
+- **THEN** `url` is `<host>/event/<eventId>/file/<encoded-filename>` with no `?`-query parameters
 
 ### Requirement: Plain-string configuration contract
 
@@ -85,8 +55,8 @@ composition root's responsibility, not the provider's.)
 ### Requirement: Stable, no-expiry destinations
 
 A request built by the provider SHALL be a **stable** URL with no expiry: re-building the request
-for the same `(host, eventId, resource.filename)` SHALL yield a byte-identical URL, so a
-retry re-derived much later re-PUTs the exact same destination (nothing to re-mint or expire).
+for the same `(host, eventId, resource.filename)` SHALL yield a byte-identical URL, so a retry
+re-derived much later re-PUTs the exact same destination (nothing to re-mint or expire).
 
 #### Scenario: Rebuild is byte-identical
 - **WHEN** `provide` is called twice for the same resource with the same configuration
