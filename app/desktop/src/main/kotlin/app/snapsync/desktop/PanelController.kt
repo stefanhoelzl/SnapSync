@@ -11,8 +11,6 @@ import app.snapsync.eventcreation.CreationStatus
 import app.snapsync.eventcreation.CreationStatusSource
 import app.snapsync.eventcreation.EventCreator
 import app.snapsync.eventcreation.NoOpEventCreator
-import app.snapsync.eventstatus.EventStatus
-import app.snapsync.eventstatus.MutableEventStatusSource
 import app.snapsync.status.SyncStatus
 import app.snapsync.status.SyncProgress
 import app.snapsync.status.SyncStatusSource
@@ -63,10 +61,6 @@ class PanelController {
             configState.value = null
         }
     }
-
-    // The re-join status cell, injected into the container so the join presets can forge Joining /
-    // JoinFailed (which sit above the sync hero once both gates pass).
-    val eventStatusSource = MutableEventStatusSource()
 
     // The create-status cell, injected so the create presets can forge the create layer (shown only
     // while config is absent). The creator is a no-op — the harness forges states, it never mints.
@@ -137,21 +131,7 @@ class PanelController {
     fun showLoading() {
         permissionState.value = PermissionStatus.GRANTED
         configState.value = CANNED_CONFIG
-        eventStatusSource.set(EventStatus.Idle)
         syncState.value = SyncStatus.Loading
-    }
-
-    // Join presets: force both gates, then forge the join cell (which outranks the sync hero).
-    fun showJoining() {
-        permissionState.value = PermissionStatus.GRANTED
-        configState.value = CANNED_CONFIG
-        eventStatusSource.set(EventStatus.Joining)
-    }
-
-    fun showJoinFailed() {
-        permissionState.value = PermissionStatus.GRANTED
-        configState.value = CANNED_CONFIG
-        eventStatusSource.set(EventStatus.JoinFailed)
     }
 
     // Create presets: force config absent (the create layer's only precondition), then forge the
@@ -200,8 +180,6 @@ class PanelController {
     private fun forgeSync(status: SyncProgress) {
         permissionState.value = PermissionStatus.GRANTED
         configState.value = CANNED_CONFIG
-        // Clear any forged join cell so the sync hero is visible (Joining/JoinFailed outrank it).
-        eventStatusSource.set(EventStatus.Idle)
         syncState.value = SyncStatus.Ready(status)
     }
 

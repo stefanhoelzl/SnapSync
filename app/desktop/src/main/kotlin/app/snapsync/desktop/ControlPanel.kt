@@ -75,12 +75,6 @@ fun ControlPanel(controller: PanelController) {
             Button(onClick = { controller.showPermissionBlockedDenied() }) { Text("Photo access turned off") }
         }
 
-        Text("Re-join")
-        ButtonRow {
-            Button(onClick = { controller.showJoining() }) { Text("Joining (preparing)") }
-            Button(onClick = { controller.showJoinFailed() }) { Text("Join failed (re-scan)") }
-        }
-
         Text("Sync")
         ButtonRow {
             Button(onClick = { controller.showLoading() }) { Text("Loading") }

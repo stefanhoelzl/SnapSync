@@ -33,23 +33,6 @@ class StatusScreenTest {
     }
 
     @Test
-    fun `joining shows the preparing copy and an indeterminate indicator`() {
-        rule.setContent { StatusScreen(UiState.Joining) }
-
-        rule.onNodeWithText("Checking what's already backed up …").assertExists()
-        rule.onNode(hasAnyProgressIndication()).assertExists()
-    }
-
-    @Test
-    fun `join failed shows the failure copy and a re-scan prompt with no spinner`() {
-        rule.setContent { StatusScreen(UiState.JoinFailed) }
-
-        rule.onNodeWithText("Couldn't reach the server").assertExists()
-        rule.onNodeWithText("Scan the event QR code again").assertExists()
-        rule.onNode(hasAnyProgressIndication()).assertDoesNotExist()
-    }
-
-    @Test
     fun `create screen shows the name input and the scan-to-join hint`() {
         rule.setContent { StatusScreen(UiState.CreateEvent()) }
 
@@ -236,18 +219,6 @@ class StatusScreenTest {
     }
 
     @Test
-    fun `joining hides the leave action`() {
-        rule.setContent { StatusScreen(UiState.Joining) }
-        rule.onNodeWithContentDescription("Leave event").assertDoesNotExist()
-    }
-
-    @Test
-    fun `join failed hides the leave action`() {
-        rule.setContent { StatusScreen(UiState.JoinFailed) }
-        rule.onNodeWithContentDescription("Leave event").assertDoesNotExist()
-    }
-
-    @Test
     fun `create layer hides the leave action`() {
         rule.setContent { StatusScreen(UiState.CreateEvent()) }
         rule.onNodeWithContentDescription("Leave event").assertDoesNotExist()
@@ -318,13 +289,6 @@ class StatusScreenTest {
     @Test
     fun `loading hides the invite affordances`() {
         rule.setContent { StatusScreen(UiState.Loading, inviteUrl = SAMPLE_INVITE) }
-        rule.onNodeWithText("Scan to join this event").assertDoesNotExist()
-        rule.onNodeWithContentDescription("Share invite link").assertDoesNotExist()
-    }
-
-    @Test
-    fun `join failed hides the invite affordances`() {
-        rule.setContent { StatusScreen(UiState.JoinFailed, inviteUrl = SAMPLE_INVITE) }
         rule.onNodeWithText("Scan to join this event").assertDoesNotExist()
         rule.onNodeWithContentDescription("Share invite link").assertDoesNotExist()
     }

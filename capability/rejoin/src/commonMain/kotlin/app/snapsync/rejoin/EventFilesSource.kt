@@ -17,8 +17,8 @@ class RemoteAsset(val assetId: String, val resources: List<RemoteResource>)
 
 /**
  * The seam that fetches the event's already-stored **complete assets** (`GET /event/<id>/files`).
- * Failures are surfaced as a failed [Result] — never thrown — so the join can reduce them into
- * `JoinFailed` rather than crashing the app.
+ * Failures are surfaced as a failed [Result] — never thrown — so the extension reconciler can defer
+ * the cycle (uploading nothing, leaving the marker unset to retry) rather than crashing.
  */
 interface EventFilesSource {
     suspend fun list(eventId: String): Result<List<RemoteAsset>>

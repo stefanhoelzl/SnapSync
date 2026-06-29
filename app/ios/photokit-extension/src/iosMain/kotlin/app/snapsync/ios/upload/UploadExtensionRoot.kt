@@ -8,6 +8,9 @@ import app.snapsync.engine.iosLedgerBackend
 import app.snapsync.uploadurl.EdgeUploadRequestProvider
 import app.snapsync.gallery.IosManifestStore
 import app.snapsync.gallery.PhotoLibraryResourceEnumerator
+import app.snapsync.rejoin.ExtensionReconciler
+import app.snapsync.rejoin.HttpEventFilesSource
+import app.snapsync.rejoin.darwinHttpClient
 import co.touchlab.kermit.Logger
 import kotlinx.coroutines.runBlocking
 
@@ -45,6 +48,21 @@ object UploadExtensionRoot {
     private val discoveryStore: IosDiscoveryStore by lazy { IosDiscoveryStore() }
     private val configSource: KeychainConfigStore by lazy { KeychainConfigStore() }
 
+    // Re-join reconciliation (capability `event-rejoin-reconciliation`), now extension-owned. Seeds
+    // already-stored photos as COMPLETED before the producer runs so they are not re-uploaded; gated by
+    // a persisted `joinedEventId` marker so a settled join performs no fetch. Fetches the event's
+    // complete-asset listing over the Darwin HTTPS client; the host is the same compile-time
+    // `BackgroundUploadURLBase` baked into the extension bundle.
+    private val reconciler: ExtensionReconciler by lazy {
+        ExtensionReconciler(
+            files = HttpEventFilesSource(darwinHttpClient(), uploadHostFromBundle() ?: ""),
+            ledger = ledgerBackend,
+            marker = IosJoinedEventMarker(),
+            clearDiscoveryCursor = { discoveryStore.clearToken() },
+            log = log,
+        )
+    }
+
     // The per-asset manifest side channel (capability `asset-manifest`): synthesizes + enqueues each
     // asset's manifest on a background URLSession, independent of the engine/ledger. Process-lifetime
     // singletons (the session must outlive a single cycle to be re-adoptable by the app).
@@ -69,16 +87,26 @@ object UploadExtensionRoot {
         configSource.reload()
         val payload = configSource.config.value
         val host = uploadHostFromBundle()
+
+        // Re-join reconciliation runs HERE, before any upload job is created (capability
+        // `event-rejoin-reconciliation`): on a (re)join it seeds already-stored photos as COMPLETED so
+        // the producer does not re-upload them, resets the private ledger on an event switch/leave, and
+        // — if the listing fetch fails — defers this cycle (uploads nothing, leaves the marker unset to
+        // retry). A settled join (marker matches the configured event) does no fetch and returns true.
+        val mayUpload = runCatching { reconciler.reconcile(payload?.eventId) }
+            .getOrElse { log.e(it) { "reconcile failed — deferring uploads this cycle" }; false }
+
         val config = buildUploadConfig(payload?.eventId, host)
-        if (config == null) {
-            // Not joined yet (no event id) or a missing baked host — nothing to upload. A clean
-            // no-op completion, never a failure; the run re-tries once config is present.
+        if (config == null || !mayUpload) {
+            // Not joined yet (no event id), a missing baked host, a leave reset, or a deferred reconcile
+            // — nothing to upload. A clean no-op completion, never a failure; the run re-tries next cycle.
             log.i {
-                "skipping cycle — eventId present=${payload != null}, host present=${!host.isNullOrEmpty()}"
+                "skipping cycle — eventId present=${payload != null}, " +
+                    "host present=${!host.isNullOrEmpty()}, mayUpload=$mayUpload"
             }
             return@runBlocking CycleResult.COMPLETED
         }
-        log.i { "process: config present — running cycle" }
+        log.i { "process: config present and reconciled — running cycle" }
         // Side channel: ensure each asset's manifest is generated + enqueued on the background
         // URLSession. Independent of the engine/ledger and best-effort — a manifest failure must never
         // fail the upload cycle (completeness is read at the list endpoint, not from the manifest job).

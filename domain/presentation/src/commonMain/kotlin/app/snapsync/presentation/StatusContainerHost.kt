@@ -12,9 +12,6 @@ import app.snapsync.eventcreation.CreationStatusSource
 import app.snapsync.eventcreation.EventCreator
 import app.snapsync.eventcreation.MutableCreationStatusSource
 import app.snapsync.eventcreation.NoOpEventCreator
-import app.snapsync.eventstatus.EventStatus
-import app.snapsync.eventstatus.EventStatusSource
-import app.snapsync.eventstatus.MutableEventStatusSource
 import app.snapsync.permission.PermissionRequester
 import app.snapsync.permission.PermissionStatus
 import app.snapsync.permission.PermissionStatusSource
@@ -39,10 +36,6 @@ class StatusContainerHost(
     configSource: ConfigSource,
     private val store: ConfigStore,
     scope: CoroutineScope,
-    // The re-join status seam. Defaults to an always-`Idle` source so non-iOS hosts and tests that
-    // don't exercise the join construct unchanged (Idle falls through to the sync hero); iOS injects
-    // the same instance the JoinEvent drives.
-    eventStatusSource: EventStatusSource = MutableEventStatusSource(),
     // The create-event seams. Defaults make the create layer inert (always-Idle source, no-op
     // creator) so non-iOS hosts and tests that don't exercise create construct unchanged; iOS injects
     // the same instance the create use-case drives, and the real `EventCreator`.
@@ -61,29 +54,27 @@ class StatusContainerHost(
 
     override val container: Container<UiState, SetupEffect> =
         scope.container(
-            // All three seams hold their current truth synchronously, so the first state the
+            // All four seams hold their current truth synchronously, so the first state the
             // screen can ever render derives from real values — never a guess or a
             // loading placeholder.
             reduceFrom(
                 configSource.config.value,
                 permissionSource.permission.value,
-                eventStatusSource.status.value,
                 syncSource.status.value,
                 creationStatusSource.creationStatus.value,
             ),
         ) {
             intent {
-                // Five sources combine into a holder (combine's max typed arity); each new value
-                // reduces straight to a UI state. The screen reports no relative time, so there is
-                // no clock and no periodic re-render — only a real source change re-emits.
+                // Four sources combine into a holder; each new value reduces straight to a UI state.
+                // The screen reports no relative time, so there is no clock and no periodic re-render —
+                // only a real source change re-emits.
                 combine(
                     configSource.config,
                     permissionSource.permission,
-                    eventStatusSource.status,
                     syncSource.status,
                     creationStatusSource.creationStatus,
-                ) { config, permission, eventStatus, snapshot, creation ->
-                    reduceFrom(config, permission, eventStatus, snapshot, creation)
+                ) { config, permission, snapshot, creation ->
+                    reduceFrom(config, permission, snapshot, creation)
                 }
                     .collect { ui -> reduce { ui } }
             }
@@ -119,9 +110,9 @@ class StatusContainerHost(
 
     /**
      * Leave the configured event (confirmed in the UI before this fires). Delegates to the injected
-     * leave action, which disables the producer, resets the ledger, clears the discovery cursor and
-     * the persisted config, and returns the event status to `Idle`. The config going `null` makes the
-     * reduction fall back to the setup gate — no new `UiState` and no reduction branch here.
+     * leave action, which disables the producer and clears the persisted config (the extension resets
+     * its own private ledger on its next cycle). The config going `null` makes the reduction fall back
+     * to the setup gate — no new `UiState` and no reduction branch here.
      */
     fun onLeaveEvent() = intent { leave() }
 
@@ -147,14 +138,14 @@ class StatusContainerHost(
 }
 
 // Create-layer precedence (config-presence only): without a connected event there is nothing to back
-// up, so the create layer replaces the hero regardless of permission, join, or snapshot — the top
-// rung. Once config is present, a permission that is not fully granted has no meaningful sync state to
-// show, so it surfaces as PermissionBlocked (NOT_DETERMINED priming / DENIED settings path),
-// outranking the join/sync chain.
+// up, so the create layer replaces the hero regardless of permission or snapshot — the top rung. Once
+// config is present, a permission that is not fully granted has no meaningful sync state to show, so it
+// surfaces as PermissionBlocked (NOT_DETERMINED priming / DENIED settings path), outranking the hero.
+// There is no join-status rung: reconciliation runs in the extension and status is read from the
+// completeness listing, so during a (re)join the screen simply shows the listing-derived snapshot.
 private fun reduceFrom(
     config: EventConfigPayload?,
     permission: PermissionStatus,
-    eventStatus: EventStatus,
     snapshot: SyncStatus,
     creation: CreationStatus,
 ): UiState {
@@ -167,14 +158,6 @@ private fun reduceFrom(
     }
     if (permission != PermissionStatus.GRANTED) {
         return UiState.PermissionBlocked(permission)
-    }
-    // The join phase sits below the setup gate + permission and above the sync hero (setup-gate
-    // precedence): once config + permission pass, a join in flight/failed outranks the snapshot;
-    // Joined/Idle fall through to the hero.
-    when (eventStatus) {
-        EventStatus.Joining -> return UiState.Joining
-        EventStatus.JoinFailed -> return UiState.JoinFailed
-        EventStatus.Joined, EventStatus.Idle -> Unit
     }
     // Loading is reachable only here: an absent config short-circuits to the gate and a non-GRANTED
     // permission to PermissionBlocked, regardless of the snapshot, so "reading the ledger" is shown

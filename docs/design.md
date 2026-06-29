@@ -396,12 +396,14 @@ constructs no ledger type; the `observed-completion-overlay` (which masked ledge
 - **Staleness detection is read-only:** the app compares the photo library's `currentChangeToken` with
   the platform bookkeeping's last token — mismatch ⇒ undiscovered work ⇒ status can say "waiting for
   system" instead of a false COMPLETE (later slice).
-- **Joining (re)provisions** (§3.2): switching to a **different** event clears the ledger and the
-  discovery cursor; **re-joining the same event is a no-op**. On any (re)join the app first
-  **reconciles against storage** — seeding already-stored photos as `COMPLETED` (the
-  `event-rejoin-reconciliation` capability) — so status reflects what is already backed up rather than
-  resetting to never-synced and re-uploading. Uninstall (or a destructive ledger migration) leaves an
-  empty ledger → the next join reconciles. Re-sync is idempotent.
+- **Joining (re)provisions** (§3.2): the app persists the new event config and (re)enables the
+  producer; reconciliation itself runs **inside the extension** (the `event-rejoin-reconciliation`
+  capability), gated by a persisted `joinedEventId` marker. On its next cycle the extension compares
+  the configured event to the marker: a **different** event resets its private ledger and re-seeds, the
+  **same** event is a no-op, and a fresh provision seeds already-stored photos as `COMPLETED` so they
+  are not re-uploaded. Status meanwhile is read from storage truth (the completeness listing), not from
+  this seed — the seed is a pure producer-side dedup optimization with no UI role. Uninstall leaves an
+  absent marker → the next cycle reconciles. Re-sync is idempotent.
 
 ---
 
@@ -486,21 +488,26 @@ proxies are all dropped — so an asset's resource set is **fixed at capture and
     even if added/changed later.
   - **Token expiry is routine** (`persistentChangeTokenExpired`) — the remedy is full (date-filtered)
     re-enumeration, harmless because the ledger answers `AlreadyUploaded` for everything already done.
-- **Joining (re)provisions** (the device-verified path): on a deeplink the app detects a **switch**
-  (a different `eventId`, compared against the Keychain config) and clears the ledger
-  (`LedgerBackend.resetTo`) + the discovery cursor; re-joining the **same** event with a non-empty
-  ledger is a no-op. Before re-registering the extension it **reconciles**
-  (`event-rejoin-reconciliation`): fetch the event's stored files, enumerate the library, and **seed
-  already-stored photos as `COMPLETED`** (an atomic `resetTo`, with the extension disabled), so a
-  re-join does **not** re-upload from scratch — only genuinely-un-stored photos upload, on the OS's
-  next extension invocation. The same gate runs before the on-grant enable, keyed on ledger
-  emptiness, so a reinstall or a destructive ledger migration self-heals.
-- **Leaving** (`leave-event`) is the local-only inverse: a tested `LeaveEvent` use-case runs, in
-  order and best-effort, `disable producer → resetTo([]) + clear discovery cursor → ConfigStore.clear()
-  → EventStatus = Idle` (disable-first, mirroring the enable gate, so there is never a concurrent
-  ledger writer). It touches **no storage** — already-uploaded objects remain, and a later re-scan
-  re-joins and reconciles them back. Platform effects (the extension disable, the cursor clear) are
-  injected lambdas, so the use-case stays in a tested capability and `:app:ios` keeps wiring-only.
+- **Joining (re)provisions**: on a deeplink the app persists the new `eventId` and (re)enables the
+  producer — it runs **no** join, fetch, or seed, and constructs **no** ledger type. Reconciliation
+  lives **inside the extension** (`event-rejoin-reconciliation`), gated by a persisted `joinedEventId`
+  marker in the App-Group `NSUserDefaults` (the marker, **not** ledger-emptiness, is the join signal —
+  ledger-emptiness cannot work in the extension's short-lived per-cycle process: a zero-row join would
+  never settle). On its next cycle, **before** creating any upload job, the extension compares the
+  configured `eventId` to the marker: equal ⇒ upload directly; different (a switch, reinstall, or fresh
+  provision) ⇒ fetch the event's complete-asset listing, atomically `resetTo` one `COMPLETED` row per
+  stored resource (the reset replaces any prior event's rows), clear the discovery cursor, and set the
+  marker — even a zero-row join sets it, so there is no re-seed loop. If the listing fetch fails the
+  extension creates no jobs that cycle and leaves the marker unset, retrying on its own cadence (no
+  user-facing join-failure state; status comes from the app's own LIST). A re-join thus re-uploads
+  **nothing** already stored — only genuinely-un-stored photos upload, on the OS's next invocation.
+- **Leaving** (`leave-event`) is the local-only inverse: a tested `LeaveEvent` use-case runs, in order
+  and best-effort, `disable producer → ConfigStore.clear()` — only. It touches **no** ledger, cursor,
+  or marker (and constructs no ledger type); the extension resets its own private ledger, cursor, and
+  marker on its next cycle once the configured event no longer matches the marker. It touches **no
+  storage** — already-uploaded objects remain, and a later re-scan re-joins and reconciles them back.
+  The producer-disable side-effect is an injected lambda, so the use-case stays in a tested capability
+  and `:app:ios` keeps wiring-only.
 - **State**: upload memory is the **engine's ledger** (single writer = the extension). The platform
   keeps only small, **lossy-tolerant** discovery bookkeeping in the App Group: `{lastToken,
   startDate, eventId, deferredIds?}`. Losing the residue costs one record's worth of
@@ -658,17 +665,18 @@ bytes). The proxy sidesteps signing entirely: the endpoint, not the device, writ
     deeplink. The gate explains this.)*
   Once permission is granted **and** an event is joined, the hero is the **status screen, progress
   only** — no event name, no enable toggle, no manual "sync now". (Event identity is still deferred.)
-- **Four-layer screen model + the leave affordance.** The screen is a progression —
-  `loading → gate → joining → joined` (the `UiState` families: `Loading`; `Setup`; `Joining`/`JoinFailed`;
-  `InProgress`/`NothingToSync`/`Completed`). A flat, icon-only **Leave** button (Material `Logout`) sits
-  bottom-right **only in the joined layer**; it is absent in loading, the gate, and the join phase.
-  Scoping it to the joined layer means no join is ever in flight when a leave runs, so the leave needs
-  no cancellation. Tapping it raises a **"Leave event?"** confirmation (confirm/cancel) whose confirm
-  fires the container's `onLeaveEvent()` intent; the dialog's visibility is **local screen state**, so
-  no `UiState` variant or reduction branch is added. (Consequence: no leave from `JoinFailed` — a
-  transient network state recovered by re-scan/relaunch.) The leave button and the confirm dialog are
-  new semantic `App*` components (`LeaveButton`, `AppConfirmDialog`) plus a bottom-right action slot on
-  `ScreenLayout`; the `Logout` glyph stays contained in `:domain:ui:components`.
+- **Three-layer screen model + the leave affordance.** The screen is a progression —
+  `loading → gate → joined` (the `UiState` families: `Loading`; `Setup`;
+  `InProgress`/`NothingToSync`/`Completed`). There is **no join-status layer**: reconciliation runs in
+  the extension and status is read from the completeness listing, so during a (re)join the screen
+  simply shows the listing-derived snapshot (typically `InProgress` with a rising synced count) — no
+  spinner, no failure screen. A flat, icon-only **Leave** button (Material `Logout`) sits bottom-right
+  **only in the joined layer**; it is absent in loading and the gate. Tapping it raises a **"Leave
+  event?"** confirmation (confirm/cancel) whose confirm fires the container's `onLeaveEvent()` intent;
+  the dialog's visibility is **local screen state**, so no `UiState` variant or reduction branch is
+  added. The leave button and the confirm dialog are new semantic `App*` components (`LeaveButton`,
+  `AppConfirmDialog`) plus a bottom-right action slot on `ScreenLayout`; the `Logout` glyph stays
+  contained in `:domain:ui:components`.
 - **Invite affordance in the joined layer** (`event-invite-qr`). In the same joined layer the screen
   shows the event's **join QR** ("Scan to join this event") above the hero and a flat icon-only
   **share** action, alongside Leave. The invite deeplink is re-encoded from the stored `eventId`
@@ -758,9 +766,9 @@ itself is covered by the endpoint's `Deno.test` suite.
 | UI | Compose Multiplatform | single codebase; Material 3 behind a design-system abstraction |
 | State | **Orbit MVI** (10.0.0) | Compose-free; Decompose-able later |
 | DI | **Manual composition root** | no deps, compile-safe; Koin if it grows |
-| HTTP | **Ktor** (Darwin engine) | **not load-bearing for upload** — the PUT is iOS's (straight to the edge) and the `UploadRequestProvider` builds the URL **locally** (no HTTP). The app DOES `GET /event/<id>/files` — the completeness listing that backs status (§2.4) and the rejoin reconcile |
+| HTTP | **Ktor** (Darwin engine) | **not load-bearing for upload** — the PUT is iOS's (straight to the edge) and the `UploadRequestProvider` builds the URL **locally** (no HTTP). `GET /event/<id>/files` (the completeness listing) is used **two** places: the app's status read (§2.4) and the **extension's** rejoin reconcile seed |
 | Crypto/IO | **okio** (App-Group IO) | hand-rolled SigV4 **retired** — signing is **eliminated** (the edge writes with its `AccessKey`); KotlinCrypto no longer needed on-device |
-| Engine ledger | **SQLDelight** (2.3.2) | per-key upload memory; **extension-private** (sole reader/writer); the app reads no ledger — status derives from storage truth (§2.4); `resetTo`/`clear()` on (re)join reconcile |
+| Engine ledger | **SQLDelight** (2.3.2) | per-key upload memory; **fully extension-private** — the extension is the sole reader/writer AND owns reconciliation; the app constructs **no** ledger type; status derives from storage truth (§2.4); `resetTo` seeds on the extension's marker-gated (re)join |
 | Persistence | **okio + kotlinx.serialization** | tiny App-Group store: change token, start date, eventId; event config in shared **Keychain** (via `:capability:config`) |
 | Config | **BuildKonfig** | edge host (`BackgroundUploadURLBase`); **no secrets** (storage `AccessKey` lives on the edge). Event config is runtime (deeplink) |
 | Backend | **Deno + Hono + bunny Edge Scripting** | the `backend/` streaming proxy upload endpoint (`@bunny.net/edgescript-sdk` + Hono routing); native Storage `PUT` + `AccessKey`; deployed via GitHub Action |
@@ -777,12 +785,13 @@ itself is covered by the endpoint's `Deno.test` suite.
   QR with the native Camera; uploads photos with **capture date ≥ event start** to
   `<eventId>/<assetId>-<role>.<ext>` (originals only) plus a per-asset `<eventId>/<assetId>.manifest.json`
   (`immutable-asset-manifests`). No in-app create/QR/viewing.
-- **Single event at a time**; **join reconciles** (seed already-stored photos before enabling, clear
-  cursor, re-register extension); a **switch** clears the ledger; same-event re-join is a no-op.
-  Multi-event **deferred**.
-- **Leave is supported** (`leave-event`), local-only: `disable → resetTo([]) → clear cursor →
-  ConfigStore.clear() → Idle`, surfaced as a joined-layer button + confirm dialog. Already-uploaded
-  objects stay in storage (no remote delete); re-scanning the QR re-joins and reconciles them back.
+- **Single event at a time**; **the extension reconciles** (marker-gated: seed already-stored photos
+  before uploading, clear cursor); a **switch** resets the extension's private ledger; same-event
+  re-join is a no-op. The app runs no join and holds no ledger. Multi-event **deferred**.
+- **Leave is supported** (`leave-event`), local-only: `disable producer → ConfigStore.clear()` — only,
+  surfaced as a joined-layer button + confirm dialog. It touches no ledger/cursor/marker (the extension
+  resets its own on the next marker mismatch). Already-uploaded objects stay in storage (no remote
+  delete); re-scanning the QR re-joins and reconciles them back.
 - **Storage = bunny.net native Storage API**; **device holds no credential**; an external **edge proxy
   endpoint** streams bytes into the bucket **by event id only** (event id = the capability). Edge host
   is BuildKonfig; **no baked secrets** (the storage `AccessKey` lives only on the edge). *(2026-06-22

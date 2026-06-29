@@ -30,6 +30,10 @@ class IosDiscoveryStore(
     override fun saveToken(token: ByteArray) {
         runCatching { defaults.setObject(token.toNSData(), forKey = DISCOVERY_TOKEN_KEY) }
     }
+
+    override fun clearToken() {
+        runCatching { defaults.removeObjectForKey(DISCOVERY_TOKEN_KEY) }
+    }
 }
 
 @OptIn(ExperimentalForeignApi::class, BetaInteropApi::class)

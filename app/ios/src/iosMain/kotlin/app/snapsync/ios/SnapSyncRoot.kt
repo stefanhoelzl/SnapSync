@@ -8,18 +8,12 @@ import app.snapsync.eventcreation.CreateEvent
 import app.snapsync.eventcreation.EventCreator
 import app.snapsync.eventcreation.HttpEventCreationClient
 import app.snapsync.eventcreation.MutableCreationStatusSource
-import app.snapsync.engine.DISCOVERY_TOKEN_KEY
-import app.snapsync.engine.LEDGER_APP_GROUP
-import app.snapsync.engine.LedgerBackend
-import app.snapsync.engine.iosLedgerBackend
-import app.snapsync.eventstatus.MutableEventStatusSource
 import app.snapsync.gallery.IosManifestStore
 import app.snapsync.gallery.PhotoLibraryGalleryStatus
 import app.snapsync.permission.PermissionStatus
 import app.snapsync.permission.PhotoLibraryPermission
 import app.snapsync.presentation.StatusContainerHost
 import app.snapsync.rejoin.HttpEventFilesSource
-import app.snapsync.rejoin.JoinEvent
 import app.snapsync.rejoin.LeaveEvent
 import app.snapsync.rejoin.darwinHttpClient
 import app.snapsync.status.DirectoryPendingManifestsSource
@@ -35,7 +29,6 @@ import kotlinx.coroutines.launch
 import platform.Foundation.NSBundle
 import platform.Foundation.NSOperatingSystemVersion
 import platform.Foundation.NSProcessInfo
-import platform.Foundation.NSUserDefaults
 import platform.Photos.PHPhotoLibrary
 import platform.UIKit.UIActivityViewController
 import platform.UIKit.UIApplication
@@ -68,32 +61,17 @@ object SnapSyncRoot {
 
     private val log = Logger.withTag("SnapSyncRoot")
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
-    private val ledgerBackend: LedgerBackend by lazy { iosLedgerBackend() }
 
     // The live photo-library count (N), held so a re-provision can ding it to re-read.
     private val gallery: PhotoLibraryGalleryStatus by lazy { PhotoLibraryGalleryStatus() }
 
-    // The event config seam/store (one Keychain adapter is both), hoisted so the join can read the
-    // current event id for switch detection and the gate.
+    // The event config seam/store (one Keychain adapter is both), hoisted so a (re)provision can read
+    // the current event id and the leave use-case can clear it.
     private val config: KeychainConfigStore by lazy { KeychainConfigStore() }
 
-    // The re-join status the JoinEvent drives and the container reads (same instance).
-    private val eventStatus = MutableEventStatusSource()
-
-    // The re-join reconciliation use-case: fetch the event's complete-asset listing (Darwin HTTPS) and
-    // seed already-stored photos before enabling the producer — seeding straight from the listing
-    // (assetId + resource filenames), no local enumeration. The host is the same compile-time base
-    // baked into the app Info.plist.
-    private val joinEvent: JoinEvent by lazy {
-        val host = NSBundle.mainBundle.objectForInfoDictionaryKey("BackgroundUploadURLBase") as? String ?: ""
-        JoinEvent(
-            files = HttpEventFilesSource(darwinHttpClient(), host),
-            ledger = ledgerBackend,
-            config = config,
-            status = eventStatus,
-            clearDiscoveryCursor = { clearDiscoveryCursor() },
-        )
-    }
+    // The photo-library permission adapter, hoisted so the grant collector and a (re)provision share one
+    // instance (both enable the extension; a provision must re-enable a producer a prior leave disabled).
+    private val permission: PhotoLibraryPermission by lazy { PhotoLibraryPermission() }
 
     // The shared App-Group manifest store, hoisted so the background-upload controller (writes DONE,
     // re-enqueues) and the in-flight status reader (lists/prunes PENDING markers) see one instance.
@@ -127,17 +105,13 @@ object SnapSyncRoot {
         )
     }
 
-    // The leave use-case: the local-only inverse of the join. Disables the producer first (no
-    // concurrent ledger writer), then resets the ledger, clears the discovery cursor, clears the
-    // Keychain config, and returns the status to Idle. Platform effects are the same ones the enable
-    // gate uses, injected as lambdas so the use-case stays pure/tested.
+    // The leave use-case: the local-only inverse of a join. Disables the producer, then clears the
+    // Keychain config — only. It constructs no ledger type; the extension resets its own private ledger,
+    // cursor, and joinedEventId marker on its next cycle once the configured event no longer matches.
     private val leaveEvent: LeaveEvent by lazy {
         LeaveEvent(
             config = config,
-            ledger = ledgerBackend,
-            status = eventStatus,
             disableExtension = { setUploadExtensionEnabled(false) },
-            clearDiscoveryCursor = { clearDiscoveryCursor() },
         )
     }
 
@@ -158,16 +132,14 @@ object SnapSyncRoot {
     }
 
     val host: StatusContainerHost by lazy {
-        val permission = PhotoLibraryPermission()
         // The listing-backed source: completeness listing × in-flight manifests × permission × the
         // live gallery total, minted into snapshots. No ledger read, no observed-completions overlay.
         val syncSource = ListingSyncStatusSource(completedAssets, pendingManifests, permission, gallery, scope)
-        enableBackgroundUploadOnGrant(permission)
-        // `config` is passed as both ports (one Keychain adapter implements both), as `permission` is;
-        // `eventStatus` is the same instance the join drives, so the screen shows Joining/JoinFailed.
+        enableBackgroundUploadOnGrant()
+        // `config` is passed as both ports (one Keychain adapter implements both), as `permission` is.
+        // No EventStatus source: status is read from the listing; the extension owns reconciliation.
         StatusContainerHost(
             syncSource, permission, permission, config, config, scope,
-            eventStatusSource = eventStatus,
             creationStatusSource = creationStatus, creator = eventCreator,
             leave = leaveEvent::leave,
             // Fire-and-forget share of the invite deeplink (the host owns the URL). Wiring-only:
@@ -208,10 +180,10 @@ object SnapSyncRoot {
 
     /**
      * A `snapsync://` deeplink arrived (forwarded raw from the Swift entry point). A **valid scan
-     * (re)provisions and reconciles** (no longer a forced re-upload): an event **switch** resets the
-     * ledger, the same event is a no-op, then the join gate seeds already-stored photos before the
-     * producer is (re)enabled. We decode here to capture the previous event id *before* saving the new
-     * one (switch detection); an invalid link flashes the transient error via the container.
+     * (re)provisions**: the config is persisted and the producer (re)enabled — the extension itself
+     * reconciles against storage on its next cycle (an event switch is a `joinedEventId` marker
+     * mismatch it resets and re-seeds; the same event is a no-op). An invalid link flashes the
+     * transient error via the container.
      */
     fun onOpenUrl(url: String) {
         when (val decoded = decodeConfigUrl(url)) {
@@ -221,19 +193,18 @@ object SnapSyncRoot {
     }
 
     /**
-     * Provision an event id — the shared join path for both a scanned/typed deeplink and a freshly
-     * created event. Captures the previous event id *before* saving the new one (so [JoinEvent] can
-     * detect a switch and reset the ledger), persists the config (the container's `ConfigSource` is
-     * this instance), re-reads the gallery total and the storage-truth status sources (the new event
-     * has its own completeness listing), then runs the reconcile-then-enable gate.
+     * Provision an event id — the shared path for both a scanned/typed deeplink and a freshly created
+     * event. Persists the config (the container's `ConfigSource` is this instance), re-reads the gallery
+     * total and the storage-truth status sources (the new event has its own completeness listing), and
+     * re-enables the producer if access is granted. The app runs no join, fetch, or seed — the extension
+     * self-reconciles, gated by its `joinedEventId` marker. Re-enabling matters because a prior leave
+     * disabled the producer and the grant collector does not re-fire while permission is unchanged.
      */
     private suspend fun provisionEvent(eventId: String) {
-        val previous = config.config.value?.eventId
-        joinEvent.onProvision(previous, eventId) // switch reset (before save)
         config.save(EventConfigPayload(eventId)) // persist; the container's ConfigSource is this instance
         gallery.refresh() // (re)joined event → re-read the gallery total (N)
         refreshStatusSources() // (re)joined event → re-LIST completeness + re-read in-flight manifests
-        reconcileThenEnable()
+        if (permission.permission.value == PermissionStatus.GRANTED) enableBackgroundUpload()
     }
 
     /**
@@ -263,45 +234,25 @@ object SnapSyncRoot {
     }
 
     /**
-     * The enable gate (event-rejoin-reconciliation): disable the extension (no concurrent writer
-     * during a seed), run the join — which, when needed, seeds already-stored photos as `COMPLETED`
-     * and clears the discovery cursor — then enable the extension **only if** the join is satisfied
-     * (joined, or the ledger already holds rows). On a failed list fetch the producer is left disabled
-     * and the user re-scans the QR to retry. The disable→enable also clears any stale 3202 config
-     * record (as the old re-register toggle did). Idempotent; called on a full grant and on every
-     * (re)provision.
+     * Enable the background-upload extension (idempotent), guarded so the iOS 26.1 call never traps on
+     * lower systems. The app runs no join, fetch, or seed — reconciliation lives inside the extension,
+     * gated by its `joinedEventId` marker (see `event-rejoin-reconciliation`); the extension
+     * self-reconciles on its next cycle. Called on a full grant and on every (re)provision.
      */
-    @OptIn(ExperimentalForeignApi::class)
-    private suspend fun reconcileThenEnable() {
-        if (!backgroundUploadSupported()) return
-        setUploadExtensionEnabled(false)
-        val ok = joinEvent.ensureJoined()
-        if (ok) {
-            setUploadExtensionEnabled(true)
-            log.i { "background-upload extension enabled (join satisfied)" }
-        } else {
-            log.i { "join not satisfied — extension left disabled (user re-scans to retry)" }
-        }
+    private fun enableBackgroundUpload() {
+        setUploadExtensionEnabled(true)
+        log.i { "background-upload extension enabled (extension self-reconciles)" }
     }
 
     /**
      * Toggle the background-upload extension registration, guarded so the iOS 26.1 call never traps on
-     * lower systems. Shared by the enable gate ([reconcileThenEnable]) and the leave use-case's
-     * disable lambda, so both go through one guarded path.
+     * lower systems. Shared by [enableBackgroundUpload] and the leave use-case's disable lambda, so both
+     * go through one guarded path.
      */
     @OptIn(ExperimentalForeignApi::class)
     private fun setUploadExtensionEnabled(enabled: Boolean) {
         if (!backgroundUploadSupported()) return
         PHPhotoLibrary.sharedPhotoLibrary().setUploadJobExtensionEnabled(enabled, error = null)
-    }
-
-    /**
-     * Clear the extension's persisted discovery cursor so the next cycle re-enumerates the whole
-     * library. Suite/key are the shared constants the extension's `IosDiscoveryStore` writes under.
-     */
-    @OptIn(ExperimentalForeignApi::class)
-    private fun clearDiscoveryCursor() {
-        NSUserDefaults(suiteName = LEDGER_APP_GROUP).removeObjectForKey(DISCOVERY_TOKEN_KEY)
     }
 
     /**
@@ -326,15 +277,15 @@ object SnapSyncRoot {
     }
 
     /**
-     * The app's only producer-side responsibility: once photo access is full (`GRANTED`), run the
-     * reconcile gate and (if satisfied) register the background-upload extension so the system can
-     * invoke its `process()`. The app performs no upload itself; the one-time join enumeration is the
-     * only producer-adjacent work it does. Re-runs on each grant/foreground transition to GRANTED.
+     * The app's only producer-side responsibility: once photo access is full (`GRANTED`), register the
+     * background-upload extension so the system can invoke its `process()`. The app performs no upload,
+     * fetch, enumeration, or seed — the extension self-reconciles on its next cycle. Re-runs on each
+     * transition to GRANTED; the enable call is idempotent-safe to repeat.
      */
-    private fun enableBackgroundUploadOnGrant(permission: PhotoLibraryPermission) {
+    private fun enableBackgroundUploadOnGrant() {
         scope.launch {
             permission.permission.collect { status ->
-                if (status == PermissionStatus.GRANTED) reconcileThenEnable()
+                if (status == PermissionStatus.GRANTED) enableBackgroundUpload()
             }
         }
     }

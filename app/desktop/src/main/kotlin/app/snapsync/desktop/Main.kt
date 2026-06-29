@@ -35,7 +35,6 @@ fun main() = application {
                 controller.configSource,
                 controller.configStore,
                 scope,
-                eventStatusSource = controller.eventStatusSource,
                 // Harness share stub (test equipment): the joined-layer presets force CANNED_CONFIG, so
                 // the host derives a real invite URL — copy it to the clipboard and log it rather than
                 // open a native share sheet. Exercises the UI flow only; mutates no harness state.

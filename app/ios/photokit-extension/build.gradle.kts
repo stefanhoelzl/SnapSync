@@ -27,6 +27,11 @@ kotlin {
             // (:capability:upload-url) — no signing, no credential.
             implementation(project(":capability:upload-url"))
             implementation(project(":capability:config"))
+            // The re-join reconciliation now runs in the extension (capability
+            // `event-rejoin-reconciliation`): the ExtensionReconciler seeds already-stored photos as
+            // COMPLETED before the producer runs, fetching the event's complete-asset listing via the
+            // EventFilesSource / HttpEventFilesSource (Darwin client supplied by the rejoin iosMain).
+            implementation(project(":capability:rejoin"))
             implementation(libs.coroutines.core)
             implementation(libs.kermit)
         }
