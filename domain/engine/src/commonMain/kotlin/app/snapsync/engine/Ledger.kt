@@ -1,9 +1,6 @@
 package app.snapsync.engine
 
 import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.conflate
-import kotlinx.coroutines.flow.distinctUntilChanged
-import kotlinx.coroutines.flow.flow
 
 /**
  * One key's durable upload memory. The ledger is the engine's only state: per-resource entries
@@ -76,9 +73,9 @@ class PendingResource(val assetId: String, val key: String) {
  * interpretation, no precedence, no clocks of their own, last write wins. [put] is a single-row
  * upsert and the unit of atomicity; record semantics live above, in [LedgerWriter], written once
  * for every backend. [changes] dings after every successful put — no payload, the only promise
- * is "re-read the truth", so conflation and missed signals are harmless by construction. Where
- * another process writes the store, feeding [changes] is that backend's concern (e.g. a Darwin
- * observer on iOS); the seam does not change.
+ * is "re-read the truth", so conflation and missed signals are harmless by construction. The ding
+ * is **in-process only**: the ledger is the extension's private upload memory with no cross-process
+ * watcher, so backends post no cross-process (e.g. Darwin) notification.
  */
 interface LedgerBackend {
     val changes: Flow<Unit>
@@ -129,7 +126,8 @@ interface LedgerBackend {
  * Read-only, per-key face of the ledger — the engine's view. Handing a [LedgerWriter] out typed
  * as [LedgerReader] is the narrowing — type safety against accidental writes, by construction:
  * only the composition root that owns the engine ever constructs the writer. Aggregates and
- * change signals are deliberately absent here; they belong to [LedgerWatcher].
+ * change signals are deliberately absent from this per-key face; the extension's own cycle reads
+ * them via [LedgerBackend] directly.
  */
 open class LedgerReader(protected val backend: LedgerBackend) {
     suspend fun entry(key: String): LedgerEntry? = backend.get(key)
@@ -167,49 +165,4 @@ class LedgerWriter(
 
     private suspend fun record(key: String, assetId: String, state: LedgerState, attempt: Int) =
         backend.put(LedgerEntry(key, assetId, state, attempt))
-}
-
-/**
- * A point-in-time read of the ledger for the status projection: the [completed] scalar (reused from
- * [LedgerAggregates]) plus [pendingByAsset] — the backlog grouped by photo (assetId → its
- * outstanding resource keys). The scalar and the backlog come from one watcher read so they never
- * disagree. The overlay intersects [pendingByAsset] with observed completions; the scalar stays
- * authoritative.
- */
-class LedgerSnapshot(
-    val completed: Int,
-    val pendingByAsset: Map<String, Set<String>>,
-) {
-    override fun equals(other: Any?): Boolean = other is LedgerSnapshot &&
-        completed == other.completed && pendingByAsset == other.pendingByAsset
-
-    override fun hashCode(): Int = 31 * completed + pendingByAsset.hashCode()
-
-    override fun toString(): String =
-        "LedgerSnapshot(completed=$completed, pendingByAsset=$pendingByAsset)"
-}
-
-/**
- * The status-facing face of the ledger: a cold stream of [LedgerSnapshot]s. Every collection starts
- * with the current truth, then re-queries on each backend ding — collectors share nothing. Dings are
- * conflated (each re-query reads latest state, skipped signals lose nothing) and equal consecutive
- * snapshots are deduplicated. This is the only ledger type that surfaces the snapshot or change
- * signals; per-key reads stay on [LedgerReader].
- */
-class LedgerWatcher(private val backend: LedgerBackend) {
-
-    val snapshot: Flow<LedgerSnapshot> = flow {
-        emit(read())
-        backend.changes.conflate().collect { emit(read()) }
-    }.distinctUntilChanged()
-
-    // The scalars come from aggregates() (which the extension also reads for `pending`), the backlog
-    // from pendingResources(); grouped here so the backend stays a dumb row store.
-    private suspend fun read(): LedgerSnapshot {
-        val aggregates = backend.aggregates()
-        val pendingByAsset = backend.pendingResources()
-            .groupBy { it.assetId }
-            .mapValues { (_, rows) -> rows.mapTo(mutableSetOf()) { it.key } }
-        return LedgerSnapshot(aggregates.completed, pendingByAsset)
-    }
 }

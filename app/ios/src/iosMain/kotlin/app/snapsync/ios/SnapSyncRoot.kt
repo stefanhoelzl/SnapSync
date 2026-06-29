@@ -11,7 +11,6 @@ import app.snapsync.eventcreation.MutableCreationStatusSource
 import app.snapsync.engine.DISCOVERY_TOKEN_KEY
 import app.snapsync.engine.LEDGER_APP_GROUP
 import app.snapsync.engine.LedgerBackend
-import app.snapsync.engine.LedgerWatcher
 import app.snapsync.engine.iosLedgerBackend
 import app.snapsync.eventstatus.MutableEventStatusSource
 import app.snapsync.gallery.IosManifestStore
@@ -23,15 +22,15 @@ import app.snapsync.rejoin.HttpEventFilesSource
 import app.snapsync.rejoin.JoinEvent
 import app.snapsync.rejoin.LeaveEvent
 import app.snapsync.rejoin.darwinHttpClient
-import app.snapsync.status.LedgerSyncStatusSource
+import app.snapsync.status.DirectoryPendingManifestsSource
+import app.snapsync.status.FilesCompletedAssetsSource
+import app.snapsync.status.ListingSyncStatusSource
 import co.touchlab.kermit.Logger
 import kotlinx.cinterop.ExperimentalForeignApi
 import kotlinx.cinterop.cValue
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.launch
 import platform.Foundation.NSBundle
 import platform.Foundation.NSOperatingSystemVersion
@@ -51,11 +50,12 @@ import platform.darwin.dispatch_get_main_queue
  * Swift entry point stays untouched. Move ownership to Swift only if scene-aware lifecycle or
  * scope recreation (multi-window, reset/logout) is ever needed.
  *
- * Assembly is lazy so it runs once on first view creation: ledger backend → watcher → source ×
- * PhotoKit permission → container. `permission` and `config` are each passed as both their ports
- * (one adapter implements both). The app reads the ledger (it never constructs a `LedgerWriter` —
- * the background-upload extension is the single writer) and, on a full grant, enables that
- * extension where supported.
+ * Assembly is lazy so it runs once on first view creation: the storage-truth status sources
+ * (completeness listing + on-disk manifests) × the gallery total × PhotoKit permission → the
+ * listing-backed source → container. `permission` and `config` are each passed as both their ports
+ * (one adapter implements both). Status derives from **storage truth, not the ledger** — the app no
+ * longer reads the ledger (the background-upload extension is its sole, private owner) — and, on a
+ * full grant, enables that extension where supported.
  */
 object SnapSyncRoot {
 
@@ -95,15 +95,34 @@ object SnapSyncRoot {
         )
     }
 
+    // The shared App-Group manifest store, hoisted so the background-upload controller (writes DONE,
+    // re-enqueues) and the in-flight status reader (lists/prunes PENDING markers) see one instance.
+    private val manifestStore: IosManifestStore by lazy { IosManifestStore() }
+
+    // Status from storage truth (capability `sync-status`), no ledger read:
+    //   completed ← the event's completeness listing (GET /event/<id>/files, Darwin HTTPS);
+    //   in-flight ← the on-disk PENDING manifests (with a complete-asset prune backstop).
+    // Both refresh on foreground entry and on each manifest URLSession completion (event-driven; no
+    // polling timer). The host is the same compile-time base the rejoin/upload clients use.
+    private val completedAssets: FilesCompletedAssetsSource by lazy {
+        val host = NSBundle.mainBundle.objectForInfoDictionaryKey("BackgroundUploadURLBase") as? String ?: ""
+        FilesCompletedAssetsSource(HttpEventFilesSource(darwinHttpClient(), host)) { config.config.value?.eventId }
+    }
+    private val pendingManifests: DirectoryPendingManifestsSource by lazy {
+        DirectoryPendingManifestsSource(IosManifestDirectory(manifestStore), completedAssets)
+    }
+
     // The app end of the manifest background URLSession (capability `asset-manifest`): the system
     // relaunches the app to finish uploads the extension started; this controller adopts that session,
-    // marks each manifest DONE on success, and re-enqueues on failure. The host is the same baked base.
+    // marks each manifest DONE on success, and re-enqueues on failure. On a successful landing it
+    // also re-LISTs + re-reads the in-flight manifests so status stays live. The host is the same base.
     private val manifestController: ManifestUploadController by lazy {
         val host = NSBundle.mainBundle.objectForInfoDictionaryKey("BackgroundUploadURLBase") as? String ?: ""
         ManifestUploadController(
-            store = IosManifestStore(),
+            store = manifestStore,
             host = host,
             eventIdProvider = { config.config.value?.eventId },
+            onManifestUploaded = { scope.launch { refreshStatusSources() } },
             log = log,
         )
     }
@@ -122,10 +141,6 @@ object SnapSyncRoot {
         )
     }
 
-    // The platform foreground signal driving the observed-completions poll. Seeded false; the Swift
-    // scene flips it via onForeground()/onBackground() on its scene-phase transitions.
-    private val foreground = MutableStateFlow(false)
-
     // The create-event status the use-case drives and the container reads (same instance).
     private val creationStatus = MutableCreationStatusSource()
 
@@ -143,18 +158,16 @@ object SnapSyncRoot {
     }
 
     val host: StatusContainerHost by lazy {
-        val watcher = LedgerWatcher(ledgerBackend)
         val permission = PhotoLibraryPermission()
-        // The read-only PhotoKit upload-job reader: succeeded-but-unacknowledged jobs the ledger does
-        // not yet know about. The overlay in the status source projects them onto live progress.
-        val observed = IosObservedCompletionsSource(log) { backgroundUploadSupported() }
-        val syncSource = LedgerSyncStatusSource(watcher, permission, gallery, observed, scope)
+        // The listing-backed source: completeness listing × in-flight manifests × permission × the
+        // live gallery total, minted into snapshots. No ledger read, no observed-completions overlay.
+        val syncSource = ListingSyncStatusSource(completedAssets, pendingManifests, permission, gallery, scope)
         enableBackgroundUploadOnGrant(permission)
         // `config` is passed as both ports (one Keychain adapter implements both), as `permission` is;
         // `eventStatus` is the same instance the join drives, so the screen shows Joining/JoinFailed.
         StatusContainerHost(
             syncSource, permission, permission, config, config, scope,
-            observed = observed, foreground = foreground, eventStatusSource = eventStatus,
+            eventStatusSource = eventStatus,
             creationStatusSource = creationStatus, creator = eventCreator,
             leave = leaveEvent::leave,
             // Fire-and-forget share of the invite deeplink (the host owns the URL). Wiring-only:
@@ -164,17 +177,23 @@ object SnapSyncRoot {
     }
 
     /**
-     * The SwiftUI scene's foreground transitions (forwarded from the `@main` scene's scenePhase).
-     * They gate the observed-completions poll: foreground + pending work → refresh on an interval.
-     * Touching [host] ensures the stack is assembled before the first transition arrives.
+     * The SwiftUI scene's foreground transition (forwarded from the `@main` scene's scenePhase):
+     * re-LIST the completeness listing and re-read the in-flight manifests so status reflects any
+     * completions that landed while backgrounded (capability `sync-status` liveness). Touching [host]
+     * ensures the stack is assembled before the first transition arrives.
      */
     fun onForeground() {
         host
-        foreground.value = true
+        scope.launch { refreshStatusSources() }
     }
 
-    fun onBackground() {
-        foreground.value = false
+    /** No-op: status liveness is event-driven (foreground entry + manifest completion), never polled. */
+    fun onBackground() = Unit
+
+    /** Re-read both storage-truth status sources (completeness listing + on-disk in-flight manifests). */
+    private suspend fun refreshStatusSources() {
+        completedAssets.refresh()
+        pendingManifests.refresh()
     }
 
     /**
@@ -205,13 +224,15 @@ object SnapSyncRoot {
      * Provision an event id — the shared join path for both a scanned/typed deeplink and a freshly
      * created event. Captures the previous event id *before* saving the new one (so [JoinEvent] can
      * detect a switch and reset the ledger), persists the config (the container's `ConfigSource` is
-     * this instance), re-reads the gallery total, then runs the reconcile-then-enable gate.
+     * this instance), re-reads the gallery total and the storage-truth status sources (the new event
+     * has its own completeness listing), then runs the reconcile-then-enable gate.
      */
     private suspend fun provisionEvent(eventId: String) {
         val previous = config.config.value?.eventId
         joinEvent.onProvision(previous, eventId) // switch reset (before save)
         config.save(EventConfigPayload(eventId)) // persist; the container's ConfigSource is this instance
         gallery.refresh() // (re)joined event → re-read the gallery total (N)
+        refreshStatusSources() // (re)joined event → re-LIST completeness + re-read in-flight manifests
         reconcileThenEnable()
     }
 

@@ -41,7 +41,7 @@ class IosManifestStore(appGroup: String = LEDGER_APP_GROUP) {
         .containerURLForSecurityApplicationGroupIdentifier(appGroup)
         ?.URLByAppendingPathComponent("manifests", isDirectory = true)
 
-    private fun pendingUrl(assetId: String): NSURL? = dir?.URLByAppendingPathComponent("$assetId.manifest.json")
+    private fun pendingUrl(assetId: String): NSURL? = dir?.URLByAppendingPathComponent("$assetId$PENDING_SUFFIX")
     private fun doneUrl(assetId: String): NSURL? = dir?.URLByAppendingPathComponent("$assetId.manifest.done")
 
     private fun exists(url: NSURL?): Boolean = url?.path?.let(fileManager::fileExistsAtPath) == true
@@ -69,6 +69,31 @@ class IosManifestStore(appGroup: String = LEDGER_APP_GROUP) {
     /** The PENDING file URL for re-enqueuing a stalled upload, or `null` if it is not present. */
     fun pendingFileUrl(assetId: String): NSURL? = pendingUrl(assetId)?.takeIf { exists(it) }
 
+    /**
+     * The asset ids with a PENDING (`.manifest.json`) marker on disk — the in-flight set the app's
+     * status reads (capability `sync-status`). Enumerates the `manifests/` directory and strips the
+     * `.manifest.json` suffix; an unavailable/empty directory yields an empty set.
+     */
+    fun pendingAssetIds(): Set<String> {
+        val container = dir?.path ?: return emptySet()
+        val names = fileManager.contentsOfDirectoryAtPath(container, error = null) ?: return emptySet()
+        val out = mutableSetOf<String>()
+        for (name in names) {
+            val file = name as? String ?: continue
+            if (file.endsWith(PENDING_SUFFIX)) out += file.removeSuffix(PENDING_SUFFIX)
+        }
+        return out
+    }
+
+    /**
+     * Prune an asset's PENDING manifest file — the app's storage-truth backstop to the extension's
+     * own prune-on-success (`sync-status`): once the listing reports the asset complete its in-flight
+     * marker is removed. Idempotent — a missing file is a harmless no-op.
+     */
+    fun prunePending(assetId: String) {
+        pendingUrl(assetId)?.let { fileManager.removeItemAtURL(it, error = null) }
+    }
+
     /** Flip the asset to DONE (the upload landed): drop the PENDING source file and write the DONE marker. */
     @OptIn(BetaInteropApi::class)
     fun markDone(assetId: String) {
@@ -76,5 +101,9 @@ class IosManifestStore(appGroup: String = LEDGER_APP_GROUP) {
         val done = doneUrl(assetId) ?: return
         (("" as platform.Foundation.NSString).dataUsingEncoding(NSUTF8StringEncoding) as? NSData)
             ?.writeToURL(done, atomically = true)
+    }
+
+    private companion object {
+        const val PENDING_SUFFIX = ".manifest.json"
     }
 }

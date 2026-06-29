@@ -96,8 +96,9 @@ desktop test app. Layering, top to bottom:
 
 - **UI** — Compose, written against an in-house **design-system abstraction** (so the skin is swappable).
 - **Platform-independent backend** — the sync vocabulary, the ledgered **decision core**
-  (`SyncEngine` + its SQL ledger, the engine's only state), the status projection (read-only
-  ledger queries), and the MVI presentation layer. Knows nothing about the platform or the event.
+  (`SyncEngine` + its SQL ledger, the engine's only state), the status projection (derived from
+  storage truth — the completeness listing — not the ledger; §2.4), and the MVI presentation layer.
+  Knows nothing about the platform or the event.
 - **Platform adapters** — own discovery, upload execution, event-config provisioning, and small
   lossy-tolerant bookkeeping; they **drive** the shared decision core with observation events and
   act on the decisions it returns (§2.2). Upload memory lives in the engine's ledger, not the platform.
@@ -126,12 +127,15 @@ filter, the edge URL build) lives **above and beside** the seam, in the platform
                            UploadJob, UploadRequest, UploadError, UploadRequestProvider.
                            (Asset layer = a slice above.)
                          • SyncEngine — the ledgered decision core (§2.2) + its ledger
-                           (LedgerBackend storage seam, LedgerReader/LedgerWriter/LedgerWatcher,
-                           SQLDelight)
-:domain:status         → :domain:engine + :domain:permission (BOTH implementation-scoped — neither
-                         leaks to status's consumers). The status projection (§2.4): SyncStatus +
-                         SyncState + SyncStatusSource (snapshot seam, §2.3) and
-                         LedgerSyncStatusSource — ledger aggregates × (permission ∧ joined) → snapshots.
+                           (LedgerBackend storage seam, LedgerReader/LedgerWriter, SQLDelight). The
+                           ledger is the extension's PRIVATE upload memory — the app no longer
+                           reads it for status (ledger-free-status).
+:domain:status         → :domain:permission + :domain:gallery + :capability:rejoin (the EventFilesSource
+                         completeness listing) — ALL implementation-scoped, none leaks to status's
+                         consumers, and NO :domain:engine dependency. The status projection (§2.4):
+                         SyncStatus + SyncState + SyncStatusSource (snapshot seam, §2.3) and the
+                         listing-backed ListingSyncStatusSource — completeness listing × on-disk
+                         in-flight manifests × permission × gallery total → snapshots (no ledger read).
 :domain:permission     PermissionStatus / PermissionStatusSource / PermissionRequester.
 :capability:config     deeplink → EventConfig provisioning (eventId/name/startDate). Was S3Config in
                          v1; now carries the event. Stores into shared Keychain (app + extension).
@@ -238,9 +242,9 @@ interface UploadRequestProvider {            // impl: a LOCAL URL builder, no ne
 }
 
 interface LedgerBackend {                    // storage seam: dumb row store, last write wins
-    val changes: Flow<Unit>                  // ding after every put; "re-read the truth" — where
-                                             //   another process writes, feeding this is that
-                                             //   backend's concern (iOS: Darwin observer)
+    val changes: Flow<Unit>                  // ding after every put; "re-read the truth" —
+                                             //   IN-PROCESS ONLY: the ledger is the extension's
+                                             //   private memory, no cross-process (Darwin) ding
     suspend fun get(key: String): LedgerEntry?  // LedgerEntry carries an opaque assetId column
     suspend fun put(entry: LedgerEntry)      // single-row upsert = the unit of atomicity
     suspend fun aggregates(): LedgerAggregates  // one round-trip, counted by PHOTO (assetId): a
@@ -258,9 +262,8 @@ class LedgerWriter(backend) : LedgerReader
                                              // are all clock-free and store verbatim.
                                              // ONE writer per platform, by construction: only the
                                              // engine-hosting composition root constructs it
-class LedgerWatcher(backend)                 // aggregates: Flow<LedgerAggregates> — cold: current
-                                             //   truth on collect, re-query per conflated ding,
-                                             //   deduped; the ONLY type surfacing aggregates/dings
+                                             // (the extension). The app constructs no ledger type:
+                                             // status reads storage truth, not the ledger.
 class LedgerEntry(key, assetId, state /* REQUESTED|COMPLETED|FAILED */, attempt)
 class LedgerAggregates(pending, completed)   // counted by PHOTO (assetId)
                                              // schema: key PRIMARY KEY, assetId (+index), state,
@@ -311,7 +314,7 @@ returned system job is mapped back to its key by **parsing its destination URL p
 (`/event/<id>/file/<name>` → `<id>/<name>`), since `resource` is **nil for succeeded
 jobs**; the attempt comes from the ledger row. **One ledger
 writer per platform:** the engine (and its `LedgerWriter`) is hosted where uploads are decided — on
-iOS, the extension; the app holds a read-only ledger view. Scope filtering (photos yes, standalone
+iOS, the extension, which is the ledger's sole owner (the app reads no ledger; §2.4). Scope filtering (photos yes, standalone
 video no; **capture date ≥ event start**) sits above the seam — the engine is media-type- and
 event-blind by construction.
 
@@ -335,27 +338,45 @@ stream. Why (decided 2026-06-09):
 - **Snapshots are self-healing** (every emission is the whole truth): no late-subscriber problem, no
   missed-event corruption, safe conflation (`StateFlow`), and initial render is the same code path as
   any update.
-- Platform signals (`photoLibraryDidChange`, Darwin notifications, foreground entry, polling) and
+- Platform signals (`photoLibraryDidChange`, foreground entry, manifest `URLSession` completion) and
   **event-config changes (join)** are **invalidation dings handled inside the iOS impl** — each
-  triggers re-read + a fresh emission; none leaks into the contract.
+  triggers re-read (re-LIST the completeness listing / re-read in-flight manifests / re-count the
+  gallery) + a fresh emission; none leaks into the contract. (No ledger Darwin notification — the
+  ledger is the extension's private memory.)
 - One-shot effects (toasts, later) are derived **downstream** by diffing consecutive snapshots in the
   Orbit container.
 
-### 2.4 Status projection: read-only queries over the engine's ledger
+### 2.4 Status projection: derived from storage truth, not the ledger
 
 How `SyncStatusSource` (§2.3) gets its truth. The UI seam stays a level-triggered
-`StateFlow<SyncStatus>`; behind it, `LedgerSyncStatusSource` (in `:domain:status`) combines the
-ledger's `LedgerWatcher` stream with the permission seam **and the event-config (joined) state** and
-mints snapshots — constructed via a suspend factory that reads the current truth first, so the seam's
-synchronous-first-value promise holds. Writes ding, the watcher re-queries, the source re-mints.
+`StateFlow<SyncStatus>`; behind it, `ListingSyncStatusSource` (in `:domain:status`) derives status
+from three **observable, ledger-free** sources and the permission seam, minting snapshots
+(`ledger-free-status`, 2026-06-28):
 
-- **Counts are lifetime aggregates by PHOTO (assetId), not resource row** (added 2026-06-22):
-  `pending` = photos with any non-`COMPLETED` resource, `completed` = photos whose resources are
-  all `COMPLETED`. The status surface reports completeness and live activity only — there is **no
-  completion timestamp** (no "last backed up N ago"). A `COMPLETED` key is never re-uploaded (an
-  uploaded resource is immutable), so counts only ever climb. `failed` ≡ 0 from the real source
-  (retry-forever) and `estimatedRemaining` ≡ null (never estimates) — both fields exist for
-  classification and fakes.
+- `completed` ← the **completeness listing** (`GET /event/<id>/files`, the `EventFilesSource` from
+  `immutable-asset-manifests`): the count of complete assets storage reports (an asset all of whose
+  manifest-named resources are present), via `CompletedAssetsSource`.
+- `pending` (in-flight) ← the **on-disk manifest files** in the App Group (one per asset the
+  extension started and has not yet confirmed), via `PendingManifestsSource`, which also **prunes**
+  the file of any asset the listing now reports complete (a backstop to the extension's own
+  prune-on-success).
+- `total` ← the **PhotoKit gallery count** (`GalleryStatusSource`, unchanged).
+
+The factory is non-suspending: it seeds `Loading` and, on its scope, combines the four inputs,
+emitting `Ready` once completed-count + permission + gallery have each produced a first value.
+**Liveness is event-driven, not polled:** the iOS composition root re-LISTs (and re-reads the
+in-flight manifests) on **foreground entry** and on **each manifest `URLSession` completion**. A
+failed listing keeps the last good value. *Known trade-off:* if the app is backgrounded when an
+asset's last resource lands after its manifest, `completed` is stale until the next foreground
+re-LIST (accepted for v1; documented fast-follow is a bounded foreground re-LIST timer behind an
+ETag/304). The ledger is now the extension's **private** upload memory — the app reads no ledger and
+constructs no ledger type; the `observed-completion-overlay` (which masked ledger lag) is **deleted**.
+
+- **Counts are by PHOTO (assetId), not resource row**: `completed` = complete assets in the listing,
+  `pending` = assets with an in-flight on-disk manifest. The status surface reports completeness and
+  live activity only — there is **no completion timestamp** (no "last backed up N ago"). A stored
+  asset is immutable, so `completed` only ever climbs. `failed` ≡ 0 (retry-forever) and
+  `estimatedRemaining` ≡ null (never estimates) — both fields exist for classification and fakes.
 - **Classification is counts-only** — a pure function of the live total `N` and the clamped synced
   count `n = min(completed, total)`: `total == 0 → NOTHING_TO_SYNC; n >= total → COMPLETE; else
   IN_PROGRESS`. There is no SUSPENDED state (the setup gate shadows every inactive case), no
@@ -363,13 +384,15 @@ synchronous-first-value promise holds. Writes ding, the watcher re-queries, the 
   retry-forever).
 - **`active` = operational state** (not a liveness heuristic): *contribution machinery is allowed to
   run* — `permission == GRANTED` **AND a valid event config is present (joined)**, derived once inside
-  `LedgerSyncStatusSource`. Shared logic, no clocks. Consequence: **the setup gate covers the hero
+  the listing-backed source. Shared logic, no clocks. Consequence: **the setup gate covers the hero
   whenever `active` is false** — i.e. when permission isn't granted **or** when no event is joined
   (§5). "Not joined" is therefore **the gate's no-event state**, exactly mirroring v1's no-storage-setup
   gate; it is not a new top-level `SyncState`.
 - **Cross-process topology (iOS):** the extension hosts the engine and the single `LedgerWriter` (WAL,
-  short single-statement writes); the app opens the database **read-only**. The app-side backend feeds
-  its `changes` flow from the Darwin notification the extension posts.
+  short single-statement writes) and is the ledger's **sole** reader/writer; the app touches no
+  ledger. There is **no cross-process (Darwin) ledger notification** — the app's status freshness
+  comes from re-LISTing storage (foreground entry + manifest `URLSession` completion), not from a
+  ledger ding.
 - **Staleness detection is read-only:** the app compares the photo library's `currentChangeToken` with
   the platform bookkeeping's last token — mismatch ⇒ undiscovered work ⇒ status can say "waiting for
   system" instead of a false COMPLETE (later slice).
@@ -421,8 +444,9 @@ proxies are all dropped — so an asset's resource set is **fixed at capture and
   — it rides a vanilla background `URLSession` side channel (the OS job API carries only a
   `PHAssetResource`); the extension generates + enqueues it and the **app** handles its completion
   (`handleEventsForBackgroundURLSession`), with an App-Group PENDING/DONE file as the dedup/retry
-  marker. **Change 2 follow-on (`ledger-free-status`):** the app's status projection is later decoupled
-  from the ledger to read this same completeness listing.
+  marker. **Change 2 (`ledger-free-status`, applied):** the app's status projection reads this same
+  completeness listing (plus the on-disk in-flight manifests and the gallery total) instead of the
+  ledger — see §2.4.
 - **Edit-handling dissolves:** the original resource is immutable and the only thing uploaded; an edit
   produces no new upload — its render/adjustment artifacts are dropped, and the manifest (originals
   only) is never revised. Nothing is overwritten or added.
@@ -701,9 +725,10 @@ bytes). The proxy sidesteps signing entirely: the endpoint, not the device, writ
   immutable and never re-uploaded, hope-never-skips, retry chains, provider-failure rethrow,
   suffix-replay convergence);
   `LedgerBackend` contract tests against the in-memory and SQLDelight (JVM sqlite) backends incl.
-  **`clear()`** for re-provision; `LedgerWatcher` stream tests; the classification decision table and
-  `LedgerSyncStatusSource` tests with **`active` = permission ∧ joined** (real watcher + in-memory
-  backend + fake permission + fake event-config source); **`UploadRequestProvider` (local URL builder)
+  **`clear()`** for re-provision; the classification decision table and `ListingSyncStatusSource`
+  tests (fake `CompletedAssetsSource` + fake `PendingManifestsSource` + fake permission + in-memory
+  gallery), plus `FilesCompletedAssetsSource` (keep-last-good on a failed listing) and
+  `PendingManifestsSource` (in-flight excludes complete + prunes) tests; **`UploadRequestProvider` (local URL builder)
   tests** — key construction (`<eventId>/<encoded filename>`, percent-encoding,
   deterministic+injective), edge-URL shaping, invalid-input → rethrow; **date-filter discovery
   predicate tests** (capture ≥ start) where the logic is shared; `:capability:config` deeplink-parse
@@ -733,9 +758,9 @@ itself is covered by the endpoint's `Deno.test` suite.
 | UI | Compose Multiplatform | single codebase; Material 3 behind a design-system abstraction |
 | State | **Orbit MVI** (10.0.0) | Compose-free; Decompose-able later |
 | DI | **Manual composition root** | no deps, compile-safe; Koin if it grows |
-| HTTP | **Ktor** (Darwin engine) | **not load-bearing for upload** — the PUT is iOS's (straight to the edge) and the `UploadRequestProvider` builds the URL **locally** (no HTTP). Retained only if a future on-device HTTP need arises; app never `LIST`s |
+| HTTP | **Ktor** (Darwin engine) | **not load-bearing for upload** — the PUT is iOS's (straight to the edge) and the `UploadRequestProvider` builds the URL **locally** (no HTTP). The app DOES `GET /event/<id>/files` — the completeness listing that backs status (§2.4) and the rejoin reconcile |
 | Crypto/IO | **okio** (App-Group IO) | hand-rolled SigV4 **retired** — signing is **eliminated** (the edge writes with its `AccessKey`); KotlinCrypto no longer needed on-device |
-| Engine ledger | **SQLDelight** (2.3.2) | per-key upload memory; single writer (extension), read-only app connection; `clear()` on re-provision |
+| Engine ledger | **SQLDelight** (2.3.2) | per-key upload memory; **extension-private** (sole reader/writer); the app reads no ledger — status derives from storage truth (§2.4); `resetTo`/`clear()` on (re)join reconcile |
 | Persistence | **okio + kotlinx.serialization** | tiny App-Group store: change token, start date, eventId; event config in shared **Keychain** (via `:capability:config`) |
 | Config | **BuildKonfig** | edge host (`BackgroundUploadURLBase`); **no secrets** (storage `AccessKey` lives on the edge). Event config is runtime (deeplink) |
 | Backend | **Deno + Hono + bunny Edge Scripting** | the `backend/` streaming proxy upload endpoint (`@bunny.net/edgescript-sdk` + Hono routing); native Storage `PUT` + `AccessKey`; deployed via GitHub Action |
@@ -794,10 +819,12 @@ design-system rules (§5), the dual-UI desktop harness (§5.1), and the three te
 - **Edge reachability + latency from the extension** (one PUT per `Work` resource).
 - Required **entitlements**; exact `PHAssetResource ↔ job ↔ key` association; `creationRequestForJob`
   semantics (incl. iCloud-offloaded resources).
-- **App Group + shared Keychain** wiring (event config + change token + bookkeeping + ledger DB shared
-  by app and extension; framework in both targets); App-Group **file-protection class** for
-  locked-device extension writes.
-- **SQLite WAL cross-process** behavior (app read-only while extension writes).
+- **App Group + shared Keychain** wiring (event config + change token + bookkeeping shared by app and
+  extension; the **manifest PENDING/DONE files** shared both ways — extension writes PENDING, app
+  writes DONE + prunes; framework in both targets); App-Group **file-protection class** for
+  locked-device extension writes. The **ledger DB is extension-private** (not shared/read by the app).
+- **App-Group file sharing cross-process** (the extension's PENDING manifest writes ↔ the app's DONE
+  writes / prunes). The ledger is single-process (extension-only), so no cross-process DB access.
 - **Swift ↔ `Flow` interop** for collecting `handle()` from the extension (SKIE or a thin wrapper).
 - **Native-Camera + custom-scheme** reliability (and the not-installed dead-end) — accepted, revisit if
   it bites; a **Universal Link** is the upgrade path.

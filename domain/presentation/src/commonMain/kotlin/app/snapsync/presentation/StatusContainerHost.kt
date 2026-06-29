@@ -18,33 +18,20 @@ import app.snapsync.eventstatus.MutableEventStatusSource
 import app.snapsync.permission.PermissionRequester
 import app.snapsync.permission.PermissionStatus
 import app.snapsync.permission.PermissionStatusSource
-import app.snapsync.status.ObservedCompletionsSource
-import app.snapsync.status.NoObservedCompletions
 import app.snapsync.status.SyncStatus
 import app.snapsync.status.SyncState
 import app.snapsync.status.SyncProgress
 import app.snapsync.status.SyncStatusSource
-import kotlin.time.Duration
-import kotlin.time.Duration.Companion.seconds
 import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.ExperimentalCoroutinesApi
-import kotlinx.coroutines.delay
-import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
-import kotlinx.coroutines.flow.distinctUntilChanged
-import kotlinx.coroutines.flow.emptyFlow
-import kotlinx.coroutines.flow.flatMapLatest
-import kotlinx.coroutines.flow.flow
-import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import org.orbitmvi.orbit.Container
 import org.orbitmvi.orbit.ContainerHost
 import org.orbitmvi.orbit.container
 
-@OptIn(ExperimentalCoroutinesApi::class)
 class StatusContainerHost(
     syncSource: SyncStatusSource,
     permissionSource: PermissionStatusSource,
@@ -52,12 +39,6 @@ class StatusContainerHost(
     configSource: ConfigSource,
     private val store: ConfigStore,
     scope: CoroutineScope,
-    // The observed-completions overlay refresh and the platform foreground signal. Defaults make the
-    // overlay inert (no-op source, always-foreground) so non-iOS hosts and tests construct unchanged;
-    // iOS injects the real PhotoKit-backed source and a scenePhase-driven foreground signal.
-    observed: ObservedCompletionsSource = NoObservedCompletions,
-    foreground: Flow<Boolean> = flowOf(true),
-    pollInterval: Duration = 10.seconds,
     // The re-join status seam. Defaults to an always-`Idle` source so non-iOS hosts and tests that
     // don't exercise the join construct unchanged (Idle falls through to the sync hero); iOS injects
     // the same instance the JoinEvent drives.
@@ -105,19 +86,6 @@ class StatusContainerHost(
                     reduceFrom(config, permission, eventStatus, snapshot, creation)
                 }
                     .collect { ui -> reduce { ui } }
-            }
-            intent {
-                // Keep progress live while the screen is shown: refresh the observed-completions
-                // overlay whenever the app is foreground AND work is still pending, on a bounded
-                // interval (job success has no notification — polling is the only way to observe it
-                // between the extension's coarse runs). Refreshing stops the moment pending hits zero
-                // (the projection drained) or foreground is lost, and resumes immediately on return.
-                combine(foreground, syncSource.status) { fg, snapshot ->
-                    fg && snapshot is SyncStatus.Ready && snapshot.progress.pending > 0
-                }
-                    .distinctUntilChanged()
-                    .flatMapLatest { active -> if (active) pollTicks(pollInterval) else emptyFlow() }
-                    .collect { observed.refresh() }
             }
         }
 
@@ -175,15 +143,6 @@ class StatusContainerHost(
             is ConfigDecodeResult.Success -> store.save(result.payload)
             is ConfigDecodeResult.Failure -> postSideEffect(SetupEffect.InvalidConfigLink)
         }
-    }
-}
-
-// Emits immediately (refresh on activation) then every [interval] until the collector is cancelled
-// (which flatMapLatest does the moment foreground/pending goes false).
-private fun pollTicks(interval: Duration): Flow<Unit> = flow {
-    while (true) {
-        emit(Unit)
-        delay(interval)
     }
 }
 
