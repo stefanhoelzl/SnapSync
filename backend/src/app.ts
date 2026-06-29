@@ -2,55 +2,76 @@
 // `bunny-list-endpoint` + `bunny-download-endpoint`, over the shared `backend-config`).
 //
 //   POST /event
-//     → mints an event: writes the marker `events/<id>.json`, returns {eventId,name,createdAt}.
+//     → mints an event: writes the marker `events/<id>/metadata.json`, returns {eventId,name,createdAt}.
 //   GET /event/:eventId
 //     → returns the event marker (existence check); 404 when absent.
-//   PUT /event/:eventId/file/:filename
-//     → streams the request body into ONE bunny native Storage PUT (gated on event existence).
-//   GET /event/:eventId/file/:filename
-//     → streams ONE bunny native Storage GET of the object straight back. NOT gated on the marker:
-//       a missing object and an unknown event are indistinguishably 404 by design (see below).
-//   GET /event/:eventId/files
-//     → lists every stored object for the event (gated on event existence); each entry carries a
-//       `url`, the absolute download URL for that object.
+//   PUT /files/device/:deviceId/:filename
+//     → streams the request body into ONE bunny native Storage PUT. UNGATED (no marker read): bytes
+//       are device-partitioned and event-independent (`files/<deviceId>/<filename>`), uploaded once and
+//       linked into events by reference. The device id is self-asserted (accepted abuse trade-off — see
+//       `bunny-upload-endpoint` §8; App Attest is the hardening path).
+//   GET /files/device/:deviceId/:filename
+//     → streams ONE bunny native Storage GET of the object straight back. UNGATED: a missing object is
+//       plain 404 (no event concept on this per-device route).
+//   GET /files/device/:deviceId
+//     → lists the device's RAW stored objects (a single LIST of `files/<deviceId>/`); each entry is
+//       `{ filename, size, url }`. No manifest read, no completeness, no event gate.
+//   PUT /event/:eventId/device/:deviceId
+//     → streams a JSON device manifest into `events/<eventId>/device/<deviceId>.json`. GATED on event
+//       existence (the marker read) so a manifest is never written under a non-existent event.
 //
-// EVENT REGISTRY: an event exists iff the object `events/<id>.json` is present. The `events/` prefix
-// is disjoint from any event's photo dir `<id>/` (an eventId is a UUID, never the literal "events"),
-// so the marker never appears in a per-event listing and never collides with a photo. List and upload
-// both read the marker first (a `GET`, since bunny's Edge Storage API has no HEAD) and 404 when it is
-// absent; a non-404 read failure surfaces as 502 (a transient failure is never mistaken for absence).
+// EVENT REGISTRY: an event exists iff the object `events/<id>/metadata.json` is present. Because an
+// eventId is a UUID, the marker key `events/<id>/metadata.json`, the device-manifest keys
+// `events/<id>/device/<deviceId>.json`, and the device-global byte store `files/<deviceId>/…` are
+// mutually disjoint and never collide. Existence is a small `GET` of the marker (bunny's Edge Storage
+// API has no HEAD); a non-404 read failure surfaces as 502 (a transient failure is never mistaken for
+// absence). Only the device-manifest write and the metadata route read the marker — the byte
+// upload/download/list routes are event-independent and ungated.
 //
-// The per-object routes are defined once on a child Hono (`file`) and mounted under
-// `/event/:eventId/file/:filename` via app.route(), so PUT (upload), OPTIONS, and GET (download)
-// share it. `eventId`/`filename` are Hono's decoded path params (typed `string | undefined` through
-// a mount, hence the guard); the filename is re-encoded per-segment when building the bunny URL, so
-// the stored object is the real filename and keys stay flat. Config is injected (validated at
-// startup), so the handlers have no config path. Upload invariants: pass-through only (never
-// buffer/hash), faithful outcome (2xx only on confirmed store), last-write-wins. Download is
-// ungated: it issues a single object GET and streams the body through; bunny 200 → 200, bunny 404 →
-// 404 (missing object and unknown event collapse here — see the read-faithfulness note below), any
-// other status / connect error / pre-body timeout → 502. Read-faithfulness is narrower than the
-// upload's: status+headers commit before the body, so a mid-body upstream abort surfaces as a
-// truncated 200 (not a 5xx); the relayed Content-Length makes that a client-detectable short-read.
+// The per-object byte routes are defined once on a child Hono (`byteFile`) and mounted under
+// `/files/device/:deviceId/:filename` via app.route(), so PUT (upload), OPTIONS, and GET (download)
+// share it. `deviceId`/`filename` are Hono's decoded path params (typed `string | undefined` through a
+// mount, hence the guard); the filename is re-encoded per-segment when building the bunny URL, so the
+// stored object is the real filename and keys stay flat. Config is injected (validated at startup).
+// Upload invariants: pass-through only (never buffer/hash), faithful outcome (2xx only on confirmed
+// store), last-write-wins. Download is ungated: bunny 200 → 200, bunny 404 → 404, any other status /
+// connect error / pre-body timeout → 502; status+headers commit before the body, so a mid-body abort
+// is a truncated 200 the relayed Content-Length makes a client-detectable short-read.
 //
-// The list route returns the event's COMPLETE ASSETS, not a flat object list. Objects live directly
-// under `<eventId>/` (flat key), so a single bunny native Storage LIST discovers them; then each
-// manifest object (`<assetId>.manifest.json`) is read for its declared resource set, and an asset is
-// included only when every resource it names is present (capability `asset-manifest`). Faithful: any
-// LIST or manifest-read transport failure → 502 (never a partial list); a 404 on the event dir is "no
-// objects" → 200 []; an absent/malformed manifest omits only its asset and still returns 200.
+// The list route returns the device's raw objects from a single bunny native Storage LIST of
+// `files/<deviceId>/` — no manifest content reads. Completeness is computed by the app (the shared
+// gallery enumeration seam × this raw list), not server-side. Faithful: any LIST transport failure →
+// 502 (never a partial list); a 404 on the device dir is "no objects" → 200 [].
 
 import { Hono } from "hono";
 import { validateEventName, validateFilename, validateUUID } from "./validators.ts";
 import type { Config } from "./config.ts";
 
-// The event registry's marker prefix. Disjoint from any `<eventId>/` photo dir because an eventId is
-// a UUID and can never be the literal string `events`.
+// The event registry's marker prefix. Because an eventId is a UUID, the marker
+// `events/<id>/metadata.json` is disjoint from any device manifest `events/<id>/device/<deviceId>.json`
+// and from the byte store `files/<deviceId>/…`.
 const MARKER_PREFIX = "events";
 
-/** Storage key of an event's marker object: `events/<eventId>.json`. */
+/** Storage key of an event's marker object: `events/<eventId>/metadata.json`. */
 function markerKey(eventId: string): string {
-  return `${MARKER_PREFIX}/${encodeURIComponent(eventId)}.json`;
+  return `${MARKER_PREFIX}/${encodeURIComponent(eventId)}/metadata.json`;
+}
+
+/** Storage key of a device's per-event manifest: `events/<eventId>/device/<deviceId>.json`. */
+function deviceManifestKey(eventId: string, deviceId: string): string {
+  return `${MARKER_PREFIX}/${encodeURIComponent(eventId)}/device/${
+    encodeURIComponent(deviceId)
+  }.json`;
+}
+
+/** Storage key of a stored resource byte object: `files/<deviceId>/<filename>`. */
+function byteKey(deviceId: string, filename: string): string {
+  return `files/${encodeURIComponent(deviceId)}/${encodeURIComponent(filename)}`;
+}
+
+/** The device byte-store directory to LIST: `files/<deviceId>/`. */
+function deviceDir(deviceId: string): string {
+  return `files/${encodeURIComponent(deviceId)}/`;
 }
 
 /** The event marker's contents — the registry record written on create. */
@@ -80,55 +101,23 @@ type BunnyEntry = {
   IsDirectory: boolean;
 };
 
-// The manifest object's name suffix (capability `asset-manifest`): `<assetId>.manifest.json`.
-const MANIFEST_SUFFIX = ".manifest.json";
-
-// One resource entry inside a per-asset manifest (the producer's `asset-manifest` JSON). The backend
-// reads these to learn an asset's declared resource set and to pass the display fields through.
-type ManifestResource = {
-  role: string;
-  contentType: string;
+// One file in the per-device listing response — exactly `filename`, `size`, and `url` (a closed shape).
+// `filename` is the uploaded name decoded from the stored key; `size` is the object's byte length;
+// `url` is the absolute download URL (per `bunny-download-endpoint`).
+type FileEntry = {
   filename: string;
-  originalFilename: string;
-};
-
-// A parsed, validated per-asset manifest — the authoritative declaration of an asset's complete
-// resource set. `version` is accepted (forward marker) but not otherwise interpreted in this change.
-type Manifest = {
-  version: number;
-  assetId: string;
-  creationDate: string;
-  resources: ManifestResource[];
-};
-
-// One resource in the listing response — the five fields the contract promises (a closed shape).
-// `role`/`filename`/`contentType`/`originalFilename` are taken verbatim from the manifest; `url` is
-// the absolute download URL for that resource object (per `bunny-download-endpoint`).
-type ResourceEntry = {
-  role: string;
-  filename: string;
-  contentType: string;
-  originalFilename: string;
+  size: number;
   url: string;
 };
 
-// One complete asset in the listing response — exactly `assetId`, `creationDate`, and its non-empty
-// `resources` (a closed shape). Only assets all of whose manifest-declared resources are present in
-// storage appear; the asset is immutable once complete.
-type AssetEntry = {
-  assetId: string;
-  creationDate: string;
-  resources: ResourceEntry[];
-};
-
 /**
- * The public download URL for a stored object: `<baseUrl>/event/<eventId>/file/<filename>`, each path
- * segment percent-encoded so the filename stays a single flat segment (eventId is a UUID, so its
- * encoding is identity). This is the sole builder of that URL — the list endpoint uses it and the
+ * The public download URL for a stored object: `<baseUrl>/files/device/<deviceId>/<filename>`, each
+ * path segment percent-encoded so the filename stays a single flat segment (deviceId is a UUID, so its
+ * encoding is identity). This is the sole builder of that URL — the per-device list uses it and the
  * download route serves the matching path, so they agree by construction.
  */
-function downloadUrl(config: Config, eventId: string, filename: string): string {
-  return `${config.baseUrl}/event/${encodeURIComponent(eventId)}/file/${
+function downloadUrl(config: Config, deviceId: string, filename: string): string {
+  return `${config.baseUrl}/files/device/${encodeURIComponent(deviceId)}/${
     encodeURIComponent(filename)
   }`;
 }
@@ -166,68 +155,13 @@ function decodeObjectName(objectName: string): string {
   }
 }
 
-// Validate raw parsed JSON as a v1 manifest, returning the typed value or `null` when the shape does
-// not match (a malformed manifest → its asset is omitted, NOT a transport failure). Structural only:
-// the four resource fields must be non-empty strings and `resources` non-empty; `role` is passed
-// through verbatim (not constrained here — completeness is by `filename`).
-function parseManifest(raw: unknown): Manifest | null {
-  if (typeof raw !== "object" || raw === null) return null;
-  const m = raw as Record<string, unknown>;
-  if (typeof m.version !== "number") return null;
-  if (typeof m.assetId !== "string" || m.assetId === "") return null;
-  if (typeof m.creationDate !== "string") return null;
-  if (!Array.isArray(m.resources) || m.resources.length === 0) return null;
-  const resources: ManifestResource[] = [];
-  for (const r of m.resources) {
-    if (typeof r !== "object" || r === null) return null;
-    const e = r as Record<string, unknown>;
-    const { role, contentType, filename, originalFilename } = e;
-    if (
-      typeof role !== "string" || role === "" ||
-      typeof contentType !== "string" || contentType === "" ||
-      typeof filename !== "string" || filename === "" ||
-      typeof originalFilename !== "string"
-    ) {
-      return null;
-    }
-    resources.push({ role, contentType, filename, originalFilename });
-  }
-  return { version: m.version, assetId: m.assetId, creationDate: m.creationDate, resources };
-}
-
-// Read and parse one manifest object's content. Returns the parsed [Manifest] when present and valid,
-// `null` when the object is absent (bunny `404`) or its body is not a well-formed v1 manifest — both
-// mean "omit this asset", not a failure. THROWS on any other non-OK status, network error, or abort,
-// so the caller surfaces a faithful `502` and never a partial list.
-async function readManifest(
-  fetchImpl: FetchLike,
-  config: Config,
-  eventId: string,
-  manifestFilename: string,
-): Promise<Manifest | null> {
-  const key = `${eventId}/${encodeURIComponent(manifestFilename)}`;
-  const url = `https://${config.host}/${config.zone}/${key}`;
-  const res = await fetchImpl(url, {
-    method: "GET",
-    headers: { AccessKey: config.accessKey, Accept: "application/json" },
-  });
-  if (res.status === 404) return null; // absent → omit (not a transport failure)
-  if (!res.ok) throw new Error(`bunny manifest GET returned ${res.status} for ${manifestFilename}`);
-  let raw: unknown;
-  try {
-    raw = JSON.parse(await res.text());
-  } catch {
-    return null; // unparseable body → malformed → omit
-  }
-  return parseManifest(raw);
-}
-
 /**
  * Read an event's marker (the existence check). Returns the parsed marker when present (bunny `200`),
  * `null` when absent (bunny `404`), and THROWS on any other status, network error, or abort — so the
  * caller surfaces a faithful `502` and never mistakes a transient read failure for "event absent".
  * Bunny's Edge Storage API has no `HEAD`, so existence is a small `GET` of the marker; the marker is
- * tiny, and the same read serves the `GET /event/:eventId` metadata response.
+ * tiny, and the same read serves the `GET /event/:eventId` metadata response and the device-manifest
+ * write gate.
  */
 async function readMarker(
   fetchImpl: FetchLike,
@@ -245,35 +179,24 @@ async function readMarker(
 }
 
 export function createApp({ fetch: fetchImpl, config }: Deps): Hono {
-  const file = new Hono();
+  // Per-device byte object routes (`bunny-upload-endpoint` / `bunny-download-endpoint`). Mounted under
+  // `/files/device/:deviceId/:filename`, so the handlers read `deviceId`/`filename` from the mount.
+  const byteFile = new Hono();
 
-  file.put("/", async (c) => {
-    const eventId = c.req.param("eventId");
+  // Upload — UNGATED. No marker read: bytes are device-partitioned and event-independent. Stream the
+  // body straight into one bunny native PUT at `files/<deviceId>/<filename>`. Faithful: 201 only on a
+  // confirmed store; last-write-wins (no existence check on the object key).
+  byteFile.put("/", async (c) => {
+    const deviceId = c.req.param("deviceId");
     const filename = c.req.param("filename");
     if (
-      !eventId || !filename ||
-      !validateUUID(eventId) || !validateFilename(filename)
+      !deviceId || !filename ||
+      !validateUUID(deviceId) || !validateFilename(filename)
     ) {
       return c.text("invalid key", 400);
     }
 
-    // Gate on event existence: read the marker before streaming a single byte. Absent → 404 (no
-    // upstream object PUT); a non-404 read failure → 502 (never mistaken for absence). The check reads
-    // the EVENT marker, not the object key, so last-write-wins on the object write is unchanged.
-    let marker: EventMarker | null;
-    try {
-      marker = await readMarker(fetchImpl, config, eventId);
-    } catch (e) {
-      console.error(`upload: marker read failed for ${eventId}: ${e}`);
-      return c.text("upstream error", 502);
-    }
-    if (marker === null) return c.text("event not found", 404);
-
-    // eventId is a UUID (encoding is identity); encode the filename so the key stays a single flat
-    // segment on the wire.
-    const storageKey = `${eventId}/${encodeURIComponent(filename)}`;
-
-    const target = `https://${config.host}/${config.zone}/${storageKey}`;
+    const target = `https://${config.host}/${config.zone}/${byteKey(deviceId, filename)}`;
     const init: StreamInit = {
       method: "PUT",
       headers: {
@@ -288,35 +211,33 @@ export function createApp({ fetch: fetchImpl, config }: Deps): Hono {
     try {
       upstream = await fetchImpl(target, init);
     } catch (e) {
-      console.error(`upload: upstream PUT errored for ${storageKey}: ${e}`);
+      console.error(`upload: upstream PUT errored for ${byteKey(deviceId, filename)}: ${e}`);
       return c.text("upstream error", 502);
     }
     if (!upstream.ok) {
-      console.error(`upload: bunny returned ${upstream.status} for ${storageKey}`);
+      console.error(`upload: bunny returned ${upstream.status} for ${byteKey(deviceId, filename)}`);
       return c.text("upstream rejected", 502);
     }
     // Bunny confirmed the stored object — and only now do we report success.
     return c.body(null, 201);
   });
 
-  // Download (capability `bunny-download-endpoint`). A single bunny object GET, streamed straight
-  // back. UNGATED — no marker read: the object GET already yields faithful absence (bunny 404 → 404),
-  // so an unknown event and a missing object are indistinguishably 404 by design. Faithful read is
-  // narrower than the upload's: status+headers commit before the body, so a mid-body upstream abort
-  // is a truncated 200 (not a 5xx); the relayed Content-Length makes it a client-detectable short-read.
-  file.get("/", async (c) => {
-    const eventId = c.req.param("eventId");
+  // Download (capability `bunny-download-endpoint`). A single bunny object GET, streamed straight back.
+  // UNGATED — no marker read: the object GET already yields faithful absence (bunny 404 → 404). Faithful
+  // read is narrower than the upload's: status+headers commit before the body, so a mid-body upstream
+  // abort is a truncated 200 (not a 5xx); the relayed Content-Length makes it a client-detectable
+  // short-read.
+  byteFile.get("/", async (c) => {
+    const deviceId = c.req.param("deviceId");
     const filename = c.req.param("filename");
     if (
-      !eventId || !filename ||
-      !validateUUID(eventId) || !validateFilename(filename)
+      !deviceId || !filename ||
+      !validateUUID(deviceId) || !validateFilename(filename)
     ) {
       return c.text("invalid key", 400);
     }
 
-    // Same flat key the upload route writes: encode the filename per-segment (eventId is a UUID).
-    const storageKey = `${eventId}/${encodeURIComponent(filename)}`;
-    const target = `https://${config.host}/${config.zone}/${storageKey}`;
+    const target = `https://${config.host}/${config.zone}/${byteKey(deviceId, filename)}`;
 
     let upstream: Response;
     try {
@@ -325,12 +246,14 @@ export function createApp({ fetch: fetchImpl, config }: Deps): Hono {
         headers: { AccessKey: config.accessKey },
       });
     } catch (e) {
-      console.error(`download: upstream GET errored for ${storageKey}: ${e}`);
+      console.error(`download: upstream GET errored for ${byteKey(deviceId, filename)}: ${e}`);
       return c.text("upstream error", 502);
     }
-    if (upstream.status === 404) return c.text("not found", 404); // missing object OR unknown event
+    if (upstream.status === 404) return c.text("not found", 404); // missing object
     if (!upstream.ok) {
-      console.error(`download: bunny returned ${upstream.status} for ${storageKey}`);
+      console.error(
+        `download: bunny returned ${upstream.status} for ${byteKey(deviceId, filename)}`,
+      );
       return c.text("upstream error", 502);
     }
 
@@ -346,7 +269,7 @@ export function createApp({ fetch: fetchImpl, config }: Deps): Hono {
   });
 
   // OPTIONS: do NOT advertise resumable uploads → the iOS uploader falls back to a plain PUT.
-  file.options("/", (c) => {
+  byteFile.options("/", (c) => {
     c.header("Allow", "GET, PUT, OPTIONS");
     return c.body(null, 204);
   });
@@ -397,7 +320,7 @@ export function createApp({ fetch: fetchImpl, config }: Deps): Hono {
 
   // Event metadata / existence (capability `event-creation`). Returns the marker, or 404 when the
   // event was never created; a non-404 marker read failure → 502. This is the canonical existence
-  // check the list and upload gates rely on.
+  // check the device-manifest write gate relies on.
   app.get("/event/:eventId", async (c) => {
     const eventId = c.req.param("eventId");
     if (!validateUUID(eventId)) {
@@ -414,71 +337,82 @@ export function createApp({ fetch: fetchImpl, config }: Deps): Hono {
     return c.json(marker);
   });
 
-  // List an event's COMPLETE ASSETS (capability `bunny-list-endpoint`). A single LIST of the event dir
-  // discovers objects; each manifest is then read and an asset is returned only when all its named
-  // resources are present. Authorization is the event id alone (same as upload). A non-UUID id → 400;
-  // any other method / unmatched path → Hono's 404.
-  app.get("/event/:eventId/files", async (c) => {
+  // Write a device's per-event manifest (capability `bunny-upload-endpoint`, device-manifest route).
+  // GATED on event existence: read the marker first; absent → 404 (no upstream object PUT); a non-404
+  // read failure → 502 (never mistaken for absence). The body (a full-state JSON device manifest) is
+  // streamed straight into one bunny native PUT at `events/<eventId>/device/<deviceId>.json`.
+  app.put("/event/:eventId/device/:deviceId", async (c) => {
     const eventId = c.req.param("eventId");
-    if (!validateUUID(eventId)) {
-      return c.text("invalid event", 400);
+    const deviceId = c.req.param("deviceId");
+    if (!validateUUID(eventId) || !validateUUID(deviceId)) {
+      return c.text("invalid key", 400);
     }
-    // Gate on event existence: an unknown event → 404 (no LIST); a non-404 marker read failure → 502.
-    // A created event with no objects still returns 200 [] below (existence ≠ emptiness).
+
     let marker: EventMarker | null;
     try {
       marker = await readMarker(fetchImpl, config, eventId);
     } catch (e) {
-      console.error(`list: marker read failed for ${eventId}: ${e}`);
+      console.error(`device-manifest: marker read failed for ${eventId}: ${e}`);
       return c.text("upstream error", 502);
     }
     if (marker === null) return c.text("event not found", 404);
+
+    const target = `https://${config.host}/${config.zone}/${deviceManifestKey(eventId, deviceId)}`;
+    const init: StreamInit = {
+      method: "PUT",
+      headers: {
+        AccessKey: config.accessKey,
+        "Content-Type": c.req.header("content-type") ?? "application/json",
+      },
+      body: c.req.raw.body, // ReadableStream — the full-state manifest, streamed never buffered
+      duplex: "half",
+    };
+
+    let upstream: Response;
     try {
-      // Single LIST of the event dir → its objects (discovery). 404/absent → no objects → []. Any
-      // other LIST failure throws → 502, so a partial list is never returned.
-      const entries = await listDir(fetchImpl, config, `${encodeURIComponent(eventId)}/`);
-      if (entries === null) return c.json([] as AssetEntry[]);
-
-      const filenames = entries
-        .filter((e) => !e.IsDirectory)
-        .map((e) => decodeObjectName(e.ObjectName));
-      // The set of present objects, by their reinstall-stable filename — what completeness checks against.
-      const present = new Set(filenames);
-      const manifestFilenames = filenames.filter((f) => f.endsWith(MANIFEST_SUFFIX));
-
-      // Read every manifest's content (one GET each, on top of the single discovery LIST). A transport
-      // failure on any read rejects here → caught below → 502 (never a partial array); an absent or
-      // malformed manifest resolves to null and simply omits its asset.
-      const manifests = await Promise.all(
-        manifestFilenames.map((f) => readManifest(fetchImpl, config, eventId, f)),
-      );
-
-      // An asset is complete only when every resource its manifest names is present; otherwise it is
-      // omitted (still uploading). Orphan resources without a manifest yield no asset at all.
-      const assets: AssetEntry[] = [];
-      for (const manifest of manifests) {
-        if (manifest === null) continue; // absent / malformed → omit
-        if (!manifest.resources.every((r) => present.has(r.filename))) continue; // not yet complete
-        assets.push({
-          assetId: manifest.assetId,
-          creationDate: manifest.creationDate,
-          resources: manifest.resources.map((r) => ({
-            role: r.role,
-            filename: r.filename,
-            contentType: r.contentType,
-            originalFilename: r.originalFilename,
-            url: downloadUrl(config, eventId, r.filename),
-          })),
-        });
-      }
-      return c.json(assets);
+      upstream = await fetchImpl(target, init);
     } catch (e) {
-      console.error(`list: bunny LIST/manifest read failed for event ${eventId}: ${e}`);
+      console.error(`device-manifest: upstream PUT errored for ${eventId}/${deviceId}: ${e}`);
+      return c.text("upstream error", 502);
+    }
+    if (!upstream.ok) {
+      console.error(
+        `device-manifest: bunny returned ${upstream.status} for ${eventId}/${deviceId}`,
+      );
+      return c.text("upstream rejected", 502);
+    }
+    return c.body(null, 201);
+  });
+
+  // List a device's RAW stored objects (capability `bunny-list-endpoint`). A single LIST of the device
+  // dir; each direct-child object becomes one `{ filename, size, url }`. No manifest read, no
+  // completeness, no event gate — the app computes completeness from the gallery enumeration seam ×
+  // this list. A non-UUID id → 400; any other method / unmatched path → Hono's 404.
+  app.get("/files/device/:deviceId", async (c) => {
+    const deviceId = c.req.param("deviceId");
+    if (!validateUUID(deviceId)) {
+      return c.text("invalid device", 400);
+    }
+    try {
+      // Single LIST of the device dir → its objects. 404/absent → no objects → []. Any other LIST
+      // failure throws → 502, so a partial list is never returned.
+      const entries = await listDir(fetchImpl, config, deviceDir(deviceId));
+      if (entries === null) return c.json([] as FileEntry[]);
+
+      const files: FileEntry[] = entries
+        .filter((e) => !e.IsDirectory)
+        .map((e) => {
+          const filename = decodeObjectName(e.ObjectName);
+          return { filename, size: e.Length, url: downloadUrl(config, deviceId, filename) };
+        });
+      return c.json(files);
+    } catch (e) {
+      console.error(`list: bunny LIST failed for device ${deviceId}: ${e}`);
       return c.text("upstream error", 502);
     }
   });
 
-  // Mount once under the per-object path; any unmatched path or wrong method → Hono's 404.
-  app.route("/event/:eventId/file/:filename", file);
+  // Mount the per-device byte object routes; any unmatched path or wrong method → Hono's 404.
+  app.route("/files/device/:deviceId/:filename", byteFile);
   return app;
 }
