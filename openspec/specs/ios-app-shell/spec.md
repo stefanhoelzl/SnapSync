@@ -63,34 +63,36 @@ The `:app:ios` module and its full module dependency closure SHALL compile for t
 
 The `:app:ios` module SHALL provide a composition-root singleton (`SnapSyncRoot`, `iosMain`) that
 owns an app-lifetime `CoroutineScope` (a `SupervisorJob` on the main dispatcher) and assembles the
-live stack: `iosLedgerBackend() → LedgerWatcher → LedgerSyncStatusSource(watcher, permission, gallery,
-observedCompletions, scope)`, the PhotoKit permission adapter (as both the `PermissionStatusSource`
-and `PermissionRequester`), and the iOS Keychain config store (as both the `ConfigSource` and
-`ConfigStore`), composed into a `StatusContainerHost`. It SHALL construct the iOS
-`ObservedCompletionsSource` (the read-only PhotoKit upload-job reader) and inject it into the source,
-and SHALL own a foreground signal (a `Flow<Boolean>`) injected into the `StatusContainerHost` so its
-refresh cadence is gated on it. It SHALL construct the `LeaveEvent` use-case — injecting the
-`ConfigStore`, the `LedgerBackend`, the `EventStatusSource`, and as suspend lambdas the producer
-disable (`setUploadJobExtensionEnabled(false)`) and the discovery-cursor clear — and inject it into
-the `StatusContainerHost`. It SHALL bind the **share action** as a `share: (String) -> Unit` lambda
-that presents a `UIActivityViewController` carrying the given invite deeplink string (from the
-current top view controller) and inject it into the `StatusContainerHost`. The scope SHALL outlive
-Compose recomposition so the source collector and container are not torn down with the view.
-`MainViewController` SHALL render `host.container.stateFlow` and route the gate intents to
-`host.onRequestPermission` / `host.onOpenSettings`, the leave action to `host.onLeaveEvent`, and the
-share action to `host.onShareInvite`; it SHALL collect the container's invite URL (`host.inviteUrl`)
-and pass it to `StatusScreen`. `SnapSyncRoot` SHALL expose `onOpenUrl(String)` that forwards to the
-container's `onOpenUrl` intent, and SHALL expose a foreground entry point (e.g.
-`onForeground()`/`onBackground()`) that the SwiftUI scene calls on its scene-phase transitions to
-drive the foreground signal. No temporary upload-job probe SHALL remain (the spike is removed).
+live stack: the **listing-backed** `SyncStatusSource` (built from a `CompletedAssetsSource`, a
+`PendingManifestsSource`, the permission source, and the gallery source — see `sync-status`), the
+PhotoKit permission adapter (as both the `PermissionStatusSource` and `PermissionRequester`), and the
+iOS Keychain config store (as both the `ConfigSource` and `ConfigStore`), composed into a
+`StatusContainerHost`. It SHALL construct the iOS `CompletedAssetsSource` (the HTTP completeness-listing
+reader) and `PendingManifestsSource` (the App-Group manifest reader/pruner), and SHALL own a foreground
+signal (a `Flow<Boolean>`) injected into the `StatusContainerHost` that drives the `CompletedAssetsSource`
+refresh on foreground entry (the manifest `URLSession` completion drives the other refresh). It SHALL
+construct **no ledger type** and **no `EventStatusSource`** (status is read from the listing; the
+ledger is private to the extension, which also owns reconciliation — see `event-rejoin-reconciliation`).
+It SHALL construct the `LeaveEvent` use-case — injecting the `ConfigStore` and, as a suspend lambda, the
+producer disable (`setUploadJobExtensionEnabled(false)`) — and inject it into the `StatusContainerHost`.
+It SHALL bind the **share action** as a `share: (String) -> Unit` lambda that presents a
+`UIActivityViewController` carrying the given invite deeplink string (from the current top view
+controller) and inject it into the `StatusContainerHost`. The scope SHALL outlive Compose recomposition so
+the source collector and container are not torn down with the view. `MainViewController` SHALL render
+`host.container.stateFlow` and route the gate intents to `host.onRequestPermission` / `host.onOpenSettings`,
+the leave action to `host.onLeaveEvent`, and the share action to `host.onShareInvite`; it SHALL collect the
+container's invite URL (`host.inviteUrl`) and pass it to `StatusScreen`. `SnapSyncRoot` SHALL expose
+`onOpenUrl(String)` that forwards to the container's `onOpenUrl` intent, and a foreground entry point
+(e.g. `onForeground()`/`onBackground()`) that the SwiftUI scene calls on its scene-phase transitions to
+drive the foreground signal.
 
 #### Scenario: The root assembles the real stack
 
 - **WHEN** the iOS app starts
-- **THEN** a single `SnapSyncRoot` constructs the real ledger-backed `LedgerSyncStatusSource` (with the
-  PhotoKit-backed `ObservedCompletionsSource`), the PhotoKit permission adapter, the Keychain
-  config store, and the `LeaveEvent` use-case, wires them into one `StatusContainerHost` with a
-  foreground signal, and the screen observes that container
+- **THEN** a single `SnapSyncRoot` constructs the listing-backed `SyncStatusSource` (with the
+  `CompletedAssetsSource` and `PendingManifestsSource`), the PhotoKit permission adapter, the Keychain
+  config store, and the `LeaveEvent` use-case, wires them into one `StatusContainerHost` with a foreground
+  signal, and the screen observes that container — constructing no ledger type and no `EventStatusSource`
 
 #### Scenario: Permission action flows through the container
 
@@ -108,9 +110,8 @@ drive the foreground signal. No temporary upload-job probe SHALL remain (the spi
 
 - **WHEN** the user confirms the leave action in the joined layer
 - **THEN** `MainViewController` invokes `host.onLeaveEvent`, which runs the injected `LeaveEvent` —
-  disabling the extension via the injected lambda, resetting the ledger, clearing the discovery
-  cursor, clearing the Keychain config, and setting `EventStatus` to `Idle` — and the screen returns
-  to the setup gate
+  disabling the extension via the injected lambda and clearing the Keychain config (no ledger or
+  `EventStatus` operation) — and the screen returns to the setup gate
 
 #### Scenario: The share action flows through the container into the platform share
 
@@ -118,19 +119,6 @@ drive the foreground signal. No temporary upload-job probe SHALL remain (the spi
 - **THEN** `MainViewController` invokes `host.onShareInvite`, which calls the injected `share` lambda
   with the invite deeplink, and `SnapSyncRoot` presents a `UIActivityViewController` carrying that
   deeplink — the UI never constructs UIKit directly and observes no result
-
-#### Scenario: The invite URL is supplied to the screen
-
-- **WHEN** an event is configured
-- **THEN** `MainViewController` collects `host.inviteUrl` and passes it to `StatusScreen`, which renders
-  the join QR for it in the joined layer
-
-#### Scenario: Foreground transition drives the refresh cadence
-
-- **WHEN** the SwiftUI scene becomes active and calls the foreground entry point
-- **THEN** the foreground signal turns true and the container begins refreshing the
-  `ObservedCompletionsSource` while pending work remains; when the scene resigns active, the signal
-  turns false and refreshing stops
 
 ### Requirement: On-disk native ledger on iOS
 
@@ -152,30 +140,21 @@ The `:domain:engine` module SHALL provide an `iosLedgerBackend()` factory (`iosM
 
 When photo-library access is (or becomes) full (`.readWrite` → `GRANTED`), the app SHALL enable the
 background-upload extension (`PHPhotoLibrary.setUploadJobExtensionEnabled(true)`) so the system can
-invoke it — but only **after** the join reconciliation gate has been satisfied for the configured
-event (see `event-rejoin-reconciliation`). When the gate triggers a join (an event is configured and
-the ledger is empty and no join is settled this process), the app SHALL run the join **with the
-extension disabled** — fetch the event file list, enumerate the library, atomically seed
-already-stored photos as `COMPLETED` (`resetTo`), and clear the discovery cursor — and SHALL enable
-the extension only once the join succeeds. When the gate does not trigger (the ledger already holds
-rows), the app SHALL enable the extension directly without fetching, enumerating, or seeding. The app
-SHALL create no upload jobs and perform no uploads; the one-time library enumeration for the join seed
-is the app's only producer-adjacent work, while per-upload discovery and job creation remain the
-extension's. The enable call SHALL be idempotent-safe to repeat on each grant/foreground.
+invoke it. The app SHALL **not** run any join, fetch, enumeration, or seed, and SHALL **not** disable the
+extension around a join — reconciliation runs **inside the extension**, gated by its `joinedEventId`
+marker (see `event-rejoin-reconciliation`). The app creates no upload jobs, performs no uploads, and
+constructs no ledger type. The enable call SHALL be idempotent-safe to repeat on each grant/foreground.
 
-#### Scenario: Granting full access runs the gate, then enables
-- **WHEN** photo-library permission transitions to `GRANTED` with a configured event and an empty ledger
-- **THEN** the app runs the join (seed + cursor clear) with the extension disabled and calls
-  `setUploadJobExtensionEnabled(true)` only after the join succeeds
+#### Scenario: Granting full access enables the extension directly
 
-#### Scenario: Non-empty ledger enables without re-joining
-- **WHEN** permission is `GRANTED` (or the app foregrounds) and the ledger already holds rows
-- **THEN** the app enables the extension without fetching, enumerating, or seeding
+- **WHEN** photo-library permission transitions to `GRANTED` with a configured event
+- **THEN** the app calls `setUploadJobExtensionEnabled(true)` without fetching, enumerating, or seeding —
+  the extension self-reconciles on its next cycle
 
-#### Scenario: The app never uploads
-- **WHEN** the app is running with access granted
-- **THEN** it creates no upload jobs and runs no uploads; per-upload discovery and job creation happen
-  in the extension process
+#### Scenario: The app never uploads or seeds
+
+- **WHEN** the app is running with a configured event
+- **THEN** it creates no upload jobs, performs no library enumeration for a seed, and constructs no ledger type
 
 ### Requirement: Developer launch-environment config trigger
 

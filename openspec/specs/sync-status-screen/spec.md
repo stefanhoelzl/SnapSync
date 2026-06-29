@@ -26,17 +26,14 @@ regardless of the snapshot). `UiState` carries only final display data: the disp
 the screen reports completeness and live activity only.
 
 Once config is present, a permission not equal to `GRANTED` SHALL reduce to
-`UiState.PermissionBlocked(permission)`, outranking both the `EventStatus` reduction and the snapshot
-reduction. `UiState.PermissionBlocked` is a derived state (the reduction of a real non-`GRANTED`
-`PermissionStatus`) and is therefore permitted under the no-placeholder rule.
+`UiState.PermissionBlocked(permission)`, outranking the snapshot reduction. `UiState.PermissionBlocked`
+is a derived state (the reduction of a real non-`GRANTED` `PermissionStatus`) and is therefore permitted
+under the no-placeholder rule.
 
-The reduction SHALL additionally consume the `EventStatusSource` (see `event-rejoin-reconciliation`
-and `event-creation-ui` for the full precedence): once config is present and permission is `GRANTED`,
-`EventStatus.Joining` SHALL reduce to `UiState.Joining` and `EventStatus.JoinFailed` to
-`UiState.JoinFailed`, both outranking any sync snapshot; `EventStatus.Joined` and `EventStatus.Idle`
-fall through to the snapshot reduction above. `UiState.Joining` and `UiState.JoinFailed` are derived
-states (the reduction of real `EventStatus` values) and are therefore permitted under the
-no-placeholder rule.
+There is **no** join-status reduction: `EventStatus` and the `UiState.Joining`/`UiState.JoinFailed`
+states are removed (reconciliation runs in the extension and status is read from the completeness
+listing — see `event-rejoin-reconciliation`). During a (re)join the screen simply shows the
+listing-derived snapshot (typically `InProgress` with a rising synced count).
 
 The reduction MUST depend only on the latest snapshot (no event history), so any missed
 intermediate snapshot cannot corrupt the displayed state. The container's initial UI state SHALL be
@@ -66,12 +63,6 @@ the prohibition is against guesses and placeholders that no source value produce
   in between
 - **THEN** the UI state derives from the latest snapshot alone
 
-#### Scenario: No cold-start guess
-- **WHEN** the container is constructed while the sync source already holds `Ready(Completed)`
-  (and config is present and permission is granted)
-- **THEN** the first state the screen can ever render is Completed — never an intermediate state, and
-  never Loading (Loading appears only for a `SyncStatus.Loading` value)
-
 #### Scenario: Loading snapshot under satisfied gate reduces to Loading
 - **WHEN** the sync source holds `SyncStatus.Loading`, config is present, and permission is GRANTED
 - **THEN** the UI state is `UiState.Loading`
@@ -80,33 +71,13 @@ the prohibition is against guesses and placeholders that no source value produce
 - **WHEN** the sync source holds `SyncStatus.Loading` and config is absent (creation status `Idle`)
 - **THEN** the UI state is the create-input state (the create layer), not Loading
 
-#### Scenario: Permission blocks a Loading snapshot when config is present
-- **WHEN** the sync source holds `SyncStatus.Loading`, config is present, and permission is `DENIED` or `NOT_DETERMINED`
-- **THEN** the UI state is `UiState.PermissionBlocked(permission)`, not Loading
+#### Scenario: Permission blocks a snapshot when config is present
+- **WHEN** config is present and permission is `DENIED` or `NOT_DETERMINED`, for any snapshot
+- **THEN** the UI state is `UiState.PermissionBlocked(permission)`, not a sync hero and not the create layer
 
-#### Scenario: Denied permission with config present reduces to PermissionBlocked
-- **WHEN** config is present, permission is `DENIED`, and any snapshot is observed (e.g. `Ready(Completed)`)
-- **THEN** the UI state is `UiState.PermissionBlocked(DENIED)`, not a sync hero and not the create layer
-
-#### Scenario: Undetermined permission with config present reduces to PermissionBlocked
-- **WHEN** config is present and permission is `NOT_DETERMINED`
-- **THEN** the UI state is `UiState.PermissionBlocked(NOT_DETERMINED)`, not a sync hero and not the create layer
-
-#### Scenario: Permission outranks join status
-- **WHEN** config is present, permission is `DENIED`, and `EventStatus` is `Joining`
-- **THEN** the UI state is `UiState.PermissionBlocked(DENIED)`, not `Joining`
-
-#### Scenario: Joining status reduces to Joining
-- **WHEN** config is present, permission is `GRANTED`, and `EventStatus` is `Joining` (whatever the snapshot)
-- **THEN** the UI state is `UiState.Joining`
-
-#### Scenario: JoinFailed status reduces to JoinFailed
-- **WHEN** config is present, permission is `GRANTED`, and `EventStatus` is `JoinFailed`
-- **THEN** the UI state is `UiState.JoinFailed`
-
-#### Scenario: Joined falls through to the snapshot
-- **WHEN** config is present, permission is `GRANTED`, `EventStatus` is `Joined`, and the snapshot is `Ready(Completed)`
-- **THEN** the UI state is `Completed` (the join status does not outrank a settled join)
+#### Scenario: A (re)join shows the listing snapshot, not a join screen
+- **WHEN** config is present, permission is `GRANTED`, and a reconciliation is in flight in the extension
+- **THEN** the UI state is the current listing-derived snapshot (e.g. `InProgress`), never a `Joining` or `JoinFailed` state
 
 ### Requirement: Status screen renders UI state
 

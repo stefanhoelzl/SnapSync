@@ -5,25 +5,27 @@ TBD - created by archiving change add-rejoin-reconciliation. Update Purpose afte
 ## Requirements
 ### Requirement: Reconciliation gate before enabling uploads
 
-The system SHALL run a join reconciliation before enabling the background-upload producer — at every
-enable site (a permission grant and a (re)provision) — and only when all hold: an event is
-configured, the ledger has **no rows**, and a join has **not been settled in the current process**.
-When any condition fails (no event, a non-empty ledger, or a join already settled this process) the
-system SHALL NOT fetch, enumerate, or seed, and SHALL proceed directly to enabling the producer. The
-ledger's emptiness SHALL be the only persisted "needs join" signal; there SHALL be no persistent
-"joined" marker outside the ledger.
+The **extension** SHALL run a join reconciliation on its own cycle, **before** creating any upload jobs,
+exactly when an event is configured and its `eventId` differs from a persisted `joinedEventId` marker.
+The `joinedEventId` marker — **not** ledger-emptiness — SHALL be the join signal, persisted across the
+extension's short-lived processes. When the configured `eventId` equals the marker, the extension SHALL
+NOT fetch, enumerate, or seed, and SHALL proceed to upload. When no event is configured, the extension
+SHALL neither reconcile nor upload.
 
-#### Scenario: Empty ledger with a configured event triggers a join
-- **WHEN** the enable path runs with an event configured, an empty ledger, and no join settled this process
-- **THEN** a join reconciliation runs before the producer is enabled
+#### Scenario: Marker mismatch triggers a join
 
-#### Scenario: Non-empty ledger skips the join
-- **WHEN** the enable path runs with an event configured and a ledger that already holds rows
-- **THEN** no fetch, enumeration, or seeding occurs and the producer is enabled directly
+- **WHEN** the extension runs with an event configured whose `eventId` differs from the `joinedEventId` marker
+- **THEN** a reconciliation runs before any upload job is created
 
-#### Scenario: A join already settled this process does not re-run
-- **WHEN** the enable path runs again in the same process after a join was settled (succeeded or failed)
-- **THEN** no new join reconciliation runs
+#### Scenario: Marker match skips the join
+
+- **WHEN** the configured `eventId` equals the `joinedEventId` marker
+- **THEN** no fetch, enumeration, or seeding occurs and the producer uploads directly
+
+#### Scenario: No event configured does nothing
+
+- **WHEN** no event is configured
+- **THEN** the extension neither reconciles nor uploads
 
 ### Requirement: Event file list seam
 
@@ -46,34 +48,33 @@ implementation SHALL use an HTTP client against the compile-time device-facing h
 
 ### Requirement: Join reconciliation seeds already-stored photos as completed
 
-A triggered join SHALL: set status `Joining`; fetch the event's complete-asset list; seed
-`COMPLETED` — via a single atomic ledger reset (`resetTo`) — one row per resource of each listed
-complete asset, keyed by the resource `filename` and carrying the asset's `assetId`; clear the
-discovery cursor; then set status `Joined`. The seed records no timestamp (the join reads no clock).
-Only the resources of **complete** assets SHALL be seeded. An asset that is still uploading is absent
-from the listing and SHALL NOT be seeded; it SHALL be (re-)uploaded by the producer — including the
-rare partially-stored asset, whose already-present resources re-upload idempotently (last-write-wins).
-The seed SHALL run with the producer disabled.
+A triggered reconciliation (in the extension) SHALL: fetch the event's complete-asset list; seed
+`COMPLETED` — via a single atomic ledger reset (`resetTo`) — one row per resource of each listed complete
+asset, keyed by the resource `filename` and carrying the asset's `assetId`; clear the discovery cursor;
+and **on success set the `joinedEventId` marker** to the configured `eventId`. The seed records no
+timestamp. Only the resources of complete assets SHALL be seeded; a partially-stored asset is absent from
+the listing, is not seeded, and re-uploads idempotently (last-write-wins). Setting the marker on success —
+even when zero rows were seeded — settles the join so it does not re-trigger.
 
 #### Scenario: A complete asset's resources are seeded completed
 
 - **WHEN** the listing reports an asset complete with resources `r1`, `r2`
-- **THEN** the ledger holds a `COMPLETED` row for each of `r1` and `r2`, carrying the asset's `assetId`
+- **THEN** the ledger holds a `COMPLETED` row for each of `r1` and `r2`, carrying the asset's `assetId`, and the marker is set
 
-#### Scenario: An asset absent from the listing is not seeded
+#### Scenario: A zero-row join still settles
 
-- **WHEN** an asset is not present in the complete-asset listing (never uploaded, or only partially stored)
-- **THEN** no row is seeded for its resources and they remain eligible for upload
+- **WHEN** the listing returns no complete assets for a freshly provisioned event
+- **THEN** no rows are seeded but the `joinedEventId` marker is set, so the next cycle does not re-reconcile
 
 #### Scenario: Seeding clears the discovery cursor
 
-- **WHEN** a join seeds the ledger
+- **WHEN** a reconciliation seeds the ledger
 - **THEN** the discovery cursor is cleared so the producer performs a full re-enumeration
 
 #### Scenario: A partially-stored asset re-uploads idempotently
 
-- **WHEN** an asset has some but not all of its resources stored (so it is absent from the complete-asset listing)
-- **THEN** it is not seeded, and the producer re-uploads its resources — the already-present ones overwritten last-write-wins
+- **WHEN** an asset has some but not all resources stored (absent from the complete-asset listing)
+- **THEN** it is not seeded and the producer re-uploads its resources (already-present ones overwritten last-write-wins)
 
 ### Requirement: Seeded rows are skipped by the producer
 
@@ -88,77 +89,55 @@ of content, so the producer never re-uploads a seeded resource.
 - **WHEN** the producer later enumerates a resource that the join seeded `COMPLETED`
 - **THEN** the producer's decision is `AlreadyUploaded` and it creates no upload job
 
-### Requirement: Status reflects the seed immediately on join
+### Requirement: Extension defers uploads until the seed succeeds
 
-The seed SHALL make the status projection reflect the seeded completed count **as soon as the join
-succeeds**, without the background producer running (its invocation is OS-scheduled and cannot be
-forced). The atomic reset SHALL signal the ledger change so the status snapshot re-reads.
+When a reconciliation is triggered, the extension SHALL fetch and seed **before** creating any upload jobs
+that cycle. If the listing fetch fails, the extension SHALL create no upload jobs that cycle and SHALL
+leave the `joinedEventId` marker **unset**, so it retries on its next cycle. There SHALL be no
+user-facing join-failure state and no re-scan-to-retry affordance — retries are the extension's own
+cadence, and status meanwhile comes from the app's listing read.
 
-#### Scenario: Status shows seeded counts at Joined without a producer run
-- **WHEN** a join seeds N photos and reaches `Joined`, and the producer has not run
-- **THEN** the status projection reports `completed = N` for the seeded photos against the library total
+#### Scenario: The seed precedes any upload
 
-### Requirement: Join status seam and states
+- **WHEN** a reconciliation is triggered on a cycle
+- **THEN** the seed completes before any upload job is created that cycle
 
-The system SHALL define an `EventStatusSource` seam exposing the current `EventStatus` as a
-`StateFlow`, with states `Idle`, `Joining`, `JoinFailed`, and `Joined`. The status SHALL be `Joining`
-while the list fetch and seed are in flight, `Joined` after a successful seed, and `JoinFailed` when
-the list fetch fails. The presentation layer SHALL consume this seam (see `setup-gate` and
-`sync-status-screen`).
+#### Scenario: A fetch failure defers without settling
 
-#### Scenario: Joining during the fetch and seed
-- **WHEN** a join is in flight
-- **THEN** `EventStatus` is `Joining`
-
-#### Scenario: Joined after a successful seed
-- **WHEN** a join completes its seed
-- **THEN** `EventStatus` is `Joined`
-
-#### Scenario: JoinFailed on a list-fetch failure
-- **WHEN** the list fetch fails during a join
-- **THEN** `EventStatus` is `JoinFailed`
-
-### Requirement: Block until success, no auto-retry, re-scan to retry
-
-The producer SHALL NOT be enabled until a join succeeds. A failed join SHALL **settle** the join for
-the current process: the system SHALL NOT automatically retry on foreground, on a timer, or on a
-network change. A QR re-scan / config deeplink for the configured event SHALL clear the
-settled-this-process flag and make exactly one fresh attempt; a fresh process launch SHALL make one
-attempt. The settled flag SHALL be in-memory only (it does not persist across process death).
-
-#### Scenario: Failure does not enable the producer
-- **WHEN** a join fails
-- **THEN** the producer is not enabled and the status remains `JoinFailed`
-
-#### Scenario: No automatic retry within the process after a failure
-- **WHEN** a join has failed and the app foregrounds or time passes
-- **THEN** no new join attempt runs automatically
-
-#### Scenario: A re-scan retries the join
-- **WHEN** the user re-scans the event QR after a `JoinFailed`
-- **THEN** the settled flag clears and one fresh join attempt runs
+- **WHEN** the listing fetch fails during a triggered reconciliation
+- **THEN** no upload jobs are created, the `joinedEventId` marker stays unset, and the next cycle retries
 
 ### Requirement: Event switch versus re-join
 
-The system SHALL compare a scanned / deeplinked eventId to the persisted config eventId. When it
-**equals** the current event and the ledger is non-empty, provisioning SHALL be a no-op (no ledger
-reset, no re-seed, the producer is left as is). When it **differs**, the system SHALL reset the
-ledger to empty and reconcile for the new event (which then triggers the gate via the now-empty
-ledger). After a **leave** (see `leave-event`) the persisted config is absent and the ledger is
-empty; a subsequent scan of any event therefore provisions and runs exactly one fresh join
-reconciliation for it (there is no previous eventId to compare against, so the empty-ledger gate
-drives the join).
+The extension SHALL compare the configured `eventId` to the persisted `joinedEventId` marker. When they
+**differ** (an event switch, a reinstall with no marker, or a fresh provision), the extension SHALL reset
+its ledger to empty, **reset the per-asset manifest markers**, and reconcile for the configured event,
+then set the marker. When they **match**, relaunch or re-provision is a no-op (no reset, no re-seed).
+After a **leave** (config absent), the extension SHALL reset its ledger, manifest markers, and clear the
+marker on its next cycle, so a subsequent provision of any event reconciles it fresh.
 
-#### Scenario: Re-scan of an already-joined event is a no-op
-- **WHEN** the scanned eventId equals the configured one and the ledger holds rows
-- **THEN** the ledger is not reset, no re-seed occurs, and the producer stays enabled
+The manifest-marker reset is required because the per-asset manifest dedup markers (capability
+`asset-manifest`) are keyed by `assetId`, **not** by event: without clearing them on a reset, a device
+switching to a new event would skip re-uploading its manifests and the new event's assets would never
+read as complete (the resource bytes upload but no `<eventId>/<assetId>.manifest.json` is written).
+
+#### Scenario: Re-provision of an already-joined event is a no-op
+
+- **WHEN** the configured `eventId` equals the `joinedEventId` marker
+- **THEN** the ledger is not reset, no re-seed occurs, and the producer stays as is
 
 #### Scenario: A different event resets and reconciles
-- **WHEN** the scanned eventId differs from the configured one
-- **THEN** the ledger is reset to empty and a join reconciliation runs for the new event
 
-#### Scenario: Scanning after a leave runs a fresh join
-- **WHEN** the user has left an event (config absent, ledger empty) and then scans an event QR
-- **THEN** the event is provisioned and exactly one fresh join reconciliation runs, seeding any
-  already-stored photos as `COMPLETED` before the producer is enabled
+- **WHEN** the configured `eventId` differs from the marker
+- **THEN** the extension resets the ledger to empty, resets the per-asset manifest markers, and reconciles for the new event, then sets the marker
+
+#### Scenario: An event switch re-uploads manifests to the new event
+
+- **WHEN** a device switches to a different event whose `eventId` differs from the marker
+- **THEN** the per-asset manifest markers are reset so the new event's manifests are re-uploaded (its assets can read as complete), not skipped as already-done from the prior event
+
+#### Scenario: Leaving clears the marker so the next provision reconciles fresh
+
+- **WHEN** the user has left an event (config absent) and the extension next runs
+- **THEN** the extension resets its ledger and clears the marker, so provisioning any event afterward runs a fresh reconciliation
 
