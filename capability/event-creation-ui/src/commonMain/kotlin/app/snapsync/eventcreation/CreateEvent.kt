@@ -5,13 +5,13 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
 
 /**
- * The create-event use-case (the `JoinEvent` twin): mint an event, then provision it exactly like a
- * scanned QR. `create(name)` is fire-and-forget — it launches on the injected [scope], sets
+ * The create-event use-case: mint an event, then provision it exactly like a scanned QR.
+ * `create(name)` is fire-and-forget — it launches on the injected [scope], sets
  * [CreationStatus.InFlight], calls the backend via [client] with the trimmed name, and:
  * - on [CreateOutcome.Created], funnels the returned `eventId` into the **existing** provision path
- *   ([provision] — `onProvision` + `ConfigStore.save` + reconcile, supplied by the composition root)
- *   and returns the status to [CreationStatus.Idle] (config is now present, so the reduction has
- *   already left the create layer);
+ *   ([provision] — `ConfigStore.save` + producer enable, supplied by the composition root; the
+ *   extension self-reconciles) and returns the status to [CreationStatus.Idle] (config is now present,
+ *   so the reduction has already left the create layer);
  * - on failure, sets [CreationStatus.Failed] with the matching reason and does **not** provision.
  *
  * It never inspects `PermissionStatus`: a missing grant surfaces afterward via the existing

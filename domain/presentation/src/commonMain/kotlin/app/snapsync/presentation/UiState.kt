@@ -32,26 +32,12 @@ sealed interface UiState {
     data object CreatingEvent : UiState
 
     /**
-     * Re-join reconciliation in flight (event-rejoin-reconciliation capability): the app is fetching
-     * the event's already-stored files and seeding the ledger before enabling uploads. Shown once
-     * config and permission are satisfied, ahead of any sync hero; auto-resolves to a sync state on
-     * success. No action — a preparing spinner.
-     */
-    data object Joining : UiState
-
-    /**
-     * The re-join list fetch failed: uploads are not enabled. There is no auto-retry — the user
-     * re-scans the event QR to try again. A terminal-until-rescan message, no spinner, no button.
-     */
-    data object JoinFailed : UiState
-
-    /**
      * Permission is not `GRANTED` while an event is connected (config present): the status screen
      * hosts the permission affordance instead of the sync hero. [permission] is one of
      * `NOT_DETERMINED` (never asked — the QR was scanned first; shows the "Allow access" priming) or
      * `DENIED` (revoked or refused; shows the "Open Settings" path). It carries **no** counts — the
      * live gallery total is unavailable without photo access. (Setup-gate precedence: this outranks
-     * the join/sync chain but is itself outranked by an absent config, which shows the gate.)
+     * the sync hero but is itself outranked by an absent config, which shows the gate.)
      */
     data class PermissionBlocked(val permission: PermissionStatus) : UiState
 

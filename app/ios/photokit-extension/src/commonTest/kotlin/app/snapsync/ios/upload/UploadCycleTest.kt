@@ -58,8 +58,10 @@ class UploadCycleTest {
 
     private class FakeStore(private val token: ByteArray? = null) : DiscoveryStore {
         var saved: ByteArray? = null
+        var cleared = false
         override fun loadToken(): ByteArray? = token
         override fun saveToken(token: ByteArray) { saved = token }
+        override fun clearToken() { cleared = true }
     }
 
     private fun resource(name: String, assetId: String = name) =

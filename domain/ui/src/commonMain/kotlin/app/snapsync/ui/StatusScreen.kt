@@ -41,9 +41,9 @@ fun StatusScreen(
         // Local UI state only: the confirm dialog's visibility never enters UiState or the reduction.
         var confirmingLeave by remember { mutableStateOf(false) }
         // The invite + leave affordances live in the joined layer only (InProgress / NothingToSync /
-        // Completed); the loading, setup-gate, permission-blocked, joining, and join-failed states show
-        // none. Share renders only when an invite URL exists (always true in the joined layer, where
-        // config is present); both ride the bottom-end action cluster, share before leave.
+        // Completed); the loading, setup-gate, and permission-blocked states show none. Share renders
+        // only when an invite URL exists (always true in the joined layer, where config is present);
+        // both ride the bottom-end action cluster, share before leave.
         val bottomEndActions: (@Composable () -> Unit)? = if (state.isJoinedLayer) {
             {
                 if (inviteUrl != null) {
@@ -64,10 +64,6 @@ fun StatusScreen(
             when (state) {
                 UiState.Loading ->
                     StatusHero(StatusIndicator.Loading, "Loading …")
-                UiState.Joining ->
-                    StatusHero(StatusIndicator.Loading, "Checking what's already backed up …")
-                UiState.JoinFailed ->
-                    StatusHero(StatusIndicator.Error, "Couldn't reach the server", "Scan the event QR code again")
                 is UiState.CreateEvent ->
                     CreateEventScreen(state, onCreateEvent, transientError)
                 UiState.CreatingEvent ->
@@ -104,8 +100,8 @@ fun StatusScreen(
     }
 }
 
-// The joined layer — config + permission satisfied and the join settled — is the only place the
-// leave affordance appears. Loading, the setup gate, and the join phase (Joining/JoinFailed) show none.
+// The joined layer — config + permission satisfied — is the only place the leave affordance appears.
+// Loading and the setup gate show none.
 private val UiState.isJoinedLayer: Boolean
     get() = this is UiState.InProgress || this == UiState.NothingToSync || this is UiState.Completed
 

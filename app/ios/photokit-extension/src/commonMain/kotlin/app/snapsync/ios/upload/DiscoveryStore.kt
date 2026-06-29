@@ -13,4 +13,11 @@ package app.snapsync.ios.upload
 interface DiscoveryStore {
     fun loadToken(): ByteArray?
     fun saveToken(token: ByteArray)
+
+    /**
+     * Drop the stored cursor so the next cycle re-enumerates the whole library. The re-join
+     * reconciliation calls this after seeding, so the producer re-derives every resource against the
+     * freshly-seeded ledger (already-stored ones answer `AlreadyUploaded`).
+     */
+    fun clearToken()
 }

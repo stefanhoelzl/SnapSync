@@ -11,11 +11,8 @@ kotlin {
     sourceSets {
         commonMain.dependencies {
             api(libs.coroutines.core)
-            // The join status seam it drives (kept light for presentation; re-exported so the app
-            // can wire the same instance into both the join and the container).
-            api(project(":capability:event-status"))
-            // Implementation seams the join orchestrates — kept `implementation` so engine types never
-            // leak transitively to the join's consumers (e.g. presentation).
+            // Implementation seams the reconciliation orchestrates — kept `implementation` so engine
+            // types never leak transitively to consumers that only want the leave use-case / file seam.
             implementation(project(":domain:engine"))
             implementation(project(":capability:config"))
             implementation(libs.kermit)

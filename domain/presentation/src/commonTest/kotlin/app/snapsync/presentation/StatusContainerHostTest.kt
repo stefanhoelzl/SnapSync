@@ -13,8 +13,6 @@ import app.snapsync.eventcreation.CreationStatus
 import app.snapsync.eventcreation.EventCreationClient
 import app.snapsync.eventcreation.EventCreator
 import app.snapsync.eventcreation.MutableCreationStatusSource
-import app.snapsync.eventstatus.EventStatus
-import app.snapsync.eventstatus.MutableEventStatusSource
 import app.snapsync.permission.PermissionRequester
 import app.snapsync.permission.PermissionStatus
 import app.snapsync.permission.PermissionStatusSource
@@ -136,43 +134,6 @@ class StatusContainerHostTest {
         }
     }
 
-    // The initial state is reduced synchronously from the sources' current values at construction, so
-    // the join precedence is asserted directly on the container's first state.
-    private fun joinHost(
-        eventStatus: EventStatus,
-        config: FakeConfig = FakeConfig(),
-        permission: FakePermissionSource = FakePermissionSource(),
-        scope: CoroutineScope,
-    ) = StatusContainerHost(
-        FakeSyncStatusSource(), permission, SpyRequester(), config, config, scope,
-        eventStatusSource = MutableEventStatusSource(eventStatus),
-    )
-
-    @Test
-    fun `joining outranks the sync hero once both gates pass`() = runTest {
-        val host = joinHost(EventStatus.Joining, scope = backgroundScope)
-        assertEquals(UiState.Joining, host.container.stateFlow.value)
-    }
-
-    @Test
-    fun `join failed outranks the sync hero once both gates pass`() = runTest {
-        val host = joinHost(EventStatus.JoinFailed, scope = backgroundScope)
-        assertEquals(UiState.JoinFailed, host.container.stateFlow.value)
-    }
-
-    @Test
-    fun `joined falls through to the sync hero`() = runTest {
-        val host = joinHost(EventStatus.Joined, scope = backgroundScope)
-        // Default snapshot is total 0 → NothingToSync (the join status does not outrank a settled join).
-        assertEquals(UiState.NothingToSync, host.container.stateFlow.value)
-    }
-
-    @Test
-    fun `create layer outranks a join in flight when config is absent`() = runTest {
-        val host = joinHost(EventStatus.Joining, config = FakeConfig(null), scope = backgroundScope)
-        assertEquals(UiState.CreateEvent(), host.container.stateFlow.value)
-    }
-
     // The create layer is the top rung: config absent, reduced from the creation status.
     private fun createHost(
         creation: CreationStatus,
@@ -245,26 +206,26 @@ class StatusContainerHostTest {
     fun `a successful create flows through the use-case to a joined downstream state`() = runTest {
         val config = FakeConfig(null)
         val creationStatus = MutableCreationStatusSource()
-        val eventStatus = MutableEventStatusSource()
         // Eager dispatcher so the fire-and-forget create mutates the seams synchronously.
         val creator = CreateEvent(
             client = StubClient(CreateOutcome.Created("evt-1")),
             status = creationStatus,
-            // The provision path a scanned QR also takes: config goes present and the join starts.
-            provision = { config.save(EventConfigPayload("evt-1")); eventStatus.set(EventStatus.Joining) },
+            // The provision path a scanned QR also takes: config goes present (no join ceremony — the
+            // extension reconciles on its own cycle; status comes straight from the listing snapshot).
+            provision = { config.save(EventConfigPayload("evt-1")) },
             scope = CoroutineScope(UnconfinedTestDispatcher(testScheduler)),
         )
         val host = StatusContainerHost(
             FakeSyncStatusSource(), FakePermissionSource(PermissionStatus.GRANTED), SpyRequester(),
             config, config, backgroundScope,
-            eventStatusSource = eventStatus, creationStatusSource = creationStatus, creator = creator,
+            creationStatusSource = creationStatus, creator = creator,
         )
         host.test(this) {
             runOnCreate()
             // Drive the real use-case (the onCreateEvent → creator hop is covered separately).
             creator.create("My Party")
-            // minted → provisioned (config present + join started) → the downstream Joining state.
-            expectState(UiState.Joining)
+            // minted → provisioned (config present, granted) → the listing-derived snapshot (total 0).
+            expectState(UiState.NothingToSync)
             cancelAndIgnoreRemainingItems()
         }
     }
@@ -293,6 +254,19 @@ class StatusContainerHostTest {
             cancelAndIgnoreRemainingItems()
         }
         assertEquals(false, provisioned) // config never flipped
+    }
+
+    @Test
+    fun `a re-join shows the listing-derived snapshot and never a join state`() = runTest {
+        // Config present + granted while the extension reconciles in the background: the screen reduces
+        // the listing snapshot directly (a rising synced count), with no Joining/JoinFailed rung at all.
+        val source = FakeSyncStatusSource(snapshot(completed = 0, total = 47))
+        host(source, backgroundScope).test(this) {
+            runOnCreate()
+            source.value = snapshot(completed = 12, total = 47) // the seed/uploads land
+            expectState(UiState.InProgress(synced = 12, total = 47, inProgress = 0))
+            cancelAndIgnoreRemainingItems()
+        }
     }
 
     @Test
@@ -368,16 +342,6 @@ class StatusContainerHostTest {
         val container = host(source, backgroundScope, permission = permission).container
 
         assertEquals(UiState.PermissionBlocked(PermissionStatus.NOT_DETERMINED), container.stateFlow.value)
-    }
-
-    @Test
-    fun `permission outranks a join in flight`() = runTest {
-        val host = joinHost(
-            EventStatus.Joining,
-            permission = FakePermissionSource(PermissionStatus.DENIED),
-            scope = backgroundScope,
-        )
-        assertEquals(UiState.PermissionBlocked(PermissionStatus.DENIED), host.container.stateFlow.value)
     }
 
     @Test
