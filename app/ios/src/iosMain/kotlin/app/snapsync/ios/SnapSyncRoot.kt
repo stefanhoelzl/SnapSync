@@ -238,10 +238,19 @@ object SnapSyncRoot {
      * lower systems. The app runs no join, fetch, or seed — reconciliation lives inside the extension,
      * gated by its `joinedEventId` marker (see `event-rejoin-reconciliation`); the extension
      * self-reconciles on its next cycle. Called on a full grant and on every (re)provision.
+     *
+     * Registration is a **disable→enable toggle**, not a bare enable (`ios-background-upload` spec): the
+     * system's upload-job configuration record is keyed by bundle id and persists across app
+     * delete/reinstall and reboot, so a stale record (e.g. from a prior or differently-signed build)
+     * makes a bare `enable(true)` fail with `PHPhotosError 3202` ("existing configuration record"),
+     * after which the OS never launches the extension. The leading `enable(false)` deletes the stale
+     * record so `enable(true)` re-creates it cleanly for the currently-installed extension — and the
+     * re-register is what reliably prompts the OS to schedule `process()`. Idempotent-safe to repeat.
      */
     private fun enableBackgroundUpload() {
+        setUploadExtensionEnabled(false)
         setUploadExtensionEnabled(true)
-        log.i { "background-upload extension enabled (extension self-reconciles)" }
+        log.i { "background-upload extension re-registered (disable→enable)" }
     }
 
     /**
