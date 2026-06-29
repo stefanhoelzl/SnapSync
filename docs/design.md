@@ -496,8 +496,10 @@ proxies are all dropped — so an asset's resource set is **fixed at capture and
   never settle). On its next cycle, **before** creating any upload job, the extension compares the
   configured `eventId` to the marker: equal ⇒ upload directly; different (a switch, reinstall, or fresh
   provision) ⇒ fetch the event's complete-asset listing, atomically `resetTo` one `COMPLETED` row per
-  stored resource (the reset replaces any prior event's rows), clear the discovery cursor, and set the
-  marker — even a zero-row join sets it, so there is no re-seed loop. If the listing fetch fails the
+  stored resource (the reset replaces any prior event's rows), clear the discovery cursor, **reset the
+  per-asset manifest markers** (they are `assetId`-keyed, not event-scoped, so a switched event must
+  re-upload its manifests or its assets never read as complete), and set the marker — even a zero-row
+  join sets it, so there is no re-seed loop. If the listing fetch fails the
   extension creates no jobs that cycle and leaves the marker unset, retrying on its own cadence (no
   user-facing join-failure state; status comes from the app's own LIST). A re-join thus re-uploads
   **nothing** already stored — only genuinely-un-stored photos upload, on the OS's next invocation.
