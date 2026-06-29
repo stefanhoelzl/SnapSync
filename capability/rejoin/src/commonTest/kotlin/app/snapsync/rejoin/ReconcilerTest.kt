@@ -40,7 +40,8 @@ class ReconcilerTest {
         ledger: FakeLedgerBackend,
         marker: JoinedEventMarker,
         onCursorClear: () -> Unit = {},
-    ) = ExtensionReconciler(files, ledger, marker, { onCursorClear() })
+        onManifestsReset: () -> Unit = {},
+    ) = ExtensionReconciler(files, ledger, marker, { onCursorClear() }, { onManifestsReset() })
 
     @Test
     fun `marker mismatch triggers a join that seeds every resource and sets the marker`() = runTest {
@@ -122,13 +123,31 @@ class ReconcilerTest {
         val files = FakeFiles(Result.success(listOf(asset("N", "N-primary.heic"))))
         val marker = FakeMarker("OLD")
         var cursorCleared = 0
+        var manifestsReset = 0
 
-        assertTrue(reconciler(files, ledger, marker) { cursorCleared++ }.reconcile("NEW"))
+        assertTrue(
+            reconciler(files, ledger, marker, { cursorCleared++ }, { manifestsReset++ }).reconcile("NEW"),
+        )
 
         assertNull(ledger.get("old")) // the prior event's rows are gone (atomic reset)
         assertEquals(LedgerState.COMPLETED, ledger.get("N-primary.heic")!!.state) // new event seeded
         assertEquals("NEW", marker.read())
         assertEquals(1, cursorCleared)
+        assertEquals(1, manifestsReset) // switch re-uploads manifests (markers are assetId-keyed, not event)
+    }
+
+    @Test
+    fun `a marker match resets neither the cursor nor the manifest markers`() = runTest {
+        var cursorCleared = 0
+        var manifestsReset = 0
+
+        assertTrue(
+            reconciler(FakeFiles(Result.success(emptyList())), FakeLedgerBackend(), FakeMarker("E1"),
+                { cursorCleared++ }, { manifestsReset++ }).reconcile("E1"),
+        )
+
+        assertEquals(0, cursorCleared) // an already-joined event touches nothing
+        assertEquals(0, manifestsReset)
     }
 
     @Test
@@ -137,13 +156,15 @@ class ReconcilerTest {
         val files = FakeFiles(Result.success(emptyList()))
         val marker = FakeMarker("E1")
         var cursorCleared = 0
+        var manifestsReset = 0
 
         // Config absent (the user left) but a marker remains → reset and clear so a later provision is fresh.
-        assertFalse(reconciler(files, ledger, marker) { cursorCleared++ }.reconcile(null))
+        assertFalse(reconciler(files, ledger, marker, { cursorCleared++ }, { manifestsReset++ }).reconcile(null))
 
         assertTrue(ledger.rows.isEmpty())
         assertNull(marker.read())
         assertEquals(1, cursorCleared)
+        assertEquals(1, manifestsReset)
         assertEquals(0, files.calls)
     }
 

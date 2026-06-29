@@ -28,19 +28,26 @@ interface JoinedEventMarker {
  * - configured `eventId` == marker → already joined; upload directly (no fetch, enumeration, or seed).
  * - configured `eventId` != marker (a switch, reinstall, or fresh provision) → fetch the event's
  *   complete-asset listing and atomically reset the ledger to one `COMPLETED` row per resource (the
- *   reset replaces any prior event's rows), clear the discovery cursor, and set the marker. Returns
- *   `true`, so the same cycle proceeds to upload: the seeded rows are skipped by the engine and any
- *   resource absent from the listing (partially-stored / never-uploaded) re-uploads idempotently.
+ *   reset replaces any prior event's rows), clear the discovery cursor, reset the per-asset manifest
+ *   markers, and set the marker. Returns `true`, so the same cycle proceeds to upload: the seeded rows
+ *   are skipped by the engine and any resource absent from the listing (partially-stored /
+ *   never-uploaded) re-uploads idempotently.
  * - the listing fetch fails → create no jobs this cycle and leave the marker **unset** (the ledger is
  *   untouched), so the next cycle retries. There is no user-facing join-failure state.
  * - no event configured but a marker remains (a leave) → reset the ledger, clear the cursor and the
- *   marker, and upload nothing, so a later provision of any event reconciles fresh.
+ *   manifest markers and the marker, and upload nothing, so a later provision of any event reconciles
+ *   fresh.
+ *
+ * The [resetManifests] reset matters on an event **switch**: the per-asset manifest dedup markers are
+ * keyed by `assetId`, not by event, so without clearing them on a reset a device switching to a new
+ * event would skip re-uploading its manifests and the new event's assets would never read as complete.
  */
 class ExtensionReconciler(
     private val files: EventFilesSource,
     private val ledger: LedgerBackend,
     private val marker: JoinedEventMarker,
     private val clearDiscoveryCursor: suspend () -> Unit,
+    private val resetManifests: suspend () -> Unit,
     private val log: Logger = Logger.withTag("ExtensionReconciler"),
 ) {
     /**
@@ -57,6 +64,7 @@ class ExtensionReconciler(
                 log.i { "no event configured but marker present — resetting ledger and clearing marker" }
                 ledger.resetTo(emptyList())
                 clearDiscoveryCursor()
+                resetManifests()
                 marker.clear()
             }
             return false
@@ -79,6 +87,7 @@ class ExtensionReconciler(
         }
         ledger.resetTo(seeds)
         clearDiscoveryCursor()
+        resetManifests() // event-scoped: re-enqueue manifests for the configured event (markers are assetId-keyed)
         marker.set(configuredEventId) // settle even when seeds is empty → the next cycle does not re-loop
         log.i { "joined $configuredEventId — seeded ${seeds.size} resource(s)" }
         return true

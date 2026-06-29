@@ -94,6 +94,17 @@ class IosManifestStore(appGroup: String = LEDGER_APP_GROUP) {
         pendingUrl(assetId)?.let { fileManager.removeItemAtURL(it, error = null) }
     }
 
+    /**
+     * Drop **every** manifest marker (PENDING and DONE) by removing the whole `manifests/` directory —
+     * the reset the extension's re-join reconciliation runs on an event switch. The DONE markers are
+     * keyed by `assetId`, not by event, so without this a device switching to a new event would skip
+     * re-uploading its manifests and the new event's assets would never read as complete. A missing
+     * directory is a harmless no-op; [writePending] recreates it.
+     */
+    fun clear() {
+        dir?.let { fileManager.removeItemAtURL(it, error = null) }
+    }
+
     /** Flip the asset to DONE (the upload landed): drop the PENDING source file and write the DONE marker. */
     @OptIn(BetaInteropApi::class)
     fun markDone(assetId: String) {

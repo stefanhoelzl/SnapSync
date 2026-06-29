@@ -58,10 +58,15 @@ even when zero rows were seeded — settles the join so it does not re-trigger.
 
 The extension SHALL compare the configured `eventId` to the persisted `joinedEventId` marker. When they
 **differ** (an event switch, a reinstall with no marker, or a fresh provision), the extension SHALL reset
-its ledger to empty and reconcile for the configured event, then set the marker. When they **match**,
-relaunch or re-provision is a no-op (no reset, no re-seed). After a **leave** (config absent), the
-extension SHALL reset its ledger and clear the marker on its next cycle, so a subsequent provision of any
-event reconciles it fresh.
+its ledger to empty, **reset the per-asset manifest markers**, and reconcile for the configured event,
+then set the marker. When they **match**, relaunch or re-provision is a no-op (no reset, no re-seed).
+After a **leave** (config absent), the extension SHALL reset its ledger, manifest markers, and clear the
+marker on its next cycle, so a subsequent provision of any event reconciles it fresh.
+
+The manifest-marker reset is required because the per-asset manifest dedup markers (capability
+`asset-manifest`) are keyed by `assetId`, **not** by event: without clearing them on a reset, a device
+switching to a new event would skip re-uploading its manifests and the new event's assets would never
+read as complete (the resource bytes upload but no `<eventId>/<assetId>.manifest.json` is written).
 
 #### Scenario: Re-provision of an already-joined event is a no-op
 
@@ -71,7 +76,12 @@ event reconciles it fresh.
 #### Scenario: A different event resets and reconciles
 
 - **WHEN** the configured `eventId` differs from the marker
-- **THEN** the extension resets the ledger to empty and reconciles for the new event, then sets the marker
+- **THEN** the extension resets the ledger to empty, resets the per-asset manifest markers, and reconciles for the new event, then sets the marker
+
+#### Scenario: An event switch re-uploads manifests to the new event
+
+- **WHEN** a device switches to a different event whose `eventId` differs from the marker
+- **THEN** the per-asset manifest markers are reset so the new event's manifests are re-uploaded (its assets can read as complete), not skipped as already-done from the prior event
 
 #### Scenario: Leaving clears the marker so the next provision reconciles fresh
 

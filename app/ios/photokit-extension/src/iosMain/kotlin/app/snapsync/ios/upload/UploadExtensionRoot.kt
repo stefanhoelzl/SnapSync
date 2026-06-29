@@ -59,6 +59,9 @@ object UploadExtensionRoot {
             ledger = ledgerBackend,
             marker = IosJoinedEventMarker(),
             clearDiscoveryCursor = { discoveryStore.clearToken() },
+            // Reset the per-asset manifest markers on a switch/reinstall so the configured event
+            // re-uploads its manifests (the markers are assetId-keyed, not event-scoped).
+            resetManifests = { manifestStore.clear() },
             log = log,
         )
     }
