@@ -18,7 +18,6 @@ import app.snapsync.eventstatus.MutableEventStatusSource
 import app.snapsync.permission.PermissionRequester
 import app.snapsync.permission.PermissionStatus
 import app.snapsync.permission.PermissionStatusSource
-import app.snapsync.status.ObservedCompletionsSource
 import app.snapsync.status.SyncStatus
 import app.snapsync.status.SyncProgress
 import app.snapsync.status.SyncStatusSource
@@ -26,15 +25,12 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 import kotlin.time.Duration
-import kotlin.time.Duration.Companion.seconds
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
-import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.advanceUntilIdle
-import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import org.orbitmvi.orbit.test.test
 
@@ -76,16 +72,6 @@ private class FakeConfig(initial: EventConfigPayload? = SAMPLE_CONFIG) : ConfigS
     }
     override suspend fun clear() {
         flow.value = null
-    }
-}
-
-private class CountingObserved : ObservedCompletionsSource {
-    var refreshes = 0
-        private set
-    private val flow = MutableStateFlow<Set<String>>(emptySet())
-    override val keys: StateFlow<Set<String>> = flow
-    override suspend fun refresh() {
-        refreshes++
     }
 }
 
@@ -586,57 +572,6 @@ class StatusContainerHostTest {
             containerHost.onShareInvite()
         }
         advanceUntilIdle()
-    }
-
-    @Test
-    fun `refresh polls while foreground and pending then stops when drained and resumes on foreground`() = runTest {
-        val source = FakeSyncStatusSource(snapshot(pending = 3, total = 5))
-        val observed = CountingObserved()
-        val foreground = MutableStateFlow(true)
-        val containerHost = StatusContainerHost(
-            source,
-            FakePermissionSource(),
-            SpyRequester(),
-            FakeConfig(),
-            FakeConfig(),
-            backgroundScope,
-            observed,
-            foreground,
-            pollInterval = 5.seconds,
-        )
-        containerHost.test(this) {
-            runOnCreate()
-            runCurrent()
-            val afterCreate = observed.refreshes
-            assertTrue(afterCreate >= 1, "refreshes immediately when foreground with pending work")
-
-            advanceTimeBy(5.seconds)
-            runCurrent()
-            assertTrue(observed.refreshes > afterCreate, "keeps polling on the interval")
-
-            // Backgrounded → polling stops.
-            foreground.value = false
-            runCurrent()
-            val afterBackground = observed.refreshes
-            advanceTimeBy(20.seconds)
-            runCurrent()
-            assertEquals(afterBackground, observed.refreshes, "no polling while backgrounded")
-
-            // Foregrounded again → resumes immediately.
-            foreground.value = true
-            runCurrent()
-            assertTrue(observed.refreshes > afterBackground, "resumes on foreground")
-
-            // Drained (pending == 0) → stops even while foreground.
-            source.value = snapshot(pending = 0, completed = 5, total = 5)
-            runCurrent()
-            val afterDrain = observed.refreshes
-            advanceTimeBy(20.seconds)
-            runCurrent()
-            assertEquals(afterDrain, observed.refreshes, "no polling once pending hits zero")
-
-            cancelAndIgnoreRemainingItems()
-        }
     }
 
     @Test

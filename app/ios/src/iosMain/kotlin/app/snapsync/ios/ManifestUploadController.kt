@@ -35,6 +35,10 @@ class ManifestUploadController(
     private val store: IosManifestStore,
     private val host: String,
     private val eventIdProvider: () -> String?,
+    // Liveness hook (capability `sync-status`): a manifest landing usually means an asset just became
+    // complete, so on each successful upload the app re-LISTs + re-reads the in-flight manifests.
+    // Defaults to a no-op so the controller stays independently testable/constructable.
+    private val onManifestUploaded: () -> Unit = {},
     private val log: Logger = Logger.withTag("ManifestUpload"),
 ) {
 
@@ -89,6 +93,7 @@ class ManifestUploadController(
             if (ok) {
                 store.markDone(assetId)
                 log.i { "manifest $assetId DONE" }
+                onManifestUploaded() // re-LIST + re-read in-flight manifests (status liveness)
             } else {
                 log.w { "manifest $assetId failed (err=${didCompleteWithError?.localizedDescription}, status=$status) — re-enqueuing" }
                 reenqueue(assetId)

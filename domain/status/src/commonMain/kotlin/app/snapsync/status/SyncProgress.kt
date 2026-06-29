@@ -3,19 +3,20 @@ package app.snapsync.status
 import kotlin.time.Duration
 
 /**
- * Snapshot of backup truth, projected from the engine's ledger and the live photo library
- * (design.md §2.4).
+ * Snapshot of backup truth, derived from storage truth and the live photo library (design.md §2.4):
+ * the completeness listing, the on-disk in-flight manifests, and the gallery total — **no ledger
+ * read**.
  *
- * [completed] is a lifetime aggregate over the ledger, counted by **photo (asset), not resource
- * row**: photos all of whose resources are `COMPLETED`. A re-upload flips its photo back to pending
- * — re-uploads are visible here. [pending] (ledger photos not yet complete) remains available but
- * does **not** drive classification.
+ * [completed] is the count of **complete assets** reported by the completeness listing (an asset all
+ * of whose manifest-named resources are stored), counted by **photo (asset), not resource row**.
+ * [pending] is the count of assets with an in-flight on-disk manifest not yet complete; it remains
+ * available but does **not** drive classification.
  *
- * [total] is the live photo-library count (the gallery size, `N`) — NOT a ledger count, so it
- * reflects photos the ledger has not yet discovered. This is what makes "n of N" honest the instant
- * a photo is taken, before the background extension records anything.
+ * [total] is the live photo-library count (the gallery size, `N`) — NOT a storage count, so it
+ * reflects photos not yet uploaded. This is what makes "n of N" honest the instant a photo is taken,
+ * before the background extension uploads anything.
  *
- * [failed] is structurally 0 from the ledger-backed source (retry-forever never gives up a key) and
+ * [failed] is structurally 0 from the listing-backed source (retry-forever never gives up a key) and
  * [estimatedRemaining] is always null (this version never estimates). Both fields exist for fakes.
  *
  * [active] is operational state — "the backup machinery is allowed to run" — derived from
@@ -35,14 +36,14 @@ data class SyncProgress(
 ) {
     /**
      * The displayed synced count: [completed] clamped to [total]. A photo uploaded then deleted
-     * stays `COMPLETED` in the ledger until the next extension prune while [total] drops instantly,
-     * so without the clamp `completed` could exceed `total` and read as a nonsensical "6 of 5".
+     * stays complete in storage until pruned while [total] drops instantly, so without the clamp
+     * `completed` could exceed `total` and read as a nonsensical "6 of 5".
      */
     val synced: Int get() = minOf(completed, total)
 
     /**
      * Single source of truth for classifying a snapshot, driven by the live total `N` versus the
-     * (clamped) synced count `n` — ledger `pending` is deliberately ignored so a not-yet-pruned
+     * (clamped) synced count `n` — `pending` is deliberately ignored so a not-yet-pruned
      * deleted photo cannot pin the screen to IN_PROGRESS. There is no SUSPENDED state (the setup
      * gate shadows every inactive case), no NEVER_SYNCED (it folds into IN_PROGRESS at n=0 or
      * NOTHING_TO_SYNC at N=0), and no INCOMPLETE/FAILED (untellable under retry-forever).

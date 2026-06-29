@@ -19,13 +19,13 @@ const val DISCOVERY_TOKEN_KEY: String = "discovery.changeToken"
 /**
  * The iOS [LedgerBackend]: the shared [SqlDelightLedgerBackend] over a native SQLite driver,
  * persisting **on disk in the [LEDGER_APP_GROUP] container** so the ledger is shared between the
- * host app (which reads it) and the background-upload extension (the single writer), and survives
- * process death. WAL is the native driver's default journal mode — one cross-process writer plus
- * concurrent readers.
+ * host app and the background-upload extension (the single writer), and survives process death. WAL
+ * is the native driver's default journal mode — one cross-process writer plus concurrent readers.
  *
- * This factory is the single site that names the database location. It wraps the backend in
- * [DarwinCrossProcessLedgerBackend] so a `put` in the extension process dings a watcher in the app
- * process (the in-process [SqlDelightLedgerBackend.changes] ding never crosses the process line).
+ * This factory is the single site that names the database location. The ledger is the extension's
+ * private upload memory — the app no longer watches it for status (status derives from storage
+ * truth) — so there is no cross-process change notification: the in-process [LedgerBackend.changes]
+ * ding the extension's own cycle uses is all that is needed.
  */
 @OptIn(ExperimentalForeignApi::class)
 fun iosLedgerBackend(): LedgerBackend {
@@ -40,7 +40,7 @@ fun iosLedgerBackend(): LedgerBackend {
         },
     )
     protectLedgerFiles(basePath)
-    return DarwinCrossProcessLedgerBackend(SqlDelightLedgerBackend(LedgerDatabase(driver)))
+    return SqlDelightLedgerBackend(LedgerDatabase(driver))
 }
 
 /**
