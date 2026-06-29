@@ -57,11 +57,26 @@ jobs:
           deploy_key: ${{ secrets.BUNNY_DEPLOY_KEY }}
           file: backend/dist/main.js
 
-      # Deno Deploy (the active iOS-facing host for now). The app's entrypoint (src/main.ts) and env
-      # (BUNNY_STORAGE_*) are configured server-side; `deno deploy` uses the stored build config and
-      # the --org/--app to target the app. It persists a `deploy:` block into deno.json on the
-      # ephemeral runner (never committed). Requires the DENO_DEPLOY_TOKEN secret (the `ddo_` org
-      # token). Revert path: when bunny fixes the SYN drop, drop this step + repoint the iOS host.
+      # Ensure the app's runtime env is set BEFORE deploying — readConfig() THROWS on a missing var,
+      # so a new revision fails to boot ("the revision failed") without it. The BUNNY_STORAGE_* secrets
+      # are configured in the dashboard; PUBLIC_BASE_URL is the (non-secret) public origin the list
+      # endpoint builds download URLs from, so we keep it in CI for reproducibility. Idempotent:
+      # `add` on first run, `update-value` on subsequent runs (add errors if the var exists).
+      - name: Configure Deno Deploy env
+        if: github.ref == 'refs/heads/main'
+        working-directory: backend
+        env:
+          DENO_DEPLOY_TOKEN: ${{ secrets.DENO_DEPLOY_TOKEN }}
+        run: |
+          URL="https://snapsync.stefanhoelzl.deno.net"
+          deno deploy env add PUBLIC_BASE_URL "$URL" --org stefanhoelzl --app snapsync \
+            || deno deploy env update-value PUBLIC_BASE_URL "$URL" --org stefanhoelzl --app snapsync
+
+      # Deno Deploy (the active iOS-facing host for now). The app's entrypoint (src/main.ts) is
+      # configured server-side; `deno deploy` uses the stored build config and the --org/--app to
+      # target the app. It persists a `deploy:` block into deno.json on the ephemeral runner (never
+      # committed). Requires the DENO_DEPLOY_TOKEN secret (the `ddo_` org token). Revert path: when
+      # bunny fixes the SYN drop, drop this step + repoint the iOS host.
       - name: Deploy to Deno Deploy
         if: github.ref == 'refs/heads/main'
         working-directory: backend
