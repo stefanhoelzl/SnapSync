@@ -10,7 +10,6 @@ import app.snapsync.engine.SyncEvent
 import app.snapsync.engine.UploadRequest
 import app.snapsync.engine.UploadRequestProvider
 import app.snapsync.eventstatus.MutableEventStatusSource
-import app.snapsync.gallery.InMemoryGalleryResourceEnumerator
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
@@ -20,8 +19,9 @@ import kotlinx.coroutines.test.runTest
 
 /**
  * The core no-re-upload guarantee end-to-end across the join → engine boundary: a row seeded by the
- * join's atomic `resetTo` is read back through the real [SyncEngine] as `AlreadyUploaded` (no job),
- * while an un-seeded resource (the migration-shaped case, cursor cleared) still uploads.
+ * join's atomic `resetTo` (straight from the complete-asset listing) is read back through the real
+ * [SyncEngine] as `AlreadyUploaded` (no job), while a resource absent from the listing — a
+ * partially-stored or never-uploaded asset, cursor cleared — still uploads.
  */
 class JoinThenEngineTest {
 
@@ -37,44 +37,38 @@ class JoinThenEngineTest {
     private fun res(filename: String, assetId: String) =
         Resource(filename, assetId, "image/heic", emptyMap(), Unit)
 
+    private fun join(ledger: FakeLedgerBackend, listed: List<RemoteAsset>) = JoinEvent(
+        files = FakeFilesOnce(listed),
+        ledger = ledger,
+        config = FakeConfig("E1"),
+        status = MutableEventStatusSource(),
+        clearDiscoveryCursor = {},
+    )
+
     @Test
-    fun `a photo seeded by the join is skipped by the engine`() = runTest {
+    fun `a resource seeded by the join is skipped by the engine`() = runTest {
         val ledger = FakeLedgerBackend()
-        val joined = res("A-ios.photo.heic", "A")
-        JoinEvent(
-            files = FakeFilesOnce(listOf(RemoteFile("A-ios.photo.heic"))),
-            enumerator = InMemoryGalleryResourceEnumerator(listOf(joined)),
-            ledger = ledger,
-            config = FakeConfig("E1"),
-            status = MutableEventStatusSource(),
-            clearDiscoveryCursor = {},
-        ).ensureJoined()
+        join(ledger, listOf(RemoteAsset("A", listOf(RemoteResource("A-primary.heic"))))).ensureJoined()
 
         val engine = SyncEngine(FakeProvider, LedgerWriter(ledger))
-        assertEquals(SyncDecision.AlreadyUploaded, engine.handle(SyncEvent.ResourceChanged(joined)))
+        assertEquals(
+            SyncDecision.AlreadyUploaded,
+            engine.handle(SyncEvent.ResourceChanged(res("A-primary.heic", "A"))),
+        )
     }
 
     @Test
-    fun `an un-seeded photo still uploads`() = runTest {
+    fun `a resource absent from the listing still uploads`() = runTest {
         val ledger = FakeLedgerBackend()
-        // Only A is stored remotely; B exists locally but is not in the manifest → not seeded.
-        JoinEvent(
-            files = FakeFilesOnce(listOf(RemoteFile("A-ios.photo.heic"))),
-            enumerator = InMemoryGalleryResourceEnumerator(
-                listOf(res("A-ios.photo.heic", "A"), res("B-ios.photo.heic", "B")),
-            ),
-            ledger = ledger,
-            config = FakeConfig("E1"),
-            status = MutableEventStatusSource(),
-            clearDiscoveryCursor = {},
-        ).ensureJoined()
+        // Only A is listed complete; B is not in the listing → not seeded → must upload.
+        join(ledger, listOf(RemoteAsset("A", listOf(RemoteResource("A-primary.heic"))))).ensureJoined()
 
         val engine = SyncEngine(FakeProvider, LedgerWriter(ledger))
-        val decision = engine.handle(SyncEvent.ResourceChanged(res("B-ios.photo.heic", "B")))
+        val decision = engine.handle(SyncEvent.ResourceChanged(res("B-primary.heic", "B")))
         assertTrue(decision is SyncDecision.Upload, "un-seeded resource must upload, got $decision")
     }
 
-    private class FakeFilesOnce(private val files: List<RemoteFile>) : EventFilesSource {
-        override suspend fun list(eventId: String): Result<List<RemoteFile>> = Result.success(files)
+    private class FakeFilesOnce(private val assets: List<RemoteAsset>) : EventFilesSource {
+        override suspend fun list(eventId: String): Result<List<RemoteAsset>> = Result.success(assets)
     }
 }

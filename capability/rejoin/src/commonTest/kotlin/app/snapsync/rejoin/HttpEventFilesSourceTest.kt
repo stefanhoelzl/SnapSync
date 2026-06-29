@@ -19,14 +19,19 @@ class HttpEventFilesSourceTest {
     private fun source(handler: MockEngine) = HttpEventFilesSource(HttpClient(handler), "https://edge.example/")
 
     @Test
-    fun `parses the flat array and targets the files route`() = runTest {
+    fun `parses the complete-asset array and targets the files route`() = runTest {
         var requested: String? = null
         val engine = MockEngine { request ->
             requested = request.url.toString()
             respond(
                 content = """[
-                  {"filename":"A-ios.photo.heic","size":1,"url":"https://edge.example/event/$eventId/file/A-ios.photo.heic"},
-                  {"filename":"B-ios.video.mov","size":2,"url":"https://edge.example/event/$eventId/file/B-ios.video.mov"}
+                  {"assetId":"A","creationDate":"2026-06-27T00:00:00Z","resources":[
+                    {"role":"primary","filename":"A-primary.heic","contentType":"image/heic","originalFilename":"IMG_0001.HEIC","url":"https://edge.example/event/$eventId/file/A-primary.heic"},
+                    {"role":"motion","filename":"A-motion.mov","contentType":"video/quicktime","originalFilename":"IMG_0001.MOV","url":"https://edge.example/event/$eventId/file/A-motion.mov"}
+                  ]},
+                  {"assetId":"B","creationDate":"2026-06-27T00:01:00Z","resources":[
+                    {"role":"primary","filename":"B-primary.mov","contentType":"video/quicktime","originalFilename":"VID_0002.MOV","url":"https://edge.example/event/$eventId/file/B-primary.mov"}
+                  ]}
                 ]""",
                 status = HttpStatusCode.OK,
                 headers = headersOf(HttpHeaders.ContentType, "application/json"),
@@ -35,9 +40,12 @@ class HttpEventFilesSourceTest {
         val result = source(engine).list(eventId)
 
         assertEquals("https://edge.example/event/$eventId/files", requested)
-        val files = result.getOrThrow()
-        // The join parses only `filename`; `size`/`url` are ignored unknown keys.
-        assertEquals(listOf("A-ios.photo.heic", "B-ios.video.mov"), files.map { it.filename })
+        val assets = result.getOrThrow()
+        // The join reads only assetId + each resource's filename; role/contentType/originalFilename/url
+        // are ignored unknown keys.
+        assertEquals(listOf("A", "B"), assets.map { it.assetId })
+        assertEquals(listOf("A-primary.heic", "A-motion.mov"), assets[0].resources.map { it.filename })
+        assertEquals(listOf("B-primary.mov"), assets[1].resources.map { it.filename })
     }
 
     @Test

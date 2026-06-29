@@ -1,10 +1,25 @@
 import SwiftUI
 import SnapSyncKit
+import UIKit
+
+// The app delegate exists solely to receive `handleEventsForBackgroundURLSession` — the OS relaunches
+// the app to finish the manifest uploads the extension started on the shared background URLSession.
+// Pass-through only: Kotlin (`SnapSyncRoot`) adopts the session and invokes the handler when done.
+final class AppDelegate: NSObject, UIApplicationDelegate {
+    func application(
+        _ application: UIApplication,
+        handleEventsForBackgroundURLSession identifier: String,
+        completionHandler: @escaping () -> Void
+    ) {
+        SnapSyncRoot.shared.handleBackgroundUrlSession(identifier: identifier, completionHandler: completionHandler)
+    }
+}
 
 // SwiftUI App lifecycle is scene-based, which satisfies the iOS 27 SDK's mandatory UIScene
-// adoption without an AppDelegate.
+// adoption; the delegate adaptor adds only the background-URLSession relaunch hook above.
 @main
 struct iOSApp: App {
+    @UIApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
     @Environment(\.scenePhase) private var scenePhase
 
     var body: some Scene {

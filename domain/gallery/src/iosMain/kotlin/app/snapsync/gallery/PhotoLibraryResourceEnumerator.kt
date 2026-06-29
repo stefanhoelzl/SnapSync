@@ -37,8 +37,11 @@ class PhotoLibraryResourceEnumerator : GalleryResourceEnumerator {
             val assetId = asset.localIdentifier.replace('/', '_')
             for (any in PHAssetResource.assetResourcesForAsset(asset)) {
                 val resource = any as PHAssetResource
+                // Originals only: a dropped (edit-artifact / RAW alternate / proxy) type has no role
+                // and is never wrapped, so an asset's set is fixed at capture and never grows.
+                val role = resourceRole(resource.type) ?: continue
                 resources += Resource(
-                    filename = uploadKey(assetId, resource.type, resource.originalFilename),
+                    filename = uploadKey(assetId, role, resource.originalFilename),
                     assetId = assetId,
                     contentType = resource.uniformTypeIdentifier,
                     metadata = emptyMap(),

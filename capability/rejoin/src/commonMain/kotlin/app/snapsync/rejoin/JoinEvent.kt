@@ -6,7 +6,6 @@ import app.snapsync.engine.LedgerEntry
 import app.snapsync.engine.LedgerState
 import app.snapsync.eventstatus.EventStatus
 import app.snapsync.eventstatus.MutableEventStatusSource
-import app.snapsync.gallery.GalleryResourceEnumerator
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 
@@ -28,7 +27,6 @@ import kotlinx.coroutines.sync.withLock
  */
 class JoinEvent(
     private val files: EventFilesSource,
-    private val enumerator: GalleryResourceEnumerator,
     private val ledger: LedgerBackend,
     private val config: ConfigSource,
     private val status: MutableEventStatusSource,
@@ -84,17 +82,20 @@ class JoinEvent(
             status.set(EventStatus.JoinFailed)
             return false
         }
-        val storedFilenames = remote.mapTo(mutableSetOf()) { it.filename }
-        val seeds = enumerator.enumerate()
-            .filter { it.filename in storedFilenames }
-            .map { resource ->
+        // Seed straight from the listing: it returns only complete assets, each carrying its assetId
+        // and its resources' filenames, so one COMPLETED row per resource is all the join needs — no
+        // local enumeration. Assets absent from the listing (never-uploaded or partially stored) are
+        // simply not seeded and re-upload idempotently.
+        val seeds = remote.flatMap { asset ->
+            asset.resources.map { resource ->
                 LedgerEntry(
                     key = resource.filename,
-                    assetId = resource.assetId,
+                    assetId = asset.assetId,
                     state = LedgerState.COMPLETED,
                     attempt = 0,
                 )
             }
+        }
         ledger.resetTo(seeds)
         clearDiscoveryCursor()
         joinedThisSession = true
