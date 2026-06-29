@@ -29,80 +29,107 @@ is `Loading`.
 - **WHEN** an in-memory source already holds the whole truth at construction
 - **THEN** its `status.value` is `Ready(snapshot)` immediately, never `Loading`
 
-### Requirement: Ledger-backed source
-The status domain SHALL provide `LedgerSyncStatusSource`, constructed via a **non-suspending**
-factory taking a `LedgerWatcher`, a `PermissionStatusSource`, a `GalleryStatusSource`, an
-`ObservedCompletionsSource`, and a `CoroutineScope`. It SHALL seed its `status` with
-`SyncStatus.Loading` and, on the scope, collect the watcher's **snapshot** combined with permission,
-the gallery size, and the observed-completions set to emit `SyncStatus.Ready(SyncProgress)` once the
-snapshot, permission, **and** gallery size have each produced a first value, re-emitting a new `Ready`
-per input change. The observed set seeds synchronously (an empty set is a valid first value) and so
-SHALL NOT delay the first `Ready`. Before minting, the source SHALL apply the **overlay** to the
-snapshot using the observed set (a pending photo all of whose outstanding keys are observed is counted
-complete), retaining observed keys per the **sticky** rule so a released key does not blink its photo
-backward. Each minted `SyncProgress` SHALL combine the overlaid counts with the current permission and
-gallery size: `completed` = overlaid completed, `pending` = overlaid pending, `total` = the gallery
-size, `active = (permission == GRANTED)` — the shared operational-state rule lives here and only
-here — `failed = 0` (retry-forever never gives up a key) and `estimatedRemaining = null` (this version
-does not estimate). The minted snapshot carries no completion timestamp. With an empty observed set
-the overlay is the identity, so the minted counts equal the ledger snapshot's. The factory SHALL NOT
-block on a source read before constructing; the `Loading → Ready` transition is the seam's honest
-representation of those asynchronous first reads.
+### Requirement: Listing-backed source
+
+The status domain SHALL provide a listing-backed `SyncStatusSource` constructed via a **non-suspending**
+factory taking a `CompletedAssetsSource`, a `PendingManifestsSource`, a `PermissionStatusSource`, a
+`GalleryStatusSource`, and a `CoroutineScope`. It SHALL seed its `status` with `SyncStatus.Loading` and,
+on the scope, combine the completed-assets count, the in-flight manifest count, permission, and the
+gallery size to emit `SyncStatus.Ready(SyncProgress)` once the completed-assets count, permission, **and**
+gallery size have each produced a first value, re-emitting a new `Ready` per input change. Each minted
+`SyncProgress` SHALL set `completed` = the completed-assets count, `pending` = the in-flight manifest
+count, `total` = the gallery size, `active = (permission == GRANTED)`, `failed = 0`, and
+`estimatedRemaining = null`, and SHALL carry no completion timestamp. The source SHALL read **no ledger**.
 
 #### Scenario: Initial value is Loading
+
 - **WHEN** the source is constructed
 - **THEN** `status.value` is `SyncStatus.Loading` synchronously, before any source read completes
 
-#### Scenario: Ready waits for snapshot, permission, and gallery
-- **WHEN** the snapshot and permission have produced a first value but the gallery size has not
-- **THEN** `status.value` is still `SyncStatus.Loading`, and the first `Ready` is emitted only once the
-  gallery size also produces a value (the observed set, seeding empty, does not gate)
+#### Scenario: Ready waits for completed count, permission, and gallery
 
-#### Scenario: First Ready reflects ledger and gallery
-- **WHEN** the source is constructed over a ledger with 2 completed photos, a gallery size of 5, and
-  an empty observed set
-- **THEN** the source emits `SyncStatus.Ready(progress)` with `progress.completed = 2` and
-  `progress.total = 5`
+- **WHEN** permission has produced a value but the completed-assets count or the gallery size has not
+- **THEN** `status.value` is still `SyncStatus.Loading`, and the first `Ready` is emitted only once all three have a value
 
-#### Scenario: A ledger change re-mints a Ready snapshot
-- **WHEN** a photo's last resource is recorded `COMPLETED` after the first `Ready`
+#### Scenario: A newly complete asset re-mints a Ready snapshot
+
+- **WHEN** the completeness listing reports one more complete asset after the first `Ready`
 - **THEN** the source emits a new `Ready` whose `progress.completed` is incremented
 
-#### Scenario: An observed completion promotes a pending photo before any ledger write
-- **WHEN** the snapshot has one pending photo with outstanding keys `{p-photo.jpg, p-video.mov}` and
-  a `refresh()` makes the observed set `{p-photo.jpg, p-video.mov}`, with no ledger change
-- **THEN** the source emits a new `Ready` whose `progress.completed` is incremented and
-  `progress.pending` is decremented
+#### Scenario: A new in-flight manifest re-mints pending
 
-#### Scenario: A released observed key does not revert its photo
-- **WHEN** a photo was promoted by an observed key and the next `refresh()` no longer reports that key,
-  but the snapshot still lists it as outstanding (the ledger ding has not yet arrived)
-- **THEN** the photo stays counted complete (sticky retention), and only once the snapshot records it
-  `COMPLETED` does the source rely on the ledger for it
+- **WHEN** the in-flight manifest set gains an asset after the first `Ready`
+- **THEN** the source emits a new `Ready` whose `progress.pending` is incremented
 
-#### Scenario: A gallery change re-mints a Ready snapshot
-- **WHEN** the gallery size changes after the first `Ready` with no ledger activity
-- **THEN** the source emits a new `Ready` with the updated `progress.total` and unchanged counts
+#### Scenario: Gallery and permission changes re-mint
 
-#### Scenario: Permission flip re-mints a Ready snapshot
-- **WHEN** permission changes from `GRANTED` to `DENIED` with no ledger activity
-- **THEN** the source emits `Ready(progress)` with `progress.active = false` and unchanged counts
+- **WHEN** the gallery size changes, or permission flips, after the first `Ready`
+- **THEN** the source emits a new `Ready` with the updated `progress.total`, respectively `progress.active`, and otherwise unchanged counts
 
 #### Scenario: Constants of the source
-- **WHEN** any `Ready` snapshot is minted by the ledger-backed source
+
+- **WHEN** any `Ready` snapshot is minted
 - **THEN** `progress.failed == 0` and `progress.estimatedRemaining == null`
 
+### Requirement: CompletedAssetsSource seam
+
+The status domain SHALL define `CompletedAssetsSource` whose value is a level-triggered holder of the
+event's **complete assets** (a count, and the `assetId` set used for pruning), obtained from the
+completeness listing (`GET /event/<id>/files`, via the `EventFilesSource`), with a `suspend fun refresh()`
+that re-reads it. The source SHALL refresh on **foreground entry** and on **each manifest `URLSession`
+completion**. It SHALL be observation-only (it SHALL NOT upload or mutate storage), and a failed listing
+SHALL leave the last good value in place rather than throw. A settable fake SHALL exist for tests; the iOS
+implementation SHALL use an HTTP client against the compile-time device-facing host.
+
+#### Scenario: Refresh re-reads the complete-asset set
+
+- **WHEN** `refresh()` is called and the listing reports assets `{A, B}`, then later `{A, B, C}`
+- **THEN** the value is `{A, B}` after the first refresh and `{A, B, C}` after the second
+
+#### Scenario: Foreground entry and manifest completion trigger a refresh
+
+- **WHEN** the app enters the foreground, or a manifest `URLSession` upload completes
+- **THEN** `CompletedAssetsSource.refresh()` is invoked
+
+#### Scenario: A failed listing keeps the last value
+
+- **WHEN** a `refresh()` fails (network error, non-2xx)
+- **THEN** the source retains its previous value and does not throw to the status projection
+
+### Requirement: PendingManifestsSource seam
+
+The status domain SHALL define `PendingManifestsSource` whose value is the set of assets that have an
+**on-disk manifest** in the App Group not yet reported complete (the in-flight set), with a
+`suspend fun refresh()`. On refresh the source SHALL **prune** on-disk manifest files whose asset is in
+the current complete-asset set (a backstop to the extension's own prune-on-success) and SHALL exclude
+those assets from the in-flight set. A settable fake SHALL exist for tests; the iOS implementation SHALL
+read and prune the shared App-Group manifest directory.
+
+#### Scenario: In-flight set excludes already-complete assets
+
+- **WHEN** an asset's manifest file is on disk but the complete-asset set already contains that asset
+- **THEN** the asset is not in the in-flight set and its on-disk manifest file is pruned
+
+#### Scenario: A started-but-incomplete asset is in flight
+
+- **WHEN** an asset has an on-disk manifest file and is absent from the complete-asset set
+- **THEN** the asset is in the in-flight set and its file is retained
+
 ### Requirement: Module placement plugs the engine leak
-`SyncStatus`, `SyncState`, `SyncStatusSource`, and `LedgerSyncStatusSource` SHALL live in
-`:domain:status`, which depends on `:domain:engine`, `:domain:permission`, and `:domain:gallery` with
-**implementation** scope only. `:domain:presentation` SHALL depend on `:domain:status` (and
-`:domain:permission`) and SHALL NOT depend on `:domain:engine` or `:domain:gallery` — engine types
-(events, decisions, jobs, ledger) and gallery types stay off presentation's compile classpath.
+`SyncStatus`, `SyncState`, `SyncStatusSource`, and the listing-backed source SHALL live in
+`:domain:status`, which depends on `:domain:permission` and `:domain:gallery` (and the event file-list
+seam) with **implementation** scope only and SHALL **no longer depend on `:domain:engine`** (no ledger
+type is reachable from status). `:domain:presentation` SHALL depend on `:domain:status` (and
+`:domain:permission`) and SHALL NOT depend on `:domain:engine` or `:domain:gallery` — engine and gallery
+types stay off presentation's compile classpath.
+
+#### Scenario: Status compiles without the engine
+- **WHEN** `:domain:status` is compiled
+- **THEN** `:domain:engine` is not on its compile classpath and no ledger type is reachable from status code
 
 #### Scenario: Presentation compiles without the engine or gallery
 - **WHEN** `:domain:presentation` is compiled
-- **THEN** neither `:domain:engine` nor `:domain:gallery` is on its compile classpath, and no engine or
-  gallery type is reachable from presentation code
+- **THEN** neither `:domain:engine` nor `:domain:gallery` is on its compile classpath, and no engine or gallery type is reachable from presentation code
 
 ### Requirement: SyncStatus — loading vs ready
 
@@ -124,13 +151,14 @@ The status domain SHALL define a sealed `SyncStatus` in `:domain:status` (packag
 ### Requirement: SyncProgress contract — lifetime truth, three-state classification
 The status domain SHALL define
 `SyncProgress(pending, completed, total, failed, active, estimatedRemaining: Duration?)`
-in `:domain:status` (package `app.snapsync.status`). `completed` is a lifetime aggregate over the
-ledger, counted by PHOTO (asset): photos all of whose resources are `COMPLETED`. `total` is the live
-photo-library count (the gallery size, `N`) — **not** a ledger count, so it reflects photos the ledger
-has not yet discovered. `active` is operational state ("the backup machinery is allowed to run"), never
-an event-recency heuristic. `pending` remains available (ledger photos not yet complete) but does
-**not** drive classification. `SyncProgress` carries no completion timestamp — the status surface
-reports completeness and live activity only, never how long ago anything happened.
+in `:domain:status` (package `app.snapsync.status`). `completed` is the count of **complete assets**
+reported by the completeness listing (an asset all of whose manifest-named resources are stored), counted
+by PHOTO (asset). `total` is the live photo-library count (the gallery size, `N`) — **not** a storage
+count, so it reflects photos not yet uploaded. `active` is operational state ("the backup machinery is
+allowed to run"), never an event-recency heuristic. `pending` is the count of assets with an in-flight
+on-disk manifest not yet complete; it remains available but does **not** drive classification.
+`SyncProgress` carries no completion timestamp — the status surface reports completeness and live activity
+only, never how long ago anything happened.
 
 The type SHALL expose a computed `state` as the single source of truth for classification. Let
 `n = min(completed, total)` (the displayed synced count, clamped so a not-yet-pruned deleted photo can
@@ -153,15 +181,11 @@ INCOMPLETE and no FAILED state (untellable under retry-forever, `failed ≡ 0`).
 - **WHEN** a snapshot has `total = 47` and `completed = 12`
 - **THEN** the state is IN_PROGRESS with displayed `n = 12`
 
-#### Scenario: Virgin ledger with photos classifies as in progress
+#### Scenario: Virgin event with photos classifies as in progress
 - **WHEN** a snapshot has `total = 5` and `completed = 0`
 - **THEN** the state is IN_PROGRESS with displayed `n = 0` (never a distinct never-synced state)
 
 #### Scenario: All present photos synced classifies as complete
-- **WHEN** a snapshot has `total = 47` and `completed = 47`
+- **WHEN** a snapshot has `total = 30` and `completed = 30`
 - **THEN** the state is COMPLETE
-
-#### Scenario: Completed overshooting total clamps and classifies as complete
-- **WHEN** a snapshot has `total = 5` and `completed = 6` (a deleted photo not yet pruned)
-- **THEN** the state is COMPLETE and the displayed `n` is `5`, never `6`
 

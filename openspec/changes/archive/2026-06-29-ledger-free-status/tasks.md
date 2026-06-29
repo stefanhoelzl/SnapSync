@@ -53,14 +53,12 @@
 
 - [x] 6.1 `./gradlew build` green (incl. new `commonTest`s; overlay tests removed).
 - [x] 6.2 `./gradlew compileIosMainKotlinMetadata` green.
-- [~] 6.3 On device (SE2, iOS 26.5, dev IPA build 181): **partially verified.** Confirmed: the
-  listing-backed `ListingSyncStatusSource` renders the hero ("0 of 7 images synced" — `total` from
-  PhotoKit, `completed` from the completeness listing, **no ledger read**); join via the
-  completeness listing works (empty `200 []` → joined hero); real uploads land in the backend
-  storage zone (21 objects = 7 assets × manifest+resources); `FilesCompletedAssetsSource`
-  keep-last-good holds (a non-parseable listing leaves "0 of 7" rather than crashing/blanking, and
-  survives foreground-entry refreshes). **Blocked:** `completed` climbing to reflect complete assets
-  requires Change 1's asset-grouped `GET /event/<id>/files` response, which is **not yet deployed**
-  — `backend-deploy` ships only from `main` (`if: github.ref == 'refs/heads/main'`), so the live
-  host still serves the pre-Change-1 flat-file format. Completes automatically once the
-  storage-redesign branch reaches `main`; re-run the same on-device loop then.
+- [x] 6.3 On device (SE2, iOS 26.5, dev IPA build 181): **verified end-to-end.** The listing-backed
+  `ListingSyncStatusSource` renders the hero with `total` from PhotoKit and `completed` from the
+  completeness listing (**no ledger read**); join via the listing works (empty `200 []` → joined);
+  real uploads land (7 complete assets in the storage zone); `FilesCompletedAssetsSource`
+  keep-last-good holds (a non-parseable listing leaves the count unchanged rather than crashing).
+  After the Change-1 backend deployed to `main` (asset-grouped `GET /event/<id>/files`), a
+  foreground-entry refresh flipped the screen from "0 of 7" to **"7 images synced" (green / COMPLETE)**
+  — `completed` reflecting the storage listing, confirming the storage-truth derivation and the
+  event-driven refresh.
