@@ -237,7 +237,9 @@ function listFake(routes: Record<string, { status?: number; body?: unknown }>) {
 const manifestUrl = (assetId: string) => `${ZONE}/${E}/${assetId}.manifest.json`;
 const manifest = (
   assetId: string,
-  resources: Array<{ role: string; contentType: string; filename: string; originalFilename: string }>,
+  resources: Array<
+    { role: string; contentType: string; filename: string; originalFilename: string }
+  >,
   creationDate = "2026-06-27T10:00:00Z",
 ) => ({ version: 1, assetId, creationDate, resources });
 
@@ -253,8 +255,18 @@ Deno.test("GET files → a complete asset is assembled from its manifest", async
     },
     [manifestUrl("A")]: {
       body: manifest("A", [
-        { role: "primary", contentType: "image/heic", filename: "A-primary.heic", originalFilename: "IMG_0001.HEIC" },
-        { role: "motion", contentType: "video/quicktime", filename: "A-motion.mov", originalFilename: "IMG_0001.MOV" },
+        {
+          role: "primary",
+          contentType: "image/heic",
+          filename: "A-primary.heic",
+          originalFilename: "IMG_0001.HEIC",
+        },
+        {
+          role: "motion",
+          contentType: "video/quicktime",
+          filename: "A-motion.mov",
+          originalFilename: "IMG_0001.MOV",
+        },
       ]),
     },
   });
@@ -293,8 +305,18 @@ Deno.test("GET files → an asset missing a named resource is omitted", async ()
     [TOP]: { body: [file("A-primary.heic", 100), file("A.manifest.json", 50)] }, // no A-motion.mov
     [manifestUrl("A")]: {
       body: manifest("A", [
-        { role: "primary", contentType: "image/heic", filename: "A-primary.heic", originalFilename: "IMG.HEIC" },
-        { role: "motion", contentType: "video/quicktime", filename: "A-motion.mov", originalFilename: "IMG.MOV" },
+        {
+          role: "primary",
+          contentType: "image/heic",
+          filename: "A-primary.heic",
+          originalFilename: "IMG.HEIC",
+        },
+        {
+          role: "motion",
+          contentType: "video/quicktime",
+          filename: "A-motion.mov",
+          originalFilename: "IMG.MOV",
+        },
       ]),
     },
   });
@@ -327,7 +349,12 @@ Deno.test("GET files → a malformed manifest omits only its asset and still ret
     [manifestUrl("A")]: { body: { version: 1, assetId: "A" } }, // no resources → malformed
     [manifestUrl("B")]: {
       body: manifest("B", [
-        { role: "primary", contentType: "image/heic", filename: "B-primary.heic", originalFilename: "IMG.HEIC" },
+        {
+          role: "primary",
+          contentType: "image/heic",
+          filename: "B-primary.heic",
+          originalFilename: "IMG.HEIC",
+        },
       ]),
     },
   });
@@ -356,7 +383,12 @@ Deno.test("GET files → a percent-encoded resource filename round-trips", async
     [TOP]: { body: [file("A-primary%201.heic", 7), file("A.manifest.json", 50)] },
     [manifestUrl("A")]: {
       body: manifest("A", [
-        { role: "primary", contentType: "image/heic", filename: "A-primary 1.heic", originalFilename: "IMG 1.HEIC" },
+        {
+          role: "primary",
+          contentType: "image/heic",
+          filename: "A-primary 1.heic",
+          originalFilename: "IMG 1.HEIC",
+        },
       ]),
     },
   });
