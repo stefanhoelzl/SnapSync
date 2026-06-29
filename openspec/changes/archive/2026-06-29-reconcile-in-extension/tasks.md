@@ -26,4 +26,4 @@
 
 - [x] 5.1 `./gradlew build` green (incl. new `commonTest`s; join-status tests removed).
 - [x] 5.2 `./gradlew compileIosMainKotlinMetadata` green.
-- [ ] 5.3 On device: a reinstall self-seeds in the extension and re-uploads nothing already stored; a fresh event id uploads; an event switch resets and reconciles. *(Requires a physical iPhone + a CI dev IPA — not runnable in this environment; left for an on-device pass.)*
+- [x] 5.3 On device: a reinstall self-seeds in the extension and re-uploads nothing already stored; a fresh event id uploads; an event switch resets and reconciles. *(Verified on the SE2 with CI build 188: fresh event → 7/7 complete; reinstall → `seeded 14`, 0 resource jobs; event switch → 7/7 with the manifest store reset. Also fixed two device-only regressions found here — the `disable→enable` re-register (PHPhotosError 3202) and the manifest-on-event-switch reset.)*

@@ -14,38 +14,39 @@ presentation seam that triggers it.
 ### Requirement: Leave use-case resets local event state
 
 The capability SHALL provide a `LeaveEvent` use-case that tears down the configured event's **local**
-state in this order, best-effort: (1) **disable** the background-upload producer, (2) **reset the
-ledger to empty** (`LedgerBackend.resetTo(emptyList())`) and **clear the discovery cursor**, (3)
-**clear the persisted config** (`ConfigStore.clear()`), and (4) set `EventStatus` to `Idle`. The
-producer SHALL be disabled **before** the ledger is reset so there is never a concurrent ledger
-writer during the reset (mirroring the enable gate's disable-first discipline). The platform
-side-effects — disabling the producer and clearing the discovery cursor — SHALL be injected as
-suspend lambdas (as `JoinEvent` takes `clearDiscoveryCursor`), so the use-case is pure
-`commonMain` logic and the app shell stays wiring-only. The use-case SHALL construct no
-`LedgerWriter` (the reset rides the `LedgerBackend` reset family).
+state, best-effort, in this order: (1) **disable** the background-upload producer, then (2) **clear the
+persisted config** (`ConfigStore.clear()`). The use-case SHALL **not** touch the ledger, the discovery
+cursor, or any `EventStatus`: with the producer's reconciliation in the extension (see
+`event-rejoin-reconciliation`), the extension resets its private ledger, cursor, and `joinedEventId`
+marker on its next join (a configured `eventId` that no longer matches the marker, or a later provision of
+a different event). The producer is disabled **before** the config is cleared so no producer work races
+the teardown. The platform side-effect — disabling the producer — SHALL be injected as a suspend lambda,
+so the use-case is pure `commonMain` logic and the app shell stays wiring-only. The use-case SHALL
+construct **no** ledger type.
 
-#### Scenario: Leaving disables, wipes, forgets, and idles in order
-- **WHEN** `LeaveEvent` runs with an event configured and a non-empty ledger
-- **THEN** the producer is disabled first, then the ledger is reset to empty and the discovery cursor
-  cleared, then the config is cleared, and `EventStatus` becomes `Idle`
+#### Scenario: Leaving disables the producer and clears config
+
+- **WHEN** `LeaveEvent` runs with an event configured
+- **THEN** the producer is disabled first, then the config is cleared, and no ledger or `EventStatus` operation is performed
 
 #### Scenario: After leaving, the gate yields the setup screen
+
 - **WHEN** a leave completes
-- **THEN** `ConfigSource.config` is `null`, the ledger reports zero pending and completed, and the
-  presentation reduces to the setup gate (storage not connected)
+- **THEN** `ConfigSource.config` is `null` and the presentation reduces to the setup gate (storage not connected)
 
 ### Requirement: Leave is best-effort with no rollback
 
-A failing step SHALL be logged and SHALL NOT roll back earlier steps; there is no transaction across
-the Keychain, the App-Group ledger, and the discovery cursor. The step order SHALL be chosen so the
-worst partial outcome self-heals: if the config clear fails after the ledger is wiped, the next
-launch's join gate reconciles the still-configured event from storage (an idempotent re-join) rather
-than leaving a corrupt state.
+A failing step SHALL be logged and SHALL NOT roll back earlier steps; there is no transaction across the
+producer registration and the Keychain. The step order — disable producer, then clear config — SHALL be
+chosen so the worst partial outcome self-heals: if the config clear fails, the event remains configured
+(the user is simply still joined, with the producer disabled until the next enable), rather than leaving a
+half-torn-down state. A stale private ledger left in the extension is reset on the next join via the
+`joinedEventId` mismatch, not at leave time.
 
-#### Scenario: A failed config clear self-heals on next launch
-- **WHEN** the ledger has been reset and the producer disabled but `ConfigStore.clear()` fails
-- **THEN** the event is still configured against an empty ledger, so the next launch's join gate
-  re-joins it (already-stored photos are re-seeded `COMPLETED`), with no corrupt intermediate state
+#### Scenario: A failed config clear leaves the user joined, not corrupted
+
+- **WHEN** the producer has been disabled but `ConfigStore.clear()` fails
+- **THEN** the event is still configured and consistent; re-running leave retries the clear, and no ledger corruption can occur because leave never touched the ledger
 
 ### Requirement: Leave is local-only
 
