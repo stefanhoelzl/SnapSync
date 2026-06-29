@@ -33,10 +33,12 @@
 // upload's: status+headers commit before the body, so a mid-body upstream abort surfaces as a
 // truncated 200 (not a 5xx); the relayed Content-Length makes that a client-detectable short-read.
 //
-// The list route reads instead: files live directly under `<eventId>/` (flat key), so a single
-// bunny native Storage LIST of the event dir returns them. Faithful too: any genuine LIST failure →
-// 502 (never a partial list); a 404 on the event dir is "no objects" → 200 [] (empty/unknown event
-// are indistinguishable without a registry).
+// The list route returns the event's COMPLETE ASSETS, not a flat object list. Objects live directly
+// under `<eventId>/` (flat key), so a single bunny native Storage LIST discovers them; then each
+// manifest object (`<assetId>.manifest.json`) is read for its declared resource set, and an asset is
+// included only when every resource it names is present (capability `asset-manifest`). Faithful: any
+// LIST or manifest-read transport failure → 502 (never a partial list); a 404 on the event dir is "no
+// objects" → 200 []; an absent/malformed manifest omits only its asset and still returns 200.
 
 import { Hono } from "hono";
 import { validateEventName, validateFilename, validateUUID } from "./validators.ts";
@@ -78,15 +80,45 @@ type BunnyEntry = {
   IsDirectory: boolean;
 };
 
-// One normalized object in our response — the three fields the contract promises (a closed shape).
-// `url` is the absolute download URL (per `bunny-download-endpoint`); the storage key itself stays
-// hidden. `contentType` is intentionally absent (bunny's canonical List schema doesn't return it).
-// No `lastModified`: it was a storage-clock timestamp with no consumer (the re-join seed timestamps
-// its rows with the join time, and uploaded resources are immutable).
-type FileEntry = {
+// The manifest object's name suffix (capability `asset-manifest`): `<assetId>.manifest.json`.
+const MANIFEST_SUFFIX = ".manifest.json";
+
+// One resource entry inside a per-asset manifest (the producer's `asset-manifest` JSON). The backend
+// reads these to learn an asset's declared resource set and to pass the display fields through.
+type ManifestResource = {
+  role: string;
+  contentType: string;
   filename: string;
-  size: number;
+  originalFilename: string;
+};
+
+// A parsed, validated per-asset manifest — the authoritative declaration of an asset's complete
+// resource set. `version` is accepted (forward marker) but not otherwise interpreted in this change.
+type Manifest = {
+  version: number;
+  assetId: string;
+  creationDate: string;
+  resources: ManifestResource[];
+};
+
+// One resource in the listing response — the five fields the contract promises (a closed shape).
+// `role`/`filename`/`contentType`/`originalFilename` are taken verbatim from the manifest; `url` is
+// the absolute download URL for that resource object (per `bunny-download-endpoint`).
+type ResourceEntry = {
+  role: string;
+  filename: string;
+  contentType: string;
+  originalFilename: string;
   url: string;
+};
+
+// One complete asset in the listing response — exactly `assetId`, `creationDate`, and its non-empty
+// `resources` (a closed shape). Only assets all of whose manifest-declared resources are present in
+// storage appear; the asset is immutable once complete.
+type AssetEntry = {
+  assetId: string;
+  creationDate: string;
+  resources: ResourceEntry[];
 };
 
 /**
@@ -132,6 +164,62 @@ function decodeObjectName(objectName: string): string {
   } catch {
     return objectName;
   }
+}
+
+// Validate raw parsed JSON as a v1 manifest, returning the typed value or `null` when the shape does
+// not match (a malformed manifest → its asset is omitted, NOT a transport failure). Structural only:
+// the four resource fields must be non-empty strings and `resources` non-empty; `role` is passed
+// through verbatim (not constrained here — completeness is by `filename`).
+function parseManifest(raw: unknown): Manifest | null {
+  if (typeof raw !== "object" || raw === null) return null;
+  const m = raw as Record<string, unknown>;
+  if (typeof m.version !== "number") return null;
+  if (typeof m.assetId !== "string" || m.assetId === "") return null;
+  if (typeof m.creationDate !== "string") return null;
+  if (!Array.isArray(m.resources) || m.resources.length === 0) return null;
+  const resources: ManifestResource[] = [];
+  for (const r of m.resources) {
+    if (typeof r !== "object" || r === null) return null;
+    const e = r as Record<string, unknown>;
+    const { role, contentType, filename, originalFilename } = e;
+    if (
+      typeof role !== "string" || role === "" ||
+      typeof contentType !== "string" || contentType === "" ||
+      typeof filename !== "string" || filename === "" ||
+      typeof originalFilename !== "string"
+    ) {
+      return null;
+    }
+    resources.push({ role, contentType, filename, originalFilename });
+  }
+  return { version: m.version, assetId: m.assetId, creationDate: m.creationDate, resources };
+}
+
+// Read and parse one manifest object's content. Returns the parsed [Manifest] when present and valid,
+// `null` when the object is absent (bunny `404`) or its body is not a well-formed v1 manifest — both
+// mean "omit this asset", not a failure. THROWS on any other non-OK status, network error, or abort,
+// so the caller surfaces a faithful `502` and never a partial list.
+async function readManifest(
+  fetchImpl: FetchLike,
+  config: Config,
+  eventId: string,
+  manifestFilename: string,
+): Promise<Manifest | null> {
+  const key = `${eventId}/${encodeURIComponent(manifestFilename)}`;
+  const url = `https://${config.host}/${config.zone}/${key}`;
+  const res = await fetchImpl(url, {
+    method: "GET",
+    headers: { AccessKey: config.accessKey, Accept: "application/json" },
+  });
+  if (res.status === 404) return null; // absent → omit (not a transport failure)
+  if (!res.ok) throw new Error(`bunny manifest GET returned ${res.status} for ${manifestFilename}`);
+  let raw: unknown;
+  try {
+    raw = JSON.parse(await res.text());
+  } catch {
+    return null; // unparseable body → malformed → omit
+  }
+  return parseManifest(raw);
 }
 
 /**
@@ -326,10 +414,10 @@ export function createApp({ fetch: fetchImpl, config }: Deps): Hono {
     return c.json(marker);
   });
 
-  // List every stored object for an event (capability `bunny-list-endpoint`). Files live directly
-  // under `<eventId>/` (flat key), so a single LIST of the event dir returns them. Authorization is
-  // the event id alone (same as upload). A non-UUID id → 400; any other method / unmatched path →
-  // Hono's 404.
+  // List an event's COMPLETE ASSETS (capability `bunny-list-endpoint`). A single LIST of the event dir
+  // discovers objects; each manifest is then read and an asset is returned only when all its named
+  // resources are present. Authorization is the event id alone (same as upload). A non-UUID id → 400;
+  // any other method / unmatched path → Hono's 404.
   app.get("/event/:eventId/files", async (c) => {
     const eventId = c.req.param("eventId");
     if (!validateUUID(eventId)) {
@@ -346,23 +434,46 @@ export function createApp({ fetch: fetchImpl, config }: Deps): Hono {
     }
     if (marker === null) return c.text("event not found", 404);
     try {
-      // Single LIST of the event dir → its files. 404/absent → no objects → []. Any other failure
-      // throws → 502, so a partial list is never returned.
+      // Single LIST of the event dir → its objects (discovery). 404/absent → no objects → []. Any
+      // other LIST failure throws → 502, so a partial list is never returned.
       const entries = await listDir(fetchImpl, config, `${encodeURIComponent(eventId)}/`);
-      if (entries === null) return c.json([] as FileEntry[]);
-      const files: FileEntry[] = entries
+      if (entries === null) return c.json([] as AssetEntry[]);
+
+      const filenames = entries
         .filter((e) => !e.IsDirectory)
-        .map((e) => {
-          const filename = decodeObjectName(e.ObjectName);
-          return {
-            filename,
-            size: e.Length,
-            url: downloadUrl(config, eventId, filename),
-          };
+        .map((e) => decodeObjectName(e.ObjectName));
+      // The set of present objects, by their reinstall-stable filename — what completeness checks against.
+      const present = new Set(filenames);
+      const manifestFilenames = filenames.filter((f) => f.endsWith(MANIFEST_SUFFIX));
+
+      // Read every manifest's content (one GET each, on top of the single discovery LIST). A transport
+      // failure on any read rejects here → caught below → 502 (never a partial array); an absent or
+      // malformed manifest resolves to null and simply omits its asset.
+      const manifests = await Promise.all(
+        manifestFilenames.map((f) => readManifest(fetchImpl, config, eventId, f)),
+      );
+
+      // An asset is complete only when every resource its manifest names is present; otherwise it is
+      // omitted (still uploading). Orphan resources without a manifest yield no asset at all.
+      const assets: AssetEntry[] = [];
+      for (const manifest of manifests) {
+        if (manifest === null) continue; // absent / malformed → omit
+        if (!manifest.resources.every((r) => present.has(r.filename))) continue; // not yet complete
+        assets.push({
+          assetId: manifest.assetId,
+          creationDate: manifest.creationDate,
+          resources: manifest.resources.map((r) => ({
+            role: r.role,
+            filename: r.filename,
+            contentType: r.contentType,
+            originalFilename: r.originalFilename,
+            url: downloadUrl(config, eventId, r.filename),
+          })),
         });
-      return c.json(files);
+      }
+      return c.json(assets);
     } catch (e) {
-      console.error(`list: bunny LIST failed for event ${eventId}: ${e}`);
+      console.error(`list: bunny LIST/manifest read failed for event ${eventId}: ${e}`);
       return c.text("upstream error", 502);
     }
   });

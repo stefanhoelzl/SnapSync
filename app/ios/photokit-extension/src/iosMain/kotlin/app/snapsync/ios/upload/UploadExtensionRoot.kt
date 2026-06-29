@@ -7,6 +7,7 @@ import app.snapsync.engine.SyncEngine
 import app.snapsync.engine.iosLedgerBackend
 import app.snapsync.engine.postLedgerChangedNotification
 import app.snapsync.uploadurl.EdgeUploadRequestProvider
+import app.snapsync.gallery.IosManifestStore
 import app.snapsync.gallery.PhotoLibraryResourceEnumerator
 import co.touchlab.kermit.Logger
 import kotlinx.coroutines.runBlocking
@@ -45,6 +46,15 @@ object UploadExtensionRoot {
     private val discoveryStore: IosDiscoveryStore by lazy { IosDiscoveryStore() }
     private val configSource: KeychainConfigStore by lazy { KeychainConfigStore() }
 
+    // The per-asset manifest side channel (capability `asset-manifest`): synthesizes + enqueues each
+    // asset's manifest on a background URLSession, independent of the engine/ledger. Process-lifetime
+    // singletons (the session must outlive a single cycle to be re-adoptable by the app).
+    private val manifestStore: IosManifestStore by lazy { IosManifestStore() }
+    private val manifestSession: ManifestUploadSession by lazy { ManifestUploadSession() }
+    private val manifestProducer: IosManifestProducer by lazy {
+        IosManifestProducer(manifestStore, manifestSession, log)
+    }
+
     /**
      * Run one adjudicate→discover cycle and return its [CycleResult] — `COMPLETED` (drained, cursor
      * advanced), `PROCESSING` (the in-flight cap was hit; call me again, cursor un-advanced), or
@@ -70,6 +80,11 @@ object UploadExtensionRoot {
             return@runBlocking CycleResult.COMPLETED
         }
         log.i { "process: config present — running cycle" }
+        // Side channel: ensure each asset's manifest is generated + enqueued on the background
+        // URLSession. Independent of the engine/ledger and best-effort — a manifest failure must never
+        // fail the upload cycle (completeness is read at the list endpoint, not from the manifest job).
+        runCatching { manifestProducer.ensureManifests(config.eventId, config.host) }
+            .onFailure { log.w(it) { "manifest side channel failed this cycle" } }
         val engine = SyncEngine(
             EdgeUploadRequestProvider(config.host, config.eventId),
             ledger,

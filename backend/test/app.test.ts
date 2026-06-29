@@ -233,52 +233,138 @@ function listFake(routes: Record<string, { status?: number; body?: unknown }>) {
   return { calls, fetchImpl };
 }
 
-Deno.test("GET files → flat array from a single event-dir LIST, normalized entries", async () => {
+// A manifest object's GET url (the backend reads its content), and a v1 manifest body builder.
+const manifestUrl = (assetId: string) => `${ZONE}/${E}/${assetId}.manifest.json`;
+const manifest = (
+  assetId: string,
+  resources: Array<{ role: string; contentType: string; filename: string; originalFilename: string }>,
+  creationDate = "2026-06-27T10:00:00Z",
+) => ({ version: 1, assetId, creationDate, resources });
+
+Deno.test("GET files → a complete asset is assembled from its manifest", async () => {
   const { calls, fetchImpl } = listFake({
     ...markerPresent,
     [TOP]: {
       body: [
-        file("IMG_0001-ios.photo.jpg", 1234),
-        file("VID_0002-ios.video.mov", 5678),
+        file("A-primary.heic", 100),
+        file("A-motion.mov", 200),
+        file("A.manifest.json", 50),
       ],
+    },
+    [manifestUrl("A")]: {
+      body: manifest("A", [
+        { role: "primary", contentType: "image/heic", filename: "A-primary.heic", originalFilename: "IMG_0001.HEIC" },
+        { role: "motion", contentType: "video/quicktime", filename: "A-motion.mov", originalFilename: "IMG_0001.MOV" },
+      ]),
     },
   });
   const res = await createApp({ config: CONFIG, fetch: fetchImpl }).request(FILES);
   assertEquals(res.status, 200);
   assertEquals(await res.json(), [
     {
-      filename: "IMG_0001-ios.photo.jpg",
-      size: 1234,
-      url: `https://dl.example/event/${E}/file/IMG_0001-ios.photo.jpg`,
-    },
-    {
-      filename: "VID_0002-ios.video.mov",
-      size: 5678,
-      url: `https://dl.example/event/${E}/file/VID_0002-ios.video.mov`,
+      assetId: "A",
+      creationDate: "2026-06-27T10:00:00Z",
+      resources: [
+        {
+          role: "primary",
+          filename: "A-primary.heic",
+          contentType: "image/heic",
+          originalFilename: "IMG_0001.HEIC",
+          url: `https://dl.example/event/${E}/file/A-primary.heic`,
+        },
+        {
+          role: "motion",
+          filename: "A-motion.mov",
+          contentType: "video/quicktime",
+          originalFilename: "IMG_0001.MOV",
+          url: `https://dl.example/event/${E}/file/A-motion.mov`,
+        },
+      ],
     },
   ]);
-  // marker GET (existence) + one LIST; the LIST carries the AccessKey (never the account API key)
-  assertEquals(calls.length, 2);
-  const list = calls.find((c) => c.url === TOP)!;
-  assertEquals(new Headers(list.init.headers).get("AccessKey"), "zone-password");
+  // marker GET + one LIST + one manifest GET; the manifest read carries the AccessKey, never the API key
+  const manifestCall = calls.find((c) => c.url === manifestUrl("A"))!;
+  assertEquals(new Headers(manifestCall.init.headers).get("AccessKey"), "zone-password");
 });
 
-Deno.test("GET files → directory entries are excluded", async () => {
+Deno.test("GET files → an asset missing a named resource is omitted", async () => {
+  const { fetchImpl } = listFake({
+    ...markerPresent,
+    [TOP]: { body: [file("A-primary.heic", 100), file("A.manifest.json", 50)] }, // no A-motion.mov
+    [manifestUrl("A")]: {
+      body: manifest("A", [
+        { role: "primary", contentType: "image/heic", filename: "A-primary.heic", originalFilename: "IMG.HEIC" },
+        { role: "motion", contentType: "video/quicktime", filename: "A-motion.mov", originalFilename: "IMG.MOV" },
+      ]),
+    },
+  });
+  const res = await createApp({ config: CONFIG, fetch: fetchImpl }).request(FILES);
+  assertEquals(res.status, 200);
+  assertEquals(await res.json(), []);
+});
+
+Deno.test("GET files → resources without a manifest yield no asset", async () => {
+  const { fetchImpl } = listFake({
+    ...markerPresent,
+    [TOP]: { body: [file("A-primary.heic", 100), dir("nested")] }, // orphan resource, no manifest
+  });
+  const res = await createApp({ config: CONFIG, fetch: fetchImpl }).request(FILES);
+  assertEquals(res.status, 200);
+  assertEquals(await res.json(), []);
+});
+
+Deno.test("GET files → a malformed manifest omits only its asset and still returns 200", async () => {
   const { fetchImpl } = listFake({
     ...markerPresent,
     [TOP]: {
-      body: [file("IMG_0001-ios.photo.jpg", 10), dir("nested")],
+      body: [
+        file("A-primary.heic", 100),
+        file("A.manifest.json", 50),
+        file("B-primary.heic", 100),
+        file("B.manifest.json", 50),
+      ],
+    },
+    [manifestUrl("A")]: { body: { version: 1, assetId: "A" } }, // no resources → malformed
+    [manifestUrl("B")]: {
+      body: manifest("B", [
+        { role: "primary", contentType: "image/heic", filename: "B-primary.heic", originalFilename: "IMG.HEIC" },
+      ]),
     },
   });
   const res = await createApp({ config: CONFIG, fetch: fetchImpl }).request(FILES);
   assertEquals(res.status, 200);
-  assertEquals(await res.json(), [
-    {
-      filename: "IMG_0001-ios.photo.jpg",
-      size: 10,
-      url: `https://dl.example/event/${E}/file/IMG_0001-ios.photo.jpg`,
+  const assets = await res.json() as Array<{ assetId: string }>;
+  assertEquals(assets.map((a) => a.assetId), ["B"]); // A omitted, B included
+});
+
+Deno.test("GET files → a manifest read transport failure → 502 (never partial)", async () => {
+  const { fetchImpl } = listFake({
+    ...markerPresent,
+    [TOP]: { body: [file("A-primary.heic", 100), file("A.manifest.json", 50)] },
+    [manifestUrl("A")]: { status: 500 },
+  });
+  const res = await createApp({ config: CONFIG, fetch: fetchImpl }).request(FILES);
+  assertEquals(res.status, 502);
+});
+
+Deno.test("GET files → a percent-encoded resource filename round-trips", async () => {
+  // The upload handler stores at encodeURIComponent(filename); bunny returns that as ObjectName, and
+  // the listing decodes it back to the filename the manifest names (matched by equality) and re-encodes
+  // it into the download url.
+  const { fetchImpl } = listFake({
+    ...markerPresent,
+    [TOP]: { body: [file("A-primary%201.heic", 7), file("A.manifest.json", 50)] },
+    [manifestUrl("A")]: {
+      body: manifest("A", [
+        { role: "primary", contentType: "image/heic", filename: "A-primary 1.heic", originalFilename: "IMG 1.HEIC" },
+      ]),
     },
-  ]);
+  });
+  const res = await createApp({ config: CONFIG, fetch: fetchImpl }).request(FILES);
+  assertEquals(res.status, 200);
+  const entry = (await res.json())[0];
+  assertEquals(entry.resources[0].filename, "A-primary 1.heic");
+  assertEquals(entry.resources[0].url, `https://dl.example/event/${E}/file/A-primary%201.heic`);
 });
 
 Deno.test("GET files → created event, empty dir (200 []) → 200 []", async () => {
@@ -330,24 +416,6 @@ Deno.test("GET files → wrong method (POST) → 404, no upstream request", asyn
   });
   assertEquals(res.status, 404);
   assertEquals(calls.length, 0);
-});
-
-Deno.test("GET files → listed filename round-trips a percent-encoded upload name", async () => {
-  // The upload handler stores at encodeURIComponent(filename); bunny returns that as ObjectName.
-  // The listing SHALL decode it back to the filename the client uploaded, so a re-joining device can
-  // match by the reinstall-stable key (raw uploadKeys are encoding-safe; this guards the general case).
-  const { fetchImpl } = listFake({
-    ...markerPresent,
-    [TOP]: {
-      body: [file("IMG%20001.jpg", 7)],
-    },
-  });
-  const res = await createApp({ config: CONFIG, fetch: fetchImpl }).request(FILES);
-  assertEquals(res.status, 200);
-  const entry = (await res.json())[0];
-  assertEquals(entry.filename, "IMG 001.jpg");
-  // the url re-encodes the decoded filename back to a single flat segment (%20, not a raw space)
-  assertEquals(entry.url, `https://dl.example/event/${E}/file/IMG%20001.jpg`);
 });
 
 // ── POST /event + GET /event/:eventId (capability `event-creation`) ──────────────────────────────

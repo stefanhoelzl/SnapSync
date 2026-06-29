@@ -14,9 +14,8 @@ kotlin {
             // The join status seam it drives (kept light for presentation; re-exported so the app
             // can wire the same instance into both the join and the container).
             api(project(":capability:event-status"))
-            // Implementation seams the join orchestrates — kept `implementation` so engine/gallery
-            // types never leak transitively to the join's consumers (e.g. presentation).
-            implementation(project(":domain:gallery"))
+            // Implementation seams the join orchestrates — kept `implementation` so engine types never
+            // leak transitively to the join's consumers (e.g. presentation).
             implementation(project(":domain:engine"))
             implementation(project(":capability:config"))
             implementation(libs.kermit)

@@ -44,8 +44,9 @@ A **scope pivot** (2026-06-22) of SnapSync, from a *personal one-way library bac
   `:capability:config`. Once joined, the app **displays the join QR** for its current event
   (§5/`event-invite-qr`) — a joined device holds the `eventId`, so it re-encodes the same deeplink to
   invite others. It mints no QR images for events it has not joined.
-- **Photo assets, whole library, filtered by capture date** — **all `PHAssetResource`s** of each
-  qualifying photo asset (original + edits + adjustments + Live Photo paired video). Standalone
+- **Photo assets, whole library, filtered by capture date** — each qualifying asset's **original
+  `PHAssetResource`s only** (the original primary + a Live Photo's original paired video; edits,
+  adjustments, and the RAW alternate are dropped — `immutable-asset-manifests`). Standalone
   *video assets* are out of scope.
 - **Background uploads via `PHBackgroundResourceUploadJobExtension`** (iOS 27+) — the system
   schedules and **performs** the uploads on the app's behalf, even when suspended/locked. (§3.)
@@ -184,7 +185,7 @@ job system is impossible — reports are at-least-once by construction).
 **The sync domain transports resources, grouped by an opaque `assetId`** (resources-only decided
 2026-06-12; an opaque per-resource `assetId` added 2026-06-22 so the ledger can count/prune by
 photo). Since only resources are ever transported, the engine's vocabulary stops there: the
-asset→resource fan-out, the **filename layout** (`<localId>-<kind>.<ext>` encodes resource identity
+asset→resource fan-out, the **filename layout** (`<assetId>-<role>.<ext>` encodes resource identity
 within the device), the **event/device key placement**, and asset-metadata are all **the
 platform/provider's** business. The engine carries `assetId` through to the ledger but **never
 interprets it** — like `filename` it is pure identity whose meaning is the platform's (iOS: the
@@ -197,7 +198,7 @@ injective** — that is where upload idempotency lives.
 ```kotlin
 class Resource(                              // concrete domain type, platform-constructed
     val filename: String,                    // identity; layout + event/device placement is the
-    val assetId: String,                     //   platform/provider's (iOS: "<localId>-<kind>.<ext>")
+    val assetId: String,                     //   platform/provider's (iOS: "<assetId>-<role>.<ext>")
                                              // opaque grouping id (iOS: normalized localIdentifier);
                                              //   engine carries it to the ledger, NEVER interprets
     val contentType: String,                 //
@@ -389,27 +390,42 @@ The upload-job API fixes the **destination URL at job-creation time**, but the *
 bytes during upload — so we never see the bytes and **content-hash keys are impractical**. v1 used
 per-resource metadata keys; this version namespaces them under the event and the contributing device.
 
-We upload **every `PHAssetResource` of each qualifying photo asset** (complete fidelity): `.photo`
-(original, immutable), `.fullSizePhoto` (edited render, if any), `.adjustmentData` (edit instructions),
-alternates, **and Live Photo `.pairedVideo`/`.fullSizePairedVideo`**. "Qualifying" = the asset's
-**capture date ≥ the event start date** (§3.2).
+We upload **only each asset's original resources** (reversing v1's "complete fidelity" —
+`immutable-asset-manifests`): the original `.photo`/`.video`/`.audio` and, for a Live Photo, the
+original `.pairedVideo`. **Edit artifacts are never uploaded** — `.fullSizePhoto`/`.fullSizeVideo`/
+`.fullSizePairedVideo` renders, `.adjustmentData`, `.adjustmentBase*`, the RAW `.alternatePhoto`, and
+proxies are all dropped — so an asset's resource set is **fixed at capture and never grows**.
+"Qualifying" = the asset's **capture date ≥ the event start date** (§3.2).
 
 - **Key: `<eventId>/<encoded filename>`** (no `events/` prefix — the zone is the event
-  collection) where the filename is **`<localId>-<kind>.<ext>`**, composed platform-side:
+  collection) where the filename is **`<assetId>-<role>.<ext>`**, composed platform-side:
   - **`<eventId>`** — from the joined event config (deeplink, §4). **High-entropy/unguessable** — it
     doubles as the upload capability, since the edge endpoint authorizes by event id alone (no token).
-  - **`<localId>`** = the asset's `PHAsset.localIdentifier` (**no `PHCloudIdentifier` resolution** —
-    dropped with its batch-lookup cost and provisional-window risk; matches the device-verified impl).
-    `localIdentifier` is UUID-based, so it is sufficient as the per-event identity — no cross-device
-    dedup is attempted, and no device namespace is needed (see the collision note below).
-  - **`<kind>`** = the open platform resource-kind string (e.g. `ios.photo`, `ios.fullSizePhoto`);
-    `Content-Type` from the resource's UTI.
+  - **`<assetId>`** = the asset's `PHAsset.localIdentifier` with `/`→`_` (**no `PHCloudIdentifier`
+    resolution** — dropped with its batch-lookup cost and provisional-window risk). `localIdentifier`
+    is UUID-based, so it is sufficient as the per-event identity — no cross-device dedup is attempted,
+    and no device namespace is needed (see the collision note below).
+  - **`<role>`** = a generic, platform-neutral role — `primary` (the single original primary medium:
+    still, video, or audio) or `motion` (a Live Photo's original paired video). Whether the primary is
+    an image or a video is carried by `Content-Type` (the resource's UTI), **not** the role.
   - The filename is pure *identity*; the **provider** owns its representation — percent-encoding (bytes
     outside `[A-Za-z0-9._-]` → `%XX`) and the `<eventId>/` placement — under the
     deterministic-and-injective contract (§2.2). The bucket is **flat within that prefix**.
-- **Edit-handling dissolves:** the original resource is immutable; an edit just **adds**
-  `.fullSizePhoto` + `.adjustmentData` resources, which surface via the change feed as *new* jobs under
-  *new* keys. Nothing is overwritten.
+- **Per-asset manifest + read-time completeness (`immutable-asset-manifests`).** For every asset the
+  producer also uploads one **manifest** object `<eventId>/<assetId>.manifest.json` (`version`,
+  `assetId`, `creationDate`, `resources[]{role, contentType, filename, originalFilename}`) — the
+  authoritative declaration of the asset's complete resource set. Because the OS owns background-job
+  scheduling and the manifest cannot be "uploaded last," **completeness is computed at read time**: the
+  list endpoint (`GET /event/<id>/files`, §4) reads each manifest and returns an asset only when every
+  resource it names is present. The manifest is **not** an engine `Resource` and **not** in the ledger
+  — it rides a vanilla background `URLSession` side channel (the OS job API carries only a
+  `PHAssetResource`); the extension generates + enqueues it and the **app** handles its completion
+  (`handleEventsForBackgroundURLSession`), with an App-Group PENDING/DONE file as the dedup/retry
+  marker. **Change 2 follow-on (`ledger-free-status`):** the app's status projection is later decoupled
+  from the ledger to read this same completeness listing.
+- **Edit-handling dissolves:** the original resource is immutable and the only thing uploaded; an edit
+  produces no new upload — its render/adjustment artifacts are dropped, and the manifest (originals
+  only) is never revised. Nothing is overwritten or added.
 - **No custom metadata headers.** bunny Storage's native API **does not support custom metadata
   headers** (§4), so v1's signed-header reconstruction scheme is **removed**. The downstream
   (external) viewer recovers what it needs from **(a)** the key path (event, resource kind, original
@@ -492,8 +508,8 @@ the system downloads each resource (incl. from iCloud) and performs `job.destina
    records `COMPLETED` — write-then-act), **then** `acknowledge()`. A crash between the two re-presents
    the job → a duplicate report, absorbed by the idempotent ledger.
 3. **Create new jobs** — discovery (§3.2, date-filtered). For each qualifying asset, expand to its
-   `PHAssetResource`s and wrap each as a `Resource` — filename `"<localId>-<kind>.<ext>"` (no content
-   version: an uploaded resource is immutable). Report `ResourceChanged` per resource and act on the decision:
+   **original** `PHAssetResource`s and wrap each as a `Resource` — filename `"<assetId>-<role>.<ext>"`
+   (no content version: an uploaded resource is immutable). Report `ResourceChanged` per resource and act on the decision:
    `AlreadyUploaded` → continue (no job slot); `Work` → `provider.provide(resource)` **builds the edge
    URL** (`/event/<eventId>/file/<filename>`) locally, then take the `PHAssetResource` from
    `decision.job.request.resource.data`, build the `URLRequest` (PUT + `Content-Type`) →
@@ -734,7 +750,8 @@ itself is covered by the endpoint's `Deno.test` suite.
 **Resolved (the 2026-06-22 scope pivot):**
 - **Contributor-only, event-scoped.** App joins an externally-created event by scanning a `snapsync://`
   QR with the native Camera; uploads photos with **capture date ≥ event start** to
-  `<eventId>/<localId>-<kind>.<ext>`. No in-app create/QR/viewing.
+  `<eventId>/<assetId>-<role>.<ext>` (originals only) plus a per-asset `<eventId>/<assetId>.manifest.json`
+  (`immutable-asset-manifests`). No in-app create/QR/viewing.
 - **Single event at a time**; **join reconciles** (seed already-stored photos before enabling, clear
   cursor, re-register extension); a **switch** clears the ledger; same-event re-join is a no-op.
   Multi-event **deferred**.
@@ -749,7 +766,10 @@ itself is covered by the endpoint's `Deno.test` suite.
   device level** (`flatten-event-namespace`); **no custom metadata headers** (unsupported by bunny
   native API) — downstream reconstruction uses the key path + in-file EXIF; v1's §3.5 signed-header
   scheme **removed**.
-- **Full fidelity retained** (all `PHAssetResource`s, incl. Live Photo paired video).
+- **Originals only, immutable** (`immutable-asset-manifests`): each asset's original primary + a Live
+  Photo's paired video, keyed by generic role; edits/adjustments/RAW alternate dropped, set fixed at
+  capture. A per-asset manifest declares the resource set; the list endpoint computes completeness at
+  read time.
 - **`active` = permission ∧ joined**; "not joined" is the **setup-gate no-event state**, not a new
   `SyncState`. Status screen shows **progress only**.
 - **`:capability:s3` SigV4 presigner retires**; signing is **eliminated** (the edge writes with its

@@ -14,8 +14,8 @@ import app.snapsync.engine.LedgerBackend
 import app.snapsync.engine.LedgerWatcher
 import app.snapsync.engine.iosLedgerBackend
 import app.snapsync.eventstatus.MutableEventStatusSource
+import app.snapsync.gallery.IosManifestStore
 import app.snapsync.gallery.PhotoLibraryGalleryStatus
-import app.snapsync.gallery.PhotoLibraryResourceEnumerator
 import app.snapsync.permission.PermissionStatus
 import app.snapsync.permission.PhotoLibraryPermission
 import app.snapsync.presentation.StatusContainerHost
@@ -80,18 +80,31 @@ object SnapSyncRoot {
     // The re-join status the JoinEvent drives and the container reads (same instance).
     private val eventStatus = MutableEventStatusSource()
 
-    // The re-join reconciliation use-case: fetch the event's stored files (Darwin HTTPS), enumerate
-    // the library via the shared gallery derivation, and seed already-stored photos before enabling
-    // the producer. The host is the same compile-time base baked into the app Info.plist.
+    // The re-join reconciliation use-case: fetch the event's complete-asset listing (Darwin HTTPS) and
+    // seed already-stored photos before enabling the producer — seeding straight from the listing
+    // (assetId + resource filenames), no local enumeration. The host is the same compile-time base
+    // baked into the app Info.plist.
     private val joinEvent: JoinEvent by lazy {
         val host = NSBundle.mainBundle.objectForInfoDictionaryKey("BackgroundUploadURLBase") as? String ?: ""
         JoinEvent(
             files = HttpEventFilesSource(darwinHttpClient(), host),
-            enumerator = PhotoLibraryResourceEnumerator(),
             ledger = ledgerBackend,
             config = config,
             status = eventStatus,
             clearDiscoveryCursor = { clearDiscoveryCursor() },
+        )
+    }
+
+    // The app end of the manifest background URLSession (capability `asset-manifest`): the system
+    // relaunches the app to finish uploads the extension started; this controller adopts that session,
+    // marks each manifest DONE on success, and re-enqueues on failure. The host is the same baked base.
+    private val manifestController: ManifestUploadController by lazy {
+        val host = NSBundle.mainBundle.objectForInfoDictionaryKey("BackgroundUploadURLBase") as? String ?: ""
+        ManifestUploadController(
+            store = IosManifestStore(),
+            host = host,
+            eventIdProvider = { config.config.value?.eventId },
+            log = log,
         )
     }
 
@@ -162,6 +175,16 @@ object SnapSyncRoot {
 
     fun onBackground() {
         foreground.value = false
+    }
+
+    /**
+     * The system relaunched the app to finish background `URLSession` events (the extension's manifest
+     * uploads). Forwarded raw from the Swift app delegate's `handleEventsForBackgroundURLSession`:
+     * adopt the session so completions are processed, and the OS [completionHandler] is invoked once
+     * the session finishes delivering them.
+     */
+    fun handleBackgroundUrlSession(identifier: String, completionHandler: () -> Unit) {
+        manifestController.handleEvents(identifier, completionHandler)
     }
 
     /**
