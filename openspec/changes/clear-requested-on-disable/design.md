@@ -28,6 +28,7 @@ Pair the clear with the wipe: **whenever the app disables the extension, clear `
 ```
 disableExtension() {
     setUploadJobExtensionEnabled(false)   // OS wipes all in-flight jobs
+    clearDiscoveryCursor()                // force a FULL re-enumeration next cycle
     ledger.clearRequested()               // drop the now-orphaned REQUESTED rows
 }
 ```
@@ -36,9 +37,12 @@ disableExtension() {
   so they cannot diverge.
 - `COMPLETED` rows stay (stored files keep their dedup); `FAILED` rows stay (the engine retries them).
   Only `REQUESTED` — the stuck state — is cleared.
-- The next discovery sees the cleared keys as absent → re-creates the not-yet-stored jobs. Clearing
-  **all** `REQUESTED` is correct because a disable wipes **all** in-flight jobs, so there is nothing
-  genuinely in flight left to double-upload.
+- **Both clears are needed.** `clearRequested()` only makes the keys *absent*; the discovery cursor is
+  settled, so an incremental scan would never re-surface them. Resetting the cursor (clearing the
+  App-Group change-token) forces a full re-enumeration, so the cleared keys are re-discovered → the
+  engine sees them absent → re-creates exactly the not-yet-stored jobs (`COMPLETED` → skipped).
+  Clearing **all** `REQUESTED` is correct because a disable wipes **all** in-flight jobs, so nothing
+  genuinely in flight is lost.
 
 ## Decisions
 

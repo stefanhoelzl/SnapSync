@@ -20,9 +20,11 @@
 
 - [x] 3.1 Hoist a shared `LedgerBackend` in `SnapSyncRoot` (the in-flight read already opens one);
       reuse it.
-- [x] 3.2 Add a `disableExtension()` helper: `setUploadExtensionEnabled(false)` then
-      `ledger.clearRequested()`. Route **both** disable sites through it — the `disable→enable`
-      re-register (`enableBackgroundUpload`) and `LeaveEvent`'s `disableExtension` lambda.
+- [x] 3.2 Add a `disableExtension()` helper: `setUploadExtensionEnabled(false)`, then reset the
+      discovery cursor (clear the App-Group change-token, forcing a full re-enumeration), then
+      `ledger.clearRequested()`. Both clears are required — `clearRequested` only makes keys absent; a
+      settled cursor would never re-surface them. Route **both** disable sites through it (the
+      `disable→enable` re-register and `LeaveEvent`'s `disableExtension` lambda).
 - [x] 3.3 Confirm no `LedgerWriter` is constructed in `:app:ios` (clearRequested is on `LedgerBackend`).
 
 ## 4. Verify
