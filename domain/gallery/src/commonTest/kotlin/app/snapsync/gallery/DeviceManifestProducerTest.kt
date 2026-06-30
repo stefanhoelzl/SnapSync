@@ -56,18 +56,18 @@ class DeviceManifestProducerTest {
             ),
             data = Unit,
         )
-        // A Live Photo (primary + motion) sharing one assetId, and a plain photo.
+        // A Live Photo (primary + live) sharing one assetId, and a plain photo.
         val assets = deviceManifestAssetsFromResources(
             listOf(
                 res("UUID-1-2_L0_001-primary.heic", "UUID-1-2_L0_001", "2026-06-27T10:00:00Z", "IMG_1.HEIC", "image/heic"),
-                res("UUID-1-2_L0_001-motion.mov", "UUID-1-2_L0_001", "2026-06-27T10:00:00Z", "IMG_1.MOV", "video/quicktime"),
+                res("UUID-1-2_L0_001-live.mov", "UUID-1-2_L0_001", "2026-06-27T10:00:00Z", "IMG_1.MOV", "video/quicktime"),
                 res("B-primary.jpg", "B", "2026-06-28T09:00:00Z", "IMG_2.JPG", "image/jpeg"),
             ),
         ).associateBy { it.assetId }
 
         val live = assets.getValue("UUID-1-2_L0_001")
         assertEquals("2026-06-27T10:00:00Z", live.creationDate)
-        assertEquals(setOf(ResourceRole.PRIMARY, ResourceRole.MOTION), live.resources.map { it.role }.toSet())
+        assertEquals(setOf(ResourceRole.PRIMARY, ResourceRole.LIVE), live.resources.map { it.role }.toSet())
         val primary = live.resources.single { it.role == ResourceRole.PRIMARY }
         assertEquals("image/heic", primary.contentType) // MIME, not the UTI
         assertEquals("IMG_1.HEIC", primary.filename) // human capture name

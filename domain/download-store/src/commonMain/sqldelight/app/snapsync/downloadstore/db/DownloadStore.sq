@@ -1,0 +1,123 @@
+import app.snapsync.downloadstore.DownloadState;
+
+-- One row per foreign asset this device is downloading / has imported (capability `download-store`).
+-- Keyed by the SOURCE identity (the owning device + that device's assetId), which is stable across
+-- syncs and events — so idempotency and cross-event dedup are by (sourceDeviceId, sourceAssetId).
+-- `createdLocalId` is the local PHAsset identifier minted at import; it is the suppression handle the
+-- upload extension reads to avoid re-uploading a downloaded asset. Null until imported.
+CREATE TABLE downloadAsset (
+    sourceDeviceId TEXT NOT NULL,
+    sourceAssetId  TEXT NOT NULL,
+    state          TEXT AS DownloadState NOT NULL,
+    createdLocalId TEXT,
+    PRIMARY KEY (sourceDeviceId, sourceAssetId)
+);
+
+-- The created-local-id suppression projection rides this partial index (only imported rows carry one).
+CREATE INDEX downloadAsset_createdLocalId ON downloadAsset(createdLocalId);
+
+-- One row per expected resource of a downloading asset. `stagedPath` is null until the resource's
+-- bytes are downloaded and moved to durable App-Group staging; an asset is complete (importable) when
+-- every expected resource has a non-null `stagedPath`.
+CREATE TABLE downloadResource (
+    sourceDeviceId TEXT NOT NULL,
+    sourceAssetId  TEXT NOT NULL,
+    resourceKey    TEXT NOT NULL,
+    url            TEXT NOT NULL,
+    role           TEXT NOT NULL,
+    contentType    TEXT NOT NULL,
+    originalFilename TEXT NOT NULL,
+    stagedPath     TEXT,
+    PRIMARY KEY (sourceDeviceId, sourceAssetId, resourceKey)
+);
+
+-- --- asset lifecycle ---
+
+upsertAsset:
+INSERT OR IGNORE INTO downloadAsset (sourceDeviceId, sourceAssetId, state, createdLocalId)
+VALUES (:sourceDeviceId, :sourceAssetId, :state, NULL);
+
+selectAssetState:
+SELECT state FROM downloadAsset
+WHERE sourceDeviceId = :sourceDeviceId AND sourceAssetId = :sourceAssetId;
+
+markImported:
+UPDATE downloadAsset
+SET state = 'IMPORTED', createdLocalId = :createdLocalId
+WHERE sourceDeviceId = :sourceDeviceId AND sourceAssetId = :sourceAssetId;
+
+-- Record ONLY the created local id (suppression handle), leaving state PENDING. Written synchronously
+-- INSIDE the PhotoKit change block — before the new asset can be observed by upload discovery — so the
+-- echo is closed even if the import's completion (which sets state=IMPORTED) lands later or fails.
+recordCreatedLocalId:
+UPDATE downloadAsset
+SET createdLocalId = :createdLocalId
+WHERE sourceDeviceId = :sourceDeviceId AND sourceAssetId = :sourceAssetId;
+
+isImported:
+SELECT EXISTS(
+    SELECT 1 FROM downloadAsset
+    WHERE sourceDeviceId = :sourceDeviceId AND sourceAssetId = :sourceAssetId
+      AND state = 'IMPORTED'
+);
+
+-- The suppression set the upload extension reads (read-only): every created local id of an imported
+-- foreign asset. Never upload these — they would echo back into storage under this device.
+suppressedLocalIds:
+SELECT createdLocalId FROM downloadAsset
+WHERE createdLocalId IS NOT NULL;
+
+countImported:
+SELECT COUNT(*) FROM downloadAsset WHERE state = 'IMPORTED';
+
+-- Drop non-terminal rows (and their resources) on leave/switch; imported rows are permanent.
+deleteNonTerminalAssets:
+DELETE FROM downloadAsset WHERE state != 'IMPORTED';
+
+deleteNonTerminalResources:
+DELETE FROM downloadResource
+WHERE NOT EXISTS (
+    SELECT 1 FROM downloadAsset a
+    WHERE a.sourceDeviceId = downloadResource.sourceDeviceId
+      AND a.sourceAssetId = downloadResource.sourceAssetId
+);
+
+-- --- resource staging ---
+
+upsertResource:
+INSERT OR IGNORE INTO downloadResource
+    (sourceDeviceId, sourceAssetId, resourceKey, url, role, contentType, originalFilename, stagedPath)
+VALUES (:sourceDeviceId, :sourceAssetId, :resourceKey, :url, :role, :contentType, :originalFilename, NULL);
+
+markResourceStaged:
+UPDATE downloadResource
+SET stagedPath = :stagedPath
+WHERE sourceDeviceId = :sourceDeviceId AND sourceAssetId = :sourceAssetId AND resourceKey = :resourceKey;
+
+selectResourcesForAsset:
+SELECT resourceKey, url, role, contentType, originalFilename, stagedPath
+FROM downloadResource
+WHERE sourceDeviceId = :sourceDeviceId AND sourceAssetId = :sourceAssetId;
+
+-- Resources not yet staged across all non-imported assets — the download work queue.
+selectPendingResources:
+SELECT r.sourceDeviceId, r.sourceAssetId, r.resourceKey, r.url, r.role, r.contentType, r.originalFilename
+FROM downloadResource r
+JOIN downloadAsset a
+  ON a.sourceDeviceId = r.sourceDeviceId AND a.sourceAssetId = r.sourceAssetId
+WHERE r.stagedPath IS NULL AND a.state != 'IMPORTED';
+
+-- Assets whose every expected resource is staged but not yet imported — ready to import.
+selectImportableAssets:
+SELECT a.sourceDeviceId, a.sourceAssetId
+FROM downloadAsset a
+WHERE a.state != 'IMPORTED'
+  AND NOT EXISTS (
+      SELECT 1 FROM downloadResource r
+      WHERE r.sourceDeviceId = a.sourceDeviceId AND r.sourceAssetId = a.sourceAssetId
+        AND r.stagedPath IS NULL
+  )
+  AND EXISTS (
+      SELECT 1 FROM downloadResource r
+      WHERE r.sourceDeviceId = a.sourceDeviceId AND r.sourceAssetId = a.sourceAssetId
+  );

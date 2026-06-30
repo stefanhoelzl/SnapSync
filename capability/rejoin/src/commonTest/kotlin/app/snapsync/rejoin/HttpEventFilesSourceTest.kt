@@ -27,7 +27,7 @@ class HttpEventFilesSourceTest {
                 content = """[
                   {"assetId":"A","creationDate":"2026-06-27T00:00:00Z","resources":[
                     {"role":"primary","filename":"A-primary.heic","contentType":"image/heic","originalFilename":"IMG_0001.HEIC","url":"https://edge.example/event/$eventId/file/A-primary.heic"},
-                    {"role":"motion","filename":"A-motion.mov","contentType":"video/quicktime","originalFilename":"IMG_0001.MOV","url":"https://edge.example/event/$eventId/file/A-motion.mov"}
+                    {"role":"live","filename":"A-live.mov","contentType":"video/quicktime","originalFilename":"IMG_0001.MOV","url":"https://edge.example/event/$eventId/file/A-live.mov"}
                   ]},
                   {"assetId":"B","creationDate":"2026-06-27T00:01:00Z","resources":[
                     {"role":"primary","filename":"B-primary.mov","contentType":"video/quicktime","originalFilename":"VID_0002.MOV","url":"https://edge.example/event/$eventId/file/B-primary.mov"}
@@ -44,7 +44,7 @@ class HttpEventFilesSourceTest {
         // The join reads only assetId + each resource's filename; role/contentType/originalFilename/url
         // are ignored unknown keys.
         assertEquals(listOf("A", "B"), assets.map { it.assetId })
-        assertEquals(listOf("A-primary.heic", "A-motion.mov"), assets[0].resources.map { it.filename })
+        assertEquals(listOf("A-primary.heic", "A-live.mov"), assets[0].resources.map { it.filename })
         assertEquals(listOf("B-primary.mov"), assets[1].resources.map { it.filename })
     }
 

@@ -120,6 +120,31 @@ class UploadCycleTest {
     }
 
     @Test
+    fun suppressed_downloaded_assets_create_no_job_and_are_pruned_from_retain() = runTest {
+        // FOREIGN is an asset this device downloaded + imported (in the suppression set). A stale
+        // COMPLETED row stands in for a pre-suppression echo; it must be pruned and never re-uploaded.
+        val backend = InMemoryLedgerBackend()
+        LedgerWriter(backend).recordCompleted("FOREIGN-primary.heic", assetId = "FOREIGN", attempt = 0)
+        val platform = FakePlatform(
+            discovered = listOf(resource("FOREIGN-primary.heic", "FOREIGN"), resource("MINE-primary.heic", "MINE")),
+            fullEnumeration = true,
+        )
+        val ledger = LedgerWriter(backend)
+        val cycle = UploadCycle(
+            SyncEngine(StubUploadRequestProvider(), ledger),
+            ledger,
+            platform,
+            FakeStore(),
+            suppressedAssetIds = { setOf("FOREIGN") },
+        )
+
+        cycle.run()
+
+        assertEquals(listOf("MINE-primary.heic"), platform.created.map { it.filename }) // FOREIGN suppressed
+        assertNull(backend.get("FOREIGN-primary.heic"), "suppressed asset's stale row pruned by retainAssets")
+    }
+
+    @Test
     fun discovery_passes_the_loaded_cursor_to_the_platform() = runTest {
         val backend = InMemoryLedgerBackend()
         val platform = FakePlatform()

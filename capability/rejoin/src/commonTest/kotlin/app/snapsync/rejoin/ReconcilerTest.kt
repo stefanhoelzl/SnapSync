@@ -46,7 +46,7 @@ class ReconcilerTest {
 
     @Test
     fun `marker mismatch reset-seeds every stored file then clears the cursor and sets the marker`() = runTest {
-        val files = FakeFiles(Result.success(listOf("A-primary.heic", "A-motion.mov")))
+        val files = FakeFiles(Result.success(listOf("A-primary.heic", "A-live.mov")))
         val ledger = FakeLedgerBackend()
         val marker = FakeMarker(null)
         var cursorCleared = 0
@@ -58,7 +58,7 @@ class ReconcilerTest {
         val primary = ledger.get("A-primary.heic")!!
         assertEquals(LedgerState.COMPLETED, primary.state)
         assertEquals("A", primary.assetId) // assetId recovered from the filename
-        assertEquals(LedgerState.COMPLETED, ledger.get("A-motion.mov")!!.state)
+        assertEquals(LedgerState.COMPLETED, ledger.get("A-live.mov")!!.state)
         assertEquals(1, cursorCleared) // re-join forces a full re-enumeration
         assertEquals("E1", marker.read())
     }

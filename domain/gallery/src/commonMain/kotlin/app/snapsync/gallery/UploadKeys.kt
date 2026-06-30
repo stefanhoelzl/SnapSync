@@ -7,16 +7,16 @@ import kotlinx.serialization.Serializable
  * The generic, platform-neutral **role** of an asset resource (capability `asset-manifest`). The role
  * carries the resource's place in its asset, never the platform resource-type name or the media kind
  * (that is `contentType`'s job): [PRIMARY] is the single original primary medium (a still image, a
- * video, or an audio track) and [MOTION] the original paired video of a Live Photo. [wire] is the
- * lowercase token used in object keys and serialized in the manifest (`primary`/`motion`).
+ * video, or an audio track) and [LIVE] the original paired video of a Live Photo. [wire] is the
+ * lowercase token used in object keys and serialized in the manifest (`primary`/`live`).
  */
 @Serializable
 enum class ResourceRole(val wire: String) {
     @SerialName("primary")
     PRIMARY("primary"),
 
-    @SerialName("motion")
-    MOTION("motion"),
+    @SerialName("live")
+    LIVE("live"),
 }
 
 /**
@@ -24,11 +24,11 @@ enum class ResourceRole(val wire: String) {
  * we back up, or `null` when the resource is **dropped** — a non-original edit artifact (full-size
  * renders, adjustment data, adjustment-base media), the RAW `alternatePhoto`, or a proxy. Only the
  * originals are kept, so an asset's resource set is fixed at capture and never grows: `photo`/`video`/
- * `audio` → [PRIMARY], `pairedVideo` → [MOTION].
+ * `audio` → [PRIMARY], `pairedVideo` → [LIVE].
  */
 fun resourceRole(resourceType: Long): ResourceRole? = when (resourceType) {
     1L, 2L, 3L -> ResourceRole.PRIMARY // photo, video, audio (the asset's single original primary)
-    9L -> ResourceRole.MOTION // pairedVideo (the Live Photo's original paired video)
+    9L -> ResourceRole.LIVE // pairedVideo (the Live Photo's original paired video)
     else -> null // 4 alternatePhoto(RAW), 5/6 fullSize*, 7 adjustmentData, 8 adjustmentBase*, 10 …, proxies
 }
 
@@ -58,7 +58,7 @@ const val RESOURCE_META_MIME: String = "mimeContentType"
 
 /**
  * Recover the [ResourceRole] from an upload-key [filename] (`"<assetId>-<role>.<ext>"`): the role token
- * is the segment after the **last** `-` and before the `.` (`primary`/`motion`; the role token carries
+ * is the segment after the **last** `-` and before the `.` (`primary`/`live`; the role token carries
  * no `-`, though an `assetId` may). Defaults to [ResourceRole.PRIMARY] for an unrecognised token (never
  * produced by [uploadKey]).
  */

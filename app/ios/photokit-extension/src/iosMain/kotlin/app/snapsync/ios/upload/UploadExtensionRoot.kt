@@ -2,6 +2,8 @@ package app.snapsync.ios.upload
 
 import app.snapsync.config.KeychainConfigStore
 import app.snapsync.deviceid.KeychainDeviceIdentity
+import app.snapsync.downloadstore.DownloadStore
+import app.snapsync.downloadstore.iosDownloadStore
 import app.snapsync.engine.LedgerBackend
 import app.snapsync.engine.LedgerWriter
 import app.snapsync.engine.SyncEngine
@@ -59,6 +61,11 @@ object UploadExtensionRoot {
         IosUploadJobPlatform(log, PhotoLibraryResourceEnumerator())
     }
     private val discoveryStore: IosDiscoveryStore by lazy { IosDiscoveryStore() }
+
+    // The app-written download store, opened read-only for the suppression projection (capability
+    // `download-store`). The extension never writes it; it only reads which downloaded-then-imported
+    // assets must not be re-uploaded.
+    private val downloadStore: DownloadStore by lazy { iosDownloadStore() }
     private val configSource: KeychainConfigStore by lazy { KeychainConfigStore() }
 
     // The stable per-install device id (shared Keychain, minted once): the `/files/<deviceId>/`
@@ -152,19 +159,24 @@ object UploadExtensionRoot {
         // by `withTimeout` so it can never stall the cycle to the OS's force-kill; it is best-effort
         // and write-only in v1, so any failure/timeout just retries next cycle (skip-if-unchanged
         // makes that cheap).
-        val cycle = UploadCycle(engine, ledger, platform, discoveryStore, log) { discovery ->
-            runCatching {
-                withTimeout(DEVICE_MANIFEST_TIMEOUT_MS) {
-                    deviceManifestProducer.produce(
-                        eventId = config.eventId,
-                        startDate = null, // whole-library scope (the date filter is deferred)
-                        discovered = deviceManifestAssetsFromResources(discovery.resources),
-                        removedAssetIds = discovery.removedAssetIds.toSet(),
-                        fullEnumeration = discovery.fullEnumeration,
-                    )
-                }
-            }.onFailure { log.w(it) { "device.json production failed/timed out this cycle" } }
-        }
+        val cycle = UploadCycle(
+            engine, ledger, platform, discoveryStore, log,
+            onDiscovery = { discovery ->
+                runCatching {
+                    withTimeout(DEVICE_MANIFEST_TIMEOUT_MS) {
+                        deviceManifestProducer.produce(
+                            eventId = config.eventId,
+                            startDate = null, // whole-library scope (the date filter is deferred)
+                            discovered = deviceManifestAssetsFromResources(discovery.resources),
+                            removedAssetIds = discovery.removedAssetIds.toSet(),
+                            fullEnumeration = discovery.fullEnumeration,
+                        )
+                    }
+                }.onFailure { log.w(it) { "device.json production failed/timed out this cycle" } }
+            },
+            // Echo-suppression: never re-upload an asset this device downloaded + imported.
+            suppressedAssetIds = { downloadStore.suppressedLocalIds() },
+        )
         val result = runCatching { cycle.run() }
             .onSuccess { log.i { "process: cycle finished — $it" } }
             .getOrElse {

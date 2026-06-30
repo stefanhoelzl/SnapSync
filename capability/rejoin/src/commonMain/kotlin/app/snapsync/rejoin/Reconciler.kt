@@ -104,7 +104,7 @@ class ExtensionReconciler(
 
 /**
  * Recover the `assetId` from an upload-key [filename] (`"<assetId>-<role>.<ext>"`): drop the extension,
- * then take everything before the final `-` (the role token `primary`/`motion` carries no `-`, though
+ * then take everything before the final `-` (the role token `primary`/`live` carries no `-`, though
  * an `assetId` may). The inverse of `uploadKey` in `:domain:gallery`; inlined here so the reconciler
  * needs no gallery dependency.
  */

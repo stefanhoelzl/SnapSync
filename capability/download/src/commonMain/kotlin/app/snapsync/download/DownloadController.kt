@@ -1,0 +1,77 @@
+package app.snapsync.download
+
+import app.snapsync.downloadstore.AssetRef
+import app.snapsync.downloadstore.DownloadStore
+import app.snapsync.downloadstore.PlannedResource
+import co.touchlab.kermit.Logger
+
+/**
+ * The device-side download/import orchestrator (capability `photo-download`). Reads the event-wide
+ * union, selects **foreign** assets (`deviceId != myDeviceId`) not already imported, records them in
+ * the [store], enqueues their resource downloads, and imports any asset whose resources are all staged.
+ * It owns no transport or PhotoKit detail — those are the [jobs] and [importer] seams — so it is
+ * exercised in `commonTest` with fakes. Network/union failures keep last-good state (never throw).
+ */
+class DownloadController(
+    private val union: EventUnionSource,
+    private val store: DownloadStore,
+    private val jobs: PhotoDownloadJobs,
+    private val importer: PhotoLibraryImporter,
+    private val myDeviceId: String,
+    private val log: Logger = Logger.withTag("DownloadController"),
+) {
+
+    /**
+     * Discover + plan + enqueue + import, idempotently. Safe to call on join and on every foreground:
+     * already-imported and already-planned assets are no-ops, and only not-yet-staged resources enqueue.
+     */
+    suspend fun reconcile(eventId: String) {
+        val assets = union.union(eventId).getOrElse {
+            log.w(it) { "union fetch failed — keeping last state" }
+            return
+        }
+        var planned = 0
+        for (asset in assets) {
+            if (asset.deviceId == myDeviceId) continue // own contribution — already in this library
+            val ref = AssetRef(asset.deviceId, asset.assetId)
+            if (store.isImported(ref)) continue // delete-proof / cross-event dedup
+            store.plan(ref, asset.resources.map {
+                PlannedResource(it.key, it.url, it.role, it.contentType, it.originalFilename)
+            })
+            planned++
+        }
+        log.i { "reconcile: ${assets.size} union asset(s), $planned foreign planned" }
+        jobs.enqueue(store.pendingDownloads())
+        importReady()
+    }
+
+    /**
+     * A resource's bytes finished downloading and were moved to durable staging (called by the
+     * background-`URLSession` delegate, possibly while backgrounded / on relaunch). Records it and
+     * imports the asset if its set is now complete.
+     */
+    suspend fun onResourceStaged(ref: AssetRef, resourceKey: String, stagedPath: String) {
+        store.markStaged(ref, resourceKey, stagedPath)
+        importReady()
+    }
+
+    /** Import every asset whose resources are all staged and that is not yet imported. */
+    suspend fun importReady() {
+        for (ref in store.importableAssets()) {
+            when (val result = importer.import(ref, store.stagedResources(ref))) {
+                is ImportResult.Imported -> {
+                    store.markImported(ref, result.createdLocalId)
+                    log.i { "imported foreign asset ${ref.sourceAssetId} as ${result.createdLocalId}" }
+                }
+                is ImportResult.Failed ->
+                    log.w { "import deferred for ${ref.sourceAssetId}: ${result.message}" } // retried later
+            }
+        }
+    }
+
+    /** Leave/switch: cancel in-flight transfers and drop non-terminal rows (imported rows persist). */
+    suspend fun onLeaveOrSwitch() {
+        jobs.cancelAll()
+        store.pruneNonTerminal()
+    }
+}

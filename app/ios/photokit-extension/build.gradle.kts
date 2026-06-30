@@ -18,6 +18,10 @@ kotlin {
     sourceSets {
         commonMain.dependencies {
             implementation(project(":domain:engine"))
+            // The app-written download store, opened READ-ONLY here for the suppression projection
+            // (capability `download-store`): discovery drops assets this device downloaded + imported
+            // so they are never re-uploaded (the echo). The extension never writes this store.
+            implementation(project(":domain:download-store"))
             // The shared library resource-enumeration seam (one upload-key/version derivation for both
             // the producer and the re-join seed); the producer delegates its enumeration to it.
             implementation(project(":domain:gallery"))
