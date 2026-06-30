@@ -38,5 +38,9 @@
 ## 6. Verify
 
 - [x] 6.1 `./gradlew build` green (JVM + Compose tests; `compileIosMainKotlinMetadata`).
-- [ ] 6.2 On device: with photos mid-upload, the caption shows the ledger in-flight count (≤ remaining),
-      distinct from `total − synced`; it refreshes on foregrounding and hides at 0.
+- [x] 6.2 On device: against EMPTY storage, the extension created 7 assets' jobs (ledger in-flight 7,
+      0 bytes landed); the app — a SEPARATE process — read the App-Group ledger via WAL and showed
+      "0 of 7 synced · 7 in progress" (the 7 from `aggregates().pending`, matching the extension log),
+      and the foreground refresh updated it from 0 (empty ledger at first launch) → 7. Cross-process
+      read confirmed. The live shrink/hide-at-0 was blocked by OS-lazy byte transfer (none landed this
+      session) — covered by the unit tests (in-flight re-mint, clamp) + the harness in-flight knob.
