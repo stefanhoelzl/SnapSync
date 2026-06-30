@@ -60,4 +60,4 @@
 - [x] 10.1 `./gradlew build` green (all targets + JVM/Compose tests, incl. new `commonTest`s).
 - [x] 10.2 `./gradlew compileIosMainKotlinMetadata` green (iOS source-set proxy).
 - [x] 10.3 Backend `deno` test suite green.
-- [ ] 10.4 On-device (manual, iOS 27): a fresh-event provision uploads to `/files/device/<id>/`, writes `/events/<id>/device/<id>.json`, status shows own-device progress; an event **switch** re-uploads nothing already stored.
+- [x] 10.4 On-device (manual, iOS 26.1): verified — a fresh-event provision uploaded to `/files/device/<id>/` (14 objects), status showed own-device progress ("7 synced", "4 of 7 synced · N in progress"), and an event **switch** re-uploaded nothing already stored (the new event's reconcile `reset+seeded` already-stored files `COMPLETED` and re-created only the missing resources). The `device.json` write runs via the in-cycle hook (the only unverified sliver — no read route to inspect the object directly).

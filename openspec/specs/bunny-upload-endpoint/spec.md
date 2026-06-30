@@ -10,77 +10,107 @@ capability). Authoritative design: docs/design.md §3.1 (keys), §4 (storage/aut
 ## Requirements
 ### Requirement: Streaming proxy PUT
 
-The endpoint SHALL accept an HTTP `PUT` at the path template
-`/event/<eventId>/file/<filename>` whose request body is opaque binary resource
-bytes, and SHALL forward those bytes to bunny native Storage by **streaming** — piping the request
-body into a single upstream `PUT` without materializing the whole body in memory (it SHALL NOT
-buffer the body, e.g. via `request.bytes()`/`arrayBuffer()`), and without hashing or transforming
-the body. Exactly **one** upstream `PUT` of the body SHALL be made per upload; the only other
-upstream call permitted is the single small event-existence marker `GET` from the gating requirement
-(no other pre-checks, retries, or fan-out).
+The endpoint SHALL accept an HTTP `PUT` on **two** write routes and, for each, forward the request
+body to bunny native Storage by **streaming** — piping the request body into a single upstream `PUT`
+without materializing the whole body in memory (it SHALL NOT buffer the body, e.g. via
+`request.bytes()`/`arrayBuffer()`), and without hashing or transforming the body:
 
-#### Scenario: Body streamed to bunny
+- (a) the **photo-byte** route `PUT /files/device/<deviceId>/<filename>`, whose body is opaque binary
+  resource bytes; and
+- (b) the **device-manifest** route `PUT /event/<eventId>/device/<deviceId>`, whose body is a JSON
+  device manifest.
 
-- **WHEN** a valid `PUT` to the upload path arrives with a body for an existing event
+The v1 byte route `PUT /event/<eventId>/file/<filename>` is **retired** (no longer routed). For each
+accepted write, exactly **one** upstream `PUT` of the body SHALL be made; the only other upstream call
+permitted is the single small event-existence marker `GET` on the device-manifest route's gate — the
+byte route makes no marker read (no other pre-checks, retries, or fan-out).
+
+#### Scenario: Byte body streamed to bunny
+
+- **WHEN** a valid `PUT /files/device/<deviceId>/<filename>` arrives with a body
 - **THEN** the endpoint issues exactly one upstream `PUT` to bunny whose body is the request body
   passed through unchanged (byte-identical), and does not buffer the full body before forwarding
 
+#### Scenario: Manifest body streamed to bunny
+
+- **WHEN** a valid `PUT /event/<eventId>/device/<deviceId>` arrives with a JSON body for an existing
+  event
+- **THEN** the endpoint issues exactly one upstream `PUT` to bunny whose body is the request body
+  passed through unchanged, and does not buffer the full body before forwarding
+
 #### Scenario: Non-PUT methods rejected
 
-- **WHEN** a request uses a method other than `PUT` or `OPTIONS` on the upload path
+- **WHEN** a request uses a method other than `PUT` or `OPTIONS` on a write path
 - **THEN** the endpoint responds `404` (no matching route) and makes no upstream request
 
 ### Requirement: Object key from the URL path
 
-The endpoint SHALL derive `eventId` and `filename` from the decoded path params of the route
-`/event/<eventId>/file/<filename>` (the literal labels `event` and `file` are required). `eventId`
-MUST match a UUID pattern; `filename` MUST be a single, non-empty segment containing no path
-separator (`/`, encoded or literal) and no `..`. The endpoint SHALL write the object at the bare key
-`<eventId>/<filename>` — the URL labels (`event`/`file`) are **not** part of the stored key —
-percent-encoding each segment when building the storage request URL so the key stays a single flat
-path. A request whose path does not match the route (missing label, wrong depth, or no filename)
-SHALL yield `404`; a matched request whose `eventId` is not a UUID or whose `filename` is unsafe
+The endpoint SHALL derive each route's params from the decoded path and write each object at a bare
+storage key from which the URL labels are dropped:
+
+- **Byte route** `/files/device/<deviceId>/<filename>` (the literal labels `files` and `device` are
+  required): `deviceId` MUST match a UUID pattern; `filename` MUST be a single, non-empty segment
+  containing no path separator (`/`, encoded `%2F`, or literal) and no `..`. The object SHALL be
+  written at the bare key `files/<deviceId>/<filename>` — the URL labels are **not** part of the stored
+  key — percent-encoding each segment when building the storage request URL so the key stays a single
+  flat path.
+- **Device-manifest route** `/event/<eventId>/device/<deviceId>` (the literal labels `event` and
+  `device` are required): `eventId` and `deviceId` MUST each match a UUID pattern. The object SHALL be
+  written at the bare key `events/<eventId>/device/<deviceId>.json` with `Content-Type:
+  application/json`.
+
+A request whose path does not match either route (missing a label, wrong depth, or no final segment)
+SHALL yield `404`; a matched request whose UUID param is not a UUID, or whose `filename` is unsafe,
 SHALL yield `400`. Neither case SHALL make an upstream request.
 
-#### Scenario: Valid path accepted, bare key composed
+#### Scenario: Valid byte path accepted, bare key composed
 
-- **WHEN** the path is `/event/<uuid>/file/IMG_0001-photo.jpg` with a valid UUID
-- **THEN** the request is accepted and the storage key `<uuid>/IMG_0001-photo.jpg` (no labels) is
+- **WHEN** the path is `/files/device/<uuid>/IMG_0001-photo.jpg` with a valid UUID
+- **THEN** the request is accepted and the storage key `files/<uuid>/IMG_0001-photo.jpg` (no labels) is
   composed for the upstream path
 
-#### Scenario: Non-UUID event segment rejected
+#### Scenario: Valid manifest path accepted, json key composed
 
-- **WHEN** the `eventId` segment is not a UUID
+- **WHEN** the path is `/event/<eventUuid>/device/<deviceUuid>` with valid UUIDs
+- **THEN** the request is accepted and the storage key `events/<eventUuid>/device/<deviceUuid>.json`
+  with `Content-Type: application/json` is composed for the upstream path
+
+#### Scenario: Non-UUID segment rejected
+
+- **WHEN** the `deviceId` (byte route) or `eventId`/`deviceId` (manifest route) segment is not a UUID
 - **THEN** the endpoint responds `400` and makes no upstream request
 
-#### Scenario: Unmatched path rejected (incl. empty filename)
+#### Scenario: Unmatched path rejected
 
-- **WHEN** the path does not match the route (missing a label, wrong depth, or no filename — e.g.
-  ends in `/file/`)
+- **WHEN** the path does not match either route (missing a label, wrong depth, or no final segment —
+  e.g. ends in `/device/`)
 - **THEN** the endpoint responds `404` and makes no upstream request
 
 #### Scenario: Unsafe filename rejected
 
-- **WHEN** the `filename` segment contains `..` or a separator (`/` or its encoded `%2F`)
+- **WHEN** the byte route's `filename` segment contains `..` or a separator (`/` or its encoded `%2F`)
 - **THEN** the endpoint responds `400` and makes no upstream request
 
 ### Requirement: bunny native Storage target and authorization
 
-The endpoint SHALL forward the upload to bunny's native Storage API at
-`https://<region-host>/<zone>/<eventId>/<filename>` using `PUT`, attaching the storage
-zone's `AccessKey` header (the storage-zone password). It SHALL forward the request's `Content-Type`
-to bunny, defaulting to `application/octet-stream` when absent. Authorization of the *caller* is the
-possession of the event id alone — the endpoint SHALL NOT require any token. The endpoint now consults
-the event registry (the marker) to determine **existence** and rejects uploads to a non-existent event
-with `404`; consulting the registry is an existence check, not an authorization step — any caller
-possessing a valid, existing event id is authorized to upload. The endpoint SHALL NOT expose or
-forward the bunny account API key.
+The endpoint SHALL forward each write to bunny's native Storage API at `https://<region-host>/<zone>/<key>`
+using `PUT`, attaching the storage zone's `AccessKey` header (the storage-zone password), where
+`<key>` is the bare key derived per the key requirement (`files/<deviceId>/<filename>` for the byte
+route, `events/<eventId>/device/<deviceId>.json` for the device-manifest route). It SHALL forward the
+request's `Content-Type` to bunny, defaulting to `application/octet-stream` when absent (the
+device-manifest route carries `application/json`). Authorization of the *caller* is structural, not
+token-based — the endpoint SHALL NOT require any token. The byte route is **ungated**: possession of
+the edge host alone authorizes a `/files/<deviceId>/` write (the device id is self-asserted). The
+device-manifest route consults the event marker for **existence** only (see the device-manifest gate
+requirement); that is an existence check, not an authorization step — any caller possessing a valid,
+existing event id is authorized to write the manifest. The endpoint SHALL NOT expose or forward the
+bunny account API key.
 
 #### Scenario: Upstream URL composed from zone, region, and key
 
-- **WHEN** a valid upload is forwarded
-- **THEN** the upstream URL is `https://<configured region host>/<configured zone>/<key>` and
-  carries the `AccessKey` header from configuration
+- **WHEN** a valid write is forwarded
+- **THEN** the upstream URL is `https://<configured region host>/<configured zone>/<key>` and carries
+  the `AccessKey` header from configuration
 
 #### Scenario: Content-Type forwarded or defaulted
 
@@ -89,26 +119,34 @@ forward the bunny account API key.
 
 #### Scenario: No token required
 
-- **WHEN** a request carries a valid key and body but no authorization token, for an existing event
-- **THEN** the upload is accepted (the event id is the capability)
+- **WHEN** a request carries a valid path and body but no authorization token
+- **THEN** the write is accepted (the byte route is ungated; the manifest route requires only an
+  existing event id)
 
 ### Requirement: Last-write-wins
 
-The endpoint SHALL perform the object write as a single unconditional `PUT` and SHALL NOT perform an
-existence check (`HEAD`/`GET`) **on the object key** `<eventId>/<filename>` before writing; an upload
-to an existing key overwrites it. (The event-existence marker `GET` from the gating requirement is a
-separate read of `events/<eventId>.json`, not of the object key, and does not make the object write
-conditional.) Because the key is `<eventId>/<filename>` (no device level), the same key is reachable
-by more than one device; an overwrite is therefore possibly cross-device. As the `filename` embeds the
-per-device `localIdentifier`, a cross-device write to the same key is the same physical asset
-(byte-identical), and a distinct-asset overwrite requires a `localIdentifier` UUID collision — an
-accepted trade-off.
+The endpoint SHALL perform each object write as a single unconditional `PUT` and SHALL NOT perform an
+existence check (`HEAD`/`GET`) **on the object key** before writing; a write to an existing key
+overwrites it. (The device-manifest route's event-existence marker `GET` is a separate read of
+`events/<eventId>/metadata.json`, not of the object key, and does not make the object write
+conditional.) The byte key is device-partitioned (`files/<deviceId>/<filename>`), so a given key is
+reachable only by the device that owns that partition; an overwrite is therefore same-device, and
+because the `filename` embeds the per-device `localIdentifier` it targets the same physical asset
+(byte-identical re-upload). The device-manifest key (`events/<eventId>/device/<deviceId>.json`) is
+rewritten in full each cycle, so the latest write wins with no read-modify-write and no lost update.
 
-#### Scenario: Existing key overwritten
+#### Scenario: Existing byte key overwritten
 
-- **WHEN** a `PUT` targets a key that already exists in the zone, for an existing event
+- **WHEN** a `PUT` targets a `files/<deviceId>/<filename>` key that already exists in the zone
 - **THEN** the endpoint issues the upstream object `PUT` directly (no prior existence check on the
   object key) and the object is overwritten
+
+#### Scenario: Existing manifest key overwritten
+
+- **WHEN** a `PUT` targets a `events/<eventId>/device/<deviceId>.json` key that already exists, for an
+  existing event
+- **THEN** the endpoint issues the upstream object `PUT` directly (no prior existence check on the
+  object key) and the manifest is overwritten with the new full-state snapshot
 
 ### Requirement: Faithful outcome propagation
 
@@ -138,31 +176,39 @@ support. (Server-side resumable uploads are a deferred future capability.)
 - **WHEN** an `OPTIONS` request is received for an upload path
 - **THEN** the response does not advertise resumable-upload support, signaling a plain `PUT` path
 
-### Requirement: Upload gated on event existence
+### Requirement: Device manifest write gated on event existence
 
-Before streaming the body, the endpoint SHALL determine whether the event exists by reading the event
-marker `events/<eventId>.json` (a bunny native Storage `GET` carrying the configured `AccessKey`).
-When the marker is absent, the endpoint SHALL respond `404` and SHALL NOT stream the body or issue the
-upstream object `PUT`. When the marker is present, the endpoint SHALL proceed with the streamed upload.
-A genuine upstream failure reading the marker (any non-`404` error or timeout) SHALL be surfaced as
-`5xx` and SHALL NOT be treated as "event absent" (never a `404` for a transient read failure). The
-existence read targets the **event marker**, not the object key, so it does not change the
-last-write-wins behavior of the object write itself.
+Before streaming the body of a `PUT /event/<eventId>/device/<deviceId>`, the endpoint SHALL determine
+whether the event exists by reading the event marker `events/<eventId>/metadata.json` (a bunny native
+Storage `GET` carrying the configured `AccessKey`). When the marker is absent, the endpoint SHALL
+respond `404` and SHALL NOT stream the body or issue the upstream object `PUT`. When the marker is
+present, the endpoint SHALL proceed with the streamed manifest write. A genuine upstream failure
+reading the marker (any non-`404` error or timeout) SHALL be surfaced as `502` and SHALL NEVER be
+treated as "event absent" (never a `404` for a transient read failure). This gate applies **only** to
+the device-manifest route; the byte route `PUT /files/device/<deviceId>/<filename>` reads no marker and
+is ungated.
 
-#### Scenario: Upload to a non-existent event rejected
+#### Scenario: Manifest write to a non-existent event rejected
 
-- **WHEN** a valid `PUT /event/<uuid>/file/<name>` arrives but the marker `events/<uuid>.json` is absent
+- **WHEN** a valid `PUT /event/<uuid>/device/<deviceUuid>` arrives but the marker
+  `events/<uuid>/metadata.json` is absent
 - **THEN** the endpoint responds `404`, streams no body, and issues no upstream object `PUT`
 
-#### Scenario: Upload to an existing event proceeds
+#### Scenario: Manifest write to an existing event proceeds
 
-- **WHEN** a valid `PUT` arrives and the marker `events/<uuid>.json` exists
-- **THEN** the endpoint streams the body to the upstream object `PUT` as usual
+- **WHEN** a valid `PUT /event/<uuid>/device/<deviceUuid>` arrives and the marker
+  `events/<uuid>/metadata.json` exists
+- **THEN** the endpoint streams the JSON body to the upstream object `PUT` as usual
 
 #### Scenario: Marker read failure is not treated as absence
 
 - **WHEN** the marker read returns a non-`404` upstream error or times out
-- **THEN** the endpoint responds `5xx` and does not return `404` or store the object
+- **THEN** the endpoint responds `502` and does not return `404` or store the object
+
+#### Scenario: Byte route makes no marker read
+
+- **WHEN** a valid `PUT /files/device/<deviceId>/<filename>` arrives
+- **THEN** the endpoint streams the body without reading any event marker (the byte route is ungated)
 
 ## Assumptions (unverified on device)
 
