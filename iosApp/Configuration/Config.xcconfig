@@ -11,10 +11,12 @@ TEAM_ID = E9Z8BADH58
 // provision (see the ios-background-upload change, task 2.x). The simulator gate ignores signing.
 CODE_SIGN_ENTITLEMENTS = iosApp/iosApp.entitlements
 // The compile-time upload host (PhotoKit forces BackgroundUploadURLBase to be baked, not runtime).
-// This is the SINGLE SOURCE of the deployed device-facing host: it defaults to the deployed HTTPS
-// backend, so a plain *local* Xcode build and every plain push/TestFlight build target it (CI does
-// NOT restate the literal — it overrides only when a workflow_dispatch `upload_host` is supplied,
-// which must be HTTPS). Must be HTTPS: default ATS (HTTPS-only) applies — no NSAllowsLocalNetworking
-// exception ships. The `$()` splits the `//` so xcconfig does not treat the rest of the line as a
-// comment (CLI overrides need no such trick).
-BACKGROUND_UPLOAD_URL_BASE = https:/$()/snapsync.stefanhoelzl.deno.net
+// This is the SINGLE SOURCE of the deployed device-facing host: `snapsync.stho.net`, a custom domain
+// WE control via Bunny DNS, CNAME'd to the active runtime (Deno Deploy today). Because we own the
+// name, swapping the backend runtime is a DNS repoint — NOT a new build — so this literal should stay
+// a domain we control, never a runtime-provider vanity host. A plain *local* Xcode build and every
+// plain push/TestFlight build target it (CI does NOT restate the literal — it overrides only when a
+// workflow_dispatch `upload_host` is supplied, which must be HTTPS). Must be HTTPS: default ATS
+// (HTTPS-only) applies — no NSAllowsLocalNetworking exception ships. The `$()` splits the `//` so
+// xcconfig does not treat the rest of the line as a comment (CLI overrides need no such trick).
+BACKGROUND_UPLOAD_URL_BASE = https:/$()/snapsync.stho.net

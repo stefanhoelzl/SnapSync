@@ -1,8 +1,9 @@
 name: backend-deploy
 
-# Deploys the backend/ upload endpoint to BOTH bunny Edge Scripting and Deno Deploy. Deno Deploy is
-# the device-facing host while bunny.net investigates dropping iOS's zero-window upload SYNs (the
-# single main.ts serves both runtimes — bunny via the SDK, Deno Deploy via Deno.serve). Path-scoped
+# Deploys the backend/ upload endpoint to BOTH bunny Edge Scripting and Deno Deploy. The device-facing
+# host is the custom domain `snapsync.stho.net` (we own it via Bunny DNS), CNAME'd to Deno Deploy while
+# bunny.net investigates dropping iOS's zero-window upload SYNs (the single main.ts serves both
+# runtimes — bunny via the SDK, Deno Deploy via Deno.serve). Path-scoped
 # to the backend sources, isolated from the Gradle/iOS workflows, and gated on green Deno
 # fmt/lint/check/test. Capability: backend-deployment.
 
@@ -68,7 +69,7 @@ jobs:
         env:
           DENO_DEPLOY_TOKEN: ${{ secrets.DENO_DEPLOY_TOKEN }}
         run: |
-          URL="https://snapsync.stefanhoelzl.deno.net"
+          URL="https://snapsync.stho.net"
           deno deploy env add PUBLIC_BASE_URL "$URL" --org stefanhoelzl --app snapsync \
             || deno deploy env update-value PUBLIC_BASE_URL "$URL" --org stefanhoelzl --app snapsync
 
@@ -76,7 +77,9 @@ jobs:
       # configured server-side; `deno deploy` uses the stored build config and the --org/--app to
       # target the app. It persists a `deploy:` block into deno.json on the ephemeral runner (never
       # committed). Requires the DENO_DEPLOY_TOKEN secret (the `ddo_` org token). Revert path: when
-      # bunny fixes the SYN drop, drop this step + repoint the iOS host.
+      # bunny fixes the SYN drop, repoint `snapsync.stho.net` (Bunny DNS) at the bunny Edge Script and
+      # flip PUBLIC_BASE_URL above — a DNS + server-side change, NOT a new iOS build (the baked host is
+      # the custom domain, not a runtime-provider host).
       - name: Deploy to Deno Deploy
         if: github.ref == 'refs/heads/main'
         working-directory: backend

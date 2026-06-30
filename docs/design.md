@@ -639,6 +639,12 @@ bytes). The proxy sidesteps signing entirely: the endpoint, not the device, writ
   versioning/ACL/SSE/tagging/lifecycle, no batch delete.
 - **Upload endpoint (external, bunny.net Edge Scripting / Deno + Hono — implemented in `backend/`):** the app's
   only backend dependency. Capability specs: `bunny-upload-endpoint`, `bunny-list-endpoint`, `backend-deployment`.
+  - **Device-facing origin = a domain we control.** The app talks to `snapsync.stho.net` — a custom
+    domain in our Bunny DNS zone, served with a publicly-trusted (Let's Encrypt) cert. The same bundle
+    deploys to **both** runtimes; the domain is `CNAME`'d to whichever is **active** — **Deno Deploy
+    today** (bunny Edge Scripting is sidelined while bunny investigates dropping iOS's zero-window
+    upload SYNs). Because the baked host names a domain we own, swapping the active runtime is a **DNS
+    repoint + a server-side `PUBLIC_BASE_URL` flip — not a new app build**.
   - **Request:** `PUT /event/<eventId>/file/<filename>` with the resource bytes as
     the body and `Content-Type`. The endpoint **streams** the body straight into the bunny native PUT
     (one subrequest, never buffered).
@@ -659,7 +665,8 @@ bytes). The proxy sidesteps signing entirely: the endpoint, not the device, writ
     (UUID `eventId`, safe filename) and writes the **bare** key `<eventId>/<filename>`;
     abuse protection (overwrite rejection, rate-limiting, a registry) is deferred (§8). The storage-zone
     `AccessKey` lives only in the edge env.
-  - **Base URL is compile-time-baked** (BuildKonfig `BackgroundUploadURLBase` = the edge host), not
+  - **Base URL is compile-time-baked** (BuildKonfig `BackgroundUploadURLBase` = the edge host —
+    `snapsync.stho.net`, the custom domain we control, never a runtime-provider vanity host), not
     carried in the QR. The per-resource URL is built **locally** by the provider (no mint round-trip).
 - **Event creation + QR minting (external, out of scope):** a separate tool creates an event
   (high-entropy id, name, **start date = creation time**) and emits a `snapsync://` QR. Not implemented
