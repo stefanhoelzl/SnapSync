@@ -64,6 +64,25 @@ class CompletedAssetsSourceTest {
     }
 
     @Test
+    fun `downloaded (suppressed) assets are excluded from the upload total and completed`() = runTest {
+        // B is a foreign photo this device downloaded + imported (suppressed). It is in the library
+        // (enumerated) but must NOT count toward the upload universe — else progress pegs below 100%.
+        val enumerator = InMemoryGalleryResourceEnumerator(
+            listOf(
+                resource("A-primary.jpg", "A"), // own
+                resource("B-primary.jpg", "B"), // downloaded foreign (suppressed)
+            ),
+        )
+        val files = FakeDeviceFiles().apply { result = Result.success(listOf("A-primary.jpg")) }
+        val source = OwnDeviceCompletedAssetsSource(enumerator, files, deviceId, suppressedLocalIds = { setOf("B") })
+
+        source.refresh()
+
+        assertEquals(1, source.size.value, "total counts only own assets (A), not the downloaded B")
+        assertEquals(setOf("A"), source.completed.value, "B is excluded from completed too")
+    }
+
+    @Test
     fun `the list is fetched for this device`() = runTest {
         val files = FakeDeviceFiles()
         OwnDeviceCompletedAssetsSource(InMemoryGalleryResourceEnumerator(), files, deviceId).refresh()
