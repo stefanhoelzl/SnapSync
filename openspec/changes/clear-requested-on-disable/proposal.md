@@ -23,10 +23,12 @@ bytes ever transferred.
   `COMPLETED` rows (so cross-event dedup survives) and `FAILED` rows (the engine already retries
   those). It emits exactly one `changes` signal; on the SQLDelight backend it is a `DELETE … WHERE
   state = 'REQUESTED'`. Covered by the shared `LedgerBackendContract` (JVM **and** native sim).
-- **Clear `REQUESTED` immediately after every extension disable.** The app folds the clear into a
-  single `disableExtension()` helper used by **both** disable sites — the re-register's disable half
-  and `LeaveEvent`'s disable lambda — so the paths cannot diverge. It reuses the `LedgerBackend` the
-  app already opens (for the in-flight read).
+- **Clear `REQUESTED` immediately after every extension disable**, and **reset the discovery cursor**
+  so the next cycle does a full re-enumeration (clearing `REQUESTED` only makes the keys *absent*; a
+  settled cursor would never re-surface them). The app folds both into a single `disableExtension()`
+  helper used by **both** disable sites — the re-register's disable half and `LeaveEvent`'s disable
+  lambda — so the paths cannot diverge. It reuses the `LedgerBackend` the app already opens (for the
+  in-flight read).
 
 Effect: every disable wipes the OS jobs **and** clears the now-orphaned `REQUESTED`, so the next
 discovery re-creates exactly the not-yet-stored jobs. A re-register **self-heals** instead of
