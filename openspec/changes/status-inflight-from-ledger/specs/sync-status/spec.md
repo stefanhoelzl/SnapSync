@@ -138,12 +138,16 @@ in-flight** upload count: the number of the device's photos that have **any non-
 row** (a job answered but not yet observed complete) — i.e. the ledger's `aggregates().pending`. The
 seam exposes a **count only**; it SHALL NOT expose the ledger nor any write capability.
 
-The iOS implementation SHALL read the shared App-Group ledger **read-only** — calling only the
-backend's aggregate read (`aggregates()`), never `put`/`clear`/`resetTo` — so the **extension remains
-the sole writer** and **no `LedgerWriter` is constructed in `:app:ios`**. The cross-process read is
-safe under the ledger driver's WAL mode (one writer plus concurrent readers). `refresh()` SHALL be
-invoked on **foreground entry**. On any read failure (including a not-yet-created ledger) the value
-SHALL be `0`. A settable fake SHALL exist for tests and the desktop harness.
+The seam and its general implementation SHALL live in `:domain:status` and take the count as an
+**injected `suspend () -> Int` read**, so `:domain:status` keeps **no** `:domain:engine` dependency
+(the engine-leak rule holds) and the read failure (→ `0`) is testable platform-free. The iOS
+composition root SHALL supply a read that reads the shared App-Group ledger **read-only** — calling
+only the backend's aggregate read (`iosLedgerBackend().aggregates().pending`), never
+`put`/`clear`/`resetTo` — so the **extension remains the sole writer** and **no `LedgerWriter` is
+constructed in `:app:ios`**. The cross-process read is safe under the ledger driver's WAL mode (one
+writer plus concurrent readers). `refresh()` SHALL be invoked on **foreground entry**. On any read
+failure (including a not-yet-created ledger) the value SHALL be `0`. A settable fake SHALL exist for
+tests and the desktop harness.
 
 #### Scenario: Value is the asset-counted in-flight ledger count
 

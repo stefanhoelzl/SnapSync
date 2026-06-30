@@ -134,8 +134,9 @@ filter, the edge URL build) lives **above and beside** the seam, in the platform
                          completeness listing) — ALL implementation-scoped, none leaks to status's
                          consumers, and NO :domain:engine dependency. The status projection (§2.4):
                          SyncStatus + SyncState + SyncStatusSource (snapshot seam, §2.3) and the
-                         listing-backed ListingSyncStatusSource — completeness listing × on-disk
-                         in-flight manifests × permission × gallery total → snapshots (no ledger read).
+                         listing-backed ListingSyncStatusSource — per-device listing × gallery
+                         enumeration (completeness) × permission × gallery total, plus a read-only
+                         ledger in-flight peek (display-only, count-only seam) → snapshots.
 :domain:permission     PermissionStatus / PermissionStatusSource / PermissionRequester.
 :capability:config     deeplink → EventConfig provisioning (eventId/name/startDate). Was S3Config in
                          v1; now carries the event. Stores into shared Keychain (app + extension).
@@ -346,34 +347,39 @@ stream. Why (decided 2026-06-09):
 - One-shot effects (toasts, later) are derived **downstream** by diffing consecutive snapshots in the
   Orbit container.
 
-### 2.4 Status projection: derived from storage truth, not the ledger
+### 2.4 Status projection: own-device storage truth, plus a read-only in-flight peek
 
 How `SyncStatusSource` (§2.3) gets its truth. The UI seam stays a level-triggered
 `StateFlow<SyncStatus>`; behind it, `ListingSyncStatusSource` (in `:domain:status`) derives status
-from three **observable, ledger-free** sources and the permission seam, minting snapshots
-(`ledger-free-status`, 2026-06-28):
+from own-device sources and the permission seam, minting snapshots (`ledger-free-status`, 2026-06-28;
+own-device storage truth, `dedup-files-device-manifests`; the in-flight peek, `status-inflight-from-ledger`):
 
-- `completed` ← the **completeness listing** (`GET /event/<id>/files`, the `EventFilesSource` from
-  `immutable-asset-manifests`): the count of complete assets storage reports (an asset all of whose
-  manifest-named resources are present), via `CompletedAssetsSource`.
-- `pending` (in-flight) ← the **on-disk manifest files** in the App Group (one per asset the
-  extension started and has not yet confirmed), via `PendingManifestsSource`, which also **prunes**
-  the file of any asset the listing now reports complete (a backstop to the extension's own
-  prune-on-success).
+- `completed` ← **own-device storage truth**: each qualifying asset's **expected** resource filenames
+  (the `gallery-status` resource-enumeration seam — the same derivation the extension uploads under)
+  all **present** in the **per-device** file listing (`GET /files/device/<deviceId>`), via
+  `CompletedAssetsSource`. No `device.json` is read.
+- `pending` (in-flight) ← a **read-only peek at the extension's shared App-Group ledger**:
+  `aggregates().pending` (the asset-counted "uploading now" set — photos with a job created but not
+  yet `COMPLETED`), **clamped to remaining** (`min(inFlight, total − completed)`) and **display-only**:
+  it feeds the caption, **never** classification. The `InFlightSource` seam exposes a **count only**;
+  the composition root injects the read (`suspend () -> Int`), so `:domain:status` keeps **no**
+  `:domain:engine` dependency and the extension stays the **sole writer** (no `LedgerWriter` in the app).
 - `total` ← the **PhotoKit gallery count** (`GalleryStatusSource`, unchanged).
 
 The factory is non-suspending: it seeds `Loading` and, on its scope, combines the four inputs,
-emitting `Ready` once completed-count + permission + gallery have each produced a first value.
-**Liveness is event-driven, not polled:** the iOS composition root re-LISTs (and re-reads the
-in-flight manifests) on **foreground entry** and on **each manifest `URLSession` completion**. A
-failed listing keeps the last good value. *Known trade-off:* if the app is backgrounded when an
-asset's last resource lands after its manifest, `completed` is stale until the next foreground
-re-LIST (accepted for v1; documented fast-follow is a bounded foreground re-LIST timer behind an
-ETag/304). The ledger is now the extension's **private** upload memory — the app reads no ledger and
-constructs no ledger type; the `observed-completion-overlay` (which masked ledger lag) is **deleted**.
+emitting `Ready` once completed-count + permission + gallery have each produced a first value (the
+in-flight count seeds `0` and never gates the first `Ready`). **Liveness is event-driven, not polled:**
+the iOS composition root re-LISTs the per-device listing **and** re-reads the in-flight count on
+**foreground entry** (there is no cross-process change notification — the ledger's change flow is
+in-process). A failed listing keeps the last good `completed`; a failed in-flight read yields `0`.
+Classification stays storage-truth (`synced` vs `total`), so a stale/over-counting ledger can never
+flip the rendered sync state — only the supplementary caption peeks at the ledger. This is the
+**narrow reversal** of `ledger-free-status`: read-only, the in-flight count only, display-only,
+foreground-triggered. The ledger remains the extension's private **write** memory; the
+`observed-completion-overlay` (which masked ledger lag) stays **deleted**.
 
-- **Counts are by PHOTO (assetId), not resource row**: `completed` = complete assets in the listing,
-  `pending` = assets with an in-flight on-disk manifest. The status surface reports completeness and
+- **Counts are by PHOTO (assetId), not resource row**: `completed` = complete assets in the per-device
+  listing, `pending` = the clamped in-flight ledger count. The status surface reports completeness and
   live activity only — there is **no completion timestamp** (no "last backed up N ago"). A stored
   asset is immutable, so `completed` only ever climbs. `failed` ≡ 0 (retry-forever) and
   `estimatedRemaining` ≡ null (never estimates) — both fields exist for classification and fakes.
