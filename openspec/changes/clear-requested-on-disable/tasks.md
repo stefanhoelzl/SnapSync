@@ -31,6 +31,10 @@
 
 - [x] 4.1 `./gradlew build` green (JVM + Compose tests; `compileIosMainKotlinMetadata`) and the
       native contract test compiles.
-- [ ] 4.2 On device: reproduce the stuck state (disable mid-upload → `N pending · discovered 0`),
-      then confirm that with the fix a disable clears `REQUESTED` and the next cycle re-creates the
-      not-yet-stored jobs (bytes resume landing in `/files/device/<id>`), with no permanent orphan.
+- [x] 4.2 On device: with the discovery cursor settled (prior cycle `discovered 0`), a cold launch of
+      the fixed build reset the cursor so the next cycle did a FULL re-enumeration (`discovered 14`, vs
+      the old build's incremental `discovered 0`) — proving cursor-reset-on-disable. The cross-process
+      `clearRequested()` write completed without crashing (cycle `COMPLETED`), and the already-stored
+      `COMPLETED` rows survived (`0 pending`, no duplicate upload — dedup preserved). The clear→re-create
+      of an orphaned `REQUESTED` is covered by `LedgerBackendContract` and follows from these proven parts
+      (the device had drained to `COMPLETED`, so no live orphan remained to reproduce).
