@@ -64,7 +64,7 @@ class CompletedAssetsSourceTest {
     }
 
     @Test
-    fun `downloaded (suppressed) assets are excluded from the upload total and completed`() = runTest {
+    fun `downloaded suppressed assets are excluded from the upload total and completed`() = runTest {
         // B is a foreign photo this device downloaded + imported (suppressed). It is in the library
         // (enumerated) but must NOT count toward the upload universe — else progress pegs below 100%.
         val enumerator = InMemoryGalleryResourceEnumerator(
