@@ -8,9 +8,7 @@ their original-only resources, each typed by a generic `role` — into a single 
 supersedes the per-asset manifest: the upload extension is its sole writer, PUTting it synchronously
 in-cycle as a date-filtered projection of a device-global accumulator. Write-only in v1 (no in-app
 consumer reads it), it exists as forward-preparation for restore and event-wide union.
-
 ## Requirements
-
 ### Requirement: Per-event device manifest document
 
 For each (event, device) pair it backs up, the producer SHALL maintain exactly one device manifest
@@ -41,20 +39,22 @@ a straight projection of the manifest.
 
 Resources SHALL be typed by a generic, platform-neutral `role`, never a platform resource-type name.
 This change defines two roles: `primary` — the single original primary medium of the asset (a still
-image or a video) — and `motion` — the original paired video of a Live Photo. An asset SHALL have
-exactly one `primary` resource and at most one `motion` resource. Whether the primary is an image or a
+image or a video) — and `live` — the original paired video of a Live Photo. An asset SHALL have
+exactly one `primary` resource and at most one `live` resource. Whether the primary is an image or a
 video SHALL be carried by `contentType`, not by the role. The manifest SHALL list only the asset's
-**original** resources and SHALL NOT list edit artifacts.
+**original** resources and SHALL NOT list edit artifacts. (The role formerly named `live` is renamed
+to `live`; this is a clean cutover — the producer rewrites each device.json as a full-state snapshot
+next cycle, so older `live` manifests from un-updated builds age out and are not migrated.)
 
 #### Scenario: A plain photo has one primary
 
 - **WHEN** an asset is a single still image
-- **THEN** its entry lists exactly one resource with role `primary` and no `motion`
+- **THEN** its entry lists exactly one resource with role `primary` and no `live`
 
-#### Scenario: A Live Photo has primary plus motion
+#### Scenario: A Live Photo has primary plus live
 
 - **WHEN** an asset is a Live Photo (original still plus original paired video)
-- **THEN** its entry lists a `primary` (the still) and a `motion` (the paired video), and
+- **THEN** its entry lists a `primary` (the still) and a `live` (the paired video), and
   image-versus-video is distinguished by `contentType`
 
 ### Requirement: Mutable full-state projection
@@ -145,3 +145,4 @@ listing), and the manifest SHALL exist solely as forward-preparation for restore
 - **WHEN** the app computes sync status
 - **THEN** it reads the gallery enumeration seam and the per-device file listing, and never reads the
   device manifest
+

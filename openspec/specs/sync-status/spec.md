@@ -71,9 +71,9 @@ keep the last good completed value rather than throw, and a failed in-flight rea
 
 #### Scenario: Completed derives from expected × present
 
-- **WHEN** the gallery enumeration says asset `A` expects filenames `{a-primary.jpg, a-motion.mov}`
+- **WHEN** the gallery enumeration says asset `A` expects filenames `{a-primary.jpg, a-live.mov}`
   and the per-device listing `GET /files/device/<deviceId>` contains both
-- **THEN** `A` counts toward `completed`; **WHEN** the listing is missing `a-motion.mov`, `A` does
+- **THEN** `A` counts toward `completed`; **WHEN** the listing is missing `a-live.mov`, `A` does
   not count toward `completed`
 
 #### Scenario: Pending is the clamped in-flight count
@@ -130,7 +130,7 @@ for tests; the iOS implementation SHALL use an HTTP client against the compile-t
 
 #### Scenario: Completeness is all-expected-present, not server-computed
 
-- **WHEN** the gallery seam says asset `A` expects `{a-primary.jpg, a-motion.mov}` and the per-device
+- **WHEN** the gallery seam says asset `A` expects `{a-primary.jpg, a-live.mov}` and the per-device
   listing contains exactly those two
 - **THEN** `A` is in the complete set; the source consults the raw per-device file list and the
   enumeration seam only, never a manifest-completeness endpoint or a `device.json`
@@ -265,3 +265,29 @@ tests and the desktop harness.
 
 - **WHEN** the app enters the foreground
 - **THEN** `InFlightSource.refresh()` is invoked (alongside `CompletedAssetsSource.refresh()`)
+
+### Requirement: Independent download-progress projection
+
+The status surface SHALL expose download progress as an **independent** indicator, separate from the
+own-device upload status: a count of foreign complete assets imported (`X`) out of the foreign
+complete assets currently in the union (`Y`), asset-counted to match the upload progress convention.
+This projection SHALL NOT alter the own-device upload "Completed" notion — uploads are "done" when the
+device's own qualifying assets are all present in storage, regardless of download progress. `Y` MAY
+grow as other contributors add assets, and the indicator SHALL reflect that honestly.
+
+#### Scenario: Download line is independent of upload completion
+
+- **WHEN** the device's own uploads are complete but foreign downloads are still in progress
+- **THEN** the screen shows upload "Completed" **and** a separate "downloaded X of Y" line; the two do
+  not gate each other
+
+#### Scenario: Download denominator is foreign complete assets
+
+- **WHEN** the union reports `Y` foreign complete assets and `X` of them are imported
+- **THEN** the download line reads `X of Y`, asset-counted
+
+#### Scenario: Denominator grows with new contributions
+
+- **WHEN** other contributors add complete assets to the event
+- **THEN** `Y` increases accordingly on the next union read, with no false "all downloaded" state
+

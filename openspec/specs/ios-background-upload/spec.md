@@ -56,7 +56,7 @@ For each discovered asset the extension SHALL fan the asset out to its **origina
 only, mapping each to a generic role and wrapping it as an engine `Resource` with
 `filename = "<assetId>-<role>.<ext>"`, where `assetId` is the PHAsset's `localIdentifier` with `/`
 replaced by `_`, and `role` is `primary` for the original `photo`/`video`/`audio` resource and
-`motion` for the original `pairedVideo` (Live Photo) resource. The extension SHALL NOT upload edit
+`live` for the original `pairedVideo` (Live Photo) resource. The extension SHALL NOT upload edit
 artifacts — `fullSizePhoto`/`fullSizeVideo`/`fullSizePairedVideo` renders, `adjustmentData`,
 `adjustmentBasePhoto`/`adjustmentBasePairedVideo`/`adjustmentBaseVideo`, the RAW `alternatePhoto`, or
 proxies — so an asset's resource set is fixed at capture and never grows. Each wrapped `Resource`
@@ -71,7 +71,7 @@ resolve `PHCloudIdentifier` and SHALL NOT skip any asset for an unresolved cloud
 #### Scenario: Each original resource becomes a distinct role key
 
 - **WHEN** a Live Photo with localIdentifier `L` is discovered (original still plus original paired video)
-- **THEN** two `Resource`s are wrapped with filenames `L-primary.<ext>` and `L-motion.<ext>`, yielding
+- **THEN** two `Resource`s are wrapped with filenames `L-primary.<ext>` and `L-live.<ext>`, yielding
   distinct ledger keys
 
 #### Scenario: Edit artifacts are excluded
@@ -437,8 +437,9 @@ introduced and the upload decision is unchanged.
 
 ### Requirement: Disabling the extension clears orphaned REQUESTED rows
 
-Disabling the upload extension (`setUploadJobExtensionEnabled(false)`) deletes the system's
-`AssetResourceUploadJobConfiguration` and therefore **wipes every in-flight OS upload job**. Whenever
+The app SHALL recover the in-flight jobs wiped by a disable. Disabling the upload extension
+(`setUploadJobExtensionEnabled(false)`) deletes the system's `AssetResourceUploadJobConfiguration` and
+therefore **wipes every in-flight OS upload job**. Whenever
 the app disables the extension it SHALL, immediately after the disable, **both** (a) call the ledger's
 `clearRequested()` (`sync-ledger`) to drop the now-orphaned `REQUESTED` rows, and (b) **reset the
 discovery cursor** (clear the App-Group change-token) so the next cycle does a **full re-enumeration**.
@@ -475,4 +476,31 @@ reset-family operation.
   already-stored files
 - **THEN** those `COMPLETED` rows are retained, so a subsequent reconcile/discovery does not re-upload
   already-stored bytes
+
+### Requirement: Discovery suppresses downloaded assets
+
+The upload cycle's discovery SHALL consult the download store's suppression projection (the set of
+`createdLocalId`s of foreign assets this device downloaded and imported) and SHALL drop every
+discovered resource whose `assetId` is in that set **before** engine fan-out (no upload job created)
+and before `retainAssets`. This prevents the download→import→re-upload echo: an imported foreign asset
+gets a fresh local `localIdentifier` that discovery would otherwise treat as a new local asset and
+upload back. The suppression read SHALL be read-only and cross-process (the extension reads the
+app-written store over WAL). The filter SHALL live in the platform-free upload-cycle core (a injected
+suppression port), not in untested platform wiring, so it is exercised in `commonTest`.
+
+#### Scenario: A downloaded-then-imported asset is never re-uploaded
+
+- **WHEN** discovery encounters a resource whose `assetId` is in the suppression set
+- **THEN** no upload job is created for it and it is excluded from `retainAssets`
+
+#### Scenario: Suppression is consulted before fan-out
+
+- **WHEN** a discovery cycle runs
+- **THEN** suppressed assets are removed from the discovered set before the engine is asked to create
+  any upload job
+
+#### Scenario: Non-suppressed assets upload normally
+
+- **WHEN** discovery encounters a resource whose `assetId` is not suppressed
+- **THEN** it is handed to the engine and uploaded as before
 
