@@ -1,11 +1,30 @@
 import SwiftUI
 import SnapSyncKit
 import UIKit
+import BackgroundTasks
 
-// The app delegate exists solely to receive `handleEventsForBackgroundURLSession` — the OS relaunches
-// the app to finish the manifest uploads the extension started on the shared background URLSession.
-// Pass-through only: Kotlin (`SnapSyncRoot`) adopts the session and invokes the handler when done.
+// The app delegate is a thin pass-through to Kotlin for two OS lifecycle hooks:
+//   1. `handleEventsForBackgroundURLSession` — the OS relaunches the app to finish background photo
+//      downloads; SnapSyncRoot adopts the session, stages + imports, and invokes the handler.
+//   2. the `BGProcessingTask` import-tail backstop — registered at launch (Apple requires registration
+//      before launch finishes; the identifier MUST be in Info.plist BGTaskSchedulerPermittedIdentifiers).
+//      Its handler drains staged-but-unimported downloads. No decisions in Swift.
 final class AppDelegate: NSObject, UIApplicationDelegate {
+    func application(
+        _ application: UIApplication,
+        didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil
+    ) -> Bool {
+        BGTaskScheduler.shared.register(
+            forTaskWithIdentifier: "app.snapsync.download.backstop",
+            using: nil
+        ) { task in
+            SnapSyncRoot.shared.runDownloadBackstop {
+                task.setTaskCompleted(success: true)
+            }
+        }
+        return true
+    }
+
     func application(
         _ application: UIApplication,
         handleEventsForBackgroundURLSession identifier: String,

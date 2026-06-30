@@ -20,6 +20,7 @@ import app.snapsync.download.DownloadController
 import app.snapsync.download.HttpEventUnionSource
 import app.snapsync.download.IosPhotoDownloadJobs
 import app.snapsync.download.IosPhotoLibraryImporter
+import app.snapsync.download.StoreDownloadStatusSource
 import app.snapsync.downloadstore.SqlDelightDownloadStore
 import app.snapsync.downloadstore.iosDownloadStore
 import platform.Foundation.NSFileManager
@@ -37,6 +38,8 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
+import platform.BackgroundTasks.BGProcessingTaskRequest
+import platform.BackgroundTasks.BGTaskScheduler
 import platform.Foundation.NSBundle
 import platform.Foundation.NSOperatingSystemVersion
 import platform.Foundation.NSProcessInfo
@@ -73,6 +76,10 @@ object SnapSyncRoot {
 
     private val log = Logger.withTag("SnapSyncRoot")
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
+
+    /** BGTaskScheduler identifier for the download import-tail backstop — MUST match the Swift host's
+     * `register(forTaskWithIdentifier:)` and the Info.plist `BGTaskSchedulerPermittedIdentifiers`. */
+    const val DOWNLOAD_BACKSTOP_TASK_ID: String = "app.snapsync.download.backstop"
 
     // The event config seam/store (one Keychain adapter is both), hoisted so a (re)provision can read
     // the current event id and the leave use-case can clear it.
@@ -149,6 +156,10 @@ object SnapSyncRoot {
         controller
     }
 
+    // Download progress for the joined-layer "downloaded X of Y" line (capability `photo-download`),
+    // read from the store. Refreshed on foreground entry alongside the upload status.
+    private val downloadStatusSource: StoreDownloadStatusSource by lazy { StoreDownloadStatusSource(downloadStore) }
+
     // The leave use-case: the local-only inverse of a join. Disables the producer, then clears the
     // Keychain config — only. It constructs no ledger type; the extension resets its own private ledger,
     // cursor, and joinedEventId marker on its next cycle once the configured event no longer matches.
@@ -193,6 +204,7 @@ object SnapSyncRoot {
             // Fire-and-forget share of the invite deeplink (the host owns the URL). Wiring-only:
             // present the system share sheet over the current top view controller.
             share = { url -> presentShareSheet(url) },
+            downloadSource = downloadStatusSource,
         )
     }
 
@@ -210,8 +222,14 @@ object SnapSyncRoot {
         scope.launch { config.config.value?.eventId?.let { downloadController.reconcile(it) } }
     }
 
-    /** No-op: status liveness is event-driven (foreground entry), never polled. */
-    fun onBackground() = Unit
+    /**
+     * On backgrounding, queue the download import-tail backstop so any staged-but-unimported foreign
+     * assets get imported at the next idle/charging window even if no further download wakes the app
+     * (capability `photo-download`, 5.4). Status liveness itself stays event-driven (foreground entry).
+     */
+    fun onBackground() {
+        scheduleDownloadBackstop()
+    }
 
     /**
      * Re-read the own-device completed source (gallery enumeration × per-device file listing) and the
@@ -220,6 +238,7 @@ object SnapSyncRoot {
     private suspend fun refreshStatusSources() {
         completedAssets.refresh()
         inFlightSource.refresh()
+        downloadStatusSource.refresh() // the "downloaded X of Y" line (capability `photo-download`)
     }
 
     /**
@@ -228,6 +247,32 @@ object SnapSyncRoot {
      * the OS upload-job system's), so this just invokes the OS [completionHandler] immediately. Kept so
      * the Swift app delegate's `handleEventsForBackgroundURLSession` seam stays a harmless pass-through.
      */
+    /**
+     * The `BGProcessingTask` import-tail backstop (capability `photo-download`, 5.4): drains any
+     * staged-but-not-yet-imported foreign assets when no further download event would wake the app
+     * (e.g. the last transfer overran its URLSession wake budget). OS-scheduled (idle/charging) via the
+     * Swift host's `BGTaskScheduler` registration; [onComplete] maps to `task.setTaskCompleted`.
+     * Discovery stays foreground-only — this imports already-downloaded work, it does not re-read the union.
+     */
+    fun runDownloadBackstop(onComplete: () -> Unit) {
+        scope.launch {
+            runCatching { downloadController.importReady() }
+                .onFailure { log.w(it) { "download backstop import failed" } }
+            scheduleDownloadBackstop() // re-arm for the next idle window
+            onComplete()
+        }
+    }
+
+    /** Queue a `BGProcessingTask` request so the OS runs [runDownloadBackstop] at a future idle moment. */
+    @OptIn(ExperimentalForeignApi::class)
+    fun scheduleDownloadBackstop() {
+        val request = BGProcessingTaskRequest(DOWNLOAD_BACKSTOP_TASK_ID)
+        request.requiresNetworkConnectivity = false // imports operate on already-staged bytes
+        request.requiresExternalPower = false
+        runCatching { BGTaskScheduler.sharedScheduler.submitTaskRequest(request, null) }
+            .onFailure { log.w(it) { "could not schedule download backstop" } }
+    }
+
     fun handleBackgroundUrlSession(identifier: String, completionHandler: () -> Unit) {
         // Repurposed for downloads: the OS relaunched us to deliver background download completions.
         // Adopt the session so its delegate fires (staging + import run), and invoke the OS handler

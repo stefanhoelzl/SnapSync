@@ -26,6 +26,8 @@ fun MainViewController() = ComposeUIViewController {
     // The event's invite deeplink (null until an event is configured) — rendered as the join QR in the
     // joined layer and handed to the share sheet.
     val inviteUrl by host.inviteUrl.collectAsState()
+    // Joined-layer download progress (capability `photo-download`): foreign photos imported / total.
+    val download by host.downloadStatus.collectAsState()
 
     // Dev/test: apply a `SNAPSYNC_DEEPLINK` launch-env deeplink once per process (no-op in
     // production, where no such env var exists). Runs after `host` is realized; safe to repeat.
@@ -56,5 +58,7 @@ fun MainViewController() = ComposeUIViewController {
         inviteUrl = inviteUrl,
         onCreateEvent = host::onCreateEvent,
         transientError = transientError,
+        downloadedCount = download.downloaded,
+        downloadTotal = download.total,
     )
 }

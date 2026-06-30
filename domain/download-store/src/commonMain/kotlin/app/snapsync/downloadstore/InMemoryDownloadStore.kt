@@ -73,6 +73,8 @@ class InMemoryDownloadStore : DownloadStore {
         assets.values.count { it.state == DownloadState.IMPORTED }
     }
 
+    override suspend fun assetCount(): Int = lock.withLock { assets.size }
+
     override suspend fun pruneNonTerminal() = lock.withLock {
         val drop = assets.filter { it.value.state != DownloadState.IMPORTED }.keys.toList()
         drop.forEach { assets.remove(it); resources.remove(it) }

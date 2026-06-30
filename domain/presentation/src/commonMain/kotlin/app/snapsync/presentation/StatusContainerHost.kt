@@ -15,6 +15,9 @@ import app.snapsync.eventcreation.NoOpEventCreator
 import app.snapsync.permission.PermissionRequester
 import app.snapsync.permission.PermissionStatus
 import app.snapsync.permission.PermissionStatusSource
+import app.snapsync.status.DownloadProgress
+import app.snapsync.status.DownloadStatusSource
+import app.snapsync.status.InMemoryDownloadStatusSource
 import app.snapsync.status.SyncStatus
 import app.snapsync.status.SyncState
 import app.snapsync.status.SyncProgress
@@ -50,7 +53,15 @@ class StatusContainerHost(
     // same shape as `leave`. Defaults to a no-op so non-iOS hosts and tests construct unchanged and a
     // share there is inert; iOS binds it to a `UIActivityViewController` presentation.
     private val share: (String) -> Unit = {},
+    // Download progress for the joined-layer "downloaded X of Y" line (capability `photo-download`).
+    // Exposed as a screen-level StateFlow (like `inviteUrl`), NOT folded into `UiState` — it's an
+    // independent indicator that doesn't gate upload classification. Defaults to inert (always 0 of 0)
+    // so non-iOS hosts/tests construct unchanged; iOS injects the store-backed source.
+    downloadSource: DownloadStatusSource = InMemoryDownloadStatusSource(),
 ) : ContainerHost<UiState, SetupEffect> {
+
+    /** The joined-layer download-progress indicator; the screen hides the line when `isEmpty`. */
+    val downloadStatus: StateFlow<DownloadProgress> = downloadSource.progress
 
     override val container: Container<UiState, SetupEffect> =
         scope.container(

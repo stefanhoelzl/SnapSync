@@ -11,6 +11,8 @@ import app.snapsync.eventcreation.CreationStatus
 import app.snapsync.eventcreation.CreationStatusSource
 import app.snapsync.eventcreation.EventCreator
 import app.snapsync.eventcreation.NoOpEventCreator
+import app.snapsync.status.DownloadProgress
+import app.snapsync.status.InMemoryDownloadStatusSource
 import app.snapsync.status.SyncStatus
 import app.snapsync.status.SyncProgress
 import app.snapsync.status.SyncStatusSource
@@ -41,6 +43,12 @@ class PanelController {
     val syncSource: SyncStatusSource = object : SyncStatusSource {
         override val status = syncState
     }
+
+    // The joined-layer download line (capability `photo-download`): forge "downloaded X of Y" to
+    // review the indicator without a device. 0/0 hides the line.
+    val downloadStatusSource = InMemoryDownloadStatusSource()
+    fun setDownload(downloaded: Int, total: Int) =
+        downloadStatusSource.set(DownloadProgress(downloaded, total))
 
     val permissionSource: PermissionStatusSource = object : PermissionStatusSource {
         override val permission = permissionState

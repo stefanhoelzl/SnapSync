@@ -28,13 +28,13 @@
 - [x] 5.1 Implement `PhotoDownloadJobs` over a background `URLSession` (discretionary/Wi-Fi, bounded in-flight window); on completion move temp → durable App-Group staging and record in the store
 - [x] 5.2 Implement `PhotoLibraryImporter`: when an asset's resources are all staged, one `PHAssetCreationRequest` (`live`→`.pairedVideo`, `primary`→`.photo`/`.video`/`.audio` by `contentType`, unknown → skip+log) into the camera roll; capture `placeholderForCreatedAsset.localIdentifier` and write the suppression row **inside** the change block
 - [x] 5.3 Swift host: adopt the background `URLSession` and implement `handleEventsForBackgroundURLSession` → forward to the Kotlin download controller (reused the existing `AppDelegate` hook; `SnapSyncRoot.handleBackgroundUrlSession` now routes to `IosPhotoDownloadJobs.adoptBackgroundEvents`)
-- [ ] 5.4 Register a `BGProcessingTask` backstop that drains pending imports (and re-reads nothing — discovery is foreground-only); add the required background-mode entitlement/Info.plist keys
+- [x] 5.4 Register a `BGProcessingTask` backstop that drains pending imports (and re-reads nothing — discovery is foreground-only); add the required background-mode entitlement/Info.plist keys
 
 ## 6. Status (download line)
 
-- [ ] 6.1 Add `DownloadStatusSource` projection (foreign complete assets imported `X` / in-union `Y`) in `:domain:status`; `commonTest`
-- [ ] 6.2 Surface an independent "downloaded X of Y" line in `UiState`/the joined screen without altering upload "Completed"; presentation tests
-- [ ] 6.3 Desktop harness: a fake importer (writes to a folder) + fake union source so the flow is exercised off-device
+- [x] 6.1 Add `DownloadStatusSource` projection (foreign complete assets imported `X` / in-union `Y`) in `:domain:status`; `commonTest`
+- [x] 6.2 Surface an independent "downloaded X of Y" line in `UiState`/the joined screen without altering upload "Completed"; presentation tests
+- [x] 6.3 Desktop harness: a fake importer (writes to a folder) + fake union source so the flow is exercised off-device
 
 ## 7. Composition + triggers
 
@@ -45,5 +45,5 @@
 
 - [x] 8.1 `./gradlew build` (JVM + all unit tests) and `compileIosMainKotlinMetadata` green; `iosSimulatorArm64Test` green on CI (run 222/223)
 - [x] 8.2 On-device verify (SE2, seeded foreign contributor): foreign photos auto-import without foreground ✓; idempotent (no re-import) ✓; echo-suppressed ✓. Caught + fixed a double-import race (which also caused a suppression gap); re-verified single import + suppression. (Relaunched-from-terminated import path leans on the already-verified background-import spike + the wired Swift hook.)
-- [ ] 8.3 Update `docs/design.md` §1 (flip the contribute-only/no-download non-goal) and record the storage-truth download model, echo-suppression, the download store, and foreground-only discovery
+- [x] 8.3 Update `docs/design.md` §1 (flip the contribute-only/no-download non-goal) and record the storage-truth download model, echo-suppression, the download store, and foreground-only discovery
 - [ ] 8.4 `openspec validate add-photo-download`; ship via branch → PR → /ship

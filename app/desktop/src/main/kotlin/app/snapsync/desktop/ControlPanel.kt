@@ -95,6 +95,13 @@ fun ControlPanel(controller: PanelController) {
             Button(onClick = { controller.adjustInFlightBy(-1) }) { Text("in-flight −") }
             Button(onClick = { controller.adjustInFlightBy(+1) }) { Text("in-flight +") }
         }
+
+        Text("Download (joined layer — capability photo-download)")
+        ButtonRow {
+            Button(onClick = { controller.setDownload(0, 0) }) { Text("hidden (0/0)") }
+            Button(onClick = { controller.setDownload(2, 5) }) { Text("downloading (2/5)") }
+            Button(onClick = { controller.setDownload(5, 5) }) { Text("all downloaded (5/5)") }
+        }
     }
 }
 
