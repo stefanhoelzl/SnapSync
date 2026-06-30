@@ -17,6 +17,7 @@ import app.snapsync.presentation.StatusContainerHost
 import app.snapsync.rejoin.HttpDeviceFilesSource
 import app.snapsync.rejoin.LeaveEvent
 import app.snapsync.rejoin.darwinHttpClient
+import app.snapsync.engine.LedgerBackend
 import app.snapsync.engine.iosLedgerBackend
 import app.snapsync.status.ListingSyncStatusSource
 import app.snapsync.status.OwnDeviceCompletedAssetsSource
@@ -94,14 +95,17 @@ object SnapSyncRoot {
         )
     }
 
-    // The "uploading now" count for the in-progress caption (capability `sync-status`): a READ-ONLY
-    // peek at the extension's shared App-Group ledger. The app constructs the ledger backend but uses
-    // it ONLY to read `aggregates().pending` (the asset-counted in-flight) — never a write — so the
-    // extension stays the sole writer and no `LedgerWriter` is built here. WAL permits this concurrent
-    // cross-process read; on any failure the source yields 0. Refreshed on foreground entry.
+    // The app-side handle on the extension's shared App-Group ledger, used for two narrow things only:
+    // a READ-ONLY in-flight read (`aggregates().pending`, below) and a reset-family `clearRequested()`
+    // on extension disable (recover jobs the disable wiped, capability `ios-background-upload`). No
+    // per-key record writes and no `LedgerWriter` — the extension stays the sole record writer. WAL
+    // permits the concurrent cross-process read.
+    private val ledgerBackend: LedgerBackend by lazy { iosLedgerBackend() }
+
+    // The "uploading now" count for the in-progress caption (capability `sync-status`): the read-only
+    // ledger peek; on any failure the source yields 0. Refreshed on foreground entry.
     private val inFlightSource: ReadingInFlightSource by lazy {
-        val ledger = iosLedgerBackend()
-        ReadingInFlightSource { ledger.aggregates().pending }
+        ReadingInFlightSource { ledgerBackend.aggregates().pending }
     }
 
     // The leave use-case: the local-only inverse of a join. Disables the producer, then clears the
@@ -110,7 +114,7 @@ object SnapSyncRoot {
     private val leaveEvent: LeaveEvent by lazy {
         LeaveEvent(
             config = config,
-            disableExtension = { setUploadExtensionEnabled(false) },
+            disableExtension = { disableExtension() },
         )
     }
 
@@ -249,10 +253,23 @@ object SnapSyncRoot {
      * record so `enable(true)` re-creates it cleanly for the currently-installed extension — and the
      * re-register is what reliably prompts the OS to schedule `process()`. Idempotent-safe to repeat.
      */
-    private fun enableBackgroundUpload() {
+    // Disable the extension AND clear the now-orphaned REQUESTED rows (capability
+    // `ios-background-upload`). A disable (`setUploadJobExtensionEnabled(false)`) deletes the OS
+    // upload-job configuration, wiping every in-flight job; without clearing, those rows stay
+    // REQUESTED forever (the engine never re-issues REQUESTED, and no API surfaces the vanished job),
+    // permanently stranding mid-upload photos. Clearing lets the next discovery re-create exactly the
+    // not-yet-stored jobs. The SINGLE disable path for both the re-register toggle and leave, so they
+    // cannot diverge. `clearRequested` is a reset-family op (no `LedgerWriter`); launched on the app
+    // scope since it suspends — it completes well before the OS next schedules the extension.
+    private fun disableExtension() {
         setUploadExtensionEnabled(false)
+        scope.launch { ledgerBackend.clearRequested() }
+    }
+
+    private fun enableBackgroundUpload() {
+        disableExtension()
         setUploadExtensionEnabled(true)
-        log.i { "background-upload extension re-registered (disable→enable)" }
+        log.i { "background-upload extension re-registered (disable→enable, cleared REQUESTED)" }
     }
 
     /**

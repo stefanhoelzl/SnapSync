@@ -96,6 +96,16 @@ interface LedgerBackend {
     suspend fun clear()
 
     /**
+     * Delete every `REQUESTED` row, leaving `COMPLETED` and `FAILED` rows untouched — an **app-side
+     * reset-family** op (alongside [clear]), not a writer-only prune. The recovery for jobs the OS
+     * wiped when the extension was disabled: those resources stay `REQUESTED`, the engine never
+     * re-issues a `REQUESTED` key, and no API surfaces the vanished job — so clearing `REQUESTED` is
+     * what lets the next discovery re-create them. Clearing **all** `REQUESTED` is correct because a
+     * disable wipes **all** in-flight jobs at once. Dings [changes] once, like [clear].
+     */
+    suspend fun clearRequested()
+
+    /**
      * Atomically replace the entire store with [entries] (delete-all then insert-all in one
      * transaction): either all prior rows go and all [entries] land, or — on failure — the store is
      * left exactly as it was (no partial baseline is ever observable). Entries are stored verbatim

@@ -18,6 +18,7 @@ class FakeLedgerBackend : LedgerBackend {
     override suspend fun get(key: String): LedgerEntry? = rows[key]
     override suspend fun put(entry: LedgerEntry) { rows[entry.key] = entry; dings.tryEmit(Unit) }
     override suspend fun clear() { rows.clear(); dings.tryEmit(Unit) }
+    override suspend fun clearRequested() { rows.values.removeAll { it.state == LedgerState.REQUESTED }; dings.tryEmit(Unit) }
 
     override suspend fun resetTo(entries: List<LedgerEntry>) {
         val next = entries.associateByTo(mutableMapOf()) { it.key }

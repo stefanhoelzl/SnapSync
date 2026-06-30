@@ -32,6 +32,11 @@ class InMemoryLedgerBackend : LedgerBackend {
         dings.tryEmit(Unit)
     }
 
+    override suspend fun clearRequested() {
+        entries.values.removeAll { it.state == LedgerState.REQUESTED }
+        dings.tryEmit(Unit)
+    }
+
     override suspend fun resetTo(seed: List<LedgerEntry>) {
         val next = seed.associateByTo(mutableMapOf()) { it.key }
         entries.clear()
