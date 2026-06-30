@@ -1,0 +1,9 @@
+-- v1 -> v2: add the per-asset capture date, so imported photos sort by when they were taken
+-- (set on PHAssetCreationRequest.creationDate) rather than the download/import time.
+--
+-- NON-destructive ADD COLUMN with a default — unlike the ledger's destructive migrations, the
+-- downloadAsset table holds PERMANENT suppression rows (the `createdLocalId` set that stops the upload
+-- extension from re-uploading downloaded photos). Dropping it would lose echo-suppression, so we add
+-- the column in place. Pre-migration rows get an empty creationDate (harmless: they are already
+-- IMPORTED and are never re-imported). Migration SQL is raw (no `AS DownloadState` annotation).
+ALTER TABLE downloadAsset ADD COLUMN creationDate TEXT NOT NULL DEFAULT '';
