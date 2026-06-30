@@ -250,6 +250,14 @@ exactly one `changes` signal on success. Entries are stored verbatim (the caller
 `resetTo` performs no clock stamping of its own. On the SQLDelight backend it SHALL execute as one
 transaction.
 
+The atomic baseline reset (`resetTo`, the clear-then-seed primitive) **is what rejoin reconciliation
+invokes on a re-join** (an event switch, reinstall, or fresh provision). Reconciliation `resetTo`s the
+ledger to exactly one `COMPLETED` row per filename in the **per-device** listing, so the clear is what
+drops stale/phantom rows (e.g. a `REQUESTED` row whose job never materialized) while the
+device-global, event-independent listing re-seeds the same files `COMPLETED` — preserving cross-event
+dedup so globally-stored resources never re-upload after a switch. The bare-filename key is what makes
+this safe: a re-seeded `COMPLETED` row keys identically across events.
+
 #### Scenario: Interrupted reset leaves the store unchanged
 - **WHEN** a `resetTo` transaction fails partway (e.g. an insert errors)
 - **THEN** the store retains exactly its pre-call rows and no `changes` signal claims a new baseline
@@ -261,4 +269,64 @@ transaction.
 #### Scenario: Reset baseline holds on the SQLDelight backend
 - **WHEN** the reset scenarios run against the SQLDelight backend on a JVM sqlite driver
 - **THEN** they pass unchanged (a single-transaction replacement, one change signal)
+
+#### Scenario: A re-join resetTo seed preserves cross-event dedup
+- **WHEN** the store holds `COMPLETED` rows from a prior event plus a stale non-`COMPLETED` row, and reconciliation `resetTo`s the new event from the device-global per-device listing
+- **THEN** the listing re-seeds the still-stored files `COMPLETED` (so none re-upload) and the stale row is dropped by the clear, leaving the ledger as exactly the device's stored files
+
+### Requirement: Event-independent key
+
+The ledger key SHALL be the **bare resource filename** (`<assetId>-<role>.<ext>`), carrying no event
+scoping. Because the key is event-independent, a `COMPLETED` row recorded while one event is
+configured stays valid and continues to read as `COMPLETED` after the configured event changes — the
+ledger neither records nor consults an event when keying, recording, or reading a row. This is what
+lets cross-event dedup come purely from the reconcile seed source (a `resetTo` clear-and-seed from the
+device-global per-device listing) without any ledger key change.
+
+#### Scenario: A COMPLETED row stays valid after the configured event changes
+- **WHEN** a resource is recorded `COMPLETED` under one event and the configured event later changes
+- **THEN** `get`/`entry` for that bare filename still returns the `COMPLETED` row, unaffected by the event change
+
+#### Scenario: The key carries no event scoping
+- **WHEN** two configured events would reference the same resource
+- **THEN** they resolve to the **same** ledger key (the bare filename), so a single `COMPLETED` row serves both
+
+### Requirement: Requested-state reset
+
+`LedgerBackend` SHALL provide `clearRequested()`: a bulk delete of **every row whose state is
+`REQUESTED`**, leaving `COMPLETED` and `FAILED` rows untouched. It SHALL emit exactly one `changes`
+signal on success (like `clear`/`resetTo`). On the SQLDelight backend it SHALL be a single indexed-by
+-state `DELETE … WHERE state = 'REQUESTED'`.
+
+`clearRequested` is an **app-side reset-family** operation — in the same family as `clear()` and
+`resetTo()`, **not** one of the writer-only prunes (`deleteByAssetId`/`retainAssets`). It SHALL be
+callable on the `LedgerBackend` **without** a `LedgerWriter`, so the app can invoke it (the app
+constructs no `LedgerWriter`). It is the recovery for jobs the OS wiped when the extension was
+disabled: those resources remain `REQUESTED` in the ledger, the engine never re-issues a `REQUESTED`
+key, and there is no API to enumerate live jobs to detect the orphan — so a bulk `REQUESTED` clear is
+the only way to let the next discovery re-create them. Clearing **all** `REQUESTED` is correct because
+a disable wipes **all** in-flight jobs at once, so no genuinely-in-flight row is lost.
+
+#### Scenario: clearRequested removes only REQUESTED rows
+
+- **WHEN** the store holds a `REQUESTED` row, a `COMPLETED` row, and a `FAILED` row, and
+  `clearRequested()` is called
+- **THEN** the `REQUESTED` row is gone and the `COMPLETED` and `FAILED` rows are unchanged
+
+#### Scenario: clearRequested emits one change signal
+
+- **WHEN** `clearRequested()` succeeds over a store containing at least one `REQUESTED` row
+- **THEN** exactly one `changes` signal is emitted, so a watcher re-reads the now-cleared truth
+
+#### Scenario: A re-created key uploads again after a clear
+
+- **WHEN** a key is `REQUESTED`, `clearRequested()` drops it, and the next discovery re-derives that
+  key (`ResourceChanged`)
+- **THEN** the engine answers `Work` (the key is now absent), not `AlreadyUploaded`
+
+#### Scenario: clearRequested holds on the SQLDelight backend
+
+- **WHEN** the clearRequested storage-seam scenarios run against the SQLDelight backend on a JVM
+  sqlite driver via the shared backend contract
+- **THEN** they pass unchanged (a single state-scoped delete, one change signal)
 
