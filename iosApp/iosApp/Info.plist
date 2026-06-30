@@ -64,5 +64,18 @@
 	<array>
 		<string>UIInterfaceOrientationPortrait</string>
 	</array>
+	<!-- Background processing for the photo-download import-tail backstop (capability photo-download):
+	     a BGProcessingTask drains staged-but-unimported downloads at an idle/charging window when no
+	     further URLSession download event would wake the app. The identifier MUST match the Swift
+	     register(forTaskWithIdentifier:) call and SnapSyncRoot.DOWNLOAD_BACKSTOP_TASK_ID, or the
+	     register call crashes at launch. -->
+	<key>UIBackgroundModes</key>
+	<array>
+		<string>processing</string>
+	</array>
+	<key>BGTaskSchedulerPermittedIdentifiers</key>
+	<array>
+		<string>app.snapsync.download.backstop</string>
+	</array>
 </dict>
 </plist>

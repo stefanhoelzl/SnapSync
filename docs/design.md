@@ -34,9 +34,16 @@ A **scope pivot** (2026-06-22) of SnapSync, from a *personal one-way library bac
 
 **In scope (this version):**
 - iOS app, distributed via **TestFlight** only. **Minimum iOS 27.0.**
-- **Event-scoped one-way upload** (contribution): a device joined to an event uploads its local
+- **Event-scoped upload** (contribution): a device joined to an event uploads its local
   photos **with capture date ≥ the event start date** → storage, under that event's key namespace.
-  Never downloads, never deletes remotely, never views in-app.
+  Never deletes remotely; no in-app *viewer* (collected photos land in the system Photos library, below).
+- **Event-scoped download + import** (`photo-download`): a joined device automatically downloads the
+  **other** contributors' complete assets (the event-wide union read, foreign = a `deviceId` other than
+  this device's) and imports them **full-fidelity into the system Photos library** (camera roll) — so a
+  shared event's photos appear on every participant's phone, without anyone opening the app. Downloaded
+  photos are **suppressed from re-upload** (no echo) and never re-imported once deleted. Background
+  transfers via a background `URLSession` (Wi-Fi **and** cellular); import preserves the original
+  capture date so photos sort by when they were taken. Discovery of *later* additions is foreground-only.
 - **One event at a time.** Joining a new event **re-provisions** (replaces) the current one
   (§2.4/§3.2). Multi-event membership is a later concern.
 - **Create an event in-app** (enter a name → `POST /event` mints it and the app auto-joins) **or join
@@ -70,8 +77,10 @@ A **scope pivot** (2026-06-22) of SnapSync, from a *personal one-way library bac
 **Explicit non-goals / deferred:**
 - **Leave does not delete remote objects.** Leaving forgets the event on-device only; removing the
   event's already-uploaded objects from storage is out of scope (no backend delete path).
-- **No in-app viewing / download** — contribute-only. Collected photos are viewed by a **separate
-  external tool**.
+- **No in-app *viewer*.** Download-and-import **is** in scope (`photo-download`, above), but collected
+  photos are imported into the **system Photos library** and viewed there — the app renders no gallery
+  of its own. Edits/adjustments are not synced (originals only); a downloaded photo deleted locally is
+  not re-imported.
 - **No multi-event membership.** Event creation in-app and the joined-event invite QR
   (`event-invite-qr`) now exist; what remains out of scope is multi-event and any QR generation beyond
   the joined event's own invite.
@@ -79,7 +88,7 @@ A **scope pivot** (2026-06-22) of SnapSync, from a *personal one-way library bac
 - No encryption (plaintext upload). **The edge endpoint sees the bytes in transit** (device→edge→bucket)
   — a deliberate trade of the v1 byte-blind direct-to-bucket path for sidestepping presigned-PUT signing
   on the background extension (§4). No at-rest or in-transit-to-edge encryption beyond TLS.
-- No bidirectional sync, no remote deletes, no content-dedup.
+- No **edit** sync (downloads pull originals only, one way into the library), no remote deletes, no content-dedup.
 - No video assets, no album selection, no settings screen.
 - **No TTL / purge** — photos persist indefinitely.
 

@@ -75,6 +75,9 @@ interface DownloadStore : SuppressionSource {
     /** Count of imported foreign assets (the download-progress numerator). */
     suspend fun importedCount(): Int
 
+    /** Count of all foreign assets known for download — pending + imported (the progress denominator). */
+    suspend fun assetCount(): Int
+
     /** Drop non-terminal rows on leave/switch; imported rows are preserved. */
     suspend fun pruneNonTerminal()
 }
@@ -135,6 +138,8 @@ class SqlDelightDownloadStore(database: DownloadDatabase) : DownloadStore {
     }
 
     override suspend fun importedCount(): Int = q.countImported().executeAsOne().toInt()
+
+    override suspend fun assetCount(): Int = q.countAssets().executeAsOne().toInt()
 
     override suspend fun pruneNonTerminal() {
         q.transaction {

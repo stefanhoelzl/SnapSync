@@ -46,9 +46,11 @@ fun main() = application {
                 },
                 creationStatusSource = controller.creationStatusSource,
                 creator = controller.creator,
+                downloadSource = controller.downloadStatusSource,
             )
         }
         val state by host.container.stateFlow.collectAsState()
+        val download by host.downloadStatus.collectAsState()
         // The joined-layer presets force a canned event, so this is non-null there → the QR renders.
         val inviteUrl by host.inviteUrl.collectAsState()
 
@@ -67,6 +69,8 @@ fun main() = application {
                             onShareInvite = host::onShareInvite,
                             inviteUrl = inviteUrl,
                             onCreateEvent = host::onCreateEvent,
+                            downloadedCount = download.downloaded,
+                            downloadTotal = download.total,
                         )
                     }
                     ControlPanel(controller)

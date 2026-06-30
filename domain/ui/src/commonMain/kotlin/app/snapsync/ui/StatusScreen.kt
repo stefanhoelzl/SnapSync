@@ -19,6 +19,7 @@ import app.snapsync.ui.components.AppConfirmDialog
 import app.snapsync.ui.components.AppQrCode
 import app.snapsync.ui.components.AppTextField
 import app.snapsync.ui.components.AppTheme
+import app.snapsync.ui.components.DownloadProgressLine
 import app.snapsync.ui.components.LeaveButton
 import app.snapsync.ui.components.PrimaryButton
 import app.snapsync.ui.components.ScreenLayout
@@ -36,6 +37,10 @@ fun StatusScreen(
     inviteUrl: String? = null,
     onCreateEvent: (String) -> Unit = {},
     transientError: String? = null,
+    // Joined-layer download progress (capability `photo-download`): foreign photos imported of total.
+    // Shown as an independent line beneath the upload hero; hidden when there is nothing foreign.
+    downloadedCount: Int = 0,
+    downloadTotal: Int = 0,
 ) {
     AppTheme {
         // Local UI state only: the confirm dialog's visibility never enters UiState or the reduction.
@@ -82,6 +87,12 @@ fun StatusScreen(
                     StatusHero(StatusIndicator.Complete, "Nothing to sync yet")
                 is UiState.Completed ->
                     StatusHero(StatusIndicator.Complete, "${state.total} images synced")
+            }
+            // Independent download line beneath the upload hero (joined layer only), shown once there
+            // are foreign photos to collect. Does not gate the upload hero above.
+            if (state.isJoinedLayer && downloadTotal > 0) {
+                Spacer(Modifier.height(12.dp))
+                DownloadProgressLine(downloaded = downloadedCount, total = downloadTotal)
             }
         }
 

@@ -71,6 +71,10 @@ WHERE createdLocalId IS NOT NULL;
 countImported:
 SELECT COUNT(*) FROM downloadAsset WHERE state = 'IMPORTED';
 
+-- Every foreign asset known for download (pending + imported) — the download-progress denominator.
+countAssets:
+SELECT COUNT(*) FROM downloadAsset;
+
 -- Drop non-terminal rows (and their resources) on leave/switch; imported rows are permanent.
 deleteNonTerminalAssets:
 DELETE FROM downloadAsset WHERE state != 'IMPORTED';
