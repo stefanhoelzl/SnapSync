@@ -3,14 +3,15 @@ package app.snapsync.status
 import kotlin.time.Duration
 
 /**
- * Snapshot of backup truth, derived from storage truth and the live photo library (design.md §2.4):
- * the completeness listing, the on-disk in-flight manifests, and the gallery total — **no ledger
- * read**.
+ * Snapshot of backup truth (design.md §2.4): completeness and classification come from **own-device
+ * storage truth** (each asset's expected resources present in the per-device file listing) and the
+ * live photo library; [pending] alone comes from a **read-only peek at the ledger's in-flight count**.
  *
- * [completed] is the count of **complete assets** reported by the completeness listing (an asset all
- * of whose manifest-named resources are stored), counted by **photo (asset), not resource row**.
- * [pending] is the count of assets with an in-flight on-disk manifest not yet complete; it remains
- * available but does **not** drive classification.
+ * [completed] is the count of **complete assets** — an asset all of whose expected resources are
+ * present in the per-device file listing — counted by **photo (asset), not resource row**.
+ * [pending] is the ledger-reported **in-flight** asset count (photos with a job created but not yet
+ * `COMPLETED`), **clamped to remaining** (`min(inFlight, total − completed)`); it is **display-only**
+ * — it does **not** drive classification.
  *
  * [total] is the live photo-library count (the gallery size, `N`) — NOT a storage count, so it
  * reflects photos not yet uploaded. This is what makes "n of N" honest the instant a photo is taken,

@@ -79,7 +79,7 @@ fun ControlPanel(controller: PanelController) {
         ButtonRow {
             Button(onClick = { controller.showLoading() }) { Text("Loading") }
             Button(onClick = { controller.showNothingToSync() }) { Text("Nothing to sync (N=0)") }
-            Button(onClick = { controller.showInProgress() }) { Text("In progress (12 of 47)") }
+            Button(onClick = { controller.showInProgress() }) { Text("In progress (12/47, 8 uploading)") }
             Button(onClick = { controller.showComplete() }) { Text("Complete (34 of 34)") }
             Button(onClick = { controller.showOvershoot() }) { Text("Overshoot (6 of 5 → clamps)") }
         }
@@ -88,6 +88,12 @@ fun ControlPanel(controller: PanelController) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Button(onClick = { controller.adjustGalleryBy(-1) }) { Text("N −") }
             Button(onClick = { controller.adjustGalleryBy(+1) }) { Text("N +") }
+        }
+
+        Text("In-flight (uploading now)")
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Button(onClick = { controller.adjustInFlightBy(-1) }) { Text("in-flight −") }
+            Button(onClick = { controller.adjustInFlightBy(+1) }) { Text("in-flight +") }
         }
     }
 }

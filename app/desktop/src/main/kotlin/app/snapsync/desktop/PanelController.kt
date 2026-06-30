@@ -155,8 +155,11 @@ class PanelController {
         forgeSync(progress(completed = 0, total = 0))
     }
 
+    // In progress with a REAL in-flight count: 12 synced, 8 uploading now, the remaining 35 awaiting
+    // discovery — so `pending` (8) is distinct from `total − synced` (35), the whole point of the
+    // ledger-peek. Nudge it with [adjustInFlightBy].
     fun showInProgress() {
-        forgeSync(progress(pending = 35, completed = 12, total = 47))
+        forgeSync(progress(pending = 8, completed = 12, total = 47))
     }
 
     fun showComplete() {
@@ -173,6 +176,14 @@ class PanelController {
     fun adjustGalleryBy(delta: Int) {
         val current = (syncState.value as? SyncStatus.Ready)?.progress ?: return
         forgeSync(current.copy(total = (current.total + delta).coerceAtLeast(0)))
+    }
+
+    // The in-flight ("uploading now") count: nudge the forged `pending` of whatever sync state is
+    // showing, so the "{n} in progress" caption (hidden at 0) is reviewable at every value, independent
+    // of remaining (`total − completed`).
+    fun adjustInFlightBy(delta: Int) {
+        val current = (syncState.value as? SyncStatus.Ready)?.progress ?: return
+        forgeSync(current.copy(pending = (current.pending + delta).coerceAtLeast(0)))
     }
 
     // A sync preset's intent is "show me this screen" — impossible while the setup gate is up, so

@@ -17,8 +17,10 @@ import app.snapsync.presentation.StatusContainerHost
 import app.snapsync.rejoin.HttpDeviceFilesSource
 import app.snapsync.rejoin.LeaveEvent
 import app.snapsync.rejoin.darwinHttpClient
+import app.snapsync.engine.iosLedgerBackend
 import app.snapsync.status.ListingSyncStatusSource
 import app.snapsync.status.OwnDeviceCompletedAssetsSource
+import app.snapsync.status.ReadingInFlightSource
 import co.touchlab.kermit.Logger
 import kotlinx.cinterop.ExperimentalForeignApi
 import kotlinx.cinterop.cValue
@@ -92,6 +94,16 @@ object SnapSyncRoot {
         )
     }
 
+    // The "uploading now" count for the in-progress caption (capability `sync-status`): a READ-ONLY
+    // peek at the extension's shared App-Group ledger. The app constructs the ledger backend but uses
+    // it ONLY to read `aggregates().pending` (the asset-counted in-flight) — never a write — so the
+    // extension stays the sole writer and no `LedgerWriter` is built here. WAL permits this concurrent
+    // cross-process read; on any failure the source yields 0. Refreshed on foreground entry.
+    private val inFlightSource: ReadingInFlightSource by lazy {
+        val ledger = iosLedgerBackend()
+        ReadingInFlightSource { ledger.aggregates().pending }
+    }
+
     // The leave use-case: the local-only inverse of a join. Disables the producer, then clears the
     // Keychain config — only. It constructs no ledger type; the extension resets its own private ledger,
     // cursor, and joinedEventId marker on its next cycle once the configured event no longer matches.
@@ -121,7 +133,7 @@ object SnapSyncRoot {
     val host: StatusContainerHost by lazy {
         // The own-device source: complete assets (gallery enumeration × per-device file listing) ×
         // permission × the live gallery total, minted into snapshots. No ledger, no device.json read.
-        val syncSource = ListingSyncStatusSource(completedAssets, permission, gallery, scope)
+        val syncSource = ListingSyncStatusSource(completedAssets, permission, gallery, inFlightSource, scope)
         enableBackgroundUploadOnGrant()
         // `config` is passed as both ports (one Keychain adapter implements both), as `permission` is.
         // No EventStatus source: status is read from the listing; the extension owns reconciliation.
@@ -137,21 +149,25 @@ object SnapSyncRoot {
 
     /**
      * The SwiftUI scene's foreground transition (forwarded from the `@main` scene's scenePhase):
-     * re-LIST the completeness listing and re-read the in-flight manifests so status reflects any
-     * completions that landed while backgrounded (capability `sync-status` liveness). Touching [host]
-     * ensures the stack is assembled before the first transition arrives.
+     * re-read the per-device file listing (completeness) and the ledger's in-flight count so status
+     * reflects any uploads that progressed while backgrounded (capability `sync-status` liveness).
+     * Touching [host] ensures the stack is assembled before the first transition arrives.
      */
     fun onForeground() {
         host
         scope.launch { refreshStatusSources() }
     }
 
-    /** No-op: status liveness is event-driven (foreground entry + manifest completion), never polled. */
+    /** No-op: status liveness is event-driven (foreground entry), never polled. */
     fun onBackground() = Unit
 
-    /** Re-read the own-device completed source (gallery enumeration × per-device file listing). */
+    /**
+     * Re-read the own-device completed source (gallery enumeration × per-device file listing) and the
+     * read-only in-flight count from the ledger (the "uploading now" caption).
+     */
     private suspend fun refreshStatusSources() {
         completedAssets.refresh()
+        inFlightSource.refresh()
     }
 
     /**
