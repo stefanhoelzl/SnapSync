@@ -16,7 +16,7 @@ without anyone opening the app.
   event-blind; downloads are a **storage-truth, app-side** concern (not an engine direction).
 - **Auto-download foreign assets.** On join and on each foreground, the app reads the union, selects
   assets whose `deviceId != myDeviceId` and that it has not already imported, and downloads each
-  resource (background `URLSession`, discretionary/Wi-Fi) to durable App-Group staging. Discovery is
+  resource (background `URLSession`, Wi-Fi **and** cellular, non-discretionary) to durable App-Group staging. Discovery is
   **foreground-only**: photos added later by others are picked up on the next foreground; the initial
   join's transfers + imports complete in the **background** with no reopening.
 - **Full-fidelity per-asset import.** When all of an asset's resources are staged, one

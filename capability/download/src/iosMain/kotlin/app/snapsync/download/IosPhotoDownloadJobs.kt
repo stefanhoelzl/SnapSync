@@ -30,7 +30,7 @@ private const val SEP = "\n"
 
 /**
  * The iOS [PhotoDownloadJobs] (capability `photo-download`): a **background** `URLSession`
- * (discretionary, Wi-Fi-only) that downloads foreign resources while suspended and relaunches the app
+ * (allows cellular + Wi-Fi, non-discretionary) that downloads foreign resources while suspended and relaunches the app
  * on completion. Each finished download is moved to durable App-Group staging and reported via
  * [onStaged]; a bounded in-flight window refills as tasks complete.
  *
@@ -57,8 +57,10 @@ class IosPhotoDownloadJobs(
     private val delegate = Delegate(this)
     private val session: NSURLSession by lazy {
         val config = NSURLSessionConfiguration.backgroundSessionConfigurationWithIdentifier(DOWNLOAD_SESSION_ID)
-        config.discretionary = true
-        config.allowsCellularAccess = false
+        // Transfer over Wi-Fi AND cellular, and don't defer to "discretionary" windows (which strongly
+        // favor Wi-Fi + charging): downloads should make progress on mobile too.
+        config.discretionary = false
+        config.allowsCellularAccess = true
         config.sessionSendsLaunchEvents = true
         NSURLSession.sessionWithConfiguration(config, delegate, null as NSOperationQueue?)
     }

@@ -4,6 +4,8 @@ import app.snapsync.downloadstore.AssetRef
 import app.snapsync.downloadstore.DownloadStore
 import app.snapsync.downloadstore.PlannedResource
 import co.touchlab.kermit.Logger
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 
 /**
  * The device-side download/import orchestrator (capability `photo-download`). Reads the event-wide
@@ -21,6 +23,11 @@ class DownloadController(
     private val log: Logger = Logger.withTag("DownloadController"),
 ) {
 
+    // Serializes all store-mutating flows. Both join (`provisionEvent`) and foreground fire `reconcile`,
+    // and downloads complete on the URLSession delegate — without this, two triggers can both find an
+    // asset importable before either marks it IMPORTED and import it twice (observed on device).
+    private val mutex = Mutex()
+
     /**
      * Discover + plan + enqueue + import, idempotently. Safe to call on join and on every foreground:
      * already-imported and already-planned assets are no-ops, and only not-yet-staged resources enqueue.
@@ -30,19 +37,21 @@ class DownloadController(
             log.w(it) { "union fetch failed — keeping last state" }
             return
         }
-        var planned = 0
-        for (asset in assets) {
-            if (asset.deviceId == myDeviceId) continue // own contribution — already in this library
-            val ref = AssetRef(asset.deviceId, asset.assetId)
-            if (store.isImported(ref)) continue // delete-proof / cross-event dedup
-            store.plan(ref, asset.resources.map {
-                PlannedResource(it.key, it.url, it.role, it.contentType, it.originalFilename)
-            })
-            planned++
+        mutex.withLock {
+            var planned = 0
+            for (asset in assets) {
+                if (asset.deviceId == myDeviceId) continue // own contribution — already in this library
+                val ref = AssetRef(asset.deviceId, asset.assetId)
+                if (store.isImported(ref)) continue // delete-proof / cross-event dedup
+                store.plan(ref, asset.resources.map {
+                    PlannedResource(it.key, it.url, it.role, it.contentType, it.originalFilename)
+                })
+                planned++
+            }
+            log.i { "reconcile: ${assets.size} union asset(s), $planned foreign planned" }
+            jobs.enqueue(store.pendingDownloads())
+            importReadyLocked()
         }
-        log.i { "reconcile: ${assets.size} union asset(s), $planned foreign planned" }
-        jobs.enqueue(store.pendingDownloads())
-        importReady()
     }
 
     /**
@@ -50,13 +59,15 @@ class DownloadController(
      * background-`URLSession` delegate, possibly while backgrounded / on relaunch). Records it and
      * imports the asset if its set is now complete.
      */
-    suspend fun onResourceStaged(ref: AssetRef, resourceKey: String, stagedPath: String) {
+    suspend fun onResourceStaged(ref: AssetRef, resourceKey: String, stagedPath: String) = mutex.withLock {
         store.markStaged(ref, resourceKey, stagedPath)
-        importReady()
+        importReadyLocked()
     }
 
     /** Import every asset whose resources are all staged and that is not yet imported. */
-    suspend fun importReady() {
+    suspend fun importReady() = mutex.withLock { importReadyLocked() }
+
+    private suspend fun importReadyLocked() {
         for (ref in store.importableAssets()) {
             when (val result = importer.import(ref, store.stagedResources(ref))) {
                 is ImportResult.Imported -> {
@@ -70,7 +81,7 @@ class DownloadController(
     }
 
     /** Leave/switch: cancel in-flight transfers and drop non-terminal rows (imported rows persist). */
-    suspend fun onLeaveOrSwitch() {
+    suspend fun onLeaveOrSwitch() = mutex.withLock {
         jobs.cancelAll()
         store.pruneNonTerminal()
     }

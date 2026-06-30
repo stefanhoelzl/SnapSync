@@ -28,8 +28,9 @@ completeness computation of its own.
 ### Requirement: Background resource download to durable staging
 
 Selected resources SHALL be downloaded via a background `URLSession` (so transfers continue while the
-app is suspended), configured discretionary/Wi-Fi-favoring, with a bounded number of in-flight tasks
-(enqueue more as tasks complete). Each completed download SHALL be moved out of the system temporary
+app is suspended). The session SHALL allow **both Wi-Fi and cellular** (not Wi-Fi-only) and SHALL NOT
+be discretionary, so downloads make progress on mobile networks too, with a bounded number of in-flight
+tasks (enqueue more as tasks complete). Each completed download SHALL be moved out of the system temporary
 location into a durable App-Group staging location and recorded in the download store; a transfer
 failure SHALL leave the resource pending for retry (no terminal failure state).
 
