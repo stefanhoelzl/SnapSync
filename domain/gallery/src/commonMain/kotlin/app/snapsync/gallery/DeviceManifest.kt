@@ -4,10 +4,25 @@ import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 
 /**
+ * One resource entry inside a [DeviceManifestAsset] (capability `device-manifest`): a generic [role],
+ * the resource's MIME [contentType], its [key] (the storage object name `<assetId>-<role>.<ext>` — its
+ * `files/<deviceId>/` storage key minus that prefix, byte-identical to what the producer uploads under,
+ * see [uploadKey]; the fetch handle), and the human [filename] as captured. These field names are shared
+ * verbatim with the event-wide union read, so the union is a straight projection of the manifest.
+ */
+@Serializable
+class ManifestResource(
+    val role: ResourceRole,
+    val contentType: String,
+    val key: String,
+    val filename: String,
+)
+
+/**
  * One asset entry inside a [DeviceManifest] (capability `device-manifest`): the device-local
- * [assetId], its [creationDate] (ISO-8601 capture timestamp), and a non-empty [resources] set — the
- * same generic, originals-only [ManifestResource] shape the per-asset manifest used. Carries no
- * `version` (the document is mutable and rewritten each cycle, not a write-once contract).
+ * [assetId], its [creationDate] (ISO-8601 capture timestamp), and a non-empty [resources] set of
+ * generic, originals-only [ManifestResource]s. Carries no `version` (the document is mutable and
+ * rewritten each cycle, not a write-once contract).
  */
 @Serializable
 class DeviceManifestAsset(

@@ -19,14 +19,22 @@
 //   PUT /event/:eventId/device/:deviceId
 //     → streams a JSON device manifest into `events/<eventId>/device/<deviceId>.json`. GATED on event
 //       existence (the marker read) so a manifest is never written under a non-existent event.
+//   GET /event/:eventId/files
+//     → the event-wide UNION: every contributing device's COMPLETE assets (an asset is complete iff
+//       every resource its device.json names is present in `files/<deviceId>/`), flattened across
+//       devices, each tagged with its owning deviceId. GATED on event existence (marker read). Fans
+//       out: marker → LIST `events/<id>/device/` → per device (read device.json + LIST its files) →
+//       complete-only projection. Faithful: any non-404 read failure anywhere (incl. a manifest JSON
+//       parse failure) → 502 (never a partial union). `Cache-Control: no-store` (live read over
+//       mutable manifests + listings). Identity-blind: own-vs-foreign skip is the client's concern.
 //
 // EVENT REGISTRY: an event exists iff the object `events/<id>/metadata.json` is present. Because an
 // eventId is a UUID, the marker key `events/<id>/metadata.json`, the device-manifest keys
 // `events/<id>/device/<deviceId>.json`, and the device-global byte store `files/<deviceId>/…` are
 // mutually disjoint and never collide. Existence is a small `GET` of the marker (bunny's Edge Storage
 // API has no HEAD); a non-404 read failure surfaces as 502 (a transient failure is never mistaken for
-// absence). Only the device-manifest write and the metadata route read the marker — the byte
-// upload/download/list routes are event-independent and ungated.
+// absence). Only the device-manifest write, the metadata route, and the event-wide union read the
+// marker — the byte upload/download and per-device list routes are event-independent and ungated.
 //
 // The per-object byte routes are defined once on a child Hono (`byteFile`) and mounted under
 // `/files/device/:deviceId/:filename` via app.route(), so PUT (upload), OPTIONS, and GET (download)
@@ -62,6 +70,11 @@ function deviceManifestKey(eventId: string, deviceId: string): string {
   return `${MARKER_PREFIX}/${encodeURIComponent(eventId)}/device/${
     encodeURIComponent(deviceId)
   }.json`;
+}
+
+/** The per-event device-manifest directory to LIST: `events/<eventId>/device/`. */
+function deviceManifestDir(eventId: string): string {
+  return `${MARKER_PREFIX}/${encodeURIComponent(eventId)}/device/`;
 }
 
 /** Storage key of a stored resource byte object: `files/<deviceId>/<filename>`. */
@@ -108,6 +121,36 @@ type FileEntry = {
   filename: string;
   size: number;
   url: string;
+};
+
+// The on-storage device manifest (`device-manifest`), after the `key`/`filename` rename. We read only
+// these fields; the union projects them straight through. A resource's `key` is its storage object
+// name (`files/<deviceId>/<key>`, the fetch handle); `filename` is the human capture name.
+type ManifestResource = {
+  role: string;
+  contentType: string;
+  key: string;
+  filename: string;
+};
+type ManifestAsset = {
+  assetId: string;
+  creationDate: string;
+  resources: ManifestResource[];
+};
+type DeviceManifest = {
+  deviceId: string;
+  assets: ManifestAsset[];
+};
+
+// One asset in the event-wide union: the owning `deviceId` (own-vs-foreign skip is the client's
+// concern), the device-local `assetId`, the capture `creationDate`, and the complete set of resources
+// — each a manifest resource plus its `size` (from the device's file listing) and absolute `url`.
+type UnionResource = ManifestResource & { size: number; url: string };
+type UnionAsset = {
+  deviceId: string;
+  assetId: string;
+  creationDate: string;
+  resources: UnionResource[];
 };
 
 /**
@@ -176,6 +219,30 @@ async function readMarker(
   if (res.status === 404) return null; // event was never created
   if (!res.ok) throw new Error(`bunny marker GET returned ${res.status} for ${eventId}`);
   return await res.json() as EventMarker;
+}
+
+/**
+ * Read one device's per-event manifest object (`events/<eventId>/device/<deviceId>.json`). THROWS on
+ * any non-OK status, network error, abort, OR a JSON parse failure — so a faulty manifest fails the
+ * whole union faithfully (`502`) rather than silently dropping a contributor. The caller only invokes
+ * this for devices already discovered by the directory LIST, so the object is expected to exist (a
+ * `404` here is a race and is treated as a failure, not absence).
+ */
+async function readDeviceManifest(
+  fetchImpl: FetchLike,
+  config: Config,
+  eventId: string,
+  deviceId: string,
+): Promise<DeviceManifest> {
+  const url = `https://${config.host}/${config.zone}/${deviceManifestKey(eventId, deviceId)}`;
+  const res = await fetchImpl(url, {
+    method: "GET",
+    headers: { AccessKey: config.accessKey, Accept: "application/json" },
+  });
+  if (!res.ok) {
+    throw new Error(`bunny device-manifest GET returned ${res.status} for ${eventId}/${deviceId}`);
+  }
+  return await res.json() as DeviceManifest;
 }
 
 export function createApp({ fetch: fetchImpl, config }: Deps): Hono {
@@ -382,6 +449,79 @@ export function createApp({ fetch: fetchImpl, config }: Deps): Hono {
       return c.text("upstream rejected", 502);
     }
     return c.body(null, 201);
+  });
+
+  // Event-wide UNION read (capability `bunny-list-endpoint`). GATED on event existence (marker read):
+  // absent → 404, non-404 read failure → 502. Then fan out: one LIST of `events/<eventId>/device/` to
+  // discover the contributing devices, and per device (in parallel) read its `device.json` and LIST
+  // its `files/<deviceId>/` partition. An asset is emitted only when EVERY resource its manifest names
+  // is present in that device's byte store (complete-only); each kept asset is flattened into one
+  // array, tagged with its owning deviceId (the endpoint is identity-blind — own-vs-foreign skip is
+  // the client's concern). The stored manifest is already the event's date-filtered projection, so its
+  // asset list is trusted as-is (no re-filtering). Faithful: any non-404 read failure anywhere in the
+  // fan-out (incl. a manifest JSON parse failure) → 502, never a partial union; a per-device file dir
+  // 404 is "no bytes" (every asset incomplete), not a failure. The 200 response is non-cacheable.
+  app.get("/event/:eventId/files", async (c) => {
+    const eventId = c.req.param("eventId");
+    if (!validateUUID(eventId)) {
+      return c.text("invalid event", 400);
+    }
+
+    // Gate on the marker (existence): absent → 404; a non-404 read failure → 502.
+    let marker: EventMarker | null;
+    try {
+      marker = await readMarker(fetchImpl, config, eventId);
+    } catch (e) {
+      console.error(`union: marker read failed for ${eventId}: ${e}`);
+      return c.text("upstream error", 502);
+    }
+    if (marker === null) return c.text("event not found", 404);
+
+    try {
+      // Enumerate contributing devices with a single LIST of the device-manifest dir. A 404/empty dir
+      // means no contributors → an empty union.
+      const manifestEntries = await listDir(fetchImpl, config, deviceManifestDir(eventId));
+      const deviceIds = (manifestEntries ?? [])
+        .filter((e) => !e.IsDirectory && e.ObjectName.endsWith(".json"))
+        .map((e) => decodeObjectName(e.ObjectName).slice(0, -".json".length));
+
+      // Per-device fan-out (parallel): read the manifest AND list the device's byte partition, then
+      // keep only complete assets. Any rejection here is caught below → 502 (never a partial union).
+      const perDevice = await Promise.all(deviceIds.map(async (deviceId): Promise<UnionAsset[]> => {
+        const [manifest, fileEntries] = await Promise.all([
+          readDeviceManifest(fetchImpl, config, eventId, deviceId),
+          listDir(fetchImpl, config, deviceDir(deviceId)), // 404 → null → no bytes present
+        ]);
+
+        // The device's present object names → byte length (the completeness oracle + size source).
+        const present = new Map<string, number>();
+        for (const e of (fileEntries ?? []).filter((e) => !e.IsDirectory)) {
+          present.set(decodeObjectName(e.ObjectName), e.Length);
+        }
+
+        return (manifest.assets ?? [])
+          .filter((a) => a.resources.length > 0 && a.resources.every((r) => present.has(r.key)))
+          .map((a) => ({
+            deviceId,
+            assetId: a.assetId,
+            creationDate: a.creationDate,
+            resources: a.resources.map((r) => ({
+              role: r.role,
+              contentType: r.contentType,
+              key: r.key,
+              filename: r.filename,
+              size: present.get(r.key)!,
+              url: downloadUrl(config, deviceId, r.key),
+            })),
+          }));
+      }));
+
+      c.header("Cache-Control", "no-store"); // live read over mutable manifests + listings
+      return c.json(perDevice.flat());
+    } catch (e) {
+      console.error(`union: assembly failed for event ${eventId}: ${e}`);
+      return c.text("upstream error", 502);
+    }
   });
 
   // List a device's RAW stored objects (capability `bunny-list-endpoint`). A single LIST of the device
