@@ -38,6 +38,9 @@ class UploadCycle(
     private val platform: UploadJobPlatform,
     private val store: DiscoveryStore,
     private val log: Logger = Logger.withTag("UploadCycle"),
+    // Best-effort hook fired once per fully-drained cycle with that cycle's discovery — the device
+    // manifest is built from THIS (no second PhotoKit enumeration). Default no-op for tests/harness.
+    private val onDiscovery: suspend (Discovery) -> Unit = {},
 ) {
     suspend fun run(): CycleResult {
         // Phase 1 — first failures: re-point the system's single retry at a rebuilt edge URL
@@ -105,6 +108,11 @@ class UploadCycle(
         if (discovery.fullEnumeration) {
             ledger.retainAssets(discovery.resources.mapTo(mutableSetOf()) { it.assetId })
         }
+
+        // Feed the device manifest from THIS cycle's discovery (no second enumeration). Best-effort and
+        // bounded by the impl — it must never fail or stall the cycle (byte jobs are already created).
+        runCatching { onDiscovery(discovery) }
+            .onFailure { log.w(it) { "device-manifest hook failed this cycle" } }
 
         store.saveToken(discovery.nextToken) // advance only on a fully-drained cycle
         return CycleResult.COMPLETED

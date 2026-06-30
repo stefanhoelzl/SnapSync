@@ -25,29 +25,38 @@ interface JoinedEventMarker {
  * reinstalled device from re-uploading already-stored bytes; status is read from storage truth, not
  * from this ledger (see `sync-status`), so the seed has no UI role and narrates nothing.
  *
- * - configured `eventId` == marker → already joined; upload directly (no fetch, enumeration, or seed).
- * - configured `eventId` != marker (a switch, reinstall, or fresh provision) → fetch the event's
- *   complete-asset listing and atomically reset the ledger to one `COMPLETED` row per resource (the
- *   reset replaces any prior event's rows), clear the discovery cursor, reset the per-asset manifest
- *   markers, and set the marker. Returns `true`, so the same cycle proceeds to upload: the seeded rows
- *   are skipped by the engine and any resource absent from the listing (partially-stored /
- *   never-uploaded) re-uploads idempotently.
- * - the listing fetch fails → create no jobs this cycle and leave the marker **unset** (the ledger is
- *   untouched), so the next cycle retries. There is no user-facing join-failure state.
- * - no event configured but a marker remains (a leave) → reset the ledger, clear the cursor and the
- *   manifest markers and the marker, and upload nothing, so a later provision of any event reconciles
- *   fresh.
+ * Bytes are device-partitioned and **event-independent** (`/files/<deviceId>/…`), so seeding from the
+ * **device** listing (not a per-event one) is what preserves cross-event dedup: a switch re-seeds the
+ * same files `COMPLETED`, so nothing already stored re-uploads. The seed is an **atomic
+ * `resetTo` (clear-and-seed)**, not an additive upsert — the clear drops stale/phantom rows (e.g. a
+ * `REQUESTED` row from a prior cycle whose job never materialized, which the engine would otherwise
+ * treat as in-flight and skip forever), leaving the ledger as exactly the device's stored files.
  *
- * The [resetManifests] reset matters on an event **switch**: the per-asset manifest dedup markers are
- * keyed by `assetId`, not by event, so without clearing them on a reset a device switching to a new
- * event would skip re-uploading its manifests and the new event's assets would never read as complete.
+ * The **discovery cursor IS cleared** on a re-join, though: the cursor is what makes the next scan a
+ * full re-enumeration rather than an incremental "what changed" pass, and a re-join needs to
+ * re-enumerate to find the assets that still need uploading (the App-Group cursor survives an app
+ * *upgrade*, so without the reset a re-join scans incrementally and discovers nothing). This is safe —
+ * the reset+seeded ledger answers `AlreadyUploaded` for everything already stored, so a
+ * re-enumeration re-uploads nothing; it only re-discovers genuinely-unstored work.
+ *
+ * - configured `eventId` == marker → already joined; upload directly (no fetch, seed, or cursor reset).
+ * - configured `eventId` != marker (a switch, reinstall, or fresh provision) → fetch the **device's**
+ *   stored filenames, **`resetTo`** one `COMPLETED` row per filename (clear-and-seed, key = filename),
+ *   **clear the discovery cursor** (force a full re-enumeration), then set the marker. Returns `true`,
+ *   so the same cycle proceeds to upload: seeded rows are skipped by the engine and any not-yet-stored
+ *   resource uploads idempotently. The reset makes the ledger exactly the device's stored files on
+ *   every re-join — restoring dedup after a reinstall and clearing any phantom in-flight rows.
+ * - the listing fetch fails → create no jobs this cycle and leave the marker **unset** (the ledger and
+ *   cursor are untouched), so the next cycle retries. There is no user-facing join-failure state.
+ * - no event configured but a marker remains (a leave) → clear the marker only and upload nothing; the
+ *   ledger (global, valid across events) is left intact so a later re-join dedups against it.
  */
 class ExtensionReconciler(
-    private val files: EventFilesSource,
+    private val files: DeviceFilesSource,
     private val ledger: LedgerBackend,
     private val marker: JoinedEventMarker,
+    private val deviceId: String,
     private val clearDiscoveryCursor: suspend () -> Unit,
-    private val resetManifests: suspend () -> Unit,
     private val log: Logger = Logger.withTag("ExtensionReconciler"),
 ) {
     /**
@@ -57,14 +66,10 @@ class ExtensionReconciler(
     suspend fun reconcile(configuredEventId: String?): Boolean {
         val marked = marker.read()
         if (configuredEventId == null) {
-            // Leave (or never joined): a lingering marker means a previously-joined event's private
-            // ledger is still around — reset it and clear the marker so a later provision reconciles
-            // fresh. Nothing to upload either way.
+            // Leave (or never joined): forget the join marker so a later provision reconciles fresh. The
+            // ledger is global (file rows valid across events), so it is left intact for re-join dedup.
             if (marked != null) {
-                log.i { "no event configured but marker present — resetting ledger and clearing marker" }
-                ledger.resetTo(emptyList())
-                clearDiscoveryCursor()
-                resetManifests()
+                log.i { "no event configured but marker present — clearing the join marker" }
                 marker.clear()
             }
             return false
@@ -73,23 +78,35 @@ class ExtensionReconciler(
 
         // Marker mismatch: a switch, reinstall, or fresh provision. Fetch BEFORE mutating so a failure
         // defers without settling — the ledger and marker are left untouched and the next cycle retries.
-        val remote = files.list(configuredEventId).getOrElse {
-            log.w(it) { "listing fetch failed for $configuredEventId — deferring uploads this cycle" }
+        val filenames = files.list(deviceId).getOrElse {
+            log.w(it) { "device listing fetch failed — deferring uploads this cycle" }
             return false
         }
-        // Seed straight from the listing: it returns only complete assets, each carrying its assetId and
-        // its resources' filenames, so one COMPLETED row per resource is all the seed needs — no local
-        // enumeration. The atomic reset replaces any prior event's rows (the switch reset) in one step.
-        val seeds = remote.flatMap { asset ->
-            asset.resources.map { resource ->
-                LedgerEntry(resource.filename, asset.assetId, LedgerState.COMPLETED, attempt = 0)
-            }
-        }
+        // RESET the ledger to exactly the device's stored files — one COMPLETED row each — via an
+        // atomic clear-and-seed, NOT an additive upsert. The clear is essential: it drops stale/phantom
+        // rows, e.g. a REQUESTED row left by a prior cycle whose upload job never actually materialized
+        // (otherwise the engine reads it as "in flight" and skips re-creating that upload forever).
+        // Seeding from the DEVICE listing (global, event-independent) is what preserves cross-event
+        // dedup: a switch re-seeds the same files COMPLETED, so nothing already stored re-uploads; a
+        // genuinely-unstored resource is absent from the listing and uploads.
+        val seeds = filenames.map { LedgerEntry(it, assetIdFromUploadKey(it), LedgerState.COMPLETED, attempt = 0) }
         ledger.resetTo(seeds)
+        // Force a full re-enumeration so the producer re-discovers the assets that still need
+        // uploading — the cursor survives an app upgrade, so a re-join with a settled cursor would
+        // otherwise scan incrementally and find nothing. The reset+seed dedups, so this re-uploads
+        // nothing already stored.
         clearDiscoveryCursor()
-        resetManifests() // event-scoped: re-enqueue manifests for the configured event (markers are assetId-keyed)
-        marker.set(configuredEventId) // settle even when seeds is empty → the next cycle does not re-loop
-        log.i { "joined $configuredEventId — seeded ${seeds.size} resource(s)" }
+        marker.set(configuredEventId) // settle even when the listing is empty → the next cycle does not re-loop
+        log.i { "joined $configuredEventId — reset+seeded ${seeds.size} file(s), cleared cursor" }
         return true
     }
 }
+
+/**
+ * Recover the `assetId` from an upload-key [filename] (`"<assetId>-<role>.<ext>"`): drop the extension,
+ * then take everything before the final `-` (the role token `primary`/`motion` carries no `-`, though
+ * an `assetId` may). The inverse of `uploadKey` in `:domain:gallery`; inlined here so the reconciler
+ * needs no gallery dependency.
+ */
+private fun assetIdFromUploadKey(filename: String): String =
+    filename.substringBeforeLast('.').substringBeforeLast('-')

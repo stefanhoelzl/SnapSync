@@ -46,3 +46,24 @@ fun uploadKey(assetId: String, role: ResourceRole, originalFilename: String): St
 /** The lowercased filename extension, or `bin` when the original filename carries none. */
 fun fileExtension(originalFilename: String): String =
     originalFilename.substringAfterLast('.', "").ifEmpty { "bin" }.lowercase()
+
+/**
+ * Keys under which the iOS resource enumerator stashes the per-asset manifest detail in
+ * [app.snapsync.engine.Resource.metadata] (opaque to the engine), so the device-manifest producer can
+ * build its entries from the **cycle's existing discovery** instead of a second PhotoKit enumeration.
+ */
+const val RESOURCE_META_CREATION_DATE: String = "creationDate"
+const val RESOURCE_META_ORIGINAL_FILENAME: String = "originalFilename"
+const val RESOURCE_META_MIME: String = "mimeContentType"
+
+/**
+ * Recover the [ResourceRole] from an upload-key [filename] (`"<assetId>-<role>.<ext>"`): the role token
+ * is the segment after the **last** `-` and before the `.` (`primary`/`motion`; the role token carries
+ * no `-`, though an `assetId` may). Defaults to [ResourceRole.PRIMARY] for an unrecognised token (never
+ * produced by [uploadKey]).
+ */
+fun roleFromUploadKey(filename: String): ResourceRole {
+    val wire = filename.substringBeforeLast('.').substringAfterLast('-')
+    return ResourceRole.entries.firstOrNull { it.wire == wire } ?: ResourceRole.PRIMARY
+}
+

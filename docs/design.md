@@ -411,6 +411,36 @@ constructs no ledger type; the `observed-completion-overlay` (which masked ledge
 
 ### 3.1 Object keys (event/device-scoped, metadata in the path)
 
+> **Update (2026-06-29, `dedup-files-device-manifests`) — supersedes `flatten-event-namespace` +
+> `immutable-asset-manifests` below.** Bytes now live in a **device-partitioned, event-independent**
+> store and are *linked* into events by reference (uploaded once, reused across events):
+> ```
+> /files/<device-id>/<assetId>-<role>.<ext>     bytes · device-global · uploaded once
+> /events/<event-id>/metadata.json              event marker {eventId,name,createdAt}
+> /events/<event-id>/device/<device-id>.json    the device's per-event manifest (one doc, not N)
+> ```
+> - **device-id returns** (reversing `flatten-event-namespace`): a per-install UUID minted in the
+>   shared Keychain (`device-identity`), the `/files/` partition and the manifest key — recorded now as
+>   forward-prep for a deletion-correct restore (still out of scope). Content-hash keys remain
+>   impractical (the OS still never shows the extension the bytes), so dedup is **same-device,
+>   across-events** via the device-local `assetId`, not cross-device.
+> - **The per-asset manifest becomes one mutable per-event `device.json`** (reversing
+>   `immutable-asset-manifests`): a full-state projection of a device-global accumulator, **PUT
+>   synchronously in-cycle** by the extension (no background `URLSession`), deletion-aware, write-only
+>   in v1. The write-once / permanent-cache property is dropped.
+> - **Byte uploads are ungated** (`PUT /files/device/<id>/<file>`) — accepted abuse trade-off; the
+>   event-existence gate moves to the device.json write. **Status is own-device**: gallery enumeration
+>   (expected) × the per-device file listing `GET /files/device/<id>` (present); it reads no device.json.
+> - **Reconcile** on a re-join **`resetTo`s** (atomic clear-and-seed) the ledger from the per-device
+>   listing — one `COMPLETED` row per stored filename — and **clears the discovery cursor** to force a
+>   full re-enumeration. The clear drops stale/phantom rows (e.g. a `REQUESTED` row from a prior cycle
+>   whose job never materialized). Cross-event dedup still holds: the device listing is event-independent,
+>   so a switch re-seeds the same files `COMPLETED` and re-uploads nothing already stored; a leave clears
+>   only the join marker (the ledger stays intact for re-join dedup). The key is the bare,
+>   event-independent filename.
+>
+> The narrative below is the prior (pre-update) design, retained for context.
+
 The upload-job API fixes the **destination URL at job-creation time**, but the **system** reads the
 bytes during upload — so we never see the bytes and **content-hash keys are impractical**. v1 used
 per-resource metadata keys; this version namespaces them under the event and the contributing device.

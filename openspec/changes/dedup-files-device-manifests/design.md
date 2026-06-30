@@ -60,10 +60,12 @@ STATUS (app — reads NO device.json)
 RECONCILE (extension, marker-gated by joinedEventId)
   configured eventId vs joinedEventId
     same      → upload directly
-    different → additive-seed ledger from GET /files/device/<id>   (NEVER clear)
+    different → ledger.resetTo(seeds) from GET /files/device/<id>   (CLEAR-AND-SEED)
+                clearDiscoveryCursor (force full re-enumeration)
                 re-project device.json to the new event path; set marker
-  reinstall (ledger empty) → same additive seed restores dedup;
+  reinstall (ledger empty) → same resetTo restores dedup;
                              accumulator rebuilds gradually via discovery
+  leave (no event configured) → clear joinedEventId marker only; keep ledger/cursor/accumulator
 ```
 
 ## Key decisions
@@ -75,7 +77,7 @@ RECONCILE (extension, marker-gated by joinedEventId)
 | device.json shape | Mutable full-state snapshot, full rewrite each cycle | Reconstructed locally; each write is a complete, self-contained snapshot → no read-modify-write, no lost update under last-write-wins, self-healing, deletion-aware. Drops the immutable/permanent-cache property (acceptable: cache via ETag/Last-Modified). |
 | device.json source | Device-global accumulator → per-event date-filtered projection | The accumulator, ledger, and cursor are all device-global; only the storage path and the date cutoff are event-scoped, so an event switch is a re-projection, not a reset. |
 | Completeness / status | Own-device: shared enumeration seam (expected) × per-device file list (present) | Avoids multi-cycle ledger lag and needs no device.json read; expected sets come from the **same** seam the producer uses, so app and extension agree byte-for-byte (`gallery-status`). |
-| Dedup mechanism | Reconcile seeds additively from the **device** listing; never clears | The ledger key is already the bare, event-independent filename; the only reason a switch re-uploaded was the old reconcile clearing + reseeding from the **event** listing. |
+| Dedup mechanism | Reconcile `resetTo`s (clear-and-seed) from the **device** listing; clears the cursor | The ledger key is already the bare, event-independent filename; seeding from the **device** (not **event**) listing is what makes the clear-and-seed preserve cross-event dedup — a switch re-seeds the same files `COMPLETED`, and the clear drops stale/phantom rows (e.g. a `REQUESTED` row whose job never materialized) the old additive seed would have left to block re-upload forever. |
 | device.json upload | Synchronous in-cycle PUT by the extension (sole writer) | No background `URLSession`, no app completion draining, no in-flight-file mutation question; a kill mid-PUT is lost and caught next cycle (benign — device.json is write-only in v1 and converges). |
 | Edge read surface | `GET /files/device/<id>` (list, keeps `url`) + `GET /files/device/<id>/<file>` (download) | The only v1 read the device performs is the per-device list; the byte download is restore forward-prep; the event-wide union is external/admin-direct (§3.5), not an edge route. |
 | Upload gating | `/files/` bytes **ungated**; device.json write **event-gated** | Hot per-resource path stays gateless (accepted abuse trade-off); the infrequent per-cycle manifest write keeps the cheap event-existence gate to avoid orphan manifests. |
@@ -125,11 +127,11 @@ REWRITE  bunny-upload-endpoint          /files/device/<id>/<file> ungated + even
 REWRITE  edge-upload-provider           URL → /files/device/<deviceId>/<enc>; inject deviceId
 REWRITE  bunny-list-endpoint            GET /files/device/<id> raw list; drop manifest/completeness/cache
 REWRITE  bunny-download-endpoint        GET /files/device/<id>/<file>; public URL format
-REWRITE  event-rejoin-reconciliation    additive device-list seed; no clear; switch keeps state
+REWRITE  event-rejoin-reconciliation    resetTo device-list seed + clear cursor; switch re-uploads nothing; leave clears marker
 REWRITE  ios-background-upload          accumulator + projection + synchronous device.json PUT; prune
 TOUCH    event-creation                 marker → /events/<id>/metadata.json
 TOUCH    sync-status                     own-device sources; remove PendingManifestsSource
 TOUCH    gallery-status                  enumeration seam feeds the app-side status consumer
-TOUCH    sync-ledger                     event-independent key; baseline-reset unused on switch
+TOUCH    sync-ledger                     event-independent key; reconcile invokes resetTo on re-join
 UNTOUCHED sync-engine, deeplink-config, permission-gate, leave-event
 ```

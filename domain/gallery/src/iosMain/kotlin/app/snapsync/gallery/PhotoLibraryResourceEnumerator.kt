@@ -2,15 +2,19 @@ package app.snapsync.gallery
 
 import app.snapsync.engine.Resource
 import kotlinx.cinterop.ExperimentalForeignApi
+import platform.Foundation.NSISO8601DateFormatter
 import platform.Foundation.timeIntervalSince1970
 import platform.Photos.PHAsset
 import platform.Photos.PHAssetResource
 import platform.Photos.PHFetchResult
+import platform.UniformTypeIdentifiers.UTType
 
 /**
  * The PhotoKit-backed [GalleryResourceEnumerator]: enumerates `PHAssetResource`s and derives each
  * resource's `(filename, assetId)` via the shared [uploadKey] derivation, carrying the
- * `PHAssetResource` itself as [Resource.data] so the producer can create a job from it.
+ * `PHAssetResource` itself as [Resource.data] so the producer can create a job from it, plus the
+ * per-asset manifest detail (`creationDate`/`originalFilename`/MIME) in [Resource.metadata] so the
+ * device manifest is built from this same enumeration (no second PhotoKit pass).
  * This is the **single** PhotoKit resource-enumeration site — both the upload producer and the
  * re-join seed go through it, so their keys never diverge.
  *
@@ -35,6 +39,9 @@ class PhotoLibraryResourceEnumerator : GalleryResourceEnumerator {
             val asset = assets.objectAtIndex(index) as PHAsset
             index++
             val assetId = asset.localIdentifier.replace('/', '_')
+            // Per-asset capture timestamp (ISO-8601), reused for every resource of the asset — the
+            // device-manifest detail, stashed in metadata so the manifest needs no second enumeration.
+            val creationDate = asset.creationDate?.let { NSISO8601DateFormatter().stringFromDate(it) } ?: ""
             for (any in PHAssetResource.assetResourcesForAsset(asset)) {
                 val resource = any as PHAssetResource
                 // Originals only: a dropped (edit-artifact / RAW alternate / proxy) type has no role
@@ -44,7 +51,16 @@ class PhotoLibraryResourceEnumerator : GalleryResourceEnumerator {
                     filename = uploadKey(assetId, role, resource.originalFilename),
                     assetId = assetId,
                     contentType = resource.uniformTypeIdentifier,
-                    metadata = emptyMap(),
+                    // Manifest detail (opaque to the engine): the device-manifest producer reads these
+                    // to build entries from this same enumeration. MIME from the UTI; originals' name.
+                    metadata = mapOf(
+                        RESOURCE_META_CREATION_DATE to creationDate,
+                        RESOURCE_META_ORIGINAL_FILENAME to resource.originalFilename,
+                        RESOURCE_META_MIME to (
+                            UTType.typeWithIdentifier(resource.uniformTypeIdentifier)?.preferredMIMEType
+                                ?: "application/octet-stream"
+                            ),
+                    ),
                     data = resource,
                 )
             }

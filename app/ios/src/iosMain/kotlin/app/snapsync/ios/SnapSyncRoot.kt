@@ -8,17 +8,17 @@ import app.snapsync.eventcreation.CreateEvent
 import app.snapsync.eventcreation.EventCreator
 import app.snapsync.eventcreation.HttpEventCreationClient
 import app.snapsync.eventcreation.MutableCreationStatusSource
-import app.snapsync.gallery.IosManifestStore
+import app.snapsync.deviceid.KeychainDeviceIdentity
 import app.snapsync.gallery.PhotoLibraryGalleryStatus
+import app.snapsync.gallery.PhotoLibraryResourceEnumerator
 import app.snapsync.permission.PermissionStatus
 import app.snapsync.permission.PhotoLibraryPermission
 import app.snapsync.presentation.StatusContainerHost
-import app.snapsync.rejoin.HttpEventFilesSource
+import app.snapsync.rejoin.HttpDeviceFilesSource
 import app.snapsync.rejoin.LeaveEvent
 import app.snapsync.rejoin.darwinHttpClient
-import app.snapsync.status.DirectoryPendingManifestsSource
-import app.snapsync.status.FilesCompletedAssetsSource
 import app.snapsync.status.ListingSyncStatusSource
+import app.snapsync.status.OwnDeviceCompletedAssetsSource
 import co.touchlab.kermit.Logger
 import kotlinx.cinterop.ExperimentalForeignApi
 import kotlinx.cinterop.cValue
@@ -73,35 +73,22 @@ object SnapSyncRoot {
     // instance (both enable the extension; a provision must re-enable a producer a prior leave disabled).
     private val permission: PhotoLibraryPermission by lazy { PhotoLibraryPermission() }
 
-    // The shared App-Group manifest store, hoisted so the background-upload controller (writes DONE,
-    // re-enqueues) and the in-flight status reader (lists/prunes PENDING markers) see one instance.
-    private val manifestStore: IosManifestStore by lazy { IosManifestStore() }
+    // The stable per-install device id (shared Keychain — the SAME item the extension reads): the
+    // `/files/<deviceId>/` partition the app's status lists. (Finishes wiring `device-identity` into
+    // both roots.)
+    private val deviceId: String by lazy { KeychainDeviceIdentity().deviceId() }
 
-    // Status from storage truth (capability `sync-status`), no ledger read:
-    //   completed ← the event's completeness listing (GET /event/<id>/files, Darwin HTTPS);
-    //   in-flight ← the on-disk PENDING manifests (with a complete-asset prune backstop).
-    // Both refresh on foreground entry and on each manifest URLSession completion (event-driven; no
-    // polling timer). The host is the same compile-time base the rejoin/upload clients use.
-    private val completedAssets: FilesCompletedAssetsSource by lazy {
+    // Status from OWN-DEVICE storage truth (capability `sync-status`), no ledger, no device.json read:
+    //   completed ← gallery enumeration (EXPECTED resources) × the per-device file listing
+    //   (`GET /files/device/<deviceId>`, Darwin HTTPS, PRESENT files). Refreshes on foreground entry
+    //   (no manifest-completion ding any more). The host is the same compile-time base the upload
+    //   client uses.
+    private val completedAssets: OwnDeviceCompletedAssetsSource by lazy {
         val host = NSBundle.mainBundle.objectForInfoDictionaryKey("BackgroundUploadURLBase") as? String ?: ""
-        FilesCompletedAssetsSource(HttpEventFilesSource(darwinHttpClient(), host)) { config.config.value?.eventId }
-    }
-    private val pendingManifests: DirectoryPendingManifestsSource by lazy {
-        DirectoryPendingManifestsSource(IosManifestDirectory(manifestStore), completedAssets)
-    }
-
-    // The app end of the manifest background URLSession (capability `asset-manifest`): the system
-    // relaunches the app to finish uploads the extension started; this controller adopts that session,
-    // marks each manifest DONE on success, and re-enqueues on failure. On a successful landing it
-    // also re-LISTs + re-reads the in-flight manifests so status stays live. The host is the same base.
-    private val manifestController: ManifestUploadController by lazy {
-        val host = NSBundle.mainBundle.objectForInfoDictionaryKey("BackgroundUploadURLBase") as? String ?: ""
-        ManifestUploadController(
-            store = manifestStore,
-            host = host,
-            eventIdProvider = { config.config.value?.eventId },
-            onManifestUploaded = { scope.launch { refreshStatusSources() } },
-            log = log,
+        OwnDeviceCompletedAssetsSource(
+            PhotoLibraryResourceEnumerator(),
+            HttpDeviceFilesSource(darwinHttpClient(), host),
+            deviceId,
         )
     }
 
@@ -132,9 +119,9 @@ object SnapSyncRoot {
     }
 
     val host: StatusContainerHost by lazy {
-        // The listing-backed source: completeness listing × in-flight manifests × permission × the
-        // live gallery total, minted into snapshots. No ledger read, no observed-completions overlay.
-        val syncSource = ListingSyncStatusSource(completedAssets, pendingManifests, permission, gallery, scope)
+        // The own-device source: complete assets (gallery enumeration × per-device file listing) ×
+        // permission × the live gallery total, minted into snapshots. No ledger, no device.json read.
+        val syncSource = ListingSyncStatusSource(completedAssets, permission, gallery, scope)
         enableBackgroundUploadOnGrant()
         // `config` is passed as both ports (one Keychain adapter implements both), as `permission` is.
         // No EventStatus source: status is read from the listing; the extension owns reconciliation.
@@ -162,20 +149,19 @@ object SnapSyncRoot {
     /** No-op: status liveness is event-driven (foreground entry + manifest completion), never polled. */
     fun onBackground() = Unit
 
-    /** Re-read both storage-truth status sources (completeness listing + on-disk in-flight manifests). */
+    /** Re-read the own-device completed source (gallery enumeration × per-device file listing). */
     private suspend fun refreshStatusSources() {
         completedAssets.refresh()
-        pendingManifests.refresh()
     }
 
     /**
-     * The system relaunched the app to finish background `URLSession` events (the extension's manifest
-     * uploads). Forwarded raw from the Swift app delegate's `handleEventsForBackgroundURLSession`:
-     * adopt the session so completions are processed, and the OS [completionHandler] is invoked once
-     * the session finishes delivering them.
+     * The system relaunched the app to finish background `URLSession` events. There is **no** app-owned
+     * background session any more (the device manifest is PUT synchronously by the extension; bytes are
+     * the OS upload-job system's), so this just invokes the OS [completionHandler] immediately. Kept so
+     * the Swift app delegate's `handleEventsForBackgroundURLSession` seam stays a harmless pass-through.
      */
     fun handleBackgroundUrlSession(identifier: String, completionHandler: () -> Unit) {
-        manifestController.handleEvents(identifier, completionHandler)
+        completionHandler()
     }
 
     /**

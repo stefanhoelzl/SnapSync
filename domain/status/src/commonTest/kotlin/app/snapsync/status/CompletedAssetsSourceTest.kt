@@ -1,36 +1,60 @@
 package app.snapsync.status
 
-import app.snapsync.rejoin.EventFilesSource
-import app.snapsync.rejoin.RemoteAsset
-import app.snapsync.rejoin.RemoteResource
+import app.snapsync.engine.Resource
+import app.snapsync.gallery.InMemoryGalleryResourceEnumerator
+import app.snapsync.rejoin.DeviceFilesSource
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlinx.coroutines.test.runTest
 
 class CompletedAssetsSourceTest {
 
-    private fun asset(id: String) = RemoteAsset(id, listOf(RemoteResource("$id.jpg")))
+    private val deviceId = "dev"
+
+    private fun resource(filename: String, assetId: String) =
+        Resource(filename, assetId, "image/jpeg", emptyMap(), Unit)
+
+    private class FakeDeviceFiles : DeviceFilesSource {
+        var result: Result<List<String>> = Result.success(emptyList())
+        var calls = 0
+            private set
+
+        override suspend fun list(deviceId: String): Result<List<String>> {
+            calls++
+            return result
+        }
+    }
 
     @Test
-    fun `refresh re-reads the complete-asset set`() = runTest {
-        val files = FakeEventFiles()
-        val source = FilesCompletedAssetsSource(files) { "evt" }
+    fun `an asset is complete only when all its expected resources are present`() = runTest {
+        val enumerator = InMemoryGalleryResourceEnumerator(
+            listOf(
+                resource("A-primary.jpg", "A"),
+                resource("A-motion.mov", "A"), // A is a Live Photo: needs both
+                resource("B-primary.jpg", "B"),
+            ),
+        )
+        val files = FakeDeviceFiles()
+        val source = OwnDeviceCompletedAssetsSource(enumerator, files, deviceId)
 
-        files.result = Result.success(listOf(asset("A"), asset("B")))
+        // A fully present + B present → both complete.
+        files.result = Result.success(listOf("A-primary.jpg", "A-motion.mov", "B-primary.jpg"))
         source.refresh()
         assertEquals(setOf("A", "B"), source.completed.value)
 
-        files.result = Result.success(listOf(asset("A"), asset("B"), asset("C")))
+        // A's motion missing → A drops to incomplete; B still complete.
+        files.result = Result.success(listOf("A-primary.jpg", "B-primary.jpg"))
         source.refresh()
-        assertEquals(setOf("A", "B", "C"), source.completed.value)
+        assertEquals(setOf("B"), source.completed.value)
     }
 
     @Test
     fun `a failed listing keeps the last value`() = runTest {
-        val files = FakeEventFiles()
-        val source = FilesCompletedAssetsSource(files) { "evt" }
+        val enumerator = InMemoryGalleryResourceEnumerator(listOf(resource("A-primary.jpg", "A")))
+        val files = FakeDeviceFiles()
+        val source = OwnDeviceCompletedAssetsSource(enumerator, files, deviceId)
 
-        files.result = Result.success(listOf(asset("A")))
+        files.result = Result.success(listOf("A-primary.jpg"))
         source.refresh()
         assertEquals(setOf("A"), source.completed.value)
 
@@ -40,23 +64,9 @@ class CompletedAssetsSourceTest {
     }
 
     @Test
-    fun `no configured event is a no-op`() = runTest {
-        val files = FakeEventFiles()
-        val source = FilesCompletedAssetsSource(files) { null }
-
-        source.refresh()
-        assertEquals(emptySet(), source.completed.value)
-        assertEquals(0, files.calls, "no listing fetched without an event id")
-    }
-}
-
-private class FakeEventFiles : EventFilesSource {
-    var result: Result<List<RemoteAsset>> = Result.success(emptyList())
-    var calls = 0
-        private set
-
-    override suspend fun list(eventId: String): Result<List<RemoteAsset>> {
-        calls++
-        return result
+    fun `the list is fetched for this device`() = runTest {
+        val files = FakeDeviceFiles()
+        OwnDeviceCompletedAssetsSource(InMemoryGalleryResourceEnumerator(), files, deviceId).refresh()
+        assertEquals(1, files.calls)
     }
 }

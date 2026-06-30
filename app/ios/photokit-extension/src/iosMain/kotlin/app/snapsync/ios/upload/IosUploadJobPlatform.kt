@@ -140,11 +140,22 @@ class IosUploadJobPlatform(
                 error = errorVar.ptr,
             )
             val error = errorVar.value
-            if (error != null && error.code == PHPhotosErrorLimitExceeded) {
-                log.w { "job limit exceeded — deferring remaining work this cycle" }
-                CreateResult.LIMIT_EXCEEDED
-            } else {
-                CreateResult.CREATED
+            when {
+                error == null -> CreateResult.CREATED
+                error.code == PHPhotosErrorLimitExceeded -> {
+                    log.w { "job limit exceeded — deferring remaining work this cycle" }
+                    CreateResult.LIMIT_EXCEEDED
+                }
+                else -> {
+                    // A non-limit error means the job was NOT created; surface it and return FAILED so
+                    // the cycle re-creates it next discovery, rather than recording a phantom REQUESTED
+                    // row for a job that never materialised.
+                    log.w {
+                        "createJob failed for ${request.resource.filename}: " +
+                            "code=${error.code} ${error.localizedDescription}"
+                    }
+                    CreateResult.FAILED
+                }
             }
         }
     }
@@ -156,9 +167,8 @@ class IosUploadJobPlatform(
             // Full enumeration: `resources` is every current resource key — the live set the cycle
             // reconciles against. No change feed, so no incremental removals. Delegated to the shared
             // gallery enumerator (same derivation the re-join seed uses).
-            val resources = enumerator.enumerate()
             return Discovery(
-                resources = resources,
+                resources = enumerator.enumerate(),
                 nextToken = archiveToken(library.currentChangeToken),
                 fullEnumeration = true,
             )
