@@ -1,9 +1,12 @@
 # backend/ — SnapSync upload endpoint (bunny Edge Scripting)
 
-A **streaming proxy** (Deno/TypeScript + **Hono**) deployed to bunny.net Edge Scripting. It mints
-events, lists an event's objects, and streams photo bytes from the iOS background-upload extension
-straight into a bunny **native** Storage zone. It replaces the design's mint/presigned-URL model —
-no SigV4, no `UNSIGNED-PAYLOAD`, no per-resource mint round-trip.
+A **streaming proxy** (Deno/TypeScript + **Hono**). One bundle deploys to **both** bunny Edge
+Scripting and Deno Deploy; the device-facing origin is the custom domain **`snapsync.stho.net`**
+(our Bunny DNS zone, Let's Encrypt cert), `CNAME`'d to the **active** runtime — **Deno Deploy
+today**, while bunny investigates dropping iOS's zero-window upload SYNs. It mints events, lists an
+event's objects, and streams photo bytes from the iOS background-upload extension straight into a
+bunny **native** Storage zone. It replaces the design's mint/presigned-URL model — no SigV4, no
+`UNSIGNED-PAYLOAD`, no per-resource mint round-trip.
 
 Authoritative contracts: `openspec/specs/event-creation`, `openspec/specs/bunny-upload-endpoint`,
 `openspec/specs/bunny-list-endpoint`, `openspec/specs/bunny-download-endpoint`, and
@@ -130,6 +133,14 @@ CI deploys via `.github/workflows/backend-deploy.yml` (path-scoped to `backend/*
 2. Create the Edge Scripting app → record its **script id** and a **deploy key**.
 3. Add GH secrets `BUNNY_SCRIPT_ID` and `BUNNY_DEPLOY_KEY` (the deploy key is script-scoped — the
    account API key is **not** used by CI).
+
+The same workflow also deploys to **Deno Deploy** (`--org stefanhoelzl --app snapsync`, secret
+`DENO_DEPLOY_TOKEN`) and sets `PUBLIC_BASE_URL` to the device-facing origin. **Deno Deploy is the
+active device-facing runtime** while bunny drops iOS's zero-window upload SYNs. The origin is the
+custom domain **`snapsync.stho.net`** — a `CNAME` in our `stho.net` Bunny DNS zone pointing at
+Deno's `alias.deno.net` (auto-TLS via Let's Encrypt). Because we own the name, the revert to bunny
+(once the SYN-drop is fixed) is a **DNS repoint of `snapsync.stho.net` + a `PUBLIC_BASE_URL` flip —
+not a new iOS build**.
 
 ## On-device caveats (unverified — see design.md §8)
 

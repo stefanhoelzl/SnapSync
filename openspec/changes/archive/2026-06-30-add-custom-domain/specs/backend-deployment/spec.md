@@ -1,17 +1,4 @@
-# backend deployment Specification
-
-## Purpose
-
-The CI pipeline that ships the `backend/` upload endpoint (capability `bunny-upload-endpoint`): a
-path-scoped GitHub Actions workflow that runs the Deno checks on every branch, bundles to a single
-file, and on `main` deploys that bundle to **both** runtimes — bunny Edge Scripting and Deno Deploy.
-The device-facing origin is the custom domain `snapsync.stho.net` (a zone we control via Bunny DNS,
-served with a publicly-trusted cert), `CNAME`'d to the **active** runtime — Deno Deploy today, while
-bunny investigates dropping iOS's zero-window upload SYNs. Because the origin is a domain we own,
-swapping the active runtime is a DNS repoint, not an app rebuild. Isolated from the Gradle/iOS
-workflows; no Bunny credential in source. Authoritative design: docs/design.md §4, §7.
-
-## Requirements
+## MODIFIED Requirements
 
 ### Requirement: Path-scoped, isolated workflow; deploy on main only
 
@@ -38,6 +25,8 @@ workflow file; it SHALL NOT couple to the Gradle build or iOS jobs).
 - **THEN** the deploy steps run, shipping the bundle to both bunny Edge Scripting and Deno Deploy
 - **AND WHEN** the checks pass on a push to a non-`main` branch
 - **THEN** the deploy steps are skipped
+
+## ADDED Requirements
 
 ### Requirement: Deno Deploy is the active device-facing runtime
 
@@ -86,59 +75,3 @@ rebuild.
 - **WHEN** the active runtime is changed (e.g. from Deno Deploy back to bunny Edge Scripting)
 - **THEN** the device-facing origin is repointed via DNS and `PUBLIC_BASE_URL` is updated server-side
 - **AND** no new IPA is built and no reinstall is required for already-installed devices to follow
-
-### Requirement: Deploy is gated on green checks
-
-The workflow SHALL run, before the deploy step, the full check set — `deno fmt --check`, `deno lint`,
-`deno check src/*.ts` (type-checks all source, incl. `main.ts`/SDK wiring the test run does not
-reach), and the `Deno.test` suite — and the deploy step SHALL execute **only** when all of them
-pass. Any failing check SHALL block deployment.
-
-#### Scenario: A failing check blocks deploy
-
-- **WHEN** any of `deno fmt --check`, `deno lint`, `deno check src/*.ts`, or `deno test` fails
-- **THEN** the deploy step does not run and the workflow fails
-
-#### Scenario: All checks green permit deploy
-
-- **WHEN** every check passes
-- **THEN** the deploy step runs
-
-### Requirement: Deploy a bundled single file
-
-The deploy action uploads the given `file` **verbatim** — it does NOT bundle — so the workflow SHALL
-bundle the project entry and all its imports into one self-contained file (`deno bundle src/main.ts
--o dist/main.js`) and deploy **that bundle**. The bundle SHALL stay within the Edge Scripting 1 MB
-script limit. (Deploying the raw entry leaves `import` specifiers unresolved and the script errors on
-every request.)
-
-#### Scenario: A single bundled file is deployed
-
-- **WHEN** the deploy step runs
-- **THEN** it uploads one self-contained bundle (no unresolved imports), not the raw entry file
-
-### Requirement: Deploy with secret-held, script-scoped credentials
-
-The workflow SHALL deploy the bundled file to the configured Edge Scripting app using a
-**script-scoped deploy key** and the **script id**,
-each supplied **only** as a GitHub Actions secret. The Bunny **account API key** SHALL NOT be used
-by the deploy workflow (it is needed only to provision the zone/app). No Bunny credential SHALL
-appear in source or in the workflow file. The storage-zone `AccessKey` SHALL be configured as an
-Edge Script environment variable, **not** as a deploy-workflow secret (it is the endpoint's runtime
-config, not a CI credential).
-
-#### Scenario: Deploy uses secret-held credentials
-
-- **WHEN** the deploy step runs
-- **THEN** it authenticates using a script id and deploy key sourced from GitHub Actions secrets,
-  and no credential is present in the repository or workflow file
-
-### Requirement: Idempotent deploy target
-
-Each deploy SHALL target the same Edge Scripting app/script, overwriting the prior deployment;
-repeated deploys SHALL NOT create new or versioned scripts.
-
-#### Scenario: Redeploy overwrites
-
-- **WHEN** the workflow deploys a second time
-- **THEN** it updates the same Edge Scripting app rather than creating an additional one
