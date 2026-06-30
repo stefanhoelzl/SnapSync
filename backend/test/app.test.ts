@@ -583,3 +583,218 @@ Deno.test("download → a list url round-trips: encoded filename → flat object
   assertEquals(res.status, 200);
   assertEquals(calls[0].url, ENC_URL);
 });
+
+// ── GET /event/:eventId/files (event-wide UNION read, capability `bunny-list-endpoint`) ────────────
+
+const D2 = "22222222-0000-4000-8000-000000000003"; // a second contributing deviceId
+const MANIFEST_DIR_URL = `${ZONE}/events/${E}/device/`; // the device-manifest directory LIST
+const manifestUrl = (d: string) => `${ZONE}/events/${E}/device/${d}.json`;
+const fileDirUrl = (d: string) => `${ZONE}/files/${d}/`;
+const dlUrl = (d: string, key: string) => `https://dl.example/files/device/${d}/${key}`;
+
+// A device manifest object (post-rename: resources carry `key` + `filename`).
+const manifest = (deviceId: string, assets: unknown[]) => ({ body: { deviceId, assets } });
+const resource = (role: string, contentType: string, key: string, filename: string) => ({
+  role,
+  contentType,
+  key,
+  filename,
+});
+const asset = (assetId: string, creationDate: string, resources: unknown[]) => ({
+  assetId,
+  creationDate,
+  resources,
+});
+
+Deno.test("union → two devices' complete assets, flattened, tagged by deviceId, with no-store", async () => {
+  const { calls, fetchImpl } = listFake({
+    ...markerPresent,
+    [MANIFEST_DIR_URL]: { body: [file(`${D}.json`, 0), file(`${D2}.json`, 0)] },
+    [manifestUrl(D)]: manifest(D, [
+      asset("A", "2026-06-27T10:00:00Z", [
+        resource("primary", "image/heic", "A-primary.heic", "IMG_1.HEIC"),
+        resource("motion", "video/quicktime", "A-motion.mov", "IMG_1.MOV"),
+      ]),
+    ]),
+    [manifestUrl(D2)]: manifest(D2, [
+      asset("B", "2026-06-27T11:00:00Z", [
+        resource("primary", "image/jpeg", "B-primary.jpg", "IMG_2.JPG"),
+      ]),
+    ]),
+    [fileDirUrl(D)]: { body: [file("A-primary.heic", 100), file("A-motion.mov", 200)] },
+    [fileDirUrl(D2)]: { body: [file("B-primary.jpg", 50)] },
+  });
+  const r = await createApp({ config: CONFIG, fetch: fetchImpl }).request(`/event/${E}/files`);
+  assertEquals(r.status, 200);
+  assertEquals(r.headers.get("Cache-Control"), "no-store");
+  assertEquals(await r.json(), [
+    {
+      deviceId: D,
+      assetId: "A",
+      creationDate: "2026-06-27T10:00:00Z",
+      resources: [
+        {
+          role: "primary",
+          contentType: "image/heic",
+          key: "A-primary.heic",
+          filename: "IMG_1.HEIC",
+          size: 100,
+          url: dlUrl(D, "A-primary.heic"),
+        },
+        {
+          role: "motion",
+          contentType: "video/quicktime",
+          key: "A-motion.mov",
+          filename: "IMG_1.MOV",
+          size: 200,
+          url: dlUrl(D, "A-motion.mov"),
+        },
+      ],
+    },
+    {
+      deviceId: D2,
+      assetId: "B",
+      creationDate: "2026-06-27T11:00:00Z",
+      resources: [
+        {
+          role: "primary",
+          contentType: "image/jpeg",
+          key: "B-primary.jpg",
+          filename: "IMG_2.JPG",
+          size: 50,
+          url: dlUrl(D2, "B-primary.jpg"),
+        },
+      ],
+    },
+  ]);
+  // Every upstream read carries the AccessKey; the account API key never appears.
+  for (const c of calls) {
+    assertEquals(new Headers(c.init.headers).get("AccessKey"), "zone-password");
+  }
+});
+
+Deno.test("union → incomplete asset (a named resource missing from /files) is omitted", async () => {
+  const { fetchImpl } = listFake({
+    ...markerPresent,
+    [MANIFEST_DIR_URL]: { body: [file(`${D}.json`, 0)] },
+    [manifestUrl(D)]: manifest(D, [
+      // complete (both present)
+      asset("A", "t1", [
+        resource("primary", "image/heic", "A-primary.heic", "IMG_1.HEIC"),
+        resource("motion", "video/quicktime", "A-motion.mov", "IMG_1.MOV"),
+      ]),
+      // incomplete (motion bytes not yet uploaded)
+      asset("C", "t2", [
+        resource("primary", "image/heic", "C-primary.heic", "IMG_3.HEIC"),
+        resource("motion", "video/quicktime", "C-motion.mov", "IMG_3.MOV"),
+      ]),
+    ]),
+    [fileDirUrl(D)]: {
+      body: [file("A-primary.heic", 100), file("A-motion.mov", 200), file("C-primary.heic", 300)],
+    },
+  });
+  const r = await createApp({ config: CONFIG, fetch: fetchImpl }).request(`/event/${E}/files`);
+  assertEquals(r.status, 200);
+  const union = await r.json();
+  assertEquals(union.map((a: { assetId: string }) => a.assetId), ["A"]); // C omitted
+});
+
+Deno.test("union → a device with no bytes (file dir 404) contributes nothing, still 200", async () => {
+  const { fetchImpl } = listFake({
+    ...markerPresent,
+    [MANIFEST_DIR_URL]: { body: [file(`${D}.json`, 0)] },
+    [manifestUrl(D)]: manifest(D, [
+      asset("A", "t1", [resource("primary", "image/heic", "A-primary.heic", "IMG_1.HEIC")]),
+    ]),
+    // no fileDirUrl(D) mapping → listFake returns 404 → no bytes present
+  });
+  const r = await createApp({ config: CONFIG, fetch: fetchImpl }).request(`/event/${E}/files`);
+  assertEquals(r.status, 200);
+  assertEquals(await r.json(), []);
+});
+
+Deno.test("union → unknown event (marker absent) → 404, no device enumeration", async () => {
+  const { calls, fetchImpl } = listFake({}); // marker URL unmapped → 404
+  const r = await createApp({ config: CONFIG, fetch: fetchImpl }).request(`/event/${E}/files`);
+  assertEquals(r.status, 404);
+  assertEquals(calls.length, 1); // only the marker read
+  assertEquals(calls[0].url, MARKER_URL);
+});
+
+Deno.test("union → non-404 marker read failure → 502", async () => {
+  const { fetchImpl } = listFake({ [MARKER_URL]: { status: 500 } });
+  const r = await createApp({ config: CONFIG, fetch: fetchImpl }).request(`/event/${E}/files`);
+  assertEquals(r.status, 502);
+});
+
+Deno.test("union → existing event, empty manifest dir → 200 []", async () => {
+  for (const dirRoute of [{ body: [] }, { status: 404 }]) {
+    const { fetchImpl } = listFake({ ...markerPresent, [MANIFEST_DIR_URL]: dirRoute });
+    const r = await createApp({ config: CONFIG, fetch: fetchImpl }).request(`/event/${E}/files`);
+    assertEquals(r.status, 200);
+    assertEquals(await r.json(), []);
+  }
+});
+
+Deno.test("union → non-UUID event → 400, no upstream request", async () => {
+  const { calls, fetchImpl } = listFake({});
+  const r = await createApp({ config: CONFIG, fetch: fetchImpl }).request("/event/nope/files");
+  assertEquals(r.status, 400);
+  assertEquals(calls.length, 0);
+});
+
+Deno.test("union → wrong method (POST) → 404, no upstream request", async () => {
+  const { calls, fetchImpl } = listFake({ ...markerPresent });
+  const r = await createApp({ config: CONFIG, fetch: fetchImpl }).request(`/event/${E}/files`, {
+    method: "POST",
+  });
+  assertEquals(r.status, 404);
+  assertEquals(calls.length, 0);
+});
+
+Deno.test("union → a per-device manifest read failure (500) → 502, no partial union", async () => {
+  const { fetchImpl } = listFake({
+    ...markerPresent,
+    [MANIFEST_DIR_URL]: { body: [file(`${D}.json`, 0)] },
+    [manifestUrl(D)]: { status: 500 },
+    [fileDirUrl(D)]: { body: [] },
+  });
+  const r = await createApp({ config: CONFIG, fetch: fetchImpl }).request(`/event/${E}/files`);
+  assertEquals(r.status, 502);
+});
+
+Deno.test("union → a manifest that is unparseable JSON → 502", async () => {
+  // listFake JSON-stringifies bodies; inject a raw non-JSON body via a bespoke fake.
+  const fetchImpl: FetchLike = (url) => {
+    if (url === MARKER_URL) {
+      return Promise.resolve(
+        new Response(JSON.stringify(MARKER_BODY), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        }),
+      );
+    }
+    if (url === MANIFEST_DIR_URL) {
+      return Promise.resolve(
+        new Response(JSON.stringify([file(`${D}.json`, 0)]), { status: 200 }),
+      );
+    }
+    if (url === manifestUrl(D)) return Promise.resolve(new Response("not json{", { status: 200 }));
+    return Promise.resolve(new Response("not found", { status: 404 }));
+  };
+  const r = await createApp({ config: CONFIG, fetch: fetchImpl }).request(`/event/${E}/files`);
+  assertEquals(r.status, 502);
+});
+
+Deno.test("union → a per-device file LIST failure (500) → 502, no partial union", async () => {
+  const { fetchImpl } = listFake({
+    ...markerPresent,
+    [MANIFEST_DIR_URL]: { body: [file(`${D}.json`, 0)] },
+    [manifestUrl(D)]: manifest(D, [
+      asset("A", "t1", [resource("primary", "image/heic", "A-primary.heic", "IMG_1.HEIC")]),
+    ]),
+    [fileDirUrl(D)]: { status: 500 },
+  });
+  const r = await createApp({ config: CONFIG, fetch: fetchImpl }).request(`/event/${E}/files`);
+  assertEquals(r.status, 502);
+});

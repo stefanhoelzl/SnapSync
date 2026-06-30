@@ -2,6 +2,9 @@ package app.snapsync.gallery
 
 import app.snapsync.engine.Resource
 import kotlinx.coroutines.test.runTest
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.jsonArray
+import kotlinx.serialization.json.jsonObject
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -67,8 +70,8 @@ class DeviceManifestProducerTest {
         assertEquals(setOf(ResourceRole.PRIMARY, ResourceRole.MOTION), live.resources.map { it.role }.toSet())
         val primary = live.resources.single { it.role == ResourceRole.PRIMARY }
         assertEquals("image/heic", primary.contentType) // MIME, not the UTI
-        assertEquals("IMG_1.HEIC", primary.originalFilename)
-        assertEquals("UUID-1-2_L0_001-primary.heic", primary.filename)
+        assertEquals("IMG_1.HEIC", primary.filename) // human capture name
+        assertEquals("UUID-1-2_L0_001-primary.heic", primary.key) // storage object name (fetch handle)
 
         assertEquals(listOf(ResourceRole.PRIMARY), assets.getValue("B").resources.map { it.role })
     }
@@ -94,6 +97,18 @@ class DeviceManifestProducerTest {
         val m = DeviceManifest("dev", listOf(asset("A")))
         assertEquals("dev", deviceManifestFromJson(m.encodeToJson()).deviceId)
         assertEquals("A", deviceManifestFromJson(m.encodeToJson()).assets.single().assetId)
+    }
+
+    @Test
+    fun serialized_resource_carries_key_and_filename_field_names() {
+        // The on-storage device.json shares its field vocabulary with the event-wide union: a resource
+        // serializes as exactly { role, contentType, key, filename } — `key` the storage object name,
+        // `filename` the human capture name (the rename from the per-asset manifest's filename/originalFilename).
+        val json = Json.parseToJsonElement(DeviceManifest("dev", listOf(asset("A"))).encodeToJson())
+        val resource = json.jsonObject["assets"]!!.jsonArray[0].jsonObject["resources"]!!.jsonArray[0]
+        assertEquals(setOf("role", "contentType", "key", "filename"), resource.jsonObject.keys)
+        assertEquals("A-primary.jpg", resource.jsonObject["key"]!!.toString().trim('"')) // storage name
+        assertEquals("IMG_A.JPG", resource.jsonObject["filename"]!!.toString().trim('"')) // human name
     }
 
     // ── producer ──

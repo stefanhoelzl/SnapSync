@@ -616,11 +616,24 @@ unsupported by bunny native API). The collected photos are made sense of **exter
 
 - The **key path** carries event id, resource kind, and the resource's original identity.
 - The **image bytes carry their own EXIF/maker metadata** (capture date, geolocation, camera, etc.).
-- An external tool (admin-credentialed, `ListBucket` + `GetObject`) can `LIST` `<eventId>/` to
+- An external tool (admin-credentialed, `ListBucket` + `GetObject`) can read storage directly to
   enumerate all contributions and read EXIF per object.
 
 The **event-creation tool**, the **QR minting**, and any **viewing/restore tool** are all **external,
 out of scope** for this app. This doc specifies only the contracts the app depends on (§4).
+
+**Event-wide union read (now on the edge).** The earlier deferral of the event-wide union to an
+external/admin-direct reader is **reversed**: because a future on-device download/restore client holds
+**no storage credential**, the union is exposed as an **edge** read, `GET /event/<eventId>/files`
+(capability `bunny-list-endpoint`). It returns, for one event, every contributing device's **complete**
+assets (an asset is complete only when every resource its `device.json` names is present in
+`/files/<deviceId>/`), flattened across devices, each tagged with its owning `deviceId` — the client
+skips its **own** device by `deviceId` (the endpoint is identity-blind). Each resource carries
+`{ role, contentType, key, filename, size, url }`, a straight projection of the per-event device
+manifest (`device.json`), whose resource entries use the **same** `key` (the storage object name / fetch
+handle) and `filename` (the human capture name) field names. Event-gated on the marker, strictly
+faithful (any non-404 read failure in the fan-out → `502`, never a partial union), and non-cacheable.
+The restore/download client that consumes this union is still deferred — only the read it needs exists.
 
 ---
 
