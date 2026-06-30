@@ -21,6 +21,13 @@ VALUES (:key, :assetId, :state, :attempt);
 deleteAll:
 DELETE FROM ledgerRow;
 
+-- Delete the REQUESTED rows: the recovery after an extension disable wipes the OS's in-flight upload
+-- jobs. Those resources are orphaned (the engine never re-issues a REQUESTED key), so dropping them
+-- lets the next discovery re-create the not-yet-stored ones. COMPLETED/FAILED rows are untouched.
+deleteRequested:
+DELETE FROM ledgerRow
+WHERE state = 'REQUESTED';
+
 -- Prune one asset's rows by equality (rides the assetId index). Used for the incremental
 -- deletion path and, per-straggler, by retainAssets.
 deleteByAssetId:

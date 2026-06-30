@@ -237,6 +237,33 @@ abstract class LedgerBackendContract {
     }
 
     @Test
+    fun `clearRequested removes only REQUESTED rows leaving COMPLETED and FAILED`() = runTest {
+        val backend = createBackend()
+        backend.put(entry(key = "R-photo.jpg", assetId = "R", state = LedgerState.REQUESTED))
+        backend.put(entry(key = "C-photo.jpg", assetId = "C", state = LedgerState.COMPLETED))
+        backend.put(entry(key = "F-photo.jpg", assetId = "F", state = LedgerState.FAILED))
+
+        backend.clearRequested()
+
+        assertNull(backend.get("R-photo.jpg")) // the orphaned REQUESTED row is dropped
+        assertEquals(LedgerState.COMPLETED, backend.get("C-photo.jpg")?.state) // dedup truth kept
+        assertEquals(LedgerState.FAILED, backend.get("F-photo.jpg")?.state) // FAILED self-heals via retry
+    }
+
+    @Test
+    fun `clearRequested dings an active changes collector`() = runTest {
+        val backend = createBackend()
+        backend.put(entry(key = "R-photo.jpg", assetId = "R", state = LedgerState.REQUESTED))
+        var dings = 0
+        backgroundScope.launch(start = CoroutineStart.UNDISPATCHED) { backend.changes.collect { dings++ } }
+
+        backend.clearRequested()
+        runCurrent()
+
+        assertEquals(1, dings)
+    }
+
+    @Test
     fun `resetTo with an empty baseline empties the store`() = runTest {
         val backend = createBackend()
         backend.put(entry(key = "a", assetId = "a"))

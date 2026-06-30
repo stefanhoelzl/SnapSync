@@ -31,6 +31,11 @@ class InMemoryLedgerBackend : LedgerBackend {
         dings.tryEmit(Unit)
     }
 
+    override suspend fun clearRequested() {
+        rows.values.removeAll { it.state == LedgerState.REQUESTED }
+        dings.tryEmit(Unit)
+    }
+
     override suspend fun resetTo(entries: List<LedgerEntry>) {
         // Build the next state fully before swapping, so the replacement is atomic from any
         // collector's view (mirrors the SQL transaction) and a failure before the swap leaves the
