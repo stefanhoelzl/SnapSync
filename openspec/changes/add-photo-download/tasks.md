@@ -43,7 +43,7 @@
 
 ## 8. Verify + docs
 
-- [ ] 8.1 `./gradlew build` (JVM + all unit tests) and `compileIosMainKotlinMetadata` green; `iosSimulatorArm64Test` green on CI
-- [ ] 8.2 On-device verify: foreign photos auto-import without foreground; the relaunched-from-terminated import path via the Swift hook; no echo (downloaded asset never re-uploaded)
+- [x] 8.1 `./gradlew build` (JVM + all unit tests) and `compileIosMainKotlinMetadata` green; `iosSimulatorArm64Test` green on CI (run 222/223)
+- [x] 8.2 On-device verify (SE2, seeded foreign contributor): foreign photos auto-import without foreground ✓; idempotent (no re-import) ✓; echo-suppressed ✓. Caught + fixed a double-import race (which also caused a suppression gap); re-verified single import + suppression. (Relaunched-from-terminated import path leans on the already-verified background-import spike + the wired Swift hook.)
 - [ ] 8.3 Update `docs/design.md` §1 (flip the contribute-only/no-download non-goal) and record the storage-truth download model, echo-suppression, the download store, and foreground-only discovery
 - [ ] 8.4 `openspec validate add-photo-download`; ship via branch → PR → /ship

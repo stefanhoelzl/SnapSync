@@ -9,7 +9,6 @@ import app.snapsync.eventcreation.EventCreator
 import app.snapsync.eventcreation.HttpEventCreationClient
 import app.snapsync.eventcreation.MutableCreationStatusSource
 import app.snapsync.deviceid.KeychainDeviceIdentity
-import app.snapsync.gallery.PhotoLibraryGalleryStatus
 import app.snapsync.gallery.PhotoLibraryResourceEnumerator
 import app.snapsync.permission.PermissionStatus
 import app.snapsync.permission.PhotoLibraryPermission
@@ -75,9 +74,6 @@ object SnapSyncRoot {
     private val log = Logger.withTag("SnapSyncRoot")
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
 
-    // The live photo-library count (N), held so a re-provision can ding it to re-read.
-    private val gallery: PhotoLibraryGalleryStatus by lazy { PhotoLibraryGalleryStatus() }
-
     // The event config seam/store (one Keychain adapter is both), hoisted so a (re)provision can read
     // the current event id and the leave use-case can clear it.
     private val config: KeychainConfigStore by lazy { KeychainConfigStore() }
@@ -102,6 +98,10 @@ object SnapSyncRoot {
             PhotoLibraryResourceEnumerator(),
             HttpDeviceFilesSource(darwinHttpClient(), host),
             deviceId,
+            // Exclude downloaded+imported foreign photos from the upload universe (total AND completed):
+            // they live in the library but are suppressed from upload, so they must not peg progress
+            // below 100% (capability `photo-download`).
+            suppressedLocalIds = { downloadStore.suppressedLocalIds() },
         )
     }
 
@@ -178,7 +178,9 @@ object SnapSyncRoot {
     val host: StatusContainerHost by lazy {
         // The own-device source: complete assets (gallery enumeration × per-device file listing) ×
         // permission × the live gallery total, minted into snapshots. No ledger, no device.json read.
-        val syncSource = ListingSyncStatusSource(completedAssets, permission, gallery, inFlightSource, scope)
+        // `completedAssets` is BOTH the completed set and the upload total (own photos, downloads
+        // excluded) — one source so total and completed stay consistent.
+        val syncSource = ListingSyncStatusSource(completedAssets, permission, completedAssets, inFlightSource, scope)
         enableBackgroundUploadOnGrant()
         // `config` is passed as both ports (one Keychain adapter implements both), as `permission` is.
         // No EventStatus source: status is read from the listing; the extension owns reconciliation.
@@ -258,8 +260,7 @@ object SnapSyncRoot {
      */
     private suspend fun provisionEvent(eventId: String) {
         config.save(EventConfigPayload(eventId)) // persist; the container's ConfigSource is this instance
-        gallery.refresh() // (re)joined event → re-read the gallery total (N)
-        refreshStatusSources() // (re)joined event → re-LIST completeness + re-read in-flight manifests
+        refreshStatusSources() // (re)joined event → re-enumerate own total + re-LIST completeness
         if (permission.permission.value == PermissionStatus.GRANTED) enableBackgroundUpload()
         // Auto-download the other contributors' photos for this event (capability `photo-download`).
         scope.launch { downloadController.reconcile(eventId) }
