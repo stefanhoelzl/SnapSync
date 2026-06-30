@@ -36,5 +36,9 @@ sealed interface ImportResult {
  * asset imported.
  */
 interface PhotoLibraryImporter {
-    suspend fun import(ref: AssetRef, resources: List<StagedResource>): ImportResult
+    /**
+     * Import the [resources] as one asset whose capture timestamp is [creationDate] (ISO-8601), so the
+     * imported photo sorts by its **original** date in the library rather than the import time.
+     */
+    suspend fun import(ref: AssetRef, resources: List<StagedResource>, creationDate: String): ImportResult
 }

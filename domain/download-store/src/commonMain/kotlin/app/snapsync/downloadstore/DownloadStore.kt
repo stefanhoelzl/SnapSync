@@ -32,6 +32,9 @@ data class StagedResource(
 /** One unit of download work: a not-yet-staged resource and where to fetch it. */
 data class PendingDownload(val ref: AssetRef, val resource: PlannedResource)
 
+/** An asset ready to import: its ref and its original capture timestamp (ISO-8601, for the imported asset's date). */
+data class ImportableAsset(val ref: AssetRef, val creationDate: String)
+
 /**
  * The read-only suppression projection the **upload extension** consumes: the set of local
  * `createdLocalId`s of foreign assets this device has downloaded+imported. Discovery drops these so a
@@ -51,8 +54,8 @@ interface DownloadStore : SuppressionSource {
     /** True if this foreign asset was already imported (skip re-download). */
     suspend fun isImported(ref: AssetRef): Boolean
 
-    /** Record a foreign asset and its expected resources as PENDING (idempotent; never downgrades IMPORTED). */
-    suspend fun plan(ref: AssetRef, resources: List<PlannedResource>)
+    /** Record a foreign asset (with its capture [creationDate]) and its expected resources as PENDING (idempotent; never downgrades IMPORTED). */
+    suspend fun plan(ref: AssetRef, creationDate: String, resources: List<PlannedResource>)
 
     /** The not-yet-staged resources across all non-imported assets — the download work queue. */
     suspend fun pendingDownloads(): List<PendingDownload>
@@ -60,8 +63,8 @@ interface DownloadStore : SuppressionSource {
     /** Mark a resource's bytes downloaded and durably staged at [stagedPath]. */
     suspend fun markStaged(ref: AssetRef, resourceKey: String, stagedPath: String)
 
-    /** Assets whose every expected resource is staged and that are not yet imported — ready to import. */
-    suspend fun importableAssets(): List<AssetRef>
+    /** Assets whose every expected resource is staged and that are not yet imported — ready to import (with capture date). */
+    suspend fun importableAssets(): List<ImportableAsset>
 
     /** The staged resources of an asset, to feed one PHAssetCreationRequest. */
     suspend fun stagedResources(ref: AssetRef): List<StagedResource>
@@ -87,9 +90,9 @@ class SqlDelightDownloadStore(database: DownloadDatabase) : DownloadStore {
     override suspend fun isImported(ref: AssetRef): Boolean =
         q.isImported(ref.sourceDeviceId, ref.sourceAssetId).executeAsOne()
 
-    override suspend fun plan(ref: AssetRef, resources: List<PlannedResource>) {
+    override suspend fun plan(ref: AssetRef, creationDate: String, resources: List<PlannedResource>) {
         q.transaction {
-            q.upsertAsset(ref.sourceDeviceId, ref.sourceAssetId, DownloadState.PENDING)
+            q.upsertAsset(ref.sourceDeviceId, ref.sourceAssetId, DownloadState.PENDING, creationDate)
             resources.forEach { r ->
                 q.upsertResource(
                     ref.sourceDeviceId, ref.sourceAssetId, r.resourceKey,
@@ -108,8 +111,10 @@ class SqlDelightDownloadStore(database: DownloadDatabase) : DownloadStore {
         q.markResourceStaged(stagedPath, ref.sourceDeviceId, ref.sourceAssetId, resourceKey)
     }
 
-    override suspend fun importableAssets(): List<AssetRef> =
-        q.selectImportableAssets { device, asset -> AssetRef(device, asset) }.executeAsList()
+    override suspend fun importableAssets(): List<ImportableAsset> =
+        q.selectImportableAssets { device, asset, creationDate ->
+            ImportableAsset(AssetRef(device, asset), creationDate)
+        }.executeAsList()
 
     override suspend fun stagedResources(ref: AssetRef): List<StagedResource> =
         q.selectResourcesForAsset(ref.sourceDeviceId, ref.sourceAssetId) { key, _, role, contentType, original, staged ->

@@ -10,7 +10,7 @@ import kotlinx.coroutines.sync.withLock
  */
 class InMemoryDownloadStore : DownloadStore {
 
-    private class AssetRow(var state: DownloadState, var createdLocalId: String?)
+    private class AssetRow(var state: DownloadState, val creationDate: String, var createdLocalId: String?)
 
     private val lock = Mutex()
     private val assets = LinkedHashMap<AssetRef, AssetRow>()
@@ -24,9 +24,9 @@ class InMemoryDownloadStore : DownloadStore {
         assets[ref]?.state == DownloadState.IMPORTED
     }
 
-    override suspend fun plan(ref: AssetRef, resources: List<PlannedResource>) = lock.withLock {
+    override suspend fun plan(ref: AssetRef, creationDate: String, resources: List<PlannedResource>) = lock.withLock {
         if (assets[ref]?.state == DownloadState.IMPORTED) return@withLock
-        assets.getOrPut(ref) { AssetRow(DownloadState.PENDING, null) }
+        assets.getOrPut(ref) { AssetRow(DownloadState.PENDING, creationDate, null) }
         val byKey = this.resources.getOrPut(ref) { linkedMapOf() }
         resources.forEach { r -> byKey.getOrPut(r.resourceKey) { r to null } }
     }
@@ -48,12 +48,12 @@ class InMemoryDownloadStore : DownloadStore {
         byKey[resourceKey] = planned to stagedPath
     }
 
-    override suspend fun importableAssets(): List<AssetRef> = lock.withLock {
+    override suspend fun importableAssets(): List<ImportableAsset> = lock.withLock {
         assets.filter { (ref, row) ->
             row.state != DownloadState.IMPORTED &&
                 resources[ref]?.isNotEmpty() == true &&
                 resources[ref]!!.values.all { it.second != null }
-        }.keys.toList()
+        }.map { (ref, row) -> ImportableAsset(ref, row.creationDate) }
     }
 
     override suspend fun stagedResources(ref: AssetRef): List<StagedResource> = lock.withLock {

@@ -24,7 +24,7 @@ abstract class DownloadStoreContract {
     @Test
     fun plan_then_pending_lists_every_resource() = runTest {
         val s = createStore()
-        s.plan(ref, resources())
+        s.plan(ref, "2026-06-30T10:00:00Z", resources())
         assertEquals(2, s.pendingDownloads().size)
         assertFalse(s.isImported(ref))
         assertTrue(s.importableAssets().isEmpty()) // nothing staged yet
@@ -33,11 +33,11 @@ abstract class DownloadStoreContract {
     @Test
     fun importable_only_when_all_resources_staged() = runTest {
         val s = createStore()
-        s.plan(ref, resources())
+        s.plan(ref, "2026-06-30T10:00:00Z", resources())
         s.markStaged(ref, "ASSET-Q-primary.heic", "/stage/primary.heic")
         assertTrue(s.importableAssets().isEmpty()) // live still missing
         s.markStaged(ref, "ASSET-Q-live.mov", "/stage/live.mov")
-        assertEquals(listOf(ref), s.importableAssets())
+        assertEquals(listOf(ref), s.importableAssets().map { it.ref })
         assertEquals(2, s.stagedResources(ref).size)
         assertEquals(setOf("primary", "live"), s.stagedResources(ref).map { it.role }.toSet())
     }
@@ -45,7 +45,7 @@ abstract class DownloadStoreContract {
     @Test
     fun import_records_suppression_and_idempotency() = runTest {
         val s = createStore()
-        s.plan(ref, resources())
+        s.plan(ref, "2026-06-30T10:00:00Z", resources())
         s.markStaged(ref, "ASSET-Q-primary.heic", "/stage/primary.heic")
         s.markStaged(ref, "ASSET-Q-live.mov", "/stage/live.mov")
         s.markImported(ref, "LOCAL-NEW/L0/001")
@@ -60,11 +60,11 @@ abstract class DownloadStoreContract {
     @Test
     fun plan_never_downgrades_an_imported_asset() = runTest {
         val s = createStore()
-        s.plan(ref, resources())
+        s.plan(ref, "2026-06-30T10:00:00Z", resources())
         s.markStaged(ref, "ASSET-Q-primary.heic", "/p")
         s.markStaged(ref, "ASSET-Q-live.mov", "/l")
         s.markImported(ref, "LOCAL-NEW")
-        s.plan(ref, resources()) // a later union read re-offers it
+        s.plan(ref, "2026-06-30T10:00:00Z", resources()) // a later union read re-offers it
         assertTrue(s.isImported(ref))
         assertEquals(1, s.importedCount())
     }
@@ -73,10 +73,10 @@ abstract class DownloadStoreContract {
     fun prune_drops_non_terminal_keeps_imported() = runTest {
         val s = createStore()
         val imported = AssetRef("DEVICE-A", "DONE")
-        s.plan(imported, listOf(PlannedResource("DONE-primary.heic", "u", "primary", "image/heic", "D.HEIC")))
+        s.plan(imported, "2026-01-01T00:00:00Z", listOf(PlannedResource("DONE-primary.heic", "u", "primary", "image/heic", "D.HEIC")))
         s.markStaged(imported, "DONE-primary.heic", "/d")
         s.markImported(imported, "LOCAL-DONE")
-        s.plan(ref, resources()) // a fresh, non-terminal asset
+        s.plan(ref, "2026-06-30T10:00:00Z", resources()) // a fresh, non-terminal asset
 
         s.pruneNonTerminal()
 
