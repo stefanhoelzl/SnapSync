@@ -43,7 +43,7 @@ class DownloadController(
                 if (asset.deviceId == myDeviceId) continue // own contribution — already in this library
                 val ref = AssetRef(asset.deviceId, asset.assetId)
                 if (store.isImported(ref)) continue // delete-proof / cross-event dedup
-                store.plan(ref, asset.resources.map {
+                store.plan(ref, asset.creationDate, asset.resources.map {
                     PlannedResource(it.key, it.url, it.role, it.contentType, it.originalFilename)
                 })
                 planned++
@@ -68,8 +68,9 @@ class DownloadController(
     suspend fun importReady() = mutex.withLock { importReadyLocked() }
 
     private suspend fun importReadyLocked() {
-        for (ref in store.importableAssets()) {
-            when (val result = importer.import(ref, store.stagedResources(ref))) {
+        for (importable in store.importableAssets()) {
+            val ref = importable.ref
+            when (val result = importer.import(ref, store.stagedResources(ref), importable.creationDate)) {
                 is ImportResult.Imported -> {
                     store.markImported(ref, result.createdLocalId)
                     log.i { "imported foreign asset ${ref.sourceAssetId} as ${result.createdLocalId}" }

@@ -9,6 +9,7 @@ CREATE TABLE downloadAsset (
     sourceDeviceId TEXT NOT NULL,
     sourceAssetId  TEXT NOT NULL,
     state          TEXT AS DownloadState NOT NULL,
+    creationDate   TEXT NOT NULL,
     createdLocalId TEXT,
     PRIMARY KEY (sourceDeviceId, sourceAssetId)
 );
@@ -34,8 +35,8 @@ CREATE TABLE downloadResource (
 -- --- asset lifecycle ---
 
 upsertAsset:
-INSERT OR IGNORE INTO downloadAsset (sourceDeviceId, sourceAssetId, state, createdLocalId)
-VALUES (:sourceDeviceId, :sourceAssetId, :state, NULL);
+INSERT OR IGNORE INTO downloadAsset (sourceDeviceId, sourceAssetId, state, creationDate, createdLocalId)
+VALUES (:sourceDeviceId, :sourceAssetId, :state, :creationDate, NULL);
 
 selectAssetState:
 SELECT state FROM downloadAsset
@@ -109,7 +110,7 @@ WHERE r.stagedPath IS NULL AND a.state != 'IMPORTED';
 
 -- Assets whose every expected resource is staged but not yet imported — ready to import.
 selectImportableAssets:
-SELECT a.sourceDeviceId, a.sourceAssetId
+SELECT a.sourceDeviceId, a.sourceAssetId, a.creationDate
 FROM downloadAsset a
 WHERE a.state != 'IMPORTED'
   AND NOT EXISTS (

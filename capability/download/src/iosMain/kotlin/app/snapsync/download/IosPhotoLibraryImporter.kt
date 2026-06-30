@@ -5,7 +5,9 @@ import app.snapsync.downloadstore.StagedResource
 import co.touchlab.kermit.Logger
 import kotlinx.cinterop.ExperimentalForeignApi
 import kotlinx.coroutines.suspendCancellableCoroutine
+import platform.Foundation.NSISO8601DateFormatter
 import platform.Foundation.NSURL
+import platform.Photos.PHAsset
 import platform.Photos.PHAssetCreationRequest
 import platform.Photos.PHPhotoLibrary
 import kotlin.coroutines.resume
@@ -27,7 +29,9 @@ class IosPhotoLibraryImporter(
     private val log: Logger = Logger.withTag("PhotoImporter"),
 ) : PhotoLibraryImporter {
 
-    override suspend fun import(ref: AssetRef, resources: List<StagedResource>): ImportResult {
+    override suspend fun import(ref: AssetRef, resources: List<StagedResource>, creationDate: String): ImportResult {
+        val captureDate = NSISO8601DateFormatter().dateFromString(creationDate)
+        if (captureDate == null) log.w { "unparseable creationDate '$creationDate' for ${ref.sourceAssetId} — will default to import time" }
         val typed = resources.mapNotNull { r ->
             val type = resourceType(r.role, r.contentType)
             if (type == null) {
@@ -40,6 +44,7 @@ class IosPhotoLibraryImporter(
         if (typed.isEmpty()) return ImportResult.Failed("no importable resources for ${ref.sourceAssetId}")
 
         var createdLocalId: String? = null
+        var rawLocalId: String? = null
         return suspendCancellableCoroutine { cont ->
             PHPhotoLibrary.sharedPhotoLibrary().performChanges(
                 {
@@ -47,10 +52,15 @@ class IosPhotoLibraryImporter(
                     for ((type, path) in typed) {
                         request.addResourceWithType(type, NSURL.fileURLWithPath(path), null)
                     }
+                    // Preserve the ORIGINAL capture date so the imported photo sorts by when it was
+                    // taken, not when it was downloaded (default would be import time).
+                    if (captureDate != null) request.setCreationDate(captureDate)
                     // INSIDE the block: capture + record the suppression handle before the commit is
                     // observable, so the upload extension never re-uploads this asset.
-                    val id = request.placeholderForCreatedAsset?.localIdentifier?.replace('/', '_')
-                    if (id != null) {
+                    val raw = request.placeholderForCreatedAsset?.localIdentifier
+                    if (raw != null) {
+                        rawLocalId = raw
+                        val id = raw.replace('/', '_')
                         createdLocalId = id
                         recordCreatedLocalId(ref, id)
                     }
@@ -58,6 +68,7 @@ class IosPhotoLibraryImporter(
                 { success, error ->
                     val id = createdLocalId
                     if (success && id != null) {
+                        logImportedDate(rawLocalId, creationDate)
                         cont.resume(ImportResult.Imported(id))
                     } else {
                         cont.resume(ImportResult.Failed(error?.localizedDescription ?: "performChanges failed / no placeholder"))
@@ -65,6 +76,13 @@ class IosPhotoLibraryImporter(
                 },
             )
         }
+    }
+
+    /** Readback proof: fetch the created asset and log its actual creationDate vs the intended one. */
+    private fun logImportedDate(rawLocalId: String?, intended: String) {
+        val id = rawLocalId ?: return
+        val asset = PHAsset.fetchAssetsWithLocalIdentifiers(listOf(id), null).firstObject() as? PHAsset
+        log.i { "imported ${id} creationDate(actual)=${asset?.creationDate?.description} intended=$intended" }
     }
 
     /** Map a generic role + MIME content type to the PhotoKit resource-type raw value, or null if unmapped. */

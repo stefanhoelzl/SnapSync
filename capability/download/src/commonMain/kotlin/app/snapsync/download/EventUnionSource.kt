@@ -17,10 +17,11 @@ class UnionResource(
     val originalFilename: String,
 )
 
-/** One **complete** asset in the event-wide union, tagged with its owning device. */
+/** One **complete** asset in the event-wide union, tagged with its owning device and capture date. */
 class UnionAsset(
     val deviceId: String,
     val assetId: String,
+    val creationDate: String,
     val resources: List<UnionResource>,
 )
 
@@ -55,6 +56,7 @@ class HttpEventUnionSource(
                 UnionAsset(
                     deviceId = dto.deviceId,
                     assetId = dto.assetId,
+                    creationDate = dto.creationDate,
                     resources = dto.resources.map {
                         UnionResource(it.key, it.url, it.role, it.contentType, it.filename)
                     },
@@ -66,6 +68,7 @@ class HttpEventUnionSource(
     private class AssetDto(
         val deviceId: String,
         val assetId: String,
+        val creationDate: String,
         val resources: List<ResourceDto>,
     )
 

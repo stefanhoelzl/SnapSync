@@ -17,6 +17,7 @@ class DownloadControllerTest {
     private fun asset(device: String, id: String) = UnionAsset(
         deviceId = device,
         assetId = id,
+        creationDate = "2026-06-30T10:00:00Z",
         resources = listOf(
             UnionResource("$id-primary.heic", "https://e/$id/primary", "primary", "image/heic", "IMG.HEIC"),
             UnionResource("$id-live.mov", "https://e/$id/live", "live", "video/quicktime", "IMG.MOV"),
@@ -39,7 +40,7 @@ class DownloadControllerTest {
     private class FakeImporter : PhotoLibraryImporter {
         val imported = mutableListOf<AssetRef>()
         var failNext = false
-        override suspend fun import(ref: AssetRef, resources: List<StagedResource>): ImportResult {
+        override suspend fun import(ref: AssetRef, resources: List<StagedResource>, creationDate: String): ImportResult {
             if (failNext) return ImportResult.Failed("forced")
             imported += ref
             return ImportResult.Imported("LOCAL-${ref.sourceAssetId}_L0_001")
