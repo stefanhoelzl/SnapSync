@@ -1,0 +1,40 @@
+package app.snapsync.download
+
+import app.snapsync.downloadstore.AssetRef
+import app.snapsync.downloadstore.PendingDownload
+import app.snapsync.downloadstore.StagedResource
+
+/**
+ * Submits background byte transfers for foreign resources (capability `photo-download`). On iOS this
+ * is a background `URLSession` (discretionary/Wi-Fi); completions are delivered out of band to
+ * [DownloadController.onResourceStaged] after the impl moves each finished file to durable App-Group
+ * staging. A failed transfer leaves the resource pending (no terminal failure) for a later retry.
+ */
+interface PhotoDownloadJobs {
+    /** Enqueue downloads for the given not-yet-staged resources (idempotent; already-running keys are skipped). */
+    suspend fun enqueue(downloads: List<PendingDownload>)
+
+    /** Cancel all in-flight transfers (leave/switch). */
+    suspend fun cancelAll()
+}
+
+/** Outcome of a per-asset import. */
+sealed interface ImportResult {
+    /** The asset was created; [createdLocalId] is its sanitized local identifier (the suppression handle). */
+    data class Imported(val createdLocalId: String) : ImportResult
+
+    /** The import did not complete; the asset stays importable and is retried (no terminal failure). */
+    data class Failed(val message: String) : ImportResult
+}
+
+/**
+ * Imports one foreign asset's staged resources as a single new library asset (capability
+ * `photo-download`). On iOS: one `PHAssetCreationRequest` adding every resource (`live`→`.pairedVideo`,
+ * `primary`→`.photo`/`.video`/`.audio` by `contentType`) into the camera roll. The impl MUST record
+ * the created local id into the download store **inside** the `performChanges` change block (before the
+ * asset is observable) to close the upload echo; it returns that same id so the controller can mark the
+ * asset imported.
+ */
+interface PhotoLibraryImporter {
+    suspend fun import(ref: AssetRef, resources: List<StagedResource>): ImportResult
+}

@@ -30,7 +30,7 @@ class CompletedAssetsSourceTest {
         val enumerator = InMemoryGalleryResourceEnumerator(
             listOf(
                 resource("A-primary.jpg", "A"),
-                resource("A-motion.mov", "A"), // A is a Live Photo: needs both
+                resource("A-live.mov", "A"), // A is a Live Photo: needs both
                 resource("B-primary.jpg", "B"),
             ),
         )
@@ -38,11 +38,11 @@ class CompletedAssetsSourceTest {
         val source = OwnDeviceCompletedAssetsSource(enumerator, files, deviceId)
 
         // A fully present + B present → both complete.
-        files.result = Result.success(listOf("A-primary.jpg", "A-motion.mov", "B-primary.jpg"))
+        files.result = Result.success(listOf("A-primary.jpg", "A-live.mov", "B-primary.jpg"))
         source.refresh()
         assertEquals(setOf("A", "B"), source.completed.value)
 
-        // A's motion missing → A drops to incomplete; B still complete.
+        // A's live missing → A drops to incomplete; B still complete.
         files.result = Result.success(listOf("A-primary.jpg", "B-primary.jpg"))
         source.refresh()
         assertEquals(setOf("B"), source.completed.value)

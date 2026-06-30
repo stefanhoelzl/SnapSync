@@ -17,6 +17,13 @@ import app.snapsync.presentation.StatusContainerHost
 import app.snapsync.rejoin.HttpDeviceFilesSource
 import app.snapsync.rejoin.LeaveEvent
 import app.snapsync.rejoin.darwinHttpClient
+import app.snapsync.download.DownloadController
+import app.snapsync.download.HttpEventUnionSource
+import app.snapsync.download.IosPhotoDownloadJobs
+import app.snapsync.download.IosPhotoLibraryImporter
+import app.snapsync.downloadstore.SqlDelightDownloadStore
+import app.snapsync.downloadstore.iosDownloadStore
+import platform.Foundation.NSFileManager
 import app.snapsync.engine.DISCOVERY_TOKEN_KEY
 import app.snapsync.engine.LEDGER_APP_GROUP
 import app.snapsync.engine.LedgerBackend
@@ -111,6 +118,37 @@ object SnapSyncRoot {
         ReadingInFlightSource { ledgerBackend.aggregates().pending }
     }
 
+    // --- Photo download / import (capability `photo-download`) ---
+    // The app-written download store (idempotency + per-resource staging + the createdLocalId the
+    // extension reads as its suppression set). Concrete type so the importer can write createdLocalId
+    // synchronously from inside a PhotoKit change block.
+    private val downloadStore: SqlDelightDownloadStore by lazy { iosDownloadStore() }
+
+    // Background-URLSession byte transfers (discretionary/Wi-Fi) → durable App-Group staging.
+    private val downloadJobs: IosPhotoDownloadJobs by lazy {
+        val container = NSFileManager.defaultManager
+            .containerURLForSecurityApplicationGroupIdentifier(LEDGER_APP_GROUP)?.path
+            ?: error("App Group container '$LEDGER_APP_GROUP' unavailable")
+        IosPhotoDownloadJobs(scope, "$container/download-staging")
+    }
+
+    // The orchestrator: union → foreign selection → download → full-fidelity import → suppression.
+    private val downloadController: DownloadController by lazy {
+        val uploadHost = NSBundle.mainBundle.objectForInfoDictionaryKey("BackgroundUploadURLBase") as? String ?: ""
+        val controller = DownloadController(
+            union = HttpEventUnionSource(darwinHttpClient(), uploadHost),
+            store = downloadStore,
+            jobs = downloadJobs,
+            importer = IosPhotoLibraryImporter(
+                recordCreatedLocalId = { ref, id -> downloadStore.recordCreatedLocalId(ref, id) },
+            ),
+            myDeviceId = deviceId,
+        )
+        // Deliver each staged resource back to the controller off the URLSession delegate thread.
+        downloadJobs.onStaged = { ref, key, path -> scope.launch { controller.onResourceStaged(ref, key, path) } }
+        controller
+    }
+
     // The leave use-case: the local-only inverse of a join. Disables the producer, then clears the
     // Keychain config — only. It constructs no ledger type; the extension resets its own private ledger,
     // cursor, and joinedEventId marker on its next cycle once the configured event no longer matches.
@@ -147,7 +185,9 @@ object SnapSyncRoot {
         StatusContainerHost(
             syncSource, permission, permission, config, config, scope,
             creationStatusSource = creationStatus, creator = eventCreator,
-            leave = leaveEvent::leave,
+            // Leave is local-only: also cancel in-flight downloads and drop non-terminal rows (imported
+            // photos stay; suppression rows are permanent). Then the existing leave clears config/producer.
+            leave = { downloadController.onLeaveOrSwitch(); leaveEvent.leave() },
             // Fire-and-forget share of the invite deeplink (the host owns the URL). Wiring-only:
             // present the system share sheet over the current top view controller.
             share = { url -> presentShareSheet(url) },
@@ -163,6 +203,9 @@ object SnapSyncRoot {
     fun onForeground() {
         host
         scope.launch { refreshStatusSources() }
+        // Foreground-only discovery (capability `photo-download`): pick up foreign photos others added
+        // since the last read, and import anything already staged. No background poll.
+        scope.launch { config.config.value?.eventId?.let { downloadController.reconcile(it) } }
     }
 
     /** No-op: status liveness is event-driven (foreground entry), never polled. */
@@ -184,7 +227,11 @@ object SnapSyncRoot {
      * the Swift app delegate's `handleEventsForBackgroundURLSession` seam stays a harmless pass-through.
      */
     fun handleBackgroundUrlSession(identifier: String, completionHandler: () -> Unit) {
-        completionHandler()
+        // Repurposed for downloads: the OS relaunched us to deliver background download completions.
+        // Adopt the session so its delegate fires (staging + import run), and invoke the OS handler
+        // once events drain. Imports run here without the app being foregrounded (capability
+        // `photo-download`).
+        downloadJobs.adoptBackgroundEvents(completionHandler)
     }
 
     /**
@@ -214,6 +261,8 @@ object SnapSyncRoot {
         gallery.refresh() // (re)joined event → re-read the gallery total (N)
         refreshStatusSources() // (re)joined event → re-LIST completeness + re-read in-flight manifests
         if (permission.permission.value == PermissionStatus.GRANTED) enableBackgroundUpload()
+        // Auto-download the other contributors' photos for this event (capability `photo-download`).
+        scope.launch { downloadController.reconcile(eventId) }
     }
 
     /**

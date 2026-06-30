@@ -41,6 +41,11 @@ class UploadCycle(
     // Best-effort hook fired once per fully-drained cycle with that cycle's discovery — the device
     // manifest is built from THIS (no second PhotoKit enumeration). Default no-op for tests/harness.
     private val onDiscovery: suspend (Discovery) -> Unit = {},
+    // Suppression port (capability `photo-download`): the set of `assetId`s of foreign assets this
+    // device downloaded + imported. Read once per cycle; discovery drops these BEFORE fan-out so an
+    // imported foreign asset (a fresh local id) is never re-uploaded (the echo). Read-only, backed in
+    // iosMain by the app-written download store; default empty for tests/harness.
+    private val suppressedAssetIds: suspend () -> Set<String> = { emptySet() },
 ) {
     suspend fun run(): CycleResult {
         // Phase 1 — first failures: re-point the system's single retry at a rebuilt edge URL
@@ -83,6 +88,17 @@ class UploadCycle(
         val discovery = platform.discoverResources(store.loadToken())
         log.i { "discovered ${discovery.resources.size} resource(s)" }
 
+        // Echo-suppression: drop resources of assets this device downloaded + imported (their fresh
+        // local id would otherwise look like new work and re-upload the foreign photo). Filtered here,
+        // before the engine sees them and before retainAssets, so no upload job is ever created.
+        val suppressed = suppressedAssetIds()
+        val liveResources = if (suppressed.isEmpty()) {
+            discovery.resources
+        } else {
+            discovery.resources.filterNot { it.assetId in suppressed }
+                .also { log.i { "suppressed ${discovery.resources.size - it.size} downloaded resource(s)" } }
+        }
+
         // Prune rows for assets the change feed reported removed (incremental, every cycle — even a
         // cap-truncated one — so a mid-upload deletion's stuck row is cleared promptly).
         for (assetId in discovery.removedAssetIds) {
@@ -90,7 +106,7 @@ class UploadCycle(
             ledger.deleteByAssetId(assetId)
         }
 
-        for (resource in discovery.resources) {
+        for (resource in liveResources) {
             val decision = engine.handle(SyncEvent.ResourceChanged(resource))
             if (decision is SyncDecision.Work) {
                 when (platform.createJob(decision.job.request, resource)) {
@@ -106,7 +122,7 @@ class UploadCycle(
         // no longer present — the backstop for deletions missed while the change token was expired.
         // Skipped on incremental cycles and on cap-truncated ones (which returned PROCESSING above).
         if (discovery.fullEnumeration) {
-            ledger.retainAssets(discovery.resources.mapTo(mutableSetOf()) { it.assetId })
+            ledger.retainAssets(liveResources.mapTo(mutableSetOf()) { it.assetId })
         }
 
         // Feed the device manifest from THIS cycle's discovery (no second enumeration). Best-effort and

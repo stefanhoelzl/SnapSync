@@ -31,6 +31,7 @@ kotlin {
             // The re-join reconciliation: the list fetch + JoinEvent gate, and the join status seam
             // (re-exported by :capability:rejoin) wired into the container.
             implementation(project(":capability:rejoin"))
+            implementation(project(":capability:download"))
             // The create-event flow: the HTTP creator + CreateEvent use-case and the creation status
             // seam wired into the container.
             implementation(project(":capability:event-creation-ui"))
