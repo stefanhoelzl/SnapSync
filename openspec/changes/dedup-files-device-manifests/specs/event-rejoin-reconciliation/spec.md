@@ -25,32 +25,34 @@ against the compile-time device-facing host.
 ### Requirement: Join reconciliation seeds already-stored photos as completed
 
 A triggered reconciliation (in the extension) SHALL: fetch the **per-device** file listing
-(`list(deviceId)`); for each stored filename **additively upsert** a `COMPLETED` ledger row keyed by
-that `filename` and carrying the `assetId` parsed from the filename; and **on success set the
-`joinedEventId` marker** to the configured `eventId`. The seed SHALL use plain per-row upserts and
-SHALL **never clear** the ledger — it adds and overwrites only the keys present in the listing,
-leaving every other existing row untouched. The seed records no timestamp. Because the byte store is
-device-global and event-independent, this additive seed both **restores** dedup after a reinstall
-(the ledger is empty, so the seed repopulates every globally-stored resource as `COMPLETED`) and
-**preserves** it across an event switch (existing `COMPLETED` rows are kept, the listing merely
-re-confirms them). A resource that is not in the device's byte store is absent from the listing, is
-not seeded, and is uploaded idempotently by the producer (last-write-wins). Setting the marker on
-success — even when zero rows were seeded — settles the join so it does not re-trigger.
+(`list(deviceId)`); **`resetTo`** (atomic clear-and-seed) the ledger to exactly one `COMPLETED` row
+per stored filename, each keyed by that `filename` and carrying the `assetId` parsed from the
+filename; **clear the discovery cursor** to force a full re-enumeration; and **on success set the
+`joinedEventId` marker** to the configured `eventId`. The seed records no timestamp. The clear is
+essential: it drops stale/phantom rows — e.g. a `REQUESTED` row left by a prior cycle whose upload
+job never materialized, which the engine would otherwise read as in-flight and skip re-creating
+forever — leaving the ledger as exactly the device's stored files. Because the byte store is
+device-global and event-independent, this clear-and-seed both **restores** dedup after a reinstall
+(the seed repopulates every globally-stored resource as `COMPLETED`) and **preserves** it across an
+event switch (the global listing re-seeds the same files `COMPLETED`). A resource that is not in the
+device's byte store is absent from the listing, is not seeded, and is uploaded idempotently by the
+producer (last-write-wins). Setting the marker on success — even when zero rows were seeded — settles
+the join so it does not re-trigger.
 
 #### Scenario: A stored resource is seeded completed
 
 - **WHEN** the per-device listing reports stored files `a1-primary.jpg`, `a1-video.mov`
 - **THEN** the ledger holds a `COMPLETED` row for each, carrying the `assetId` parsed from the filename, and the marker is set
 
-#### Scenario: The seed never clears existing rows
+#### Scenario: The reset drops stale/phantom rows
 
-- **WHEN** the ledger already holds rows for resources absent from the per-device listing and a reconciliation seeds
-- **THEN** those pre-existing rows are left untouched (no `clear`/reset occurs) and only the listed filenames are upserted to `COMPLETED`
+- **WHEN** the ledger holds a non-`COMPLETED` row (e.g. a `REQUESTED` row from a prior cycle whose job never materialized) for a resource absent from the per-device listing and a reconciliation seeds
+- **THEN** the `resetTo` clears that stale row, so the ledger holds exactly one `COMPLETED` row per listed filename and nothing else
 
 #### Scenario: Reinstall restores dedup from an empty ledger
 
 - **WHEN** the ledger is empty (a reinstall) and the device's byte store already holds prior resources
-- **THEN** the additive seed upserts a `COMPLETED` row for every stored filename, so the producer re-uploads none of them
+- **THEN** the clear-and-seed sets a `COMPLETED` row for every stored filename, so the producer re-uploads none of them
 
 #### Scenario: A zero-row join still settles
 
@@ -69,9 +71,10 @@ producer derives for those resources — both the listing and the producer name 
 bare `<assetId>-<role>.<ext>` from the **shared gallery enumeration**, with no event scoping — so a
 seeded `COMPLETED` row's key matches a later `ResourceChanged` for the same resource. Because an
 uploaded resource is immutable, the engine treats any `COMPLETED` key as `AlreadyUploaded` regardless
-of content, so the producer never re-uploads a seeded resource. Because the seed is **additive and
-device-global**, this skip now holds **across events**: a resource uploaded under one event is seeded
-`COMPLETED` and skipped after a switch to any other event, never re-uploaded.
+of content, so the producer never re-uploads a seeded resource. Because the seed source is the
+**device-global** listing, this skip now holds **across events**: a resource uploaded under one event
+is re-seeded `COMPLETED` by the clear-and-seed and skipped after a switch to any other event, never
+re-uploaded.
 
 #### Scenario: Seeded resource is skipped by the producer
 
@@ -87,34 +90,36 @@ device-global**, this skip now holds **across events**: a resource uploaded unde
 
 The extension SHALL compare the configured `eventId` to the persisted `joinedEventId` marker. When
 they **match** (a relaunch or re-provision of the already-joined event) the switch is a no-op: no
-seed, no re-projection, no marker write. When they **differ** — an event switch, a reinstall with no
-marker, or a fresh provision — the extension SHALL **keep** the ledger, the discovery cursor, **and**
-the device-global accumulator intact; **additively seed** the ledger from the per-device listing (no
-clear, no reset); **re-project** the device manifest (`device.json`) to the **new** event's storage
-path; and set the `joinedEventId` marker to the configured `eventId`. No ledger clear and no cursor
-reset occur on a switch — the accumulator, ledger, and cursor are all device-global, so a switch is a
-re-projection plus an additive re-confirmation, not a reset (the date-filter case where switching to
-an event with an **earlier** start needs cursor re-enumeration is deferred with the date filter).
-After a **leave** (config absent), the extension SHALL clear the `joinedEventId` marker on its next
-cycle while **keeping** the ledger, cursor, and accumulator, so a subsequent provision of any event
-runs a fresh additive reconciliation without losing dedup.
+seed, no cursor clear, no re-projection, no marker write. When they **differ** — an event switch, a
+reinstall with no marker, or a fresh provision — the extension SHALL **`resetTo`** (atomic
+clear-and-seed) the ledger from the per-device listing; **clear the discovery cursor** to force a
+full re-enumeration; **keep** the device-global accumulator intact and **re-project** the device
+manifest (`device.json`) to the **new** event's storage path; and set the `joinedEventId` marker to
+the configured `eventId`. The clear-and-seed makes the ledger exactly the device's stored files —
+dropping stale/phantom rows — while the device-global listing re-seeds the same files `COMPLETED`, so
+nothing already stored re-uploads; the cursor clear re-enumerates to find genuinely-unstored work
+(the App-Group cursor survives an app upgrade, so without it a re-join would scan incrementally and
+find nothing). After a **leave** (config absent), the extension SHALL clear the `joinedEventId`
+marker **only** on its next cycle while **keeping** the ledger, cursor, and accumulator intact (the
+ledger is device-global and valid across events), so a subsequent provision of any event runs a fresh
+reconciliation without losing dedup.
 
 #### Scenario: Re-provision of an already-joined event is a no-op
 
 - **WHEN** the configured `eventId` equals the `joinedEventId` marker
-- **THEN** no seed, no re-projection, and no marker write occur; the ledger, cursor, and accumulator are unchanged
+- **THEN** no seed, no cursor clear, no re-projection, and no marker write occur; the ledger, cursor, and accumulator are unchanged
 
-#### Scenario: A different event keeps state and additively seeds
+#### Scenario: A different event resets-and-seeds and clears the cursor
 
 - **WHEN** the configured `eventId` differs from the marker
-- **THEN** the ledger, discovery cursor, and accumulator are kept, the ledger is additively seeded from the per-device listing, `device.json` is re-projected to the new event path, and the marker is set — with no ledger clear and no cursor reset
+- **THEN** the ledger is `resetTo` (clear-and-seed) from the per-device listing, the discovery cursor is cleared, the accumulator is kept and `device.json` is re-projected to the new event path, and the marker is set — with the global listing re-seeding the same files `COMPLETED` so nothing already stored re-uploads
 
-#### Scenario: A reinstall restores via the same additive seed
+#### Scenario: A reinstall restores via the same clear-and-seed
 
 - **WHEN** the marker is absent and the ledger is empty (a reinstall) for a configured event
-- **THEN** the additive seed from the per-device listing restores the `COMPLETED` rows and the marker is set, without any clear or reset
+- **THEN** the `resetTo` from the per-device listing restores the `COMPLETED` rows, the cursor is cleared, and the marker is set
 
 #### Scenario: Leaving clears the marker but keeps dedup
 
 - **WHEN** the user has left an event (config absent) and the extension next runs
-- **THEN** the extension clears the `joinedEventId` marker but keeps the ledger, cursor, and accumulator, so provisioning any event afterward runs a fresh additive reconciliation and re-uploads nothing already stored
+- **THEN** the extension clears the `joinedEventId` marker **only** and keeps the ledger, cursor, and accumulator intact, so provisioning any event afterward runs a fresh reconciliation and re-uploads nothing already stored

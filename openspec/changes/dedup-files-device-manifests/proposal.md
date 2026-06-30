@@ -34,9 +34,10 @@ untouched and stay event-blind.
   mine" handle a future restore needs.
 - **Cross-event dedup.** The ledger already keys by the **bare filename** (`<assetId>-<role>.<ext>`,
   event-independent); ack-path recovery already reads the URL's last segment. So dedup needs **no
-  engine/ledger change** — only the reconcile **seed source**: seed *additively* from the **per-device**
-  file listing (`GET /files/device/<id>`) and **never clear** on an event switch, so a switch
-  re-uploads nothing already in `/files/`.
+  engine/ledger change** — only the reconcile **seed source**: on a re-join, **`resetTo`** (atomic
+  clear-and-seed) the ledger from the **per-device** file listing (`GET /files/device/<id>`) — the
+  global listing re-seeds the same files `COMPLETED`, so a switch re-uploads nothing already in
+  `/files/` while the clear drops stale/phantom rows.
 - **Device manifest (new, replaces per-asset manifests).** device.json is a **mutable, full-state
   projection** of a **device-global accumulator** (all discovered-not-deleted assets with their
   manifest detail). Each event's device.json is the date-filtered projection PUT to that event's path.
@@ -75,9 +76,10 @@ untouched and stay event-blind.
   listing is removed from the edge.
 - `bunny-download-endpoint`: the object route moves to `/files/device/<deviceId>/<filename>`; the public
   URL format follows.
-- `event-rejoin-reconciliation`: seeds **additively** from the per-device file listing, **never clears**
-  the ledger; an event **switch** keeps ledger + cursor + accumulator and merely re-projects device.json
-  to the new path.
+- `event-rejoin-reconciliation`: on a re-join **`resetTo`s** the ledger (clear-and-seed) from the
+  per-device file listing and **clears the discovery cursor** (full re-enumeration); the global listing
+  re-seeds the same files `COMPLETED` so a **switch** re-uploads nothing already stored, and it
+  re-projects device.json to the new path. A **leave** clears only the join marker (ledger kept).
 - `event-creation`: the event marker/metadata object moves to `/events/<eventId>/metadata.json`.
 - `sync-status`: own-device progress from the gallery enumeration seam × the per-device file listing;
   `PendingManifestsSource` and the manifest-based `CompletedAssetsSource` are removed.
@@ -87,7 +89,7 @@ untouched and stay event-blind.
 - `gallery-status`: the existing resource-enumeration seam additionally feeds the app-side status
   consumer (expected resource sets); enumeration logic itself is unchanged.
 - `sync-ledger`: clarified event-independence (key is the bare filename) and that the atomic baseline
-  reset is no longer used on an event switch (reconcile seeds additively instead).
+  reset (`resetTo`) is what reconcile invokes on a re-join (clear-and-seed from the per-device listing).
 
 ### Removed Capabilities
 - `asset-manifest`: superseded by `device-manifest`. The per-asset, immutable, write-once manifest
@@ -99,7 +101,7 @@ untouched and stay event-blind.
   (deviceId + URL template); `backend/` (upload route + new device.json route + ungating, per-device
   list, download path, metadata path); `app/ios/photokit-extension` (accumulator + projection +
   synchronous device.json PUT, replacing the manifest `URLSession` path; reconcile seed source);
-  `:capability:rejoin` (`EventFilesSource` → per-device list seam, additive seed, switch handling);
+  `:capability:rejoin` (`EventFilesSource` → per-device list seam, `resetTo` seed + cursor clear, switch handling);
   `:domain:status` (own-device sources, remove `PendingManifestsSource`); `iosApp` host (drop manifest
   `handleEventsForBackgroundURLSession` wiring).
 - **Untouched:** `:domain:engine` (event-blind; key already bare filename; ack-path already

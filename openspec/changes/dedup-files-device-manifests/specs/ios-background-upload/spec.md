@@ -168,27 +168,28 @@ introduced and the upload decision is unchanged.
 ### Requirement: Re-provision resets sync state
 
 On a **valid `snapsync://` config (re)scan**, the host app SHALL re-provision the (possibly new)
-event. A re-provision (an event **switch**) SHALL **keep** the existing ledger, the persisted
-discovery cursor, and the device-global accumulator intact — it SHALL **not** clear the ledger and
-SHALL **not** reset the cursor. The extension SHALL be re-registered (the disable→enable toggle). On
-its next cycle the extension reconciles **additively** against the per-device file listing
-(`GET /files/device/<deviceId>`, see `event-rejoin-reconciliation`), so resources already present in
-`/files/device/<deviceId>/…` are seeded as already-uploaded and **nothing already stored re-uploads**;
-the extension then **re-projects** the device-global accumulator to the **new** event's `device.json`
-path and sets the joined-event marker. The app decodes the deeplink only to gate this on a valid
-payload; the authoritative decode/validate/persist still happens in the shared container intent.
+event. The extension SHALL be re-registered (the disable→enable toggle). On its next cycle the
+extension reconciles against the per-device file listing (`GET /files/device/<deviceId>`, see
+`event-rejoin-reconciliation`): it **`resetTo`s** (atomic clear-and-seed) the ledger to one
+already-uploaded row per stored file and **clears the discovery cursor** (forcing a full
+re-enumeration). The device-global listing re-seeds the same files as already-uploaded, so **nothing
+already stored re-uploads**, while the clear drops stale/phantom rows and the cursor clear
+re-enumerates to find genuinely-unstored work. The device-global accumulator is **kept** and the
+extension **re-projects** it to the **new** event's `device.json` path, then sets the joined-event
+marker. The app decodes the deeplink only to gate this on a valid payload; the authoritative
+decode/validate/persist still happens in the shared container intent.
 
-#### Scenario: Valid re-scan keeps state and re-projects to the new event
+#### Scenario: Valid re-scan reconciles and re-projects to the new event
 - **WHEN** a valid `snapsync://` config URL is opened for a different event
-- **THEN** the ledger, discovery cursor, and accumulator are kept (not cleared/reset), the extension
-  is re-registered (disable→enable), and the next cycle additively reconciles against the per-device
-  file listing and re-projects `device.json` to the new event path with the joined-event marker set
+- **THEN** the extension is re-registered (disable→enable), and the next cycle `resetTo`s the ledger
+  from the per-device file listing, clears the discovery cursor, keeps the accumulator, and
+  re-projects `device.json` to the new event path with the joined-event marker set
 
 #### Scenario: Already-stored photos do not re-upload on a switch
 - **WHEN** the device switches to an event whose photos are already present under
   `/files/device/<deviceId>/…`
-- **THEN** the additive reconcile seeds them as already-uploaded and the extension creates no new
-  upload jobs for them
+- **THEN** the clear-and-seed reconcile re-seeds them as already-uploaded and the extension creates no
+  new upload jobs for them
 
 #### Scenario: Invalid deeplink does not re-provision
 - **WHEN** an opened URL fails config decoding

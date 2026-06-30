@@ -1,18 +1,31 @@
 package app.snapsync.ios.upload
 
 import app.snapsync.config.KeychainConfigStore
+import app.snapsync.deviceid.KeychainDeviceIdentity
 import app.snapsync.engine.LedgerBackend
 import app.snapsync.engine.LedgerWriter
 import app.snapsync.engine.SyncEngine
 import app.snapsync.engine.iosLedgerBackend
 import app.snapsync.uploadurl.EdgeUploadRequestProvider
-import app.snapsync.gallery.IosManifestStore
+import app.snapsync.gallery.DeviceManifestProducer
+import app.snapsync.gallery.IosDeviceManifestStore
 import app.snapsync.gallery.PhotoLibraryResourceEnumerator
+import app.snapsync.gallery.deviceManifestAssetsFromResources
 import app.snapsync.rejoin.ExtensionReconciler
-import app.snapsync.rejoin.HttpEventFilesSource
+import app.snapsync.rejoin.HttpDeviceFilesSource
 import app.snapsync.rejoin.darwinHttpClient
 import co.touchlab.kermit.Logger
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withTimeout
+
+/**
+ * Upper bound on the synchronous in-cycle device.json PUT (capability `device-manifest`). The
+ * background-upload extension runner has a hard ~3-minute OS runtime cap; a network call under
+ * `runBlocking` that hangs past it gets the worker force-killed (error 50001) before uploads are
+ * handed off. The byte-upload jobs are created BEFORE this, so they are safe; this bound keeps a
+ * slow/hung manifest PUT from ever blowing the budget.
+ */
+private const val DEVICE_MANIFEST_TIMEOUT_MS = 12_000L
 
 /**
  * The extension process's composition root — the single site that assembles the App-Group ledger
@@ -48,6 +61,16 @@ object UploadExtensionRoot {
     private val discoveryStore: IosDiscoveryStore by lazy { IosDiscoveryStore() }
     private val configSource: KeychainConfigStore by lazy { KeychainConfigStore() }
 
+    // The stable per-install device id (shared Keychain, minted once): the `/files/<deviceId>/`
+    // byte-store partition the provider writes to, and the per-event device-manifest key. Resolved
+    // once for the process lifetime.
+    private val deviceId: String by lazy { KeychainDeviceIdentity().deviceId() }
+
+    // One shared Darwin (NSURLSession) HTTP client for both in-cycle network calls (the reconcile
+    // listing GET and the device.json PUT) — a single client avoids running two NSURLSession-backed
+    // engines under the same `runBlocking`.
+    private val httpClient by lazy { darwinHttpClient() }
+
     // Re-join reconciliation (capability `event-rejoin-reconciliation`), now extension-owned. Seeds
     // already-stored photos as COMPLETED before the producer runs so they are not re-uploaded; gated by
     // a persisted `joinedEventId` marker so a settled join performs no fetch. Fetches the event's
@@ -55,24 +78,30 @@ object UploadExtensionRoot {
     // `BackgroundUploadURLBase` baked into the extension bundle.
     private val reconciler: ExtensionReconciler by lazy {
         ExtensionReconciler(
-            files = HttpEventFilesSource(darwinHttpClient(), uploadHostFromBundle() ?: ""),
+            // Seed dedup from the DEVICE's stored filenames (bytes are device-partitioned and
+            // event-independent). The reconciler `resetTo`s the ledger to exactly those files
+            // (clear-and-seed, dropping stale/phantom rows) and clears the cursor — see ExtensionReconciler.
+            files = HttpDeviceFilesSource(httpClient, uploadHostFromBundle() ?: ""),
             ledger = ledgerBackend,
             marker = IosJoinedEventMarker(),
+            deviceId = deviceId,
+            // Clear the discovery cursor on a re-join so the producer re-enumerates the whole library
+            // (the cursor survives an app upgrade); the ledger dedups, so nothing already stored re-uploads.
             clearDiscoveryCursor = { discoveryStore.clearToken() },
-            // Reset the per-asset manifest markers on a switch/reinstall so the configured event
-            // re-uploads its manifests (the markers are assetId-keyed, not event-scoped).
-            resetManifests = { manifestStore.clear() },
             log = log,
         )
     }
 
-    // The per-asset manifest side channel (capability `asset-manifest`): synthesizes + enqueues each
-    // asset's manifest on a background URLSession, independent of the engine/ledger. Process-lifetime
-    // singletons (the session must outlive a single cycle to be re-adoptable by the app).
-    private val manifestStore: IosManifestStore by lazy { IosManifestStore() }
-    private val manifestSession: ManifestUploadSession by lazy { ManifestUploadSession() }
-    private val manifestProducer: IosManifestProducer by lazy {
-        IosManifestProducer(manifestStore, manifestSession, log)
+    // The per-event device manifest (capability `device-manifest`): the extension is its SOLE writer
+    // and PUTs it SYNCHRONOUSLY in-cycle (no background URLSession, no app involvement). Replaces the
+    // retired per-asset manifest side channel. The uploader's host is the same compile-time
+    // `BackgroundUploadURLBase`; the store persists the accumulator + last-uploaded JSON in the App Group.
+    private val deviceManifestProducer: DeviceManifestProducer by lazy {
+        DeviceManifestProducer(
+            store = IosDeviceManifestStore(),
+            uploader = IosDeviceManifestUploader(httpClient, uploadHostFromBundle() ?: ""),
+            deviceId = deviceId,
+        )
     }
 
     /**
@@ -110,16 +139,32 @@ object UploadExtensionRoot {
             return@runBlocking CycleResult.COMPLETED
         }
         log.i { "process: config present and reconciled — running cycle" }
-        // Side channel: ensure each asset's manifest is generated + enqueued on the background
-        // URLSession. Independent of the engine/ledger and best-effort — a manifest failure must never
-        // fail the upload cycle (completeness is read at the list endpoint, not from the manifest job).
-        runCatching { manifestProducer.ensureManifests(config.eventId, config.host) }
-            .onFailure { log.w(it) { "manifest side channel failed this cycle" } }
         val engine = SyncEngine(
-            EdgeUploadRequestProvider(config.host, config.eventId),
+            // Bytes go to the device's event-independent partition (/files/<deviceId>/…); the eventId
+            // in `config` drives only the producer's event scope + the device-manifest write, not the
+            // byte URL.
+            EdgeUploadRequestProvider(config.host, deviceId),
             ledger,
         )
-        val cycle = UploadCycle(engine, ledger, platform, discoveryStore, log)
+        // Device manifest (capability `device-manifest`) is produced from the cycle's OWN discovery —
+        // no second PhotoKit enumeration (that pass hung the lean extension). The hook runs once per
+        // fully-drained cycle, AFTER the byte-upload jobs are created, and the PUT is strictly bounded
+        // by `withTimeout` so it can never stall the cycle to the OS's force-kill; it is best-effort
+        // and write-only in v1, so any failure/timeout just retries next cycle (skip-if-unchanged
+        // makes that cheap).
+        val cycle = UploadCycle(engine, ledger, platform, discoveryStore, log) { discovery ->
+            runCatching {
+                withTimeout(DEVICE_MANIFEST_TIMEOUT_MS) {
+                    deviceManifestProducer.produce(
+                        eventId = config.eventId,
+                        startDate = null, // whole-library scope (the date filter is deferred)
+                        discovered = deviceManifestAssetsFromResources(discovery.resources),
+                        removedAssetIds = discovery.removedAssetIds.toSet(),
+                        fullEnumeration = discovery.fullEnumeration,
+                    )
+                }
+            }.onFailure { log.w(it) { "device.json production failed/timed out this cycle" } }
+        }
         val result = runCatching { cycle.run() }
             .onSuccess { log.i { "process: cycle finished — $it" } }
             .getOrElse {
