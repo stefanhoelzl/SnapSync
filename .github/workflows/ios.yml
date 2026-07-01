@@ -30,14 +30,27 @@ name: ios
 
 on:
   push:
-  # Manual dispatch to override the compile-time upload host (PhotoKit forces the host to be
-  # compile-time). A plain push supplies no input → the archive does NOT override the build setting,
-  # so it bakes the Config.xcconfig default (the deployed HTTPS backend, the single source of the
-  # host literal), which all builds (incl. main/TestFlight) target — safe because the device holds no
-  # credential. Set `upload_host` only to point a dev IPA at an alternate HTTPS host (e.g. staging);
-  # it is HTTPS-only and a non-https value fails the run (default ATS forbids plaintext anyway).
+  # Manual dispatch is the FAST AGENT LOOP: build a sideloadable dev IPA for the current branch as
+  # quickly as CI allows. It defaults to `configuration: Debug`, which links the Kotlin/Native
+  # framework WITHOUT the LLVM optimizer — the bulk of the ~6 min Release archive — roughly halving
+  # the build. The dev/sideload IPA is only for on-device testing, so it needs no optimization. Every
+  # PUSH (the merge gate) still builds Release below; this input only affects manual dispatches. Pick
+  # `Release` for a shipping-representative dev IPA. `upload_host` is an INDEPENDENT optional override
+  # of the compile-time host (PhotoKit forces the host to be compile-time): empty bakes the
+  # Config.xcconfig default (the deployed HTTPS backend, the single source of the host literal, which
+  # all builds incl. main/TestFlight target — safe because the device holds no credential); set it
+  # only to point a dev IPA at an alternate HTTPS host (e.g. staging). It is HTTPS-only; a non-https
+  # value fails the run (default ATS forbids plaintext anyway).
   workflow_dispatch:
     inputs:
+      configuration:
+        description: "Dev IPA build configuration. Debug (default) skips the Kotlin/Native LLVM optimizer for the fast agent sideload/test loop; Release for a shipping-representative dev IPA."
+        required: false
+        default: "Debug"
+        type: choice
+        options:
+          - Debug
+          - Release
       upload_host:
         description: "Override the compile-time host for the dev IPA, HTTPS-only e.g. https://staging.example (empty = Config.xcconfig default)"
         required: false
@@ -141,21 +154,27 @@ jobs:
             exit 1
           fi
 
-      # Pick the build configuration and compute the optional host override. A workflow_dispatch with
-      # an (HTTPS) `upload_host` builds DEBUG so the Kotlin/Native framework link skips the LLVM
-      # optimizer (the bulk of the ~6 min archive); the dev/sideload IPA needs no optimization, and
-      # `-configuration Debug` makes embedAndSignAppleFrameworkForXcode build linkDebugFramework via
-      # $(CONFIGURATION). EVERY push (the merge gate) and any plain dispatch (empty upload_host) stay
-      # RELEASE and set NO override, so the archive bakes the Config.xcconfig default (the deployed
-      # HTTPS backend, the single source of the host literal). To get a Release-representative IPA
-      # from a manual run, leave `upload_host` empty.
+      # Pick the build configuration and compute the optional host override. The two are INDEPENDENT:
+      #   * configuration — a manual workflow_dispatch honors `inputs.configuration` (default Debug),
+      #     the fast agent loop: DEBUG makes the Kotlin/Native framework link skip the LLVM optimizer
+      #     (the bulk of the ~6 min archive), and `-configuration Debug` makes
+      #     embedAndSignAppleFrameworkForXcode build linkDebugFramework via $(CONFIGURATION). EVERY
+      #     push (the merge gate) stays RELEASE — this input only affects dispatches.
+      #   * host override — set only when a dispatch passes a (non-empty, HTTPS) `upload_host`;
+      #     otherwise NO override, so the archive bakes the Config.xcconfig default (the deployed
+      #     HTTPS backend, the single source of the host literal). A push never overrides.
       - name: Select build configuration and host override
         env:
           UPLOAD_HOST: ${{ inputs.upload_host }}
+          CONFIGURATION: ${{ inputs.configuration }}
         run: |
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ] && [ -n "$UPLOAD_HOST" ]; then
-            echo "BUILD_CONFIG=Debug" >> "$GITHUB_ENV"
-            echo "UPLOAD_HOST_OVERRIDE=BACKGROUND_UPLOAD_URL_BASE=$UPLOAD_HOST" >> "$GITHUB_ENV"
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "BUILD_CONFIG=${CONFIGURATION:-Debug}" >> "$GITHUB_ENV"
+            if [ -n "$UPLOAD_HOST" ]; then
+              echo "UPLOAD_HOST_OVERRIDE=BACKGROUND_UPLOAD_URL_BASE=$UPLOAD_HOST" >> "$GITHUB_ENV"
+            else
+              echo "UPLOAD_HOST_OVERRIDE=" >> "$GITHUB_ENV"
+            fi
           else
             echo "BUILD_CONFIG=Release" >> "$GITHUB_ENV"
             echo "UPLOAD_HOST_OVERRIDE=" >> "$GITHUB_ENV"
@@ -219,8 +238,11 @@ jobs:
       # refs/heads/main so per-branch pushes no longer consume TestFlight uploads (the limit we are
       # avoiding) — per-branch installs are served by the dev-IPA artifact above. Still decoupled
       # from the gate: continue-on-error keeps the job green if Apple's delivery flakes.
+      # Push-on-main only: a manual dispatch now defaults to a Debug archive, which must never reach
+      # TestFlight. The automatic push build on main is always Release (the block above), so gating to
+      # the push event keeps TestFlight fed only by optimized, shipping-representative archives.
       - name: Export signed IPA
-        if: github.ref == 'refs/heads/main'
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         continue-on-error: true
         env:
           ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
@@ -236,7 +258,7 @@ jobs:
             -authenticationKeyIssuerID "$ASC_ISSUER_ID"
 
       - name: Upload to TestFlight
-        if: github.ref == 'refs/heads/main'
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         continue-on-error: true
         uses: apple-actions/upload-testflight-build@v5
         with:

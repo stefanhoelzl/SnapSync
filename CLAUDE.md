@@ -86,7 +86,8 @@ still-alive old one and the app sticks on a **black launch screen** (status bar 
 black). To truly restart: `dvt signal <pid> 9` (SIGKILL) **then** `dvt launch` (verified recovery).
 Take the screenshot promptly after a single launch; avoid rapid relaunch cycles.
 
-**The headless per-build loop:** CI builds the dev IPA → `apps install` → `dvt launch --env
+**The headless per-build loop:** dispatch a fast Debug IPA build (*Sideload a dev IPA* below) →
+`apps install` → `dvt launch --env
 SNAPSYNC_DEEPLINK=…` (use a **fresh event id**, per the note above, or the reconcile will seed
 already-stored photos and nothing uploads) → the OS invokes the upload extension on its own cadence →
 confirm the objects landed in the backend's bunny storage zone (see *Verify real uploads* below; the
@@ -97,9 +98,26 @@ runs.
 
 ### Sideload a dev IPA (skip TestFlight)
 
-CI publishes a **development-signed IPA** as a GitHub Actions artifact on every push
-(`snapsync-dev-ipa-<run_number>`, 1-day retention) — install it straight onto a registered device,
-no TestFlight. This is an **operator runbook, not CI behavior**. See `openspec/specs/ios-sideload-delivery`.
+CI publishes a **development-signed IPA** as a GitHub Actions artifact (`snapsync-dev-ipa-<run_number>`,
+1-day retention) — install it straight onto a registered device, no TestFlight. This is an **operator
+runbook, not CI behavior**. See `openspec/specs/ios-sideload-delivery`.
+
+**Fast agent loop — trigger a Debug build, don't wait on the push gate.** Every push builds the IPA
+in **Release** (that build doubles as the merge gate, and Release runs the Kotlin/Native LLVM
+optimizer — the ~5-6 min bulk of the archive). For the iterate-and-sideload loop you don't need
+optimization: a manual `workflow_dispatch` builds a **Debug** IPA by default (LLVM optimizer skipped,
+roughly half the time) from the same signed archive. Push the branch, then dispatch — the workflow's
+`concurrency` group cancels the branch's slower Release push build automatically, so you don't pay for
+both. Trigger it and grab the run:
+```
+git push -u origin <branch>                         # dispatch runs the ref's commit — push first
+gh workflow run ios.yml --ref <branch>              # Debug by default; add -f configuration=Release for a shipping-representative IPA
+RID=$(gh run list --workflow=ios.yml --branch <branch> --event workflow_dispatch \
+        --limit 1 --json databaseId --jq '.[0].databaseId')
+gh run watch "$RID" --exit-status                    # block until the build finishes
+```
+(`-f upload_host=https://staging.example` still points the dev IPA at an alternate HTTPS host,
+independent of the configuration; empty bakes the `Config.xcconfig` default.)
 
 One-time setup (per device):
 - Register the device UDID at developer.apple.com → Devices (SE2 is `00008030-0018703A1A7A402E`,
@@ -110,10 +128,12 @@ One-time setup (per device):
   first (below), then toggle Developer Mode on in Settings (software restart, no hardware buttons).
 
 Per build (run Python tools via `uvx`, never a global install — note pymobiledevice3 wants the
-**bare** socket path, no `UNIX:` prefix):
+**bare** socket path, no `UNIX:` prefix). `$RID` is the run id from the fast-build dispatch above (or
+any push run); `gh run download <id>` with no `-n` pulls the run's single dev-IPA artifact, so you
+don't need the run_number:
 ```
 export USBMUXD_SOCKET_ADDRESS=/run/host/run/usbmuxd
-gh run download <run-id> -n snapsync-dev-ipa-<run_number> -D /tmp/ipa   # the run's build number
+gh run download "$RID" -D /tmp/ipa
 uvx pymobiledevice3 apps install /tmp/ipa/SnapSync.ipa
 ```
 (Install goes over `installation_proxy`/lockdownd — no developer tunnel needed. Launch, screenshot,
