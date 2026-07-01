@@ -28,14 +28,17 @@
 #     (sshd + cloudflared are started with nohup so they survive into the blocking step AFTER the upload
 #     step has completed.)
 #
-# Signing — NO ASC key on the box, EVER: this job holds only the Apple DEVELOPMENT cert (to sign) and a
-# pre-generated DEVELOPMENT provisioning profile baked in as the DEV_PROVISIONING_PROFILE_BASE64 secret
-# (a provisioning profile carries NO private keys — just the app id, team, device UDIDs, and public
-# certs — so it is safe as a secret). We install that profile and import the dev cert; in-session
-# `xcodebuild -exportArchive` (automatic signing, no -allowProvisioningUpdates) reuses it. The Admin ASC
-# key that ios.yml uses is never materialized here. REFRESH the secret when the profile expires (~1yr;
-# baked one valid to 2027-07-01) or when you register a new device: dev-export any build, extract
-# Payload/*.app/embedded.mobileprovision, and `gh secret set DEV_PROVISIONING_PROFILE_BASE64`.
+# Signing — NO ASC key on the box, EVER: this job holds only the Apple DEVELOPMENT cert (to sign) and the
+# pre-generated DEVELOPMENT provisioning profiles baked in as the DEV_PROVISIONING_PROFILE_BASE64 secret
+# (a tar of BOTH the app `app.snapsync` and the extension `app.snapsync.BackgroundUpload` profiles — the
+# archive signs both targets, so both must be present; a provisioning profile carries NO private keys,
+# just the app id, team, device UDIDs, and public certs, so it is safe as a secret). We install them and
+# import the dev cert; in-session `xcodebuild -exportArchive` (automatic signing, no
+# -allowProvisioningUpdates) reuses them. The Admin ASC key that ios.yml uses is never materialized here.
+# REFRESH the secret when the profiles expire (~1yr; baked ones valid to 2027-07-01) or when you register
+# a new device: dev-export any build (minting fresh profiles with -allowProvisioningUpdates), then tar
+# BOTH the app's Payload/*.app/embedded.mobileprovision and the extension's
+# PlugIns|Extensions/*.appex/embedded.mobileprovision, and `gh secret set DEV_PROVISIONING_PROFILE_BASE64`.
 #
 # Lifecycle: the interactive step BLOCKS on a stop sentinel (`/tmp/ssh-mac-stop`, `ssh ... touch` it to
 # end) OR `stop_after` minutes, whichever first; `timeout-minutes` on the job is the hard backstop.
@@ -107,26 +110,30 @@ jobs:
           keychain: snapsync-ssh-mac
           keychain-password: ${{ env.KEYCHAIN_PW }}
 
-      # Install the baked development provisioning profile (no ASC key, no compile). Write it under both
-      # the classic and the Xcode-16+ profile directories, named by its UUID, so automatic signing finds
-      # it during an in-session `-exportArchive`.
-      - name: Install baked development provisioning profile
+      # Install the baked development provisioning profiles (no ASC key, no compile). The secret is a tar
+      # of BOTH the app and the extension profiles; the archive signs both targets (app.snapsync +
+      # app.snapsync.BackgroundUpload), so both must be present. Write each under the classic AND the
+      # Xcode-16+ profile directories, named by its UUID, so automatic signing finds them during an
+      # in-session `-exportArchive`.
+      - name: Install baked development provisioning profiles
         continue-on-error: true
         env:
           DEV_PROFILE_B64: ${{ secrets.DEV_PROVISIONING_PROFILE_BASE64 }}
         run: |
           set -euo pipefail
           if [ -z "$DEV_PROFILE_B64" ]; then echo "::warning::DEV_PROVISIONING_PROFILE_BASE64 unset"; exit 0; fi
-          TMP="$RUNNER_TEMP/dev.mobileprovision"
-          printf '%s' "$DEV_PROFILE_B64" | base64 -d > "$TMP"
-          UUID="$(security cms -D -i "$TMP" 2>/dev/null | plutil -extract UUID raw - )"
-          echo "profile UUID: $UUID  (expires: $(security cms -D -i "$TMP" 2>/dev/null | plutil -extract ExpirationDate raw - ))"
-          for DIR in "$HOME/Library/MobileDevice/Provisioning Profiles" \
-                     "$HOME/Library/Developer/Xcode/UserData/Provisioning Profiles"; do
-            mkdir -p "$DIR"; cp -f "$TMP" "$DIR/$UUID.mobileprovision"
+          WORK="$RUNNER_TEMP/profiles"; mkdir -p "$WORK"
+          printf '%s' "$DEV_PROFILE_B64" | base64 -d | tar -C "$WORK" -xf -
+          for TMP in "$WORK"/*.mobileprovision; do
+            UUID="$(security cms -D -i "$TMP" 2>/dev/null | plutil -extract UUID raw - )"
+            EXP="$(security cms -D -i "$TMP" 2>/dev/null | plutil -extract ExpirationDate raw - )"
+            for DIR in "$HOME/Library/MobileDevice/Provisioning Profiles" \
+                       "$HOME/Library/Developer/Xcode/UserData/Provisioning Profiles"; do
+              mkdir -p "$DIR"; cp -f "$TMP" "$DIR/$UUID.mobileprovision"
+            done
+            echo "installed $UUID.mobileprovision (expires $EXP)"
           done
-          rm -f "$TMP"
-          echo "installed dev profile $UUID.mobileprovision"
+          rm -rf "$WORK"
 
       - name: Install cloudflared
         run: brew install cloudflared

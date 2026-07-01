@@ -162,10 +162,12 @@ scp -o ProxyCommand=... runner@<HOST>:snapsync/out/SnapSync.ipa "$S/"
 uvx pymobiledevice3 apps install "$S/SnapSync.ipa"                          # over usbmuxd, as above
 sshmac 'touch /tmp/ssh-mac-stop'                                            # end the session
 ```
-Same one-time device prerequisites as *Sideload a dev IPA* (registered UDID + Developer Mode). Refresh the
-`DEV_PROVISIONING_PROFILE_BASE64` secret when the profile expires (~yearly) or you register a new device:
-dev-export any build, extract `Payload/*.app/embedded.mobileprovision`, and `gh secret set`. The non-root
-sshd, the `cloudflared access ssh` handshake, and in-session export were proven on 2026-07-01.
+Same one-time device prerequisites as *Sideload a dev IPA* (registered UDID + Developer Mode). The
+`DEV_PROVISIONING_PROFILE_BASE64` secret is a **tar of both** the app (`app.snapsync`) and extension
+(`app.snapsync.BackgroundUpload`) dev profiles — the archive signs both targets. Refresh it when they
+expire (~yearly) or you register a new device: dev-export any build, tar both `embedded.mobileprovision`
+(app's `Payload/*.app/` + extension's `.appex/`), and `gh secret set`. The non-root sshd, the
+`cloudflared access ssh` handshake, and in-session export were proven on 2026-07-01.
 
 ### Verify real uploads
 
