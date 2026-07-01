@@ -119,6 +119,53 @@ uvx pymobiledevice3 apps install /tmp/ipa/SnapSync.ipa
 (Install goes over `installation_proxy`/lockdownd — no developer tunnel needed. Launch, screenshot,
 and other DVT services do need the tunnel + DDI, reached headless via `--userspace` above.)
 
+### Headless macOS build loop (ssh-mac)
+
+For a fast **iterate** loop (not just install), `.github/workflows/ssh-mac.yml` opens a long-lived
+`macos-26` job with an SSH server the sandbox connects to, so you can `rsync → build → test → dev-sign →
+scp back → install` many times against one **warm** runner instead of one CI run per change. It is
+**dispatch-only, non-gating** dev infrastructure (no spec; rationale in the workflow header). Public repo
+⇒ the runner is **free**; the session self-closes after `stop_after` minutes (default 90) or when you
+`touch /tmp/ssh-mac-stop`. This is an **operator/agent runbook, not CI behavior**.
+
+The auth model: you pass your **public** key at dispatch (safe — a pubkey is public and the private half
+never leaves the sandbox); the runner authorizes exactly that key on its own sshd, fronted by a
+**cloudflared** quick tunnel (relays encrypted TCP only). The Admin ASC key is used once to install the
+dev provisioning profile, then **deleted before the box is reachable** — only the dev cert is exposed
+in-session. `cloudflared` is fetched to the scratchpad, **not** globally installed.
+
+```
+export USBMUXD_SOCKET_ADDRESS=/run/host/run/usbmuxd
+S=/tmp/.../scratchpad                                          # session scratchpad
+# 1. Ephemeral keypair (public half goes to CI; private half stays here)
+ssh-keygen -q -t ed25519 -N '' -f "$S/ssh-mac"
+# 2. cloudflared client (the ProxyCommand transport)
+curl -sSL -o "$S/cloudflared" \
+  https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64
+chmod +x "$S/cloudflared"
+# 3. Dispatch and grab the run id
+gh workflow run ssh-mac.yml -f ssh_pubkey="$(cat "$S/ssh-mac.pub")" -f stop_after=90
+RID=$(gh run list -w ssh-mac.yml -L1 --json databaseId -q '.[0].databaseId')
+# 4. Scrape the trycloudflare host from the run log (poll until it appears)
+gh run view "$RID" --log | grep -Eo '[a-z0-9-]+\.trycloudflare\.com' | head -1   # = HOST
+# 5. Connect (runner user is `runner`)
+alias sshmac='ssh -i "$S/ssh-mac" -o StrictHostKeyChecking=no \
+  -o ProxyCommand="'"$S"'/cloudflared access ssh --hostname %h" runner@<HOST>'
+# 6. Iterate
+rsync -az --delete -e "..." --exclude .git --exclude build --exclude .gradle ./ runner@<HOST>:snapsync/
+sshmac 'cd snapsync && ./gradlew iosSimulatorArm64Test'
+sshmac 'cd snapsync && xcodebuild -exportArchive -exportOptionsPlist iosApp/ExportOptionsDevelopment.plist \
+          -archivePath "$RUNNER_TEMP/SnapSync.xcarchive" -exportPath out'   # no ASC key: reuses installed profile
+scp -o ProxyCommand=... runner@<HOST>:snapsync/out/SnapSync.ipa "$S/"
+uvx pymobiledevice3 apps install "$S/SnapSync.ipa"                          # over usbmuxd, as above
+sshmac 'touch /tmp/ssh-mac-stop'                                            # end the session
+```
+Same one-time device prerequisites as *Sideload a dev IPA* (registered UDID + Developer Mode). If the
+in-session export fails because the profile did not survive the ASC-key deletion, the header comment's
+fallback (keep the ASC key for the session) applies. **Still verify on first dispatch:** the non-root
+sshd, the `cloudflared access ssh` handshake, and profile reuse are macOS-runner-specific and unprovable
+from Linux.
+
 ### Verify real uploads
 
 On-device uploads go to the **deployed HTTPS backend** (the device-facing host baked from
