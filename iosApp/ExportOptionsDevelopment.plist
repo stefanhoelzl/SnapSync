@@ -3,9 +3,10 @@
 <plist version="1.0">
 <dict>
 	<!-- Development export: a dev-signed IPA that installs directly on registered devices
-	     (sideload via the usbmuxd bridge), published as a CI artifact. No TestFlight. -->
+	     (sideload via the usbmuxd bridge). No TestFlight. Xcode 26 renamed this method's value
+	     from "development" to "debugging" (the old spelling warns as deprecated). -->
 	<key>method</key>
-	<string>development</string>
+	<string>debugging</string>
 	<!-- Apple Team ID (same value as TEAM_ID in Config.xcconfig). -->
 	<key>teamID</key>
 	<string>E9Z8BADH58</string>

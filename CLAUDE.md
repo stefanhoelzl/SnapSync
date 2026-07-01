@@ -130,9 +130,10 @@ scp back → install` many times against one **warm** runner instead of one CI r
 
 The auth model: you pass your **public** key at dispatch (safe — a pubkey is public and the private half
 never leaves the sandbox); the runner authorizes exactly that key on its own sshd, fronted by a
-**cloudflared** quick tunnel (relays encrypted TCP only). The Admin ASC key is used once to install the
-dev provisioning profile, then **deleted before the box is reachable** — only the dev cert is exposed
-in-session. `cloudflared` is fetched to the scratchpad, **not** globally installed.
+**cloudflared** quick tunnel (relays encrypted TCP only). **No ASC key ever touches the box** — the runner
+holds only the dev cert plus a pre-generated dev provisioning profile baked in as the
+`DEV_PROVISIONING_PROFILE_BASE64` secret (a profile carries no private keys, so it is safe as a secret).
+`cloudflared` is fetched to the scratchpad, **not** globally installed.
 
 ```
 export USBMUXD_SOCKET_ADDRESS=/run/host/run/usbmuxd
@@ -146,8 +147,9 @@ chmod +x "$S/cloudflared"
 # 3. Dispatch and grab the run id
 gh workflow run ssh-mac.yml -f ssh_pubkey="$(cat "$S/ssh-mac.pub")" -f stop_after=90
 RID=$(gh run list -w ssh-mac.yml -L1 --json databaseId -q '.[0].databaseId')
-# 4. Scrape the trycloudflare host from the run log (poll until it appears)
-gh run view "$RID" --log | grep -Eo '[a-z0-9-]+\.trycloudflare\.com' | head -1   # = HOST
+# 4. Get the host from the ssh-mac-host ARTIFACT (logs are unreadable mid-run; v4 artifacts are)
+until gh run download "$RID" -n ssh-mac-host -D "$S/host" 2>/dev/null; do sleep 5; done
+HOST=$(cat "$S/host/ssh-mac-host.txt")                        # = <random>.trycloudflare.com
 # 5. Connect (runner user is `runner`)
 alias sshmac='ssh -i "$S/ssh-mac" -o StrictHostKeyChecking=no \
   -o ProxyCommand="'"$S"'/cloudflared access ssh --hostname %h" runner@<HOST>'
@@ -160,11 +162,10 @@ scp -o ProxyCommand=... runner@<HOST>:snapsync/out/SnapSync.ipa "$S/"
 uvx pymobiledevice3 apps install "$S/SnapSync.ipa"                          # over usbmuxd, as above
 sshmac 'touch /tmp/ssh-mac-stop'                                            # end the session
 ```
-Same one-time device prerequisites as *Sideload a dev IPA* (registered UDID + Developer Mode). If the
-in-session export fails because the profile did not survive the ASC-key deletion, the header comment's
-fallback (keep the ASC key for the session) applies. **Still verify on first dispatch:** the non-root
-sshd, the `cloudflared access ssh` handshake, and profile reuse are macOS-runner-specific and unprovable
-from Linux.
+Same one-time device prerequisites as *Sideload a dev IPA* (registered UDID + Developer Mode). Refresh the
+`DEV_PROVISIONING_PROFILE_BASE64` secret when the profile expires (~yearly) or you register a new device:
+dev-export any build, extract `Payload/*.app/embedded.mobileprovision`, and `gh secret set`. The non-root
+sshd, the `cloudflared access ssh` handshake, and in-session export were proven on 2026-07-01.
 
 ### Verify real uploads
 
