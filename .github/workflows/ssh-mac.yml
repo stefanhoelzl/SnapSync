@@ -14,35 +14,35 @@
 #
 # Connection — AUTH is separate from CONNECTIVITY:
 #   * Auth: the caller passes its PUBLIC key as the `ssh_pubkey` input; we authorize exactly that key on
-#     our own user-space sshd. A public key is public by design, so it is safe in a dispatch input and in
-#     this world-readable public-repo log; the PRIVATE key never leaves the sandbox. No auth secret is
-#     ever written to a log. This is strictly tighter than action-tmate, whose public relay terminates
-#     the SSH session in the middle.
+#     our own sshd. A public key is public by design, so it is safe in a dispatch input and in this
+#     world-readable public-repo log; the PRIVATE key never leaves the sandbox. No auth secret is ever
+#     written to a log. This is strictly tighter than action-tmate, whose public relay terminates SSH.
 #   * Connectivity: the runner has no public inbound IP, so a cloudflared quick tunnel fronts the sshd
-#     (`cloudflared tunnel --url ssh://localhost:PORT`). Cloudflare relays ENCRYPTED TCP only — it cannot
-#     read the SSH session. The runner prints the *.trycloudflare.com hostname to this log; the sandbox
-#     scrapes it (`gh run view --log`) and connects with
+#     (`cloudflared tunnel --url ssh://localhost:PORT`). Cloudflare relays ENCRYPTED TCP only.
+#   * Hostname handoff: GitHub run/job LOGS are unreadable until the job completes, but the session step
+#     blocks the whole time — so the hostname CANNOT be scraped from logs headlessly. Instead the runner
+#     writes it to a file and uploads it as the `ssh-mac-host` ARTIFACT (upload-artifact v4+ artifacts
+#     are available the instant their step finishes, mid-run). The sandbox polls `gh run download -n
+#     ssh-mac-host`, reads the host, and connects with
 #         ssh -i <privkey> -o ProxyCommand="cloudflared access ssh --hostname %h" runner@<host>
+#     (sshd + cloudflared are started with nohup so they survive into the blocking step AFTER the upload
+#     step has completed.)
 #
-# Signing — SMALL blast radius on a reachable public-repo box: repeatable in-session signing needs the
-# cert on the box for the whole session, so we minimize WHAT is reachable. A pre-session step imports the
-# Apple DEVELOPMENT cert and uses the Admin ASC key ONCE (with -allowProvisioningUpdates) to mint+install
-# the development provisioning profile and warm derivedData, then DELETES the ASC key before the sshd
-# opens. In-session exports reuse the installed profile with automatic signing and NO -allowProvisioningUpdates
-# and NO ASC key. During the only window anyone could connect, the sole reachable signing secret is the
-# development cert's private key (signs dev builds for registered devices) — never the Admin ASC key.
-# The signing-prep steps are `continue-on-error` on purpose: a signing hiccup must not stop you connecting
-# to debug it interactively. (The Distribution cert and TestFlight are NOT involved here.)
+# Signing — NO ASC key on the box, EVER: this job holds only the Apple DEVELOPMENT cert (to sign) and a
+# pre-generated DEVELOPMENT provisioning profile baked in as the DEV_PROVISIONING_PROFILE_BASE64 secret
+# (a provisioning profile carries NO private keys — just the app id, team, device UDIDs, and public
+# certs — so it is safe as a secret). We install that profile and import the dev cert; in-session
+# `xcodebuild -exportArchive` (automatic signing, no -allowProvisioningUpdates) reuses it. The Admin ASC
+# key that ios.yml uses is never materialized here. REFRESH the secret when the profile expires (~1yr;
+# baked one valid to 2027-07-01) or when you register a new device: dev-export any build, extract
+# Payload/*.app/embedded.mobileprovision, and `gh secret set DEV_PROVISIONING_PROFILE_BASE64`.
 #
-# Lifecycle: the single interactive step runs sshd + cloudflared in the background and BLOCKS on a stop
-# sentinel (`/tmp/ssh-mac-stop`, `ssh ... touch` it to end) OR the `stop_after` minutes, whichever first;
-# `timeout-minutes` on the job is the hard backstop under the 6h cap.
+# Lifecycle: the interactive step BLOCKS on a stop sentinel (`/tmp/ssh-mac-stop`, `ssh ... touch` it to
+# end) OR `stop_after` minutes, whichever first; `timeout-minutes` on the job is the hard backstop.
 #
-# VERIFY ON FIRST DISPATCH (macOS-runner-specific, not checkable from Linux): (1) a non-root user-space
-# sshd on a high port accepts the authorized key; (2) `cloudflared access ssh` connects end-to-end from
-# the sandbox; (3) an in-session dev export reuses the profile installed across the ASC-key-deletion
-# boundary. If (3) fails, fall back to keeping the ASC key for the session (larger, documented blast
-# radius) — see openspec/changes/2026-07-01-ssh-mac-build-loop/design.md decision 3.
+# VERIFY ON FIRST DISPATCH (macOS-runner-specific, not checkable from Linux): the sshd + cloudflared +
+# in-session export were all proven on 2026-07-01; the remaining live check is that the BAKED profile
+# (vs the freshly-minted managed one) drives an in-session `-exportArchive` with no ASC key.
 name: ssh-mac
 
 on:
@@ -107,76 +107,44 @@ jobs:
           keychain: snapsync-ssh-mac
           keychain-password: ${{ env.KEYCHAIN_PW }}
 
-      # Use the Admin ASC key ONCE: mint+install the development provisioning profile and warm derivedData,
-      # then DELETE the key before the box is reachable. `-configuration Debug` matches the interactive
-      # intent (fast framework link, natural development signing). continue-on-error: a signing hiccup must
-      # not block connecting to debug it by hand.
-      - name: Warm dev signing (install profile + derivedData), then delete the ASC key
+      # Install the baked development provisioning profile (no ASC key, no compile). Write it under both
+      # the classic and the Xcode-16+ profile directories, named by its UUID, so automatic signing finds
+      # it during an in-session `-exportArchive`.
+      - name: Install baked development provisioning profile
         continue-on-error: true
         env:
-          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
-          ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
-          ASC_API_PRIVATE_KEY: ${{ secrets.ASC_API_PRIVATE_KEY }}
+          DEV_PROFILE_B64: ${{ secrets.DEV_PROVISIONING_PROFILE_BASE64 }}
         run: |
           set -euo pipefail
-          mkdir -p "$RUNNER_TEMP/asc"
-          ASC_KEY_PATH="$RUNNER_TEMP/asc/AuthKey.p8"
-          printf '%s' "$ASC_API_PRIVATE_KEY" > "$ASC_KEY_PATH"
-
-          # Archive (Debug, dev-signed) — provisions + installs the development profile via the ASC key.
-          xcodebuild \
-            -project iosApp/iosApp.xcodeproj \
-            -scheme iosApp \
-            -configuration Debug \
-            -sdk iphoneos \
-            -destination 'generic/platform=iOS' \
-            -archivePath "$RUNNER_TEMP/SnapSync.xcarchive" \
-            -derivedDataPath build/ios \
-            -allowProvisioningUpdates \
-            -authenticationKeyPath "$ASC_KEY_PATH" \
-            -authenticationKeyID "$ASC_KEY_ID" \
-            -authenticationKeyIssuerID "$ASC_ISSUER_ID" \
-            CURRENT_PROJECT_VERSION=${{ github.run_number }} \
-            archive || echo "::warning::warm archive failed — connect and debug signing interactively"
-
-          # Export a dev IPA once — this installs the development profile into ~/Library/MobileDevice for
-          # in-session reuse (subsequent exports need no ASC key).
-          xcodebuild -exportArchive \
-            -archivePath "$RUNNER_TEMP/SnapSync.xcarchive" \
-            -exportPath "$RUNNER_TEMP/export-dev" \
-            -exportOptionsPlist iosApp/ExportOptionsDevelopment.plist \
-            -allowProvisioningUpdates \
-            -authenticationKeyPath "$ASC_KEY_PATH" \
-            -authenticationKeyID "$ASC_KEY_ID" \
-            -authenticationKeyIssuerID "$ASC_ISSUER_ID" || echo "::warning::warm dev export failed"
-
-          # The ASC key must NOT be reachable during the interactive window.
-          rm -f "$ASC_KEY_PATH"
-          rmdir "$RUNNER_TEMP/asc" 2>/dev/null || true
-          echo "ASC key deleted before the session opens."
+          if [ -z "$DEV_PROFILE_B64" ]; then echo "::warning::DEV_PROVISIONING_PROFILE_BASE64 unset"; exit 0; fi
+          TMP="$RUNNER_TEMP/dev.mobileprovision"
+          printf '%s' "$DEV_PROFILE_B64" | base64 -d > "$TMP"
+          UUID="$(security cms -D -i "$TMP" 2>/dev/null | plutil -extract UUID raw - )"
+          echo "profile UUID: $UUID  (expires: $(security cms -D -i "$TMP" 2>/dev/null | plutil -extract ExpirationDate raw - ))"
+          for DIR in "$HOME/Library/MobileDevice/Provisioning Profiles" \
+                     "$HOME/Library/Developer/Xcode/UserData/Provisioning Profiles"; do
+            mkdir -p "$DIR"; cp -f "$TMP" "$DIR/$UUID.mobileprovision"
+          done
+          rm -f "$TMP"
+          echo "installed dev profile $UUID.mobileprovision"
 
       - name: Install cloudflared
         run: brew install cloudflared
 
-      # Open the session: user-space sshd (non-root, high port, generated host key) + cloudflared quick
-      # tunnel, then BLOCK on the stop sentinel / stop_after. Everything runs inside this one step so the
-      # background processes die when it exits.
-      - name: Open SSH session (sshd + cloudflared quick tunnel)
+      # Start the SSH server + cloudflared quick tunnel with nohup so they SURVIVE this step (the upload
+      # step below must complete before the blocking wait step, and the tunnel must stay up throughout).
+      # Capture the public hostname and write it to a file for the artifact.
+      - name: Start SSH server + cloudflared tunnel
         env:
           SSH_PUBKEY: ${{ inputs.ssh_pubkey }}
-          STOP_AFTER: ${{ inputs.stop_after }}
         run: |
           set -euo pipefail
           PORT=2222
           SSHDIR="$RUNNER_TEMP/ssh"
           mkdir -p "$SSHDIR"
-
-          # Authorized key (the dispatched public key) + a fresh host key.
           printf '%s\n' "$SSH_PUBKEY" > "$SSHDIR/authorized_keys"
           chmod 600 "$SSHDIR/authorized_keys"
           ssh-keygen -q -t ed25519 -N '' -f "$SSHDIR/ssh_host_ed25519_key"
-
-          # Minimal sshd config: pubkey-only, our files, StrictModes off (files live under RUNNER_TEMP).
           cat > "$SSHDIR/sshd_config" <<EOF
           Port $PORT
           HostKey $SSHDIR/ssh_host_ed25519_key
@@ -191,14 +159,11 @@ jobs:
           Subsystem sftp internal-sftp
           EOF
 
-          # Start sshd (foreground, logging to stderr) in the background.
-          /usr/sbin/sshd -f "$SSHDIR/sshd_config" -D -e &
-          SSHD_PID=$!
-          echo "sshd started (pid $SSHD_PID) on port $PORT as user '$USER'."
-
-          # Start the cloudflared quick tunnel to the sshd and capture the public hostname.
-          cloudflared tunnel --no-autoupdate --url "ssh://localhost:$PORT" > "$SSHDIR/cf.log" 2>&1 &
-          CF_PID=$!
+          nohup /usr/sbin/sshd -f "$SSHDIR/sshd_config" -D -e >"$SSHDIR/sshd.log" 2>&1 &
+          disown
+          echo "sshd started on port $PORT as user '$USER'."
+          nohup cloudflared tunnel --no-autoupdate --url "ssh://localhost:$PORT" >"$SSHDIR/cf.log" 2>&1 &
+          disown
 
           echo "Waiting for the cloudflared hostname..."
           HOST=""
@@ -207,12 +172,9 @@ jobs:
             [ -n "$HOST" ] && break
             sleep 2
           done
-          if [ -z "$HOST" ]; then
-            echo "::error::cloudflared did not produce a hostname"; cat "$SSHDIR/cf.log"; exit 1
-          fi
+          if [ -z "$HOST" ]; then echo "::error::cloudflared produced no hostname"; cat "$SSHDIR/cf.log"; exit 1; fi
           BARE="${HOST#https://}"
-
-          # Publish the connection details to the log + the run summary for the sandbox to scrape.
+          printf '%s\n' "$BARE" > "$RUNNER_TEMP/ssh-mac-host.txt"
           echo "==================== ssh-mac ready ===================="
           echo "CONNECT: ssh -o ProxyCommand=\"cloudflared access ssh --hostname %h\" $USER@$BARE"
           echo "======================================================="
@@ -221,17 +183,32 @@ jobs:
             echo '```'
             echo "ssh -i <your_private_key> -o ProxyCommand=\"cloudflared access ssh --hostname %h\" $USER@$BARE"
             echo '```'
-            echo "Auto-closes after ${STOP_AFTER}m or when you \`touch /tmp/ssh-mac-stop\`."
           } >> "$GITHUB_STEP_SUMMARY"
 
-          # Block until the sentinel appears or stop_after elapses.
+      # Publish the hostname as an artifact — available the instant this step completes (mid-run), so the
+      # sandbox can read it while the session step below blocks.
+      - name: Publish hostname artifact
+        uses: actions/upload-artifact@v7.0.1
+        with:
+          name: ssh-mac-host
+          path: ${{ runner.temp }}/ssh-mac-host.txt
+          retention-days: 1
+          if-no-files-found: warn
+
+      # Block until the sentinel appears or stop_after elapses, then tear the tunnel/sshd down.
+      - name: Wait for session
+        env:
+          STOP_AFTER: ${{ inputs.stop_after }}
+        run: |
+          set -euo pipefail
           END=$(( $(date +%s) + STOP_AFTER * 60 ))
           echo "Session open. Touch /tmp/ssh-mac-stop to end early (backstop: ${STOP_AFTER}m)."
           while [ ! -f /tmp/ssh-mac-stop ] && [ "$(date +%s)" -lt "$END" ]; do
             sleep 5
           done
           echo "Session ending (sentinel or stop_after reached)."
-          kill "$CF_PID" "$SSHD_PID" 2>/dev/null || true
+          pkill -f 'cloudflared tunnel' 2>/dev/null || true
+          pkill sshd 2>/dev/null || true
 
       - name: Cleanup
         if: always()
