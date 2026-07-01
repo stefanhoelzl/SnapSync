@@ -97,24 +97,23 @@ runs.
 
 ### Sideload a dev IPA (skip TestFlight)
 
-CI publishes a **development-signed IPA** as a GitHub Actions artifact on every push
-(`snapsync-dev-ipa-<run_number>`, 1-day retention) — install it straight onto a registered device,
-no TestFlight. This is an **operator runbook, not CI behavior**. See `openspec/specs/ios-sideload-delivery`.
+Dev IPAs are produced **on demand by the ssh-mac build loop** (see *Headless macOS build loop* below) —
+build → dev-sign → `scp` back → install over usbmuxd. There is **no CI dev-IPA artifact**; CI delivers
+only to TestFlight on `main`. This is an **operator runbook, not CI behavior**.
 
 One-time setup (per device):
 - Register the device UDID at developer.apple.com → Devices (SE2 is `00008030-0018703A1A7A402E`,
   obtainable via `ideviceinfo -k UniqueDeviceID`). The dev profile only includes registered UDIDs.
 - Enable Developer Mode (dev-signed apps won't launch without it). Note `pymobiledevice3 amfi
   enable-developer-mode` **hangs over the usbmux bridge** and the Settings → Privacy & Security →
-  **Developer Mode menu only appears after a dev-signed app is installed** — so install the IPA
-  first (below), then toggle Developer Mode on in Settings (software restart, no hardware buttons).
+  **Developer Mode menu only appears after a dev-signed app is installed** — so install a dev IPA
+  first, then toggle Developer Mode on in Settings (software restart, no hardware buttons).
 
-Per build (run Python tools via `uvx`, never a global install — note pymobiledevice3 wants the
-**bare** socket path, no `UNIX:` prefix):
+Install a dev IPA you already have (run Python tools via `uvx`, never a global install — pymobiledevice3
+wants the **bare** socket path, no `UNIX:` prefix):
 ```
 export USBMUXD_SOCKET_ADDRESS=/run/host/run/usbmuxd
-gh run download <run-id> -n snapsync-dev-ipa-<run_number> -D /tmp/ipa   # the run's build number
-uvx pymobiledevice3 apps install /tmp/ipa/SnapSync.ipa
+uvx pymobiledevice3 apps install <path>/SnapSync.ipa
 ```
 (Install goes over `installation_proxy`/lockdownd — no developer tunnel needed. Launch, screenshot,
 and other DVT services do need the tunnel + DDI, reached headless via `--userspace` above.)

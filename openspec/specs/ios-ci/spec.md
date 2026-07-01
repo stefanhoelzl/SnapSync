@@ -1,11 +1,12 @@
 # ios-ci Specification
 
 ## Purpose
-Continuous integration that, on every push, builds the iOS device app and runs the shared Kotlin/Native unit tests on a simulator, each reporting a merge-gating status check. Runs on GitHub Actions (`macos-26`, GM Xcode) — the same provider as the Linux build — via two parallel jobs doing only the irreducible Apple delta: `ios-build` produces a **signed archive** of the device (`iosArm64`) app via `xcodebuild` — the archive is the merge gate and feeds two delivery channels from that single compile (a development-IPA artifact on every ref, capability `ios-sideload-delivery`; a TestFlight upload on `main`, capability `ios-testflight-delivery`) — and `ios-test` runs `iosSimulatorArm64Test` on a booted simulator. Together they exercise both Kotlin/Native targets. Code signing and delivery are detailed in separate capabilities (`ios-sideload-delivery`, `ios-testflight-delivery`).
+Continuous integration that, on every push, builds the iOS device app and runs the shared Kotlin/Native unit tests on a simulator, each reporting a merge-gating status check. Runs on GitHub Actions (`macos-26`, GM Xcode) — the same provider as the Linux build — via two parallel jobs doing only the irreducible Apple delta: `ios-build` produces a **signed archive** of the device (`iosArm64`) app via `xcodebuild` — the archive is the merge gate and feeds a single delivery channel from that single compile (a TestFlight upload on `main`, capability `ios-testflight-delivery`; per-branch device installability before merge is served out of band by the ssh-mac build loop, not a CI artifact) — and `ios-test` runs `iosSimulatorArm64Test` on a booted simulator. Together they exercise both Kotlin/Native targets. Code signing and delivery are detailed in a separate capability (`ios-testflight-delivery`).
 ## Requirements
+
 ### Requirement: Build iOS on every push
 
-The system SHALL run a **GitHub Actions** job (`ios-build` in `.github/workflows/ios.yml`) on every push that builds the iOS **device (`iphoneos`, arm64)** app on a **`macos-26` hosted runner**, linking the `iosArm64` framework with the runner's **GM Xcode** (no Xcode beta), and reports a stable status-check context (`ios-build`) used to gate merges. On **every** ref the job SHALL produce a **signed archive** of the device app (signing — capability `ios-testflight-delivery`); the archive compiles `iosArm64`, so the `ios-build` check reflects whether the device app builds. From that single archive the job SHALL deliver across **two channels**: a **development-signed IPA artifact on every ref** (capability `ios-sideload-delivery`) and an **App Store build uploaded to TestFlight on `refs/heads/main` only** (capability `ios-testflight-delivery`). The job SHALL run no tests and boot no simulator. The device app SHALL be compiled exactly once per push.
+The system SHALL run a **GitHub Actions** job (`ios-build` in `.github/workflows/ios.yml`) on every push that builds the iOS **device (`iphoneos`, arm64)** app on a **`macos-26` hosted runner**, linking the `iosArm64` framework with the runner's **GM Xcode** (no Xcode beta), and reports a stable status-check context (`ios-build`) used to gate merges. On **every** ref the job SHALL produce a **signed archive** of the device app (signing — capability `ios-testflight-delivery`); the archive compiles `iosArm64`, so the `ios-build` check reflects whether the device app builds. From that single archive the job SHALL deliver across **one channel**: an **App Store build uploaded to TestFlight on `refs/heads/main` only** (capability `ios-testflight-delivery`). On any **other** ref the archive is produced **solely as the merge gate** and the job delivers no build artifact. Per-branch device installability before merge is served **out of band** by the interactive ssh-mac build loop (dev infrastructure — `.github/workflows/ssh-mac.yml`; see the runbook in `CLAUDE.md`), not by any CI artifact. The job SHALL run no tests and boot no simulator. The device app SHALL be compiled exactly once per push.
 
 #### Scenario: A push triggers the iOS build check
 - **WHEN** a commit is pushed to any branch
@@ -19,9 +20,9 @@ The system SHALL run a **GitHub Actions** job (`ios-build` in `.github/workflows
 - **WHEN** the device app fails to compile
 - **THEN** the `ios-build` status check concludes as failure (red)
 
-#### Scenario: Every ref archives and publishes a sideload artifact
+#### Scenario: Every ref archives as the gate; non-main delivers nothing
 - **WHEN** the `ios-build` job runs on any ref
-- **THEN** it produces a signed archive of the device app and publishes a development-signed IPA artifact (capability `ios-sideload-delivery`), executing no tests and no simulator boot, while the `ios-build` check still reflects whether the device app compiles
+- **THEN** it produces a signed archive of the device app (the merge gate), executing no tests and no simulator boot; on a ref other than `refs/heads/main` it uploads no build artifact, while the `ios-build` check still reflects whether the device app compiles
 
 #### Scenario: Only main delivers to TestFlight
 - **WHEN** the `ios-build` job runs on `refs/heads/main`
@@ -81,8 +82,7 @@ non-empty, overrides the baked host for that run (for pointing a development IPA
 that does not begin with `https://` SHALL fail the run before archiving (default ATS forbids
 plaintext, so a baked `http://` host would silently fail on device). The inert `https://dummy.invalid`
 default is removed. This requirement is the **single owner** of the compile-time upload-host contract;
-the development (sideload) IPA and the TestFlight build both inherit whatever host this shared archive
-step bakes.
+the TestFlight build inherits whatever host this shared archive step bakes.
 
 #### Scenario: Default build bakes the deployed host from xcconfig
 - **WHEN** the iOS workflow runs on any ref with no `upload_host` dispatch input
@@ -105,4 +105,3 @@ step bakes.
 - **WHEN** a manual dispatch supplies `upload_host` for one run
 - **THEN** only that run's archive uses it; subsequent ordinary pushes (including `main`) set no
   override and bake the `Config.xcconfig` default
-
