@@ -2,15 +2,15 @@
 # a status check that gates merges (branch-protection):
 #   * ios-build — on EVERY push (any ref) produces a SIGNED archive of the iOS DEVICE (iphoneos,
 #     arm64) app, linking the iosArm64 framework (the shipping target). The archive step compiles
-#     iosArm64, so it IS the merge gate. From that one archive it delivers across TWO channels:
-#       - sideload (EVERY ref): export a DEVELOPMENT-signed IPA and upload it as a 1-day-retention
-#         GitHub Actions artifact (snapsync-dev-ipa-<run_number>). This is what makes any branch
-#         installable on a registered device before merge — sideload over usbmuxd, no TestFlight.
+#     iosArm64, so it IS the merge gate. From that one archive it delivers a SINGLE channel:
 #       - TestFlight (main ONLY): export the App Store IPA and upload it, as a release trail. Gated
 #         to refs/heads/main so per-branch pushes stop consuming TestFlight uploads.
+#     On any other ref the archive is produced solely as the merge gate (no delivery artifact).
+#     Per-branch device installability before merge is served OUT OF BAND by the ssh-mac build loop
+#     (.github/workflows/ssh-mac.yml; see CLAUDE.md), not by a CI artifact.
 #     Builds are identified by build number = github.run_number; cross-reference it to the
-#     branch/commit via the Actions run. All export + upload steps are continue-on-error: a flaky
-#     delivery leaves the gate green and merges unblocked (the failure is still visible in the run).
+#     branch/commit via the Actions run. The TestFlight export + upload steps are continue-on-error: a
+#     flaky delivery leaves the gate green and merges unblocked (the failure is still visible in the run).
 #   * ios-test  — runs the shared commonTest compiled to Kotlin/Native on a booted simulator
 #     (./gradlew iosSimulatorArm64Test), validating the iosSimulatorArm64 target.
 # Together the two jobs exercise BOTH Kotlin/Native targets (device via build, simulator via
@@ -185,40 +185,16 @@ jobs:
             $UPLOAD_HOST_OVERRIDE \
             archive
 
-      # Sideload channel (EVERY ref): export a DEVELOPMENT-signed IPA from the same archive and
-      # publish it as a short-retention artifact. This is what makes any branch installable on a
-      # registered device before merge (no TestFlight). -allowProvisioningUpdates reuses the
-      # imported Development cert and cloud-manages a development profile that includes registered
-      # devices. Non-gating: the gate is the archive compile above, so a dev-export/upload flake
-      # must not block merges.
-      - name: Export development IPA
-        continue-on-error: true
-        env:
-          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
-          ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
-        run: |
-          xcodebuild -exportArchive \
-            -archivePath "$RUNNER_TEMP/SnapSync.xcarchive" \
-            -exportPath "$RUNNER_TEMP/export-dev" \
-            -exportOptionsPlist iosApp/ExportOptionsDevelopment.plist \
-            -allowProvisioningUpdates \
-            -authenticationKeyPath "$ASC_KEY_PATH" \
-            -authenticationKeyID "$ASC_KEY_ID" \
-            -authenticationKeyIssuerID "$ASC_ISSUER_ID"
-
-      - name: Upload dev IPA artifact
-        continue-on-error: true
-        uses: actions/upload-artifact@v7.0.1
-        with:
-          name: snapsync-dev-ipa-${{ github.run_number }}
-          path: ${{ runner.temp }}/export-dev/SnapSync.ipa
-          retention-days: 1
-          if-no-files-found: warn
+      # Per-branch device installability before merge is served OUT OF BAND by the ssh-mac build loop
+      # (.github/workflows/ssh-mac.yml; see CLAUDE.md), not by a CI dev-IPA artifact — this job no
+      # longer exports a development IPA. The Development cert is still imported above because
+      # `xcodebuild archive` provisions a development identity in addition to the distribution one
+      # (dropping it would re-introduce per-run Development-cert churn).
 
       # TestFlight channel (main ONLY): export the App Store IPA and upload it. Gated to
       # refs/heads/main so per-branch pushes no longer consume TestFlight uploads (the limit we are
-      # avoiding) — per-branch installs are served by the dev-IPA artifact above. Still decoupled
-      # from the gate: continue-on-error keeps the job green if Apple's delivery flakes.
+      # avoiding) — per-branch installs are served out of band by the ssh-mac build loop. Still
+      # decoupled from the gate: continue-on-error keeps the job green if Apple's delivery flakes.
       - name: Export signed IPA
         if: github.ref == 'refs/heads/main'
         continue-on-error: true
