@@ -203,7 +203,11 @@ asset→resource fan-out, the **filename layout** (`<assetId>-<role>.<ext>` enco
 within the device), the **event/device key placement**, and asset-metadata are all **the
 platform/provider's** business. The engine carries `assetId` through to the ledger but **never
 interprets it** — like `filename` it is pure identity whose meaning is the platform's (iOS: the
-asset's `localIdentifier`, normalized). The platform hands each resource a single opaque `filename`
+asset's `localIdentifier`, normalized). The iOS enumerator producing these facts is split into a
+**decision-free `RawAsset` walk** (PhotoKit, iOS-only) and a **pure `commonMain` fan-out mapping**
+(`resourcesFrom` — originals filter via `resourceRole`, `uploadKey`, `/`→`_`, manifest metadata), so the
+fan-out orchestration is JVM/simulator-tested against a fake walk rather than trapped in the adapter
+(`:domain:gallery`, capability `gallery-status`). The platform hands each resource a single opaque `filename`
 — pure *identity*, a plain string. Its *representation* and *placement* (percent-encoding into a URL
 path, the `<eventId>/` prefix, the edge URL build) are **the provider's
 responsibility**, under one contract: the filename→destination mapping must be **deterministic and

@@ -1,0 +1,77 @@
+package app.snapsync.gallery
+
+import kotlinx.coroutines.test.runTest
+import kotlin.test.Test
+import kotlin.test.assertEquals
+
+/**
+ * The fan-out orchestration ([resourcesFrom]) exercised off-device — the coverage Move A unlocks. This
+ * loop (role filter, `'/'→'_'` normalization, `uploadKey`, metadata assembly) previously lived only in
+ * the iOS enumerator; here it runs on JVM and the iOS simulator against a fake raw-asset walk.
+ */
+class RawAssetMappingTest {
+
+    private fun raw(
+        type: Long,
+        uti: String = "public.jpeg",
+        mime: String = "image/jpeg",
+        name: String = "IMG.JPG",
+        handle: Any = Unit,
+    ) = RawResource(type = type, contentTypeUti = uti, mimeContentType = mime, originalFilename = name, handle = handle)
+
+    @Test
+    fun maps_originals_only_with_role_keys_normalization_and_metadata() {
+        val asset = RawAsset(
+            assetId = "ABC/L0/001", // raw localIdentifier with '/'
+            creationDate = "2026-07-01T00:00:00Z",
+            rawResources = listOf(
+                raw(1L, uti = "public.heic", mime = "image/heic", name = "IMG_0001.HEIC"), // photo -> primary
+                raw(9L, uti = "com.apple.quicktime-movie", mime = "video/quicktime", name = "IMG_0001.MOV"), // pairedVideo -> live
+                raw(5L), // fullSizePhoto -> dropped (edit artifact)
+                raw(7L), // adjustmentData -> dropped
+            ),
+        )
+
+        val resources = resourcesFrom(listOf(asset))
+
+        assertEquals(2, resources.size, "only the two originals survive the role filter")
+        val primary = resources.first { it.filename.endsWith("-primary.heic") }
+        assertEquals("ABC_L0_001", primary.assetId, "assetId normalized '/'->'_'")
+        assertEquals("ABC_L0_001-primary.heic", primary.filename)
+        assertEquals("public.heic", primary.contentType)
+        assertEquals("2026-07-01T00:00:00Z", primary.metadata[RESOURCE_META_CREATION_DATE])
+        assertEquals("IMG_0001.HEIC", primary.metadata[RESOURCE_META_ORIGINAL_FILENAME])
+        assertEquals("image/heic", primary.metadata[RESOURCE_META_MIME])
+        val live = resources.first { it.filename.endsWith("-live.mov") }
+        assertEquals("ABC_L0_001-live.mov", live.filename)
+        assertEquals("video/quicktime", live.metadata[RESOURCE_META_MIME])
+    }
+
+    @Test
+    fun opaque_handle_rides_into_resource_data_uninterpreted() {
+        val marker = Any()
+        val resources = resourcesFrom(listOf(RawAsset("A", "", listOf(raw(1L, handle = marker)))))
+        assertEquals(marker, resources.single().data, "the PHAssetResource handle crosses uninterpreted")
+    }
+
+    @Test
+    fun mapped_filename_round_trips_to_the_normalized_assetid() {
+        // The discovery->key->parse identity echo-suppression + reconstruct rely on (change 1's parser).
+        val resources = resourcesFrom(listOf(RawAsset("ABC/L0/001", "", listOf(raw(1L, name = "x.JPG")))))
+        assertEquals("ABC_L0_001", assetIdFromUploadKey(resources.single().filename))
+    }
+
+    @Test
+    fun enumerator_composes_walk_then_map_over_the_fake_source() = runTest {
+        val source = InMemoryRawAssetSource(
+            listOf(
+                RawAsset("A", "d", listOf(raw(1L, name = "a.JPG"))),
+                RawAsset("B", "d", listOf(raw(1L, name = "b.JPG"))),
+            ),
+        )
+        val enumerator = ResourceEnumerator(source)
+
+        assertEquals(listOf("A-primary.jpg", "B-primary.jpg"), enumerator.enumerate().map { it.filename })
+        assertEquals(listOf("A-primary.jpg"), enumerator.resources(listOf("A")).map { it.filename }, "incremental walk")
+    }
+}
