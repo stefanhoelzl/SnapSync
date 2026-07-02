@@ -18,6 +18,10 @@ kotlin {
     sourceSets {
         commonMain.dependencies {
             implementation(project(":domain:engine"))
+            // The relocated, JVM-covered upload orchestration (UploadCycle + the UploadJobPlatform seam
+            // + DiscoveryStore + UploadConfig). The iOS adapters below (IosUploadJobPlatform,
+            // IosDiscoveryStore) implement its seams and UploadExtensionRoot composes its UploadCycle.
+            implementation(project(":capability:upload"))
             // The app-written download store, opened READ-ONLY here for the suppression projection
             // (capability `download-store`): discovery drops assets this device downloaded + imported
             // so they are never re-uploaded (the echo). The extension never writes this store.

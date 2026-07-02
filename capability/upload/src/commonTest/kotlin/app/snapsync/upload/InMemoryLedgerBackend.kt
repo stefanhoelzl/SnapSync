@@ -1,4 +1,4 @@
-package app.snapsync.ios.upload
+package app.snapsync.upload
 
 import app.snapsync.engine.LedgerAggregates
 import app.snapsync.engine.LedgerBackend

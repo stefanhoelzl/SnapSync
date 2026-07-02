@@ -2,6 +2,7 @@ package app.snapsync.ios.upload
 
 import app.snapsync.engine.DISCOVERY_TOKEN_KEY
 import app.snapsync.engine.LEDGER_APP_GROUP
+import app.snapsync.upload.DiscoveryStore
 import kotlinx.cinterop.BetaInteropApi
 import kotlinx.cinterop.ExperimentalForeignApi
 import kotlinx.cinterop.addressOf

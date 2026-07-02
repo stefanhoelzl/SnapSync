@@ -1,4 +1,4 @@
-package app.snapsync.ios.upload
+package app.snapsync.upload
 
 /** The assembled inputs for the edge upload provider: the compile-time host and the joined event. */
 class UploadConfig(
