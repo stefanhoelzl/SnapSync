@@ -91,11 +91,11 @@ presigned URL, itself a publicly-trusted HTTPS host covered by default ATS with 
 
 ### Requirement: Runtime swaps are a DNS repoint, not an app rebuild
 
-Because the device-facing origin is a custom domain we control, changing **which runtime** serves it
-SHALL be achievable by repointing DNS (and flipping the server-side `PUBLIC_BASE_URL`) **without**
-changing the baked host literal or shipping a new app build. The baked `BackgroundUploadURLBase` SHALL
-NOT be a runtime-provider-owned vanity hostname, since that would couple a runtime swap to a forced
-rebuild.
+Changing **which runtime** serves the device-facing origin SHALL be achievable by repointing DNS
+(and flipping the server-side `PUBLIC_BASE_URL`) **without** changing the baked host literal or
+shipping a new app build — because that origin is a custom domain we control. The baked
+`BackgroundUploadURLBase` SHALL NOT be a runtime-provider-owned vanity hostname, since that would
+couple a runtime swap to a forced rebuild.
 
 #### Scenario: Switching the active runtime requires no new build
 

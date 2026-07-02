@@ -23,3 +23,15 @@ jobs:
       # Compose Desktop UI tests render offscreen under -Djava.awt.headless=true
       # (set on :domain:ui's test task), so no X server is needed.
       - run: ./gradlew build
+
+  spec-validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7.0.0
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+      # Keep openspec/specs the contract of record: every spec must parse and
+      # carry a normative (SHALL/MUST) requirement + a scenario. Pinned so an
+      # upstream rule change can't turn CI red without a deliberate bump.
+      - run: npx --yes @fission-ai/openspec@1.4.1 validate --specs --strict

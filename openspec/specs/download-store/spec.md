@@ -66,10 +66,10 @@ MAY be dropped on leave/switch to be re-enqueued later.
 
 ### Requirement: Pending resource URL is refreshed on re-plan
 
-When the app re-plans an asset already recorded in the store (re-reading the union on join or
-foreground), the store SHALL **refresh** the stored `url` of each of that asset's resources whose
-`stagedPath IS NULL` (not yet downloaded) to the value from the latest read, while leaving a resource
-that is already **staged**, and any **terminal (imported)** asset, entirely untouched. A resource's
+On re-plan of an asset already recorded in the store, the store SHALL **refresh** the stored `url`
+of each of that asset's resources whose `stagedPath IS NULL` (not yet downloaded) to the value from
+the latest read — re-plan happens on re-reading the union on join or foreground — while leaving a
+resource that is already **staged**, and any **terminal (imported)** asset, entirely untouched. A resource's
 other fields (`role`, `contentType`, `originalFilename`) are immutable per `resourceKey` and SHALL NOT
 change on re-plan. This lets a freshly-minted presigned download URL supersede an earlier, now-expiring
 one for work still pending, without disturbing completed staging or re-downloading already-staged
