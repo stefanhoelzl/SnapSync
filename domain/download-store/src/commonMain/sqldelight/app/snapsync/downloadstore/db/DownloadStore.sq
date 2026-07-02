@@ -89,10 +89,17 @@ WHERE NOT EXISTS (
 
 -- --- resource staging ---
 
+-- Insert a new pending resource, or — on a re-plan of an existing one — refresh its `url` ONLY while it
+-- is not yet staged (stagedPath IS NULL), so a freshly presigned download URL supersedes an expiring one
+-- for work still pending. A staged row is left untouched (no re-download); the other fields are immutable
+-- per resourceKey.
 upsertResource:
-INSERT OR IGNORE INTO downloadResource
+INSERT INTO downloadResource
     (sourceDeviceId, sourceAssetId, resourceKey, url, role, contentType, originalFilename, stagedPath)
-VALUES (:sourceDeviceId, :sourceAssetId, :resourceKey, :url, :role, :contentType, :originalFilename, NULL);
+VALUES (:sourceDeviceId, :sourceAssetId, :resourceKey, :url, :role, :contentType, :originalFilename, NULL)
+ON CONFLICT (sourceDeviceId, sourceAssetId, resourceKey)
+DO UPDATE SET url = excluded.url
+WHERE downloadResource.stagedPath IS NULL;
 
 markResourceStaged:
 UPDATE downloadResource

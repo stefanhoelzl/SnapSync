@@ -4,6 +4,7 @@
     "jsr:@std/assert@1": "1.0.19",
     "jsr:@std/internal@^1.0.12": "1.0.14",
     "npm:@bunny.net/edgescript-sdk@~0.12.1": "0.12.1",
+    "npm:aws4fetch@1": "1.0.20",
     "npm:hono@^4.12.0": "4.12.26"
   },
   "jsr": {
@@ -31,6 +32,9 @@
         "hono"
       ]
     },
+    "aws4fetch@1.0.20": {
+      "integrity": "sha512-/djoAN709iY65ETD6LKCtyyEI04XIBP5xVvfmNxsEP0uJB5tyaGBztSryRr4HqMStr9R06PisQE7m9zDTXKu6g=="
+    },
     "hono@4.12.26": {
       "integrity": "sha512-uyZtpnYxM9CmQ7QsQknM4zN8EftNqhON1qYeIKM0Se67CCEe2c44xyGURwB0axX2fBDu1dqHrHAc1hmNT8ITkw=="
     }
@@ -39,6 +43,7 @@
     "dependencies": [
       "jsr:@std/assert@1",
       "npm:@bunny.net/edgescript-sdk@~0.12.1",
+      "npm:aws4fetch@1",
       "npm:hono@^4.12.0"
     ]
   }

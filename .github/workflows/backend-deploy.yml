@@ -60,18 +60,23 @@ jobs:
 
       # Ensure the app's runtime env is set BEFORE deploying — readConfig() THROWS on a missing var,
       # so a new revision fails to boot ("the revision failed") without it. The BUNNY_STORAGE_* secrets
-      # are configured in the dashboard; PUBLIC_BASE_URL is the (non-secret) public origin the list
-      # endpoint builds download URLs from, so we keep it in CI for reproducibility. Idempotent:
-      # `add` on first run, `update-value` on subsequent runs (add errors if the var exists).
+      # (incl. the zone name = S3 access-key-id and the AccessKey = S3 secret) are configured in the
+      # dashboard; the non-secret PUBLIC_BASE_URL (backend origin for upload/event/list) and the S3
+      # presign endpoint (BUNNY_S3_REGION / BUNNY_S3_HOST) are kept in CI for reproducibility.
+      # Idempotent: `add` on first run, `update-value` on subsequent runs (add errors if the var exists).
       - name: Configure Deno Deploy env
         if: github.ref == 'refs/heads/main'
         working-directory: backend
         env:
           DENO_DEPLOY_TOKEN: ${{ secrets.DENO_DEPLOY_TOKEN }}
         run: |
-          URL="https://snapsync.stho.net"
-          deno deploy env add PUBLIC_BASE_URL "$URL" --org stefanhoelzl --app snapsync \
-            || deno deploy env update-value PUBLIC_BASE_URL "$URL" --org stefanhoelzl --app snapsync
+          set_env() {
+            deno deploy env add "$1" "$2" --org stefanhoelzl --app snapsync \
+              || deno deploy env update-value "$1" "$2" --org stefanhoelzl --app snapsync
+          }
+          set_env PUBLIC_BASE_URL "https://snapsync.stho.net"
+          set_env BUNNY_S3_REGION "de"
+          set_env BUNNY_S3_HOST "de-s3.storage.bunnycdn.com"
 
       # Deno Deploy (the active iOS-facing host for now). The app's entrypoint (src/main.ts) is
       # configured server-side; `deno deploy` uses the stored build config and the --org/--app to

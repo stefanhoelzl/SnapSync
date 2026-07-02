@@ -1,5 +1,5 @@
 // Hono app for the backend (capabilities `event-creation` + `bunny-upload-endpoint` +
-// `bunny-list-endpoint` + `bunny-download-endpoint`, over the shared `backend-config`).
+// `bunny-list-endpoint`, over the shared `backend-config`).
 //
 //   POST /event
 //     → mints an event: writes the marker `events/<id>/metadata.json`, returns {eventId,name,createdAt}.
@@ -9,13 +9,12 @@
 //     → streams the request body into ONE bunny native Storage PUT. UNGATED (no marker read): bytes
 //       are device-partitioned and event-independent (`files/<deviceId>/<filename>`), uploaded once and
 //       linked into events by reference. The device id is self-asserted (accepted abuse trade-off — see
-//       `bunny-upload-endpoint` §8; App Attest is the hardening path).
-//   GET /files/device/:deviceId/:filename
-//     → streams ONE bunny native Storage GET of the object straight back. UNGATED: a missing object is
-//       plain 404 (no event concept on this per-device route).
+//       `bunny-upload-endpoint` §8; App Attest is the hardening path). (There is no download GET on this
+//       path anymore — the listing hands out a presigned S3 URL fetched directly from bunny's S3 endpoint.)
 //   GET /files/device/:deviceId
 //     → lists the device's RAW stored objects (a single LIST of `files/<deviceId>/`); each entry is
-//       `{ filename, size, url }`. No manifest read, no completeness, no event gate.
+//       `{ filename, size, url }` where `url` is a presigned S3 GET URL. No manifest read, no
+//       completeness, no event gate. `Cache-Control: no-store` (the urls are time-limited).
 //   PUT /event/:eventId/device/:deviceId
 //     → streams a JSON device manifest into `events/<eventId>/device/<deviceId>.json`. GATED on event
 //       existence (the marker read) so a manifest is never written under a non-existent event.
@@ -36,22 +35,23 @@
 // absence). Only the device-manifest write, the metadata route, and the event-wide union read the
 // marker — the byte upload/download and per-device list routes are event-independent and ungated.
 //
-// The per-object byte routes are defined once on a child Hono (`byteFile`) and mounted under
-// `/files/device/:deviceId/:filename` via app.route(), so PUT (upload), OPTIONS, and GET (download)
-// share it. `deviceId`/`filename` are Hono's decoded path params (typed `string | undefined` through a
-// mount, hence the guard); the filename is re-encoded per-segment when building the bunny URL, so the
-// stored object is the real filename and keys stay flat. Config is injected (validated at startup).
-// Upload invariants: pass-through only (never buffer/hash), faithful outcome (2xx only on confirmed
-// store), last-write-wins. Download is ungated: bunny 200 → 200, bunny 404 → 404, any other status /
-// connect error / pre-body timeout → 502; status+headers commit before the body, so a mid-body abort
-// is a truncated 200 the relayed Content-Length makes a client-detectable short-read.
+// The per-device byte WRITE route is defined on a child Hono (`byteFile`) and mounted under
+// `/files/device/:deviceId/:filename` via app.route(), so PUT (upload) and OPTIONS share it.
+// `deviceId`/`filename` are Hono's decoded path params (typed `string | undefined` through a mount,
+// hence the guard); the filename is re-encoded per-segment when building the bunny URL, so the stored
+// object is the real filename and keys stay flat. Config is injected (validated at startup). Upload
+// invariants: pass-through only (never buffer/hash), faithful outcome (2xx only on confirmed store),
+// last-write-wins. There is NO download route: the listing's `url` is a presigned S3 GET the device
+// fetches directly from bunny's S3 endpoint (the short-read integrity check moves to the client).
 //
 // The list route returns the device's raw objects from a single bunny native Storage LIST of
 // `files/<deviceId>/` — no manifest content reads. Completeness is computed by the app (the shared
 // gallery enumeration seam × this raw list), not server-side. Faithful: any LIST transport failure →
-// 502 (never a partial list); a 404 on the device dir is "no objects" → 200 [].
+// 502 (never a partial list); a 404 on the device dir is "no objects" → 200 []. Each `url` is a
+// presigned S3 GET URL (see `presignDownloadUrl`).
 
 import { Hono } from "hono";
+import { AwsClient } from "aws4fetch";
 import { validateEventName, validateFilename, validateUUID } from "./validators.ts";
 import type { Config } from "./config.ts";
 
@@ -116,7 +116,7 @@ type BunnyEntry = {
 
 // One file in the per-device listing response — exactly `filename`, `size`, and `url` (a closed shape).
 // `filename` is the uploaded name decoded from the stored key; `size` is the object's byte length;
-// `url` is the absolute download URL (per `bunny-download-endpoint`).
+// `url` is a presigned S3 GET URL (per `bunny-list-endpoint`, built by `presignDownloadUrl`).
 type FileEntry = {
   filename: string;
   size: number;
@@ -144,7 +144,7 @@ type DeviceManifest = {
 
 // One asset in the event-wide union: the owning `deviceId` (own-vs-foreign skip is the client's
 // concern), the device-local `assetId`, the capture `creationDate`, and the complete set of resources
-// — each a manifest resource plus its `size` (from the device's file listing) and absolute `url`.
+// — each a manifest resource plus its `size` (from the device's file listing) and presigned S3 `url`.
 type UnionResource = ManifestResource & { size: number; url: string };
 type UnionAsset = {
   deviceId: string;
@@ -153,16 +153,29 @@ type UnionAsset = {
   resources: UnionResource[];
 };
 
+// 7 days — the S3 presign maximum. The device re-presigns (re-reads the union) on every foreground well
+// within this window, so a queued background download that outlives one URL self-heals with a fresh one.
+const PRESIGN_EXPIRY_SECONDS = 604800;
+
 /**
- * The public download URL for a stored object: `<baseUrl>/files/device/<deviceId>/<filename>`, each
- * path segment percent-encoded so the filename stays a single flat segment (deviceId is a UUID, so its
- * encoding is identity). This is the sole builder of that URL — the per-device list uses it and the
- * download route serves the matching path, so they agree by construction.
+ * Mint an AWS SigV4 **presigned S3 GET URL** for a stored object (the download-URL authority for
+ * `bunny-list-endpoint`): `https://<s3Host>/<zone>/<key>?X-Amz-…&X-Amz-Signature=…`, path-style, each
+ * key segment percent-encoded (deviceId is a UUID → identity), `X-Amz-Expires` 7 days. The zone name is
+ * the S3 Access Key ID and `accessKey` the secret. The device fetches this URL DIRECTLY from bunny's S3
+ * endpoint with no credential — the query signature is the sole authorization. A fresh URL is minted on
+ * every listing response, so each read yields one valid for a further 7 days. Both list routes use this
+ * single builder, so per-device list and union agree by construction.
  */
-function downloadUrl(config: Config, deviceId: string, filename: string): string {
-  return `${config.baseUrl}/files/device/${encodeURIComponent(deviceId)}/${
-    encodeURIComponent(filename)
-  }`;
+async function presignDownloadUrl(
+  aws: AwsClient,
+  config: Config,
+  deviceId: string,
+  filename: string,
+): Promise<string> {
+  const url = `https://${config.s3Host}/${config.zone}/${byteKey(deviceId, filename)}` +
+    `?X-Amz-Expires=${PRESIGN_EXPIRY_SECONDS}`;
+  const signed = await aws.sign(url, { method: "GET", aws: { signQuery: true } });
+  return signed.url;
 }
 
 /**
@@ -246,8 +259,20 @@ async function readDeviceManifest(
 }
 
 export function createApp({ fetch: fetchImpl, config }: Deps): Hono {
-  // Per-device byte object routes (`bunny-upload-endpoint` / `bunny-download-endpoint`). Mounted under
+  // The S3 signer used ONLY to presign download URLs (capability `bunny-list-endpoint`). Access Key ID =
+  // the zone name, secret = the storage-zone `AccessKey`; pure Web-Crypto, no network. Uploads/reads/
+  // listings stay on the native API and are not signed with this.
+  const aws = new AwsClient({
+    accessKeyId: config.zone,
+    secretAccessKey: config.accessKey,
+    region: config.s3Region,
+    service: "s3",
+  });
+
+  // Per-device byte WRITE route (`bunny-upload-endpoint`). Mounted under
   // `/files/device/:deviceId/:filename`, so the handlers read `deviceId`/`filename` from the mount.
+  // (Downloads are no longer proxied here — the listing hands out a presigned S3 GET URL the device
+  // fetches directly from bunny's S3 endpoint.)
   const byteFile = new Hono();
 
   // Upload — UNGATED. No marker read: bytes are device-partitioned and event-independent. Stream the
@@ -289,55 +314,9 @@ export function createApp({ fetch: fetchImpl, config }: Deps): Hono {
     return c.body(null, 201);
   });
 
-  // Download (capability `bunny-download-endpoint`). A single bunny object GET, streamed straight back.
-  // UNGATED — no marker read: the object GET already yields faithful absence (bunny 404 → 404). Faithful
-  // read is narrower than the upload's: status+headers commit before the body, so a mid-body upstream
-  // abort is a truncated 200 (not a 5xx); the relayed Content-Length makes it a client-detectable
-  // short-read.
-  byteFile.get("/", async (c) => {
-    const deviceId = c.req.param("deviceId");
-    const filename = c.req.param("filename");
-    if (
-      !deviceId || !filename ||
-      !validateUUID(deviceId) || !validateFilename(filename)
-    ) {
-      return c.text("invalid key", 400);
-    }
-
-    const target = `https://${config.host}/${config.zone}/${byteKey(deviceId, filename)}`;
-
-    let upstream: Response;
-    try {
-      upstream = await fetchImpl(target, {
-        method: "GET",
-        headers: { AccessKey: config.accessKey },
-      });
-    } catch (e) {
-      console.error(`download: upstream GET errored for ${byteKey(deviceId, filename)}: ${e}`);
-      return c.text("upstream error", 502);
-    }
-    if (upstream.status === 404) return c.text("not found", 404); // missing object
-    if (!upstream.ok) {
-      console.error(
-        `download: bunny returned ${upstream.status} for ${byteKey(deviceId, filename)}`,
-      );
-      return c.text("upstream error", 502);
-    }
-
-    // 200: stream the body through and relay the content + cache-validator headers. Content-Length is
-    // relayed so a truncated stream is a client-detectable short-read.
-    const headers = new Headers();
-    headers.set("Content-Type", upstream.headers.get("content-type") ?? "application/octet-stream");
-    for (const name of ["content-length", "etag", "last-modified", "cache-control"]) {
-      const value = upstream.headers.get(name);
-      if (value !== null) headers.set(name, value);
-    }
-    return new Response(upstream.body, { status: 200, headers });
-  });
-
   // OPTIONS: do NOT advertise resumable uploads → the iOS uploader falls back to a plain PUT.
   byteFile.options("/", (c) => {
-    c.header("Allow", "GET, PUT, OPTIONS");
+    c.header("Allow", "PUT, OPTIONS");
     return c.body(null, 204);
   });
 
@@ -499,21 +478,21 @@ export function createApp({ fetch: fetchImpl, config }: Deps): Hono {
           present.set(decodeObjectName(e.ObjectName), e.Length);
         }
 
-        return (manifest.assets ?? [])
-          .filter((a) => a.resources.length > 0 && a.resources.every((r) => present.has(r.key)))
-          .map((a) => ({
-            deviceId,
-            assetId: a.assetId,
-            creationDate: a.creationDate,
-            resources: a.resources.map((r) => ({
-              role: r.role,
-              contentType: r.contentType,
-              key: r.key,
-              filename: r.filename,
-              size: present.get(r.key)!,
-              url: downloadUrl(config, deviceId, r.key),
-            })),
-          }));
+        const complete = (manifest.assets ?? [])
+          .filter((a) => a.resources.length > 0 && a.resources.every((r) => present.has(r.key)));
+        return await Promise.all(complete.map(async (a): Promise<UnionAsset> => ({
+          deviceId,
+          assetId: a.assetId,
+          creationDate: a.creationDate,
+          resources: await Promise.all(a.resources.map(async (r) => ({
+            role: r.role,
+            contentType: r.contentType,
+            key: r.key,
+            filename: r.filename,
+            size: present.get(r.key)!,
+            url: await presignDownloadUrl(aws, config, deviceId, r.key),
+          }))),
+        })));
       }));
 
       c.header("Cache-Control", "no-store"); // live read over mutable manifests + listings
@@ -537,14 +516,21 @@ export function createApp({ fetch: fetchImpl, config }: Deps): Hono {
       // Single LIST of the device dir → its objects. 404/absent → no objects → []. Any other LIST
       // failure throws → 502, so a partial list is never returned.
       const entries = await listDir(fetchImpl, config, deviceDir(deviceId));
+      c.header("Cache-Control", "no-store"); // each `url` is a time-limited presigned S3 URL
       if (entries === null) return c.json([] as FileEntry[]);
 
-      const files: FileEntry[] = entries
-        .filter((e) => !e.IsDirectory)
-        .map((e) => {
-          const filename = decodeObjectName(e.ObjectName);
-          return { filename, size: e.Length, url: downloadUrl(config, deviceId, filename) };
-        });
+      const files: FileEntry[] = await Promise.all(
+        entries
+          .filter((e) => !e.IsDirectory)
+          .map(async (e) => {
+            const filename = decodeObjectName(e.ObjectName);
+            return {
+              filename,
+              size: e.Length,
+              url: await presignDownloadUrl(aws, config, deviceId, filename),
+            };
+          }),
+      );
       return c.json(files);
     } catch (e) {
       console.error(`list: bunny LIST failed for device ${deviceId}: ${e}`);

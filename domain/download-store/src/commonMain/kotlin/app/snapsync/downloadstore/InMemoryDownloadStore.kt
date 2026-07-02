@@ -28,7 +28,12 @@ class InMemoryDownloadStore : DownloadStore {
         if (assets[ref]?.state == DownloadState.IMPORTED) return@withLock
         assets.getOrPut(ref) { AssetRow(DownloadState.PENDING, creationDate, null) }
         val byKey = this.resources.getOrPut(ref) { linkedMapOf() }
-        resources.forEach { r -> byKey.getOrPut(r.resourceKey) { r to null } }
+        // Refresh the planned resource (its `url`) for new AND not-yet-staged rows so a freshly
+        // presigned download URL supersedes an expiring one; leave a staged row untouched.
+        resources.forEach { r ->
+            val existing = byKey[r.resourceKey]
+            if (existing == null || existing.second == null) byKey[r.resourceKey] = r to null
+        }
     }
 
     override suspend fun pendingDownloads(): List<PendingDownload> = lock.withLock {

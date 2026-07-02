@@ -58,6 +58,33 @@ abstract class DownloadStoreContract {
     }
 
     @Test
+    fun replan_refreshes_url_of_unstaged_resources_only() = runTest {
+        val s = createStore()
+        s.plan(ref, "2026-06-30T10:00:00Z", resources())
+        s.markStaged(ref, "ASSET-Q-primary.heic", "/stage/primary.heic") // primary now staged, live pending
+
+        // A later union read re-plans with freshly presigned (rotated) urls for both resources.
+        s.plan(
+            ref,
+            "2026-06-30T10:00:00Z",
+            listOf(
+                PlannedResource("ASSET-Q-primary.heic", "https://e/primary?sig=NEW", "primary", "image/heic", "IMG.HEIC"),
+                PlannedResource("ASSET-Q-live.mov", "https://e/live?sig=NEW", "live", "video/quicktime", "IMG.MOV"),
+            ),
+        )
+
+        // The not-yet-staged resource (live) picks up the fresh url; the staged one is not re-queued.
+        val pending = s.pendingDownloads()
+        assertEquals(1, pending.size)
+        assertEquals("ASSET-Q-live.mov", pending.single().resource.resourceKey)
+        assertEquals("https://e/live?sig=NEW", pending.single().resource.url)
+
+        // The staged resource (primary) keeps its staging untouched (no re-download).
+        assertEquals(listOf("ASSET-Q-primary.heic"), s.stagedResources(ref).map { it.resourceKey })
+        assertEquals("/stage/primary.heic", s.stagedResources(ref).single().stagedPath)
+    }
+
+    @Test
     fun plan_never_downgrades_an_imported_asset() = runTest {
         val s = createStore()
         s.plan(ref, "2026-06-30T10:00:00Z", resources())
