@@ -15,6 +15,7 @@ import app.snapsync.permission.PhotoLibraryPermission
 import app.snapsync.presentation.StatusContainerHost
 import app.snapsync.rejoin.HttpDeviceFilesSource
 import app.snapsync.rejoin.LeaveEvent
+import app.snapsync.rejoin.clearRequestedOffMain
 import app.snapsync.rejoin.darwinHttpClient
 import app.snapsync.download.DownloadController
 import app.snapsync.download.HttpEventUnionSource
@@ -360,16 +361,18 @@ object SnapSyncRoot {
     //     scan only incrementally and never re-surface them, so force a FULL re-enumeration next cycle
     //     so they are re-discovered and re-created (COMPLETED rows stay, so stored files don't re-upload).
     // The SINGLE disable path for both the re-register toggle and leave, so they cannot diverge. Neither
-    // is a per-key record write, so no `LedgerWriter` is built here; clearRequested is launched on the
-    // app scope (it suspends) and completes well before the OS next schedules the extension.
-    private fun disableExtension() {
+    // is a per-key record write, so no `LedgerWriter` is built here. clearRequested is **awaited off-main
+    // with a bounded retry** (the tested `clearRequestedOffMain`) and completes BEFORE any re-enable —
+    // not the old fire-and-forget `scope.launch { clearRequested() }` on the main scope, which raced the
+    // immediate re-enable and could delete the re-enabled extension's fresh REQUESTED rows (§7.1).
+    private suspend fun disableExtension() {
         setUploadExtensionEnabled(false)
         NSUserDefaults(suiteName = LEDGER_APP_GROUP).removeObjectForKey(DISCOVERY_TOKEN_KEY)
-        scope.launch { ledgerBackend.clearRequested() }
+        clearRequestedOffMain({ ledgerBackend.clearRequested() }, log = log)
     }
 
-    private fun enableBackgroundUpload() {
-        disableExtension()
+    private suspend fun enableBackgroundUpload() {
+        disableExtension() // awaited: the off-main REQUESTED clear completes BEFORE the re-enable below
         setUploadExtensionEnabled(true)
         log.i { "background-upload extension re-registered (disable→enable, cleared REQUESTED)" }
     }

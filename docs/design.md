@@ -332,7 +332,9 @@ event-blind by construction.
 duplicate** upload on the next re-derivation — never a stranded photo. Retry-forever churns a job slot
 on a permanently-broken resource (now also covers a permanently-failing edge endpoint). The
 system-surfaces-all-results assumption means a silently-dropped job would leave a `REQUESTED` row
-unrescued until a full re-enumeration; deferred until observed on device.
+**stranded** — a full re-enumeration does **not** rescue it (the engine skips `REQUESTED` keys), so it
+clears only on a disable's `clearRequested()` or when the asset is pruned (deletion / retain); deferred
+until observed on device.
 
 ### 2.3 Sync → presentation seam: state snapshots, not events
 
@@ -372,7 +374,9 @@ own-device storage truth, `dedup-files-device-manifests`; the in-flight peek, `s
   yet `COMPLETED`), **clamped to remaining** (`min(inFlight, total − completed)`) and **display-only**:
   it feeds the caption, **never** classification. The `InFlightSource` seam exposes a **count only**;
   the composition root injects the read (`suspend () -> Int`), so `:domain:status` keeps **no**
-  `:domain:engine` dependency and the extension stays the **sole writer** (no `LedgerWriter` in the app).
+  `:domain:engine` dependency and the extension stays the **sole `LedgerWriter`** — the app builds
+  none; its one ledger write is the app-side reset-family `clearRequested()` directly on the
+  `LedgerBackend` when it disables the extension (§2.2, capability `sync-ledger`).
 - `total` ← the **PhotoKit gallery count** (`GalleryStatusSource`, unchanged).
 
 The factory is non-suspending: it seeds `Loading` and, on its scope, combines the four inputs,
@@ -476,7 +480,7 @@ proxies are all dropped — so an asset's resource set is **fixed at capture and
     is UUID-based, so it is sufficient as the per-event identity — no cross-device dedup is attempted,
     and no device namespace is needed (see the collision note below).
   - **`<role>`** = a generic, platform-neutral role — `primary` (the single original primary medium:
-    still, video, or audio) or `motion` (a Live Photo's original paired video). Whether the primary is
+    still, video, or audio) or `live` (a Live Photo's original paired video). Whether the primary is
     an image or a video is carried by `Content-Type` (the resource's UTI), **not** the role.
   - The filename is pure *identity*; the **provider** owns its representation — percent-encoding (bytes
     outside `[A-Za-z0-9._-]` → `%XX`) and the `<eventId>/` placement — under the

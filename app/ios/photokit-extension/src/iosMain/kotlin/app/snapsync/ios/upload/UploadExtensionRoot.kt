@@ -2,8 +2,8 @@ package app.snapsync.ios.upload
 
 import app.snapsync.config.KeychainConfigStore
 import app.snapsync.deviceid.KeychainDeviceIdentity
-import app.snapsync.downloadstore.DownloadStore
-import app.snapsync.downloadstore.iosDownloadStore
+import app.snapsync.downloadstore.SuppressionSource
+import app.snapsync.downloadstore.iosSuppressionSource
 import app.snapsync.engine.LedgerBackend
 import app.snapsync.engine.LedgerWriter
 import app.snapsync.engine.SyncEngine
@@ -62,10 +62,11 @@ object UploadExtensionRoot {
     }
     private val discoveryStore: IosDiscoveryStore by lazy { IosDiscoveryStore() }
 
-    // The app-written download store, opened read-only for the suppression projection (capability
-    // `download-store`). The extension never writes it; it only reads which downloaded-then-imported
-    // assets must not be re-uploaded.
-    private val downloadStore: DownloadStore by lazy { iosDownloadStore() }
+    // The app-written download store, opened read-only through the NARROWED SuppressionSource type
+    // (capability `download-store`): only `suppressedLocalIds()`, never the full DownloadStore surface,
+    // so the extension is compile-prevented from writing it or reading beyond the suppression set. It
+    // only reads which downloaded-then-imported assets must not be re-uploaded.
+    private val suppression: SuppressionSource by lazy { iosSuppressionSource() }
     private val configSource: KeychainConfigStore by lazy { KeychainConfigStore() }
 
     // The stable per-install device id (shared Keychain, minted once): the `/files/<deviceId>/`
@@ -175,7 +176,7 @@ object UploadExtensionRoot {
                 }.onFailure { log.w(it) { "device.json production failed/timed out this cycle" } }
             },
             // Echo-suppression: never re-upload an asset this device downloaded + imported.
-            suppressedAssetIds = { downloadStore.suppressedLocalIds() },
+            suppressedAssetIds = { suppression.suppressedLocalIds() },
         )
         val result = runCatching { cycle.run() }
             .onSuccess { log.i { "process: cycle finished — $it" } }

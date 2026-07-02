@@ -9,6 +9,7 @@ import app.snapsync.engine.SyncEvent
 import app.snapsync.engine.UploadError
 import app.snapsync.engine.UploadJob
 import app.snapsync.engine.UploadRequest
+import app.snapsync.gallery.assetIdFromUploadKey
 import co.touchlab.kermit.Logger
 
 /**
@@ -63,7 +64,10 @@ class UploadCycle(
         for (job in platform.fetchAckJobs()) {
             when {
                 job.state == PlatformJobState.SUCCEEDED -> {
-                    engine.handle(SyncEvent.UploadCompleted(reconstruct(job)))
+                    // Record COMPLETED only for a recoverable key: a blank/unrecoverable key would
+                    // reconstruct a phantom `assetId=""` row. Acknowledge regardless — never leave a
+                    // presented job un-acknowledged (the system errors 50008).
+                    if (job.key.isNotBlank()) engine.handle(SyncEvent.UploadCompleted(reconstruct(job)))
                     platform.acknowledge(job)
                 }
                 ledger.entry(job.key)?.state == LedgerState.COMPLETED -> platform.acknowledge(job)
@@ -136,6 +140,7 @@ class UploadCycle(
 
     /** Report a failure to the engine and return its `Retry` (records `FAILED`; `REQUESTED` deferred). */
     private suspend fun adjudicateFailure(job: PlatformUploadJob): SyncDecision.Retry? {
+        if (job.key.isBlank()) return null // unrecoverable key — never record a phantom row
         val failed = reconstruct(job)
         val error = job.error ?: UploadError.Unknown("unspecified")
         return engine.handle(SyncEvent.UploadFailed(failed, error)) as? SyncDecision.Retry
@@ -150,7 +155,11 @@ class UploadCycle(
         val entry = ledger.entry(job.key)
         val resource = Resource(
             filename = job.key,
-            assetId = entry?.assetId ?: "",
+            // Derive the assetId from the key (the shared inverse of `uploadKey`) rather than the ledger
+            // entry: the row may have been pruned (a mid-upload deletion, a full-enumeration retain), and
+            // `entry?.assetId ?: ""` then wrote a phantom `assetId=""` COMPLETED row. The key is the
+            // reliable source — `filename` IS `<assetId>-<role>.<ext>`.
+            assetId = assetIdFromUploadKey(job.key),
             contentType = job.contentType,
             metadata = emptyMap(),
             data = job.data ?: Unit, // engine [Resource.data] is non-null; payload unused for completion

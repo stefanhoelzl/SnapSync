@@ -33,9 +33,20 @@ fun resourceRole(resourceType: Long): ResourceRole? = when (resourceType) {
 }
 
 /**
+ * Normalize a raw PHAsset `localIdentifier` into the `assetId` used in keys and the suppression match:
+ * `/`→`_` so the identifier is a single slash-free path segment (the edge endpoint rejects a decoded
+ * `/`). This is the **single** definition of that transform on the discovery/enumeration side — the
+ * upload producer and the join enumerator normalize through it — and it is **load-bearing** for
+ * echo-suppression: the download importer normalizes the imported asset's `createdLocalId` the *same*
+ * way (`IosPhotoLibraryImporter`), so a discovered `assetId` meets its stored `createdLocalId` and the
+ * asset is suppressed. Keep the two transforms identical or the echo re-uploads.
+ */
+fun normalizeAssetId(rawLocalIdentifier: String): String = rawLocalIdentifier.replace('/', '_')
+
+/**
  * Pure construction of an asset resource's ledger key / object name — the single place the role-based
  * `"<assetId>-<role>.<ext>"` layout lives, where `assetId` is the PHAsset's `localIdentifier` (v1,
- * single-device) with `/`→`_`. Kept platform-free so the layout is unit-tested on the simulator
+ * single-device) with `/`→`_` (via [normalizeAssetId]). Kept platform-free so the layout is unit-tested on the simulator
  * instead of trapped inside the PhotoKit adapter; the adapter (and the re-join seed) only supply the
  * raw fields. Shared by the upload producer (`:app:ios:photokit-extension`) and the manifest synthesis
  * so a manifest's `filename` is byte-identical to what the producer uploads under.
@@ -66,4 +77,15 @@ fun roleFromUploadKey(filename: String): ResourceRole {
     val wire = filename.substringBeforeLast('.').substringAfterLast('-')
     return ResourceRole.entries.firstOrNull { it.wire == wire } ?: ResourceRole.PRIMARY
 }
+
+/**
+ * Recover the `assetId` from an upload-key [filename] (`"<assetId>-<role>.<ext>"`): drop the extension,
+ * then take everything before the **final** `-` (the role token `primary`/`live` carries no `-`, though
+ * an `assetId` may). The exact inverse of [uploadKey] — `assetIdFromUploadKey(uploadKey(id, role, name))
+ * == id` — and the single shared implementation of that parse, so the upload-job reconstruction and the
+ * re-join reconciler recover the same identity from a key (the parse is load-bearing at the record
+ * path). Kept here in `:domain:gallery` next to [uploadKey], never duplicated per-consumer.
+ */
+fun assetIdFromUploadKey(filename: String): String =
+    filename.substringBeforeLast('.').substringBeforeLast('-')
 

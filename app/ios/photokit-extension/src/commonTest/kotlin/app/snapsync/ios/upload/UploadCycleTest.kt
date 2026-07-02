@@ -7,6 +7,7 @@ import app.snapsync.engine.SyncEngine
 import app.snapsync.engine.UploadError
 import app.snapsync.engine.UploadRequest
 import app.snapsync.engine.UploadRequestProvider
+import app.snapsync.gallery.normalizeAssetId
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertContentEquals
@@ -145,6 +146,29 @@ class UploadCycleTest {
     }
 
     @Test
+    fun suppression_matches_on_the_normalized_assetid() = runTest {
+        // Both sides normalize the raw PHAsset localIdentifier '/'→'_': discovery via the gallery
+        // enumerator's `normalizeAssetId`, the download importer before storing `createdLocalId`. A raw
+        // id "ABC/L0/001" must therefore suppress as "ABC_L0_001" — the §7.6 load-bearing contract.
+        val backend = InMemoryLedgerBackend()
+        val normalized = normalizeAssetId("ABC/L0/001") // "ABC_L0_001" — the discovery-side transform
+        val platform = FakePlatform(discovered = listOf(resource("$normalized-primary.heic", normalized)))
+        val ledger = LedgerWriter(backend)
+        val cycle = UploadCycle(
+            SyncEngine(StubUploadRequestProvider(), ledger),
+            ledger,
+            platform,
+            FakeStore(),
+            // The importer stored the '/'→'_' createdLocalId — the same normalized string.
+            suppressedAssetIds = { setOf("ABC_L0_001") },
+        )
+
+        cycle.run()
+
+        assertTrue(platform.created.isEmpty(), "a downloaded asset must be suppressed on its normalized id")
+    }
+
+    @Test
     fun discovery_passes_the_loaded_cursor_to_the_platform() = runTest {
         val backend = InMemoryLedgerBackend()
         val platform = FakePlatform()
@@ -167,6 +191,37 @@ class UploadCycleTest {
         assertEquals(LedgerState.COMPLETED, backend.get("a")?.state)
         assertEquals(listOf(job), platform.acknowledged)
         assertTrue(platform.created.isEmpty())
+    }
+
+    @Test
+    fun succeeded_job_with_a_pruned_ledger_row_completes_with_the_key_derived_assetid() = runTest {
+        // The ledger row was pruned (a mid-upload deletion, or a full-enumeration retain) before the OS
+        // handed back the succeeded job — so there is no entry. reconstruct must derive the assetId from
+        // the key, not write a phantom assetId="" COMPLETED row (the §7.2 bug).
+        val backend = InMemoryLedgerBackend()
+        val job = platformJob("L-primary.jpg", PlatformJobState.SUCCEEDED)
+        val platform = FakePlatform(ackJobs = listOf(job))
+
+        cycleOver(backend, platform).run()
+
+        val entry = backend.get("L-primary.jpg")
+        assertEquals(LedgerState.COMPLETED, entry?.state)
+        assertEquals("L", entry?.assetId, "assetId is derived from the key, never a phantom empty string")
+        assertEquals(listOf(job), platform.acknowledged)
+    }
+
+    @Test
+    fun a_blank_key_succeeded_job_is_acknowledged_but_records_no_row() = runTest {
+        // An unrecoverable key (e.g. a malformed destination URL) must never produce a phantom row, but
+        // the job is still acknowledged (an un-acknowledged presented job errors the system 50008).
+        val backend = InMemoryLedgerBackend()
+        val job = platformJob("", PlatformJobState.SUCCEEDED)
+        val platform = FakePlatform(ackJobs = listOf(job))
+
+        cycleOver(backend, platform).run()
+
+        assertNull(backend.get(""), "no phantom row for an unrecoverable key")
+        assertEquals(listOf(job), platform.acknowledged)
     }
 
     @Test

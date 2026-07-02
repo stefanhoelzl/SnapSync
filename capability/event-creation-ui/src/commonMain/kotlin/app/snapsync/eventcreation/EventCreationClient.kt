@@ -30,7 +30,7 @@ interface EventCreationClient {
 /**
  * The [EventCreationClient] over an injected Ktor [HttpClient] (the engine — Darwin on iOS — is
  * supplied by the composition root, so this stays platform-neutral and testable with `MockEngine`),
- * the twin of `HttpEventFilesSource`. It `POST`s `<host>/event` (HTTPS, default ATS) with a JSON
+ * the twin of `HttpDeviceFilesSource`. It `POST`s `<host>/event` (HTTPS, default ATS) with a JSON
  * body `{ "name": <trimmed name> }`, parses a `201 { eventId, name, createdAt }`, maps `400` to
  * [CreateOutcome.InvalidName], and any other non-2xx / transport / parse failure to
  * [CreateOutcome.Transient].

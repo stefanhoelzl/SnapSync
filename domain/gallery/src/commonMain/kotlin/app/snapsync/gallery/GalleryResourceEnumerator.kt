@@ -40,7 +40,7 @@ class InMemoryGalleryResourceEnumerator(initial: List<Resource> = emptyList()) :
     override suspend fun enumerate(): List<Resource> = all
 
     override suspend fun resources(localIdentifiers: List<String>): List<Resource> {
-        val wanted = localIdentifiers.mapTo(mutableSetOf()) { it.replace('/', '_') }
+        val wanted = localIdentifiers.mapTo(mutableSetOf()) { normalizeAssetId(it) }
         return all.filter { it.assetId in wanted }
     }
 }

@@ -3,7 +3,18 @@ package app.snapsync.rejoin
 import app.snapsync.engine.LedgerBackend
 import app.snapsync.engine.LedgerEntry
 import app.snapsync.engine.LedgerState
+import app.snapsync.gallery.assetIdFromUploadKey
 import co.touchlab.kermit.Logger
+import kotlinx.coroutines.withTimeoutOrNull
+
+/**
+ * Upper bound on the reconcile's network device-listing `LIST` (mirrors the device-manifest PUT guard).
+ * The extension runner has a hard ~3-minute OS cap; a hung `LIST` under `runBlocking` would burn it and
+ * get the worker force-killed. Larger than the small manifest-PUT guard because the listing can return
+ * tens of thousands of entries on a big library — but still bounds a genuinely stuck call. Only the
+ * network call is bounded; the subsequent `resetTo` stays a single atomic, un-timed transaction.
+ */
+private const val DEVICE_LIST_TIMEOUT_MS = 30_000L
 
 /**
  * The persisted join marker: the last `eventId` the extension reconciled, surviving the extension's
@@ -78,8 +89,25 @@ class ExtensionReconciler(
 
         // Marker mismatch: a switch, reinstall, or fresh provision. Fetch BEFORE mutating so a failure
         // defers without settling — the ledger and marker are left untouched and the next cycle retries.
-        val filenames = files.list(deviceId).getOrElse {
+        // The network LIST is bounded by an explicit timeout so a hung fetch cannot stall the
+        // OS-scheduled cycle to the force-kill; a timeout defers exactly like a failed fetch (no seed,
+        // ledger/cursor/marker untouched, retry next cycle).
+        val listing = withTimeoutOrNull(DEVICE_LIST_TIMEOUT_MS) { files.list(deviceId) }
+        if (listing == null) {
+            log.w { "device listing timed out — deferring uploads this cycle" }
+            return false
+        }
+        val filenames = listing.getOrElse {
             log.w(it) { "device listing fetch failed — deferring uploads this cycle" }
+            return false
+        }
+        // Same-session-switch transient guard: an empty listing while the ledger still holds COMPLETED
+        // rows is most likely a just-uploaded object not yet listed (bunny LIST read-your-writes lag),
+        // NOT a genuinely empty device — so DEFER rather than wipe dedup to empty. An empty listing
+        // against a ledger with no COMPLETED rows (a genuinely fresh/empty device) still settles below
+        // with zero seeded rows.
+        if (filenames.isEmpty() && ledger.aggregates().completed > 0) {
+            log.w { "empty device listing but ledger holds COMPLETED rows — deferring (transient?) this cycle" }
             return false
         }
         // RESET the ledger to exactly the device's stored files — one COMPLETED row each — via an
@@ -101,12 +129,3 @@ class ExtensionReconciler(
         return true
     }
 }
-
-/**
- * Recover the `assetId` from an upload-key [filename] (`"<assetId>-<role>.<ext>"`): drop the extension,
- * then take everything before the final `-` (the role token `primary`/`live` carries no `-`, though
- * an `assetId` may). The inverse of `uploadKey` in `:domain:gallery`; inlined here so the reconciler
- * needs no gallery dependency.
- */
-private fun assetIdFromUploadKey(filename: String): String =
-    filename.substringBeforeLast('.').substringBeforeLast('-')

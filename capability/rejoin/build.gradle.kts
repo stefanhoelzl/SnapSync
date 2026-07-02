@@ -14,6 +14,10 @@ kotlin {
             // Implementation seams the reconciliation orchestrates — kept `implementation` so engine
             // types never leak transitively to consumers that only want the leave use-case / file seam.
             implementation(project(":domain:engine"))
+            // The shared upload-key inverse (`assetIdFromUploadKey`) the reconciler seeds ledger rows
+            // with — one implementation, next to `uploadKey`, so the seed key parses identically to the
+            // producer's (capability `gallery-status`).
+            implementation(project(":domain:gallery"))
             implementation(project(":capability:config"))
             implementation(libs.kermit)
             implementation(libs.ktor.client.core)

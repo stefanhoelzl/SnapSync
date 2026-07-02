@@ -36,6 +36,15 @@ fun iosDownloadStore(): SqlDelightDownloadStore {
     return SqlDelightDownloadStore(DownloadDatabase(driver))
 }
 
+/**
+ * The extension's **read-only** view of the download store: the suppression projection only
+ * ([SuppressionSource.suppressedLocalIds]), never the full app-side [DownloadStore] surface. The
+ * upload extension's composition root wires this so the extension is **compile-prevented** from writing
+ * or reading anything beyond the suppression set (capability `download-store`). Backed by the same
+ * App-Group store the app writes; the extension reads it over WAL.
+ */
+fun iosSuppressionSource(): SuppressionSource = iosDownloadStore()
+
 @OptIn(ExperimentalForeignApi::class)
 private fun protectDownloadFiles(basePath: String) {
     val attributes = mapOf<Any?, Any?>(
