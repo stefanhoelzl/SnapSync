@@ -1,71 +1,57 @@
 package app.snapsync.gallery
 
-import app.snapsync.engine.Resource
 import kotlinx.cinterop.ExperimentalForeignApi
 import platform.Foundation.NSISO8601DateFormatter
-import platform.Foundation.timeIntervalSince1970
 import platform.Photos.PHAsset
 import platform.Photos.PHAssetResource
 import platform.Photos.PHFetchResult
 import platform.UniformTypeIdentifiers.UTType
 
 /**
- * The PhotoKit-backed [GalleryResourceEnumerator]: enumerates `PHAssetResource`s and derives each
- * resource's `(filename, assetId)` via the shared [uploadKey] derivation, carrying the
- * `PHAssetResource` itself as [Resource.data] so the producer can create a job from it, plus the
- * per-asset manifest detail (`creationDate`/`originalFilename`/MIME) in [Resource.metadata] so the
- * device manifest is built from this same enumeration (no second PhotoKit pass).
- * This is the **single** PhotoKit resource-enumeration site — both the upload producer and the
- * re-join seed go through it, so their keys never diverge.
+ * The PhotoKit-backed [RawAssetSource]: the **decision-free** library walk (capability `gallery-status`,
+ * Move A). Fetches `PHAsset`s, reads each asset's **raw** `localIdentifier` + capture date, walks its
+ * `PHAssetResource`s, and emits [RawResource]s carrying only raw facts — the raw `PHAssetResourceType`
+ * value, the UTI, the iOS-resolved MIME, the original filename, and the opaque `PHAssetResource` handle.
+ * It applies **no** role filter, key derivation, or `assetId` normalization — the shared [resourcesFrom]
+ * mapping owns all of that, so the fan-out orchestration is unit-tested off-device.
  *
- * Wiring-only and untestable (PhotoKit, device/simulator only); the pure derivation it calls is
- * unit-tested in `commonTest`, and [PhotoKitSmokeTest] confirms the enumeration glue runs on the sim.
+ * `UTType.preferredMIMEType` (UTI→MIME) stays **iOS-only** — Apple's UTI table must not be reimplemented
+ * in `commonMain` — so the MIME is resolved here and carried out as a raw fact.
+ *
+ * Wiring-only and untestable (PhotoKit, device/simulator only); [PhotoKitSmokeTest] confirms this walk
+ * glue runs on the simulator, and the pure mapping it feeds is unit-tested in `commonTest`.
  */
 @OptIn(ExperimentalForeignApi::class)
-class PhotoLibraryResourceEnumerator : GalleryResourceEnumerator {
+class PhotoLibraryRawAssetSource : RawAssetSource {
 
-    override suspend fun enumerate(): List<Resource> =
-        resourcesForAssets(PHAsset.fetchAssetsWithOptions(null).localIdentifiers())
+    override suspend fun walkAll(): List<RawAsset> =
+        walk(PHAsset.fetchAssetsWithOptions(null).localIdentifiers())
 
-    override suspend fun resources(localIdentifiers: List<String>): List<Resource> =
-        resourcesForAssets(localIdentifiers)
-
-    private fun resourcesForAssets(localIdentifiers: List<String>): List<Resource> {
+    override suspend fun walk(localIdentifiers: List<String>): List<RawAsset> {
         if (localIdentifiers.isEmpty()) return emptyList()
         val assets = PHAsset.fetchAssetsWithLocalIdentifiers(localIdentifiers, null)
-        val resources = mutableListOf<Resource>()
+        val out = mutableListOf<RawAsset>()
         var index = 0uL
         while (index < assets.count) {
             val asset = assets.objectAtIndex(index) as PHAsset
             index++
-            val assetId = normalizeAssetId(asset.localIdentifier)
-            // Per-asset capture timestamp (ISO-8601), reused for every resource of the asset — the
-            // device-manifest detail, stashed in metadata so the manifest needs no second enumeration.
+            // Per-asset capture timestamp (ISO-8601), reused for every resource of the asset.
             val creationDate = asset.creationDate?.let { NSISO8601DateFormatter().stringFromDate(it) } ?: ""
-            for (any in PHAssetResource.assetResourcesForAsset(asset)) {
+            val rawResources = PHAssetResource.assetResourcesForAsset(asset).map { any ->
                 val resource = any as PHAssetResource
-                // Originals only: a dropped (edit-artifact / RAW alternate / proxy) type has no role
-                // and is never wrapped, so an asset's set is fixed at capture and never grows.
-                val role = resourceRole(resource.type) ?: continue
-                resources += Resource(
-                    filename = uploadKey(assetId, role, resource.originalFilename),
-                    assetId = assetId,
-                    contentType = resource.uniformTypeIdentifier,
-                    // Manifest detail (opaque to the engine): the device-manifest producer reads these
-                    // to build entries from this same enumeration. MIME from the UTI; originals' name.
-                    metadata = mapOf(
-                        RESOURCE_META_CREATION_DATE to creationDate,
-                        RESOURCE_META_ORIGINAL_FILENAME to resource.originalFilename,
-                        RESOURCE_META_MIME to (
-                            UTType.typeWithIdentifier(resource.uniformTypeIdentifier)?.preferredMIMEType
-                                ?: "application/octet-stream"
-                            ),
-                    ),
-                    data = resource,
+                RawResource(
+                    type = resource.type, // raw PHAssetResourceType value — un-mapped
+                    contentTypeUti = resource.uniformTypeIdentifier,
+                    mimeContentType = UTType.typeWithIdentifier(resource.uniformTypeIdentifier)?.preferredMIMEType
+                        ?: "application/octet-stream",
+                    originalFilename = resource.originalFilename,
+                    handle = resource, // opaque PHAssetResource, crosses uninterpreted
                 )
             }
+            // The RAW localIdentifier (with '/'); resourcesFrom normalizes it.
+            out += RawAsset(assetId = asset.localIdentifier, creationDate = creationDate, rawResources = rawResources)
         }
-        return resources
+        return out
     }
 
     private fun PHFetchResult.localIdentifiers(): List<String> {
@@ -78,3 +64,13 @@ class PhotoLibraryResourceEnumerator : GalleryResourceEnumerator {
         return out
     }
 }
+
+/**
+ * The iOS [GalleryResourceEnumerator]: the PhotoKit [PhotoLibraryRawAssetSource] walk composed with the
+ * shared [resourcesFrom] mapping (via [ResourceEnumerator]). No-arg so the app and extension composition
+ * roots keep constructing `PhotoLibraryResourceEnumerator()` unchanged. This is the **single** PhotoKit
+ * resource-enumeration site — the upload producer and the re-join seed both go through it, so their keys
+ * never diverge.
+ */
+class PhotoLibraryResourceEnumerator :
+    GalleryResourceEnumerator by ResourceEnumerator(PhotoLibraryRawAssetSource())
