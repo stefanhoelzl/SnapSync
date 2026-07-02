@@ -218,6 +218,7 @@ agent use and inject that one instead.
 :domain:presentation   Orbit MVI container + UiState (Compose-free, no engine dep)
 :domain:ui             Compose screens (written against App* only)
 :domain:ui:components   App* design system + the Material 3 skin
+:capability:upload     upload orchestration: UploadCycle + the UploadJobPlatform seam + DiscoveryStore + UploadConfig (jvm()+ios, JVM/harness-covered; deps :domain:engine + :domain:gallery)
 :capability:upload-url local edge-URL builder (no network/crypto) — the UploadRequestProvider
 :capability:config     deeplink config provisioning (eventId)
 :capability:device-id  stable per-install device identity (shared Keychain)
@@ -226,7 +227,7 @@ agent use and inject that one instead.
 :capability:event-creation-ui  create-event screen seams: EventCreator/CreationStatusSource + HTTP creator
 :app:desktop           test harness (phone frame + control panel)
 :app:ios               iOS app wiring + framework export (thin, untested)
-:app:ios:photokit-extension  background-upload extension: UploadCycle orchestration + iOS PhotoKit adapters — not harness-reachable (its commonTest runs on the iOS simulator, not JVM)
+:app:ios:photokit-extension  background-upload extension: iOS PhotoKit adapters (IosUploadJobPlatform/IosDiscoveryStore) + composition root, composing :capability:upload — thin, untested (orchestration + its tests now live in :capability:upload)
 :test:integration      test-only: seam → UI-state integration (planned)
 iosApp/                Xcode project (app + upload-extension targets) — not Gradle
 ```

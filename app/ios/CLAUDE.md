@@ -18,7 +18,8 @@ module exporting its own **static** framework that the Xcode project links:
 
 Two frameworks, not one, so the two binaries never both statically pull `:domain:engine` into a
 single image. The app framework carries Compose/UI + the full `domain` stack; the extension
-framework is lean (`:domain:engine` + `:capability:upload-url` + `:capability:config`). Both are
+framework is lean (`:capability:upload` — the UploadCycle orchestration — over `:domain:engine` +
+`:domain:gallery`, plus `:capability:upload-url` + `:capability:config`). Both are
 `isStatic = true` — the Compose-iOS norm (avoids dynamic-linking issues with the bundled
 Skiko/Compose native libs).
 

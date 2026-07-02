@@ -4,6 +4,11 @@ import app.snapsync.engine.Resource
 import app.snapsync.engine.UploadError
 import app.snapsync.engine.UploadRequest
 import app.snapsync.gallery.GalleryResourceEnumerator
+import app.snapsync.upload.CreateResult
+import app.snapsync.upload.Discovery
+import app.snapsync.upload.PlatformJobState
+import app.snapsync.upload.PlatformUploadJob
+import app.snapsync.upload.UploadJobPlatform
 import co.touchlab.kermit.Logger
 import kotlinx.cinterop.BetaInteropApi
 import kotlinx.cinterop.ExperimentalForeignApi

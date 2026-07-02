@@ -1,4 +1,4 @@
-package app.snapsync.ios.upload
+package app.snapsync.upload
 
 import app.snapsync.engine.LedgerState
 import app.snapsync.engine.LedgerWriter

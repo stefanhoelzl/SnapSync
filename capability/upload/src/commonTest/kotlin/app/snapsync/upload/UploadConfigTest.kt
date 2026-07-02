@@ -1,4 +1,4 @@
-package app.snapsync.ios.upload
+package app.snapsync.upload
 
 import kotlin.test.Test
 import kotlin.test.assertEquals

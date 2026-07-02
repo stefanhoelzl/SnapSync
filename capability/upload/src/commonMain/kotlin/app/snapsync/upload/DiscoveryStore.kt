@@ -1,4 +1,4 @@
-package app.snapsync.ios.upload
+package app.snapsync.upload
 
 /**
  * The persisted discovery cursor — opaque archived change-token bytes. A `commonMain` port so the
