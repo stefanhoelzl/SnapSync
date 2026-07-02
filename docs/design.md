@@ -639,10 +639,12 @@ assets (an asset is complete only when every resource its `device.json` names is
 `/files/<deviceId>/`), flattened across devices, each tagged with its owning `deviceId` — the client
 skips its **own** device by `deviceId` (the endpoint is identity-blind). Each resource carries
 `{ role, contentType, key, filename, size, url }`, a straight projection of the per-event device
-manifest (`device.json`), whose resource entries use the **same** `key` (the storage object name / fetch
-handle) and `filename` (the human capture name) field names. Event-gated on the marker, strictly
-faithful (any non-404 read failure in the fan-out → `502`, never a partial union), and non-cacheable.
-The restore/download client that consumes this union is still deferred — only the read it needs exists.
+manifest (`device.json`) — except `url`, which is a **presigned S3 GET URL** the edge mints per object
+(SigV4, 7-day expiry) so the download client fetches the bytes **directly from bunny's S3-compatible
+endpoint**, off the backend (§4). Event-gated on the marker, strictly faithful (any non-404 read
+failure in the fan-out → `502`, never a partial union), and non-cacheable. The download/import client
+that consumes this union is **implemented** (`photo-download`): it selects foreign complete assets and
+imports them into the library, downloading each resource directly from its presigned `url`.
 
 ---
 
@@ -657,8 +659,21 @@ bytes). The proxy sidesteps signing entirely: the endpoint, not the device, writ
 - **Storage: bunny.net Storage via its native HTTP API** ([docs](https://docs.bunny.net/api-reference/storage))
   — a plain authenticated `PUT https://<region-host>/<zone>/<key>` with header `AccessKey:
   <storage-zone password>`. **No SigV4, no presigning, no payload hash.** DE/Falkenstein default host
-  `storage.bunnycdn.com`. Known limits we design around: **no custom metadata headers** (§3.1), no
+  `storage.bunnycdn.com`. Uploads, the event registry (marker/manifest), and both listings all use this
+  native API. Known limits we design around: **no custom metadata headers** (§3.1), no
   versioning/ACL/SSE/tagging/lifecycle, no batch delete.
+- **Downloads: the zone's S3-compatible API** (`add-s3-presigned-downloads`, 2026-07-02). The
+  `snap-sync-dev` zone has S3 compatibility enabled (a create-time-only flag), so the **same objects**
+  are reachable over both the native API (writes, listings) and the S3 API — spike-verified: a
+  native-written object reads back through an S3 **presigned GET**. The backend returns each listing
+  `url` as a presigned S3 GET (`aws4fetch` SigV4, path-style
+  `https://<region>-s3.storage.bunnycdn.com/<zone>/<key>`, `X-Amz-Expires` 7 days) that the device
+  fetches **directly** — the backend is off the download byte path (**no download proxy route**). The
+  zone name is the S3 Access Key ID and the storage `AccessKey` the secret (no extra credential); the
+  short-read integrity check moves client-side (against S3's `Content-Length`). Presigned links expire,
+  so the device re-presigns on every foreground reconcile (`download-store` refreshes a not-yet-staged
+  resource's `url`) and an expired link self-heals. `bunny-list-endpoint` is the sole authority on the
+  URL format.
 - **Upload endpoint (external, bunny.net Edge Scripting / Deno + Hono — implemented in `backend/`):** the app's
   only backend dependency. Capability specs: `bunny-upload-endpoint`, `bunny-list-endpoint`, `backend-deployment`.
   - **Device-facing origin = a domain we control.** The app talks to `snapsync.stho.net` — a custom
@@ -859,10 +874,13 @@ itself is covered by the endpoint's `Deno.test` suite.
   surfaced as a joined-layer button + confirm dialog. It touches no ledger/cursor/marker (the extension
   resets its own on the next marker mismatch). Already-uploaded objects stay in storage (no remote
   delete); re-scanning the QR re-joins and reconciles them back.
-- **Storage = bunny.net native Storage API**; **device holds no credential**; an external **edge proxy
-  endpoint** streams bytes into the bucket **by event id only** (event id = the capability). Edge host
-  is BuildKonfig; **no baked secrets** (the storage `AccessKey` lives only on the edge). *(2026-06-22
-  proxy pivot — replaces the earlier mint/presigned model and eliminates the UNSIGNED-PAYLOAD risk.)*
+- **Storage = bunny.net native Storage API** for uploads/registry/listings; **device holds no
+  credential**; an external **edge proxy endpoint** streams bytes into the bucket **by event id only**
+  (event id = the capability). Edge host is BuildKonfig; **no baked secrets** (the storage `AccessKey`
+  lives only on the edge). *(2026-06-22 proxy pivot — replaces the earlier mint/presigned model and
+  eliminates the UNSIGNED-PAYLOAD risk.)* **Downloads pivot to S3 (2026-07-02, `add-s3-presigned-downloads`):**
+  on the S3-enabled `snap-sync-dev` zone, listings return **presigned S3 GET URLs** the device fetches
+  directly from bunny (native + S3 share one object namespace); uploads/listings stay native.
 - **`localIdentifier` keys** (no `PHCloudIdentifier` resolution); **flat `<eventId>/` namespace, no
   device level** (`flatten-event-namespace`); **no custom metadata headers** (unsupported by bunny
   native API) — downstream reconstruction uses the key path + in-file EXIF; v1's §3.5 signed-header

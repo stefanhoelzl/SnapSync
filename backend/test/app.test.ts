@@ -1,4 +1,4 @@
-import { assertEquals } from "@std/assert";
+import { assert, assertEquals } from "@std/assert";
 import { createApp, type FetchLike } from "../src/app.ts";
 
 const E = "7a3f9c21-0000-4000-8000-000000000001"; // an eventId
@@ -10,14 +10,33 @@ const CONFIG = {
   host: "storage.bunnycdn.com",
   accessKey: "zone-password",
   baseUrl: "https://dl.example",
+  s3Region: "de",
+  s3Host: "de-s3.storage.bunnycdn.com",
 };
 
 const ZONE = `https://storage.bunnycdn.com/snapsync-zone`;
+// The presigned-download S3 endpoint (path-style: `<s3Host>/<zone>/<key>`).
+const S3_ZONE = `https://${CONFIG.s3Host}/${CONFIG.zone}`;
 const MARKER_URL = `${ZONE}/events/${E}/metadata.json`; // event registry marker
 const MARKER_BODY = { eventId: E, name: "Party", createdAt: "2026-06-27T00:00:00Z" };
 const markerPresent = { [MARKER_URL]: { body: MARKER_BODY } };
 
-// Byte routes (`bunny-upload-endpoint` / `bunny-download-endpoint`): device-partitioned, event-independent.
+/**
+ * Assert `url` is a presigned S3 GET for the bare object key `key` (e.g. `files/<D>/A-primary.heic`):
+ * path-style origin+path against the S3 endpoint, 7-day expiry, and an AWS4-HMAC-SHA256 signature. The
+ * signature itself is time-dependent (X-Amz-Date), so we assert the shape, not an exact string.
+ */
+function assertPresigned(url: string, key: string) {
+  const u = new URL(url);
+  assertEquals(`${u.origin}${u.pathname}`, `${S3_ZONE}/${key}`);
+  assertEquals(u.searchParams.get("X-Amz-Algorithm"), "AWS4-HMAC-SHA256");
+  assertEquals(u.searchParams.get("X-Amz-Expires"), "604800");
+  assertEquals(u.searchParams.get("X-Amz-SignedHeaders"), "host");
+  assert(u.searchParams.get("X-Amz-Credential")?.includes("/de/s3/aws4_request"));
+  assert((u.searchParams.get("X-Amz-Signature") ?? "").length > 0);
+}
+
+// Byte WRITE route (`bunny-upload-endpoint`): device-partitioned, event-independent.
 const BYTE_PATH = `/files/device/${D}/IMG_0001-photo.jpg`;
 const BYTE_OBJ_URL = `${ZONE}/files/${D}/IMG_0001-photo.jpg`;
 // Per-device list (`bunny-list-endpoint`).
@@ -178,7 +197,7 @@ Deno.test("byte OPTIONS → 204, no resumable advertised, no upstream request", 
     method: "OPTIONS",
   });
   assertEquals(res.status, 204);
-  assertEquals(res.headers.get("Allow"), "GET, PUT, OPTIONS");
+  assertEquals(res.headers.get("Allow"), "PUT, OPTIONS");
   assertEquals(calls.length, 0);
   for (const [name] of res.headers) {
     if (name.toLowerCase().startsWith("upload-")) {
@@ -283,18 +302,14 @@ Deno.test("device list → raw files as { filename, size, url }, one LIST, no fu
   });
   const res = await createApp({ config: CONFIG, fetch: fetchImpl }).request(DEVLIST_PATH);
   assertEquals(res.status, 200);
-  assertEquals(await res.json(), [
-    {
-      filename: "A-primary.heic",
-      size: 100,
-      url: `https://dl.example/files/device/${D}/A-primary.heic`,
-    },
-    {
-      filename: "A-motion.mov",
-      size: 200,
-      url: `https://dl.example/files/device/${D}/A-motion.mov`,
-    },
-  ]); // directory entry filtered out
+  assertEquals(res.headers.get("Cache-Control"), "no-store"); // urls are time-limited presigned
+  const body = await res.json();
+  assertEquals(
+    body.map((e: { filename: string; size: number }) => ({ filename: e.filename, size: e.size })),
+    [{ filename: "A-primary.heic", size: 100 }, { filename: "A-motion.mov", size: 200 }],
+  ); // directory entry filtered out
+  assertPresigned(body[0].url, `files/${D}/A-primary.heic`);
+  assertPresigned(body[1].url, `files/${D}/A-motion.mov`);
   assertEquals(calls.length, 1); // single LIST, no manifest/content reads
   assertEquals(new Headers(calls[0].init.headers).get("AccessKey"), "zone-password");
 });
@@ -335,13 +350,13 @@ Deno.test("device list → wrong method (POST) → 404, no upstream request", as
   assertEquals(calls.length, 0);
 });
 
-Deno.test("device list → a percent-encoded filename round-trips and re-encodes into the url", async () => {
+Deno.test("device list → a percent-encoded filename round-trips and re-encodes into the presigned url", async () => {
   const { fetchImpl } = listFake({ [DEVDIR_URL]: { body: [file("A-primary%201.heic", 7)] } });
   const res = await createApp({ config: CONFIG, fetch: fetchImpl }).request(DEVLIST_PATH);
   assertEquals(res.status, 200);
   const entry = (await res.json())[0];
   assertEquals(entry.filename, "A-primary 1.heic"); // decoded back to the uploaded name
-  assertEquals(entry.url, `https://dl.example/files/device/${D}/A-primary%201.heic`); // re-encoded
+  assertPresigned(entry.url, `files/${D}/A-primary%201.heic`); // re-encoded, flat key in the presigned url
 });
 
 // ── POST /event + GET /event/:eventId (capability `event-creation`) ───────────────────────────────
@@ -478,119 +493,12 @@ Deno.test("GET /event/:id → 502 on non-404 marker read failure", async () => {
   assertEquals(res.status, 502);
 });
 
-// ── GET /files/device/:deviceId/:filename (capability `bunny-download-endpoint`) ──────────────────
-
-/** Serves canned object responses keyed by URL; any unmapped URL → 404 (object absent). */
-function getFake(
-  routes: Record<
-    string,
-    { status?: number; body?: BodyInit; headers?: Record<string, string>; throws?: boolean }
-  >,
-) {
-  const calls: Call[] = [];
-  const fetchImpl: FetchLike = (url, init) => {
-    calls.push({ url, init });
-    const r = routes[url];
-    if (r?.throws) return Promise.reject(new Error("network boom"));
-    if (!r) return Promise.resolve(new Response("not found", { status: 404 }));
-    return Promise.resolve(
-      new Response(r.body ?? null, { status: r.status ?? 200, headers: r.headers }),
-    );
-  };
-  return { calls, fetchImpl };
-}
-
-Deno.test("download → 200 streams the body and relays content + cache headers (ungated, one GET)", async () => {
-  const { calls, fetchImpl } = getFake({
-    [BYTE_OBJ_URL]: {
-      body: "img-bytes",
-      headers: {
-        "content-type": "image/jpeg",
-        "content-length": "9",
-        "etag": '"abc"',
-        "last-modified": "Wed, 20 Jun 2026 10:31:00 GMT",
-        "cache-control": "public, max-age=60",
-      },
-    },
-  });
-  const res = await createApp({ config: CONFIG, fetch: fetchImpl }).request(BYTE_PATH);
-  assertEquals(res.status, 200);
-  assertEquals(await res.text(), "img-bytes");
-  assertEquals(res.headers.get("Content-Type"), "image/jpeg");
-  assertEquals(res.headers.get("Content-Length"), "9");
-  assertEquals(res.headers.get("ETag"), '"abc"');
-  assertEquals(res.headers.get("Last-Modified"), "Wed, 20 Jun 2026 10:31:00 GMT");
-  assertEquals(res.headers.get("Cache-Control"), "public, max-age=60");
-  assertEquals(calls.length, 1); // ungated: object GET only, no marker read
-  assertEquals(calls[0].url, BYTE_OBJ_URL);
-  assertEquals(calls[0].init.method, "GET");
-  assertEquals(new Headers(calls[0].init.headers).get("AccessKey"), "zone-password");
-});
-
-Deno.test("download → missing upstream content-type defaults to application/octet-stream", async () => {
-  const { fetchImpl } = getFake({ [BYTE_OBJ_URL]: { body: new Uint8Array([1, 2, 3]) } });
-  const res = await createApp({ config: CONFIG, fetch: fetchImpl }).request(BYTE_PATH);
-  assertEquals(res.status, 200);
-  assertEquals(res.headers.get("Content-Type"), "application/octet-stream");
-});
-
-Deno.test("download → bunny 404 (missing object) → 404, ungated (no marker read)", async () => {
-  const { calls, fetchImpl } = getFake({});
-  const res = await createApp({ config: CONFIG, fetch: fetchImpl }).request(BYTE_PATH);
-  assertEquals(res.status, 404);
-  assertEquals(calls.length, 1);
-  assertEquals(calls[0].url, BYTE_OBJ_URL);
-});
-
-Deno.test("download → bunny non-404 error (500) → 502", async () => {
-  const { fetchImpl } = getFake({ [BYTE_OBJ_URL]: { status: 500 } });
-  const res = await createApp({ config: CONFIG, fetch: fetchImpl }).request(BYTE_PATH);
-  assertEquals(res.status, 502);
-});
-
-Deno.test("download → upstream throw/abort → 502", async () => {
-  const { fetchImpl } = getFake({ [BYTE_OBJ_URL]: { throws: true } });
-  const res = await createApp({ config: CONFIG, fetch: fetchImpl }).request(BYTE_PATH);
-  assertEquals(res.status, 502);
-});
-
-Deno.test("download → non-UUID device id → 400, no upstream request", async () => {
-  const { calls, fetchImpl } = getFake({});
-  const res = await createApp({ config: CONFIG, fetch: fetchImpl }).request(
-    "/files/device/nope/a.jpg",
-  );
-  assertEquals(res.status, 400);
-  assertEquals(calls.length, 0);
-});
-
-Deno.test("download → unsafe filename (%2F) → 400, no upstream request", async () => {
-  const { calls, fetchImpl } = getFake({});
-  const res = await createApp({ config: CONFIG, fetch: fetchImpl }).request(
-    `/files/device/${D}/a%2Fb.jpg`,
-  );
-  assertEquals(res.status, 400);
-  assertEquals(calls.length, 0);
-});
-
-Deno.test("download → a list url round-trips: encoded filename → flat object key", async () => {
-  const ENC_URL = `${ZONE}/files/${D}/IMG%20001.jpg`;
-  const { calls, fetchImpl } = getFake({
-    [ENC_URL]: { body: "x", headers: { "content-type": "image/jpeg" } },
-  });
-  const res = await createApp({ config: CONFIG, fetch: fetchImpl }).request(
-    `/files/device/${D}/IMG%20001.jpg`,
-  );
-  assertEquals(res.status, 200);
-  assertEquals(calls[0].url, ENC_URL);
-});
-
 // ── GET /event/:eventId/files (event-wide UNION read, capability `bunny-list-endpoint`) ────────────
 
 const D2 = "22222222-0000-4000-8000-000000000003"; // a second contributing deviceId
 const MANIFEST_DIR_URL = `${ZONE}/events/${E}/device/`; // the device-manifest directory LIST
 const manifestUrl = (d: string) => `${ZONE}/events/${E}/device/${d}.json`;
 const fileDirUrl = (d: string) => `${ZONE}/files/${d}/`;
-const dlUrl = (d: string, key: string) => `https://dl.example/files/device/${d}/${key}`;
 
 // A device manifest object (post-rename: resources carry `key` + `filename`).
 const manifest = (deviceId: string, assets: unknown[]) => ({ body: { deviceId, assets } });
@@ -627,7 +535,13 @@ Deno.test("union → two devices' complete assets, flattened, tagged by deviceId
   const r = await createApp({ config: CONFIG, fetch: fetchImpl }).request(`/event/${E}/files`);
   assertEquals(r.status, 200);
   assertEquals(r.headers.get("Cache-Control"), "no-store");
-  assertEquals(await r.json(), [
+  const union = await r.json();
+  // Structure + non-url fields (each `url` is a dynamic presigned URL, asserted separately below).
+  const stripUrls = (a: { resources: { url: string }[] }) => ({
+    ...a,
+    resources: a.resources.map(({ url: _u, ...rest }) => rest),
+  });
+  assertEquals(union.map(stripUrls), [
     {
       deviceId: D,
       assetId: "A",
@@ -639,7 +553,6 @@ Deno.test("union → two devices' complete assets, flattened, tagged by deviceId
           key: "A-primary.heic",
           filename: "IMG_1.HEIC",
           size: 100,
-          url: dlUrl(D, "A-primary.heic"),
         },
         {
           role: "motion",
@@ -647,7 +560,6 @@ Deno.test("union → two devices' complete assets, flattened, tagged by deviceId
           key: "A-motion.mov",
           filename: "IMG_1.MOV",
           size: 200,
-          url: dlUrl(D, "A-motion.mov"),
         },
       ],
     },
@@ -662,11 +574,14 @@ Deno.test("union → two devices' complete assets, flattened, tagged by deviceId
           key: "B-primary.jpg",
           filename: "IMG_2.JPG",
           size: 50,
-          url: dlUrl(D2, "B-primary.jpg"),
         },
       ],
     },
   ]);
+  // Each resource's `url` is a presigned S3 GET for its owning device's bare key.
+  assertPresigned(union[0].resources[0].url, `files/${D}/A-primary.heic`);
+  assertPresigned(union[0].resources[1].url, `files/${D}/A-motion.mov`);
+  assertPresigned(union[1].resources[0].url, `files/${D2}/B-primary.jpg`);
   // Every upstream read carries the AccessKey; the account API key never appears.
   for (const c of calls) {
     assertEquals(new Headers(c.init.headers).get("AccessKey"), "zone-password");
