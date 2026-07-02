@@ -49,32 +49,40 @@
 - [x] 4.1 (CI) `.github/workflows/backend-deploy.yml`: the "Configure Deno Deploy env" step now also sets
   the non-secret `BUNNY_S3_REGION = de` and `BUNNY_S3_HOST = de-s3.storage.bunnycdn.com` (idempotent
   add/update), reproducibly, for the Deno Deploy runtime.
-- [ ] 4.1 (operator) Set `BUNNY_STORAGE_ZONE = snap-sync-dev` in **both** live runtimes' env (bunny Edge
-  Script dashboard + Deno Deploy), and add `BUNNY_S3_REGION`/`BUNNY_S3_HOST` to the **Edge Script**
-  dashboard env too (CI only covers Deno Deploy). `BUNNY_STORAGE_ACCESS_KEY` is reused (already the zone
-  password = S3 secret) — no new secret. Dashboard values can't be set from the repo.
+- [x] 4.1 (operator) Set `BUNNY_STORAGE_ZONE = snap-sync-dev` in the live runtime env and the S3 vars in
+  the dashboard (confirmed by the operator). `BUNNY_STORAGE_ACCESS_KEY` reused — no new secret. Verified
+  live: the deployed backend returns presigned `de-s3` URLs (§5.2).
 - [x] 4.2 `PUBLIC_BASE_URL` unchanged (`https://snapsync.stho.net`) — serves upload/event/list traffic
   and no longer appears in any download URL.
 
 ## 5. Verify on device (the straight-cutover proof)
 
-- [ ] 5.1 Deploy backend; join a **fresh** event id on the SE2 (per the CLAUDE.md dev loop). Confirm an
-  upload lands in the `snap-sync-dev` zone (native path unchanged) by checking the storage zone.
-- [ ] 5.2 From a second contributor (or a seeded object), confirm the union `url` is a presigned
-  `de-s3.storage.bunnycdn.com` URL and the device downloads + imports the foreign asset directly from S3
-  (no backend byte traffic). A presigned link left to expire before its transfer runs re-presigns on the
-  next foreground reconcile (self-heal).
+- [x] 5.0 Backend deployed to Deno Deploy on merge to `main` (run 28621425974, success); `snapsync.stho.net`
+  now serves presigned downloads against the `snap-sync-dev` S3 zone.
+- [x] 5.2 **Verified end-to-end against the live backend + real zone** (curl): create event → native byte
+  upload (`201`) → manifest (`201`) → union returns `url =
+  https://de-s3.storage.bunnycdn.com/snap-sync-dev/…?X-Amz-Expires=604800&…X-Amz-Signature=…` with
+  `Cache-Control: no-store` → **fetching that URL directly from bunny S3 (no auth) returns the exact bytes
+  (`200`, 26 B)**. Per-device list likewise presigned + `no-store`. This GET is byte-identical to the
+  device's `NSURLSession` download request. SE2 confirmed installed and pointed at `snapsync.stho.net`.
+- [x] 5.1 **Literal on-device cycle verified on the SE2.** Seeded a fresh event with a real 64×64 JPEG
+  foreign asset (`S3DLTEST`), provisioned the SE2 via `SNAPSYNC_DEEPLINK`, and observed in `debug.log`
+  (~3 s): `reconcile: 1 union asset(s), 1 foreign planned` → `imported foreign asset S3DLTEST as
+  F28DDACC-…_L0_001` with the exact seeded `creationDate`. `NSURLSession` fetched the presigned
+  `de-s3.storage.bunnycdn.com` URL and PhotoKit imported it. The SE2 wrote no manifest of its own (no
+  library upload in the window). Seeded zone objects cleaned up; the 64×64 test photo remains in the
+  SE2 Photos library (deletable by hand).
 
 ## 6. Docs + spec prose sync (applied at archive)
 
-- [ ] 6.1 `docs/design.md` §3.5 / §4: download URLs are presigned S3 (minted by the list capability,
+- [x] 6.1 `docs/design.md` §3.5 / §4 updated: downloads are presigned S3 (minted by the list capability,
   7-day expiry, fetched directly from bunny's S3 endpoint); uploads, listings, and the event registry
-  stay on the native API; note the `snap-sync-dev` S3-enabled zone and that S3 is presign-only.
-- [ ] 6.2 Apply the spec deltas at archive: **retire** `bunny-download-endpoint`; modify
-  `bunny-list-endpoint`, `photo-download`, `download-store`, `backend-config`, `backend-deployment`.
+  stay native; the `snap-sync-dev` S3-enabled zone noted, S3 presign-only.
+- [x] 6.2 Spec deltas applied to `openspec/specs/` at archive: **retired** `bunny-download-endpoint`;
+  modified `bunny-list-endpoint` (+ presigned-URL authority), `photo-download` (direct-S3 + short-read +
+  self-heal), `download-store` (url refresh), `backend-config`, `backend-deployment`.
 
 ## 7. Archive
 
-- [ ] 7.1 Archive this change after the PR merges and §5 is proven on device, applying the deltas so
-  `openspec/specs/` describes the presigned-download contract and no longer carries the retired
-  `bunny-download-endpoint`.
+- [x] 7.1 Archived after PR #65 merged and §5 proven on device; deltas applied so `openspec/specs/`
+  describes the presigned-download contract and no longer carries `bunny-download-endpoint`.
