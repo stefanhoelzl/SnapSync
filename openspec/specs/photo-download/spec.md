@@ -68,13 +68,14 @@ by the download proxy, now evaluated against bunny's S3 GET response.
 
 ### Requirement: Expired presigned download URLs self-heal on rediscovery
 
-A resource's download `url` is a **time-limited** presigned S3 URL (7-day expiry). Because the client
-re-reads the union on join and on every foreground entry (see "Foreground-only discovery of later
-additions"), and the download store refreshes the stored `url` of a **not-yet-staged** resource from
-that read (capability `download-store`), a presigned URL that expires before its background transfer
-runs SHALL be **superseded by a freshly-minted URL** on the next foreground reconcile and retried — so
-an expired link recovers automatically rather than failing permanently. The client SHALL NOT need any
-credential to fetch a presigned URL; the query signature is the sole authorization.
+A presigned download `url` that expires before its background transfer runs SHALL be **superseded by
+a freshly-minted URL** on the next foreground reconcile and retried — so an expired link recovers
+automatically rather than failing permanently. The `url` is a **time-limited** presigned S3 URL
+(7-day expiry); because the client re-reads the union on join and on every foreground entry (see
+"Foreground-only discovery of later additions"), and the download store refreshes the stored `url` of
+a **not-yet-staged** resource from that read (capability `download-store`), that supersession happens
+on its own. The client SHALL NOT need any credential to fetch a presigned URL; the query signature is
+the sole authorization.
 
 #### Scenario: An expired link is re-presigned and retried
 
