@@ -38,7 +38,7 @@ class PhotoLibraryResourceEnumerator : GalleryResourceEnumerator {
         while (index < assets.count) {
             val asset = assets.objectAtIndex(index) as PHAsset
             index++
-            val assetId = asset.localIdentifier.replace('/', '_')
+            val assetId = normalizeAssetId(asset.localIdentifier)
             // Per-asset capture timestamp (ISO-8601), reused for every resource of the asset — the
             // device-manifest detail, stashed in metadata so the manifest needs no second enumeration.
             val creationDate = asset.creationDate?.let { NSISO8601DateFormatter().stringFromDate(it) } ?: ""

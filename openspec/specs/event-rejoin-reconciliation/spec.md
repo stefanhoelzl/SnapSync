@@ -66,6 +66,12 @@ device's byte store is absent from the listing, is not seeded, and is uploaded i
 producer (last-write-wins). Setting the marker on success — even when zero rows were seeded — settles
 the join so it does not re-trigger.
 
+As a guard against a same-session-switch transient where a just-uploaded object is not yet listed, when
+the listing returns **empty** *and* the ledger already holds `COMPLETED` rows, the reconciliation SHALL
+**defer** — leaving the ledger, cursor, and marker untouched, exactly like a fetch failure — rather
+than wiping the ledger to empty. An empty listing against an empty/absent-`COMPLETED` ledger (a genuine
+fresh/empty device) still settles normally with zero seeded rows.
+
 #### Scenario: A stored resource is seeded completed
 
 - **WHEN** the per-device listing reports stored files `a1-primary.jpg`, `a1-video.mov`
@@ -83,8 +89,15 @@ the join so it does not re-trigger.
 
 #### Scenario: A zero-row join still settles
 
-- **WHEN** the per-device listing returns no files for a device with an empty byte store
+- **WHEN** the per-device listing returns no files for a device with an empty byte store and no
+  `COMPLETED` rows in the ledger
 - **THEN** no rows are seeded but the `joinedEventId` marker is set, so the next cycle does not re-reconcile
+
+#### Scenario: An empty listing against a non-empty ledger defers
+
+- **WHEN** the per-device listing returns **empty** but the ledger already holds `COMPLETED` rows
+- **THEN** the reconciliation defers — the ledger, cursor, and marker are left untouched — rather than
+  wiping the ledger, so a transiently-missing listing does not drop dedup
 
 #### Scenario: A not-yet-stored resource re-uploads idempotently
 
@@ -121,6 +134,12 @@ leave the `joinedEventId` marker **unset**, so it retries on its next cycle. The
 user-facing join-failure state and no re-scan-to-retry affordance — retries are the extension's own
 cadence, and status meanwhile comes from the app's listing read.
 
+The device-listing fetch SHALL be bounded by an **explicit timeout** (`withTimeout`), mirroring the
+device-manifest guard, so a hung network call cannot stall the OS-scheduled cycle. A timeout SHALL be
+treated **identically to a failed fetch**: no rows are seeded, the ledger and cursor are left
+untouched, the `joinedEventId` marker stays unset, and the next cycle retries. Only the network `LIST`
+is bounded — the subsequent `resetTo(seeds)` remains a single atomic, un-timed transaction.
+
 #### Scenario: The seed precedes any upload
 
 - **WHEN** a reconciliation is triggered on a cycle
@@ -130,6 +149,12 @@ cadence, and status meanwhile comes from the app's listing read.
 
 - **WHEN** the listing fetch fails during a triggered reconciliation
 - **THEN** no upload jobs are created, the `joinedEventId` marker stays unset, and the next cycle retries
+
+#### Scenario: A listing timeout defers without settling
+
+- **WHEN** the device-listing fetch does not return within its bounded timeout
+- **THEN** it is treated exactly as a failed fetch — no seed, the ledger and cursor untouched, the
+  marker unset — and the next cycle retries
 
 ### Requirement: Event switch versus re-join
 

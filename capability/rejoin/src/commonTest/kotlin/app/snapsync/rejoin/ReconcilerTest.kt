@@ -15,6 +15,7 @@ import kotlin.test.assertFalse
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.test.runTest
 
 class ReconcilerTest {
@@ -129,6 +130,53 @@ class ReconcilerTest {
         assertEquals(2, files.calls)
         assertEquals(LedgerState.COMPLETED, ledger.get("A-primary.heic")!!.state)
         assertEquals("E1", marker.read())
+    }
+
+    @Test
+    fun `a listing timeout defers without settling`() = runTest {
+        // A hung LIST must not stall the OS-scheduled cycle: withTimeoutOrNull fires (virtual time) and
+        // the reconcile defers exactly like a failed fetch — no seed, marker unset, ledger untouched.
+        val hanging = object : DeviceFilesSource {
+            override suspend fun list(deviceId: String): Result<List<String>> {
+                delay(Long.MAX_VALUE) // never returns
+                return Result.success(emptyList())
+            }
+        }
+        val ledger = FakeLedgerBackend()
+        val marker = FakeMarker(null)
+
+        assertFalse(reconciler(hanging, ledger, marker).reconcile("E1"))
+        assertNull(marker.read())
+        assertTrue(ledger.rows.isEmpty())
+    }
+
+    @Test
+    fun `an empty listing while the ledger holds COMPLETED rows defers instead of wiping`() = runTest {
+        // Same-session-switch transient (a just-uploaded object not yet listed): an empty listing must
+        // NOT wipe existing dedup to empty when the ledger still holds COMPLETED rows — defer instead.
+        val ledger = FakeLedgerBackend().apply {
+            put(LedgerEntry("stored-primary.heic", "stored", LedgerState.COMPLETED, 0))
+        }
+        val files = FakeFiles(Result.success(emptyList()))
+        val marker = FakeMarker("OLD")
+        var cursorCleared = 0
+
+        assertFalse(reconciler(files, ledger, marker) { cursorCleared++ }.reconcile("NEW"))
+        assertNotNull(ledger.get("stored-primary.heic")) // dedup preserved, not wiped
+        assertEquals(0, cursorCleared) // cursor untouched
+        assertEquals("OLD", marker.read()) // marker unchanged → next cycle retries
+    }
+
+    @Test
+    fun `an empty listing on a fresh device with no COMPLETED rows still settles`() = runTest {
+        // A genuinely fresh/empty device (empty listing, no COMPLETED rows) must still settle normally:
+        // the empty-guard only fires when the ledger already holds COMPLETED dedup.
+        val ledger = FakeLedgerBackend()
+        val marker = FakeMarker(null)
+
+        assertTrue(reconciler(FakeFiles(Result.success(emptyList())), ledger, marker).reconcile("E1"))
+        assertTrue(ledger.rows.isEmpty())
+        assertEquals("E1", marker.read()) // settled with zero seeded rows
     }
 
     @Test

@@ -60,6 +60,10 @@ class IosPhotoLibraryImporter(
                     val raw = request.placeholderForCreatedAsset?.localIdentifier
                     if (raw != null) {
                         rawLocalId = raw
+                        // `/`→`_` MUST match `:domain:gallery`'s `normalizeAssetId` (the discovery-side
+                        // transform) exactly, or the discovered assetId never meets this createdLocalId
+                        // and the echo re-uploads. Inlined (no gallery dep here); kept identical by the
+                        // gallery `normalizeAssetId` contract test.
                         val id = raw.replace('/', '_')
                         createdLocalId = id
                         recordCreatedLocalId(ref, id)

@@ -213,14 +213,20 @@ agent use and inject that one instead.
 :domain:engine         sync core + SQL ledger (the only state); no platform deps
 :domain:status         ledger → SyncStatus projection (read-only)
 :domain:permission     permission seam (3-state)
+:domain:gallery        library resource-enumeration seam + upload-key/role layout (uploadKey, resourceRole, assetIdFromUploadKey, normalizeAssetId) + device manifest
+:domain:download-store  app-written download store + read-only SuppressionSource projection (echo-suppression)
 :domain:presentation   Orbit MVI container + UiState (Compose-free, no engine dep)
 :domain:ui             Compose screens (written against App* only)
 :domain:ui:components   App* design system + the Material 3 skin
 :capability:upload-url local edge-URL builder (no network/crypto) — the UploadRequestProvider
 :capability:config     deeplink config provisioning (eventId)
+:capability:device-id  stable per-install device identity (shared Keychain)
+:capability:download   foreign-photo download → stage → import controller (photo-download)
+:capability:rejoin     extension-side re-join reconciliation + leave use-case + device-file listing seam
 :capability:event-creation-ui  create-event screen seams: EventCreator/CreationStatusSource + HTTP creator
 :app:desktop           test harness (phone frame + control panel)
-:app:ios               iOS wiring + framework export (thin, untested)
+:app:ios               iOS app wiring + framework export (thin, untested)
+:app:ios:photokit-extension  background-upload extension: UploadCycle orchestration + iOS PhotoKit adapters — not harness-reachable (its commonTest runs on the iOS simulator, not JVM)
 :test:integration      test-only: seam → UI-state integration (planned)
 iosApp/                Xcode project (app + upload-extension targets) — not Gradle
 ```
