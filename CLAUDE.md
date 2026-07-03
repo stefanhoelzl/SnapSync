@@ -229,7 +229,8 @@ agent use and inject that one instead.
 :app:desktop:ui        forge harness (:app:desktop:ui:run): phone frame + control panel that forges any UI state; depends on :app:desktop
 :app:ios               iOS app wiring + framework export (thin, untested)
 :app:ios:photokit-extension  background-upload extension: iOS PhotoKit adapters (IosUploadJobPlatform/IosDiscoveryStore) + composition root, composing :capability:upload — thin, untested (orchestration + its tests now live in :capability:upload)
-:test:integration      test-only: seam → UI-state integration (planned)
+:test:world            test-only shared infra: a controllable in-memory "world" (backend object store + read-models, MockEngine mini-edge, operator-driven UploadJobPlatform/download fakes) the REAL stack runs against + composition helpers mirroring the extension root; jvm()+iosSimulatorArm64. Consumed by :app:desktop AND :test:integration (capability harness-world-model)
+:test:integration      test-only: seam → UI-state integration over :test:world — asserts UiState AND world outcomes (objects landed, ledger COMPLETED, foreign photos imported)
 iosApp/                Xcode project (app + upload-extension targets) — not Gradle
 ```
 
