@@ -1,5 +1,3 @@
-import org.jetbrains.compose.desktop.application.dsl.TargetFormat
-
 plugins {
     alias(libs.plugins.kotlin.jvm)
     alias(libs.plugins.kotlin.compose)
@@ -10,28 +8,20 @@ kotlin {
     jvmToolchain(libs.versions.jdk.get().toInt())
 }
 
+// This is the shared Compose *library* for the desktop harnesses: it holds `PhoneFrame` and the
+// `StatusPane` composition glue (construct `StatusContainerHost` from the injected seams → render the
+// real `StatusScreen` inside the frame). It declares NO `compose.desktop.application` block, so it has
+// no `run` task — `:app:desktop:run` is left free for the full-stack world harness. Today's forge
+// harness is the child `:app:desktop:ui` (run task `:app:desktop:ui:run`), which depends on this module.
 dependencies {
     implementation(project(":domain:permission"))
     implementation(project(":domain:status"))
     implementation(project(":domain:presentation"))
     implementation(project(":domain:ui"))
     implementation(project(":capability:config"))
-    // The control panel is deliberately raw Material 3, not App* (design.md §5.1).
-    implementation(compose.material3)
-    implementation(compose.desktop.currentOs)
-}
-
-// Compose Desktop's run task does NOT inherit kotlin { jvmToolchain(...) }; without an
-// explicit javaHome it launches on the Gradle JVM -> UnsupportedClassVersionError.
-val toolchainLauncher = javaToolchains.launcherFor {
-    languageVersion.set(JavaLanguageVersion.of(libs.versions.jdk.get().toInt()))
-}
-
-compose.desktop {
-    application {
-        mainClass = "app.snapsync.desktop.MainKt"
-        javaHome = toolchainLauncher.get().metadata.installationPath.asFile.absolutePath
-        // Skiko loads native libs via a restricted method; future JDKs block it by default.
-        jvmArgs += "--enable-native-access=ALL-UNNAMED"
-    }
+    // `StatusPane` names the create-event seams (`CreationStatusSource`/`EventCreator`) in its
+    // signature, so the edge is explicit here rather than transitive.
+    implementation(project(":capability:event-creation-ui"))
+    implementation(compose.runtime)
+    implementation(compose.foundation)
 }

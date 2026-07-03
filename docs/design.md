@@ -160,9 +160,11 @@ filter, the edge URL build) lives **above and beside** the seam, in the platform
 :domain:ui:components  semantic App* components + the Material 3 skin — the ONLY module allowed to
                          import Material 3 (§5).
 
-:app:desktop           desktop harness: phone-frame preview + control panel (display overrides +
-                       engine console — §5.1). The JVM platform pieces (EngineConsole core, the
-                       URL-builder provider fake) live with the platform-integration slices.
+:app:desktop           shared harness library: PhoneFrame + StatusPane (the StatusContainerHost
+                       wiring both harnesses reuse). Parent run task :app:desktop:run is reserved
+                       for the full-stack world harness (engine console — §5.1).
+:app:desktop:ui        forge harness (:app:desktop:ui:run): phone-frame preview + display-override
+                       control panel (§5.1); depends on :app:desktop.
 :app:ios               wires the iOS adapter + Darwin Ktor engine + framework export → iosApp/
 
 iosApp/                Xcode project (not Gradle): the app target (Swift host + Info.plist, registers
@@ -789,9 +791,20 @@ bytes). The proxy sidesteps signing entirely: the endpoint, not the device, writ
 
 ### 5.1 Desktop test harness (dual UI)
 
-`:app:desktop` renders **side-by-side**: left = the real `:domain:ui` status screen inside a fixed
-**phone-sized frame** (~390×844); right = a **control panel** (utilitarian raw Material 3, never
-`App*`). Both panes bind the same Orbit container. Two permanent sections:
+The desktop harnesses render **side-by-side**: left = the real `:domain:ui` status screen inside a
+fixed **phone-sized frame** (~390×844); right = a **control panel** (utilitarian raw Material 3, never
+`App*`). Both panes bind the same Orbit container. The shared left pane — `PhoneFrame` + the
+`StatusPane` wiring that constructs the `StatusContainerHost` — lives in the parent `:app:desktop`
+**library**; each harness supplies its own seam sources and right pane. There are two harnesses, named
+by their run task:
+
+- **`:app:desktop:ui:run`** (module `:app:desktop:ui`) — the **forge** harness: its right pane is the
+  display-override control panel below, driving stand-in cells (no engine).
+- **`:app:desktop:run`** (the parent) — the **full-stack world** harness: the engine-console section
+  below, driving a real `SyncEngine`. *(Reserved for the full-stack build-out; the forge harness
+  covers the display overrides today.)*
+
+The two permanent sections:
 
 - **Display overrides:** buttons that forge display state for UI iteration — **Permission** presets
   (write the permission cell), **Joined/Not-joined** presets (forge the event-config gate state), and

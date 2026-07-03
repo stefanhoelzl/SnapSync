@@ -21,6 +21,7 @@ dependencyResolutionManagement {
 rootProject.name = "snapsync"
 
 include(":app:desktop")
+include(":app:desktop:ui")
 include(":app:ios")
 include(":app:ios:photokit-extension")
 include(":capability:upload")
