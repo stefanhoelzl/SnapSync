@@ -284,3 +284,7 @@ string-building, no network or crypto.
   (propose → apply → archive) so `openspec/specs/` stays the contract of record. Purely mechanical
   work — build/CI, dependency bumps, behavior-preserving refactors, docs — can skip OpenSpec and
   just branch → PR → `/ship`. Use judgment on the line between the two.
+- **The `openspec` CLI is not installed** — there is no global binary and no `package.json`. Invoke
+  it via npx, pinned to the version CI uses: `npx --yes @fission-ai/openspec@1.4.1 <cmd>` (e.g.
+  `… validate --specs --strict`, matching `.github/workflows/build.yml`). Do not run a bare
+  `openspec …`; it will fail with "command not found".
