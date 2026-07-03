@@ -1,0 +1,306 @@
+package app.snapsync.desktop
+
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
+import app.snapsync.config.ConfigSource
+import app.snapsync.config.ConfigStore
+import app.snapsync.config.EventConfigPayload
+import app.snapsync.download.StoreDownloadStatusSource
+import app.snapsync.engine.UploadError
+import app.snapsync.eventcreation.CreationStatusSource
+import app.snapsync.eventcreation.EventCreator
+import app.snapsync.permission.PermissionRequester
+import app.snapsync.permission.PermissionStatus
+import app.snapsync.permission.PermissionStatusSource
+import app.snapsync.status.DownloadStatusSource
+import app.snapsync.status.SyncStatusSource
+import app.snapsync.world.World
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.launch
+
+/**
+ * The single mutation path for the full-stack world harness (test equipment — no tests, mirroring the
+ * forge's `PanelController`): every inspector control goes through a named method here, never an inline
+ * mutation in a composable. Each method drives `:test:world`'s public control surface / the
+ * `process()`-shaped runner, then refreshes the real status + download sources so the LEFT pane's
+ * counts **emerge** from the real projection (they are never forged), and recomputes the inspector
+ * [snapshot].
+ *
+ * The world is a **live stateful stack** (backend byte store, ledger, gallery) that cannot be
+ * "un-deposited", so presets construct a **fresh** [World] and bump [generation]; the composition root
+ * keys the left pane on [generation] so it re-binds its `StatusContainerHost` to the new sources.
+ * Incremental controls mutate the current world in place.
+ */
+class WorldInspectorController(private val scope: CoroutineScope) {
+
+    // ---- current world + per-world derived sources (rebuilt on preset) --------------------------
+
+    var world: World = World()
+        private set
+
+    /** Bumped only when [world] is replaced (presets); the left pane is keyed on this. */
+    var generation: Int by mutableStateOf(0)
+        private set
+
+    /** The inspector's render state, recomputed after every mutation. */
+    var snapshot: InspectorSnapshot by mutableStateOf(InspectorSnapshot.EMPTY)
+        private set
+
+    // Per-world sources — read inside the composition root's `key(generation)` block, so a preset's
+    // rebuild is picked up. Recreated by [rebuildSources].
+    lateinit var syncSource: SyncStatusSource
+        private set
+    lateinit var downloadSource: StoreDownloadStatusSource
+        private set
+    lateinit var creator: EventCreator
+        private set
+
+    // Stable across worlds — they read the *current* [world], so no rebuild is needed.
+    val permissionSource: PermissionStatusSource = object : PermissionStatusSource {
+        override val permission get() = world.permission.permission
+    }
+    val configSource: ConfigSource = object : ConfigSource {
+        override val config get() = world.configSource.config
+    }
+    val creationStatusSource: CreationStatusSource = object : CreationStatusSource {
+        override val creationStatus get() = world.creationStatus.creationStatus
+    }
+    val configStore: ConfigStore = object : ConfigStore {
+        override suspend fun save(config: EventConfigPayload) = world.provision(config.eventId)
+        override suspend fun clear() = world.leave()
+    }
+    val leave: suspend () -> Unit = { world.leave(); afterMutation() }
+
+    /** What the next gate-driven `request()` resolves to. */
+    var armedGrants: Boolean by mutableStateOf(true)
+        private set
+
+    val requester: PermissionRequester = object : PermissionRequester {
+        override fun request() = launchMutation {
+            world.permission.set(if (armedGrants) PermissionStatus.GRANTED else PermissionStatus.DENIED)
+        }
+        override fun openSettings() = appendConsole("openSettings() — use the Permission segment instead")
+    }
+
+    // ---- engine console -------------------------------------------------------------------------
+
+    private val _console = mutableStateOf<List<String>>(emptyList())
+    val console: List<String> get() = _console.value
+
+    /** Append a console line, capping the ring so an idle session never grows unbounded. */
+    fun appendConsole(line: String) {
+        _console.value = (_console.value + line).takeLast(CONSOLE_CAP)
+    }
+
+    fun clearConsole() {
+        _console.value = emptyList()
+    }
+
+    // ---- counters (distinct ids per click; never collide across union/suppression) --------------
+
+    private var ownAssetSeq = 0
+    private var foreignDeviceSeq = 0
+    private val injectedDeviceIds = mutableListOf<String>()
+
+    init {
+        rebuildSources()
+        launchMutation { /* seed the initial snapshot + status refresh */ }
+    }
+
+    private fun rebuildSources() {
+        syncSource = world.syncStatusSource(scope)
+        downloadSource = StoreDownloadStatusSource(world.downloadStore)
+        creator = world.createEvent(scope)
+    }
+
+    // ---- the OS invocation + token ---------------------------------------------------------------
+
+    /** One extension invocation: the upload `process()` cycle **and** a download reconcile. */
+    fun invokeExtension() = launchMutation {
+        val result = world.runUploadCycle()
+        appendConsole("invoke: upload cycle → $result")
+        world.configSource.config.value?.eventId?.let { world.downloadController.reconcile(it) }
+    }
+
+    fun expireToken() = launchMutation {
+        world.platform.expireToken()
+        appendConsole("change token expired → next invoke does a full enumeration")
+    }
+
+    // ---- enrollment ------------------------------------------------------------------------------
+
+    fun setPermission(status: PermissionStatus) = launchMutation { world.permission.set(status) }
+
+    fun armNextRequest(grants: Boolean) {
+        armedGrants = grants
+    }
+
+    fun reprovision() = launchMutation {
+        val eventId = world.configSource.config.value?.eventId ?: return@launchMutation
+        world.provision(eventId)
+        appendConsole("re-provisioned $eventId (reconcile seeds stored assets COMPLETED)")
+    }
+
+    fun createEvent(name: String) = launchMutation { creator.create(name) }
+
+    /** The inspector's Leave button — the same faithful edge as the phone-frame Leave affordance. */
+    fun leaveEvent() = launchMutation { world.leave() }
+
+    // ---- gallery ---------------------------------------------------------------------------------
+
+    fun addAsset() = launchMutation { world.addOwnAsset("own-${ownAssetSeq++}") }
+
+    fun removeAsset(assetId: String) = launchMutation { world.removeAsset(assetId) }
+
+    // ---- backend ---------------------------------------------------------------------------------
+
+    /** Inject one foreign device carrying a single complete asset into the joined event. */
+    fun injectForeignDevice() = launchMutation {
+        val eventId = world.configSource.config.value?.eventId ?: return@launchMutation
+        val deviceId = "foreign-${foreignDeviceSeq++}"
+        world.addForeignDevice(deviceId, eventId, listOf(World.foreignAsset("$deviceId-a1")))
+        injectedDeviceIds += deviceId
+        appendConsole("injected $deviceId with one complete asset into $eventId")
+    }
+
+    // ---- upload jobs -----------------------------------------------------------------------------
+
+    fun completeJob(key: String) = launchMutation { world.platform.completeJob(key) }
+
+    fun failJob(key: String, error: UploadError) = launchMutation { world.platform.failJob(key, error) }
+
+    fun setJobLimit(limit: Int) = launchMutation { world.jobLimit = limit.coerceAtLeast(0) }
+
+    // ---- downloads -------------------------------------------------------------------------------
+
+    fun stageAllDownloads() = launchMutation { world.stageAllDownloads() }
+
+    // ---- failure levers --------------------------------------------------------------------------
+
+    fun setBackendOffline(offline: Boolean) = launchMutation { world.backendOffline = offline }
+
+    fun armImportFailure() = launchMutation {
+        world.failNextImport()
+        appendConsole("armed: next foreign import will fail (non-terminal)")
+    }
+
+    // ---- presets (rebuild a fresh world) ---------------------------------------------------------
+
+    fun presetClean() = installFreshWorld("clean") { }
+
+    fun presetEnrolled() = installFreshWorld("enrolled") {
+        provision(EVENT)
+        addOwnAsset("own-a1")
+        addOwnAsset("own-a2")
+    }
+
+    fun presetFreshJoin() = installFreshWorld("fresh join") {
+        provision(EVENT)
+        addOwnAsset("own-a1")
+    }
+
+    fun presetReprovisionDedup() = installFreshWorld("re-provision (dedup)") {
+        // Own asset already stored (as if previously uploaded), then provision: the reconcile seeds it
+        // COMPLETED, so a subsequent invoke uploads nothing new. Deposit exactly the enumerator-derived
+        // keys (uploadKey) so the completeness check matches — don't reconstruct the key by hand.
+        addOwnAsset("own-a1")
+        enumerator.enumerate().forEach { store.deposit(ownDeviceId, it.filename) }
+        provision(EVENT)
+    }
+
+    fun presetForeignDownload() = installFreshWorld("foreign download") {
+        provision(EVENT)
+        val deviceId = "foreign-0"
+        addForeignDevice(deviceId, EVENT, listOf(World.foreignAsset("$deviceId-a1")))
+    }
+
+    private fun installFreshWorld(label: String, setup: suspend World.() -> Unit) {
+        scope.launch {
+            world = World()
+            rebuildSources()
+            ownAssetSeq = 0
+            foreignDeviceSeq = 0
+            injectedDeviceIds.clear()
+            world.setup()
+            appendConsole("preset: $label")
+            refreshStatus()
+            snapshot = snapshotNow()
+            generation++ // re-bind the left pane to the new world's sources
+        }
+    }
+
+    // ---- shared plumbing -------------------------------------------------------------------------
+
+    /** Run a mutation, then refresh the real sources and recompute the snapshot (no world rebuild). */
+    private fun launchMutation(body: suspend () -> Unit) {
+        scope.launch {
+            body()
+            afterMutation()
+        }
+    }
+
+    private suspend fun afterMutation() {
+        refreshStatus()
+        snapshot = snapshotNow()
+    }
+
+    /**
+     * The operator plays the OS foreground-refresh: the real completed/in-flight/download sources
+     * update their `StateFlow`s only on `refresh()`, so the `ListingSyncStatusSource` projection
+     * re-emits only after we pull them.
+     */
+    private suspend fun refreshStatus() {
+        world.completed.refresh()
+        world.inFlight.refresh()
+        downloadSource.refresh()
+    }
+
+    private suspend fun snapshotNow(): InspectorSnapshot {
+        val suppressed = world.downloadStore.suppressedLocalIds()
+        val galleryRows = world.gallery.walkAll()
+            .map { GalleryRow(it.assetId, suppressed = it.assetId in suppressed) }
+        val deviceIds = listOf(world.ownDeviceId) + injectedDeviceIds
+        val backend = deviceIds.map { id ->
+            DeviceObjects(deviceId = id, own = id == world.ownDeviceId, objects = world.store.objectsOf(id).toList())
+        }
+        val jobKeys = world.platform.liveJobKeys()
+        val jobs = jobKeys.map { key -> JobRow(key, attempts = world.platform.created.count { it.filename == key }) }
+        val downloads = world.downloadJobs.pending()
+            .map { DownloadRow(it.ref.sourceDeviceId, it.ref.sourceAssetId, it.resource.resourceKey) }
+        return InspectorSnapshot(
+            joinedEventId = world.configSource.config.value?.eventId,
+            galleryRows = galleryRows,
+            backend = backend,
+            jobs = jobs,
+            downloads = downloads,
+            jobLimit = world.jobLimit,
+            backendOffline = world.backendOffline,
+        )
+    }
+
+    private companion object {
+        const val EVENT = "00000000-0000-4000-8000-0000000000e1"
+        const val CONSOLE_CAP = 200
+    }
+}
+
+/** The inspector's render snapshot (recomputed after each mutation). */
+data class InspectorSnapshot(
+    val joinedEventId: String?,
+    val galleryRows: List<GalleryRow>,
+    val backend: List<DeviceObjects>,
+    val jobs: List<JobRow>,
+    val downloads: List<DownloadRow>,
+    val jobLimit: Int,
+    val backendOffline: Boolean,
+) {
+    companion object {
+        val EMPTY = InspectorSnapshot(null, emptyList(), emptyList(), emptyList(), emptyList(), Int.MAX_VALUE, false)
+    }
+}
+
+data class GalleryRow(val assetId: String, val suppressed: Boolean)
+data class DeviceObjects(val deviceId: String, val own: Boolean, val objects: List<String>)
+data class JobRow(val key: String, val attempts: Int)
+data class DownloadRow(val deviceId: String, val assetId: String, val resourceKey: String)

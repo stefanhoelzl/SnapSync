@@ -22,7 +22,8 @@ Stack: Kotlin 2.4.0 · Compose MP 1.11.1 · JDK 25 · min iOS 27.0 · Orbit MVI 
 - `./gradlew build` — the canonical check (compiles all targets + runs JVM tests). **No display
   needed**: the Compose Desktop UI tests (`:domain:ui:jvmTest`) render offscreen under
   `-Djava.awt.headless=true` (set on that task in `domain/ui/build.gradle.kts`), so no X server /
-  Xvfb is required. Only `:app:desktop:ui:run` (below) opens a real window and needs a display.
+  Xvfb is required. Only the two harness run tasks — `:app:desktop:ui:run` (forge) and
+  `:app:desktop:run` (full-stack world, below) — open a real window and need a display.
 - `./gradlew compileIosMainKotlinMetadata` — the **Linux-runnable proxy** for the iOS source
   sets: it compiles `iosMain`/`commonMain` (and cinterop) without a Mac, so you can catch
   iOS-only breakage here. The actual iOS tests (`iosSimulatorArm64Test`, etc.) are **macOS-only**
@@ -35,6 +36,13 @@ Stack: Kotlin 2.4.0 · Compose MP 1.11.1 · JDK 25 · min iOS 27.0 · Orbit MVI 
 (raw Material 3 — it is test equipment, never `App*`). The panel **forges any display state** — permission presets,
 sync-state presets, and the engine console — so you can review and test all UI states without a
 device. See `docs/design.md §5.1`.
+
+`./gradlew :app:desktop:run` launches the **full-stack world harness** (module `:app:desktop`): the same
+real status screen on the left — but its counts **emerge** from `:test:world`'s real `ListingSyncStatusSource`
+(never forged) — and a right-pane **world inspector** (raw M3) that drives the real stack: presets,
+**Invoke extension** (one `process()`-shaped cycle + download reconcile), the gallery/backend, the
+upload-job queue and downloads, failure levers, and an engine-console footer. The operator plays the OS
+(nothing auto-runs). See `docs/design.md §5.1` (capability `full-stack-harness`).
 
 ## On-device iOS (agent-driveable over USB)
 
@@ -225,7 +233,7 @@ agent use and inject that one instead.
 :capability:download   foreign-photo download → stage → import controller (photo-download)
 :capability:rejoin     extension-side re-join reconciliation + leave use-case + device-file listing seam
 :capability:event-creation-ui  create-event screen seams: EventCreator/CreationStatusSource + HTTP creator
-:app:desktop           shared harness library: PhoneFrame + StatusPane (StatusContainerHost wiring both desktop harnesses reuse); no run task — :app:desktop:run reserved for the full-stack world harness
+:app:desktop           shared harness library (PhoneFrame + StatusPane, StatusContainerHost wiring both desktop harnesses reuse) AND the full-stack world harness app (:app:desktop:run): real StatusScreen whose counts EMERGE from :test:world's real ListingSyncStatusSource + a right-pane world inspector driving the world (capability full-stack-harness)
 :app:desktop:ui        forge harness (:app:desktop:ui:run): phone frame + control panel that forges any UI state; depends on :app:desktop
 :app:ios               iOS app wiring + framework export (thin, untested)
 :app:ios:photokit-extension  background-upload extension: iOS PhotoKit adapters (IosUploadJobPlatform/IosDiscoveryStore) + composition root, composing :capability:upload — thin, untested (orchestration + its tests now live in :capability:upload)

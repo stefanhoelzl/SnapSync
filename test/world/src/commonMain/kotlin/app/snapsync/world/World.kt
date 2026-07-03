@@ -152,6 +152,21 @@ class World(
         configCell.value = EventConfigPayload(eventId)
     }
 
+    /**
+     * Leave the joined event — the **faithful** in-place clear (NOT a world rebuild): run the real
+     * [DownloadController.onLeaveOrSwitch] (cancel transfers, prune non-terminal download rows), then
+     * clear the config cell and the joined-event marker. The gallery, backend store, ledger, and
+     * **imported foreign photos** are retained (imported download rows are terminal / delete-proof), so
+     * re-provisioning the same event afterwards still finds them suppressed (real cross-event dedup).
+     * Clearing [configCell] is reactive, so the listing-backed status projection leaves the joined layer
+     * with no rebuild.
+     */
+    suspend fun leave() {
+        downloadController.onLeaveOrSwitch()
+        configCell.value = null
+        marker.clear()
+    }
+
     // ---- composition helpers (mirror UploadExtensionRoot.process()) -----------------------------
 
     fun reconciler(): ExtensionReconciler =

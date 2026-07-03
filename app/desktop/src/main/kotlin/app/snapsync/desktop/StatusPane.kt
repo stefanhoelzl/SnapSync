@@ -22,9 +22,10 @@ import kotlinx.coroutines.CoroutineScope
  * ([app.snapsync.desktop.main]) supplies stand-in cells; the future full-stack world harness supplies
  * the real platform-agnostic stack — only the seam *sources* (and the right pane) differ.
  *
- * The leave/share edges are UI-only test equipment: `leave` uses the container's no-op default so the
- * confirm dialog is reviewable but inert, and [share] is passed in by the host (the forge copies the
- * invite URL to the clipboard and logs it). Exercises the UI flow only; mutates no harness state.
+ * The share edge is UI-only test equipment ([share] is passed in by the host; the forge copies the
+ * invite URL to the clipboard and logs it). [leave] defaults to the container's no-op, so the forge's
+ * confirm dialog is reviewable but inert; the full-stack world harness passes the real `World.leave()`
+ * edge so a confirmed leave actually runs the stack (imports retained, join cleared).
  */
 @Composable
 fun StatusPane(
@@ -38,6 +39,7 @@ fun StatusPane(
     downloadSource: DownloadStatusSource,
     share: (String) -> Unit,
     scope: CoroutineScope,
+    leave: suspend () -> Unit = {},
 ) {
     val host = remember {
         StatusContainerHost(
@@ -48,6 +50,7 @@ fun StatusPane(
             configStore,
             scope,
             share = share,
+            leave = leave,
             creationStatusSource = creationStatusSource,
             creator = creator,
             downloadSource = downloadSource,
@@ -59,9 +62,9 @@ fun StatusPane(
     val inviteUrl by host.inviteUrl.collectAsState()
 
     PhoneFrame {
-        // The container's `leave` defaults to a no-op (no leave fake wired), so the dialog is
-        // reviewable but Confirm is inert — the harness exercises UI only. Share is a clipboard/log
-        // stub; the QR renders from the canned invite URL.
+        // `leave` is the injected edge: the forge leaves it defaulted (Confirm reviewable but inert),
+        // the full-stack world harness binds it to `World.leave()`. Share is a clipboard/log stub; the
+        // QR renders from the canned invite URL.
         StatusScreen(
             state,
             host::onRequestPermission,
