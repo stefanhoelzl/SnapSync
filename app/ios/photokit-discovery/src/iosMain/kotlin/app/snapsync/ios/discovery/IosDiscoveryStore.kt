@@ -1,4 +1,4 @@
-package app.snapsync.ios.upload
+package app.snapsync.ios.discovery
 
 import app.snapsync.engine.DISCOVERY_TOKEN_KEY
 import app.snapsync.engine.LEDGER_APP_GROUP
@@ -14,8 +14,8 @@ import platform.posix.memcpy
 
 /**
  * The App-Group-backed [DiscoveryStore]: the archived `PHPersistentChangeToken` bytes live in the
- * shared `NSUserDefaults` suite so the cursor survives extension process death. The platform archives
- * the token to/from these bytes; this only persists them.
+ * shared `NSUserDefaults` suite so the cursor survives process death. [IosDiscovery] archives the
+ * token to/from these bytes; this only persists them. Shared by both upload tiers.
  */
 @OptIn(ExperimentalForeignApi::class)
 class IosDiscoveryStore(

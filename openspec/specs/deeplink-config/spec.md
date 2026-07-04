@@ -14,7 +14,7 @@ The system SHALL define a custom URL scheme `snapsync` whose config deeplink has
 wire payload (`EventLinkPayload`). The `eventId` SHALL be a high-entropy **canonical UUID**;
 possession of it is the upload capability (the edge endpoint authorizes by event id alone). The
 upload **host** SHALL NOT appear in the payload: it is fixed at compile time by the extension's
-`BackgroundUploadURLBase` (capability `ios-background-upload`). The payload carries **no storage
+`BackgroundUploadURLBase` (capability `ios-photokit-upload`). The payload carries **no storage
 credential** and **no event name** — the name is not carried in the QR; a joined device fetches it by
 `eventId` (see *Event name is fetched, not carried in the deeplink*). `v` SHALL be the integer format
 version, `3` for this single-key contract. The payload is carried entirely in the deeplink; there is

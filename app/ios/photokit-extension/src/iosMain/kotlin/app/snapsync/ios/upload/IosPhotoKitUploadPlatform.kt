@@ -3,7 +3,7 @@ package app.snapsync.ios.upload
 import app.snapsync.engine.Resource
 import app.snapsync.engine.UploadError
 import app.snapsync.engine.UploadRequest
-import app.snapsync.gallery.GalleryResourceEnumerator
+import app.snapsync.ios.discovery.IosDiscovery
 import app.snapsync.upload.CreateResult
 import app.snapsync.upload.Discovery
 import app.snapsync.upload.PlatformJobState
@@ -18,13 +18,8 @@ import kotlinx.cinterop.memScoped
 import kotlinx.cinterop.ptr
 import kotlinx.cinterop.value
 import platform.Foundation.NSError
-import platform.Foundation.NSKeyedArchiver
-import platform.Foundation.NSKeyedUnarchiver
-import platform.Foundation.NSMutableURLRequest
 import platform.Foundation.NSURL
 import platform.Foundation.NSURLRequest
-import platform.Foundation.setHTTPMethod
-import platform.Foundation.setValue
 import platform.Photos.PHAssetResource
 import platform.Photos.PHAssetResourceUploadJob
 import platform.Photos.PHAssetResourceUploadJobAction
@@ -36,26 +31,23 @@ import platform.Photos.PHAssetResourceUploadJobStateCancelled
 import platform.Photos.PHAssetResourceUploadJobStateFailed
 import platform.Photos.PHAssetResourceUploadJobStateRegistered
 import platform.Photos.PHAssetResourceUploadJobStateSucceeded
-import platform.Photos.PHObjectTypeAsset
-import platform.Photos.PHPersistentChangeToken
 import platform.Photos.PHPhotoLibrary
 import platform.Photos.PHPhotosErrorLimitExceeded
 
 /**
- * The PhotoKit implementation of [UploadJobPlatform] — the **only** place that touches PhotoKit, so
- * it stays as dumb as possible: fetch/retry/acknowledge system jobs, enumerate changes, and create
- * jobs. All decisions live in [UploadCycle]; resource enumeration + key/version layout live in the
- * shared `:domain:gallery` [GalleryResourceEnumerator] (so the producer and the re-join seed never
- * diverge). A returned job's ledger key is read from its **destination URL** (the last path segment)
- * — the only field reliably present for every job state (`resource` is nil for succeeded jobs); the
- * `resource`, when still available, is reused to re-create a retry-spent job. None of this is
- * unit-tested (the upload-job subsystem is device-only); it is verified on a real device. A
- * [PhotoKitSmokeTest] only confirms enumeration is callable on the simulator.
+ * The PhotoKit (iOS ≥26.1) implementation of [UploadJobPlatform] — the OS-owned upload-job queue:
+ * fetch/retry/acknowledge system jobs and create jobs. Discovery, request-building, and change-token
+ * archiving are identical across both upload tiers and delegated to the shared [IosDiscovery]
+ * (`:app:ios:photokit-discovery`); only the job lifecycle differs and stays here. All decisions live
+ * in `UploadCycle`. A returned job's ledger key is read from its **destination URL** (the last path
+ * segment) — the only field reliably present for every job state (`resource` is nil for succeeded
+ * jobs); the `resource`, when still available, is reused to re-create a retry-spent job. Decision-free
+ * and not unit-tested (the upload-job subsystem is device-only); verified on a real device.
  */
 @OptIn(ExperimentalForeignApi::class, BetaInteropApi::class)
-class IosUploadJobPlatform(
+class IosPhotoKitUploadPlatform(
     private val log: Logger,
-    private val enumerator: GalleryResourceEnumerator,
+    private val discovery: IosDiscovery,
 ) : UploadJobPlatform {
 
     private val library: PHPhotoLibrary get() = PHPhotoLibrary.sharedPhotoLibrary()
@@ -75,8 +67,6 @@ class IosUploadJobPlatform(
             // field reliably present for every state. `resource` is **nil for succeeded jobs** (the
             // system releases it after upload), so it can't be the key source; keep it only as an
             // optional payload for re-creating a retry-spent job.
-            // Capture ObjC-`nonnull`-but-actually-nilable values as nullable locals so the runtime
-            // null-checks are emitted, not optimized away (`resource` IS nil for succeeded jobs).
             val destination: NSURLRequest? = job.destination
             val key = destination?.URL?.lastPathComponent
             if (key == null) {
@@ -113,7 +103,7 @@ class IosUploadJobPlatform(
     override suspend fun retryJob(job: PlatformUploadJob, request: UploadRequest) {
         val systemJob = job.handle as PHAssetResourceUploadJob
         val url = NSURL.URLWithString(request.url) ?: return
-        val urlRequest = buildRequest(url, request)
+        val urlRequest = discovery.buildRequest(url, request)
         library.performChangesAndWait(
             changeBlock = {
                 PHAssetResourceUploadJobChangeRequest.changeRequestForUploadJob(systemJob)?.retryWithDestination(urlRequest)
@@ -135,7 +125,7 @@ class IosUploadJobPlatform(
             log.w { "createJob: malformed destination URL — not creating" }
             return CreateResult.FAILED
         }
-        val urlRequest = buildRequest(url, request)
+        val urlRequest = discovery.buildRequest(url, request)
         return memScoped {
             val errorVar = alloc<ObjCObjectVar<NSError?>>()
             library.performChangesAndWait(
@@ -165,50 +155,7 @@ class IosUploadJobPlatform(
         }
     }
 
-    override suspend fun discoverResources(sinceToken: ByteArray?): Discovery {
-        val token = sinceToken?.let(::unarchiveToken)
-        val changes = token?.let { library.fetchPersistentChangesSinceToken(it, error = null) }
-        if (token == null || changes == null) {
-            // Full enumeration: `resources` is every current resource key — the live set the cycle
-            // reconciles against. No change feed, so no incremental removals. Delegated to the shared
-            // gallery enumerator (same derivation the re-join seed uses).
-            return Discovery(
-                resources = enumerator.enumerate(),
-                nextToken = archiveToken(library.currentChangeToken),
-                fullEnumeration = true,
-            )
-        }
-        // Incremental: derive changed assets to (re)upload and removed assets to prune. Removed ids
-        // are normalized `/`→`_` so they match the `<localId>-…` key scheme.
-        val identifiers = linkedSetOf<String>()
-        val removed = linkedSetOf<String>()
-        changes.enumerateChangesWithBlock { change, _ ->
-            val details = change?.changeDetailsForObjectType(PHObjectTypeAsset, error = null)
-                ?: return@enumerateChangesWithBlock
-            details.insertedLocalIdentifiers().forEach { identifiers.add(it as String) }
-            details.updatedLocalIdentifiers().forEach { identifiers.add(it as String) }
-            details.deletedLocalIdentifiers().forEach { removed.add((it as String).replace('/', '_')) }
-        }
-        return Discovery(
-            resources = enumerator.resources(identifiers.toList()),
-            nextToken = archiveToken(library.currentChangeToken),
-            removedAssetIds = removed.toList(),
-        )
-    }
-
-    private fun buildRequest(url: NSURL, request: UploadRequest): NSMutableURLRequest {
-        val urlRequest = NSMutableURLRequest(uRL = url)
-        urlRequest.setHTTPMethod("PUT")
-        request.headers.forEach { (name, value) -> urlRequest.setValue(value, forHTTPHeaderField = name) }
-        // Force HTTP/2-over-TCP: the system performs the background upload over HTTP/3 (QUIC) against
-        // the public edge endpoint, but that QUIC connection never completes on real networks (it
-        // hangs ~11s, cancels, and retries forever — nothing uploads), with no TCP fallback. The
-        // edge only offers h2/http1.1 anyway. Opting the stored request out of HTTP/3 keeps uploads
-        // on TCP, which works. (Verified on device: build 70's LAN MinIO never hit this — it had no
-        // QUIC endpoint.)
-        urlRequest.setAssumesHTTP3Capable(false)
-        return urlRequest
-    }
+    override suspend fun discoverResources(sinceToken: ByteArray?): Discovery = discovery.discover(sinceToken)
 
     private fun mapState(state: PHAssetResourceUploadJobState): PlatformJobState = when (state) {
         PHAssetResourceUploadJobStateSucceeded -> PlatformJobState.SUCCEEDED
@@ -219,20 +166,4 @@ class IosUploadJobPlatform(
     }
 
     private fun mapError(error: NSError): UploadError = UploadError.Unknown("${error.domain}:${error.code}")
-
-    // Token (un)archiving is best-effort efficiency only: any failure degrades to a full
-    // re-enumeration (null token), which the ledger makes harmless — it must never fail the cycle.
-    private fun archiveToken(token: PHPersistentChangeToken): ByteArray =
-
-        runCatching {
-            NSKeyedArchiver.archivedDataWithRootObject(token, requiringSecureCoding = true, error = null)?.toByteArray()
-        }.onFailure { log.w(it) { "archiveToken failed — cursor will not advance this cycle" } }
-            .getOrNull() ?: ByteArray(0)
-
-    private fun unarchiveToken(bytes: ByteArray): PHPersistentChangeToken? =
-        runCatching {
-            NSKeyedUnarchiver.unarchivedObjectOfClass(PHPersistentChangeToken, bytes.toNSData(), error = null)
-                as? PHPersistentChangeToken
-        }.onFailure { log.w(it) { "unarchiveToken failed — re-enumerating from scratch" } }
-            .getOrNull()
 }

@@ -22,6 +22,10 @@ kotlin {
             // + DiscoveryStore + UploadConfig). The iOS adapters below (IosUploadJobPlatform,
             // IosDiscoveryStore) implement its seams and UploadExtensionRoot composes its UploadCycle.
             implementation(project(":capability:upload"))
+            // Shared iOS PhotoKit discovery + request/token support (IosDiscovery, IosDiscoveryStore),
+            // also consumed by the app-driven URLSession tier. Keeps the change-token walk out of the
+            // platform-free :capability:upload while sharing it across both adapters.
+            implementation(project(":app:ios:photokit-discovery"))
             // The app-written download store, opened READ-ONLY here for the suppression projection
             // (capability `download-store`): discovery drops assets this device downloaded + imported
             // so they are never re-uploaded (the echo). The extension never writes this store.
