@@ -2,9 +2,8 @@ package app.snapsync.ui
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -14,17 +13,24 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import app.snapsync.permission.PermissionStatus
+import app.snapsync.presentation.Arrow
+import app.snapsync.presentation.SyncHealth
 import app.snapsync.presentation.UiState
 import app.snapsync.ui.components.AppConfirmDialog
+import app.snapsync.ui.components.AppEventHero
 import app.snapsync.ui.components.AppQrCode
+import app.snapsync.ui.components.AccessPrompt
+import app.snapsync.ui.components.AppStatusLine
+import app.snapsync.ui.components.AppSyncStatus
 import app.snapsync.ui.components.AppTextField
 import app.snapsync.ui.components.AppTheme
-import app.snapsync.ui.components.DownloadProgressLine
+import app.snapsync.ui.components.ArrowLevel
 import app.snapsync.ui.components.LeaveButton
 import app.snapsync.ui.components.PrimaryButton
 import app.snapsync.ui.components.ScreenLayout
 import app.snapsync.ui.components.ShareButton
 import app.snapsync.ui.components.StatusHero
+import app.snapsync.ui.components.StatusHint
 import app.snapsync.ui.components.StatusIndicator
 
 @Composable
@@ -35,21 +41,19 @@ fun StatusScreen(
     onLeaveEvent: () -> Unit = {},
     onShareInvite: () -> Unit = {},
     inviteUrl: String? = null,
+    // The joined event's name (fetched by id), shown as the heading; null until fetched.
+    eventName: String? = null,
     onCreateEvent: (String) -> Unit = {},
     transientError: String? = null,
-    // Joined-layer download progress (capability `photo-download`): foreign photos imported of total.
-    // Shown as an independent line beneath the upload hero; hidden when there is nothing foreign.
-    downloadedCount: Int = 0,
-    downloadTotal: Int = 0,
 ) {
     AppTheme {
         // Local UI state only: the confirm dialog's visibility never enters UiState or the reduction.
         var confirmingLeave by remember { mutableStateOf(false) }
-        // The invite + leave affordances live in the joined layer only (InProgress / NothingToSync /
-        // Completed); the loading, setup-gate, and permission-blocked states show none. Share renders
-        // only when an invite URL exists (always true in the joined layer, where config is present);
-        // both ride the bottom-end action cluster, share before leave.
-        val bottomEndActions: (@Composable () -> Unit)? = if (state.isJoinedLayer) {
+
+        // The invite + leave affordances live in the joined layer (config present) — any health,
+        // including NeedsAccess: sharing needs no photo access. Loading and the create layer show none.
+        val joined = state is UiState.Joined
+        val bottomActions: (@Composable () -> Unit)? = if (joined) {
             {
                 if (inviteUrl != null) {
                     ShareButton(description = "Share invite link", onClick = onShareInvite)
@@ -60,47 +64,27 @@ fun StatusScreen(
             null
         }
 
-        ScreenLayout(title = "SnapSync", bottomEndActions = bottomEndActions) {
-            // In the joined layer the join QR sits above the status hero, so others can scan to join.
-            if (state.isJoinedLayer && inviteUrl != null) {
-                AppQrCode(content = inviteUrl, caption = "Scan to join this event")
-                Spacer(Modifier.height(24.dp))
-            }
+        // The app-name nav label is always "SnapSync"; the joined event's name is the prominent heading.
+        ScreenLayout(
+            title = "SnapSync",
+            heading = if (joined) eventName else null,
+            bottomActions = bottomActions,
+        ) {
             when (state) {
-                UiState.Loading ->
-                    StatusHero(StatusIndicator.Loading, "Loading …")
                 is UiState.CreateEvent ->
                     CreateEventScreen(state, onCreateEvent, transientError)
                 UiState.CreatingEvent ->
                     StatusHero(StatusIndicator.Loading, "Creating your event …")
-                is UiState.PermissionBlocked ->
-                    PermissionBlocked(state.permission, onRequestPermission, onOpenSettings)
-                is UiState.InProgress ->
-                    StatusHero(
-                        StatusIndicator.InProgress,
-                        "${state.synced} of ${state.total} images synced",
-                        // Second caption: how many are uploading right now (omitted at 0 — e.g.
-                        // photos discovered but not yet started). When none are, there is no detail line.
-                        inProgressCaption(state.inProgress),
-                    )
-                UiState.NothingToSync ->
-                    StatusHero(StatusIndicator.Complete, "Nothing to sync yet")
-                is UiState.Completed ->
-                    StatusHero(StatusIndicator.Complete, "${state.total} images synced")
-            }
-            // Independent download line beneath the upload hero (joined layer only), shown once there
-            // are foreign photos to collect. Does not gate the upload hero above.
-            if (state.isJoinedLayer && downloadTotal > 0) {
-                Spacer(Modifier.height(12.dp))
-                DownloadProgressLine(downloaded = downloadedCount, total = downloadTotal)
+                is UiState.Joined ->
+                    JoinedLayer(state.health, inviteUrl, onRequestPermission, onOpenSettings)
             }
         }
 
         if (confirmingLeave) {
             AppConfirmDialog(
-                title = "Leave event?",
-                confirmLabel = "Confirm",
-                cancelLabel = "Cancel",
+                title = "Leave this event?",
+                confirmLabel = "Leave",
+                cancelLabel = "Stay",
                 onConfirm = {
                     confirmingLeave = false
                     onLeaveEvent()
@@ -111,63 +95,61 @@ fun StatusScreen(
     }
 }
 
-// The joined layer — config + permission satisfied — is the only place the leave affordance appears.
-// Loading and the setup gate show none.
-private val UiState.isJoinedLayer: Boolean
-    get() = this is UiState.InProgress || this == UiState.NothingToSync || this is UiState.Completed
-
-// The InProgress detail line: the "{n} in progress" label only when something is actively uploading,
-// else null (no detail line).
-private fun inProgressCaption(inProgress: Int): String? =
-    if (inProgress > 0) "$inProgress in progress" else null
-
 /**
- * Permission blocked while an event is connected: the status screen hosts the permission affordance
- * as a hero plus a single CTA, switching on the (non-granted) status. NOT_DETERMINED primes the
- * first grant (neutral photos glyph, "Allow access"); DENIED points at Settings (error glyph). No
- * counts — the live gallery total is unavailable without photo access.
+ * The joined-layer event home: the join QR is the hero, the one-line sync health beneath it (the event
+ * name is the screen heading above, per [ScreenLayout]). The permission affordance is folded into the
+ * status line (the `NeedsAccess` variant), tappable to the right action — never a hero-replacing gate.
  */
 @Composable
-private fun PermissionBlocked(
-    permission: PermissionStatus,
+private fun JoinedLayer(
+    health: SyncHealth,
+    inviteUrl: String?,
     onRequestPermission: () -> Unit,
     onOpenSettings: () -> Unit,
 ) {
     Column(
         modifier = Modifier.fillMaxWidth(),
         horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.spacedBy(16.dp),
+        verticalArrangement = Arrangement.spacedBy(20.dp),
     ) {
-        when (permission) {
-            PermissionStatus.NOT_DETERMINED -> {
-                StatusHero(
-                    StatusIndicator.Photos,
-                    "Allow photo access",
-                    "SnapSync needs your photo library to back it up.",
-                )
-                PrimaryButton("Allow access", onRequestPermission)
-            }
-            // GRANTED never reaches this screen (the reduction falls through to the sync hero); render
-            // the DENIED settings path for it too rather than introduce an unreachable branch.
-            PermissionStatus.DENIED, PermissionStatus.GRANTED -> {
-                StatusHero(
-                    StatusIndicator.Error,
-                    "Photo access turned off",
-                    "SnapSync needs photo access to continue backing up your library.",
-                )
-                PrimaryButton("Open Settings", onOpenSettings)
-            }
+        if (inviteUrl != null) {
+            AppQrCode(content = inviteUrl, caption = "Scan to join this event")
         }
+        AppStatusLine(
+            status = health.toAppSyncStatus(),
+            onAttentionClick = {
+                if (health is SyncHealth.NeedsAccess) {
+                    if (health.permission == PermissionStatus.NOT_DETERMINED) {
+                        onRequestPermission()
+                    } else {
+                        onOpenSettings()
+                    }
+                }
+            },
+        )
     }
 }
 
+private fun SyncHealth.toAppSyncStatus(): AppSyncStatus = when (this) {
+    is SyncHealth.NeedsAccess -> AppSyncStatus.NeedsAccess(
+        if (permission == PermissionStatus.NOT_DETERMINED) AccessPrompt.ALLOW else AccessPrompt.SETTINGS,
+    )
+    SyncHealth.Loading -> AppSyncStatus.Loading
+    SyncHealth.InSync -> AppSyncStatus.InSync
+    is SyncHealth.Syncing -> AppSyncStatus.Syncing(upload.toLevel(), download.toLevel())
+}
+
+private fun Arrow.toLevel(): ArrowLevel = when (this) {
+    Arrow.HIDDEN -> ArrowLevel.HIDDEN
+    Arrow.STATIC -> ArrowLevel.STATIC
+    Arrow.PULSING -> ArrowLevel.PULSING
+}
+
 /**
- * The create-event landing layer (event-creation-ui): shown while no event is connected. A name
- * field + Create button mint and auto-join a new event, with a passive hint that scanning a QR in
- * Camera joins an existing one. The name lives in local Compose state (only the submitted, trimmed
- * value crosses the container); Create is disabled until the trimmed name is non-empty, and the
- * field caps at 100 characters. The single inline error beneath the field carries either a transient
- * invalid-deeplink flash ([transientError]) or the last create failure's copy ([UiState.CreateEvent.error]).
+ * The create-event landing layer (event-creation-ui): the hero sits centered while the name field +
+ * Create button + scan hint are pinned to the bottom. Framed as sharing (not backup). The name lives
+ * in local Compose state (only the submitted, trimmed value crosses the container); Create is disabled
+ * until the trimmed name is non-empty, and the field caps at 100 characters.
  */
 @Composable
 private fun CreateEventScreen(
@@ -176,27 +158,37 @@ private fun CreateEventScreen(
     transientError: String?,
 ) {
     var name by remember { mutableStateOf("") }
-    Column(
-        modifier = Modifier.fillMaxWidth(),
-        verticalArrangement = Arrangement.spacedBy(16.dp),
-    ) {
-        StatusHero(
-            StatusIndicator.Photos,
-            "Create an event",
-            "Or scan an event's QR code in the Camera app to join it.",
-        )
-        AppTextField(
-            value = name,
-            onValueChange = { name = it },
-            placeholder = "Event name",
-            maxLength = EVENT_NAME_MAX_LENGTH,
-            errorText = transientError ?: state.error,
-        )
-        PrimaryButton(
-            label = "Create event",
-            onClick = { onCreateEvent(name) },
-            enabled = name.isNotBlank(),
-        )
+    Column(modifier = Modifier.fillMaxSize()) {
+        // Hero centered in the space above the inputs.
+        Column(
+            modifier = Modifier.weight(1f).fillMaxWidth(),
+            verticalArrangement = Arrangement.Center,
+            horizontalAlignment = Alignment.CenterHorizontally,
+        ) {
+            AppEventHero(
+                title = "Start an event",
+                subtitle = "Name it and share the code — everyone's photos land in one place.",
+            )
+        }
+        // Inputs pinned to the bottom.
+        Column(
+            modifier = Modifier.fillMaxWidth(),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            AppTextField(
+                value = name,
+                onValueChange = { name = it },
+                placeholder = "Event name",
+                maxLength = EVENT_NAME_MAX_LENGTH,
+                errorText = transientError ?: state.error,
+            )
+            PrimaryButton(
+                label = "Create event",
+                onClick = { onCreateEvent(name) },
+                enabled = name.isNotBlank(),
+            )
+            StatusHint("Or scan a QR code in the Camera app to join one.")
+        }
     }
 }
 

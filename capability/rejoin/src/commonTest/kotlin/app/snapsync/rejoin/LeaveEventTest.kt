@@ -1,7 +1,7 @@
 package app.snapsync.rejoin
 
 import app.snapsync.config.ConfigStore
-import app.snapsync.config.EventConfigPayload
+import app.snapsync.config.EventConfig
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
@@ -11,7 +11,7 @@ class LeaveEventTest {
 
     private class FakeConfigStore(private val order: MutableList<String>? = null) : ConfigStore {
         var cleared: Boolean = false
-        override suspend fun save(config: EventConfigPayload) {}
+        override suspend fun save(config: EventConfig) {}
         override suspend fun clear() { cleared = true; order?.add("clear") }
     }
 
@@ -35,7 +35,7 @@ class LeaveEventTest {
     fun `a failing config clear leaves the producer disabled and does not corrupt anything`() = runTest {
         var disabled = false
         val throwingConfig = object : ConfigStore {
-            override suspend fun save(config: EventConfigPayload) {}
+            override suspend fun save(config: EventConfig) {}
             override suspend fun clear() { throw RuntimeException("keychain") }
         }
 

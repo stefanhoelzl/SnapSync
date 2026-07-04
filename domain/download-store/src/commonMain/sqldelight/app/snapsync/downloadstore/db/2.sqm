@@ -1,0 +1,4 @@
+-- v2 -> v3: add the per-resource `enqueued` marker (download sent to the OS). Non-destructive; the
+-- default 0 leaves existing rows "not yet enqueued". Feeds the download in-flight count (the ↓-pulse
+-- signal) without touching suppression rows.
+ALTER TABLE downloadResource ADD COLUMN enqueued INTEGER NOT NULL DEFAULT 0;

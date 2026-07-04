@@ -13,7 +13,7 @@ import kotlinx.serialization.json.Json
  * storage credential; the event id is the upload capability. The upload **host** is not here: it is
  * fixed at compile time by the extension's `BackgroundUploadURLBase`. This file is the one
  * authoritative codec: the QR generator encodes with [encodeConfigUrl] and the app decodes with
- * [decodeConfigUrl], so the format cannot drift between producer and consumer. [EventConfigPayload]
+ * [decodeConfigUrl], so the format cannot drift between producer and consumer. [EventLinkPayload]
  * is the wire DTO (its property name is the JSON key).
  */
 
@@ -42,19 +42,19 @@ private val decoder = Base64.UrlSafe.withPadding(Base64.PaddingOption.PRESENT_OP
 
 /** The outcome of decoding a deeplink: a valid payload, or a typed reason it was rejected. */
 sealed interface ConfigDecodeResult {
-    data class Success(val payload: EventConfigPayload) : ConfigDecodeResult
+    data class Success(val payload: EventLinkPayload) : ConfigDecodeResult
     data class Failure(val reason: String) : ConfigDecodeResult
 }
 
 /** Encodes a payload into its canonical deeplink URL. The inverse of [decodeConfigUrl]. */
-fun encodeConfigUrl(payload: EventConfigPayload): String {
-    val payloadJson = json.encodeToString(EventConfigPayload.serializer(), payload)
+fun encodeConfigUrl(payload: EventLinkPayload): String {
+    val payloadJson = json.encodeToString(EventLinkPayload.serializer(), payload)
     val d = encoder.encode(payloadJson.encodeToByteArray())
     return "$PREFIX" + "v=$CONFIG_VERSION&d=$d"
 }
 
 /**
- * Decodes a raw `snapsync://` URL into an [EventConfigPayload], performing structural-only validation
+ * Decodes a raw `snapsync://` URL into an [EventLinkPayload], performing structural-only validation
  * (scheme/host, `v == 3`, base64url, UTF-8 JSON, exactly the `eventId` key, non-empty, canonical
  * UUID) and **no** network I/O. Never throws: every deviation becomes a [ConfigDecodeResult.Failure].
  */
@@ -75,7 +75,7 @@ fun decodeConfigUrl(raw: String): ConfigDecodeResult {
     }
 
     val payload = try {
-        json.decodeFromString(EventConfigPayload.serializer(), jsonBytes.decodeToString())
+        json.decodeFromString(EventLinkPayload.serializer(), jsonBytes.decodeToString())
     } catch (_: SerializationException) {
         return fail("payload is not valid config JSON")
     } catch (_: IllegalArgumentException) {

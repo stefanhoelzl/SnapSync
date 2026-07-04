@@ -16,6 +16,10 @@ class InMemoryDownloadStore : DownloadStore {
     private val assets = LinkedHashMap<AssetRef, AssetRow>()
     private val resources = LinkedHashMap<AssetRef, MutableMap<String, Pair<PlannedResource, String?>>>()
 
+    // Resource keys whose download has been sent to the OS (the enqueued marker) — combined with a
+    // null staged path this is "in flight" (the ↓-pulse signal).
+    private val enqueued = LinkedHashMap<AssetRef, MutableSet<String>>()
+
     override suspend fun suppressedLocalIds(): Set<String> = lock.withLock {
         assets.values.mapNotNull { it.createdLocalId }.toSet()
     }
@@ -45,6 +49,11 @@ class InMemoryDownloadStore : DownloadStore {
                 }
             }
         }
+    }
+
+    override suspend fun markEnqueued(ref: AssetRef, resourceKey: String) = lock.withLock {
+        enqueued.getOrPut(ref) { linkedSetOf() }.add(resourceKey)
+        Unit
     }
 
     override suspend fun markStaged(ref: AssetRef, resourceKey: String, stagedPath: String) = lock.withLock {
@@ -80,8 +89,15 @@ class InMemoryDownloadStore : DownloadStore {
 
     override suspend fun assetCount(): Int = lock.withLock { assets.size }
 
+    override suspend fun inFlightCount(): Int = lock.withLock {
+        assets.count { (ref, row) ->
+            row.state != DownloadState.IMPORTED &&
+                enqueued[ref].orEmpty().any { key -> resources[ref]?.get(key)?.second == null }
+        }
+    }
+
     override suspend fun pruneNonTerminal() = lock.withLock {
         val drop = assets.filter { it.value.state != DownloadState.IMPORTED }.keys.toList()
-        drop.forEach { assets.remove(it); resources.remove(it) }
+        drop.forEach { assets.remove(it); resources.remove(it); enqueued.remove(it) }
     }
 }

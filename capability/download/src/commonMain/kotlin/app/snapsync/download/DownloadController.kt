@@ -49,7 +49,12 @@ class DownloadController(
                 planned++
             }
             log.i { "reconcile: ${assets.size} union asset(s), $planned foreign planned" }
-            jobs.enqueue(store.pendingDownloads())
+            // Enqueue the not-yet-staged resources to the OS, then mark them in-flight so the status
+            // line's download arrow can pulse (superseded once each stages). Idempotent: re-marking an
+            // already-enqueued or already-staged resource is harmless (staged rows are excluded).
+            val pending = store.pendingDownloads()
+            jobs.enqueue(pending)
+            pending.forEach { store.markEnqueued(it.ref, it.resource.resourceKey) }
             importReadyLocked()
         }
     }

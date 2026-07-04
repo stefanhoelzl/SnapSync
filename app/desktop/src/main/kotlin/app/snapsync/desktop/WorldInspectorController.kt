@@ -5,7 +5,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import app.snapsync.config.ConfigSource
 import app.snapsync.config.ConfigStore
-import app.snapsync.config.EventConfigPayload
+import app.snapsync.config.EventConfig
 import app.snapsync.download.StoreDownloadStatusSource
 import app.snapsync.engine.UploadError
 import app.snapsync.eventcreation.CreationStatusSource
@@ -67,7 +67,7 @@ class WorldInspectorController(private val scope: CoroutineScope) {
         override val creationStatus get() = world.creationStatus.creationStatus
     }
     val configStore: ConfigStore = object : ConfigStore {
-        override suspend fun save(config: EventConfigPayload) = world.provision(config.eventId)
+        override suspend fun save(config: EventConfig) = world.provision(config.eventId, config.name)
         override suspend fun clear() = world.leave()
     }
     val leave: suspend () -> Unit = { world.leave(); afterMutation() }

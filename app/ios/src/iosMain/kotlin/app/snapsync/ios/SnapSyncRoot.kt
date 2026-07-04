@@ -1,12 +1,13 @@
 package app.snapsync.ios
 
 import app.snapsync.config.ConfigDecodeResult
-import app.snapsync.config.EventConfigPayload
+import app.snapsync.config.EventConfig
 import app.snapsync.config.KeychainConfigStore
 import app.snapsync.config.decodeConfigUrl
 import app.snapsync.eventcreation.CreateEvent
 import app.snapsync.eventcreation.EventCreator
 import app.snapsync.eventcreation.HttpEventCreationClient
+import app.snapsync.eventcreation.HttpEventMetadataSource
 import app.snapsync.eventcreation.MutableCreationStatusSource
 import app.snapsync.deviceid.KeychainDeviceIdentity
 import app.snapsync.gallery.PhotoLibraryResourceEnumerator
@@ -177,12 +178,23 @@ object SnapSyncRoot {
     // The create-event use-case: mint via the deployed backend (Darwin HTTPS, host from Info.plist —
     // the same base the rejoin client uses), then provision the returned event id through the very
     // same path a scanned QR takes ([provisionEvent]).
+    // The device-facing backend host (baked at compile time); shared by the create client and the
+    // event-metadata (name) fetch.
+    private val backendHost: String by lazy {
+        NSBundle.mainBundle.objectForInfoDictionaryKey("BackgroundUploadURLBase") as? String ?: ""
+    }
+
+    // Fetches the event name by id for the scan path (create already has the name). Best-effort.
+    private val metadataSource: HttpEventMetadataSource by lazy {
+        HttpEventMetadataSource(darwinHttpClient(), backendHost)
+    }
+
     private val eventCreator: EventCreator by lazy {
-        val host = NSBundle.mainBundle.objectForInfoDictionaryKey("BackgroundUploadURLBase") as? String ?: ""
         CreateEvent(
-            client = HttpEventCreationClient(darwinHttpClient(), host),
+            client = HttpEventCreationClient(darwinHttpClient(), backendHost),
             status = creationStatus,
-            provision = { eventId -> provisionEvent(eventId) },
+            // Create has the name from POST /event — provision it directly, no metadata fetch.
+            provision = { eventId, name -> provisionEvent(eventId, name) },
             scope = scope,
         )
     }
@@ -205,6 +217,9 @@ object SnapSyncRoot {
             // Fire-and-forget share of the invite deeplink (the host owns the URL). Wiring-only:
             // present the system share sheet over the current top view controller.
             share = { url -> presentShareSheet(url) },
+            // A scanned QR provisions through the same path as create (switch-reset, save, enable,
+            // reconcile) — with a best-effort name fetch, since the QR carries only the eventId.
+            provisionScanned = { eventId -> provisionEvent(eventId, name = null) },
             downloadSource = downloadStatusSource,
         )
     }
@@ -221,6 +236,8 @@ object SnapSyncRoot {
         // Foreground-only discovery (capability `photo-download`): pick up foreign photos others added
         // since the last read, and import anything already staged. No background poll.
         scope.launch { config.config.value?.eventId?.let { downloadController.reconcile(it) } }
+        // Keep the event title current (fills a name a scan couldn't fetch while offline).
+        scope.launch { config.config.value?.eventId?.let { fetchAndStoreName(it) } }
     }
 
     /**
@@ -291,7 +308,7 @@ object SnapSyncRoot {
      */
     fun onOpenUrl(url: String) {
         when (val decoded = decodeConfigUrl(url)) {
-            is ConfigDecodeResult.Success -> scope.launch { provisionEvent(decoded.payload.eventId) }
+            is ConfigDecodeResult.Success -> scope.launch { provisionEvent(decoded.payload.eventId, name = null) }
             is ConfigDecodeResult.Failure -> host.onOpenUrl(url) // flashes the invalid-link error
         }
     }
@@ -304,12 +321,29 @@ object SnapSyncRoot {
      * self-reconciles, gated by its `joinedEventId` marker. Re-enabling matters because a prior leave
      * disabled the producer and the grant collector does not re-fire while permission is unchanged.
      */
-    private suspend fun provisionEvent(eventId: String) {
-        config.save(EventConfigPayload(eventId)) // persist; the container's ConfigSource is this instance
+    private suspend fun provisionEvent(eventId: String, name: String?) {
+        // Persist immediately (join never blocks on the cosmetic name); the container's ConfigSource
+        // is this instance. Create passes the name straight through; scan passes null.
+        config.save(EventConfig(eventId, name))
         refreshStatusSources() // (re)joined event → re-enumerate own total + re-LIST completeness
         if (permission.permission.value == PermissionStatus.GRANTED) enableBackgroundUpload()
         // Auto-download the other contributors' photos for this event (capability `photo-download`).
         scope.launch { downloadController.reconcile(eventId) }
+        // Scan path: fill the title by id, best-effort, off the join (a failure leaves name null).
+        if (name == null) scope.launch { fetchAndStoreName(eventId) }
+    }
+
+    /**
+     * Best-effort fetch of the event name by id (`GET /event/:id`) and store it into the persisted
+     * config — the scan-path name source and the foreground refresh. Non-throwing: a null (offline /
+     * 404 / parse) leaves the current name unchanged.
+     */
+    private suspend fun fetchAndStoreName(eventId: String) {
+        val fetched = metadataSource.name(eventId) ?: return
+        val current = config.config.value
+        if (current?.eventId == eventId && current.name != fetched) {
+            config.save(EventConfig(eventId, fetched))
+        }
     }
 
     /**

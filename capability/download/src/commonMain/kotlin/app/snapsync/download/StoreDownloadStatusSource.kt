@@ -17,6 +17,10 @@ class StoreDownloadStatusSource(private val store: DownloadStore) : DownloadStat
     override val progress: StateFlow<DownloadProgress> = _progress.asStateFlow()
 
     override suspend fun refresh() {
-        _progress.value = DownloadProgress(downloaded = store.importedCount(), total = store.assetCount())
+        _progress.value = DownloadProgress(
+            downloaded = store.importedCount(),
+            total = store.assetCount(),
+            inFlight = store.inFlightCount(),
+        )
     }
 }

@@ -11,6 +11,8 @@ import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTextInput
 import app.snapsync.permission.PermissionStatus
+import app.snapsync.presentation.Arrow
+import app.snapsync.presentation.SyncHealth
 import app.snapsync.presentation.UiState
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -19,26 +21,24 @@ import org.junit.Rule
 // A representative invite deeplink — any string renders a QR; the encoding is pinned in capability:config.
 private const val SAMPLE_INVITE = "snapsync://config?v=3&d=eyJldmVudElkIjoiMSJ9"
 
+private fun joined(health: SyncHealth) = UiState.Joined(health)
+private val inSync = joined(SyncHealth.InSync)
+private val syncing = joined(SyncHealth.Syncing(Arrow.PULSING, Arrow.HIDDEN))
+
 class StatusScreenTest {
 
     @get:Rule
     val rule = createComposeRule()
 
-    @Test
-    fun `loading shows loading copy and an indeterminate indicator`() {
-        rule.setContent { StatusScreen(UiState.Loading) }
-
-        rule.onNodeWithText("Loading …").assertExists()
-        rule.onNode(hasAnyProgressIndication()).assertExists()
-    }
+    // ---- create layer ----
 
     @Test
     fun `create screen shows the name input and the scan-to-join hint`() {
         rule.setContent { StatusScreen(UiState.CreateEvent()) }
 
-        rule.onNodeWithText("Create an event").assertExists()
-        rule.onNodeWithText("Or scan an event's QR code in the Camera app to join it.").assertExists()
-        rule.onNodeWithText("Event name").assertExists() // the field placeholder
+        rule.onNodeWithText("Start an event").assertExists()
+        rule.onNodeWithText("Or scan a QR code in the Camera app to join one.").assertExists()
+        rule.onNodeWithText("Event name").assertExists()
         rule.onNodeWithText("Create event").assertExists()
     }
 
@@ -47,14 +47,12 @@ class StatusScreenTest {
         rule.setContent {
             StatusScreen(UiState.CreateEvent(), transientError = "That QR code wasn't valid.")
         }
-
         rule.onNodeWithText("That QR code wasn't valid.").assertExists()
     }
 
     @Test
     fun `a create failure shows its inline error on the create screen`() {
         rule.setContent { StatusScreen(UiState.CreateEvent(error = "Couldn't reach the server.")) }
-
         rule.onNodeWithText("Couldn't reach the server.").assertExists()
     }
 
@@ -83,18 +81,19 @@ class StatusScreenTest {
 
         val field = rule.onNode(hasSetTextAction())
         field.performTextInput("a".repeat(100))
-        field.performTextInput("b") // would be the 101st — refused
+        field.performTextInput("b")
         val text = field.fetchSemanticsNode().config[SemanticsProperties.EditableText].text
         assertEquals(100, text.length)
     }
 
     @Test
-    fun `create screen shows no sync hero and no leave action`() {
-        rule.setContent { StatusScreen(UiState.CreateEvent()) }
+    fun `create layer shows no sync line, leave, or invite`() {
+        rule.setContent { StatusScreen(UiState.CreateEvent(), inviteUrl = SAMPLE_INVITE) }
 
-        rule.onNodeWithText("images synced", substring = true).assertDoesNotExist()
-        rule.onNodeWithText("Nothing to sync yet").assertDoesNotExist()
+        rule.onNodeWithText("In sync").assertDoesNotExist()
+        rule.onNodeWithText("Syncing…").assertDoesNotExist()
         rule.onNodeWithContentDescription("Leave event").assertDoesNotExist()
+        rule.onNodeWithText("Scan to join this event").assertDoesNotExist()
     }
 
     @Test
@@ -106,205 +105,121 @@ class StatusScreenTest {
         rule.onNodeWithText("Event name").assertDoesNotExist()
     }
 
+    // ---- joined layer: status line ----
+
     @Test
-    fun `permission blocked not-determined shows allow-access priming on the status screen`() {
+    fun `in sync shows the settled line and no counts`() {
+        rule.setContent { StatusScreen(inSync) }
+
+        rule.onNodeWithText("In sync").assertExists()
+        rule.onNodeWithText("images synced", substring = true).assertDoesNotExist()
+    }
+
+    @Test
+    fun `syncing shows the syncing line`() {
+        rule.setContent { StatusScreen(syncing) }
+
+        rule.onNodeWithText("Syncing…").assertExists()
+        rule.onNodeWithText("images synced", substring = true).assertDoesNotExist()
+    }
+
+    @Test
+    fun `needs-access not-determined shows the allow copy and taps request permission`() {
         var requests = 0
         rule.setContent {
             StatusScreen(
-                UiState.PermissionBlocked(PermissionStatus.NOT_DETERMINED),
+                joined(SyncHealth.NeedsAccess(PermissionStatus.NOT_DETERMINED)),
                 onRequestPermission = { requests++ },
             )
         }
 
         rule.onNodeWithText("Allow photo access").assertExists()
-        rule.onNodeWithText("SnapSync needs your photo library to back it up.").assertExists()
-        // No progress counts while blocked.
-        rule.onNodeWithText("images synced", substring = true).assertDoesNotExist()
-        rule.onNodeWithText("Allow access").performClick()
+        rule.onNodeWithText("Allow photo access").performClick()
         assertEquals(1, requests)
     }
 
     @Test
-    fun `permission blocked denied shows the settings path on the status screen`() {
+    fun `needs-access denied shows the settings copy and taps open settings`() {
         var settingsOpens = 0
         rule.setContent {
             StatusScreen(
-                UiState.PermissionBlocked(PermissionStatus.DENIED),
+                joined(SyncHealth.NeedsAccess(PermissionStatus.DENIED)),
                 onOpenSettings = { settingsOpens++ },
             )
         }
 
-        rule.onNodeWithText("Photo access turned off").assertExists()
-        rule.onNodeWithText("SnapSync needs photo access to continue backing up your library.").assertExists()
-        rule.onNodeWithText("images synced", substring = true).assertDoesNotExist()
-        rule.onNodeWithText("Open Settings").performClick()
+        rule.onNodeWithText("Turn on full access in Settings").assertExists()
+        rule.onNodeWithText("Turn on full access in Settings").performClick()
         assertEquals(1, settingsOpens)
     }
 
-    @Test
-    fun `in progress shows the n of N count and the in-progress count`() {
-        rule.setContent {
-            StatusScreen(UiState.InProgress(synced = 12, total = 47, inProgress = 35))
-        }
+    // ---- joined layer: name, leave, invite ----
 
-        rule.onNodeWithText("12 of 47 images synced").assertExists()
-        // Second caption: the in-progress count.
-        rule.onNodeWithText("35 in progress").assertExists()
-        // The LED dot is not a progress indicator (no spinner, no ring).
-        rule.onNode(hasAnyProgressIndication()).assertDoesNotExist()
+    @Test
+    fun `joined shows the event name as the title`() {
+        rule.setContent { StatusScreen(inSync, eventName = "Anna's Birthday") }
+        rule.onNodeWithText("Anna's Birthday").assertExists()
     }
 
     @Test
-    fun `in progress shows the in-progress count`() {
-        rule.setContent {
-            StatusScreen(UiState.InProgress(synced = 0, total = 47, inProgress = 47))
-        }
-
-        rule.onNodeWithText("0 of 47 images synced").assertExists()
-        rule.onNodeWithText("47 in progress").assertExists()
-    }
-
-    @Test
-    fun `in progress with nothing actively uploading shows no detail line`() {
-        rule.setContent {
-            StatusScreen(UiState.InProgress(synced = 3, total = 5, inProgress = 0))
-        }
-
-        rule.onNodeWithText("3 of 5 images synced").assertExists()
-        // 0 actively uploading → no detail line at all (no "0 in progress" noise, no time).
-        rule.onNodeWithText("in progress", substring = true).assertDoesNotExist()
-    }
-
-    @Test
-    fun `nothing to sync shows the idle line`() {
-        rule.setContent { StatusScreen(UiState.NothingToSync) }
-
-        rule.onNodeWithText("SnapSync").assertExists()
-        rule.onNodeWithText("Nothing to sync yet").assertExists()
-        rule.onNode(hasAnyProgressIndication()).assertDoesNotExist()
-    }
-
-    @Test
-    fun `completed shows the total with no detail line`() {
-        rule.setContent { StatusScreen(UiState.Completed(total = 47)) }
-
-        rule.onNodeWithText("47 images synced").assertExists()
-        rule.onNode(hasAnyProgressIndication()).assertDoesNotExist()
-    }
-
-    @Test
-    fun `in progress shows the leave action`() {
-        rule.setContent {
-            StatusScreen(UiState.InProgress(synced = 3, total = 5, inProgress = 0))
-        }
+    fun `joined shows the leave action`() {
+        rule.setContent { StatusScreen(inSync) }
         rule.onNodeWithContentDescription("Leave event").assertExists()
     }
 
     @Test
-    fun `nothing to sync shows the leave action`() {
-        rule.setContent { StatusScreen(UiState.NothingToSync) }
+    fun `needs-access still shows leave and invite (sharing needs no access)`() {
+        rule.setContent {
+            StatusScreen(
+                joined(SyncHealth.NeedsAccess(PermissionStatus.DENIED)),
+                inviteUrl = SAMPLE_INVITE,
+            )
+        }
         rule.onNodeWithContentDescription("Leave event").assertExists()
+        rule.onNodeWithText("Scan to join this event").assertExists()
+        rule.onNodeWithContentDescription("Share invite link").assertExists()
     }
 
     @Test
-    fun `completed shows the leave action`() {
-        rule.setContent { StatusScreen(UiState.Completed(total = 47)) }
-        rule.onNodeWithContentDescription("Leave event").assertExists()
-    }
+    fun `activating leave shows the leave-this-event dialog`() {
+        rule.setContent { StatusScreen(inSync) }
 
-    @Test
-    fun `loading hides the leave action`() {
-        rule.setContent { StatusScreen(UiState.Loading) }
-        rule.onNodeWithContentDescription("Leave event").assertDoesNotExist()
-    }
-
-    @Test
-    fun `create layer hides the leave action`() {
-        rule.setContent { StatusScreen(UiState.CreateEvent()) }
-        rule.onNodeWithContentDescription("Leave event").assertDoesNotExist()
-    }
-
-    @Test
-    fun `activating leave shows the confirm dialog`() {
-        rule.setContent { StatusScreen(UiState.Completed(total = 47)) }
-
-        rule.onNodeWithText("Leave event?").assertDoesNotExist()
+        rule.onNodeWithText("Leave this event?").assertDoesNotExist()
         rule.onNodeWithContentDescription("Leave event").performClick()
-        rule.onNodeWithText("Leave event?").assertExists()
+        rule.onNodeWithText("Leave this event?").assertExists()
     }
 
     @Test
     fun `confirming leave invokes the callback`() {
         var leaves = 0
-        rule.setContent {
-            StatusScreen(UiState.NothingToSync, onLeaveEvent = { leaves++ })
-        }
+        rule.setContent { StatusScreen(inSync, onLeaveEvent = { leaves++ }) }
 
         rule.onNodeWithContentDescription("Leave event").performClick()
-        rule.onNodeWithText("Confirm").performClick()
+        rule.onNodeWithText("Leave").performClick()
         assertEquals(1, leaves)
     }
 
     @Test
-    fun `cancelling leave does not invoke the callback and dismisses the dialog`() {
+    fun `staying does not invoke leave and dismisses the dialog`() {
         var leaves = 0
-        rule.setContent {
-            StatusScreen(UiState.NothingToSync, onLeaveEvent = { leaves++ })
-        }
+        rule.setContent { StatusScreen(inSync, onLeaveEvent = { leaves++ }) }
 
         rule.onNodeWithContentDescription("Leave event").performClick()
-        rule.onNodeWithText("Cancel").performClick()
+        rule.onNodeWithText("Stay").performClick()
         assertEquals(0, leaves)
-        rule.onNodeWithText("Leave event?").assertDoesNotExist()
+        rule.onNodeWithText("Leave this event?").assertDoesNotExist()
     }
 
     @Test
-    fun `in progress shows the invite QR and share action`() {
-        rule.setContent {
-            StatusScreen(
-                UiState.InProgress(synced = 3, total = 5, inProgress = 0),
-                inviteUrl = SAMPLE_INVITE,
-            )
-        }
+    fun `joined shows the invite QR and share action`() {
+        rule.setContent { StatusScreen(inSync, inviteUrl = SAMPLE_INVITE) }
         rule.onNodeWithText("Scan to join this event").assertExists()
         rule.onNodeWithContentDescription("Share invite link").assertExists()
-    }
-
-    @Test
-    fun `nothing to sync shows the invite QR and share action`() {
-        rule.setContent { StatusScreen(UiState.NothingToSync, inviteUrl = SAMPLE_INVITE) }
-        rule.onNodeWithText("Scan to join this event").assertExists()
-        rule.onNodeWithContentDescription("Share invite link").assertExists()
-    }
-
-    @Test
-    fun `completed shows the invite QR and share action`() {
-        rule.setContent {
-            StatusScreen(UiState.Completed(total = 47), inviteUrl = SAMPLE_INVITE)
-        }
-        rule.onNodeWithText("Scan to join this event").assertExists()
-        rule.onNodeWithContentDescription("Share invite link").assertExists()
-    }
-
-    @Test
-    fun `loading hides the invite affordances`() {
-        rule.setContent { StatusScreen(UiState.Loading, inviteUrl = SAMPLE_INVITE) }
-        rule.onNodeWithText("Scan to join this event").assertDoesNotExist()
-        rule.onNodeWithContentDescription("Share invite link").assertDoesNotExist()
-    }
-
-    @Test
-    fun `create layer hides the invite affordances`() {
-        rule.setContent {
-            StatusScreen(UiState.CreateEvent(), inviteUrl = SAMPLE_INVITE)
-        }
-        rule.onNodeWithText("Scan to join this event").assertDoesNotExist()
-        rule.onNodeWithContentDescription("Share invite link").assertDoesNotExist()
     }
 
     @Test
     fun `joined without an invite url hides the invite affordances`() {
-        rule.setContent { StatusScreen(UiState.NothingToSync, inviteUrl = null) }
+        rule.setContent { StatusScreen(inSync, inviteUrl = null) }
         rule.onNodeWithText("Scan to join this event").assertDoesNotExist()
         rule.onNodeWithContentDescription("Share invite link").assertDoesNotExist()
     }
@@ -312,9 +227,7 @@ class StatusScreenTest {
     @Test
     fun `activating share invokes the callback`() {
         var shares = 0
-        rule.setContent {
-            StatusScreen(UiState.NothingToSync, onShareInvite = { shares++ }, inviteUrl = SAMPLE_INVITE)
-        }
+        rule.setContent { StatusScreen(inSync, onShareInvite = { shares++ }, inviteUrl = SAMPLE_INVITE) }
         rule.onNodeWithContentDescription("Share invite link").performClick()
         assertEquals(1, shares)
     }

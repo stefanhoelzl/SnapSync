@@ -3,7 +3,8 @@ package app.snapsync.presentation
 import app.snapsync.config.ConfigDecodeResult
 import app.snapsync.config.ConfigSource
 import app.snapsync.config.ConfigStore
-import app.snapsync.config.EventConfigPayload
+import app.snapsync.config.EventConfig
+import app.snapsync.config.EventLinkPayload
 import app.snapsync.config.decodeConfigUrl
 import app.snapsync.config.encodeConfigUrl
 import app.snapsync.eventcreation.CreationFailureReason
@@ -19,7 +20,6 @@ import app.snapsync.status.DownloadProgress
 import app.snapsync.status.DownloadStatusSource
 import app.snapsync.status.InMemoryDownloadStatusSource
 import app.snapsync.status.SyncStatus
-import app.snapsync.status.SyncState
 import app.snapsync.status.SyncProgress
 import app.snapsync.status.SyncStatusSource
 import kotlinx.coroutines.CoroutineScope
@@ -53,6 +53,11 @@ class StatusContainerHost(
     // same shape as `leave`. Defaults to a no-op so non-iOS hosts and tests construct unchanged and a
     // share there is inert; iOS binds it to a `UIActivityViewController` presentation.
     private val share: (String) -> Unit = {},
+    // Provisioning of a scanned event, injected as a suspend lambda over the decoded `eventId`. The
+    // default just persists `EventConfig(eventId)` (name null); iOS binds it to the full provision —
+    // switch-reset, `ConfigStore.save`, best-effort `GET /event/:id` name fetch, producer enable, and
+    // download reconcile. Keeps this Compose-free module free of HTTP.
+    private val provisionScanned: suspend (eventId: String) -> Unit = { store.save(EventConfig(it)) },
     // Download progress for the joined-layer "downloaded X of Y" line (capability `photo-download`).
     // Exposed as a screen-level StateFlow (like `inviteUrl`), NOT folded into `UiState` — it's an
     // independent indicator that doesn't gate upload classification. Defaults to inert (always 0 of 0)
@@ -60,23 +65,20 @@ class StatusContainerHost(
     downloadSource: DownloadStatusSource = InMemoryDownloadStatusSource(),
 ) : ContainerHost<UiState, SetupEffect> {
 
-    /** The joined-layer download-progress indicator; the screen hides the line when `isEmpty`. */
-    val downloadStatus: StateFlow<DownloadProgress> = downloadSource.progress
-
     override val container: Container<UiState, SetupEffect> =
         scope.container(
-            // All four seams hold their current truth synchronously, so the first state the
-            // screen can ever render derives from real values — never a guess or a
-            // loading placeholder.
+            // All five seams hold their current truth synchronously, so the first state the
+            // screen can ever render derives from real values — never a guess or a placeholder.
             reduceFrom(
                 configSource.config.value,
                 permissionSource.permission.value,
                 syncSource.status.value,
                 creationStatusSource.creationStatus.value,
+                downloadSource.progress.value,
             ),
         ) {
             intent {
-                // Four sources combine into a holder; each new value reduces straight to a UI state.
+                // The sources combine into a holder; each new value reduces straight to a UI state.
                 // The screen reports no relative time, so there is no clock and no periodic re-render —
                 // only a real source change re-emits.
                 combine(
@@ -84,27 +86,35 @@ class StatusContainerHost(
                     permissionSource.permission,
                     syncSource.status,
                     creationStatusSource.creationStatus,
-                ) { config, permission, snapshot, creation ->
-                    reduceFrom(config, permission, snapshot, creation)
+                    downloadSource.progress,
+                ) { config, permission, snapshot, creation, download ->
+                    reduceFrom(config, permission, snapshot, creation, download)
                 }
                     .collect { ui -> reduce { ui } }
             }
         }
 
     /**
-     * The event's invite deeplink, derived from the persisted config (`eventId -> encodeConfigUrl`,
-     * the inverse of the decode run on a scanned QR). One source feeding both the rendered QR and the
-     * share action so the two can never drift; `null` whenever no event is configured. Deterministic —
-     * the same URL a scanner of the event's QR would receive.
+     * The event's invite deeplink, derived from the persisted config's `eventId` via
+     * `encodeConfigUrl(EventLinkPayload(eventId))` — the inverse of the decode run on a scanned QR.
+     * One source feeding both the rendered QR and the share action so the two can never drift; `null`
+     * whenever no event is configured. Deterministic — the same URL a scanner of the event's QR would
+     * receive.
      */
     val inviteUrl: StateFlow<String?> =
         configSource.config
-            .map { it?.let { payload -> encodeConfigUrl(payload) } }
-            .stateIn(
-                scope,
-                SharingStarted.Eagerly,
-                configSource.config.value?.let { encodeConfigUrl(it) },
-            )
+            .map { it?.inviteUrl() }
+            .stateIn(scope, SharingStarted.Eagerly, configSource.config.value?.inviteUrl())
+
+    /**
+     * The joined event's human-readable name for the screen title (fetched by id after joining, so it
+     * may be `null` until a foreground refresh fills it). A screen-level param like [inviteUrl] — it
+     * does not enter `UiState`, so the reduction gains no branch for it.
+     */
+    val eventName: StateFlow<String?> =
+        configSource.config
+            .map { it?.name }
+            .stateIn(scope, SharingStarted.Eagerly, configSource.config.value?.name)
 
     /**
      * Create a new event with [name] (event-creation-ui). Delegates to the injected [EventCreator]
@@ -142,23 +152,26 @@ class StatusContainerHost(
      */
     fun onOpenUrl(raw: String) = intent {
         when (val result = decodeConfigUrl(raw)) {
-            is ConfigDecodeResult.Success -> store.save(result.payload)
+            // A valid scan provisions the event; the injected provision hook owns any switch-reset,
+            // best-effort name fetch, and producer enable (composition root). The default just
+            // persists the eventId (name null, filled by a later foreground refresh).
+            is ConfigDecodeResult.Success -> provisionScanned(result.payload.eventId)
             is ConfigDecodeResult.Failure -> postSideEffect(SetupEffect.InvalidConfigLink)
         }
     }
 }
 
-// Create-layer precedence (config-presence only): without a connected event there is nothing to back
-// up, so the create layer replaces the hero regardless of permission or snapshot — the top rung. Once
-// config is present, a permission that is not fully granted has no meaningful sync state to show, so it
-// surfaces as PermissionBlocked (NOT_DETERMINED priming / DENIED settings path), outranking the hero.
-// There is no join-status rung: reconciliation runs in the extension and status is read from the
-// completeness listing, so during a (re)join the screen simply shows the listing-derived snapshot.
+// Config presence is the top rung: without a connected event there is nothing to share, so the create
+// layer replaces everything regardless of permission or snapshot. Once config is present the screen is
+// ALWAYS the joined layer (name · QR · share · leave) — permission and sync activity are moods of the
+// one-line status, never a hero-replacing gate. There is no join-status rung: reconciliation runs in
+// the extension and status is read from the completeness listing.
 private fun reduceFrom(
-    config: EventConfigPayload?,
+    config: EventConfig?,
     permission: PermissionStatus,
     snapshot: SyncStatus,
     creation: CreationStatus,
+    download: DownloadProgress,
 ): UiState {
     if (config == null) {
         return when (creation) {
@@ -167,28 +180,34 @@ private fun reduceFrom(
             CreationStatus.Idle -> UiState.CreateEvent()
         }
     }
-    if (permission != PermissionStatus.GRANTED) {
-        return UiState.PermissionBlocked(permission)
+    val health = when {
+        // Missing permission is the sole attention state — the only reason contribution cannot run.
+        permission != PermissionStatus.GRANTED -> SyncHealth.NeedsAccess(permission)
+        // Joined but persisted state not read yet — a neutral first frame (the joined chrome still shows).
+        snapshot is SyncStatus.Loading -> SyncHealth.Loading
+        snapshot is SyncStatus.Ready -> syncHealth(snapshot.progress, download)
+        else -> SyncHealth.Loading
     }
-    // Loading is reachable only here: an absent config short-circuits to the gate and a non-GRANTED
-    // permission to PermissionBlocked, regardless of the snapshot, so "reading the ledger" is shown
-    // only once config + permission both pass.
-    return when (snapshot) {
-        SyncStatus.Loading -> UiState.Loading
-        is SyncStatus.Ready -> snapshot.progress.toUiState()
+    return UiState.Joined(health)
+}
+
+// Shown tracks completeness (never lies about "everything up/received"); pulse tracks live activity
+// (never fakes motion). In sync exactly when both directions are settled.
+private fun syncHealth(progress: SyncProgress, download: DownloadProgress): SyncHealth {
+    val upload = arrowOf(shown = progress.synced < progress.total, pulsing = progress.pending > 0)
+    val downloadArrow = arrowOf(shown = download.downloaded < download.total, pulsing = download.inFlight > 0)
+    return if (upload == Arrow.HIDDEN && downloadArrow == Arrow.HIDDEN) {
+        SyncHealth.InSync
+    } else {
+        SyncHealth.Syncing(upload = upload, download = downloadArrow)
     }
 }
 
-private fun SyncProgress.toUiState(): UiState = when (state) {
-    SyncState.IN_PROGRESS -> UiState.InProgress(
-        synced = synced,
-        total = total,
-        // Ledger photos still uploading (asset-counted pending) — the second caption's count.
-        inProgress = pending,
-    )
-    SyncState.NOTHING_TO_SYNC -> UiState.NothingToSync
-    SyncState.COMPLETE -> UiState.Completed(total = total)
-}
+private fun arrowOf(shown: Boolean, pulsing: Boolean): Arrow =
+    if (!shown) Arrow.HIDDEN else if (pulsing) Arrow.PULSING else Arrow.STATIC
+
+// Derive the invite deeplink from the persisted config's eventId (the wire payload is eventId-only).
+private fun EventConfig.inviteUrl(): String = encodeConfigUrl(EventLinkPayload(eventId))
 
 // The inline create-error copy, formatted in presentation (UiState carries final display strings).
 private fun CreationFailureReason.message(): String = when (this) {

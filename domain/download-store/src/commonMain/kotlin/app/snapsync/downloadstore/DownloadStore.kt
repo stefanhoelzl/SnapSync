@@ -60,6 +60,9 @@ interface DownloadStore : SuppressionSource {
     /** The not-yet-staged resources across all non-imported assets — the download work queue. */
     suspend fun pendingDownloads(): List<PendingDownload>
 
+    /** Mark a resource's download as sent to the OS (a background transfer now exists) — the in-flight marker. */
+    suspend fun markEnqueued(ref: AssetRef, resourceKey: String)
+
     /** Mark a resource's bytes downloaded and durably staged at [stagedPath]. */
     suspend fun markStaged(ref: AssetRef, resourceKey: String, stagedPath: String)
 
@@ -77,6 +80,9 @@ interface DownloadStore : SuppressionSource {
 
     /** Count of all foreign assets known for download — pending + imported (the progress denominator). */
     suspend fun assetCount(): Int
+
+    /** Count of foreign assets with a resource in flight — enqueued to the OS but not yet staged (the ↓-pulse signal). */
+    suspend fun inFlightCount(): Int
 
     /** Drop non-terminal rows on leave/switch; imported rows are preserved. */
     suspend fun pruneNonTerminal()
@@ -110,6 +116,10 @@ class SqlDelightDownloadStore(database: DownloadDatabase) : DownloadStore {
             PendingDownload(AssetRef(device, asset), PlannedResource(key, url, role, contentType, original))
         }.executeAsList()
 
+    override suspend fun markEnqueued(ref: AssetRef, resourceKey: String) {
+        q.markResourceEnqueued(ref.sourceDeviceId, ref.sourceAssetId, resourceKey)
+    }
+
     override suspend fun markStaged(ref: AssetRef, resourceKey: String, stagedPath: String) {
         q.markResourceStaged(stagedPath, ref.sourceDeviceId, ref.sourceAssetId, resourceKey)
     }
@@ -140,6 +150,8 @@ class SqlDelightDownloadStore(database: DownloadDatabase) : DownloadStore {
     override suspend fun importedCount(): Int = q.countImported().executeAsOne().toInt()
 
     override suspend fun assetCount(): Int = q.countAssets().executeAsOne().toInt()
+
+    override suspend fun inFlightCount(): Int = q.countInFlightAssets().executeAsOne().toInt()
 
     override suspend fun pruneNonTerminal() {
         q.transaction {

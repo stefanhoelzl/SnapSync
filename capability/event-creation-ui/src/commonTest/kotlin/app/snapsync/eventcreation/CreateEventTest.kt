@@ -27,7 +27,7 @@ class CreateEventTest {
         val status = MutableCreationStatusSource()
         var provisioned: String? = null
         val scope = CoroutineScope(UnconfinedTestDispatcher(testScheduler))
-        val useCase = CreateEvent(client, status, provision = { provisioned = it }, scope = scope)
+        val useCase = CreateEvent(client, status, provision = { eventId, _ -> provisioned = eventId }, scope = scope)
 
         useCase.create("  My Party  ")
 
@@ -42,7 +42,7 @@ class CreateEventTest {
         var provisioned: String? = null
         val scope = CoroutineScope(UnconfinedTestDispatcher(testScheduler))
         val useCase = CreateEvent(
-            FakeClient(CreateOutcome.InvalidName), status, provision = { provisioned = it }, scope = scope,
+            FakeClient(CreateOutcome.InvalidName), status, provision = { eventId, _ -> provisioned = eventId }, scope = scope,
         )
 
         useCase.create("x")
@@ -57,7 +57,7 @@ class CreateEventTest {
         var provisioned: String? = null
         val scope = CoroutineScope(UnconfinedTestDispatcher(testScheduler))
         val useCase = CreateEvent(
-            FakeClient(CreateOutcome.Transient), status, provision = { provisioned = it }, scope = scope,
+            FakeClient(CreateOutcome.Transient), status, provision = { eventId, _ -> provisioned = eventId }, scope = scope,
         )
 
         useCase.create("x")

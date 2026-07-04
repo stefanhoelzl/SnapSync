@@ -9,75 +9,60 @@ capability; this screen reduces and renders.
 ## Requirements
 ### Requirement: Sync status snapshots reduce to UI state
 
-The presentation layer SHALL reduce each observed `SyncStatus` to a display-ready `UiState`.
-`SyncProgress`, its `SyncStatusSource` seam, the `SyncStatus` vocabulary, and the three-state
-classification are owned by the `sync-status` capability — this screen consumes them. A `Ready`
-snapshot reduces to one of the three states mirroring `SyncState` — `InProgress(synced, total, inProgress)`,
-`Completed(total)`, or `NothingToSync` (the config-absent create layer and its top-rung
-precedence on config presence are specified by the `event-creation-ui` capability; the
-`UiState.PermissionBlocked(permission)` permission states shown when config is present but permission
-is not `GRANTED` are specified below), and a `Loading` snapshot reduces to `UiState.Loading` **only
-when config is present and permission is GRANTED** (an absent config short-circuits to the create
-layer, and a present config with permission not `GRANTED` short-circuits to `UiState.PermissionBlocked`,
-regardless of the snapshot). `UiState` carries only final display data: the displayed synced count
-`synced = min(completed, total)`, the `total`, and the count of photos actively uploading for InProgress
-(`inProgress`, taken from `SyncProgress.pending` — it does **not** classify and need not equal
-`total - synced`); the `total` for Completed. No state carries a relative-time or "last … ago" field —
-the screen reports completeness and live activity only.
+The presentation layer SHALL reduce config presence, permission, and each observed `SyncStatus` to a
+display-ready `UiState`. `SyncProgress`, its `SyncStatusSource` seam, the `SyncStatus` vocabulary, and
+the three-state classification are owned by the `sync-status` capability — this screen consumes them.
 
-Once config is present, a permission not equal to `GRANTED` SHALL reduce to
-`UiState.PermissionBlocked(permission)`, outranking the snapshot reduction. `UiState.PermissionBlocked`
-is a derived state (the reduction of a real non-`GRANTED` `PermissionStatus`) and is therefore permitted
-under the no-placeholder rule.
+`UiState` SHALL have exactly these families: the create layer (`CreateEvent(error?)` /
+`CreatingEvent`, owned by the `event-creation-ui` capability and outranking everything on config
+absence); and a single **`Joined`** state carrying a health descriptor. The prior joined states
+`InProgress`, `Completed`, and `NothingToSync`, the permission state `PermissionBlocked`, and the
+standalone `Loading` state are **removed** and fold into `Joined` (the joined loading first-frame is a
+health value, `SyncHealth.Loading`).
 
-There is **no** join-status reduction: `EventStatus` and the `UiState.Joining`/`UiState.JoinFailed`
-states are removed (reconciliation runs in the extension and status is read from the completeness
-listing — see `event-rejoin-reconciliation`). During a (re)join the screen simply shows the
-listing-derived snapshot (typically `InProgress` with a rising synced count).
+The reduction SHALL be: **config absent** → the create layer (per `event-creation-ui`); **config
+present** → `Joined`, **always**, regardless of permission. The `Joined` health descriptor SHALL be
+derived from permission and the latest snapshot:
 
-The reduction MUST depend only on the latest snapshot (no event history), so any missed
-intermediate snapshot cannot corrupt the displayed state. The container's initial UI state SHALL be
-computed from the sources' current values at construction. The screen MUST NOT render any state
-that was **not derived from actual source values** — but `UiState.Loading` *is* such a
-derived state (it is the reduction of a real `SyncStatus.Loading`), and is therefore permitted;
-the prohibition is against guesses and placeholders that no source value produced.
+- permission ≠ `GRANTED` → `NeedsAccess(permission)` (the sole attention state; there is no separate
+  "not syncing" state — the status projection's only operational signal is permission);
+- else `SyncStatus.Loading` → a joined loading first-frame;
+- else `SyncStatus.Ready` → `InSync` when settled, else `Syncing(...)` (the completeness/activity
+  arrow derivation is specified in *Joined-layer health descriptor and status line*).
 
-#### Scenario: In-progress snapshot carries the synced, total, and in-progress counts
-- **WHEN** a `Ready` snapshot with `pending = 35, completed = 12, total = 47, active = true` is observed
-- **THEN** the UI state is `InProgress` with `synced = 12`, `total = 47`, and `inProgress = 35`
+`UiState` SHALL carry **no** upload/download counts — the joined states no longer surface `synced`,
+`total`, or an in-progress number. The event **name** and the invite URL are supplied to the screen as
+parameters (per `event-invite-qr` and the config capability), not as reduced state, so the reduction
+gains no branch for them.
 
-#### Scenario: Completed snapshot carries the total
-- **WHEN** a `Ready` snapshot with `completed = 47, total = 47` is observed
-- **THEN** the UI state is `Completed` with `total = 47`
+The reduction MUST depend only on the latest snapshot (no event history). The container's initial UI
+state SHALL be computed from the sources' current values at construction. `UiState.Loading` and every
+`Joined` health value are derived from real source values (never placeholders). There is no
+join-status reduction: during a (re)join the screen simply shows the current `Joined` health
+(typically `Syncing`).
 
-#### Scenario: Empty library reduces to nothing-to-sync
-- **WHEN** a `Ready` snapshot with `total = 0` is observed
-- **THEN** the UI state is `NothingToSync`
+#### Scenario: Settled snapshot reduces to In sync
+- **WHEN** config is present, permission is `GRANTED`, and a `Ready` snapshot with `completed == total`
+  is observed (downloads also settled)
+- **THEN** the UI state is `Joined` with health `InSync`
 
-#### Scenario: Overshoot clamps the displayed synced count
-- **WHEN** a `Ready` snapshot with `completed = 6, total = 5` is observed
-- **THEN** the UI state is `Completed` with `total = 5` (the synced count never displays as `6`)
+#### Scenario: Work remaining reduces to Syncing
+- **WHEN** config is present, permission is `GRANTED`, and a `Ready` snapshot with `completed < total`
+  is observed
+- **THEN** the UI state is `Joined` with health `Syncing(...)`, and no synced/total counts are carried
 
-#### Scenario: A newer snapshot replaces the displayed state entirely
-- **WHEN** a snapshot is observed after any earlier snapshots, regardless of any snapshots missed
-  in between
-- **THEN** the UI state derives from the latest snapshot alone
-
-#### Scenario: Loading snapshot under satisfied gate reduces to Loading
-- **WHEN** the sync source holds `SyncStatus.Loading`, config is present, and permission is GRANTED
-- **THEN** the UI state is `UiState.Loading`
-
-#### Scenario: Absent config outranks a Loading snapshot
-- **WHEN** the sync source holds `SyncStatus.Loading` and config is absent (creation status `Idle`)
-- **THEN** the UI state is the create-input state (the create layer), not Loading
-
-#### Scenario: Permission blocks a snapshot when config is present
+#### Scenario: Permission off with config present reduces to NeedsAccess, not a gate
 - **WHEN** config is present and permission is `DENIED` or `NOT_DETERMINED`, for any snapshot
-- **THEN** the UI state is `UiState.PermissionBlocked(permission)`, not a sync hero and not the create layer
+- **THEN** the UI state is `Joined` with health `NeedsAccess(permission)` — the joined layer still
+  renders (name, QR, share, leave), and there is no hero-replacing `PermissionBlocked` screen
 
-#### Scenario: A (re)join shows the listing snapshot, not a join screen
-- **WHEN** config is present, permission is `GRANTED`, and a reconciliation is in flight in the extension
-- **THEN** the UI state is the current listing-derived snapshot (e.g. `InProgress`), never a `Joining` or `JoinFailed` state
+#### Scenario: Absent config outranks everything
+- **WHEN** config is absent (creation status `Idle`), for any permission and any snapshot
+- **THEN** the UI state is the create layer, not `Joined`
+
+#### Scenario: A newer snapshot replaces the displayed health entirely
+- **WHEN** a snapshot is observed after any earlier snapshots, regardless of any missed in between
+- **THEN** the `Joined` health derives from the latest snapshot alone
 
 ### Requirement: Status screen renders UI state
 
@@ -217,4 +202,48 @@ Material 3 containment; `ScreenLayout` owns screen structure).
 #### Scenario: No auto-request on a not-determined status
 - **WHEN** the UI state becomes `PermissionBlocked(NOT_DETERMINED)`
 - **THEN** `request()` is not invoked until the user activates the "Allow access" button
+
+### Requirement: Joined-layer health descriptor and status line
+
+In the `Joined` state the screen SHALL render the event **name** as the title and a **single status
+line** — never numeric counts. The status line SHALL present one of:
+
+- `NeedsAccess` → an attention affordance reading "Turn on photo access" that is **tappable**:
+  tapping SHALL invoke `onRequestPermission()` when permission is `NOT_DETERMINED` and
+  `onOpenSettings()` when `DENIED`. It is the only status-line state that carries a background.
+- `InSync` → a settled indicator (e.g. a check) reading "In sync", with no direction arrows.
+- `Syncing` → the label "Syncing…" with two independent direction arrows, each in a
+  shown/pulse state derived as follows:
+  - **upload arrow**: hidden when `completed >= total`; else **pulsing** when `pending > 0`, otherwise
+    **static**;
+  - **download arrow**: hidden when `downloaded >= total`; else **pulsing** when `inFlight > 0`,
+    otherwise **static** (`inFlight` from `DownloadProgress`, per the `sync-status` capability).
+
+`InSync` SHALL be shown exactly when both arrows would be hidden (upload complete **and** download
+complete); any remaining work SHALL be `Syncing` with the corresponding arrow(s) shown. "Shown" tracks
+completeness; "pulse" tracks live activity — so a photo captured but not yet uploaded shows a **static**
+upload arrow (honest that work remains without faking motion).
+
+#### Scenario: Upload in flight pulses the up arrow only
+- **WHEN** `completed < total`, `pending > 0`, and downloads are complete
+- **THEN** the status line reads "Syncing…" with the upload arrow **pulsing** and the download arrow
+  hidden
+
+#### Scenario: Work queued but OS idle shows a static arrow
+- **WHEN** `completed < total` and `pending == 0`
+- **THEN** the upload arrow is **shown static** (not pulsing), and the line reads "Syncing…"
+
+#### Scenario: Download in flight pulses the down arrow independently
+- **WHEN** uploads are complete, `downloaded < total`, and `inFlight > 0`
+- **THEN** the status line reads "Syncing…" with the download arrow **pulsing** and the upload arrow
+  hidden
+
+#### Scenario: Both complete reads In sync
+- **WHEN** `completed >= total` and `downloaded >= total`
+- **THEN** the status line reads "In sync" with no arrows
+
+#### Scenario: Needs-access line is tappable to the right action
+- **WHEN** the health is `NeedsAccess(NOT_DETERMINED)` and the status line is tapped
+- **THEN** `onRequestPermission()` is invoked; **WHEN** the health is `NeedsAccess(DENIED)` and it is
+  tapped, `onOpenSettings()` is invoked
 

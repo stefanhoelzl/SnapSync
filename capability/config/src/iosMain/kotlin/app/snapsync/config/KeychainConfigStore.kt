@@ -12,6 +12,7 @@ import kotlinx.cinterop.usePinned
 import kotlinx.cinterop.value
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.serialization.json.Json
 import platform.CoreFoundation.CFDictionaryAddValue
 import platform.CoreFoundation.CFDictionaryCreateMutable
 import platform.CoreFoundation.CFMutableDictionaryRef
@@ -59,13 +60,14 @@ class KeychainConfigStore(
     private val account: String = "eventconfig",
 ) : ConfigSource, ConfigStore {
 
+    private val configJson = Json { ignoreUnknownKeys = true }
     private val state = MutableStateFlow(readConfig())
-    override val config: StateFlow<EventConfigPayload?> = state
+    override val config: StateFlow<EventConfig?> = state
 
-    override suspend fun save(config: EventConfigPayload) {
-        // Idempotent: re-scanning the same config is a no-op; a different one replaces silently.
-        if (state.value?.sameAs(config) == true) return
-        writeUrl(encodeConfigUrl(config))
+    override suspend fun save(config: EventConfig) {
+        // Idempotent: re-saving an equal config (eventId + name) is a no-op; any difference replaces.
+        if (state.value == config) return
+        writeValue(configJson.encodeToString(EventConfig.serializer(), config))
         state.value = config
     }
 
@@ -85,12 +87,17 @@ class KeychainConfigStore(
         state.value = readConfig()
     }
 
-    private fun readConfig(): EventConfigPayload? {
-        val url = readUrl() ?: return null
-        return (decodeConfigUrl(url) as? ConfigDecodeResult.Success)?.payload
+    private fun readConfig(): EventConfig? {
+        val stored = readValue() ?: return null
+        // Current form: EventConfig JSON. Legacy form (pre-name-split): a `snapsync://` deeplink URL —
+        // decode it and carry the eventId with a null name so an in-place upgrade keeps the join.
+        runCatching { configJson.decodeFromString(EventConfig.serializer(), stored) }
+            .getOrNull()?.let { return it }
+        return (decodeConfigUrl(stored) as? ConfigDecodeResult.Success)?.payload
+            ?.let { EventConfig(eventId = it.eventId) }
     }
 
-    private fun readUrl(): String? = memScoped {
+    private fun readValue(): String? = memScoped {
         val query = baseQuery()
         CFDictionaryAddValue(query, kSecReturnData, kCFBooleanTrue)
         CFDictionaryAddValue(query, kSecMatchLimit, kSecMatchLimitOne)
@@ -102,7 +109,7 @@ class KeychainConfigStore(
         data.toByteArray().decodeToString()
     }
 
-    private fun writeUrl(url: String) {
+    private fun writeValue(url: String) {
         // Replace-by-delete-then-add keeps the write idempotent regardless of prior presence.
         deleteItem()
 
