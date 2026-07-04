@@ -92,13 +92,13 @@ object SnapSyncRoot {
     private val permission: PhotoLibraryPermission by lazy { PhotoLibraryPermission() }
 
     // The stable per-install device id (shared Keychain — the SAME item the extension reads): the
-    // `/files/<deviceId>/` partition the app's status lists. (Finishes wiring `device-identity` into
+    // `/devices/<deviceId>/files/` partition the app's status lists. (Finishes wiring `device-identity` into
     // both roots.)
     private val deviceId: String by lazy { KeychainDeviceIdentity().deviceId() }
 
     // Status from OWN-DEVICE storage truth (capability `sync-status`), no ledger, no device.json read:
     //   completed ← gallery enumeration (EXPECTED resources) × the per-device file listing
-    //   (`GET /files/device/<deviceId>`, Darwin HTTPS, PRESENT files). Refreshes on foreground entry
+    //   (`GET /devices/<deviceId>/files`, Darwin HTTPS, PRESENT files). Refreshes on foreground entry
     //   (no manifest-completion ding any more). The host is the same compile-time base the upload
     //   client uses.
     private val completedAssets: OwnDeviceCompletedAssetsSource by lazy {

@@ -5,7 +5,7 @@ import app.snapsync.gallery.DeviceManifestAsset
 import app.snapsync.gallery.deviceManifestFromJson
 import kotlinx.serialization.Serializable
 
-/** One entry of the per-device file listing (`GET /files/device/<id>`) — `{filename, size, url}`. */
+/** One entry of the per-device file listing (`GET /devices/<id>/files`) — `{filename, size, url}`. */
 @Serializable
 class FileEntryDto(val filename: String, val size: Long, val url: String)
 
@@ -37,7 +37,7 @@ class CreatedEventDto(val eventId: String, val name: String, val createdAt: Stri
  * The in-memory model of the edge's byte store + registry (capability `harness-world-model`) — the
  * single source of world truth. Three maps:
  *
- * - [byteStore]: `deviceId -> stored object names` (the `files/<deviceId>/<filename>` byte partitions).
+ * - [byteStore]: `deviceId -> stored object names` (the `devices/<deviceId>/files/<filename>` byte partitions).
  * - [manifests]: `(eventId, deviceId) -> DeviceManifest` (the per-event device manifests, PUT via the
  *   mini-edge; also injected directly for foreign devices).
  * - [events]: the registered-event marker set (a `POST /event` registers; the union gate reads it).
@@ -92,7 +92,7 @@ class BackendStore {
     // ---- read-models ----------------------------------------------------------------------------
 
     /**
-     * The per-device file listing (`GET /files/device/<id>`) — one entry per stored object. Serves
+     * The per-device file listing (`GET /devices/<id>/files`) — one entry per stored object. Serves
      * BOTH the rejoin reconcile seed (`HttpDeviceFilesSource`) and own-device status completeness
      * (`OwnDeviceCompletedAssetsSource`); the world computes it once.
      */

@@ -20,7 +20,7 @@ import kotlinx.coroutines.flow.asStateFlow
  * enumerator's `assetId` form) is excluded from both the total and the completed set.
  *
  * An asset is complete when **every** expected resource (shared [GalleryResourceEnumerator] derivation)
- * is present in the device's storage partition ([DeviceFilesSource] — `GET /files/device/<deviceId>`).
+ * is present in the device's storage partition ([DeviceFilesSource] — `GET /devices/<deviceId>/files`).
  * The device manifest is never read. [refresh] re-enumerates, lists, and recomputes; a failed listing
  * keeps the last completed value (the total is enumeration-only and always refreshes).
  */

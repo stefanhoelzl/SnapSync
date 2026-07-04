@@ -36,7 +36,7 @@ interface JoinedEventMarker {
  * reinstalled device from re-uploading already-stored bytes; status is read from storage truth, not
  * from this ledger (see `sync-status`), so the seed has no UI role and narrates nothing.
  *
- * Bytes are device-partitioned and **event-independent** (`/files/<deviceId>/…`), so seeding from the
+ * Bytes are device-partitioned and **event-independent** (`/devices/<deviceId>/files/…`), so seeding from the
  * **device** listing (not a per-event one) is what preserves cross-event dedup: a switch re-seeds the
  * same files `COMPLETED`, so nothing already stored re-uploads. The seed is an **atomic
  * `resetTo` (clear-and-seed)**, not an additive upsert — the clear drops stale/phantom rows (e.g. a

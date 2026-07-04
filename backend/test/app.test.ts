@@ -22,7 +22,7 @@ const MARKER_BODY = { eventId: E, name: "Party", createdAt: "2026-06-27T00:00:00
 const markerPresent = { [MARKER_URL]: { body: MARKER_BODY } };
 
 /**
- * Assert `url` is a presigned S3 GET for the bare object key `key` (e.g. `files/<D>/A-primary.heic`):
+ * Assert `url` is a presigned S3 GET for the bare object key `key` (e.g. `devices/<D>/files/A-primary.heic`):
  * path-style origin+path against the S3 endpoint, 7-day expiry, and an AWS4-HMAC-SHA256 signature. The
  * signature itself is time-dependent (X-Amz-Date), so we assert the shape, not an exact string.
  */
@@ -37,11 +37,11 @@ function assertPresigned(url: string, key: string) {
 }
 
 // Byte WRITE route (`bunny-upload-endpoint`): device-partitioned, event-independent.
-const BYTE_PATH = `/files/device/${D}/IMG_0001-photo.jpg`;
-const BYTE_OBJ_URL = `${ZONE}/files/${D}/IMG_0001-photo.jpg`;
+const BYTE_PATH = `/devices/${D}/files/IMG_0001-photo.jpg`;
+const BYTE_OBJ_URL = `${ZONE}/devices/${D}/files/IMG_0001-photo.jpg`;
 // Per-device list (`bunny-list-endpoint`).
-const DEVLIST_PATH = `/files/device/${D}`;
-const DEVDIR_URL = `${ZONE}/files/${D}/`;
+const DEVLIST_PATH = `/devices/${D}/files`;
+const DEVDIR_URL = `${ZONE}/devices/${D}/files/`;
 // Device-manifest write (`bunny-upload-endpoint`, gated).
 const DEVMANIFEST_PATH = `/event/${E}/device/${D}`;
 const DEVMANIFEST_URL = `${ZONE}/events/${E}/device/${D}.json`;
@@ -78,9 +78,9 @@ function recorder(
   return { calls, fetchImpl };
 }
 
-// ── PUT /files/device/:deviceId/:filename (byte upload, UNGATED) ──────────────────────────────────
+// ── PUT /devices/:deviceId/files/:filename (byte upload, UNGATED) ──────────────────────────────────
 
-Deno.test("byte PUT → forwards once with bare files/<device>/<name> key, AccessKey, content-type, body", async () => {
+Deno.test("byte PUT → forwards once with bare devices/<device>/files/<name> key, AccessKey, content-type, body", async () => {
   const { calls, fetchImpl } = recorder();
   const res = await createApp({ config: CONFIG, fetch: fetchImpl }).request(BYTE_PATH, {
     method: "PUT",
@@ -101,17 +101,17 @@ Deno.test("byte PUT → forwards once with bare files/<device>/<name> key, Acces
 Deno.test("byte PUT → encoded filename round-trips to an encoded, flat key on the wire", async () => {
   const { calls, fetchImpl } = recorder();
   const res = await createApp({ config: CONFIG, fetch: fetchImpl }).request(
-    `/files/device/${D}/IMG%20001.jpg`,
+    `/devices/${D}/files/IMG%20001.jpg`,
     { method: "PUT", body: "x" },
   );
   assertEquals(res.status, 201);
-  assertEquals(putCall(calls).url, `${ZONE}/files/${D}/IMG%20001.jpg`);
+  assertEquals(putCall(calls).url, `${ZONE}/devices/${D}/files/IMG%20001.jpg`);
 });
 
 Deno.test("byte PUT → encoded slash (%2F) in filename → 400 (would un-flatten the key)", async () => {
   const { calls, fetchImpl } = recorder();
   const res = await createApp({ config: CONFIG, fetch: fetchImpl }).request(
-    `/files/device/${D}/a%2Fb.jpg`,
+    `/devices/${D}/files/a%2Fb.jpg`,
     { method: "PUT", body: "x" },
   );
   assertEquals(res.status, 400);
@@ -164,7 +164,7 @@ Deno.test("byte PUT → upstream throw/abort → 502", async () => {
 Deno.test("byte PUT → non-UUID device segment → 400, no upstream request", async () => {
   const { calls, fetchImpl } = recorder();
   const res = await createApp({ config: CONFIG, fetch: fetchImpl }).request(
-    `/files/device/nope/a.jpg`,
+    `/devices/nope/files/a.jpg`,
     { method: "PUT", body: "x" },
   );
   assertEquals(res.status, 400);
@@ -184,7 +184,7 @@ Deno.test("byte PUT → unmatched path → 404, no upstream request", async () =
 Deno.test("byte PUT → empty filename (no resource) → 404 (route doesn't match)", async () => {
   const { calls, fetchImpl } = recorder();
   const res = await createApp({ config: CONFIG, fetch: fetchImpl }).request(
-    `/files/device/${D}/`,
+    `/devices/${D}/files/`,
     { method: "PUT", body: "x" },
   );
   assertEquals(res.status, 404);
@@ -267,7 +267,7 @@ Deno.test("device-manifest PUT → non-UUID event or device → 400, no upstream
   }
 });
 
-// ── GET /files/device/:deviceId (per-device raw listing) ──────────────────────────────────────────
+// ── GET /devices/:deviceId/files (per-device raw listing) ──────────────────────────────────────────
 
 const dir = (name: string) => ({ ObjectName: name, IsDirectory: true, Length: 0 });
 const file = (name: string, length: number) => ({
@@ -308,8 +308,8 @@ Deno.test("device list → raw files as { filename, size, url }, one LIST, no fu
     body.map((e: { filename: string; size: number }) => ({ filename: e.filename, size: e.size })),
     [{ filename: "A-primary.heic", size: 100 }, { filename: "A-motion.mov", size: 200 }],
   ); // directory entry filtered out
-  assertPresigned(body[0].url, `files/${D}/A-primary.heic`);
-  assertPresigned(body[1].url, `files/${D}/A-motion.mov`);
+  assertPresigned(body[0].url, `devices/${D}/files/A-primary.heic`);
+  assertPresigned(body[1].url, `devices/${D}/files/A-motion.mov`);
   assertEquals(calls.length, 1); // single LIST, no manifest/content reads
   assertEquals(new Headers(calls[0].init.headers).get("AccessKey"), "zone-password");
 });
@@ -336,7 +336,7 @@ Deno.test("device list → LIST failure (500) → 502 (never partial)", async ()
 
 Deno.test("device list → non-UUID device id → 400, no upstream request", async () => {
   const { calls, fetchImpl } = listFake({});
-  const res = await createApp({ config: CONFIG, fetch: fetchImpl }).request("/files/device/nope");
+  const res = await createApp({ config: CONFIG, fetch: fetchImpl }).request("/devices/nope/files");
   assertEquals(res.status, 400);
   assertEquals(calls.length, 0);
 });
@@ -356,7 +356,7 @@ Deno.test("device list → a percent-encoded filename round-trips and re-encodes
   assertEquals(res.status, 200);
   const entry = (await res.json())[0];
   assertEquals(entry.filename, "A-primary 1.heic"); // decoded back to the uploaded name
-  assertPresigned(entry.url, `files/${D}/A-primary%201.heic`); // re-encoded, flat key in the presigned url
+  assertPresigned(entry.url, `devices/${D}/files/A-primary%201.heic`); // re-encoded, flat key in the presigned url
 });
 
 // ── POST /event + GET /event/:eventId (capability `event-creation`) ───────────────────────────────
@@ -498,7 +498,7 @@ Deno.test("GET /event/:id → 502 on non-404 marker read failure", async () => {
 const D2 = "22222222-0000-4000-8000-000000000003"; // a second contributing deviceId
 const MANIFEST_DIR_URL = `${ZONE}/events/${E}/device/`; // the device-manifest directory LIST
 const manifestUrl = (d: string) => `${ZONE}/events/${E}/device/${d}.json`;
-const fileDirUrl = (d: string) => `${ZONE}/files/${d}/`;
+const fileDirUrl = (d: string) => `${ZONE}/devices/${d}/files/`;
 
 // A device manifest object (post-rename: resources carry `key` + `filename`).
 const manifest = (deviceId: string, assets: unknown[]) => ({ body: { deviceId, assets } });
@@ -579,9 +579,9 @@ Deno.test("union → two devices' complete assets, flattened, tagged by deviceId
     },
   ]);
   // Each resource's `url` is a presigned S3 GET for its owning device's bare key.
-  assertPresigned(union[0].resources[0].url, `files/${D}/A-primary.heic`);
-  assertPresigned(union[0].resources[1].url, `files/${D}/A-motion.mov`);
-  assertPresigned(union[1].resources[0].url, `files/${D2}/B-primary.jpg`);
+  assertPresigned(union[0].resources[0].url, `devices/${D}/files/A-primary.heic`);
+  assertPresigned(union[0].resources[1].url, `devices/${D}/files/A-motion.mov`);
+  assertPresigned(union[1].resources[0].url, `devices/${D2}/files/B-primary.jpg`);
   // Every upstream read carries the AccessKey; the account API key never appears.
   for (const c of calls) {
     assertEquals(new Headers(c.init.headers).get("AccessKey"), "zone-password");
