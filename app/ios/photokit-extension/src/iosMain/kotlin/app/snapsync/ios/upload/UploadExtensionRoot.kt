@@ -77,7 +77,7 @@ object UploadExtensionRoot {
     private val suppression: SuppressionSource by lazy { iosSuppressionSource() }
     private val configSource: KeychainConfigStore by lazy { KeychainConfigStore() }
 
-    // The stable per-install device id (shared Keychain, minted once): the `/files/<deviceId>/`
+    // The stable per-install device id (shared Keychain, minted once): the `/devices/<deviceId>/files/`
     // byte-store partition the provider writes to, and the per-event device-manifest key. Resolved
     // once for the process lifetime.
     private val deviceId: String by lazy { KeychainDeviceIdentity().deviceId() }
@@ -156,7 +156,7 @@ object UploadExtensionRoot {
         }
         log.i { "process: config present and reconciled — running cycle" }
         val engine = SyncEngine(
-            // Bytes go to the device's event-independent partition (/files/<deviceId>/…); the eventId
+            // Bytes go to the device's event-independent partition (/devices/<deviceId>/files/…); the eventId
             // in `config` drives only the producer's event scope + the device-manifest write, not the
             // byte URL.
             EdgeUploadRequestProvider(config.host, deviceId),

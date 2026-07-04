@@ -22,7 +22,7 @@ import kotlinx.serialization.json.jsonPrimitive
  * dispatching on method + path:
  *
  * ```
- * GET  /files/device/<id>       -> 200 [ per-device listing ]         (offline -> 502)
+ * GET  /devices/<id>/files      -> 200 [ per-device listing ]         (offline -> 502)
  * GET  /event/<id>/files        -> 200 [ union ] | 404 (unregistered) (offline -> 502)
  * POST /event                   -> 201 { eventId, name, createdAt } + register marker
  * PUT  /event/<id>/device/<id>  -> 200 ; deposit the manifest into the store
@@ -40,17 +40,17 @@ fun miniEdgeClient(store: BackendStore): HttpClient {
 
     return HttpClient(
         MockEngine { request ->
-            // encodedPath like "/files/device/<id>" -> ["files","device","<id>"]
+            // encodedPath like "/devices/<id>/files" -> ["devices","<id>","files"]
             val segments = request.url.encodedPath.split('/').filter { it.isNotEmpty() }
             val method = request.method
             val body = (request.body as? TextContent)?.text.orEmpty()
 
             when {
-                // GET /files/device/<id>
+                // GET /devices/<id>/files
                 method == HttpMethod.Get && segments.size == 3 &&
-                    segments[0] == "files" && segments[1] == "device" -> {
+                    segments[0] == "devices" && segments[2] == "files" -> {
                     if (store.offline) return@MockEngine respond("offline", HttpStatusCode.BadGateway)
-                    val listing = store.deviceListing(segments[2])
+                    val listing = store.deviceListing(segments[1])
                     respond(
                         json.encodeToString(ListSerializer(FileEntryDto.serializer()), listing),
                         HttpStatusCode.OK,

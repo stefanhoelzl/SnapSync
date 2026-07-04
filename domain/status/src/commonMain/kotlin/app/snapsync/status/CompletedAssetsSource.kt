@@ -8,7 +8,7 @@ import kotlinx.coroutines.flow.asStateFlow
  * The device's **complete assets** for own-device progress (`sync-status`): an asset is complete when
  * every resource it is expected to have is present in storage. The real impl
  * ([OwnDeviceCompletedAssetsSource]) computes this from the gallery enumeration seam (expected sets) ×
- * the per-device file listing (`GET /files/device/<deviceId>`, present files) — it reads **no**
+ * the per-device file listing (`GET /devices/<deviceId>/files`, present files) — it reads **no**
  * device manifest. [completed] is a level-triggered holder of the complete-asset id set (its `size` is
  * the displayed `completed` count); [refresh] recomputes and replaces the value.
  *

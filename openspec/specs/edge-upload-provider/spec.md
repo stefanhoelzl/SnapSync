@@ -3,12 +3,10 @@
 ## Purpose
 
 The on-device, network-free `UploadRequestProvider` that builds the bunny edge upload URL
-(`/event/<eventId>/file/<filename>`) using only string-building — no crypto, no signing, no network
-I/O. It sets `Content-Type` only and carries the deterministic, injective filename→destination
-mapping that anchors upload idempotency. Lives in `:capability:upload-url`.
-
+(`/devices/<deviceId>/files/<encoded-filename>`) using only string-building — no crypto, no signing,
+no network I/O. It sets `Content-Type` only and carries the deterministic, injective
+filename→destination mapping that anchors upload idempotency. Lives in `:capability:upload-url`.
 ## Requirements
-
 ### Requirement: Pure URL-building provider
 
 The capability SHALL provide `EdgeUploadRequestProvider`, a concrete `UploadRequestProvider`
@@ -31,7 +29,7 @@ instance** supplied and SHALL NOT read `Resource.data`. The provider SHALL live 
 ### Requirement: Edge URL composition with injective filename encoding
 
 The provider SHALL map a `Resource` to the URL
-`<host>/files/device/<deviceId>/<encoded-filename>`, where `host` is the injected compile-time
+`<host>/devices/<deviceId>/files/<encoded-filename>`, where `host` is the injected compile-time
 base, and `<deviceId>` is injected verbatim (already a canonical UUID, not re-encoded). The byte
 destination is **event-independent**: it carries no `eventId` and is partitioned only by
 `deviceId`, so the same resource maps to the same byte destination regardless of which event it is
@@ -44,7 +42,7 @@ so the edge endpoint decodes it back to one slash-free segment.
 
 #### Scenario: Unreserved filename passes through
 - **WHEN** the filename contains only `[A-Za-z0-9._-]`
-- **THEN** the URL path ends `/files/device/<deviceId>/<filename>` unchanged
+- **THEN** the URL path ends `/devices/<deviceId>/files/<filename>` unchanged
 
 #### Scenario: Reserved bytes percent-encode
 - **WHEN** the filename contains bytes outside `[A-Za-z0-9._-]` (including multi-byte UTF-8 or `/`)
@@ -65,7 +63,7 @@ nothing else — **no** authorization header (the edge byte route is ungated, ad
 `deviceId` in the path, with no event auth and no token), **no** `Host` (URL-implied), and **no**
 custom metadata headers (the bunny native Storage API has none; `resource.metadata` SHALL NOT be
 emitted as headers). `UploadRequest.url` SHALL be the complete edge URL
-`<host>/files/device/<deviceId>/<encoded-filename>` with no query string (no signature, no expiry
+`<host>/devices/<deviceId>/files/<encoded-filename>` with no query string (no signature, no expiry
 parameters).
 
 #### Scenario: Only Content-Type is carried
@@ -75,7 +73,7 @@ parameters).
 
 #### Scenario: URL carries no auth query string
 - **WHEN** `provide` returns
-- **THEN** `url` is `<host>/files/device/<deviceId>/<encoded-filename>` with no `?`-query parameters
+- **THEN** `url` is `<host>/devices/<deviceId>/files/<encoded-filename>` with no `?`-query parameters
 
 ### Requirement: Plain-string configuration contract
 
@@ -101,3 +99,4 @@ re-derived much later re-PUTs the exact same destination (nothing to re-mint or 
 #### Scenario: Rebuild is byte-identical
 - **WHEN** `provide` is called twice for the same resource with the same configuration
 - **THEN** both calls produce byte-identical URLs and headers
+

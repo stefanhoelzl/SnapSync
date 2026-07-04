@@ -3,8 +3,8 @@
 ## Purpose
 
 A read-only, **per-device** listing on the backend (Deno + Hono), served by the same app as
-`bunny-upload-endpoint`. `GET /files/device/<deviceId>` returns a JSON array of the device's **raw
-stored objects** under `files/<deviceId>/` (each entry a `{filename, size, url}`) — a single bunny
+`bunny-upload-endpoint`. `GET /devices/<deviceId>/files` returns a JSON array of the device's **raw
+stored objects** under `devices/<deviceId>/files/` (each entry a `{filename, size, url}`) — a single bunny
 native Storage LIST, with **no** manifest reads and **no** server-side completeness computation.
 The byte store is device-partitioned and event-independent, so the listing is global to the device;
 the app derives own-device completeness by intersecting this listing with its gallery enumeration
@@ -18,8 +18,8 @@ Authoritative design: docs/design.md §3.1 (keys, manifest, read-time completene
 ## Requirements
 ### Requirement: Per-event file listing route
 
-The backend SHALL accept an HTTP `GET` at the path template `/files/device/<deviceId>` (the literal
-labels `files` and `device` are required) and respond with a flat JSON array of the **raw stored
+The backend SHALL accept an HTTP `GET` at the path template `/devices/<deviceId>/files` (the literal
+labels `devices` and `files` are required) and respond with a flat JSON array of the **raw stored
 objects** under that device's partition — one element per object, no manifest read, no completeness
 computation. `deviceId` MUST match a UUID pattern. A request whose path does not match this route
 (missing a label, wrong depth) SHALL yield `404`; a matched request whose `deviceId` is not a UUID
@@ -30,7 +30,7 @@ served by the same application as the upload endpoint.
 
 #### Scenario: Valid device id accepted
 
-- **WHEN** a `GET` to `/files/device/<uuid>` arrives with a valid UUID
+- **WHEN** a `GET` to `/devices/<uuid>/files` arrives with a valid UUID
 - **THEN** the endpoint responds `200` with a flat JSON array of the device's stored objects
 
 #### Scenario: Non-UUID device id rejected
@@ -40,18 +40,18 @@ served by the same application as the upload endpoint.
 
 #### Scenario: Unmatched path or wrong method rejected
 
-- **WHEN** the path does not match `/files/device/<deviceId>`, or the method is not `GET`
+- **WHEN** the path does not match `/devices/<deviceId>/files`, or the method is not `GET`
 - **THEN** the endpoint responds `404` and makes no upstream request
 
 #### Scenario: Empty or unknown partition yields empty array
 
-- **WHEN** a valid device id's partition `/files/<uuid>/` holds no objects (empty or never written)
+- **WHEN** a valid device id's partition `/devices/<uuid>/files/` holds no objects (empty or never written)
 - **THEN** the endpoint responds `200` with `[]`
 
 ### Requirement: Asset assembly from a single directory listing
 
 The endpoint SHALL discover the device's objects with a **single** bunny native Storage List Files
-request against the device directory `/files/<deviceId>/` (objects are direct children; no
+request against the device directory `/devices/<deviceId>/files/` (objects are direct children; no
 sub-directory fan-out and no manifest content reads). Each direct-child object in that listing becomes
 one entry in the response. The List request SHALL carry the storage zone's `AccessKey` header from
 configuration and never the account API key. There is no per-object follow-up read: the listing's own
@@ -73,8 +73,8 @@ Each listed object's `url` SHALL be an **AWS SigV4 presigned S3 GET URL** for th
 the backend against the storage zone's S3-compatible endpoint. The URL SHALL be
 `https://<s3-host>/<zone>/<key>?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=…&X-Amz-Date=…&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=…`
 (path-style; `<s3-host>` and region from configuration; `<key>` the bare object key
-`files/<deviceId>/<filename>`, each segment percent-encoded so the key stays one flat path), signed
-with the storage zone's credentials (Access Key ID = the zone name, Secret = the storage-zone
+`devices/<deviceId>/files/<filename>`, each segment percent-encoded so the key stays one flat path),
+signed with the storage zone's credentials (Access Key ID = the zone name, Secret = the storage-zone
 `AccessKey`/password) and `X-Amz-Expires` of **7 days** (604800 s). The query signature is the **sole**
 authorization: a consumer fetches the object **directly** from bunny's S3 endpoint with this URL and no
 additional credential. This capability is the **sole authority** on the download-URL format (the former
@@ -87,8 +87,8 @@ SHALL expose the bunny account API key.
 #### Scenario: A presigned S3 GET URL is returned
 
 - **WHEN** a stored object is listed
-- **THEN** its `url` is a path-style `https://<s3-host>/<zone>/files/<deviceId>/<filename>` carrying
-  `X-Amz-Algorithm=AWS4-HMAC-SHA256`, `X-Amz-Expires=604800`, and an `X-Amz-Signature`
+- **THEN** its `url` is a path-style `https://<s3-host>/<zone>/devices/<deviceId>/files/<filename>`
+  carrying `X-Amz-Algorithm=AWS4-HMAC-SHA256`, `X-Amz-Expires=604800`, and an `X-Amz-Signature`
 
 #### Scenario: The URL fetches the object directly from bunny's S3 endpoint
 
@@ -153,7 +153,7 @@ partition. The endpoint SHALL NOT expose or forward the bunny account API key.
 
 #### Scenario: No token required
 
-- **WHEN** a `GET /files/device/<uuid>` carries a valid device id but no authorization token
+- **WHEN** a `GET /devices/<uuid>/files` carries a valid device id but no authorization token
 - **THEN** the listing is returned (the device id is the capability)
 
 #### Scenario: Account API key never exposed
@@ -233,7 +233,7 @@ List Files request against the device-manifest directory `events/<eventId>/devic
 direct-child `<deviceId>.json` object names one contributing device. An absent/empty directory (bunny
 `404` or no children) SHALL be treated as "no contributors" → `200 []`. For each enumerated device the
 endpoint SHALL read that device's manifest object `events/<eventId>/device/<deviceId>.json` **and**
-LIST that device's byte partition `files/<deviceId>/` (the same single-LIST per-device read the
+LIST that device's byte partition `devices/<deviceId>/files/` (the same single-LIST per-device read the
 per-device list route uses). Every upstream request (marker, manifest-directory LIST, each manifest
 read, each per-device file LIST) SHALL carry the storage zone's `AccessKey` header from configuration
 and never the account API key. The stored device manifest is **already** the event's date-filtered
@@ -243,7 +243,7 @@ projection, so the union SHALL trust its `assets` list and SHALL NOT re-apply an
 
 - **WHEN** the event has contributing devices
 - **THEN** the endpoint enumerates them with one List of `events/<eventId>/device/` and then, per
-  device, reads its manifest and lists its byte partition
+  device, reads its manifest and lists its byte partition `devices/<deviceId>/files/`
 
 #### Scenario: Empty manifest directory yields empty array
 
@@ -265,10 +265,11 @@ projection, so the union SHALL trust its `assets` list and SHALL NOT re-apply an
 The endpoint SHALL include an asset in the union **only when every** resource the asset's manifest
 entry names is present in that device's byte partition. Presence SHALL be tested by membership of each
 resource's `key` (its storage object name) among the object names returned by that device's
-`files/<deviceId>/` LIST (decoded back to the uploaded name, the equality the upload/list/download
-round-trip guarantees). An asset with any named resource missing from the partition SHALL be **omitted**
-from the union. A per-device file partition that is empty or absent (bunny `404`) SHALL be treated as
-"no bytes present" — every asset of that device is incomplete and omitted — and SHALL NOT be a failure.
+`devices/<deviceId>/files/` LIST (decoded back to the uploaded name, the equality the
+upload/list/download round-trip guarantees). An asset with any named resource missing from the
+partition SHALL be **omitted** from the union. A per-device file partition that is empty or absent
+(bunny `404`) SHALL be treated as "no bytes present" — every asset of that device is incomplete and
+omitted — and SHALL NOT be a failure.
 
 #### Scenario: Asset with all resources present is included
 
@@ -283,7 +284,7 @@ from the union. A per-device file partition that is empty or absent (bunny `404`
 
 #### Scenario: Device with no bytes contributes nothing
 
-- **WHEN** a device's `files/<deviceId>/` partition is empty or `404`
+- **WHEN** a device's `devices/<deviceId>/files/` partition is empty or `404`
 - **THEN** every asset of that device is omitted, and the partition `404` is not treated as a failure
 
 ### Requirement: Union entry shape
@@ -371,3 +372,4 @@ SHALL NOT expose or forward the bunny account API key.
 
 - **WHEN** the endpoint assembles the union
 - **THEN** no response or upstream-facing surface exposes the bunny account API key
+

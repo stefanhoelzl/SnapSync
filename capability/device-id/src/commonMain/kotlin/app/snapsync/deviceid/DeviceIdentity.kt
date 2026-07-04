@@ -4,7 +4,7 @@ package app.snapsync.deviceid
  * The stable per-install device identity (capability `device-identity`). [deviceId] is a UUID minted
  * **once** and persisted, identical across the app and the upload extension (one shared Keychain
  * item), and **stable across reinstall** (the Keychain survives app uninstall). It is the
- * `/files/<deviceId>/` byte-store partition and the per-event device-manifest key
+ * `/devices/<deviceId>/files/` byte-store partition and the per-event device-manifest key
  * (`/events/<eventId>/device/<deviceId>.json`) — the "which manifest is mine" handle a future
  * restore needs to tell this device's own (possibly-deleted) photos from another contributor's.
  *

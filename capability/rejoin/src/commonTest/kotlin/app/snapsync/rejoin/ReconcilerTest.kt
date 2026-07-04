@@ -215,7 +215,7 @@ class ReconcilerTest {
     // SyncEngine as AlreadyUploaded (no job), while a resource absent from the listing still uploads.
     private object FakeProvider : UploadRequestProvider {
         override suspend fun provide(resource: Resource): UploadRequest =
-            UploadRequest("https://edge.example/files/device/dev/${resource.filename}", emptyMap(), resource)
+            UploadRequest("https://edge.example/devices/dev/files/${resource.filename}", emptyMap(), resource)
     }
 
     private fun res(filename: String, assetId: String) =
