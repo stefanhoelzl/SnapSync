@@ -60,8 +60,9 @@ Swift shells are pass-throughs; all logic is Kotlin. Do not add parsing or decis
   `PhotoLibraryPermission` × `KeychainConfigStore` → `StatusContainerHost`. The app **reads** the
   ledger and, on a full photo grant, enables the extension (`setUploadJobExtensionEnabled`).
 - **Extension**: `app/ios/photokit-extension/src/iosMain/.../UploadExtensionRoot.kt` — assembles the
-  App-Group `LedgerWriter`, the `SyncEngine`, the upload provider, the `IosUploadJobPlatform`, and
-  the `UploadCycle`; `process()` runs one blocking discover→engine→job→drain cycle.
+  App-Group `LedgerWriter`, the `SyncEngine`, the upload provider, the `IosPhotoKitUploadPlatform`
+  (composing the shared `IosDiscovery` from `:app:ios:photokit-discovery`), and the `UploadCycle`;
+  `process()` runs one blocking discover→engine→job→drain cycle.
 
 **Single-writer invariant across processes:** the **extension is the only `LedgerWriter`**; the app
 constructs only reader/watcher. Never construct a `LedgerWriter` in `:app:ios`.
@@ -82,14 +83,21 @@ constructs only reader/watcher. Never construct a `LedgerWriter` in `:app:ios`.
   permits uploads to (a user-configurable upload host is impossible with this API). It must be an
   HTTPS endpoint: default ATS (HTTPS-only) applies, no `NSAllowsLocalNetworking` exception.
 
-## iOS-version deviation
+## iOS-version deviation & the two upload tiers
 
-App deploys **min iOS 27**, but the extension uses the **deprecated iOS 26.1**
-`PHBackgroundResourceUploadExtension` (the only protocol runnable on current GM devices). The
-26.1 background-upload APIs are guarded at runtime (`SnapSyncRoot.backgroundUploadSupported()` →
-`isOperatingSystemAtLeastVersion(26.1)`) so the call never traps on lower systems. Because all
-logic is Kotlin, a later move to the iOS 27 async `PHBackgroundResourceUploadJobExtension` is
-confined to the Swift shell + deployment target.
+App deploys **min iOS 18**. Upload runs on one of two tiers, selected at
+`SnapSyncRoot.backgroundUploadSupported()` (`isOperatingSystemAtLeastVersion(26.1)`):
+
+- **iOS ≥26.1 — PhotoKit (`ios-photokit-upload`).** The OS-driven upload extension, using the
+  **deprecated 26.1** `PHBackgroundResourceUploadExtension` (the only protocol runnable on current GM
+  devices). The runtime guard keeps the `setUploadJobExtensionEnabled` call from trapping on lower
+  systems. A later move to the iOS 27 async `PHBackgroundResourceUploadJobExtension` is confined to the
+  Swift shell + deployment target.
+- **iOS 18–26.0 — app-driven `URLSession` (`ios-url-session-upload`).** No appex exists; the **main
+  app process** performs uploads over a background `URLSession` + `BGProcessingTask`, via
+  `IosUrlSessionUploadPlatform` / `IosBackgroundScheduler` (`:app:ios:url-session-upload`) driving the
+  same `:capability:upload` `UploadCycle` through the `BackgroundUploadPump`. On this tier the **app**
+  is the single `LedgerWriter` (no extension process exists).
 
 ## Gotchas
 

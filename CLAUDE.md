@@ -3,7 +3,9 @@
 SnapSync v1 — a personal one-way iOS photo backup to S3 (Kotlin Multiplatform + Compose),
 shipped via TestFlight. The JVM desktop app is test equipment, not a product.
 
-Stack: Kotlin 2.4.0 · Compose MP 1.11.1 · JDK 25 · min iOS 27.0 · Orbit MVI · SQLDelight · Ktor.
+Stack: Kotlin 2.4.0 · Compose MP 1.11.1 · JDK 25 · min iOS 18.0 · Orbit MVI · SQLDelight · Ktor.
+(Two upload tiers per OS version: OS-driven PhotoKit on iOS ≥26.1, app-driven background `URLSession`
+on iOS 18–26.0 — see `docs/design.md` and the `ios-photokit-upload` / `ios-url-session-upload` specs.)
 (`gradle/libs.versions.toml` is the source of truth for versions.)
 
 <!-- Maintainer note: reference docs/design.md by path, do NOT @-import it — it's ~750 lines and
@@ -226,7 +228,7 @@ agent use and inject that one instead.
 :domain:presentation   Orbit MVI container + UiState (Compose-free, no engine dep)
 :domain:ui             Compose screens (written against App* only)
 :domain:ui:components   App* design system + the Material 3 skin
-:capability:upload     upload orchestration: UploadCycle + the UploadJobPlatform seam + DiscoveryStore + UploadConfig (jvm()+ios, JVM/harness-covered; deps :domain:engine + :domain:gallery)
+:capability:upload     upload orchestration: UploadCycle + the UploadJobPlatform seam + DiscoveryStore + UploadConfig + the app-driven BackgroundUploadPump/BackgroundScheduler (jvm()+ios, JVM/harness-covered; deps :domain:engine + :domain:gallery)
 :capability:upload-url local edge-URL builder (no network/crypto) — the UploadRequestProvider
 :capability:config     deeplink config provisioning (eventId)
 :capability:device-id  stable per-install device identity (shared Keychain)
@@ -236,7 +238,9 @@ agent use and inject that one instead.
 :app:desktop           shared harness library (PhoneFrame + StatusPane, StatusContainerHost wiring both desktop harnesses reuse) AND the full-stack world harness app (:app:desktop:run): real StatusScreen whose counts EMERGE from :test:world's real ListingSyncStatusSource + a right-pane world inspector driving the world (capability full-stack-harness)
 :app:desktop:ui        forge harness (:app:desktop:ui:run): phone frame + control panel that forges any UI state; depends on :app:desktop
 :app:ios               iOS app wiring + framework export (thin, untested)
-:app:ios:photokit-extension  background-upload extension: iOS PhotoKit adapters (IosUploadJobPlatform/IosDiscoveryStore) + composition root, composing :capability:upload — thin, untested (orchestration + its tests now live in :capability:upload)
+:app:ios:photokit-extension  iOS ≥26.1 background-upload extension: PhotoKit adapter (IosPhotoKitUploadPlatform) + composition root, composing :capability:upload + :app:ios:photokit-discovery — thin, untested (orchestration + tests live in :capability:upload)
+:app:ios:photokit-discovery  shared iOS PhotoKit discovery (IosDiscovery: change-token walk + PUT request builder + token archive; IosDiscoveryStore) — consumed by BOTH upload tiers; iosMain-only, no jvm/framework (keeps PhotoKit out of the platform-free :capability:upload)
+:app:ios:url-session-upload  app-driven iOS 18–26.0 upload adapters: IosUrlSessionUploadPlatform (background URLSession impl of UploadJobPlatform) + IosBackgroundScheduler (BGTaskScheduler) — runs in the MAIN APP process, composed into SnapSyncKit (no separate target); thin, untested
 :test:world            test-only shared infra: a controllable in-memory "world" (backend object store + read-models, MockEngine mini-edge, operator-driven UploadJobPlatform/download fakes) the REAL stack runs against + composition helpers mirroring the extension root; jvm()+iosSimulatorArm64. Consumed by :app:desktop AND :test:integration (capability harness-world-model)
 :test:integration      test-only: seam → UI-state integration over :test:world — asserts UiState AND world outcomes (objects landed, ledger COMPLETED, foreign photos imported)
 iosApp/                Xcode project (app + upload-extension targets) — not Gradle
