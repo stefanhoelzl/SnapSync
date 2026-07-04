@@ -133,7 +133,7 @@ role filter, key derivation, or normalization of its own.
 `:domain:gallery` SHALL own a **single** `assetIdFromUploadKey` parser — the exact inverse of its
 `uploadKey` derivation — that recovers a resource's `assetId` from a bare upload key
 (`<assetId>-<role>.<ext>`). It SHALL be the **only** implementation of that parse: both the
-extension-side upload-job reconstruction (`ios-background-upload`, "Completion and retry adjudication")
+extension-side upload-job reconstruction (`ios-photokit-upload`, "Completion and retry adjudication")
 and the re-join reconciler (`event-rejoin-reconciliation`) SHALL call this one function, replacing any
 private per-module copy. Because the parse is now load-bearing at the record path (a mis-parse writes a
 wrong or empty `assetId`), the round-trip SHALL be pinned by a test: for every key `uploadKey` produces,

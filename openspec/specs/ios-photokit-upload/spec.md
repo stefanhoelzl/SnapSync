@@ -1,4 +1,4 @@
-# ios-background-upload Specification
+# ios-photokit-upload Specification
 
 ## Purpose
 TBD - created by archiving change ios-background-upload. Update Purpose after archive.

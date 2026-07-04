@@ -4,6 +4,8 @@ import app.snapsync.config.KeychainConfigStore
 import app.snapsync.deviceid.KeychainDeviceIdentity
 import app.snapsync.downloadstore.SuppressionSource
 import app.snapsync.downloadstore.iosSuppressionSource
+import app.snapsync.ios.discovery.IosDiscovery
+import app.snapsync.ios.discovery.IosDiscoveryStore
 import app.snapsync.upload.CycleResult
 import app.snapsync.upload.UploadCycle
 import app.snapsync.upload.buildUploadConfig
@@ -60,8 +62,11 @@ object UploadExtensionRoot {
 
     private val ledgerBackend: LedgerBackend by lazy { iosLedgerBackend() }
     private val ledger: LedgerWriter by lazy { LedgerWriter(ledgerBackend) }
-    private val platform: IosUploadJobPlatform by lazy {
-        IosUploadJobPlatform(log, PhotoLibraryResourceEnumerator())
+    private val discovery: IosDiscovery by lazy {
+        IosDiscovery(log, PhotoLibraryResourceEnumerator())
+    }
+    private val platform: IosPhotoKitUploadPlatform by lazy {
+        IosPhotoKitUploadPlatform(log, discovery)
     }
     private val discoveryStore: IosDiscoveryStore by lazy { IosDiscoveryStore() }
 
