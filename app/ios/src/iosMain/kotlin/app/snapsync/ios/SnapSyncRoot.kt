@@ -232,6 +232,10 @@ object SnapSyncRoot {
      */
     fun onForeground() {
         host
+        // App-driven upload tier (iOS 18–26.0): foreground entry pumps an upload cycle (completions then
+        // keep it draining while the app is open). No-op on ≥26.1 (the OS drives the extension).
+        log.i { "onForeground: useAppDrivenUpload=$useAppDrivenUpload (force=$forceUrlSessionUpload, osSupported=${backgroundUploadSupported()})" }
+        if (useAppDrivenUpload) urlSessionUpload.onForeground()
         scope.launch { refreshStatusSources() }
         // Foreground-only discovery (capability `photo-download`): pick up foreign photos others added
         // since the last read, and import anything already staged. No background poll.
@@ -292,10 +296,13 @@ object SnapSyncRoot {
     }
 
     fun handleBackgroundUrlSession(identifier: String, completionHandler: () -> Unit) {
-        // Repurposed for downloads: the OS relaunched us to deliver background download completions.
-        // Adopt the session so its delegate fires (staging + import run), and invoke the OS handler
-        // once events drain. Imports run here without the app being foregrounded (capability
-        // `photo-download`).
+        // Route by session identifier: the app-driven UPLOAD session (18–26.0) vs the download session.
+        if (identifier == UrlSessionUploadController.SESSION_IDENTIFIER) {
+            urlSessionUpload.onBackgroundSessionEvents(completionHandler)
+            return
+        }
+        // Downloads: the OS relaunched us to deliver background download completions. Adopt the session
+        // so its delegate fires (staging + import run), and invoke the OS handler once events drain.
         downloadJobs.adoptBackgroundEvents(completionHandler)
     }
 
@@ -400,6 +407,9 @@ object SnapSyncRoot {
     // not the old fire-and-forget `scope.launch { clearRequested() }` on the main scope, which raced the
     // immediate re-enable and could delete the re-enabled extension's fresh REQUESTED rows (§7.1).
     private suspend fun disableExtension() {
+        // App-driven tier: no OS extension to toggle — cancel in-flight transfers + heartbeat and wipe
+        // the local ledger/cursor (leave). The app is the single writer here, so this owns the reset.
+        if (useAppDrivenUpload) { urlSessionUpload.leave(); return }
         setUploadExtensionEnabled(false)
         NSUserDefaults(suiteName = LEDGER_APP_GROUP).removeObjectForKey(DISCOVERY_TOKEN_KEY)
         clearRequestedOffMain({ ledgerBackend.clearRequested() }, log = log)
@@ -452,9 +462,33 @@ object SnapSyncRoot {
     private fun enableBackgroundUploadOnGrant() {
         scope.launch {
             permission.permission.collect { status ->
-                if (status == PermissionStatus.GRANTED) enableBackgroundUpload()
+                if (status != PermissionStatus.GRANTED) return@collect
+                // Per-version tier selection: PhotoKit extension on ≥26.1; the in-app URLSession pump on
+                // 18–26.0 (or the dev force flag). The app-driven start sweeps orphaned staging + pumps a cycle.
+                if (useAppDrivenUpload) urlSessionUpload.start() else enableBackgroundUpload()
             }
         }
+    }
+
+    // Dev/test force flag (like SNAPSYNC_DEEPLINK): forces the app-driven URLSession upload tier even on
+    // iOS ≥26.1 so it can be exercised on the simulator (which cannot run the PhotoKit extension). Inert
+    // in production — a launch env var is only injectable via a developer launch.
+    private val forceUrlSessionUpload: Boolean =
+        NSProcessInfo.processInfo.environment["SNAPSYNC_FORCE_URLSESSION_UPLOAD"] != null
+
+    /** True when uploads run in-process over a background URLSession (iOS 18–26.0, or the force flag). */
+    private val useAppDrivenUpload: Boolean
+        get() = !backgroundUploadSupported() || forceUrlSessionUpload
+
+    // The app-driven (iOS 18–26.0) upload tier's composition root. Built lazily and used only when
+    // [useAppDrivenUpload]; on iOS ≥26.1 without the force flag it is never touched (the extension runs).
+    private val urlSessionUpload: UrlSessionUploadController by lazy {
+        UrlSessionUploadController(scope, ledgerBackend, config, deviceId, backendHost, log)
+    }
+
+    /** The upload heartbeat BGProcessingTask handler (app-driven tier). Registered in the Swift shell. */
+    fun runUploadHeartbeat(onComplete: () -> Unit) {
+        if (useAppDrivenUpload) urlSessionUpload.onBackgroundTask(onComplete) else onComplete()
     }
 
     /** Whether the iOS 26.1 background-upload API is present on this system. */

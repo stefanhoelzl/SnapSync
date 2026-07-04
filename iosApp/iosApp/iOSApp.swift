@@ -22,6 +22,17 @@ final class AppDelegate: NSObject, UIApplicationDelegate {
                 task.setTaskCompleted(success: true)
             }
         }
+        // The app-driven (iOS 18–26.0) upload heartbeat: tops up the background URLSession queue and
+        // catches new captures while the app is closed. No-op on ≥26.1 (the PhotoKit extension runs).
+        BGTaskScheduler.shared.register(
+            forTaskWithIdentifier: "app.snapsync.upload.heartbeat",
+            using: nil
+        ) { task in
+            task.expirationHandler = { task.setTaskCompleted(success: false) }
+            SnapSyncRoot.shared.runUploadHeartbeat {
+                task.setTaskCompleted(success: true)
+            }
+        }
         return true
     }
 

@@ -158,6 +158,15 @@ class IosUrlSessionUploadPlatform(
         removed?.let { deleteFile(it.fileUrl) }
     }
 
+    /**
+     * Force the (lazy) background session to be adopted for this process — on a
+     * `handleEventsForBackgroundURLSession` relaunch, this re-attaches the session by its identifier so
+     * it re-delivers the completion callbacks for transfers finished while the app was suspended.
+     */
+    fun reattach() {
+        session // touching the lazy val instantiates + adopts the background session
+    }
+
     /** Cancel all in-flight transfers + clear staged files (on leave / disable / event switch). */
     fun cancelAll() {
         val entries = locked { val v = inFlight.values.toList(); inFlight.clear(); terminal.clear(); v }

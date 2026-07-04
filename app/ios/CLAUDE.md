@@ -64,8 +64,12 @@ Swift shells are pass-throughs; all logic is Kotlin. Do not add parsing or decis
   (composing the shared `IosDiscovery` from `:app:ios:photokit-discovery`), and the `UploadCycle`;
   `process()` runs one blocking discover→engine→job→drain cycle.
 
-**Single-writer invariant across processes:** the **extension is the only `LedgerWriter`**; the app
-constructs only reader/watcher. Never construct a `LedgerWriter` in `:app:ios`.
+**Single-writer invariant — the writer's process depends on the tier** (`sync-ledger`: exactly one
+record-writer; its process placement is a platform binding). On **iOS ≥26.1** the **extension** is the
+only `LedgerWriter` and the app constructs only reader/watcher (never a writer). On **iOS 18–26.0**
+there is no extension, so the **app** holds the single `LedgerWriter` — constructed in
+`UrlSessionUploadController` (the app-driven tier). Outside that controller, `:app:ios` still
+constructs no writer.
 
 ## Entitlements & Info.plist (the cross-process glue)
 

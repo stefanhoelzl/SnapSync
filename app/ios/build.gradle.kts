@@ -25,6 +25,14 @@ kotlin {
             implementation(project(":domain:permission"))
             implementation(project(":domain:gallery"))
             implementation(project(":capability:config"))
+            // The app-driven (iOS 18–26.0) upload tier: the shared UploadCycle/pump/scheduler seam
+            // (:capability:upload), the edge request provider (:capability:upload-url), the shared
+            // PhotoKit discovery (:app:ios:photokit-discovery), and the URLSession adapters
+            // (:app:ios:url-session-upload). Composed in the main app process on <26.1.
+            implementation(project(":capability:upload"))
+            implementation(project(":capability:upload-url"))
+            implementation(project(":app:ios:photokit-discovery"))
+            implementation(project(":app:ios:url-session-upload"))
             // The stable per-install device id (shared Keychain) the app's status lists by
             // (`/files/<deviceId>/`) — the SAME item the extension reads (capability `device-identity`).
             implementation(project(":capability:device-id"))
