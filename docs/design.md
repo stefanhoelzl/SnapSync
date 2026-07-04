@@ -33,7 +33,9 @@ A **scope pivot** (2026-06-22) of SnapSync, from a *personal one-way library bac
 ## 1. Scope
 
 **In scope (this version):**
-- iOS app, distributed via **TestFlight** only. **Minimum iOS 27.0.**
+- iOS app, distributed via **TestFlight** only. **Minimum iOS 18.0** — two upload tiers selected per
+  OS version: OS-driven PhotoKit (`ios-photokit-upload`) on iOS ≥26.1, and an app-driven background
+  `URLSession` (`ios-url-session-upload`) on iOS 18–26.0.
 - **Event-scoped upload** (contribution): a device joined to an event uploads its local
   photos **with capture date ≥ the event start date** → storage, under that event's key namespace.
   Never deletes remotely; no in-app *viewer* (collected photos land in the system Photos library, below).
@@ -848,9 +850,13 @@ The two permanent sections:
   upstream — see `bunny-upload-endpoint`); the on-device provider is a pure local URL builder (no
   HTTP). There is **no on-device SigV4 to golden-test** anymore (the v1 SigV4 golden suite retires
   with the presigner).
-- **iOS** — the upload extension is **physical-device only** in the current iOS 27 beta. Plan: **manual
-  on-device testing** now; move into simulator XCTest/CI once Apple adds simulator support. The URL
-  build, deeplink provisioning, and date-filter discovery can be simulator/JVM-tested earlier.
+- **iOS** — the PhotoKit upload extension (`ios-photokit-upload`) is **physical-device only** in the
+  current iOS 27 beta. Plan: **manual on-device testing** now; move into simulator XCTest/CI once Apple
+  adds simulator support. The URL build, deeplink provisioning, and date-filter discovery can be
+  simulator/JVM-tested earlier. The **app-driven `URLSession` tier** (`ios-url-session-upload`) is by
+  contrast **simulator-runnable** (a background `URLSession` runs in the simulator), so its transport is
+  drivable end-to-end there — though `BGProcessingTask` scheduling *timing* and true-suspend behavior
+  remain device-only.
 - **Desktop** — container reduction via `orbit-test` + Compose UI tests on the status screen and the
   two gate states. Panel/`PanelController`/fakes are test equipment (no tests). CI: Compose Desktop UI
   tests render offscreen under `-Djava.awt.headless=true` — **no display / Xvfb needed**.

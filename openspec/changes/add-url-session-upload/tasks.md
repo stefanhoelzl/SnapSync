@@ -30,11 +30,14 @@
 
 ## 4. App-driven adapter (`:app:ios:url-session-upload`)
 
-- [ ] 4.1 Create the module (iosMain, main-app-composed, not a separate target; depends on `:capability:upload` + `:app:ios:photokit-discovery`)
-- [ ] 4.2 Implement `IosUrlSessionUploadPlatform : UploadJobPlatform` over a background `URLSession`: `createJob` (`uploadTask(fromFile:)`, tag `taskDescription = key`, own cap → `LIMIT_EXCEEDED`, unusable file → `FAILED`); `fetchRetryJobs` → empty; `fetchAckJobs` (drain delegate completions, key by destination URL); `retryJob` = cancel+recreate; `acknowledge` = drop record + delete temp file; `discoverResources` delegates to `IosDiscovery`
-- [ ] 4.3 Per-slot temp staging: materialize a resource to an App-Group temp file only when a slot frees; delete on terminal completion; launch orphan-sweep
-- [ ] 4.4 Precise reconciliation: at cycle start, match `getAllTasks` to ledger rows by `taskDescription == key`; surface `REQUESTED`-with-no-live-task-not-stored as terminal failed (recreate); do not use `clearRequested`
-- [ ] 4.5 Implement `IosBackgroundScheduler : BackgroundScheduler` over `BGTaskScheduler` (network required, external power not; re-submit while joined; handle expiration)
+> Compile/link-verified on `iosSimulatorArm64` (all cinterop bindings resolve). Runtime behavior
+> (background transfers, BGTask scheduling, delegate delivery) is device-only — no sub-26 runtime here.
+
+- [x] 4.1 Create the module (iosMain, main-app-composed, not a separate target; depends on `:capability:upload` + `:app:ios:photokit-discovery`)
+- [x] 4.2 Implement `IosUrlSessionUploadPlatform : UploadJobPlatform` over a background `URLSession`: `createJob` (`uploadTask(fromFile:)`, tag `taskDescription = key`, own cap → `LIMIT_EXCEEDED`, unusable payload/file → `FAILED`); `fetchRetryJobs` → empty; `fetchAckJobs` (drain delegate completions, key by `taskDescription`); `retryJob` = cancel+recreate; `acknowledge` = drop record + delete temp file; `discoverResources` delegates to `IosDiscovery`. Delegate is a separate `NSObject` `SessionDelegate` (a Kotlin-interface class can't also be an ObjC supertype); shared state guarded by `NSLock`
+- [x] 4.3 Per-slot temp staging (`PHAssetResourceManager.writeData` to the App-Group `upload-staging` dir, only when a slot frees; delete on terminal); launch orphan-sweep (`sweepStaging()` skips files still referenced by live tasks)
+- [x] 4.4 Precise reconciliation: `fetchAckJobs` matches `getAllTasks` to the ledger's `pendingKeys()` by `taskDescription == key`; a `REQUESTED` key with no live task + no completion → surfaced terminal `FAILED` (flips row `REQUESTED`→`FAILED`, retried on next full enum); no `clearRequested`
+- [x] 4.5 Implement `IosBackgroundScheduler : BackgroundScheduler` over `BGProcessingTaskRequest` (network required, external power not; `scheduleNext` (re)submits, `cancel` cancels)
 
 ## 5. App wiring + Swift shell (`:app:ios`)
 
@@ -45,9 +48,9 @@
 
 ## 6. Docs
 
-- [ ] 6.1 `docs/design.md` §1: minimum iOS 27 → **18**, documented as two upload tiers (PhotoKit ≥26.1 / URLSession 18–26.0)
-- [ ] 6.2 `docs/design.md` §6: note the app-driven transport is **simulator-testable** (unlike the PhotoKit extension); `BGProcessingTask` timing stays device-only
-- [ ] 6.3 `CLAUDE.md`: module table (+`:app:ios:photokit-discovery`, +`:app:ios:url-session-upload`; note the pump/scheduler in `:capability:upload`), min-iOS line, and the version-tier note
+- [x] 6.1 `docs/design.md` §1: minimum iOS 27 → **18**, documented as two upload tiers (PhotoKit ≥26.1 / URLSession 18–26.0)
+- [x] 6.2 `docs/design.md` §6: noted the app-driven transport is **simulator-testable** (unlike the PhotoKit extension); `BGProcessingTask` timing stays device-only
+- [x] 6.3 `CLAUDE.md`: module table (+`:app:ios:photokit-discovery`, +`:app:ios:url-session-upload`; pump/scheduler in `:capability:upload`), min-iOS line, version-tier note; `app/ios/CLAUDE.md` two-tier deviation section + renamed adapter ref (the single-writer/enable wiring notes there update with task 5)
 
 ## 7. On-device verification (sub-26 device)
 
