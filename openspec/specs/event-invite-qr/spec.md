@@ -10,19 +10,17 @@ joined-layer visibility rule, the QR display, the fire-and-forget share over a b
 `share: (String) -> Unit` lambda (no-op default), and the explicit acknowledgement that the
 displayed QR is the full join capability (any scanner becomes an uploader; an existing member
 re-scanning reconciles and uploads nothing new).
-
 ## Requirements
-
 ### Requirement: The invite deeplink is derived from the joined event
 
 The presentation layer SHALL derive the invite deeplink from the persisted event config: the
-configured `eventId` encoded via `encodeConfigUrl(EventConfigPayload(eventId))` (the
-`deeplink-config` encoder, the inverse of the decode run on a scanned QR). The derivation SHALL be
-deterministic and require no network call and no secret — the same `eventId` produces the same
+configured `eventId` (from `EventConfig`) encoded via `encodeConfigUrl(EventLinkPayload(eventId))`
+(the `deeplink-config` encoder, the inverse of the decode run on a scanned QR). The derivation SHALL
+be deterministic and require no network call and no secret — the same `eventId` produces the same
 `snapsync://config?v=3&d=…` URL a scanner would receive. The invite deeplink SHALL be exposed as
 observable state sourced from `ConfigSource` (so a single source feeds both the rendered QR and the
 share action), and SHALL be absent (`null`) whenever no event is configured. It SHALL NOT enter
-`UiState`; the snapshot→state reduction is unchanged.
+`UiState`; the snapshot→state reduction is unchanged by the invite feature.
 
 #### Scenario: The invite URL round-trips to the configured event
 - **WHEN** an event is configured and the invite deeplink is derived
@@ -34,30 +32,29 @@ share action), and SHALL be absent (`null`) whenever no event is configured. It 
 - **THEN** the derived invite deeplink is `null`
 
 #### Scenario: The reduction is untouched
-- **WHEN** the invite feature is added
-- **THEN** `UiState` gains no variant and `reduceFrom` gains no branch — the invite URL enters the
-  screen as a parameter, not as reduced state
+- **WHEN** the invite feature is present
+- **THEN** the invite URL enters the screen as a parameter, not as reduced state
 
 ### Requirement: Invite affordances appear only in the joined layer
 
-The invite QR, its caption, and the share action SHALL be presented to the user **only** in the
-joined-layer states — `InProgress`, `NothingToSync`, and `Completed` — and SHALL NOT be presented in
-the loading, setup-gate, or permission-blocked states. (There are no longer `joining` or `join-failed`
-states; reconciliation runs in the extension and the screen shows the listing-derived snapshot during a
-(re)join — see `event-rejoin-reconciliation` and `sync-status-screen`.) The gate SHALL be the same
-joined-layer predicate that scopes the leave action; the invite URL may be non-`null` before the joined
-layer (config present but permission not granted), yet the affordances SHALL still not render outside the
-joined layer.
+The invite QR, its caption, and the share action SHALL be presented to the user in the **joined
+layer** — defined as **config present** (the `UiState.Joined` state) — and SHALL NOT be presented in
+the loading or create-layer states. Crucially, the affordances SHALL render whenever an event is
+configured **including when permission is not `GRANTED`** (the `NeedsAccess` health): sharing the
+invite requires no photo access, so a host can share the moment they create or join, before granting
+access. The gate SHALL be the same config-present predicate that scopes the leave action.
 
-#### Scenario: Joined-layer states present the invite affordances
-
-- **WHEN** the screen is in `InProgress`, `NothingToSync`, or `Completed`
+#### Scenario: The joined layer presents the invite affordances
+- **WHEN** the screen is in `UiState.Joined` (any health, including `NeedsAccess`, `Syncing`, `InSync`)
 - **THEN** the invite QR, its caption, and the share action are presented
 
-#### Scenario: Non-joined states present no invite affordances
+#### Scenario: Permission-off still shows the invite
+- **WHEN** config is present and permission is `NOT_DETERMINED` or `DENIED`
+- **THEN** the QR, caption, and share action are still presented (the invite does not require access)
 
-- **WHEN** the screen is in the loading, setup-gate, or permission-blocked state
-- **THEN** no invite QR, caption, or share action is presented, even when an event is configured
+#### Scenario: Non-joined states present no invite affordances
+- **WHEN** the screen is in the loading or create-layer state
+- **THEN** no invite QR, caption, or share action is presented, even if an event is being created
 
 ### Requirement: The status screen displays the join QR with a caption
 
@@ -65,7 +62,9 @@ In the joined layer the screen SHALL display a **scannable** QR encoding the inv
 caption "Scan to join this event", rendered through the design system's QR component (the QR-rendering
 library is contained to the components module; the screen passes only the deeplink string and the
 caption text). The QR SHALL render the invite URL verbatim so another device's camera joins the same
-event.
+event. The QR SHALL render **dark modules on a light card in both light and dark themes** (the design
+system SHALL NOT render an inverted light-on-dark QR, which does not scan reliably — see
+`design-system`).
 
 #### Scenario: The QR encodes the invite deeplink
 - **WHEN** the joined-layer screen renders the QR
@@ -75,6 +74,10 @@ event.
 #### Scenario: Scanning the displayed QR joins the same event
 - **WHEN** another device scans the displayed QR
 - **THEN** it receives the same `snapsync://config?v=3&d=…` deeplink and provisions the same `eventId`
+
+#### Scenario: QR stays dark-on-light in dark theme
+- **WHEN** the app renders in its dark theme
+- **THEN** the QR is presented as dark modules on a light card (not inverted), so it remains scannable
 
 ### Requirement: Sharing the invite is fire-and-forget
 
@@ -130,3 +133,4 @@ uploads nothing already present. There SHALL be no access control on who may sca
 - **WHEN** a member already joined to the event re-scans the displayed QR
 - **THEN** the join reconciles against storage, seeding already-stored photos as `COMPLETED`, and
   nothing already present is re-uploaded
+

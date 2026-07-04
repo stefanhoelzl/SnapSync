@@ -3,8 +3,10 @@ package app.snapsync.ui.components
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.unit.dp
 
 /**
  * A single-line text input — the app's first. Semantic, appearance-free: it carries the current
@@ -33,6 +35,7 @@ fun AppTextField(
         singleLine = true,
         isError = errorText != null,
         supportingText = errorText?.let { { Text(it) } },
+        shape = RoundedCornerShape(14.dp),
         modifier = Modifier.fillMaxWidth(),
     )
 }

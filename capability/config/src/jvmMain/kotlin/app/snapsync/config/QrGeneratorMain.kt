@@ -30,7 +30,7 @@ fun main() {
         System.getenv(env) ?: props.getProperty(prop)
         ?: error("missing $env (or $prop in local.properties)")
 
-    val payload = EventConfigPayload(
+    val payload = EventLinkPayload(
         eventId = value("SNAPSYNC_EVENT_ID", "snapsync.eventId"),
     )
 

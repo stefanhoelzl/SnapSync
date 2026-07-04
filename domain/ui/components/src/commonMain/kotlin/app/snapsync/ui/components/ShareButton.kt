@@ -1,10 +1,13 @@
 package app.snapsync.ui.components
 
+import androidx.compose.foundation.layout.size
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.IosShare
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.unit.dp
 
 /**
  * The semantic "share the invite" action: a flat, icon-only button mirroring [LeaveButton]. Emphasis
@@ -14,7 +17,11 @@ import androidx.compose.runtime.Composable
  */
 @Composable
 fun ShareButton(description: String, onClick: () -> Unit) {
-    IconButton(onClick = onClick) {
-        Icon(imageVector = Icons.Filled.IosShare, contentDescription = description)
+    IconButton(onClick = onClick, modifier = Modifier.size(56.dp)) {
+        Icon(
+            imageVector = Icons.Filled.IosShare,
+            contentDescription = description,
+            modifier = Modifier.size(28.dp),
+        )
     }
 }

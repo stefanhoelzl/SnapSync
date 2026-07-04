@@ -12,8 +12,11 @@ import kotlinx.serialization.json.Json
 
 /** The outcome of a `POST /event` create call — a closed set the use-case maps to [CreationStatus]. */
 sealed interface CreateOutcome {
-    /** `201` — the server minted the event; [eventId] is the canonical UUID to provision. */
-    data class Created(val eventId: String) : CreateOutcome
+    /**
+     * `201` — the server minted the event; [eventId] is the canonical UUID to provision and [name]
+     * is the stored event name (carried straight into `EventConfig`, so create needs no metadata fetch).
+     */
+    data class Created(val eventId: String, val name: String? = null) : CreateOutcome
 
     /** `400` — the server rejected the name. */
     data object InvalidName : CreateOutcome
@@ -51,9 +54,8 @@ class HttpEventCreationClient(
             }
             when (response.status) {
                 HttpStatusCode.Created ->
-                    CreateOutcome.Created(
-                        json.decodeFromString(CreatedDto.serializer(), response.bodyAsText()).eventId,
-                    )
+                    json.decodeFromString(CreatedDto.serializer(), response.bodyAsText())
+                        .let { CreateOutcome.Created(eventId = it.eventId, name = it.name) }
                 HttpStatusCode.BadRequest -> CreateOutcome.InvalidName
                 else -> CreateOutcome.Transient
             }

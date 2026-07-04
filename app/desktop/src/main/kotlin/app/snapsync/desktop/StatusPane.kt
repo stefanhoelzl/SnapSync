@@ -57,14 +57,15 @@ fun StatusPane(
         )
     }
     val state by host.container.stateFlow.collectAsState()
-    val download by host.downloadStatus.collectAsState()
     // The joined-layer presets force a canned event, so this is non-null there → the QR renders.
     val inviteUrl by host.inviteUrl.collectAsState()
+    val eventName by host.eventName.collectAsState()
 
     PhoneFrame {
         // `leave` is the injected edge: the forge leaves it defaulted (Confirm reviewable but inert),
         // the full-stack world harness binds it to `World.leave()`. Share is a clipboard/log stub; the
-        // QR renders from the canned invite URL.
+        // QR renders from the canned invite URL. Download progress now folds into the status line's
+        // arrows via the reduction, so no separate download line is passed.
         StatusScreen(
             state,
             host::onRequestPermission,
@@ -72,9 +73,8 @@ fun StatusPane(
             onLeaveEvent = host::onLeaveEvent,
             onShareInvite = host::onShareInvite,
             inviteUrl = inviteUrl,
+            eventName = eventName,
             onCreateEvent = host::onCreateEvent,
-            downloadedCount = download.downloaded,
-            downloadTotal = download.total,
         )
     }
 }

@@ -20,7 +20,10 @@ import kotlinx.coroutines.launch
 class CreateEvent(
     private val client: EventCreationClient,
     private val status: MutableCreationStatusSource,
-    private val provision: suspend (eventId: String) -> Unit,
+    // Provision the minted event exactly like a scanned QR, but with the name in hand (from the
+    // `POST /event` response) so create needs no `GET /event/:id` fetch. The composition root's hook
+    // does the switch-reset, `ConfigStore.save(EventConfig(eventId, name))`, and producer enable.
+    private val provision: suspend (eventId: String, name: String?) -> Unit,
     private val scope: CoroutineScope,
 ) : EventCreator {
 
@@ -31,7 +34,7 @@ class CreateEvent(
             status.set(CreationStatus.InFlight)
             when (val outcome = client.create(name.trim())) {
                 is CreateOutcome.Created -> {
-                    provision(outcome.eventId)
+                    provision(outcome.eventId, outcome.name)
                     status.set(CreationStatus.Idle)
                 }
                 CreateOutcome.InvalidName -> {

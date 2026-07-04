@@ -1,10 +1,12 @@
 package app.snapsync.integration
 
 import app.snapsync.config.ConfigStore
-import app.snapsync.config.EventConfigPayload
+import app.snapsync.config.EventConfig
 import app.snapsync.engine.LedgerState
 import app.snapsync.permission.PermissionRequester
+import app.snapsync.presentation.Arrow
 import app.snapsync.presentation.StatusContainerHost
+import app.snapsync.presentation.SyncHealth
 import app.snapsync.presentation.UiState
 import app.snapsync.world.World
 import app.snapsync.world.worldTest
@@ -36,19 +38,22 @@ class FullStackIntegrationTest {
             w.completed.refresh(); w.inFlight.refresh()
 
             val host = statusHost(w, scope)
-            // total = 1, nothing uploaded yet → InProgress(0 of 1).
-            assertEquals(UiState.InProgress(synced = 0, total = 1, inProgress = 0), host.await { it is UiState.InProgress })
+            // total = 1, nothing uploaded yet, no job created → Syncing with a static up arrow.
+            assertEquals(
+                UiState.Joined(SyncHealth.Syncing(Arrow.STATIC, Arrow.HIDDEN)),
+                host.await { it.health() is SyncHealth.Syncing },
+            )
 
-            // Run one cycle: the job is created → a REQUESTED (in-flight) ledger row.
+            // Run one cycle: the job is created → a REQUESTED (in-flight) ledger row → the up arrow pulses.
             w.runUploadCycle()
             w.inFlight.refresh()
-            host.await { it is UiState.InProgress && it.inProgress == 1 }
+            host.await { (it.health() as? SyncHealth.Syncing)?.upload == Arrow.PULSING }
 
-            // Operator completes the job (store-direct deposit) → next cycle acks → COMPLETED.
+            // Operator completes the job (store-direct deposit) → next cycle acks → COMPLETED → settled.
             w.platform.completeJob("A-primary.jpg")
             w.runUploadCycle()
             w.completed.refresh(); w.inFlight.refresh()
-            assertEquals(UiState.Completed(total = 1), host.await { it is UiState.Completed })
+            assertEquals(UiState.Joined(SyncHealth.InSync), host.await { it.health() is SyncHealth.InSync })
 
             // World outcomes (not UiState alone):
             assertTrue("A-primary.jpg" in w.store.objectsOf(w.ownDeviceId))
@@ -78,7 +83,7 @@ class FullStackIntegrationTest {
             w.completed.refresh(); w.inFlight.refresh()
             host.onCreateEvent("Party") // POST /event via the mini-edge → provision → gate lifts
             val after = host.await { it !is UiState.CreateEvent && it !is UiState.CreatingEvent }
-            assertTrue(after is UiState.NothingToSync) // no photos in the library
+            assertEquals(UiState.Joined(SyncHealth.InSync), after) // no photos in the library → settled
             assertTrue(w.configSource.config.value != null) // world outcome: config provisioned
         } finally {
             scope.cancel()
@@ -99,8 +104,8 @@ class FullStackIntegrationTest {
 
             w.completed.refresh(); w.inFlight.refresh()
             val host = statusHost(w, scope)
-            // The imported foreign asset is suppressed from the OWN upload universe → nothing to sync.
-            assertTrue(host.await { it is UiState.NothingToSync || it is UiState.InProgress } is UiState.NothingToSync)
+            // The imported foreign asset is suppressed from the OWN upload universe → own status settled.
+            assertEquals(SyncHealth.InSync, host.await { it.health() is SyncHealth.InSync }.health())
         } finally {
             scope.cancel()
         }
@@ -141,6 +146,8 @@ class FullStackIntegrationTest {
         scope = scope,
     )
 
+    private fun UiState.health(): SyncHealth? = (this as? UiState.Joined)?.health
+
     private suspend fun StatusContainerHost.await(predicate: (UiState) -> Boolean): UiState =
         withTimeout(5_000) { container.stateFlow.first(predicate) }
 }
@@ -151,6 +158,6 @@ private object NoOpRequester : PermissionRequester {
 }
 
 private object NoOpConfigStore : ConfigStore {
-    override suspend fun save(config: EventConfigPayload) = Unit
+    override suspend fun save(config: EventConfig) = Unit
     override suspend fun clear() = Unit
 }

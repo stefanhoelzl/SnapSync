@@ -5,7 +5,7 @@ import app.snapsync.config.ConfigStore
 import app.snapsync.permission.PermissionRequester
 import app.snapsync.permission.PermissionStatus
 import app.snapsync.permission.PermissionStatusSource
-import app.snapsync.config.EventConfigPayload
+import app.snapsync.config.EventConfig
 import app.snapsync.eventcreation.CreationFailureReason
 import app.snapsync.eventcreation.CreationStatus
 import app.snapsync.eventcreation.CreationStatusSource
@@ -36,7 +36,7 @@ class PanelController {
         ),
     )
     private val permissionState = MutableStateFlow(PermissionStatus.NOT_DETERMINED)
-    private val configState = MutableStateFlow<EventConfigPayload?>(null)
+    private val configState = MutableStateFlow<EventConfig?>(null)
     private val creationState = MutableStateFlow<CreationStatus>(CreationStatus.Idle)
     private val armedGrants = MutableStateFlow(true)
 
@@ -47,8 +47,8 @@ class PanelController {
     // The joined-layer download line (capability `photo-download`): forge "downloaded X of Y" to
     // review the indicator without a device. 0/0 hides the line.
     val downloadStatusSource = InMemoryDownloadStatusSource()
-    fun setDownload(downloaded: Int, total: Int) =
-        downloadStatusSource.set(DownloadProgress(downloaded, total))
+    fun setDownload(downloaded: Int, total: Int, inFlight: Int = 0) =
+        downloadStatusSource.set(DownloadProgress(downloaded, total, inFlight))
 
     val permissionSource: PermissionStatusSource = object : PermissionStatusSource {
         override val permission = permissionState
@@ -61,7 +61,7 @@ class PanelController {
     }
 
     val configStore: ConfigStore = object : ConfigStore {
-        override suspend fun save(config: EventConfigPayload) {
+        override suspend fun save(config: EventConfig) {
             configState.value = config
         }
 
@@ -208,9 +208,11 @@ class PanelController {
     )
 
     private companion object {
-        // A stand-in config so the "joined an event" step shows connected; never used to upload.
-        val CANNED_CONFIG = EventConfigPayload(
+        // A stand-in config so the "joined an event" step shows connected; never used to upload. The
+        // name gives the joined layer a title to review.
+        val CANNED_CONFIG = EventConfig(
             eventId = "00000000-0000-4000-8000-000000000000",
+            name = "Anna's Birthday",
         )
     }
 }

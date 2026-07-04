@@ -29,6 +29,10 @@ CREATE TABLE downloadResource (
     contentType    TEXT NOT NULL,
     originalFilename TEXT NOT NULL,
     stagedPath     TEXT,
+    -- 1 once this resource's download has been SENT to the OS (a background URLSession task exists).
+    -- Combined with `stagedPath IS NULL` it means "in flight" — the download analogue of the upload
+    -- ledger's REQUESTED. Superseded implicitly once `stagedPath` becomes non-null.
+    enqueued       INTEGER NOT NULL DEFAULT 0,
     PRIMARY KEY (sourceDeviceId, sourceAssetId, resourceKey)
 );
 
@@ -105,6 +109,23 @@ markResourceStaged:
 UPDATE downloadResource
 SET stagedPath = :stagedPath
 WHERE sourceDeviceId = :sourceDeviceId AND sourceAssetId = :sourceAssetId AND resourceKey = :resourceKey;
+
+-- Mark a resource's download as sent to the OS (a background URLSession task now exists).
+markResourceEnqueued:
+UPDATE downloadResource
+SET enqueued = 1
+WHERE sourceDeviceId = :sourceDeviceId AND sourceAssetId = :sourceAssetId AND resourceKey = :resourceKey;
+
+-- Foreign assets with at least one resource in flight — enqueued to the OS but not yet staged — and
+-- not yet imported. The download analogue of the upload ledger's in-flight `pending` (asset-counted).
+countInFlightAssets:
+SELECT COUNT(*) FROM downloadAsset a
+WHERE a.state != 'IMPORTED'
+  AND EXISTS (
+      SELECT 1 FROM downloadResource r
+      WHERE r.sourceDeviceId = a.sourceDeviceId AND r.sourceAssetId = a.sourceAssetId
+        AND r.enqueued = 1 AND r.stagedPath IS NULL
+  );
 
 selectResourcesForAsset:
 SELECT resourceKey, url, role, contentType, originalFilename, stagedPath

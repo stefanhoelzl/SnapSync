@@ -3,7 +3,8 @@ package app.snapsync.presentation
 import app.snapsync.config.ConfigDecodeResult
 import app.snapsync.config.ConfigSource
 import app.snapsync.config.ConfigStore
-import app.snapsync.config.EventConfigPayload
+import app.snapsync.config.EventConfig
+import app.snapsync.config.EventLinkPayload
 import app.snapsync.config.decodeConfigUrl
 import app.snapsync.config.encodeConfigUrl
 import app.snapsync.eventcreation.CreateEvent
@@ -32,10 +33,14 @@ import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.runTest
 import org.orbitmvi.orbit.test.test
 
-// StateFlow fakes mirror the seam contract exactly: the current truth is available
-// synchronously at construction, and every assignment is the whole truth. The fake knows its
-// truth synchronously, so it seeds Ready and never shows Loading; `value` wraps in Ready for
-// readable call sites.
+private const val EVENT_ID = "11111111-1111-4111-8111-111111111111"
+
+// Joined-state helpers keep the assertions readable.
+private fun syncing(up: Arrow, down: Arrow = Arrow.HIDDEN) = UiState.Joined(SyncHealth.Syncing(up, down))
+private val inSync = UiState.Joined(SyncHealth.InSync)
+private val joinedLoading = UiState.Joined(SyncHealth.Loading)
+private fun needsAccess(p: PermissionStatus) = UiState.Joined(SyncHealth.NeedsAccess(p))
+
 private class FakeSyncStatusSource(initial: SyncStatus = SyncStatus.Ready(snapshot())) :
     SyncStatusSource {
     constructor(initial: SyncProgress) : this(SyncStatus.Ready(initial))
@@ -56,16 +61,13 @@ private class FakePermissionSource(
 }
 
 // Config seam + store as one fake: save writes the cell, which is exactly how the real Keychain
-// adapter behaves (its change arrives back via ConfigSource). Defaults to present so the sync-state
-// tests fall through the setup gate.
-private val SAMPLE_CONFIG = EventConfigPayload(
-    eventId = "11111111-1111-4111-8111-111111111111",
-)
+// adapter behaves. Defaults to present so the sync-state tests reach the joined layer.
+private val SAMPLE_CONFIG = EventConfig(eventId = EVENT_ID, name = "Anna's Birthday")
 
-private class FakeConfig(initial: EventConfigPayload? = SAMPLE_CONFIG) : ConfigSource, ConfigStore {
+private class FakeConfig(initial: EventConfig? = SAMPLE_CONFIG) : ConfigSource, ConfigStore {
     private val flow = MutableStateFlow(initial)
-    override val config: StateFlow<EventConfigPayload?> = flow
-    override suspend fun save(config: EventConfigPayload) {
+    override val config: StateFlow<EventConfig?> = flow
+    override suspend fun save(config: EventConfig) {
         flow.value = config
     }
     override suspend fun clear() {
@@ -113,23 +115,23 @@ private fun host(
 class StatusContainerHostTest {
 
     @Test
-    fun `fewer synced than present maps to InProgress with the counts`() = runTest {
+    fun `work in flight maps to Syncing with a pulsing up arrow`() = runTest {
         val source = FakeSyncStatusSource()
         host(source, backgroundScope).test(this) {
             runOnCreate()
             source.value = snapshot(pending = 35, completed = 12, total = 47)
-            expectState(UiState.InProgress(synced = 12, total = 47, inProgress = 35))
+            expectState(syncing(up = Arrow.PULSING)) // completed<total, pending>0
             cancelAndIgnoreRemainingItems()
         }
     }
 
     @Test
-    fun `virgin ledger with photos maps to InProgress zero of N`() = runTest {
+    fun `work remaining but no jobs yet maps to Syncing with a static up arrow`() = runTest {
         val source = FakeSyncStatusSource()
         host(source, backgroundScope).test(this) {
             runOnCreate()
-            source.value = snapshot(completed = 0, total = 5)
-            expectState(UiState.InProgress(synced = 0, total = 5, inProgress = 0))
+            source.value = snapshot(completed = 0, total = 5) // pending 0
+            expectState(syncing(up = Arrow.STATIC))
             cancelAndIgnoreRemainingItems()
         }
     }
@@ -179,7 +181,7 @@ class StatusContainerHostTest {
             permission = FakePermissionSource(PermissionStatus.DENIED),
             scope = backgroundScope,
         )
-        // Config absent outranks a non-granted permission — still the create input, not PermissionBlocked.
+        // Config absent outranks a non-granted permission — still the create input, not the joined layer.
         assertEquals(UiState.CreateEvent(), host.container.stateFlow.value)
     }
 
@@ -194,25 +196,20 @@ class StatusContainerHostTest {
         assertEquals(listOf("My Party"), creator.created)
     }
 
-    // Integration: the real CreateEvent use-case wired into the real container reduction. (The
-    // event-creation-ui → presentation dependency is allowed in production, so this needs no special
-    // boundary-crossing module — just the assembled stack with the network edge faked.)
     private class StubClient(private val outcome: CreateOutcome) : EventCreationClient {
         override suspend fun create(name: String) = outcome
     }
 
     @OptIn(ExperimentalCoroutinesApi::class)
     @Test
-    fun `a successful create flows through the use-case to a joined downstream state`() = runTest {
+    fun `a successful create flows through the use-case to the joined layer`() = runTest {
         val config = FakeConfig(null)
         val creationStatus = MutableCreationStatusSource()
-        // Eager dispatcher so the fire-and-forget create mutates the seams synchronously.
         val creator = CreateEvent(
-            client = StubClient(CreateOutcome.Created("evt-1")),
+            client = StubClient(CreateOutcome.Created(EVENT_ID, name = "My Party")),
             status = creationStatus,
-            // The provision path a scanned QR also takes: config goes present (no join ceremony — the
-            // extension reconciles on its own cycle; status comes straight from the listing snapshot).
-            provision = { config.save(EventConfigPayload("evt-1")) },
+            // The provision path a scanned QR also takes: config goes present with the name in hand.
+            provision = { eventId, name -> config.save(EventConfig(eventId, name)) },
             scope = CoroutineScope(UnconfinedTestDispatcher(testScheduler)),
         )
         val host = StatusContainerHost(
@@ -222,10 +219,9 @@ class StatusContainerHostTest {
         )
         host.test(this) {
             runOnCreate()
-            // Drive the real use-case (the onCreateEvent → creator hop is covered separately).
             creator.create("My Party")
-            // minted → provisioned (config present, granted) → the listing-derived snapshot (total 0).
-            expectState(UiState.NothingToSync)
+            // minted → provisioned (config present, granted) → listing snapshot total 0 → settled.
+            expectState(inSync)
             cancelAndIgnoreRemainingItems()
         }
     }
@@ -239,7 +235,7 @@ class StatusContainerHostTest {
         val creator = CreateEvent(
             client = StubClient(CreateOutcome.Transient),
             status = creationStatus,
-            provision = { provisioned = true },
+            provision = { _, _ -> provisioned = true },
             scope = CoroutineScope(UnconfinedTestDispatcher(testScheduler)),
         )
         val host = StatusContainerHost(
@@ -253,54 +249,51 @@ class StatusContainerHostTest {
             expectState(UiState.CreateEvent(error = "Couldn't reach the server."))
             cancelAndIgnoreRemainingItems()
         }
-        assertEquals(false, provisioned) // config never flipped
+        assertEquals(false, provisioned)
     }
 
     @Test
     fun `a re-join shows the listing-derived snapshot and never a join state`() = runTest {
-        // Config present + granted while the extension reconciles in the background: the screen reduces
-        // the listing snapshot directly (a rising synced count), with no Joining/JoinFailed rung at all.
-        val source = FakeSyncStatusSource(snapshot(completed = 0, total = 47))
+        // Seed Loading so the transition to the listing snapshot is a real change (equal states conflate).
+        val source = FakeSyncStatusSource(SyncStatus.Loading)
         host(source, backgroundScope).test(this) {
             runOnCreate()
-            source.value = snapshot(completed = 12, total = 47) // the seed/uploads land
-            expectState(UiState.InProgress(synced = 12, total = 47, inProgress = 0))
+            source.value = snapshot(completed = 12, total = 47)
+            expectState(syncing(up = Arrow.STATIC)) // rising synced count, no join screen
             cancelAndIgnoreRemainingItems()
         }
     }
 
     @Test
-    fun `empty library maps to NothingToSync`() = runTest {
-        // Seed a non-empty state so the transition to total=0 is a real change (equal UI states
-        // are conflated by the container's StateFlow).
+    fun `empty library maps to In sync`() = runTest {
         val source = FakeSyncStatusSource(snapshot(completed = 1, total = 3))
         host(source, backgroundScope).test(this) {
             runOnCreate()
             source.value = snapshot(completed = 0, total = 0)
-            expectState(UiState.NothingToSync)
+            expectState(inSync)
             cancelAndIgnoreRemainingItems()
         }
     }
 
     @Test
-    fun `all present photos synced maps to Completed`() = runTest {
-        val source = FakeSyncStatusSource()
+    fun `all present photos synced maps to In sync`() = runTest {
+        // Seed a Syncing state so the transition to settled is a real change.
+        val source = FakeSyncStatusSource(snapshot(completed = 1, total = 10))
         host(source, backgroundScope).test(this) {
             runOnCreate()
             source.value = snapshot(completed = 34, total = 34)
-            expectState(UiState.Completed(total = 34))
+            expectState(inSync)
             cancelAndIgnoreRemainingItems()
         }
     }
 
     @Test
-    fun `overshoot clamps the displayed synced count and maps to Completed`() = runTest {
-        val source = FakeSyncStatusSource()
+    fun `overshoot clamps and maps to In sync`() = runTest {
+        val source = FakeSyncStatusSource(snapshot(completed = 1, total = 10))
         host(source, backgroundScope).test(this) {
             runOnCreate()
-            // A deleted photo still COMPLETED in the ledger: completed 6 over a live total of 5.
-            source.value = snapshot(completed = 6, total = 5)
-            expectState(UiState.Completed(total = 5))
+            source.value = snapshot(completed = 6, total = 5) // synced clamps to 5 >= total
+            expectState(inSync)
             cancelAndIgnoreRemainingItems()
         }
     }
@@ -311,9 +304,9 @@ class StatusContainerHostTest {
         host(source, backgroundScope).test(this) {
             runOnCreate()
             source.value = snapshot(completed = 1, total = 10)
-            expectState(UiState.InProgress(synced = 1, total = 10, inProgress = 0))
-            source.value = snapshot(completed = 5, total = 10)
-            expectState(UiState.InProgress(synced = 5, total = 10, inProgress = 0))
+            expectState(syncing(up = Arrow.STATIC))
+            source.value = snapshot(completed = 10, total = 10)
+            expectState(inSync)
             cancelAndIgnoreRemainingItems()
         }
     }
@@ -323,36 +316,35 @@ class StatusContainerHostTest {
         val source = FakeSyncStatusSource(snapshot(completed = 34, total = 34))
         val container = host(source, backgroundScope).container
 
-        assertEquals(UiState.Completed(total = 34), container.stateFlow.value)
+        assertEquals(inSync, container.stateFlow.value)
     }
 
     @Test
-    fun `denied permission with config present blocks over any sync snapshot`() = runTest {
+    fun `denied permission with config present folds into the NeedsAccess status line`() = runTest {
         val source = FakeSyncStatusSource(snapshot(completed = 34, total = 34))
         val permission = FakePermissionSource(PermissionStatus.DENIED)
         val container = host(source, backgroundScope, permission = permission).container
 
-        assertEquals(UiState.PermissionBlocked(PermissionStatus.DENIED), container.stateFlow.value)
+        assertEquals(needsAccess(PermissionStatus.DENIED), container.stateFlow.value)
     }
 
     @Test
-    fun `not-determined permission with config present blocks the hero`() = runTest {
+    fun `not-determined permission with config present shows NeedsAccess`() = runTest {
         val source = FakeSyncStatusSource(snapshot(completed = 34, total = 34))
         val permission = FakePermissionSource(PermissionStatus.NOT_DETERMINED)
         val container = host(source, backgroundScope, permission = permission).container
 
-        assertEquals(UiState.PermissionBlocked(PermissionStatus.NOT_DETERMINED), container.stateFlow.value)
+        assertEquals(needsAccess(PermissionStatus.NOT_DETERMINED), container.stateFlow.value)
     }
 
     @Test
-    fun `revoking permission mid-sync blocks the running hero`() = runTest {
+    fun `revoking permission mid-sync switches the status line to NeedsAccess`() = runTest {
         val source = FakeSyncStatusSource(snapshot(completed = 34, total = 34))
         val permission = FakePermissionSource(PermissionStatus.GRANTED)
         host(source, backgroundScope, permission = permission).test(this) {
             runOnCreate()
-            // Synced and showing the hero, then access is revoked in system Settings.
             permission.permission.value = PermissionStatus.DENIED
-            expectState(UiState.PermissionBlocked(PermissionStatus.DENIED))
+            expectState(needsAccess(PermissionStatus.DENIED))
             cancelAndIgnoreRemainingItems()
         }
     }
@@ -368,21 +360,21 @@ class StatusContainerHostTest {
     }
 
     @Test
-    fun `loading snapshot with config and granted permission maps to Loading`() = runTest {
+    fun `loading snapshot with config and granted permission maps to a joined loading`() = runTest {
         val source = FakeSyncStatusSource(SyncStatus.Loading)
         val permission = FakePermissionSource(PermissionStatus.GRANTED)
         val container = host(source, backgroundScope, permission = permission).container
 
-        assertEquals(UiState.Loading, container.stateFlow.value)
+        assertEquals(joinedLoading, container.stateFlow.value)
     }
 
     @Test
-    fun `permission blocks a loading snapshot when config is present`() = runTest {
+    fun `permission outranks a loading snapshot when config is present`() = runTest {
         val source = FakeSyncStatusSource(SyncStatus.Loading)
         val permission = FakePermissionSource(PermissionStatus.NOT_DETERMINED)
         val container = host(source, backgroundScope, permission = permission).container
 
-        assertEquals(UiState.PermissionBlocked(PermissionStatus.NOT_DETERMINED), container.stateFlow.value)
+        assertEquals(needsAccess(PermissionStatus.NOT_DETERMINED), container.stateFlow.value)
     }
 
     @Test
@@ -396,27 +388,27 @@ class StatusContainerHostTest {
     }
 
     @Test
-    fun `both gates satisfied reveals the current sync state`() = runTest {
+    fun `granting permission reveals the current sync state`() = runTest {
         val source = FakeSyncStatusSource(snapshot(completed = 34, total = 34))
         val permission = FakePermissionSource(PermissionStatus.NOT_DETERMINED)
         host(source, backgroundScope, permission = permission).test(this) {
             runOnCreate()
             permission.permission.value = PermissionStatus.GRANTED
-            expectState(UiState.Completed(total = 34))
+            expectState(inSync)
             cancelAndIgnoreRemainingItems()
         }
     }
 
     @Test
-    fun `a valid deeplink saves config and advances the gate`() = runTest {
+    fun `a valid deeplink saves config and enters the joined layer`() = runTest {
         val source = FakeSyncStatusSource(SyncStatus.Loading)
         val permission = FakePermissionSource(PermissionStatus.GRANTED)
         val configFake = FakeConfig(null)
         host(source, backgroundScope, permission = permission, configFake = configFake).test(this) {
             runOnCreate()
-            containerHost.onOpenUrl(encodeConfigUrl(SAMPLE_CONFIG))
-            // config now present + granted + Loading snapshot -> Loading
-            expectState(UiState.Loading)
+            containerHost.onOpenUrl(encodeConfigUrl(EventLinkPayload(EVENT_ID)))
+            // config now present + granted + Loading snapshot -> joined loading
+            expectState(joinedLoading)
             cancelAndIgnoreRemainingItems()
         }
     }
@@ -466,7 +458,6 @@ class StatusContainerHostTest {
 
     @Test
     fun `onLeaveEvent with the default no-op leave is inert`() = runTest {
-        // Construction without injecting a leave action succeeds, and a confirmed leave does nothing.
         host(FakeSyncStatusSource(), backgroundScope).test(this) {
             containerHost.onLeaveEvent()
         }
@@ -480,11 +471,10 @@ class StatusContainerHostTest {
             FakeSyncStatusSource(), FakePermissionSource(), SpyRequester(), configFake, configFake,
             backgroundScope,
         )
-        // Same URL a scanner of the event's QR would receive, and it decodes back to the same eventId.
-        assertEquals(encodeConfigUrl(SAMPLE_CONFIG), host.inviteUrl.value)
+        assertEquals(encodeConfigUrl(EventLinkPayload(EVENT_ID)), host.inviteUrl.value)
         val decoded = decodeConfigUrl(host.inviteUrl.value!!)
         assertTrue(decoded is ConfigDecodeResult.Success)
-        assertEquals(SAMPLE_CONFIG.eventId, decoded.payload.eventId)
+        assertEquals(EVENT_ID, decoded.payload.eventId)
     }
 
     @Test
@@ -495,6 +485,16 @@ class StatusContainerHostTest {
             backgroundScope,
         )
         assertEquals(null, host.inviteUrl.value)
+    }
+
+    @Test
+    fun `event name derives from the persisted config`() = runTest {
+        val configFake = FakeConfig(SAMPLE_CONFIG)
+        val host = StatusContainerHost(
+            FakeSyncStatusSource(), FakePermissionSource(), SpyRequester(), configFake, configFake,
+            backgroundScope,
+        )
+        assertEquals("Anna's Birthday", host.eventName.value)
     }
 
     @Test
@@ -510,7 +510,7 @@ class StatusContainerHostTest {
         }
         advanceUntilIdle()
 
-        assertEquals(listOf(encodeConfigUrl(SAMPLE_CONFIG)), shared)
+        assertEquals(listOf(encodeConfigUrl(EventLinkPayload(EVENT_ID))), shared)
     }
 
     @Test
@@ -531,7 +531,6 @@ class StatusContainerHostTest {
 
     @Test
     fun `onShareInvite with the default no-op share is inert`() = runTest {
-        // Construction without injecting a share action succeeds, and a share does nothing.
         host(FakeSyncStatusSource(), backgroundScope).test(this) {
             containerHost.onShareInvite()
         }

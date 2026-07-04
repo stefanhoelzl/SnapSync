@@ -1,7 +1,7 @@
 package app.snapsync.world
 
 import app.snapsync.config.ConfigSource
-import app.snapsync.config.EventConfigPayload
+import app.snapsync.config.EventConfig
 import app.snapsync.download.DownloadController
 import app.snapsync.download.EventUnionSource
 import app.snapsync.download.HttpEventUnionSource
@@ -75,9 +75,9 @@ class World(
     val client = miniEdgeClient(store)
     val manifestUploader: HttpDeviceManifestUploader = HttpDeviceManifestUploader(client, host)
 
-    private val configCell = MutableStateFlow<EventConfigPayload?>(null)
+    private val configCell = MutableStateFlow<EventConfig?>(null)
     val configSource: ConfigSource = object : ConfigSource {
-        override val config: StateFlow<EventConfigPayload?> = configCell.asStateFlow()
+        override val config: StateFlow<EventConfig?> = configCell.asStateFlow()
     }
 
     // The real common-Ktor seams over the mini-edge (single client, exactly as production shares one).
@@ -147,9 +147,9 @@ class World(
     }
 
     /** Join/provision an event: register its marker and make its config present (the config gate lifts). */
-    fun provision(eventId: String) {
+    fun provision(eventId: String, name: String? = null) {
         store.registerEvent(eventId)
-        configCell.value = EventConfigPayload(eventId)
+        configCell.value = EventConfig(eventId, name)
     }
 
     /**
@@ -234,7 +234,7 @@ class World(
         CreateEvent(
             client = HttpEventCreationClient(client, host),
             status = creationStatus,
-            provision = { provision(it) },
+            provision = { eventId, name -> provision(eventId, name) },
             scope = scope,
         )
 

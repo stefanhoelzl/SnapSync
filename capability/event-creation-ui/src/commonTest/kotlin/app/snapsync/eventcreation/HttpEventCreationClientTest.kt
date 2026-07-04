@@ -41,7 +41,7 @@ class HttpEventCreationClientTest {
         assertEquals("https://edge.example/event", requested)
         assertEquals("POST", method)
         assertEquals("""{"name":"My Party"}""", body)
-        assertEquals(CreateOutcome.Created(eventId), outcome)
+        assertEquals(CreateOutcome.Created(eventId, "My Party"), outcome)
     }
 
     @Test

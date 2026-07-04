@@ -11,9 +11,9 @@ import kotlin.test.assertTrue
 class ConfigDeeplinkTest {
 
     private val eventId = "11111111-1111-4111-8111-111111111111"
-    private val sample = EventConfigPayload(eventId = eventId)
+    private val sample = EventLinkPayload(eventId = eventId)
 
-    private fun success(raw: String): EventConfigPayload {
+    private fun success(raw: String): EventLinkPayload {
         val result = decodeConfigUrl(raw)
         assertTrue(result is ConfigDecodeResult.Success, "expected success, got $result")
         return result.payload

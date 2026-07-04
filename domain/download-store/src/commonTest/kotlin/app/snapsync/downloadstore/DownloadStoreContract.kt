@@ -43,6 +43,25 @@ abstract class DownloadStoreContract {
     }
 
     @Test
+    fun in_flight_counts_assets_with_an_enqueued_not_yet_staged_resource() = runTest {
+        val s = createStore()
+        s.plan(ref, "2026-06-30T10:00:00Z", resources())
+        assertEquals(0, s.inFlightCount()) // planned, but nothing sent to the OS yet
+
+        s.markEnqueued(ref, "ASSET-Q-primary.heic")
+        assertEquals(1, s.inFlightCount()) // a resource sent → the asset is in flight
+
+        s.markEnqueued(ref, "ASSET-Q-live.mov")
+        assertEquals(1, s.inFlightCount()) // asset-counted, not one per resource
+
+        s.markStaged(ref, "ASSET-Q-primary.heic", "/stage/primary.heic")
+        assertEquals(1, s.inFlightCount()) // live still enqueued-not-staged
+
+        s.markStaged(ref, "ASSET-Q-live.mov", "/stage/live.mov")
+        assertEquals(0, s.inFlightCount()) // every resource staged → no longer in flight
+    }
+
+    @Test
     fun import_records_suppression_and_idempotency() = runTest {
         val s = createStore()
         s.plan(ref, "2026-06-30T10:00:00Z", resources())
