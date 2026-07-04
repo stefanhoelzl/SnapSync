@@ -76,6 +76,9 @@
 	<key>BGTaskSchedulerPermittedIdentifiers</key>
 	<array>
 		<string>app.snapsync.download.backstop</string>
+		<!-- The app-driven (iOS 18–26.0) upload heartbeat (capability ios-url-session-upload): tops up
+		     the background URLSession queue + catches new captures while the app is closed. -->
+		<string>app.snapsync.upload.heartbeat</string>
 	</array>
 </dict>
 </plist>

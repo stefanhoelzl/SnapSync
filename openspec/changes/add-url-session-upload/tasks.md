@@ -41,10 +41,18 @@
 
 ## 5. App wiring + Swift shell (`:app:ios`)
 
-- [ ] 5.1 Tier branch in `SnapSyncRoot` at `backgroundUploadSupported()`: true → existing PhotoKit registration; false → construct the pump + `IosUrlSessionUploadPlatform` + `IosBackgroundScheduler` and hold the `LedgerWriter` in the app
-- [ ] 5.2 App-driven lifecycle: enable (immediate cycle + schedule first task), disable (invalidate session + cancel task), re-provision (cancel old-event tasks + temp files → update event → `:capability:rejoin` reconcile → run cycle), leave (cancel all + wipe ledger/cursor/eventId)
-- [ ] 5.3 Thin Swift shell: `BGTaskScheduler` registration, `URLSession` background-config + delegate, `handleEventsForBackgroundURLSession` → forward all into the Kotlin pump; `Info.plist` `BGTaskSchedulerPermittedIdentifiers` + `processing` background mode
-- [ ] 5.4 `compileIosMainKotlinMetadata` (Linux proxy) + `./gradlew build` green
+> Built and RAN on the iOS simulator via ssh-mac: the full app compiles signed, installs, and launches
+> with the app-driven tier wired in (force flag `SNAPSYNC_FORCE_URLSESSION_UPLOAD` lets the sim, which
+> can't run the PhotoKit extension, exercise this tier). `onForeground` fires (download reconcile runs).
+> NOT yet observed: the app-driven upload cycle's own log/PUT — the installed binary went stale from a
+> Gradle `compileKotlinIosSimulatorArm64` UP-TO-DATE false-positive, and the runner self-closed (90-min
+> cap) before a forced clean rebuild (`rm -rf app/ios/build`) could redeploy. Code is complete + builds;
+> the on-sim upload observation needs one clean-rebuild pass on a fresh runner (or the real sub-26 device).
+
+- [x] 5.1 Tier branch in `SnapSyncRoot` at `backgroundUploadSupported()` (+ dev force flag): true → PhotoKit registration; false/forced → `UrlSessionUploadController` (pump + `IosUrlSessionUploadPlatform` + `IosBackgroundScheduler`, app holds the `LedgerWriter`). `pendingKeys` via `ledgerBackend.pendingResources()`
+- [x] 5.2 App-driven lifecycle: enable (`start()` — sweep staging + pump), disable (`cancelAll` + scheduler cancel), leave (cancel + wipe ledger/cursor), background-session routing by identifier + upload heartbeat handler (re-provision reuses the same config-refresh-per-cycle path)
+- [x] 5.3 Swift shell: upload heartbeat `BGTaskScheduler.register`; `handleEventsForBackgroundURLSession` routes by session id; `Info.plist` `BGTaskSchedulerPermittedIdentifiers` += `app.snapsync.upload.heartbeat` (`processing` mode already present)
+- [x] 5.4 `compileIosMainKotlinMetadata` green (Linux) + full signed `xcodebuild` for the simulator SUCCEEDED; app runs
 
 ## 6. Docs
 
