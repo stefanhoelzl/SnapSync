@@ -300,12 +300,19 @@ signal on success (like `clear`/`resetTo`). On the SQLDelight backend it SHALL b
 
 `clearRequested` is an **app-side reset-family** operation — in the same family as `clear()` and
 `resetTo()`, **not** one of the writer-only prunes (`deleteByAssetId`/`retainAssets`). It SHALL be
-callable on the `LedgerBackend` **without** a `LedgerWriter`, so the app can invoke it (the app
-constructs no `LedgerWriter`). It is the recovery for jobs the OS wiped when the extension was
-disabled: those resources remain `REQUESTED` in the ledger, the engine never re-issues a `REQUESTED`
-key, and there is no API to enumerate live jobs to detect the orphan — so a bulk `REQUESTED` clear is
-the only way to let the next discovery re-create them. Clearing **all** `REQUESTED` is correct because
-a disable wipes **all** in-flight jobs at once, so no genuinely-in-flight row is lost.
+callable on the `LedgerBackend` **without** a `LedgerWriter`, so a non-writer holder of the backend may
+invoke it without breaching the **single-record-writer invariant** (exactly one holder records per-key
+upload facts; *which process* holds that writer is a platform binding, not a ledger concern).
+
+`clearRequested` is a **blanket** recovery for stranded `REQUESTED` rows on a platform that **cannot
+enumerate its in-flight jobs**: those resources remain `REQUESTED` in the ledger, the engine never
+re-issues a `REQUESTED` key, and with no way to detect which are genuinely in flight a bulk `REQUESTED`
+clear is the only way to let the next discovery re-create them. Its canonical use is the iOS ≥26.1
+PhotoKit tier, where disabling the extension wipes **all** in-flight OS jobs at once (so no
+genuinely-in-flight row is lost by clearing all `REQUESTED`) — see `ios-photokit-upload`. A platform
+whose upload queue **is** enumerable (e.g. the iOS 18–26.0 background-`URLSession` tier, which can list
+its live tasks) MAY instead reconcile stranded rows **precisely** and need not use this blanket clear;
+`clearRequested` remains available but is not required on such a platform.
 
 #### Scenario: clearRequested removes only REQUESTED rows
 
@@ -323,10 +330,4 @@ a disable wipes **all** in-flight jobs at once, so no genuinely-in-flight row is
 - **WHEN** a key is `REQUESTED`, `clearRequested()` drops it, and the next discovery re-derives that
   key (`ResourceChanged`)
 - **THEN** the engine answers `Work` (the key is now absent), not `AlreadyUploaded`
-
-#### Scenario: clearRequested holds on the SQLDelight backend
-
-- **WHEN** the clearRequested storage-seam scenarios run against the SQLDelight backend on a JVM
-  sqlite driver via the shared backend contract
-- **THEN** they pass unchanged (a single state-scoped delete, one change signal)
 
