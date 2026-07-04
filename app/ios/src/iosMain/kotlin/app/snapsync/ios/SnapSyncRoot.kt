@@ -483,7 +483,11 @@ object SnapSyncRoot {
     // The app-driven (iOS 18–26.0) upload tier's composition root. Built lazily and used only when
     // [useAppDrivenUpload]; on iOS ≥26.1 without the force flag it is never touched (the extension runs).
     private val urlSessionUpload: UrlSessionUploadController by lazy {
-        UrlSessionUploadController(scope, ledgerBackend, config, deviceId, backendHost, log)
+        // Force-flagged (simulator) runs use a foreground session — the sim can't run a background one.
+        UrlSessionUploadController(
+            scope, ledgerBackend, config, deviceId, backendHost, log,
+            useBackgroundSession = !forceUrlSessionUpload,
+        )
     }
 
     /** The upload heartbeat BGProcessingTask handler (app-driven tier). Registered in the Swift shell. */
