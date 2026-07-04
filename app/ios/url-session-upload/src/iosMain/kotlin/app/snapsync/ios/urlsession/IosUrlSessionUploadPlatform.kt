@@ -57,6 +57,11 @@ class IosUrlSessionUploadPlatform(
     private val appGroup: String,
     sessionIdentifier: String,
     private val cap: Int = 4,
+    // Background session (transfers survive suspension) on real devices. The iOS **simulator** does not
+    // support background NSURLSession — getAllTasks never calls back and transfers never run — so the
+    // dev/test-forced path uses a default (foreground) session, letting the sim exercise the real
+    // staging → PUT → delegate → ledger flow (only the "continues while suspended" property is lost).
+    useBackgroundSession: Boolean = true,
     // The ledger's current REQUESTED keys — used to reconcile stranded rows (a task lost across process
     // death) precisely, instead of a blanket clear. Supplied by the composition root (which reads it).
     private val pendingKeys: suspend () -> Set<String>,
@@ -80,8 +85,14 @@ class IosUrlSessionUploadPlatform(
         onEventsFinished = { onBackgroundEventsFinished?.invoke() },
     )
 
+    private val useBackground = useBackgroundSession
+    private val sessionId = sessionIdentifier
     private val session: NSURLSession by lazy {
-        val config = NSURLSessionConfiguration.backgroundSessionConfigurationWithIdentifier(sessionIdentifier)
+        val config = if (useBackground) {
+            NSURLSessionConfiguration.backgroundSessionConfigurationWithIdentifier(sessionId)
+        } else {
+            NSURLSessionConfiguration.defaultSessionConfiguration()
+        }
         NSURLSession.sessionWithConfiguration(config, delegate = delegate, delegateQueue = null)
     }
 

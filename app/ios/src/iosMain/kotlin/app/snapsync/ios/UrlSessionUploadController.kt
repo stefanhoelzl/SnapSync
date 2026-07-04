@@ -38,6 +38,8 @@ class UrlSessionUploadController(
     private val deviceId: String,
     private val host: String,
     private val log: Logger,
+    // False on the dev/test-forced (simulator) path — the sim can't run a background NSURLSession.
+    private val useBackgroundSession: Boolean = true,
 ) {
     companion object {
         const val SESSION_IDENTIFIER = "app.snapsync.upload.session"
@@ -54,6 +56,7 @@ class UrlSessionUploadController(
         discovery = discovery,
         appGroup = LEDGER_APP_GROUP,
         sessionIdentifier = SESSION_IDENTIFIER,
+        useBackgroundSession = useBackgroundSession,
         // Precise stranded-row reconciliation: the ledger's current REQUESTED keys.
         pendingKeys = { ledgerBackend.pendingResources().map { it.key }.toSet() },
         // A slot just freed → top up (single-flight in the pump serialises it).
