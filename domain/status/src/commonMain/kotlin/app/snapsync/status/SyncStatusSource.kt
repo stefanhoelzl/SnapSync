@@ -9,7 +9,7 @@ import kotlinx.coroutines.flow.StateFlow
  * yet read) — never a placeholder, guess, or default. Every [SyncStatus.Ready] value is the
  * whole truth (never event-folding). The seam does NOT promise a synchronously-available
  * [SyncProgress]: a source backed by an asynchronous first read reports [SyncStatus.Loading] at
- * construction. Implemented by [ListingSyncStatusSource] (seeds Loading) and by the desktop
+ * construction. Implemented by [LedgerBackedSyncStatusSource] (seeds Loading) and by the desktop
  * harness's panel (knows its truth synchronously, so seeds Ready).
  */
 interface SyncStatusSource {

@@ -114,7 +114,7 @@ class BackendStore {
     /**
      * The per-device file listing (`GET /devices/<id>/files`) — one entry per stored object. Serves
      * BOTH the rejoin reconcile seed (`HttpDeviceFilesSource`) and own-device status completeness
-     * (`OwnDeviceCompletedAssetsSource`); the world computes it once.
+     * (the ledger-backed status source); the world computes it once.
      */
     fun deviceListing(deviceId: String): List<FileEntryDto> =
         byteStore[deviceId].orEmpty().map { filename ->

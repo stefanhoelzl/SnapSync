@@ -19,7 +19,6 @@ import app.snapsync.push.KtorPushHttpClient
 import app.snapsync.push.PushReceiver
 import app.snapsync.push.PushRegistration
 import app.snapsync.push.PushTokenSource
-import app.snapsync.rejoin.HttpDeviceFilesSource
 import app.snapsync.rejoin.LeaveEvent
 import app.snapsync.rejoin.clearRequestedOffMain
 import app.snapsync.rejoin.darwinHttpClient
@@ -35,12 +34,27 @@ import app.snapsync.engine.DISCOVERY_TOKEN_KEY
 import app.snapsync.engine.LEDGER_APP_GROUP
 import app.snapsync.engine.LedgerBackend
 import app.snapsync.engine.iosLedgerBackend
-import app.snapsync.status.ListingSyncStatusSource
-import app.snapsync.status.OwnDeviceCompletedAssetsSource
-import app.snapsync.status.ReadingInFlightSource
+import app.snapsync.status.LedgerBackedSyncStatusSource
+import app.snapsync.status.LedgerCounts
+import app.snapsync.status.OwnDeviceGalleryStatusSource
+import app.snapsync.status.ReadingLedgerCountsSource
+import app.snapsync.upload.UPLOAD_LIVENESS_DARWIN_NAME
 import co.touchlab.kermit.Logger
+import kotlinx.cinterop.COpaquePointer
 import kotlinx.cinterop.ExperimentalForeignApi
+import kotlinx.cinterop.StableRef
 import kotlinx.cinterop.cValue
+import kotlinx.cinterop.staticCFunction
+import platform.CoreFoundation.CFDictionaryRef
+import platform.CoreFoundation.CFNotificationCenterAddObserver
+import platform.CoreFoundation.CFNotificationCenterGetDarwinNotifyCenter
+import platform.CoreFoundation.CFNotificationCenterRef
+import platform.CoreFoundation.CFNotificationCenterRemoveEveryObserver
+import platform.CoreFoundation.CFNotificationName
+import platform.CoreFoundation.CFNotificationSuspensionBehaviorDeliverImmediately
+import platform.CoreFoundation.CFStringCreateWithCString
+import platform.CoreFoundation.CFStringRef
+import platform.CoreFoundation.kCFStringEncodingUTF8
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -101,35 +115,32 @@ object SnapSyncRoot {
     // both roots.)
     private val deviceId: String by lazy { KeychainDeviceIdentity().deviceId() }
 
-    // Status from OWN-DEVICE storage truth (capability `sync-status`), no ledger, no device.json read:
-    //   completed ← gallery enumeration (EXPECTED resources) × the per-device file listing
-    //   (`GET /devices/<deviceId>/files`, Darwin HTTPS, PRESENT files). Refreshes on foreground entry
-    //   (no manifest-completion ding any more). The host is the same compile-time base the upload
-    //   client uses.
-    private val completedAssets: OwnDeviceCompletedAssetsSource by lazy {
-        val host = NSBundle.mainBundle.objectForInfoDictionaryKey("BackgroundUploadURLBase") as? String ?: ""
-        OwnDeviceCompletedAssetsSource(
+    // The own-device upload TOTAL N (capability `sync-status`): gallery enumeration minus downloaded
+    // foreign photos (suppressed from upload — they live in the library but must not peg progress below
+    // 100%, capability `photo-download`). Enumeration-only — no storage LIST (completeness now comes
+    // from the ledger, below). Refreshes on foreground entry.
+    private val gallery: OwnDeviceGalleryStatusSource by lazy {
+        OwnDeviceGalleryStatusSource(
             PhotoLibraryResourceEnumerator(),
-            HttpDeviceFilesSource(darwinHttpClient(), host),
-            deviceId,
-            // Exclude downloaded+imported foreign photos from the upload universe (total AND completed):
-            // they live in the library but are suppressed from upload, so they must not peg progress
-            // below 100% (capability `photo-download`).
             suppressedLocalIds = { downloadStore.suppressedLocalIds() },
         )
     }
 
     // The app-side handle on the extension's shared App-Group ledger, used for two narrow things only:
-    // a READ-ONLY in-flight read (`aggregates().pending`, below) and a reset-family `clearRequested()`
+    // a READ-ONLY aggregates read (`completed`/`pending`, below) and a reset-family `clearRequested()`
     // on extension disable (recover jobs the disable wiped, capability `ios-background-upload`). No
     // per-key record writes and no `LedgerWriter` — the extension stays the sole record writer. WAL
     // permits the concurrent cross-process read.
     private val ledgerBackend: LedgerBackend by lazy { iosLedgerBackend() }
 
-    // The "uploading now" count for the in-progress caption (capability `sync-status`): the read-only
-    // ledger peek; on any failure the source yields 0. Refreshed on foreground entry.
-    private val inFlightSource: ReadingInFlightSource by lazy {
-        ReadingInFlightSource { ledgerBackend.aggregates().pending }
+    // Own-device completeness AND in-flight, both from one consistent ledger `aggregates()` read
+    // (capability `sync-status`). Read-only; on any failure the last good counts are retained (never
+    // regressed to 0). Refreshed on foreground entry AND on the extension's cross-process liveness
+    // notification (below).
+    private val ledgerCounts: ReadingLedgerCountsSource by lazy {
+        ReadingLedgerCountsSource {
+            ledgerBackend.aggregates().let { LedgerCounts(completed = it.completed, pending = it.pending) }
+        }
     }
 
     // --- Photo download / import (capability `photo-download`) ---
@@ -231,11 +242,10 @@ object SnapSyncRoot {
     }
 
     val host: StatusContainerHost by lazy {
-        // The own-device source: complete assets (gallery enumeration × per-device file listing) ×
-        // permission × the live gallery total, minted into snapshots. No ledger, no device.json read.
-        // `completedAssets` is BOTH the completed set and the upload total (own photos, downloads
-        // excluded) — one source so total and completed stay consistent.
-        val syncSource = ListingSyncStatusSource(completedAssets, permission, completedAssets, inFlightSource, scope)
+        // The own-device source: ledger completeness + in-flight (one aggregates() read) × permission ×
+        // the live own-device gallery total, minted into snapshots. Ledger-sourced, no storage LIST for
+        // upload status (design.md §2.4); safe under no-deletion-during-an-active-event.
+        val syncSource = LedgerBackedSyncStatusSource(ledgerCounts, permission, gallery, scope)
         enableBackgroundUploadOnGrant()
         // Start registering the APNs token: the collector reacts to each token the AppDelegate delivers
         // (StateFlow-retained, so a token delivered before this launches is still registered).
@@ -266,6 +276,10 @@ object SnapSyncRoot {
      */
     fun onForeground() {
         host
+        // Listen for the extension's cross-process liveness ding while foreground, so upload status moves
+        // live as the extension records completions/new jobs (design.md §2.3). Foreground-only: a
+        // suspended app cannot act on the post, and this foreground entry already re-reads below.
+        registerLivenessObserver()
         // App-driven upload tier (iOS 18–26.0): foreground entry pumps an upload cycle (completions then
         // keep it draining while the app is open). No-op on ≥26.1 (the OS drives the extension).
         log.i { "onForeground: useAppDrivenUpload=$useAppDrivenUpload (force=$forceUrlSessionUpload, osSupported=${backgroundUploadSupported()})" }
@@ -284,16 +298,62 @@ object SnapSyncRoot {
      * (capability `photo-download`, 5.4). Status liveness itself stays event-driven (foreground entry).
      */
     fun onBackground() {
+        unregisterLivenessObserver()
         scheduleDownloadBackstop()
     }
 
+    // --- Extension → app cross-process liveness ding (capability `sync-status` / `ios-app-shell`) ---
+    // A stable observer token (the object itself); the callback ignores it and pokes SnapSyncRoot
+    // directly (it is a singleton object). Never disposed — process-lifetime.
+    @OptIn(ExperimentalForeignApi::class)
+    private val livenessObserverToken: COpaquePointer by lazy { StableRef.create(this).asCPointer() }
+
+    // The Darwin notification name, created once (a single process-lifetime CFString for a constant).
+    @OptIn(ExperimentalForeignApi::class)
+    private val livenessName: CFStringRef? by lazy {
+        CFStringCreateWithCString(null, UPLOAD_LIVENESS_DARWIN_NAME, kCFStringEncodingUTF8)
+    }
+
+    @OptIn(ExperimentalForeignApi::class)
+    private fun registerLivenessObserver() {
+        val center = CFNotificationCenterGetDarwinNotifyCenter()
+        // Defensive: drop any prior registration for this token before (re)adding, so repeated
+        // foregrounds never stack observers.
+        CFNotificationCenterRemoveEveryObserver(center, livenessObserverToken)
+        CFNotificationCenterAddObserver(
+            center,
+            livenessObserverToken,
+            staticCFunction(::uploadLivenessCallback),
+            livenessName,
+            null,
+            CFNotificationSuspensionBehaviorDeliverImmediately,
+        )
+    }
+
+    @OptIn(ExperimentalForeignApi::class)
+    private fun unregisterLivenessObserver() {
+        CFNotificationCenterRemoveEveryObserver(
+            CFNotificationCenterGetDarwinNotifyCenter(),
+            livenessObserverToken,
+        )
+    }
+
     /**
-     * Re-read the own-device completed source (gallery enumeration × per-device file listing) and the
-     * read-only in-flight count from the ledger (the "uploading now" caption).
+     * The extension finished a `process()` run: re-read the ledger counts (local, no network) so upload
+     * status moves live while foreground. The gallery total and the foreign download line are refreshed
+     * by their own triggers — this ding is upload-completeness only.
+     */
+    fun onUploadLivenessNotified() {
+        scope.launch { ledgerCounts.refresh() }
+    }
+
+    /**
+     * Re-read the own-device gallery total (enumeration, downloads suppressed) and the ledger counts
+     * (completed + in-flight), plus the foreign download line. Full foreground refresh.
      */
     private suspend fun refreshStatusSources() {
-        completedAssets.refresh()
-        inFlightSource.refresh()
+        gallery.refresh()
+        ledgerCounts.refresh()
         downloadStatusSource.refresh() // the "downloaded X of Y" line (capability `photo-download`)
     }
 
@@ -551,6 +611,8 @@ object SnapSyncRoot {
             httpClient = darwinHttpClient(),
             suppressedAssetIds = { downloadStore.suppressedLocalIds() },
             useBackgroundSession = !forceUrlSessionUpload,
+            // In-process liveness: after each pump cycle, re-read the ledger counts so status moves live.
+            onCycleComplete = { ledgerCounts.refresh() },
         )
     }
 
@@ -569,4 +631,20 @@ object SnapSyncRoot {
                 patchVersion = 0
             },
         )
+}
+
+/**
+ * The `CFNotificationCenter` Darwin callback (must be a top-level, non-capturing function to be a C
+ * function pointer). It ignores its arguments and pokes the [SnapSyncRoot] singleton, which re-reads the
+ * ledger counts on the app scope.
+ */
+@OptIn(ExperimentalForeignApi::class)
+private fun uploadLivenessCallback(
+    center: CFNotificationCenterRef?,
+    observer: COpaquePointer?,
+    name: CFNotificationName?,
+    obj: COpaquePointer?,
+    userInfo: CFDictionaryRef?,
+) {
+    SnapSyncRoot.onUploadLivenessNotified()
 }

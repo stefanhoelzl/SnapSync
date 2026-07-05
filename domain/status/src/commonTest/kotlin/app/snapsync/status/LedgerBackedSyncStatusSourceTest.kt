@@ -11,14 +11,11 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 
-class ListingSyncStatusSourceTest {
+class LedgerBackedSyncStatusSourceTest {
 
-    private val completed = MutableCompletedAssetsSource()
+    private val ledgerCounts = MutableLedgerCountsSource()
     private val permission = FakePermissionSource(PermissionStatus.GRANTED)
     private val gallery = InMemoryGalleryStatusSource(initial = 0)
-
-    // Defaults high so the structural tests read `pending = remaining`; the clamp tests set it lower.
-    private val inFlight = MutableInFlightSource(initial = 1000)
 
     private fun ready(
         pending: Int = 0,
@@ -28,11 +25,11 @@ class ListingSyncStatusSourceTest {
     ) = SyncStatus.Ready(SyncProgress(pending, completed, total, failed = 0, active, estimatedRemaining = null))
 
     private fun source(scope: kotlinx.coroutines.CoroutineScope) =
-        ListingSyncStatusSource(completed, permission, gallery, inFlight, scope)
+        LedgerBackedSyncStatusSource(ledgerCounts, permission, gallery, scope)
 
     @Test
     fun `initial value is Loading before the first read`() = runTest {
-        completed.set(setOf("a"))
+        ledgerCounts.set(completed = 1, pending = 0)
         gallery.set(3)
 
         val source = source(backgroundScope)
@@ -42,21 +39,20 @@ class ListingSyncStatusSourceTest {
 
     @Test
     fun `first Ready reflects completed and pending clamped to remaining`() = runTest {
-        completed.set(setOf("a", "b"))
+        // pending high (1000) so it reads as the remaining; completed 2 of 5 → remaining 3.
+        ledgerCounts.set(completed = 2, pending = 1000)
         gallery.set(5)
 
         val source = source(backgroundScope)
         runCurrent()
 
-        // pending = min(inFlight=1000, remaining = 5 - 2) = 3
         assertEquals(ready(pending = 3, completed = 2, total = 5), source.status.value)
     }
 
     @Test
     fun `pending is the in-flight count when below remaining`() = runTest {
-        completed.set(setOf("a", "b")) // synced 2
-        gallery.set(7) // remaining 5
-        inFlight.set(2) // only 2 actually uploading
+        ledgerCounts.set(completed = 2, pending = 2) // synced 2, remaining 5, only 2 in flight
+        gallery.set(7)
         val source = source(backgroundScope)
         runCurrent()
 
@@ -65,10 +61,9 @@ class ListingSyncStatusSourceTest {
     }
 
     @Test
-    fun `pending is clamped to remaining when the ledger over-counts`() = runTest {
-        completed.set(setOf("a", "b", "c", "d", "e")) // synced 5
-        gallery.set(7) // remaining 2
-        inFlight.set(3) // a finished-but-unacked job still reads in-flight
+    fun `pending is clamped to remaining when a deleted-but-unpruned photo over-counts`() = runTest {
+        ledgerCounts.set(completed = 5, pending = 3) // synced 5, remaining 2, ledger reports 3 in flight
+        gallery.set(7)
         val source = source(backgroundScope)
         runCurrent()
 
@@ -78,14 +73,13 @@ class ListingSyncStatusSourceTest {
 
     @Test
     fun `an in-flight change re-mints pending`() = runTest {
-        completed.set(setOf("a")) // synced 1
-        gallery.set(6) // remaining 5
-        inFlight.set(3)
+        ledgerCounts.set(completed = 1, pending = 3)
+        gallery.set(6)
         val source = source(backgroundScope)
         runCurrent()
         assertEquals(ready(pending = 3, completed = 1, total = 6), source.status.value)
 
-        inFlight.set(1)
+        ledgerCounts.set(completed = 1, pending = 1)
         runCurrent()
 
         assertEquals(ready(pending = 1, completed = 1, total = 6), source.status.value)
@@ -93,12 +87,13 @@ class ListingSyncStatusSourceTest {
 
     @Test
     fun `a newly complete asset re-mints completed and shrinks remaining`() = runTest {
+        ledgerCounts.set(completed = 0, pending = 1000)
         gallery.set(4)
         val source = source(backgroundScope)
         runCurrent()
         assertEquals(ready(pending = 4, total = 4), source.status.value)
 
-        completed.set(setOf("a"))
+        ledgerCounts.set(completed = 1, pending = 1000)
         runCurrent()
 
         assertEquals(ready(pending = 3, completed = 1, total = 4), source.status.value)
@@ -106,8 +101,8 @@ class ListingSyncStatusSourceTest {
 
     @Test
     fun `pending is zero when completed meets or exceeds the live total`() = runTest {
-        // The gallery total can momentarily lag the completed set; remaining (and so pending) clamps at 0.
-        completed.set(setOf("a", "b", "c"))
+        // The gallery total can momentarily lag the ledger; remaining (and so pending) clamps at 0.
+        ledgerCounts.set(completed = 3, pending = 1000)
         gallery.set(1)
         val source = source(backgroundScope)
         runCurrent()
@@ -117,7 +112,7 @@ class ListingSyncStatusSourceTest {
 
     @Test
     fun `a gallery change re-mints with the recomputed remaining`() = runTest {
-        completed.set(setOf("a"))
+        ledgerCounts.set(completed = 1, pending = 1000)
         gallery.set(4)
         val source = source(backgroundScope)
         runCurrent()
@@ -131,7 +126,7 @@ class ListingSyncStatusSourceTest {
 
     @Test
     fun `a permission flip re-mints with unchanged counts`() = runTest {
-        completed.set(setOf("a"))
+        ledgerCounts.set(completed = 1, pending = 1000)
         gallery.set(4)
         val source = source(backgroundScope)
         runCurrent()
@@ -144,6 +139,7 @@ class ListingSyncStatusSourceTest {
 
     @Test
     fun `the source never estimates and never gives up`() = runTest {
+        ledgerCounts.set(completed = 0, pending = 1000)
         gallery.set(1)
         val source = source(backgroundScope)
         runCurrent()

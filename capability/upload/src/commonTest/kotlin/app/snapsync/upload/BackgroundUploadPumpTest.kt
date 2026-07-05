@@ -31,6 +31,41 @@ class BackgroundUploadPumpTest {
         assertEquals(2, runs) // the mid-run trigger produced one extra pass, not two cycles at once
     }
 
+    /** Every cycle triggers the status refresh (the in-process liveness signal), once per pass. */
+    @Test
+    fun refreshesStatusAfterEachCycle() = runTest {
+        val scheduler = FakeScheduler()
+        var runs = 0
+        var refreshes = 0
+        lateinit var pump: BackgroundUploadPump
+        pump = BackgroundUploadPump(
+            runCycle = {
+                runs++
+                if (runs == 1) pump.onUploadCompleted() // force a trailing re-run → two cycles
+                CycleResult.COMPLETED
+            },
+            scheduler = scheduler,
+            onCycleComplete = { refreshes++ },
+        )
+        pump.onForeground()
+        assertEquals(2, runs)
+        assertEquals(2, refreshes) // one refresh per cycle, both passes
+    }
+
+    /** A refresh failure never breaks the drain or the re-arm. */
+    @Test
+    fun refreshFailureDoesNotBreakTheDrain() = runTest {
+        val scheduler = FakeScheduler()
+        var runs = 0
+        val pump = BackgroundUploadPump(
+            runCycle = { runs++; CycleResult.COMPLETED },
+            scheduler = scheduler,
+            onCycleComplete = { error("refresh blew up") },
+        )
+        pump.onForeground() // must not throw
+        assertEquals(1, runs)
+    }
+
     /** Foreground PROCESSING does not busy-loop or schedule; the next completion re-invokes. */
     @Test
     fun processingInForegroundWaitsForCompletion() = runTest {

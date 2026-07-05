@@ -162,21 +162,53 @@ HOST=$(cat "$S/host/ssh-mac-host.txt")                        # = <random>.trycl
 # 5. Connect (runner user is `runner`)
 alias sshmac='ssh -i "$S/ssh-mac" -o StrictHostKeyChecking=no \
   -o ProxyCommand="'"$S"'/cloudflared access ssh --hostname %h" runner@<HOST>'
-# 6. Iterate
+# 6. Iterate. NB: $RUNNER_TEMP is UNSET in an ssh shell (it is a GH-Actions-step var) — write outputs
+#    under $HOME, not $RUNNER_TEMP, or paths resolve to read-only "/".
 rsync -az --delete -e "..." --exclude .git --exclude build --exclude .gradle ./ runner@<HOST>:snapsync/
 sshmac 'cd snapsync && ./gradlew iosSimulatorArm64Test'
-sshmac 'cd snapsync && xcodebuild -exportArchive -exportOptionsPlist iosApp/ExportOptionsDevelopment.plist \
-          -archivePath "$RUNNER_TEMP/SnapSync.xcarchive" -exportPath out'   # no ASC key: reuses installed profile
-scp -o ProxyCommand=... runner@<HOST>:snapsync/out/SnapSync.ipa "$S/"
+# 6a. Build an UNSIGNED archive (compiles the Kotlin frameworks + assembles app+appex). The Xcode project
+#     is CODE_SIGN_STYLE=Automatic, which needs -allowProvisioningUpdates + the Admin ASC key (absent
+#     here) — so a *signed* archive is impossible on the box. Build unsigned, re-sign by hand (6b).
+sshmac 'cd snapsync && xcodebuild -project iosApp/iosApp.xcodeproj -scheme iosApp -configuration Release \
+          -destination "generic/platform=iOS" -archivePath "$HOME/artifacts/SnapSync.xcarchive" \
+          CODE_SIGNING_ALLOWED=NO archive'
+# 6b. Manually re-sign the archive INSIDE-OUT with the baked profiles, then repackage the IPA.
+#     WHY not `xcodebuild -exportArchive`: automatic-signing export does NOT reuse manually-installed
+#     profiles without an ASC key (fails "No profiles for 'app.snapsync…' were found"); and the
+#     CODE_SIGNING_ALLOWED=NO archive has EMPTY entitlements, so any export ships an IPA that aborts at
+#     launch on the App-Group container ("client is not entitled"). Re-signing with the entitlements
+#     RESOLVED inside each profile (app-groups/keychain/aps/get-task-allow) is the working path.
+sshmac 'bash -se' <<'SIGN'
+set -e; cd "$HOME/artifacts"
+PD="$HOME/Library/MobileDevice/Provisioning Profiles"
+ID=$(security find-identity -v -p codesigning | awk '/Apple Development/{print $2; exit}')
+APP="SnapSync.xcarchive/Products/Applications/SnapSync.app"
+EXT="$APP/Extensions/BackgroundUploadExtension.appex"          # iOS 26 uses Extensions/, NOT PlugIns/
+for p in "$PD"/*.mobileprovision; do                          # match each profile by its bundle id
+  aid=$(security cms -D -i "$p" | plutil -extract Entitlements.application-identifier raw -)
+  case "$aid" in
+    *.app.snapsync.BackgroundUpload) security cms -D -i "$p" | plutil -extract Entitlements xml1 -o ext.plist -; cp "$p" "$EXT/embedded.mobileprovision";;
+    *.app.snapsync)                  security cms -D -i "$p" | plutil -extract Entitlements xml1 -o app.plist -; cp "$p" "$APP/embedded.mobileprovision";;
+  esac
+done
+codesign -f -s "$ID" --entitlements ext.plist "$EXT"          # sign the extension first (inside-out)…
+codesign -f -s "$ID" --entitlements app.plist "$APP"          # …then the app (statically-linked, no nested dylibs)
+codesign -v "$EXT" && codesign -v "$APP"
+rm -rf Payload && mkdir Payload && cp -R "$APP" Payload/ && zip -qry SnapSync.ipa Payload
+SIGN
+scp -o ProxyCommand=... runner@<HOST>:artifacts/SnapSync.ipa "$S/"
 uvx pymobiledevice3 apps install "$S/SnapSync.ipa"                          # over usbmuxd, as above
 sshmac 'touch /tmp/ssh-mac-stop'                                            # end the session
 ```
 Same one-time device prerequisites as *Sideload a dev IPA* (registered UDID + Developer Mode). The
-`DEV_PROVISIONING_PROFILE_BASE64` secret is a **tar of both** the app (`app.snapsync`) and extension
-(`app.snapsync.BackgroundUpload`) dev profiles — the archive signs both targets. Refresh it when they
-expire (~yearly) or you register a new device: dev-export any build, tar both `embedded.mobileprovision`
-(app's `Payload/*.app/` + extension's `.appex/`), and `gh secret set`. The non-root sshd, the
-`cloudflared access ssh` handshake, and in-session export were proven on 2026-07-01.
+`DEV_PROVISIONING_PROFILE_BASE64` secret is a **tar of both** the app (`app.snapsync`, profile *SnapSync
+Dev Push*) and extension (`app.snapsync.BackgroundUpload`, *SnapSync Ext Dev Push*) dev profiles — the
+re-sign step above signs both targets. Refresh it when they expire (~yearly) or you register a new
+device: dev-export any build, tar both `embedded.mobileprovision` (app's `Payload/*.app/` + extension's
+`Extensions/*.appex/`), and `gh secret set`. The non-root sshd + `cloudflared access ssh` handshake were
+proven on 2026-07-01; the **unsigned-archive + manual re-sign** path (replacing the earlier
+`-exportArchive` claim, which does not reuse installed profiles without an ASC key) was proven on
+2026-07-05 — a dev IPA built this way installs and launches on the SE2.
 
 ### Verify real uploads
 

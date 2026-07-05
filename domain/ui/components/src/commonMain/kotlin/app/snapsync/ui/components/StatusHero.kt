@@ -77,17 +77,17 @@ fun StatusHero(indicator: StatusIndicator, headline: String, detail: String? = n
 
 private val IndicatorSize = 28.dp
 
-// The LED palette: this skin's mapping of the two semantic sync states to color. A future
-// (e.g. Cupertino) skin may paint them differently; the screens never see these.
+// The LED palette: this skin's mapping of the semantic sync states to color. A future
+// (e.g. Cupertino) skin may paint them differently; the screens never see these. The complete
+// state uses the brand primary (accents unified on primary — no standalone green).
 private val LedYellow = Color(0xFFE0A100)
-private val LedGreen = Color(0xFF2E9B53)
 
 @Composable
 internal fun IndicatorIcon(indicator: StatusIndicator) {
     when (indicator) {
         StatusIndicator.Loading -> CircularProgressIndicator(modifier = Modifier.size(IndicatorSize))
         StatusIndicator.InProgress -> LedDot(LedYellow)
-        StatusIndicator.Complete -> LedDot(LedGreen)
+        StatusIndicator.Complete -> LedDot(MaterialTheme.colorScheme.primary)
         StatusIndicator.Success -> Glyph(MaterialTheme.colorScheme.primary) { successGlyph() }
         StatusIndicator.Error -> Glyph(MaterialTheme.colorScheme.error) { errorGlyph() }
         StatusIndicator.Waiting -> Glyph(MaterialTheme.colorScheme.onSurfaceVariant) { waitingGlyph() }

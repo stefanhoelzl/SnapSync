@@ -24,6 +24,7 @@ private const val SAMPLE_INVITE = "snapsync://config?v=3&d=eyJldmVudElkIjoiMSJ9"
 private fun joined(health: SyncHealth) = UiState.Joined(health)
 private val inSync = joined(SyncHealth.InSync)
 private val syncing = joined(SyncHealth.Syncing(Arrow.PULSING, Arrow.HIDDEN))
+private val syncPending = joined(SyncHealth.Syncing(Arrow.STATIC, Arrow.HIDDEN))
 
 class StatusScreenTest {
 
@@ -91,7 +92,7 @@ class StatusScreenTest {
         rule.setContent { StatusScreen(UiState.CreateEvent(), inviteUrl = SAMPLE_INVITE) }
 
         rule.onNodeWithText("In sync").assertDoesNotExist()
-        rule.onNodeWithText("Syncing…").assertDoesNotExist()
+        rule.onNodeWithText("Synchronization", substring = true).assertDoesNotExist()
         rule.onNodeWithContentDescription("Leave event").assertDoesNotExist()
         rule.onNodeWithText("Scan to join this event").assertDoesNotExist()
     }
@@ -116,11 +117,19 @@ class StatusScreenTest {
     }
 
     @Test
-    fun `syncing shows the syncing line`() {
+    fun `syncing with an in-flight arrow reads ongoing`() {
         rule.setContent { StatusScreen(syncing) }
 
-        rule.onNodeWithText("Syncing…").assertExists()
+        rule.onNodeWithText("Synchronization ongoing…").assertExists()
         rule.onNodeWithText("images synced", substring = true).assertDoesNotExist()
+    }
+
+    @Test
+    fun `syncing with a static arrow reads pending`() {
+        rule.setContent { StatusScreen(syncPending) }
+
+        rule.onNodeWithText("Synchronization pending…").assertExists()
+        rule.onNodeWithText("Synchronization ongoing…").assertDoesNotExist()
     }
 
     @Test

@@ -23,7 +23,7 @@ import java.awt.datatransfer.StringSelection
 /**
  * The **full-stack world harness** (`:app:desktop:run`, capability `full-stack-harness`): the real
  * `StatusScreen` in a phone frame on the left — its counts **emerge** from the world's real
- * `ListingSyncStatusSource`, never forged — and a **world inspector** on the right that drives
+ * `LedgerBackedSyncStatusSource`, never forged — and a **world inspector** on the right that drives
  * `:test:world`'s control surface through a single [WorldInspectorController]. The operator plays the
  * OS: nothing auto-runs; **Invoke extension** runs one `process()`-shaped cycle by hand.
  *

@@ -6,6 +6,7 @@ import app.snapsync.engine.LedgerState
 import app.snapsync.permission.PermissionRequester
 import app.snapsync.presentation.Arrow
 import app.snapsync.presentation.StatusContainerHost
+import app.snapsync.status.LedgerCounts
 import app.snapsync.presentation.SyncHealth
 import app.snapsync.presentation.UiState
 import app.snapsync.world.World
@@ -35,7 +36,7 @@ class FullStackIntegrationTest {
             val w = World()
             w.provision("E")
             w.addOwnAsset("A")
-            w.completed.refresh(); w.inFlight.refresh()
+            w.ownGallery.refresh(); w.ledgerCounts.refresh()
 
             val host = statusHost(w, scope)
             // total = 1, nothing uploaded yet, no job created → Syncing with a static up arrow.
@@ -46,13 +47,13 @@ class FullStackIntegrationTest {
 
             // Run one cycle: the job is created → a REQUESTED (in-flight) ledger row → the up arrow pulses.
             w.runUploadCycle()
-            w.inFlight.refresh()
+            w.ledgerCounts.refresh()
             host.await { (it.health() as? SyncHealth.Syncing)?.upload == Arrow.PULSING }
 
             // Operator completes the job (store-direct deposit) → next cycle acks → COMPLETED → settled.
             w.platform.completeJob("A-primary.jpg")
             w.runUploadCycle()
-            w.completed.refresh(); w.inFlight.refresh()
+            w.ownGallery.refresh(); w.ledgerCounts.refresh()
             assertEquals(UiState.Joined(SyncHealth.InSync), host.await { it.health() is SyncHealth.InSync })
 
             // World outcomes (not UiState alone):
@@ -80,7 +81,7 @@ class FullStackIntegrationTest {
             )
             assertEquals(UiState.CreateEvent(), host.container.stateFlow.value)
 
-            w.completed.refresh(); w.inFlight.refresh()
+            w.ownGallery.refresh(); w.ledgerCounts.refresh()
             host.onCreateEvent("Party") // POST /event via the mini-edge → provision → gate lifts
             val after = host.await { it !is UiState.CreateEvent && it !is UiState.CreatingEvent }
             assertEquals(UiState.Joined(SyncHealth.InSync), after) // no photos in the library → settled
@@ -102,7 +103,7 @@ class FullStackIntegrationTest {
             w.stageAllDownloads()
             assertTrue(w.importer.imported.isNotEmpty()) // world outcome: foreign photo imported
 
-            w.completed.refresh(); w.inFlight.refresh()
+            w.ownGallery.refresh(); w.ledgerCounts.refresh()
             val host = statusHost(w, scope)
             // The imported foreign asset is suppressed from the OWN upload universe → own status settled.
             assertEquals(SyncHealth.InSync, host.await { it.health() is SyncHealth.InSync }.health())
@@ -112,7 +113,7 @@ class FullStackIntegrationTest {
     }
 
     @Test
-    fun backend_offline_keeps_last_good_completed() = worldTest {
+    fun upload_completeness_is_ledger_local_and_backend_independent() = worldTest {
         val scope = CoroutineScope(coroutineContext + Job())
         try {
             val w = World()
@@ -121,14 +122,15 @@ class FullStackIntegrationTest {
             w.runUploadCycle()
             w.platform.completeJob("A-primary.jpg")
             w.runUploadCycle()
-            w.completed.refresh()
-            assertEquals(setOf("A"), w.completed.completed.value)
+            w.ledgerCounts.refresh()
+            assertEquals(LedgerCounts(completed = 1, pending = 0), w.ledgerCounts.counts.value)
 
-            // Backend-offline: the listing fails, the last-good completed set is kept (never blanked).
+            // Upload completeness is the local ledger, not a storage LIST — backend-offline changes
+            // nothing (the read never touches the network).
             w.backendOffline = true
-            w.completed.refresh()
-            assertEquals(setOf("A"), w.completed.completed.value)
-            // The download union read also fails offline, without throwing (keeps last state).
+            w.ledgerCounts.refresh()
+            assertEquals(LedgerCounts(completed = 1, pending = 0), w.ledgerCounts.counts.value)
+            // The download union read still fails offline, without throwing (keeps last state).
             w.downloadController.reconcile("E")
         } finally {
             scope.cancel()
