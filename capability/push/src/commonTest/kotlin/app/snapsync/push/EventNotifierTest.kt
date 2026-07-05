@@ -22,14 +22,14 @@ class EventNotifierTest {
     fun notify_posts_the_notify_route_with_no_body() = runTest {
         val client = RecordingClient()
         EventNotifier(client, "https://edge.example").notify(eventId)
-        assertEquals(listOf("https://edge.example/event/$eventId/notify"), client.posts)
+        assertEquals(listOf("https://edge.example/events/$eventId/notify"), client.posts)
     }
 
     @Test
     fun trailing_slash_on_host_is_normalized() = runTest {
         val client = RecordingClient()
         EventNotifier(client, "https://edge.example/").notify(eventId)
-        assertEquals("https://edge.example/event/$eventId/notify", client.posts.single())
+        assertEquals("https://edge.example/events/$eventId/notify", client.posts.single())
     }
 
     @Test
@@ -45,6 +45,6 @@ class EventNotifierTest {
         // The seam's post takes only a URL — there is no body or auth argument to carry.
         val client = RecordingClient()
         EventNotifier(client, "https://edge.example").notify(eventId)
-        assertTrue(client.posts.single().endsWith("/event/$eventId/notify"))
+        assertTrue(client.posts.single().endsWith("/events/$eventId/notify"))
     }
 }

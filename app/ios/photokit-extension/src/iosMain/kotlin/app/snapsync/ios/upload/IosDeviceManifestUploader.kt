@@ -10,7 +10,7 @@ import io.ktor.http.isSuccess
 
 /**
  * The synchronous, in-cycle device-manifest uploader (capability `device-manifest`): PUTs the device
- * manifest JSON to `<host>/event/<eventId>/device/<deviceId>` over the injected Ktor [client] (Darwin /
+ * manifest JSON to `<host>/events/<eventId>/devices/<deviceId>` over the injected Ktor [client] (Darwin /
  * NSURLSession on iOS, default ATS). Returns `true` only on a confirmed `2xx` (so the producer records
  * the snapshot as last-uploaded only on success); any transport error or non-2xx is `false`, so the
  * producer simply retries the unchanged snapshot next cycle. No background session — the call completes
@@ -24,7 +24,7 @@ class IosDeviceManifestUploader(
     private val base = host.trimEnd('/')
 
     override suspend fun put(eventId: String, deviceId: String, json: String): Boolean = runCatching {
-        client.put("$base/event/$eventId/device/$deviceId") {
+        client.put("$base/events/$eventId/devices/$deviceId") {
             contentType(ContentType.Application.Json)
             setBody(json)
         }.status.isSuccess()

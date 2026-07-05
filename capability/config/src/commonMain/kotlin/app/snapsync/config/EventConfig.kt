@@ -23,7 +23,7 @@ internal fun EventLinkPayload.sameAs(other: EventLinkPayload): Boolean =
 /**
  * The **persisted, joined-event state** (distinct from the [EventLinkPayload] wire type): the joined
  * `eventId` plus the human-readable event `name`. The name is **nullable** because it is fetched by
- * id *after* joining (`GET /event/:id`, or received directly from `POST /event` on create) and may
+ * id *after* joining (`GET /events/:id`, or received directly from `POST /events` on create) and may
  * not be available yet — joining never blocks on it. The extension reads only the `eventId` from the
  * shared Keychain item; the name is cosmetic, for the status screen title.
  */

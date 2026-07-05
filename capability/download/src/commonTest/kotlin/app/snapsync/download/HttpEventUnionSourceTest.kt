@@ -22,8 +22,8 @@ class HttpEventUnionSourceTest {
         val body = """
         [
           {"deviceId":"DEV-A","assetId":"Q","creationDate":"2026-06-30T10:00:00Z","resources":[
-            {"role":"primary","contentType":"image/heic","key":"Q-primary.heic","filename":"IMG.HEIC","size":10,"url":"https://e/devices/DEV-A/files/Q-primary.heic"},
-            {"role":"live","contentType":"video/quicktime","key":"Q-live.mov","filename":"IMG.MOV","size":20,"url":"https://e/devices/DEV-A/files/Q-live.mov"}
+            {"role":"primary","contentType":"image/heic","key":"Q-primary.heic","filename":"IMG.HEIC","size":10,"url":"https://e/files/devices/DEV-A/Q-primary.heic"},
+            {"role":"live","contentType":"video/quicktime","key":"Q-live.mov","filename":"IMG.MOV","size":20,"url":"https://e/files/devices/DEV-A/Q-live.mov"}
           ]}
         ]
         """.trimIndent()
@@ -33,7 +33,7 @@ class HttpEventUnionSourceTest {
         assertEquals("DEV-A", assets[0].deviceId)
         assertEquals("Q", assets[0].assetId)
         assertEquals(listOf("primary", "live"), assets[0].resources.map { it.role })
-        assertEquals("https://e/devices/DEV-A/files/Q-live.mov", assets[0].resources[1].url)
+        assertEquals("https://e/files/devices/DEV-A/Q-live.mov", assets[0].resources[1].url)
         assertEquals("IMG.MOV", assets[0].resources[1].originalFilename)
     }
 

@@ -5,11 +5,11 @@ import app.snapsync.gallery.DeviceManifestAsset
 import app.snapsync.gallery.deviceManifestFromJson
 import kotlinx.serialization.Serializable
 
-/** One entry of the per-device file listing (`GET /devices/<id>/files`) — `{filename, size, url}`. */
+/** One entry of the per-device file listing (`GET /files/devices/<id>`) — `{filename, size, url}`. */
 @Serializable
 class FileEntryDto(val filename: String, val size: Long, val url: String)
 
-/** One resource of a union asset (`GET /event/<id>/files`). */
+/** One resource of a union asset (`GET /events/<id>/files`). */
 @Serializable
 class UnionResourceDto(
     val role: String,
@@ -29,7 +29,7 @@ class UnionAssetDto(
     val resources: List<UnionResourceDto>,
 )
 
-/** The `201` body of `POST /event`. */
+/** The `201` body of `POST /events`. */
 @Serializable
 class CreatedEventDto(val eventId: String, val name: String, val createdAt: String)
 
@@ -37,10 +37,10 @@ class CreatedEventDto(val eventId: String, val name: String, val createdAt: Stri
  * The in-memory model of the edge's byte store + registry (capability `harness-world-model`) — the
  * single source of world truth. Three maps:
  *
- * - [byteStore]: `deviceId -> stored object names` (the `devices/<deviceId>/files/<filename>` byte partitions).
+ * - [byteStore]: `deviceId -> stored object names` (the `files/devices/<deviceId>/<filename>` byte partitions).
  * - [manifests]: `(eventId, deviceId) -> DeviceManifest` (the per-event device manifests, PUT via the
  *   mini-edge; also injected directly for foreign devices).
- * - [events]: the registered-event marker set (a `POST /event` registers; the union gate reads it).
+ * - [events]: the registered-event marker set (a `POST /events` registers; the union gate reads it).
  *
  * From these it computes the edge's read-models **faithfully in behavior** — [deviceListing], [union],
  * and (the same as the per-device listing) the reconcile-seed listing. Byte-level fidelity to the real
@@ -54,7 +54,7 @@ class BackendStore {
     private val byteStore = mutableMapOf<String, MutableSet<String>>()
     private val manifests = mutableMapOf<Pair<String, String>, DeviceManifest>()
     private val events = mutableSetOf<String>()
-    // Per-device config docs (`devices/<id>/config.json`, the push token) — a SEPARATE namespace from
+    // Per-device config docs (`devices/<id>.json`, the push token) — a SEPARATE namespace from
     // the byte store, so a config never appears in [deviceListing] or the [union].
     private val deviceConfigs = mutableMapOf<String, String>()
 
@@ -68,7 +68,7 @@ class BackendStore {
         byteStore.getOrPut(deviceId) { linkedSetOf() }.add(filename)
     }
 
-    /** Register an event marker (the `POST /event` effect / a direct injection). */
+    /** Register an event marker (the `POST /events` effect / a direct injection). */
     fun registerEvent(eventId: String) {
         events.add(eventId)
     }
@@ -84,7 +84,7 @@ class BackendStore {
 
     fun isRegistered(eventId: String): Boolean = eventId in events
 
-    /** Deposit a device manifest from its JSON body (the `PUT /event/<id>/device/<id>` effect). */
+    /** Deposit a device manifest from its JSON body (the `PUT /events/<id>/devices/<id>` effect). */
     fun putManifestJson(eventId: String, deviceId: String, json: String) {
         manifests[eventId to deviceId] = deviceManifestFromJson(json)
     }
@@ -94,7 +94,7 @@ class BackendStore {
         manifests[eventId to deviceId] = manifest
     }
 
-    /** Store a device's config doc (the `PUT /devices/<id>/config` effect — push-token registration). */
+    /** Store a device's config doc (the `PUT /devices/<id>` effect — push-token registration). */
     fun putDeviceConfig(deviceId: String, json: String) {
         deviceConfigs[deviceId] = json
     }
@@ -112,7 +112,7 @@ class BackendStore {
     // ---- read-models ----------------------------------------------------------------------------
 
     /**
-     * The per-device file listing (`GET /devices/<id>/files`) — one entry per stored object. Serves
+     * The per-device file listing (`GET /files/devices/<id>`) — one entry per stored object. Serves
      * BOTH the rejoin reconcile seed (`HttpDeviceFilesSource`) and own-device status completeness
      * (the ledger-backed status source); the world computes it once.
      */
@@ -122,7 +122,7 @@ class BackendStore {
         }
 
     /**
-     * The event-wide union (`GET /event/<id>/files`): every contributing device's **complete** assets
+     * The event-wide union (`GET /events/<id>/files`): every contributing device's **complete** assets
      * (every manifest resource `key` present in that device's byte partition), each tagged with its
      * `deviceId`. Returns `null` when the event is unregistered (the marker gate — a 404-equivalent,
      * distinct from a registered-but-empty event which returns an empty list).

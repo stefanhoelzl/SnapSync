@@ -9,7 +9,7 @@ import kotlinx.serialization.json.Json
 
 /**
  * Fetches an event's human-readable name by id — the scan-path name source (create already receives
- * the name from `POST /event`). Best-effort and non-throwing: a failure/offline/404 yields `null` so
+ * the name from `POST /events`). Best-effort and non-throwing: a failure/offline/404 yields `null` so
  * joining never blocks on the cosmetic name (see `deeplink-config` — *Event name is fetched, not
  * carried in the deeplink*).
  */
@@ -19,7 +19,7 @@ interface EventMetadataSource {
 
 /**
  * [EventMetadataSource] over an injected Ktor [HttpClient] and host (Darwin on iOS, `MockEngine` in
- * tests — the twin of [HttpEventCreationClient]). `GET <host>/event/<eventId>`; parses `name` from a
+ * tests — the twin of [HttpEventCreationClient]). `GET <host>/events/<eventId>`; parses `name` from a
  * `200 { eventId, name, createdAt }`, maps any non-2xx / transport / parse failure to `null`.
  */
 class HttpEventMetadataSource(
@@ -32,7 +32,7 @@ class HttpEventMetadataSource(
 
     override suspend fun name(eventId: String): String? =
         runCatching {
-            val response = client.get("$base/event/$eventId")
+            val response = client.get("$base/events/$eventId")
             if (response.status == HttpStatusCode.OK) {
                 json.decodeFromString(MetaDto.serializer(), response.bodyAsText()).name
             } else {

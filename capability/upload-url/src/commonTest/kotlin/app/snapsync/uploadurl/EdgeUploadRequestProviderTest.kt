@@ -26,7 +26,7 @@ class EdgeUploadRequestProviderTest {
     fun builds_the_edge_url_for_an_unreserved_filename() = runTest {
         val req = provider().provide(resource("ABC123_DEF-primary.jpg"))
         assertEquals(
-            "https://edge.example/devices/$deviceId/files/ABC123_DEF-primary.jpg",
+            "https://edge.example/files/devices/$deviceId/ABC123_DEF-primary.jpg",
             req.url,
         )
     }
@@ -35,7 +35,7 @@ class EdgeUploadRequestProviderTest {
     fun percent_encodes_reserved_bytes_and_slash() = runTest {
         // Space → %20, `/` → %2F, multi-byte UTF-8 (ä = C3 A4) → %C3%A4, all uppercase hex.
         val req = provider().provide(resource("a b/ä.jpg"))
-        assertTrue(req.url.endsWith("/devices/$deviceId/files/a%20b%2F%C3%A4.jpg"), "was ${req.url}")
+        assertTrue(req.url.endsWith("/files/devices/$deviceId/a%20b%2F%C3%A4.jpg"), "was ${req.url}")
     }
 
     @Test
@@ -68,7 +68,7 @@ class EdgeUploadRequestProviderTest {
     fun trailing_slash_on_host_is_normalized() = runTest {
         val req = provider(host = "https://edge.example/").provide(resource("x.jpg"))
         assertEquals(
-            "https://edge.example/devices/$deviceId/files/x.jpg",
+            "https://edge.example/files/devices/$deviceId/x.jpg",
             req.url,
         )
     }

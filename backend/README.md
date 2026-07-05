@@ -19,10 +19,10 @@ Three disjoint key namespaces in one zone (an `eventId`/`deviceId` is a UUID, ne
 so nothing collides):
 
 ```
-events/<eventId>/metadata.json          event marker / registry record { eventId, name, createdAt }
-events/<eventId>/device/<deviceId>.json per-event device manifest (membership + projected assets)
-devices/<deviceId>/files/<filename>     a device's raw uploaded photo/resource byte objects
-devices/<deviceId>/config.json          a device's config { pushToken: { kind, token, env } } (NOT a file)
+events/<eventId>/metadata.json           event marker / registry record { eventId, name, createdAt }
+events/<eventId>/devices/<deviceId>.json  per-event device manifest (membership + projected assets)
+files/devices/<deviceId>/<filename>       a device's raw uploaded photo/resource byte objects
+devices/<deviceId>.json                   a device's config { pushToken: { kind, token, env } } (NOT a file)
 ```
 
 An event **exists** iff its marker `events/<eventId>/metadata.json` is present. Bunny's Edge Storage
@@ -34,45 +34,45 @@ is self-asserted (possession of the UUID is the capability); App Attest is the n
 ## Contract
 
 ```
-POST /event
+POST /events
     body: {"name": "<event name>"}                        (JSON; trimmed, non-empty, ≤100 chars)
     →  bunny native PUT  events/<minted-uuid>/metadata.json
     →  201 {eventId, name, createdAt}                     (eventId minted server-side) | 502
 
-GET  /event/<eventId>
+GET  /events/<eventId>
     →  200 {eventId, name, createdAt}  | 404 when never created | 502 on a non-404 marker read failure
 
-PUT  /devices/<deviceId>/files/<filename>                 (byte upload — UNGATED, no marker read)
+PUT  /files/devices/<deviceId>/<filename>                 (byte upload — UNGATED, no marker read)
     body: raw resource bytes (streamed, never buffered)
-    →  bunny native PUT  https://<host>/<zone>/devices/<deviceId>/files/<filename>
+    →  bunny native PUT  https://<host>/<zone>/files/devices/<deviceId>/<filename>
        header  AccessKey: <storage-zone password>
     →  201 on confirmed store | 502 on any upstream error/abort
     OPTIONS → 204 (no resumable-upload advertised → the iOS uploader falls back to a plain PUT)
 
-GET  /devices/<deviceId>/files                            (per-device raw listing — UNGATED)
-    →  single bunny native LIST of  devices/<deviceId>/files/
+GET  /files/devices/<deviceId>                            (per-device raw listing — UNGATED)
+    →  single bunny native LIST of  files/devices/<deviceId>/
     →  200 [ {filename, size, url}, … ]  (200 [] for an empty/unknown partition) | 502 on LIST failure
        url = a presigned S3 GET URL (below);  Cache-Control: no-store
 
-PUT  /devices/<deviceId>/config                           (device config / push token — UNGATED by event)
+PUT  /devices/<deviceId>                           (device config / push token — UNGATED by event)
     body: { pushToken: { kind: "apns", token, env } }  (streamed)     DEVICE-ID is the capability
-    →  bunny native PUT  devices/<deviceId>/config.json   → 201 | 502   (last-write-wins; not a listed file)
+    →  bunny native PUT  devices/<deviceId>.json   → 201 | 502   (last-write-wins; not a listed file)
 
-POST /event/<eventId>/notify                              (silent push to members — GATED on event existence)
+POST /events/<eventId>/notify                              (silent push to members — GATED on event existence)
     →  [gate] GET events/<eventId>/metadata.json  → absent? 404 | non-404 failure? 502
-    →  LIST events/<eventId>/device/  → per member: read devices/<id>/config.json → APNs silent push
+    →  LIST events/<eventId>/devices/  → per member: read devices/<id>.json → APNs silent push
     →  202 (bare)  |  502 only if the member LIST fails
        best-effort: members without a token are skipped; a per-token failure never fails the request
        fixed payload (content-available), ALL members, no exclusion; NO production caller wired yet
 
-PUT  /event/<eventId>/device/<deviceId>                   (device manifest — GATED on event existence)
+PUT  /events/<eventId>/devices/<deviceId>                   (device manifest — GATED on event existence)
     body: full-state JSON device manifest (streamed)
     →  [gate] GET events/<eventId>/metadata.json  → absent? 404 (stream nothing) | non-404 failure? 502
-    →  bunny native PUT  events/<eventId>/device/<deviceId>.json   → 201 | 502
+    →  bunny native PUT  events/<eventId>/devices/<deviceId>.json   → 201 | 502
 
-GET  /event/<eventId>/files                               (event-wide UNION — GATED on event existence)
+GET  /events/<eventId>/files                               (event-wide UNION — GATED on event existence)
     →  [gate] GET events/<eventId>/metadata.json  → absent? 404 | non-404 failure? 502
-    →  LIST events/<eventId>/device/  → per device: read device.json + LIST devices/<deviceId>/files/
+    →  LIST events/<eventId>/devices/  → per device: read device.json + LIST files/devices/<deviceId>/
     →  200 [ {deviceId, assetId, creationDate, resources:[{role,contentType,key,filename,size,url}]} ]
        complete assets only (every named resource present in the device's byte partition), flattened
        across devices, each tagged with its owning deviceId;  200 [] for an empty event
@@ -85,8 +85,8 @@ GET  /event/<eventId>/files                               (event-wide UNION — 
 - `filename` — a single path segment; a literal or encoded `/` (`%2F`) or `..` is rejected (`400`)
   so keys stay flat. It is percent-encoded into the storage key and decoded back on listing, so the
   round-trip is byte-exact.
-- **Stored keys are bare** — the URL labels (`devices`/`files`/`event`/`device`) are structural, not
-  part of the stored key beyond the layout above.
+- **Stored keys are bare** — the URL labels (`files`/`devices`/`events`) are structural, not part of
+  the stored key beyond the layout above.
 - **Last-write-wins** — every object write is one unconditional PUT with no existence check on the
   object key. A byte key is device-partitioned (same-device overwrite of a byte-identical
   re-upload); a manifest is rewritten in full each cycle.
@@ -95,15 +95,15 @@ GET  /event/<eventId>/files                               (event-wide UNION — 
   required LIST/GET succeeds; otherwise `502`, never a partial/truncated result. Never a false
   success.
 - **Presigned download URLs** — each listed object's `url` is an AWS **SigV4 presigned S3 GET URL**
-  (path-style `https://<s3-host>/<zone>/devices/<deviceId>/files/<filename>?X-Amz-…`,
+  (path-style `https://<s3-host>/<zone>/files/devices/<deviceId>/<filename>?X-Amz-…`,
   `X-Amz-Expires` **7 days**), signed with the zone name as the S3 Access Key ID and the storage
   `AccessKey` as the secret. The query signature is the sole authorization — the device fetches the
   object directly from bunny's S3 endpoint with no credential. A **fresh** URL is minted on every
   list/union response (never cached), so each read yields one valid for a further 7 days. Both the
   per-device list and the union use the same builder, so their `url`s agree by construction. The
   former download-proxy route is retired.
-- **Methods** — `POST /event`, `GET /event/<id>`, `GET /devices/<id>/files`, `PUT`/`OPTIONS` on
-  `/devices/<id>/files/<name>`, `PUT /event/<id>/device/<id>`, `GET /event/<id>/files`. Any other
+- **Methods** — `POST /events`, `GET /events/<id>`, `GET /files/devices/<id>`, `PUT`/`OPTIONS` on
+  `/files/devices/<id>/<name>`, `PUT /events/<id>/devices/<id>`, `GET /events/<id>/files`. Any other
   method or unmatched path → **`404`** (Hono's default — no `405`). Bad UUID / unsafe filename /
   invalid name → `400`.
 

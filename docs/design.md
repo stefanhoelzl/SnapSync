@@ -8,7 +8,7 @@ A **scope pivot** (2026-06-22) of SnapSync, from a *personal one-way library bac
 > machinery — the iOS 27 background upload extension, the ledgered decision engine, the status
 > projection, the design-system UI — but repoints it at an **externally-provisioned event**:
 >
-> - An event is **created in the app** (enter a name → the backend mints it via `POST /event`, and the
+> - An event is **created in the app** (enter a name → the backend mints it via `POST /events`, and the
 >   creating device auto-joins) or externally by a backend tool. Either way it is shared as a **QR
 >   code** for others to join (QR generation/sharing is a separate concern, not in this app yet).
 > - A device **joins by scanning that QR with the native Camera**, opening a `snapsync://` deeplink
@@ -48,7 +48,7 @@ A **scope pivot** (2026-06-22) of SnapSync, from a *personal one-way library bac
   capture date so photos sort by when they were taken. Discovery of *later* additions is foreground-only.
 - **One event at a time.** Joining a new event **re-provisions** (replaces) the current one
   (§2.4/§3.2). Multi-event membership is a later concern.
-- **Create an event in-app** (enter a name → `POST /event` mints it and the app auto-joins) **or join
+- **Create an event in-app** (enter a name → `POST /events` mints it and the app auto-joins) **or join
   by scanning a QR with the native Camera** → `snapsync://` deeplink → event config provisioned via
   `:capability:config`. Once joined, the app **displays the join QR** for its current event
   (§5/`event-invite-qr`) — a joined device holds the `eventId`, so it re-encodes the same deeplink to
@@ -153,7 +153,7 @@ filter, the edge URL build) lives **above and beside** the seam, in the platform
                          v1; now carries the event. Stores into shared Keychain (app + extension).
 :capability:event-creation-ui  the in-app create-event flow: EventCreator (command) +
                          CreationStatusSource (state) seams, CreationStatus, the HTTP creator
-                         (POST /event), and the CreateEvent use-case (mint → provision-like-a-QR).
+                         (POST /events), and the CreateEvent use-case (mint → provision-like-a-QR).
 :domain:presentation   → :domain:status + :domain:permission. Orbit MVI container(s) + UiState.
                          COMPOSE-FREE. NO engine dependency — engine types never reach
                          presentation's compile classpath.
@@ -253,8 +253,8 @@ class UploadJob(val request: UploadRequest, val attempt: Int)
 
 interface UploadRequestProvider {            // impl: a LOCAL URL builder, no network (test: dumb fake)
     suspend fun provide(resource: Resource): UploadRequest
-    // builds the key (<eventId>/<encoded filename>) from event config, composes
-    // the edge URL (/event/<id>/file/<filename>), returns the full request. NO network call.
+    // builds the key (<deviceId>/<encoded filename>) from device identity, composes
+    // the edge URL (/files/devices/<deviceId>/<filename>), returns the full request. NO network call.
     // CONTRACT: filename → destination is deterministic and injective; Content-Type set; called only
     // for Work answers — never on a skip.
 }
@@ -329,7 +329,7 @@ completions at the acknowledge edge, BEFORE acknowledging** (`UploadCompleted(jo
 `acknowledge()`). Failures are reported as `UploadFailed(job, error)` and answered with `Retry`. **Every
 presented job is acknowledged** (iOS errors 50008 otherwise). **Retention is the ledger itself** — a
 returned system job is mapped back to its key by **parsing its destination URL path**
-(`/event/<id>/file/<name>` → `<id>/<name>`), since `resource` is **nil for succeeded
+(`/files/devices/<deviceId>/<filename>` → `<deviceId>/<filename>`), since `resource` is **nil for succeeded
 jobs**; the attempt comes from the ledger row. **One ledger
 writer per platform:** the engine (and its `LedgerWriter`) is hosted where uploads are decided — on
 iOS, the extension, which is the ledger's sole owner (the app reads no ledger; §2.4). Scope filtering (photos yes, standalone
@@ -451,12 +451,12 @@ reconcile is driven by the remote APNs silent push (`notify-driven-download`) + 
 > `immutable-asset-manifests` below.** Bytes now live in a **device-partitioned, event-independent**
 > store and are *linked* into events by reference (uploaded once, reused across events):
 > ```
-> /devices/<device-id>/files/<assetId>-<role>.<ext>  bytes · device-global · uploaded once
+> /files/devices/<device-id>/<assetId>-<role>.<ext>  bytes · device-global · uploaded once
 > /events/<event-id>/metadata.json                   event marker {eventId,name,createdAt}
-> /events/<event-id>/device/<device-id>.json         the device's per-event manifest (one doc, not N)
+> /events/<event-id>/devices/<device-id>.json         the device's per-event manifest (one doc, not N)
 > ```
 > - **device-id returns** (reversing `flatten-event-namespace`): a per-install UUID minted in the
->   shared Keychain (`device-identity`), the `/devices/<id>/files/` partition and the manifest key — recorded now as
+>   shared Keychain (`device-identity`), the `/files/devices/<id>/` partition and the manifest key — recorded now as
 >   forward-prep for a deletion-correct restore (still out of scope). Content-hash keys remain
 >   impractical (the OS still never shows the extension the bytes), so dedup is **same-device,
 >   across-events** via the device-local `assetId`, not cross-device.
@@ -464,9 +464,9 @@ reconcile is driven by the remote APNs silent push (`notify-driven-download`) + 
 >   `immutable-asset-manifests`): a full-state projection of a device-global accumulator, **PUT
 >   synchronously in-cycle** by the extension (no background `URLSession`), deletion-aware, write-only
 >   in v1. The write-once / permanent-cache property is dropped.
-> - **Byte uploads are ungated** (`PUT /devices/<id>/files/<file>`) — accepted abuse trade-off; the
+> - **Byte uploads are ungated** (`PUT /files/devices/<id>/<file>`) — accepted abuse trade-off; the
 >   event-existence gate moves to the device.json write. **Status is own-device**: gallery enumeration
->   (expected) × the per-device file listing `GET /devices/<id>/files` (present); it reads no device.json.
+>   (expected) × the per-device file listing `GET /files/devices/<id>` (present); it reads no device.json.
 > - **Reconcile** on a re-join **`resetTo`s** (atomic clear-and-seed) the ledger from the per-device
 >   listing — one `COMPLETED` row per stored filename — and **clears the discovery cursor** to force a
 >   full re-enumeration. The clear drops stale/phantom rows (e.g. a `REQUESTED` row from a prior cycle
@@ -507,7 +507,7 @@ proxies are all dropped — so an asset's resource set is **fixed at capture and
   `assetId`, `creationDate`, `resources[]{role, contentType, filename, originalFilename}`) — the
   authoritative declaration of the asset's complete resource set. Because the OS owns background-job
   scheduling and the manifest cannot be "uploaded last," **completeness is computed at read time**: the
-  list endpoint (`GET /event/<id>/files`, §4) reads each manifest and returns an asset only when every
+  list endpoint (`GET /events/<id>/files`, §4) reads each manifest and returns an asset only when every
   resource it names is present. The manifest is **not** an engine `Resource` and **not** in the ledger
   — it rides a vanilla background `URLSession` side channel (the OS job API carries only a
   `PHAssetResource`); the extension generates + enqueues it and the **app** handles its completion
@@ -610,7 +610,7 @@ the system downloads each resource (incl. from iCloud) and performs `job.destina
    **original** `PHAssetResource`s and wrap each as a `Resource` — filename `"<assetId>-<role>.<ext>"`
    (no content version: an uploaded resource is immutable). Report `ResourceChanged` per resource and act on the decision:
    `AlreadyUploaded` → continue (no job slot); `Work` → `provider.provide(resource)` **builds the edge
-   URL** (`/event/<eventId>/file/<filename>`) locally, then take the `PHAssetResource` from
+   URL** (`/files/devices/<deviceId>/<filename>`) locally, then take the `PHAssetResource` from
    `decision.job.request.resource.data`, build the `URLRequest` (PUT + `Content-Type`) →
    `creationRequestForJob(destination:resource:)` in `performChanges {}`. On `limitExceeded` stop
    reporting for this cycle, do **not** advance the cursor, and return `.processing`.
@@ -654,10 +654,10 @@ out of scope** for this app. This doc specifies only the contracts the app depen
 
 **Event-wide union read (now on the edge).** The earlier deferral of the event-wide union to an
 external/admin-direct reader is **reversed**: because a future on-device download/restore client holds
-**no storage credential**, the union is exposed as an **edge** read, `GET /event/<eventId>/files`
+**no storage credential**, the union is exposed as an **edge** read, `GET /events/<eventId>/files`
 (capability `bunny-list-endpoint`). It returns, for one event, every contributing device's **complete**
 assets (an asset is complete only when every resource its `device.json` names is present in
-`/devices/<deviceId>/files/`), flattened across devices, each tagged with its owning `deviceId` — the client
+`/files/devices/<deviceId>/`), flattened across devices, each tagged with its owning `deviceId` — the client
 skips its **own** device by `deviceId` (the endpoint is identity-blind). Each resource carries
 `{ role, contentType, key, filename, size, url }`, a straight projection of the per-event device
 manifest (`device.json`) — except `url`, which is a **presigned S3 GET URL** the edge mints per object
@@ -703,10 +703,10 @@ bytes). The proxy sidesteps signing entirely: the endpoint, not the device, writ
     today** (bunny Edge Scripting is sidelined while bunny investigates dropping iOS's zero-window
     upload SYNs). Because the baked host names a domain we own, swapping the active runtime is a **DNS
     repoint + a server-side `PUBLIC_BASE_URL` flip — not a new app build**.
-  - **Request:** `PUT /event/<eventId>/file/<filename>` with the resource bytes as
+  - **Request:** `PUT /files/devices/<deviceId>/<filename>` with the resource bytes as
     the body and `Content-Type`. The endpoint **streams** the body straight into the bunny native PUT
     (one subrequest, never buffered).
-  - **Read (list):** `GET /event/<eventId>/files` returns a flat JSON array of every stored object
+  - **Read (list):** `GET /events/<eventId>/files` returns a flat JSON array of every stored object
     for the event — `{ filename, size, url }` per entry (no `lastModified`: an uploaded resource is
     immutable and the re-join seed timestamps rows with the join time). It does a **single** bunny native
     Storage LIST of the event dir (files are direct children), authorized by the event id alone.
@@ -884,7 +884,7 @@ itself is covered by the endpoint's `Deno.test` suite.
 | UI | Compose Multiplatform | single codebase; Material 3 behind a design-system abstraction |
 | State | **Orbit MVI** (10.0.0) | Compose-free; Decompose-able later |
 | DI | **Manual composition root** | no deps, compile-safe; Koin if it grows |
-| HTTP | **Ktor** (Darwin engine) | **not load-bearing for upload** — the PUT is iOS's (straight to the edge) and the `UploadRequestProvider` builds the URL **locally** (no HTTP). `GET /event/<id>/files` (the completeness listing) is used **two** places: the app's status read (§2.4) and the **extension's** rejoin reconcile seed |
+| HTTP | **Ktor** (Darwin engine) | **not load-bearing for upload** — the PUT is iOS's (straight to the edge) and the `UploadRequestProvider` builds the URL **locally** (no HTTP). `GET /events/<id>/files` (the completeness listing) is used **two** places: the app's status read (§2.4) and the **extension's** rejoin reconcile seed |
 | Crypto/IO | **okio** (App-Group IO) | hand-rolled SigV4 **retired** — signing is **eliminated** (the edge writes with its `AccessKey`); KotlinCrypto no longer needed on-device |
 | Engine ledger | **SQLDelight** (2.3.2) | per-key upload memory; the extension is the sole **writer** AND owns reconciliation; the app is a **read-only** reader (aggregates peek for status, §2.4) and constructs no `LedgerWriter`; status is ledger-sourced, notify-driven; `resetTo` seeds on the extension's marker-gated (re)join |
 | Persistence | **okio + kotlinx.serialization** | tiny App-Group store: change token, start date, eventId; event config in shared **Keychain** (via `:capability:config`) |

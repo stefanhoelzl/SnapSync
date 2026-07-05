@@ -2,51 +2,51 @@
 // `bunny-list-endpoint` + `device-config-endpoint` + `event-notify-endpoint`, over the shared
 // `backend-config`; pushes via `apns-push-sender`).
 //
-//   POST /event
+//   POST /events
 //     → mints an event: writes the marker `events/<id>/metadata.json`, returns {eventId,name,createdAt}.
-//   GET /event/:eventId
+//   GET /events/:eventId
 //     → returns the event marker (existence check); 404 when absent.
-//   PUT /devices/:deviceId/config
-//     → streams a JSON device config (the push token) into `devices/<deviceId>/config.json`. UNGATED by
-//       event; DEVICE-ID is the capability. Faithful 201/502; last-write-wins. Outside the files/
-//       partition, so never listed as an asset.
-//   POST /event/:eventId/notify
+//   PUT /devices/:deviceId
+//     → streams a JSON device config (the push token) into `devices/<deviceId>.json`. UNGATED by
+//       event; DEVICE-ID is the capability. Faithful 201/502; last-write-wins. A flat sibling of the
+//       `files/devices/<deviceId>/` byte partition, so never listed as an asset.
+//   POST /events/:eventId/notify
 //     → sends a fixed SILENT (content-available) push to EVERY member device. GATED on the marker
-//       (404/502). Enumerate members (LIST `events/<id>/device/`) → read each `devices/<id>/config.json`
+//       (404/502). Enumerate members (LIST `events/<id>/devices/`) → read each `devices/<id>.json`
 //       → best-effort fan-out via APNs. Bare 202 (no per-device results); 502 only if the member LIST
 //       fails. No production caller wired (the trigger is a deferred use case).
-//   PUT /devices/:deviceId/files/:filename
+//   PUT /files/devices/:deviceId/:filename
 //     → streams the request body into ONE bunny native Storage PUT. UNGATED (no marker read): bytes
-//       are device-partitioned and event-independent (`devices/<deviceId>/files/<filename>`), uploaded
+//       are device-partitioned and event-independent (`files/devices/<deviceId>/<filename>`), uploaded
 //       once and linked into events by reference. The device id is self-asserted (accepted abuse
 //       trade-off — see `bunny-upload-endpoint` §8; App Attest is the hardening path). (There is no
 //       download GET on this path — the listing hands out a presigned S3 URL fetched directly from S3.)
-//   GET /devices/:deviceId/files
-//     → lists the device's RAW stored objects (a single LIST of `devices/<deviceId>/files/`); each is
+//   GET /files/devices/:deviceId
+//     → lists the device's RAW stored objects (a single LIST of `files/devices/<deviceId>/`); each is
 //       `{ filename, size, url }` where `url` is a presigned S3 GET URL. No manifest read, no
 //       completeness, no event gate. `Cache-Control: no-store` (the urls are time-limited).
-//   PUT /event/:eventId/device/:deviceId
-//     → streams a JSON device manifest into `events/<eventId>/device/<deviceId>.json`. GATED on event
+//   PUT /events/:eventId/devices/:deviceId
+//     → streams a JSON device manifest into `events/<eventId>/devices/<deviceId>.json`. GATED on event
 //       existence (the marker read) so a manifest is never written under a non-existent event.
-//   GET /event/:eventId/files
+//   GET /events/:eventId/files
 //     → the event-wide UNION: every contributing device's COMPLETE assets (an asset is complete iff
-//       every resource its device.json names is present in `devices/<deviceId>/files/`), flattened across
+//       every resource its device.json names is present in `files/devices/<deviceId>/`), flattened across
 //       devices, each tagged with its owning deviceId. GATED on event existence (marker read). Fans
-//       out: marker → LIST `events/<id>/device/` → per device (read device.json + LIST its files) →
+//       out: marker → LIST `events/<id>/devices/` → per device (read device.json + LIST its files) →
 //       complete-only projection. Faithful: any non-404 read failure anywhere (incl. a manifest JSON
 //       parse failure) → 502 (never a partial union). `Cache-Control: no-store` (live read over
 //       mutable manifests + listings). Identity-blind: own-vs-foreign skip is the client's concern.
 //
 // EVENT REGISTRY: an event exists iff the object `events/<id>/metadata.json` is present. Because an
 // eventId is a UUID, the marker key `events/<id>/metadata.json`, the device-manifest keys
-// `events/<id>/device/<deviceId>.json`, and the device-global byte store `devices/<deviceId>/files/…`
+// `events/<id>/devices/<deviceId>.json`, and the device-global byte store `files/devices/<deviceId>/…`
 // are mutually disjoint and never collide. Existence is a small `GET` of the marker (bunny's Edge Storage
 // API has no HEAD); a non-404 read failure surfaces as 502 (a transient failure is never mistaken for
 // absence). Only the device-manifest write, the metadata route, and the event-wide union read the
 // marker — the byte upload/download and per-device list routes are event-independent and ungated.
 //
 // The per-device byte WRITE route is defined on a child Hono (`byteFile`) and mounted under
-// `/devices/:deviceId/files/:filename` via app.route(), so PUT (upload) and OPTIONS share it.
+// `/files/devices/:deviceId/:filename` via app.route(), so PUT (upload) and OPTIONS share it.
 // `deviceId`/`filename` are Hono's decoded path params (typed `string | undefined` through a mount,
 // hence the guard); the filename is re-encoded per-segment when building the bunny URL, so the stored
 // object is the real filename and keys stay flat. Config is injected (validated at startup). Upload
@@ -55,7 +55,7 @@
 // fetches directly from bunny's S3 endpoint (the short-read integrity check moves to the client).
 //
 // The list route returns the device's raw objects from a single bunny native Storage LIST of
-// `devices/<deviceId>/files/` — no manifest content reads. Completeness is computed by the app (the shared
+// `files/devices/<deviceId>/` — no manifest content reads. Completeness is computed by the app (the shared
 // gallery enumeration seam × this raw list), not server-side. Faithful: any LIST transport failure →
 // 502 (never a partial list); a 404 on the device dir is "no objects" → 200 []. Each `url` is a
 // presigned S3 GET URL (see `presignDownloadUrl`).
@@ -67,8 +67,8 @@ import type { Config } from "./config.ts";
 import { createApnsSender, type PushToken } from "./apns.ts";
 
 // The event registry's marker prefix. Because an eventId is a UUID, the marker
-// `events/<id>/metadata.json` is disjoint from any device manifest `events/<id>/device/<deviceId>.json`
-// and from the byte store `devices/<deviceId>/files/…`.
+// `events/<id>/metadata.json` is disjoint from any device manifest `events/<id>/devices/<deviceId>.json`
+// and from the byte store `files/devices/<deviceId>/…`.
 const MARKER_PREFIX = "events";
 
 /** Storage key of an event's marker object: `events/<eventId>/metadata.json`. */
@@ -76,31 +76,31 @@ function markerKey(eventId: string): string {
   return `${MARKER_PREFIX}/${encodeURIComponent(eventId)}/metadata.json`;
 }
 
-/** Storage key of a device's per-event manifest: `events/<eventId>/device/<deviceId>.json`. */
+/** Storage key of a device's per-event manifest: `events/<eventId>/devices/<deviceId>.json`. */
 function deviceManifestKey(eventId: string, deviceId: string): string {
-  return `${MARKER_PREFIX}/${encodeURIComponent(eventId)}/device/${
+  return `${MARKER_PREFIX}/${encodeURIComponent(eventId)}/devices/${
     encodeURIComponent(deviceId)
   }.json`;
 }
 
-/** The per-event device-manifest directory to LIST: `events/<eventId>/device/`. */
+/** The per-event device-manifest directory to LIST: `events/<eventId>/devices/`. */
 function deviceManifestDir(eventId: string): string {
-  return `${MARKER_PREFIX}/${encodeURIComponent(eventId)}/device/`;
+  return `${MARKER_PREFIX}/${encodeURIComponent(eventId)}/devices/`;
 }
 
-/** Storage key of a stored resource byte object: `devices/<deviceId>/files/<filename>`. */
+/** Storage key of a stored resource byte object: `files/devices/<deviceId>/<filename>`. */
 function byteKey(deviceId: string, filename: string): string {
-  return `devices/${encodeURIComponent(deviceId)}/files/${encodeURIComponent(filename)}`;
+  return `files/devices/${encodeURIComponent(deviceId)}/${encodeURIComponent(filename)}`;
 }
 
-/** The device byte-store directory to LIST: `devices/<deviceId>/files/`. */
+/** The device byte-store directory to LIST: `files/devices/<deviceId>/`. */
 function deviceDir(deviceId: string): string {
-  return `devices/${encodeURIComponent(deviceId)}/files/`;
+  return `files/devices/${encodeURIComponent(deviceId)}/`;
 }
 
-/** Storage key of a device's config document (holds the push token): `devices/<deviceId>/config.json`. */
+/** Storage key of a device's config document (holds the push token): `devices/<deviceId>.json`. */
 function deviceConfigKey(deviceId: string): string {
-  return `devices/${encodeURIComponent(deviceId)}/config.json`;
+  return `devices/${encodeURIComponent(deviceId)}.json`;
 }
 
 /** The event marker's contents — the registry record written on create. */
@@ -141,7 +141,7 @@ type FileEntry = {
 
 // The on-storage device manifest (`device-manifest`), after the `key`/`filename` rename. We read only
 // these fields; the union projects them straight through. A resource's `key` is its storage object
-// name (`devices/<deviceId>/files/<key>`, the fetch handle); `filename` is the human capture name.
+// name (`files/devices/<deviceId>/<key>`, the fetch handle); `filename` is the human capture name.
 type ManifestResource = {
   role: string;
   contentType: string;
@@ -232,7 +232,7 @@ function decodeObjectName(objectName: string): string {
  * `null` when absent (bunny `404`), and THROWS on any other status, network error, or abort — so the
  * caller surfaces a faithful `502` and never mistakes a transient read failure for "event absent".
  * Bunny's Edge Storage API has no `HEAD`, so existence is a small `GET` of the marker; the marker is
- * tiny, and the same read serves the `GET /event/:eventId` metadata response and the device-manifest
+ * tiny, and the same read serves the `GET /events/:eventId` metadata response and the device-manifest
  * write gate.
  */
 async function readMarker(
@@ -251,7 +251,7 @@ async function readMarker(
 }
 
 /**
- * Read one device's per-event manifest object (`events/<eventId>/device/<deviceId>.json`). THROWS on
+ * Read one device's per-event manifest object (`events/<eventId>/devices/<deviceId>.json`). THROWS on
  * any non-OK status, network error, abort, OR a JSON parse failure — so a faulty manifest fails the
  * whole union faithfully (`502`) rather than silently dropping a contributor. The caller only invokes
  * this for devices already discovered by the directory LIST, so the object is expected to exist (a
@@ -275,7 +275,7 @@ async function readDeviceManifest(
 }
 
 /**
- * Read a device's config object (`devices/<deviceId>/config.json`) and return its `pushToken`, or
+ * Read a device's config object (`devices/<deviceId>.json`) and return its `pushToken`, or
  * `null` when the config is absent (`404`), unreadable, unparseable, or carries no usable token. Used
  * by the notify fan-out, which is **best-effort** — a member without a registered token is simply
  * skipped, so this NEVER throws (unlike the manifest read that fails the union). The body is always
@@ -332,13 +332,13 @@ export function createApp({ fetch: fetchImpl, config }: Deps): Hono {
   const apns = createApnsSender(config, fetchImpl);
 
   // Per-device byte WRITE route (`bunny-upload-endpoint`). Mounted under
-  // `/devices/:deviceId/files/:filename`, so the handlers read `deviceId`/`filename` from the mount.
+  // `/files/devices/:deviceId/:filename`, so the handlers read `deviceId`/`filename` from the mount.
   // (Downloads are no longer proxied here — the listing hands out a presigned S3 GET URL the device
   // fetches directly from bunny's S3 endpoint.)
   const byteFile = new Hono();
 
   // Upload — UNGATED. No marker read: bytes are device-partitioned and event-independent. Stream the
-  // body straight into one bunny native PUT at `devices/<deviceId>/files/<filename>`. Faithful: 201 only on a
+  // body straight into one bunny native PUT at `files/devices/<deviceId>/<filename>`. Faithful: 201 only on a
   // confirmed store; last-write-wins (no existence check on the object key).
   byteFile.put("/", async (c) => {
     const deviceId = c.req.param("deviceId");
@@ -387,7 +387,7 @@ export function createApp({ fetch: fetchImpl, config }: Deps): Hono {
   // Create an event (capability `event-creation`). Open (no token, matching the possession-is-
   // capability model). Validates the name, mints a server-side UUID, and writes the marker. Faithful
   // outcome: 201 only after bunny confirms the marker store; any upstream failure → 502.
-  app.post("/event", async (c) => {
+  app.post("/events", async (c) => {
     let body: unknown;
     try {
       body = await c.req.json();
@@ -429,7 +429,7 @@ export function createApp({ fetch: fetchImpl, config }: Deps): Hono {
   // Event metadata / existence (capability `event-creation`). Returns the marker, or 404 when the
   // event was never created; a non-404 marker read failure → 502. This is the canonical existence
   // check the device-manifest write gate relies on.
-  app.get("/event/:eventId", async (c) => {
+  app.get("/events/:eventId", async (c) => {
     const eventId = c.req.param("eventId");
     if (!validateUUID(eventId)) {
       return c.text("invalid event", 400);
@@ -448,8 +448,8 @@ export function createApp({ fetch: fetchImpl, config }: Deps): Hono {
   // Write a device's per-event manifest (capability `bunny-upload-endpoint`, device-manifest route).
   // GATED on event existence: read the marker first; absent → 404 (no upstream object PUT); a non-404
   // read failure → 502 (never mistaken for absence). The body (a full-state JSON device manifest) is
-  // streamed straight into one bunny native PUT at `events/<eventId>/device/<deviceId>.json`.
-  app.put("/event/:eventId/device/:deviceId", async (c) => {
+  // streamed straight into one bunny native PUT at `events/<eventId>/devices/<deviceId>.json`.
+  app.put("/events/:eventId/devices/:deviceId", async (c) => {
     const eventId = c.req.param("eventId");
     const deviceId = c.req.param("deviceId");
     if (!validateUUID(eventId) || !validateUUID(deviceId)) {
@@ -493,16 +493,16 @@ export function createApp({ fetch: fetchImpl, config }: Deps): Hono {
   });
 
   // Event-wide UNION read (capability `bunny-list-endpoint`). GATED on event existence (marker read):
-  // absent → 404, non-404 read failure → 502. Then fan out: one LIST of `events/<eventId>/device/` to
+  // absent → 404, non-404 read failure → 502. Then fan out: one LIST of `events/<eventId>/devices/` to
   // discover the contributing devices, and per device (in parallel) read its `device.json` and LIST
-  // its `devices/<deviceId>/files/` partition. An asset is emitted only when EVERY resource its manifest names
+  // its `files/devices/<deviceId>/` partition. An asset is emitted only when EVERY resource its manifest names
   // is present in that device's byte store (complete-only); each kept asset is flattened into one
   // array, tagged with its owning deviceId (the endpoint is identity-blind — own-vs-foreign skip is
   // the client's concern). The stored manifest is already the event's date-filtered projection, so its
   // asset list is trusted as-is (no re-filtering). Faithful: any non-404 read failure anywhere in the
   // fan-out (incl. a manifest JSON parse failure) → 502, never a partial union; a per-device file dir
   // 404 is "no bytes" (every asset incomplete), not a failure. The 200 response is non-cacheable.
-  app.get("/event/:eventId/files", async (c) => {
+  app.get("/events/:eventId/files", async (c) => {
     const eventId = c.req.param("eventId");
     if (!validateUUID(eventId)) {
       return c.text("invalid event", 400);
@@ -569,7 +569,7 @@ export function createApp({ fetch: fetchImpl, config }: Deps): Hono {
   // dir; each direct-child object becomes one `{ filename, size, url }`. No manifest read, no
   // completeness, no event gate — the app computes completeness from the gallery enumeration seam ×
   // this list. A non-UUID id → 400; any other method / unmatched path → Hono's 404.
-  app.get("/devices/:deviceId/files", async (c) => {
+  app.get("/files/devices/:deviceId", async (c) => {
     const deviceId = c.req.param("deviceId");
     if (!validateUUID(deviceId)) {
       return c.text("invalid device", 400);
@@ -602,10 +602,10 @@ export function createApp({ fetch: fetchImpl, config }: Deps): Hono {
 
   // Write a device's config object (capability `device-config-endpoint`). Gated by DEVICE-ID
   // possession alone (no marker, no event) — the same capability model as the byte upload. Streams the
-  // JSON body into one bunny native PUT at `devices/<deviceId>/config.json`. Faithful: 201 only on a
-  // confirmed store; last-write-wins (a rotated token overwrites). The config lives OUTSIDE the
-  // `devices/<deviceId>/files/` partition, so it never appears in the per-device list or the union.
-  app.put("/devices/:deviceId/config", async (c) => {
+  // JSON body into one bunny native PUT at `devices/<deviceId>.json`. Faithful: 201 only on a
+  // confirmed store; last-write-wins (a rotated token overwrites). The config is a flat sibling OUTSIDE
+  // the `files/devices/<deviceId>/` byte partition, so it never appears in the per-device list or the union.
+  app.put("/devices/:deviceId", async (c) => {
     const deviceId = c.req.param("deviceId");
     if (!validateUUID(deviceId)) {
       return c.text("invalid device", 400);
@@ -635,13 +635,13 @@ export function createApp({ fetch: fetchImpl, config }: Deps): Hono {
   });
 
   // Notify an event's members (capability `event-notify-endpoint`). GATED on the marker (absent → 404,
-  // non-404 read failure → 502). Enumerate members with one LIST of `events/<eventId>/device/`; a LIST
+  // non-404 read failure → 502). Enumerate members with one LIST of `events/<eventId>/devices/`; a LIST
   // transport failure → 502 (nothing enumerable). Then BEST-EFFORT: read each member's config token
   // (absent/unparseable/no-token → skipped) and send a silent (content-available) push carrying the
   // route's `eventId` in its payload to the rest. Per-member read/send failures never fail the request
   // — always a bare 202 once the marker gate passed and members were enumerated. Server-chosen payload
   // (the path event id), all members, no exclusion; the uploader fires this via `upload-completion-notify`.
-  app.post("/event/:eventId/notify", async (c) => {
+  app.post("/events/:eventId/notify", async (c) => {
     const eventId = c.req.param("eventId");
     if (!validateUUID(eventId)) {
       return c.text("invalid event", 400);
@@ -680,6 +680,6 @@ export function createApp({ fetch: fetchImpl, config }: Deps): Hono {
   });
 
   // Mount the per-device byte object routes; any unmatched path or wrong method → Hono's 404.
-  app.route("/devices/:deviceId/files/:filename", byteFile);
+  app.route("/files/devices/:deviceId/:filename", byteFile);
   return app;
 }

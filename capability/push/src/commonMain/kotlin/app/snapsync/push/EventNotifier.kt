@@ -4,7 +4,7 @@ import co.touchlab.kermit.Logger
 
 /**
  * Fires the backend event-notify (capability `upload-completion-notify` / `event-notify-endpoint`):
- * a bodyless `POST <host>/event/<eventId>/notify` that asks the backend to fan a silent push out to the
+ * a bodyless `POST <host>/events/<eventId>/notify` that asks the backend to fan a silent push out to the
  * event's member devices. String-building only — no crypto, no token (the event id is the capability) —
  * over the injected [client] (the shared Ktor/Darwin client at the composition root), mirroring
  * [PushRegistration]. **Best-effort**: a non-2xx or transport failure is absorbed (logged) and **not**
@@ -18,9 +18,9 @@ class EventNotifier(
 ) {
     private val base = host.trimEnd('/')
 
-    /** `POST /event/[eventId]/notify` now. Absorbs any failure (never throws to the caller). */
+    /** `POST /events/[eventId]/notify` now. Absorbs any failure (never throws to the caller). */
     suspend fun notify(eventId: String) {
-        client.post("$base/event/$eventId/notify")
+        client.post("$base/events/$eventId/notify")
             .onSuccess { log.i { "notified event $eventId" } }
             .onFailure { log.w(it) { "event notify failed for $eventId (best-effort, no retry)" } }
     }

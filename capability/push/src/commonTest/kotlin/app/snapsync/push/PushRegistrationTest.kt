@@ -39,7 +39,7 @@ class PushRegistrationTest {
             .register(ApnsPushToken("DEADBEEF", "sandbox"))
 
         assertEquals(1, client.calls.size)
-        assertEquals("https://edge.example/devices/$deviceId/config", client.calls[0].url)
+        assertEquals("https://edge.example/devices/$deviceId", client.calls[0].url)
         assertEquals(
             """{"pushToken":{"kind":"apns","token":"DEADBEEF","env":"sandbox"}}""",
             client.calls[0].body,
@@ -51,7 +51,7 @@ class PushRegistrationTest {
         val client = FakePushHttpClient()
         PushRegistration(client, "https://edge.example/", deviceId)
             .register(ApnsPushToken("T", "production"))
-        assertEquals("https://edge.example/devices/$deviceId/config", client.calls[0].url)
+        assertEquals("https://edge.example/devices/$deviceId", client.calls[0].url)
     }
 
     @Test
@@ -107,22 +107,22 @@ class PushRegistrationTest {
     @Test
     fun ktor_client_maps_2xx_to_success() = runTest {
         val engine = MockEngine { respond("", HttpStatusCode.Created) }
-        val res = KtorPushHttpClient(HttpClient(engine)).put("https://e/devices/x/config", "{}")
+        val res = KtorPushHttpClient(HttpClient(engine)).put("https://e/devices/x", "{}")
         assertTrue(res.isSuccess)
     }
 
     @Test
     fun ktor_client_maps_non_2xx_to_failure() = runTest {
         val engine = MockEngine { respond("nope", HttpStatusCode.InternalServerError) }
-        val res = KtorPushHttpClient(HttpClient(engine)).put("https://e/devices/x/config", "{}")
+        val res = KtorPushHttpClient(HttpClient(engine)).put("https://e/devices/x", "{}")
         assertTrue(res.isFailure)
     }
 
     @Test
     fun ktor_client_post_maps_2xx_to_success_and_non_2xx_to_failure() = runTest {
         val ok = MockEngine { respond("", HttpStatusCode.Accepted) }
-        assertTrue(KtorPushHttpClient(HttpClient(ok)).post("https://e/event/x/notify").isSuccess)
+        assertTrue(KtorPushHttpClient(HttpClient(ok)).post("https://e/events/x/notify").isSuccess)
         val bad = MockEngine { respond("nope", HttpStatusCode.BadGateway) }
-        assertTrue(KtorPushHttpClient(HttpClient(bad)).post("https://e/event/x/notify").isFailure)
+        assertTrue(KtorPushHttpClient(HttpClient(bad)).post("https://e/events/x/notify").isFailure)
     }
 }

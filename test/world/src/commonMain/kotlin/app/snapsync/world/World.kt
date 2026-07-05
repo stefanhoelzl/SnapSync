@@ -231,7 +231,7 @@ class World(
             scope = scope,
         )
 
-    /** The real create-event use-case over the mini-edge (`POST /event` → provision). */
+    /** The real create-event use-case over the mini-edge (`POST /events` → provision). */
     fun createEvent(scope: CoroutineScope): CreateEvent =
         CreateEvent(
             client = HttpEventCreationClient(client, host),

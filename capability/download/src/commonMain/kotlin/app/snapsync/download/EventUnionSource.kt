@@ -26,7 +26,7 @@ class UnionAsset(
 )
 
 /**
- * The seam that fetches the event-wide union (`GET /event/<eventId>/files`): every contributing
+ * The seam that fetches the event-wide union (`GET /events/<eventId>/files`): every contributing
  * device's **complete** assets, each tagged with its `deviceId` and carrying per-resource download
  * `url`s. Failures surface as a failed [Result] (never thrown) so the download controller can keep its
  * last good state rather than crash. Own-vs-foreign selection is the caller's concern (by `deviceId`).
@@ -36,7 +36,7 @@ interface EventUnionSource {
 }
 
 /**
- * [EventUnionSource] over an injected Ktor [HttpClient] (Darwin on iOS). GETs `<host>/event/<id>/files`
+ * [EventUnionSource] over an injected Ktor [HttpClient] (Darwin on iOS). GETs `<host>/events/<id>/files`
  * (HTTPS, default ATS), maps any non-2xx / transport / parse error to a failed [Result], and parses the
  * union array. `eventId` is a UUID, so no path encoding is required.
  */
@@ -49,7 +49,7 @@ class HttpEventUnionSource(
     private val base = host.trimEnd('/')
 
     override suspend fun union(eventId: String): Result<List<UnionAsset>> = runCatching {
-        val response = client.get("$base/event/$eventId/files")
+        val response = client.get("$base/events/$eventId/files")
         check(response.status.isSuccess()) { "union $eventId: HTTP ${response.status.value}" }
         json.decodeFromString(ListSerializer(AssetDto.serializer()), response.bodyAsText())
             .map { dto ->

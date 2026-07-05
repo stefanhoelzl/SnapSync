@@ -21,7 +21,7 @@ class CreateEvent(
     private val client: EventCreationClient,
     private val status: MutableCreationStatusSource,
     // Provision the minted event exactly like a scanned QR, but with the name in hand (from the
-    // `POST /event` response) so create needs no `GET /event/:id` fetch. The composition root's hook
+    // `POST /events` response) so create needs no `GET /events/:id` fetch. The composition root's hook
     // does the switch-reset, `ConfigStore.save(EventConfig(eventId, name))`, and producer enable.
     private val provision: suspend (eventId: String, name: String?) -> Unit,
     private val scope: CoroutineScope,

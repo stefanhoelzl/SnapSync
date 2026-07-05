@@ -18,7 +18,7 @@ import kotlinx.serialization.json.Json
 
 /**
  * An APNs device token and the APNs environment it belongs to — the `pushToken` persisted in
- * `devices/<deviceId>/config.json`. `env` is `"sandbox"` (dev/sideloaded builds) or `"production"`
+ * `devices/<deviceId>.json`. `env` is `"sandbox"` (dev/sideloaded builds) or `"production"`
  * (TestFlight/App Store).
  */
 data class ApnsPushToken(val token: String, val env: String)
@@ -80,13 +80,13 @@ private data class DeviceConfigDto(val pushToken: PushTokenDto)
 
 private val json = Json { encodeDefaults = true }
 
-/** The `devices/<id>/config.json` body for [token] — always `kind: "apns"` in this app. */
+/** The `devices/<id>.json` config body for [token] — always `kind: "apns"` in this app. */
 internal fun deviceConfigJson(token: ApnsPushToken): String =
     json.encodeToString(DeviceConfigDto.serializer(), DeviceConfigDto(PushTokenDto("apns", token.token, token.env)))
 
 /**
  * Registers the device's APNs token with the backend (capability `push-registration`). On each token —
- * launch delivery and every rotation — it `PUT`s `<host>/devices/<deviceId>/config` with
+ * launch delivery and every rotation — it `PUT`s `<host>/devices/<deviceId>` with
  * `{ pushToken: { kind: "apns", token, env } }` via the injected [client]. String/JSON-building only —
  * no crypto, and **no event id** (the token is device-scoped, event-independent). A failed write is
  * absorbed (logged) and retried on the next token, so registration never blocks join/upload/download.
@@ -99,7 +99,7 @@ class PushRegistration(
     private val deviceId: String,
     private val log: Logger = Logger.withTag("PushRegistration"),
 ) {
-    private val url = "${host.trimEnd('/')}/devices/$deviceId/config"
+    private val url = "${host.trimEnd('/')}/devices/$deviceId"
 
     /** `PUT` the config for [token] now. Absorbs any failure (never throws to the caller). */
     suspend fun register(token: ApnsPushToken) {

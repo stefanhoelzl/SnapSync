@@ -10,7 +10,7 @@ import io.ktor.http.contentType
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 
-/** The outcome of a `POST /event` create call — a closed set the use-case maps to [CreationStatus]. */
+/** The outcome of a `POST /events` create call — a closed set the use-case maps to [CreationStatus]. */
 sealed interface CreateOutcome {
     /**
      * `201` — the server minted the event; [eventId] is the canonical UUID to provision and [name]
@@ -33,7 +33,7 @@ interface EventCreationClient {
 /**
  * The [EventCreationClient] over an injected Ktor [HttpClient] (the engine — Darwin on iOS — is
  * supplied by the composition root, so this stays platform-neutral and testable with `MockEngine`),
- * the twin of `HttpDeviceFilesSource`. It `POST`s `<host>/event` (HTTPS, default ATS) with a JSON
+ * the twin of `HttpDeviceFilesSource`. It `POST`s `<host>/events` (HTTPS, default ATS) with a JSON
  * body `{ "name": <trimmed name> }`, parses a `201 { eventId, name, createdAt }`, maps `400` to
  * [CreateOutcome.InvalidName], and any other non-2xx / transport / parse failure to
  * [CreateOutcome.Transient].
@@ -48,7 +48,7 @@ class HttpEventCreationClient(
 
     override suspend fun create(name: String): CreateOutcome =
         runCatching {
-            val response = client.post("$base/event") {
+            val response = client.post("$base/events") {
                 contentType(ContentType.Application.Json)
                 setBody(json.encodeToString(CreateRequest.serializer(), CreateRequest(name)))
             }

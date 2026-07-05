@@ -9,7 +9,7 @@ import kotlinx.coroutines.flow.asStateFlow
  * reduction folds it in without depending on the create orchestration (which pulls ktor). It has
  * exactly three shapes:
  * - [Idle]: no create in flight (the create input is shown).
- * - [InFlight]: the `POST /event` request is running (the screen shows a preparing state).
+ * - [InFlight]: the `POST /events` request is running (the screen shows a preparing state).
  * - [Failed]: the request failed; the input is shown with an inline error matching [reason]. There
  *   is deliberately **no** success value — a successful create provisions config, which moves the
  *   reduction off the create layer entirely.

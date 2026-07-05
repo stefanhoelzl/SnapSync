@@ -33,7 +33,7 @@ class HttpEventMetadataSourceTest {
 
         val name = source(engine).name(eventId)
 
-        assertEquals("https://edge.example/event/$eventId", requested)
+        assertEquals("https://edge.example/events/$eventId", requested)
         assertEquals("Anna's Birthday", name)
     }
 

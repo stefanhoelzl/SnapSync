@@ -22,12 +22,12 @@ import kotlinx.serialization.json.jsonPrimitive
  * dispatching on method + path:
  *
  * ```
- * GET  /devices/<id>/files      -> 200 [ per-device listing ]         (offline -> 502)
- * PUT  /devices/<id>/config     -> 201 ; store the device config doc (push-token registration)
- * GET  /event/<id>/files        -> 200 [ union ] | 404 (unregistered) (offline -> 502)
- * POST /event                   -> 201 { eventId, name, createdAt } + register marker
- * PUT  /event/<id>/device/<id>  -> 200 ; deposit the manifest into the store
- * (unmatched)                   -> 404
+ * GET  /files/devices/<id>          -> 200 [ per-device listing ]         (offline -> 502)
+ * PUT  /devices/<id>                -> 201 ; store the device config doc (push-token registration)
+ * GET  /events/<id>/files           -> 200 [ union ] | 404 (unregistered) (offline -> 502)
+ * POST /events                      -> 201 { eventId, name, createdAt } + register marker
+ * PUT  /events/<id>/devices/<id>    -> 200 ; deposit the manifest into the store
+ * (unmatched)                       -> 404
  * ```
  *
  * The same returned [HttpClient] is injected into all four real seams, mirroring how the extension
@@ -41,17 +41,17 @@ fun miniEdgeClient(store: BackendStore): HttpClient {
 
     return HttpClient(
         MockEngine { request ->
-            // encodedPath like "/devices/<id>/files" -> ["devices","<id>","files"]
+            // encodedPath like "/files/devices/<id>" -> ["files","devices","<id>"]
             val segments = request.url.encodedPath.split('/').filter { it.isNotEmpty() }
             val method = request.method
             val body = (request.body as? TextContent)?.text.orEmpty()
 
             when {
-                // GET /devices/<id>/files
+                // GET /files/devices/<id>
                 method == HttpMethod.Get && segments.size == 3 &&
-                    segments[0] == "devices" && segments[2] == "files" -> {
+                    segments[0] == "files" && segments[1] == "devices" -> {
                     if (store.offline) return@MockEngine respond("offline", HttpStatusCode.BadGateway)
-                    val listing = store.deviceListing(segments[1])
+                    val listing = store.deviceListing(segments[2])
                     respond(
                         json.encodeToString(ListSerializer(FileEntryDto.serializer()), listing),
                         HttpStatusCode.OK,
@@ -59,16 +59,16 @@ fun miniEdgeClient(store: BackendStore): HttpClient {
                     )
                 }
 
-                // PUT /devices/<id>/config  (push-token registration)
-                method == HttpMethod.Put && segments.size == 3 &&
-                    segments[0] == "devices" && segments[2] == "config" -> {
+                // PUT /devices/<id>  (push-token registration)
+                method == HttpMethod.Put && segments.size == 2 &&
+                    segments[0] == "devices" -> {
                     store.putDeviceConfig(segments[1], body)
                     respond("", HttpStatusCode.Created, jsonHeaders())
                 }
 
-                // GET /event/<id>/files
+                // GET /events/<id>/files
                 method == HttpMethod.Get && segments.size == 3 &&
-                    segments[0] == "event" && segments[2] == "files" -> {
+                    segments[0] == "events" && segments[2] == "files" -> {
                     if (store.offline) return@MockEngine respond("offline", HttpStatusCode.BadGateway)
                     val union = store.union(segments[1])
                         ?: return@MockEngine respond("event not found", HttpStatusCode.NotFound)
@@ -79,8 +79,8 @@ fun miniEdgeClient(store: BackendStore): HttpClient {
                     )
                 }
 
-                // POST /event
-                method == HttpMethod.Post && segments.size == 1 && segments[0] == "event" -> {
+                // POST /events
+                method == HttpMethod.Post && segments.size == 1 && segments[0] == "events" -> {
                     val name = runCatching {
                         json.parseToJsonElement(body).jsonObject["name"]?.jsonPrimitive?.content
                     }.getOrNull()
@@ -99,9 +99,9 @@ fun miniEdgeClient(store: BackendStore): HttpClient {
                     )
                 }
 
-                // PUT /event/<id>/device/<id>
+                // PUT /events/<id>/devices/<id>
                 method == HttpMethod.Put && segments.size == 4 &&
-                    segments[0] == "event" && segments[2] == "device" -> {
+                    segments[0] == "events" && segments[2] == "devices" -> {
                     store.putManifestJson(eventId = segments[1], deviceId = segments[3], json = body)
                     respond("", HttpStatusCode.OK, jsonHeaders())
                 }
