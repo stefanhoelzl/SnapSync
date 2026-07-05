@@ -151,9 +151,10 @@ class ReconcilerTest {
     }
 
     @Test
-    fun `an empty listing while the ledger holds COMPLETED rows defers instead of wiping`() = runTest {
-        // Same-session-switch transient (a just-uploaded object not yet listed): an empty listing must
-        // NOT wipe existing dedup to empty when the ledger still holds COMPLETED rows — defer instead.
+    fun `a storage reset - empty listing against a non-empty ledger - re-baselines and re-uploads`() = runTest {
+        // A confirmed-successful empty listing is AUTHORITATIVE: the objects were deleted from storage
+        // (a reset), not transiently un-listed. So the ledger must be wiped to empty and the cursor
+        // cleared, so the producer re-uploads everything — NOT deferred (which hung the device forever).
         val ledger = FakeLedgerBackend().apply {
             put(LedgerEntry("stored-primary.heic", "stored", LedgerState.COMPLETED, 0))
         }
@@ -161,16 +162,34 @@ class ReconcilerTest {
         val marker = FakeMarker("OLD")
         var cursorCleared = 0
 
-        assertFalse(reconciler(files, ledger, marker) { cursorCleared++ }.reconcile("NEW"))
-        assertNotNull(ledger.get("stored-primary.heic")) // dedup preserved, not wiped
-        assertEquals(0, cursorCleared) // cursor untouched
-        assertEquals("OLD", marker.read()) // marker unchanged → next cycle retries
+        assertTrue(reconciler(files, ledger, marker) { cursorCleared++ }.reconcile("NEW"))
+        assertTrue(ledger.rows.isEmpty()) // re-baselined to exactly what storage holds (nothing)
+        assertEquals(1, cursorCleared) // cursor cleared → full re-enumeration re-uploads everything
+        assertEquals("NEW", marker.read()) // settled, not looping
+    }
+
+    @Test
+    fun `a partial storage deletion re-uploads only the missing files`() = runTest {
+        // Listing reports a strict SUBSET of the ledger's prior COMPLETED files (some objects deleted
+        // from storage). resetTo seeds only the still-stored files; the deleted one drops out and re-uploads.
+        val ledger = FakeLedgerBackend().apply {
+            put(LedgerEntry("kept-primary.heic", "kept", LedgerState.COMPLETED, 0))
+            put(LedgerEntry("gone-primary.heic", "gone", LedgerState.COMPLETED, 0)) // deleted from storage
+        }
+        val files = FakeFiles(Result.success(listOf("kept-primary.heic"))) // only the survivor is listed
+        val marker = FakeMarker("OLD")
+        var cursorCleared = 0
+
+        assertTrue(reconciler(files, ledger, marker) { cursorCleared++ }.reconcile("NEW"))
+        assertEquals(LedgerState.COMPLETED, ledger.get("kept-primary.heic")!!.state) // still deduped
+        assertNull(ledger.get("gone-primary.heic")) // dropped → producer re-uploads it
+        assertEquals(1, cursorCleared)
+        assertEquals("NEW", marker.read())
     }
 
     @Test
     fun `an empty listing on a fresh device with no COMPLETED rows still settles`() = runTest {
-        // A genuinely fresh/empty device (empty listing, no COMPLETED rows) must still settle normally:
-        // the empty-guard only fires when the ledger already holds COMPLETED dedup.
+        // A genuinely fresh/empty device (empty listing, no COMPLETED rows): settles with zero seeded rows.
         val ledger = FakeLedgerBackend()
         val marker = FakeMarker(null)
 

@@ -66,11 +66,20 @@ device's byte store is absent from the listing, is not seeded, and is uploaded i
 producer (last-write-wins). Setting the marker on success — even when zero rows were seeded — settles
 the join so it does not re-trigger.
 
-As a guard against a same-session-switch transient where a just-uploaded object is not yet listed, when
-the listing returns **empty** *and* the ledger already holds `COMPLETED` rows, the reconciliation SHALL
-**defer** — leaving the ledger, cursor, and marker untouched, exactly like a fetch failure — rather
-than wiping the ledger to empty. An empty listing against an empty/absent-`COMPLETED` ledger (a genuine
-fresh/empty device) still settles normally with zero seeded rows.
+A **confirmed-successful** listing SHALL be treated as **authoritative** — whether it reports every,
+some, or **none** of the ledger's prior `COMPLETED` files. The `resetTo` seeds exactly the stored
+files, so any file the listing omits (a subset deletion, or a full storage reset that returns an empty
+listing) is not seeded and is re-uploaded by the producer. In particular, an **empty** listing while
+the ledger still holds `COMPLETED` rows means the objects were **deleted from storage** and SHALL
+re-baseline the ledger to empty (re-uploading everything), NOT defer: a successful empty listing cannot
+be a stale/transient read, because (a) an upload confirms its bytes before the job succeeds (capability
+`bunny-upload-endpoint` never returns `2xx` for an unconfirmed upload), (b) the storage LIST reflects
+writes and deletes immediately (read-after-write consistent), and (c) the list endpoint never returns a
+`2xx` for a failed or partial listing (capability `bunny-list-endpoint`: a failure is `502`, surfaced
+to the reconciliation as a fetch failure, not an empty array). The **only** untrustworthy signal — an
+upstream error or a timeout — SHALL still defer (see "Extension defers uploads until the seed
+succeeds"), leaving the ledger, cursor, and marker untouched so the next cycle retries; the ledger is
+thus reset only ever on an authoritative listing.
 
 #### Scenario: A stored resource is seeded completed
 
@@ -93,11 +102,20 @@ fresh/empty device) still settles normally with zero seeded rows.
   `COMPLETED` rows in the ledger
 - **THEN** no rows are seeded but the `joinedEventId` marker is set, so the next cycle does not re-reconcile
 
-#### Scenario: An empty listing against a non-empty ledger defers
+#### Scenario: A storage reset (empty listing against a non-empty ledger) re-baselines and re-uploads
 
-- **WHEN** the per-device listing returns **empty** but the ledger already holds `COMPLETED` rows
-- **THEN** the reconciliation defers — the ledger, cursor, and marker are left untouched — rather than
-  wiping the ledger, so a transiently-missing listing does not drop dedup
+- **WHEN** the per-device listing returns **empty** (a genuine storage reset) but the ledger already
+  holds `COMPLETED` rows
+- **THEN** the reconciliation `resetTo`s the ledger to empty, clears the cursor, and sets the marker, so
+  the producer re-uploads every resource — it does **not** defer (a successful empty listing is
+  authoritative, never a transient)
+
+#### Scenario: A partial storage deletion re-uploads only the missing files
+
+- **WHEN** the per-device listing reports a strict subset of the ledger's prior `COMPLETED` files (some
+  objects were deleted from storage)
+- **THEN** the `resetTo` seeds only the still-stored files `COMPLETED`, and the producer re-uploads
+  exactly the omitted (deleted) files, leaving the still-stored ones untouched
 
 #### Scenario: A not-yet-stored resource re-uploads idempotently
 
