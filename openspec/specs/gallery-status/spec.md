@@ -114,8 +114,8 @@ role filter, key derivation, or normalization of its own.
 - **WHEN** the app-side status consumer enumerates an asset to obtain its expected resource set, and
   the upload producer enumerates the same asset to decide what to upload
 - **THEN** both derive the same `filename` set for that asset, so the status consumer's "expected"
-  filenames are exactly the keys the producer uploads to `/files/<deviceId>/…` (byte-for-byte
-  agreement on what "complete" means)
+  filenames are exactly the keys the producer uploads to its device byte-partition (capability
+  `edge-upload-provider`) (byte-for-byte agreement on what "complete" means)
 
 #### Scenario: Fake enumeration is settable
 - **WHEN** a test sets the in-memory enumeration to a list of resources

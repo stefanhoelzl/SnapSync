@@ -42,9 +42,9 @@ one-directional, so no module cycle is introduced).
 ### Requirement: Backend object store with faithful read-models
 
 The world SHALL provide an in-memory backend object store holding the edge's state: deposited object
-keys per device byte-partition (`files/<deviceId>/<filename>`), one device manifest per
+keys per device byte-partition (`devices/<deviceId>/files/<filename>`), one device manifest per
 `(eventId, deviceId)`, and a registered-event marker set. From this state it SHALL compute the edge's
-read-models **faithfully in behavior** — the per-device file listing (`GET /files/device/<id>`), the
+read-models **faithfully in behavior** — the per-device file listing (`GET /devices/<id>/files`), the
 event-wide union (`GET /event/<id>/files`), and the reconcile-seed listing — where the reconcile-seed
 listing is the **same** per-device read-model consumed by the rejoin reconciler. Byte-level fidelity to
 the real Deno `backend/` edge is **NOT** required: drift is **accepted**, there is **no golden
@@ -82,7 +82,7 @@ absent, not empty).
 The world SHALL expose a Ktor `MockEngine`-backed `HttpClient` — a "mini-edge" — that answers the
 app-side metadata calls by dispatching on HTTP method + request path against the backend object store,
 so the **real** common-Ktor seams run unmodified against it. The mini-edge SHALL route
-`GET /files/device/<id>` (per-device listing), `GET /event/<id>/files` (event-union; a `404` when the
+`GET /devices/<id>/files` (per-device listing), `GET /event/<id>/files` (event-union; a `404` when the
 event marker is absent), `POST /event` (a `201` `{ eventId, name, createdAt }` that registers the
 marker), and `PUT /event/<id>/device/<id>` (a `200` that deposits the manifest into the store), and
 SHALL answer any unmatched request `404`. The same `HttpClient` SHALL be injected into the real

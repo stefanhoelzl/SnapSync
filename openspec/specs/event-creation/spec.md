@@ -77,7 +77,7 @@ createdAt }` (`createdAt` an ISO-8601 timestamp). The marker SHALL live under th
 `/events/<eventId>/` prefix, alongside the per-event device manifests at
 `/events/<eventId>/device/<deviceId>.json`. Because an `eventId` is a UUID, the marker key
 `/events/<eventId>/metadata.json`, the device-manifest keys `/events/<eventId>/device/<deviceId>.json`,
-and the device-global byte store `/files/<deviceId>/…` are mutually disjoint and never collide.
+and the device-global byte store `/devices/<deviceId>/files/…` are mutually disjoint and never collide.
 
 #### Scenario: Create writes the marker
 
@@ -88,7 +88,7 @@ and the device-global byte store `/files/<deviceId>/…` are mutually disjoint a
 #### Scenario: Marker is disjoint from manifests and the byte store
 
 - **WHEN** the marker `/events/<eventId>/metadata.json` exists, a device manifest is stored at
-  `/events/<eventId>/device/<deviceId>.json`, and bytes are stored under `/files/<deviceId>/…`
+  `/events/<eventId>/device/<deviceId>.json`, and bytes are stored under `/devices/<deviceId>/files/…`
 - **THEN** the three keys are distinct and never collide (an `eventId` is a UUID, so the literal
   `metadata.json` and `device/` segments never alias a device id or a stored filename)
 

@@ -333,7 +333,7 @@ partition `404` (no bytes) is **not** such a failure — it is handled as an emp
 
 #### Scenario: A failed per-device file listing fails the whole request
 
-- **WHEN** one device's `files/<deviceId>/` LIST returns a non-`404` error or times out
+- **WHEN** one device's `devices/<deviceId>/files/` LIST returns a non-`404` error or times out
 - **THEN** the endpoint responds `502` and returns no union
 
 #### Scenario: All reads succeed

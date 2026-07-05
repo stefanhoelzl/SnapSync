@@ -35,8 +35,8 @@ The status domain SHALL provide a listing-backed `SyncStatusSource` constructed 
 **non-suspending** factory taking a `CompletedAssetsSource`, a `PermissionStatusSource`, a
 `GalleryStatusSource`, an `InFlightSource`, and a `CoroutineScope`. Status is **own-device progress**,
 derived from (a) the `gallery-status` library resource-enumeration seam, which yields each qualifying
-asset's **expected** resource filenames; (b) the **per-device** file listing `GET
-/files/device/<deviceId>`, which yields the **present** filenames; (c) permission; and (d) the gallery
+asset's **expected** resource filenames; (b) the **per-device** file listing (capability
+`bunny-list-endpoint`), which yields the **present** filenames; (c) permission; and (d) the gallery
 total. An asset is **complete** when every expected filename in its set is present in the per-device
 listing; `completed` = the count of qualifying assets that are complete and `total` = the gallery
 count. The expected × present join is supplied by the `CompletedAssetsSource`; the source SHALL read
@@ -72,7 +72,7 @@ keep the last good completed value rather than throw, and a failed in-flight rea
 #### Scenario: Completed derives from expected × present
 
 - **WHEN** the gallery enumeration says asset `A` expects filenames `{a-primary.jpg, a-live.mov}`
-  and the per-device listing `GET /files/device/<deviceId>` contains both
+  and the per-device listing (capability `bunny-list-endpoint`) contains both
 - **THEN** `A` counts toward `completed`; **WHEN** the listing is missing `a-live.mov`, `A` does
   not count toward `completed`
 
@@ -114,7 +114,7 @@ The status domain SHALL define `CompletedAssetsSource` whose value is a level-tr
 device's **complete assets** (a count, and the `assetId` set used for pruning), computed as the join
 of **expected** (each qualifying asset's resource filenames, from the `gallery-status` library
 resource-enumeration seam) and **present** (the filenames returned by the per-device file listing
-`GET /files/device/<deviceId>`, via the `EventFilesSource`/device-list seam), with a `suspend fun
+(capability `bunny-list-endpoint`), via the `EventFilesSource`/device-list seam), with a `suspend fun
 refresh()` that re-reads it. An asset is complete when **every** one of its expected filenames is
 present in the per-device listing. The source SHALL derive completeness this way, **not** from a
 server-computed manifest-completeness listing and **not** from any `device.json`. It SHALL refresh on
@@ -184,7 +184,7 @@ The status domain SHALL define
 `SyncProgress(pending, completed, total, failed, active, estimatedRemaining: Duration?)`
 in `:domain:status` (package `app.snapsync.status`). `completed` is the count of the device's
 **complete assets** — assets all of whose expected resource filenames (from the `gallery-status`
-enumeration seam) are present in the per-device file listing `GET /files/device/<deviceId>` — counted
+enumeration seam) are present in the per-device file listing (capability `bunny-list-endpoint`) — counted
 by PHOTO (asset). `total` is the live photo-library count (the gallery size, `N`) — **not** a storage
 count, so it reflects photos not yet uploaded. `active` is operational state ("the backup machinery is
 allowed to run"), never an event-recency heuristic. `pending` is the **ledger-reported in-flight asset
