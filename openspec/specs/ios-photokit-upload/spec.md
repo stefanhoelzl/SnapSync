@@ -175,18 +175,19 @@ The extension SHALL target iOS 26.1 and use the deprecated `PHBackgroundResource
 For each discovered `Resource` the extension SHALL drive the shared `SyncEngine` with
 `ResourceChanged` and act on the decision. On a `Work` decision (`Upload`) it SHALL build the
 destination request from the real `EdgeUploadRequestProvider` (a plain `PUT` to the locally-built,
-**event-independent** edge URL `<host>/files/device/<deviceId>/<filename>`, no signing), create a
+**event-independent** edge URL defined by `edge-upload-provider`, no signing), create a
 system upload job via `creationRequestForJob(destination:resource:)`, and **then** report
 `UploadStarted(job)` to the engine so the ledger records `REQUESTED` (write-after-act — `REQUESTED`
 is recorded only after the job exists, never before). The engine remains **event-blind** and keys by
 the bare `filename`; ack-path recovery reads the destination URL's **last path segment**, which is the
-unchanged `filename` under the new `/files/device/<deviceId>/` prefix. On `AlreadyUploaded` it SHALL
+unchanged `filename` (the byte URL's last segment; format per `edge-upload-provider`). On
+`AlreadyUploaded` it SHALL
 create no job and write nothing. Completion and failure outcomes are reduced into the ledger by the
 drain (see "Completion and retry adjudication"), so `COMPLETED` and `FAILED` are recorded.
 
 #### Scenario: New resource emits a real device-partitioned edge destination, then records REQUESTED
 - **WHEN** the engine returns a `Work` decision for a discovered resource
-- **THEN** a real edge `PUT` destination is built locally at `<host>/files/device/<deviceId>/<filename>`,
+- **THEN** a real edge `PUT` destination is built locally by `edge-upload-provider`,
   a system upload job is created with it, and only after the create succeeds does the extension report
   `UploadStarted`, which records `REQUESTED` for the key
 
@@ -206,7 +207,7 @@ the runtime `EventConfigPayload` (`eventId`) read from the **shared Keychain** v
 `:capability:config` Keychain store; the stable per-install `deviceId` read from the **shared
 Keychain** (per `device-identity`); and the compile-time edge **host** read from the extension
 bundle's `BackgroundUploadURLBase` (`NSBundle` info dictionary). The `deviceId` SHALL be used to build
-the event-independent byte URLs (`<host>/files/device/<deviceId>/<filename>`) and as the `device.json`
+the event-independent byte URLs (capability `edge-upload-provider`) and as the `device.json`
 key. The extension SHALL re-read the Keychain payload **freshly at the start of every `process()`
 cycle** — it MUST NOT cache a value read once at process construction. The extension process outlives
 a single invocation, and an event (re)joined by the **app** process writes the Keychain but does not
@@ -220,8 +221,8 @@ crashing.
 #### Scenario: Config present — provider built from host, eventId, and deviceId
 - **WHEN** `process()` runs with an `EventConfigPayload` present in the shared Keychain
 - **THEN** the extension builds `EdgeUploadRequestProvider` with `host` from `BackgroundUploadURLBase`,
-  `eventId` from the payload, and `deviceId` from the shared Keychain, so byte URLs target
-  `<host>/files/device/<deviceId>/<filename>` and `device.json` is keyed by that `deviceId`
+  `eventId` from the payload, and `deviceId` from the shared Keychain, so byte URLs are built by
+  `edge-upload-provider` and `device.json` is keyed by that `deviceId`
 
 #### Scenario: Config absent — cycle skipped cleanly
 - **WHEN** `process()` runs with no `EventConfigPayload` in the shared Keychain
@@ -375,7 +376,7 @@ stored token re-enumerates the whole library, which the ledger makes harmless.
 
 On a **valid `snapsync://` config (re)scan**, the host app SHALL re-provision the (possibly new)
 event. The extension SHALL be re-registered (the disable→enable toggle). On its next cycle the
-extension reconciles against the per-device file listing (`GET /files/device/<deviceId>`, see
+extension reconciles against the per-device file listing (capability `bunny-list-endpoint`, see
 `event-rejoin-reconciliation`): it **`resetTo`s** (atomic clear-and-seed) the ledger to one
 already-uploaded row per stored file and **clears the discovery cursor** (forcing a full
 re-enumeration). The device-global listing re-seeds the same files as already-uploaded, so **nothing
@@ -392,8 +393,8 @@ decode/validate/persist still happens in the shared container intent.
   re-projects `device.json` to the new event path with the joined-event marker set
 
 #### Scenario: Already-stored photos do not re-upload on a switch
-- **WHEN** the device switches to an event whose photos are already present under
-  `/files/device/<deviceId>/…`
+- **WHEN** the device switches to an event whose photos are already present in its device
+  byte-partition (capability `bunny-upload-endpoint`)
 - **THEN** the clear-and-seed reconcile re-seeds them as already-uploaded and the extension creates no
   new upload jobs for them
 

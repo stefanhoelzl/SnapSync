@@ -32,7 +32,7 @@ SHALL neither reconcile nor upload.
 The system SHALL define a per-device file-listing seam whose `list(deviceId)` returns a `Result` of
 the **filenames the device has stored** — the raw object listing under the device's byte partition,
 each entry carrying at least its `filename` (the bare `<assetId>-<role>.<ext>`) — obtained from the
-backend **per-device** listing (`GET /files/device/<deviceId>`) over HTTPS. This replaces the former
+backend **per-device** listing (capability `bunny-list-endpoint`) over HTTPS. This replaces the former
 per-event complete-asset listing (`GET /event/<id>/files`): the source of seed truth is now the
 device's event-independent byte store, not any single event. The seam SHALL surface failures as a
 failed `Result` (never a thrown error to the caller), so the join can reduce them into state. A

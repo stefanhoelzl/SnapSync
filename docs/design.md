@@ -375,7 +375,7 @@ own-device storage truth, `dedup-files-device-manifests`; the in-flight peek, `s
 
 - `completed` ← **own-device storage truth**: each qualifying asset's **expected** resource filenames
   (the `gallery-status` resource-enumeration seam — the same derivation the extension uploads under)
-  all **present** in the **per-device** file listing (`GET /files/device/<deviceId>`), via
+  all **present** in the **per-device** file listing (`GET /devices/<deviceId>/files`), via
   `CompletedAssetsSource`. No `device.json` is read.
 - `pending` (in-flight) ← a **read-only peek at the extension's shared App-Group ledger**:
   `aggregates().pending` (the asset-counted "uploading now" set — photos with a job created but not
@@ -442,12 +442,12 @@ foreground-triggered. The ledger remains the extension's private **write** memor
 > `immutable-asset-manifests` below.** Bytes now live in a **device-partitioned, event-independent**
 > store and are *linked* into events by reference (uploaded once, reused across events):
 > ```
-> /files/<device-id>/<assetId>-<role>.<ext>     bytes · device-global · uploaded once
-> /events/<event-id>/metadata.json              event marker {eventId,name,createdAt}
-> /events/<event-id>/device/<device-id>.json    the device's per-event manifest (one doc, not N)
+> /devices/<device-id>/files/<assetId>-<role>.<ext>  bytes · device-global · uploaded once
+> /events/<event-id>/metadata.json                   event marker {eventId,name,createdAt}
+> /events/<event-id>/device/<device-id>.json         the device's per-event manifest (one doc, not N)
 > ```
 > - **device-id returns** (reversing `flatten-event-namespace`): a per-install UUID minted in the
->   shared Keychain (`device-identity`), the `/files/` partition and the manifest key — recorded now as
+>   shared Keychain (`device-identity`), the `/devices/<id>/files/` partition and the manifest key — recorded now as
 >   forward-prep for a deletion-correct restore (still out of scope). Content-hash keys remain
 >   impractical (the OS still never shows the extension the bytes), so dedup is **same-device,
 >   across-events** via the device-local `assetId`, not cross-device.
@@ -455,9 +455,9 @@ foreground-triggered. The ledger remains the extension's private **write** memor
 >   `immutable-asset-manifests`): a full-state projection of a device-global accumulator, **PUT
 >   synchronously in-cycle** by the extension (no background `URLSession`), deletion-aware, write-only
 >   in v1. The write-once / permanent-cache property is dropped.
-> - **Byte uploads are ungated** (`PUT /files/device/<id>/<file>`) — accepted abuse trade-off; the
+> - **Byte uploads are ungated** (`PUT /devices/<id>/files/<file>`) — accepted abuse trade-off; the
 >   event-existence gate moves to the device.json write. **Status is own-device**: gallery enumeration
->   (expected) × the per-device file listing `GET /files/device/<id>` (present); it reads no device.json.
+>   (expected) × the per-device file listing `GET /devices/<id>/files` (present); it reads no device.json.
 > - **Reconcile** on a re-join **`resetTo`s** (atomic clear-and-seed) the ledger from the per-device
 >   listing — one `COMPLETED` row per stored filename — and **clears the discovery cursor** to force a
 >   full re-enumeration. The clear drops stale/phantom rows (e.g. a `REQUESTED` row from a prior cycle
@@ -648,7 +648,7 @@ external/admin-direct reader is **reversed**: because a future on-device downloa
 **no storage credential**, the union is exposed as an **edge** read, `GET /event/<eventId>/files`
 (capability `bunny-list-endpoint`). It returns, for one event, every contributing device's **complete**
 assets (an asset is complete only when every resource its `device.json` names is present in
-`/files/<deviceId>/`), flattened across devices, each tagged with its owning `deviceId` — the client
+`/devices/<deviceId>/files/`), flattened across devices, each tagged with its owning `deviceId` — the client
 skips its **own** device by `deviceId` (the endpoint is identity-blind). Each resource carries
 `{ role, contentType, key, filename, size, url }`, a straight projection of the per-event device
 manifest (`device.json`) — except `url`, which is a **presigned S3 GET URL** the edge mints per object

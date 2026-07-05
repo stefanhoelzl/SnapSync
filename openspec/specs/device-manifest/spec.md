@@ -17,8 +17,8 @@ manifest SHALL be a UTF-8 JSON object carrying `deviceId` (the stable per-instal
 `assets` (an array). Each `assets` element SHALL carry `assetId` (the device-local asset identity),
 `creationDate` (the asset's capture timestamp as an ISO-8601 string), and `resources` (a non-empty
 array). Each `resources` element SHALL carry `role`, `contentType` (the resource's MIME type), `key`
-(the resource's object name — its `/files/<deviceId>/` storage key minus that prefix, the fetch
-handle), and `filename` (the resource's human filename as captured). The field names `key` and
+(the resource's object name — the byte-store key under its device partition, capability
+`bunny-upload-endpoint`, the fetch handle), and `filename` (the resource's human filename as captured). The field names `key` and
 `filename` are shared verbatim with the event-wide union read (`bunny-list-endpoint`), so the union is
 a straight projection of the manifest.
 
