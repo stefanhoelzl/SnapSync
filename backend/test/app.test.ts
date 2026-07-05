@@ -12,6 +12,10 @@ const CONFIG = {
   baseUrl: "https://dl.example",
   s3Region: "de",
   s3Host: "de-s3.storage.bunnycdn.com",
+  apnsKeyId: "ABC123KEYID",
+  apnsTeamId: "E9Z8BADH58",
+  apnsPrivateKey: "-----BEGIN PRIVATE KEY-----\nMIG...\n-----END PRIVATE KEY-----\n",
+  apnsTopic: "app.snapsync",
 };
 
 const ZONE = `https://storage.bunnycdn.com/snapsync-zone`;
@@ -712,4 +716,238 @@ Deno.test("union → a per-device file LIST failure (500) → 502, no partial un
   });
   const r = await createApp({ config: CONFIG, fetch: fetchImpl }).request(`/event/${E}/files`);
   assertEquals(r.status, 502);
+});
+
+// ── PUT /devices/:deviceId/config (device config write, DEVICE-ID gated) ───────────────────────────
+
+const CONFIG_PATH = `/devices/${D}/config`;
+const CONFIG_OBJ_URL = `${ZONE}/devices/${D}/config.json`;
+const CONFIG_BODY = JSON.stringify({ pushToken: { kind: "apns", token: "TOK", env: "sandbox" } });
+
+Deno.test("device config PUT → one unconditional PUT to devices/<id>/config.json (json), 201", async () => {
+  const { calls, fetchImpl } = recorder();
+  const res = await createApp({ config: CONFIG, fetch: fetchImpl }).request(CONFIG_PATH, {
+    method: "PUT",
+    body: CONFIG_BODY,
+    headers: { "content-type": "application/json" },
+  });
+  assertEquals(res.status, 201);
+  assertEquals(calls.length, 1); // UNGATED by event: no marker read, exactly one object PUT
+  const put = putCall(calls);
+  assertEquals(put.url, CONFIG_OBJ_URL);
+  const h = new Headers(put.init.headers);
+  assertEquals(h.get("AccessKey"), "zone-password");
+  assertEquals(h.get("Content-Type"), "application/json");
+  assertEquals(await new Response(put.init.body as BodyInit).text(), CONFIG_BODY);
+});
+
+Deno.test("device config PUT → non-UUID device → 400, no upstream request", async () => {
+  const { calls, fetchImpl } = recorder();
+  const res = await createApp({ config: CONFIG, fetch: fetchImpl }).request(
+    "/devices/nope/config",
+    {
+      method: "PUT",
+      body: "{}",
+    },
+  );
+  assertEquals(res.status, 400);
+  assertEquals(calls.length, 0);
+});
+
+Deno.test("device config PUT → bunny error → 502 (never a false 2xx)", async () => {
+  const { fetchImpl } = recorder({ status: 500 });
+  const res = await createApp({ config: CONFIG, fetch: fetchImpl }).request(CONFIG_PATH, {
+    method: "PUT",
+    body: "{}",
+  });
+  assertEquals(res.status, 502);
+});
+
+Deno.test("device config PUT → upstream throw → 502", async () => {
+  const { fetchImpl } = recorder({ throws: true });
+  const res = await createApp({ config: CONFIG, fetch: fetchImpl }).request(CONFIG_PATH, {
+    method: "PUT",
+    body: "{}",
+  });
+  assertEquals(res.status, 502);
+});
+
+Deno.test("device config → wrong method (GET) → 404 (no route), no upstream", async () => {
+  const { calls, fetchImpl } = recorder();
+  const res = await createApp({ config: CONFIG, fetch: fetchImpl }).request(CONFIG_PATH, {
+    method: "GET",
+  });
+  assertEquals(res.status, 404);
+  assertEquals(calls.length, 0);
+});
+
+// ── POST /event/:eventId/notify (silent fan-out to members, marker-gated) ──────────────────────────
+
+// A real P-256 key so the APNs sender actually signs and posts (the fan-out tests observe the POSTs).
+async function configWithApnsKey() {
+  const kp = await crypto.subtle.generateKey({ name: "ECDSA", namedCurve: "P-256" }, true, [
+    "sign",
+    "verify",
+  ]);
+  const pkcs8 = new Uint8Array(await crypto.subtle.exportKey("pkcs8", kp.privateKey));
+  let bin = "";
+  for (const b of pkcs8) bin += String.fromCharCode(b);
+  const pem = `-----BEGIN PRIVATE KEY-----\n${
+    btoa(bin).match(/.{1,64}/g)!.join("\n")
+  }\n-----END PRIVATE KEY-----\n`;
+  return { ...CONFIG, apnsPrivateKey: pem };
+}
+
+type TokenSpec = { kind: string; token: string; env: string } | "absent" | "notoken";
+
+function notifyFake(opts: {
+  marker?: "present" | "absent" | "fail";
+  members?: string[];
+  memberDirFails?: boolean;
+  tokens?: Record<string, TokenSpec>;
+  apnsStatus?: number;
+}) {
+  const calls: Call[] = [];
+  const fetchImpl: FetchLike = (url, init) => {
+    calls.push({ url, init });
+    if (url.includes("push.apple.com/3/device/")) {
+      return Promise.resolve(new Response(null, { status: opts.apnsStatus ?? 200 }));
+    }
+    if (url === MARKER_URL) {
+      const m = opts.marker ?? "present";
+      if (m === "absent") return Promise.resolve(new Response(null, { status: 404 }));
+      if (m === "fail") return Promise.resolve(new Response("boom", { status: 500 }));
+      return Promise.resolve(new Response(JSON.stringify(MARKER_BODY), { status: 200 }));
+    }
+    if (url === MANIFEST_DIR_URL) {
+      if (opts.memberDirFails) return Promise.resolve(new Response("boom", { status: 500 }));
+      const entries = (opts.members ?? []).map((d) => file(`${d}.json`, 0));
+      return Promise.resolve(new Response(JSON.stringify(entries), { status: 200 }));
+    }
+    const cfg = url.match(/\/devices\/([^/]+)\/config\.json$/);
+    if (cfg) {
+      const t = opts.tokens?.[cfg[1]];
+      if (!t || t === "absent") return Promise.resolve(new Response("nf", { status: 404 }));
+      if (t === "notoken") {
+        return Promise.resolve(new Response(JSON.stringify({ other: 1 }), { status: 200 }));
+      }
+      return Promise.resolve(new Response(JSON.stringify({ pushToken: t }), { status: 200 }));
+    }
+    return Promise.resolve(new Response("nf", { status: 404 }));
+  };
+  return { calls, fetchImpl };
+}
+
+const apnsCalls = (calls: Call[]) =>
+  calls.filter((c) => c.url.includes("push.apple.com")).map((c) => c.url);
+
+Deno.test("notify → all members with a token receive a silent push; 202", async () => {
+  const config = await configWithApnsKey();
+  const { calls, fetchImpl } = notifyFake({
+    members: [D, D2],
+    tokens: {
+      [D]: { kind: "apns", token: "TOKA", env: "production" },
+      [D2]: { kind: "apns", token: "TOKB", env: "sandbox" },
+    },
+  });
+  const res = await createApp({ config, fetch: fetchImpl }).request(`/event/${E}/notify`, {
+    method: "POST",
+  });
+  assertEquals(res.status, 202);
+  assertEquals(await res.text(), ""); // bare body
+  assertEquals(
+    apnsCalls(calls).sort(),
+    [
+      "https://api.push.apple.com/3/device/TOKA",
+      "https://api.sandbox.push.apple.com/3/device/TOKB",
+    ].sort(),
+  );
+});
+
+Deno.test("notify → a member without a registered token is skipped; others still pushed; 202", async () => {
+  const config = await configWithApnsKey();
+  const { calls, fetchImpl } = notifyFake({
+    members: [D, D2],
+    tokens: { [D]: { kind: "apns", token: "TOKA", env: "production" }, [D2]: "absent" },
+  });
+  const res = await createApp({ config, fetch: fetchImpl }).request(`/event/${E}/notify`, {
+    method: "POST",
+  });
+  assertEquals(res.status, 202);
+  assertEquals(apnsCalls(calls), ["https://api.push.apple.com/3/device/TOKA"]);
+});
+
+Deno.test("notify → a config with no pushToken is skipped; 202", async () => {
+  const config = await configWithApnsKey();
+  const { calls, fetchImpl } = notifyFake({ members: [D], tokens: { [D]: "notoken" } });
+  const res = await createApp({ config, fetch: fetchImpl }).request(`/event/${E}/notify`, {
+    method: "POST",
+  });
+  assertEquals(res.status, 202);
+  assertEquals(apnsCalls(calls).length, 0);
+});
+
+Deno.test("notify → an individual APNs rejection (410) still yields 202", async () => {
+  const config = await configWithApnsKey();
+  const { fetchImpl } = notifyFake({
+    members: [D],
+    tokens: { [D]: { kind: "apns", token: "TOKA", env: "production" } },
+    apnsStatus: 410,
+  });
+  const res = await createApp({ config, fetch: fetchImpl }).request(`/event/${E}/notify`, {
+    method: "POST",
+  });
+  assertEquals(res.status, 202);
+});
+
+Deno.test("notify → empty member directory notifies vacuously; 202, no push", async () => {
+  const { calls, fetchImpl } = notifyFake({ members: [] });
+  const res = await createApp({ config: CONFIG, fetch: fetchImpl }).request(`/event/${E}/notify`, {
+    method: "POST",
+  });
+  assertEquals(res.status, 202);
+  assertEquals(apnsCalls(calls).length, 0);
+});
+
+Deno.test("notify → unknown event (marker absent) → 404, no enumeration or push", async () => {
+  const { calls, fetchImpl } = notifyFake({ marker: "absent", members: [D] });
+  const res = await createApp({ config: CONFIG, fetch: fetchImpl }).request(`/event/${E}/notify`, {
+    method: "POST",
+  });
+  assertEquals(res.status, 404);
+  assertEquals(calls.length, 1); // only the marker read
+  assertEquals(apnsCalls(calls).length, 0);
+});
+
+Deno.test("notify → non-404 marker read failure → 502", async () => {
+  const { fetchImpl } = notifyFake({ marker: "fail" });
+  const res = await createApp({ config: CONFIG, fetch: fetchImpl }).request(`/event/${E}/notify`, {
+    method: "POST",
+  });
+  assertEquals(res.status, 502);
+});
+
+Deno.test("notify → member-directory LIST failure → 502, no push", async () => {
+  const { calls, fetchImpl } = notifyFake({ memberDirFails: true });
+  const res = await createApp({ config: CONFIG, fetch: fetchImpl }).request(`/event/${E}/notify`, {
+    method: "POST",
+  });
+  assertEquals(res.status, 502);
+  assertEquals(apnsCalls(calls).length, 0);
+});
+
+Deno.test("notify → non-UUID event → 400, no upstream request", async () => {
+  const { calls, fetchImpl } = notifyFake({});
+  const res = await createApp({ config: CONFIG, fetch: fetchImpl }).request("/event/nope/notify", {
+    method: "POST",
+  });
+  assertEquals(res.status, 400);
+  assertEquals(calls.length, 0);
+});
+
+Deno.test("notify → wrong method (GET) → 404, no upstream request", async () => {
+  const { calls, fetchImpl } = notifyFake({});
+  const res = await createApp({ config: CONFIG, fetch: fetchImpl }).request(`/event/${E}/notify`);
+  assertEquals(res.status, 404);
+  assertEquals(calls.length, 0);
 });

@@ -19,5 +19,12 @@
 	<array>
 		<string>group.app.snapsync</string>
 	</array>
+	<!-- APNs environment for remote notifications (capability `push-registration`). Driven by the
+	     APS_ENVIRONMENT build setting (Config.xcconfig): `development` (APNs sandbox) for dev/sideloaded
+	     builds, `production` for TestFlight/App Store — kept in lockstep with the compile-time APNS_ENV
+	     the app reports in its device config. Push Notifications must be enabled on the app.snapsync App
+	     ID in the Developer portal, or signed builds fail to provision. -->
+	<key>aps-environment</key>
+	<string>$(APS_ENVIRONMENT)</string>
 </dict>
 </plist>

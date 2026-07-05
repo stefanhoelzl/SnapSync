@@ -23,6 +23,7 @@ import kotlinx.serialization.json.jsonPrimitive
  *
  * ```
  * GET  /devices/<id>/files      -> 200 [ per-device listing ]         (offline -> 502)
+ * PUT  /devices/<id>/config     -> 201 ; store the device config doc (push-token registration)
  * GET  /event/<id>/files        -> 200 [ union ] | 404 (unregistered) (offline -> 502)
  * POST /event                   -> 201 { eventId, name, createdAt } + register marker
  * PUT  /event/<id>/device/<id>  -> 200 ; deposit the manifest into the store
@@ -56,6 +57,13 @@ fun miniEdgeClient(store: BackendStore): HttpClient {
                         HttpStatusCode.OK,
                         jsonHeaders(),
                     )
+                }
+
+                // PUT /devices/<id>/config  (push-token registration)
+                method == HttpMethod.Put && segments.size == 3 &&
+                    segments[0] == "devices" && segments[2] == "config" -> {
+                    store.putDeviceConfig(segments[1], body)
+                    respond("", HttpStatusCode.Created, jsonHeaders())
                 }
 
                 // GET /event/<id>/files

@@ -2,13 +2,17 @@
 
 ### Requirement: APNs token acquisition seam
 
-The `:capability:push` module SHALL define a `PushTokenSource` seam that yields the device's current
-APNs push token together with its APNs environment (`sandbox` | `production`), and notifies on
-rotation. The environment SHALL be an **injected compile-time** value (sourced from the build's
-`aps-environment`, e.g. a `Config.xcconfig`-baked `APNS_ENV`), not detected at runtime — mirroring how
-the upload host base is injected. The seam SHALL be a plain interface in `commonMain` with a settable
-test fake, so the registration logic is exercised on both the JVM and `iosSimulatorArm64`; the real
-APNs acquisition (via `UIApplication` registration) is an `iosMain` adapter wired only in `:app:ios`.
+The `:capability:push` module SHALL define a `PushTokenSource` in `commonMain` that yields the device's
+current APNs push token together with its APNs environment (`sandbox` | `production`), and notifies on
+rotation (a `StateFlow` of the latest token). Because the token is **OS-push-delivered, not pulled**,
+the source is a settable holder — it exposes a `deliver(hexToken)` method that both the app-shell wiring
+and tests call, so it is its own test fake (no separate implementation is needed) and the registration
+logic is exercised on both the JVM and `iosSimulatorArm64`. The environment SHALL be an **injected
+compile-time** value (sourced from the build's `aps-environment`, e.g. a `Config.xcconfig`-baked
+`APNS_ENV`), not detected at runtime — mirroring how the upload host base is injected. The real APNs
+acquisition (calling `registerForRemoteNotifications` and receiving the token) is **app-shell wiring**
+(the Swift `AppDelegate` → `SnapSyncRoot.onPushToken(hex)` → `deliver`) in `:app:ios`, not a
+`:capability:push` type.
 
 #### Scenario: The seam yields a token and its environment
 

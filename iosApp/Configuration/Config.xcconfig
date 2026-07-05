@@ -20,3 +20,10 @@ CODE_SIGN_ENTITLEMENTS = iosApp/iosApp.entitlements
 // (HTTPS-only) applies — no NSAllowsLocalNetworking exception ships. The `$()` splits the `//` so
 // xcconfig does not treat the rest of the line as a comment (CLI overrides need no such trick).
 BACKGROUND_UPLOAD_URL_BASE = https:/$()/snapsync.stho.net
+// APNs environment (capability `push-registration`). APS_ENVIRONMENT drives the aps-environment
+// entitlement; APNS_ENV is baked into Info.plist and read by the app so its device config reports which
+// APNs host the token belongs to. They MUST agree: `development`+`sandbox` for a plain local/dev build
+// (the sideload loop uses the APNs sandbox), `production`+`production` for TestFlight/App Store. CI
+// overrides both for a distribution build (as it can override the upload host); a plain build stays dev.
+APS_ENVIRONMENT = development
+APNS_ENV = sandbox

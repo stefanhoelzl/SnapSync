@@ -1,0 +1,115 @@
+package app.snapsync.push
+
+import io.ktor.client.HttpClient
+import io.ktor.client.engine.mock.MockEngine
+import io.ktor.client.engine.mock.respond
+import io.ktor.http.HttpStatusCode
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.test.UnconfinedTestDispatcher
+import kotlinx.coroutines.test.runTest
+import kotlin.test.Test
+import kotlin.test.assertEquals
+import kotlin.test.assertFalse
+import kotlin.test.assertTrue
+
+private class FakePushHttpClient(private val result: Result<Unit> = Result.success(Unit)) : PushHttpClient {
+    data class Call(val url: String, val body: String)
+
+    val calls = mutableListOf<Call>()
+
+    override suspend fun put(url: String, jsonBody: String): Result<Unit> {
+        calls.add(Call(url, jsonBody))
+        return result
+    }
+}
+
+class PushRegistrationTest {
+
+    private val deviceId = "11111111-1111-4111-8111-111111111111"
+
+    @Test
+    fun register_puts_the_config_url_and_body() = runTest {
+        val client = FakePushHttpClient()
+        PushRegistration(client, "https://edge.example", deviceId)
+            .register(ApnsPushToken("DEADBEEF", "sandbox"))
+
+        assertEquals(1, client.calls.size)
+        assertEquals("https://edge.example/devices/$deviceId/config", client.calls[0].url)
+        assertEquals(
+            """{"pushToken":{"kind":"apns","token":"DEADBEEF","env":"sandbox"}}""",
+            client.calls[0].body,
+        )
+    }
+
+    @Test
+    fun trailing_slash_on_host_is_normalized() = runTest {
+        val client = FakePushHttpClient()
+        PushRegistration(client, "https://edge.example/", deviceId)
+            .register(ApnsPushToken("T", "production"))
+        assertEquals("https://edge.example/devices/$deviceId/config", client.calls[0].url)
+    }
+
+    @Test
+    fun request_carries_no_event_id() = runTest {
+        val client = FakePushHttpClient()
+        PushRegistration(client, "https://edge.example", deviceId)
+            .register(ApnsPushToken("T", "sandbox"))
+        assertFalse(client.calls[0].url.contains("event"))
+        assertFalse(client.calls[0].body.contains("event"))
+    }
+
+    @Test
+    fun failed_write_is_absorbed_not_thrown() = runTest {
+        val client = FakePushHttpClient(Result.failure(RuntimeException("boom")))
+        // Must not throw — a failed registration never disrupts the app.
+        PushRegistration(client, "https://edge.example", deviceId)
+            .register(ApnsPushToken("T", "sandbox"))
+        assertEquals(1, client.calls.size)
+    }
+
+    @Test
+    fun re_register_same_token_is_idempotent() = runTest {
+        val client = FakePushHttpClient()
+        val reg = PushRegistration(client, "https://edge.example", deviceId)
+        val t = ApnsPushToken("SAME", "production")
+        reg.register(t)
+        reg.register(t)
+        assertEquals(2, client.calls.size)
+        assertEquals(client.calls[0], client.calls[1]) // identical URL+body → overwrites
+    }
+
+    @Test
+    fun run_registers_on_delivery_and_on_rotation() = runTest {
+        val client = FakePushHttpClient()
+        val source = PushTokenSource("sandbox")
+        // Unconfined so each delivery synchronously drives the collector — no StateFlow conflation
+        // between the two deliveries, so the rotation is observed deterministically.
+        val job = launch(UnconfinedTestDispatcher(testScheduler)) {
+            PushRegistration(client, "https://edge.example", deviceId).run(source)
+        }
+
+        source.deliver("TOKEN1")
+        source.deliver("TOKEN2") // rotation
+        job.cancel()
+
+        assertEquals(2, client.calls.size)
+        assertTrue(client.calls[0].body.contains("TOKEN1"))
+        assertTrue(client.calls[1].body.contains("TOKEN2"))
+        // env is the source's compile-time value on every token.
+        assertTrue(client.calls[0].body.contains("\"env\":\"sandbox\""))
+    }
+
+    @Test
+    fun ktor_client_maps_2xx_to_success() = runTest {
+        val engine = MockEngine { respond("", HttpStatusCode.Created) }
+        val res = KtorPushHttpClient(HttpClient(engine)).put("https://e/devices/x/config", "{}")
+        assertTrue(res.isSuccess)
+    }
+
+    @Test
+    fun ktor_client_maps_non_2xx_to_failure() = runTest {
+        val engine = MockEngine { respond("nope", HttpStatusCode.InternalServerError) }
+        val res = KtorPushHttpClient(HttpClient(engine)).put("https://e/devices/x/config", "{}")
+        assertTrue(res.isFailure)
+    }
+}

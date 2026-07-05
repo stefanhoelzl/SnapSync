@@ -8,6 +8,10 @@ const FULL = {
   PUBLIC_BASE_URL: "https://dl.example",
   BUNNY_S3_REGION: "de",
   BUNNY_S3_HOST: "de-s3.storage.bunnycdn.com",
+  APNS_KEY_ID: "ABC123KEYID",
+  APNS_TEAM_ID: "E9Z8BADH58",
+  APNS_PRIVATE_KEY: "-----BEGIN PRIVATE KEY-----\nMIG...\n-----END PRIVATE KEY-----\n",
+  APNS_TOPIC: "app.snapsync",
 };
 
 Deno.test("readConfig: complete env → Config", () => {
@@ -18,6 +22,10 @@ Deno.test("readConfig: complete env → Config", () => {
     baseUrl: "https://dl.example",
     s3Region: "de",
     s3Host: "de-s3.storage.bunnycdn.com",
+    apnsKeyId: "ABC123KEYID",
+    apnsTeamId: "E9Z8BADH58",
+    apnsPrivateKey: "-----BEGIN PRIVATE KEY-----\nMIG...\n-----END PRIVATE KEY-----\n",
+    apnsTopic: "app.snapsync",
   });
 });
 
@@ -56,4 +64,24 @@ Deno.test("readConfig: trailing slash on PUBLIC_BASE_URL is stripped", () => {
     readConfig({ ...FULL, PUBLIC_BASE_URL: "https://dl.example///" }).baseUrl,
     "https://dl.example",
   );
+});
+
+Deno.test("readConfig: missing each APNs var → throws naming it (fail-closed)", () => {
+  for (const name of ["APNS_KEY_ID", "APNS_TEAM_ID", "APNS_PRIVATE_KEY", "APNS_TOPIC"]) {
+    const { [name]: _omit, ...rest } = FULL as Record<string, string>;
+    assertThrows(() => readConfig(rest), Error, name);
+  }
+});
+
+Deno.test("readConfig: blank APNs private key → throws (treated as missing)", () => {
+  assertThrows(
+    () => readConfig({ ...FULL, APNS_PRIVATE_KEY: "   \n  " }),
+    Error,
+    "APNS_PRIVATE_KEY",
+  );
+});
+
+Deno.test("readConfig: APNs private key is preserved verbatim (trailing newline not trimmed)", () => {
+  const pem = "-----BEGIN PRIVATE KEY-----\nMIG...\n-----END PRIVATE KEY-----\n";
+  assertEquals(readConfig({ ...FULL, APNS_PRIVATE_KEY: pem }).apnsPrivateKey, pem);
 });

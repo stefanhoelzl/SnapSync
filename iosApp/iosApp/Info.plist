@@ -25,6 +25,12 @@
 	     default ATS (HTTPS-only) applies, no NSAllowsLocalNetworking exception. -->
 	<key>BackgroundUploadURLBase</key>
 	<string>$(BACKGROUND_UPLOAD_URL_BASE)</string>
+	<!-- The compile-time APNs environment (capability push-registration): "sandbox" for dev/sideloaded
+	     builds, "production" for TestFlight/App Store (driven by APNS_ENV, kept in lockstep with the
+	     aps-environment entitlement). The app reports it in devices/<id>/config.json so the backend
+	     picks the right APNs host per token. -->
+	<key>APNS_ENV</key>
+	<string>$(APNS_ENV)</string>
 	<!-- Custom URL scheme: a QR scanned by the stock Camera app opens snapsync://config?… which
 	     deeplinks into the app carrying the S3 config (see deeplink-config capability). -->
 	<key>CFBundleURLTypes</key>
@@ -72,6 +78,9 @@
 	<key>UIBackgroundModes</key>
 	<array>
 		<string>processing</string>
+		<!-- Silent (content-available) remote notifications wake the app in the background (capability
+		     push-registration). Registered at launch; the AppDelegate forwards receipt to Kotlin. -->
+		<string>remote-notification</string>
 	</array>
 	<key>BGTaskSchedulerPermittedIdentifiers</key>
 	<array>
