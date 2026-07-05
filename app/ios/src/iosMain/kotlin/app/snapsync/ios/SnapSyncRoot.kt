@@ -14,6 +14,11 @@ import app.snapsync.gallery.PhotoLibraryResourceEnumerator
 import app.snapsync.permission.PermissionStatus
 import app.snapsync.permission.PhotoLibraryPermission
 import app.snapsync.presentation.StatusContainerHost
+import app.snapsync.push.KtorPushHttpClient
+import app.snapsync.push.LoggingPushReceiver
+import app.snapsync.push.PushReceiver
+import app.snapsync.push.PushRegistration
+import app.snapsync.push.PushTokenSource
 import app.snapsync.rejoin.HttpDeviceFilesSource
 import app.snapsync.rejoin.LeaveEvent
 import app.snapsync.rejoin.clearRequestedOffMain
@@ -189,6 +194,26 @@ object SnapSyncRoot {
         HttpEventMetadataSource(darwinHttpClient(), backendHost)
     }
 
+    // --- Push notifications (capability `push-registration`) ---
+    // The compile-time APNs environment (Config.xcconfig → Info.plist `APNS_ENV`): `sandbox` for
+    // dev/sideloaded builds, `production` for TestFlight/App Store. The token itself is OS-delivered
+    // (the Swift AppDelegate forwards it via [onPushToken]); a rotation re-registers.
+    private val pushTokenSource: PushTokenSource by lazy {
+        val env = NSBundle.mainBundle.objectForInfoDictionaryKey("APNS_ENV") as? String ?: "sandbox"
+        PushTokenSource(env)
+    }
+
+    // Registers the device APNs token with the backend (PUT devices/<id>/config) over the shared Darwin
+    // client — on launch delivery and each rotation. Best-effort: a failed write is absorbed and retried
+    // on the next token, never blocking join/upload/download. The collector is launched from [host].
+    private val pushRegistration: PushRegistration by lazy {
+        PushRegistration(KtorPushHttpClient(darwinHttpClient()), backendHost, deviceId)
+    }
+
+    // The silent-push receiver — infra phase: logs receipt (observable via idevicesyslog). A later use
+    // case swaps in a real handler (e.g. download discovery) without touching the app-shell wiring.
+    private val pushReceiver: PushReceiver by lazy { LoggingPushReceiver() }
+
     private val eventCreator: EventCreator by lazy {
         CreateEvent(
             client = HttpEventCreationClient(darwinHttpClient(), backendHost),
@@ -206,6 +231,9 @@ object SnapSyncRoot {
         // excluded) — one source so total and completed stay consistent.
         val syncSource = ListingSyncStatusSource(completedAssets, permission, completedAssets, inFlightSource, scope)
         enableBackgroundUploadOnGrant()
+        // Start registering the APNs token: the collector reacts to each token the AppDelegate delivers
+        // (StateFlow-retained, so a token delivered before this launches is still registered).
+        scope.launch { pushRegistration.run(pushTokenSource) }
         // `config` is passed as both ports (one Keychain adapter implements both), as `permission` is.
         // No EventStatus source: status is read from the listing; the extension owns reconciliation.
         StatusContainerHost(
@@ -318,6 +346,26 @@ object SnapSyncRoot {
             is ConfigDecodeResult.Success -> scope.launch { provisionEvent(decoded.payload.eventId, name = null) }
             is ConfigDecodeResult.Failure -> host.onOpenUrl(url) // flashes the invalid-link error
         }
+    }
+
+    /**
+     * The OS delivered an APNs device token (capability `push-registration`), forwarded raw-hex from the
+     * Swift AppDelegate's `didRegisterForRemoteNotificationsWithDeviceToken`. Feed it to the token
+     * source; the registration collector PUTs `devices/<id>/config`. Idempotent across launches and
+     * rotations. Touch [host] so the collector is running to observe it. No decision in Swift.
+     */
+    fun onPushToken(hex: String) {
+        host
+        pushTokenSource.deliver(hex)
+    }
+
+    /**
+     * A silent (`content-available`) remote notification arrived (capability `push-registration`),
+     * forwarded from the Swift AppDelegate. Route it to the receiver — infra phase: logs receipt. The
+     * Swift side then calls the OS fetch completion handler.
+     */
+    fun onSilentPush() {
+        pushReceiver.onSilentPush()
     }
 
     /**

@@ -22,6 +22,7 @@ so nothing collides):
 events/<eventId>/metadata.json          event marker / registry record { eventId, name, createdAt }
 events/<eventId>/device/<deviceId>.json per-event device manifest (membership + projected assets)
 devices/<deviceId>/files/<filename>     a device's raw uploaded photo/resource byte objects
+devices/<deviceId>/config.json          a device's config { pushToken: { kind, token, env } } (NOT a file)
 ```
 
 An event **exists** iff its marker `events/<eventId>/metadata.json` is present. Bunny's Edge Storage
@@ -52,6 +53,17 @@ GET  /devices/<deviceId>/files                            (per-device raw listin
     →  single bunny native LIST of  devices/<deviceId>/files/
     →  200 [ {filename, size, url}, … ]  (200 [] for an empty/unknown partition) | 502 on LIST failure
        url = a presigned S3 GET URL (below);  Cache-Control: no-store
+
+PUT  /devices/<deviceId>/config                           (device config / push token — UNGATED by event)
+    body: { pushToken: { kind: "apns", token, env } }  (streamed)     DEVICE-ID is the capability
+    →  bunny native PUT  devices/<deviceId>/config.json   → 201 | 502   (last-write-wins; not a listed file)
+
+POST /event/<eventId>/notify                              (silent push to members — GATED on event existence)
+    →  [gate] GET events/<eventId>/metadata.json  → absent? 404 | non-404 failure? 502
+    →  LIST events/<eventId>/device/  → per member: read devices/<id>/config.json → APNs silent push
+    →  202 (bare)  |  502 only if the member LIST fails
+       best-effort: members without a token are skipped; a per-token failure never fails the request
+       fixed payload (content-available), ALL members, no exclusion; NO production caller wired yet
 
 PUT  /event/<eventId>/device/<deviceId>                   (device manifest — GATED on event existence)
     body: full-state JSON device manifest (streamed)
@@ -108,11 +120,13 @@ GET  /event/<eventId>/files                               (event-wide UNION — 
 
 ```
 src/app.ts        Hono app (createApp({config, fetch}) → routes): create + metadata + byte upload +
-                  per-device list + device-manifest write + event union. Key helpers (markerKey,
-                  deviceManifestKey/Dir, byteKey, deviceDir), the existence gates, and
-                  presignDownloadUrl() (the sole builder of each entry's presigned S3 download url).
+                  per-device list + device-manifest write + event union + device config + event notify.
+                  Key helpers (markerKey, deviceManifestKey/Dir, byteKey, deviceDir, deviceConfigKey),
+                  the existence gates, presignDownloadUrl(), and readPushToken() (notify fan-out).
+src/apns.ts       createApnsSender(config, fetch) → { sendSilent(tokens) }: ES256 provider-JWT signing
+                  (WebCrypto, memoized) + a silent HTTP/2 push per token; per-token best-effort outcomes.
 src/validators.ts validateUUID / validateFilename → boolean; validateEventName(raw) → trimmed | null
-src/config.ts     readConfig(env) → Config (zone/host/accessKey/PUBLIC_BASE_URL/S3 region+host;
+src/config.ts     readConfig(env) → Config (zone/host/accessKey/PUBLIC_BASE_URL/S3 region+host/APNS_*;
                   THROWS on any missing/blank var)
 src/main.ts       Edge Scripting / Deno entry: reads config at startup, serves createApp(...).fetch
 test/*.test.ts    Deno tests (app via app.request(), upstream fetch + config injected)
@@ -128,6 +142,10 @@ test/*.test.ts    Deno tests (app via app.request(), upstream fetch + config inj
 | `PUBLIC_BASE_URL`          | the backend's public origin (no trailing slash) — the host clients reach for upload/event/list. **Not** part of any download URL. |
 | `BUNNY_S3_REGION`          | S3 region of the (S3-enabled) storage zone, e.g. `de` — used only to presign download URLs                                        |
 | `BUNNY_S3_HOST`            | bunny S3-compatible endpoint host, e.g. `de-s3.storage.bunnycdn.com` — the presigned-URL origin                                   |
+| `APNS_KEY_ID`              | APNs Auth Key id (the `.p8` Key ID) — the provider-JWT `kid`                                                                      |
+| `APNS_TEAM_ID`             | Apple team id (`E9Z8BADH58`) — the provider-JWT `iss`                                                                             |
+| `APNS_PRIVATE_KEY`         | the APNs Auth Key `.p8` **PEM contents** (not a path) — ES256-signs the provider JWT; runtime env, never a CI secret              |
+| `APNS_TOPIC`               | the push topic — the app bundle id `app.snapsync` (the `apns-topic` header)                                                       |
 
 `main.ts` reads these once at startup via `readConfig(Deno.env.toObject())`, which **throws** on any
 missing/blank var → a misconfigured deployment **fails to boot** (fail-closed at deploy, never a
@@ -143,8 +161,14 @@ deno fmt --check
 # run locally (listens on 127.0.0.1:8080 via the SDK):
 BUNNY_STORAGE_ZONE=z BUNNY_STORAGE_HOST=storage.bunnycdn.com BUNNY_STORAGE_ACCESS_KEY=k \
   BUNNY_S3_REGION=de BUNNY_S3_HOST=de-s3.storage.bunnycdn.com \
+  APNS_KEY_ID=k APNS_TEAM_ID=E9Z8BADH58 APNS_TOPIC=app.snapsync APNS_PRIVATE_KEY="$(cat AuthKey.p8)" \
   PUBLIC_BASE_URL=http://127.0.0.1:8080 deno run --allow-net --allow-env src/main.ts
 ```
+
+The APNs credentials are **runtime** env (the `AccessKey` category), set on the platform, **not**
+deploy-workflow secrets. Provision an APNs **Auth Key** (`.p8`) for team `E9Z8BADH58` once (App
+Store Connect API / portal) and set `APNS_KEY_ID` / `APNS_TEAM_ID` / `APNS_PRIVATE_KEY` (the `.p8`
+PEM) / `APNS_TOPIC=app.snapsync` as Edge Script / Deno Deploy environment variables.
 
 `createApp({ config, fetch })` takes an injected validated `config` and upstream `fetch`, so tests
 drive the real Hono app via `app.request()` without the network or `Deno.env`.

@@ -1,10 +1,20 @@
 // Hono app for the backend (capabilities `event-creation` + `bunny-upload-endpoint` +
-// `bunny-list-endpoint`, over the shared `backend-config`).
+// `bunny-list-endpoint` + `device-config-endpoint` + `event-notify-endpoint`, over the shared
+// `backend-config`; pushes via `apns-push-sender`).
 //
 //   POST /event
 //     → mints an event: writes the marker `events/<id>/metadata.json`, returns {eventId,name,createdAt}.
 //   GET /event/:eventId
 //     → returns the event marker (existence check); 404 when absent.
+//   PUT /devices/:deviceId/config
+//     → streams a JSON device config (the push token) into `devices/<deviceId>/config.json`. UNGATED by
+//       event; DEVICE-ID is the capability. Faithful 201/502; last-write-wins. Outside the files/
+//       partition, so never listed as an asset.
+//   POST /event/:eventId/notify
+//     → sends a fixed SILENT (content-available) push to EVERY member device. GATED on the marker
+//       (404/502). Enumerate members (LIST `events/<id>/device/`) → read each `devices/<id>/config.json`
+//       → best-effort fan-out via APNs. Bare 202 (no per-device results); 502 only if the member LIST
+//       fails. No production caller wired (the trigger is a deferred use case).
 //   PUT /devices/:deviceId/files/:filename
 //     → streams the request body into ONE bunny native Storage PUT. UNGATED (no marker read): bytes
 //       are device-partitioned and event-independent (`devices/<deviceId>/files/<filename>`), uploaded
@@ -54,6 +64,7 @@ import { Hono } from "hono";
 import { AwsClient } from "aws4fetch";
 import { validateEventName, validateFilename, validateUUID } from "./validators.ts";
 import type { Config } from "./config.ts";
+import { createApnsSender, type PushToken } from "./apns.ts";
 
 // The event registry's marker prefix. Because an eventId is a UUID, the marker
 // `events/<id>/metadata.json` is disjoint from any device manifest `events/<id>/device/<deviceId>.json`
@@ -85,6 +96,11 @@ function byteKey(deviceId: string, filename: string): string {
 /** The device byte-store directory to LIST: `devices/<deviceId>/files/`. */
 function deviceDir(deviceId: string): string {
   return `devices/${encodeURIComponent(deviceId)}/files/`;
+}
+
+/** Storage key of a device's config document (holds the push token): `devices/<deviceId>/config.json`. */
+function deviceConfigKey(deviceId: string): string {
+  return `devices/${encodeURIComponent(deviceId)}/config.json`;
 }
 
 /** The event marker's contents — the registry record written on create. */
@@ -258,6 +274,47 @@ async function readDeviceManifest(
   return await res.json() as DeviceManifest;
 }
 
+/**
+ * Read a device's config object (`devices/<deviceId>/config.json`) and return its `pushToken`, or
+ * `null` when the config is absent (`404`), unreadable, unparseable, or carries no usable token. Used
+ * by the notify fan-out, which is **best-effort** — a member without a registered token is simply
+ * skipped, so this NEVER throws (unlike the manifest read that fails the union). The body is always
+ * drained so the connection is released.
+ */
+async function readPushToken(
+  fetchImpl: FetchLike,
+  config: Config,
+  deviceId: string,
+): Promise<PushToken | null> {
+  const url = `https://${config.host}/${config.zone}/${deviceConfigKey(deviceId)}`;
+  let res: Response;
+  try {
+    res = await fetchImpl(url, {
+      method: "GET",
+      headers: { AccessKey: config.accessKey, Accept: "application/json" },
+    });
+  } catch {
+    return null; // transport error → skip this member (best-effort)
+  }
+  if (!res.ok) {
+    await res.body?.cancel();
+    return null; // 404 (never registered) or any read error → skip
+  }
+  try {
+    const doc = await res.json() as { pushToken?: Partial<PushToken> };
+    const pt = doc.pushToken;
+    if (
+      pt && typeof pt.kind === "string" && typeof pt.token === "string" &&
+      typeof pt.env === "string"
+    ) {
+      return { kind: pt.kind, token: pt.token, env: pt.env };
+    }
+    return null; // no / malformed pushToken → skip
+  } catch {
+    return null; // unparseable config → skip
+  }
+}
+
 export function createApp({ fetch: fetchImpl, config }: Deps): Hono {
   // The S3 signer used ONLY to presign download URLs (capability `bunny-list-endpoint`). Access Key ID =
   // the zone name, secret = the storage-zone `AccessKey`; pure Web-Crypto, no network. Uploads/reads/
@@ -268,6 +325,11 @@ export function createApp({ fetch: fetchImpl, config }: Deps): Hono {
     region: config.s3Region,
     service: "s3",
   });
+
+  // The APNs provider sender (capability `apns-push-sender`), memoizing its ES256 provider JWT across
+  // sends. Used only by the notify fan-out. No production caller is wired to notify yet (the trigger is
+  // a deferred use case); the route exists so the pipe is exercisable end-to-end.
+  const apns = createApnsSender(config, fetchImpl);
 
   // Per-device byte WRITE route (`bunny-upload-endpoint`). Mounted under
   // `/devices/:deviceId/files/:filename`, so the handlers read `deviceId`/`filename` from the mount.
@@ -536,6 +598,84 @@ export function createApp({ fetch: fetchImpl, config }: Deps): Hono {
       console.error(`list: bunny LIST failed for device ${deviceId}: ${e}`);
       return c.text("upstream error", 502);
     }
+  });
+
+  // Write a device's config object (capability `device-config-endpoint`). Gated by DEVICE-ID
+  // possession alone (no marker, no event) — the same capability model as the byte upload. Streams the
+  // JSON body into one bunny native PUT at `devices/<deviceId>/config.json`. Faithful: 201 only on a
+  // confirmed store; last-write-wins (a rotated token overwrites). The config lives OUTSIDE the
+  // `devices/<deviceId>/files/` partition, so it never appears in the per-device list or the union.
+  app.put("/devices/:deviceId/config", async (c) => {
+    const deviceId = c.req.param("deviceId");
+    if (!validateUUID(deviceId)) {
+      return c.text("invalid device", 400);
+    }
+    const target = `https://${config.host}/${config.zone}/${deviceConfigKey(deviceId)}`;
+    const init: StreamInit = {
+      method: "PUT",
+      headers: {
+        AccessKey: config.accessKey,
+        "Content-Type": c.req.header("content-type") ?? "application/json",
+      },
+      body: c.req.raw.body, // ReadableStream — the config doc, streamed never buffered
+      duplex: "half",
+    };
+    let upstream: Response;
+    try {
+      upstream = await fetchImpl(target, init);
+    } catch (e) {
+      console.error(`config: upstream PUT errored for ${deviceId}: ${e}`);
+      return c.text("upstream error", 502);
+    }
+    if (!upstream.ok) {
+      console.error(`config: bunny returned ${upstream.status} for ${deviceId}`);
+      return c.text("upstream rejected", 502);
+    }
+    return c.body(null, 201);
+  });
+
+  // Notify an event's members (capability `event-notify-endpoint`). GATED on the marker (absent → 404,
+  // non-404 read failure → 502). Enumerate members with one LIST of `events/<eventId>/device/`; a LIST
+  // transport failure → 502 (nothing enumerable). Then BEST-EFFORT: read each member's config token
+  // (absent/unparseable/no-token → skipped) and send a fixed silent (content-available) push to the
+  // rest. Per-member read/send failures never fail the request — always a bare 202 once the marker
+  // gate passed and members were enumerated. Fixed payload, all members, no exclusion; no caller wired.
+  app.post("/event/:eventId/notify", async (c) => {
+    const eventId = c.req.param("eventId");
+    if (!validateUUID(eventId)) {
+      return c.text("invalid event", 400);
+    }
+
+    let marker: EventMarker | null;
+    try {
+      marker = await readMarker(fetchImpl, config, eventId);
+    } catch (e) {
+      console.error(`notify: marker read failed for ${eventId}: ${e}`);
+      return c.text("upstream error", 502);
+    }
+    if (marker === null) return c.text("event not found", 404);
+
+    let memberIds: string[];
+    try {
+      const entries = await listDir(fetchImpl, config, deviceManifestDir(eventId));
+      memberIds = (entries ?? [])
+        .filter((e) => !e.IsDirectory && e.ObjectName.endsWith(".json"))
+        .map((e) => decodeObjectName(e.ObjectName).slice(0, -".json".length));
+    } catch (e) {
+      console.error(`notify: member LIST failed for ${eventId}: ${e}`);
+      return c.text("upstream error", 502);
+    }
+
+    // Best-effort per-member token read (skips members without a registered token), then fan out.
+    const tokens = (await Promise.all(memberIds.map((d) => readPushToken(fetchImpl, config, d))))
+      .filter((t): t is PushToken => t !== null);
+    const outcomes = await apns.sendSilent(tokens);
+    const sent = outcomes.filter((o) => o.status === "sent").length;
+    console.info(
+      `notify: event ${eventId} — ${memberIds.length} members, ${tokens.length} with a token, ${sent} pushed`,
+    );
+
+    return c.body(null, 202);
   });
 
   // Mount the per-device byte object routes; any unmatched path or wrong method → Hono's 404.

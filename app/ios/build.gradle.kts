@@ -34,12 +34,15 @@ kotlin {
             implementation(project(":app:ios:photokit-discovery"))
             implementation(project(":app:ios:url-session-upload"))
             // The stable per-install device id (shared Keychain) the app's status lists by
-            // (`/files/<deviceId>/`) — the SAME item the extension reads (capability `device-identity`).
+            // (`/devices/<deviceId>/files/`) — the SAME item the extension reads (capability `device-identity`).
             implementation(project(":capability:device-id"))
             // The re-join reconciliation: the list fetch + JoinEvent gate, and the join status seam
             // (re-exported by :capability:rejoin) wired into the container.
             implementation(project(":capability:rejoin"))
             implementation(project(":capability:download"))
+            // Push-notification registration + receive seams (capability `push-registration`): the
+            // AppDelegate feeds the OS-delivered APNs token in, the collector PUTs devices/<id>/config.
+            implementation(project(":capability:push"))
             // The create-event flow: the HTTP creator + CreateEvent use-case and the creation status
             // seam wired into the container.
             implementation(project(":capability:event-creation-ui"))

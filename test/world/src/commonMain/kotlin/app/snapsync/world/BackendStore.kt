@@ -54,6 +54,9 @@ class BackendStore {
     private val byteStore = mutableMapOf<String, MutableSet<String>>()
     private val manifests = mutableMapOf<Pair<String, String>, DeviceManifest>()
     private val events = mutableSetOf<String>()
+    // Per-device config docs (`devices/<id>/config.json`, the push token) — a SEPARATE namespace from
+    // the byte store, so a config never appears in [deviceListing] or the [union].
+    private val deviceConfigs = mutableMapOf<String, String>()
 
     /** Failure lever: when true, the per-device listing and event-union routes fail (mini-edge `502`). */
     var offline: Boolean = false
@@ -82,12 +85,20 @@ class BackendStore {
         manifests[eventId to deviceId] = manifest
     }
 
+    /** Store a device's config doc (the `PUT /devices/<id>/config` effect — push-token registration). */
+    fun putDeviceConfig(deviceId: String, json: String) {
+        deviceConfigs[deviceId] = json
+    }
+
     // ---- inspection (for tests) -----------------------------------------------------------------
 
     /** The raw object names stored for a device — inspectable world outcome. */
     fun objectsOf(deviceId: String): Set<String> = byteStore[deviceId].orEmpty().toSet()
 
     fun manifestOf(eventId: String, deviceId: String): DeviceManifest? = manifests[eventId to deviceId]
+
+    /** The stored config doc for a device (the registered push token), or null — inspectable outcome. */
+    fun deviceConfigOf(deviceId: String): String? = deviceConfigs[deviceId]
 
     // ---- read-models ----------------------------------------------------------------------------
 

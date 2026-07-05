@@ -19,6 +19,7 @@ kotlin {
             implementation(project(":domain:permission"))
             implementation(project(":capability:config"))
             implementation(project(":capability:event-creation-ui"))
+            implementation(project(":capability:push"))
             implementation(kotlin("test"))
             implementation(libs.coroutines.test)
             implementation(libs.orbit.test)
