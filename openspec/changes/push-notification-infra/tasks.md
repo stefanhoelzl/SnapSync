@@ -16,7 +16,7 @@
   batch; return the outcomes.
 - [x] 2.4 `deno test` against a mocked `fetch`: correct host per env, headers + silent body, JWT reused
   within lifetime, unknown-env/non-apns skipped, one `410`/error doesn't stop the batch.
-- [ ] 2.5 Verify Deno's `fetch` negotiates HTTP/2 to the APNs host (staging send or integration check);
+- [x] 2.5 Verify Deno's `fetch` negotiates HTTP/2 to the APNs host (staging send or integration check);
   if it cannot, drop in a minimal raw HTTP/2 client behind the same `sendSilent` interface.
 
 ## 3. Backend routes (`backend/src/app.ts`)
@@ -73,9 +73,9 @@
 
 ## 7. Apple provisioning (operator runbook)
 
-- [ ] 7.1 Mint an APNs Auth Key (`.p8`) for team `E9Z8BADH58` via the App Store Connect API/portal;
+- [x] 7.1 Mint an APNs Auth Key (`.p8`) for team `E9Z8BADH58` via the App Store Connect API/portal;
   record its key id.
-- [ ] 7.2 Set `APNS_KEY_ID`, `APNS_TEAM_ID`, `APNS_PRIVATE_KEY` (the `.p8` PEM), `APNS_TOPIC=app.snapsync`
+- [x] 7.2 Set `APNS_KEY_ID`, `APNS_TEAM_ID`, `APNS_PRIVATE_KEY` (the `.p8` PEM), `APNS_TOPIC=app.snapsync`
   as backend runtime env on the active deployment target (same category as `BUNNY_STORAGE_ACCESS_KEY`).
 
 ## 8. Verify
@@ -83,7 +83,7 @@
 - [x] 8.1 Backend green: `cd backend && deno fmt --check && deno lint && deno check && deno test`.
 - [x] 8.2 App green: `./gradlew build` (incl. `:capability:push`, `:test:integration`) and
   `./gradlew compileIosMainKotlinMetadata` (iOS proxy).
-- [ ] 8.3 On-device end-to-end: sideload a dev IPA (registers a **sandbox** token), confirm
+- [x] 8.3 On-device end-to-end: sideload a dev IPA (registers a **sandbox** token), confirm
   `devices/<id>/config.json` landed, `POST /event/<id>/notify`, and observe the receive log in
   `idevicesyslog`.
 - [x] 8.4 `npx --yes @fission-ai/openspec@1.4.1 validate push-notification-infra --strict` passes.
