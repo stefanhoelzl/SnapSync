@@ -73,6 +73,15 @@ class BackendStore {
         events.add(eventId)
     }
 
+    /**
+     * Wipe a device's stored byte objects (models an operator `reset-storage` deleting the
+     * `devices/<id>/files/` partition). The per-device listing then returns empty while the extension
+     * ledger still holds `COMPLETED` rows — the storage-reset condition.
+     */
+    fun wipeBytes(deviceId: String) {
+        byteStore.remove(deviceId)
+    }
+
     fun isRegistered(eventId: String): Boolean = eventId in events
 
     /** Deposit a device manifest from its JSON body (the `PUT /event/<id>/device/<id>` effect). */

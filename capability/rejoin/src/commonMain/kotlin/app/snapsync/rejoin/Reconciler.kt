@@ -101,22 +101,23 @@ class ExtensionReconciler(
             log.w(it) { "device listing fetch failed — deferring uploads this cycle" }
             return false
         }
-        // Same-session-switch transient guard: an empty listing while the ledger still holds COMPLETED
-        // rows is most likely a just-uploaded object not yet listed (bunny LIST read-your-writes lag),
-        // NOT a genuinely empty device — so DEFER rather than wipe dedup to empty. An empty listing
-        // against a ledger with no COMPLETED rows (a genuinely fresh/empty device) still settles below
-        // with zero seeded rows.
-        if (filenames.isEmpty() && ledger.aggregates().completed > 0) {
-            log.w { "empty device listing but ledger holds COMPLETED rows — deferring (transient?) this cycle" }
-            return false
-        }
-        // RESET the ledger to exactly the device's stored files — one COMPLETED row each — via an
-        // atomic clear-and-seed, NOT an additive upsert. The clear is essential: it drops stale/phantom
-        // rows, e.g. a REQUESTED row left by a prior cycle whose upload job never actually materialized
-        // (otherwise the engine reads it as "in flight" and skips re-creating that upload forever).
-        // Seeding from the DEVICE listing (global, event-independent) is what preserves cross-event
-        // dedup: a switch re-seeds the same files COMPLETED, so nothing already stored re-uploads; a
-        // genuinely-unstored resource is absent from the listing and uploads.
+        // A SUCCESSFUL listing is AUTHORITATIVE — empty, partial, or full — so we reset to exactly what
+        // it reports and never second-guess it. An empty (or short) listing while the ledger still holds
+        // COMPLETED rows means those objects were DELETED from storage (a full/partial reset), not a
+        // transient: an upload confirms its bytes before its job succeeds (`bunny-upload-endpoint` never
+        // 2xx's an unconfirmed upload), the storage LIST is read-after-write consistent, and the list
+        // endpoint returns 502 — surfaced above as a fetch failure — never an empty array, for a failed
+        // LIST (`bunny-list-endpoint`). So the only untrustworthy signal is a fetch error/timeout, which
+        // already deferred above; a confirmed listing re-baselines. This is what heals a stuck device
+        // after a storage reset: the missing files drop out of the ledger and re-upload.
+        //
+        // RESET the ledger to exactly the device's stored files — one COMPLETED row each — via an atomic
+        // clear-and-seed, NOT an additive upsert. The clear also drops stale/phantom rows, e.g. a
+        // REQUESTED row left by a prior cycle whose upload job never materialized (otherwise the engine
+        // reads it as "in flight" and skips re-creating that upload forever). Seeding from the DEVICE
+        // listing (global, event-independent) preserves cross-event dedup: a switch re-seeds the same
+        // files COMPLETED, so nothing still stored re-uploads; a deleted or never-stored resource is
+        // absent from the listing and uploads.
         val seeds = filenames.map { LedgerEntry(it, assetIdFromUploadKey(it), LedgerState.COMPLETED, attempt = 0) }
         ledger.resetTo(seeds)
         // Force a full re-enumeration so the producer re-discovers the assets that still need
