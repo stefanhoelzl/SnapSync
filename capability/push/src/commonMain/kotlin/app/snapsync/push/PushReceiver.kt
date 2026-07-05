@@ -4,21 +4,25 @@ import co.touchlab.kermit.Logger
 
 /**
  * The seam invoked when the app receives a silent (`content-available`) push (capability
- * `push-registration`). The iOS app-shell wiring forwards the OS's remote-notification callback here.
- * Shaped as a single-method interface so a later change can substitute a real handler (e.g. triggering
- * download discovery) without touching the app-shell receive wiring.
+ * `push-registration`), carrying the pushed **`eventId`** (the push payload's top-level `eventId` key,
+ * capability `apns-push-sender`). The iOS app-shell wiring forwards the OS's remote-notification
+ * callback here. It is **suspending** so the app-shell can **await** the receiver's synchronous work
+ * (the union read + download enqueue) before signalling the OS background-fetch completion handler —
+ * keeping the app alive through the push's execution window. A later change substitutes a real handler
+ * (e.g. guarded download discovery) without touching the app-shell receive wiring.
  */
 fun interface PushReceiver {
-    fun onSilentPush()
+    suspend fun onSilentPush(eventId: String)
 }
 
 /**
- * The infrastructure-phase receiver: it just **logs** receipt (via Kermit), so the delivery pipe is
- * observable end-to-end on device — a `POST /event/<id>/notify` produces a log line visible in
- * `idevicesyslog` — without implementing any use-case behavior.
+ * A receiver that only **logs** receipt (via Kermit) — useful to observe the delivery pipe end-to-end
+ * on device (a `POST /event/<id>/notify` produces a log line visible in `idevicesyslog`) without
+ * triggering any use-case behavior. The real wiring substitutes a guarded download-discovery receiver
+ * (capability `photo-download`); this remains handy for diagnostics.
  */
 class LoggingPushReceiver(private val log: Logger = Logger.withTag("PushReceiver")) : PushReceiver {
-    override fun onSilentPush() {
-        log.i { "silent push received" }
+    override suspend fun onSilentPush(eventId: String) {
+        log.i { "silent push received for event $eventId" }
     }
 }

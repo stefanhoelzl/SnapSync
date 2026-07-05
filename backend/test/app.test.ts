@@ -862,6 +862,12 @@ Deno.test("notify → all members with a token receive a silent push; 202", asyn
       "https://api.sandbox.push.apple.com/3/device/TOKB",
     ].sort(),
   );
+  // Every dispatched push carries the route's eventId alongside the silent aps object.
+  for (const c of calls.filter((c) => c.url.includes("push.apple.com"))) {
+    const body = JSON.parse(c.init.body as string);
+    assertEquals(body.eventId, E);
+    assertEquals(body.aps, { "content-available": 1 });
+  }
 });
 
 Deno.test("notify → a member without a registered token is skipped; others still pushed; 202", async () => {

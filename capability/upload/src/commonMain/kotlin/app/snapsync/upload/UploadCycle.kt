@@ -47,6 +47,13 @@ class UploadCycle(
     // imported foreign asset (a fresh local id) is never re-uploaded (the echo). Read-only, backed in
     // iosMain by the app-written download store; default empty for tests/harness.
     private val suppressedAssetIds: suspend () -> Set<String> = { emptySet() },
+    // Notify hook (capability `upload-completion-notify`): fired once per FULLY-DRAINED cycle that
+    // recorded >= 1 real completion, AFTER `onDiscovery` (the device-manifest PUT) — the only moment the
+    // event union reflects the just-completed assets, so recipients woken by the fan-out find them. The
+    // cycle stays event-agnostic: the root's lambda closes over the eventId (and applies its own bounded
+    // timeout, like `onDiscovery`). Best-effort — invoked under `runCatching`; default no-op for
+    // tests/harness.
+    private val onBatchUploaded: suspend () -> Unit = {},
 ) {
     suspend fun run(): CycleResult {
         // Phase 1 — first failures: re-point the system's single retry at a rebuilt edge URL
@@ -61,13 +68,23 @@ class UploadCycle(
         // "appex failed to acknowledge jobs for processing state" — for any it presents that we
         // leave un-acknowledged), so all arms acknowledge.
         var capHit = false
+        // Real completions THIS cycle (a succeeded job with a recoverable key). Re-acks of an
+        // already-COMPLETED key do NOT count — they are not new work. Gates the notify fan-out below.
+        var completedThisCycle = 0
         for (job in platform.fetchAckJobs()) {
             when {
                 job.state == PlatformJobState.SUCCEEDED -> {
                     // Record COMPLETED only for a recoverable key: a blank/unrecoverable key would
                     // reconstruct a phantom `assetId=""` row. Acknowledge regardless — never leave a
                     // presented job un-acknowledged (the system errors 50008).
-                    if (job.key.isNotBlank()) engine.handle(SyncEvent.UploadCompleted(reconstruct(job)))
+                    if (job.key.isNotBlank()) {
+                        // Count only a GENUINELY-new completion: at-least-once delivery means the OS can
+                        // re-hand a job whose key is already COMPLETED — that duplicate must not fire a
+                        // spurious notify. Read the prior state before the (idempotent) engine write.
+                        val wasCompleted = ledger.entry(job.key)?.state == LedgerState.COMPLETED
+                        engine.handle(SyncEvent.UploadCompleted(reconstruct(job)))
+                        if (!wasCompleted) completedThisCycle++
+                    }
                     platform.acknowledge(job)
                 }
                 ledger.entry(job.key)?.state == LedgerState.COMPLETED -> platform.acknowledge(job)
@@ -133,6 +150,17 @@ class UploadCycle(
         // bounded by the impl — it must never fail or stall the cycle (byte jobs are already created).
         runCatching { onDiscovery(discovery) }
             .onFailure { log.w(it) { "device-manifest hook failed this cycle" } }
+
+        // Notify the event's members (capability `upload-completion-notify`) — but only now, on a
+        // fully-drained cycle that completed >= 1 upload, and AFTER the manifest PUT above: that is the
+        // only point the event union reflects the just-completed assets, so a woken recipient finds
+        // them. Best-effort and bounded by the impl (like `onDiscovery`); a failure never fails the
+        // cycle. A cap-truncated cycle returned earlier (no notify); a drained cycle with no completion
+        // skips it.
+        if (completedThisCycle > 0) {
+            runCatching { onBatchUploaded() }
+                .onFailure { log.w(it) { "upload-notify hook failed this cycle" } }
+        }
 
         store.saveToken(discovery.nextToken) // advance only on a fully-drained cycle
         return CycleResult.COMPLETED

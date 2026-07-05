@@ -32,6 +32,9 @@ async function genConfig(): Promise<Config> {
   return { ...BASE, apnsPrivateKey: pem };
 }
 
+// A stand-in event id threaded into every send; the sender does not validate it, it just embeds it.
+const EVT = "11111111-1111-4111-8111-111111111111";
+
 type Call = { url: string; init: RequestInit };
 
 function recorder(
@@ -49,7 +52,7 @@ Deno.test("sender → production token posts a silent push to api.push.apple.com
   const config = await genConfig();
   const { calls, fetchImpl } = recorder();
   const [outcome] = await createApnsSender(config, fetchImpl)
-    .sendSilent([{ kind: "apns", token: "DEADBEEF", env: "production" }]);
+    .sendSilent([{ kind: "apns", token: "DEADBEEF", env: "production" }], EVT);
 
   assertEquals(outcome.status, "sent");
   assertEquals(calls.length, 1);
@@ -59,7 +62,20 @@ Deno.test("sender → production token posts a silent push to api.push.apple.com
   assertEquals(h.get("apns-push-type"), "background");
   assertEquals(h.get("apns-priority"), "5");
   assert(h.get("authorization")?.startsWith("bearer "));
-  assertEquals(calls[0].init.body, JSON.stringify({ aps: { "content-available": 1 } }));
+  assertEquals(
+    calls[0].init.body,
+    JSON.stringify({ aps: { "content-available": 1 }, eventId: EVT }),
+  );
+});
+
+Deno.test("sender → the event id rides alongside the aps object as a top-level key", async () => {
+  const config = await genConfig();
+  const { calls, fetchImpl } = recorder();
+  await createApnsSender(config, fetchImpl)
+    .sendSilent([{ kind: "apns", token: "T", env: "production" }], EVT);
+  const body = JSON.parse(calls[0].init.body as string);
+  assertEquals(body.eventId, EVT); // top-level sibling of aps
+  assertEquals(body.aps, { "content-available": 1 }); // aps unchanged
 });
 
 Deno.test("sender → sandbox token targets api.sandbox.push.apple.com", async () => {
@@ -69,7 +85,7 @@ Deno.test("sender → sandbox token targets api.sandbox.push.apple.com", async (
     kind: "apns",
     token: "T",
     env: "sandbox",
-  }]);
+  }], EVT);
   assertEquals(calls[0].url, "https://api.sandbox.push.apple.com/3/device/T");
 });
 
@@ -77,7 +93,7 @@ Deno.test("sender → unknown env is skipped with no request", async () => {
   const config = await genConfig();
   const { calls, fetchImpl } = recorder();
   const [o] = await createApnsSender(config, fetchImpl)
-    .sendSilent([{ kind: "apns", token: "T", env: "staging" }]);
+    .sendSilent([{ kind: "apns", token: "T", env: "staging" }], EVT);
   assertEquals(o.status, "skipped");
   assertEquals(calls.length, 0);
 });
@@ -86,7 +102,7 @@ Deno.test("sender → non-apns kind is skipped with no request", async () => {
   const config = await genConfig();
   const { calls, fetchImpl } = recorder();
   const [o] = await createApnsSender(config, fetchImpl)
-    .sendSilent([{ kind: "fcm", token: "T", env: "production" }]);
+    .sendSilent([{ kind: "fcm", token: "T", env: "production" }], EVT);
   assertEquals(o.status, "skipped");
   assertEquals(calls.length, 0);
 });
@@ -98,13 +114,13 @@ Deno.test("sender → reuses the provider JWT within its lifetime, re-signs afte
   const sender = createApnsSender(config, fetchImpl, () => t);
   const auth = () => new Headers(calls.at(-1)!.init.headers).get("authorization");
 
-  await sender.sendSilent([{ kind: "apns", token: "A", env: "production" }]);
+  await sender.sendSilent([{ kind: "apns", token: "A", env: "production" }], EVT);
   const first = auth();
   t += 1_000; // +1s → within TTL
-  await sender.sendSilent([{ kind: "apns", token: "B", env: "production" }]);
+  await sender.sendSilent([{ kind: "apns", token: "B", env: "production" }], EVT);
   assertEquals(auth(), first); // reused (cached), not re-signed
   t += 51 * 60 * 1_000; // +51min → past the 50min TTL
-  await sender.sendSilent([{ kind: "apns", token: "C", env: "production" }]);
+  await sender.sendSilent([{ kind: "apns", token: "C", env: "production" }], EVT);
   assert(auth() !== first, "JWT should be re-signed after its TTL");
 });
 
@@ -119,7 +135,7 @@ Deno.test("sender → one rejected token does not stop the batch; each outcome i
     { kind: "apns", token: "OK1", env: "production" },
     { kind: "apns", token: "BAD", env: "production" },
     { kind: "apns", token: "OK2", env: "sandbox" },
-  ]);
+  ], EVT);
   assertEquals(outcomes.map((o) => o.status), ["sent", "failed", "sent"]);
   assertEquals(outcomes[1].code, 410);
 });
@@ -127,6 +143,6 @@ Deno.test("sender → one rejected token does not stop the batch; each outcome i
 Deno.test("sender → a network error is reported as failed, never thrown", async () => {
   const config = await genConfig();
   const sender = createApnsSender(config, () => Promise.reject(new Error("boom")));
-  const [o] = await sender.sendSilent([{ kind: "apns", token: "X", env: "production" }]);
+  const [o] = await sender.sendSilent([{ kind: "apns", token: "X", env: "production" }], EVT);
   assertEquals(o.status, "failed");
 });

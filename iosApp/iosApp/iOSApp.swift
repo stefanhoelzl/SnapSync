@@ -68,15 +68,22 @@ final class AppDelegate: NSObject, UIApplicationDelegate {
         NSLog("registerForRemoteNotifications failed: \(error.localizedDescription)")
     }
 
-    // A remote notification arrived (silent, content-available) — route it to Kotlin, then call the OS
-    // completion handler. Infra phase: the receiver only logs, so no new data is fetched.
+    // A silent (content-available) remote notification arrived. Pull the payload's `eventId` and hand it
+    // plus the OS completion handler to Kotlin, which reconciles downloads for the active event and calls
+    // the handler only after the union read + enqueue finish (so iOS keeps us alive through it). No
+    // decision here — a missing eventId just completes with no data. (No parsing/logic in Swift.)
     func application(
         _ application: UIApplication,
         didReceiveRemoteNotification userInfo: [AnyHashable: Any],
         fetchCompletionHandler completionHandler: @escaping (UIBackgroundFetchResult) -> Void
     ) {
-        SnapSyncRoot.shared.onSilentPush()
-        completionHandler(.noData)
+        guard let eventId = userInfo["eventId"] as? String else {
+            completionHandler(.noData)
+            return
+        }
+        SnapSyncRoot.shared.onSilentPush(eventId: eventId) {
+            completionHandler(.newData)
+        }
     }
 }
 

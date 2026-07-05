@@ -637,9 +637,10 @@ export function createApp({ fetch: fetchImpl, config }: Deps): Hono {
   // Notify an event's members (capability `event-notify-endpoint`). GATED on the marker (absent → 404,
   // non-404 read failure → 502). Enumerate members with one LIST of `events/<eventId>/device/`; a LIST
   // transport failure → 502 (nothing enumerable). Then BEST-EFFORT: read each member's config token
-  // (absent/unparseable/no-token → skipped) and send a fixed silent (content-available) push to the
-  // rest. Per-member read/send failures never fail the request — always a bare 202 once the marker
-  // gate passed and members were enumerated. Fixed payload, all members, no exclusion; no caller wired.
+  // (absent/unparseable/no-token → skipped) and send a silent (content-available) push carrying the
+  // route's `eventId` in its payload to the rest. Per-member read/send failures never fail the request
+  // — always a bare 202 once the marker gate passed and members were enumerated. Server-chosen payload
+  // (the path event id), all members, no exclusion; the uploader fires this via `upload-completion-notify`.
   app.post("/event/:eventId/notify", async (c) => {
     const eventId = c.req.param("eventId");
     if (!validateUUID(eventId)) {
@@ -669,7 +670,7 @@ export function createApp({ fetch: fetchImpl, config }: Deps): Hono {
     // Best-effort per-member token read (skips members without a registered token), then fan out.
     const tokens = (await Promise.all(memberIds.map((d) => readPushToken(fetchImpl, config, d))))
       .filter((t): t is PushToken => t !== null);
-    const outcomes = await apns.sendSilent(tokens);
+    const outcomes = await apns.sendSilent(tokens, eventId);
     const sent = outcomes.filter((o) => o.status === "sent").length;
     console.info(
       `notify: event ${eventId} — ${memberIds.length} members, ${tokens.length} with a token, ${sent} pushed`,

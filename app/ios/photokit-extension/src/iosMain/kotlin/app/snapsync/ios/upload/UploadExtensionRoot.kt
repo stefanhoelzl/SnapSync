@@ -18,6 +18,8 @@ import app.snapsync.gallery.DeviceManifestProducer
 import app.snapsync.gallery.IosDeviceManifestStore
 import app.snapsync.gallery.PhotoLibraryResourceEnumerator
 import app.snapsync.gallery.deviceManifestAssetsFromResources
+import app.snapsync.push.EventNotifier
+import app.snapsync.push.KtorPushHttpClient
 import app.snapsync.rejoin.ExtensionReconciler
 import app.snapsync.rejoin.HttpDeviceFilesSource
 import app.snapsync.rejoin.darwinHttpClient
@@ -33,6 +35,10 @@ import kotlinx.coroutines.withTimeout
  * slow/hung manifest PUT from ever blowing the budget.
  */
 private const val DEVICE_MANIFEST_TIMEOUT_MS = 12_000L
+
+// Upper bound on the synchronous in-cycle notify POST (capability `upload-completion-notify`) — bounded
+// like the manifest PUT so a slow/hung host can never stall the cycle to the OS's force-kill.
+private const val NOTIFY_TIMEOUT_MS = 8_000L
 
 /**
  * The extension process's composition root — the single site that assembles the App-Group ledger
@@ -112,6 +118,12 @@ object UploadExtensionRoot {
     // and PUTs it SYNCHRONOUSLY in-cycle (no background URLSession, no app involvement). Replaces the
     // retired per-asset manifest side channel. The uploader's host is the same compile-time
     // `BackgroundUploadURLBase`; the store persists the accumulator + last-uploaded JSON in the App Group.
+    // Event-notify sender (capability `upload-completion-notify`): fired after a drained cycle that
+    // completed uploads, so co-contributors are woken to download. Same compile-time host as the manifest.
+    private val notifier: EventNotifier by lazy {
+        EventNotifier(KtorPushHttpClient(httpClient), uploadHostFromBundle() ?: "")
+    }
+
     private val deviceManifestProducer: DeviceManifestProducer by lazy {
         DeviceManifestProducer(
             store = IosDeviceManifestStore(),
@@ -182,6 +194,14 @@ object UploadExtensionRoot {
                         )
                     }
                 }.onFailure { log.w(it) { "device.json production failed/timed out this cycle" } }
+            },
+            // Notify the event's members AFTER the manifest PUT (capability `upload-completion-notify`):
+            // that is the only point the union reflects the just-completed assets, so a woken recipient
+            // finds them. Fires only on a fully-drained cycle with >= 1 completion (gated in UploadCycle),
+            // bounded + best-effort so a hung host can never stall the cycle.
+            onBatchUploaded = {
+                runCatching { withTimeout(NOTIFY_TIMEOUT_MS) { notifier.notify(config.eventId) } }
+                    .onFailure { log.w(it) { "event notify failed/timed out this cycle" } }
             },
             // Echo-suppression: never re-upload an asset this device downloaded + imported.
             suppressedAssetIds = { suppression.suppressedLocalIds() },

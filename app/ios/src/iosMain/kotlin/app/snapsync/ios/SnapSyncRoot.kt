@@ -14,8 +14,8 @@ import app.snapsync.gallery.PhotoLibraryResourceEnumerator
 import app.snapsync.permission.PermissionStatus
 import app.snapsync.permission.PhotoLibraryPermission
 import app.snapsync.presentation.StatusContainerHost
+import app.snapsync.download.DownloadPushReceiver
 import app.snapsync.push.KtorPushHttpClient
-import app.snapsync.push.LoggingPushReceiver
 import app.snapsync.push.PushReceiver
 import app.snapsync.push.PushRegistration
 import app.snapsync.push.PushTokenSource
@@ -210,9 +210,15 @@ object SnapSyncRoot {
         PushRegistration(KtorPushHttpClient(darwinHttpClient()), backendHost, deviceId)
     }
 
-    // The silent-push receiver — infra phase: logs receipt (observable via idevicesyslog). A later use
-    // case swaps in a real handler (e.g. download discovery) without touching the app-shell wiring.
-    private val pushReceiver: PushReceiver by lazy { LoggingPushReceiver() }
+    // The silent-push receiver (capability `photo-download`): on a push for the ACTIVE event it runs
+    // download discovery; a push for any other event (e.g. a locally-left event whose backend membership
+    // persists) is a no-op. The active-event guard reads the current config eventId.
+    private val pushReceiver: PushReceiver by lazy {
+        DownloadPushReceiver(
+            activeEventId = { config.config.value?.eventId },
+            controller = downloadController,
+        )
+    }
 
     private val eventCreator: EventCreator by lazy {
         CreateEvent(
@@ -361,11 +367,19 @@ object SnapSyncRoot {
 
     /**
      * A silent (`content-available`) remote notification arrived (capability `push-registration`),
-     * forwarded from the Swift AppDelegate. Route it to the receiver — infra phase: logs receipt. The
-     * Swift side then calls the OS fetch completion handler.
+     * forwarded from the Swift AppDelegate with the push payload's `eventId`. Route it to the receiver,
+     * which — if [eventId] is the active event — reconciles downloads (union read + enqueue). We hold the
+     * OS [completion] handler until the receiver's synchronous work finishes, so iOS keeps the app alive
+     * through the enqueue (the background transfers then continue on their own). Touch [host] so the
+     * download stack is assembled on a background launch. Non-throwing: a failure still calls [completion].
      */
-    fun onSilentPush() {
-        pushReceiver.onSilentPush()
+    fun onSilentPush(eventId: String, completion: () -> Unit) {
+        host
+        scope.launch {
+            runCatching { pushReceiver.onSilentPush(eventId) }
+                .onFailure { log.w(it) { "silent push handling failed for $eventId" } }
+            completion()
+        }
     }
 
     /**
@@ -534,6 +548,8 @@ object SnapSyncRoot {
         // Force-flagged (simulator) runs use a foreground session — the sim can't run a background one.
         UrlSessionUploadController(
             scope, ledgerBackend, config, deviceId, backendHost, log,
+            httpClient = darwinHttpClient(),
+            suppressedAssetIds = { downloadStore.suppressedLocalIds() },
             useBackgroundSession = !forceUrlSessionUpload,
         )
     }

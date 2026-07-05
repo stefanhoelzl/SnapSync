@@ -406,4 +406,113 @@ class UploadCycleTest {
         assertEquals(listOf(job), platform.acknowledged)
         assertNull(store.saved, "cursor must NOT advance on a cap-truncated cycle")
     }
+
+    // ── Notify hook (capability `upload-completion-notify`) ──────────────────────────────────────────
+
+    /** Build a cycle recording the order its best-effort hooks fire, so the manifest→notify order is asserted. */
+    private fun cycleWithHooks(
+        backend: InMemoryLedgerBackend,
+        platform: FakePlatform,
+        order: MutableList<String>,
+        store: DiscoveryStore = FakeStore(),
+        notifyThrows: Boolean = false,
+    ): UploadCycle {
+        val ledger = LedgerWriter(backend)
+        return UploadCycle(
+            SyncEngine(StubUploadRequestProvider(), ledger), ledger, platform, store,
+            onDiscovery = { order += "manifest" },
+            onBatchUploaded = {
+                order += "notify"
+                if (notifyThrows) error("notify boom")
+            },
+        )
+    }
+
+    @Test
+    fun drained_cycle_with_a_completion_notifies_once_after_the_manifest_write() = runTest {
+        val backend = InMemoryLedgerBackend()
+        // A succeeded job (a real completion) and nothing new to discover → drains COMPLETED.
+        val platform = FakePlatform(ackJobs = listOf(platformJob("a-primary.jpg", PlatformJobState.SUCCEEDED)))
+        val order = mutableListOf<String>()
+
+        val result = cycleWithHooks(backend, platform, order).run()
+
+        assertEquals(CycleResult.COMPLETED, result)
+        assertEquals(listOf("manifest", "notify"), order) // fires once, AFTER the device-manifest PUT
+    }
+
+    @Test
+    fun cap_truncated_cycle_does_not_notify_even_with_a_completion() = runTest {
+        val backend = InMemoryLedgerBackend()
+        // A completion in Phase 2, but Phase 3 discovery hits the cap → PROCESSING before the notify point.
+        val platform = FakePlatform(
+            ackJobs = listOf(platformJob("done-primary.jpg", PlatformJobState.SUCCEEDED)),
+            discovered = listOf(resource("a"), resource("b"), resource("c")),
+            limitAfter = 2,
+        )
+        val order = mutableListOf<String>()
+
+        val result = cycleWithHooks(backend, platform, order).run()
+
+        assertEquals(CycleResult.PROCESSING, result)
+        assertTrue(order.isEmpty(), "a cap-truncated cycle refreshes no manifest and fires no notify")
+    }
+
+    @Test
+    fun drained_cycle_with_no_completion_does_not_notify() = runTest {
+        val backend = InMemoryLedgerBackend()
+        // New work discovered and created, but nothing COMPLETED this cycle.
+        val platform = FakePlatform(discovered = listOf(resource("a")))
+        val order = mutableListOf<String>()
+
+        val result = cycleWithHooks(backend, platform, order).run()
+
+        assertEquals(CycleResult.COMPLETED, result)
+        assertEquals(listOf("manifest"), order) // manifest PUT ran; notify did not
+    }
+
+    @Test
+    fun a_throwing_notify_does_not_fail_the_cycle() = runTest {
+        val backend = InMemoryLedgerBackend()
+        val platform = FakePlatform(ackJobs = listOf(platformJob("a-primary.jpg", PlatformJobState.SUCCEEDED)))
+        val store = FakeStore()
+        val order = mutableListOf<String>()
+
+        val result = cycleWithHooks(backend, platform, order, store, notifyThrows = true).run()
+
+        assertEquals(CycleResult.COMPLETED, result) // best-effort: the failure is absorbed
+        assertEquals(listOf("manifest", "notify"), order)
+        assertContentEquals(byteArrayOf(9), store.saved) // cursor still advanced despite the notify failure
+    }
+
+    @Test
+    fun a_duplicate_succeeded_on_an_already_completed_key_does_not_notify() = runTest {
+        val backend = InMemoryLedgerBackend()
+        // The key is already COMPLETED; the OS re-hands a SUCCEEDED job (at-least-once delivery). This
+        // duplicate is not new work — it must not fire a spurious notify.
+        LedgerWriter(backend).recordCompleted("a-primary.jpg", assetId = "a", attempt = 0)
+        val platform = FakePlatform(ackJobs = listOf(platformJob("a-primary.jpg", PlatformJobState.SUCCEEDED)))
+        val order = mutableListOf<String>()
+
+        val result = cycleWithHooks(backend, platform, order).run()
+
+        assertEquals(CycleResult.COMPLETED, result)
+        assertEquals(listOf("manifest"), order) // manifest re-PUT, but no completion counted → no notify
+    }
+
+    @Test
+    fun a_pure_re_ack_failed_job_on_a_completed_key_does_not_notify() = runTest {
+        val backend = InMemoryLedgerBackend()
+        LedgerWriter(backend).recordCompleted("a-primary.jpg", assetId = "a", attempt = 0)
+        // A FAILED job whose key is already COMPLETED → the re-ack arm (no UploadCompleted, no count).
+        val platform = FakePlatform(
+            ackJobs = listOf(platformJob("a-primary.jpg", PlatformJobState.FAILED, UploadError.Network)),
+        )
+        val order = mutableListOf<String>()
+
+        val result = cycleWithHooks(backend, platform, order).run()
+
+        assertEquals(CycleResult.COMPLETED, result)
+        assertEquals(listOf("manifest"), order) // re-ack is not a completion → no notify
+    }
 }

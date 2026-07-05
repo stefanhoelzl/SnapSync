@@ -2,6 +2,7 @@ package app.snapsync.push
 
 import co.touchlab.kermit.Logger
 import io.ktor.client.HttpClient
+import io.ktor.client.request.post
 import io.ktor.client.request.put
 import io.ktor.client.request.setBody
 import io.ktor.client.statement.bodyAsText
@@ -43,12 +44,16 @@ class PushTokenSource(val env: String) {
 }
 
 /**
- * The minimal HTTP seam registration uses: `PUT` a JSON body. The real implementation
+ * The minimal HTTP seam the push capability uses: `PUT` a JSON body (registration) and a bodyless
+ * `POST` (the event notify, capability `event-notify-endpoint`). The real implementation
  * ([KtorPushHttpClient]) wraps the shared Ktor/Darwin client injected by the composition root; tests
  * inject a fake. Errors are returned as a failed [Result], never thrown.
  */
 interface PushHttpClient {
     suspend fun put(url: String, jsonBody: String): Result<Unit>
+
+    /** `POST` [url] with no request body (the notify endpoint takes no payload and no token). */
+    suspend fun post(url: String): Result<Unit>
 }
 
 /** [PushHttpClient] over an injected Ktor [HttpClient] (the shared Darwin client on iOS). */
@@ -59,6 +64,11 @@ class KtorPushHttpClient(private val client: HttpClient) : PushHttpClient {
             setBody(jsonBody)
         }
         check(res.status.isSuccess()) { "config PUT $url: HTTP ${res.status.value} ${res.bodyAsText()}" }
+    }
+
+    override suspend fun post(url: String): Result<Unit> = runCatching {
+        val res = client.post(url)
+        check(res.status.isSuccess()) { "notify POST $url: HTTP ${res.status.value} ${res.bodyAsText()}" }
     }
 }
 
