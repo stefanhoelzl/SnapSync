@@ -63,36 +63,54 @@ The `:app:ios` module and its full module dependency closure SHALL compile for t
 
 The `:app:ios` module SHALL provide a composition-root singleton (`SnapSyncRoot`, `iosMain`) that
 owns an app-lifetime `CoroutineScope` (a `SupervisorJob` on the main dispatcher) and assembles the
-live stack: the **listing-backed** `SyncStatusSource` (built from a `CompletedAssetsSource`, a
-`PendingManifestsSource`, the permission source, and the gallery source — see `sync-status`), the
-PhotoKit permission adapter (as both the `PermissionStatusSource` and `PermissionRequester`), and the
-iOS Keychain config store (as both the `ConfigSource` and `ConfigStore`), composed into a
-`StatusContainerHost`. It SHALL construct the iOS `CompletedAssetsSource` (the HTTP completeness-listing
-reader) and `PendingManifestsSource` (the App-Group manifest reader/pruner), and SHALL own a foreground
-signal (a `Flow<Boolean>`) injected into the `StatusContainerHost` that drives the `CompletedAssetsSource`
-refresh on foreground entry (the manifest `URLSession` completion drives the other refresh). It SHALL
-construct **no ledger type** and **no `EventStatusSource`** (status is read from the listing; the
-ledger is private to the extension, which also owns reconciliation — see `event-rejoin-reconciliation`).
-It SHALL construct the `LeaveEvent` use-case — injecting the `ConfigStore` and, as a suspend lambda, the
-producer disable (`setUploadJobExtensionEnabled(false)`) — and inject it into the `StatusContainerHost`.
-It SHALL bind the **share action** as a `share: (String) -> Unit` lambda that presents a
-`UIActivityViewController` carrying the given invite deeplink string (from the current top view
-controller) and inject it into the `StatusContainerHost`. The scope SHALL outlive Compose recomposition so
-the source collector and container are not torn down with the view. `MainViewController` SHALL render
-`host.container.stateFlow` and route the gate intents to `host.onRequestPermission` / `host.onOpenSettings`,
-the leave action to `host.onLeaveEvent`, and the share action to `host.onShareInvite`; it SHALL collect the
-container's invite URL (`host.inviteUrl`) and pass it to `StatusScreen`. `SnapSyncRoot` SHALL expose
+live stack: the **ledger-backed** `SyncStatusSource` (built from a `LedgerCountsSource`, the permission
+source, and the gallery source — see `sync-status`), the PhotoKit permission adapter (as both the
+`PermissionStatusSource` and `PermissionRequester`), and the iOS Keychain config store (as both the
+`ConfigSource` and `ConfigStore`), composed into a `StatusContainerHost`. It SHALL construct the iOS
+`LedgerCountsSource` as a **read-only** reader of the shared App-Group ledger — supplying a
+`suspend () -> LedgerCounts` that calls only `iosLedgerBackend().aggregates()` (never a write) — and
+SHALL issue **no** storage LIST for upload status. It SHALL own a foreground signal (a `Flow<Boolean>`)
+injected into the `StatusContainerHost` and SHALL register, **while foregrounded**, an observer for the
+extension's cross-process liveness notification (the Darwin notification posted after each PhotoKit
+`process()` run — see `ios-photokit-upload`); both the foreground signal and the liveness notification
+SHALL drive `LedgerCountsSource.refresh()` and a fresh status emission. The observer SHALL be registered
+on foreground entry and unregistered on background (a suspended app cannot act on the post, and the
+foreground re-read is the backstop). It SHALL construct **no `LedgerWriter`** (the ledger read is
+read-only; the extension is the sole writer) and **no `EventStatusSource`** (the ledger is private to
+the extension, which also owns reconciliation — see `event-rejoin-reconciliation`). It SHALL construct
+the `LeaveEvent` use-case — injecting the `ConfigStore` and, as a suspend lambda, the producer disable
+(`setUploadJobExtensionEnabled(false)`) — and inject it into the `StatusContainerHost`. It SHALL bind
+the **share action** as a `share: (String) -> Unit` lambda that presents a `UIActivityViewController`
+carrying the given invite deeplink string (from the current top view controller) and inject it into the
+`StatusContainerHost`. The scope SHALL outlive Compose recomposition so the source collector and
+container are not torn down with the view. `MainViewController` SHALL render `host.container.stateFlow`
+and route the gate intents to `host.onRequestPermission` / `host.onOpenSettings`, the leave action to
+`host.onLeaveEvent`, and the share action to `host.onShareInvite`; it SHALL collect the container's
+invite URL (`host.inviteUrl`) and pass it to `StatusScreen`. `SnapSyncRoot` SHALL expose
 `onOpenUrl(String)` that forwards to the container's `onOpenUrl` intent, and a foreground entry point
 (e.g. `onForeground()`/`onBackground()`) that the SwiftUI scene calls on its scene-phase transitions to
-drive the foreground signal.
+drive the foreground signal and the liveness-observer lifecycle.
 
 #### Scenario: The root assembles the real stack
 
 - **WHEN** the iOS app starts
-- **THEN** a single `SnapSyncRoot` constructs the listing-backed `SyncStatusSource` (with the
-  `CompletedAssetsSource` and `PendingManifestsSource`), the PhotoKit permission adapter, the Keychain
-  config store, and the `LeaveEvent` use-case, wires them into one `StatusContainerHost` with a foreground
-  signal, and the screen observes that container — constructing no ledger type and no `EventStatusSource`
+- **THEN** a single `SnapSyncRoot` constructs the ledger-backed `SyncStatusSource` (with the read-only
+  `LedgerCountsSource`), the PhotoKit permission adapter, the Keychain config store, and the `LeaveEvent`
+  use-case, wires them into one `StatusContainerHost` with a foreground signal, and the screen observes
+  that container — constructing no `LedgerWriter` and no `EventStatusSource`, and issuing no storage LIST
+  for upload status
+
+#### Scenario: The liveness notification refreshes status while foreground
+
+- **WHEN** the app is foregrounded and the extension posts its cross-process liveness notification
+- **THEN** the registered observer triggers `LedgerCountsSource.refresh()` and a fresh status emission,
+  with no network read
+
+#### Scenario: The observer is foreground-only
+
+- **WHEN** the app moves to the background
+- **THEN** the liveness-notification observer is unregistered, and it is re-registered on the next
+  foreground entry (which itself also refreshes status)
 
 #### Scenario: Permission action flows through the container
 

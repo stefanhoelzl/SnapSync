@@ -34,6 +34,10 @@ class BackgroundUploadPump(
     private val runCycle: suspend () -> CycleResult,
     private val scheduler: BackgroundScheduler,
     private val log: Logger = Logger.withTag("BackgroundUploadPump"),
+    // Fired after every cycle so foreground status refreshes live (the app-driven analogue of the
+    // PhotoKit extension's cross-process liveness ding — here an in-process ledger-counts re-read).
+    // Best-effort: a failure never disturbs the cycle drain or the re-arm.
+    private val onCycleComplete: suspend () -> Unit = {},
 ) {
     private val mutex = Mutex()
     private var draining = false
@@ -65,6 +69,9 @@ class BackgroundUploadPump(
         try {
             while (true) {
                 last = runCycle()
+                // Refresh status after every cycle (fire-and-forget; a failure must not break the drain).
+                runCatching { onCycleComplete() }
+                    .onFailure { log.w(it) { "status refresh after cycle failed" } }
                 // Decide-and-exit atomically so a trigger arriving now is never lost: if one queued a
                 // re-run, consume it and loop; otherwise clear `draining` and stop — both under the lock.
                 val stop = mutex.withLock {

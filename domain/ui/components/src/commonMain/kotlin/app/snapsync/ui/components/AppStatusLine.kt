@@ -96,7 +96,10 @@ fun AppStatusLine(status: AppSyncStatus, onAttentionClick: () -> Unit = {}) {
             ) {
                 Arrow(Icons.Filled.ArrowUpward, "uploading", status.upload)
                 Arrow(Icons.Filled.ArrowDownward, "downloading", status.download)
-                LineText("Syncing…", MaterialTheme.colorScheme.onSurface)
+                // Label tracks live activity: any pulsing (in-flight) arrow reads "ongoing", else "pending".
+                val ongoing = status.upload == ArrowLevel.PULSING || status.download == ArrowLevel.PULSING
+                val label = if (ongoing) "Synchronization ongoing…" else "Synchronization pending…"
+                LineText(label, MaterialTheme.colorScheme.onSurface)
             }
 
         is AppSyncStatus.NeedsAccess ->
@@ -137,7 +140,10 @@ private fun Arrow(
     level: ArrowLevel,
 ) {
     if (level == ArrowLevel.HIDDEN) return
-    val alpha = if (level == ArrowLevel.PULSING) {
+    val pulsing = level == ArrowLevel.PULSING
+    // Pulsing (in-flight) arrows use the brand primary and fade; static arrows are a muted gray, no motion.
+    val tint = if (pulsing) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
+    val alpha = if (pulsing) {
         val transition = rememberInfiniteTransition(label = "pulse")
         val a by transition.animateFloat(
             initialValue = StaticAlpha,
@@ -147,12 +153,12 @@ private fun Arrow(
         )
         a
     } else {
-        StaticAlpha
+        1f
     }
     Icon(
         icon,
         contentDescription = description,
-        tint = MaterialTheme.colorScheme.onSurface,
+        tint = tint,
         modifier = Modifier.size(IconSize).alpha(alpha),
     )
 }

@@ -7,6 +7,7 @@ import app.snapsync.downloadstore.iosSuppressionSource
 import app.snapsync.ios.discovery.IosDiscovery
 import app.snapsync.ios.discovery.IosDiscoveryStore
 import app.snapsync.upload.CycleResult
+import app.snapsync.upload.UPLOAD_LIVENESS_DARWIN_NAME
 import app.snapsync.upload.UploadCycle
 import app.snapsync.upload.buildUploadConfig
 import app.snapsync.engine.LedgerBackend
@@ -24,8 +25,14 @@ import app.snapsync.rejoin.ExtensionReconciler
 import app.snapsync.rejoin.HttpDeviceFilesSource
 import app.snapsync.rejoin.darwinHttpClient
 import co.touchlab.kermit.Logger
+import kotlinx.cinterop.ExperimentalForeignApi
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
+import platform.CoreFoundation.CFNotificationCenterGetDarwinNotifyCenter
+import platform.CoreFoundation.CFNotificationCenterPostNotification
+import platform.CoreFoundation.CFStringCreateWithCString
+import platform.CoreFoundation.CFStringRef
+import platform.CoreFoundation.kCFStringEncodingUTF8
 
 /**
  * Upper bound on the synchronous in-cycle device.json PUT (capability `device-manifest`). The
@@ -65,6 +72,25 @@ object UploadExtensionRoot {
     }
 
     private val log = Logger.withTag("UploadExtension")
+
+    // The cross-process liveness Darwin notification name, created once (a constant CFString for the
+    // process lifetime). See design.md §2.3 and the app-side observer in SnapSyncRoot.
+    @OptIn(ExperimentalForeignApi::class)
+    private val livenessName: CFStringRef? by lazy {
+        CFStringCreateWithCString(null, UPLOAD_LIVENESS_DARWIN_NAME, kCFStringEncodingUTF8)
+    }
+
+    /** Post the payload-free liveness ding on the Darwin notify center (delivered immediately). */
+    @OptIn(ExperimentalForeignApi::class)
+    private fun postLivenessNotification() {
+        CFNotificationCenterPostNotification(
+            CFNotificationCenterGetDarwinNotifyCenter(),
+            livenessName,
+            null,
+            null,
+            true,
+        )
+    }
 
     private val ledgerBackend: LedgerBackend by lazy { iosLedgerBackend() }
     private val ledger: LedgerWriter by lazy { LedgerWriter(ledgerBackend) }
@@ -212,8 +238,11 @@ object UploadExtensionRoot {
                 log.e(it) { "process cycle failed" }
                 CycleResult.FAILED
             }
-        // The ledger is the extension's private upload memory — the app no longer watches it across
-        // processes (status derives from storage truth), so there is no cross-process ding to post.
+        // Tell the app (if foreground) the ledger may have changed so upload status refreshes live
+        // (design.md §2.3): a payload-free cross-process Darwin ding, posted after EVERY run so both a
+        // rising in-flight count and a drain are signalled. Best-effort — a post failure never affects
+        // the returned result. The `LedgerBackend` itself still posts nothing; this is composition-root.
+        runCatching { postLivenessNotification() }.onFailure { log.w(it) { "liveness post failed" } }
         // The OS invokes the extension lazily (on library changes), not when an upload quietly
         // finishes — so a drained cycle that returns COMPLETED leaves already-succeeded jobs
         // un-acknowledged until the next change. While the ledger still has pending (in-flight)

@@ -25,9 +25,10 @@ import app.snapsync.gallery.uploadKey
 import app.snapsync.rejoin.DeviceFilesSource
 import app.snapsync.rejoin.ExtensionReconciler
 import app.snapsync.rejoin.HttpDeviceFilesSource
-import app.snapsync.status.ListingSyncStatusSource
-import app.snapsync.status.OwnDeviceCompletedAssetsSource
-import app.snapsync.status.ReadingInFlightSource
+import app.snapsync.status.LedgerBackedSyncStatusSource
+import app.snapsync.status.LedgerCounts
+import app.snapsync.status.OwnDeviceGalleryStatusSource
+import app.snapsync.status.ReadingLedgerCountsSource
 import app.snapsync.status.SyncStatusSource
 import app.snapsync.upload.CycleResult
 import app.snapsync.upload.UploadCycle
@@ -84,15 +85,17 @@ class World(
     val deviceFiles: DeviceFilesSource = HttpDeviceFilesSource(client, host)
     val unionSource: EventUnionSource = HttpEventUnionSource(client, host)
 
-    // Single-instance real status source (implements BOTH CompletedAssetsSource and GalleryStatusSource).
-    val completed: OwnDeviceCompletedAssetsSource =
-        OwnDeviceCompletedAssetsSource(
+    // Own-device upload total N (enumeration + download suppression; no storage LIST for status).
+    // Named `ownGallery` to avoid clashing with the raw-asset `gallery` above.
+    val ownGallery: OwnDeviceGalleryStatusSource =
+        OwnDeviceGalleryStatusSource(
             enumerator = enumerator,
-            files = deviceFiles,
-            deviceId = ownDeviceId,
             suppressedLocalIds = { downloadStore.suppressedLocalIds() },
         )
-    val inFlight: ReadingInFlightSource = ReadingInFlightSource { ledgerBackend.aggregates().pending }
+    // Completed + pending both read from the world's real ledger (one consistent aggregates() read).
+    val ledgerCounts: ReadingLedgerCountsSource = ReadingLedgerCountsSource {
+        ledgerBackend.aggregates().let { LedgerCounts(completed = it.completed, pending = it.pending) }
+    }
 
     // Single-instance real download controller (its Mutex must be shared across reconcile + staging).
     val downloadController: DownloadController =
@@ -219,13 +222,12 @@ class World(
         return result
     }
 
-    /** The real listing-backed status source over the world (own-device storage truth). */
+    /** The real ledger-backed status source over the world (own-device ledger truth + gallery total). */
     fun syncStatusSource(scope: CoroutineScope): SyncStatusSource =
-        ListingSyncStatusSource(
-            completed = completed,
+        LedgerBackedSyncStatusSource(
+            ledgerCounts = ledgerCounts,
             permission = permission,
-            gallery = completed, // the same source provides GalleryStatusSource.size
-            inFlight = inFlight,
+            gallery = ownGallery,
             scope = scope,
         )
 

@@ -70,7 +70,7 @@ The status screen SHALL render each state as a centered hero via the design syst
 single LED-style status dot above one count line, with an optional muted detail line. The dot is carried
 by a **semantic** `StatusIndicator` — no color, shape, or style appears in any `App*` signature; the
 Material 3 skin in `:domain:ui:components` maps the semantic indicator to pixels (`InProgress` → a
-yellow dot, `Complete` → a green dot). `NothingToSync` uses the `Complete` (green) indicator. There is
+yellow dot, `Complete` → a primary dot). `NothingToSync` uses the `Complete` (primary) indicator. There is
 no headline line and no progress ring. `UiState.Loading` SHALL render an **indeterminate** progress
 indicator with the text "Loading …", no dot, no detail line and no button (the user has no action; it
 auto-resolves). `UiState.Joining` SHALL render an **indeterminate** progress indicator with preparing
@@ -97,7 +97,7 @@ the snapshot→state reduction are unchanged by these affordances.
 The synced and total counts SHALL appear as text. For InProgress, the detail line SHALL carry the
 in-progress count rendered as `"{inProgress} in progress"` **only when `inProgress > 0`** (omitted when
 nothing is actively uploading); when `inProgress = 0` there is **no detail line**. The `Completed`
-state SHALL render **no detail line** (the green dot and "{total} images synced" already convey a
+state SHALL render **no detail line** (the primary dot and "{total} images synced" already convey a
 finished, safe backup). No state renders a relative-time or "last … ago" line. The screen renders:
 
 | State | Indicator | Count line | Detail | Invite QR + share | Leave action |
@@ -106,8 +106,8 @@ finished, safe backup). No state renders a relative-time or "last … ago" line.
 | Joining | Loading (indeterminate), no dot | "Checking what's already backed up …" | — | no | no |
 | JoinFailed | Error (red dot) | "Couldn't reach the server" | "Scan the event QR code again" | no | no |
 | InProgress | InProgress (yellow dot) | "{synced} of {total} images synced" | "{inProgress} in progress" when inProgress > 0; absent when inProgress = 0 | yes | yes (cluster) |
-| NothingToSync | Complete (green dot) | "Nothing to sync yet" | — | yes | yes (cluster) |
-| Completed | Complete (green dot) | "{total} images synced" | — | yes | yes (cluster) |
+| NothingToSync | Complete (primary dot) | "Nothing to sync yet" | — | yes | yes (cluster) |
+| Completed | Complete (primary dot) | "{total} images synced" | — | yes | yes (cluster) |
 
 #### Scenario: Loading state shows an indeterminate indicator
 - **WHEN** the UI state is Loading
@@ -135,11 +135,11 @@ finished, safe backup). No state renders a relative-time or "last … ago" line.
 
 #### Scenario: Nothing-to-sync state
 - **WHEN** the UI state is NothingToSync
-- **THEN** the screen shows the green dot and the line "Nothing to sync yet" with no detail line
+- **THEN** the screen shows the primary dot and the line "Nothing to sync yet" with no detail line
 
 #### Scenario: Completed state shows the total with no detail line
 - **WHEN** the UI state is Completed with `total = 47`
-- **THEN** the screen shows the green dot and the line "47 images synced", with no detail line
+- **THEN** the screen shows the primary dot and the line "47 images synced", with no detail line
 
 #### Scenario: Joined-layer states show the invite QR and share action
 - **WHEN** the UI state is InProgress, NothingToSync, or Completed and an invite deeplink is supplied
@@ -212,31 +212,42 @@ line** — never numeric counts. The status line SHALL present one of:
   tapping SHALL invoke `onRequestPermission()` when permission is `NOT_DETERMINED` and
   `onOpenSettings()` when `DENIED`. It is the only status-line state that carries a background.
 - `InSync` → a settled indicator (e.g. a check) reading "In sync", with no direction arrows.
-- `Syncing` → the label "Syncing…" with two independent direction arrows, each in a
+- `Syncing` → two independent direction arrows plus an **activity-dependent label**, each arrow in a
   shown/pulse state derived as follows:
   - **upload arrow**: hidden when `completed >= total`; else **pulsing** when `pending > 0`, otherwise
     **static**;
   - **download arrow**: hidden when `downloaded >= total`; else **pulsing** when `inFlight > 0`,
     otherwise **static** (`inFlight` from `DownloadProgress`, per the `sync-status` capability).
 
+The `Syncing` **label** SHALL be derived from the combined arrow activity: when **any** shown arrow is
+**pulsing** (work in flight), the label reads **"Synchronization ongoing…"**; when at least one arrow is
+shown but **none** is pulsing (work remains but nothing is in flight), the label reads
+**"Synchronization pending…"**. The exact label strings are owned by the `App*` status-line component
+(see `design-system`); this screen supplies only the health value.
+
 `InSync` SHALL be shown exactly when both arrows would be hidden (upload complete **and** download
 complete); any remaining work SHALL be `Syncing` with the corresponding arrow(s) shown. "Shown" tracks
 completeness; "pulse" tracks live activity — so a photo captured but not yet uploaded shows a **static**
-upload arrow (honest that work remains without faking motion).
+upload arrow under the "Synchronization pending…" label (honest that work remains without faking motion).
 
-#### Scenario: Upload in flight pulses the up arrow only
+#### Scenario: Upload in flight pulses the up arrow and reads ongoing
 - **WHEN** `completed < total`, `pending > 0`, and downloads are complete
-- **THEN** the status line reads "Syncing…" with the upload arrow **pulsing** and the download arrow
-  hidden
+- **THEN** the status line reads "Synchronization ongoing…" with the upload arrow **pulsing** and the
+  download arrow hidden
 
-#### Scenario: Work queued but OS idle shows a static arrow
+#### Scenario: Work queued but OS idle shows a static arrow and reads pending
 - **WHEN** `completed < total` and `pending == 0`
-- **THEN** the upload arrow is **shown static** (not pulsing), and the line reads "Syncing…"
+- **THEN** the upload arrow is **shown static** (not pulsing) and the line reads "Synchronization
+  pending…"
 
-#### Scenario: Download in flight pulses the down arrow independently
+#### Scenario: Download in flight pulses the down arrow and reads ongoing
 - **WHEN** uploads are complete, `downloaded < total`, and `inFlight > 0`
-- **THEN** the status line reads "Syncing…" with the download arrow **pulsing** and the upload arrow
-  hidden
+- **THEN** the status line reads "Synchronization ongoing…" with the download arrow **pulsing** and the
+  upload arrow hidden
+
+#### Scenario: Any direction in flight reads ongoing
+- **WHEN** either the upload or the download arrow is pulsing
+- **THEN** the label reads "Synchronization ongoing…", regardless of the other direction's state
 
 #### Scenario: Both complete reads In sync
 - **WHEN** `completed >= total` and `downloaded >= total`

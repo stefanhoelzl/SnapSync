@@ -1,66 +1,4 @@
-# sync status Specification
-
-## Purpose
-
-The status projection: the user-facing truth about the backup, minted from the engine's ledger.
-Defines the `SyncStatus` snapshot contract (lifetime counts × the live gallery total, three-state
-classification), the `SyncStatusSource` seam presentation consumes, and the ledger-backed source that
-combines the ledger's aggregate stream with permission-derived operational state and the live gallery
-size. Lives in `:domain:status`,
-which plugs the engine-type leak toward presentation. Authoritative design: docs/design.md §2.4.
-## Requirements
-### Requirement: SyncStatusSource seam
-The status domain SHALL define `SyncStatusSource` whose `status` is a `StateFlow<SyncStatus>` —
-a level-triggered state holder whose current value is always available synchronously. The current
-value is always a real `SyncStatus` (`Loading` or `Ready`); `Loading` is a genuine value
-("persisted state not yet read"), never a placeholder, guess, or default. Every `Ready` value is
-the whole truth; consumers never fold events.
-
-The seam no longer promises a synchronously-available `SyncProgress`: a source backed by persisted
-state cannot read it synchronously at construction, so the honest synchronous value at that moment
-is `Loading`.
-
-#### Scenario: First value without waiting
-- **WHEN** a consumer reads `status.value` immediately after obtaining a source
-- **THEN** it receives a real `SyncStatus` — either `Ready` with a real snapshot, or `Loading` —
-  never a placeholder or default
-
-#### Scenario: A source that knows its truth synchronously seeds Ready
-- **WHEN** an in-memory source already holds the whole truth at construction
-- **THEN** its `status.value` is `Ready(snapshot)` immediately, never `Loading`
-
-### Requirement: Module placement plugs the engine leak
-`SyncStatus`, `SyncState`, `SyncStatusSource`, and the listing-backed source SHALL live in
-`:domain:status`, which depends on `:domain:permission` and `:domain:gallery` (and the event file-list
-seam) with **implementation** scope only and SHALL **no longer depend on `:domain:engine`** (no ledger
-type is reachable from status). `:domain:presentation` SHALL depend on `:domain:status` (and
-`:domain:permission`) and SHALL NOT depend on `:domain:engine` or `:domain:gallery` — engine and gallery
-types stay off presentation's compile classpath.
-
-#### Scenario: Status compiles without the engine
-- **WHEN** `:domain:status` is compiled
-- **THEN** `:domain:engine` is not on its compile classpath and no ledger type is reachable from status code
-
-#### Scenario: Presentation compiles without the engine or gallery
-- **WHEN** `:domain:presentation` is compiled
-- **THEN** neither `:domain:engine` nor `:domain:gallery` is on its compile classpath, and no engine or gallery type is reachable from presentation code
-
-### Requirement: SyncStatus — loading vs ready
-
-The status domain SHALL define a sealed `SyncStatus` in `:domain:status` (package `app.snapsync.status`) with exactly two cases:
-
-- `Loading` — the source has not yet read persisted state; the honest "I am reading the ledger and do not yet know the result." It is a real, source-derived value, **not** a placeholder guess.
-- `Ready(progress: SyncProgress)` — the source holds the whole truth as a minted `SyncProgress`.
-
-`SyncStatus` is the vocabulary of the `SyncStatusSource` seam (not the ledger's). A source MAY seed `Loading` and later transition to `Ready`; once `Ready`, a source MUST NOT regress to `Loading`.
-
-#### Scenario: Loading is a real value, not a placeholder
-- **WHEN** a source's current value is `SyncStatus.Loading`
-- **THEN** it is the genuine state "persisted state not yet read" — a consumer treats it as real data, not a default to be ignored
-
-#### Scenario: Ready carries the whole truth
-- **WHEN** a source's current value is `SyncStatus.Ready(progress)`
-- **THEN** `progress` is a complete `SyncProgress` snapshot (lifetime counts and classification), with no event folding by the consumer
+## MODIFIED Requirements
 
 ### Requirement: SyncProgress contract — lifetime truth, three-state classification
 
@@ -125,42 +63,7 @@ enabling).
 - **WHEN** a snapshot has `total = 30` and `completed = 30`
 - **THEN** the state is COMPLETE
 
-### Requirement: Independent download-progress projection
-
-The status surface SHALL expose download progress as an **independent** indicator, separate from the
-own-device upload status: a count of foreign complete assets imported (`downloaded`) out of the
-foreign complete assets currently in the union (`total`), asset-counted to match the upload progress
-convention. `DownloadProgress` SHALL additionally carry an **`inFlight`** count — the number of
-foreign assets with at least one resource whose download has been **sent to the OS but not yet
-staged** (the download analogue of `SyncProgress.pending`). `inFlight` is **display-only**: it drives
-only the live-activity signal of the download direction arrow (per `sync-status-screen`) and SHALL NOT
-alter the `downloaded`/`total` completeness notion. This projection SHALL NOT alter the own-device
-upload "Completed" notion — uploads are "done" when the device's own qualifying assets are all present
-in storage, regardless of download progress. `total` MAY grow as other contributors add assets, and
-the indicator SHALL reflect that honestly. `inFlight` SHALL be sourced from the `download-store`
-`inFlightCount()` read and refreshed on foreground entry alongside `downloaded`/`total`.
-
-#### Scenario: Download line is independent of upload completion
-
-- **WHEN** the device's own uploads are complete but foreign downloads are still in progress
-- **THEN** the download projection reports its own `downloaded`/`total`/`inFlight`; upload "Completed"
-  and download progress do not gate each other
-
-#### Scenario: Download denominator is foreign complete assets
-
-- **WHEN** the union reports `total` foreign complete assets and `downloaded` of them are imported
-- **THEN** the projection reports `downloaded` of `total`, asset-counted
-
-#### Scenario: In-flight reflects downloads sent to the OS
-
-- **WHEN** `k` foreign assets have a resource download enqueued to the OS and not yet staged
-- **THEN** `DownloadProgress.inFlight == k`; **WHEN** all such downloads have staged or none are
-  enqueued, `inFlight == 0`
-
-#### Scenario: Denominator grows with new contributions
-
-- **WHEN** other contributors add complete assets to the event
-- **THEN** `total` increases accordingly on the next union read, with no false "all downloaded" state
+## ADDED Requirements
 
 ### Requirement: Ledger-backed source
 
@@ -264,3 +167,28 @@ exist for tests and the desktop harness.
   foreground, **or** an app-driven pump cycle completes
 - **THEN** `LedgerCountsSource.refresh()` is invoked
 
+## REMOVED Requirements
+
+### Requirement: Listing-backed source
+**Reason**: Upload status is re-sourced from the extension's ledger; the listing-backed source (which
+derived `completed` from the per-device storage LIST and `pending` from a separate `InFlightSource`) is
+replaced by the **Ledger-backed source** requirement, which reads both counts from one `aggregates()`
+call. This ends the split where `pending` came from the ledger but `completed` from storage.
+**Migration**: Construct the ledger-backed `SyncStatusSource` from a `LedgerCountsSource`, a
+`PermissionStatusSource`, a `GalleryStatusSource`, and a `CoroutineScope` (drop the `CompletedAssetsSource`
+and `InFlightSource` inputs).
+
+### Requirement: CompletedAssetsSource seam
+**Reason**: Own-device upload completeness is now the ledger's `aggregates().completed`, not an
+expected×present join over the per-device storage listing. The app no longer issues a storage LIST for
+upload status.
+**Migration**: Read completeness from the `LedgerCountsSource` (`LedgerCounts.completed`). The per-device
+file listing (`bunny-list-endpoint`) is no longer consulted for upload status (the download direction's
+foreign-object reconcile is unaffected).
+
+### Requirement: InFlightSource seam
+**Reason**: Folded into the `LedgerCountsSource` seam, which yields `completed` **and** `pending` from a
+single consistent `aggregates()` read.
+**Migration**: Replace the injected `suspend () -> Int` (pending only) with the injected
+`suspend () -> LedgerCounts` (completed + pending); consumers read `LedgerCounts.pending` for the
+in-flight count.

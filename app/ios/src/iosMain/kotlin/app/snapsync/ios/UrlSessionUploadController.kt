@@ -59,6 +59,9 @@ class UrlSessionUploadController(
     private val suppressedAssetIds: suspend () -> Set<String>,
     // False on the dev/test-forced (simulator) path — the sim can't run a background NSURLSession.
     private val useBackgroundSession: Boolean = true,
+    // Fired after each in-process pump cycle so foreground upload status refreshes live (the app-driven
+    // analogue of the PhotoKit extension's cross-process liveness ding — here an in-process re-read).
+    private val onCycleComplete: suspend () -> Unit = {},
 ) {
     companion object {
         const val SESSION_IDENTIFIER = "app.snapsync.upload.session"
@@ -99,6 +102,7 @@ class UrlSessionUploadController(
         runCycle = { runCycle() },
         scheduler = scheduler,
         log = log,
+        onCycleComplete = onCycleComplete,
     )
 
     // The OS completion handler from `handleEventsForBackgroundURLSession`, held until the session
