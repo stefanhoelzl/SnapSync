@@ -28,8 +28,13 @@ const APNS_HOSTS: Record<string, string> = {
   sandbox: "https://api.sandbox.push.apple.com",
 };
 
-// The silent-wake payload: content-available only — no alert, sound, or badge.
-const SILENT_BODY = JSON.stringify({ aps: { "content-available": 1 } });
+// The silent-wake payload: content-available only — no alert, sound, or badge — plus a top-level
+// `eventId` sibling of `aps` naming the event this push concerns (delivered to the app as
+// `userInfo["eventId"]`, capability `event-notify-endpoint`), so a receiving device knows which event
+// to reconcile.
+function silentBody(eventId: string): string {
+  return JSON.stringify({ aps: { "content-available": 1 }, eventId });
+}
 
 // Refresh the provider JWT well within Apple's 1-hour ceiling (Apple rejects tokens older than 1h and
 // throttles re-signing faster than ~20 min; 50 min sits safely between).
@@ -54,7 +59,9 @@ function pemToDer(pem: string): Uint8Array {
   return der;
 }
 
-export type ApnsSender = { sendSilent(tokens: PushToken[]): Promise<SendOutcome[]> };
+export type ApnsSender = {
+  sendSilent(tokens: PushToken[], eventId: string): Promise<SendOutcome[]>;
+};
 
 /**
  * Build a sender bound to the APNs credentials in {@link Config}. `fetchImpl` is the upstream fetch
@@ -100,7 +107,7 @@ export function createApnsSender(
     return jwt;
   }
 
-  async function sendOne(pt: PushToken): Promise<SendOutcome> {
+  async function sendOne(pt: PushToken, eventId: string): Promise<SendOutcome> {
     if (pt.kind !== "apns") {
       return { token: pt.token, status: "skipped", reason: `kind ${pt.kind}` };
     }
@@ -123,7 +130,7 @@ export function createApnsSender(
           "apns-priority": "5",
           "content-type": "application/json",
         },
-        body: SILENT_BODY,
+        body: silentBody(eventId),
       });
       // Drain any body so the h2 stream is released (APNs replies empty on success, JSON on error).
       await res.body?.cancel();
@@ -137,6 +144,7 @@ export function createApnsSender(
 
   return {
     // Every token is attempted; one token's error/skip never aborts the others. Never throws.
-    sendSilent: (tokens: PushToken[]) => Promise.all(tokens.map(sendOne)),
+    sendSilent: (tokens: PushToken[], eventId: string) =>
+      Promise.all(tokens.map((pt) => sendOne(pt, eventId))),
   };
 }

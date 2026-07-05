@@ -5,19 +5,32 @@ import app.snapsync.engine.LEDGER_APP_GROUP
 import app.snapsync.engine.LedgerBackend
 import app.snapsync.engine.LedgerWriter
 import app.snapsync.engine.SyncEngine
+import app.snapsync.gallery.DeviceManifestProducer
+import app.snapsync.gallery.IosDeviceManifestStore
 import app.snapsync.gallery.PhotoLibraryResourceEnumerator
+import app.snapsync.gallery.deviceManifestAssetsFromResources
 import app.snapsync.ios.discovery.IosDiscovery
 import app.snapsync.ios.discovery.IosDiscoveryStore
 import app.snapsync.ios.urlsession.IosBackgroundScheduler
 import app.snapsync.ios.urlsession.IosUrlSessionUploadPlatform
+import app.snapsync.push.EventNotifier
+import app.snapsync.push.KtorPushHttpClient
 import app.snapsync.upload.BackgroundUploadPump
 import app.snapsync.upload.CycleResult
 import app.snapsync.upload.UploadCycle
 import app.snapsync.upload.buildUploadConfig
 import app.snapsync.uploadurl.EdgeUploadRequestProvider
 import co.touchlab.kermit.Logger
+import io.ktor.client.HttpClient
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeout
+
+// Upper bounds on the two synchronous in-cycle HTTP calls (manifest PUT, notify POST) — strictly
+// bounded by `withTimeout` so a slow/hung host can never stall the cycle to a force-kill; both are
+// best-effort and retried next cycle. Mirrors the extension root's device-manifest budget.
+private const val DEVICE_MANIFEST_TIMEOUT_MS = 12_000L
+private const val NOTIFY_TIMEOUT_MS = 8_000L
 
 /**
  * The app-driven (iOS 18–26.0) upload tier's composition root — the app-process analogue of
@@ -38,6 +51,12 @@ class UrlSessionUploadController(
     private val deviceId: String,
     private val host: String,
     private val log: Logger,
+    // The shared Darwin HTTP client — used for the in-cycle device-manifest PUT and the event-notify POST.
+    private val httpClient: HttpClient,
+    // Echo-suppression (capability `photo-download`): the `assetId`s of foreign assets this device
+    // downloaded + imported. Read once per cycle so an imported foreign asset is never re-uploaded (the
+    // echo) — essential now that this tier writes the device manifest and so appears in the union.
+    private val suppressedAssetIds: suspend () -> Set<String>,
     // False on the dev/test-forced (simulator) path — the sim can't run a background NSURLSession.
     private val useBackgroundSession: Boolean = true,
 ) {
@@ -50,6 +69,19 @@ class UrlSessionUploadController(
     private val discovery = IosDiscovery(log, PhotoLibraryResourceEnumerator())
     private val discoveryStore = IosDiscoveryStore()
     private val scheduler = IosBackgroundScheduler(log, HEARTBEAT_TASK_IDENTIFIER)
+
+    // The per-event device manifest (capability `device-manifest`) — on this tier the APP is its sole
+    // writer (no extension process). Produced from the cycle's OWN discovery (no second enumeration),
+    // PUT synchronously in-cycle and bounded by `withTimeout`. Without it this tier's uploads would never
+    // appear in the event union (union = manifest ∩ stored bytes), so no other device could download them.
+    private val deviceManifestProducer = DeviceManifestProducer(
+        store = IosDeviceManifestStore(),
+        uploader = IosDeviceManifestUploader(httpClient, host),
+        deviceId = deviceId,
+    )
+
+    // Fires the event notify after a drained cycle that completed uploads (capability `upload-completion-notify`).
+    private val notifier = EventNotifier(KtorPushHttpClient(httpClient), host)
 
     private val platform = IosUrlSessionUploadPlatform(
         log = log,
@@ -91,7 +123,34 @@ class UrlSessionUploadController(
         }
         log.i { "url-session runCycle: config ok (host=${config.host}) — invoking UploadCycle" }
         val engine = SyncEngine(EdgeUploadRequestProvider(config.host, deviceId), ledger)
-        val result = UploadCycle(engine, ledger, platform, discoveryStore, log).run()
+        val cycleEventId = config.eventId // this cycle's event (config is re-read each cycle)
+        val result = UploadCycle(
+            engine, ledger, platform, discoveryStore, log,
+            // Device manifest from THIS cycle's discovery, PUT after the byte jobs are created; bounded
+            // and best-effort (any failure/timeout just retries next cycle). The union reflects the
+            // uploads only after this PUT — the same drain point the notify below fires from.
+            onDiscovery = { discovery ->
+                runCatching {
+                    withTimeout(DEVICE_MANIFEST_TIMEOUT_MS) {
+                        deviceManifestProducer.produce(
+                            eventId = cycleEventId,
+                            startDate = null, // whole-library scope (the date filter is deferred)
+                            discovered = deviceManifestAssetsFromResources(discovery.resources),
+                            removedAssetIds = discovery.removedAssetIds.toSet(),
+                            fullEnumeration = discovery.fullEnumeration,
+                        )
+                    }
+                }.onFailure { log.w(it) { "device.json production failed/timed out this cycle" } }
+            },
+            // Notify the event's members after the manifest PUT — bounded so a hung host can't stall the
+            // cycle. Fires only on a fully-drained cycle with >= 1 completion (gated inside UploadCycle).
+            onBatchUploaded = {
+                runCatching { withTimeout(NOTIFY_TIMEOUT_MS) { notifier.notify(cycleEventId) } }
+                    .onFailure { log.w(it) { "event notify failed/timed out this cycle" } }
+            },
+            // Echo-suppression: never re-upload an asset this device downloaded + imported.
+            suppressedAssetIds = suppressedAssetIds,
+        ).run()
         log.i { "url-session runCycle: UploadCycle returned $result" }
         return result
     }

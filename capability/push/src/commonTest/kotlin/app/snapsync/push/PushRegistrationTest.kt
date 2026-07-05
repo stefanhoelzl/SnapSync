@@ -21,6 +21,11 @@ private class FakePushHttpClient(private val result: Result<Unit> = Result.succe
         calls.add(Call(url, jsonBody))
         return result
     }
+
+    override suspend fun post(url: String): Result<Unit> {
+        calls.add(Call(url, ""))
+        return result
+    }
 }
 
 class PushRegistrationTest {
@@ -111,5 +116,13 @@ class PushRegistrationTest {
         val engine = MockEngine { respond("nope", HttpStatusCode.InternalServerError) }
         val res = KtorPushHttpClient(HttpClient(engine)).put("https://e/devices/x/config", "{}")
         assertTrue(res.isFailure)
+    }
+
+    @Test
+    fun ktor_client_post_maps_2xx_to_success_and_non_2xx_to_failure() = runTest {
+        val ok = MockEngine { respond("", HttpStatusCode.Accepted) }
+        assertTrue(KtorPushHttpClient(HttpClient(ok)).post("https://e/event/x/notify").isSuccess)
+        val bad = MockEngine { respond("nope", HttpStatusCode.BadGateway) }
+        assertTrue(KtorPushHttpClient(HttpClient(bad)).post("https://e/event/x/notify").isFailure)
     }
 }

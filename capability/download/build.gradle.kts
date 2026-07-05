@@ -13,6 +13,7 @@ kotlin {
             api(libs.coroutines.core)
             api(project(":domain:download-store"))
             api(project(":domain:status")) // the DownloadStatusSource seam this provides the store-backed impl of
+            api(project(":capability:push")) // the PushReceiver seam DownloadPushReceiver implements
             implementation(libs.kermit)
             implementation(libs.ktor.client.core)
             implementation(libs.kotlinx.serialization.json)
