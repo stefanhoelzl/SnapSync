@@ -136,23 +136,6 @@ deferred import a safe retry.
   window and no further download is pending
 - **THEN** a scheduled background task completes the import without requiring the user to open the app
 
-### Requirement: Foreground-only discovery of later additions
-
-The client SHALL re-read the union on join/(re)provision and on foreground entry. It SHALL NOT run a
-background poll of the union; assets contributed by others **after** the initial read SHALL be
-discovered on the next foreground entry. Transfers and imports already enqueued SHALL continue in the
-background regardless of foreground state.
-
-#### Scenario: Later-added foreign photos appear on next foreground
-
-- **WHEN** another contributor adds photos to the event while this app is not foregrounded
-- **THEN** those photos are discovered and enqueued on the next foreground entry (not before)
-
-#### Scenario: Initial-join transfers complete in background
-
-- **WHEN** the app reads the union on join and is then backgrounded
-- **THEN** the enqueued downloads and imports complete in the background without reopening the app
-
 ### Requirement: Deletion is respected — no re-download
 
 Once a foreign asset is imported (a terminal download-store row), the client SHALL NOT download or
@@ -168,4 +151,41 @@ linked into more than one event SHALL be imported only once (cross-event dedup v
 
 - **WHEN** a device's asset appears in the unions of two events this install joins
 - **THEN** it is imported only the first time and skipped thereafter
+
+### Requirement: Event-driven discovery of later additions
+
+The client SHALL re-read the union on join/(re)provision, on foreground entry, **and** when it receives
+a silent push for its **active event** (capability `push-registration`). It SHALL NOT run a background
+**poll** of the union (no timer, no periodic background fetch); background discovery is **event-driven**
+(woken by a push), not polled. Assets contributed by others **after** the initial read SHALL be
+discovered on the next of: foreground entry, or a silent push for the active event. A push whose event
+is **not** the active event SHALL NOT trigger discovery (the active-event guard lives in the receive
+seam, capability `push-registration`). Transfers and imports already enqueued SHALL continue in the
+background regardless of foreground state. Because push delivery is best-effort (OS-throttled and
+coalesced), foreground entry remains the standing backstop, so no asset is lost — only, at worst,
+delayed to the next foreground visit.
+
+#### Scenario: A push for the active event triggers background discovery
+
+- **WHEN** another contributor adds photos and a silent push for this device's active event arrives
+  while the app is not foregrounded
+- **THEN** the client reconciles in the background — reading the union, enqueueing the new foreign
+  resources' downloads, and importing any already-staged asset — without a foreground visit
+
+#### Scenario: Later-added foreign photos still appear on next foreground
+
+- **WHEN** another contributor adds photos while this app is not foregrounded and no push is delivered
+  (throttled/coalesced/dropped)
+- **THEN** those photos are discovered and enqueued on the next foreground entry (the backstop)
+
+#### Scenario: No background poll
+
+- **WHEN** the app is backgrounded and no silent push arrives
+- **THEN** the client runs no periodic union poll; discovery happens only on a push or the next
+  foreground entry
+
+#### Scenario: Initial-join transfers complete in background
+
+- **WHEN** the app reads the union on join and is then backgrounded
+- **THEN** the enqueued downloads and imports complete in the background without reopening the app
 
