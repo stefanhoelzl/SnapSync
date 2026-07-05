@@ -111,7 +111,7 @@ object SnapSyncRoot {
     private val permission: PhotoLibraryPermission by lazy { PhotoLibraryPermission() }
 
     // The stable per-install device id (shared Keychain — the SAME item the extension reads): the
-    // `/devices/<deviceId>/files/` partition the app's status lists. (Finishes wiring `device-identity` into
+    // `/files/devices/<deviceId>/` partition the app's status lists. (Finishes wiring `device-identity` into
     // both roots.)
     private val deviceId: String by lazy { KeychainDeviceIdentity().deviceId() }
 
@@ -235,7 +235,7 @@ object SnapSyncRoot {
         CreateEvent(
             client = HttpEventCreationClient(darwinHttpClient(), backendHost),
             status = creationStatus,
-            // Create has the name from POST /event — provision it directly, no metadata fetch.
+            // Create has the name from POST /events — provision it directly, no metadata fetch.
             provision = { eventId, name -> provisionEvent(eventId, name) },
             scope = scope,
         )
@@ -463,7 +463,7 @@ object SnapSyncRoot {
     }
 
     /**
-     * Best-effort fetch of the event name by id (`GET /event/:id`) and store it into the persisted
+     * Best-effort fetch of the event name by id (`GET /events/:id`) and store it into the persisted
      * config — the scan-path name source and the foreground refresh. Non-throwing: a null (offline /
      * 404 / parse) leaves the current name unchanged.
      */

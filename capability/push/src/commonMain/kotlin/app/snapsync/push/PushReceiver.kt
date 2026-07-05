@@ -17,7 +17,7 @@ fun interface PushReceiver {
 
 /**
  * A receiver that only **logs** receipt (via Kermit) — useful to observe the delivery pipe end-to-end
- * on device (a `POST /event/<id>/notify` produces a log line visible in `idevicesyslog`) without
+ * on device (a `POST /events/<id>/notify` produces a log line visible in `idevicesyslog`) without
  * triggering any use-case behavior. The real wiring substitutes a guarded download-discovery receiver
  * (capability `photo-download`); this remains handy for diagnostics.
  */

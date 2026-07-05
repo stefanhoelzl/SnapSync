@@ -1,6 +1,6 @@
 // Validators for the upload path parts (capability `bunny-upload-endpoint`).
 //
-// Hono's route (`/event/:eventId/file/:filename`) owns path parsing and the not-found cases
+// Hono's route (`/files/devices/:deviceId/:filename`) owns path parsing and the not-found cases
 // (unmatched path / missing filename → 404). These validate the decoded params; the handler composes
 // the storage key `<eventId>/<encoded filename>` (the URL labels are not stored, the filename is
 // percent-encoded per-segment so keys stay flat).

@@ -18,7 +18,7 @@ sealed interface UiState {
     data class CreateEvent(val error: String? = null) : UiState
 
     /**
-     * A `POST /event` create request is in flight (`config == null`, creation status `InFlight`): a
+     * A `POST /events` create request is in flight (`config == null`, creation status `InFlight`): a
      * preparing spinner with no input. Auto-resolves — success provisions config (off this layer),
      * failure returns to [CreateEvent] with an inline error.
      */

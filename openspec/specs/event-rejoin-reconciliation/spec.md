@@ -33,7 +33,7 @@ The system SHALL define a per-device file-listing seam whose `list(deviceId)` re
 the **filenames the device has stored** — the raw object listing under the device's byte partition,
 each entry carrying at least its `filename` (the bare `<assetId>-<role>.<ext>`) — obtained from the
 backend **per-device** listing (capability `bunny-list-endpoint`) over HTTPS. This replaces the former
-per-event complete-asset listing (`GET /event/<id>/files`): the source of seed truth is now the
+per-event complete-asset listing (`GET /events/<id>/files`): the source of seed truth is now the
 device's event-independent byte store, not any single event. The seam SHALL surface failures as a
 failed `Result` (never a thrown error to the caller), so the join can reduce them into state. A
 settable/fake implementation SHALL exist for tests; the iOS implementation SHALL use an HTTP client

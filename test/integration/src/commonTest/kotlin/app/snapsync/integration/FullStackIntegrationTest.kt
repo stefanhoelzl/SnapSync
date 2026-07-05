@@ -82,7 +82,7 @@ class FullStackIntegrationTest {
             assertEquals(UiState.CreateEvent(), host.container.stateFlow.value)
 
             w.ownGallery.refresh(); w.ledgerCounts.refresh()
-            host.onCreateEvent("Party") // POST /event via the mini-edge → provision → gate lifts
+            host.onCreateEvent("Party") // POST /events via the mini-edge → provision → gate lifts
             val after = host.await { it !is UiState.CreateEvent && it !is UiState.CreatingEvent }
             assertEquals(UiState.Joined(SyncHealth.InSync), after) // no photos in the library → settled
             assertTrue(w.configSource.config.value != null) // world outcome: config provisioned

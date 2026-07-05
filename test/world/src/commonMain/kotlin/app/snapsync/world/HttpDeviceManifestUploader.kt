@@ -10,7 +10,7 @@ import io.ktor.http.isSuccess
 
 /**
  * A common [DeviceManifestUploader] living in `:test:world` (design decision D6): PUTs the device
- * manifest JSON to `<host>/event/<eventId>/device/<deviceId>` over the injected mini-edge [client] —
+ * manifest JSON to `<host>/events/<eventId>/devices/<deviceId>` over the injected mini-edge [client] —
  * a common-source mirror of the shipped iosMain `IosDeviceManifestUploader`.
  *
  * **Ktor-home rationale.** A common manifest uploader needs a module that is BOTH a home for the
@@ -28,7 +28,7 @@ class HttpDeviceManifestUploader(
     private val base = host.trimEnd('/')
 
     override suspend fun put(eventId: String, deviceId: String, json: String): Boolean = runCatching {
-        client.put("$base/event/$eventId/device/$deviceId") {
+        client.put("$base/events/$eventId/devices/$deviceId") {
             contentType(ContentType.Application.Json)
             setBody(json)
         }.status.isSuccess()

@@ -38,7 +38,7 @@ class HttpEventCreationClientTest {
         // The client is a dumb sender — trimming is the use-case's job (see CreateEventTest).
         val outcome = client(engine).create("My Party")
 
-        assertEquals("https://edge.example/event", requested)
+        assertEquals("https://edge.example/events", requested)
         assertEquals("POST", method)
         assertEquals("""{"name":"My Party"}""", body)
         assertEquals(CreateOutcome.Created(eventId, "My Party"), outcome)

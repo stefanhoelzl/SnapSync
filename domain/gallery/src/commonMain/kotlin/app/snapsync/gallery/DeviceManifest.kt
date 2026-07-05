@@ -33,7 +33,7 @@ class DeviceManifestAsset(
 
 /**
  * The per-event device manifest (capability `device-manifest`): one object per (event, device) at
- * `/events/<eventId>/device/<deviceId>.json`, carrying the stable [deviceId] and the device's
+ * `/events/<eventId>/devices/<deviceId>.json`, carrying the stable [deviceId] and the device's
  * [assets] for that event. It **replaces** the per-asset manifest objects — one document instead of N
  * — and is a **mutable, full-state snapshot** rewritten each cycle (no read-modify-write, last-write
  * wins, self-healing). It is write-only in v1: nothing in-app reads it (status comes from the gallery

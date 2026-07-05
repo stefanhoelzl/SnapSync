@@ -55,7 +55,7 @@ class StatusContainerHost(
     private val share: (String) -> Unit = {},
     // Provisioning of a scanned event, injected as a suspend lambda over the decoded `eventId`. The
     // default just persists `EventConfig(eventId)` (name null); iOS binds it to the full provision —
-    // switch-reset, `ConfigStore.save`, best-effort `GET /event/:id` name fetch, producer enable, and
+    // switch-reset, `ConfigStore.save`, best-effort `GET /events/:id` name fetch, producer enable, and
     // download reconcile. Keeps this Compose-free module free of HTTP.
     private val provisionScanned: suspend (eventId: String) -> Unit = { store.save(EventConfig(it)) },
     // Download progress for the joined-layer "downloaded X of Y" line (capability `photo-download`).

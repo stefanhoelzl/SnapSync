@@ -9,7 +9,7 @@ import type { Config } from "./config.ts";
 // Structural fetch type (kept local so app.ts ↔ apns.ts stay import-acyclic).
 type FetchLike = (url: string, init: RequestInit) => Promise<Response>;
 
-/** A device push token as stored in `devices/<id>/config.json`'s `pushToken`. */
+/** A device push token as stored in `devices/<id>.json`'s `pushToken`. */
 export type PushToken = { kind: string; token: string; env: string };
 
 /**
