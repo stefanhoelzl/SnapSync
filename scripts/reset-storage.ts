@@ -2,9 +2,10 @@
 //
 //   proton-env -- deno task reset-storage
 //
-// No flags, no selection: it deletes everything in the zone — the device-global byte store
-// (`files/<deviceId>/…`), every event marker and device manifest (`events/<eventId>/…`), and any
-// other top-level object. bunny rejects a blind DELETE on the zone root, so we enumerate the
+// No flags, no selection: it deletes everything in the zone — the device namespace
+// (`devices/<deviceId>/files/…` byte store + `devices/<deviceId>/config.json`), every event marker
+// and device manifest (`events/<eventId>/…`), and any other top-level object. bunny rejects a blind
+// DELETE on the zone root, so we enumerate the
 // top-level entries and DELETE each; a DELETE on a directory (trailing slash) removes its contents
 // recursively.
 //
@@ -13,7 +14,7 @@
 // API directly (the deployed Hono endpoint has no delete route). This is destructive and runs with
 // no confirmation prompt.
 
-const ZONE = "snap-sync";
+const ZONE = "snap-sync-dev";
 const HOST = "storage.bunnycdn.com";
 const BASE = `https://${HOST}/${ZONE}/`;
 
