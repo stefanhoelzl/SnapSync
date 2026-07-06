@@ -52,4 +52,4 @@
 
 - [x] 8.1 `./gradlew build` green (all targets compile; JVM + offscreen UI tests + integration tests pass).
 - [x] 8.2 `./gradlew compileIosMainKotlinMetadata` green (iOS source sets compile via the Linux proxy).
-- [ ] 8.3 `npx --yes @fission-ai/openspec@1.4.1 validate add-event-join-confirmation --strict` passes; exercise the on-device headless loop with an `autoJoin=true` fresh-event link and confirm the object lands in the bunny zone.
+- [x] 8.3 `openspec validate --strict` passes. On-device headless loop verified (iPhone SE2, iOS 26.5): `autoJoin=true` fresh-event link → gate `GET /events/:id`→200 → enrollment `PUT /events/:id/devices/:id`→**201** (manifest confirmed in the bunny zone) → provision + joined layer showing the event name (debug.log trace + screenshot).
