@@ -60,4 +60,4 @@
 
 - [x] 12.1 Rewrite `docs/design.md` §3/§3.2 from "leave is local-only" to the event-leave lifecycle, incl. the leak-safety + main-region-consistency risk notes
 - [x] 12.2 `openspec validate add-event-leave-lifecycle --strict`; `./gradlew build`; `compileIosMainKotlinMetadata`; `deno task test` + `deno fmt/lint`
-- [ ] 12.3 Deploy backend + app together, wipe the zone, drive the headless dev loop: join → leave → confirm the event tree + byte partition are gone in the bunny zone
+- [x] 12.3 Deploy backend + app together, wipe the zone, drive the headless dev loop: join → leave → confirm the event tree + byte partition are gone in the bunny zone
