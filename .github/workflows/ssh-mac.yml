@@ -64,12 +64,6 @@ on:
 permissions:
   contents: read
 
-# A fresh dispatch should NOT kill an already-open session, so no cancel-in-progress. Distinct group from
-# ios.yml/build.yml so nothing here cancels the merge-gating workflows (or vice versa).
-concurrency:
-  group: ssh-mac-${{ github.ref }}
-  cancel-in-progress: false
-
 jobs:
   ssh:
     name: ssh-mac
