@@ -59,5 +59,11 @@ fun MainViewController() = ComposeUIViewController {
         eventName = eventName,
         onCreateEvent = host::onCreateEvent,
         transientError = transientError,
+        onConfirmJoin = host::onConfirmJoin,
+        onCancelJoin = host::onCancelJoin,
+        onRetryLoad = host::onRetryLoad,
+        onRetryJoin = host::onRetryJoin,
+        onConfirmSwitch = host::onConfirmSwitch,
+        onCancelSwitch = host::onCancelSwitch,
     )
 }

@@ -10,6 +10,7 @@ import app.snapsync.eventcreation.CreationStatusSource
 import app.snapsync.eventcreation.EventCreator
 import app.snapsync.permission.PermissionRequester
 import app.snapsync.permission.PermissionStatusSource
+import app.snapsync.presentation.JoinLoad
 import app.snapsync.presentation.StatusContainerHost
 import app.snapsync.status.DownloadStatusSource
 import app.snapsync.status.SyncStatusSource
@@ -40,6 +41,13 @@ fun StatusPane(
     share: (String) -> Unit,
     scope: CoroutineScope,
     leave: suspend () -> Unit = {},
+    // The join-gate hooks (capability `join-event`): the forge leaves them inert (the join UI is
+    // reviewable when a JoiningEvent state is forged), the full-stack world harness binds them to a
+    // real `JoinEvent` over the world so `:app:desktop:run` drives the actual gate.
+    loadJoinDetails: suspend (String) -> JoinLoad = { JoinLoad.Failed },
+    commitJoin: suspend (String, String?) -> Boolean = { _, _ -> false },
+    // Exposes the constructed container so a harness's right pane can drive the gate (e.g. onOpenUrl).
+    onHostReady: (StatusContainerHost) -> Unit = {},
 ) {
     val host = remember {
         StatusContainerHost(
@@ -53,8 +61,10 @@ fun StatusPane(
             leave = leave,
             creationStatusSource = creationStatusSource,
             creator = creator,
+            loadJoinDetails = loadJoinDetails,
+            commitJoin = commitJoin,
             downloadSource = downloadSource,
-        )
+        ).also(onHostReady)
     }
     val state by host.container.stateFlow.collectAsState()
     // The joined-layer presets force a canned event, so this is non-null there → the QR renders.
@@ -75,6 +85,12 @@ fun StatusPane(
             inviteUrl = inviteUrl,
             eventName = eventName,
             onCreateEvent = host::onCreateEvent,
+            onConfirmJoin = host::onConfirmJoin,
+            onCancelJoin = host::onCancelJoin,
+            onRetryLoad = host::onRetryLoad,
+            onRetryJoin = host::onRetryJoin,
+            onConfirmSwitch = host::onConfirmSwitch,
+            onCancelSwitch = host::onCancelSwitch,
         )
     }
 }

@@ -1,15 +1,21 @@
 package app.snapsync.ios
 
-import app.snapsync.config.ConfigDecodeResult
 import app.snapsync.config.EventConfig
 import app.snapsync.config.KeychainConfigStore
-import app.snapsync.config.decodeConfigUrl
 import app.snapsync.eventcreation.CreateEvent
 import app.snapsync.eventcreation.EventCreator
 import app.snapsync.eventcreation.HttpEventCreationClient
 import app.snapsync.eventcreation.HttpEventMetadataSource
 import app.snapsync.eventcreation.MutableCreationStatusSource
+import app.snapsync.deviceid.DeviceIdentity
 import app.snapsync.deviceid.KeychainDeviceIdentity
+import app.snapsync.join.EventDetails
+import app.snapsync.join.HttpDeviceManifestUploader
+import app.snapsync.join.HttpEventDetailsSource
+import app.snapsync.join.JoinEvent
+import app.snapsync.join.JoinOutcome
+import app.snapsync.join.ManifestDeviceEnroller
+import app.snapsync.presentation.JoinLoad
 import app.snapsync.gallery.PhotoLibraryResourceEnumerator
 import app.snapsync.permission.PermissionStatus
 import app.snapsync.permission.PhotoLibraryPermission
@@ -249,6 +255,20 @@ object SnapSyncRoot {
         )
     }
 
+    // The join use-case (capability `join-event`): fetch details (GET /event/:id, 200/404/failure),
+    // enroll by writing a register-only EMPTY device manifest (PUT /event/:id/device/:deviceId), then
+    // provision through the same path as create/scan. The switch (leave-then-join) is composed in the
+    // container, so this stays free of the leave use-case.
+    private val joinEvent: JoinEvent by lazy {
+        JoinEvent(
+            configSource = config,
+            deviceIdentity = object : DeviceIdentity { override fun deviceId() = deviceId },
+            details = HttpEventDetailsSource(darwinHttpClient(), backendHost),
+            enroller = ManifestDeviceEnroller(HttpDeviceManifestUploader(darwinHttpClient(), backendHost)),
+            provision = { cfg -> provisionEvent(cfg.eventId, cfg.name) },
+        )
+    }
+
     val host: StatusContainerHost by lazy {
         // The own-device source: ledger completeness + in-flight (one aggregates() read) × permission ×
         // the live own-device gallery total, minted into snapshots. Ledger-sourced, no storage LIST for
@@ -269,11 +289,21 @@ object SnapSyncRoot {
             // Fire-and-forget share of the invite deeplink (the host owns the URL). Wiring-only:
             // present the system share sheet over the current top view controller.
             share = { url -> presentShareSheet(url) },
-            // A scanned QR provisions through the same path as create (switch-reset, save, enable,
-            // reconcile) — with a best-effort name fetch, since the QR carries only the eventId.
-            provisionScanned = { eventId -> provisionEvent(eventId, name = null) },
+            // The join gate (capability `join-event`): a scanned QR opens the confirmation; details are
+            // fetched (GET), confirming enrolls (empty-manifest PUT) then provisions. `commitJoin` is
+            // true unless enrollment failed (the same-event no-op is a success).
+            loadJoinDetails = { eventId -> joinEvent.loadDetails(eventId).toJoinLoad() },
+            commitJoin = { eventId, name -> joinEvent.join(eventId, name) != JoinOutcome.EnrollFailed },
+            log = { message -> log.i { message } },
             downloadSource = downloadStatusSource,
         )
+    }
+
+    // Adapt the join capability's [EventDetails] to the presentation-local [JoinLoad] the gate consumes.
+    private fun EventDetails.toJoinLoad(): JoinLoad = when (this) {
+        is EventDetails.Found -> JoinLoad.Found(name)
+        EventDetails.NotFound -> JoinLoad.NotFound
+        EventDetails.Failed -> JoinLoad.Failed
     }
 
     /**
@@ -417,17 +447,14 @@ object SnapSyncRoot {
     }
 
     /**
-     * A `snapsync://` deeplink arrived (forwarded raw from the Swift entry point). A **valid scan
-     * (re)provisions**: the config is persisted and the producer (re)enabled — the extension itself
-     * reconciles against storage on its next cycle (an event switch is a `joinedEventId` marker
-     * mismatch it resets and re-seeds; the same event is a no-op). An invalid link flashes the
-     * transient error via the container.
+     * A `snapsync://` deeplink arrived (forwarded raw from the Swift entry point). Routed straight to
+     * the container's **join gate** (capability `join-event`): it decodes, and either opens the
+     * confirmation (a first join → full-screen; a different event while joined → switch dialog),
+     * auto-confirms when the link carries `autoJoin=true` (the dev/headless trigger), or flashes the
+     * invalid-link error. The app no longer provisions directly on scan — the gate owns that.
      */
     fun onOpenUrl(url: String) = log.invocation("onOpenUrl", params = "url=$url") {
-        when (val decoded = decodeConfigUrl(url)) {
-            is ConfigDecodeResult.Success -> scope.launch { provisionEvent(decoded.payload.eventId, name = null) }
-            is ConfigDecodeResult.Failure -> host.onOpenUrl(url) // flashes the invalid-link error
-        }
+        host.onOpenUrl(url)
     }
 
     /**

@@ -23,6 +23,7 @@ import app.snapsync.status.SyncStatus
 import app.snapsync.status.SyncProgress
 import app.snapsync.status.SyncStatusSource
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
@@ -32,13 +33,25 @@ import org.orbitmvi.orbit.Container
 import org.orbitmvi.orbit.ContainerHost
 import org.orbitmvi.orbit.container
 
+/**
+ * The outcome of fetching an event's details for the join gate — the presentation-local mirror of
+ * `join-event`'s `EventDetails`, kept here so this module gains no `:capability:join` dependency (the
+ * app adapts one to the other). The gate MUST tell a **missing** event (block) from a **transient**
+ * failure (retry).
+ */
+sealed interface JoinLoad {
+    data class Found(val name: String?) : JoinLoad
+    data object NotFound : JoinLoad
+    data object Failed : JoinLoad
+}
+
 class StatusContainerHost(
     syncSource: SyncStatusSource,
     permissionSource: PermissionStatusSource,
     private val requester: PermissionRequester,
-    configSource: ConfigSource,
+    private val configSource: ConfigSource,
     private val store: ConfigStore,
-    scope: CoroutineScope,
+    private val scope: CoroutineScope,
     // The create-event seams. Defaults make the create layer inert (always-Idle source, no-op
     // creator) so non-iOS hosts and tests that don't exercise create construct unchanged; iOS injects
     // the same instance the create use-case drives, and the real `EventCreator`.
@@ -53,11 +66,16 @@ class StatusContainerHost(
     // same shape as `leave`. Defaults to a no-op so non-iOS hosts and tests construct unchanged and a
     // share there is inert; iOS binds it to a `UIActivityViewController` presentation.
     private val share: (String) -> Unit = {},
-    // Provisioning of a scanned event, injected as a suspend lambda over the decoded `eventId`. The
-    // default just persists `EventConfig(eventId)` (name null); iOS binds it to the full provision —
-    // switch-reset, `ConfigStore.save`, best-effort `GET /events/:id` name fetch, producer enable, and
-    // download reconcile. Keeps this Compose-free module free of HTTP.
-    private val provisionScanned: suspend (eventId: String) -> Unit = { store.save(EventConfig(it)) },
+    // The join gate hooks (capability `join-event`), injected as plain lambdas (like `leave`) so this
+    // module gains no `:capability:join` dependency. `loadJoinDetails` = `GET /events/:id` mapped to a
+    // block/retry/ready outcome; `commitJoin` = enroll (register-only empty manifest) then provision,
+    // returning `true` when joined (incl. the already-joined no-op) and `false` on a failed enrollment.
+    // Defaults are inert (load fails, commit does nothing) so non-iOS hosts and tests that don't
+    // exercise join construct unchanged; iOS binds them to the `JoinEvent` use-case.
+    private val loadJoinDetails: suspend (eventId: String) -> JoinLoad = { JoinLoad.Failed },
+    private val commitJoin: suspend (eventId: String, name: String?) -> Boolean = { _, _ -> false },
+    // Dev-path abort logging (autoJoin has no UI to show a load/commit failure). No-op by default.
+    private val log: (String) -> Unit = {},
     // Download progress for the joined-layer "downloaded X of Y" line (capability `photo-download`).
     // Exposed as a screen-level StateFlow (like `inviteUrl`), NOT folded into `UiState` — it's an
     // independent indicator that doesn't gate upload classification. Defaults to inert (always 0 of 0)
@@ -65,30 +83,45 @@ class StatusContainerHost(
     downloadSource: DownloadStatusSource = InMemoryDownloadStatusSource(),
 ) : ContainerHost<UiState, SetupEffect> {
 
+    // Event-driven overlay for an in-progress join/switch confirmation (capability `join-event`). Not
+    // derived from the level-triggered sources — the gate sets it on a decoded interactive deeplink and
+    // clears it on commit/cancel. Folded into the reduction as a sixth flow.
+    private val pending = MutableStateFlow<PendingJoin?>(null)
+
     override val container: Container<UiState, SetupEffect> =
         scope.container(
-            // All five seams hold their current truth synchronously, so the first state the
-            // screen can ever render derives from real values — never a guess or a placeholder.
+            // All seams hold their current truth synchronously, so the first state the screen can ever
+            // render derives from real values — never a guess or a placeholder.
             reduceFrom(
                 configSource.config.value,
                 permissionSource.permission.value,
                 syncSource.status.value,
                 creationStatusSource.creationStatus.value,
                 downloadSource.progress.value,
+                pending.value,
             ),
         ) {
             intent {
                 // The sources combine into a holder; each new value reduces straight to a UI state.
                 // The screen reports no relative time, so there is no clock and no periodic re-render —
-                // only a real source change re-emits.
+                // only a real source change (or a pending-join transition) re-emits.
                 combine(
                     configSource.config,
                     permissionSource.permission,
                     syncSource.status,
                     creationStatusSource.creationStatus,
                     downloadSource.progress,
-                ) { config, permission, snapshot, creation, download ->
-                    reduceFrom(config, permission, snapshot, creation, download)
+                    pending,
+                ) { values ->
+                    @Suppress("UNCHECKED_CAST")
+                    reduceFrom(
+                        values[0] as EventConfig?,
+                        values[1] as PermissionStatus,
+                        values[2] as SyncStatus,
+                        values[3] as CreationStatus,
+                        values[4] as DownloadProgress,
+                        values[5] as PendingJoin?,
+                    )
                 }
                     .collect { ui -> reduce { ui } }
             }
@@ -146,19 +179,110 @@ class StatusContainerHost(
     fun onShareInvite() = intent { inviteUrl.value?.let { share(it) } }
 
     /**
-     * A deeplink arrived (forwarded raw from the platform). Decode it with the shared codec; a
-     * valid config is persisted via the store (its change arrives back through ConfigSource), an
-     * invalid one flashes the transient error without touching persisted state.
+     * A deeplink arrived (forwarded raw from the platform). Decode it with the shared codec; an
+     * invalid link flashes the transient error without touching state. A valid link opens the **join
+     * gate** (capability `join-event`): `autoJoin` auto-confirms headlessly, otherwise a first join
+     * opens the full-screen confirmation and a different event while joined opens a switch
+     * confirmation. Re-scanning the already-joined event is a no-op (never re-enrolls).
      */
     fun onOpenUrl(raw: String) = intent {
         when (val result = decodeConfigUrl(raw)) {
-            // A valid scan provisions the event; the injected provision hook owns any switch-reset,
-            // best-effort name fetch, and producer enable (composition root). The default just
-            // persists the eventId (name null, filled by a later foreground refresh).
-            is ConfigDecodeResult.Success -> provisionScanned(result.payload.eventId)
             is ConfigDecodeResult.Failure -> postSideEffect(SetupEffect.InvalidConfigLink)
+            is ConfigDecodeResult.Success -> {
+                val eventId = result.payload.eventId
+                val current = configSource.config.value
+                when {
+                    result.payload.autoJoin -> autoConfirm(eventId)
+                    current == null -> startPending(eventId)               // first join → JoiningEvent
+                    current.eventId != eventId -> startPending(eventId)    // switch → Joined.pendingSwitch
+                    else -> Unit                                           // same event → no-op
+                }
+            }
         }
     }
+
+    /** Retry the details fetch after a transient load failure. */
+    fun onRetryLoad() = intent {
+        val p = pending.value ?: return@intent
+        pending.value = p.copy(phase = JoinPhase.Loading)
+        loadInto(p.eventId)
+    }
+
+    /** Confirm a first join: enroll → provision (no leave). */
+    fun onConfirmJoin() = intent { commit(withLeave = false) }
+
+    /** Confirm a switch: leave the current event, then enroll → provision the new one. */
+    fun onConfirmSwitch() = intent { commit(withLeave = true) }
+
+    /** Retry a failed commit — the leave (if any) already succeeded, so this re-runs only the join. */
+    fun onRetryJoin() = intent { commit(withLeave = false) }
+
+    /** Discard the pending join/switch, returning to the base screen. */
+    fun onCancelJoin() = intent { pending.value = null }
+
+    /** Discard the pending switch, staying in the current event. */
+    fun onCancelSwitch() = intent { pending.value = null }
+
+    // The gate's async work runs INLINE within the orbit intent (not on a side scope) so each pending
+    // transition reduces through the container's own pipeline deterministically. A modal join is fine
+    // to serialize; a real fetch suspends here, yielding a Loading frame before the result.
+    private suspend fun startPending(eventId: String) {
+        pending.value = PendingJoin(eventId, JoinPhase.Loading)
+        loadInto(eventId)
+    }
+
+    private suspend fun loadInto(eventId: String) {
+        val phase = when (val load = loadJoinDetails(eventId)) {
+            is JoinLoad.Found -> JoinPhase.Ready(load.name)
+            JoinLoad.NotFound -> JoinPhase.NotFound
+            JoinLoad.Failed -> JoinPhase.LoadFailed
+        }
+        // Only apply if this fetch is still the active pending target (not cancelled/superseded).
+        pending.value?.let { if (it.eventId == eventId) pending.value = it.copy(phase = phase) }
+    }
+
+    private suspend fun commit(withLeave: Boolean) {
+        val p = pending.value ?: return
+        // Only a loaded (Ready) or previously-failed (CommitFailed) surface can be confirmed; a
+        // still-loading/blocked/committing phase ignores the action.
+        if (p.phase !is JoinPhase.Ready && p.phase !is JoinPhase.CommitFailed) return
+        val name = p.phase.name()
+        pending.value = p.copy(phase = JoinPhase.Committing(name))
+        if (withLeave) leave()
+        if (commitJoin(p.eventId, name)) {
+            // Success: config flips present via ConfigSource → reduces to Joined; drop the overlay.
+            if (pending.value?.eventId == p.eventId) pending.value = null
+        } else if (pending.value?.eventId == p.eventId) {
+            pending.value = p.copy(phase = JoinPhase.CommitFailed(name))
+        }
+    }
+
+    /**
+     * The dev/headless auto-confirm path (`autoJoin=true`): run the same gate — fetch details, leave a
+     * different current event first — but auto-fire the confirm on a successful load. No UI, so a load
+     * or commit failure aborts and logs rather than parking on a retryable state.
+     */
+    private suspend fun autoConfirm(eventId: String) {
+        val load = loadJoinDetails(eventId)
+        if (load !is JoinLoad.Found) {
+            log("autoJoin aborted: details load did not succeed for $eventId ($load)")
+            return
+        }
+        val current = configSource.config.value
+        if (current != null && current.eventId != eventId) leave()
+        if (!commitJoin(eventId, load.name)) log("autoJoin aborted: enrollment failed for $eventId")
+    }
+}
+
+/** The pending join's target and phase; the reducer maps it to `JoiningEvent` or `Joined.pendingSwitch`. */
+private data class PendingJoin(val eventId: String, val phase: JoinPhase)
+
+/** The loaded/committing name carried by a phase, if any (for re-issuing the commit on confirm/retry). */
+private fun JoinPhase.name(): String? = when (this) {
+    is JoinPhase.Ready -> name
+    is JoinPhase.Committing -> name
+    is JoinPhase.CommitFailed -> name
+    JoinPhase.Loading, JoinPhase.NotFound, JoinPhase.LoadFailed -> null
 }
 
 // Config presence is the top rung: without a connected event there is nothing to share, so the create
@@ -172,8 +296,12 @@ private fun reduceFrom(
     snapshot: SyncStatus,
     creation: CreationStatus,
     download: DownloadProgress,
+    pending: PendingJoin?,
 ): UiState {
     if (config == null) {
+        // A pending interactive join outranks the create layer (a switch whose leave already ran also
+        // lands here — a transient no-event, shown full-screen with a Retry).
+        if (pending != null) return UiState.JoiningEvent(pending.eventId, pending.phase)
         return when (creation) {
             CreationStatus.InFlight -> UiState.CreatingEvent
             is CreationStatus.Failed -> UiState.CreateEvent(error = creation.reason.message())
@@ -188,7 +316,9 @@ private fun reduceFrom(
         snapshot is SyncStatus.Ready -> syncHealth(snapshot.progress, download)
         else -> SyncHealth.Loading
     }
-    return UiState.Joined(health)
+    // A pending join for a DIFFERENT event while joined is a switch confirmation over the joined screen.
+    val pendingSwitch = pending?.let { PendingSwitch(it.eventId, it.phase) }
+    return UiState.Joined(health, pendingSwitch)
 }
 
 // Shown tracks completeness (never lies about "everything up/received"); pulse tracks live activity

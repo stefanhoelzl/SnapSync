@@ -9,11 +9,18 @@ import kotlinx.serialization.Serializable
  * deliberately NOT here: the host is fixed at compile time by the extension's
  * `BackgroundUploadURLBase`, and the name is fetched by id after joining (see [EventConfig]).
  *
+ * [autoJoin] is a **dev/test** hint (default `false`): when `true`, the join gate auto-confirms
+ * instead of waiting for a tap (capability `join-event`). Because `encodeDefaults` is off, a `false`
+ * value is absent from the serialized payload, so the canonical [encodeConfigUrl] QR stays
+ * `eventId`-only; the strict decoder accepts `autoJoin` as a known optional key but still rejects any
+ * *other* extra key.
+ *
  * This class is the wire DTO: its property name is the exact JSON key of the deeplink payload.
  */
 @Serializable
 class EventLinkPayload(
     val eventId: String,
+    val autoJoin: Boolean = false,
 )
 
 /** Field-wise equality (not a data class, to match the prior payload's explicit-equality style). */

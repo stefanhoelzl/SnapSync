@@ -88,7 +88,7 @@ fun miniEdgeClient(store: BackendStore): HttpClient {
                         return@MockEngine respond("invalid name", HttpStatusCode.BadRequest)
                     }
                     val eventId = mintEventId(eventCounter++)
-                    store.registerEvent(eventId)
+                    store.registerEvent(eventId, name.trim())
                     respond(
                         json.encodeToString(
                             CreatedEventDto.serializer(),
@@ -99,9 +99,26 @@ fun miniEdgeClient(store: BackendStore): HttpClient {
                     )
                 }
 
-                // PUT /events/<id>/devices/<id>
+                // GET /events/<id>  (details / existence — the join gate's fetch)
+                method == HttpMethod.Get && segments.size == 2 && segments[0] == "events" -> {
+                    if (store.offline) return@MockEngine respond("offline", HttpStatusCode.BadGateway)
+                    if (!store.isRegistered(segments[1])) {
+                        return@MockEngine respond("event not found", HttpStatusCode.NotFound)
+                    }
+                    respond(
+                        json.encodeToString(
+                            CreatedEventDto.serializer(),
+                            CreatedEventDto(segments[1], store.nameOf(segments[1]) ?: "", CREATED_AT),
+                        ),
+                        HttpStatusCode.OK,
+                        jsonHeaders(),
+                    )
+                }
+
+                // PUT /events/<id>/devices/<id>  (manifest write / join enrollment)
                 method == HttpMethod.Put && segments.size == 4 &&
                     segments[0] == "events" && segments[2] == "devices" -> {
+                    if (store.offline) return@MockEngine respond("offline", HttpStatusCode.BadGateway)
                     store.putManifestJson(eventId = segments[1], deviceId = segments[3], json = body)
                     respond("", HttpStatusCode.OK, jsonHeaders())
                 }

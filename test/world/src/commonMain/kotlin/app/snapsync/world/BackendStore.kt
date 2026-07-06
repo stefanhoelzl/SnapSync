@@ -54,6 +54,8 @@ class BackendStore {
     private val byteStore = mutableMapOf<String, MutableSet<String>>()
     private val manifests = mutableMapOf<Pair<String, String>, DeviceManifest>()
     private val events = mutableSetOf<String>()
+    // Per-event human name (from `POST /events` or a direct injection), served by `GET /events/<id>`.
+    private val eventNames = mutableMapOf<String, String>()
     // Per-device config docs (`devices/<id>.json`, the push token) — a SEPARATE namespace from
     // the byte store, so a config never appears in [deviceListing] or the [union].
     private val deviceConfigs = mutableMapOf<String, String>()
@@ -68,10 +70,14 @@ class BackendStore {
         byteStore.getOrPut(deviceId) { linkedSetOf() }.add(filename)
     }
 
-    /** Register an event marker (the `POST /events` effect / a direct injection). */
-    fun registerEvent(eventId: String) {
+    /** Register an event marker (the `POST /events` effect / a direct injection), with an optional name. */
+    fun registerEvent(eventId: String, name: String? = null) {
         events.add(eventId)
+        if (name != null) eventNames[eventId] = name
     }
+
+    /** The event's human name for `GET /events/<id>` (null when unnamed). */
+    fun nameOf(eventId: String): String? = eventNames[eventId]
 
     /**
      * Wipe a device's stored byte objects (models an operator `reset-storage` deleting the

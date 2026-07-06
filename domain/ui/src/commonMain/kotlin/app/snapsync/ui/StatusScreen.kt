@@ -14,6 +14,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import app.snapsync.permission.PermissionStatus
 import app.snapsync.presentation.Arrow
+import app.snapsync.presentation.JoinPhase
+import app.snapsync.presentation.PendingSwitch
 import app.snapsync.presentation.SyncHealth
 import app.snapsync.presentation.UiState
 import app.snapsync.ui.components.AppConfirmDialog
@@ -28,6 +30,7 @@ import app.snapsync.ui.components.ArrowLevel
 import app.snapsync.ui.components.LeaveButton
 import app.snapsync.ui.components.PrimaryButton
 import app.snapsync.ui.components.ScreenLayout
+import app.snapsync.ui.components.SecondaryButton
 import app.snapsync.ui.components.ShareButton
 import app.snapsync.ui.components.StatusHero
 import app.snapsync.ui.components.StatusHint
@@ -45,6 +48,13 @@ fun StatusScreen(
     eventName: String? = null,
     onCreateEvent: (String) -> Unit = {},
     transientError: String? = null,
+    // Join-gate actions (capability `join-event`), routed to the container intents.
+    onConfirmJoin: () -> Unit = {},
+    onCancelJoin: () -> Unit = {},
+    onRetryLoad: () -> Unit = {},
+    onRetryJoin: () -> Unit = {},
+    onConfirmSwitch: () -> Unit = {},
+    onCancelSwitch: () -> Unit = {},
 ) {
     AppTheme {
         // Local UI state only: the confirm dialog's visibility never enters UiState or the reduction.
@@ -75,6 +85,8 @@ fun StatusScreen(
                     CreateEventScreen(state, onCreateEvent, transientError)
                 UiState.CreatingEvent ->
                     StatusHero(StatusIndicator.Loading, "Creating your event …")
+                is UiState.JoiningEvent ->
+                    JoiningEventScreen(state.phase, onConfirmJoin, onCancelJoin, onRetryLoad, onRetryJoin)
                 is UiState.Joined ->
                     JoinedLayer(state.health, inviteUrl, onRequestPermission, onOpenSettings)
             }
@@ -92,6 +104,149 @@ fun StatusScreen(
                 onDismiss = { confirmingLeave = false },
             )
         }
+
+        // A switch confirmation over the joined screen (scanning a different event while joined).
+        (state as? UiState.Joined)?.pendingSwitch?.let { switch ->
+            SwitchDialog(
+                switch = switch,
+                currentEventName = eventName,
+                onConfirmSwitch = onConfirmSwitch,
+                onCancelSwitch = onCancelSwitch,
+                onRetryLoad = onRetryLoad,
+                onRetryJoin = onRetryJoin,
+            )
+        }
+    }
+}
+
+/**
+ * The full-screen "Join event" surface (capability `join-event`): the event summary is the hero, with
+ * Join / Cancel pinned to the bottom. Only the confirm ships now; future options (start date,
+ * direction, albums, save-to album) slot in as rows in this same column. Renders each [JoinPhase]:
+ * loading details, ready-to-join, blocked (invalid invite), a retryable load/commit failure.
+ */
+@Composable
+private fun JoiningEventScreen(
+    phase: JoinPhase,
+    onConfirm: () -> Unit,
+    onCancel: () -> Unit,
+    onRetryLoad: () -> Unit,
+    onRetryJoin: () -> Unit,
+) {
+    Column(modifier = Modifier.fillMaxSize()) {
+        Column(
+            modifier = Modifier.weight(1f).fillMaxWidth(),
+            verticalArrangement = Arrangement.Center,
+            horizontalAlignment = Alignment.CenterHorizontally,
+        ) {
+            when (phase) {
+                JoinPhase.Loading ->
+                    StatusHero(StatusIndicator.Loading, "Loading event details …")
+                is JoinPhase.Ready ->
+                    AppEventHero(
+                        title = phase.name ?: "this event",
+                        subtitle = "You've been invited to back up your photos to this event.",
+                    )
+                JoinPhase.NotFound ->
+                    StatusHero(
+                        StatusIndicator.Error,
+                        "Invalid invite",
+                        "This invite is invalid or the event no longer exists.",
+                    )
+                JoinPhase.LoadFailed ->
+                    StatusHero(
+                        StatusIndicator.Error,
+                        "Couldn't load the event",
+                        "Check your connection and try again.",
+                    )
+                is JoinPhase.Committing ->
+                    StatusHero(StatusIndicator.Loading, "Joining …")
+                is JoinPhase.CommitFailed ->
+                    StatusHero(
+                        StatusIndicator.Error,
+                        "Couldn't join",
+                        "Something went wrong. Try again.",
+                    )
+            }
+        }
+        // Actions pinned to the bottom; which ones depend on the phase.
+        Column(
+            modifier = Modifier.fillMaxWidth(),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            when (phase) {
+                is JoinPhase.Ready -> {
+                    PrimaryButton(label = "Join", onClick = onConfirm)
+                    SecondaryButton(label = "Cancel", onClick = onCancel)
+                }
+                JoinPhase.LoadFailed -> {
+                    PrimaryButton(label = "Retry", onClick = onRetryLoad)
+                    SecondaryButton(label = "Cancel", onClick = onCancel)
+                }
+                is JoinPhase.CommitFailed -> {
+                    PrimaryButton(label = "Retry", onClick = onRetryJoin)
+                    SecondaryButton(label = "Cancel", onClick = onCancel)
+                }
+                JoinPhase.NotFound ->
+                    SecondaryButton(label = "Cancel", onClick = onCancel)
+                // In-flight phases offer no actions.
+                JoinPhase.Loading, is JoinPhase.Committing -> Unit
+            }
+        }
+    }
+}
+
+/**
+ * The switch confirmation (a different event scanned while joined) — the leave-style dialog. On confirm
+ * it runs leave-then-join. Mirrors the join phases in a compact `AppConfirmDialog`: the loaded phase
+ * offers Switch; a load/commit failure offers Retry; a missing event dismisses. Transient
+ * loading/committing phases show nothing.
+ */
+@Composable
+private fun SwitchDialog(
+    switch: PendingSwitch,
+    currentEventName: String?,
+    onConfirmSwitch: () -> Unit,
+    onCancelSwitch: () -> Unit,
+    onRetryLoad: () -> Unit,
+    onRetryJoin: () -> Unit,
+) {
+    val current = currentEventName ?: "this event"
+    when (val phase = switch.phase) {
+        is JoinPhase.Ready ->
+            AppConfirmDialog(
+                title = "Leave $current and join ${phase.name ?: "the new event"}?",
+                confirmLabel = "Switch",
+                cancelLabel = "Cancel",
+                onConfirm = onConfirmSwitch,
+                onDismiss = onCancelSwitch,
+            )
+        JoinPhase.NotFound ->
+            AppConfirmDialog(
+                title = "This invite is invalid or the event no longer exists.",
+                confirmLabel = "OK",
+                cancelLabel = "Cancel",
+                onConfirm = onCancelSwitch,
+                onDismiss = onCancelSwitch,
+            )
+        JoinPhase.LoadFailed ->
+            AppConfirmDialog(
+                title = "Couldn't load the event. Try again?",
+                confirmLabel = "Retry",
+                cancelLabel = "Cancel",
+                onConfirm = onRetryLoad,
+                onDismiss = onCancelSwitch,
+            )
+        is JoinPhase.CommitFailed ->
+            AppConfirmDialog(
+                title = "Couldn't switch events. Try again?",
+                confirmLabel = "Retry",
+                cancelLabel = "Cancel",
+                onConfirm = onRetryJoin,
+                onDismiss = onCancelSwitch,
+            )
+        // Transient — no dialog while the details load or the switch commits.
+        JoinPhase.Loading, is JoinPhase.Committing -> Unit
     }
 }
 
