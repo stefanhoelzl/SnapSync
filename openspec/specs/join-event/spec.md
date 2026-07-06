@@ -31,7 +31,9 @@ before offering the confirm action, showing a **loading** phase ("Loading event 
 SHALL open immediately on decode (the `eventId` is local) and the load SHALL gate only the confirm, per
 these outcomes:
 
-- **200** → a **loaded** phase showing the event **name**, with the confirm action (Join) enabled;
+- **200** → a **loaded** phase showing the event **name** and carrying the event's **`createdAt`** (both
+  read from the `{ eventId, name, createdAt }` body), with the confirm action (Join) enabled; the loaded
+  `createdAt` SHALL seed the cutoff row's **default** (see capability `photo-date-cutoff`);
 - **404** → a **blocked** phase ("this invite is invalid or the event no longer exists") with **no**
   confirm action — the details fetch is the event-existence gate;
 - **network / non-404 failure** → a **failed** phase with a **Retry** action that re-runs the fetch.
@@ -39,8 +41,8 @@ these outcomes:
 The confirm action SHALL NOT be offered while loading, blocked, or failed.
 
 #### Scenario: Details load and enable confirm
-- **WHEN** `GET /events/:eventId` returns 200 with the event name
-- **THEN** the join surface shows the name and offers the Join confirm action
+- **WHEN** `GET /events/:eventId` returns 200 with the event name and `createdAt`
+- **THEN** the join surface shows the name, seeds the cutoff default from `createdAt`, and offers the Join confirm action
 
 #### Scenario: A missing event blocks the join
 - **WHEN** `GET /events/:eventId` returns 404
@@ -54,18 +56,20 @@ The confirm action SHALL NOT be offered while loading, blocked, or failed.
 
 The `JoinEvent` use-case SHALL, on confirm, **first** enroll the device by writing a **register-only,
 empty** device manifest (no assets) via `PUT /events/:eventId/devices/:deviceId`, and **only on a
-successful (201) enrollment** commit the join by saving the config (`eventId` + the loaded name) and
-enabling the background-upload producer. Enrollment SHALL make the device an enumerable, notifiable
-member of the event immediately — before any photo upload — by making its manifest object present under
-`events/<eventId>/devices/`; the device's real asset manifest is written later by the normal upload
-cycle (last-write-wins). A **failed** enrollment SHALL keep the user on the join surface with an error
-and a **Retry** action, and SHALL persist nothing and enable no producer (no half-joined state). The
-platform effects (the enrollment write and the producer enable) SHALL be injected so the use-case is
-pure `commonMain`.
+successful (201) enrollment** commit the join by saving the config (`eventId`, the loaded name, **and the
+chosen capture-date cutoff** — see capability `photo-date-cutoff`) and enabling the background-upload
+producer. The cutoff persisted at this step is the value shown in the confirm surface's cutoff row (its
+`createdAt`-seeded default, the "only from now" instant, or a manual pick). Enrollment SHALL make the
+device an enumerable, notifiable member of the event immediately — before any photo upload — by making
+its manifest object present under `events/<eventId>/devices/`; the device's real asset manifest is written
+later by the normal upload cycle (last-write-wins), **scoped by the persisted cutoff**. A **failed**
+enrollment SHALL keep the user on the join surface with an error and a **Retry** action, and SHALL persist
+nothing and enable no producer (no half-joined state). The platform effects (the enrollment write and the
+producer enable) SHALL be injected so the use-case is pure `commonMain`.
 
-#### Scenario: Confirm enrolls with an empty manifest, then commits
+#### Scenario: Confirm enrolls with an empty manifest, then commits with the cutoff
 - **WHEN** the user confirms and `PUT /events/:eventId/devices/:deviceId` with an empty manifest returns 201
-- **THEN** the config is saved with the event id and name, the upload producer is enabled, and the UI reduces to `Joined`
+- **THEN** the config is saved with the event id, name, and the chosen cutoff, the upload producer is enabled, and the UI reduces to `Joined`
 
 #### Scenario: A failed enrollment does not join
 - **WHEN** the user confirms and the enrollment PUT fails
@@ -119,16 +123,23 @@ SHALL show an error and a **Retry** that re-runs **only** the join for the remem
 
 The capability SHALL own a `JoiningEvent` `UiState` family (carrying the `eventId` and a details phase
 of loading / loaded-with-name / not-found / failed) and the full-screen "Join event" screen that
-renders it, built from `App*` components on `ScreenLayout` (no Material 3 in any `App*` signature). The
-surface SHALL be structured so future join options (start date, upload/download direction, album
-selection, save-to album) can be added as rows without reshaping the surface or the state; this
-iteration SHALL expose **only** the confirm (name + Join / Cancel) and SHALL introduce no join-options
-data type. Cancel SHALL discard the pending join and return to the base screen (the create layer when
-no event is configured).
+renders it, built from `App*` components on `ScreenLayout` (no Material 3 in any `App*` signature). In its
+**loaded** phase the surface SHALL present, in addition to the event name and the confirm (Join) / Cancel
+actions, a **capture-date cutoff row**: a prefilled cutoff value (defaulting to the loaded `createdAt`),
+an **"Only from now"** shortcut that snaps the value to the current instant, and a manual **date+time**
+picker (via the design system's date/time component) for any value, with bounds unrestricted. The chosen
+cutoff SHALL cross the container to `JoinEvent` on confirm. The surface SHALL remain structured so further
+future join options (upload/download direction, album selection, save-to album) can be added as rows
+without reshaping the surface or the state. Cancel SHALL discard the pending join and return to the base
+screen (the create layer when no event is configured).
 
-#### Scenario: The join screen renders the loaded event with Join and Cancel
+#### Scenario: The join screen renders the loaded event with the cutoff row, Join and Cancel
 - **WHEN** the `JoiningEvent` state is in its loaded phase
-- **THEN** the full-screen surface shows the event name with Join and Cancel actions and no other options
+- **THEN** the full-screen surface shows the event name, the cutoff row (default from `createdAt`, an "Only from now" shortcut, a manual date+time picker), and Join / Cancel actions
+
+#### Scenario: The chosen cutoff crosses on confirm
+- **WHEN** the user adjusts the cutoff row and taps Join
+- **THEN** the chosen cutoff is passed through the confirm intent into `JoinEvent`
 
 #### Scenario: Cancel discards the pending join
 - **WHEN** the user cancels on the join surface with no event configured
@@ -138,14 +149,21 @@ no event is configured).
 
 When a decoded deeplink carries `autoJoin = true`, the system SHALL run the **same** gate — decode,
 fetch details, and (when already joined to a different event) leave-then-join — but SHALL **auto-fire**
-the confirm once details reach the loaded phase, rather than waiting for a user tap. This keeps the
-headless developer launch path working (it cannot tap a confirm control). Because the auto path has no
-interactive surface, a load failure (404 or network) or a failed enrollment SHALL **abort and log**
-rather than parking on a retryable error state.
+the confirm once details reach the loaded phase, rather than waiting for a user tap. The auto-fired
+confirm SHALL use the **default** cutoff (the loaded event's `createdAt`), unless the deeplink carries an
+explicit dev/test cutoff (see capability `deeplink-config`), in which case that value SHALL be used. This
+keeps the headless developer launch path working (it cannot tap a confirm control) and lets it force a
+specific cutoff to observe date filtering. Because the auto path has no interactive surface, a load
+failure (404 or network) or a failed enrollment SHALL **abort and log** rather than parking on a
+retryable error state.
 
-#### Scenario: autoJoin provisions without a tap
-- **WHEN** a deeplink with `autoJoin = true` is decoded and its details load successfully
-- **THEN** the confirm is auto-fired — the enrollment and provision run with no user interaction
+#### Scenario: autoJoin provisions without a tap, using the createdAt default cutoff
+- **WHEN** a deeplink with `autoJoin = true` and no explicit cutoff is decoded and its details load successfully
+- **THEN** the confirm is auto-fired with the cutoff defaulting to the loaded `createdAt` — the enrollment and provision run with no user interaction
+
+#### Scenario: autoJoin honors an explicit dev/test cutoff
+- **WHEN** a deeplink with `autoJoin = true` carries an explicit dev/test cutoff and its details load
+- **THEN** the auto-fired confirm provisions with that explicit cutoff
 
 #### Scenario: autoJoin still leaves an existing event
 - **WHEN** a deeplink with `autoJoin = true` for a different event is decoded while already joined
