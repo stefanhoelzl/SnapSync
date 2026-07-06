@@ -45,7 +45,7 @@ fun StatusPane(
     // reviewable when a JoiningEvent state is forged), the full-stack world harness binds them to a
     // real `JoinEvent` over the world so `:app:desktop:run` drives the actual gate.
     loadJoinDetails: suspend (String) -> JoinLoad = { JoinLoad.Failed },
-    commitJoin: suspend (String, String?) -> Boolean = { _, _ -> false },
+    commitJoin: suspend (String, String?, String?) -> Boolean = { _, _, _ -> false },
     // Exposes the constructed container so a harness's right pane can drive the gate (e.g. onOpenUrl).
     onHostReady: (StatusContainerHost) -> Unit = {},
 ) {

@@ -111,7 +111,7 @@ private fun host(
     requester: PermissionRequester = SpyRequester(),
     configFake: FakeConfig = FakeConfig(),
     loadJoinDetails: suspend (String) -> JoinLoad = { JoinLoad.Failed },
-    commitJoin: suspend (String, String?) -> Boolean = { _, _ -> false },
+    commitJoin: suspend (String, String?, String?) -> Boolean = { _, _, _ -> false },
     leave: suspend () -> Unit = {},
 ) = StatusContainerHost(
     source, permission, requester, configFake, configFake, scope,
@@ -208,40 +208,46 @@ class StatusContainerHostTest {
 
     @OptIn(ExperimentalCoroutinesApi::class)
     @Test
-    fun `a successful create flows through the use-case to the joined layer`() = runTest {
+    fun `a successful create routes into the join gate then confirming joins with the cutoff`() = runTest {
         val config = FakeConfig(null)
         val creationStatus = MutableCreationStatusSource()
+        lateinit var host: StatusContainerHost
         val creator = CreateEvent(
             client = StubClient(CreateOutcome.Created(EVENT_ID, name = "My Party")),
             status = creationStatus,
-            // The provision path a scanned QR also takes: config goes present with the name in hand.
-            provision = { eventId, name -> config.save(EventConfig(eventId, name)) },
+            // Route the minted event into the SAME gate a scan uses (non-auto-confirmed).
+            onMinted = { eventId -> host.onEventCreated(eventId) },
             scope = CoroutineScope(UnconfinedTestDispatcher(testScheduler)),
         )
-        val host = StatusContainerHost(
+        host = StatusContainerHost(
             FakeSyncStatusSource(), FakePermissionSource(PermissionStatus.GRANTED), SpyRequester(),
             config, config, backgroundScope,
             creationStatusSource = creationStatus, creator = creator,
+            loadJoinDetails = { JoinLoad.Found("My Party", "2026-07-06T00:00:00Z") },
+            commitJoin = { id, name, cutoff -> config.save(EventConfig(id, name, cutoff)); true },
         )
         host.test(this) {
             runOnCreate()
             creator.create("My Party")
-            // minted → provisioned (config present, granted) → listing snapshot total 0 → settled.
-            expectState(inSync)
+            // minted → routed into the gate → loaded, offering Join with the createdAt default cutoff.
+            expectState(UiState.JoiningEvent(EVENT_ID, JoinPhase.Ready("My Party", "2026-07-06T00:00:00Z")))
+            containerHost.onConfirmJoin("2026-07-06T00:00:00Z")
+            expectState(inSync) // confirm provisions → config present + granted + snapshot total 0 → settled
             cancelAndIgnoreRemainingItems()
         }
+        assertEquals("2026-07-06T00:00:00Z", config.config.value?.minPhotoDate)
     }
 
     @OptIn(ExperimentalCoroutinesApi::class)
     @Test
-    fun `a failed create surfaces the inline error and stays on the create layer`() = runTest {
+    fun `a failed create surfaces the inline error and opens no gate`() = runTest {
         val config = FakeConfig(null)
         val creationStatus = MutableCreationStatusSource()
-        var provisioned = false
+        var gateOpened = false
         val creator = CreateEvent(
             client = StubClient(CreateOutcome.Transient),
             status = creationStatus,
-            provision = { _, _ -> provisioned = true },
+            onMinted = { _ -> gateOpened = true },
             scope = CoroutineScope(UnconfinedTestDispatcher(testScheduler)),
         )
         val host = StatusContainerHost(
@@ -255,7 +261,7 @@ class StatusContainerHostTest {
             expectState(UiState.CreateEvent(error = "Couldn't reach the server."))
             cancelAndIgnoreRemainingItems()
         }
-        assertEquals(false, provisioned)
+        assertEquals(false, gateOpened)
     }
 
     @Test
@@ -412,13 +418,13 @@ class StatusContainerHostTest {
         host(
             FakeSyncStatusSource(SyncStatus.Loading), backgroundScope,
             permission = FakePermissionSource(PermissionStatus.GRANTED), configFake = configFake,
-            loadJoinDetails = { JoinLoad.Found("Anna's Birthday") },
-            commitJoin = { id, name -> enrolled += id; configFake.save(EventConfig(id, name)); true },
+            loadJoinDetails = { JoinLoad.Found("Anna's Birthday", null) },
+            commitJoin = { id, name, _ -> enrolled += id; configFake.save(EventConfig(id, name)); true },
         ).test(this) {
             runOnCreate()
             containerHost.onOpenUrl(encodeConfigUrl(EventLinkPayload(EVENT_ID)))
-            expectState(UiState.JoiningEvent(EVENT_ID, JoinPhase.Ready("Anna's Birthday")))
-            containerHost.onConfirmJoin()
+            expectState(UiState.JoiningEvent(EVENT_ID, JoinPhase.Ready("Anna's Birthday", null)))
+            containerHost.onConfirmJoin(null)
             expectState(joinedLoading) // commit saved config -> present + granted + Loading snapshot
             cancelAndIgnoreRemainingItems()
         }
@@ -432,12 +438,12 @@ class StatusContainerHostTest {
             FakeSyncStatusSource(SyncStatus.Loading), backgroundScope,
             permission = FakePermissionSource(PermissionStatus.GRANTED), configFake = FakeConfig(null),
             loadJoinDetails = { JoinLoad.NotFound },
-            commitJoin = { _, _ -> commits++; true },
+            commitJoin = { _, _, _ -> commits++; true },
         ).test(this) {
             runOnCreate()
             containerHost.onOpenUrl(encodeConfigUrl(EventLinkPayload(EVENT_ID)))
             expectState(UiState.JoiningEvent(EVENT_ID, JoinPhase.NotFound))
-            containerHost.onConfirmJoin() // inert when not Ready
+            containerHost.onConfirmJoin(null) // inert when not Ready
             containerHost.onCancelJoin()
             expectState(UiState.CreateEvent())
             cancelAndIgnoreRemainingItems()
@@ -451,13 +457,13 @@ class StatusContainerHostTest {
         host(
             FakeSyncStatusSource(SyncStatus.Loading), backgroundScope,
             permission = FakePermissionSource(PermissionStatus.GRANTED), configFake = FakeConfig(null),
-            loadJoinDetails = { if (attempt++ == 0) JoinLoad.Failed else JoinLoad.Found("Anna's Birthday") },
+            loadJoinDetails = { if (attempt++ == 0) JoinLoad.Failed else JoinLoad.Found("Anna's Birthday", null) },
         ).test(this) {
             runOnCreate()
             containerHost.onOpenUrl(encodeConfigUrl(EventLinkPayload(EVENT_ID)))
             expectState(UiState.JoiningEvent(EVENT_ID, JoinPhase.LoadFailed))
             containerHost.onRetryLoad()
-            expectState(UiState.JoiningEvent(EVENT_ID, JoinPhase.Ready("Anna's Birthday")))
+            expectState(UiState.JoiningEvent(EVENT_ID, JoinPhase.Ready("Anna's Birthday", null)))
             cancelAndIgnoreRemainingItems()
         }
     }
@@ -467,13 +473,13 @@ class StatusContainerHostTest {
         host(
             FakeSyncStatusSource(SyncStatus.Loading), backgroundScope,
             permission = FakePermissionSource(PermissionStatus.GRANTED), configFake = FakeConfig(null),
-            loadJoinDetails = { JoinLoad.Found("Anna's Birthday") },
-            commitJoin = { _, _ -> false },
+            loadJoinDetails = { JoinLoad.Found("Anna's Birthday", null) },
+            commitJoin = { _, _, _ -> false },
         ).test(this) {
             runOnCreate()
             containerHost.onOpenUrl(encodeConfigUrl(EventLinkPayload(EVENT_ID)))
-            expectState(UiState.JoiningEvent(EVENT_ID, JoinPhase.Ready("Anna's Birthday")))
-            containerHost.onConfirmJoin()
+            expectState(UiState.JoiningEvent(EVENT_ID, JoinPhase.Ready("Anna's Birthday", null)))
+            containerHost.onConfirmJoin(null)
             expectState(UiState.JoiningEvent(EVENT_ID, JoinPhase.CommitFailed("Anna's Birthday")))
             cancelAndIgnoreRemainingItems()
         }
@@ -485,7 +491,7 @@ class StatusContainerHostTest {
         host(
             FakeSyncStatusSource(SyncStatus.Loading), backgroundScope,
             permission = FakePermissionSource(PermissionStatus.GRANTED), configFake = FakeConfig(SAMPLE_CONFIG),
-            loadJoinDetails = { loads++; JoinLoad.Found("x") },
+            loadJoinDetails = { loads++; JoinLoad.Found("x", null) },
         ).test(this) {
             runOnCreate()
             containerHost.onOpenUrl(encodeConfigUrl(EventLinkPayload(EVENT_ID)))
@@ -503,14 +509,14 @@ class StatusContainerHostTest {
         host(
             FakeSyncStatusSource(SyncStatus.Loading), backgroundScope,
             permission = FakePermissionSource(PermissionStatus.GRANTED), configFake = configFake,
-            loadJoinDetails = { JoinLoad.Found("New Event") },
-            commitJoin = { id, name -> order += "join"; configFake.save(EventConfig(id, name)); true },
+            loadJoinDetails = { JoinLoad.Found("New Event", null) },
+            commitJoin = { id, name, _ -> order += "join"; configFake.save(EventConfig(id, name)); true },
             leave = { order += "leave"; configFake.clear() },
         ).test(this) {
             runOnCreate()
             containerHost.onOpenUrl(encodeConfigUrl(EventLinkPayload(other)))
-            expectState(UiState.Joined(SyncHealth.Loading, PendingSwitch(other, JoinPhase.Ready("New Event"))))
-            containerHost.onConfirmSwitch()
+            expectState(UiState.Joined(SyncHealth.Loading, PendingSwitch(other, JoinPhase.Ready("New Event", null))))
+            containerHost.onConfirmSwitch(null)
             // leave clears config + join saves the new one; conflated to the settled joined layer.
             expectState(joinedLoading)
             cancelAndIgnoreRemainingItems()
@@ -526,8 +532,8 @@ class StatusContainerHostTest {
         host(
             FakeSyncStatusSource(SyncStatus.Loading), backgroundScope,
             permission = FakePermissionSource(PermissionStatus.GRANTED), configFake = configFake,
-            loadJoinDetails = { JoinLoad.Found("Anna's Birthday") },
-            commitJoin = { id, name -> committed = id; configFake.save(EventConfig(id, name)); true },
+            loadJoinDetails = { JoinLoad.Found("Anna's Birthday", null) },
+            commitJoin = { id, name, _ -> committed = id; configFake.save(EventConfig(id, name)); true },
         ).test(this) {
             runOnCreate()
             containerHost.onOpenUrl(encodeConfigUrl(EventLinkPayload(EVENT_ID, autoJoin = true)))

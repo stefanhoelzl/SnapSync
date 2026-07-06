@@ -19,7 +19,7 @@ class HttpEventDetailsSourceTest {
         HttpEventDetailsSource(HttpClient(handler), "https://edge.example/")
 
     @Test
-    fun `200 yields Found with the name from the event route`() = runTest {
+    fun `200 yields Found with the name and createdAt from the event route`() = runTest {
         var requested: String? = null
         val engine = MockEngine { request ->
             requested = request.url.toString()
@@ -33,7 +33,7 @@ class HttpEventDetailsSourceTest {
         val result = source(engine).fetch(eventId)
 
         assertEquals("https://edge.example/events/$eventId", requested)
-        assertEquals(EventDetails.Found("Anna's Birthday"), result)
+        assertEquals(EventDetails.Found("Anna's Birthday", "2026-06-27T10:00:00Z"), result)
     }
 
     @Test

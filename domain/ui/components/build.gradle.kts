@@ -21,6 +21,9 @@ kotlin {
             // QR rendering for AppQrCode — Compose-MP-native, contained to this module like Material 3
             // (the qrose import never leaves this module; no `App*` signature carries a QR type).
             implementation(libs.qrose)
+            // Plain multiplatform date-time value for AppDateTimeField's semantic signature
+            // (LocalDateTime is a data/meaning type, not a Material 3 type — the containment rule is intact).
+            implementation(libs.kotlinx.datetime)
         }
     }
 }

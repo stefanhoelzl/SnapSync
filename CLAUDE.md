@@ -127,6 +127,10 @@ uvx pymobiledevice3 apps install <path>/SnapSync.ipa
 ```
 (Install goes over `installation_proxy`/lockdownd — no developer tunnel needed. Launch, screenshot,
 and other DVT services do need the tunnel + DDI, reached headless via `--userspace` above.)
+**Reinstall hangs if the app is running** — `installation_proxy` stalls at "…% Complete" forever when
+replacing a **running** app (the first install of a fresh session is fine because nothing is running
+yet). SnapSync ignores SIGTERM (see the black-screen trap), so **SIGKILL it first**: `dvt signal <pid>
+9 --userspace`, then install. Get `<pid>` from the last `dvt launch` (it prints it).
 
 ### Headless macOS build loop (ssh-mac)
 

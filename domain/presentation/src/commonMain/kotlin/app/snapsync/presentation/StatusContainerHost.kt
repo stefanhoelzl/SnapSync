@@ -40,7 +40,8 @@ import org.orbitmvi.orbit.container
  * failure (retry).
  */
 sealed interface JoinLoad {
-    data class Found(val name: String?) : JoinLoad
+    /** [createdAt] (the event's UTC `…Z` creation timestamp) seeds the join screen's cutoff default. */
+    data class Found(val name: String?, val createdAt: String?) : JoinLoad
     data object NotFound : JoinLoad
     data object Failed : JoinLoad
 }
@@ -73,7 +74,10 @@ class StatusContainerHost(
     // Defaults are inert (load fails, commit does nothing) so non-iOS hosts and tests that don't
     // exercise join construct unchanged; iOS binds them to the `JoinEvent` use-case.
     private val loadJoinDetails: suspend (eventId: String) -> JoinLoad = { JoinLoad.Failed },
-    private val commitJoin: suspend (eventId: String, name: String?) -> Boolean = { _, _ -> false },
+    // `commitJoin` = enroll (register-only empty manifest) then provision with the chosen capture-date
+    // cutoff (capability `photo-date-cutoff`; `null` = whole-library), returning `true` when joined.
+    private val commitJoin: suspend (eventId: String, name: String?, minPhotoDate: String?) -> Boolean =
+        { _, _, _ -> false },
     // Dev-path abort logging (autoJoin has no UI to show a load/commit failure). No-op by default.
     private val log: (String) -> Unit = {},
     // Download progress for the joined-layer "downloaded X of Y" line (capability `photo-download`).
@@ -192,7 +196,7 @@ class StatusContainerHost(
                 val eventId = result.payload.eventId
                 val current = configSource.config.value
                 when {
-                    result.payload.autoJoin -> autoConfirm(eventId)
+                    result.payload.autoJoin -> autoConfirm(eventId, result.payload.minPhotoDate)
                     current == null -> startPending(eventId)               // first join → JoiningEvent
                     current.eventId != eventId -> startPending(eventId)    // switch → Joined.pendingSwitch
                     else -> Unit                                           // same event → no-op
@@ -208,20 +212,28 @@ class StatusContainerHost(
         loadInto(p.eventId)
     }
 
-    /** Confirm a first join: enroll → provision (no leave). */
-    fun onConfirmJoin() = intent { commit(withLeave = false) }
+    /** Confirm a first join with the chosen capture-date [cutoff]: enroll → provision (no leave). */
+    fun onConfirmJoin(cutoff: String?) = intent { commit(withLeave = false, cutoff = cutoff) }
 
-    /** Confirm a switch: leave the current event, then enroll → provision the new one. */
-    fun onConfirmSwitch() = intent { commit(withLeave = true) }
+    /** Confirm a switch: leave the current event, then enroll → provision the new one with [cutoff]. */
+    fun onConfirmSwitch(cutoff: String?) = intent { commit(withLeave = true, cutoff = cutoff) }
 
     /** Retry a failed commit — the leave (if any) already succeeded, so this re-runs only the join. */
-    fun onRetryJoin() = intent { commit(withLeave = false) }
+    fun onRetryJoin(cutoff: String?) = intent { commit(withLeave = false, cutoff = cutoff) }
 
     /** Discard the pending join/switch, returning to the base screen. */
     fun onCancelJoin() = intent { pending.value = null }
 
     /** Discard the pending switch, staying in the current event. */
     fun onCancelSwitch() = intent { pending.value = null }
+
+    /**
+     * A create just minted [eventId] (capability `event-creation-ui`): route it into the **same**
+     * pending-join gate a scanned QR uses — non-auto-confirmed — so the creator loads the event, picks a
+     * capture-date cutoff, and confirms like any joiner. The `POST /events` already minted the event, so
+     * the gate holds a real `eventId` and performs a real details load; provision happens on confirm.
+     */
+    fun onEventCreated(eventId: String) = intent { startPending(eventId) }
 
     // The gate's async work runs INLINE within the orbit intent (not on a side scope) so each pending
     // transition reduces through the container's own pipeline deterministically. A modal join is fine
@@ -233,7 +245,7 @@ class StatusContainerHost(
 
     private suspend fun loadInto(eventId: String) {
         val phase = when (val load = loadJoinDetails(eventId)) {
-            is JoinLoad.Found -> JoinPhase.Ready(load.name)
+            is JoinLoad.Found -> JoinPhase.Ready(load.name, load.createdAt)
             JoinLoad.NotFound -> JoinPhase.NotFound
             JoinLoad.Failed -> JoinPhase.LoadFailed
         }
@@ -241,7 +253,7 @@ class StatusContainerHost(
         pending.value?.let { if (it.eventId == eventId) pending.value = it.copy(phase = phase) }
     }
 
-    private suspend fun commit(withLeave: Boolean) {
+    private suspend fun commit(withLeave: Boolean, cutoff: String?) {
         val p = pending.value ?: return
         // Only a loaded (Ready) or previously-failed (CommitFailed) surface can be confirmed; a
         // still-loading/blocked/committing phase ignores the action.
@@ -249,7 +261,7 @@ class StatusContainerHost(
         val name = p.phase.name()
         pending.value = p.copy(phase = JoinPhase.Committing(name))
         if (withLeave) leave()
-        if (commitJoin(p.eventId, name)) {
+        if (commitJoin(p.eventId, name, cutoff)) {
             // Success: config flips present via ConfigSource → reduces to Joined; drop the overlay.
             if (pending.value?.eventId == p.eventId) pending.value = null
         } else if (pending.value?.eventId == p.eventId) {
@@ -262,7 +274,7 @@ class StatusContainerHost(
      * different current event first — but auto-fire the confirm on a successful load. No UI, so a load
      * or commit failure aborts and logs rather than parking on a retryable state.
      */
-    private suspend fun autoConfirm(eventId: String) {
+    private suspend fun autoConfirm(eventId: String, explicitCutoff: String?) {
         val load = loadJoinDetails(eventId)
         if (load !is JoinLoad.Found) {
             log("autoJoin aborted: details load did not succeed for $eventId ($load)")
@@ -270,7 +282,10 @@ class StatusContainerHost(
         }
         val current = configSource.config.value
         if (current != null && current.eventId != eventId) leave()
-        if (!commitJoin(eventId, load.name)) log("autoJoin aborted: enrollment failed for $eventId")
+        // The auto-fired confirm uses the default cutoff (the loaded `createdAt`), unless the deeplink
+        // supplied an explicit dev/test cutoff (capability `photo-date-cutoff`).
+        val cutoff = explicitCutoff ?: load.createdAt
+        if (!commitJoin(eventId, load.name, cutoff)) log("autoJoin aborted: enrollment failed for $eventId")
     }
 }
 

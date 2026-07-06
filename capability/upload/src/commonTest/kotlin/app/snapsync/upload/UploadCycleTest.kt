@@ -7,6 +7,7 @@ import app.snapsync.engine.SyncEngine
 import app.snapsync.engine.UploadError
 import app.snapsync.engine.UploadRequest
 import app.snapsync.engine.UploadRequestProvider
+import app.snapsync.gallery.RESOURCE_META_CREATION_DATE
 import app.snapsync.gallery.normalizeAssetId
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
@@ -514,5 +515,77 @@ class UploadCycleTest {
 
         assertEquals(CycleResult.COMPLETED, result)
         assertEquals(listOf("manifest"), order) // re-ack is not a completion → no notify
+    }
+
+    // ── Capture-date cutoff (capability `photo-date-cutoff`) ──────────────────────────────────────────
+
+    private fun datedResource(name: String, creationDate: String, assetId: String = name) =
+        Resource(
+            filename = name, assetId = assetId, contentType = "image/jpeg",
+            metadata = mapOf(RESOURCE_META_CREATION_DATE to creationDate), data = Unit,
+        )
+
+    private fun cycleWithCutoff(
+        backend: InMemoryLedgerBackend,
+        platform: FakePlatform,
+        cutoff: String?,
+    ): UploadCycle {
+        val ledger = LedgerWriter(backend)
+        return UploadCycle(
+            SyncEngine(StubUploadRequestProvider(), ledger), ledger, platform, FakeStore(),
+            photoCutoff = { cutoff },
+        )
+    }
+
+    @Test
+    fun cutoff_excludes_pre_cutoff_resources_from_upload() = runTest {
+        val backend = InMemoryLedgerBackend()
+        val platform = FakePlatform(
+            discovered = listOf(
+                datedResource("old-primary.jpg", "2026-07-01T00:00:00Z", "old"),
+                datedResource("new-primary.jpg", "2026-07-10T00:00:00Z", "new"),
+            ),
+        )
+
+        cycleWithCutoff(backend, platform, "2026-07-06T00:00:00Z").run()
+
+        assertEquals(listOf("new-primary.jpg"), platform.created.map { it.filename })
+        assertNull(backend.get("old-primary.jpg"), "a pre-cutoff asset creates no ledger row")
+    }
+
+    @Test
+    fun cutoff_applies_on_the_incremental_walk_too() = runTest {
+        val backend = InMemoryLedgerBackend()
+        val platform = FakePlatform(
+            discovered = listOf(datedResource("old-primary.jpg", "2026-07-01T00:00:00Z", "old")),
+            fullEnumeration = false,
+        )
+
+        cycleWithCutoff(backend, platform, "2026-07-06T00:00:00Z").run()
+
+        assertTrue(platform.created.isEmpty(), "a pre-cutoff changed asset is excluded on the incremental walk")
+    }
+
+    @Test
+    fun a_null_cutoff_uploads_the_whole_library() = runTest {
+        val backend = InMemoryLedgerBackend()
+        val platform = FakePlatform(
+            discovered = listOf(datedResource("old-primary.jpg", "2000-01-01T00:00:00Z", "old")),
+        )
+
+        cycleWithCutoff(backend, platform, null).run()
+
+        assertEquals(listOf("old-primary.jpg"), platform.created.map { it.filename }, "null cutoff = whole-library")
+    }
+
+    @Test
+    fun an_undated_asset_is_excluded_under_a_cutoff() = runTest {
+        val backend = InMemoryLedgerBackend()
+        // No creationDate metadata → empty string, which sorts before any non-empty cutoff.
+        val platform = FakePlatform(discovered = listOf(resource("undated-primary.jpg", "undated")))
+
+        cycleWithCutoff(backend, platform, "2026-07-06T00:00:00Z").run()
+
+        assertTrue(platform.created.isEmpty(), "an asset with no creationDate is out of scope under a cutoff")
     }
 }

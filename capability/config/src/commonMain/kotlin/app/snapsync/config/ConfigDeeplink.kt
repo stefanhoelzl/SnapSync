@@ -56,9 +56,10 @@ fun encodeConfigUrl(payload: EventLinkPayload): String {
 /**
  * Decodes a raw `snapsync://` URL into an [EventLinkPayload], performing structural-only validation
  * (scheme/host, `v == 3`, base64url, UTF-8 JSON with the required `eventId` key plus the optional
- * `autoJoin` key and no other, `eventId` non-empty and a canonical UUID) and **no** network I/O.
- * Never throws: every deviation becomes a [ConfigDecodeResult.Failure]. The success result carries the
- * decoded [EventLinkPayload.autoJoin] (default `false`).
+ * `autoJoin`/`minPhotoDate` keys and no other, `eventId` non-empty and a canonical UUID) and **no**
+ * network I/O. Never throws: every deviation becomes a [ConfigDecodeResult.Failure]. The success result
+ * carries the decoded [EventLinkPayload.autoJoin] (default `false`) and [EventLinkPayload.minPhotoDate]
+ * (default `null`). The strict serializer (`ignoreUnknownKeys = false`) still rejects any *other* key.
  */
 fun decodeConfigUrl(raw: String): ConfigDecodeResult {
     val trimmed = raw.trim()

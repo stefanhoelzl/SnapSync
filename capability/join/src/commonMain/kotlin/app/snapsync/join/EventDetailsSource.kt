@@ -14,7 +14,12 @@ import kotlinx.serialization.json.Json
  * failure (network/5xx → offer Retry). [Found.name] is nullable because the marker's name is cosmetic.
  */
 sealed interface EventDetails {
-    data class Found(val name: String?) : EventDetails
+    /**
+     * [name] is the (cosmetic, nullable) event name; [createdAt] is the event's creation timestamp
+     * (ISO-8601 UTC `…Z`, already the cutoff shape) used to seed the join screen's capture-date cutoff
+     * default (capability `photo-date-cutoff`). [createdAt] is nullable defensively (a legacy marker).
+     */
+    data class Found(val name: String?, val createdAt: String?) : EventDetails
     data object NotFound : EventDetails
     data object Failed : EventDetails
 }
@@ -44,8 +49,10 @@ class HttpEventDetailsSource(
         runCatching {
             val response = client.get("$base/events/$eventId")
             when (response.status) {
-                HttpStatusCode.OK ->
-                    EventDetails.Found(json.decodeFromString(MetaDto.serializer(), response.bodyAsText()).name)
+                HttpStatusCode.OK -> {
+                    val meta = json.decodeFromString(MetaDto.serializer(), response.bodyAsText())
+                    EventDetails.Found(name = meta.name, createdAt = meta.createdAt)
+                }
                 HttpStatusCode.NotFound -> EventDetails.NotFound
                 else -> EventDetails.Failed
             }

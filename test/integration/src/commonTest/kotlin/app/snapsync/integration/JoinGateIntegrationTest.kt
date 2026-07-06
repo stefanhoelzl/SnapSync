@@ -51,11 +51,11 @@ class JoinGateIntegrationTest {
 
             host.onOpenUrl(deeplink(EVENT_E))
             assertEquals(
-                UiState.JoiningEvent(EVENT_E, JoinPhase.Ready("Anna's Wedding")),
+                UiState.JoiningEvent(EVENT_E, JoinPhase.Ready("Anna's Wedding", "2026-01-01T00:00:00Z")),
                 host.await { (it as? UiState.JoiningEvent)?.phase is JoinPhase.Ready },
             )
 
-            host.onConfirmJoin()
+            host.onConfirmJoin(null)
             host.await { it is UiState.Joined } // config flipped present → joined layer
 
             // World outcomes: config provisioned + a register-only EMPTY manifest deposited (membership).
@@ -116,7 +116,7 @@ class JoinGateIntegrationTest {
             host.await { (it as? UiState.JoiningEvent)?.phase is JoinPhase.Ready }
 
             w.backendOffline = true // enrollment PUT now fails
-            host.onConfirmJoin()
+            host.onConfirmJoin(null)
             host.await { (it as? UiState.JoiningEvent)?.phase is JoinPhase.CommitFailed }
 
             assertNull(w.configSource.config.value) // not joined
@@ -137,7 +137,7 @@ class JoinGateIntegrationTest {
             host.onOpenUrl(deeplink(EVENT_F))
             host.await { (it as? UiState.Joined)?.pendingSwitch?.phase is JoinPhase.Ready }
 
-            host.onConfirmSwitch()
+            host.onConfirmSwitch(null)
             host.await { it is UiState.Joined && it.pendingSwitch == null && w.configSource.config.value?.eventId == EVENT_F }
 
             assertEquals(EVENT_F, w.configSource.config.value?.eventId) // switched
@@ -187,6 +187,27 @@ class JoinGateIntegrationTest {
         }
     }
 
+    @Test
+    fun join_persists_the_capture_date_cutoff_through_the_provision_path() = worldTest {
+        // Regression: the chosen cutoff must survive decode → autoConfirm → commitJoin → join →
+        // provision → config. A wiring that drops it (as an early iOS build did) leaves the extension
+        // whole-library. An autoJoin deeplink carries the dev/test cutoff explicitly.
+        val scope = CoroutineScope(coroutineContext + Job())
+        try {
+            val w = World()
+            w.store.registerEvent(EVENT_E, "Anna's Wedding")
+            val host = joinHost(w, scope)
+
+            val cutoff = "2020-01-01T00:00:00Z"
+            host.onOpenUrl(encodeConfigUrl(EventLinkPayload(EVENT_E, autoJoin = true, minPhotoDate = cutoff)))
+            host.await { it is UiState.Joined }
+
+            assertEquals(cutoff, w.configSource.config.value?.minPhotoDate, "the cutoff must be persisted in config")
+        } finally {
+            scope.cancel()
+        }
+    }
+
     // ---- helpers --------------------------------------------------------------------------------
 
     private fun deeplink(eventId: String) = encodeConfigUrl(EventLinkPayload(eventId))
@@ -197,7 +218,7 @@ class JoinGateIntegrationTest {
             deviceIdentity = object : DeviceIdentity { override fun deviceId() = w.ownDeviceId },
             details = HttpEventDetailsSource(w.client, w.host),
             enroller = ManifestDeviceEnroller(w.manifestUploader),
-            provision = { cfg -> w.provision(cfg.eventId, cfg.name) },
+            provision = { cfg -> w.provision(cfg.eventId, cfg.name, cfg.minPhotoDate) },
         )
         return StatusContainerHost(
             syncSource = w.syncStatusSource(scope),
@@ -207,13 +228,13 @@ class JoinGateIntegrationTest {
             store = NoOpJoinConfigStore,
             scope = scope,
             loadJoinDetails = { id -> joinEvent.loadDetails(id).toJoinLoad() },
-            commitJoin = { id, name -> joinEvent.join(id, name) != JoinOutcome.EnrollFailed },
+            commitJoin = { id, name, cutoff -> joinEvent.join(id, name, cutoff) != JoinOutcome.EnrollFailed },
             leave = { w.leave() },
         )
     }
 
     private fun EventDetails.toJoinLoad(): JoinLoad = when (this) {
-        is EventDetails.Found -> JoinLoad.Found(name)
+        is EventDetails.Found -> JoinLoad.Found(name, createdAt)
         EventDetails.NotFound -> JoinLoad.NotFound
         EventDetails.Failed -> JoinLoad.Failed
     }

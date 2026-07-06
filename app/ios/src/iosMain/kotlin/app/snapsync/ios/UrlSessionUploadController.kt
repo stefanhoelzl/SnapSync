@@ -128,6 +128,9 @@ class UrlSessionUploadController(
         log.i { "url-session runCycle: config ok (host=${config.host}) — invoking UploadCycle" }
         val engine = SyncEngine(EdgeUploadRequestProvider(config.host, deviceId), ledger)
         val cycleEventId = config.eventId // this cycle's event (config is re-read each cycle)
+        // Per-device capture-date cutoff (photo-date-cutoff): scopes the byte-upload filter AND the
+        // device-manifest projection. `null` = whole-library. Read fresh with the config each cycle.
+        val cutoff = configSource.config.value?.minPhotoDate
         val result = UploadCycle(
             engine, ledger, platform, discoveryStore, log,
             // Device manifest from THIS cycle's discovery, PUT after the byte jobs are created; bounded
@@ -138,7 +141,7 @@ class UrlSessionUploadController(
                     withTimeout(DEVICE_MANIFEST_TIMEOUT_MS) {
                         deviceManifestProducer.produce(
                             eventId = cycleEventId,
-                            startDate = null, // whole-library scope (the date filter is deferred)
+                            startDate = cutoff, // per-device capture-date cutoff (photo-date-cutoff)
                             discovered = deviceManifestAssetsFromResources(discovery.resources),
                             removedAssetIds = discovery.removedAssetIds.toSet(),
                             fullEnumeration = discovery.fullEnumeration,
@@ -154,6 +157,8 @@ class UrlSessionUploadController(
             },
             // Echo-suppression: never re-upload an asset this device downloaded + imported.
             suppressedAssetIds = suppressedAssetIds,
+            // Per-device capture-date cutoff: pre-cutoff photos' bytes never upload (photo-date-cutoff).
+            photoCutoff = { cutoff },
         ).run()
         result
     }

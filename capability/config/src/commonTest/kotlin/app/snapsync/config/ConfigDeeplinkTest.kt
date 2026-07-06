@@ -130,4 +130,31 @@ class ConfigDeeplinkTest {
         assertEquals(eventId, payload.eventId)
         assertEquals(true, payload.autoJoin)
     }
+
+    @Test
+    fun `absent minPhotoDate defaults to null`() {
+        assertEquals(null, success(encodeConfigUrl(sample)).minPhotoDate)
+    }
+
+    @Test
+    fun `dev cutoff key decodes alongside autoJoin`() {
+        val cutoff = "2026-07-06T14:32:11Z"
+        val json = """{"eventId":"$eventId","autoJoin":true,"minPhotoDate":"$cutoff"}"""
+        val payload = success("snapsync://config?v=3&d=${absent(json)}")
+        assertEquals(eventId, payload.eventId)
+        assertEquals(true, payload.autoJoin)
+        assertEquals(cutoff, payload.minPhotoDate)
+    }
+
+    @Test
+    fun `canonical encode omits minPhotoDate`() {
+        // encodeDefaults is off, so an absent cutoff never appears in a real invite QR.
+        assertTrue(!encodeConfigUrl(sample).contains("minPhotoDate"))
+    }
+
+    @Test
+    fun `unknown key still fails even with the cutoff key present`() {
+        val json = """{"eventId":"$eventId","minPhotoDate":"2026-07-06T14:32:11Z","extra":"x"}"""
+        assertFailure("snapsync://config?v=3&d=${absent(json)}")
+    }
 }

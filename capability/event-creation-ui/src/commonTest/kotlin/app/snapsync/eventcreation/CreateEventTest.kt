@@ -22,17 +22,17 @@ class CreateEventTest {
     }
 
     @Test
-    fun `success provisions the event and returns to idle without a success status`() = runTest {
+    fun `success routes the minted event to the gate and returns to idle without a success status`() = runTest {
         val client = FakeClient(CreateOutcome.Created(eventId))
         val status = MutableCreationStatusSource()
         var provisioned: String? = null
         val scope = CoroutineScope(UnconfinedTestDispatcher(testScheduler))
-        val useCase = CreateEvent(client, status, provision = { eventId, _ -> provisioned = eventId }, scope = scope)
+        val useCase = CreateEvent(client, status, onMinted = { eventId -> provisioned = eventId }, scope = scope)
 
         useCase.create("  My Party  ")
 
         assertEquals("My Party", client.lastName) // trimmed before the call
-        assertEquals(eventId, provisioned) // funneled into the provision path
+        assertEquals(eventId, provisioned) // handed to the join-gate routing hook
         assertEquals(CreationStatus.Idle, status.creationStatus.value) // no success state
     }
 
@@ -42,7 +42,7 @@ class CreateEventTest {
         var provisioned: String? = null
         val scope = CoroutineScope(UnconfinedTestDispatcher(testScheduler))
         val useCase = CreateEvent(
-            FakeClient(CreateOutcome.InvalidName), status, provision = { eventId, _ -> provisioned = eventId }, scope = scope,
+            FakeClient(CreateOutcome.InvalidName), status, onMinted = { eventId -> provisioned = eventId }, scope = scope,
         )
 
         useCase.create("x")
@@ -57,7 +57,7 @@ class CreateEventTest {
         var provisioned: String? = null
         val scope = CoroutineScope(UnconfinedTestDispatcher(testScheduler))
         val useCase = CreateEvent(
-            FakeClient(CreateOutcome.Transient), status, provision = { eventId, _ -> provisioned = eventId }, scope = scope,
+            FakeClient(CreateOutcome.Transient), status, onMinted = { eventId -> provisioned = eventId }, scope = scope,
         )
 
         useCase.create("x")

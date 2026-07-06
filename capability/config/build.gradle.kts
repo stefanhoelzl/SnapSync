@@ -12,6 +12,8 @@ kotlin {
         commonMain.dependencies {
             api(libs.coroutines.core)
             implementation(libs.kotlinx.serialization.json)
+            // Capability `photo-date-cutoff`: "now" + local→UTC conversion for the capture-date cutoff.
+            implementation(libs.kotlinx.datetime)
         }
         commonTest.dependencies {
             implementation(kotlin("test"))

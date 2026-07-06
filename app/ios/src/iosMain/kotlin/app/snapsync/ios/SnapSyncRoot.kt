@@ -139,6 +139,9 @@ object SnapSyncRoot {
         OwnDeviceGalleryStatusSource(
             PhotoLibraryResourceEnumerator(),
             suppressedLocalIds = { downloadStore.suppressedLocalIds() },
+            // The total is cutoff-scoped so the joined screen reaches "in sync" (capability
+            // `photo-date-cutoff`): pre-cutoff assets never upload, so they must not inflate `N`.
+            photoCutoff = { config.config.value?.minPhotoDate },
         )
     }
 
@@ -259,8 +262,9 @@ object SnapSyncRoot {
         CreateEvent(
             client = HttpEventCreationClient(darwinHttpClient(), backendHost),
             status = creationStatus,
-            // Create has the name from POST /events — provision it directly, no metadata fetch.
-            provision = { eventId, name -> provisionEvent(eventId, name) },
+            // Route the minted event into the SAME join gate a scan uses (capability `photo-date-cutoff`):
+            // the creator loads the event, picks a capture-date cutoff, and confirms like any joiner.
+            onMinted = { eventId -> host.onEventCreated(eventId) },
             scope = scope,
         )
     }
@@ -275,7 +279,7 @@ object SnapSyncRoot {
             deviceIdentity = object : DeviceIdentity { override fun deviceId() = deviceId },
             details = HttpEventDetailsSource(darwinHttpClient(), backendHost),
             enroller = ManifestDeviceEnroller(HttpDeviceManifestUploader(darwinHttpClient(), backendHost)),
-            provision = { cfg -> provisionEvent(cfg.eventId, cfg.name) },
+            provision = ::provisionEvent,
         )
     }
 
@@ -304,7 +308,9 @@ object SnapSyncRoot {
             // fetched (GET), confirming enrolls (empty-manifest PUT) then provisions. `commitJoin` is
             // true unless enrollment failed (the same-event no-op is a success).
             loadJoinDetails = { eventId -> joinEvent.loadDetails(eventId).toJoinLoad() },
-            commitJoin = { eventId, name -> joinEvent.join(eventId, name) != JoinOutcome.EnrollFailed },
+            commitJoin = { eventId, name, cutoff ->
+                joinEvent.join(eventId, name, cutoff) != JoinOutcome.EnrollFailed
+            },
             log = { message -> log.i { message } },
             downloadSource = downloadStatusSource,
         )
@@ -312,7 +318,7 @@ object SnapSyncRoot {
 
     // Adapt the join capability's [EventDetails] to the presentation-local [JoinLoad] the gate consumes.
     private fun EventDetails.toJoinLoad(): JoinLoad = when (this) {
-        is EventDetails.Found -> JoinLoad.Found(name)
+        is EventDetails.Found -> JoinLoad.Found(name, createdAt)
         EventDetails.NotFound -> JoinLoad.NotFound
         EventDetails.Failed -> JoinLoad.Failed
     }
@@ -508,25 +514,30 @@ object SnapSyncRoot {
      * self-reconciles, gated by its `joinedEventId` marker. Re-enabling matters because a prior leave
      * disabled the producer and the grant collector does not re-fire while permission is unchanged.
      */
-    private suspend fun provisionEvent(eventId: String, name: String?) = log.invocation(
+    // Persist the WHOLE [EventConfig] the join/create use-case built and run the join side effects.
+    // Taking the object (not its fields) is deliberate: the composition root must never destructure and
+    // rebuild it, or a newly-added field (the `minPhotoDate` cutoff was such a field) is silently dropped
+    // before the Keychain save the extension reads. Named `cfg` to avoid shadowing the `config` store.
+    private suspend fun provisionEvent(cfg: EventConfig) = log.invocation(
         "provisionEvent",
-        params = "eventId=$eventId named=${name != null}",
+        params = "eventId=${cfg.eventId} named=${cfg.name != null} cutoff=${cfg.minPhotoDate}",
     ) {
         // Switch: provisioning a DIFFERENT event while joined leaves the previous one on the backend
         // first (best-effort — a failure never prevents the switch; see `deeplink-config`). Re-scanning
         // the same event is not a switch and fires no leave. The confirm dialog for this is a later change.
         config.config.value?.eventId?.let { previous ->
-            if (previous != eventId) leaveNotifier.leave(previous, deviceId)
+            if (previous != cfg.eventId) leaveNotifier.leave(previous, deviceId)
         }
-        // Persist immediately (join never blocks on the cosmetic name); the container's ConfigSource
-        // is this instance. Create passes the name straight through; scan passes null.
-        config.save(EventConfig(eventId, name))
+        // Persist the full config as-is (join never blocks on the cosmetic name); the container's
+        // ConfigSource is this instance. The per-device capture-date cutoff rides along untouched, so the
+        // extension reads it (capability `photo-date-cutoff`).
+        config.save(cfg)
         refreshStatusSources() // (re)joined event → re-enumerate own total + re-LIST completeness
         if (permission.permission.value == PermissionStatus.GRANTED) enableBackgroundUpload()
         // Auto-download the other contributors' photos for this event (capability `photo-download`).
-        scope.launch { downloadController.reconcile(eventId) }
+        scope.launch { downloadController.reconcile(cfg.eventId) }
         // Scan path: fill the title by id, best-effort, off the join (a failure leaves name null).
-        if (name == null) scope.launch { fetchAndStoreName(eventId) }
+        if (cfg.name == null) scope.launch { fetchAndStoreName(cfg.eventId) }
     }
 
     /**
@@ -538,7 +549,8 @@ object SnapSyncRoot {
         val fetched = metadataSource.name(eventId) ?: return
         val current = config.config.value
         if (current?.eventId == eventId && current.name != fetched) {
-            config.save(EventConfig(eventId, fetched))
+            // Preserve the persisted cutoff — a name refresh must not clobber minPhotoDate (photo-date-cutoff).
+            config.save(current.copy(name = fetched))
         }
     }
 

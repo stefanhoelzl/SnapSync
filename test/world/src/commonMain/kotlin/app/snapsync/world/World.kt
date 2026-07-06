@@ -92,6 +92,8 @@ class World(
         OwnDeviceGalleryStatusSource(
             enumerator = enumerator,
             suppressedLocalIds = { downloadStore.suppressedLocalIds() },
+            // Cutoff-scoped total so the joined screen settles to "in sync" (capability `photo-date-cutoff`).
+            photoCutoff = { configCell.value?.minPhotoDate },
         )
     // Completed + pending both read from the world's real ledger (one consistent aggregates() read).
     val ledgerCounts: ReadingLedgerCountsSource = ReadingLedgerCountsSource {
@@ -150,10 +152,14 @@ class World(
         store.putManifest(eventId, deviceId, foreignManifest(deviceId, assets))
     }
 
-    /** Join/provision an event: register its marker and make its config present (the config gate lifts). */
-    fun provision(eventId: String, name: String? = null) {
+    /**
+     * Join/provision an event: register its marker and make its config present (the config gate lifts).
+     * [minPhotoDate] is this device's per-membership capture-date cutoff (capability `photo-date-cutoff`);
+     * `null` = whole-library (the shipped default).
+     */
+    fun provision(eventId: String, name: String? = null, minPhotoDate: String? = null) {
         store.registerEvent(eventId)
-        configCell.value = EventConfig(eventId, name)
+        configCell.value = EventConfig(eventId, name, minPhotoDate)
     }
 
     /**
@@ -192,6 +198,9 @@ class World(
     fun uploadCycle(eventId: String): UploadCycle {
         val engine = SyncEngine(EdgeUploadRequestProvider(host, ownDeviceId), ledger)
         val producer = manifestProducer()
+        // Per-device capture-date cutoff (photo-date-cutoff): scopes BOTH the byte-upload filter and the
+        // device-manifest projection. `null` = whole-library. Sourced from the joined-event config.
+        val cutoff = configCell.value?.minPhotoDate
         return UploadCycle(
             engine = engine,
             ledger = ledger,
@@ -200,13 +209,14 @@ class World(
             onDiscovery = { discovery ->
                 producer.produce(
                     eventId = eventId,
-                    startDate = null, // whole-library scope (SHIPPED behavior; no date filter)
+                    startDate = cutoff,
                     discovered = deviceManifestAssetsFromResources(discovery.resources),
                     removedAssetIds = discovery.removedAssetIds.toSet(),
                     fullEnumeration = discovery.fullEnumeration,
                 )
             },
             suppressedAssetIds = { downloadStore.suppressedLocalIds() },
+            photoCutoff = { cutoff },
         )
     }
 
@@ -235,12 +245,19 @@ class World(
             scope = scope,
         )
 
-    /** The real create-event use-case over the mini-edge (`POST /events` → provision). */
-    fun createEvent(scope: CoroutineScope): CreateEvent =
+    /**
+     * The real create-event use-case over the mini-edge (`POST /events` → [onMinted]). By default the
+     * harness provisions the minted event directly (whole-library); a caller wanting the production
+     * flow (route into the join gate to pick a cutoff) passes an [onMinted] that opens the pending join.
+     */
+    fun createEvent(
+        scope: CoroutineScope,
+        onMinted: suspend (eventId: String) -> Unit = { provision(it) },
+    ): CreateEvent =
         CreateEvent(
             client = HttpEventCreationClient(client, host),
             status = creationStatus,
-            provision = { eventId, name -> provision(eventId, name) },
+            onMinted = onMinted,
             scope = scope,
         )
 
