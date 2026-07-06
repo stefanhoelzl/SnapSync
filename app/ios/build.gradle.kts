@@ -21,6 +21,7 @@ kotlin {
             implementation(project(":domain:ui"))
             implementation(project(":domain:presentation"))
             implementation(project(":domain:status"))
+            implementation(project(":domain:logging"))
             implementation(project(":domain:engine"))
             implementation(project(":domain:permission"))
             implementation(project(":domain:gallery"))

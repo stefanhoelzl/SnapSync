@@ -1,5 +1,6 @@
 package app.snapsync.upload
 
+import app.snapsync.logging.invocation
 import co.touchlab.kermit.Logger
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -44,16 +45,24 @@ class BackgroundUploadPump(
     private var retrigger = false
 
     /** App entered the foreground: run the cycle and let completions drive further work. */
-    suspend fun onForeground() = drive(scheduleOnProcessing = false, alwaysScheduleNext = false)
+    suspend fun onForeground() = log.invocation("pump.onForeground") {
+        drive(scheduleOnProcessing = false, alwaysScheduleNext = false)
+    }
 
     /** An upload finished while foregrounded (a slot freed): pump the next batch. */
-    suspend fun onUploadCompleted() = drive(scheduleOnProcessing = false, alwaysScheduleNext = false)
+    suspend fun onUploadCompleted() = log.invocation("pump.onUploadCompleted") {
+        drive(scheduleOnProcessing = false, alwaysScheduleNext = false)
+    }
 
     /** Background `URLSession` completions were delivered on relaunch: record + top up, re-arm if work remains. */
-    suspend fun onSessionEvents() = drive(scheduleOnProcessing = true, alwaysScheduleNext = false)
+    suspend fun onSessionEvents() = log.invocation("pump.onSessionEvents") {
+        drive(scheduleOnProcessing = true, alwaysScheduleNext = false)
+    }
 
     /** A `BGProcessingTask` window opened: top up and re-submit the next heartbeat unconditionally. */
-    suspend fun onBackgroundTask() = drive(scheduleOnProcessing = true, alwaysScheduleNext = true)
+    suspend fun onBackgroundTask() = log.invocation("pump.onBackgroundTask") {
+        drive(scheduleOnProcessing = true, alwaysScheduleNext = true)
+    }
 
     private suspend fun drive(scheduleOnProcessing: Boolean, alwaysScheduleNext: Boolean) {
         // Single-flight admission: only one drain runs; overlapping triggers coalesce into a re-run.

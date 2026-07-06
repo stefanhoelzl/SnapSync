@@ -253,6 +253,7 @@ agent use and inject that one instead.
 
 ```
 :domain:engine         sync core + SQL ledger (the only state); no platform deps
+:domain:logging        cross-cutting diagnostics: logInvocation helper + LogContext ambient prefix + consolidated iOS device-log writers (Kermit-only leaf) (capability diagnostic-logging)
 :domain:status         ledger → SyncStatus projection (read-only)
 :domain:permission     permission seam (3-state)
 :domain:gallery        library resource-enumeration seam + upload-key/role layout (uploadKey, resourceRole, assetIdFromUploadKey, normalizeAssetId) + device manifest
@@ -298,7 +299,18 @@ platform backend is selected structurally in the app modules.
 
 ## Logging & errors
 
-- Log via **Kermit** (multiplatform).
+- Log via **Kermit** (multiplatform). Cross-cutting logging infra lives in **`:domain:logging`**: the
+  `logInvocation` enter/exit helper (params + result + duration), the process-global `LogContext`
+  ambient prefix, and the consolidated iOS device-log writers (`FileLogWriter`/`PublicNSLogWriter`).
+- **Device diagnostics** (capability `diagnostic-logging`): the app and extension are separate
+  processes, each writing its **own** verbatim, un-redacted `Documents/debug.log` (the App Group
+  container is not pullable — verified). Pull both:
+  `pymobiledevice3 apps pull app.snapsync Documents/debug.log` and
+  `… app.snapsync.BackgroundUpload Documents/debug.log`. `debug.log` is the **canonical un-redacted
+  channel** (os_log redacts `<private>`); it rolls to `debug.log.1` past 10 MB. Every line carries a
+  `[<entryPoint>]` prefix (e.g. `[onSilentPush]`, `[process]`) tracing it to what triggered it; wrap
+  new platform invocations / entry points with `logInvocation` and, for `scope.launch` work, wrap
+  *inside* the launch so the context spans the async body.
 - Errors are **reduced into state**: sealed domain errors → `UiState`, converted at capability
   boundaries — not thrown to the UI. This is also what lets the harness force any failure state.
 

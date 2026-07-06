@@ -9,6 +9,7 @@ import app.snapsync.upload.Discovery
 import app.snapsync.upload.PlatformJobState
 import app.snapsync.upload.PlatformUploadJob
 import app.snapsync.upload.UploadJobPlatform
+import app.snapsync.logging.invocation
 import co.touchlab.kermit.Logger
 import kotlinx.cinterop.ExperimentalForeignApi
 import kotlinx.coroutines.suspendCancellableCoroutine
@@ -103,43 +104,53 @@ class IosUrlSessionUploadPlatform(
         }
     }
 
-    override suspend fun discoverResources(sinceToken: ByteArray?): Discovery = discovery.discover(sinceToken)
+    override suspend fun discoverResources(sinceToken: ByteArray?): Discovery =
+        log.invocation("platform.discoverResources", result = { "${it.resources.size} resource(s)" }) {
+            discovery.discover(sinceToken)
+        }
 
     // No OS-sponsored free retry on this platform: failures return via fetchAckJobs and are recreated.
-    override suspend fun fetchRetryJobs(): List<PlatformUploadJob> = emptyList()
+    override suspend fun fetchRetryJobs(): List<PlatformUploadJob> =
+        log.invocation("platform.fetchRetryJobs", result = { "${it.size} job(s)" }) {
+            emptyList<PlatformUploadJob>()
+        }
 
-    override suspend fun createJob(request: UploadRequest, resource: Resource): CreateResult {
+    override suspend fun createJob(request: UploadRequest, resource: Resource): CreateResult =
+        log.invocation("platform.createJob", params = "key=${request.resource.filename}", result = { "$it" }) {
         val phResource = resource.data as? PHAssetResource ?: run {
             log.w { "createJob: resource payload is not a PHAssetResource — not creating" }
-            return CreateResult.FAILED
+            return@invocation CreateResult.FAILED
         }
-        if (locked { inFlight.size } >= cap) return CreateResult.LIMIT_EXCEEDED
+        if (locked { inFlight.size } >= cap) return@invocation CreateResult.LIMIT_EXCEEDED
 
         val fileUrl = stageResource(phResource, resource.filename) ?: run {
             log.w { "createJob: staging failed for ${resource.filename} — not creating" }
-            return CreateResult.FAILED
+            return@invocation CreateResult.FAILED
         }
         val url = NSURL.URLWithString(request.url) ?: run {
             deleteFile(fileUrl)
             log.w { "createJob: malformed destination URL — not creating" }
-            return CreateResult.FAILED
+            return@invocation CreateResult.FAILED
         }
         val urlRequest = discovery.buildRequest(url, request)
         val task = session.uploadTaskWithRequest(urlRequest, fromFile = fileUrl)
         task.taskDescription = resource.filename // the ledger key — the only field present across the lifecycle
         locked { inFlight[resource.filename] = InFlight(task, phResource, fileUrl) }
         task.resume()
-        return CreateResult.CREATED
+        return@invocation CreateResult.CREATED
     }
 
     // Unused on this tier (fetchRetryJobs is always empty), implemented as cancel-and-recreate for the seam.
-    override suspend fun retryJob(job: PlatformUploadJob, request: UploadRequest) {
-        cancelKey(job.key)
-        val resource = job.data as? PHAssetResource ?: return
-        createJob(request, Resource(job.key, "", job.contentType, emptyMap(), resource))
-    }
+    override suspend fun retryJob(job: PlatformUploadJob, request: UploadRequest) =
+        log.invocation("platform.retryJob", params = "key=${job.key}") {
+            cancelKey(job.key)
+            val resource = job.data as? PHAssetResource ?: return@invocation
+            createJob(request, Resource(job.key, "", job.contentType, emptyMap(), resource))
+            Unit
+        }
 
-    override suspend fun fetchAckJobs(): List<PlatformUploadJob> {
+    override suspend fun fetchAckJobs(): List<PlatformUploadJob> =
+        log.invocation("platform.fetchAckJobs", result = { "${it.size} job(s)" }) {
         val drained = locked { ArrayList(terminal).also { terminal.clear() } }
         val terminalJobs = drained.map {
             PlatformUploadJob(
@@ -161,13 +172,15 @@ class IosUrlSessionUploadPlatform(
             log.i { "reconcile: stranded REQUESTED $it (no live task) — surfacing FAILED to re-upload" }
             PlatformUploadJob(it, "application/octet-stream", PlatformJobState.FAILED, UploadError.Unknown("stranded"), data = null, handle = Unit)
         }
-        return terminalJobs + strandedJobs
+        terminalJobs + strandedJobs
     }
 
-    override suspend fun acknowledge(job: PlatformUploadJob) {
-        val removed = locked { inFlight.remove(job.key) }
-        removed?.let { deleteFile(it.fileUrl) }
-    }
+    override suspend fun acknowledge(job: PlatformUploadJob) =
+        log.invocation("platform.acknowledge", params = "key=${job.key}") {
+            val removed = locked { inFlight.remove(job.key) }
+            removed?.let { deleteFile(it.fileUrl) }
+            Unit
+        }
 
     /**
      * Force the (lazy) background session to be adopted for this process — on a

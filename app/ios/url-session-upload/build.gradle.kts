@@ -14,6 +14,7 @@ kotlin {
 
     sourceSets {
         commonMain.dependencies {
+            implementation(project(":domain:logging"))
             implementation(project(":domain:engine"))
             implementation(project(":capability:upload"))
             implementation(project(":app:ios:photokit-discovery"))

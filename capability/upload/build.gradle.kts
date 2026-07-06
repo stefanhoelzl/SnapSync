@@ -16,6 +16,7 @@ kotlin {
     iosSimulatorArm64()
     sourceSets {
         commonMain.dependencies {
+            implementation(project(":domain:logging"))
             implementation(project(":domain:engine"))
             implementation(project(":domain:gallery"))
             implementation(libs.coroutines.core)

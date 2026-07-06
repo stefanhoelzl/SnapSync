@@ -39,6 +39,9 @@ import app.snapsync.status.LedgerCounts
 import app.snapsync.status.OwnDeviceGalleryStatusSource
 import app.snapsync.status.ReadingLedgerCountsSource
 import app.snapsync.upload.UPLOAD_LIVENESS_DARWIN_NAME
+import app.snapsync.logging.FileLogWriter
+import app.snapsync.logging.PublicNSLogWriter
+import app.snapsync.logging.invocation
 import co.touchlab.kermit.Logger
 import kotlinx.cinterop.COpaquePointer
 import kotlinx.cinterop.ExperimentalForeignApi
@@ -92,7 +95,12 @@ object SnapSyncRoot {
         // Route kermit through a public NSLog writer AND a file writer. NSLog is redacted as
         // `<private>` on current iOS (dynamic format strings are private), so the file writer
         // (Documents/debug.log, pulled via `pymobiledevice3 apps pull`) is the reliable channel.
+        // Both are consolidated in `:domain:logging`; each line carries the ambient `[entryPoint]`.
         Logger.setLogWriters(PublicNSLogWriter(), FileLogWriter())
+        // Boot banner (capability `diagnostic-logging`, D5) — names the process + build version so a
+        // reader who concatenates the app/extension files can tell runs apart. `log` isn't assigned
+        // yet in this init block, so use a fresh tagged logger.
+        Logger.withTag("SnapSyncRoot").i { "=== app process start build=${buildVersion()} ===" }
     }
 
     private val log = Logger.withTag("SnapSyncRoot")
@@ -274,7 +282,10 @@ object SnapSyncRoot {
      * reflects any uploads that progressed while backgrounded (capability `sync-status` liveness).
      * Touching [host] ensures the stack is assembled before the first transition arrives.
      */
-    fun onForeground() {
+    fun onForeground() = log.invocation(
+        "onForeground",
+        params = "useAppDrivenUpload=$useAppDrivenUpload force=$forceUrlSessionUpload osSupported=${backgroundUploadSupported()}",
+    ) {
         host
         // Listen for the extension's cross-process liveness ding while foreground, so upload status moves
         // live as the extension records completions/new jobs (design.md §2.3). Foreground-only: a
@@ -282,8 +293,9 @@ object SnapSyncRoot {
         registerLivenessObserver()
         // App-driven upload tier (iOS 18–26.0): foreground entry pumps an upload cycle (completions then
         // keep it draining while the app is open). No-op on ≥26.1 (the OS drives the extension).
-        log.i { "onForeground: useAppDrivenUpload=$useAppDrivenUpload (force=$forceUrlSessionUpload, osSupported=${backgroundUploadSupported()})" }
         if (useAppDrivenUpload) urlSessionUpload.onForeground()
+        // These launches escape this entry point's synchronous span, so each labels itself via its own
+        // wrapped seam (reconcile/refresh); onForeground's own context covers only the dispatch here.
         scope.launch { refreshStatusSources() }
         // Foreground-only discovery (capability `photo-download`): pick up foreign photos others added
         // since the last read, and import anything already staged. No background poll.
@@ -297,9 +309,10 @@ object SnapSyncRoot {
      * assets get imported at the next idle/charging window even if no further download wakes the app
      * (capability `photo-download`, 5.4). Status liveness itself stays event-driven (foreground entry).
      */
-    fun onBackground() {
+    fun onBackground() = log.invocation("onBackground") {
         unregisterLivenessObserver()
         scheduleDownloadBackstop()
+        log.i { "=== app entering background ===" }
     }
 
     // --- Extension → app cross-process liveness ding (capability `sync-status` / `ios-app-shell`) ---
@@ -372,8 +385,11 @@ object SnapSyncRoot {
      */
     fun runDownloadBackstop(onComplete: () -> Unit) {
         scope.launch {
-            runCatching { downloadController.importReady() }
-                .onFailure { log.w(it) { "download backstop import failed" } }
+            // Wrap INSIDE the launch so `[runDownloadBackstop]` spans the async import.
+            log.invocation("runDownloadBackstop") {
+                runCatching { downloadController.importReady() }
+                    .onFailure { log.w(it) { "download backstop import failed" } }
+            }
             scheduleDownloadBackstop() // re-arm for the next idle window
             onComplete()
         }
@@ -407,7 +423,7 @@ object SnapSyncRoot {
      * mismatch it resets and re-seeds; the same event is a no-op). An invalid link flashes the
      * transient error via the container.
      */
-    fun onOpenUrl(url: String) {
+    fun onOpenUrl(url: String) = log.invocation("onOpenUrl", params = "url=$url") {
         when (val decoded = decodeConfigUrl(url)) {
             is ConfigDecodeResult.Success -> scope.launch { provisionEvent(decoded.payload.eventId, name = null) }
             is ConfigDecodeResult.Failure -> host.onOpenUrl(url) // flashes the invalid-link error
@@ -420,7 +436,7 @@ object SnapSyncRoot {
      * source; the registration collector PUTs `devices/<id>/config`. Idempotent across launches and
      * rotations. Touch [host] so the collector is running to observe it. No decision in Swift.
      */
-    fun onPushToken(hex: String) {
+    fun onPushToken(hex: String) = log.invocation("onPushToken", params = "hex=${hex.take(12)}…") {
         host
         pushTokenSource.deliver(hex)
     }
@@ -436,8 +452,12 @@ object SnapSyncRoot {
     fun onSilentPush(eventId: String, completion: () -> Unit) {
         host
         scope.launch {
-            runCatching { pushReceiver.onSilentPush(eventId) }
-                .onFailure { log.w(it) { "silent push handling failed for $eventId" } }
+            // Wrap INSIDE the launch so `[onSilentPush]` spans the async reconcile (and the download
+            // HTTP + import lines it drives trace back to this push).
+            log.invocation("onSilentPush", params = "eventId=$eventId") {
+                runCatching { pushReceiver.onSilentPush(eventId) }
+                    .onFailure { log.w(it) { "silent push handling failed for $eventId" } }
+            }
             completion()
         }
     }
@@ -450,7 +470,10 @@ object SnapSyncRoot {
      * self-reconciles, gated by its `joinedEventId` marker. Re-enabling matters because a prior leave
      * disabled the producer and the grant collector does not re-fire while permission is unchanged.
      */
-    private suspend fun provisionEvent(eventId: String, name: String?) {
+    private suspend fun provisionEvent(eventId: String, name: String?) = log.invocation(
+        "provisionEvent",
+        params = "eventId=$eventId named=${name != null}",
+    ) {
         // Persist immediately (join never blocks on the cosmetic name); the container's ConfigSource
         // is this instance. Create passes the name straight through; scan passes null.
         config.save(EventConfig(eventId, name))
@@ -479,7 +502,7 @@ object SnapSyncRoot {
      * Realize [launchEnvDeeplinkApplied] once on first view creation (called from
      * [MainViewController]). Touching the `by lazy` runs the env read exactly once per process.
      */
-    fun applyLaunchEnvDeeplink() {
+    fun applyLaunchEnvDeeplink() = log.invocation("applyLaunchEnvDeeplink") {
         launchEnvDeeplinkApplied
     }
 
@@ -537,7 +560,7 @@ object SnapSyncRoot {
         clearRequestedOffMain({ ledgerBackend.clearRequested() }, log = log)
     }
 
-    private suspend fun enableBackgroundUpload() {
+    private suspend fun enableBackgroundUpload() = log.invocation("enableBackgroundUpload") {
         disableExtension() // awaited: the off-main REQUESTED clear completes BEFORE the re-enable below
         setUploadExtensionEnabled(true)
         log.i { "background-upload extension re-registered (disable→enable, cleared REQUESTED)" }
@@ -617,8 +640,16 @@ object SnapSyncRoot {
     }
 
     /** The upload heartbeat BGProcessingTask handler (app-driven tier). Registered in the Swift shell. */
-    fun runUploadHeartbeat(onComplete: () -> Unit) {
+    fun runUploadHeartbeat(onComplete: () -> Unit) = log.invocation("runUploadHeartbeat") {
         if (useAppDrivenUpload) urlSessionUpload.onBackgroundTask(onComplete) else onComplete()
+    }
+
+    /** App short-version(build) for the boot banner (capability `diagnostic-logging`, D5). */
+    private fun buildVersion(): String {
+        val bundle = NSBundle.mainBundle
+        val short = bundle.objectForInfoDictionaryKey("CFBundleShortVersionString") as? String ?: "?"
+        val build = bundle.objectForInfoDictionaryKey("CFBundleVersion") as? String ?: "?"
+        return "$short($build)"
     }
 
     /** Whether the iOS 26.1 background-upload API is present on this system. */
