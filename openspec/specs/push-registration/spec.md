@@ -31,7 +31,7 @@ acquisition (calling `registerForRemoteNotifications` and receiving the token) i
 
 The module SHALL provide a `PushRegistration` use-case (in `commonMain`, tested) that, given the
 `deviceId` (from the `device-identity` seam), the backend host (injected compile-time base), and a
-`pushToken` (`token` + `env` from `PushTokenSource`), performs a `PUT <host>/devices/<deviceId>/config`
+`pushToken` (`token` + `env` from `PushTokenSource`), performs a `PUT <host>/devices/<deviceId>`
 with the JSON body `{ "pushToken": { "kind": "apns", "token": <token>, "env": <env> } }` via an
 **injected HTTP client seam** (faked in tests; the real client is the shared Darwin/Ktor client at the
 composition root). It SHALL build the request with string-building only — no crypto, no signing — and
@@ -42,7 +42,7 @@ registration SHALL NOT block join, upload, or download).
 #### Scenario: Registration PUTs the config document
 
 - **WHEN** `PushRegistration` runs with `deviceId`, host, and an `apns` token/env
-- **THEN** it issues `PUT <host>/devices/<deviceId>/config` with body `{ "pushToken": { "kind":
+- **THEN** it issues `PUT <host>/devices/<deviceId>` with body `{ "pushToken": { "kind":
   "apns", "token": <token>, "env": <env> } }`
 
 #### Scenario: A failed registration does not disrupt the app

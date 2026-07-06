@@ -18,8 +18,8 @@ Authoritative design: docs/design.md §3.1 (keys, manifest, read-time completene
 ## Requirements
 ### Requirement: Per-event file listing route
 
-The backend SHALL accept an HTTP `GET` at the path template `/devices/<deviceId>/files` (the literal
-labels `devices` and `files` are required) and respond with a flat JSON array of the **raw stored
+The backend SHALL accept an HTTP `GET` at the path template `/files/devices/<deviceId>` (the literal
+labels `files` and `devices` are required) and respond with a flat JSON array of the **raw stored
 objects** under that device's partition — one element per object, no manifest read, no completeness
 computation. `deviceId` MUST match a UUID pattern. A request whose path does not match this route
 (missing a label, wrong depth) SHALL yield `404`; a matched request whose `deviceId` is not a UUID
@@ -30,7 +30,7 @@ served by the same application as the upload endpoint.
 
 #### Scenario: Valid device id accepted
 
-- **WHEN** a `GET` to `/devices/<uuid>/files` arrives with a valid UUID
+- **WHEN** a `GET` to `/files/devices/<uuid>` arrives with a valid UUID
 - **THEN** the endpoint responds `200` with a flat JSON array of the device's stored objects
 
 #### Scenario: Non-UUID device id rejected
@@ -40,18 +40,18 @@ served by the same application as the upload endpoint.
 
 #### Scenario: Unmatched path or wrong method rejected
 
-- **WHEN** the path does not match `/devices/<deviceId>/files`, or the method is not `GET`
+- **WHEN** the path does not match `/files/devices/<deviceId>`, or the method is not `GET`
 - **THEN** the endpoint responds `404` and makes no upstream request
 
 #### Scenario: Empty or unknown partition yields empty array
 
-- **WHEN** a valid device id's partition `/devices/<uuid>/files/` holds no objects (empty or never written)
+- **WHEN** a valid device id's partition `/files/devices/<uuid>/` holds no objects (empty or never written)
 - **THEN** the endpoint responds `200` with `[]`
 
 ### Requirement: Asset assembly from a single directory listing
 
 The endpoint SHALL discover the device's objects with a **single** bunny native Storage List Files
-request against the device directory `/devices/<deviceId>/files/` (objects are direct children; no
+request against the device directory `/files/devices/<deviceId>/` (objects are direct children; no
 sub-directory fan-out and no manifest content reads). Each direct-child object in that listing becomes
 one entry in the response. The List request SHALL carry the storage zone's `AccessKey` header from
 configuration and never the account API key. There is no per-object follow-up read: the listing's own
@@ -73,7 +73,7 @@ Each listed object's `url` SHALL be an **AWS SigV4 presigned S3 GET URL** for th
 the backend against the storage zone's S3-compatible endpoint. The URL SHALL be
 `https://<s3-host>/<zone>/<key>?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=…&X-Amz-Date=…&X-Amz-Expires=604800&X-Amz-SignedHeaders=host&X-Amz-Signature=…`
 (path-style; `<s3-host>` and region from configuration; `<key>` the bare object key
-`devices/<deviceId>/files/<filename>`, each segment percent-encoded so the key stays one flat path),
+`files/devices/<deviceId>/<filename>`, each segment percent-encoded so the key stays one flat path),
 signed with the storage zone's credentials (Access Key ID = the zone name, Secret = the storage-zone
 `AccessKey`/password) and `X-Amz-Expires` of **7 days** (604800 s). The query signature is the **sole**
 authorization: a consumer fetches the object **directly** from bunny's S3 endpoint with this URL and no
@@ -87,7 +87,7 @@ SHALL expose the bunny account API key.
 #### Scenario: A presigned S3 GET URL is returned
 
 - **WHEN** a stored object is listed
-- **THEN** its `url` is a path-style `https://<s3-host>/<zone>/devices/<deviceId>/files/<filename>`
+- **THEN** its `url` is a path-style `https://<s3-host>/<zone>/files/devices/<deviceId>/<filename>`
   carrying `X-Amz-Algorithm=AWS4-HMAC-SHA256`, `X-Amz-Expires=604800`, and an `X-Amz-Signature`
 
 #### Scenario: The URL fetches the object directly from bunny's S3 endpoint
@@ -153,7 +153,7 @@ partition. The endpoint SHALL NOT expose or forward the bunny account API key.
 
 #### Scenario: No token required
 
-- **WHEN** a `GET /devices/<uuid>/files` carries a valid device id but no authorization token
+- **WHEN** a `GET /files/devices/<uuid>` carries a valid device id but no authorization token
 - **THEN** the listing is returned (the device id is the capability)
 
 #### Scenario: Account API key never exposed
@@ -176,8 +176,8 @@ same string the client uploaded — neither double-encoded nor left in an encode
 
 ### Requirement: Event-wide union read route
 
-The backend SHALL accept an HTTP `GET` at the path template `/event/<eventId>/files` (the literal
-labels `event` and `files` are required) and respond with a flat JSON array of the event's
+The backend SHALL accept an HTTP `GET` at the path template `/events/<eventId>/files` (the literal
+labels `events` and `files` are required) and respond with a flat JSON array of the event's
 **complete** assets aggregated across **all** contributing devices. `eventId` MUST match a UUID
 pattern. A request whose path does not match this route (missing a label, wrong depth) SHALL yield
 `404`; a matched request whose `eventId` is not a UUID SHALL yield `400`; neither case SHALL make an
@@ -187,7 +187,7 @@ and download endpoints, so it is available on every deployment target without se
 
 #### Scenario: Valid event id accepted
 
-- **WHEN** a `GET` to `/event/<uuid>/files` arrives with a valid UUID
+- **WHEN** a `GET` to `/events/<uuid>/files` arrives with a valid UUID
 - **THEN** the endpoint proceeds to assemble and respond with the event's complete-asset union
 
 #### Scenario: Non-UUID event id rejected
@@ -197,7 +197,7 @@ and download endpoints, so it is available on every deployment target without se
 
 #### Scenario: Unmatched path or wrong method rejected
 
-- **WHEN** the path does not match `/event/<eventId>/files`, or the method is not `GET`
+- **WHEN** the path does not match `/events/<eventId>/files`, or the method is not `GET`
 - **THEN** the endpoint responds `404` and makes no upstream request
 
 ### Requirement: Union event-existence gate
@@ -229,11 +229,11 @@ unknown/typo'd event id (`404`) from a real-but-empty event (`200 []`).
 ### Requirement: Union device enumeration and per-device fan-out
 
 The endpoint SHALL discover the event's contributing devices with a **single** bunny native Storage
-List Files request against the device-manifest directory `events/<eventId>/device/`; each
+List Files request against the device-manifest directory `events/<eventId>/devices/`; each
 direct-child `<deviceId>.json` object names one contributing device. An absent/empty directory (bunny
 `404` or no children) SHALL be treated as "no contributors" → `200 []`. For each enumerated device the
-endpoint SHALL read that device's manifest object `events/<eventId>/device/<deviceId>.json` **and**
-LIST that device's byte partition `devices/<deviceId>/files/` (the same single-LIST per-device read the
+endpoint SHALL read that device's manifest object `events/<eventId>/devices/<deviceId>.json` **and**
+LIST that device's byte partition `files/devices/<deviceId>/` (the same single-LIST per-device read the
 per-device list route uses). Every upstream request (marker, manifest-directory LIST, each manifest
 read, each per-device file LIST) SHALL carry the storage zone's `AccessKey` header from configuration
 and never the account API key. The stored device manifest is **already** the event's date-filtered
@@ -242,12 +242,12 @@ projection, so the union SHALL trust its `assets` list and SHALL NOT re-apply an
 #### Scenario: Devices enumerated with one LIST
 
 - **WHEN** the event has contributing devices
-- **THEN** the endpoint enumerates them with one List of `events/<eventId>/device/` and then, per
-  device, reads its manifest and lists its byte partition `devices/<deviceId>/files/`
+- **THEN** the endpoint enumerates them with one List of `events/<eventId>/devices/` and then, per
+  device, reads its manifest and lists its byte partition `files/devices/<deviceId>/`
 
 #### Scenario: Empty manifest directory yields empty array
 
-- **WHEN** `events/<eventId>/device/` lists no `<deviceId>.json` children (empty or `404`)
+- **WHEN** `events/<eventId>/devices/` lists no `<deviceId>.json` children (empty or `404`)
 - **THEN** the endpoint responds `200` with `[]` and reads no manifest
 
 #### Scenario: Reads use the storage AccessKey
@@ -265,7 +265,7 @@ projection, so the union SHALL trust its `assets` list and SHALL NOT re-apply an
 The endpoint SHALL include an asset in the union **only when every** resource the asset's manifest
 entry names is present in that device's byte partition. Presence SHALL be tested by membership of each
 resource's `key` (its storage object name) among the object names returned by that device's
-`devices/<deviceId>/files/` LIST (decoded back to the uploaded name, the equality the
+`files/devices/<deviceId>/` LIST (decoded back to the uploaded name, the equality the
 upload/list/download round-trip guarantees). An asset with any named resource missing from the
 partition SHALL be **omitted** from the union. A per-device file partition that is empty or absent
 (bunny `404`) SHALL be treated as "no bytes present" — every asset of that device is incomplete and
@@ -284,7 +284,7 @@ omitted — and SHALL NOT be a failure.
 
 #### Scenario: Device with no bytes contributes nothing
 
-- **WHEN** a device's `devices/<deviceId>/files/` partition is empty or `404`
+- **WHEN** a device's `files/devices/<deviceId>/` partition is empty or `404`
 - **THEN** every asset of that device is omitted, and the partition `404` is not treated as a failure
 
 ### Requirement: Union entry shape
@@ -333,7 +333,7 @@ partition `404` (no bytes) is **not** such a failure — it is handled as an emp
 
 #### Scenario: A failed per-device file listing fails the whole request
 
-- **WHEN** one device's `devices/<deviceId>/files/` LIST returns a non-`404` error or times out
+- **WHEN** one device's `files/devices/<deviceId>/` LIST returns a non-`404` error or times out
 - **THEN** the endpoint responds `502` and returns no union
 
 #### Scenario: All reads succeed
@@ -354,7 +354,7 @@ SHALL NOT expose or forward the bunny account API key.
 
 #### Scenario: No token required
 
-- **WHEN** a `GET /event/<uuid>/files` carries a valid event id but no authorization token
+- **WHEN** a `GET /events/<uuid>/files` carries a valid event id but no authorization token
 - **THEN** the union is returned (the event id is the capability)
 
 #### Scenario: Every contributing device is returned, tagged by id

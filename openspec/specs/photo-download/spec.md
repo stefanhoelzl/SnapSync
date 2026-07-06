@@ -5,7 +5,7 @@ TBD - created by archiving change add-photo-download. Update Purpose after archi
 ## Requirements
 ### Requirement: Foreign-asset selection by device identity
 
-The download client SHALL consume the event-wide union read (`GET /event/<eventId>/files`) for the
+The download client SHALL consume the event-wide union read (`GET /events/<eventId>/files`) for the
 joined event and SHALL select for download exactly those assets whose owning `deviceId` is **not**
 this install's `deviceId` (from `device-identity`) and that are **not** already recorded as imported
 in the download store. Assets owned by this device SHALL NOT be downloaded (they are already in this

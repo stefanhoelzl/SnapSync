@@ -5,21 +5,21 @@ TBD - created by archiving change add-event-creation. Update Purpose after archi
 ## Requirements
 ### Requirement: Event creation route
 
-The backend SHALL accept an HTTP `POST` at the path `/event` whose body is a JSON object containing a
+The backend SHALL accept an HTTP `POST` at the path `/events` whose body is a JSON object containing a
 `name`, and on success SHALL respond `201` with a JSON body `{ eventId, name, createdAt }`. The
 endpoint SHALL be served by the same Hono application as the upload and list endpoints, so it is
 available on every deployment target without separate configuration. A request using any method other
-than `POST` on `/event` (or a path that does not match) SHALL yield `404`.
+than `POST` on `/events` (or a path that does not match) SHALL yield `404`.
 
 #### Scenario: Valid create returns the new event
 
-- **WHEN** a `POST /event` arrives with body `{ "name": "Birthday" }`
+- **WHEN** a `POST /events` arrives with body `{ "name": "Birthday" }`
 - **THEN** the endpoint responds `201` with a JSON body containing `eventId`, `name` (`"Birthday"`),
   and `createdAt`
 
 #### Scenario: Wrong method on the create path
 
-- **WHEN** a `GET` (or any non-`POST`) is sent to `/event`
+- **WHEN** a `GET` (or any non-`POST`) is sent to `/events`
 - **THEN** the endpoint responds `404` and makes no upstream request
 
 ### Requirement: Server-minted event id
@@ -31,12 +31,12 @@ routes validate.
 
 #### Scenario: Event id is server-generated and canonical
 
-- **WHEN** a valid `POST /event` is processed
+- **WHEN** a valid `POST /events` is processed
 - **THEN** the returned `eventId` is a canonical UUID minted by the server
 
 #### Scenario: Client-supplied id is ignored
 
-- **WHEN** a `POST /event` body includes an `eventId` or `id` field alongside `name`
+- **WHEN** a `POST /events` body includes an `eventId` or `id` field alongside `name`
 - **THEN** the endpoint ignores it and returns a freshly server-minted `eventId`
 
 ### Requirement: Event name validation
@@ -49,22 +49,22 @@ value SHALL be the name that is stored and returned.
 
 #### Scenario: Empty or whitespace-only name rejected
 
-- **WHEN** a `POST /event` body has `name` absent, empty, or only whitespace
+- **WHEN** a `POST /events` body has `name` absent, empty, or only whitespace
 - **THEN** the endpoint responds `400` and writes nothing upstream
 
 #### Scenario: Over-long name rejected
 
-- **WHEN** a `POST /event` body has a `name` whose trimmed length exceeds 100 characters
+- **WHEN** a `POST /events` body has a `name` whose trimmed length exceeds 100 characters
 - **THEN** the endpoint responds `400` and writes nothing upstream
 
 #### Scenario: Non-JSON body rejected
 
-- **WHEN** a `POST /event` body is not valid JSON
+- **WHEN** a `POST /events` body is not valid JSON
 - **THEN** the endpoint responds `400` and writes nothing upstream
 
 #### Scenario: Surrounding whitespace trimmed
 
-- **WHEN** a `POST /event` body has `name` `"  Birthday  "`
+- **WHEN** a `POST /events` body has `name` `"  Birthday  "`
 - **THEN** the stored and returned `name` is `"Birthday"`
 
 ### Requirement: Event marker registry
@@ -75,22 +75,22 @@ endpoint SHALL write this marker via a bunny native Storage `PUT` with the `Acce
 configuration and `Content-Type: application/json`, whose body is the JSON `{ eventId, name,
 createdAt }` (`createdAt` an ISO-8601 timestamp). The marker SHALL live under the event's own
 `/events/<eventId>/` prefix, alongside the per-event device manifests at
-`/events/<eventId>/device/<deviceId>.json`. Because an `eventId` is a UUID, the marker key
-`/events/<eventId>/metadata.json`, the device-manifest keys `/events/<eventId>/device/<deviceId>.json`,
-and the device-global byte store `/devices/<deviceId>/files/…` are mutually disjoint and never collide.
+`/events/<eventId>/devices/<deviceId>.json`. Because an `eventId` is a UUID, the marker key
+`/events/<eventId>/metadata.json`, the device-manifest keys `/events/<eventId>/devices/<deviceId>.json`,
+and the device-global byte store `/files/devices/<deviceId>/…` are mutually disjoint and never collide.
 
 #### Scenario: Create writes the marker
 
-- **WHEN** a valid `POST /event` is processed
+- **WHEN** a valid `POST /events` is processed
 - **THEN** the endpoint issues a bunny native Storage `PUT` to `/events/<eventId>/metadata.json`
   carrying the `AccessKey` header and a JSON body of `{ eventId, name, createdAt }`
 
 #### Scenario: Marker is disjoint from manifests and the byte store
 
 - **WHEN** the marker `/events/<eventId>/metadata.json` exists, a device manifest is stored at
-  `/events/<eventId>/device/<deviceId>.json`, and bytes are stored under `/devices/<deviceId>/files/…`
+  `/events/<eventId>/devices/<deviceId>.json`, and bytes are stored under `/files/devices/<deviceId>/…`
 - **THEN** the three keys are distinct and never collide (an `eventId` is a UUID, so the literal
-  `metadata.json` and `device/` segments never alias a device id or a stored filename)
+  `metadata.json` and `devices/` segments never alias a device id or a stored filename)
 
 ### Requirement: Faithful create outcome
 
@@ -111,7 +111,7 @@ exposed in any response.
 
 ### Requirement: Event metadata and existence route
 
-The backend SHALL accept an HTTP `GET` at the path `/event/<eventId>` (the literal label `event`
+The backend SHALL accept an HTTP `GET` at the path `/events/<eventId>` (the literal label `events`
 required) and return the event's metadata. `eventId` MUST match a UUID pattern; a matched request
 whose `eventId` is not a UUID SHALL yield `400` and make no upstream request. The endpoint SHALL read
 the marker `/events/<eventId>/metadata.json` and, when present, respond `200` with its contents
@@ -122,19 +122,19 @@ write enforces.
 
 #### Scenario: Existing event returns metadata
 
-- **WHEN** a `GET /event/<uuid>` arrives for an event whose marker exists
+- **WHEN** a `GET /events/<uuid>` arrives for an event whose marker exists
 - **THEN** the endpoint reads `/events/<uuid>/metadata.json` and responds `200` with
   `{ eventId, name, createdAt }`
 
 #### Scenario: Unknown event yields 404
 
-- **WHEN** a `GET /event/<uuid>` arrives for an event whose marker `/events/<uuid>/metadata.json`
+- **WHEN** a `GET /events/<uuid>` arrives for an event whose marker `/events/<uuid>/metadata.json`
   is absent
 - **THEN** the endpoint responds `404`
 
 #### Scenario: Non-UUID event id rejected
 
-- **WHEN** the `eventId` segment of `GET /event/<id>` is not a UUID
+- **WHEN** the `eventId` segment of `GET /events/<id>` is not a UUID
 - **THEN** the endpoint responds `400` and makes no upstream request
 
 #### Scenario: Upstream failure surfaced

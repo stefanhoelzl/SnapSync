@@ -5,8 +5,8 @@ TBD - created by archiving change push-notification-infra. Update Purpose after 
 ## Requirements
 ### Requirement: Event notify route
 
-The backend SHALL accept an HTTP `POST` at the path template `/event/<eventId>/notify` (the literal
-labels `event` and `notify` are required) and, for an existing event, dispatch a silent push to every
+The backend SHALL accept an HTTP `POST` at the path template `/events/<eventId>/notify` (the literal
+labels `events` and `notify` are required) and, for an existing event, dispatch a silent push to every
 member device, responding with a bare `202` and an empty body (no per-device results). `eventId` MUST
 match a UUID pattern. A request whose path does not match this route (missing a label, wrong depth)
 SHALL yield `404`; a matched request whose `eventId` is not a UUID SHALL yield `400`; neither case
@@ -19,7 +19,7 @@ supplies nothing beyond the path, and any device exclusion is a future use-case 
 
 #### Scenario: Valid event id accepted
 
-- **WHEN** a `POST /event/<uuid>/notify` arrives with a valid UUID for an existing event
+- **WHEN** a `POST /events/<uuid>/notify` arrives with a valid UUID for an existing event
 - **THEN** the endpoint dispatches to the event's members a push carrying that `eventId` in its payload
   and responds `202` with an empty body
 
@@ -30,12 +30,12 @@ supplies nothing beyond the path, and any device exclusion is a future use-case 
 
 #### Scenario: Unmatched path or wrong method rejected
 
-- **WHEN** the path does not match `/event/<eventId>/notify`, or the method is not `POST`
+- **WHEN** the path does not match `/events/<eventId>/notify`, or the method is not `POST`
 - **THEN** the endpoint responds `404` and makes no upstream request
 
 #### Scenario: No token or caller payload required
 
-- **WHEN** a `POST /event/<uuid>/notify` carries a valid event id, no authorization token, and no body
+- **WHEN** a `POST /events/<uuid>/notify` carries a valid event id, no authorization token, and no body
 - **THEN** it is accepted (the event id is the capability; the push payload is server-chosen and
   carries the route's event id)
 
@@ -59,17 +59,17 @@ marker is present the endpoint SHALL proceed to member enumeration.
 ### Requirement: Member enumeration and per-member token read
 
 For an existing event the endpoint SHALL enumerate the event's member devices with a **single** bunny
-native Storage List of the device-manifest directory `events/<eventId>/device/`; each direct-child
+native Storage List of the device-manifest directory `events/<eventId>/devices/`; each direct-child
 `<deviceId>.json` names one member. For each member it SHALL read that member's config object
-`devices/<deviceId>/config.json` to obtain its `pushToken`. Every upstream read SHALL carry the storage
+`devices/<deviceId>.json` to obtain its `pushToken`. Every upstream read SHALL carry the storage
 zone's `AccessKey` and never the account API key. This is the same event-membership source the union
 uses, so the notify audience equals the event's contributing devices.
 
 #### Scenario: Members enumerated with one LIST
 
 - **WHEN** the event has member devices
-- **THEN** the endpoint enumerates them with one List of `events/<eventId>/device/` and reads each
-  member's `devices/<deviceId>/config.json`
+- **THEN** the endpoint enumerates them with one List of `events/<eventId>/devices/` and reads each
+  member's `devices/<deviceId>.json`
 
 #### Scenario: Reads use the storage AccessKey
 
@@ -79,7 +79,7 @@ uses, so the notify audience equals the event's contributing devices.
 ### Requirement: Best-effort silent fan-out to all members
 
 The endpoint SHALL send a **silent** push (capability `apns-push-sender`) **carrying the route's
-`eventId` in its payload** to every member whose `config.json` yields a usable `pushToken`, addressing
+`eventId` in its payload** to every member whose config object yields a usable `pushToken`, addressing
 **all** members (no server-side exclusion of any device). The fan-out SHALL be **best-effort**: a member
 whose config object is absent (`404`), unparseable, or missing a `pushToken` SHALL be **skipped** (that
 member is simply not notified), and an individual push failure or APNs rejection SHALL NOT fail the
@@ -90,13 +90,13 @@ member directory SHALL yield `202` with no sends (an event with no members is no
 
 #### Scenario: All members with a token are pushed
 
-- **WHEN** every member has a `config.json` carrying a valid `pushToken`
+- **WHEN** every member has a config object carrying a valid `pushToken`
 - **THEN** each member's token receives a silent push carrying the route's `eventId` and the endpoint
   responds `202`
 
 #### Scenario: A member without a registered token is skipped
 
-- **WHEN** a member's `config.json` is absent (`404`) or carries no `pushToken`
+- **WHEN** a member's config object is absent (`404`) or carries no `pushToken`
 - **THEN** that member is skipped, the remaining members are still pushed, and the endpoint responds
   `202`
 
@@ -107,11 +107,11 @@ member directory SHALL yield `202` with no sends (an event with no members is no
 
 #### Scenario: Empty member directory notifies vacuously
 
-- **WHEN** `events/<eventId>/device/` lists no members (empty or `404`) for an existing event
+- **WHEN** `events/<eventId>/devices/` lists no members (empty or `404`) for an existing event
 - **THEN** the endpoint responds `202` with no sends
 
 #### Scenario: Member-directory List failure yields 502
 
-- **WHEN** the `events/<eventId>/device/` List fails with a non-`404` error or times out
+- **WHEN** the `events/<eventId>/devices/` List fails with a non-`404` error or times out
 - **THEN** the endpoint responds `502` and dispatches no pushes
 

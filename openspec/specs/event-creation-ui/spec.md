@@ -33,11 +33,11 @@ which moves the reduction off the create layer.
 ### Requirement: Create mints an event then provisions it like a scanned QR
 
 The capability SHALL provide a create use-case that, on `create(name)`, sets `creationStatus` to
-`InFlight`, calls the backend `POST /event` with the trimmed name via an injected client, and on a
+`InFlight`, calls the backend `POST /events` with the trimmed name via an injected client, and on a
 `201 { eventId, name, createdAt }` funnels the returned `eventId` **and** `name` into the **existing**
 provision path — the same `onProvision(previousEventId, newEventId)` switch-reset a scanned deeplink
 uses — saving `EventConfig(eventId, name)` **directly** (the create path already has the name, so it
-performs **no** `GET /event/:id` fetch — see `deeplink-config`). On any failure (non-2xx, transport, or
+performs **no** `GET /events/:id` fetch — see `deeplink-config`). On any failure (non-2xx, transport, or
 parse) it SHALL set `creationStatus` to `Failed(reason)` and SHALL NOT save config. The use-case MUST
 NOT inspect `PermissionStatus`.
 
@@ -61,13 +61,13 @@ NOT inspect `PermissionStatus`.
 The capability SHALL provide an `EventCreator` HTTP implementation over an injected Ktor `HttpClient`
 and a host string (the engine and host are supplied by the composition root, keeping the impl
 platform-neutral and testable with `MockEngine`), mirroring `HttpEventFilesSource`. It SHALL
-`POST <host>/event` (HTTPS, default ATS) with a JSON body `{ "name": <trimmed name> }`, parse a `201`
+`POST <host>/events` (HTTPS, default ATS) with a JSON body `{ "name": <trimmed name> }`, parse a `201`
 body into `{ eventId, name, createdAt }`, and map any non-2xx, transport, or parse error to a failed
 result the use-case turns into `Failed`. A `400` SHALL map to the invalid-name reason; any other
 non-2xx or transport/parse error SHALL map to the transient/server reason.
 
 #### Scenario: Create posts the name and parses the event
-- **WHEN** the client posts to `<host>/event` and the server responds `201` with `{eventId,name,createdAt}`
+- **WHEN** the client posts to `<host>/events` and the server responds `201` with `{eventId,name,createdAt}`
 - **THEN** the parsed `eventId` is returned for provisioning
 
 #### Scenario: A 400 maps to the invalid-name reason
