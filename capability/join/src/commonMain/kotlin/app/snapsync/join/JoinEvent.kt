@@ -31,15 +31,16 @@ class JoinEvent(
     suspend fun loadDetails(eventId: String): EventDetails = details.fetch(eventId)
 
     /**
-     * Confirm the join for [eventId] with the loaded [name]: enroll (register-only empty manifest),
-     * then — only on a successful enrollment — provision (save config + enable upload + reconcile).
-     * Re-confirming the already-joined event is an [JoinOutcome.AlreadyJoined] no-op that skips
-     * enrollment entirely.
+     * Confirm the join for [eventId] with the loaded [name] and this device's chosen capture-date
+     * [minPhotoDate] cutoff (capability `photo-date-cutoff`; `null` = whole-library): enroll
+     * (register-only empty manifest), then — only on a successful enrollment — provision (save config
+     * **with the cutoff** + enable upload + reconcile). Re-confirming the already-joined event is a
+     * [JoinOutcome.AlreadyJoined] no-op that skips enrollment entirely (the cutoff stays immutable).
      */
-    suspend fun join(eventId: String, name: String?): JoinOutcome {
+    suspend fun join(eventId: String, name: String?, minPhotoDate: String?): JoinOutcome {
         if (configSource.config.value?.eventId == eventId) return JoinOutcome.AlreadyJoined
         if (!enroller.enroll(eventId, deviceIdentity.deviceId())) return JoinOutcome.EnrollFailed
-        provision(EventConfig(eventId = eventId, name = name))
+        provision(EventConfig(eventId = eventId, name = name, minPhotoDate = minPhotoDate))
         return JoinOutcome.Committed
     }
 }

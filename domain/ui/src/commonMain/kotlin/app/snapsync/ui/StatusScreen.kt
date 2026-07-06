@@ -14,12 +14,16 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import app.snapsync.permission.PermissionStatus
 import app.snapsync.presentation.Arrow
+import app.snapsync.presentation.CutoffFormatter
 import app.snapsync.presentation.JoinPhase
 import app.snapsync.presentation.PendingSwitch
 import app.snapsync.presentation.SyncHealth
+import app.snapsync.presentation.SystemCutoffFormatter
 import app.snapsync.presentation.UiState
 import app.snapsync.ui.components.AppConfirmDialog
+import app.snapsync.ui.components.AppDateTimeField
 import app.snapsync.ui.components.AppEventHero
+import kotlinx.datetime.LocalDateTime
 import app.snapsync.ui.components.AppQrCode
 import app.snapsync.ui.components.AccessPrompt
 import app.snapsync.ui.components.AppStatusLine
@@ -48,13 +52,17 @@ fun StatusScreen(
     eventName: String? = null,
     onCreateEvent: (String) -> Unit = {},
     transientError: String? = null,
-    // Join-gate actions (capability `join-event`), routed to the container intents.
-    onConfirmJoin: () -> Unit = {},
+    // Join-gate actions (capability `join-event`), routed to the container intents. The confirm/retry
+    // actions carry the chosen capture-date cutoff (capability `photo-date-cutoff`; null = whole-library).
+    onConfirmJoin: (String?) -> Unit = {},
     onCancelJoin: () -> Unit = {},
     onRetryLoad: () -> Unit = {},
-    onRetryJoin: () -> Unit = {},
-    onConfirmSwitch: () -> Unit = {},
+    onRetryJoin: (String?) -> Unit = {},
+    onConfirmSwitch: (String?) -> Unit = {},
     onCancelSwitch: () -> Unit = {},
+    // Bridges the cutoff picker (local wall-clock) to the UTC `…Z` cutoff string; the default is the
+    // production impl (device clock + zone), so hosts/tests need not supply one.
+    cutoff: CutoffFormatter = SystemCutoffFormatter(),
 ) {
     AppTheme {
         // Local UI state only: the confirm dialog's visibility never enters UiState or the reduction.
@@ -86,7 +94,7 @@ fun StatusScreen(
                 UiState.CreatingEvent ->
                     StatusHero(StatusIndicator.Loading, "Creating your event …")
                 is UiState.JoiningEvent ->
-                    JoiningEventScreen(state.phase, onConfirmJoin, onCancelJoin, onRetryLoad, onRetryJoin)
+                    JoiningEventScreen(state.phase, cutoff, onConfirmJoin, onCancelJoin, onRetryLoad, onRetryJoin)
                 is UiState.Joined ->
                     JoinedLayer(state.health, inviteUrl, onRequestPermission, onOpenSettings)
             }
@@ -121,18 +129,31 @@ fun StatusScreen(
 
 /**
  * The full-screen "Join event" surface (capability `join-event`): the event summary is the hero, with
- * Join / Cancel pinned to the bottom. Only the confirm ships now; future options (start date,
- * direction, albums, save-to album) slot in as rows in this same column. Renders each [JoinPhase]:
- * loading details, ready-to-join, blocked (invalid invite), a retryable load/commit failure.
+ * the capture-date cutoff row (capability `photo-date-cutoff`) and Join / Cancel pinned to the bottom.
+ * Future options (direction, albums, save-to album) slot in as rows in this same column. Renders each
+ * [JoinPhase]: loading details, ready-to-join, blocked (invalid invite), a retryable load/commit failure.
+ *
+ * The chosen cutoff is held in local state: seeded once from the loaded default (`createdAt`), editable
+ * via the date/time picker or snapped to "now", and converted to the UTC `…Z` string on confirm/retry.
+ * It survives Ready → Committing → CommitFailed (the composable stays mounted), so a retry reuses it.
  */
 @Composable
 private fun JoiningEventScreen(
     phase: JoinPhase,
-    onConfirm: () -> Unit,
+    cutoff: CutoffFormatter,
+    onConfirm: (String?) -> Unit,
     onCancel: () -> Unit,
     onRetryLoad: () -> Unit,
-    onRetryJoin: () -> Unit,
+    onRetryJoin: (String?) -> Unit,
 ) {
+    var chosen by remember { mutableStateOf<LocalDateTime?>(null) }
+    var seeded by remember { mutableStateOf(false) }
+    if (phase is JoinPhase.Ready && !seeded) {
+        chosen = phase.defaultCutoff?.let(cutoff::toLocal)
+        seeded = true
+    }
+    val chosenCutoff: String? = chosen?.let(cutoff::toCutoff)
+
     Column(modifier = Modifier.fillMaxSize()) {
         Column(
             modifier = Modifier.weight(1f).fillMaxWidth(),
@@ -145,7 +166,7 @@ private fun JoiningEventScreen(
                 is JoinPhase.Ready ->
                     AppEventHero(
                         title = phase.name ?: "this event",
-                        subtitle = "You've been invited to back up your photos to this event.",
+                        subtitle = "You've been invited to share your photos to this event.",
                     )
                 JoinPhase.NotFound ->
                     StatusHero(
@@ -176,7 +197,12 @@ private fun JoiningEventScreen(
         ) {
             when (phase) {
                 is JoinPhase.Ready -> {
-                    PrimaryButton(label = "Join", onClick = onConfirm)
+                    CutoffRow(
+                        value = chosen,
+                        onValueChange = { chosen = it },
+                        onOnlyFromNow = { chosen = cutoff.nowLocal() },
+                    )
+                    PrimaryButton(label = "Join", onClick = { onConfirm(chosenCutoff) })
                     SecondaryButton(label = "Cancel", onClick = onCancel)
                 }
                 JoinPhase.LoadFailed -> {
@@ -184,7 +210,7 @@ private fun JoiningEventScreen(
                     SecondaryButton(label = "Cancel", onClick = onCancel)
                 }
                 is JoinPhase.CommitFailed -> {
-                    PrimaryButton(label = "Retry", onClick = onRetryJoin)
+                    PrimaryButton(label = "Retry", onClick = { onRetryJoin(chosenCutoff) })
                     SecondaryButton(label = "Cancel", onClick = onCancel)
                 }
                 JoinPhase.NotFound ->
@@ -193,6 +219,28 @@ private fun JoiningEventScreen(
                 JoinPhase.Loading, is JoinPhase.Committing -> Unit
             }
         }
+    }
+}
+
+/**
+ * The capture-date cutoff row on the join surface (capability `photo-date-cutoff`): a caption, the
+ * date/time picker prefilled to the chosen value (default = the event's `createdAt`), and an "Only from
+ * now" shortcut that snaps the cutoff to the current instant. Only photos taken at or after the chosen
+ * value are uploaded and shared into the event.
+ */
+@Composable
+private fun CutoffRow(
+    value: LocalDateTime?,
+    onValueChange: (LocalDateTime) -> Unit,
+    onOnlyFromNow: () -> Unit,
+) {
+    Column(
+        modifier = Modifier.fillMaxWidth(),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        StatusHint("Only photos taken after this date are shared to the event.")
+        AppDateTimeField(value = value, onValueChange = onValueChange)
+        SecondaryButton(label = "Only from now", onClick = onOnlyFromNow)
     }
 }
 
@@ -206,21 +254,27 @@ private fun JoiningEventScreen(
 private fun SwitchDialog(
     switch: PendingSwitch,
     currentEventName: String?,
-    onConfirmSwitch: () -> Unit,
+    onConfirmSwitch: (String?) -> Unit,
     onCancelSwitch: () -> Unit,
     onRetryLoad: () -> Unit,
-    onRetryJoin: () -> Unit,
+    onRetryJoin: (String?) -> Unit,
 ) {
     val current = currentEventName ?: "this event"
+    // The compact switch dialog has no picker: it uses the new event's default cutoff (its `createdAt`,
+    // capability `photo-date-cutoff`). Remembered so a retry after a failed commit reuses it (the
+    // CommitFailed phase carries only the name).
+    var cutoff by remember { mutableStateOf<String?>(null) }
     when (val phase = switch.phase) {
-        is JoinPhase.Ready ->
+        is JoinPhase.Ready -> {
+            cutoff = phase.defaultCutoff
             AppConfirmDialog(
                 title = "Leave $current and join ${phase.name ?: "the new event"}?",
                 confirmLabel = "Switch",
                 cancelLabel = "Cancel",
-                onConfirm = onConfirmSwitch,
+                onConfirm = { onConfirmSwitch(cutoff) },
                 onDismiss = onCancelSwitch,
             )
+        }
         JoinPhase.NotFound ->
             AppConfirmDialog(
                 title = "This invite is invalid or the event no longer exists.",
@@ -242,7 +296,7 @@ private fun SwitchDialog(
                 title = "Couldn't switch events. Try again?",
                 confirmLabel = "Retry",
                 cancelLabel = "Cancel",
-                onConfirm = onRetryJoin,
+                onConfirm = { onRetryJoin(cutoff) },
                 onDismiss = onCancelSwitch,
             )
         // Transient — no dialog while the details load or the switch commits.

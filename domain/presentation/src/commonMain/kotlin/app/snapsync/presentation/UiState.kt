@@ -56,8 +56,12 @@ sealed interface JoinPhase {
     /** Fetching `GET /event/:id` details ("Loading event details…"). */
     data object Loading : JoinPhase
 
-    /** Details loaded; the confirm (Join/Switch) is offered. [name] is the event name (may be null). */
-    data class Ready(val name: String?) : JoinPhase
+    /**
+     * Details loaded; the confirm (Join/Switch) is offered. [name] is the event name (may be null).
+     * [defaultCutoff] seeds the capture-date cutoff row's default (the event's fetched `createdAt`,
+     * already a UTC `…Z` string; `null` when the marker carried none) — capability `photo-date-cutoff`.
+     */
+    data class Ready(val name: String?, val defaultCutoff: String?) : JoinPhase
 
     /** The event does not exist (404) — an invalid/expired invite; no confirm offered. */
     data object NotFound : JoinPhase

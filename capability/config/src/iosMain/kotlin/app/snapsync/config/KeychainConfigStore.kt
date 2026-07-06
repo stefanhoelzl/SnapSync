@@ -48,9 +48,10 @@ import platform.posix.memcpy
  * format as the wire.
  *
  * No `kSecAttrAccessGroup` is set: with the app's `keychain-access-groups` entitlement declaring the
- * shared group as its (only/first) entry, items land in that shared group by default, so the future
- * background upload extension — declaring the same entitlement — reads the same item. This avoids
- * hardcoding the team-id prefix in code; sharing is purely an entitlement concern.
+ * shared group as its (only/first) entry, items land in that shared group by default, so the
+ * background upload extension — declaring the same entitlement — reads the same item (its `eventId`
+ * **and** its `minPhotoDate` cutoff, capability `photo-date-cutoff`). This avoids hardcoding the
+ * team-id prefix in code; sharing is purely an entitlement concern.
  *
  * Seeds [config] synchronously at construction, mirroring the permission adapter's synchronous-real
  * guarantee.

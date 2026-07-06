@@ -9,6 +9,7 @@ import app.snapsync.engine.SyncEvent
 import app.snapsync.engine.UploadError
 import app.snapsync.engine.UploadJob
 import app.snapsync.engine.UploadRequest
+import app.snapsync.gallery.RESOURCE_META_CREATION_DATE
 import app.snapsync.gallery.assetIdFromUploadKey
 import co.touchlab.kermit.Logger
 
@@ -47,6 +48,12 @@ class UploadCycle(
     // imported foreign asset (a fresh local id) is never re-uploaded (the echo). Read-only, backed in
     // iosMain by the app-written download store; default empty for tests/harness.
     private val suppressedAssetIds: suspend () -> Set<String> = { emptySet() },
+    // Capture-date cutoff (capability `photo-date-cutoff`): the MINIMUM cutoff across the device's
+    // memberships (v1: the single joined event's `EventConfig.minPhotoDate`), or `null` for whole-library.
+    // Read once per cycle; discovery drops every resource whose asset `creationDate` precedes it BEFORE
+    // the engine sees it, so a pre-cutoff photo's bytes are never uploaded. Applied to both the full and
+    // the incremental walk. Default `null` for tests/harness (whole-library, today's behavior).
+    private val photoCutoff: suspend () -> String? = { null },
     // Notify hook (capability `upload-completion-notify`): fired once per FULLY-DRAINED cycle that
     // recorded >= 1 real completion, AFTER `onDiscovery` (the device-manifest PUT) — the only moment the
     // event union reflects the just-completed assets, so recipients woken by the fan-out find them. The
@@ -113,11 +120,22 @@ class UploadCycle(
         // local id would otherwise look like new work and re-upload the foreign photo). Filtered here,
         // before the engine sees them and before retainAssets, so no upload job is ever created.
         val suppressed = suppressedAssetIds()
-        val liveResources = if (suppressed.isEmpty()) {
+        val unfiltered = if (suppressed.isEmpty()) {
             discovery.resources
         } else {
             discovery.resources.filterNot { it.assetId in suppressed }
                 .also { log.i { "suppressed ${discovery.resources.size - it.size} downloaded resource(s)" } }
+        }
+
+        // Capture-date cutoff (capability `photo-date-cutoff`): drop resources whose asset `creationDate`
+        // precedes the cutoff, so pre-cutoff bytes never upload. An asset with no `creationDate` (empty
+        // string) sorts before any non-empty cutoff and is excluded. `null` cutoff = whole-library.
+        val cutoff = photoCutoff()
+        val liveResources = if (cutoff == null) {
+            unfiltered
+        } else {
+            unfiltered.filter { (it.metadata[RESOURCE_META_CREATION_DATE] ?: "") >= cutoff }
+                .also { log.i { "cutoff dropped ${unfiltered.size - it.size} pre-cutoff resource(s)" } }
         }
 
         // Prune rows for assets the change feed reported removed (incremental, every cycle — even a

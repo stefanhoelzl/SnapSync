@@ -221,6 +221,11 @@ object UploadExtensionRoot {
         // by `withTimeout` so it can never stall the cycle to the OS's force-kill; it is best-effort
         // and write-only in v1, so any failure/timeout just retries next cycle (skip-if-unchanged
         // makes that cheap).
+        // Capture-date cutoff (capability `photo-date-cutoff`): this device's per-membership
+        // `EventConfig.minPhotoDate` (v1: the single joined event). `null` = whole-library. It scopes
+        // BOTH the byte-upload filter (below) and the device-manifest projection (`startDate`), so the
+        // bytes uploaded equal the assets shared into the event union.
+        val cutoff = payload?.minPhotoDate
         val cycle = UploadCycle(
             engine, ledger, platform, discoveryStore, log,
             onDiscovery = { discovery ->
@@ -228,7 +233,7 @@ object UploadExtensionRoot {
                     withTimeout(DEVICE_MANIFEST_TIMEOUT_MS) {
                         deviceManifestProducer.produce(
                             eventId = config.eventId,
-                            startDate = null, // whole-library scope (the date filter is deferred)
+                            startDate = cutoff, // per-device capture-date cutoff (photo-date-cutoff)
                             discovered = deviceManifestAssetsFromResources(discovery.resources),
                             removedAssetIds = discovery.removedAssetIds.toSet(),
                             fullEnumeration = discovery.fullEnumeration,
@@ -246,6 +251,8 @@ object UploadExtensionRoot {
             },
             // Echo-suppression: never re-upload an asset this device downloaded + imported.
             suppressedAssetIds = { suppression.suppressedLocalIds() },
+            // Per-device capture-date cutoff: pre-cutoff photos' bytes never upload (photo-date-cutoff).
+            photoCutoff = { cutoff },
         )
         val result = runCatching { cycle.run() }
             .onSuccess { log.i { "process: cycle finished — $it" } }

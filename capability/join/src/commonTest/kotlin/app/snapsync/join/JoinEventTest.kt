@@ -35,7 +35,7 @@ private class FakeDetails(private val result: EventDetails) : EventDetailsSource
 private fun joinEvent(
     config: EventConfig?,
     enrollResult: Boolean = true,
-    details: EventDetails = EventDetails.Found("Anna's Wedding"),
+    details: EventDetails = EventDetails.Found("Anna's Wedding", "2026-07-04T18:00:00Z"),
     provisioned: MutableList<EventConfig> = mutableListOf(),
     enroller: FakeEnroller = FakeEnroller(enrollResult),
 ) = JoinEvent(
@@ -53,7 +53,7 @@ class JoinEventTest {
     val provisioned = mutableListOf<EventConfig>()
     val enroller = FakeEnroller(result = true)
     val outcome = joinEvent(config = null, enroller = enroller, provisioned = provisioned)
-        .join(EVENT_A, "Anna's Wedding")
+        .join(EVENT_A, "Anna's Wedding", null)
 
     assertEquals(JoinOutcome.Committed, outcome)
     assertEquals(listOf(EVENT_A to DEVICE), enroller.calls)
@@ -64,7 +64,7 @@ class JoinEventTest {
 fun `a failed enrollment commits nothing`() = runTest {
     val provisioned = mutableListOf<EventConfig>()
     val outcome = joinEvent(config = null, enrollResult = false, provisioned = provisioned)
-        .join(EVENT_A, "Anna's Wedding")
+        .join(EVENT_A, "Anna's Wedding", null)
 
     assertEquals(JoinOutcome.EnrollFailed, outcome)
     assertTrue(provisioned.isEmpty(), "no config should be provisioned on a failed enrollment")
@@ -75,7 +75,7 @@ fun `re-joining the current event is a no-op that skips enrollment`() = runTest 
     val provisioned = mutableListOf<EventConfig>()
     val enroller = FakeEnroller(result = true)
     val outcome = joinEvent(config = EventConfig(EVENT_A, "Anna's Wedding"), enroller = enroller, provisioned = provisioned)
-        .join(EVENT_A, "Anna's Wedding")
+        .join(EVENT_A, "Anna's Wedding", null)
 
     assertEquals(JoinOutcome.AlreadyJoined, outcome)
     assertTrue(enroller.calls.isEmpty(), "the already-joined event must not be re-enrolled")
@@ -86,7 +86,7 @@ fun `re-joining the current event is a no-op that skips enrollment`() = runTest 
 fun `switching to a different event enrolls`() = runTest {
     val enroller = FakeEnroller(result = true)
     val outcome = joinEvent(config = EventConfig(EVENT_A, "Old"), enroller = enroller)
-        .join(EVENT_B, "New")
+        .join(EVENT_B, "New", null)
 
     assertEquals(JoinOutcome.Committed, outcome)
     assertEquals(listOf(EVENT_B to DEVICE), enroller.calls)
@@ -94,7 +94,7 @@ fun `switching to a different event enrolls`() = runTest {
 
 @Test
 fun `loadDetails surfaces found not-found and failed distinctly`() = runTest {
-    assertEquals(EventDetails.Found("N"), joinEvent(config = null, details = EventDetails.Found("N")).loadDetails(EVENT_A))
+    assertEquals(EventDetails.Found("N", null), joinEvent(config = null, details = EventDetails.Found("N", null)).loadDetails(EVENT_A))
     assertEquals(EventDetails.NotFound, joinEvent(config = null, details = EventDetails.NotFound).loadDetails(EVENT_A))
     assertEquals(EventDetails.Failed, joinEvent(config = null, details = EventDetails.Failed).loadDetails(EVENT_A))
 }
@@ -102,7 +102,15 @@ fun `loadDetails surfaces found not-found and failed distinctly`() = runTest {
     @Test
     fun `join commits a null name`() = runTest {
         val provisioned = mutableListOf<EventConfig>()
-        joinEvent(config = null, provisioned = provisioned).join(EVENT_A, null)
+        joinEvent(config = null, provisioned = provisioned).join(EVENT_A, null, null)
         assertNull(provisioned.single().name)
+    }
+
+    @Test
+    fun `join persists the chosen capture-date cutoff`() = runTest {
+        val provisioned = mutableListOf<EventConfig>()
+        joinEvent(config = null, provisioned = provisioned)
+            .join(EVENT_A, "Anna's Wedding", "2026-07-04T18:00:00Z")
+        assertEquals("2026-07-04T18:00:00Z", provisioned.single().minPhotoDate)
     }
 }
