@@ -22,9 +22,10 @@ import app.snapsync.gallery.ResourceEnumerator
 import app.snapsync.gallery.ResourceRole
 import app.snapsync.gallery.deviceManifestAssetsFromResources
 import app.snapsync.gallery.uploadKey
-import app.snapsync.rejoin.DeviceFilesSource
-import app.snapsync.rejoin.ExtensionReconciler
-import app.snapsync.rejoin.HttpDeviceFilesSource
+import app.snapsync.membership.DeviceFilesSource
+import app.snapsync.membership.ExtensionReconciler
+import app.snapsync.membership.HttpDeviceFilesSource
+import app.snapsync.membership.HttpLeaveNotifier
 import app.snapsync.status.LedgerBackedSyncStatusSource
 import app.snapsync.status.LedgerCounts
 import app.snapsync.status.OwnDeviceGalleryStatusSource
@@ -158,14 +159,17 @@ class World(
     /**
      * Leave the joined event — the **faithful** in-place clear (NOT a world rebuild): run the real
      * [DownloadController.onLeaveOrSwitch] (cancel transfers, prune non-terminal download rows), then
-     * clear the config cell and the joined-event marker. The gallery, backend store, ledger, and
-     * **imported foreign photos** are retained (imported download rows are terminal / delete-proof), so
-     * re-provisioning the same event afterwards still finds them suppressed (real cross-event dedup).
-     * Clearing [configCell] is reactive, so the listing-backed status projection leaves the joined layer
-     * with no rebuild.
+     * the real backend leave ([HttpLeaveNotifier] over the mini-edge — the same `DELETE` the app fires,
+     * driving the store's rename→reap→GC cascade), then clear the config cell and the joined-event
+     * marker. The gallery, ledger, and **imported foreign photos** are retained (imported download rows
+     * are terminal / delete-proof), so re-provisioning the same event afterwards still finds them
+     * suppressed (real cross-event dedup). Clearing [configCell] is reactive, so the listing-backed
+     * status projection leaves the joined layer with no rebuild. Backend outcomes (the device departed;
+     * the event reaped + its bytes GC'd when it was the last active member) are assertable on [store].
      */
     suspend fun leave() {
         downloadController.onLeaveOrSwitch()
+        configCell.value?.eventId?.let { HttpLeaveNotifier(client, host).leave(it, ownDeviceId) }
         configCell.value = null
         marker.clear()
     }

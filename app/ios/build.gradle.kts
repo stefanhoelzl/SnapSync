@@ -39,8 +39,8 @@ kotlin {
             implementation(project(":capability:device-id"))
             implementation(project(":capability:join"))
             // The re-join reconciliation: the list fetch + JoinEvent gate, and the join status seam
-            // (re-exported by :capability:rejoin) wired into the container.
-            implementation(project(":capability:rejoin"))
+            // (re-exported by :capability:membership) wired into the container.
+            implementation(project(":capability:membership"))
             implementation(project(":capability:download"))
             // Push-notification registration + receive seams (capability `push-registration`): the
             // AppDelegate feeds the OS-delivered APNs token in, the collector PUTs devices/<id>/config.

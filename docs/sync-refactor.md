@@ -41,7 +41,7 @@ Download is already this shape (`DownloadController` in `:capability:download`, 
 `app.snapsync.engine.*`) but sit in `:app:ios:photokit-extension`, which declares **only
 `iosArm64`/`iosSimulatorArm64`, no `jvm()`** — so their `commonTest` doesn't run on JVM (a latent
 testing-rule-1 violation) and `:app:desktop` can't reach them. **Relocate them into a new
-`:capability:upload`** — symmetric with `:capability:download`/`:capability:rejoin` (same templated
+`:capability:upload`** — symmetric with `:capability:download`/`:capability:membership` (same templated
 `build.gradle.kts` with `jvm()`+`iosArm64`+`iosSimulatorArm64`, depending only on `:domain:engine`). This
 **auto-unlocks JVM regression coverage** of the whole upload orchestration — the goal, delivered — and lets
 the desktop harness reach it. No new cross-module edges, no cycle (the download-store/gallery/rejoin/etc.
@@ -74,7 +74,7 @@ JVM-testable logic currently in the "wiring-only" `:app:ios:photokit-extension`)
 
 - **`commonMain` (agnostic, JVM-covered):** the engine; `UploadCycle` + `UploadJobPlatform` (interface) +
   `DiscoveryStore` (→ `:capability:upload`); `DownloadController` (already `:capability:download`);
-  reconcile (already `:capability:rejoin`, `jvm()`); fan-out policy (already `:domain:gallery`); the
+  reconcile (already `:capability:membership`, `jvm()`); fan-out policy (already `:domain:gallery`); the
   `RawAsset` seam types.
 - **`iosMain` (decision-free adapters, faked in the harness):** `IosUploadJobPlatform` (the OS job-lifecycle
   adapter — irreducible but decision-free), the PhotoKit walk, `URLSession`, PhotoKit import, SQLite driver,

@@ -59,6 +59,10 @@ class BackendStore {
     // Per-device config docs (`devices/<id>.json`, the push token) — a SEPARATE namespace from
     // the byte store, so a config never appears in [deviceListing] or the [union].
     private val deviceConfigs = mutableMapOf<String, String>()
+    // (eventId, deviceId) pairs that have LEFT (the real edge's `.left.json` departed state). A departed
+    // device's manifest STAYS in [manifests] (its photos remain in the union) but it no longer counts as
+    // an active member for the last-device reap — the behavioral model of last-write-wins membership.
+    private val departed = mutableSetOf<Pair<String, String>>()
 
     /** Failure lever: when true, the per-device listing and event-union routes fail (mini-edge `502`). */
     var offline: Boolean = false
@@ -93,16 +97,44 @@ class BackendStore {
     /** Deposit a device manifest from its JSON body (the `PUT /events/<id>/devices/<id>` effect). */
     fun putManifestJson(eventId: String, deviceId: String, json: String) {
         manifests[eventId to deviceId] = deviceManifestFromJson(json)
+        departed.remove(eventId to deviceId) // a fresh active manifest supersedes a prior leave (LWW)
     }
 
     /** Inject a device manifest directly (used to set up foreign devices). */
     fun putManifest(eventId: String, deviceId: String, manifest: DeviceManifest) {
         manifests[eventId to deviceId] = manifest
+        departed.remove(eventId to deviceId) // a fresh active manifest supersedes a prior leave (LWW)
     }
 
     /** Store a device's config doc (the `PUT /devices/<id>` effect — push-token registration). */
     fun putDeviceConfig(deviceId: String, json: String) {
         deviceConfigs[deviceId] = json
+    }
+
+    /**
+     * Leave an event (the `DELETE /events/<id>/devices/<id>` cascade, capability `event-leave-endpoint`).
+     * Marks the device departed (its manifest STAYS, so the union keeps serving its photos); then, if no
+     * ACTIVE member remains, reaps the event (marker + all its manifests + departed marks) and
+     * reference-checked-GCs each freed device that appears in no surviving event (its byte partition +
+     * config). Idempotent; a leave for an unregistered event is a no-op.
+     */
+    fun leave(eventId: String, deviceId: String) {
+        if (eventId !in events) return
+        departed.add(eventId to deviceId)
+        val activeRemains = manifests.keys.any { (e, d) -> e == eventId && (eventId to d) !in departed }
+        if (activeRemains) return
+        // Reap the event tree.
+        val freedDevices = manifests.keys.filter { it.first == eventId }.map { it.second }.toSet()
+        events.remove(eventId)
+        manifests.keys.filter { it.first == eventId }.toList().forEach { manifests.remove(it) }
+        departed.removeAll { it.first == eventId }
+        // Reference-checked GC: drop bytes + config for any freed device no surviving event references.
+        for (freed in freedDevices) {
+            if (manifests.keys.none { it.second == freed }) {
+                byteStore.remove(freed)
+                deviceConfigs.remove(freed)
+            }
+        }
     }
 
     // ---- inspection (for tests) -----------------------------------------------------------------
@@ -111,6 +143,9 @@ class BackendStore {
     fun objectsOf(deviceId: String): Set<String> = byteStore[deviceId].orEmpty().toSet()
 
     fun manifestOf(eventId: String, deviceId: String): DeviceManifest? = manifests[eventId to deviceId]
+
+    /** Whether a device has LEFT this event (its manifest persists in the union) — inspectable outcome. */
+    fun isDeparted(eventId: String, deviceId: String): Boolean = (eventId to deviceId) in departed
 
     /** The stored config doc for a device (the registered push token), or null — inspectable outcome. */
     fun deviceConfigOf(deviceId: String): String? = deviceConfigs[deviceId]

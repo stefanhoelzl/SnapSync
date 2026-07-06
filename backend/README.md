@@ -10,8 +10,9 @@ records per-event device manifests, and serves per-device and event-wide listing
 no on-device SigV4, no per-resource mint round-trip.
 
 Authoritative contracts: `openspec/specs/event-creation`, `openspec/specs/bunny-upload-endpoint`,
-`openspec/specs/bunny-list-endpoint`, `openspec/specs/device-manifest`, and
-`openspec/specs/backend-config` (and `backend-deployment`); rationale in `docs/design.md` §3–§4.
+`openspec/specs/bunny-list-endpoint`, `openspec/specs/device-manifest`,
+`openspec/specs/event-leave-endpoint`, and `openspec/specs/backend-config` (and
+`backend-deployment`); rationale in `docs/design.md` §3–§4.
 
 ## Storage layout
 
@@ -19,10 +20,11 @@ Three disjoint key namespaces in one zone (an `eventId`/`deviceId` is a UUID, ne
 so nothing collides):
 
 ```
-events/<eventId>/metadata.json           event marker / registry record { eventId, name, createdAt }
-events/<eventId>/devices/<deviceId>.json  per-event device manifest (membership + projected assets)
-files/devices/<deviceId>/<filename>       a device's raw uploaded photo/resource byte objects
-devices/<deviceId>.json                   a device's config { pushToken: { kind, token, env } } (NOT a file)
+events/<eventId>/metadata.json                 event marker / registry record { eventId, name, createdAt }
+events/<eventId>/devices/<deviceId>.json       per-event device manifest — ACTIVE member (projected assets)
+events/<eventId>/devices/<deviceId>.left.json  per-event device manifest — DEPARTED (left; still in the union)
+files/devices/<deviceId>/<filename>            a device's raw uploaded photo/resource byte objects
+devices/<deviceId>.json                        a device's config { pushToken: { kind, token, env } } (NOT a file)
 ```
 
 An event **exists** iff its marker `events/<eventId>/metadata.json` is present. Bunny's Edge Storage
@@ -60,15 +62,24 @@ PUT  /devices/<deviceId>                           (device config / push token �
 
 POST /events/<eventId>/notify                              (silent push to members — GATED on event existence)
     →  [gate] GET events/<eventId>/metadata.json  → absent? 404 | non-404 failure? 502
-    →  LIST events/<eventId>/devices/  → per member: read devices/<id>.json → APNs silent push
+    →  LIST events/<eventId>/devices/  → per ACTIVE member (LWW): read devices/<id>.json → APNs silent push
     →  202 (bare)  |  502 only if the member LIST fails
        best-effort: members without a token are skipped; a per-token failure never fails the request
-       fixed payload (content-available), ALL members, no exclusion; NO production caller wired yet
+       fixed payload (content-available), ACTIVE members only (a departed <id>.left.json is skipped)
 
 PUT  /events/<eventId>/devices/<deviceId>                   (device manifest — GATED on event existence)
     body: full-state JSON device manifest (streamed)
     →  [gate] GET events/<eventId>/metadata.json  → absent? 404 (stream nothing) | non-404 failure? 502
     →  bunny native PUT  events/<eventId>/devices/<deviceId>.json   → 201 | 502
+
+DELETE /events/<eventId>/devices/<deviceId>                 (LEAVE — GATED on event existence)
+    →  [gate] GET events/<eventId>/metadata.json  → absent? 404 | non-404 failure? 502
+    →  (1) rename active manifest → events/<eventId>/devices/<deviceId>.left.json (copy → FRESH ts, then delete active)
+       (2) if NO active member remains (last-write-wins over the devices/ listing): delete the events/<eventId>/ tree
+       (3) per freed device with NO manifest in any surviving event: delete files/devices/<id>/* + devices/<id>.json
+    →  200  |  502 on any transport failure
+       idempotent + leak-safe (write .left.json BEFORE deleting .json; every delete of an absent object is a no-op)
+       membership is last-write-wins: a departed <id>.left.json stays in the UNION but is skipped by NOTIFY & the reap
 
 GET  /events/<eventId>/files                               (event-wide UNION — GATED on event existence)
     →  [gate] GET events/<eventId>/metadata.json  → absent? 404 | non-404 failure? 502
@@ -103,14 +114,21 @@ GET  /events/<eventId>/files                               (event-wide UNION —
   per-device list and the union use the same builder, so their `url`s agree by construction. The
   former download-proxy route is retired.
 - **Methods** — `POST /events`, `GET /events/<id>`, `GET /files/devices/<id>`, `PUT`/`OPTIONS` on
-  `/files/devices/<id>/<name>`, `PUT /events/<id>/devices/<id>`, `GET /events/<id>/files`. Any other
-  method or unmatched path → **`404`** (Hono's default — no `405`). Bad UUID / unsafe filename /
-  invalid name → `400`.
+  `/files/devices/<id>/<name>`, `PUT /events/<id>/devices/<id>`, `DELETE /events/<id>/devices/<id>`,
+  `GET /events/<id>/files`. Any other method or unmatched path → **`404`** (Hono's default — no
+  `405`). Bad UUID / unsafe filename / invalid name → `400`.
 
 > **Deployment invariant.** `BUNNY_STORAGE_HOST` MUST be the storage zone's **main** region host
 > (where writes land), never a replica endpoint. Bunny replicates asynchronously; reads from the
 > main region are read-after-write consistent, so a just-created marker is visible to the
 > immediately following join/list/upload. A replica host could lag and `404` a fresh event.
+>
+> The **leave** cascade depends on this too, and more sharply: its reap decision (is any active
+> member left?) and its GC reference-check (does a freed device appear in another event?) LIST the
+> devices directories, and a stale replica read could miss a concurrent rejoin's fresh `<id>.json`
+> and reap an event out from under an active device. Every other failure mode of leave is a harmless
+> orphan; this is the one that would delete in-use data — so the reap MUST read the main region.
+> Never point `BUNNY_STORAGE_HOST` at a replica.
 
 > **Note.** The byte-upload route is **ungated** (it reads no marker), so it never `404`s for an
 > "unknown event" — bytes are event-independent. Only the device-manifest write and the event union

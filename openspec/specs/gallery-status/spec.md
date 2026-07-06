@@ -151,7 +151,7 @@ seam off presentation").
 
 - **WHEN** the upload-job reconstruction and the re-join reconciler each recover an `assetId` from a key
 - **THEN** both call `:domain:gallery`'s `assetIdFromUploadKey`, with no private duplicate remaining in
-  `:capability:rejoin` or the upload cycle
+  `:capability:membership` or the upload cycle
 
 ### Requirement: Decision-free raw-asset walk seam
 

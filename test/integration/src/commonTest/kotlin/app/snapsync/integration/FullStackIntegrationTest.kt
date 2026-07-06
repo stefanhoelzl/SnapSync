@@ -19,6 +19,7 @@ import kotlinx.coroutines.withTimeout
 import kotlin.coroutines.coroutineContext
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
 /**
@@ -132,6 +133,46 @@ class FullStackIntegrationTest {
             assertEquals(LedgerCounts(completed = 1, pending = 0), w.ledgerCounts.counts.value)
             // The download union read still fails offline, without throwing (keeps last state).
             w.downloadController.reconcile("E")
+        } finally {
+            scope.cancel()
+        }
+    }
+
+    @Test
+    fun leaving_as_the_last_member_returns_to_the_setup_gate_and_reaps_the_event() = worldTest {
+        val scope = CoroutineScope(coroutineContext + Job())
+        try {
+            val w = World()
+            w.provision("E")
+            w.addOwnAsset("A")
+            w.runUploadCycle()
+            w.platform.completeJob("A-primary.jpg")
+            w.runUploadCycle()
+            w.ownGallery.refresh(); w.ledgerCounts.refresh()
+            assertTrue("A-primary.jpg" in w.store.objectsOf(w.ownDeviceId))
+
+            // The real container with leave wired to the world's faithful leave (real DELETE seam).
+            val host = StatusContainerHost(
+                syncSource = w.syncStatusSource(scope),
+                permissionSource = w.permission,
+                requester = NoOpRequester,
+                configSource = w.configSource,
+                store = NoOpConfigStore,
+                scope = scope,
+                creationStatusSource = w.creationStatus,
+                creator = w.createEvent(scope),
+                leave = { w.leave() },
+            )
+            host.await { it is UiState.Joined }
+
+            host.onLeaveEvent()
+
+            // UiState reduces to the setup gate; world outcomes: the event is reaped (own was the last
+            // member) and its orphaned bytes are GC'd.
+            assertEquals(UiState.CreateEvent(), host.await { it is UiState.CreateEvent })
+            assertEquals(null, w.configSource.config.value)
+            assertFalse(w.store.isRegistered("E"))
+            assertTrue(w.store.objectsOf(w.ownDeviceId).isEmpty())
         } finally {
             scope.cancel()
         }

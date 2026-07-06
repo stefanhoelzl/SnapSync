@@ -22,11 +22,12 @@ A **scope pivot** (2026-06-22) of SnapSync, from a *personal one-way library bac
 >   storage secret. *(Consequence — see Honest framing: the edge now **sees the bytes** in transit.)*
 > - Collected photos are **viewed elsewhere** (an external tool), never in this app.
 >
-> **Honest framing.** Because this version is **contribute-only** (no in-app viewing), photos
-> **persist indefinitely** (no TTL/purge), and there is **no Leave** yet (deferred), the original
-> "temporarily sync photos between connected devices" pitch reduces, at this layer, to: *each device
-> uploads its since-start photos to an externally-provisioned shared bucket, viewed externally.* That
-> is coherent and buildable; multi-event, Leave, and in-app viewing are explicit later concerns.
+> **Honest framing.** Because this version is **contribute-only** (no in-app viewing) and — until an
+> event is left — photos **persist** (no TTL/purge), the original "temporarily sync photos between
+> connected devices" pitch reduces, at this layer, to: *each device uploads its since-start photos to
+> an externally-provisioned shared bucket, viewed externally.* That is coherent and buildable;
+> **Leave** now reclaims an event's storage when its last member leaves (§3.2), while multi-event and
+> in-app viewing remain explicit later concerns.
 
 ---
 
@@ -65,10 +66,13 @@ A **scope pivot** (2026-06-22) of SnapSync, from a *personal one-way library bac
 - A **local desktop (JVM) test app** — phone-frame preview + side-by-side control panel
   (display overrides + engine console; §5.1).
 
-- **Leave is the local-only inverse of join** (§3.2): a joined device can leave the event — the
-  producer is disabled, the ledger wiped, the discovery cursor cleared, and the `eventId` forgotten
-  from the Keychain — returning to the create-event screen. It is **local-only**: already-uploaded objects
-  stay in storage, so re-scanning the same QR re-joins and reconciles them back (no re-upload).
+- **Leave is the event-lifecycle inverse of join** (§3.2): a joined device can leave the event — the
+  producer is disabled, the extension's ledger/cursor/marker reset on its next cycle, and the `eventId`
+  is forgotten from the Keychain — returning to the create-event screen. Leaving also **notifies the
+  backend** (`event-leave-endpoint`, best-effort): the device's manifest is renamed to a departed
+  `.left.json` sibling — its photos stay downloadable for the remaining members — and when the **last**
+  active member leaves, the event is reaped and its now-unreferenced bytes are garbage-collected. A
+  re-scan of an event still alive re-joins and reconciles its already-stored objects back (no re-upload).
 - **Invite by showing the join QR** (`event-invite-qr`): in the joined layer the status screen shows
   the event's join QR ("Scan to join this event") and a share action — the deeplink is re-encoded
   from the stored `eventId` (`encodeConfigUrl`), so any joined participant can invite others without
@@ -77,8 +81,10 @@ A **scope pivot** (2026-06-22) of SnapSync, from a *personal one-way library bac
   personal TestFlight app.
 
 **Explicit non-goals / deferred:**
-- **Leave does not delete remote objects.** Leaving forgets the event on-device only; removing the
-  event's already-uploaded objects from storage is out of scope (no backend delete path).
+- **No periodic reaper for abandoned events.** Leave reaps + GCs synchronously in the leave call; an
+  event whose devices all vanish *without* a clean leave (uninstall, permanent offline) is never
+  reclaimed — the accepted abandon-leak. A background reaper is deferred (every partial failure of the
+  cascade is likewise a harmless orphan, never destruction of in-use data — see §3.2).
 - **No in-app *viewer*.** Download-and-import **is** in scope (`photo-download`, above), but collected
   photos are imported into the **system Photos library** and viewed there — the app renders no gallery
   of its own. Edits/adjustments are not synced (originals only); a downloaded photo deleted locally is
@@ -141,7 +147,7 @@ filter, the edge URL build) lives **above and beside** the seam, in the platform
                            (LedgerBackend storage seam, LedgerReader/LedgerWriter, SQLDelight). The
                            ledger is the extension's PRIVATE upload memory — the app no longer
                            reads it for status (ledger-free-status).
-:domain:status         → :domain:permission + :domain:gallery + :capability:rejoin (the EventFilesSource
+:domain:status         → :domain:permission + :domain:gallery + :capability:membership (the EventFilesSource
                          completeness listing) — ALL implementation-scoped, none leaks to status's
                          consumers, and NO :domain:engine dependency. The status projection (§2.4):
                          SyncStatus + SyncState + SyncStatusSource (snapshot seam, §2.3) and the
@@ -569,13 +575,23 @@ proxies are all dropped — so an asset's resource set is **fixed at capture and
   extension creates no jobs that cycle and leaves the marker unset, retrying on its own cadence (no
   user-facing join-failure state; status comes from the app's own LIST). A re-join thus re-uploads
   **nothing** already stored — only genuinely-un-stored photos upload, on the OS's next invocation.
-- **Leaving** (`leave-event`) is the local-only inverse: a tested `LeaveEvent` use-case runs, in order
-  and best-effort, `disable producer → ConfigStore.clear()` — only. It touches **no** ledger, cursor,
-  or marker (and constructs no ledger type); the extension resets its own private ledger, cursor, and
-  marker on its next cycle once the configured event no longer matches the marker. It touches **no
-  storage** — already-uploaded objects remain, and a later re-scan re-joins and reconciles them back.
-  The producer-disable side-effect is an injected lambda, so the use-case stays in a tested capability
-  and `:app:ios` keeps wiring-only.
+- **Leaving** (`leave-event` + `event-leave-endpoint`) runs a tested `LeaveEvent` use-case, in order
+  and best-effort, `disable producer → notify backend → ConfigStore.clear()`. It touches **no** ledger,
+  cursor, or marker (and constructs no ledger type); the extension resets its own on its next cycle. The
+  backend notify (`DELETE /events/<id>/devices/<id>`) renames the device's manifest to a departed
+  `.left.json` sibling and, when the last active member leaves, reaps the `events/<id>/` tree and
+  reference-checked-GCs each freed device's byte partition + config. Membership is **last-write-wins**
+  over the two sibling manifests' write times (the timestamp already rides in every LIST), so a stalled
+  leave/rejoin resolves to the intended state and the losing-sibling deletes are cosmetic. The cascade
+  is **leak-safe** — every partial failure and race resolves to an orphan, never destruction of in-use
+  data (absorbed by the accepted abandon-leak) — and **corruption-free given main-region read-after-write
+  reads**: the reap's active-member LIST must read the storage main region (the existing deployment
+  invariant), else a stale replica read could reap an event out from under a concurrently-rejoining
+  device. Byte-partition single-writership makes cross-device GC corruption impossible; a GC racing the
+  owning device's own rejoin only briefly dangles that device's own keys (the downloader tolerates a 404
+  and the device re-uploads). The producer-disable and notify side-effects are injected lambdas, so the
+  use-case stays in a tested capability and `:app:ios` keeps wiring-only. The switch path (provisioning a
+  different event while joined) fires the same best-effort leave for the previous event.
 - **State**: upload memory is the **engine's ledger** (single writer = the extension). The platform
   keeps only small, **lossy-tolerant** discovery bookkeeping in the App Group: `{lastToken,
   startDate, eventId, deferredIds?}`. Losing the residue costs one record's worth of
@@ -592,7 +608,8 @@ proxies are all dropped — so an asset's resource set is **fixed at capture and
 **App (foreground):** request `.readWrite` photo authorization → (on a valid joined event config)
 `setUploadJobExtensionEnabled(true)` → show status (job states + App-Group progress). **The app
 uploads nothing itself.** A new event deeplink re-provisions (§3.2). There is **no enable/disable
-toggle and no Leave** — contribution is on whenever permission is granted *and* an event is joined.
+toggle** — contribution is on whenever permission is granted *and* an event is joined; **Leave** (§3.2)
+is the only way to stop (it also leaves the event on the backend).
 
 **Extension — `processJobs()` (system-invoked, hosts the shared `SyncEngine` + `LedgerWriter`):**
 the system downloads each resource (incl. from iCloud) and performs `job.destination` with the
@@ -906,10 +923,12 @@ itself is covered by the endpoint's `Deno.test` suite.
 - **Single event at a time**; **the extension reconciles** (marker-gated: seed already-stored photos
   before uploading, clear cursor); a **switch** resets the extension's private ledger; same-event
   re-join is a no-op. The app runs no join and holds no ledger. Multi-event **deferred**.
-- **Leave is supported** (`leave-event`), local-only: `disable producer → ConfigStore.clear()` — only,
-  surfaced as a joined-layer button + confirm dialog. It touches no ledger/cursor/marker (the extension
-  resets its own on the next marker mismatch). Already-uploaded objects stay in storage (no remote
-  delete); re-scanning the QR re-joins and reconciles them back.
+- **Leave is supported** (`leave-event` + `event-leave-endpoint`): `disable producer → notify backend →
+  ConfigStore.clear()`, surfaced as a joined-layer button + confirm dialog, and also fired on a
+  **switch** (provisioning a different event leaves the previous one). The backend `DELETE` renames the
+  manifest to a departed `.left.json` sibling (last-write-wins membership), reaps the event when the last
+  active member leaves, and GCs its orphaned bytes/config. Leak-safe + corruption-free under main-region
+  reads; the only accepted gap is the abandon-leak (no periodic reaper).
 - **Storage = bunny.net native Storage API** for uploads/registry/listings; **device holds no
   credential**; an external **edge proxy endpoint** streams bytes into the bucket **by event id only**
   (event id = the capability). Edge host is BuildKonfig; **no baked secrets** (the storage `AccessKey`
@@ -960,7 +979,8 @@ design-system rules (§5), the dual-UI desktop harness (§5.1), and the three te
   it bites; a **Universal Link** is the upgrade path.
 
 **Remaining non-trivial design questions (deferred, not blocking):**
-- **Leave / deprovision-to-idle** (the opening brief's "stop uploading" — intentionally deferred).
+- **Deprovision-to-idle** (the opening brief's "stop uploading" *without leaving* — distinct from
+  Leave, which is supported (§3.2); intentionally deferred).
 - **Multi-event** membership (fan-out a photo to N events; the engine/ledger become event-multiplexed).
 - **In-app viewing** (would reintroduce a read/download path the current design excludes).
 - **Backend hardening** (rate-limiting the open create/upload, overwrite rejection, abuse protection —

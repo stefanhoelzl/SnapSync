@@ -11,8 +11,9 @@
 //       event; DEVICE-ID is the capability. Faithful 201/502; last-write-wins. A flat sibling of the
 //       `files/devices/<deviceId>/` byte partition, so never listed as an asset.
 //   POST /events/:eventId/notify
-//     → sends a fixed SILENT (content-available) push to EVERY member device. GATED on the marker
-//       (404/502). Enumerate members (LIST `events/<id>/devices/`) → read each `devices/<id>.json`
+//     → sends a fixed SILENT (content-available) push to every ACTIVE member device (a departed
+//       `<id>.left.json` member is skipped). GATED on the marker (404/502). Enumerate members
+//       (LIST `events/<id>/devices/`, resolve active via last-write-wins) → read each `devices/<id>.json`
 //       → best-effort fan-out via APNs. Bare 202 (no per-device results); 502 only if the member LIST
 //       fails. No production caller wired (the trigger is a deferred use case).
 //   PUT /files/devices/:deviceId/:filename
@@ -28,6 +29,12 @@
 //   PUT /events/:eventId/devices/:deviceId
 //     → streams a JSON device manifest into `events/<eventId>/devices/<deviceId>.json`. GATED on event
 //       existence (the marker read) so a manifest is never written under a non-existent event.
+//   DELETE /events/:eventId/devices/:deviceId
+//     → LEAVE (capability `event-leave-endpoint`): renames the device's active manifest to
+//       `<deviceId>.left.json` (departed — still served by the union, skipped by notify); if no ACTIVE
+//       member remains (last-write-wins over the devices/ listing), reaps `events/<eventId>/` and GCs
+//       each freed device's `files/devices/<id>/` bytes + `devices/<id>.json` config — but only for a
+//       device that appears in no surviving event. GATED on the marker (404/502). Idempotent + leak-safe.
 //   GET /events/:eventId/files
 //     → the event-wide UNION: every contributing device's COMPLETE assets (an asset is complete iff
 //       every resource its device.json names is present in `files/devices/<deviceId>/`), flattened across
@@ -88,6 +95,70 @@ function deviceManifestDir(eventId: string): string {
   return `${MARKER_PREFIX}/${encodeURIComponent(eventId)}/devices/`;
 }
 
+/**
+ * Storage key of a device's **departed** manifest: `events/<eventId>/devices/<deviceId>.left.json`.
+ * Leaving renames the active `<deviceId>.json` to this sibling (see the leave route); the union still
+ * serves a departed device's photos, but notify skips it and the reap ignores it as an active member.
+ */
+function deviceLeftManifestKey(eventId: string, deviceId: string): string {
+  return `${MARKER_PREFIX}/${encodeURIComponent(eventId)}/devices/${
+    encodeURIComponent(deviceId)
+  }.left.json`;
+}
+
+type MemberState = "active" | "departed";
+
+/**
+ * Parse one `events/<eventId>/devices/` child object name into its device id and whether it is the
+ * departed (`.left.json`) or active (`.json`) manifest. `.left.json` is checked first because it also
+ * ends with `.json`. Returns `null` for anything else (a stray object or a directory entry).
+ */
+function parseManifestObjectName(objectName: string): { deviceId: string; isLeft: boolean } | null {
+  const decoded = decodeObjectName(objectName);
+  if (decoded.endsWith(".left.json")) {
+    return { deviceId: decoded.slice(0, -".left.json".length), isLeft: true };
+  }
+  if (decoded.endsWith(".json")) {
+    return { deviceId: decoded.slice(0, -".json".length), isLeft: false };
+  }
+  return null;
+}
+
+/**
+ * Resolve each device's membership from a single `events/<eventId>/devices/` listing, applying
+ * **last-write-wins** when both a `<id>.json` (active) and a `<id>.left.json` (departed) sibling are
+ * present: the newer object's state wins; an exact tie resolves to `active` (the leak-safe side; see
+ * `device-manifest`). A device is counted once. This is the shared membership source for the union
+ * (all devices), notify (active only), and the reap (any active remaining?).
+ */
+function resolveMembership(
+  entries: BunnyEntry[] | null,
+): { deviceId: string; state: MemberState }[] {
+  const byDevice = new Map<string, { active?: number; left?: number }>();
+  for (const e of entries ?? []) {
+    if (e.IsDirectory) continue;
+    const parsed = parseManifestObjectName(e.ObjectName);
+    if (!parsed) continue;
+    const parsedTime = Date.parse(e.LastChanged);
+    const time = Number.isNaN(parsedTime) ? 0 : parsedTime;
+    const slot = byDevice.get(parsed.deviceId) ?? {};
+    if (parsed.isLeft) slot.left = Math.max(slot.left ?? -Infinity, time);
+    else slot.active = Math.max(slot.active ?? -Infinity, time);
+    byDevice.set(parsed.deviceId, slot);
+  }
+  const out: { deviceId: string; state: MemberState }[] = [];
+  for (const [deviceId, slot] of byDevice) {
+    const hasActive = slot.active !== undefined;
+    const hasLeft = slot.left !== undefined;
+    // Both present → LWW, active wins the tie; else whichever exists.
+    const state: MemberState = hasActive && (!hasLeft || slot.active! >= slot.left!)
+      ? "active"
+      : "departed";
+    out.push({ deviceId, state });
+  }
+  return out;
+}
+
 /** Storage key of a stored resource byte object: `files/devices/<deviceId>/<filename>`. */
 function byteKey(deviceId: string, filename: string): string {
   return `files/devices/${encodeURIComponent(deviceId)}/${encodeURIComponent(filename)}`;
@@ -123,11 +194,16 @@ export type Deps = {
 };
 
 // A single entry from bunny's native Storage "List Files" response. We read only these fields;
-// everything else (Guid, ServerId, the last-modified timestamps, …) is ignored.
+// everything else (Guid, ServerId, …) is ignored. `LastChanged` is the object's server-set
+// last-modified time — the last-write-wins tiebreak between a device's active `<id>.json` and
+// departed `<id>.left.json` manifests (see `resolveMembership`); it is a wall-clock string
+// (e.g. `2026-07-06T10:30:00.000`) minted by the same storage zone, so it is comparable across
+// sibling objects without any client clock.
 type BunnyEntry = {
   ObjectName: string;
   Length: number;
   IsDirectory: boolean;
+  LastChanged: string;
 };
 
 // One file in the per-device listing response — exactly `filename`, `size`, and `url` (a closed shape).
@@ -251,27 +327,108 @@ async function readMarker(
 }
 
 /**
- * Read one device's per-event manifest object (`events/<eventId>/devices/<deviceId>.json`). THROWS on
- * any non-OK status, network error, abort, OR a JSON parse failure — so a faulty manifest fails the
- * whole union faithfully (`502`) rather than silently dropping a contributor. The caller only invokes
- * this for devices already discovered by the directory LIST, so the object is expected to exist (a
- * `404` here is a race and is treated as a failure, not absence).
+ * Read one device-manifest object by its full key (the LWW-winning `<id>.json` or `<id>.left.json`).
+ * THROWS on any non-OK status, network error, abort, OR a JSON parse failure — so a faulty manifest
+ * fails the whole union faithfully (`502`) rather than silently dropping a contributor. The caller only
+ * invokes this for devices already discovered by the directory LIST, so the object is expected to exist
+ * (a `404` here is a race and is treated as a failure, not absence).
  */
-async function readDeviceManifest(
+async function readManifestObject(
   fetchImpl: FetchLike,
   config: Config,
-  eventId: string,
-  deviceId: string,
+  key: string,
 ): Promise<DeviceManifest> {
-  const url = `https://${config.host}/${config.zone}/${deviceManifestKey(eventId, deviceId)}`;
+  const url = `https://${config.host}/${config.zone}/${key}`;
   const res = await fetchImpl(url, {
     method: "GET",
     headers: { AccessKey: config.accessKey, Accept: "application/json" },
   });
   if (!res.ok) {
-    throw new Error(`bunny device-manifest GET returned ${res.status} for ${eventId}/${deviceId}`);
+    throw new Error(`bunny device-manifest GET returned ${res.status} for ${key}`);
   }
   return await res.json() as DeviceManifest;
+}
+
+/**
+ * Read a storage object's raw body text, or `null` when absent (`404`). THROWS on any other non-OK
+ * status, so the leave cascade surfaces a faithful `502` rather than losing a contribution. Used to
+ * copy an active manifest into its departed sibling.
+ */
+async function readObjectText(
+  fetchImpl: FetchLike,
+  config: Config,
+  key: string,
+): Promise<string | null> {
+  const url = `https://${config.host}/${config.zone}/${key}`;
+  const res = await fetchImpl(url, {
+    method: "GET",
+    headers: { AccessKey: config.accessKey },
+  });
+  if (res.status === 404) return null;
+  if (!res.ok) throw new Error(`bunny GET returned ${res.status} for ${key}`);
+  return await res.text();
+}
+
+/** PUT a storage object's body (minting a fresh last-modified time). THROWS on any non-OK status. */
+async function putObject(
+  fetchImpl: FetchLike,
+  config: Config,
+  key: string,
+  body: string,
+  contentType: string,
+): Promise<void> {
+  const url = `https://${config.host}/${config.zone}/${key}`;
+  const res = await fetchImpl(url, {
+    method: "PUT",
+    headers: { AccessKey: config.accessKey, "Content-Type": contentType },
+    body,
+  });
+  if (!res.ok) throw new Error(`bunny PUT returned ${res.status} for ${key}`);
+  await res.body?.cancel();
+}
+
+/**
+ * DELETE a storage object, idempotently: a `404` (already gone) is success. THROWS on any other non-OK
+ * status so a real failure surfaces as `502`. Deleting an absent object is a no-op, which keeps the
+ * whole leave cascade safe to re-run under at-least-once delivery.
+ */
+async function deleteObject(fetchImpl: FetchLike, config: Config, key: string): Promise<void> {
+  const url = `https://${config.host}/${config.zone}/${key}`;
+  const res = await fetchImpl(url, {
+    method: "DELETE",
+    headers: { AccessKey: config.accessKey },
+  });
+  if (!res.ok && res.status !== 404) {
+    throw new Error(`bunny DELETE returned ${res.status} for ${key}`);
+  }
+  await res.body?.cancel();
+}
+
+/**
+ * Reference-count check for the leave cascade's GC: does `deviceId` still appear — as an active
+ * `<id>.json` OR a departed `<id>.left.json` — under any event other than `excludeEventId` (the event
+ * being reaped)? Enumerates all events with one LIST of `events/` and one LIST per surviving event's
+ * `devices/` directory. Reads the storage **main** region (the deployment invariant), so a concurrent
+ * rejoin's fresh manifest is visible. THROWS on any transport failure so a partial check never deletes
+ * shared bytes.
+ */
+async function deviceAppearsInAnotherEvent(
+  fetchImpl: FetchLike,
+  config: Config,
+  deviceId: string,
+  excludeEventId: string,
+): Promise<boolean> {
+  const eventEntries = await listDir(fetchImpl, config, `${MARKER_PREFIX}/`);
+  const eventIds = (eventEntries ?? [])
+    .filter((e) => e.IsDirectory)
+    .map((e) => decodeObjectName(e.ObjectName));
+  for (const eventId of eventIds) {
+    if (eventId === excludeEventId) continue;
+    const entries = await listDir(fetchImpl, config, deviceManifestDir(eventId));
+    const found = resolveMembership(entries).some((m) => m.deviceId === deviceId);
+    if (found) return true;
+  }
+  return false;
 }
 
 /**
@@ -492,6 +649,77 @@ export function createApp({ fetch: fetchImpl, config }: Deps): Hono {
     return c.body(null, 201);
   });
 
+  // Leave an event (capability `event-leave-endpoint`). The device notifies the backend it is leaving.
+  // GATED on the marker (absent → 404; non-404 read failure → 502). Cascade: (1) rename the device's
+  // active manifest to its `.left.json` sibling (copy content → FRESH timestamp, then delete the
+  // active) so the union still serves its photos; (2) if no ACTIVE member remains (last-write-wins over
+  // the devices/ listing) reap the whole `events/<eventId>/` tree; (3) for each freed device that
+  // appears in no surviving event, GC its `files/devices/<id>/` byte partition and `devices/<id>.json`
+  // config. Idempotent + leak-safe: the `.left.json` is written BEFORE the active is deleted, and every
+  // delete of an absent object is a no-op, so a duplicate/retried DELETE re-runs harmlessly. Any
+  // transport failure anywhere in the cascade → 502.
+  app.delete("/events/:eventId/devices/:deviceId", async (c) => {
+    const eventId = c.req.param("eventId");
+    const deviceId = c.req.param("deviceId");
+    if (!validateUUID(eventId) || !validateUUID(deviceId)) {
+      return c.text("invalid key", 400);
+    }
+
+    let marker: EventMarker | null;
+    try {
+      marker = await readMarker(fetchImpl, config, eventId);
+    } catch (e) {
+      console.error(`leave: marker read failed for ${eventId}: ${e}`);
+      return c.text("upstream error", 502);
+    }
+    if (marker === null) return c.text("event not found", 404);
+
+    try {
+      // (1) Departed rename. Write the `.left.json` sibling FIRST (fresh timestamp = the commit), then
+      // delete the active. A missing active manifest (already departed / never a member) → no-op.
+      const activeKey = deviceManifestKey(eventId, deviceId);
+      const activeBody = await readObjectText(fetchImpl, config, activeKey);
+      if (activeBody !== null) {
+        await putObject(
+          fetchImpl,
+          config,
+          deviceLeftManifestKey(eventId, deviceId),
+          activeBody,
+          "application/json",
+        );
+        await deleteObject(fetchImpl, config, activeKey);
+      }
+
+      // (2) Reap check: re-LIST devices/ (now reflecting the rename); any active member remaining?
+      const entries = await listDir(fetchImpl, config, deviceManifestDir(eventId));
+      const members = resolveMembership(entries);
+      if (members.some((m) => m.state === "active")) {
+        return c.body(null, 200); // an active member remains — keep the event
+      }
+
+      // No active member → reap the event tree: every manifest under devices/, then the marker.
+      for (const e of (entries ?? []).filter((e) => !e.IsDirectory)) {
+        await deleteObject(fetchImpl, config, `${deviceManifestDir(eventId)}${e.ObjectName}`);
+      }
+      await deleteObject(fetchImpl, config, markerKey(eventId));
+
+      // (3) Reference-checked GC: delete a freed device's bytes + config only if it appears in no
+      // surviving event (shared bytes another event still references are retained).
+      for (const { deviceId: freedId } of members) {
+        if (await deviceAppearsInAnotherEvent(fetchImpl, config, freedId, eventId)) continue;
+        const files = await listDir(fetchImpl, config, deviceDir(freedId));
+        for (const f of (files ?? []).filter((e) => !e.IsDirectory)) {
+          await deleteObject(fetchImpl, config, `${deviceDir(freedId)}${f.ObjectName}`);
+        }
+        await deleteObject(fetchImpl, config, deviceConfigKey(freedId));
+      }
+      return c.body(null, 200);
+    } catch (e) {
+      console.error(`leave: cascade failed for ${eventId}/${deviceId}: ${e}`);
+      return c.text("upstream error", 502);
+    }
+  });
+
   // Event-wide UNION read (capability `bunny-list-endpoint`). GATED on event existence (marker read):
   // absent → 404, non-404 read failure → 502. Then fan out: one LIST of `events/<eventId>/devices/` to
   // discover the contributing devices, and per device (in parallel) read its `device.json` and LIST
@@ -520,42 +748,48 @@ export function createApp({ fetch: fetchImpl, config }: Deps): Hono {
 
     try {
       // Enumerate contributing devices with a single LIST of the device-manifest dir. A 404/empty dir
-      // means no contributors → an empty union.
+      // means no contributors → an empty union. BOTH active (`<id>.json`) and departed (`<id>.left.json`)
+      // devices contribute — a departed device's already-shared photos stay downloadable until the event
+      // is reaped — but a device is counted once via last-write-wins (see `resolveMembership`).
       const manifestEntries = await listDir(fetchImpl, config, deviceManifestDir(eventId));
-      const deviceIds = (manifestEntries ?? [])
-        .filter((e) => !e.IsDirectory && e.ObjectName.endsWith(".json"))
-        .map((e) => decodeObjectName(e.ObjectName).slice(0, -".json".length));
+      const members = resolveMembership(manifestEntries);
 
-      // Per-device fan-out (parallel): read the manifest AND list the device's byte partition, then
-      // keep only complete assets. Any rejection here is caught below → 502 (never a partial union).
-      const perDevice = await Promise.all(deviceIds.map(async (deviceId): Promise<UnionAsset[]> => {
-        const [manifest, fileEntries] = await Promise.all([
-          readDeviceManifest(fetchImpl, config, eventId, deviceId),
-          listDir(fetchImpl, config, deviceDir(deviceId)), // 404 → null → no bytes present
-        ]);
+      // Per-device fan-out (parallel): read the LWW-winning manifest AND list the device's byte
+      // partition, then keep only complete assets. Any rejection here is caught below → 502 (never a
+      // partial union).
+      const perDevice = await Promise.all(
+        members.map(async ({ deviceId, state }): Promise<UnionAsset[]> => {
+          const manifestKey = state === "departed"
+            ? deviceLeftManifestKey(eventId, deviceId)
+            : deviceManifestKey(eventId, deviceId);
+          const [manifest, fileEntries] = await Promise.all([
+            readManifestObject(fetchImpl, config, manifestKey),
+            listDir(fetchImpl, config, deviceDir(deviceId)), // 404 → null → no bytes present
+          ]);
 
-        // The device's present object names → byte length (the completeness oracle + size source).
-        const present = new Map<string, number>();
-        for (const e of (fileEntries ?? []).filter((e) => !e.IsDirectory)) {
-          present.set(decodeObjectName(e.ObjectName), e.Length);
-        }
+          // The device's present object names → byte length (the completeness oracle + size source).
+          const present = new Map<string, number>();
+          for (const e of (fileEntries ?? []).filter((e) => !e.IsDirectory)) {
+            present.set(decodeObjectName(e.ObjectName), e.Length);
+          }
 
-        const complete = (manifest.assets ?? [])
-          .filter((a) => a.resources.length > 0 && a.resources.every((r) => present.has(r.key)));
-        return await Promise.all(complete.map(async (a): Promise<UnionAsset> => ({
-          deviceId,
-          assetId: a.assetId,
-          creationDate: a.creationDate,
-          resources: await Promise.all(a.resources.map(async (r) => ({
-            role: r.role,
-            contentType: r.contentType,
-            key: r.key,
-            filename: r.filename,
-            size: present.get(r.key)!,
-            url: await presignDownloadUrl(aws, config, deviceId, r.key),
-          }))),
-        })));
-      }));
+          const complete = (manifest.assets ?? [])
+            .filter((a) => a.resources.length > 0 && a.resources.every((r) => present.has(r.key)));
+          return await Promise.all(complete.map(async (a): Promise<UnionAsset> => ({
+            deviceId,
+            assetId: a.assetId,
+            creationDate: a.creationDate,
+            resources: await Promise.all(a.resources.map(async (r) => ({
+              role: r.role,
+              contentType: r.contentType,
+              key: r.key,
+              filename: r.filename,
+              size: present.get(r.key)!,
+              url: await presignDownloadUrl(aws, config, deviceId, r.key),
+            }))),
+          })));
+        }),
+      );
 
       c.header("Cache-Control", "no-store"); // live read over mutable manifests + listings
       return c.json(perDevice.flat());
@@ -656,12 +890,14 @@ export function createApp({ fetch: fetchImpl, config }: Deps): Hono {
     }
     if (marker === null) return c.text("event not found", 404);
 
+    // Enumerate ACTIVE members only: a departed device (`<id>.left.json` winning by last-write-wins)
+    // has left the event and is not notified.
     let memberIds: string[];
     try {
       const entries = await listDir(fetchImpl, config, deviceManifestDir(eventId));
-      memberIds = (entries ?? [])
-        .filter((e) => !e.IsDirectory && e.ObjectName.endsWith(".json"))
-        .map((e) => decodeObjectName(e.ObjectName).slice(0, -".json".length));
+      memberIds = resolveMembership(entries)
+        .filter((m) => m.state === "active")
+        .map((m) => m.deviceId);
     } catch (e) {
       console.error(`notify: member LIST failed for ${eventId}: ${e}`);
       return c.text("upstream error", 502);

@@ -182,7 +182,7 @@ in-process and ordered, with **no** `setUploadJobExtensionEnabled` toggle:
   task.
 - **re-provision** (valid `snapsync://` rescan): cancel in-flight tasks for the old event and delete
   their staged temp files, update the `eventId`, reconcile against storage (seed already-stored
-  resources as `COMPLETED` via `:capability:rejoin`), then run a cycle — all ordered in one process,
+  resources as `COMPLETED` via `:capability:membership`), then run a cycle — all ordered in one process,
   with no disable→enable toggle and no cross-process race.
 - **leave**: cancel all in-flight tasks, cancel the scheduled task, delete staged temp files, then
   clear the ledger and discovery cursor and forget the `eventId` (the platform-neutral leave).

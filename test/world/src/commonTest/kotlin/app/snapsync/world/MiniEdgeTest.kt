@@ -5,7 +5,7 @@ import app.snapsync.eventcreation.CreateOutcome
 import app.snapsync.eventcreation.HttpEventCreationClient
 import app.snapsync.gallery.DeviceManifest
 import app.snapsync.gallery.encodeToJson
-import app.snapsync.rejoin.HttpDeviceFilesSource
+import app.snapsync.membership.HttpDeviceFilesSource
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
