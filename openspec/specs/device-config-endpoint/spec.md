@@ -5,21 +5,21 @@ TBD - created by archiving change push-notification-infra. Update Purpose after 
 ## Requirements
 ### Requirement: Device config write route
 
-The backend SHALL accept an HTTP `PUT` at the path template `/devices/<deviceId>/config` (the literal
-labels `devices` and `config` are required) whose JSON body is the device's config document, and write
-it into bunny native Storage at the bare key `devices/<deviceId>/config.json` with `Content-Type:
+The backend SHALL accept an HTTP `PUT` at the path template `/devices/<deviceId>` (the literal
+label `devices` is required) whose JSON body is the device's config document, and write
+it into bunny native Storage at the bare key `devices/<deviceId>.json` with `Content-Type:
 application/json`. `deviceId` MUST match a UUID pattern. A request whose path does not match this route
 (missing a label, wrong depth) SHALL yield `404`; a matched request whose `deviceId` is not a UUID
 SHALL yield `400`; neither case SHALL make an upstream request. A request using any method other than
 `PUT` on this path SHALL yield `404` (no matching route). This route SHALL be served by the same
 application as the upload/list endpoints. The config object lives under the device's own namespace and
-is **not** a member of the `devices/<deviceId>/files/` byte partition, so it never appears in the
+is **not** a member of the `files/devices/<deviceId>/` byte partition, so it never appears in the
 per-device file listing or the event union.
 
 #### Scenario: Valid config write accepted
 
-- **WHEN** a `PUT /devices/<uuid>/config` arrives with a valid UUID and a JSON body
-- **THEN** the endpoint writes the body to the storage key `devices/<uuid>/config.json` with
+- **WHEN** a `PUT /devices/<uuid>` arrives with a valid UUID and a JSON body
+- **THEN** the endpoint writes the body to the storage key `devices/<uuid>.json` with
   `Content-Type: application/json`
 
 #### Scenario: Non-UUID device id rejected
@@ -29,14 +29,14 @@ per-device file listing or the event union.
 
 #### Scenario: Unmatched path or wrong method rejected
 
-- **WHEN** the path does not match `/devices/<deviceId>/config`, or the method is not `PUT`
+- **WHEN** the path does not match `/devices/<deviceId>`, or the method is not `PUT`
 - **THEN** the endpoint responds `404` and makes no upstream request
 
 #### Scenario: Config object is not a listed file
 
-- **WHEN** a device has written `devices/<uuid>/config.json` and its byte partition is later listed
-- **THEN** the config object does not appear in `GET /devices/<uuid>/files` nor in any event union
-  (it is outside the `devices/<uuid>/files/` partition)
+- **WHEN** a device has written `devices/<uuid>.json` and its byte partition is later listed
+- **THEN** the config object does not appear in `GET /files/devices/<uuid>` nor in any event union
+  (it is outside the `files/devices/<uuid>/` partition)
 
 ### Requirement: Config document shape — push token
 
@@ -49,21 +49,21 @@ received (it is the device's self-asserted registration); it SHALL NOT mint or t
 
 #### Scenario: Push-token document persisted
 
-- **WHEN** a `PUT /devices/<uuid>/config` body is `{ "pushToken": { "kind": "apns", "token": "<hex>",
+- **WHEN** a `PUT /devices/<uuid>` body is `{ "pushToken": { "kind": "apns", "token": "<hex>",
   "env": "sandbox" } }`
-- **THEN** the stored `devices/<uuid>/config.json` carries that `pushToken` object verbatim
+- **THEN** the stored `devices/<uuid>.json` carries that `pushToken` object verbatim
 
 ### Requirement: Authorization by device id only
 
 The config write is addressed by the device-id path alone — the endpoint SHALL NOT require any
 authorization token, and SHALL NOT consult any event id or event marker (a device's config is
 event-independent). Possession of the (unguessable, per-install) `deviceId` is the capability, the same
-trust model as the byte-upload route that writes `devices/<deviceId>/files/…`. The endpoint SHALL NOT
+trust model as the byte-upload route that writes `files/devices/<deviceId>/…`. The endpoint SHALL NOT
 expose or forward the bunny account API key.
 
 #### Scenario: No token required
 
-- **WHEN** a `PUT /devices/<uuid>/config` carries a valid device id and body but no authorization token
+- **WHEN** a `PUT /devices/<uuid>` carries a valid device id and body but no authorization token
 - **THEN** the write is accepted (the device id is the capability)
 
 #### Scenario: Account API key never exposed
@@ -74,14 +74,14 @@ expose or forward the bunny account API key.
 ### Requirement: Last-write-wins and faithful outcome
 
 The endpoint SHALL write the config as a single unconditional `PUT` with no prior existence check on
-the object key; a write to an existing `devices/<deviceId>/config.json` overwrites it (the latest
+the object key; a write to an existing `devices/<deviceId>.json` overwrites it (the latest
 registration wins — a rotated token replaces the prior one). It SHALL return a `2xx` **only** when
 bunny confirms the object was stored; any upstream error, timeout, or partial write SHALL be surfaced
 as `5xx` and SHALL NEVER be reported as `2xx`.
 
 #### Scenario: Existing config overwritten
 
-- **WHEN** a `PUT` targets a `devices/<deviceId>/config.json` key that already exists
+- **WHEN** a `PUT` targets a `devices/<deviceId>.json` key that already exists
 - **THEN** the endpoint issues the upstream `PUT` directly (no prior existence check) and the object is
   overwritten with the new document
 

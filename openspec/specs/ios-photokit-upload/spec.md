@@ -109,7 +109,7 @@ driven through the `SyncEngine`, the `createJob` path, or the ledger.
 On each cycle the extension SHALL **project** the accumulator to the current event's `device.json`
 (filtering to assets whose capture date meets the event's cutoff; under the current whole-library
 scope the projection is the identity) and **PUT it synchronously, in-cycle**, to
-`<host>/event/<eventId>/device/<deviceId>` with `Content-Type: application/json` — **not** over a
+`<host>/events/<eventId>/devices/<deviceId>` with `Content-Type: application/json` — **not** over a
 background `URLSession`, and **not** via the engine or ledger. The extension SHALL be the **sole
 writer** of `device.json`; each write is a complete, self-contained full-state snapshot (no
 read-modify-write). It MAY skip the PUT when the projection is **byte-identical** to the last written
@@ -132,7 +132,7 @@ reads no manifest state.
 
 - **WHEN** a `process()` cycle finishes its discovery and the projection differs from the last write
 - **THEN** the extension projects the accumulator to the current event's `device.json` and PUTs it
-  synchronously, in-cycle, to `<host>/event/<eventId>/device/<deviceId>` (`Content-Type:
+  synchronously, in-cycle, to `<host>/events/<eventId>/devices/<deviceId>` (`Content-Type:
   application/json`), with no background `URLSession` task and no engine/ledger involvement, each
   resource carrying `key` (the storage object name) and `filename` (the human capture name)
 

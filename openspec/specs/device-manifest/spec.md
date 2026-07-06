@@ -12,7 +12,7 @@ consumer reads it), it exists as forward-preparation for restore and event-wide 
 ### Requirement: Per-event device manifest document
 
 For each (event, device) pair it backs up, the producer SHALL maintain exactly one device manifest
-object at the key `/events/<eventId>/device/<deviceId>.json` with `Content-Type: application/json`. The
+object at the key `/events/<eventId>/devices/<deviceId>.json` with `Content-Type: application/json`. The
 manifest SHALL be a UTF-8 JSON object carrying `deviceId` (the stable per-install device id) and
 `assets` (an array). Each `assets` element SHALL carry `assetId` (the device-local asset identity),
 `creationDate` (the asset's capture timestamp as an ISO-8601 string), and `resources` (a non-empty
@@ -25,7 +25,7 @@ a straight projection of the manifest.
 #### Scenario: One manifest per event and device
 
 - **WHEN** a device backs up assets for event `E`
-- **THEN** exactly one object `/events/E/device/<deviceId>.json` exists for that device, with
+- **THEN** exactly one object `/events/E/devices/<deviceId>.json` exists for that device, with
   `Content-Type: application/json`, carrying `deviceId` and an `assets` array
 
 #### Scenario: Fields present on each entry
