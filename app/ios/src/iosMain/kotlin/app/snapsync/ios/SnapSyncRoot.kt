@@ -25,9 +25,11 @@ import app.snapsync.push.KtorPushHttpClient
 import app.snapsync.push.PushReceiver
 import app.snapsync.push.PushRegistration
 import app.snapsync.push.PushTokenSource
-import app.snapsync.rejoin.LeaveEvent
-import app.snapsync.rejoin.clearRequestedOffMain
-import app.snapsync.rejoin.darwinHttpClient
+import app.snapsync.membership.HttpLeaveNotifier
+import app.snapsync.membership.LeaveEvent
+import app.snapsync.membership.LeaveNotifier
+import app.snapsync.membership.clearRequestedOffMain
+import app.snapsync.membership.darwinHttpClient
 import app.snapsync.download.DownloadController
 import app.snapsync.download.HttpEventUnionSource
 import app.snapsync.download.IosPhotoDownloadJobs
@@ -192,13 +194,21 @@ object SnapSyncRoot {
     // read from the store. Refreshed on foreground entry alongside the upload status.
     private val downloadStatusSource: StoreDownloadStatusSource by lazy { StoreDownloadStatusSource(downloadStore) }
 
-    // The leave use-case: the local-only inverse of a join. Disables the producer, then clears the
-    // Keychain config — only. It constructs no ledger type; the extension resets its own private ledger,
+    // The seam that tells the backend this device is leaving (DELETE /events/<id>/devices/<id>,
+    // capability `event-leave-endpoint`) — the backend renames the manifest to its departed
+    // `.left.json` sibling and reaps/GCs the event when the last member leaves. Best-effort (a failed
+    // call never blocks leaving). Used by BOTH the explicit Leave and a switch (see [provisionEvent]).
+    private val leaveNotifier: LeaveNotifier by lazy { HttpLeaveNotifier(darwinHttpClient(), backendHost) }
+
+    // The leave use-case: disables the producer, notifies the backend (best-effort), then clears the
+    // Keychain config. It constructs no ledger type; the extension resets its own private ledger,
     // cursor, and joinedEventId marker on its next cycle once the configured event no longer matches.
+    // The notify reads the still-configured eventId (it runs before the clear).
     private val leaveEvent: LeaveEvent by lazy {
         LeaveEvent(
             config = config,
             disableExtension = { disableExtension() },
+            notifyLeave = { config.config.value?.eventId?.let { leaveNotifier.leave(it, deviceId) } },
         )
     }
 
@@ -283,8 +293,9 @@ object SnapSyncRoot {
         StatusContainerHost(
             syncSource, permission, permission, config, config, scope,
             creationStatusSource = creationStatus, creator = eventCreator,
-            // Leave is local-only: also cancel in-flight downloads and drop non-terminal rows (imported
-            // photos stay; suppression rows are permanent). Then the existing leave clears config/producer.
+            // Leave: cancel in-flight downloads and drop non-terminal rows (imported photos stay;
+            // suppression rows are permanent), then run the leave use-case (disable producer → notify the
+            // backend it is leaving → clear config/producer). Imported foreign photos are never touched.
             leave = { downloadController.onLeaveOrSwitch(); leaveEvent.leave() },
             // Fire-and-forget share of the invite deeplink (the host owns the URL). Wiring-only:
             // present the system share sheet over the current top view controller.
@@ -501,6 +512,12 @@ object SnapSyncRoot {
         "provisionEvent",
         params = "eventId=$eventId named=${name != null}",
     ) {
+        // Switch: provisioning a DIFFERENT event while joined leaves the previous one on the backend
+        // first (best-effort — a failure never prevents the switch; see `deeplink-config`). Re-scanning
+        // the same event is not a switch and fires no leave. The confirm dialog for this is a later change.
+        config.config.value?.eventId?.let { previous ->
+            if (previous != eventId) leaveNotifier.leave(previous, deviceId)
+        }
         // Persist immediately (join never blocks on the cosmetic name); the container's ConfigSource
         // is this instance. Create passes the name straight through; scan passes null.
         config.save(EventConfig(eventId, name))

@@ -957,3 +957,266 @@ Deno.test("notify → wrong method (GET) → 404, no upstream request", async ()
   assertEquals(res.status, 404);
   assertEquals(calls.length, 0);
 });
+
+// ── DELETE /events/:eventId/devices/:deviceId (leave cascade) + LWW membership ──────────────────────
+
+const E2 = "7a3f9c21-0000-4000-8000-000000000010"; // a second eventId
+const G = "33333333-0000-4000-8000-000000000004"; // a third deviceId (keeps E2 alive)
+
+let leaveClock = Date.parse("2026-06-27T12:00:00.000Z");
+/** A monotonically-increasing wall-clock string, so a PUT always mints a newer LastChanged (LWW). */
+function tick(): string {
+  leaveClock += 1000;
+  return new Date(leaveClock).toISOString();
+}
+
+/** Strip `${ZONE}/` from a full upstream URL to recover the storage key. */
+const keyOf = (url: string) => (url.startsWith(ZONE + "/") ? url.slice(ZONE.length + 1) : url);
+
+/** A minimal device manifest with one complete single-resource asset keyed on `key`. */
+const mkManifest = (deviceId: string, assetId: string, key: string) => ({
+  deviceId,
+  assets: [{
+    assetId,
+    creationDate: "2026-06-27T10:00:00Z",
+    resources: [{ role: "primary", contentType: "image/heic", key, filename: key }],
+  }],
+});
+
+/**
+ * An in-memory bunny native-Storage fake: GET an object (or, for a trailing-slash key, a directory LIST
+ * of direct children with `LastChanged`), PUT (stores + mints a fresh LastChanged), DELETE (idempotent).
+ * Keys in `failDelete` return 500 (to model a partial-rename failure). APNs POSTs succeed. Seeded from
+ * `{ key: { json, lc } }`.
+ */
+function storageFake(
+  initial: Record<string, { json?: unknown; lc?: string }>,
+  failDelete?: Set<string>,
+) {
+  const store = new Map<string, { body: string; lc: string }>();
+  for (const [k, v] of Object.entries(initial)) {
+    store.set(k, {
+      body: v.json === undefined ? "" : JSON.stringify(v.json),
+      lc: v.lc ?? "2026-06-27T00:00:00.000Z",
+    });
+  }
+  const calls: Call[] = [];
+  const fetchImpl: FetchLike = (url, init) => {
+    calls.push({ url, init });
+    if (url.includes("push.apple.com")) return Promise.resolve(new Response(null, { status: 200 }));
+    const method = init.method ?? "GET";
+    const key = keyOf(url);
+    if (method === "GET" && key.endsWith("/")) {
+      const children = new Map<string, { name: string; dir: boolean; len: number; lc: string }>();
+      let any = false;
+      for (const [k, v] of store) {
+        if (!k.startsWith(key)) continue;
+        any = true;
+        const rest = k.slice(key.length);
+        const slash = rest.indexOf("/");
+        if (slash === -1) {
+          children.set(rest, { name: rest, dir: false, len: v.body.length, lc: v.lc });
+        } else if (!children.has(rest.slice(0, slash))) {
+          children.set(rest.slice(0, slash), {
+            name: rest.slice(0, slash),
+            dir: true,
+            len: 0,
+            lc: "",
+          });
+        }
+      }
+      if (!any) return Promise.resolve(new Response("nf", { status: 404 }));
+      const entries = [...children.values()].map((e) => ({
+        ObjectName: e.name,
+        IsDirectory: e.dir,
+        Length: e.len,
+        LastChanged: e.lc,
+      }));
+      return Promise.resolve(new Response(JSON.stringify(entries), { status: 200 }));
+    }
+    if (method === "GET") {
+      const v = store.get(key);
+      return Promise.resolve(
+        v ? new Response(v.body, { status: 200 }) : new Response("nf", { status: 404 }),
+      );
+    }
+    if (method === "PUT") {
+      store.set(key, { body: typeof init.body === "string" ? init.body : "", lc: tick() });
+      return Promise.resolve(new Response(null, { status: 201 }));
+    }
+    if (method === "DELETE") {
+      if (failDelete?.has(key)) return Promise.resolve(new Response("boom", { status: 500 }));
+      return Promise.resolve(new Response(null, { status: store.delete(key) ? 200 : 404 }));
+    }
+    return Promise.resolve(new Response(null, { status: 405 }));
+  };
+  return { store, calls, fetchImpl };
+}
+
+const del = (app: ReturnType<typeof createApp>, e: string, d: string) =>
+  app.request(`/events/${e}/devices/${d}`, { method: "DELETE" });
+
+Deno.test("leave → non-UUID id → 400, no upstream", async () => {
+  const { calls, fetchImpl } = storageFake({});
+  const res = await createApp({ config: CONFIG, fetch: fetchImpl })
+    .request(`/events/not-a-uuid/devices/${D}`, { method: "DELETE" });
+  assertEquals(res.status, 400);
+  assertEquals(calls.length, 0);
+});
+
+Deno.test("leave → absent event marker → 404, no manifest writes", async () => {
+  const { calls, fetchImpl } = storageFake({}); // no marker seeded
+  const res = await del(createApp({ config: CONFIG, fetch: fetchImpl }), E, D);
+  assertEquals(res.status, 404);
+  assert(!calls.some((c) => c.init.method === "PUT" || c.init.method === "DELETE"));
+});
+
+Deno.test("leave with another active member → renames to .left.json, keeps the event", async () => {
+  const { store, fetchImpl } = storageFake({
+    [`events/${E}/metadata.json`]: { json: MARKER_BODY },
+    [`events/${E}/devices/${D}.json`]: { json: mkManifest(D, "A", "A-primary.heic") },
+    [`events/${E}/devices/${D2}.json`]: { json: mkManifest(D2, "B", "B-primary.heic") },
+  });
+  const res = await del(createApp({ config: CONFIG, fetch: fetchImpl }), E, D);
+  assertEquals(res.status, 200);
+  assert(!store.has(`events/${E}/devices/${D}.json`)); // active removed
+  assert(store.has(`events/${E}/devices/${D}.left.json`)); // departed written
+  assert(store.has(`events/${E}/devices/${D2}.json`)); // other member intact
+  assert(store.has(`events/${E}/metadata.json`)); // event kept
+});
+
+Deno.test("last active member leaves → event reaped + orphaned device GC'd (bytes + config)", async () => {
+  const { store, fetchImpl } = storageFake({
+    [`events/${E}/metadata.json`]: { json: MARKER_BODY },
+    [`events/${E}/devices/${D}.json`]: { json: mkManifest(D, "A", "A-primary.heic") },
+    [`files/devices/${D}/A-primary.heic`]: { json: {} },
+    [`devices/${D}.json`]: { json: { pushToken: {} } },
+  });
+  const res = await del(createApp({ config: CONFIG, fetch: fetchImpl }), E, D);
+  assertEquals(res.status, 200);
+  assert(!store.has(`events/${E}/metadata.json`)); // event reaped
+  assert(!store.has(`events/${E}/devices/${D}.left.json`)); // manifest gone
+  assert(!store.has(`files/devices/${D}/A-primary.heic`)); // bytes GC'd
+  assert(!store.has(`devices/${D}.json`)); // config GC'd
+});
+
+Deno.test("last active leaves but device is in another event → bytes/config retained", async () => {
+  const { store, fetchImpl } = storageFake({
+    [`events/${E}/metadata.json`]: { json: MARKER_BODY },
+    [`events/${E}/devices/${D}.json`]: { json: mkManifest(D, "A", "A-primary.heic") },
+    [`events/${E2}/metadata.json`]: { json: { ...MARKER_BODY, eventId: E2 } },
+    [`events/${E2}/devices/${G}.json`]: { json: mkManifest(G, "C", "C-primary.heic") },
+    [`events/${E2}/devices/${D}.left.json`]: { json: mkManifest(D, "A", "A-primary.heic") },
+    [`files/devices/${D}/A-primary.heic`]: { json: {} },
+    [`devices/${D}.json`]: { json: { pushToken: {} } },
+  });
+  const res = await del(createApp({ config: CONFIG, fetch: fetchImpl }), E, D);
+  assertEquals(res.status, 200);
+  assert(!store.has(`events/${E}/metadata.json`)); // E reaped
+  assert(store.has(`files/devices/${D}/A-primary.heic`)); // bytes retained (E2 refs them)
+  assert(store.has(`devices/${D}.json`)); // config retained
+  assert(store.has(`events/${E2}/devices/${D}.left.json`)); // still departed in E2
+});
+
+Deno.test("leave is idempotent — a duplicate DELETE re-runs harmlessly", async () => {
+  const { store, fetchImpl } = storageFake({
+    [`events/${E}/metadata.json`]: { json: MARKER_BODY },
+    [`events/${E}/devices/${D}.json`]: { json: mkManifest(D, "A", "A-primary.heic") },
+    [`events/${E}/devices/${D2}.json`]: { json: mkManifest(D2, "B", "B-primary.heic") },
+  });
+  const app = createApp({ config: CONFIG, fetch: fetchImpl });
+  assertEquals((await del(app, E, D)).status, 200);
+  assertEquals((await del(app, E, D)).status, 200); // duplicate
+  assert(store.has(`events/${E}/devices/${D}.left.json`));
+  assert(!store.has(`events/${E}/devices/${D}.json`));
+  assert(store.has(`events/${E}/devices/${D2}.json`)); // untouched
+});
+
+Deno.test("partial rename (active delete fails) → 502, contribution preserved, retry completes", async () => {
+  const failing = new Set<string>([`events/${E}/devices/${D}.json`]);
+  const { store, fetchImpl } = storageFake({
+    [`events/${E}/metadata.json`]: { json: MARKER_BODY },
+    [`events/${E}/devices/${D}.json`]: { json: mkManifest(D, "A", "A-primary.heic") },
+    [`events/${E}/devices/${D2}.json`]: { json: mkManifest(D2, "B", "B-primary.heic") },
+  }, failing);
+  const app = createApp({ config: CONFIG, fetch: fetchImpl });
+  assertEquals((await del(app, E, D)).status, 502);
+  assert(store.has(`events/${E}/devices/${D}.left.json`)); // written FIRST — contribution preserved
+  assert(store.has(`events/${E}/devices/${D}.json`)); // leftover active, inert (LWW: .left is newer)
+  failing.clear();
+  assertEquals((await del(app, E, D)).status, 200); // retry completes
+  assert(!store.has(`events/${E}/devices/${D}.json`)); // now cleaned up
+});
+
+Deno.test("union → a departed device's photos remain in the union", async () => {
+  const { fetchImpl } = storageFake({
+    [`events/${E}/metadata.json`]: { json: MARKER_BODY },
+    [`events/${E}/devices/${D}.left.json`]: { json: mkManifest(D, "A", "A-primary.heic") },
+    [`events/${E}/devices/${D2}.json`]: { json: mkManifest(D2, "B", "B-primary.heic") },
+    [`files/devices/${D}/A-primary.heic`]: { json: {} },
+    [`files/devices/${D2}/B-primary.heic`]: { json: {} },
+  });
+  const res = await createApp({ config: CONFIG, fetch: fetchImpl }).request(`/events/${E}/files`);
+  assertEquals(res.status, 200);
+  const body = await res.json() as { deviceId: string }[];
+  assertEquals(new Set(body.map((a) => a.deviceId)), new Set([D, D2]));
+});
+
+Deno.test("union → device with both siblings counted once (LWW departed wins)", async () => {
+  const { fetchImpl } = storageFake({
+    [`events/${E}/metadata.json`]: { json: MARKER_BODY },
+    [`events/${E}/devices/${D}.json`]: {
+      json: mkManifest(D, "OLD", "A-primary.heic"),
+      lc: "2026-06-27T00:00:00.000Z",
+    },
+    [`events/${E}/devices/${D}.left.json`]: {
+      json: mkManifest(D, "NEW", "A-primary.heic"),
+      lc: "2026-06-27T06:00:00.000Z",
+    },
+    [`files/devices/${D}/A-primary.heic`]: { json: {} },
+  });
+  const res = await createApp({ config: CONFIG, fetch: fetchImpl }).request(`/events/${E}/files`);
+  const body = await res.json() as { deviceId: string; assetId: string }[];
+  assertEquals(body.length, 1); // counted once
+  assertEquals(body[0].assetId, "NEW"); // read the newer (departed) manifest, not the stale active
+});
+
+Deno.test("notify → excludes a departed device, targets active members", async () => {
+  const { calls, fetchImpl } = storageFake({
+    [`events/${E}/metadata.json`]: { json: MARKER_BODY },
+    [`events/${E}/devices/${D}.left.json`]: { json: mkManifest(D, "A", "A-primary.heic") },
+    [`events/${E}/devices/${D2}.json`]: { json: mkManifest(D2, "B", "B-primary.heic") },
+    [`devices/${D}.json`]: { json: { pushToken: { kind: "apns", token: "tokD", env: "sandbox" } } },
+    [`devices/${D2}.json`]: {
+      json: { pushToken: { kind: "apns", token: "tokD2", env: "sandbox" } },
+    },
+  });
+  const res = await createApp({ config: CONFIG, fetch: fetchImpl }).request(`/events/${E}/notify`, {
+    method: "POST",
+  });
+  assertEquals(res.status, 202);
+  assert(calls.some((c) => keyOf(c.url) === `devices/${D2}.json`)); // active member's token read
+  assert(!calls.some((c) => keyOf(c.url) === `devices/${D}.json`)); // departed member's config NOT read
+});
+
+Deno.test("rejoin → fresh active manifest supersedes .left.json (union + notify treat as active)", async () => {
+  const { calls, fetchImpl } = storageFake({
+    [`events/${E}/metadata.json`]: { json: MARKER_BODY },
+    [`events/${E}/devices/${D}.left.json`]: {
+      json: mkManifest(D, "OLD", "A-primary.heic"),
+      lc: "2026-06-27T00:00:00.000Z",
+    },
+    [`events/${E}/devices/${D}.json`]: {
+      json: mkManifest(D, "NEW", "A-primary.heic"),
+      lc: "2026-06-27T06:00:00.000Z",
+    },
+    [`files/devices/${D}/A-primary.heic`]: { json: {} },
+    [`devices/${D}.json`]: { json: { pushToken: { kind: "apns", token: "tokD", env: "sandbox" } } },
+  });
+  const app = createApp({ config: CONFIG, fetch: fetchImpl });
+  const union = await (await app.request(`/events/${E}/files`)).json() as { assetId: string }[];
+  assertEquals(union.length, 1);
+  assertEquals(union[0].assetId, "NEW"); // active manifest wins the LWW
+  assertEquals((await app.request(`/events/${E}/notify`, { method: "POST" })).status, 202);
+  assert(calls.some((c) => c.init.method === "GET" && keyOf(c.url) === `devices/${D}.json`)); // D notified (active)
+});

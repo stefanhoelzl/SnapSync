@@ -266,7 +266,7 @@ agent use and inject that one instead.
 :capability:config     deeplink config provisioning (eventId)
 :capability:device-id  stable per-install device identity (shared Keychain)
 :capability:download   foreign-photo download → stage → import controller (photo-download)
-:capability:rejoin     extension-side re-join reconciliation + leave use-case + device-file listing seam
+:capability:membership event-membership lifecycle: extension-side re-join reconciliation + leave use-case + LeaveNotifier (DELETE /events/<id>/devices/<id>) + device-file listing seam
 :capability:event-creation-ui  create-event screen seams: EventCreator/CreationStatusSource + HTTP creator
 :app:desktop           shared harness library (PhoneFrame + StatusPane, StatusContainerHost wiring both desktop harnesses reuse) AND the full-stack world harness app (:app:desktop:run): real StatusScreen whose counts EMERGE from :test:world's real ListingSyncStatusSource + a right-pane world inspector driving the world (capability full-stack-harness)
 :app:desktop:ui        forge harness (:app:desktop:ui:run): phone frame + control panel that forges any UI state; depends on :app:desktop

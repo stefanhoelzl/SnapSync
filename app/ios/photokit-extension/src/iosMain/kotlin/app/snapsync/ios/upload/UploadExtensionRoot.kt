@@ -21,9 +21,9 @@ import app.snapsync.gallery.PhotoLibraryResourceEnumerator
 import app.snapsync.gallery.deviceManifestAssetsFromResources
 import app.snapsync.push.EventNotifier
 import app.snapsync.push.KtorPushHttpClient
-import app.snapsync.rejoin.ExtensionReconciler
-import app.snapsync.rejoin.HttpDeviceFilesSource
-import app.snapsync.rejoin.darwinHttpClient
+import app.snapsync.membership.ExtensionReconciler
+import app.snapsync.membership.HttpDeviceFilesSource
+import app.snapsync.membership.darwinHttpClient
 import app.snapsync.logging.FileLogWriter
 import app.snapsync.logging.PublicNSLogWriter
 import app.snapsync.logging.invocation

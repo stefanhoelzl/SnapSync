@@ -2,7 +2,7 @@ package app.snapsync.ios.upload
 
 import app.snapsync.engine.JOINED_EVENT_KEY
 import app.snapsync.engine.LEDGER_APP_GROUP
-import app.snapsync.rejoin.JoinedEventMarker
+import app.snapsync.membership.JoinedEventMarker
 import platform.Foundation.NSUserDefaults
 
 /**

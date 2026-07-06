@@ -27,7 +27,7 @@ kotlin {
             api(project(":capability:upload"))
             api(project(":capability:upload-url"))
             api(project(":capability:config"))
-            api(project(":capability:rejoin"))
+            api(project(":capability:membership"))
             api(project(":capability:download"))
             api(project(":capability:event-creation-ui"))
             implementation(libs.coroutines.core)
