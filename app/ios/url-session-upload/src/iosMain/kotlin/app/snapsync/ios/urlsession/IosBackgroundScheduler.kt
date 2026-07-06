@@ -1,6 +1,7 @@
 package app.snapsync.ios.urlsession
 
 import app.snapsync.upload.BackgroundScheduler
+import app.snapsync.logging.invocation
 import co.touchlab.kermit.Logger
 import kotlinx.cinterop.ExperimentalForeignApi
 import kotlinx.cinterop.ObjCObjectVar
@@ -30,7 +31,7 @@ class IosBackgroundScheduler(
     private val earliestBeginSeconds: Double = 60.0,
 ) : BackgroundScheduler {
 
-    override fun scheduleNext() {
+    override fun scheduleNext() = log.invocation("scheduler.scheduleNext") {
         val request = BGProcessingTaskRequest(taskIdentifier)
         request.requiresNetworkConnectivity = true
         request.requiresExternalPower = false
@@ -42,7 +43,7 @@ class IosBackgroundScheduler(
         }
     }
 
-    override fun cancel() {
+    override fun cancel() = log.invocation("scheduler.cancel") {
         BGTaskScheduler.sharedScheduler.cancelTaskRequestWithIdentifier(taskIdentifier)
     }
 }

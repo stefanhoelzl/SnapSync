@@ -3,6 +3,7 @@ package app.snapsync.download
 import app.snapsync.downloadstore.AssetRef
 import app.snapsync.downloadstore.DownloadStore
 import app.snapsync.downloadstore.PlannedResource
+import app.snapsync.logging.invocation
 import co.touchlab.kermit.Logger
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -32,10 +33,10 @@ class DownloadController(
      * Discover + plan + enqueue + import, idempotently. Safe to call on join and on every foreground:
      * already-imported and already-planned assets are no-ops, and only not-yet-staged resources enqueue.
      */
-    suspend fun reconcile(eventId: String) {
+    suspend fun reconcile(eventId: String) = log.invocation("reconcile", params = "eventId=$eventId") {
         val assets = union.union(eventId).getOrElse {
             log.w(it) { "union fetch failed — keeping last state" }
-            return
+            return@invocation
         }
         mutex.withLock {
             var planned = 0
@@ -64,13 +65,16 @@ class DownloadController(
      * background-`URLSession` delegate, possibly while backgrounded / on relaunch). Records it and
      * imports the asset if its set is now complete.
      */
-    suspend fun onResourceStaged(ref: AssetRef, resourceKey: String, stagedPath: String) = mutex.withLock {
-        store.markStaged(ref, resourceKey, stagedPath)
-        importReadyLocked()
-    }
+    suspend fun onResourceStaged(ref: AssetRef, resourceKey: String, stagedPath: String) =
+        log.invocation("onResourceStaged", params = "key=$resourceKey") {
+            mutex.withLock {
+                store.markStaged(ref, resourceKey, stagedPath)
+                importReadyLocked()
+            }
+        }
 
     /** Import every asset whose resources are all staged and that is not yet imported. */
-    suspend fun importReady() = mutex.withLock { importReadyLocked() }
+    suspend fun importReady() = log.invocation("importReady") { mutex.withLock { importReadyLocked() } }
 
     private suspend fun importReadyLocked() {
         for (importable in store.importableAssets()) {
@@ -87,8 +91,10 @@ class DownloadController(
     }
 
     /** Leave/switch: cancel in-flight transfers and drop non-terminal rows (imported rows persist). */
-    suspend fun onLeaveOrSwitch() = mutex.withLock {
-        jobs.cancelAll()
-        store.pruneNonTerminal()
+    suspend fun onLeaveOrSwitch() = log.invocation("onLeaveOrSwitch") {
+        mutex.withLock {
+            jobs.cancelAll()
+            store.pruneNonTerminal()
+        }
     }
 }

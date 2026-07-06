@@ -9,6 +9,7 @@ import app.snapsync.upload.Discovery
 import app.snapsync.upload.PlatformJobState
 import app.snapsync.upload.PlatformUploadJob
 import app.snapsync.upload.UploadJobPlatform
+import app.snapsync.logging.invocation
 import co.touchlab.kermit.Logger
 import kotlinx.cinterop.BetaInteropApi
 import kotlinx.cinterop.ExperimentalForeignApi
@@ -52,9 +53,15 @@ class IosPhotoKitUploadPlatform(
 
     private val library: PHPhotoLibrary get() = PHPhotoLibrary.sharedPhotoLibrary()
 
-    override suspend fun fetchRetryJobs(): List<PlatformUploadJob> = fetch(PHAssetResourceUploadJobActionRetry)
+    override suspend fun fetchRetryJobs(): List<PlatformUploadJob> =
+        log.invocation("platform.fetchRetryJobs", result = { "${it.size} job(s)" }) {
+            fetch(PHAssetResourceUploadJobActionRetry)
+        }
 
-    override suspend fun fetchAckJobs(): List<PlatformUploadJob> = fetch(PHAssetResourceUploadJobActionAcknowledge)
+    override suspend fun fetchAckJobs(): List<PlatformUploadJob> =
+        log.invocation("platform.fetchAckJobs", result = { "${it.size} job(s)" }) {
+            fetch(PHAssetResourceUploadJobActionAcknowledge)
+        }
 
     private fun fetch(action: PHAssetResourceUploadJobAction): List<PlatformUploadJob> {
         val jobs = PHAssetResourceUploadJob.fetchJobsWithAction(action, options = null)
@@ -86,7 +93,7 @@ class IosPhotoKitUploadPlatform(
                 handle = job,
             )
         }
-        log.i { "fetch(${actionName(action)}): ${out.size} job(s)" }
+        // (count is logged by the wrapping `platform.fetch*` invocation's exit line)
         return out
     }
 
@@ -100,33 +107,36 @@ class IosPhotoKitUploadPlatform(
         )
     }
 
-    override suspend fun retryJob(job: PlatformUploadJob, request: UploadRequest) {
-        val systemJob = job.handle as PHAssetResourceUploadJob
-        val url = NSURL.URLWithString(request.url) ?: return
-        val urlRequest = discovery.buildRequest(url, request)
-        library.performChangesAndWait(
-            changeBlock = {
-                PHAssetResourceUploadJobChangeRequest.changeRequestForUploadJob(systemJob)?.retryWithDestination(urlRequest)
-            },
-            error = null,
-        )
-    }
+    override suspend fun retryJob(job: PlatformUploadJob, request: UploadRequest) =
+        log.invocation("platform.retryJob", params = "key=${job.key}") {
+            val systemJob = job.handle as PHAssetResourceUploadJob
+            val url = NSURL.URLWithString(request.url) ?: return@invocation
+            val urlRequest = discovery.buildRequest(url, request)
+            library.performChangesAndWait(
+                changeBlock = {
+                    PHAssetResourceUploadJobChangeRequest.changeRequestForUploadJob(systemJob)?.retryWithDestination(urlRequest)
+                },
+                error = null,
+            )
+        }
 
-    override suspend fun acknowledge(job: PlatformUploadJob) {
-        acknowledgeJob(job.handle as PHAssetResourceUploadJob)
-    }
+    override suspend fun acknowledge(job: PlatformUploadJob) =
+        log.invocation("platform.acknowledge", params = "key=${job.key}") {
+            acknowledgeJob(job.handle as PHAssetResourceUploadJob)
+        }
 
-    override suspend fun createJob(request: UploadRequest, resource: Resource): CreateResult {
+    override suspend fun createJob(request: UploadRequest, resource: Resource): CreateResult =
+        log.invocation("platform.createJob", params = "key=${request.resource.filename}", result = { "$it" }) {
         val phResource = resource.data as? PHAssetResource ?: run {
             log.w { "createJob: resource payload is not a PHAssetResource — not creating" }
-            return CreateResult.FAILED
+            return@invocation CreateResult.FAILED
         }
         val url = NSURL.URLWithString(request.url) ?: run {
             log.w { "createJob: malformed destination URL — not creating" }
-            return CreateResult.FAILED
+            return@invocation CreateResult.FAILED
         }
         val urlRequest = discovery.buildRequest(url, request)
-        return memScoped {
+        memScoped {
             val errorVar = alloc<ObjCObjectVar<NSError?>>()
             library.performChangesAndWait(
                 changeBlock = {
@@ -155,7 +165,10 @@ class IosPhotoKitUploadPlatform(
         }
     }
 
-    override suspend fun discoverResources(sinceToken: ByteArray?): Discovery = discovery.discover(sinceToken)
+    override suspend fun discoverResources(sinceToken: ByteArray?): Discovery =
+        log.invocation("platform.discoverResources", result = { "${it.resources.size} resource(s)" }) {
+            discovery.discover(sinceToken)
+        }
 
     private fun mapState(state: PHAssetResourceUploadJobState): PlatformJobState = when (state) {
         PHAssetResourceUploadJobStateSucceeded -> PlatformJobState.SUCCEEDED

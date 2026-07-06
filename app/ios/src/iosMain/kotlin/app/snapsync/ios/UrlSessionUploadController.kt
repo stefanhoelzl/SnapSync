@@ -20,6 +20,7 @@ import app.snapsync.upload.CycleResult
 import app.snapsync.upload.UploadCycle
 import app.snapsync.upload.buildUploadConfig
 import app.snapsync.uploadurl.EdgeUploadRequestProvider
+import app.snapsync.logging.invocation
 import co.touchlab.kermit.Logger
 import io.ktor.client.HttpClient
 import kotlinx.coroutines.CoroutineScope
@@ -118,12 +119,11 @@ class UrlSessionUploadController(
     }
 
     /** One upload cycle: fresh config each time, then the shared [UploadCycle] over the URLSession platform. */
-    private suspend fun runCycle(): CycleResult {
-        log.i { "url-session runCycle: enter" }
+    private suspend fun runCycle(): CycleResult = log.invocation("url-session.runCycle", result = { "$it" }) {
         configSource.reload()
         val config = buildUploadConfig(configSource.config.value?.eventId, host) ?: run {
             log.i { "url-session cycle skipped — no joined event / host (eventId=${configSource.config.value?.eventId}, host=$host)" }
-            return CycleResult.COMPLETED
+            return@invocation CycleResult.COMPLETED
         }
         log.i { "url-session runCycle: config ok (host=${config.host}) — invoking UploadCycle" }
         val engine = SyncEngine(EdgeUploadRequestProvider(config.host, deviceId), ledger)
@@ -155,32 +155,32 @@ class UrlSessionUploadController(
             // Echo-suppression: never re-upload an asset this device downloaded + imported.
             suppressedAssetIds = suppressedAssetIds,
         ).run()
-        log.i { "url-session runCycle: UploadCycle returned $result" }
-        return result
+        result
     }
 
     // ---- lifecycle / triggers (forwarded by SnapSyncRoot) ----
 
     /** On a full photo grant / app start: sweep orphaned staging, run a cycle, arm the heartbeat. */
     fun start() {
-        log.i { "url-session controller start()" }
+        // Wrap INSIDE the launch so `[url-session.start]` spans the async sweep + pump.
         scope.launch {
-            runCatching { platform.sweepStaging() }.onFailure { log.w(it) { "sweepStaging failed" } }
-            pump.onForeground()
+            log.invocation("url-session.start") {
+                runCatching { platform.sweepStaging() }.onFailure { log.w(it) { "sweepStaging failed" } }
+                pump.onForeground()
+            }
         }
     }
 
     /** Foreground entry — pump a cycle (completions drive the rest while open). */
     fun onForeground() {
-        log.i { "url-session controller onForeground()" }
-        scope.launch { pump.onForeground() }
+        scope.launch { log.invocation("url-session.onForeground") { pump.onForeground() } }
     }
 
     /** The `BGProcessingTask` heartbeat handler fired — top up and re-arm. Call [done] when finished. */
     fun onBackgroundTask(done: () -> Unit) {
         scope.launch {
             try {
-                pump.onBackgroundTask()
+                log.invocation("url-session.onBackgroundTask") { pump.onBackgroundTask() }
             } finally {
                 done()
             }
@@ -188,7 +188,7 @@ class UrlSessionUploadController(
     }
 
     /** The OS relaunched us to finish background transfers — hold the completion, let the session drain. */
-    fun onBackgroundSessionEvents(completion: () -> Unit) {
+    fun onBackgroundSessionEvents(completion: () -> Unit) = log.invocation("url-session.onBackgroundSessionEvents") {
         backgroundEventsCompletion = completion
         // Touch the session so it re-attaches and begins delivering its completion callbacks (which
         // fire onBackgroundEventsFinished, invoking `completion` + pumping onSessionEvents).
@@ -196,13 +196,13 @@ class UrlSessionUploadController(
     }
 
     /** Disable (access revoked): cancel in-flight transfers + the scheduled heartbeat. */
-    fun disable() {
+    fun disable() = log.invocation("url-session.disable") {
         platform.cancelAll()
         scheduler.cancel()
     }
 
     /** Leave: cancel everything, then wipe the local ledger + discovery cursor. */
-    fun leave() {
+    fun leave() = log.invocation("url-session.leave") {
         disable()
         scope.launch {
             ledgerBackend.clear()

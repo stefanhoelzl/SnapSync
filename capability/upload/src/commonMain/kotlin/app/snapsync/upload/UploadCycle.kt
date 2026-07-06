@@ -127,16 +127,25 @@ class UploadCycle(
             ledger.deleteByAssetId(assetId)
         }
 
+        var newWork = 0
+        var alreadyUploaded = 0
         for (resource in liveResources) {
             val decision = engine.handle(SyncEvent.ResourceChanged(resource))
             if (decision is SyncDecision.Work) {
+                newWork++
                 when (platform.createJob(decision.job.request, resource)) {
                     CreateResult.CREATED -> engine.handle(SyncEvent.UploadStarted(decision.job))
                     CreateResult.LIMIT_EXCEEDED -> return CycleResult.PROCESSING // cursor NOT advanced
                     CreateResult.FAILED -> Unit // not created → no UploadStarted; retried next discovery
                 }
+            } else {
+                alreadyUploaded++
             }
         }
+        // Per-cycle enumeration summary (capability `diagnostic-logging`, D6): accountable for the whole
+        // enumeration without a line per already-uploaded asset (the engine's per-asset AlreadyUploaded
+        // skip stays silent). A cap-truncated cycle returns above, so this reflects a drained pass.
+        log.i { "enumeration: ${liveResources.size} seen, $newWork new, $alreadyUploaded already-uploaded" }
 
         // Reconcile only on a fully-drained full enumeration (the same gate that advances the
         // cursor): `resources` then covers every current asset, so retainAssets prunes rows for assets

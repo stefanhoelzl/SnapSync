@@ -24,9 +24,13 @@ import app.snapsync.push.KtorPushHttpClient
 import app.snapsync.rejoin.ExtensionReconciler
 import app.snapsync.rejoin.HttpDeviceFilesSource
 import app.snapsync.rejoin.darwinHttpClient
+import app.snapsync.logging.FileLogWriter
+import app.snapsync.logging.PublicNSLogWriter
+import app.snapsync.logging.invocation
 import co.touchlab.kermit.Logger
 import kotlinx.cinterop.ExperimentalForeignApi
 import kotlinx.coroutines.runBlocking
+import platform.Foundation.NSBundle
 import kotlinx.coroutines.withTimeout
 import platform.CoreFoundation.CFNotificationCenterGetDarwinNotifyCenter
 import platform.CoreFoundation.CFNotificationCenterPostNotification
@@ -69,9 +73,20 @@ object UploadExtensionRoot {
         // writer (Documents/debug.log, pulled via `pymobiledevice3 apps pull`) is the reliable
         // channel for reading the extension's logs on device.
         Logger.setLogWriters(PublicNSLogWriter(), FileLogWriter())
+        // Boot banner (capability `diagnostic-logging`, D5) — the extension is a separate, short-lived
+        // process; name it + the build version so its file is unambiguous. `log` isn't assigned yet.
+        Logger.withTag("UploadExtension").i { "=== extension process start build=${buildVersion()} ===" }
     }
 
     private val log = Logger.withTag("UploadExtension")
+
+    /** Extension short-version(build) for the boot banner (capability `diagnostic-logging`, D5). */
+    private fun buildVersion(): String {
+        val bundle = NSBundle.mainBundle
+        val short = bundle.objectForInfoDictionaryKey("CFBundleShortVersionString") as? String ?: "?"
+        val build = bundle.objectForInfoDictionaryKey("CFBundleVersion") as? String ?: "?"
+        return "$short($build)"
+    }
 
     // The cross-process liveness Darwin notification name, created once (a constant CFString for the
     // process lifetime). See design.md §2.3 and the app-side observer in SnapSyncRoot.
@@ -165,7 +180,7 @@ object UploadExtensionRoot {
      * extension's worker until done — appropriate for the synchronous `process()` contract. The
      * engine is the sole ledger writer; the cycle reads the same ledger to reconstruct lifecycle jobs.
      */
-    fun process(): CycleResult = runBlocking {
+    fun process(): CycleResult = log.invocation("process", result = { "$it" }) { runBlocking {
         // Re-read the Keychain each cycle: the extension process outlives a single invocation, and a
         // new event joined by the app (another process) does not notify this StateFlow — without the
         // refresh the extension keeps uploading to the event it read at construction (a stale,
@@ -257,5 +272,5 @@ object UploadExtensionRoot {
             }
         }
         result
-    }
+    } }
 }
