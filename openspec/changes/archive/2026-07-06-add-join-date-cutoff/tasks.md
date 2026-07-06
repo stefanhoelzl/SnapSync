@@ -94,4 +94,4 @@
   green (iOS source-set proxy).
 - [x] 9.2 `npx --yes @fission-ai/openspec@1.4.1 validate add-join-date-cutoff --strict` passes; update
   copy to the "sharing/syncing event photos" framing (no "backup" language) on the new cutoff row.
-- [ ] 9.3 Branch → PR → `/ship`; then archive the change (`openspec archive`).
+- [x] 9.3 Branch → PR → `/ship`; then archive the change (`openspec archive`).
