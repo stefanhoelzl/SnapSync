@@ -104,4 +104,30 @@ class ConfigDeeplinkTest {
     fun `unknown extra key fails`() {
         assertFailure("snapsync://config?v=3&d=${absent("""{"eventId":"$eventId","extra":"x"}""")}")
     }
+
+    @Test
+    fun `absent autoJoin defaults to false`() {
+        assertEquals(false, success(encodeConfigUrl(sample)).autoJoin)
+        assertEquals(false, success("snapsync://config?v=3&d=${absent("""{"eventId":"$eventId"}""")}").autoJoin)
+    }
+
+    @Test
+    fun `autoJoin true decodes`() {
+        val payload = success("snapsync://config?v=3&d=${absent("""{"eventId":"$eventId","autoJoin":true}""")}")
+        assertEquals(eventId, payload.eventId)
+        assertEquals(true, payload.autoJoin)
+    }
+
+    @Test
+    fun `canonical encode omits autoJoin`() {
+        // encodeDefaults is off, so a false autoJoin never appears in a real invite QR.
+        assertTrue(!encodeConfigUrl(sample).contains("autoJoin"))
+    }
+
+    @Test
+    fun `encode with autoJoin round-trips`() {
+        val payload = success(encodeConfigUrl(EventLinkPayload(eventId = eventId, autoJoin = true)))
+        assertEquals(eventId, payload.eventId)
+        assertEquals(true, payload.autoJoin)
+    }
 }

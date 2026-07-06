@@ -110,7 +110,13 @@ private fun host(
     permission: FakePermissionSource = FakePermissionSource(),
     requester: PermissionRequester = SpyRequester(),
     configFake: FakeConfig = FakeConfig(),
-) = StatusContainerHost(source, permission, requester, configFake, configFake, scope)
+    loadJoinDetails: suspend (String) -> JoinLoad = { JoinLoad.Failed },
+    commitJoin: suspend (String, String?) -> Boolean = { _, _ -> false },
+    leave: suspend () -> Unit = {},
+) = StatusContainerHost(
+    source, permission, requester, configFake, configFake, scope,
+    loadJoinDetails = loadJoinDetails, commitJoin = commitJoin, leave = leave,
+)
 
 class StatusContainerHostTest {
 
@@ -400,17 +406,136 @@ class StatusContainerHostTest {
     }
 
     @Test
-    fun `a valid deeplink saves config and enters the joined layer`() = runTest {
-        val source = FakeSyncStatusSource(SyncStatus.Loading)
-        val permission = FakePermissionSource(PermissionStatus.GRANTED)
+    fun `a first-join deeplink opens the gate and confirming enrolls then joins`() = runTest {
         val configFake = FakeConfig(null)
-        host(source, backgroundScope, permission = permission, configFake = configFake).test(this) {
+        val enrolled = mutableListOf<String>()
+        host(
+            FakeSyncStatusSource(SyncStatus.Loading), backgroundScope,
+            permission = FakePermissionSource(PermissionStatus.GRANTED), configFake = configFake,
+            loadJoinDetails = { JoinLoad.Found("Anna's Birthday") },
+            commitJoin = { id, name -> enrolled += id; configFake.save(EventConfig(id, name)); true },
+        ).test(this) {
             runOnCreate()
             containerHost.onOpenUrl(encodeConfigUrl(EventLinkPayload(EVENT_ID)))
-            // config now present + granted + Loading snapshot -> joined loading
+            expectState(UiState.JoiningEvent(EVENT_ID, JoinPhase.Ready("Anna's Birthday")))
+            containerHost.onConfirmJoin()
+            expectState(joinedLoading) // commit saved config -> present + granted + Loading snapshot
+            cancelAndIgnoreRemainingItems()
+        }
+        assertEquals(listOf(EVENT_ID), enrolled)
+    }
+
+    @Test
+    fun `a 404 on details blocks the join with no commit`() = runTest {
+        var commits = 0
+        host(
+            FakeSyncStatusSource(SyncStatus.Loading), backgroundScope,
+            permission = FakePermissionSource(PermissionStatus.GRANTED), configFake = FakeConfig(null),
+            loadJoinDetails = { JoinLoad.NotFound },
+            commitJoin = { _, _ -> commits++; true },
+        ).test(this) {
+            runOnCreate()
+            containerHost.onOpenUrl(encodeConfigUrl(EventLinkPayload(EVENT_ID)))
+            expectState(UiState.JoiningEvent(EVENT_ID, JoinPhase.NotFound))
+            containerHost.onConfirmJoin() // inert when not Ready
+            containerHost.onCancelJoin()
+            expectState(UiState.CreateEvent())
+            cancelAndIgnoreRemainingItems()
+        }
+        assertEquals(0, commits)
+    }
+
+    @Test
+    fun `a load failure is retryable`() = runTest {
+        var attempt = 0
+        host(
+            FakeSyncStatusSource(SyncStatus.Loading), backgroundScope,
+            permission = FakePermissionSource(PermissionStatus.GRANTED), configFake = FakeConfig(null),
+            loadJoinDetails = { if (attempt++ == 0) JoinLoad.Failed else JoinLoad.Found("Anna's Birthday") },
+        ).test(this) {
+            runOnCreate()
+            containerHost.onOpenUrl(encodeConfigUrl(EventLinkPayload(EVENT_ID)))
+            expectState(UiState.JoiningEvent(EVENT_ID, JoinPhase.LoadFailed))
+            containerHost.onRetryLoad()
+            expectState(UiState.JoiningEvent(EVENT_ID, JoinPhase.Ready("Anna's Birthday")))
+            cancelAndIgnoreRemainingItems()
+        }
+    }
+
+    @Test
+    fun `a failed enrollment leaves a retryable commit-failed state and does not join`() = runTest {
+        host(
+            FakeSyncStatusSource(SyncStatus.Loading), backgroundScope,
+            permission = FakePermissionSource(PermissionStatus.GRANTED), configFake = FakeConfig(null),
+            loadJoinDetails = { JoinLoad.Found("Anna's Birthday") },
+            commitJoin = { _, _ -> false },
+        ).test(this) {
+            runOnCreate()
+            containerHost.onOpenUrl(encodeConfigUrl(EventLinkPayload(EVENT_ID)))
+            expectState(UiState.JoiningEvent(EVENT_ID, JoinPhase.Ready("Anna's Birthday")))
+            containerHost.onConfirmJoin()
+            expectState(UiState.JoiningEvent(EVENT_ID, JoinPhase.CommitFailed("Anna's Birthday")))
+            cancelAndIgnoreRemainingItems()
+        }
+    }
+
+    @Test
+    fun `re-scanning the already-joined event is a no-op`() = runTest {
+        var loads = 0
+        host(
+            FakeSyncStatusSource(SyncStatus.Loading), backgroundScope,
+            permission = FakePermissionSource(PermissionStatus.GRANTED), configFake = FakeConfig(SAMPLE_CONFIG),
+            loadJoinDetails = { loads++; JoinLoad.Found("x") },
+        ).test(this) {
+            runOnCreate()
+            containerHost.onOpenUrl(encodeConfigUrl(EventLinkPayload(EVENT_ID)))
+            expectNoItems()
+            cancelAndIgnoreRemainingItems()
+        }
+        assertEquals(0, loads)
+    }
+
+    @Test
+    fun `a switch scans a different event and confirming leaves then joins`() = runTest {
+        val other = "22222222-2222-4222-8222-222222222222"
+        val configFake = FakeConfig(SAMPLE_CONFIG)
+        val order = mutableListOf<String>()
+        host(
+            FakeSyncStatusSource(SyncStatus.Loading), backgroundScope,
+            permission = FakePermissionSource(PermissionStatus.GRANTED), configFake = configFake,
+            loadJoinDetails = { JoinLoad.Found("New Event") },
+            commitJoin = { id, name -> order += "join"; configFake.save(EventConfig(id, name)); true },
+            leave = { order += "leave"; configFake.clear() },
+        ).test(this) {
+            runOnCreate()
+            containerHost.onOpenUrl(encodeConfigUrl(EventLinkPayload(other)))
+            expectState(UiState.Joined(SyncHealth.Loading, PendingSwitch(other, JoinPhase.Ready("New Event"))))
+            containerHost.onConfirmSwitch()
+            // leave clears config + join saves the new one; conflated to the settled joined layer.
             expectState(joinedLoading)
             cancelAndIgnoreRemainingItems()
         }
+        assertEquals(listOf("leave", "join"), order)
+        assertEquals(other, configFake.config.value?.eventId)
+    }
+
+    @Test
+    fun `autoJoin auto-confirms without a pending UI state`() = runTest {
+        val configFake = FakeConfig(null)
+        var committed: String? = null
+        host(
+            FakeSyncStatusSource(SyncStatus.Loading), backgroundScope,
+            permission = FakePermissionSource(PermissionStatus.GRANTED), configFake = configFake,
+            loadJoinDetails = { JoinLoad.Found("Anna's Birthday") },
+            commitJoin = { id, name -> committed = id; configFake.save(EventConfig(id, name)); true },
+        ).test(this) {
+            runOnCreate()
+            containerHost.onOpenUrl(encodeConfigUrl(EventLinkPayload(EVENT_ID, autoJoin = true)))
+            // No JoiningEvent frame — auto-confirm goes straight from create to joined.
+            expectState(joinedLoading)
+            cancelAndIgnoreRemainingItems()
+        }
+        assertEquals(EVENT_ID, committed)
     }
 
     @Test
