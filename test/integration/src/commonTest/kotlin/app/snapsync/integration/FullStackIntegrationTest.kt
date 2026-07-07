@@ -4,6 +4,7 @@ import app.snapsync.config.ConfigStore
 import app.snapsync.config.Direction
 import app.snapsync.config.EventConfig
 import app.snapsync.engine.LedgerState
+import app.snapsync.membership.LeaveEvent
 import app.snapsync.permission.PermissionRequester
 import app.snapsync.presentation.Arrow
 import app.snapsync.presentation.StatusContainerHost
@@ -12,6 +13,7 @@ import app.snapsync.presentation.SyncHealth
 import app.snapsync.presentation.UiState
 import app.snapsync.world.World
 import app.snapsync.world.worldTest
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.cancel
@@ -229,6 +231,50 @@ class FullStackIntegrationTest {
             w.ownGallery.refresh(); w.ledgerCounts.refresh()
             val host = statusHost(w, scope)
             assertEquals(SyncHealth.InSync, host.await { it.health() is SyncHealth.InSync }.health())
+        } finally {
+            scope.cancel()
+        }
+    }
+
+    @Test
+    fun leaving_flips_the_screen_before_the_backend_delete_completes() = worldTest {
+        val scope = CoroutineScope(coroutineContext + Job())
+        try {
+            val w = World()
+            w.provision("E")
+
+            // The REAL leave use-case, with the backend DELETE gated so it never completes — the flip
+            // must not wait on it. `disableExtension` is a no-op (local); the clear drives the reduction.
+            val deleteGate = CompletableDeferred<Unit>()
+            val notifyStarted = CompletableDeferred<String>()
+            val leaveEvent = LeaveEvent(
+                config = w.configStore,
+                configSource = w.configSource,
+                disableExtension = {},
+                notifyLeave = { id -> notifyStarted.complete(id); deleteGate.await() /* hangs */ },
+                scope = scope,
+            )
+            val host = StatusContainerHost(
+                syncSource = w.syncStatusSource(scope),
+                permissionSource = w.permission,
+                requester = NoOpRequester,
+                configSource = w.configSource,
+                store = NoOpConfigStore,
+                scope = scope,
+                creationStatusSource = w.creationStatus,
+                creator = w.createEvent(scope),
+                leave = { leaveEvent.leave() },
+            )
+            host.await { it is UiState.Joined }
+
+            host.onLeaveEvent()
+
+            // The screen leaves the joined layer immediately — even though the DELETE is still pending.
+            assertEquals(UiState.CreateEvent(), host.await { it is UiState.CreateEvent })
+            assertEquals(null, w.configSource.config.value)
+            // The notify WAS dispatched (with the snapshotted eventId) — but the flip did not wait on it.
+            assertEquals("E", withTimeout(5_000) { notifyStarted.await() })
+            assertFalse(deleteGate.isCompleted)
         } finally {
             scope.cancel()
         }

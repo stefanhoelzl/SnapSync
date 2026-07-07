@@ -1,6 +1,7 @@
 package app.snapsync.world
 
 import app.snapsync.config.ConfigSource
+import app.snapsync.config.ConfigStore
 import app.snapsync.config.Direction
 import app.snapsync.config.EventConfig
 import app.snapsync.download.DownloadController
@@ -81,6 +82,14 @@ class World(
     private val configCell = MutableStateFlow<EventConfig?>(null)
     val configSource: ConfigSource = object : ConfigSource {
         override val config: StateFlow<EventConfig?> = configCell.asStateFlow()
+    }
+
+    // The write side of the same cell [configSource] reads — lets a real `LeaveEvent` (or provision)
+    // clear/set the config the container reduces from, so an integration test can drive the actual
+    // use-case instead of the world's hand-rolled [leave].
+    val configStore: ConfigStore = object : ConfigStore {
+        override suspend fun save(config: EventConfig) { configCell.value = config }
+        override suspend fun clear() { configCell.value = null }
     }
 
     // The real common-Ktor seams over the mini-edge (single client, exactly as production shares one).

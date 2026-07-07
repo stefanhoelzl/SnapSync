@@ -207,15 +207,18 @@ object SnapSyncRoot {
     // call never blocks leaving). Used by BOTH the explicit Leave and a switch (see [provisionEvent]).
     private val leaveNotifier: LeaveNotifier by lazy { HttpLeaveNotifier(darwinHttpClient(), backendHost) }
 
-    // The leave use-case: disables the producer, notifies the backend (best-effort), then clears the
-    // Keychain config. It constructs no ledger type; the extension resets its own private ledger,
-    // cursor, and joinedEventId marker on its next cycle once the configured event no longer matches.
-    // The notify reads the still-configured eventId (it runs before the clear).
+    // The leave use-case: disables the producer, clears the Keychain config (which flips the screen off
+    // the joined layer), then fires the backend notify fire-and-forget on the app-lifetime `scope` so a
+    // slow DELETE never freezes the screen. It constructs no ledger type; the extension resets its own
+    // private ledger, cursor, and joinedEventId marker on its next cycle once the configured event no
+    // longer matches. The eventId is snapshotted before the clear and passed into the notify.
     private val leaveEvent: LeaveEvent by lazy {
         LeaveEvent(
             config = config,
+            configSource = config,
             disableExtension = { disableExtension() },
-            notifyLeave = { config.config.value?.eventId?.let { leaveNotifier.leave(it, deviceId) } },
+            notifyLeave = { eventId -> leaveNotifier.leave(eventId, deviceId) },
+            scope = scope,
         )
     }
 
