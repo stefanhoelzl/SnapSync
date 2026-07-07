@@ -5,14 +5,23 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import app.snapsync.config.ConfigSource
 import app.snapsync.config.ConfigStore
+import app.snapsync.config.Direction
 import app.snapsync.config.EventConfig
+import app.snapsync.deviceid.DeviceIdentity
 import app.snapsync.download.StoreDownloadStatusSource
 import app.snapsync.engine.UploadError
 import app.snapsync.eventcreation.CreationStatusSource
 import app.snapsync.eventcreation.EventCreator
+import app.snapsync.join.EventDetails
+import app.snapsync.join.HttpEventDetailsSource
+import app.snapsync.join.JoinEvent
+import app.snapsync.join.JoinOutcome
+import app.snapsync.join.ManifestDeviceEnroller
 import app.snapsync.permission.PermissionRequester
 import app.snapsync.permission.PermissionStatus
 import app.snapsync.permission.PermissionStatusSource
+import app.snapsync.presentation.JoinLoad
+import app.snapsync.presentation.StatusContainerHost
 import app.snapsync.status.DownloadStatusSource
 import app.snapsync.status.SyncStatusSource
 import app.snapsync.world.World
@@ -55,6 +64,15 @@ class WorldInspectorController(private val scope: CoroutineScope) {
         private set
     lateinit var creator: EventCreator
         private set
+
+    // The real join use-case over the current world (details load + enroll/provision), rebuilt per
+    // world. Backs the join gate so create AND scan reach the JoiningEvent surface (with the direction
+    // + cutoff rows), exactly like the iOS app — instead of the world's default create-provisions-directly.
+    private lateinit var joinEvent: JoinEvent
+
+    // The left pane's StatusContainerHost, captured via StatusPane's onHostReady. Create routes its
+    // minted event into THIS host's pending-join gate (onEventCreated), so the join screen shows.
+    var host: StatusContainerHost? = null
 
     // Stable across worlds — they read the *current* [world], so no rebuild is needed.
     val permissionSource: PermissionStatusSource = object : PermissionStatusSource {
@@ -111,8 +129,30 @@ class WorldInspectorController(private val scope: CoroutineScope) {
     private fun rebuildSources() {
         syncSource = world.syncStatusSource(scope)
         downloadSource = StoreDownloadStatusSource(world.downloadStore)
-        creator = world.createEvent(scope)
+        // The real join use-case over this world (mirrors the iOS SnapSyncRoot + the integration test):
+        // GET /events/:id details, enroll via an empty manifest PUT, then provision the world config.
+        joinEvent = JoinEvent(
+            configSource = world.configSource,
+            deviceIdentity = object : DeviceIdentity { override fun deviceId() = world.ownDeviceId },
+            details = HttpEventDetailsSource(world.client, world.host),
+            enroller = ManifestDeviceEnroller(world.manifestUploader),
+            provision = { cfg -> world.provision(cfg.eventId, cfg.name, cfg.minPhotoDate, cfg.direction); afterMutation() },
+        )
+        // Route a minted event into the SAME pending-join gate a scan opens (not the world's default
+        // provide-directly), so create shows the JoiningEvent surface with the direction + cutoff rows.
+        creator = world.createEvent(scope, onMinted = { eventId -> host?.onEventCreated(eventId); Unit })
     }
+
+    /** Details load for the join gate (GET /events/:id over the mini-edge), mapped to the gate's [JoinLoad]. */
+    suspend fun loadJoinDetails(eventId: String): JoinLoad = when (val d = joinEvent.loadDetails(eventId)) {
+        is EventDetails.Found -> JoinLoad.Found(d.name, d.createdAt)
+        EventDetails.NotFound -> JoinLoad.NotFound
+        EventDetails.Failed -> JoinLoad.Failed
+    }
+
+    /** Confirm the join: enroll (empty-manifest PUT) then provision; `true` unless enrollment failed. */
+    suspend fun commitJoin(eventId: String, name: String?, cutoff: String?, direction: Direction): Boolean =
+        joinEvent.join(eventId, name, cutoff, direction) != JoinOutcome.EnrollFailed
 
     // ---- the OS invocation + token ---------------------------------------------------------------
 

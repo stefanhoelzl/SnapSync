@@ -3,6 +3,7 @@ package app.snapsync.presentation
 import app.snapsync.config.ConfigDecodeResult
 import app.snapsync.config.ConfigSource
 import app.snapsync.config.ConfigStore
+import app.snapsync.config.Direction
 import app.snapsync.config.EventConfig
 import app.snapsync.config.EventLinkPayload
 import app.snapsync.config.decodeConfigUrl
@@ -17,6 +18,8 @@ import app.snapsync.eventcreation.MutableCreationStatusSource
 import app.snapsync.permission.PermissionRequester
 import app.snapsync.permission.PermissionStatus
 import app.snapsync.permission.PermissionStatusSource
+import app.snapsync.status.DownloadProgress
+import app.snapsync.status.InMemoryDownloadStatusSource
 import app.snapsync.status.SyncStatus
 import app.snapsync.status.SyncProgress
 import app.snapsync.status.SyncStatusSource
@@ -111,7 +114,7 @@ private fun host(
     requester: PermissionRequester = SpyRequester(),
     configFake: FakeConfig = FakeConfig(),
     loadJoinDetails: suspend (String) -> JoinLoad = { JoinLoad.Failed },
-    commitJoin: suspend (String, String?, String?) -> Boolean = { _, _, _ -> false },
+    commitJoin: suspend (String, String?, String?, Direction) -> Boolean = { _, _, _, _ -> false },
     leave: suspend () -> Unit = {},
 ) = StatusContainerHost(
     source, permission, requester, configFake, configFake, scope,
@@ -140,6 +143,69 @@ class StatusContainerHostTest {
             expectState(syncing(up = Arrow.STATIC))
             cancelAndIgnoreRemainingItems()
         }
+    }
+
+    // A joined host with an explicit participation direction + download progress, for arrow masking.
+    private fun directionHost(
+        source: FakeSyncStatusSource,
+        scope: CoroutineScope,
+        direction: Direction,
+        download: DownloadProgress = DownloadProgress(0, 0),
+    ): StatusContainerHost {
+        val cfg = FakeConfig(EventConfig(EVENT_ID, "Anna's Birthday", direction = direction))
+        return StatusContainerHost(
+            source, FakePermissionSource(PermissionStatus.GRANTED), SpyRequester(), cfg, cfg, scope,
+            downloadSource = InMemoryDownloadStatusSource(download),
+        )
+    }
+
+    @Test
+    fun `upload-only masks the download arrow and keeps the upload arrow`() = runTest {
+        val source = FakeSyncStatusSource()
+        // Download progress would show a pulsing down arrow — but upload-only masks it.
+        directionHost(source, backgroundScope, Direction.UploadOnly, DownloadProgress(1, 5, inFlight = 2))
+            .test(this) {
+                runOnCreate()
+                source.value = snapshot(pending = 0, completed = 2, total = 5) // uploads incomplete
+                expectState(syncing(up = Arrow.STATIC, down = Arrow.HIDDEN))
+                cancelAndIgnoreRemainingItems()
+            }
+    }
+
+    @Test
+    fun `upload-only reads In sync once uploads complete regardless of foreign downloads`() = runTest {
+        val source = FakeSyncStatusSource(SyncStatus.Loading)
+        directionHost(source, backgroundScope, Direction.UploadOnly, DownloadProgress(1, 5, inFlight = 2))
+            .test(this) {
+                runOnCreate()
+                source.value = snapshot(completed = 5, total = 5) // uploads complete
+                expectState(inSync) // download arrow masked → both hidden → In sync
+                cancelAndIgnoreRemainingItems()
+            }
+    }
+
+    @Test
+    fun `download-only masks the upload arrow and keeps the download arrow`() = runTest {
+        val source = FakeSyncStatusSource(SyncStatus.Loading)
+        directionHost(source, backgroundScope, Direction.DownloadOnly, DownloadProgress(2, 5, inFlight = 1))
+            .test(this) {
+                runOnCreate()
+                source.value = snapshot(completed = 0, total = 5) // gallery has un-uploaded photos
+                expectState(syncing(up = Arrow.HIDDEN, down = Arrow.PULSING))
+                cancelAndIgnoreRemainingItems()
+            }
+    }
+
+    @Test
+    fun `download-only reads In sync once imports complete regardless of the un-uploaded gallery`() = runTest {
+        val source = FakeSyncStatusSource(SyncStatus.Loading)
+        directionHost(source, backgroundScope, Direction.DownloadOnly, DownloadProgress(5, 5))
+            .test(this) {
+                runOnCreate()
+                source.value = snapshot(completed = 0, total = 5) // un-uploaded gallery, but upload masked
+                expectState(inSync)
+                cancelAndIgnoreRemainingItems()
+            }
     }
 
     // The create layer is the top rung: config absent, reduced from the creation status.
@@ -224,14 +290,14 @@ class StatusContainerHostTest {
             config, config, backgroundScope,
             creationStatusSource = creationStatus, creator = creator,
             loadJoinDetails = { JoinLoad.Found("My Party", "2026-07-06T00:00:00Z") },
-            commitJoin = { id, name, cutoff -> config.save(EventConfig(id, name, cutoff)); true },
+            commitJoin = { id, name, cutoff, direction -> config.save(EventConfig(id, name, cutoff, direction)); true },
         )
         host.test(this) {
             runOnCreate()
             creator.create("My Party")
             // minted → routed into the gate → loaded, offering Join with the createdAt default cutoff.
             expectState(UiState.JoiningEvent(EVENT_ID, JoinPhase.Ready("My Party", "2026-07-06T00:00:00Z")))
-            containerHost.onConfirmJoin("2026-07-06T00:00:00Z")
+            containerHost.onConfirmJoin("2026-07-06T00:00:00Z", Direction.Both)
             expectState(inSync) // confirm provisions → config present + granted + snapshot total 0 → settled
             cancelAndIgnoreRemainingItems()
         }
@@ -419,12 +485,12 @@ class StatusContainerHostTest {
             FakeSyncStatusSource(SyncStatus.Loading), backgroundScope,
             permission = FakePermissionSource(PermissionStatus.GRANTED), configFake = configFake,
             loadJoinDetails = { JoinLoad.Found("Anna's Birthday", null) },
-            commitJoin = { id, name, _ -> enrolled += id; configFake.save(EventConfig(id, name)); true },
+            commitJoin = { id, name, _, _ -> enrolled += id; configFake.save(EventConfig(id, name)); true },
         ).test(this) {
             runOnCreate()
             containerHost.onOpenUrl(encodeConfigUrl(EventLinkPayload(EVENT_ID)))
             expectState(UiState.JoiningEvent(EVENT_ID, JoinPhase.Ready("Anna's Birthday", null)))
-            containerHost.onConfirmJoin(null)
+            containerHost.onConfirmJoin(null, Direction.Both)
             expectState(joinedLoading) // commit saved config -> present + granted + Loading snapshot
             cancelAndIgnoreRemainingItems()
         }
@@ -438,12 +504,12 @@ class StatusContainerHostTest {
             FakeSyncStatusSource(SyncStatus.Loading), backgroundScope,
             permission = FakePermissionSource(PermissionStatus.GRANTED), configFake = FakeConfig(null),
             loadJoinDetails = { JoinLoad.NotFound },
-            commitJoin = { _, _, _ -> commits++; true },
+            commitJoin = { _, _, _, _ -> commits++; true },
         ).test(this) {
             runOnCreate()
             containerHost.onOpenUrl(encodeConfigUrl(EventLinkPayload(EVENT_ID)))
             expectState(UiState.JoiningEvent(EVENT_ID, JoinPhase.NotFound))
-            containerHost.onConfirmJoin(null) // inert when not Ready
+            containerHost.onConfirmJoin(null, Direction.Both) // inert when not Ready
             containerHost.onCancelJoin()
             expectState(UiState.CreateEvent())
             cancelAndIgnoreRemainingItems()
@@ -474,12 +540,12 @@ class StatusContainerHostTest {
             FakeSyncStatusSource(SyncStatus.Loading), backgroundScope,
             permission = FakePermissionSource(PermissionStatus.GRANTED), configFake = FakeConfig(null),
             loadJoinDetails = { JoinLoad.Found("Anna's Birthday", null) },
-            commitJoin = { _, _, _ -> false },
+            commitJoin = { _, _, _, _ -> false },
         ).test(this) {
             runOnCreate()
             containerHost.onOpenUrl(encodeConfigUrl(EventLinkPayload(EVENT_ID)))
             expectState(UiState.JoiningEvent(EVENT_ID, JoinPhase.Ready("Anna's Birthday", null)))
-            containerHost.onConfirmJoin(null)
+            containerHost.onConfirmJoin(null, Direction.Both)
             expectState(UiState.JoiningEvent(EVENT_ID, JoinPhase.CommitFailed("Anna's Birthday")))
             cancelAndIgnoreRemainingItems()
         }
@@ -510,13 +576,13 @@ class StatusContainerHostTest {
             FakeSyncStatusSource(SyncStatus.Loading), backgroundScope,
             permission = FakePermissionSource(PermissionStatus.GRANTED), configFake = configFake,
             loadJoinDetails = { JoinLoad.Found("New Event", null) },
-            commitJoin = { id, name, _ -> order += "join"; configFake.save(EventConfig(id, name)); true },
+            commitJoin = { id, name, _, _ -> order += "join"; configFake.save(EventConfig(id, name)); true },
             leave = { order += "leave"; configFake.clear() },
         ).test(this) {
             runOnCreate()
             containerHost.onOpenUrl(encodeConfigUrl(EventLinkPayload(other)))
             expectState(UiState.Joined(SyncHealth.Loading, PendingSwitch(other, JoinPhase.Ready("New Event", null))))
-            containerHost.onConfirmSwitch(null)
+            containerHost.onConfirmSwitch(null, Direction.Both)
             // leave clears config + join saves the new one; conflated to the settled joined layer.
             expectState(joinedLoading)
             cancelAndIgnoreRemainingItems()
@@ -533,7 +599,7 @@ class StatusContainerHostTest {
             FakeSyncStatusSource(SyncStatus.Loading), backgroundScope,
             permission = FakePermissionSource(PermissionStatus.GRANTED), configFake = configFake,
             loadJoinDetails = { JoinLoad.Found("Anna's Birthday", null) },
-            commitJoin = { id, name, _ -> committed = id; configFake.save(EventConfig(id, name)); true },
+            commitJoin = { id, name, _, _ -> committed = id; configFake.save(EventConfig(id, name)); true },
         ).test(this) {
             runOnCreate()
             containerHost.onOpenUrl(encodeConfigUrl(EventLinkPayload(EVENT_ID, autoJoin = true)))
@@ -542,6 +608,67 @@ class StatusContainerHostTest {
             cancelAndIgnoreRemainingItems()
         }
         assertEquals(EVENT_ID, committed)
+    }
+
+    @Test
+    fun `the chosen participation direction crosses to commit on confirm`() = runTest {
+        val configFake = FakeConfig(null)
+        var committedDirection: Direction? = null
+        host(
+            FakeSyncStatusSource(SyncStatus.Loading), backgroundScope,
+            permission = FakePermissionSource(PermissionStatus.GRANTED), configFake = configFake,
+            loadJoinDetails = { JoinLoad.Found("Anna's Birthday", null) },
+            commitJoin = { id, name, _, direction ->
+                committedDirection = direction; configFake.save(EventConfig(id, name, direction = direction)); true
+            },
+        ).test(this) {
+            runOnCreate()
+            containerHost.onOpenUrl(encodeConfigUrl(EventLinkPayload(EVENT_ID)))
+            expectState(UiState.JoiningEvent(EVENT_ID, JoinPhase.Ready("Anna's Birthday", null)))
+            containerHost.onConfirmJoin(null, Direction.DownloadOnly)
+            expectState(joinedLoading)
+            cancelAndIgnoreRemainingItems()
+        }
+        assertEquals(Direction.DownloadOnly, committedDirection)
+        assertEquals(Direction.DownloadOnly, configFake.config.value?.direction)
+    }
+
+    @Test
+    fun `autoJoin defaults the direction to Both`() = runTest {
+        val configFake = FakeConfig(null)
+        var committedDirection: Direction? = null
+        host(
+            FakeSyncStatusSource(SyncStatus.Loading), backgroundScope,
+            permission = FakePermissionSource(PermissionStatus.GRANTED), configFake = configFake,
+            loadJoinDetails = { JoinLoad.Found("Anna's Birthday", null) },
+            commitJoin = { _, _, _, direction -> committedDirection = direction; configFake.save(EventConfig(EVENT_ID)); true },
+        ).test(this) {
+            runOnCreate()
+            containerHost.onOpenUrl(encodeConfigUrl(EventLinkPayload(EVENT_ID, autoJoin = true)))
+            expectState(joinedLoading)
+            cancelAndIgnoreRemainingItems()
+        }
+        assertEquals(Direction.Both, committedDirection)
+    }
+
+    @Test
+    fun `autoJoin honors the dev direction override`() = runTest {
+        val configFake = FakeConfig(null)
+        var committedDirection: Direction? = null
+        host(
+            FakeSyncStatusSource(SyncStatus.Loading), backgroundScope,
+            permission = FakePermissionSource(PermissionStatus.GRANTED), configFake = configFake,
+            loadJoinDetails = { JoinLoad.Found("Anna's Birthday", null) },
+            commitJoin = { _, _, _, direction -> committedDirection = direction; configFake.save(EventConfig(EVENT_ID)); true },
+        ).test(this) {
+            runOnCreate()
+            containerHost.onOpenUrl(
+                encodeConfigUrl(EventLinkPayload(EVENT_ID, autoJoin = true, direction = "download")),
+            )
+            expectState(joinedLoading)
+            cancelAndIgnoreRemainingItems()
+        }
+        assertEquals(Direction.DownloadOnly, committedDirection)
     }
 
     @Test

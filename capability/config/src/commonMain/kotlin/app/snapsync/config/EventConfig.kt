@@ -13,9 +13,13 @@ import kotlinx.serialization.Serializable
  * instead of waiting for a tap (capability `join-event`). [minPhotoDate] is likewise a **dev/test**
  * key (default absent): a capture-date cutoff (UTC `…Z` string, capability `photo-date-cutoff`) that,
  * on an auto-confirmed join, forces a specific cutoff so a headless launch can observe date filtering.
- * Because `encodeDefaults` is off, a `false`/absent value is not serialized, so the canonical
- * [encodeConfigUrl] QR stays `eventId`-only; the strict decoder accepts `autoJoin`/`minPhotoDate` as
- * known optional keys but still rejects any *other* extra key.
+ * [direction] is likewise a **dev/test** key (default absent): a participation-direction override — one
+ * of the [Direction.wire] tokens `both`/`upload`/`download` — that, on an auto-confirmed join, forces the
+ * membership's direction (capability `join-event`) so a headless launch can exercise upload-only /
+ * download-only without a tap. Because `encodeDefaults` is off, a `false`/absent value is not serialized,
+ * so the canonical [encodeConfigUrl] QR stays `eventId`-only; the strict decoder accepts
+ * `autoJoin`/`minPhotoDate`/`direction` as known optional keys but still rejects any *other* extra key
+ * (and a `direction` outside the known tokens).
  *
  * This class is the wire DTO: its property name is the exact JSON key of the deeplink payload.
  */
@@ -24,6 +28,7 @@ class EventLinkPayload(
     val eventId: String,
     val autoJoin: Boolean = false,
     val minPhotoDate: String? = null,
+    val direction: String? = null,
 )
 
 /** Field-wise equality (not a data class, to match the prior payload's explicit-equality style). */
@@ -38,10 +43,15 @@ internal fun EventLinkPayload.sameAs(other: EventLinkPayload): Boolean =
  * [minPhotoDate] is **nullable** (absent = whole-library scope): the per-device, per-membership cutoff,
  * a UTC `…Z` string. The extension reads the `eventId` **and** the `minPhotoDate` from the shared
  * Keychain item (the cutoff scopes its upload cycle); the name is cosmetic, for the status-screen title.
+ * [direction] is this device's chosen participation direction (capability `join-event`), **defaulting to
+ * [Direction.Both]** so a config persisted before this field existed decodes to today's bidirectional
+ * behavior. The extension does **not** read it (the upload arm is gated app-side by whether the producer
+ * is enabled); it is persisted as part of the whole-object serialization regardless.
  */
 @Serializable
 data class EventConfig(
     val eventId: String,
     val name: String? = null,
     val minPhotoDate: String? = null,
+    val direction: Direction = Direction.Both,
 )

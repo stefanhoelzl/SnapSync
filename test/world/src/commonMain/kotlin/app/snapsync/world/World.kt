@@ -1,6 +1,7 @@
 package app.snapsync.world
 
 import app.snapsync.config.ConfigSource
+import app.snapsync.config.Direction
 import app.snapsync.config.EventConfig
 import app.snapsync.download.DownloadController
 import app.snapsync.download.EventUnionSource
@@ -102,7 +103,12 @@ class World(
 
     // Single-instance real download controller (its Mutex must be shared across reconcile + staging).
     val downloadController: DownloadController =
-        DownloadController(unionSource, downloadStore, downloadJobs, importer, myDeviceId = ownDeviceId)
+        DownloadController(
+            unionSource, downloadStore, downloadJobs, importer, myDeviceId = ownDeviceId,
+            // Mirror SnapSyncRoot: the download arm runs only when the joined direction includes download
+            // (capability `join-event`), so a reconcile on an upload-only membership is a no-op.
+            downloadEnabled = { configCell.value?.direction?.includesDownload ?: true },
+        )
 
     // ---- failure levers -------------------------------------------------------------------------
 
@@ -157,9 +163,14 @@ class World(
      * [minPhotoDate] is this device's per-membership capture-date cutoff (capability `photo-date-cutoff`);
      * `null` = whole-library (the shipped default).
      */
-    fun provision(eventId: String, name: String? = null, minPhotoDate: String? = null) {
+    fun provision(
+        eventId: String,
+        name: String? = null,
+        minPhotoDate: String? = null,
+        direction: Direction = Direction.Both,
+    ) {
         store.registerEvent(eventId)
-        configCell.value = EventConfig(eventId, name, minPhotoDate)
+        configCell.value = EventConfig(eventId, name, minPhotoDate, direction)
     }
 
     /**

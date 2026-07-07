@@ -61,6 +61,13 @@ fun main() = application {
                             creationStatusSource = controller.creationStatusSource,
                             creator = controller.creator,
                             downloadSource = controller.downloadSource,
+                            // The REAL join gate over the world: create + scan reach the JoiningEvent
+                            // surface (direction + cutoff rows), and confirm enrolls + provisions.
+                            loadJoinDetails = controller::loadJoinDetails,
+                            commitJoin = controller::commitJoin,
+                            // Capture the constructed host so a minted event routes into ITS pending-join
+                            // gate (onEventCreated); re-fires on each preset rebind (keyed on generation).
+                            onHostReady = { controller.host = it },
                             // Harness share stub (test equipment): copy the invite URL to the clipboard
                             // and log it rather than open a native share sheet.
                             share = { url ->

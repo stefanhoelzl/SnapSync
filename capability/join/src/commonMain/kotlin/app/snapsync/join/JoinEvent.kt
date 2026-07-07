@@ -1,6 +1,7 @@
 package app.snapsync.join
 
 import app.snapsync.config.ConfigSource
+import app.snapsync.config.Direction
 import app.snapsync.config.EventConfig
 import app.snapsync.deviceid.DeviceIdentity
 
@@ -31,16 +32,27 @@ class JoinEvent(
     suspend fun loadDetails(eventId: String): EventDetails = details.fetch(eventId)
 
     /**
-     * Confirm the join for [eventId] with the loaded [name] and this device's chosen capture-date
-     * [minPhotoDate] cutoff (capability `photo-date-cutoff`; `null` = whole-library): enroll
-     * (register-only empty manifest), then — only on a successful enrollment — provision (save config
-     * **with the cutoff** + enable upload + reconcile). Re-confirming the already-joined event is a
-     * [JoinOutcome.AlreadyJoined] no-op that skips enrollment entirely (the cutoff stays immutable).
+     * Confirm the join for [eventId] with the loaded [name], this device's chosen capture-date
+     * [minPhotoDate] cutoff (capability `photo-date-cutoff`; `null` = whole-library), and its chosen
+     * participation [direction] (capability `join-event`): enroll (register-only empty manifest) — for
+     * **every** direction, so a download-only device is still an enrolled member — then, only on a
+     * successful enrollment, provision (save config **with the cutoff and direction**). The injected
+     * [provision] enables the upload producer only when [Direction.includesUpload] and runs the download
+     * reconcile only when [Direction.includesDownload] (the latter gated inside the download controller).
+     * Re-confirming the already-joined event is a [JoinOutcome.AlreadyJoined] no-op that skips enrollment
+     * entirely (the cutoff and direction stay immutable — a change is a leave-then-rejoin).
      */
-    suspend fun join(eventId: String, name: String?, minPhotoDate: String?): JoinOutcome {
+    suspend fun join(
+        eventId: String,
+        name: String?,
+        minPhotoDate: String?,
+        direction: Direction,
+    ): JoinOutcome {
         if (configSource.config.value?.eventId == eventId) return JoinOutcome.AlreadyJoined
         if (!enroller.enroll(eventId, deviceIdentity.deviceId())) return JoinOutcome.EnrollFailed
-        provision(EventConfig(eventId = eventId, name = name, minPhotoDate = minPhotoDate))
+        provision(
+            EventConfig(eventId = eventId, name = name, minPhotoDate = minPhotoDate, direction = direction),
+        )
         return JoinOutcome.Committed
     }
 }
