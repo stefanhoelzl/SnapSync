@@ -12,6 +12,7 @@ import app.snapsync.join.HttpEventDetailsSource
 import app.snapsync.join.JoinEvent
 import app.snapsync.join.JoinOutcome
 import app.snapsync.join.ManifestDeviceEnroller
+import app.snapsync.membership.LeaveEvent
 import app.snapsync.permission.PermissionRequester
 import app.snapsync.presentation.JoinLoad
 import app.snapsync.presentation.JoinPhase
@@ -20,6 +21,7 @@ import app.snapsync.presentation.UiState
 import app.snapsync.world.World
 import app.snapsync.world.foreignManifest
 import app.snapsync.world.worldTest
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.cancel
@@ -28,6 +30,7 @@ import kotlinx.coroutines.withTimeout
 import kotlin.coroutines.coroutineContext
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
@@ -149,6 +152,41 @@ class JoinGateIntegrationTest {
     }
 
     @Test
+    fun a_switch_does_not_block_on_the_departed_events_delete() = worldTest {
+        val scope = CoroutineScope(coroutineContext + Job())
+        try {
+            val w = World()
+            w.provision(EVENT_E, "Summer Trip")              // already joined to E
+            w.store.registerEvent(EVENT_F, "Anna's Wedding") // F exists to switch to
+
+            // Wire the switch's leave to the REAL LeaveEvent with E's DELETE gated so it never completes.
+            val deleteGate = CompletableDeferred<Unit>()
+            val leaveEvent = LeaveEvent(
+                config = w.configStore,
+                configSource = w.configSource,
+                disableExtension = {},
+                notifyLeave = { deleteGate.await() /* hangs */ },
+                scope = scope,
+            )
+            val host = joinHost(w, scope, leave = { leaveEvent.leave() })
+
+            host.onOpenUrl(deeplink(EVENT_F))
+            host.await { (it as? UiState.Joined)?.pendingSwitch?.phase is JoinPhase.Ready }
+
+            host.onConfirmSwitch(null, Direction.Both)
+            // The new event's join completes even though E's DELETE is still pending — the switch never
+            // waits on the departed event's fire-and-forget backend notify.
+            host.await {
+                it is UiState.Joined && it.pendingSwitch == null && w.configSource.config.value?.eventId == EVENT_F
+            }
+            assertTrue(w.store.manifestOf(EVENT_F, w.ownDeviceId) != null) // enrolled in the new event
+            assertFalse(deleteGate.isCompleted)                            // E's DELETE never gated the join
+        } finally {
+            scope.cancel()
+        }
+    }
+
+    @Test
     fun re_scanning_the_joined_event_does_not_clobber_the_manifest() = worldTest {
         val scope = CoroutineScope(coroutineContext + Job())
         try {
@@ -213,7 +251,11 @@ class JoinGateIntegrationTest {
 
     private fun deeplink(eventId: String) = encodeConfigUrl(EventLinkPayload(eventId))
 
-    private fun joinHost(w: World, scope: CoroutineScope): StatusContainerHost {
+    private fun joinHost(
+        w: World,
+        scope: CoroutineScope,
+        leave: suspend () -> Unit = { w.leave() },
+    ): StatusContainerHost {
         val joinEvent = JoinEvent(
             configSource = w.configSource,
             deviceIdentity = object : DeviceIdentity { override fun deviceId() = w.ownDeviceId },
@@ -230,7 +272,7 @@ class JoinGateIntegrationTest {
             scope = scope,
             loadJoinDetails = { id -> joinEvent.loadDetails(id).toJoinLoad() },
             commitJoin = { id, name, cutoff, direction -> joinEvent.join(id, name, cutoff, direction) != JoinOutcome.EnrollFailed },
-            leave = { w.leave() },
+            leave = leave,
         )
     }
 

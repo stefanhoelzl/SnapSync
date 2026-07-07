@@ -1,14 +1,5 @@
-# leave-event Specification
+## MODIFIED Requirements
 
-## Purpose
-
-Leaving the configured event: the local-only inverse of the join lifecycle. The `LeaveEvent`
-use-case disables the upload producer, wipes the ledger and discovery cursor, and forgets the
-`eventId`, returning to the setup gate — without touching anything already uploaded to storage (a
-later re-scan re-joins and reconciles it back). Covers the leave sequence and its best-effort
-semantics, the local-only guarantee, the joined-layer-only affordance and its confirmation, and the
-presentation seam that triggers it.
-## Requirements
 ### Requirement: Leave use-case resets local event state
 
 The capability SHALL provide a `LeaveEvent` use-case that tears down the configured event's **local**
@@ -63,61 +54,6 @@ the extension is reset on the next join via the `joinedEventId` mismatch, not at
 - **WHEN** the producer has been disabled but `ConfigStore.clear()` fails
 - **THEN** the event is still configured and consistent; re-running leave retries the clear, and no ledger corruption can occur because leave never touched the ledger
 
-### Requirement: Leave action is presented only in the joined layer
-
-The presentation layer SHALL expose an `onLeaveEvent()` intent that invokes the `LeaveEvent`
-use-case. The leave affordance SHALL be offered to the user **only** while the screen is in the
-joined layer — defined as **config present** (the `UiState.Joined` state, any health including
-`NeedsAccess`) — and SHALL NOT be offered in the loading or create-layer states. Restricting the
-affordance to the joined layer guarantees no join is in flight when a leave runs, so the leave needs
-no cancellation of, and no coordination with, a concurrent join. (Leave is available even when
-permission is not granted — a user may leave regardless of access.)
-
-#### Scenario: The leave intent invokes the use-case
-- **WHEN** `onLeaveEvent()` is invoked
-- **THEN** the `LeaveEvent` use-case runs its disable → clear sequence
-
-#### Scenario: Leave is offered across all joined health states
-- **WHEN** the screen is in `UiState.Joined` with health `NeedsAccess`, `Syncing`, or `InSync`
-- **THEN** the leave affordance is presented
-
-#### Scenario: No leave affordance outside the joined layer
-- **WHEN** the screen is in the loading or create-layer state
-- **THEN** no leave affordance is presented
-
-### Requirement: Leaving requires explicit confirmation
-
-Activating the leave affordance SHALL raise a confirmation prompt titled **"Leave this event?"** with
-two choices — **Stay** (dismiss, no change) and **Leave** (confirm) — before any state is torn down.
-Choosing **Leave** SHALL invoke `onLeaveEvent()`; choosing **Stay** SHALL dismiss the prompt with no
-change. The leave SHALL NOT execute on a single activation without confirmation. The prompt's
-visibility is local screen state and SHALL NOT enter `UiState`.
-
-#### Scenario: Choosing Leave executes the leave
-- **WHEN** the user activates the leave affordance and chooses **Leave**
-- **THEN** `onLeaveEvent()` is invoked and the event is left
-
-#### Scenario: Choosing Stay leaves everything intact
-- **WHEN** the user activates the leave affordance and chooses **Stay**
-- **THEN** the prompt is dismissed and no config, ledger, cursor, or producer state changes
-
-### Requirement: The container leave action defaults to a no-op
-
-`StatusContainerHost` SHALL accept the leave action as an injected **`suspend () -> Unit` lambda**
-with a no-op default — not the `LeaveEvent` type itself, since the presentation layer is Compose-free
-and SHALL NOT gain an engine/gallery dependency (the composition root binds the lambda to
-`LeaveEvent.leave`). Hosts and tests that do not exercise leave (non-iOS harness, presentation tests)
-SHALL construct unchanged, and a confirmed leave in those contexts SHALL be inert.
-
-#### Scenario: A host without a real leave action constructs and is inert
-- **WHEN** `StatusContainerHost` is constructed without injecting a real leave action
-- **THEN** construction succeeds and invoking `onLeaveEvent()` performs no teardown
-
-#### Scenario: Presentation gains no engine dependency
-- **WHEN** the presentation module's dependencies are inspected after this change
-- **THEN** it depends on no engine, gallery, or rejoin module — the leave action enters as a plain
-  suspend lambda
-
 ### Requirement: Leave notifies the backend
 
 The `LeaveEvent` use-case SHALL notify the backend that this device is leaving through an injected
@@ -138,6 +74,8 @@ teardown — its result SHALL NOT gate, delay, or roll back the local teardown �
 - **WHEN** the `DELETE` call errors or times out
 - **THEN** the `LeaveNotifier` returns a failed `Result`, the use-case logs it, and the already-completed local teardown is unaffected
 
+## ADDED Requirements
+
 ### Requirement: Local teardown does not block on the backend notify
 
 The `LeaveEvent` local teardown (disable producer + `ConfigStore.clear()`) SHALL complete without
@@ -157,4 +95,3 @@ event (the "Joining …" surface no longer waits on it).
 
 - **WHEN** the user confirms switching to a different event while joined
 - **THEN** the departed event's `DELETE` is dispatched fire-and-forget and the new event's enroll/provision proceeds without blocking on it
-
