@@ -35,4 +35,49 @@ class EventConfigTest {
         assertEquals(false, base == base.copy(minPhotoDate = "2026-07-06T14:32:12Z"))
         assertEquals(false, base == base.copy(minPhotoDate = null))
     }
+
+    @Test
+    fun `an absent direction defaults to Both and means bidirectional`() {
+        val config = EventConfig(eventId = "11111111-1111-4111-8111-111111111111", name = "Birthday")
+        assertEquals(Direction.Both, config.direction)
+        assertEquals(config, roundTrip(config))
+    }
+
+    @Test
+    fun `persists the direction across a serialization round-trip`() {
+        for (direction in Direction.entries) {
+            val config = EventConfig(
+                eventId = "11111111-1111-4111-8111-111111111111",
+                name = "Birthday",
+                minPhotoDate = "2026-07-06T14:32:11Z",
+                direction = direction,
+            )
+            assertEquals(config, roundTrip(config))
+        }
+    }
+
+    @Test
+    fun `a legacy config JSON without a direction decodes to Both`() {
+        // A Keychain item serialized before the field existed carries no `direction` key.
+        val legacy = """{"eventId":"11111111-1111-4111-8111-111111111111","name":"Birthday"}"""
+        val decoded = json.decodeFromString(EventConfig.serializer(), legacy)
+        assertEquals(Direction.Both, decoded.direction)
+    }
+
+    @Test
+    fun `equality distinguishes a differing direction`() {
+        val base = EventConfig(eventId = "e", name = "n", direction = Direction.Both)
+        assertEquals(false, base == base.copy(direction = Direction.UploadOnly))
+        assertEquals(false, base == base.copy(direction = Direction.DownloadOnly))
+    }
+
+    @Test
+    fun `direction helpers gate the two arms`() {
+        assertEquals(true, Direction.Both.includesUpload)
+        assertEquals(true, Direction.Both.includesDownload)
+        assertEquals(true, Direction.UploadOnly.includesUpload)
+        assertEquals(false, Direction.UploadOnly.includesDownload)
+        assertEquals(false, Direction.DownloadOnly.includesUpload)
+        assertEquals(true, Direction.DownloadOnly.includesDownload)
+    }
 }

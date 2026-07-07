@@ -1,6 +1,7 @@
 package app.snapsync.integration
 
 import app.snapsync.config.ConfigStore
+import app.snapsync.config.Direction
 import app.snapsync.config.EventConfig
 import app.snapsync.engine.LedgerState
 import app.snapsync.permission.PermissionRequester
@@ -173,6 +174,61 @@ class FullStackIntegrationTest {
             assertEquals(null, w.configSource.config.value)
             assertFalse(w.store.isRegistered("E"))
             assertTrue(w.store.objectsOf(w.ownDeviceId).isEmpty())
+        } finally {
+            scope.cancel()
+        }
+    }
+
+    @Test
+    fun upload_only_uploads_own_but_imports_no_foreign() = worldTest {
+        val scope = CoroutineScope(coroutineContext + Job())
+        try {
+            val w = World()
+            w.provision("E", direction = Direction.UploadOnly)
+            w.addOwnAsset("A")
+            w.addForeignDevice("DEV-F", "E", listOf(World.foreignAsset("FQ")))
+
+            // Upload arm runs (the operator invokes the cycle): the own object lands and completes.
+            w.runUploadCycle()
+            w.platform.completeJob("A-primary.jpg")
+            w.runUploadCycle()
+            assertTrue("A-primary.jpg" in w.store.objectsOf(w.ownDeviceId), "upload-only still uploads own photos")
+
+            // Download arm is gated off: reconcile is a no-op, so nothing foreign is enqueued or imported.
+            w.downloadController.reconcile("E")
+            w.stageAllDownloads()
+            assertTrue(w.importer.imported.isEmpty(), "upload-only imports no foreign photos")
+
+            // Status: uploads complete + download masked → In sync.
+            w.ownGallery.refresh(); w.ledgerCounts.refresh()
+            val host = statusHost(w, scope)
+            assertEquals(SyncHealth.InSync, host.await { it.health() is SyncHealth.InSync }.health())
+        } finally {
+            scope.cancel()
+        }
+    }
+
+    @Test
+    fun download_only_imports_foreign_but_uploads_nothing_and_masks_the_upload_arrow() = worldTest {
+        val scope = CoroutineScope(coroutineContext + Job())
+        try {
+            val w = World()
+            w.provision("E", direction = Direction.DownloadOnly)
+            w.addOwnAsset("A") // an un-uploaded own photo remains in the gallery
+            w.addForeignDevice("DEV-F", "E", listOf(World.foreignAsset("FQ")))
+
+            // Download arm runs and imports the foreign asset.
+            w.downloadController.reconcile("E")
+            w.stageAllDownloads()
+            assertTrue(w.importer.imported.isNotEmpty(), "download-only imports foreign photos")
+
+            // Upload arm is disabled — the producer never runs, so no own object lands.
+            assertTrue(w.store.objectsOf(w.ownDeviceId).isEmpty(), "download-only uploads nothing")
+
+            // Status: the upload arrow is masked, so an un-uploaded gallery does NOT keep it out of sync.
+            w.ownGallery.refresh(); w.ledgerCounts.refresh()
+            val host = statusHost(w, scope)
+            assertEquals(SyncHealth.InSync, host.await { it.health() is SyncHealth.InSync }.health())
         } finally {
             scope.cancel()
         }

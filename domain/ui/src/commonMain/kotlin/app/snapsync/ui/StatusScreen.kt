@@ -12,6 +12,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import app.snapsync.config.Direction
 import app.snapsync.permission.PermissionStatus
 import app.snapsync.presentation.Arrow
 import app.snapsync.presentation.CutoffFormatter
@@ -26,6 +27,7 @@ import app.snapsync.ui.components.AppEventHero
 import kotlinx.datetime.LocalDateTime
 import app.snapsync.ui.components.AppQrCode
 import app.snapsync.ui.components.AccessPrompt
+import app.snapsync.ui.components.AppDirectionSelector
 import app.snapsync.ui.components.AppStatusLine
 import app.snapsync.ui.components.AppSyncStatus
 import app.snapsync.ui.components.AppTextField
@@ -39,6 +41,7 @@ import app.snapsync.ui.components.ShareButton
 import app.snapsync.ui.components.StatusHero
 import app.snapsync.ui.components.StatusHint
 import app.snapsync.ui.components.StatusIndicator
+import app.snapsync.ui.components.SyncDirectionChoice
 
 @Composable
 fun StatusScreen(
@@ -53,12 +56,13 @@ fun StatusScreen(
     onCreateEvent: (String) -> Unit = {},
     transientError: String? = null,
     // Join-gate actions (capability `join-event`), routed to the container intents. The confirm/retry
-    // actions carry the chosen capture-date cutoff (capability `photo-date-cutoff`; null = whole-library).
-    onConfirmJoin: (String?) -> Unit = {},
+    // actions carry the chosen capture-date cutoff (capability `photo-date-cutoff`; null = whole-library)
+    // and the chosen participation direction (capability `join-event`).
+    onConfirmJoin: (String?, Direction) -> Unit = { _, _ -> },
     onCancelJoin: () -> Unit = {},
     onRetryLoad: () -> Unit = {},
-    onRetryJoin: (String?) -> Unit = {},
-    onConfirmSwitch: (String?) -> Unit = {},
+    onRetryJoin: (String?, Direction) -> Unit = { _, _ -> },
+    onConfirmSwitch: (String?, Direction) -> Unit = { _, _ -> },
     onCancelSwitch: () -> Unit = {},
     // Bridges the cutoff picker (local wall-clock) to the UTC `…Z` cutoff string; the default is the
     // production impl (device clock + zone), so hosts/tests need not supply one.
@@ -129,24 +133,28 @@ fun StatusScreen(
 
 /**
  * The full-screen "Join event" surface (capability `join-event`): the event summary is the hero, with
- * the capture-date cutoff row (capability `photo-date-cutoff`) and Join / Cancel pinned to the bottom.
- * Future options (direction, albums, save-to album) slot in as rows in this same column. Renders each
- * [JoinPhase]: loading details, ready-to-join, blocked (invalid invite), a retryable load/commit failure.
+ * the participation-direction row and the capture-date cutoff row (capability `photo-date-cutoff`) and
+ * Join / Cancel pinned to the bottom. Future options (albums, save-to album) slot in as further rows in
+ * this same column. Renders each [JoinPhase]: loading details, ready-to-join, blocked (invalid invite), a
+ * retryable load/commit failure.
  *
- * The chosen cutoff is held in local state: seeded once from the loaded default (`createdAt`), editable
- * via the date/time picker or snapped to "now", and converted to the UTC `…Z` string on confirm/retry.
- * It survives Ready → Committing → CommitFailed (the composable stays mounted), so a retry reuses it.
+ * The chosen direction and cutoff are held in local state: the direction defaults to [Direction.Both];
+ * the cutoff is seeded once from the loaded default (`createdAt`), editable via the date/time picker or
+ * snapped to "now", and converted to the UTC `…Z` string on confirm/retry. Both survive Ready →
+ * Committing → CommitFailed (the composable stays mounted), so a retry reuses them. The cutoff row is
+ * disabled under [Direction.DownloadOnly] (it scopes uploads only).
  */
 @Composable
 private fun JoiningEventScreen(
     phase: JoinPhase,
     cutoff: CutoffFormatter,
-    onConfirm: (String?) -> Unit,
+    onConfirm: (String?, Direction) -> Unit,
     onCancel: () -> Unit,
     onRetryLoad: () -> Unit,
-    onRetryJoin: (String?) -> Unit,
+    onRetryJoin: (String?, Direction) -> Unit,
 ) {
     var chosen by remember { mutableStateOf<LocalDateTime?>(null) }
+    var chosenDirection by remember { mutableStateOf(Direction.Both) }
     var seeded by remember { mutableStateOf(false) }
     if (phase is JoinPhase.Ready && !seeded) {
         chosen = phase.defaultCutoff?.let(cutoff::toLocal)
@@ -197,12 +205,15 @@ private fun JoiningEventScreen(
         ) {
             when (phase) {
                 is JoinPhase.Ready -> {
+                    DirectionRow(selected = chosenDirection, onSelect = { chosenDirection = it })
                     CutoffRow(
                         value = chosen,
                         onValueChange = { chosen = it },
                         onOnlyFromNow = { chosen = cutoff.nowLocal() },
+                        // The cutoff scopes uploads only — inert when the user opted out of uploading.
+                        enabled = chosenDirection != Direction.DownloadOnly,
                     )
-                    PrimaryButton(label = "Join", onClick = { onConfirm(chosenCutoff) })
+                    PrimaryButton(label = "Join", onClick = { onConfirm(chosenCutoff, chosenDirection) })
                     SecondaryButton(label = "Cancel", onClick = onCancel)
                 }
                 JoinPhase.LoadFailed -> {
@@ -210,7 +221,7 @@ private fun JoiningEventScreen(
                     SecondaryButton(label = "Cancel", onClick = onCancel)
                 }
                 is JoinPhase.CommitFailed -> {
-                    PrimaryButton(label = "Retry", onClick = { onRetryJoin(chosenCutoff) })
+                    PrimaryButton(label = "Retry", onClick = { onRetryJoin(chosenCutoff, chosenDirection) })
                     SecondaryButton(label = "Cancel", onClick = onCancel)
                 }
                 JoinPhase.NotFound ->
@@ -223,24 +234,66 @@ private fun JoiningEventScreen(
 }
 
 /**
+ * The participation-direction row on the join surface (capability `join-event`): an **arrows-only**
+ * three-way selector (share ↑ / receive ↓ / both ⇅) with a caption above it that **adapts to the
+ * selection** (the glyphs alone carry no words). Defaults to [Direction.Both]; the choice is fixed for
+ * the membership (a change is a leave-then-rejoin). The screen maps [Direction] to/from the design
+ * system's [SyncDirectionChoice] so the components module stays decoupled from the config capability.
+ */
+@Composable
+private fun DirectionRow(selected: Direction, onSelect: (Direction) -> Unit) {
+    Column(
+        modifier = Modifier.fillMaxWidth(),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        StatusHint(directionCaption(selected))
+        AppDirectionSelector(
+            selected = selected.toChoice(),
+            onSelect = { onSelect(it.toDirection()) },
+        )
+    }
+}
+
+/** The caption above the direction selector, adapting to the current choice (the arrows show no words). */
+private fun directionCaption(direction: Direction): String = when (direction) {
+    Direction.Both -> "Share your photos and receive the event's photos."
+    Direction.UploadOnly -> "Only share your photos — you won't receive the event's."
+    Direction.DownloadOnly -> "Only receive the event's photos — you won't share yours."
+}
+
+private fun Direction.toChoice(): SyncDirectionChoice = when (this) {
+    Direction.Both -> SyncDirectionChoice.BOTH
+    Direction.UploadOnly -> SyncDirectionChoice.UPLOAD
+    Direction.DownloadOnly -> SyncDirectionChoice.DOWNLOAD
+}
+
+private fun SyncDirectionChoice.toDirection(): Direction = when (this) {
+    SyncDirectionChoice.BOTH -> Direction.Both
+    SyncDirectionChoice.UPLOAD -> Direction.UploadOnly
+    SyncDirectionChoice.DOWNLOAD -> Direction.DownloadOnly
+}
+
+/**
  * The capture-date cutoff row on the join surface (capability `photo-date-cutoff`): a caption, the
  * date/time picker prefilled to the chosen value (default = the event's `createdAt`), and an "Only from
  * now" shortcut that snaps the cutoff to the current instant. Only photos taken at or after the chosen
- * value are uploaded and shared into the event.
+ * value are uploaded and shared into the event. [enabled] is false under a download-only membership (the
+ * cutoff scopes uploads only): the row stays visible but its inputs are inert.
  */
 @Composable
 private fun CutoffRow(
     value: LocalDateTime?,
     onValueChange: (LocalDateTime) -> Unit,
     onOnlyFromNow: () -> Unit,
+    enabled: Boolean = true,
 ) {
     Column(
         modifier = Modifier.fillMaxWidth(),
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
         StatusHint("Only photos taken after this date are shared to the event.")
-        AppDateTimeField(value = value, onValueChange = onValueChange)
-        SecondaryButton(label = "Only from now", onClick = onOnlyFromNow)
+        AppDateTimeField(value = value, onValueChange = onValueChange, enabled = enabled)
+        SecondaryButton(label = "Only from now", onClick = onOnlyFromNow, enabled = enabled)
     }
 }
 
@@ -254,15 +307,15 @@ private fun CutoffRow(
 private fun SwitchDialog(
     switch: PendingSwitch,
     currentEventName: String?,
-    onConfirmSwitch: (String?) -> Unit,
+    onConfirmSwitch: (String?, Direction) -> Unit,
     onCancelSwitch: () -> Unit,
     onRetryLoad: () -> Unit,
-    onRetryJoin: (String?) -> Unit,
+    onRetryJoin: (String?, Direction) -> Unit,
 ) {
     val current = currentEventName ?: "this event"
     // The compact switch dialog has no picker: it uses the new event's default cutoff (its `createdAt`,
-    // capability `photo-date-cutoff`). Remembered so a retry after a failed commit reuses it (the
-    // CommitFailed phase carries only the name).
+    // capability `photo-date-cutoff`) and the default participation direction ([Direction.Both]).
+    // Remembered so a retry after a failed commit reuses it (the CommitFailed phase carries only the name).
     var cutoff by remember { mutableStateOf<String?>(null) }
     when (val phase = switch.phase) {
         is JoinPhase.Ready -> {
@@ -271,7 +324,7 @@ private fun SwitchDialog(
                 title = "Leave $current and join ${phase.name ?: "the new event"}?",
                 confirmLabel = "Switch",
                 cancelLabel = "Cancel",
-                onConfirm = { onConfirmSwitch(cutoff) },
+                onConfirm = { onConfirmSwitch(cutoff, Direction.Both) },
                 onDismiss = onCancelSwitch,
             )
         }
@@ -296,7 +349,7 @@ private fun SwitchDialog(
                 title = "Couldn't switch events. Try again?",
                 confirmLabel = "Retry",
                 cancelLabel = "Cancel",
-                onConfirm = { onRetryJoin(cutoff) },
+                onConfirm = { onRetryJoin(cutoff, Direction.Both) },
                 onDismiss = onCancelSwitch,
             )
         // Transient — no dialog while the details load or the switch commits.

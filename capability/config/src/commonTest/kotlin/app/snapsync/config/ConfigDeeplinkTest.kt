@@ -157,4 +157,50 @@ class ConfigDeeplinkTest {
         val json = """{"eventId":"$eventId","minPhotoDate":"2026-07-06T14:32:11Z","extra":"x"}"""
         assertFailure("snapsync://config?v=3&d=${absent(json)}")
     }
+
+    @Test
+    fun `absent direction defaults to null`() {
+        assertEquals(null, success(encodeConfigUrl(sample)).direction)
+        assertEquals(null, success("snapsync://config?v=3&d=${absent("""{"eventId":"$eventId"}""")}").direction)
+    }
+
+    @Test
+    fun `dev direction key decodes alongside autoJoin`() {
+        val json = """{"eventId":"$eventId","autoJoin":true,"direction":"download"}"""
+        val payload = success("snapsync://config?v=3&d=${absent(json)}")
+        assertEquals(eventId, payload.eventId)
+        assertEquals(true, payload.autoJoin)
+        assertEquals("download", payload.direction)
+        assertEquals(Direction.DownloadOnly, Direction.fromWire(payload.direction!!))
+    }
+
+    @Test
+    fun `each direction wire token decodes`() {
+        for ((token, expected) in listOf(
+            "both" to Direction.Both,
+            "upload" to Direction.UploadOnly,
+            "download" to Direction.DownloadOnly,
+        )) {
+            val payload = success("snapsync://config?v=3&d=${absent("""{"eventId":"$eventId","direction":"$token"}""")}")
+            assertEquals(expected, Direction.fromWire(payload.direction!!))
+        }
+    }
+
+    @Test
+    fun `an unknown direction token fails`() {
+        assertFailure("snapsync://config?v=3&d=${absent("""{"eventId":"$eventId","direction":"sideways"}""")}")
+        assertFailure("snapsync://config?v=3&d=${absent("""{"eventId":"$eventId","direction":""}""")}")
+    }
+
+    @Test
+    fun `canonical encode omits direction`() {
+        // encodeDefaults is off, so an absent direction never appears in a real invite QR.
+        assertTrue(!encodeConfigUrl(sample).contains("direction"))
+    }
+
+    @Test
+    fun `encode with direction round-trips`() {
+        val payload = success(encodeConfigUrl(EventLinkPayload(eventId = eventId, direction = "upload")))
+        assertEquals("upload", payload.direction)
+    }
 }

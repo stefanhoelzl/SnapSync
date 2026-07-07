@@ -187,6 +187,10 @@ object SnapSyncRoot {
                 recordCreatedLocalId = { ref, id -> downloadStore.recordCreatedLocalId(ref, id) },
             ),
             myDeviceId = deviceId,
+            // The download arm runs only when the joined membership's direction includes download
+            // (capability `join-event`) — an upload-only membership reconciles nothing. No event joined
+            // (config null) → nothing to reconcile anyway; default true is harmless there.
+            downloadEnabled = { config.config.value?.direction?.includesDownload ?: true },
         )
         // Deliver each staged resource back to the controller off the URLSession delegate thread.
         downloadJobs.onStaged = { ref, key, path -> scope.launch { controller.onResourceStaged(ref, key, path) } }
@@ -308,8 +312,8 @@ object SnapSyncRoot {
             // fetched (GET), confirming enrolls (empty-manifest PUT) then provisions. `commitJoin` is
             // true unless enrollment failed (the same-event no-op is a success).
             loadJoinDetails = { eventId -> joinEvent.loadDetails(eventId).toJoinLoad() },
-            commitJoin = { eventId, name, cutoff ->
-                joinEvent.join(eventId, name, cutoff) != JoinOutcome.EnrollFailed
+            commitJoin = { eventId, name, cutoff, direction ->
+                joinEvent.join(eventId, name, cutoff, direction) != JoinOutcome.EnrollFailed
             },
             log = { message -> log.i { message } },
             downloadSource = downloadStatusSource,
@@ -533,8 +537,15 @@ object SnapSyncRoot {
         // extension reads it (capability `photo-date-cutoff`).
         config.save(cfg)
         refreshStatusSources() // (re)joined event → re-enumerate own total + re-LIST completeness
-        if (permission.permission.value == PermissionStatus.GRANTED) enableBackgroundUpload()
+        // The upload arm runs only when the chosen direction includes upload (capability `join-event`).
+        // A download-only membership keeps the producer OFF and actively disables it: a grant that landed
+        // BEFORE this join may already have enabled it (the grant collector fires independently of the
+        // event), so skipping the enable is not enough — we must disable.
+        if (permission.permission.value == PermissionStatus.GRANTED) {
+            if (cfg.direction.includesUpload) enableBackgroundUpload() else disableExtension()
+        }
         // Auto-download the other contributors' photos for this event (capability `photo-download`).
+        // The reconcile is a no-op under an upload-only direction — gated inside the controller.
         scope.launch { downloadController.reconcile(cfg.eventId) }
         // Scan path: fill the title by id, best-effort, off the join (a failure leaves name null).
         if (cfg.name == null) scope.launch { fetchAndStoreName(cfg.eventId) }
@@ -664,12 +675,21 @@ object SnapSyncRoot {
         scope.launch {
             permission.permission.collect { status ->
                 if (status != PermissionStatus.GRANTED) return@collect
+                // A download-only membership keeps the upload arm off even with photo access (needed for
+                // import). With no event yet, direction is irrelevant and the pre-enable is inert (the
+                // extension no-ops without a config). Capability `join-event`.
+                if (!uploadArmEnabled()) return@collect
                 // Per-version tier selection: PhotoKit extension on ≥26.1; the in-app URLSession pump on
                 // 18–26.0 (or the dev force flag). The app-driven start sweeps orphaned staging + pumps a cycle.
                 if (useAppDrivenUpload) urlSessionUpload.start() else enableBackgroundUpload()
             }
         }
     }
+
+    // The upload arm is enabled unless the CURRENT membership is download-only; with no event joined
+    // (config null) the arm is allowed (inert without a config). Capability `join-event`.
+    private fun uploadArmEnabled(): Boolean =
+        config.config.value?.direction?.includesUpload ?: true
 
     // Dev/test force flag (like SNAPSYNC_DEEPLINK): forces the app-driven URLSession upload tier even on
     // iOS ≥26.1 so it can be exercised on the simulator (which cannot run the PhotoKit extension). Inert

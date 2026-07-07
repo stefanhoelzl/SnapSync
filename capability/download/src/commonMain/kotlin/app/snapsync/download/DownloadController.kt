@@ -21,6 +21,14 @@ class DownloadController(
     private val jobs: PhotoDownloadJobs,
     private val importer: PhotoLibraryImporter,
     private val myDeviceId: String,
+    // The download arm runs only when the current membership's participation direction includes download
+    // (capability `join-event`): an upload-only membership performs no reconcile at ANY trigger. Injected
+    // as a plain predicate so this capability gains no config dependency; the composition root binds it to
+    // `EventConfig.direction.includesDownload`. This is the SINGLE choke point — every trigger (join,
+    // foreground, push) funnels through `reconcile`, so the gate lives here and not in the untested shell.
+    // The default `{ true }` (bidirectional) keeps existing callers/tests unchanged. It is orthogonal to
+    // the push receiver's active-event guard (which answers "is this push for my event").
+    private val downloadEnabled: () -> Boolean = { true },
     private val log: Logger = Logger.withTag("DownloadController"),
 ) {
 
@@ -34,6 +42,11 @@ class DownloadController(
      * already-imported and already-planned assets are no-ops, and only not-yet-staged resources enqueue.
      */
     suspend fun reconcile(eventId: String) = log.invocation("reconcile", params = "eventId=$eventId") {
+        if (!downloadEnabled()) {
+            // Upload-only membership: skip discovery entirely (no union fetch, no enqueue, no import).
+            log.i { "reconcile skipped — download disabled for this membership" }
+            return@invocation
+        }
         val assets = union.union(eventId).getOrElse {
             log.w(it) { "union fetch failed — keeping last state" }
             return@invocation

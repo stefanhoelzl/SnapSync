@@ -50,8 +50,11 @@ import platform.posix.memcpy
  * No `kSecAttrAccessGroup` is set: with the app's `keychain-access-groups` entitlement declaring the
  * shared group as its (only/first) entry, items land in that shared group by default, so the
  * background upload extension — declaring the same entitlement — reads the same item (its `eventId`
- * **and** its `minPhotoDate` cutoff, capability `photo-date-cutoff`). This avoids hardcoding the
- * team-id prefix in code; sharing is purely an entitlement concern.
+ * **and** its `minPhotoDate` cutoff, capability `photo-date-cutoff`; not its `direction`, which is an
+ * app-side upload-arm gate — capability `join-event`). The whole [EventConfig] is serialized regardless,
+ * so `direction` round-trips; a legacy item written before the field existed decodes to [Direction.Both]
+ * (`ignoreUnknownKeys`/default). This avoids hardcoding the team-id prefix in code; sharing is purely an
+ * entitlement concern.
  *
  * Seeds [config] synchronously at construction, mirroring the permission adapter's synchronous-real
  * guarantee.
@@ -66,7 +69,8 @@ class KeychainConfigStore(
     override val config: StateFlow<EventConfig?> = state
 
     override suspend fun save(config: EventConfig) {
-        // Idempotent: re-saving an equal config (eventId + name) is a no-op; any difference replaces.
+        // Idempotent: re-saving an equal config (eventId + name + minPhotoDate + direction) is a no-op;
+        // any difference replaces (data-class equality covers every field).
         if (state.value == config) return
         writeValue(configJson.encodeToString(EventConfig.serializer(), config))
         state.value = config

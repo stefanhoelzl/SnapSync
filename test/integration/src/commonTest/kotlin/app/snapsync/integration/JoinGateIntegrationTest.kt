@@ -2,6 +2,7 @@ package app.snapsync.integration
 
 import app.snapsync.config.ConfigStore
 import app.snapsync.config.EventConfig
+import app.snapsync.config.Direction
 import app.snapsync.config.EventLinkPayload
 import app.snapsync.config.encodeConfigUrl
 import app.snapsync.deviceid.DeviceIdentity
@@ -55,7 +56,7 @@ class JoinGateIntegrationTest {
                 host.await { (it as? UiState.JoiningEvent)?.phase is JoinPhase.Ready },
             )
 
-            host.onConfirmJoin(null)
+            host.onConfirmJoin(null, Direction.Both)
             host.await { it is UiState.Joined } // config flipped present → joined layer
 
             // World outcomes: config provisioned + a register-only EMPTY manifest deposited (membership).
@@ -116,7 +117,7 @@ class JoinGateIntegrationTest {
             host.await { (it as? UiState.JoiningEvent)?.phase is JoinPhase.Ready }
 
             w.backendOffline = true // enrollment PUT now fails
-            host.onConfirmJoin(null)
+            host.onConfirmJoin(null, Direction.Both)
             host.await { (it as? UiState.JoiningEvent)?.phase is JoinPhase.CommitFailed }
 
             assertNull(w.configSource.config.value) // not joined
@@ -137,7 +138,7 @@ class JoinGateIntegrationTest {
             host.onOpenUrl(deeplink(EVENT_F))
             host.await { (it as? UiState.Joined)?.pendingSwitch?.phase is JoinPhase.Ready }
 
-            host.onConfirmSwitch(null)
+            host.onConfirmSwitch(null, Direction.Both)
             host.await { it is UiState.Joined && it.pendingSwitch == null && w.configSource.config.value?.eventId == EVENT_F }
 
             assertEquals(EVENT_F, w.configSource.config.value?.eventId) // switched
@@ -228,7 +229,7 @@ class JoinGateIntegrationTest {
             store = NoOpJoinConfigStore,
             scope = scope,
             loadJoinDetails = { id -> joinEvent.loadDetails(id).toJoinLoad() },
-            commitJoin = { id, name, cutoff -> joinEvent.join(id, name, cutoff) != JoinOutcome.EnrollFailed },
+            commitJoin = { id, name, cutoff, direction -> joinEvent.join(id, name, cutoff, direction) != JoinOutcome.EnrollFailed },
             leave = { w.leave() },
         )
     }

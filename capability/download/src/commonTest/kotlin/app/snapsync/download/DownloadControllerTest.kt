@@ -25,8 +25,11 @@ class DownloadControllerTest {
     )
 
     private class FakeUnion(private val assets: List<UnionAsset>, val ok: Boolean = true) : EventUnionSource {
-        override suspend fun union(eventId: String): Result<List<UnionAsset>> =
-            if (ok) Result.success(assets) else Result.failure(RuntimeException("boom"))
+        var calls = 0
+        override suspend fun union(eventId: String): Result<List<UnionAsset>> {
+            calls++
+            return if (ok) Result.success(assets) else Result.failure(RuntimeException("boom"))
+        }
     }
 
     private class RecordingJobs : PhotoDownloadJobs {
@@ -52,7 +55,8 @@ class DownloadControllerTest {
         store: InMemoryDownloadStore = InMemoryDownloadStore(),
         jobs: RecordingJobs = RecordingJobs(),
         importer: FakeImporter = FakeImporter(),
-    ) = DownloadController(union, store, jobs, importer, myDevice)
+        downloadEnabled: () -> Boolean = { true },
+    ) = DownloadController(union, store, jobs, importer, myDevice, downloadEnabled)
 
     @Test
     fun reconcile_skips_own_device_and_plans_only_foreign() = runTest {
@@ -99,6 +103,33 @@ class DownloadControllerTest {
         importer.failNext = false
         c.importReady() // retry succeeds
         assertTrue(store.isImported(ref))
+    }
+
+    @Test
+    fun reconcile_is_a_noop_when_download_is_disabled() = runTest {
+        // Upload-only membership: reconcile must not even fetch the union, let alone enqueue or import.
+        val store = InMemoryDownloadStore()
+        val jobs = RecordingJobs()
+        val union = FakeUnion(listOf(asset("DEVICE-A", "FOREIGN")))
+        controller(union, store = store, jobs = jobs, downloadEnabled = { false }).reconcile("event")
+
+        assertEquals(0, union.calls, "no union fetch when download is disabled")
+        assertTrue(jobs.enqueued.isEmpty(), "no downloads enqueued when download is disabled")
+        assertEquals(0, store.importedCount())
+    }
+
+    @Test
+    fun reconcile_runs_normally_when_download_is_enabled() = runTest {
+        // Both / download-only membership: reconcile behaves exactly as before.
+        val jobs = RecordingJobs()
+        val union = FakeUnion(listOf(asset("DEVICE-A", "FOREIGN")))
+        controller(union, jobs = jobs, downloadEnabled = { true }).reconcile("event")
+
+        assertEquals(1, union.calls)
+        assertEquals(
+            setOf("FOREIGN-primary.heic", "FOREIGN-live.mov"),
+            jobs.enqueued.map { it.resource.resourceKey }.toSet(),
+        )
     }
 
     @Test

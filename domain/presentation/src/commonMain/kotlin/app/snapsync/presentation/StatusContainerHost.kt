@@ -3,6 +3,7 @@ package app.snapsync.presentation
 import app.snapsync.config.ConfigDecodeResult
 import app.snapsync.config.ConfigSource
 import app.snapsync.config.ConfigStore
+import app.snapsync.config.Direction
 import app.snapsync.config.EventConfig
 import app.snapsync.config.EventLinkPayload
 import app.snapsync.config.decodeConfigUrl
@@ -75,9 +76,11 @@ class StatusContainerHost(
     // exercise join construct unchanged; iOS binds them to the `JoinEvent` use-case.
     private val loadJoinDetails: suspend (eventId: String) -> JoinLoad = { JoinLoad.Failed },
     // `commitJoin` = enroll (register-only empty manifest) then provision with the chosen capture-date
-    // cutoff (capability `photo-date-cutoff`; `null` = whole-library), returning `true` when joined.
-    private val commitJoin: suspend (eventId: String, name: String?, minPhotoDate: String?) -> Boolean =
-        { _, _, _ -> false },
+    // cutoff (capability `photo-date-cutoff`; `null` = whole-library) and the chosen participation
+    // `direction` (capability `join-event`), returning `true` when joined.
+    private val commitJoin:
+        suspend (eventId: String, name: String?, minPhotoDate: String?, direction: Direction) -> Boolean =
+        { _, _, _, _ -> false },
     // Dev-path abort logging (autoJoin has no UI to show a load/commit failure). No-op by default.
     private val log: (String) -> Unit = {},
     // Download progress for the joined-layer "downloaded X of Y" line (capability `photo-download`).
@@ -196,7 +199,8 @@ class StatusContainerHost(
                 val eventId = result.payload.eventId
                 val current = configSource.config.value
                 when {
-                    result.payload.autoJoin -> autoConfirm(eventId, result.payload.minPhotoDate)
+                    result.payload.autoJoin ->
+                        autoConfirm(eventId, result.payload.minPhotoDate, result.payload.direction)
                     current == null -> startPending(eventId)               // first join → JoiningEvent
                     current.eventId != eventId -> startPending(eventId)    // switch → Joined.pendingSwitch
                     else -> Unit                                           // same event → no-op
@@ -212,14 +216,23 @@ class StatusContainerHost(
         loadInto(p.eventId)
     }
 
-    /** Confirm a first join with the chosen capture-date [cutoff]: enroll → provision (no leave). */
-    fun onConfirmJoin(cutoff: String?) = intent { commit(withLeave = false, cutoff = cutoff) }
+    /**
+     * Confirm a first join with the chosen capture-date [cutoff] and participation [direction]:
+     * enroll → provision (no leave).
+     */
+    fun onConfirmJoin(cutoff: String?, direction: Direction) =
+        intent { commit(withLeave = false, cutoff = cutoff, direction = direction) }
 
-    /** Confirm a switch: leave the current event, then enroll → provision the new one with [cutoff]. */
-    fun onConfirmSwitch(cutoff: String?) = intent { commit(withLeave = true, cutoff = cutoff) }
+    /**
+     * Confirm a switch: leave the current event, then enroll → provision the new one with [cutoff]. The
+     * compact switch dialog carries no direction picker, so the caller supplies [Direction.Both].
+     */
+    fun onConfirmSwitch(cutoff: String?, direction: Direction) =
+        intent { commit(withLeave = true, cutoff = cutoff, direction = direction) }
 
     /** Retry a failed commit — the leave (if any) already succeeded, so this re-runs only the join. */
-    fun onRetryJoin(cutoff: String?) = intent { commit(withLeave = false, cutoff = cutoff) }
+    fun onRetryJoin(cutoff: String?, direction: Direction) =
+        intent { commit(withLeave = false, cutoff = cutoff, direction = direction) }
 
     /** Discard the pending join/switch, returning to the base screen. */
     fun onCancelJoin() = intent { pending.value = null }
@@ -253,7 +266,7 @@ class StatusContainerHost(
         pending.value?.let { if (it.eventId == eventId) pending.value = it.copy(phase = phase) }
     }
 
-    private suspend fun commit(withLeave: Boolean, cutoff: String?) {
+    private suspend fun commit(withLeave: Boolean, cutoff: String?, direction: Direction) {
         val p = pending.value ?: return
         // Only a loaded (Ready) or previously-failed (CommitFailed) surface can be confirmed; a
         // still-loading/blocked/committing phase ignores the action.
@@ -261,7 +274,7 @@ class StatusContainerHost(
         val name = p.phase.name()
         pending.value = p.copy(phase = JoinPhase.Committing(name))
         if (withLeave) leave()
-        if (commitJoin(p.eventId, name, cutoff)) {
+        if (commitJoin(p.eventId, name, cutoff, direction)) {
             // Success: config flips present via ConfigSource → reduces to Joined; drop the overlay.
             if (pending.value?.eventId == p.eventId) pending.value = null
         } else if (pending.value?.eventId == p.eventId) {
@@ -274,7 +287,7 @@ class StatusContainerHost(
      * different current event first — but auto-fire the confirm on a successful load. No UI, so a load
      * or commit failure aborts and logs rather than parking on a retryable state.
      */
-    private suspend fun autoConfirm(eventId: String, explicitCutoff: String?) {
+    private suspend fun autoConfirm(eventId: String, explicitCutoff: String?, explicitDirection: String?) {
         val load = loadJoinDetails(eventId)
         if (load !is JoinLoad.Found) {
             log("autoJoin aborted: details load did not succeed for $eventId ($load)")
@@ -285,7 +298,12 @@ class StatusContainerHost(
         // The auto-fired confirm uses the default cutoff (the loaded `createdAt`), unless the deeplink
         // supplied an explicit dev/test cutoff (capability `photo-date-cutoff`).
         val cutoff = explicitCutoff ?: load.createdAt
-        if (!commitJoin(eventId, load.name, cutoff)) log("autoJoin aborted: enrollment failed for $eventId")
+        // The direction defaults to Both, unless the deeplink supplied an explicit dev/test override
+        // (`both`/`upload`/`download`); an unrecognized token was already rejected by the decoder.
+        val direction = explicitDirection?.let(Direction::fromWire) ?: Direction.Both
+        if (!commitJoin(eventId, load.name, cutoff, direction)) {
+            log("autoJoin aborted: enrollment failed for $eventId")
+        }
     }
 }
 
@@ -328,7 +346,7 @@ private fun reduceFrom(
         permission != PermissionStatus.GRANTED -> SyncHealth.NeedsAccess(permission)
         // Joined but persisted state not read yet — a neutral first frame (the joined chrome still shows).
         snapshot is SyncStatus.Loading -> SyncHealth.Loading
-        snapshot is SyncStatus.Ready -> syncHealth(snapshot.progress, download)
+        snapshot is SyncStatus.Ready -> syncHealth(snapshot.progress, download, config.direction)
         else -> SyncHealth.Loading
     }
     // A pending join for a DIFFERENT event while joined is a switch confirmation over the joined screen.
@@ -337,10 +355,24 @@ private fun reduceFrom(
 }
 
 // Shown tracks completeness (never lies about "everything up/received"); pulse tracks live activity
-// (never fakes motion). In sync exactly when both directions are settled.
-private fun syncHealth(progress: SyncProgress, download: DownloadProgress): SyncHealth {
-    val upload = arrowOf(shown = progress.synced < progress.total, pulsing = progress.pending > 0)
-    val downloadArrow = arrowOf(shown = download.downloaded < download.total, pulsing = download.inFlight > 0)
+// (never fakes motion). The membership's participation [direction] MASKS the opted-out arm: an
+// upload-only membership force-hides the download arrow, a download-only membership force-hides the
+// upload arrow. `InSync` is then computed over the enabled direction(s) only — the collapse rule
+// (both arrows hidden → InSync) treats a masked arrow as hidden, so a download-only device reads "In
+// sync" once imports complete regardless of its un-uploaded gallery, and vice versa. The masking is
+// silent (no textual mode label); the single remaining arrow implies the direction (capability
+// `join-event`).
+private fun syncHealth(progress: SyncProgress, download: DownloadProgress, direction: Direction): SyncHealth {
+    val upload = if (!direction.includesUpload) {
+        Arrow.HIDDEN
+    } else {
+        arrowOf(shown = progress.synced < progress.total, pulsing = progress.pending > 0)
+    }
+    val downloadArrow = if (!direction.includesDownload) {
+        Arrow.HIDDEN
+    } else {
+        arrowOf(shown = download.downloaded < download.total, pulsing = download.inFlight > 0)
+    }
     return if (upload == Arrow.HIDDEN && downloadArrow == Arrow.HIDDEN) {
         SyncHealth.InSync
     } else {

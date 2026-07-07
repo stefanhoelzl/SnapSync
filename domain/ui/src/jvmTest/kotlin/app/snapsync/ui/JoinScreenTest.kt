@@ -1,6 +1,9 @@
 package app.snapsync.ui
 
+import androidx.compose.ui.test.assertIsEnabled
+import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.junit4.v2.createComposeRule
+import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import app.snapsync.presentation.CutoffFormatter
@@ -38,7 +41,7 @@ class JoinScreenTest {
     fun `ready phase shows the event name with Join and Cancel`() {
         var joined = 0
         rule.setContent {
-            StatusScreen(joining(JoinPhase.Ready("Anna's Wedding", null)), onConfirmJoin = { joined++ })
+            StatusScreen(joining(JoinPhase.Ready("Anna's Wedding", null)), onConfirmJoin = { _, _ -> joined++ })
         }
         rule.onNodeWithText("Anna's Wedding").assertExists()
         rule.onNodeWithText("Join").assertExists()
@@ -71,6 +74,37 @@ class JoinScreenTest {
     }
 
     @Test
+    fun `ready phase shows the arrows-only direction selector with an adaptive caption`() {
+        rule.setContent { StatusScreen(joining(JoinPhase.Ready("Anna's Wedding", null))) }
+        // Arrows, not words: the three options carry content descriptions, no "Both"/"Upload only" text.
+        rule.onNodeWithContentDescription("Share and receive").assertExists()
+        rule.onNodeWithContentDescription("Only share").assertExists()
+        rule.onNodeWithContentDescription("Only receive").assertExists()
+        rule.onNodeWithText("Upload only").assertDoesNotExist()
+        // Default (Both) caption; selecting an arrow adapts the caption above.
+        rule.onNodeWithText("Share your photos and receive the event's photos.").assertExists()
+        rule.onNodeWithContentDescription("Only receive").performClick()
+        rule.onNodeWithText("Only receive the event's photos — you won't share yours.").assertExists()
+        rule.onNodeWithContentDescription("Only share").performClick()
+        rule.onNodeWithText("Only share your photos — you won't receive the event's.").assertExists()
+    }
+
+    @Test
+    fun `selecting download-only disables the cutoff shortcut, and re-enabling restores it`() {
+        rule.setContent {
+            StatusScreen(joining(JoinPhase.Ready("Anna's Wedding", "2026-07-04T18:00:00Z")))
+        }
+        // Default Both → the cutoff shortcut is enabled.
+        rule.onNodeWithText("Only from now").assertIsEnabled()
+        // Download-only (the down arrow) scopes no uploads → the cutoff row goes inert.
+        rule.onNodeWithContentDescription("Only receive").performClick()
+        rule.onNodeWithText("Only from now").assertIsNotEnabled()
+        // Switching back to upload (the up arrow) re-enables it.
+        rule.onNodeWithContentDescription("Only share").performClick()
+        rule.onNodeWithText("Only from now").assertIsEnabled()
+    }
+
+    @Test
     fun `not-found phase blocks the join`() {
         rule.setContent { StatusScreen(joining(JoinPhase.NotFound)) }
         rule.onNodeWithText("Invalid invite").assertExists()
@@ -90,7 +124,7 @@ class JoinScreenTest {
     @Test
     fun `commit-failed phase offers Retry for the join`() {
         var retried = 0
-        rule.setContent { StatusScreen(joining(JoinPhase.CommitFailed("Anna's Wedding")), onRetryJoin = { retried++ }) }
+        rule.setContent { StatusScreen(joining(JoinPhase.CommitFailed("Anna's Wedding")), onRetryJoin = { _, _ -> retried++ }) }
         // (CommitFailed still carries only the name; the cutoff is held in the screen's own state.)
         rule.onNodeWithText("Couldn't join").assertExists()
         rule.onNodeWithText("Retry").performClick()
@@ -104,7 +138,7 @@ class JoinScreenTest {
             StatusScreen(
                 UiState.Joined(SyncHealth.Loading, PendingSwitch("22222222-2222-4222-8222-222222222222", JoinPhase.Ready("New Event", null))),
                 eventName = "Summer Trip",
-                onConfirmSwitch = { switched++ },
+                onConfirmSwitch = { _, _ -> switched++ },
             )
         }
         rule.onNodeWithText("Leave Summer Trip and join New Event?").assertExists()

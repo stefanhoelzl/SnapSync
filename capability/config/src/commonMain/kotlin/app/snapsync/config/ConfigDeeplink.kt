@@ -56,10 +56,12 @@ fun encodeConfigUrl(payload: EventLinkPayload): String {
 /**
  * Decodes a raw `snapsync://` URL into an [EventLinkPayload], performing structural-only validation
  * (scheme/host, `v == 3`, base64url, UTF-8 JSON with the required `eventId` key plus the optional
- * `autoJoin`/`minPhotoDate` keys and no other, `eventId` non-empty and a canonical UUID) and **no**
- * network I/O. Never throws: every deviation becomes a [ConfigDecodeResult.Failure]. The success result
- * carries the decoded [EventLinkPayload.autoJoin] (default `false`) and [EventLinkPayload.minPhotoDate]
- * (default `null`). The strict serializer (`ignoreUnknownKeys = false`) still rejects any *other* key.
+ * `autoJoin`/`minPhotoDate`/`direction` keys and no other, `eventId` non-empty and a canonical UUID, and
+ * `direction` — when present — one of the known [Direction.wire] tokens) and **no** network I/O. Never
+ * throws: every deviation becomes a [ConfigDecodeResult.Failure]. The success result carries the decoded
+ * [EventLinkPayload.autoJoin] (default `false`), [EventLinkPayload.minPhotoDate] (default `null`), and
+ * [EventLinkPayload.direction] (default `null`). The strict serializer (`ignoreUnknownKeys = false`)
+ * still rejects any *other* key.
  */
 fun decodeConfigUrl(raw: String): ConfigDecodeResult {
     val trimmed = raw.trim()
@@ -87,6 +89,9 @@ fun decodeConfigUrl(raw: String): ConfigDecodeResult {
 
     if (payload.eventId.isEmpty()) return fail("config has an empty eventId")
     if (!UUID_REGEX.matches(payload.eventId)) return fail("eventId is not a canonical UUID")
+
+    val dir = payload.direction
+    if (dir != null && Direction.fromWire(dir) == null) return fail("unknown direction: $dir")
 
     return ConfigDecodeResult.Success(payload)
 }
