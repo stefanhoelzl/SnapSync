@@ -26,6 +26,7 @@ kotlin {
             api(project(":domain:download-store"))
             api(project(":capability:upload"))
             api(project(":capability:upload-url"))
+            api(project(":capability:album"))
             api(project(":capability:config"))
             api(project(":capability:membership"))
             api(project(":capability:download"))

@@ -41,7 +41,7 @@ class JoinScreenTest {
     fun `ready phase shows the event name with Join and Cancel`() {
         var joined = 0
         rule.setContent {
-            StatusScreen(joining(JoinPhase.Ready("Anna's Wedding", null)), onConfirmJoin = { _, _ -> joined++ })
+            StatusScreen(joining(JoinPhase.Ready("Anna's Wedding", null)), onConfirmJoin = { _, _, _ -> joined++ })
         }
         rule.onNodeWithText("Anna's Wedding").assertExists()
         rule.onNodeWithText("Join").assertExists()
@@ -124,7 +124,7 @@ class JoinScreenTest {
     @Test
     fun `commit-failed phase offers Retry for the join`() {
         var retried = 0
-        rule.setContent { StatusScreen(joining(JoinPhase.CommitFailed("Anna's Wedding")), onRetryJoin = { _, _ -> retried++ }) }
+        rule.setContent { StatusScreen(joining(JoinPhase.CommitFailed("Anna's Wedding")), onRetryJoin = { _, _, _ -> retried++ }) }
         // (CommitFailed still carries only the name; the cutoff is held in the screen's own state.)
         rule.onNodeWithText("Couldn't join").assertExists()
         rule.onNodeWithText("Retry").performClick()

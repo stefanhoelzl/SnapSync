@@ -203,4 +203,30 @@ class ConfigDeeplinkTest {
         val payload = success(encodeConfigUrl(EventLinkPayload(eventId = eventId, direction = "upload")))
         assertEquals("upload", payload.direction)
     }
+
+    @Test
+    fun `absent saveToAlbum defaults to null`() {
+        assertEquals(null, success(encodeConfigUrl(sample)).saveToAlbum)
+        assertEquals(null, success("snapsync://config?v=3&d=${absent("""{"eventId":"$eventId"}""")}").saveToAlbum)
+    }
+
+    @Test
+    fun `dev saveToAlbum key decodes alongside autoJoin`() {
+        val json = """{"eventId":"$eventId","autoJoin":true,"saveToAlbum":true}"""
+        val payload = success("snapsync://config?v=3&d=${absent(json)}")
+        assertEquals(true, payload.autoJoin)
+        assertEquals(true, payload.saveToAlbum)
+    }
+
+    @Test
+    fun `canonical encode omits saveToAlbum`() {
+        // encodeDefaults is off, so an absent saveToAlbum never appears in a real invite QR.
+        assertTrue(!encodeConfigUrl(sample).contains("saveToAlbum"))
+    }
+
+    @Test
+    fun `encode with saveToAlbum round-trips`() {
+        val payload = success(encodeConfigUrl(EventLinkPayload(eventId = eventId, saveToAlbum = true)))
+        assertEquals(true, payload.saveToAlbum)
+    }
 }

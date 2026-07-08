@@ -57,11 +57,12 @@ sealed interface JoinPhase {
     data object Loading : JoinPhase
 
     /**
-     * Details loaded; the confirm (Join/Switch) is offered. [name] is the event name (may be null).
+     * Details loaded; the confirm (Join/Switch) is offered. [name] is the event name (required,
+     * non-null — a details response without a name is a transient failure, not a loaded phase).
      * [defaultCutoff] seeds the capture-date cutoff row's default (the event's fetched `createdAt`,
      * already a UTC `…Z` string; `null` when the marker carried none) — capability `photo-date-cutoff`.
      */
-    data class Ready(val name: String?, val defaultCutoff: String?) : JoinPhase
+    data class Ready(val name: String, val defaultCutoff: String?) : JoinPhase
 
     /** The event does not exist (404) — an invalid/expired invite; no confirm offered. */
     data object NotFound : JoinPhase
@@ -70,10 +71,10 @@ sealed interface JoinPhase {
     data object LoadFailed : JoinPhase
 
     /** The confirm was taken; enroll + provision are in flight. [name] carries the loaded name. */
-    data class Committing(val name: String?) : JoinPhase
+    data class Committing(val name: String) : JoinPhase
 
     /** Enrollment/commit failed (or a switch's join failed after leaving); a Retry re-runs the join. */
-    data class CommitFailed(val name: String?) : JoinPhase
+    data class CommitFailed(val name: String) : JoinPhase
 }
 
 /**

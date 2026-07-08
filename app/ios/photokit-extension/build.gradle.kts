@@ -39,6 +39,7 @@ kotlin {
             // App-Group device id, building the request with EdgeUploadRequestProvider
             // (:capability:upload-url) — no signing, no credential.
             implementation(project(":capability:upload-url"))
+            implementation(project(":capability:album"))
             implementation(project(":capability:config"))
             // The stable per-install device id (shared Keychain): the `/files/<deviceId>/` byte-store
             // partition and the per-event device-manifest key (capability `device-identity`).

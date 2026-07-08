@@ -61,6 +61,11 @@ class UploadCycle(
     // timeout, like `onDiscovery`). Best-effort — invoked under `runCatching`; default no-op for
     // tests/harness.
     private val onBatchUploaded: suspend () -> Unit = {},
+    // Event-album placement (capability `event-album`): fired with the `assetId`s (normalized) that
+    // GENUINELY completed this cycle, so the running process adds those own photos to the event album.
+    // Runs in whichever process runs the cycle (extension on ≥26.1, app on 18–26.0). Best-effort —
+    // invoked under `runCatching`; default no-op for tests/harness and album-off memberships.
+    private val placeInAlbum: suspend (assetIds: Set<String>) -> Unit = {},
 ) {
     suspend fun run(): CycleResult {
         // Phase 1 — first failures: re-point the system's single retry at a rebuilt edge URL
@@ -78,6 +83,9 @@ class UploadCycle(
         // Real completions THIS cycle (a succeeded job with a recoverable key). Re-acks of an
         // already-COMPLETED key do NOT count — they are not new work. Gates the notify fan-out below.
         var completedThisCycle = 0
+        // The `assetId`s (normalized) that genuinely completed this cycle — added to the event album
+        // (capability `event-album`) once the terminal-job pass finishes.
+        val completedAssetIds = mutableSetOf<String>()
         for (job in platform.fetchAckJobs()) {
             when {
                 job.state == PlatformJobState.SUCCEEDED -> {
@@ -90,7 +98,10 @@ class UploadCycle(
                         // spurious notify. Read the prior state before the (idempotent) engine write.
                         val wasCompleted = ledger.entry(job.key)?.state == LedgerState.COMPLETED
                         engine.handle(SyncEvent.UploadCompleted(reconstruct(job)))
-                        if (!wasCompleted) completedThisCycle++
+                        if (!wasCompleted) {
+                            completedThisCycle++
+                            completedAssetIds.add(assetIdFromUploadKey(job.key))
+                        }
                     }
                     platform.acknowledge(job)
                 }
@@ -110,6 +121,10 @@ class UploadCycle(
                 }
             }
         }
+        // Event album (capability `event-album`): add this cycle's genuinely-new completions to the
+        // event album, best-effort, before any early return. Runs in whichever process ran the cycle.
+        if (completedAssetIds.isNotEmpty()) runCatching { placeInAlbum(completedAssetIds) }
+
         if (capHit) return CycleResult.PROCESSING // cursor NOT advanced
 
         // Phase 3 — discover new/changed resources; REQUESTED-skip filters everything in flight.

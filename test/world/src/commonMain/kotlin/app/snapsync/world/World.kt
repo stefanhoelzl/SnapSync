@@ -1,5 +1,6 @@
 package app.snapsync.world
 
+import app.snapsync.album.AlbumCoordinator
 import app.snapsync.config.ConfigSource
 import app.snapsync.config.ConfigStore
 import app.snapsync.config.Direction
@@ -14,6 +15,7 @@ import app.snapsync.eventcreation.CreateEvent
 import app.snapsync.eventcreation.HttpEventCreationClient
 import app.snapsync.eventcreation.MutableCreationStatusSource
 import app.snapsync.gallery.DeviceManifestAsset
+import app.snapsync.gallery.denormalizeAssetId
 import app.snapsync.gallery.DeviceManifestProducer
 import app.snapsync.gallery.GalleryResourceEnumerator
 import app.snapsync.gallery.InMemoryRawAssetSource
@@ -74,6 +76,12 @@ class World(
     val manifestStore: InMemoryDeviceManifestStore = InMemoryDeviceManifestStore()
     val permission: MutablePermissionStatusSource = MutablePermissionStatusSource()
     val creationStatus: MutableCreationStatusSource = MutableCreationStatusSource()
+
+    // Event album (capability `event-album`): the recording manager + leave-surviving map + coordinator,
+    // so integration tests can assert which asset ids the real upload cycle placed into the album.
+    val albumManager: FakeAlbumManager = FakeAlbumManager()
+    val albumMapStore: InMemoryAlbumMapStore = InMemoryAlbumMapStore()
+    val albumCoordinator: AlbumCoordinator = AlbumCoordinator(albumManager, albumMapStore)
 
     /** The one shared mini-edge client injected into every real common-Ktor seam. */
     val client = miniEdgeClient(store)
@@ -177,9 +185,10 @@ class World(
         name: String? = null,
         minPhotoDate: String? = null,
         direction: Direction = Direction.Both,
+        saveToAlbum: Boolean = false,
     ) {
         store.registerEvent(eventId)
-        configCell.value = EventConfig(eventId, name, minPhotoDate, direction)
+        configCell.value = EventConfig(eventId, name ?: "", minPhotoDate, direction, saveToAlbum)
     }
 
     /**
@@ -237,6 +246,13 @@ class World(
             },
             suppressedAssetIds = { downloadStore.suppressedLocalIds() },
             photoCutoff = { cutoff },
+            // Event album (capability `event-album`): add this cycle's completed own photos to the album,
+            // gated on the opt-in; raw localId recovered by reversing `_`→`/` (as the real roots do).
+            placeInAlbum = { assetIds ->
+                if (configCell.value?.saveToAlbum == true) {
+                    albumCoordinator.place(eventId, assetIds.map(::denormalizeAssetId))
+                }
+            },
         )
     }
 
