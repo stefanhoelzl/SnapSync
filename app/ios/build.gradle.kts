@@ -32,6 +32,7 @@ kotlin {
             // (:app:ios:url-session-upload). Composed in the main app process on <26.1.
             implementation(project(":capability:upload"))
             implementation(project(":capability:upload-url"))
+            implementation(project(":capability:album"))
             implementation(project(":app:ios:photokit-discovery"))
             implementation(project(":app:ios:url-session-upload"))
             // The stable per-install device id (shared Keychain) the app's status lists by

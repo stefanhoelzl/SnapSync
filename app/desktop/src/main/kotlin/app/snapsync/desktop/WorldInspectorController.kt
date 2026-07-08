@@ -151,8 +151,14 @@ class WorldInspectorController(private val scope: CoroutineScope) {
     }
 
     /** Confirm the join: enroll (empty-manifest PUT) then provision; `true` unless enrollment failed. */
-    suspend fun commitJoin(eventId: String, name: String?, cutoff: String?, direction: Direction): Boolean =
-        joinEvent.join(eventId, name, cutoff, direction) != JoinOutcome.EnrollFailed
+    suspend fun commitJoin(
+        eventId: String,
+        name: String,
+        cutoff: String?,
+        direction: Direction,
+        saveToAlbum: Boolean,
+    ): Boolean =
+        joinEvent.join(eventId, name, cutoff, direction, saveToAlbum) != JoinOutcome.EnrollFailed
 
     // ---- the OS invocation + token ---------------------------------------------------------------
 

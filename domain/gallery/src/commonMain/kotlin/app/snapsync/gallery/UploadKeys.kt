@@ -44,6 +44,18 @@ fun resourceRole(resourceType: Long): ResourceRole? = when (resourceType) {
 fun normalizeAssetId(rawLocalIdentifier: String): String = rawLocalIdentifier.replace('/', '_')
 
 /**
+ * Recover the raw PHAsset `localIdentifier` from a normalized [assetId] — the inverse of
+ * [normalizeAssetId] — for the event-album upload-add path (capability `event-album`), which must
+ * `PHAsset.fetchAssetsWithLocalIdentifiers` a completed upload whose ledger key only carries the
+ * normalized id. The reversal (`_`→`/`) is **exact** for real identifiers: a `localIdentifier` is
+ * `{UUID}/L0/NNN` (UUID = hex + hyphen, never `_`), so the only underscores present are the ones that
+ * were slashes — the same `_`-free invariant the whole key round-trip (`assetIdFromUploadKey`) already
+ * relies on. A hypothetical native `_` would fetch nothing and the add is best-effort (skips), so this
+ * never mis-adds.
+ */
+fun denormalizeAssetId(assetId: String): String = assetId.replace('_', '/')
+
+/**
  * Pure construction of an asset resource's ledger key / object name — the single place the role-based
  * `"<assetId>-<role>.<ext>"` layout lives, where `assetId` is the PHAsset's `localIdentifier` (v1,
  * single-device) with `/`→`_` (via [normalizeAssetId]). Kept platform-free so the layout is unit-tested on the simulator

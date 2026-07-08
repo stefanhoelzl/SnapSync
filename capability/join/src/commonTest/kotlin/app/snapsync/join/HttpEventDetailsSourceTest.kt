@@ -55,4 +55,17 @@ class HttpEventDetailsSourceTest {
         }
         assertEquals(EventDetails.Failed, source(engine).fetch(eventId))
     }
+
+    @Test
+    fun `a 200 without a name yields Failed rather than a nameless Found`() = runTest {
+        // The event-album title needs a name; a nameless 200 is malformed → retryable Failed.
+        val engine = MockEngine {
+            respond(
+                content = """{"eventId":"$eventId","createdAt":"2026-06-27T10:00:00Z"}""",
+                status = HttpStatusCode.OK,
+                headers = headersOf(HttpHeaders.ContentType, "application/json"),
+            )
+        }
+        assertEquals(EventDetails.Failed, source(engine).fetch(eventId))
+    }
 }

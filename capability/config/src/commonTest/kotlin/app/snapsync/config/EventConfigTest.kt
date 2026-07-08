@@ -80,4 +80,45 @@ class EventConfigTest {
         assertEquals(false, Direction.DownloadOnly.includesUpload)
         assertEquals(true, Direction.DownloadOnly.includesDownload)
     }
+
+    @Test
+    fun `an absent saveToAlbum defaults to false and means no album`() {
+        val config = EventConfig(eventId = "11111111-1111-4111-8111-111111111111", name = "Birthday")
+        assertEquals(false, config.saveToAlbum)
+        assertEquals(config, roundTrip(config))
+    }
+
+    @Test
+    fun `persists saveToAlbum across a serialization round-trip`() {
+        for (flag in listOf(true, false)) {
+            val config = EventConfig(
+                eventId = "11111111-1111-4111-8111-111111111111",
+                name = "Birthday",
+                saveToAlbum = flag,
+            )
+            assertEquals(config, roundTrip(config))
+        }
+    }
+
+    @Test
+    fun `a legacy config JSON without saveToAlbum decodes to false`() {
+        // A Keychain item serialized before the field existed carries no `saveToAlbum` key.
+        val legacy = """{"eventId":"11111111-1111-4111-8111-111111111111","name":"Birthday"}"""
+        val decoded = json.decodeFromString(EventConfig.serializer(), legacy)
+        assertEquals(false, decoded.saveToAlbum)
+    }
+
+    @Test
+    fun `equality distinguishes a differing saveToAlbum`() {
+        val base = EventConfig(eventId = "e", name = "n", saveToAlbum = false)
+        assertEquals(false, base == base.copy(saveToAlbum = true))
+    }
+
+    @Test
+    fun `a legacy config JSON without a name decodes to a non-null empty name`() {
+        // The name was nullable before; a legacy item may lack it. It must decode non-null, not crash.
+        val legacy = """{"eventId":"11111111-1111-4111-8111-111111111111"}"""
+        val decoded = json.decodeFromString(EventConfig.serializer(), legacy)
+        assertEquals("", decoded.name)
+    }
 }

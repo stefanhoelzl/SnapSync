@@ -114,7 +114,7 @@ private fun host(
     requester: PermissionRequester = SpyRequester(),
     configFake: FakeConfig = FakeConfig(),
     loadJoinDetails: suspend (String) -> JoinLoad = { JoinLoad.Failed },
-    commitJoin: suspend (String, String?, String?, Direction) -> Boolean = { _, _, _, _ -> false },
+    commitJoin: suspend (String, String, String?, Direction, Boolean) -> Boolean = { _, _, _, _, _ -> false },
     leave: suspend () -> Unit = {},
 ) = StatusContainerHost(
     source, permission, requester, configFake, configFake, scope,
@@ -290,14 +290,14 @@ class StatusContainerHostTest {
             config, config, backgroundScope,
             creationStatusSource = creationStatus, creator = creator,
             loadJoinDetails = { JoinLoad.Found("My Party", "2026-07-06T00:00:00Z") },
-            commitJoin = { id, name, cutoff, direction -> config.save(EventConfig(id, name, cutoff, direction)); true },
+            commitJoin = { id, name, cutoff, direction, _ -> config.save(EventConfig(id, name, cutoff, direction)); true },
         )
         host.test(this) {
             runOnCreate()
             creator.create("My Party")
             // minted → routed into the gate → loaded, offering Join with the createdAt default cutoff.
             expectState(UiState.JoiningEvent(EVENT_ID, JoinPhase.Ready("My Party", "2026-07-06T00:00:00Z")))
-            containerHost.onConfirmJoin("2026-07-06T00:00:00Z", Direction.Both)
+            containerHost.onConfirmJoin("2026-07-06T00:00:00Z", Direction.Both, false)
             expectState(inSync) // confirm provisions → config present + granted + snapshot total 0 → settled
             cancelAndIgnoreRemainingItems()
         }
@@ -485,12 +485,12 @@ class StatusContainerHostTest {
             FakeSyncStatusSource(SyncStatus.Loading), backgroundScope,
             permission = FakePermissionSource(PermissionStatus.GRANTED), configFake = configFake,
             loadJoinDetails = { JoinLoad.Found("Anna's Birthday", null) },
-            commitJoin = { id, name, _, _ -> enrolled += id; configFake.save(EventConfig(id, name)); true },
+            commitJoin = { id, name, _, _, _ -> enrolled += id; configFake.save(EventConfig(id, name)); true },
         ).test(this) {
             runOnCreate()
             containerHost.onOpenUrl(encodeConfigUrl(EventLinkPayload(EVENT_ID)))
             expectState(UiState.JoiningEvent(EVENT_ID, JoinPhase.Ready("Anna's Birthday", null)))
-            containerHost.onConfirmJoin(null, Direction.Both)
+            containerHost.onConfirmJoin(null, Direction.Both, false)
             expectState(joinedLoading) // commit saved config -> present + granted + Loading snapshot
             cancelAndIgnoreRemainingItems()
         }
@@ -504,12 +504,12 @@ class StatusContainerHostTest {
             FakeSyncStatusSource(SyncStatus.Loading), backgroundScope,
             permission = FakePermissionSource(PermissionStatus.GRANTED), configFake = FakeConfig(null),
             loadJoinDetails = { JoinLoad.NotFound },
-            commitJoin = { _, _, _, _ -> commits++; true },
+            commitJoin = { _, _, _, _, _ -> commits++; true },
         ).test(this) {
             runOnCreate()
             containerHost.onOpenUrl(encodeConfigUrl(EventLinkPayload(EVENT_ID)))
             expectState(UiState.JoiningEvent(EVENT_ID, JoinPhase.NotFound))
-            containerHost.onConfirmJoin(null, Direction.Both) // inert when not Ready
+            containerHost.onConfirmJoin(null, Direction.Both, false) // inert when not Ready
             containerHost.onCancelJoin()
             expectState(UiState.CreateEvent())
             cancelAndIgnoreRemainingItems()
@@ -540,12 +540,12 @@ class StatusContainerHostTest {
             FakeSyncStatusSource(SyncStatus.Loading), backgroundScope,
             permission = FakePermissionSource(PermissionStatus.GRANTED), configFake = FakeConfig(null),
             loadJoinDetails = { JoinLoad.Found("Anna's Birthday", null) },
-            commitJoin = { _, _, _, _ -> false },
+            commitJoin = { _, _, _, _, _ -> false },
         ).test(this) {
             runOnCreate()
             containerHost.onOpenUrl(encodeConfigUrl(EventLinkPayload(EVENT_ID)))
             expectState(UiState.JoiningEvent(EVENT_ID, JoinPhase.Ready("Anna's Birthday", null)))
-            containerHost.onConfirmJoin(null, Direction.Both)
+            containerHost.onConfirmJoin(null, Direction.Both, false)
             expectState(UiState.JoiningEvent(EVENT_ID, JoinPhase.CommitFailed("Anna's Birthday")))
             cancelAndIgnoreRemainingItems()
         }
@@ -576,7 +576,7 @@ class StatusContainerHostTest {
             FakeSyncStatusSource(SyncStatus.Loading), backgroundScope,
             permission = FakePermissionSource(PermissionStatus.GRANTED), configFake = configFake,
             loadJoinDetails = { JoinLoad.Found("New Event", null) },
-            commitJoin = { id, name, _, _ -> order += "join"; configFake.save(EventConfig(id, name)); true },
+            commitJoin = { id, name, _, _, _ -> order += "join"; configFake.save(EventConfig(id, name)); true },
             leave = { order += "leave"; configFake.clear() },
         ).test(this) {
             runOnCreate()
@@ -599,7 +599,7 @@ class StatusContainerHostTest {
             FakeSyncStatusSource(SyncStatus.Loading), backgroundScope,
             permission = FakePermissionSource(PermissionStatus.GRANTED), configFake = configFake,
             loadJoinDetails = { JoinLoad.Found("Anna's Birthday", null) },
-            commitJoin = { id, name, _, _ -> committed = id; configFake.save(EventConfig(id, name)); true },
+            commitJoin = { id, name, _, _, _ -> committed = id; configFake.save(EventConfig(id, name)); true },
         ).test(this) {
             runOnCreate()
             containerHost.onOpenUrl(encodeConfigUrl(EventLinkPayload(EVENT_ID, autoJoin = true)))
@@ -618,14 +618,14 @@ class StatusContainerHostTest {
             FakeSyncStatusSource(SyncStatus.Loading), backgroundScope,
             permission = FakePermissionSource(PermissionStatus.GRANTED), configFake = configFake,
             loadJoinDetails = { JoinLoad.Found("Anna's Birthday", null) },
-            commitJoin = { id, name, _, direction ->
+            commitJoin = { id, name, _, direction, _ ->
                 committedDirection = direction; configFake.save(EventConfig(id, name, direction = direction)); true
             },
         ).test(this) {
             runOnCreate()
             containerHost.onOpenUrl(encodeConfigUrl(EventLinkPayload(EVENT_ID)))
             expectState(UiState.JoiningEvent(EVENT_ID, JoinPhase.Ready("Anna's Birthday", null)))
-            containerHost.onConfirmJoin(null, Direction.DownloadOnly)
+            containerHost.onConfirmJoin(null, Direction.DownloadOnly, false)
             expectState(joinedLoading)
             cancelAndIgnoreRemainingItems()
         }
@@ -641,7 +641,7 @@ class StatusContainerHostTest {
             FakeSyncStatusSource(SyncStatus.Loading), backgroundScope,
             permission = FakePermissionSource(PermissionStatus.GRANTED), configFake = configFake,
             loadJoinDetails = { JoinLoad.Found("Anna's Birthday", null) },
-            commitJoin = { _, _, _, direction -> committedDirection = direction; configFake.save(EventConfig(EVENT_ID)); true },
+            commitJoin = { _, _, _, direction, _ -> committedDirection = direction; configFake.save(EventConfig(EVENT_ID)); true },
         ).test(this) {
             runOnCreate()
             containerHost.onOpenUrl(encodeConfigUrl(EventLinkPayload(EVENT_ID, autoJoin = true)))
@@ -659,7 +659,7 @@ class StatusContainerHostTest {
             FakeSyncStatusSource(SyncStatus.Loading), backgroundScope,
             permission = FakePermissionSource(PermissionStatus.GRANTED), configFake = configFake,
             loadJoinDetails = { JoinLoad.Found("Anna's Birthday", null) },
-            commitJoin = { _, _, _, direction -> committedDirection = direction; configFake.save(EventConfig(EVENT_ID)); true },
+            commitJoin = { _, _, _, direction, _ -> committedDirection = direction; configFake.save(EventConfig(EVENT_ID)); true },
         ).test(this) {
             runOnCreate()
             containerHost.onOpenUrl(

@@ -27,6 +27,7 @@ import app.snapsync.ui.components.AppEventHero
 import kotlinx.datetime.LocalDateTime
 import app.snapsync.ui.components.AppQrCode
 import app.snapsync.ui.components.AccessPrompt
+import app.snapsync.ui.components.AppCheckboxRow
 import app.snapsync.ui.components.AppDirectionSelector
 import app.snapsync.ui.components.AppStatusLine
 import app.snapsync.ui.components.AppSyncStatus
@@ -56,12 +57,13 @@ fun StatusScreen(
     onCreateEvent: (String) -> Unit = {},
     transientError: String? = null,
     // Join-gate actions (capability `join-event`), routed to the container intents. The confirm/retry
-    // actions carry the chosen capture-date cutoff (capability `photo-date-cutoff`; null = whole-library)
-    // and the chosen participation direction (capability `join-event`).
-    onConfirmJoin: (String?, Direction) -> Unit = { _, _ -> },
+    // actions carry the chosen capture-date cutoff (capability `photo-date-cutoff`; null = whole-library),
+    // the chosen participation direction (capability `join-event`), and the album opt-in (`saveToAlbum`,
+    // capability `event-album`).
+    onConfirmJoin: (String?, Direction, Boolean) -> Unit = { _, _, _ -> },
     onCancelJoin: () -> Unit = {},
     onRetryLoad: () -> Unit = {},
-    onRetryJoin: (String?, Direction) -> Unit = { _, _ -> },
+    onRetryJoin: (String?, Direction, Boolean) -> Unit = { _, _, _ -> },
     onConfirmSwitch: (String?, Direction) -> Unit = { _, _ -> },
     onCancelSwitch: () -> Unit = {},
     // Bridges the cutoff picker (local wall-clock) to the UTC `…Z` cutoff string; the default is the
@@ -125,7 +127,8 @@ fun StatusScreen(
                 onConfirmSwitch = onConfirmSwitch,
                 onCancelSwitch = onCancelSwitch,
                 onRetryLoad = onRetryLoad,
-                onRetryJoin = onRetryJoin,
+                // The compact switch path has no album picker — a retry there is album-off.
+                onRetryJoin = { cutoff, direction -> onRetryJoin(cutoff, direction, false) },
             )
         }
     }
@@ -133,10 +136,10 @@ fun StatusScreen(
 
 /**
  * The full-screen "Join event" surface (capability `join-event`): the event summary is the hero, with
- * the participation-direction row and the capture-date cutoff row (capability `photo-date-cutoff`) and
- * Join / Cancel pinned to the bottom. Future options (albums, save-to album) slot in as further rows in
- * this same column. Renders each [JoinPhase]: loading details, ready-to-join, blocked (invalid invite), a
- * retryable load/commit failure.
+ * the participation-direction row, the capture-date cutoff row (capability `photo-date-cutoff`), and the
+ * save-to-album opt-in (capability `event-album`), with Join / Cancel pinned to the bottom. Further future
+ * options slot in as more rows in this same column. Renders each [JoinPhase]: loading details,
+ * ready-to-join, blocked (invalid invite), a retryable load/commit failure.
  *
  * The chosen direction and cutoff are held in local state: the direction defaults to [Direction.Both];
  * the cutoff is seeded once from the loaded default (`createdAt`), editable via the date/time picker or
@@ -148,13 +151,14 @@ fun StatusScreen(
 private fun JoiningEventScreen(
     phase: JoinPhase,
     cutoff: CutoffFormatter,
-    onConfirm: (String?, Direction) -> Unit,
+    onConfirm: (String?, Direction, Boolean) -> Unit,
     onCancel: () -> Unit,
     onRetryLoad: () -> Unit,
-    onRetryJoin: (String?, Direction) -> Unit,
+    onRetryJoin: (String?, Direction, Boolean) -> Unit,
 ) {
     var chosen by remember { mutableStateOf<LocalDateTime?>(null) }
     var chosenDirection by remember { mutableStateOf(Direction.Both) }
+    var chosenSaveToAlbum by remember { mutableStateOf(false) }
     var seeded by remember { mutableStateOf(false) }
     if (phase is JoinPhase.Ready && !seeded) {
         chosen = phase.defaultCutoff?.let(cutoff::toLocal)
@@ -173,7 +177,7 @@ private fun JoiningEventScreen(
                     StatusHero(StatusIndicator.Loading, "Loading event details …")
                 is JoinPhase.Ready ->
                     AppEventHero(
-                        title = phase.name ?: "this event",
+                        title = phase.name,
                         subtitle = "You've been invited to share your photos to this event.",
                     )
                 JoinPhase.NotFound ->
@@ -213,7 +217,17 @@ private fun JoiningEventScreen(
                         // The cutoff scopes uploads only — inert when the user opted out of uploading.
                         enabled = chosenDirection != Direction.DownloadOnly,
                     )
-                    PrimaryButton(label = "Join", onClick = { onConfirm(chosenCutoff, chosenDirection) })
+                    // The event-album opt-in (capability `event-album`), default off, offered in every
+                    // direction.
+                    AppCheckboxRow(
+                        label = "Save event photos to an album",
+                        checked = chosenSaveToAlbum,
+                        onCheckedChange = { chosenSaveToAlbum = it },
+                    )
+                    PrimaryButton(
+                        label = "Join",
+                        onClick = { onConfirm(chosenCutoff, chosenDirection, chosenSaveToAlbum) },
+                    )
                     SecondaryButton(label = "Cancel", onClick = onCancel)
                 }
                 JoinPhase.LoadFailed -> {
@@ -221,7 +235,10 @@ private fun JoiningEventScreen(
                     SecondaryButton(label = "Cancel", onClick = onCancel)
                 }
                 is JoinPhase.CommitFailed -> {
-                    PrimaryButton(label = "Retry", onClick = { onRetryJoin(chosenCutoff, chosenDirection) })
+                    PrimaryButton(
+                        label = "Retry",
+                        onClick = { onRetryJoin(chosenCutoff, chosenDirection, chosenSaveToAlbum) },
+                    )
                     SecondaryButton(label = "Cancel", onClick = onCancel)
                 }
                 JoinPhase.NotFound ->
@@ -321,7 +338,7 @@ private fun SwitchDialog(
         is JoinPhase.Ready -> {
             cutoff = phase.defaultCutoff
             AppConfirmDialog(
-                title = "Leave $current and join ${phase.name ?: "the new event"}?",
+                title = "Leave $current and join ${phase.name}?",
                 confirmLabel = "Switch",
                 cancelLabel = "Cancel",
                 onConfirm = { onConfirmSwitch(cutoff, Direction.Both) },

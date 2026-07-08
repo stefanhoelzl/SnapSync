@@ -63,6 +63,10 @@ class UrlSessionUploadController(
     // Fired after each in-process pump cycle so foreground upload status refreshes live (the app-driven
     // analogue of the PhotoKit extension's cross-process liveness ding — here an in-process re-read).
     private val onCycleComplete: suspend () -> Unit = {},
+    // Event-album placement (capability `event-album`): fired with the `assetId`s that completed this
+    // cycle so this app-tier (iOS 18–26.0) adds them to the event album. Bound by SnapSyncRoot to the
+    // album coordinator (gated on the opt-in); default no-op.
+    private val albumPlacement: suspend (Set<String>) -> Unit = {},
 ) {
     companion object {
         const val SESSION_IDENTIFIER = "app.snapsync.upload.session"
@@ -159,6 +163,8 @@ class UrlSessionUploadController(
             suppressedAssetIds = suppressedAssetIds,
             // Per-device capture-date cutoff: pre-cutoff photos' bytes never upload (photo-date-cutoff).
             photoCutoff = { cutoff },
+            // Event album (capability `event-album`): add this cycle's completed own photos to the album.
+            placeInAlbum = albumPlacement,
         ).run()
         result
     }

@@ -3,11 +3,15 @@ package app.snapsync.download
 import app.snapsync.downloadstore.AssetRef
 import app.snapsync.downloadstore.StagedResource
 import co.touchlab.kermit.Logger
+import kotlinx.cinterop.BetaInteropApi
 import kotlinx.cinterop.ExperimentalForeignApi
 import kotlinx.coroutines.suspendCancellableCoroutine
 import platform.Foundation.NSISO8601DateFormatter
+import platform.Foundation.NSMutableArray
 import platform.Foundation.NSURL
 import platform.Photos.PHAsset
+import platform.Photos.PHAssetCollection
+import platform.Photos.PHAssetCollectionChangeRequest
 import platform.Photos.PHAssetCreationRequest
 import platform.Photos.PHPhotoLibrary
 import kotlin.coroutines.resume
@@ -22,10 +26,17 @@ import kotlin.coroutines.resume
  * Echo-suppression: the created asset's local identifier (sanitized to the upload-key `assetId` form,
  * `/`→`_`, so the upload extension's discovery matches it) is recorded via [recordCreatedLocalId]
  * **inside** the change block — before the new asset can be observed — so it is never re-uploaded.
+ *
+ * Event album (capability `event-album`): when [albumId] returns a non-null album `localIdentifier` (the
+ * membership opted in and the app already created the album), the created asset is added to that album
+ * **in the same commit** as its creation, so a received photo is atomically already-in-the-album. Absent
+ * an album id (opt-out, or not yet created), the asset imports to the camera roll only. Best-effort — a
+ * missing/unresolvable album never fails the import.
  */
-@OptIn(ExperimentalForeignApi::class)
+@OptIn(ExperimentalForeignApi::class, BetaInteropApi::class)
 class IosPhotoLibraryImporter(
     private val recordCreatedLocalId: (AssetRef, String) -> Unit,
+    private val albumId: () -> String? = { null },
     private val log: Logger = Logger.withTag("PhotoImporter"),
 ) : PhotoLibraryImporter {
 
@@ -57,7 +68,8 @@ class IosPhotoLibraryImporter(
                     if (captureDate != null) request.setCreationDate(captureDate)
                     // INSIDE the block: capture + record the suppression handle before the commit is
                     // observable, so the upload extension never re-uploads this asset.
-                    val raw = request.placeholderForCreatedAsset?.localIdentifier
+                    val placeholder = request.placeholderForCreatedAsset
+                    val raw = placeholder?.localIdentifier
                     if (raw != null) {
                         rawLocalId = raw
                         // `/`→`_` MUST match `:domain:gallery`'s `normalizeAssetId` (the discovery-side
@@ -67,6 +79,22 @@ class IosPhotoLibraryImporter(
                         val id = raw.replace('/', '_')
                         createdLocalId = id
                         recordCreatedLocalId(ref, id)
+                    }
+                    // Event album (capability `event-album`): add the just-created asset to the event
+                    // album in THIS commit (atomic — never briefly loose). Best-effort: if the album no
+                    // longer resolves, import to the camera roll only.
+                    val album = albumId()
+                    if (album != null && placeholder != null) {
+                        val collection = PHAssetCollection
+                            .fetchAssetCollectionsWithLocalIdentifiers(listOf(album), null)
+                            .firstObject() as? PHAssetCollection
+                        if (collection != null) {
+                            val members = NSMutableArray().apply { addObject(placeholder) }
+                            PHAssetCollectionChangeRequest.changeRequestForAssetCollection(collection)
+                                ?.addAssets(members)
+                        } else {
+                            log.w { "event album $album no longer resolves — camera roll only" }
+                        }
                     }
                 },
                 { success, error ->

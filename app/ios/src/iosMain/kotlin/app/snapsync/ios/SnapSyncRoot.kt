@@ -33,7 +33,11 @@ import app.snapsync.membership.darwinHttpClient
 import app.snapsync.download.DownloadController
 import app.snapsync.download.HttpEventUnionSource
 import app.snapsync.download.IosPhotoDownloadJobs
+import app.snapsync.album.AlbumCoordinator
+import app.snapsync.album.IosAlbumManager
+import app.snapsync.album.IosAlbumMapStore
 import app.snapsync.download.IosPhotoLibraryImporter
+import app.snapsync.gallery.denormalizeAssetId
 import app.snapsync.download.StoreDownloadStatusSource
 import app.snapsync.downloadstore.SqlDelightDownloadStore
 import app.snapsync.downloadstore.iosDownloadStore
@@ -122,6 +126,28 @@ object SnapSyncRoot {
     // the current event id and the leave use-case can clear it.
     private val config: KeychainConfigStore by lazy { KeychainConfigStore() }
 
+    // Event album (capability `event-album`): the shared leave-surviving `eventId → albumLocalId` map and
+    // the coordinator. The APP is the SOLE creator (on the permission grant); both processes only add.
+    private val albumMapStore: IosAlbumMapStore by lazy { IosAlbumMapStore() }
+    private val albumCoordinator: AlbumCoordinator by lazy {
+        AlbumCoordinator(IosAlbumManager(), albumMapStore)
+    }
+
+    // The event album's `localIdentifier` for the CURRENT membership, or null when it opted out or the
+    // album has not been created yet — the atomic album-add lookup the download importer borrows.
+    private fun currentAlbumId(): String? {
+        val cfg = config.config.value ?: return null
+        return if (cfg.saveToAlbum) albumMapStore.get(cfg.eventId) else null
+    }
+
+    // Create the event album now if the current membership opted in and it does not exist yet — the app
+    // is the sole creator. Idempotent: reuses an existing album, recreates a deleted one. Runs on the
+    // permission grant and on provision (when already granted), so the album exists before the first sync.
+    private suspend fun ensureAlbumIfOptedIn() {
+        val cfg = config.config.value ?: return
+        if (cfg.saveToAlbum && cfg.name.isNotEmpty()) albumCoordinator.ensureAlbum(cfg.eventId, cfg.name)
+    }
+
     // The photo-library permission adapter, hoisted so the grant collector and a (re)provision share one
     // instance (both enable the extension; a provision must re-enable a producer a prior leave disabled).
     private val permission: PhotoLibraryPermission by lazy { PhotoLibraryPermission() }
@@ -185,6 +211,9 @@ object SnapSyncRoot {
             jobs = downloadJobs,
             importer = IosPhotoLibraryImporter(
                 recordCreatedLocalId = { ref, id -> downloadStore.recordCreatedLocalId(ref, id) },
+                // Event album (capability `event-album`): add each imported foreign asset to the event
+                // album atomically, sourced from the shared map (null = opt-out or not-yet-created).
+                albumId = { currentAlbumId() },
             ),
             myDeviceId = deviceId,
             // The download arm runs only when the joined membership's direction includes download
@@ -296,6 +325,7 @@ object SnapSyncRoot {
         // upload status (design.md §2.4); safe under no-deletion-during-an-active-event.
         val syncSource = LedgerBackedSyncStatusSource(ledgerCounts, permission, gallery, scope)
         enableBackgroundUploadOnGrant()
+        ensureAlbumOnGrant()
         // Start registering the APNs token: the collector reacts to each token the AppDelegate delivers
         // (StateFlow-retained, so a token delivered before this launches is still registered).
         scope.launch { pushRegistration.run(pushTokenSource) }
@@ -315,8 +345,8 @@ object SnapSyncRoot {
             // fetched (GET), confirming enrolls (empty-manifest PUT) then provisions. `commitJoin` is
             // true unless enrollment failed (the same-event no-op is a success).
             loadJoinDetails = { eventId -> joinEvent.loadDetails(eventId).toJoinLoad() },
-            commitJoin = { eventId, name, cutoff, direction ->
-                joinEvent.join(eventId, name, cutoff, direction) != JoinOutcome.EnrollFailed
+            commitJoin = { eventId, name, cutoff, direction, saveToAlbum ->
+                joinEvent.join(eventId, name, cutoff, direction, saveToAlbum) != JoinOutcome.EnrollFailed
             },
             log = { message -> log.i { message } },
             downloadSource = downloadStatusSource,
@@ -527,7 +557,7 @@ object SnapSyncRoot {
     // before the Keychain save the extension reads. Named `cfg` to avoid shadowing the `config` store.
     private suspend fun provisionEvent(cfg: EventConfig) = log.invocation(
         "provisionEvent",
-        params = "eventId=${cfg.eventId} named=${cfg.name != null} cutoff=${cfg.minPhotoDate}",
+        params = "eventId=${cfg.eventId} named=${cfg.name.isNotEmpty()} cutoff=${cfg.minPhotoDate}",
     ) {
         // Switch: provisioning a DIFFERENT event while joined leaves the previous one on the backend
         // first (best-effort — a failure never prevents the switch; see `deeplink-config`). Re-scanning
@@ -546,12 +576,15 @@ object SnapSyncRoot {
         // event), so skipping the enable is not enough — we must disable.
         if (permission.permission.value == PermissionStatus.GRANTED) {
             if (cfg.direction.includesUpload) enableBackgroundUpload() else disableExtension()
+            // Create the event album now if opted in and permission is already granted (the grant
+            // collector covers the grant-after-join case). Capability `event-album`.
+            ensureAlbumIfOptedIn()
         }
         // Auto-download the other contributors' photos for this event (capability `photo-download`).
         // The reconcile is a no-op under an upload-only direction — gated inside the controller.
         scope.launch { downloadController.reconcile(cfg.eventId) }
-        // Scan path: fill the title by id, best-effort, off the join (a failure leaves name null).
-        if (cfg.name == null) scope.launch { fetchAndStoreName(cfg.eventId) }
+        // Scan path: fill the title by id, best-effort, off the join (a failure leaves name empty).
+        if (cfg.name.isEmpty()) scope.launch { fetchAndStoreName(cfg.eventId) }
     }
 
     /**
@@ -674,6 +707,17 @@ object SnapSyncRoot {
      * fetch, enumeration, or seed — the extension self-reconciles on its next cycle. Re-runs on each
      * transition to GRANTED; the enable call is idempotent-safe to repeat.
      */
+    // Create the event album on the photo-permission grant (capability `event-album`): the app is the
+    // sole creator, and sync needs the same grant, so the album exists before the first synced photo —
+    // both processes then only ADD. Idempotent; a no-op when the membership opted out.
+    private fun ensureAlbumOnGrant() {
+        scope.launch {
+            permission.permission.collect { status ->
+                if (status == PermissionStatus.GRANTED) ensureAlbumIfOptedIn()
+            }
+        }
+    }
+
     private fun enableBackgroundUploadOnGrant() {
         scope.launch {
             permission.permission.collect { status ->
@@ -715,6 +759,14 @@ object SnapSyncRoot {
             useBackgroundSession = !forceUrlSessionUpload,
             // In-process liveness: after each pump cycle, re-read the ledger counts so status moves live.
             onCycleComplete = { ledgerCounts.refresh() },
+            // Event album (capability `event-album`): add this cycle's completed own photos to the event
+            // album (app tier, 18–26.0), gated on the opt-in; raw localId recovered by reversing `_`→`/`.
+            albumPlacement = { assetIds ->
+                val cfg = config.config.value
+                if (cfg != null && cfg.saveToAlbum) {
+                    albumCoordinator.place(cfg.eventId, assetIds.map(::denormalizeAssetId))
+                }
+            },
         )
     }
 

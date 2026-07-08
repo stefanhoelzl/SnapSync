@@ -1,7 +1,11 @@
 package app.snapsync.ios.upload
 
+import app.snapsync.album.AlbumCoordinator
+import app.snapsync.album.IosAlbumManager
+import app.snapsync.album.IosAlbumMapStore
 import app.snapsync.config.KeychainConfigStore
 import app.snapsync.deviceid.KeychainDeviceIdentity
+import app.snapsync.gallery.denormalizeAssetId
 import app.snapsync.downloadstore.SuppressionSource
 import app.snapsync.downloadstore.iosSuppressionSource
 import app.snapsync.ios.discovery.IosDiscovery
@@ -123,6 +127,12 @@ object UploadExtensionRoot {
     // only reads which downloaded-then-imported assets must not be re-uploaded.
     private val suppression: SuppressionSource by lazy { iosSuppressionSource() }
     private val configSource: KeychainConfigStore by lazy { KeychainConfigStore() }
+
+    // Event album (capability `event-album`): the coordinator over the shared leave-surviving map and the
+    // PhotoKit album manager. The extension only ever ADDS completed uploads (the app is the sole creator).
+    private val albumCoordinator: AlbumCoordinator by lazy {
+        AlbumCoordinator(IosAlbumManager(), IosAlbumMapStore())
+    }
 
     // The stable per-install device id (shared Keychain, minted once): the `/files/devices/<deviceId>/`
     // byte-store partition the provider writes to, and the per-event device-manifest key. Resolved
@@ -253,6 +263,14 @@ object UploadExtensionRoot {
             suppressedAssetIds = { suppression.suppressedLocalIds() },
             // Per-device capture-date cutoff: pre-cutoff photos' bytes never upload (photo-date-cutoff).
             photoCutoff = { cutoff },
+            // Event album (capability `event-album`): add this cycle's completed own photos to the event
+            // album (extension tier, ≥26.1 — verified on device). Recover each raw `localIdentifier` from
+            // the normalized `assetId` (reverse `_`→`/`) to fetch the PHAsset. Gated on the opt-in.
+            placeInAlbum = { assetIds ->
+                if (payload?.saveToAlbum == true) {
+                    albumCoordinator.place(config.eventId, assetIds.map(::denormalizeAssetId))
+                }
+            },
         )
         val result = runCatching { cycle.run() }
             .onSuccess { log.i { "process: cycle finished — $it" } }

@@ -32,9 +32,11 @@ class JoinEvent(
     suspend fun loadDetails(eventId: String): EventDetails = details.fetch(eventId)
 
     /**
-     * Confirm the join for [eventId] with the loaded [name], this device's chosen capture-date
-     * [minPhotoDate] cutoff (capability `photo-date-cutoff`; `null` = whole-library), and its chosen
-     * participation [direction] (capability `join-event`): enroll (register-only empty manifest) — for
+     * Confirm the join for [eventId] with the loaded [name] (required, non-null — the gate only
+     * provisions from a loaded phase that carries a name), this device's chosen capture-date
+     * [minPhotoDate] cutoff (capability `photo-date-cutoff`; `null` = whole-library), its chosen
+     * participation [direction] (capability `join-event`), and whether it opted into an event album
+     * ([saveToAlbum], capability `event-album`): enroll (register-only empty manifest) — for
      * **every** direction, so a download-only device is still an enrolled member — then, only on a
      * successful enrollment, provision (save config **with the cutoff and direction**). The injected
      * [provision] enables the upload producer only when [Direction.includesUpload] and runs the download
@@ -44,14 +46,21 @@ class JoinEvent(
      */
     suspend fun join(
         eventId: String,
-        name: String?,
+        name: String,
         minPhotoDate: String?,
         direction: Direction,
+        saveToAlbum: Boolean,
     ): JoinOutcome {
         if (configSource.config.value?.eventId == eventId) return JoinOutcome.AlreadyJoined
         if (!enroller.enroll(eventId, deviceIdentity.deviceId())) return JoinOutcome.EnrollFailed
         provision(
-            EventConfig(eventId = eventId, name = name, minPhotoDate = minPhotoDate, direction = direction),
+            EventConfig(
+                eventId = eventId,
+                name = name,
+                minPhotoDate = minPhotoDate,
+                direction = direction,
+                saveToAlbum = saveToAlbum,
+            ),
         )
         return JoinOutcome.Committed
     }

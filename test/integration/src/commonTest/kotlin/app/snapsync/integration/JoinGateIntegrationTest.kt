@@ -59,7 +59,7 @@ class JoinGateIntegrationTest {
                 host.await { (it as? UiState.JoiningEvent)?.phase is JoinPhase.Ready },
             )
 
-            host.onConfirmJoin(null, Direction.Both)
+            host.onConfirmJoin(null, Direction.Both, false)
             host.await { it is UiState.Joined } // config flipped present → joined layer
 
             // World outcomes: config provisioned + a register-only EMPTY manifest deposited (membership).
@@ -120,7 +120,7 @@ class JoinGateIntegrationTest {
             host.await { (it as? UiState.JoiningEvent)?.phase is JoinPhase.Ready }
 
             w.backendOffline = true // enrollment PUT now fails
-            host.onConfirmJoin(null, Direction.Both)
+            host.onConfirmJoin(null, Direction.Both, false)
             host.await { (it as? UiState.JoiningEvent)?.phase is JoinPhase.CommitFailed }
 
             assertNull(w.configSource.config.value) // not joined
@@ -271,7 +271,7 @@ class JoinGateIntegrationTest {
             store = NoOpJoinConfigStore,
             scope = scope,
             loadJoinDetails = { id -> joinEvent.loadDetails(id).toJoinLoad() },
-            commitJoin = { id, name, cutoff, direction -> joinEvent.join(id, name, cutoff, direction) != JoinOutcome.EnrollFailed },
+            commitJoin = { id, name, cutoff, direction, saveToAlbum -> joinEvent.join(id, name, cutoff, direction, saveToAlbum) != JoinOutcome.EnrollFailed },
             leave = leave,
         )
     }

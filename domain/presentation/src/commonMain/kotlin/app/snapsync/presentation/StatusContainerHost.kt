@@ -41,8 +41,12 @@ import org.orbitmvi.orbit.container
  * failure (retry).
  */
 sealed interface JoinLoad {
-    /** [createdAt] (the event's UTC `…Z` creation timestamp) seeds the join screen's cutoff default. */
-    data class Found(val name: String?, val createdAt: String?) : JoinLoad
+    /**
+     * [name] is the (required, non-null) event name; [createdAt] (the event's UTC `…Z` creation
+     * timestamp) seeds the join screen's cutoff default. A details response lacking a name is a
+     * transient [Failed], never a nameless [Found] (the event-album title needs a name).
+     */
+    data class Found(val name: String, val createdAt: String?) : JoinLoad
     data object NotFound : JoinLoad
     data object Failed : JoinLoad
 }
@@ -76,11 +80,18 @@ class StatusContainerHost(
     // exercise join construct unchanged; iOS binds them to the `JoinEvent` use-case.
     private val loadJoinDetails: suspend (eventId: String) -> JoinLoad = { JoinLoad.Failed },
     // `commitJoin` = enroll (register-only empty manifest) then provision with the chosen capture-date
-    // cutoff (capability `photo-date-cutoff`; `null` = whole-library) and the chosen participation
-    // `direction` (capability `join-event`), returning `true` when joined.
+    // cutoff (capability `photo-date-cutoff`; `null` = whole-library), the chosen participation
+    // `direction` (capability `join-event`), and whether the join opted into an event album
+    // (`saveToAlbum`, capability `event-album`), returning `true` when joined.
     private val commitJoin:
-        suspend (eventId: String, name: String?, minPhotoDate: String?, direction: Direction) -> Boolean =
-        { _, _, _, _ -> false },
+        suspend (
+            eventId: String,
+            name: String,
+            minPhotoDate: String?,
+            direction: Direction,
+            saveToAlbum: Boolean,
+        ) -> Boolean =
+        { _, _, _, _, _ -> false },
     // Dev-path abort logging (autoJoin has no UI to show a load/commit failure). No-op by default.
     private val log: (String) -> Unit = {},
     // Download progress for the joined-layer "downloaded X of Y" line (capability `photo-download`).
@@ -200,7 +211,12 @@ class StatusContainerHost(
                 val current = configSource.config.value
                 when {
                     result.payload.autoJoin ->
-                        autoConfirm(eventId, result.payload.minPhotoDate, result.payload.direction)
+                        autoConfirm(
+                            eventId,
+                            result.payload.minPhotoDate,
+                            result.payload.direction,
+                            result.payload.saveToAlbum,
+                        )
                     current == null -> startPending(eventId)               // first join → JoiningEvent
                     current.eventId != eventId -> startPending(eventId)    // switch → Joined.pendingSwitch
                     else -> Unit                                           // same event → no-op
@@ -217,22 +233,23 @@ class StatusContainerHost(
     }
 
     /**
-     * Confirm a first join with the chosen capture-date [cutoff] and participation [direction]:
-     * enroll → provision (no leave).
+     * Confirm a first join with the chosen capture-date [cutoff], participation [direction], and album
+     * choice [saveToAlbum] (capability `event-album`): enroll → provision (no leave).
      */
-    fun onConfirmJoin(cutoff: String?, direction: Direction) =
-        intent { commit(withLeave = false, cutoff = cutoff, direction = direction) }
+    fun onConfirmJoin(cutoff: String?, direction: Direction, saveToAlbum: Boolean) =
+        intent { commit(withLeave = false, cutoff = cutoff, direction = direction, saveToAlbum = saveToAlbum) }
 
     /**
      * Confirm a switch: leave the current event, then enroll → provision the new one with [cutoff]. The
-     * compact switch dialog carries no direction picker, so the caller supplies [Direction.Both].
+     * compact switch dialog carries no direction/album picker, so the caller supplies [Direction.Both]
+     * and album-off.
      */
     fun onConfirmSwitch(cutoff: String?, direction: Direction) =
-        intent { commit(withLeave = true, cutoff = cutoff, direction = direction) }
+        intent { commit(withLeave = true, cutoff = cutoff, direction = direction, saveToAlbum = false) }
 
     /** Retry a failed commit — the leave (if any) already succeeded, so this re-runs only the join. */
-    fun onRetryJoin(cutoff: String?, direction: Direction) =
-        intent { commit(withLeave = false, cutoff = cutoff, direction = direction) }
+    fun onRetryJoin(cutoff: String?, direction: Direction, saveToAlbum: Boolean) =
+        intent { commit(withLeave = false, cutoff = cutoff, direction = direction, saveToAlbum = saveToAlbum) }
 
     /** Discard the pending join/switch, returning to the base screen. */
     fun onCancelJoin() = intent { pending.value = null }
@@ -266,15 +283,23 @@ class StatusContainerHost(
         pending.value?.let { if (it.eventId == eventId) pending.value = it.copy(phase = phase) }
     }
 
-    private suspend fun commit(withLeave: Boolean, cutoff: String?, direction: Direction) {
+    private suspend fun commit(
+        withLeave: Boolean,
+        cutoff: String?,
+        direction: Direction,
+        saveToAlbum: Boolean,
+    ) {
         val p = pending.value ?: return
         // Only a loaded (Ready) or previously-failed (CommitFailed) surface can be confirmed; a
-        // still-loading/blocked/committing phase ignores the action.
-        if (p.phase !is JoinPhase.Ready && p.phase !is JoinPhase.CommitFailed) return
-        val name = p.phase.name()
+        // still-loading/blocked/committing phase ignores the action. Both carry a non-null name.
+        val name = when (val ph = p.phase) {
+            is JoinPhase.Ready -> ph.name
+            is JoinPhase.CommitFailed -> ph.name
+            else -> return
+        }
         pending.value = p.copy(phase = JoinPhase.Committing(name))
         if (withLeave) leave()
-        if (commitJoin(p.eventId, name, cutoff, direction)) {
+        if (commitJoin(p.eventId, name, cutoff, direction, saveToAlbum)) {
             // Success: config flips present via ConfigSource → reduces to Joined; drop the overlay.
             if (pending.value?.eventId == p.eventId) pending.value = null
         } else if (pending.value?.eventId == p.eventId) {
@@ -287,7 +312,12 @@ class StatusContainerHost(
      * different current event first — but auto-fire the confirm on a successful load. No UI, so a load
      * or commit failure aborts and logs rather than parking on a retryable state.
      */
-    private suspend fun autoConfirm(eventId: String, explicitCutoff: String?, explicitDirection: String?) {
+    private suspend fun autoConfirm(
+        eventId: String,
+        explicitCutoff: String?,
+        explicitDirection: String?,
+        explicitSaveToAlbum: Boolean?,
+    ) {
         val load = loadJoinDetails(eventId)
         if (load !is JoinLoad.Found) {
             log("autoJoin aborted: details load did not succeed for $eventId ($load)")
@@ -301,7 +331,10 @@ class StatusContainerHost(
         // The direction defaults to Both, unless the deeplink supplied an explicit dev/test override
         // (`both`/`upload`/`download`); an unrecognized token was already rejected by the decoder.
         val direction = explicitDirection?.let(Direction::fromWire) ?: Direction.Both
-        if (!commitJoin(eventId, load.name, cutoff, direction)) {
+        // The album choice defaults to off, unless the deeplink supplied an explicit dev/test override
+        // (capability `event-album`).
+        val saveToAlbum = explicitSaveToAlbum ?: false
+        if (!commitJoin(eventId, load.name, cutoff, direction, saveToAlbum)) {
             log("autoJoin aborted: enrollment failed for $eventId")
         }
     }

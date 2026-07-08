@@ -16,10 +16,13 @@ import kotlinx.serialization.Serializable
  * [direction] is likewise a **dev/test** key (default absent): a participation-direction override — one
  * of the [Direction.wire] tokens `both`/`upload`/`download` — that, on an auto-confirmed join, forces the
  * membership's direction (capability `join-event`) so a headless launch can exercise upload-only /
- * download-only without a tap. Because `encodeDefaults` is off, a `false`/absent value is not serialized,
- * so the canonical [encodeConfigUrl] QR stays `eventId`-only; the strict decoder accepts
- * `autoJoin`/`minPhotoDate`/`direction` as known optional keys but still rejects any *other* extra key
- * (and a `direction` outside the known tokens).
+ * download-only without a tap. [saveToAlbum] is likewise a **dev/test** key (default absent): an override
+ * that, on an auto-confirmed join, forces whether the membership gathers its synced photos into an event
+ * album (capability `event-album`) so a headless launch can exercise album placement without a tap.
+ * Because `encodeDefaults` is off, a `false`/absent value is not serialized, so the canonical
+ * [encodeConfigUrl] QR stays `eventId`-only; the strict decoder accepts
+ * `autoJoin`/`minPhotoDate`/`direction`/`saveToAlbum` as known optional keys but still rejects any
+ * *other* extra key (and a `direction` outside the known tokens).
  *
  * This class is the wire DTO: its property name is the exact JSON key of the deeplink payload.
  */
@@ -29,6 +32,7 @@ class EventLinkPayload(
     val autoJoin: Boolean = false,
     val minPhotoDate: String? = null,
     val direction: String? = null,
+    val saveToAlbum: Boolean? = null,
 )
 
 /** Field-wise equality (not a data class, to match the prior payload's explicit-equality style). */
@@ -38,20 +42,26 @@ internal fun EventLinkPayload.sameAs(other: EventLinkPayload): Boolean =
 /**
  * The **persisted, joined-event state** (distinct from the [EventLinkPayload] wire type): the joined
  * `eventId`, the human-readable event `name`, and this device's chosen capture-date [minPhotoDate]
- * cutoff for the event (capability `photo-date-cutoff`). The name is **nullable** because it is fetched
- * by id *after* joining (`GET /events/:id`) and may not be available yet — joining never blocks on it.
+ * cutoff for the event (capability `photo-date-cutoff`). The name is a **required, non-null** value: the
+ * join gate only provisions from a loaded phase that carries a name (capability `join-event`), and the
+ * backend enforces name-required on create (capability `event-creation`), so a nameless event cannot
+ * exist. It defaults to `""` **only** so a legacy item persisted before the name was reliably set decodes
+ * non-null (refreshed on the next foreground fetch), never a decode crash.
  * [minPhotoDate] is **nullable** (absent = whole-library scope): the per-device, per-membership cutoff,
- * a UTC `…Z` string. The extension reads the `eventId` **and** the `minPhotoDate` from the shared
- * Keychain item (the cutoff scopes its upload cycle); the name is cosmetic, for the status-screen title.
+ * a UTC `…Z` string. The extension reads the `eventId`, the `minPhotoDate` (the cutoff scopes its upload
+ * cycle), **and** [saveToAlbum] (whether to add completed uploads to the event album) from the shared
+ * Keychain item; the name is cosmetic, for the status-screen title.
  * [direction] is this device's chosen participation direction (capability `join-event`), **defaulting to
  * [Direction.Both]** so a config persisted before this field existed decodes to today's bidirectional
- * behavior. The extension does **not** read it (the upload arm is gated app-side by whether the producer
- * is enabled); it is persisted as part of the whole-object serialization regardless.
+ * behavior. [saveToAlbum] is whether this membership gathers its synced photos into an event album
+ * (capability `event-album`), **defaulting to `false`** so a config persisted before this field existed
+ * decodes to today's no-album behavior. All fields flow whole-object through serialization.
  */
 @Serializable
 data class EventConfig(
     val eventId: String,
-    val name: String? = null,
+    val name: String = "",
     val minPhotoDate: String? = null,
     val direction: Direction = Direction.Both,
+    val saveToAlbum: Boolean = false,
 )
