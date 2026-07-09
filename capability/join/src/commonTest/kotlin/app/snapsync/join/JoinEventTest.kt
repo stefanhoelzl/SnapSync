@@ -16,6 +16,9 @@ private const val EVENT_A = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"
 private const val EVENT_B = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb"
 private const val DEVICE = "dddddddd-dddd-4ddd-8ddd-dddddddddddd"
 
+/** Every membership carries a cutoff (capability `photo-date-cutoff`); there is no "no cutoff" join. */
+private const val CUTOFF = "2026-07-06T14:32:11Z"
+
 private class FakeConfigSource(initial: EventConfig?) : ConfigSource {
     val state = MutableStateFlow(initial)
     override val config: StateFlow<EventConfig?> = state
@@ -54,18 +57,18 @@ class JoinEventTest {
     val provisioned = mutableListOf<EventConfig>()
     val enroller = FakeEnroller(result = true)
     val outcome = joinEvent(config = null, enroller = enroller, provisioned = provisioned)
-        .join(EVENT_A, "Anna's Wedding", null, Direction.Both, false)
+        .join(EVENT_A, "Anna's Wedding", CUTOFF, Direction.Both, false)
 
     assertEquals(JoinOutcome.Committed, outcome)
     assertEquals(listOf(EVENT_A to DEVICE), enroller.calls)
-    assertEquals(listOf(EventConfig(EVENT_A, "Anna's Wedding")), provisioned)
+    assertEquals(listOf(EventConfig(EVENT_A, "Anna's Wedding", CUTOFF)), provisioned)
 }
 
 @Test
 fun `a failed enrollment commits nothing`() = runTest {
     val provisioned = mutableListOf<EventConfig>()
     val outcome = joinEvent(config = null, enrollResult = false, provisioned = provisioned)
-        .join(EVENT_A, "Anna's Wedding", null, Direction.Both, false)
+        .join(EVENT_A, "Anna's Wedding", CUTOFF, Direction.Both, false)
 
     assertEquals(JoinOutcome.EnrollFailed, outcome)
     assertTrue(provisioned.isEmpty(), "no config should be provisioned on a failed enrollment")
@@ -75,8 +78,8 @@ fun `a failed enrollment commits nothing`() = runTest {
 fun `re-joining the current event is a no-op that skips enrollment`() = runTest {
     val provisioned = mutableListOf<EventConfig>()
     val enroller = FakeEnroller(result = true)
-    val outcome = joinEvent(config = EventConfig(EVENT_A, "Anna's Wedding"), enroller = enroller, provisioned = provisioned)
-        .join(EVENT_A, "Anna's Wedding", null, Direction.Both, false)
+    val outcome = joinEvent(config = EventConfig(EVENT_A, "Anna's Wedding", CUTOFF), enroller = enroller, provisioned = provisioned)
+        .join(EVENT_A, "Anna's Wedding", CUTOFF, Direction.Both, false)
 
     assertEquals(JoinOutcome.AlreadyJoined, outcome)
     assertTrue(enroller.calls.isEmpty(), "the already-joined event must not be re-enrolled")
@@ -86,8 +89,8 @@ fun `re-joining the current event is a no-op that skips enrollment`() = runTest 
 @Test
 fun `switching to a different event enrolls`() = runTest {
     val enroller = FakeEnroller(result = true)
-    val outcome = joinEvent(config = EventConfig(EVENT_A, "Old"), enroller = enroller)
-        .join(EVENT_B, "New", null, Direction.Both, false)
+    val outcome = joinEvent(config = EventConfig(EVENT_A, "Old", CUTOFF), enroller = enroller)
+        .join(EVENT_B, "New", CUTOFF, Direction.Both, false)
 
     assertEquals(JoinOutcome.Committed, outcome)
     assertEquals(listOf(EVENT_B to DEVICE), enroller.calls)
@@ -103,14 +106,14 @@ fun `loadDetails surfaces found not-found and failed distinctly`() = runTest {
     @Test
     fun `join commits the loaded name`() = runTest {
         val provisioned = mutableListOf<EventConfig>()
-        joinEvent(config = null, provisioned = provisioned).join(EVENT_A, "Anna's Wedding", null, Direction.Both, false)
+        joinEvent(config = null, provisioned = provisioned).join(EVENT_A, "Anna's Wedding", CUTOFF, Direction.Both, false)
         assertEquals("Anna's Wedding", provisioned.single().name)
     }
 
     @Test
     fun `join persists the chosen saveToAlbum`() = runTest {
         val provisioned = mutableListOf<EventConfig>()
-        joinEvent(config = null, provisioned = provisioned).join(EVENT_A, "Anna's Wedding", null, Direction.Both, true)
+        joinEvent(config = null, provisioned = provisioned).join(EVENT_A, "Anna's Wedding", CUTOFF, Direction.Both, true)
         assertEquals(true, provisioned.single().saveToAlbum)
     }
 
@@ -127,7 +130,7 @@ fun `loadDetails surfaces found not-found and failed distinctly`() = runTest {
         for (direction in Direction.entries) {
             val provisioned = mutableListOf<EventConfig>()
             joinEvent(config = null, provisioned = provisioned)
-                .join(EVENT_A, "Anna's Wedding", null, direction, false)
+                .join(EVENT_A, "Anna's Wedding", CUTOFF, direction, false)
             assertEquals(direction, provisioned.single().direction)
         }
     }
@@ -137,7 +140,7 @@ fun `loadDetails surfaces found not-found and failed distinctly`() = runTest {
         val provisioned = mutableListOf<EventConfig>()
         val enroller = FakeEnroller(result = true)
         val outcome = joinEvent(config = null, enroller = enroller, provisioned = provisioned)
-            .join(EVENT_A, "Anna's Wedding", null, Direction.DownloadOnly, false)
+            .join(EVENT_A, "Anna's Wedding", CUTOFF, Direction.DownloadOnly, false)
 
         assertEquals(JoinOutcome.Committed, outcome)
         assertEquals(listOf(EVENT_A to DEVICE), enroller.calls, "download-only must still enroll (empty manifest)")

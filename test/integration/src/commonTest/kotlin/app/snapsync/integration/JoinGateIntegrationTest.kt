@@ -43,7 +43,43 @@ private const val EVENT_F = "22222222-2222-4222-8222-222222222222"
  * `GET /event/:id` details gate, register-only enrollment PUT, and the switch composition — asserting
  * both `UiState` and world outcomes (config provisioned, manifest membership landed).
  */
+/** A membership always carries a cutoff (capability `photo-date-cutoff`). */
+private const val CUTOFF = "2026-01-01T00:00:00Z"
+
 class JoinGateIntegrationTest {
+
+    @Test
+    fun the_join_gate_normalizes_the_backends_millisecond_createdAt_and_commits_what_it_showed() = worldTest {
+        // The full-stack equivalent of driving the join gate by hand (task 7.4). The world's mini-edge now
+        // mints `createdAt` with milliseconds exactly as the real backend does; the loaded phase must show
+        // a SECOND-PRECISION cutoff (the `photo-date-cutoff` format invariant, which the iOS fetch
+        // predicate depends on), and confirming must persist precisely the cutoff the surface displayed.
+        val scope = CoroutineScope(coroutineContext + Job())
+        try {
+            val w = World()
+            w.store.registerEvent(EVENT_E, "Anna's Wedding")
+            val host = joinHost(w, scope)
+
+            host.onOpenUrl(deeplink(EVENT_E))
+            val phase = (host.await { (it as? UiState.JoiningEvent)?.phase is JoinPhase.Ready }
+                as UiState.JoiningEvent).phase as JoinPhase.Ready
+
+            assertEquals("2026-01-01T00:00:00Z", phase.defaultCutoff, "millisecond createdAt is truncated")
+            assertTrue(!phase.defaultCutoff.contains('.'), "a cutoff never carries fractional seconds")
+
+            // Confirm with exactly what the surface showed — the picker's round-trip in the real screen.
+            host.onConfirmJoin(phase.defaultCutoff, Direction.Both, false)
+            host.await { it is UiState.Joined }
+
+            assertEquals(
+                phase.defaultCutoff,
+                w.configSource.config.value?.minPhotoDate,
+                "the persisted cutoff is the one the join surface displayed",
+            )
+        } finally {
+            scope.cancel()
+        }
+    }
 
     @Test
     fun first_join_loads_details_then_enrolls_and_joins() = worldTest {
@@ -59,7 +95,7 @@ class JoinGateIntegrationTest {
                 host.await { (it as? UiState.JoiningEvent)?.phase is JoinPhase.Ready },
             )
 
-            host.onConfirmJoin(null, Direction.Both, false)
+            host.onConfirmJoin(CUTOFF, Direction.Both, false)
             host.await { it is UiState.Joined } // config flipped present → joined layer
 
             // World outcomes: config provisioned + a register-only EMPTY manifest deposited (membership).
@@ -120,7 +156,7 @@ class JoinGateIntegrationTest {
             host.await { (it as? UiState.JoiningEvent)?.phase is JoinPhase.Ready }
 
             w.backendOffline = true // enrollment PUT now fails
-            host.onConfirmJoin(null, Direction.Both, false)
+            host.onConfirmJoin(CUTOFF, Direction.Both, false)
             host.await { (it as? UiState.JoiningEvent)?.phase is JoinPhase.CommitFailed }
 
             assertNull(w.configSource.config.value) // not joined
@@ -141,7 +177,7 @@ class JoinGateIntegrationTest {
             host.onOpenUrl(deeplink(EVENT_F))
             host.await { (it as? UiState.Joined)?.pendingSwitch?.phase is JoinPhase.Ready }
 
-            host.onConfirmSwitch(null, Direction.Both)
+            host.onConfirmSwitch(CUTOFF, Direction.Both)
             host.await { it is UiState.Joined && it.pendingSwitch == null && w.configSource.config.value?.eventId == EVENT_F }
 
             assertEquals(EVENT_F, w.configSource.config.value?.eventId) // switched
@@ -173,7 +209,7 @@ class JoinGateIntegrationTest {
             host.onOpenUrl(deeplink(EVENT_F))
             host.await { (it as? UiState.Joined)?.pendingSwitch?.phase is JoinPhase.Ready }
 
-            host.onConfirmSwitch(null, Direction.Both)
+            host.onConfirmSwitch(CUTOFF, Direction.Both)
             // The new event's join completes even though E's DELETE is still pending — the switch never
             // waits on the departed event's fire-and-forget backend notify.
             host.await {

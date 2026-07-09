@@ -1,23 +1,5 @@
-# photo-date-cutoff Specification
+## MODIFIED Requirements
 
-## Purpose
-
-A per-device, per-membership **capture-date cutoff**, chosen at join: the member contributes only photos taken
-from a moment they pick onward.
-
-Without it, joining an event shares a device's entire photo library — and because every uploaded asset enters
-the event union, every other member downloads it too. The joiner faced an all-or-nothing choice between
-sharing years of unrelated photos and not joining. The cutoff makes contribution scopeable, and it defaults to
-the event's creation time, which is almost always what the user means.
-
-**One cutoff gates both directions of the member's own contribution** — the byte upload and the manifest
-listing — so a photo excluded from the upload cannot leak into the event through the listing. It also scopes
-the own-device status total, so the screen counts what this device intends to share rather than everything it
-owns.
-
-Decision record: `changes/archive/2026-07-06-add-join-date-cutoff`.
-
-## Requirements
 ### Requirement: Per-device, per-membership capture-date cutoff
 
 The system SHALL support a **capture-date cutoff** that scopes a device's participation in an event to
@@ -93,23 +75,6 @@ value.
 - **THEN** it is never the empty string, because `creationDate >= ""` holds for every asset and would
   silently admit the whole library
 
-### Requirement: One cutoff gates both byte upload and manifest listing
-
-A membership's cutoff SHALL gate **both** which of the device's photo bytes are uploaded **and** which of
-its assets are listed in that event's device manifest — the two SHALL use the **same** cutoff value, so
-the set uploaded equals the set listed. Because the event union exposes each device's manifest-listed
-assets to other members, the cutoff thereby governs both this device's backup scope and what other
-members can download from it. A photo excluded by the cutoff SHALL neither have its bytes uploaded nor
-appear in the manifest (and therefore SHALL NOT enter the event union).
-
-#### Scenario: An in-scope photo is both uploaded and shared
-- **WHEN** a photo's `creationDate` is at or after the membership's cutoff
-- **THEN** its bytes are uploaded and it is listed in the device manifest (eligible for the event union)
-
-#### Scenario: An out-of-scope photo is neither uploaded nor shared
-- **WHEN** a photo's `creationDate` precedes the membership's cutoff
-- **THEN** its bytes are not uploaded and it is not listed in the manifest, so no other member can download it
-
 ### Requirement: The cutoff scopes the own-device status total
 
 The own-device upload **total** `N` SHALL count only the device's own assets that are **in scope** — at
@@ -162,23 +127,13 @@ narrow the admitted set.
 - **THEN** the cycle's cutoff filter still excludes every pre-cutoff resource, so the admitted set is
   identical to that of an unnarrowed fetch
 
-### Requirement: Injected time source for now and local conversion
+<!--
+No `## REMOVED Requirements` block: nothing removed here is a whole requirement.
 
-The system SHALL obtain "now" and convert a manually-picked **local** date+time into the UTC `…Z`
-cutoff string in `commonMain` via an **injected** time source (a `Clock`), never via `expect`/`actual`,
-so the conversion and formatting are unit-testable on both the JVM and the iOS simulator. The injected
-time source SHALL be the single origin of "now" for the cutoff and SHALL produce the exact UTC `…Z`
-shape the format invariant requires.
-
-#### Scenario: Now is obtained from the injected clock and formatted to the invariant
-- **WHEN** the "now" cutoff is requested
-- **THEN** the injected clock supplies the instant and it is formatted to the UTC `yyyy-MM-dd'T'HH:mm:ss'Z'` shape
-
-#### Scenario: A local pick converts to the UTC cutoff
-- **WHEN** a user picks a local date and time
-- **THEN** it is converted to the corresponding UTC instant and formatted to the `…Z` cutoff shape, comparable against `creationDate`
-
-#### Scenario: Conversion is testable without platform code
-- **WHEN** the cutoff conversion/formatting is exercised in a test
-- **THEN** it runs in `commonTest` against an injected clock on both JVM and the iOS simulator, with no `expect`/`actual`
+The two whole-library scenarios that encoded "absent cutoff ⇒ whole library" —
+`A null cutoff is whole-library` (under *Per-device, per-membership capture-date cutoff*) and
+`A whole-library scope counts everything` (under *The cutoff scopes the own-device status total*) —
+are scenarios, and both are dropped by the MODIFIED requirement bodies above, which carry their full
+updated content. The rationale and migration live in proposal.md and design.md.
+-->
 

@@ -34,7 +34,8 @@ class JoinEvent(
     /**
      * Confirm the join for [eventId] with the loaded [name] (required, non-null — the gate only
      * provisions from a loaded phase that carries a name), this device's chosen capture-date
-     * [minPhotoDate] cutoff (capability `photo-date-cutoff`; `null` = whole-library), its chosen
+     * [minPhotoDate] cutoff (capability `photo-date-cutoff`; always present — a membership without a
+     * cutoff would upload the whole library), its chosen
      * participation [direction] (capability `join-event`), and whether it opted into an event album
      * ([saveToAlbum], capability `event-album`): enroll (register-only empty manifest) — for
      * **every** direction, so a download-only device is still an enrolled member — then, only on a
@@ -47,7 +48,7 @@ class JoinEvent(
     suspend fun join(
         eventId: String,
         name: String,
-        minPhotoDate: String?,
+        minPhotoDate: String,
         direction: Direction,
         saveToAlbum: Boolean,
     ): JoinOutcome {

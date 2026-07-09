@@ -57,14 +57,14 @@ fun StatusScreen(
     onCreateEvent: (String) -> Unit = {},
     transientError: String? = null,
     // Join-gate actions (capability `join-event`), routed to the container intents. The confirm/retry
-    // actions carry the chosen capture-date cutoff (capability `photo-date-cutoff`; null = whole-library),
+    // actions carry the chosen capture-date cutoff (capability `photo-date-cutoff`; always present),
     // the chosen participation direction (capability `join-event`), and the album opt-in (`saveToAlbum`,
     // capability `event-album`).
-    onConfirmJoin: (String?, Direction, Boolean) -> Unit = { _, _, _ -> },
+    onConfirmJoin: (String, Direction, Boolean) -> Unit = { _, _, _ -> },
     onCancelJoin: () -> Unit = {},
     onRetryLoad: () -> Unit = {},
-    onRetryJoin: (String?, Direction, Boolean) -> Unit = { _, _, _ -> },
-    onConfirmSwitch: (String?, Direction) -> Unit = { _, _ -> },
+    onRetryJoin: (String, Direction, Boolean) -> Unit = { _, _, _ -> },
+    onConfirmSwitch: (String, Direction) -> Unit = { _, _ -> },
     onCancelSwitch: () -> Unit = {},
     // Bridges the cutoff picker (local wall-clock) to the UTC `…Z` cutoff string; the default is the
     // production impl (device clock + zone), so hosts/tests need not supply one.
@@ -142,29 +142,33 @@ fun StatusScreen(
  * ready-to-join, blocked (invalid invite), a retryable load/commit failure.
  *
  * The chosen direction and cutoff are held in local state: the direction defaults to [Direction.Both];
- * the cutoff is seeded once from the loaded default (`createdAt`), editable via the date/time picker or
- * snapped to "now", and converted to the UTC `…Z` string on confirm/retry. Both survive Ready →
- * Committing → CommitFailed (the composable stays mounted), so a retry reuses them. The cutoff row is
- * disabled under [Direction.DownloadOnly] (it scopes uploads only).
+ * the cutoff is seeded once, **non-null**, from the loaded default (`createdAt`, already resolved to now by
+ * the host when the marker carried none), editable via the date/time picker or snapped to "now", and
+ * converted to the UTC `…Z` string on confirm/retry. Both survive Ready → Committing → CommitFailed (the
+ * composable stays mounted), so a retry reuses them. The cutoff row is disabled under
+ * [Direction.DownloadOnly] (it scopes uploads only).
  */
 @Composable
 private fun JoiningEventScreen(
     phase: JoinPhase,
     cutoff: CutoffFormatter,
-    onConfirm: (String?, Direction, Boolean) -> Unit,
+    onConfirm: (String, Direction, Boolean) -> Unit,
     onCancel: () -> Unit,
     onRetryLoad: () -> Unit,
-    onRetryJoin: (String?, Direction, Boolean) -> Unit,
+    onRetryJoin: (String, Direction, Boolean) -> Unit,
 ) {
-    var chosen by remember { mutableStateOf<LocalDateTime?>(null) }
+    // The chosen cutoff is **non-null by construction**, seeded once on first composition: from the loaded
+    // phase's `defaultCutoff` (itself non-null — the host resolves an absent/unparseable `createdAt` to
+    // now), else from now, which covers a screen mounted straight into CommitFailed. A join with no cutoff
+    // is therefore unrepresentable rather than merely guarded — it would upload the whole library
+    // (capability `photo-date-cutoff`). "Now" shares too few photos, which a re-join fixes; the opposite
+    // error cannot be undone.
+    var chosen by remember {
+        mutableStateOf((phase as? JoinPhase.Ready)?.let { cutoff.toLocal(it.defaultCutoff) } ?: cutoff.nowLocal())
+    }
     var chosenDirection by remember { mutableStateOf(Direction.Both) }
     var chosenSaveToAlbum by remember { mutableStateOf(false) }
-    var seeded by remember { mutableStateOf(false) }
-    if (phase is JoinPhase.Ready && !seeded) {
-        chosen = phase.defaultCutoff?.let(cutoff::toLocal)
-        seeded = true
-    }
-    val chosenCutoff: String? = chosen?.let(cutoff::toCutoff)
+    val chosenCutoff: String = cutoff.toCutoff(chosen)
 
     Column(modifier = Modifier.fillMaxSize()) {
         Column(
@@ -324,14 +328,15 @@ private fun CutoffRow(
 private fun SwitchDialog(
     switch: PendingSwitch,
     currentEventName: String?,
-    onConfirmSwitch: (String?, Direction) -> Unit,
+    onConfirmSwitch: (String, Direction) -> Unit,
     onCancelSwitch: () -> Unit,
     onRetryLoad: () -> Unit,
-    onRetryJoin: (String?, Direction) -> Unit,
+    onRetryJoin: (String, Direction) -> Unit,
 ) {
     val current = currentEventName ?: "this event"
     // The compact switch dialog has no picker: it uses the new event's default cutoff (its `createdAt`,
-    // capability `photo-date-cutoff`) and the default participation direction ([Direction.Both]).
+    // or now when that is absent — resolved non-null by the host, capability `photo-date-cutoff`) and the
+    // default participation direction ([Direction.Both]).
     // Remembered so a retry after a failed commit reuses it (the CommitFailed phase carries only the name).
     var cutoff by remember { mutableStateOf<String?>(null) }
     when (val phase = switch.phase) {
@@ -341,7 +346,7 @@ private fun SwitchDialog(
                 title = "Leave $current and join ${phase.name}?",
                 confirmLabel = "Switch",
                 cancelLabel = "Cancel",
-                onConfirm = { onConfirmSwitch(cutoff, Direction.Both) },
+                onConfirm = { onConfirmSwitch(phase.defaultCutoff, Direction.Both) },
                 onDismiss = onCancelSwitch,
             )
         }
@@ -366,7 +371,9 @@ private fun SwitchDialog(
                 title = "Couldn't switch events. Try again?",
                 confirmLabel = "Retry",
                 cancelLabel = "Cancel",
-                onConfirm = { onRetryJoin(cutoff, Direction.Both) },
+                // The remembered cutoff was set by the Ready phase this commit came from; a retry without
+                // one would join at whole-library scope, so it is inert rather than unbounded.
+                onConfirm = { cutoff?.let { c -> onRetryJoin(c, Direction.Both) } },
                 onDismiss = onCancelSwitch,
             )
         // Transient — no dialog while the details load or the switch commits.

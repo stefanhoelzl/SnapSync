@@ -80,18 +80,22 @@ class StatusContainerHost(
     // exercise join construct unchanged; iOS binds them to the `JoinEvent` use-case.
     private val loadJoinDetails: suspend (eventId: String) -> JoinLoad = { JoinLoad.Failed },
     // `commitJoin` = enroll (register-only empty manifest) then provision with the chosen capture-date
-    // cutoff (capability `photo-date-cutoff`; `null` = whole-library), the chosen participation
+    // cutoff (capability `photo-date-cutoff`; always present), the chosen participation
     // `direction` (capability `join-event`), and whether the join opted into an event album
     // (`saveToAlbum`, capability `event-album`), returning `true` when joined.
     private val commitJoin:
         suspend (
             eventId: String,
             name: String,
-            minPhotoDate: String?,
+            minPhotoDate: String,
             direction: Direction,
             saveToAlbum: Boolean,
         ) -> Boolean =
         { _, _, _, _, _ -> false },
+    // Supplies "now" as a cutoff string and validates a fetched `createdAt` (capability
+    // `photo-date-cutoff`). Injected so the fallback is unit-tested against a fixed clock on JVM and the
+    // iOS simulator; the screen receives an already-resolved, non-null default.
+    private val cutoffFormatter: CutoffFormatter = SystemCutoffFormatter(),
     // Dev-path abort logging (autoJoin has no UI to show a load/commit failure). No-op by default.
     private val log: (String) -> Unit = {},
     // Download progress for the joined-layer "downloaded X of Y" line (capability `photo-download`).
@@ -236,7 +240,7 @@ class StatusContainerHost(
      * Confirm a first join with the chosen capture-date [cutoff], participation [direction], and album
      * choice [saveToAlbum] (capability `event-album`): enroll → provision (no leave).
      */
-    fun onConfirmJoin(cutoff: String?, direction: Direction, saveToAlbum: Boolean) =
+    fun onConfirmJoin(cutoff: String, direction: Direction, saveToAlbum: Boolean) =
         intent { commit(withLeave = false, cutoff = cutoff, direction = direction, saveToAlbum = saveToAlbum) }
 
     /**
@@ -244,11 +248,11 @@ class StatusContainerHost(
      * compact switch dialog carries no direction/album picker, so the caller supplies [Direction.Both]
      * and album-off.
      */
-    fun onConfirmSwitch(cutoff: String?, direction: Direction) =
+    fun onConfirmSwitch(cutoff: String, direction: Direction) =
         intent { commit(withLeave = true, cutoff = cutoff, direction = direction, saveToAlbum = false) }
 
     /** Retry a failed commit — the leave (if any) already succeeded, so this re-runs only the join. */
-    fun onRetryJoin(cutoff: String?, direction: Direction, saveToAlbum: Boolean) =
+    fun onRetryJoin(cutoff: String, direction: Direction, saveToAlbum: Boolean) =
         intent { commit(withLeave = false, cutoff = cutoff, direction = direction, saveToAlbum = saveToAlbum) }
 
     /** Discard the pending join/switch, returning to the base screen. */
@@ -273,9 +277,31 @@ class StatusContainerHost(
         loadInto(eventId)
     }
 
+    /**
+     * The event's `createdAt` **normalized** into a cutoff, falling back to **now** (capability
+     * `photo-date-cutoff`). A membership always carries a cutoff, so a missing or unparseable
+     * `createdAt` — a malformed event marker — must not leave the join surface with an empty cutoff row
+     * and an enabled confirm, which would join at whole-library scope and upload the whole camera roll to
+     * the event.
+     *
+     * **Normalized, not verbatim.** The backend mints `createdAt` with `new Date().toISOString()`, which
+     * always carries **milliseconds** (`2026-07-09T19:24:17.182Z`). The cutoff invariant is second
+     * precision (`yyyy-MM-dd'T'HH:mm:ss'Z'`), and a fractional-second cutoff breaks the iOS walk's
+     * `NSISO8601DateFormatter` (whose default options omit `.withFractionalSeconds`), silently costing the
+     * bounded fetch. Round-tripping through the formatter both validates and truncates to the invariant.
+     * Truncation drops sub-second precision *downward*, so the cutoff moves marginally earlier — the
+     * inclusive direction, which is the safe one.
+     *
+     * Erring toward `now` shares too few photos, which the user can fix by re-joining with an earlier
+     * date; erring toward whole-library cannot be undone.
+     */
+    private fun cutoffOrNow(createdAt: String?): String =
+        createdAt?.let { cutoffFormatter.toLocal(it) }?.let { cutoffFormatter.toCutoff(it) }
+            ?: cutoffFormatter.toCutoff(cutoffFormatter.nowLocal())
+
     private suspend fun loadInto(eventId: String) {
         val phase = when (val load = loadJoinDetails(eventId)) {
-            is JoinLoad.Found -> JoinPhase.Ready(load.name, load.createdAt)
+            is JoinLoad.Found -> JoinPhase.Ready(load.name, cutoffOrNow(load.createdAt))
             JoinLoad.NotFound -> JoinPhase.NotFound
             JoinLoad.Failed -> JoinPhase.LoadFailed
         }
@@ -285,7 +311,7 @@ class StatusContainerHost(
 
     private suspend fun commit(
         withLeave: Boolean,
-        cutoff: String?,
+        cutoff: String,
         direction: Direction,
         saveToAlbum: Boolean,
     ) {
@@ -325,9 +351,10 @@ class StatusContainerHost(
         }
         val current = configSource.config.value
         if (current != null && current.eventId != eventId) leave()
-        // The auto-fired confirm uses the default cutoff (the loaded `createdAt`), unless the deeplink
-        // supplied an explicit dev/test cutoff (capability `photo-date-cutoff`).
-        val cutoff = explicitCutoff ?: load.createdAt
+        // The auto-fired confirm uses the default cutoff (the loaded `createdAt`, or now when it is
+        // absent/unparseable), unless the deeplink supplied an explicit dev/test cutoff (capability
+        // `photo-date-cutoff`). Never an absent cutoff — the headless path has no surface to notice one.
+        val cutoff = explicitCutoff ?: cutoffOrNow(load.createdAt)
         // The direction defaults to Both, unless the deeplink supplied an explicit dev/test override
         // (`both`/`upload`/`download`); an unrecognized token was already rejected by the decoder.
         val direction = explicitDirection?.let(Direction::fromWire) ?: Direction.Both

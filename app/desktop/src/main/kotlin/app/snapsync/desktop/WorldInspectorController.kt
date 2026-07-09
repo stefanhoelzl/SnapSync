@@ -154,7 +154,7 @@ class WorldInspectorController(private val scope: CoroutineScope) {
     suspend fun commitJoin(
         eventId: String,
         name: String,
-        cutoff: String?,
+        cutoff: String,
         direction: Direction,
         saveToAlbum: Boolean,
     ): Boolean =
@@ -251,7 +251,7 @@ class WorldInspectorController(private val scope: CoroutineScope) {
         // COMPLETED, so a subsequent invoke uploads nothing new. Deposit exactly the enumerator-derived
         // keys (uploadKey) so the completeness check matches — don't reconstruct the key by hand.
         addOwnAsset("own-a1")
-        enumerator.enumerate().forEach { store.deposit(ownDeviceId, it.filename) }
+        enumerator.enumerate(World.DEFAULT_CUTOFF).forEach { store.deposit(ownDeviceId, it.filename) }
         provision(EVENT)
     }
 
@@ -297,14 +297,16 @@ class WorldInspectorController(private val scope: CoroutineScope) {
      * `LedgerBackedSyncStatusSource` projection re-emits only after we pull them.
      */
     private suspend fun refreshStatus() {
-        world.ownGallery.refresh()
+        // The joined membership's cutoff scopes the total; unjoined, the world's default keeps the
+        // inspector's counts drivable (capability `photo-date-cutoff`).
+        world.ownGallery.refresh(world.configSource.config.value?.minPhotoDate ?: World.DEFAULT_CUTOFF)
         world.ledgerCounts.refresh()
         downloadSource.refresh()
     }
 
     private suspend fun snapshotNow(): InspectorSnapshot {
         val suppressed = world.downloadStore.suppressedLocalIds()
-        val galleryRows = world.gallery.walkAll()
+        val galleryRows = world.gallery.current()
             .map { GalleryRow(it.assetId, suppressed = it.assetId in suppressed) }
         val deviceIds = listOf(world.ownDeviceId) + injectedDeviceIds
         val backend = deviceIds.map { id ->

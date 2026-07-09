@@ -1,8 +1,13 @@
 # CLAUDE.md
 
 SnapSync — an iOS app for **sharing photos from an event** (Kotlin Multiplatform + Compose), shipped
-via TestFlight. Join an event by scanning its QR, and your photos from that event are shared to it
-while everyone else's arrive in your library. The JVM desktop app is test equipment, not a product.
+via TestFlight. Join an event by scanning its QR, and your photos taken since a per-device
+**capture-date cutoff** are shared to it while everyone else's arrive in your library. The JVM desktop
+app is test equipment, not a product.
+
+> It began as a *personal one-way photo backup*. Defaults inherited from that era are dangerous here:
+> what was "back up everything of mine" becomes "upload a guest's whole camera roll to a stranger's
+> event". A membership's cutoff is therefore **required**, never absent.
 
 Stack: Kotlin 2.4.0 · Compose MP 1.11.1 · JDK 25 · min iOS 18.0 · Orbit MVI · SQLDelight · Ktor.
 (Two upload tiers per OS version: OS-driven PhotoKit on iOS ≥26.1, app-driven background `URLSession`
@@ -86,6 +91,21 @@ $P developer dvt launch app.snapsync \                           # subscribe to 
   --env SNAPSYNC_DEEPLINK="snapsync://config?v=3&d=<base64url({\"eventId\":\"<uuid>\"})>" --userspace
 uvx pymobiledevice3 apps pull app.snapsync Documents/debug.log   # pull the file logger (re-provision line, etc.)
 ```
+
+**Seeding a large photo library.** `SNAPSYNC_SEED_PHOTOS=<n>` is a second dev/test launch-env trigger
+(`app/ios/.../DevPhotoSeeder.kt`): on launch the app creates `<n>` synthetic `PHAsset`s dated from
+2001-01-01 forward, one minute apart, so the capture-date-bounded walk can be exercised against a large
+library on device. ~85 s for 4000 assets on an SE2. Inert in production for the same reason as
+`SNAPSYNC_DEEPLINK` (a launch env var is only injectable via a developer launch).
+**It writes to the real photo library** — deleting the assets again needs taps (`deleteAssets` always
+raises a system confirmation), which is why they are parked in one year of the Photos timeline. Use it on
+a dev device only.
+```
+$P developer dvt launch app.snapsync --env SNAPSYNC_SEED_PHOTOS=4000 --userspace
+```
+Why it matters: the walk's cost is one synchronous PhotoKit XPC round-trip **per asset**
+(`assetResourcesForAsset`, ~110 ms each on an SE2), so ~90 assets exhaust the 10 s scene-update watchdog.
+A one-photo dev device cannot distinguish a bounded fetch from an unbounded one.
 
 `SNAPSYNC_DEEPLINK` is a **dev/test trigger** (capability `ios-app-shell`): on launch the app
 forwards it through the same path as a scanned QR, (re)provisioning the event. It is read **once per

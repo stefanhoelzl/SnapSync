@@ -35,23 +35,28 @@ class IosDiscovery(
     private val library: PHPhotoLibrary get() = PHPhotoLibrary.sharedPhotoLibrary()
 
     /**
-     * Enumerate the resources changed since [sinceToken] (null / unarchivable / expired → whole
-     * library), plus the cursor to persist once the cycle drains. Identical for both upload tiers.
+     * Enumerate the resources changed since [sinceToken] (null / unarchivable / expired → a full
+     * enumeration, scoped to assets captured at or after [since]), plus the cursor to persist once the
+     * cycle drains. Identical for both upload tiers.
      */
-    suspend fun discover(sinceToken: ByteArray?): Discovery {
+    suspend fun discover(sinceToken: ByteArray?, since: String): Discovery {
         val token = sinceToken?.let(::unarchiveToken)
         val changes = token?.let { library.fetchPersistentChangesSinceToken(it, error = null) }
         if (token == null || changes == null) {
-            // Full enumeration: `resources` is every current resource key — the live set the cycle
-            // reconciles against. No change feed, so no incremental removals.
+            // Full enumeration: `resources` is every current IN-SCOPE resource key — the live set the
+            // cycle reconciles against. No change feed, so no incremental removals. Scoped by [since] so
+            // the walk does not issue a PhotoKit round-trip per library asset; the cycle's own cutoff
+            // filter stays authoritative over what comes back.
             return Discovery(
-                resources = enumerator.enumerate(),
+                resources = enumerator.enumerate(since),
                 nextToken = archiveToken(library.currentChangeToken),
                 fullEnumeration = true,
             )
         }
         // Incremental: derive changed assets to (re)upload and removed assets to prune. Removed ids
-        // are normalized `/`→`_` so they match the `<localId>-…` key scheme.
+        // are normalized `/`→`_` so they match the `<localId>-…` key scheme. The changed set is bounded by
+        // [since] too: a change feed says what CHANGED, not what is in SCOPE, and an iCloud sync can hand
+        // back thousands of decades-old assets whose resources would each cost a PhotoKit round-trip.
         val identifiers = linkedSetOf<String>()
         val removed = linkedSetOf<String>()
         changes.enumerateChangesWithBlock { change, _ ->
@@ -62,7 +67,7 @@ class IosDiscovery(
             details.deletedLocalIdentifiers().forEach { removed.add((it as String).replace('/', '_')) }
         }
         return Discovery(
-            resources = enumerator.resources(identifiers.toList()),
+            resources = enumerator.resources(identifiers.toList(), since),
             nextToken = archiveToken(library.currentChangeToken),
             removedAssetIds = removed.toList(),
         )

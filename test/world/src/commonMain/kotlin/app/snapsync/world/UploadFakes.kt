@@ -93,8 +93,10 @@ class FakeUploadJobPlatform(
         return CreateResult.CREATED
     }
 
-    override suspend fun discoverResources(sinceToken: ByteArray?): Discovery {
-        val current = enumerator.enumerate()
+    override suspend fun discoverResources(sinceToken: ByteArray?, since: String): Discovery {
+        // The full enumeration is scoped by the membership's cutoff, exactly as the PhotoKit walk is
+        // (capability `photo-date-cutoff`); the cycle's own filter still runs over what comes back.
+        val current = enumerator.enumerate(since)
         val currentAssetIds = current.mapTo(mutableSetOf()) { it.assetId }
         val full = forceFull || sinceToken == null
         forceFull = false

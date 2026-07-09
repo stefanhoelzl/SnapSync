@@ -84,7 +84,7 @@ class FakePhotoLibraryImporter(
                 )
             },
         )
-        gallery.set(gallery.walkAll() + newAsset)
+        gallery.set(gallery.current() + newAsset)
         imported += ref
         return ImportResult.Imported(createdLocalId)
     }

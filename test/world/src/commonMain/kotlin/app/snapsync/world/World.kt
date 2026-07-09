@@ -110,8 +110,6 @@ class World(
         OwnDeviceGalleryStatusSource(
             enumerator = enumerator,
             suppressedLocalIds = { downloadStore.suppressedLocalIds() },
-            // Cutoff-scoped total so the joined screen settles to "in sync" (capability `photo-date-cutoff`).
-            photoCutoff = { configCell.value?.minPhotoDate },
         )
     // Completed + pending both read from the world's real ledger (one consistent aggregates() read).
     val ledgerCounts: ReadingLedgerCountsSource = ReadingLedgerCountsSource {
@@ -156,12 +154,12 @@ class World(
         creationDate: String = DEFAULT_DATE,
         resources: List<RawResource> = listOf(primaryResource()),
     ) {
-        gallery.set(gallery.walkAll() + RawAsset(assetId, creationDate, resources))
+        gallery.set(gallery.current() + RawAsset(assetId, creationDate, resources))
     }
 
     /** Remove an own asset from the gallery (surfaces as `removedAssetIds` on the next incremental cycle). */
     suspend fun removeAsset(assetId: String) {
-        gallery.set(gallery.walkAll().filterNot { it.assetId == assetId })
+        gallery.set(gallery.current().filterNot { it.assetId == assetId })
     }
 
     /**
@@ -177,13 +175,14 @@ class World(
 
     /**
      * Join/provision an event: register its marker and make its config present (the config gate lifts).
-     * [minPhotoDate] is this device's per-membership capture-date cutoff (capability `photo-date-cutoff`);
-     * `null` = whole-library (the shipped default).
+     * [minPhotoDate] is this device's per-membership capture-date cutoff (capability `photo-date-cutoff`),
+     * always present. It defaults to [DEFAULT_CUTOFF], which precedes [DEFAULT_DATE] so an asset added with
+     * default arguments is in scope.
      */
     fun provision(
         eventId: String,
         name: String? = null,
-        minPhotoDate: String? = null,
+        minPhotoDate: String = DEFAULT_CUTOFF,
         direction: Direction = Direction.Both,
         saveToAlbum: Boolean = false,
     ) {
@@ -227,9 +226,10 @@ class World(
     fun uploadCycle(eventId: String): UploadCycle {
         val engine = SyncEngine(EdgeUploadRequestProvider(host, ownDeviceId), ledger)
         val producer = manifestProducer()
-        // Per-device capture-date cutoff (photo-date-cutoff): scopes BOTH the byte-upload filter and the
-        // device-manifest projection. `null` = whole-library. Sourced from the joined-event config.
-        val cutoff = configCell.value?.minPhotoDate
+        // Per-device capture-date cutoff (photo-date-cutoff): scopes the discovery walk, the byte-upload
+        // filter, AND the device-manifest projection. Always present on a joined membership; a cycle
+        // assembled for an unjoined world falls back to the world's default so the harness stays drivable.
+        val cutoff = configCell.value?.minPhotoDate ?: DEFAULT_CUTOFF
         return UploadCycle(
             engine = engine,
             ledger = ledger,
@@ -308,6 +308,13 @@ class World(
 
     companion object {
         const val DEFAULT_DATE: String = "2026-06-01T10:00:00Z"
+
+        /**
+         * The world's default capture-date cutoff (capability `photo-date-cutoff`). Strictly precedes
+         * [DEFAULT_DATE], so an asset added with default arguments is in scope and the harness behaves as
+         * it did when a `null` cutoff meant whole-library. A cutoff is never absent.
+         */
+        const val DEFAULT_CUTOFF: String = "2026-01-01T00:00:00Z"
 
         /** A single primary raw resource (`PHAssetResourceType.photo` == 1). */
         fun primaryResource(

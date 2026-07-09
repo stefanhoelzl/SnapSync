@@ -3,6 +3,8 @@ package app.snapsync.status
 import app.snapsync.gallery.GalleryResourceEnumerator
 import app.snapsync.gallery.GalleryStatusSource
 import app.snapsync.gallery.RESOURCE_META_CREATION_DATE
+import co.touchlab.kermit.Logger
+import kotlin.time.TimeSource
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -24,15 +26,25 @@ import kotlinx.coroutines.flow.asStateFlow
  * `creationDate` precedes [photoCutoff] is neither uploaded nor listed in the manifest, so counting it
  * would peg upload progress permanently below 100% ("pending" forever). The total therefore counts only
  * assets at or after the cutoff — the same set the upload cycle admits — so the joined screen settles to
- * "in sync" once every in-scope asset is uploaded. `null` cutoff = whole-library (today's behavior).
+ * "in sync" once every in-scope asset is uploaded. A membership always carries a cutoff, so there is no
+ * whole-library total.
+ *
+ * The cutoff is passed **into** the enumeration, so the platform walk fetches only in-scope assets rather
+ * than the whole library; the post-enumeration filter below still runs and remains authoritative (the
+ * walk's fetch predicate may over-return).
  *
  * [size] is a level-triggered count; [refresh] re-enumerates and recomputes it (invoked on foreground
  * entry / library change / (re)join by the composition root).
+ *
+ * The cutoff is a [refresh] **parameter**, not an injected supplier: it belongs to a membership, and a
+ * device with no membership has no scope to count — so the composition root simply does not refresh, and
+ * `N` stays at its seeded `0`. There is deliberately no "no cutoff" value to pass.
  */
 class OwnDeviceGalleryStatusSource(
     private val enumerator: GalleryResourceEnumerator,
     private val suppressedLocalIds: suspend () -> Set<String> = { emptySet() },
-    private val photoCutoff: suspend () -> String? = { null },
+    private val log: Logger = Logger.withTag("gallery"),
+    private val timeSource: TimeSource = TimeSource.Monotonic,
 ) : GalleryStatusSource {
 
     private val _size = MutableStateFlow(0)
@@ -40,17 +52,35 @@ class OwnDeviceGalleryStatusSource(
     /** The upload total `N`: the count of this device's OWN in-scope assets (downloads + pre-cutoff excluded). */
     override val size: StateFlow<Int> = _size.asStateFlow()
 
-    suspend fun refresh() {
+    /**
+     * Re-enumerate within [cutoff] (the joined membership's capture-date cutoff) and recompute `N`.
+     *
+     * The enumeration's cost and shape are **logged** (capability `diagnostic-logging`). This walk is one
+     * synchronous PhotoKit round-trip per in-scope asset — the cost the capture-date bound exists to
+     * contain — and it runs on every foreground entry. Without a line here, whether the bound is actually
+     * bounding anything is invisible on a real device: a bounded and an unbounded fetch differ only in how
+     * many assets they touch, and that number is otherwise never reported.
+     */
+    suspend fun refresh(cutoff: String) {
+        val started = timeSource.markNow()
         val suppressed = suppressedLocalIds()
-        val cutoff = photoCutoff()
         // Own universe = enumerated assets minus downloads (echo) minus pre-cutoff (photo-date-cutoff) —
         // exactly the set the upload cycle admits, so completeness can reach 100%.
-        _size.value = enumerator.enumerate()
+        val enumerated = enumerator.enumerate(cutoff)
+        val preCutoff = enumerated.count { (it.metadata[RESOURCE_META_CREATION_DATE] ?: "") < cutoff }
+        val size = enumerated
             .asSequence()
-            .filter { cutoff == null || (it.metadata[RESOURCE_META_CREATION_DATE] ?: "") >= cutoff }
+            .filter { (it.metadata[RESOURCE_META_CREATION_DATE] ?: "") >= cutoff }
             .map { it.assetId }
             .filter { it !in suppressed }
             .distinct()
             .count()
+        _size.value = size
+        val elapsed = started.elapsedNow()
+        log.i {
+            "gallery: enumerated ${enumerated.size} resource(s) since $cutoff " +
+                "($preCutoff over-returned pre-cutoff, ${suppressed.size} suppressed) " +
+                "→ N=$size own in-scope asset(s) in ${elapsed.inWholeMilliseconds}ms"
+        }
     }
 }

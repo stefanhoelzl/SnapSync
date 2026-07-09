@@ -28,6 +28,9 @@ import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 import kotlin.time.Duration
 import kotlinx.coroutines.CoroutineScope
+import kotlin.time.Clock
+import kotlin.time.Instant
+import kotlinx.datetime.TimeZone
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -65,7 +68,7 @@ private class FakePermissionSource(
 
 // Config seam + store as one fake: save writes the cell, which is exactly how the real Keychain
 // adapter behaves. Defaults to present so the sync-state tests reach the joined layer.
-private val SAMPLE_CONFIG = EventConfig(eventId = EVENT_ID, name = "Anna's Birthday")
+private val SAMPLE_CONFIG = EventConfig(eventId = EVENT_ID, name = "Anna's Birthday", minPhotoDate = CUTOFF)
 
 private class FakeConfig(initial: EventConfig? = SAMPLE_CONFIG) : ConfigSource, ConfigStore {
     private val flow = MutableStateFlow(initial)
@@ -107,6 +110,25 @@ private fun snapshot(
     estimatedRemaining: Duration? = null,
 ) = SyncProgress(pending, completed, total, failed, active, estimatedRemaining)
 
+/** What the fixed clock below yields as a cutoff — the seed when `createdAt` is absent or unparseable. */
+private const val NOW_CUTOFF = "2026-07-09T12:00:00Z"
+
+/** A membership always carries a cutoff (capability `photo-date-cutoff`); no join can pass `null`. */
+private const val CUTOFF = "2026-07-06T14:32:11Z"
+
+/**
+ * The **real** [SystemCutoffFormatter] on a fixed clock in UTC. Deliberately not a hand-rolled fake: the
+ * `createdAt` → cutoff normalization depends on the actual ISO-8601 codec (the backend mints `createdAt`
+ * with milliseconds, which must be truncated to the second-precision invariant), and a fake formatter
+ * would assert nothing about that.
+ */
+private fun fixedCutoffFormatter() = SystemCutoffFormatter(
+    clock = object : Clock {
+        override fun now(): Instant = Instant.parse(NOW_CUTOFF)
+    },
+    zone = TimeZone.UTC,
+)
+
 private fun host(
     source: FakeSyncStatusSource,
     scope: CoroutineScope,
@@ -114,11 +136,12 @@ private fun host(
     requester: PermissionRequester = SpyRequester(),
     configFake: FakeConfig = FakeConfig(),
     loadJoinDetails: suspend (String) -> JoinLoad = { JoinLoad.Failed },
-    commitJoin: suspend (String, String, String?, Direction, Boolean) -> Boolean = { _, _, _, _, _ -> false },
+    commitJoin: suspend (String, String, String, Direction, Boolean) -> Boolean = { _, _, _, _, _ -> false },
     leave: suspend () -> Unit = {},
 ) = StatusContainerHost(
     source, permission, requester, configFake, configFake, scope,
     loadJoinDetails = loadJoinDetails, commitJoin = commitJoin, leave = leave,
+    cutoffFormatter = fixedCutoffFormatter(),
 )
 
 class StatusContainerHostTest {
@@ -152,7 +175,7 @@ class StatusContainerHostTest {
         direction: Direction,
         download: DownloadProgress = DownloadProgress(0, 0),
     ): StatusContainerHost {
-        val cfg = FakeConfig(EventConfig(EVENT_ID, "Anna's Birthday", direction = direction))
+        val cfg = FakeConfig(EventConfig(EVENT_ID, "Anna's Birthday", CUTOFF, direction = direction))
         return StatusContainerHost(
             source, FakePermissionSource(PermissionStatus.GRANTED), SpyRequester(), cfg, cfg, scope,
             downloadSource = InMemoryDownloadStatusSource(download),
@@ -478,6 +501,100 @@ class StatusContainerHostTest {
     }
 
     @Test
+    fun `a second-precision event createdAt survives normalization unchanged`() = runTest {
+        // A `createdAt` already at second precision round-trips through normalization unchanged
+        // (capability `photo-date-cutoff`).
+        host(
+            FakeSyncStatusSource(SyncStatus.Loading), backgroundScope,
+            permission = FakePermissionSource(PermissionStatus.GRANTED), configFake = FakeConfig(null),
+            loadJoinDetails = { JoinLoad.Found("Anna's Birthday", "2026-07-06T14:32:11Z") },
+        ).test(this) {
+            runOnCreate()
+            containerHost.onOpenUrl(encodeConfigUrl(EventLinkPayload(EVENT_ID)))
+            expectState(UiState.JoiningEvent(EVENT_ID, JoinPhase.Ready("Anna's Birthday", "2026-07-06T14:32:11Z")))
+            cancelAndIgnoreRemainingItems()
+        }
+    }
+
+    @Test
+    fun `a backend createdAt with milliseconds is normalized to the second-precision invariant`() = runTest {
+        // The backend mints `createdAt` with `new Date().toISOString()`, which ALWAYS carries milliseconds
+        // (`2026-07-09T19:24:17.182Z`). A fractional-second cutoff violates the format invariant and makes
+        // the iOS walk's bare NSISO8601DateFormatter return nil, silently costing the bounded fetch — the
+        // whole-library walk that trips the watchdog. Truncation is downward, i.e. the inclusive direction.
+        host(
+            FakeSyncStatusSource(SyncStatus.Loading), backgroundScope,
+            permission = FakePermissionSource(PermissionStatus.GRANTED), configFake = FakeConfig(null),
+            loadJoinDetails = { JoinLoad.Found("Anna's Birthday", "2026-07-09T19:24:17.182Z") },
+        ).test(this) {
+            runOnCreate()
+            containerHost.onOpenUrl(encodeConfigUrl(EventLinkPayload(EVENT_ID)))
+            expectState(UiState.JoiningEvent(EVENT_ID, JoinPhase.Ready("Anna's Birthday", "2026-07-09T19:24:17Z")))
+            cancelAndIgnoreRemainingItems()
+        }
+    }
+
+    @Test
+    fun `an unparseable event createdAt seeds the cutoff to now rather than to nothing`() = runTest {
+        // A malformed marker must not leave the cutoff row empty: an absent cutoff would join at
+        // whole-library scope and upload the guest's entire camera roll into the event.
+        host(
+            FakeSyncStatusSource(SyncStatus.Loading), backgroundScope,
+            permission = FakePermissionSource(PermissionStatus.GRANTED), configFake = FakeConfig(null),
+            loadJoinDetails = { JoinLoad.Found("Anna's Birthday", "not-a-timestamp") },
+        ).test(this) {
+            runOnCreate()
+            containerHost.onOpenUrl(encodeConfigUrl(EventLinkPayload(EVENT_ID)))
+            expectState(UiState.JoiningEvent(EVENT_ID, JoinPhase.Ready("Anna's Birthday", NOW_CUTOFF)))
+            cancelAndIgnoreRemainingItems()
+        }
+    }
+
+    @Test
+    fun `autoJoin with no explicit cutoff and no createdAt commits with now`() = runTest {
+        // The headless dev launch has no surface on which an empty cutoff row could be noticed, so the
+        // fallback matters most here (capability `photo-date-cutoff`).
+        val configFake = FakeConfig(null)
+        var committedCutoff: String? = null
+        host(
+            FakeSyncStatusSource(SyncStatus.Loading), backgroundScope,
+            permission = FakePermissionSource(PermissionStatus.GRANTED), configFake = configFake,
+            loadJoinDetails = { JoinLoad.Found("Anna's Birthday", null) },
+            commitJoin = { id, name, cutoff, _, _ ->
+                committedCutoff = cutoff; configFake.save(EventConfig(id, name, cutoff)); true
+            },
+        ).test(this) {
+            runOnCreate()
+            containerHost.onOpenUrl(encodeConfigUrl(EventLinkPayload(EVENT_ID, autoJoin = true)))
+            expectState(joinedLoading)
+            cancelAndIgnoreRemainingItems()
+        }
+        assertEquals(NOW_CUTOFF, committedCutoff)
+    }
+
+    @Test
+    fun `autoJoin honours an explicit dev cutoff over the createdAt default`() = runTest {
+        val configFake = FakeConfig(null)
+        var committedCutoff: String? = null
+        host(
+            FakeSyncStatusSource(SyncStatus.Loading), backgroundScope,
+            permission = FakePermissionSource(PermissionStatus.GRANTED), configFake = configFake,
+            loadJoinDetails = { JoinLoad.Found("Anna's Birthday", "2026-07-06T14:32:11Z") },
+            commitJoin = { id, name, cutoff, _, _ ->
+                committedCutoff = cutoff; configFake.save(EventConfig(id, name, cutoff)); true
+            },
+        ).test(this) {
+            runOnCreate()
+            containerHost.onOpenUrl(
+                encodeConfigUrl(EventLinkPayload(EVENT_ID, autoJoin = true, minPhotoDate = "2026-05-05T05:05:05Z")),
+            )
+            expectState(joinedLoading)
+            cancelAndIgnoreRemainingItems()
+        }
+        assertEquals("2026-05-05T05:05:05Z", committedCutoff)
+    }
+
+    @Test
     fun `a first-join deeplink opens the gate and confirming enrolls then joins`() = runTest {
         val configFake = FakeConfig(null)
         val enrolled = mutableListOf<String>()
@@ -485,12 +602,12 @@ class StatusContainerHostTest {
             FakeSyncStatusSource(SyncStatus.Loading), backgroundScope,
             permission = FakePermissionSource(PermissionStatus.GRANTED), configFake = configFake,
             loadJoinDetails = { JoinLoad.Found("Anna's Birthday", null) },
-            commitJoin = { id, name, _, _, _ -> enrolled += id; configFake.save(EventConfig(id, name)); true },
+            commitJoin = { id, name, _, _, _ -> enrolled += id; configFake.save(EventConfig(id, name, CUTOFF)); true },
         ).test(this) {
             runOnCreate()
             containerHost.onOpenUrl(encodeConfigUrl(EventLinkPayload(EVENT_ID)))
-            expectState(UiState.JoiningEvent(EVENT_ID, JoinPhase.Ready("Anna's Birthday", null)))
-            containerHost.onConfirmJoin(null, Direction.Both, false)
+            expectState(UiState.JoiningEvent(EVENT_ID, JoinPhase.Ready("Anna's Birthday", NOW_CUTOFF)))
+            containerHost.onConfirmJoin(CUTOFF, Direction.Both, false)
             expectState(joinedLoading) // commit saved config -> present + granted + Loading snapshot
             cancelAndIgnoreRemainingItems()
         }
@@ -509,7 +626,7 @@ class StatusContainerHostTest {
             runOnCreate()
             containerHost.onOpenUrl(encodeConfigUrl(EventLinkPayload(EVENT_ID)))
             expectState(UiState.JoiningEvent(EVENT_ID, JoinPhase.NotFound))
-            containerHost.onConfirmJoin(null, Direction.Both, false) // inert when not Ready
+            containerHost.onConfirmJoin(CUTOFF, Direction.Both, false) // inert when not Ready
             containerHost.onCancelJoin()
             expectState(UiState.CreateEvent())
             cancelAndIgnoreRemainingItems()
@@ -529,7 +646,7 @@ class StatusContainerHostTest {
             containerHost.onOpenUrl(encodeConfigUrl(EventLinkPayload(EVENT_ID)))
             expectState(UiState.JoiningEvent(EVENT_ID, JoinPhase.LoadFailed))
             containerHost.onRetryLoad()
-            expectState(UiState.JoiningEvent(EVENT_ID, JoinPhase.Ready("Anna's Birthday", null)))
+            expectState(UiState.JoiningEvent(EVENT_ID, JoinPhase.Ready("Anna's Birthday", NOW_CUTOFF)))
             cancelAndIgnoreRemainingItems()
         }
     }
@@ -544,8 +661,8 @@ class StatusContainerHostTest {
         ).test(this) {
             runOnCreate()
             containerHost.onOpenUrl(encodeConfigUrl(EventLinkPayload(EVENT_ID)))
-            expectState(UiState.JoiningEvent(EVENT_ID, JoinPhase.Ready("Anna's Birthday", null)))
-            containerHost.onConfirmJoin(null, Direction.Both, false)
+            expectState(UiState.JoiningEvent(EVENT_ID, JoinPhase.Ready("Anna's Birthday", NOW_CUTOFF)))
+            containerHost.onConfirmJoin(CUTOFF, Direction.Both, false)
             expectState(UiState.JoiningEvent(EVENT_ID, JoinPhase.CommitFailed("Anna's Birthday")))
             cancelAndIgnoreRemainingItems()
         }
@@ -576,13 +693,13 @@ class StatusContainerHostTest {
             FakeSyncStatusSource(SyncStatus.Loading), backgroundScope,
             permission = FakePermissionSource(PermissionStatus.GRANTED), configFake = configFake,
             loadJoinDetails = { JoinLoad.Found("New Event", null) },
-            commitJoin = { id, name, _, _, _ -> order += "join"; configFake.save(EventConfig(id, name)); true },
+            commitJoin = { id, name, _, _, _ -> order += "join"; configFake.save(EventConfig(id, name, CUTOFF)); true },
             leave = { order += "leave"; configFake.clear() },
         ).test(this) {
             runOnCreate()
             containerHost.onOpenUrl(encodeConfigUrl(EventLinkPayload(other)))
-            expectState(UiState.Joined(SyncHealth.Loading, PendingSwitch(other, JoinPhase.Ready("New Event", null))))
-            containerHost.onConfirmSwitch(null, Direction.Both)
+            expectState(UiState.Joined(SyncHealth.Loading, PendingSwitch(other, JoinPhase.Ready("New Event", NOW_CUTOFF))))
+            containerHost.onConfirmSwitch(CUTOFF, Direction.Both)
             // leave clears config + join saves the new one; conflated to the settled joined layer.
             expectState(joinedLoading)
             cancelAndIgnoreRemainingItems()
@@ -599,7 +716,7 @@ class StatusContainerHostTest {
             FakeSyncStatusSource(SyncStatus.Loading), backgroundScope,
             permission = FakePermissionSource(PermissionStatus.GRANTED), configFake = configFake,
             loadJoinDetails = { JoinLoad.Found("Anna's Birthday", null) },
-            commitJoin = { id, name, _, _, _ -> committed = id; configFake.save(EventConfig(id, name)); true },
+            commitJoin = { id, name, _, _, _ -> committed = id; configFake.save(EventConfig(id, name, CUTOFF)); true },
         ).test(this) {
             runOnCreate()
             containerHost.onOpenUrl(encodeConfigUrl(EventLinkPayload(EVENT_ID, autoJoin = true)))
@@ -619,13 +736,13 @@ class StatusContainerHostTest {
             permission = FakePermissionSource(PermissionStatus.GRANTED), configFake = configFake,
             loadJoinDetails = { JoinLoad.Found("Anna's Birthday", null) },
             commitJoin = { id, name, _, direction, _ ->
-                committedDirection = direction; configFake.save(EventConfig(id, name, direction = direction)); true
+                committedDirection = direction; configFake.save(EventConfig(id, name, CUTOFF, direction = direction)); true
             },
         ).test(this) {
             runOnCreate()
             containerHost.onOpenUrl(encodeConfigUrl(EventLinkPayload(EVENT_ID)))
-            expectState(UiState.JoiningEvent(EVENT_ID, JoinPhase.Ready("Anna's Birthday", null)))
-            containerHost.onConfirmJoin(null, Direction.DownloadOnly, false)
+            expectState(UiState.JoiningEvent(EVENT_ID, JoinPhase.Ready("Anna's Birthday", NOW_CUTOFF)))
+            containerHost.onConfirmJoin(CUTOFF, Direction.DownloadOnly, false)
             expectState(joinedLoading)
             cancelAndIgnoreRemainingItems()
         }
@@ -641,7 +758,7 @@ class StatusContainerHostTest {
             FakeSyncStatusSource(SyncStatus.Loading), backgroundScope,
             permission = FakePermissionSource(PermissionStatus.GRANTED), configFake = configFake,
             loadJoinDetails = { JoinLoad.Found("Anna's Birthday", null) },
-            commitJoin = { _, _, _, direction, _ -> committedDirection = direction; configFake.save(EventConfig(EVENT_ID)); true },
+            commitJoin = { _, _, _, direction, _ -> committedDirection = direction; configFake.save(EventConfig(EVENT_ID, minPhotoDate = CUTOFF)); true },
         ).test(this) {
             runOnCreate()
             containerHost.onOpenUrl(encodeConfigUrl(EventLinkPayload(EVENT_ID, autoJoin = true)))
@@ -659,7 +776,7 @@ class StatusContainerHostTest {
             FakeSyncStatusSource(SyncStatus.Loading), backgroundScope,
             permission = FakePermissionSource(PermissionStatus.GRANTED), configFake = configFake,
             loadJoinDetails = { JoinLoad.Found("Anna's Birthday", null) },
-            commitJoin = { _, _, _, direction, _ -> committedDirection = direction; configFake.save(EventConfig(EVENT_ID)); true },
+            commitJoin = { _, _, _, direction, _ -> committedDirection = direction; configFake.save(EventConfig(EVENT_ID, minPhotoDate = CUTOFF)); true },
         ).test(this) {
             runOnCreate()
             containerHost.onOpenUrl(
