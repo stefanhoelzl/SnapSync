@@ -22,7 +22,7 @@ class DownloadEchoTest {
         assertTrue(w.importer.imported.isNotEmpty())
 
         val importedId = normalizeAssetId("imported-DEV-FOREIGN-FQ")
-        assertTrue(w.gallery.walkAll().any { it.assetId == importedId }) // imported into the gallery
+        assertTrue(w.gallery.current().any { it.assetId == importedId }) // imported into the gallery
         assertTrue(importedId in w.downloadStore.suppressedLocalIds()) // suppression handle recorded
 
         // The own upload cycle sees the imported asset in discovery but never creates a job for it.

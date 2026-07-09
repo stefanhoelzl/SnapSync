@@ -65,13 +65,59 @@ class RawAssetMappingTest {
     fun enumerator_composes_walk_then_map_over_the_fake_source() = runTest {
         val source = InMemoryRawAssetSource(
             listOf(
-                RawAsset("A", "d", listOf(raw(1L, name = "a.JPG"))),
-                RawAsset("B", "d", listOf(raw(1L, name = "b.JPG"))),
+                RawAsset("A", IN_SCOPE, listOf(raw(1L, name = "a.JPG"))),
+                RawAsset("B", IN_SCOPE, listOf(raw(1L, name = "b.JPG"))),
             ),
         )
         val enumerator = ResourceEnumerator(source)
 
-        assertEquals(listOf("A-primary.jpg", "B-primary.jpg"), enumerator.enumerate().map { it.filename })
-        assertEquals(listOf("A-primary.jpg"), enumerator.resources(listOf("A")).map { it.filename }, "incremental walk")
+        assertEquals(listOf("A-primary.jpg", "B-primary.jpg"), enumerator.enumerate(CUTOFF).map { it.filename })
+        assertEquals(
+            listOf("A-primary.jpg"),
+            enumerator.resources(listOf("A"), CUTOFF).map { it.filename },
+            "incremental walk",
+        )
+    }
+
+    @Test
+    fun the_bounded_walk_excludes_assets_captured_before_the_bound() = runTest {
+        // There is no unbounded walk (capability `photo-date-cutoff`): the whole-library enumeration cost
+        // one synchronous PhotoKit round-trip per asset, and a membership always has a cutoff to scope it.
+        val source = InMemoryRawAssetSource(
+            listOf(
+                RawAsset("OLD", "2000-01-01T00:00:00Z", listOf(raw(1L, name = "old.JPG"))),
+                RawAsset("NEW", IN_SCOPE, listOf(raw(1L, name = "new.JPG"))),
+            ),
+        )
+
+        assertEquals(listOf("NEW-primary.jpg"), ResourceEnumerator(source).enumerate(CUTOFF).map { it.filename })
+    }
+
+    @Test
+    fun the_incremental_walk_skips_a_changed_asset_that_is_out_of_scope() = runTest {
+        // A change feed says what CHANGED, not what is in SCOPE. An iCloud sync or bulk import hands back
+        // decades-old assets; fetching each one's resources to then drop it on capture date cost 166 s for
+        // ~1500 assets on an iPhone SE2 (extension hard-capped at ~3 min). The bound rejects them first.
+        val source = InMemoryRawAssetSource(
+            listOf(
+                RawAsset("OLD", "2000-01-01T00:00:00Z", listOf(raw(1L, name = "old.JPG"))),
+                RawAsset("NEW", IN_SCOPE, listOf(raw(1L, name = "new.JPG"))),
+            ),
+        )
+        val enumerator = ResourceEnumerator(source)
+
+        val changed = enumerator.resources(listOf("OLD", "NEW"), CUTOFF).map { it.filename }
+        assertEquals(listOf("NEW-primary.jpg"), changed, "a changed-but-out-of-scope asset is skipped")
+    }
+
+    @Test
+    fun an_undated_asset_is_before_every_bound() = runTest {
+        // An empty `creationDate` sorts before any non-empty cutoff, so an undated asset is never in scope.
+        val source = InMemoryRawAssetSource(listOf(RawAsset("U", "", listOf(raw(1L, name = "u.JPG")))))
+
+        assertEquals(emptyList(), ResourceEnumerator(source).enumerate(CUTOFF).map { it.filename })
     }
 }
+
+private const val CUTOFF = "2026-01-01T00:00:00Z"
+private const val IN_SCOPE = "2026-06-01T10:00:00Z"

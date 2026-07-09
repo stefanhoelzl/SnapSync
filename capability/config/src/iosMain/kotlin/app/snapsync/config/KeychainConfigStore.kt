@@ -2,6 +2,7 @@
 
 package app.snapsync.config
 
+import co.touchlab.kermit.Logger
 import kotlinx.cinterop.BetaInteropApi
 import kotlinx.cinterop.ExperimentalForeignApi
 import kotlinx.cinterop.addressOf
@@ -62,6 +63,7 @@ import platform.posix.memcpy
 class KeychainConfigStore(
     private val service: String = "app.snapsync.config",
     private val account: String = "eventconfig",
+    private val log: Logger = Logger.withTag("keychainConfig"),
 ) : ConfigSource, ConfigStore {
 
     private val configJson = Json { ignoreUnknownKeys = true }
@@ -92,14 +94,26 @@ class KeychainConfigStore(
         state.value = readConfig()
     }
 
+    /**
+     * Decode the stored item, or `null` when there is none — **or when it carries no cutoff**.
+     *
+     * `EventConfig.minPhotoDate` is required with no default (capability `photo-date-cutoff`), so an item
+     * written before the cutoff existed throws `MissingFieldException` here and reads as no config. The
+     * same is true of the older pre-name-split form (a bare `snapsync://` deeplink URL), which carries an
+     * `eventId` and nothing else: it cannot supply a cutoff, so it too reads as no config rather than
+     * being upgraded in place.
+     *
+     * Reading as no config is the **safe** outcome and is deliberate: the device falls back to the setup
+     * gate and the user re-scans the invite, while neither this process nor the upload extension uploads
+     * anything meanwhile. No default cutoff is substituted — this store seeds synchronously and cannot
+     * fetch the event's `createdAt`, and the empty string is not a legal cutoff (it would admit the whole
+     * library; see [EventConfig]).
+     */
     private fun readConfig(): EventConfig? {
         val stored = readValue() ?: return null
-        // Current form: EventConfig JSON. Legacy form (pre-name-split): a `snapsync://` deeplink URL —
-        // decode it and carry the eventId with a null name so an in-place upgrade keeps the join.
-        runCatching { configJson.decodeFromString(EventConfig.serializer(), stored) }
-            .getOrNull()?.let { return it }
-        return (decodeConfigUrl(stored) as? ConfigDecodeResult.Success)?.payload
-            ?.let { EventConfig(eventId = it.eventId) }
+        return runCatching { configJson.decodeFromString(EventConfig.serializer(), stored) }
+            .onFailure { log.w(it) { "keychain item did not decode (legacy item without a cutoff?) — reading as no config; re-join required" } }
+            .getOrNull()
     }
 
     private fun readValue(): String? = memScoped {

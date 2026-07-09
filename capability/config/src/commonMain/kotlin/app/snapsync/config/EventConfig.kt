@@ -47,10 +47,23 @@ internal fun EventLinkPayload.sameAs(other: EventLinkPayload): Boolean =
  * backend enforces name-required on create (capability `event-creation`), so a nameless event cannot
  * exist. It defaults to `""` **only** so a legacy item persisted before the name was reliably set decodes
  * non-null (refreshed on the next foreground fetch), never a decode crash.
- * [minPhotoDate] is **nullable** (absent = whole-library scope): the per-device, per-membership cutoff,
- * a UTC `…Z` string. The extension reads the `eventId`, the `minPhotoDate` (the cutoff scopes its upload
- * cycle), **and** [saveToAlbum] (whether to add completed uploads to the event album) from the shared
- * Keychain item; the name is cosmetic, for the status-screen title.
+ *
+ * [minPhotoDate] is **required and non-null**, with **no default** (capability `photo-date-cutoff`): the
+ * per-device, per-membership capture-date cutoff, a UTC `…Z` string. A membership with no cutoff is not a
+ * representable state — an absent cutoff once meant whole-library scope, which under event photo sharing
+ * uploads a guest's entire camera roll to another person's event.
+ *
+ * It carries **no default on purpose**, unlike [name]/[direction]/[saveToAlbum]. A legacy item lacking the
+ * key therefore fails to decode and reads as *no config* (`KeychainConfigStore`), so the device returns to
+ * the setup gate and the user re-joins. Do **not** "fix" that by defaulting it to `""`: the cutoff compare
+ * is `creationDate >= minPhotoDate`, and every string is `>= ""`, so an empty cutoff silently restores
+ * whole-library scope while presenting as a present, non-null value. (The mirror case is safe and is why
+ * `""` looks tempting: an undated *asset* — `creationDate == ""` — is correctly excluded by any real
+ * cutoff.)
+ *
+ * The extension reads the `eventId`, the `minPhotoDate` (the cutoff scopes its upload cycle), **and**
+ * [saveToAlbum] (whether to add completed uploads to the event album) from the shared Keychain item; the
+ * name is cosmetic, for the status-screen title.
  * [direction] is this device's chosen participation direction (capability `join-event`), **defaulting to
  * [Direction.Both]** so a config persisted before this field existed decodes to today's bidirectional
  * behavior. [saveToAlbum] is whether this membership gathers its synced photos into an event album
@@ -61,7 +74,7 @@ internal fun EventLinkPayload.sameAs(other: EventLinkPayload): Boolean =
 data class EventConfig(
     val eventId: String,
     val name: String = "",
-    val minPhotoDate: String? = null,
+    val minPhotoDate: String,
     val direction: Direction = Direction.Both,
     val saveToAlbum: Boolean = false,
 )

@@ -140,8 +140,17 @@ fun miniEdgeClient(store: BackendStore): HttpClient {
     )
 }
 
-/** A fixed ISO-8601 `createdAt` for minted events (drift accepted; the world reads no clock). */
-private const val CREATED_AT = "2026-01-01T00:00:00Z"
+/**
+ * A fixed ISO-8601 `createdAt` for minted events (drift accepted; the world reads no clock).
+ *
+ * **Carries milliseconds on purpose.** The real backend mints this with `new Date().toISOString()`, which
+ * always emits `.sss` — and a fractional-second `createdAt` is exactly what broke the capture-date cutoff
+ * (`photo-date-cutoff`): reused verbatim it violates the second-precision invariant, and a bare
+ * `NSISO8601DateFormatter` then fails to parse it, silently costing the bounded PhotoKit fetch. The world
+ * previously minted a *tidier* timestamp than production, so the join gate's normalization went untested
+ * against the shape it actually receives. A fake backend must not be cleaner than the real one.
+ */
+private const val CREATED_AT = "2026-01-01T00:00:00.000Z"
 
 /** Mint a canonical `8-4-4-4-12` v4-shaped UUID deterministically from a counter (no clock/random). */
 internal fun mintEventId(n: Long): String {

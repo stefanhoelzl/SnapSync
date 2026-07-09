@@ -49,11 +49,14 @@ class UploadCycle(
     // iosMain by the app-written download store; default empty for tests/harness.
     private val suppressedAssetIds: suspend () -> Set<String> = { emptySet() },
     // Capture-date cutoff (capability `photo-date-cutoff`): the MINIMUM cutoff across the device's
-    // memberships (v1: the single joined event's `EventConfig.minPhotoDate`), or `null` for whole-library.
-    // Read once per cycle; discovery drops every resource whose asset `creationDate` precedes it BEFORE
-    // the engine sees it, so a pre-cutoff photo's bytes are never uploaded. Applied to both the full and
-    // the incremental walk. Default `null` for tests/harness (whole-library, today's behavior).
-    private val photoCutoff: suspend () -> String? = { null },
+    // memberships (v1: the single joined event's `EventConfig.minPhotoDate`). Read once per cycle;
+    // discovery drops every resource whose asset `creationDate` precedes it BEFORE the engine sees it, so
+    // a pre-cutoff photo's bytes are never uploaded. Applied to both the full and the incremental walk.
+    //
+    // Required, with **no default**: a cycle without a cutoff would upload the whole library. Every caller
+    // reaches this only past a joined-event guard, so a cutoff always exists. There is no safe default to
+    // offer tests either — `""` compares `>=` true against every `creationDate`.
+    private val photoCutoff: suspend () -> String,
     // Notify hook (capability `upload-completion-notify`): fired once per FULLY-DRAINED cycle that
     // recorded >= 1 real completion, AFTER `onDiscovery` (the device-manifest PUT) — the only moment the
     // event union reflects the just-completed assets, so recipients woken by the fan-out find them. The
@@ -127,8 +130,11 @@ class UploadCycle(
 
         if (capHit) return CycleResult.PROCESSING // cursor NOT advanced
 
-        // Phase 3 — discover new/changed resources; REQUESTED-skip filters everything in flight.
-        val discovery = platform.discoverResources(store.loadToken())
+        // Phase 3 — discover new/changed resources; REQUESTED-skip filters everything in flight. The
+        // cutoff is read first and passed in, so a full enumeration is scoped at the platform fetch rather
+        // than walked whole and filtered afterwards (capability `photo-date-cutoff`).
+        val cutoff = photoCutoff()
+        val discovery = platform.discoverResources(store.loadToken(), cutoff)
         log.i { "discovered ${discovery.resources.size} resource(s)" }
 
         // Echo-suppression: drop resources of assets this device downloaded + imported (their fresh
@@ -144,14 +150,14 @@ class UploadCycle(
 
         // Capture-date cutoff (capability `photo-date-cutoff`): drop resources whose asset `creationDate`
         // precedes the cutoff, so pre-cutoff bytes never upload. An asset with no `creationDate` (empty
-        // string) sorts before any non-empty cutoff and is excluded. `null` cutoff = whole-library.
-        val cutoff = photoCutoff()
-        val liveResources = if (cutoff == null) {
-            unfiltered
-        } else {
-            unfiltered.filter { (it.metadata[RESOURCE_META_CREATION_DATE] ?: "") >= cutoff }
-                .also { log.i { "cutoff dropped ${unfiltered.size - it.size} pre-cutoff resource(s)" } }
-        }
+        // string) sorts before any non-empty cutoff and is excluded.
+        //
+        // This filter stays **authoritative** even though the platform walk now narrows its own fetch by
+        // the same bound: the walk may return a superset (its predicate is deliberately widened), and this
+        // is what makes that optimization unable to change the admitted set.
+        val liveResources = unfiltered
+            .filter { (it.metadata[RESOURCE_META_CREATION_DATE] ?: "") >= cutoff }
+            .also { log.i { "cutoff dropped ${unfiltered.size - it.size} pre-cutoff resource(s)" } }
 
         // Prune rows for assets the change feed reported removed (incremental, every cycle — even a
         // cap-truncated one — so a mid-upload deletion's stuck row is cleared promptly).

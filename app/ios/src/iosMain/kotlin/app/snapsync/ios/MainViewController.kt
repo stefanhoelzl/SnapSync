@@ -32,6 +32,8 @@ fun MainViewController() = ComposeUIViewController {
     // Dev/test: apply a `SNAPSYNC_DEEPLINK` launch-env deeplink once per process (no-op in
     // production, where no such env var exists). Runs after `host` is realized; safe to repeat.
     LaunchedEffect(Unit) { SnapSyncRoot.applyLaunchEnvDeeplink() }
+    // Dev/test: fill the library with `SNAPSYNC_SEED_PHOTOS` synthetic assets (no-op in production).
+    LaunchedEffect(Unit) { SnapSyncRoot.applyLaunchEnvSeed() }
 
     var transientError by remember { mutableStateOf<String?>(null) }
     LaunchedEffect(host) {

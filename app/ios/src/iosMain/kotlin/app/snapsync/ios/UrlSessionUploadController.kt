@@ -125,16 +125,19 @@ class UrlSessionUploadController(
     /** One upload cycle: fresh config each time, then the shared [UploadCycle] over the URLSession platform. */
     private suspend fun runCycle(): CycleResult = log.invocation("url-session.runCycle", result = { "$it" }) {
         configSource.reload()
-        val config = buildUploadConfig(configSource.config.value?.eventId, host) ?: run {
-            log.i { "url-session cycle skipped — no joined event / host (eventId=${configSource.config.value?.eventId}, host=$host)" }
+        // Read the membership once: an unreadable config (including a legacy Keychain item with no cutoff,
+        // capability `photo-date-cutoff`) means not joined, so this cycle uploads nothing.
+        val membership = configSource.config.value
+        val config = membership?.let { buildUploadConfig(it.eventId, host) } ?: run {
+            log.i { "url-session cycle skipped — no joined event / host (eventId=${membership?.eventId}, host=$host)" }
             return@invocation CycleResult.COMPLETED
         }
         log.i { "url-session runCycle: config ok (host=${config.host}) — invoking UploadCycle" }
         val engine = SyncEngine(EdgeUploadRequestProvider(config.host, deviceId), ledger)
         val cycleEventId = config.eventId // this cycle's event (config is re-read each cycle)
-        // Per-device capture-date cutoff (photo-date-cutoff): scopes the byte-upload filter AND the
-        // device-manifest projection. `null` = whole-library. Read fresh with the config each cycle.
-        val cutoff = configSource.config.value?.minPhotoDate
+        // Per-device capture-date cutoff (photo-date-cutoff): scopes the discovery walk, the byte-upload
+        // filter, AND the device-manifest projection. Always present. Read fresh with the config.
+        val cutoff = membership.minPhotoDate
         val result = UploadCycle(
             engine, ledger, platform, discoveryStore, log,
             // Device manifest from THIS cycle's discovery, PUT after the byte jobs are created; bounded

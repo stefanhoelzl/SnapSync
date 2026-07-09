@@ -40,7 +40,7 @@ class FullStackIntegrationTest {
             val w = World()
             w.provision("E")
             w.addOwnAsset("A")
-            w.ownGallery.refresh(); w.ledgerCounts.refresh()
+            w.ownGallery.refresh(World.DEFAULT_CUTOFF); w.ledgerCounts.refresh()
 
             val host = statusHost(w, scope)
             // total = 1, nothing uploaded yet, no job created → Syncing with a static up arrow.
@@ -57,7 +57,7 @@ class FullStackIntegrationTest {
             // Operator completes the job (store-direct deposit) → next cycle acks → COMPLETED → settled.
             w.platform.completeJob("A-primary.jpg")
             w.runUploadCycle()
-            w.ownGallery.refresh(); w.ledgerCounts.refresh()
+            w.ownGallery.refresh(World.DEFAULT_CUTOFF); w.ledgerCounts.refresh()
             assertEquals(UiState.Joined(SyncHealth.InSync), host.await { it.health() is SyncHealth.InSync })
 
             // World outcomes (not UiState alone):
@@ -85,7 +85,7 @@ class FullStackIntegrationTest {
             )
             assertEquals(UiState.CreateEvent(), host.container.stateFlow.value)
 
-            w.ownGallery.refresh(); w.ledgerCounts.refresh()
+            w.ownGallery.refresh(World.DEFAULT_CUTOFF); w.ledgerCounts.refresh()
             host.onCreateEvent("Party") // POST /events via the mini-edge → provision → gate lifts
             val after = host.await { it !is UiState.CreateEvent && it !is UiState.CreatingEvent }
             assertEquals(UiState.Joined(SyncHealth.InSync), after) // no photos in the library → settled
@@ -107,7 +107,7 @@ class FullStackIntegrationTest {
             w.stageAllDownloads()
             assertTrue(w.importer.imported.isNotEmpty()) // world outcome: foreign photo imported
 
-            w.ownGallery.refresh(); w.ledgerCounts.refresh()
+            w.ownGallery.refresh(World.DEFAULT_CUTOFF); w.ledgerCounts.refresh()
             val host = statusHost(w, scope)
             // The imported foreign asset is suppressed from the OWN upload universe → own status settled.
             assertEquals(SyncHealth.InSync, host.await { it.health() is SyncHealth.InSync }.health())
@@ -151,7 +151,7 @@ class FullStackIntegrationTest {
             w.runUploadCycle()
             w.platform.completeJob("A-primary.jpg")
             w.runUploadCycle()
-            w.ownGallery.refresh(); w.ledgerCounts.refresh()
+            w.ownGallery.refresh(World.DEFAULT_CUTOFF); w.ledgerCounts.refresh()
             assertTrue("A-primary.jpg" in w.store.objectsOf(w.ownDeviceId))
 
             // The real container with leave wired to the world's faithful leave (real DELETE seam).
@@ -202,7 +202,7 @@ class FullStackIntegrationTest {
             assertTrue(w.importer.imported.isEmpty(), "upload-only imports no foreign photos")
 
             // Status: uploads complete + download masked → In sync.
-            w.ownGallery.refresh(); w.ledgerCounts.refresh()
+            w.ownGallery.refresh(World.DEFAULT_CUTOFF); w.ledgerCounts.refresh()
             val host = statusHost(w, scope)
             assertEquals(SyncHealth.InSync, host.await { it.health() is SyncHealth.InSync }.health())
         } finally {
@@ -228,7 +228,7 @@ class FullStackIntegrationTest {
             assertTrue(w.store.objectsOf(w.ownDeviceId).isEmpty(), "download-only uploads nothing")
 
             // Status: the upload arrow is masked, so an un-uploaded gallery does NOT keep it out of sync.
-            w.ownGallery.refresh(); w.ledgerCounts.refresh()
+            w.ownGallery.refresh(World.DEFAULT_CUTOFF); w.ledgerCounts.refresh()
             val host = statusHost(w, scope)
             assertEquals(SyncHealth.InSync, host.await { it.health() is SyncHealth.InSync }.health())
         } finally {

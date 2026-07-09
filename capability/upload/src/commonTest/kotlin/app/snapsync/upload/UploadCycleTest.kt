@@ -18,6 +18,16 @@ import kotlin.test.assertTrue
 
 class UploadCycleTest {
 
+    /**
+     * A permissive test cutoff, and a capture date after it. Every membership carries a cutoff (capability
+     * `photo-date-cutoff`), so a cycle cannot be built without one; these keep the non-cutoff tests
+     * exercising what they mean to.
+     */
+    private companion object {
+        const val TEST_CUTOFF = "2026-01-01T00:00:00Z"
+        const val IN_SCOPE_DATE = "2026-06-01T10:00:00Z"
+    }
+
     /** A no-network provider returning a throwaway destination — the cycle never inspects the URL. */
     private class StubUploadRequestProvider : UploadRequestProvider {
         override suspend fun provide(resource: Resource): UploadRequest =
@@ -39,14 +49,16 @@ class UploadCycleTest {
         val retried = mutableListOf<PlatformUploadJob>()
         val acknowledged = mutableListOf<PlatformUploadJob>()
         var discoverTokenArg: ByteArray? = null
+        var discoverSinceArg: String? = null
         private var creates = 0
 
         override suspend fun fetchRetryJobs() = retryJobs
         override suspend fun fetchAckJobs() = ackJobs
         override suspend fun retryJob(job: PlatformUploadJob, request: UploadRequest) { retried += job }
         override suspend fun acknowledge(job: PlatformUploadJob) { acknowledged += job }
-        override suspend fun discoverResources(sinceToken: ByteArray?): Discovery {
+        override suspend fun discoverResources(sinceToken: ByteArray?, since: String): Discovery {
             discoverTokenArg = sinceToken
+            discoverSinceArg = since
             return Discovery(discovered, nextToken, removedAssetIds, fullEnumeration)
         }
         override suspend fun createJob(request: UploadRequest, resource: Resource): CreateResult {
@@ -66,8 +78,13 @@ class UploadCycleTest {
         override fun clearToken() { cleared = true }
     }
 
+    // Dated by default: every membership carries a cutoff (capability `photo-date-cutoff`), and an asset
+    // with no `creationDate` sorts before any cutoff, so an undated resource is always out of scope.
     private fun resource(name: String, assetId: String = name) =
-        Resource(filename = name, assetId = assetId, contentType = "image/jpeg", metadata = emptyMap(), data = Unit)
+        Resource(
+            filename = name, assetId = assetId, contentType = "image/jpeg",
+            metadata = mapOf(RESOURCE_META_CREATION_DATE to IN_SCOPE_DATE), data = Unit,
+        )
 
     private fun platformJob(key: String, state: PlatformJobState, error: UploadError? = null) =
         PlatformUploadJob(key = key, contentType = "image/jpeg", state = state, error = error, data = Unit, handle = Unit)
@@ -78,7 +95,10 @@ class UploadCycleTest {
         store: DiscoveryStore = FakeStore(),
     ): UploadCycle {
         val ledger = LedgerWriter(backend)
-        return UploadCycle(SyncEngine(StubUploadRequestProvider(), ledger), ledger, platform, store)
+        return UploadCycle(
+            SyncEngine(StubUploadRequestProvider(), ledger), ledger, platform, store,
+            photoCutoff = { TEST_CUTOFF },
+        )
     }
 
     @Test
@@ -138,6 +158,7 @@ class UploadCycleTest {
             platform,
             FakeStore(),
             suppressedAssetIds = { setOf("FOREIGN") },
+            photoCutoff = { TEST_CUTOFF },
         )
 
         cycle.run()
@@ -162,6 +183,7 @@ class UploadCycleTest {
             FakeStore(),
             // The importer stored the '/'→'_' createdLocalId — the same normalized string.
             suppressedAssetIds = { setOf("ABC_L0_001") },
+            photoCutoff = { TEST_CUTOFF },
         )
 
         cycle.run()
@@ -426,6 +448,7 @@ class UploadCycleTest {
                 order += "notify"
                 if (notifyThrows) error("notify boom")
             },
+            photoCutoff = { TEST_CUTOFF },
         )
     }
 
@@ -528,7 +551,7 @@ class UploadCycleTest {
     private fun cycleWithCutoff(
         backend: InMemoryLedgerBackend,
         platform: FakePlatform,
-        cutoff: String?,
+        cutoff: String,
     ): UploadCycle {
         val ledger = LedgerWriter(backend)
         return UploadCycle(
@@ -567,15 +590,29 @@ class UploadCycleTest {
     }
 
     @Test
-    fun a_null_cutoff_uploads_the_whole_library() = runTest {
+    fun the_cutoff_is_passed_to_the_platform_as_a_walk_bound() = runTest {
+        // The cutoff scopes the platform's own fetch, so a full enumeration does not walk the whole
+        // library (capability `photo-date-cutoff`). The cycle's filter below stays authoritative.
+        val backend = InMemoryLedgerBackend()
+        val platform = FakePlatform(discovered = emptyList())
+
+        cycleWithCutoff(backend, platform, "2026-07-06T14:32:11Z").run()
+
+        assertEquals("2026-07-06T14:32:11Z", platform.discoverSinceArg)
+    }
+
+    @Test
+    fun a_pre_cutoff_resource_is_dropped_even_when_the_platform_over_returns_it() = runTest {
+        // The platform's date predicate is deliberately widened, so it MAY hand back assets before the
+        // cutoff. The cycle's filter is what makes that safe — the admitted set must be unchanged.
         val backend = InMemoryLedgerBackend()
         val platform = FakePlatform(
             discovered = listOf(datedResource("old-primary.jpg", "2000-01-01T00:00:00Z", "old")),
         )
 
-        cycleWithCutoff(backend, platform, null).run()
+        cycleWithCutoff(backend, platform, "2026-07-06T14:32:11Z").run()
 
-        assertEquals(listOf("old-primary.jpg"), platform.created.map { it.filename }, "null cutoff = whole-library")
+        assertTrue(platform.created.isEmpty(), "an over-returned pre-cutoff resource must still be dropped")
     }
 
     @Test

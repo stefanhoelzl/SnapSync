@@ -104,9 +104,9 @@ class IosUrlSessionUploadPlatform(
         }
     }
 
-    override suspend fun discoverResources(sinceToken: ByteArray?): Discovery =
+    override suspend fun discoverResources(sinceToken: ByteArray?, since: String): Discovery =
         log.invocation("platform.discoverResources", result = { "${it.resources.size} resource(s)" }) {
-            discovery.discover(sinceToken)
+            discovery.discover(sinceToken, since)
         }
 
     // No OS-sponsored free retry on this platform: failures return via fetchAckJobs and are recreated.

@@ -29,10 +29,16 @@ interface UploadJobPlatform {
     suspend fun acknowledge(job: PlatformUploadJob)
 
     /**
-     * Enumerate the asset resources changed since [sinceToken] (null / expired → whole library),
+     * Enumerate the asset resources changed since [sinceToken] (null / expired → a full enumeration),
      * returning them plus the cursor to persist once the cycle fully drains.
+     *
+     * [since] is the membership's capture-date cutoff (capability `photo-date-cutoff`). A full enumeration
+     * SHALL be scoped by it — walking the whole library costs one synchronous platform round-trip per
+     * asset. An implementation MAY return assets captured before [since] (the cycle filters), but MUST NOT
+     * omit any at or after it. The incremental change-token walk is already bounded by the change feed and
+     * ignores [since]; the cycle filters its output the same way.
      */
-    suspend fun discoverResources(sinceToken: ByteArray?): Discovery
+    suspend fun discoverResources(sinceToken: ByteArray?, since: String): Discovery
 
     /** Create a system upload job for [resource] at [request]; distinguishes the in-flight cap. */
     suspend fun createJob(request: UploadRequest, resource: Resource): CreateResult

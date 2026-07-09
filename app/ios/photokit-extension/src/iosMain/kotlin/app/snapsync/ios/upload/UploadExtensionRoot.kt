@@ -208,9 +208,12 @@ object UploadExtensionRoot {
             .getOrElse { log.e(it) { "reconcile failed — deferring uploads this cycle" }; false }
 
         val config = buildUploadConfig(payload?.eventId, host)
-        if (config == null || !mayUpload) {
-            // Not joined yet (no event id), a missing baked host, a leave reset, or a deferred reconcile
-            // — nothing to upload. A clean no-op completion, never a failure; the run re-tries next cycle.
+        if (payload == null || config == null || !mayUpload) {
+            // Not joined yet (no event id / unreadable config), a missing baked host, a leave reset, or a
+            // deferred reconcile — nothing to upload. A clean no-op completion, never a failure; the run
+            // re-tries next cycle. An unreadable config includes a legacy Keychain item with no cutoff
+            // (capability `photo-date-cutoff`): it reads as no config, so this cycle uploads nothing until
+            // the user re-joins — the safe outcome.
             log.i {
                 "skipping cycle — eventId present=${payload != null}, " +
                     "host present=${!host.isNullOrEmpty()}, mayUpload=$mayUpload"
@@ -232,10 +235,10 @@ object UploadExtensionRoot {
         // and write-only in v1, so any failure/timeout just retries next cycle (skip-if-unchanged
         // makes that cheap).
         // Capture-date cutoff (capability `photo-date-cutoff`): this device's per-membership
-        // `EventConfig.minPhotoDate` (v1: the single joined event). `null` = whole-library. It scopes
-        // BOTH the byte-upload filter (below) and the device-manifest projection (`startDate`), so the
-        // bytes uploaded equal the assets shared into the event union.
-        val cutoff = payload?.minPhotoDate
+        // `EventConfig.minPhotoDate` (v1: the single joined event) — always present. It scopes the
+        // discovery walk, the byte-upload filter (below), and the device-manifest projection
+        // (`startDate`), so the bytes uploaded equal the assets shared into the event union.
+        val cutoff = payload.minPhotoDate
         val cycle = UploadCycle(
             engine, ledger, platform, discoveryStore, log,
             onDiscovery = { discovery ->
@@ -267,7 +270,7 @@ object UploadExtensionRoot {
             // album (extension tier, ≥26.1 — verified on device). Recover each raw `localIdentifier` from
             // the normalized `assetId` (reverse `_`→`/`) to fetch the PHAsset. Gated on the opt-in.
             placeInAlbum = { assetIds ->
-                if (payload?.saveToAlbum == true) {
+                if (payload.saveToAlbum) {
                     albumCoordinator.place(config.eventId, assetIds.map(::denormalizeAssetId))
                 }
             },

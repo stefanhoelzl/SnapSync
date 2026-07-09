@@ -16,6 +16,9 @@ import kotlin.test.assertEquals
 import kotlinx.datetime.LocalDateTime
 import org.junit.Rule
 
+/** The loaded phase always carries a cutoff — the host resolves an absent `createdAt` to now. */
+private const val CUTOFF = "2026-07-06T14:32:11Z"
+
 class JoinScreenTest {
 
     @get:Rule
@@ -41,7 +44,7 @@ class JoinScreenTest {
     fun `ready phase shows the event name with Join and Cancel`() {
         var joined = 0
         rule.setContent {
-            StatusScreen(joining(JoinPhase.Ready("Anna's Wedding", null)), onConfirmJoin = { _, _, _ -> joined++ })
+            StatusScreen(joining(JoinPhase.Ready("Anna's Wedding", CUTOFF)), onConfirmJoin = { _, _, _ -> joined++ })
         }
         rule.onNodeWithText("Anna's Wedding").assertExists()
         rule.onNodeWithText("Join").assertExists()
@@ -75,7 +78,7 @@ class JoinScreenTest {
 
     @Test
     fun `ready phase shows the arrows-only direction selector with an adaptive caption`() {
-        rule.setContent { StatusScreen(joining(JoinPhase.Ready("Anna's Wedding", null))) }
+        rule.setContent { StatusScreen(joining(JoinPhase.Ready("Anna's Wedding", CUTOFF))) }
         // Arrows, not words: the three options carry content descriptions, no "Both"/"Upload only" text.
         rule.onNodeWithContentDescription("Share and receive").assertExists()
         rule.onNodeWithContentDescription("Only share").assertExists()
@@ -136,7 +139,7 @@ class JoinScreenTest {
         var switched = 0
         rule.setContent {
             StatusScreen(
-                UiState.Joined(SyncHealth.Loading, PendingSwitch("22222222-2222-4222-8222-222222222222", JoinPhase.Ready("New Event", null))),
+                UiState.Joined(SyncHealth.Loading, PendingSwitch("22222222-2222-4222-8222-222222222222", JoinPhase.Ready("New Event", CUTOFF))),
                 eventName = "Summer Trip",
                 onConfirmSwitch = { _, _ -> switched++ },
             )

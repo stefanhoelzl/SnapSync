@@ -7,13 +7,23 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlinx.coroutines.test.runTest
 
+/** Every membership carries a cutoff (capability `photo-date-cutoff`); there is no whole-library total. */
+private const val CUTOFF = "2026-07-06T00:00:00Z"
+
+/** After [CUTOFF], so a default-dated resource is in scope. */
+private const val IN_SCOPE = "2026-07-10T00:00:00Z"
+
 class OwnDeviceGalleryStatusSourceTest {
 
+    /** Dated in scope by default: an asset with no `creationDate` is out of scope under any cutoff. */
     private fun resource(filename: String, assetId: String) =
-        Resource(filename, assetId, "image/jpeg", emptyMap(), Unit)
+        Resource(filename, assetId, "image/jpeg", mapOf(RESOURCE_META_CREATION_DATE to IN_SCOPE), Unit)
 
     private fun datedResource(filename: String, assetId: String, creationDate: String) =
         Resource(filename, assetId, "image/jpeg", mapOf(RESOURCE_META_CREATION_DATE to creationDate), Unit)
+
+    private fun undatedResource(filename: String, assetId: String) =
+        Resource(filename, assetId, "image/jpeg", emptyMap(), Unit)
 
     @Test
     fun `size counts own qualifying assets by photo`() = runTest {
@@ -26,7 +36,7 @@ class OwnDeviceGalleryStatusSourceTest {
         )
         val source = OwnDeviceGalleryStatusSource(enumerator)
 
-        source.refresh()
+        source.refresh(CUTOFF)
 
         assertEquals(2, source.size.value) // A and B — counted by photo, not resource row
     }
@@ -43,7 +53,7 @@ class OwnDeviceGalleryStatusSourceTest {
         )
         val source = OwnDeviceGalleryStatusSource(enumerator, suppressedLocalIds = { setOf("B") })
 
-        source.refresh()
+        source.refresh(CUTOFF)
 
         assertEquals(1, source.size.value, "total counts only own assets (A), not the downloaded B")
     }
@@ -52,11 +62,11 @@ class OwnDeviceGalleryStatusSourceTest {
     fun `refresh recomputes after the library changes`() = runTest {
         val enumerator = InMemoryGalleryResourceEnumerator(listOf(resource("A-primary.jpg", "A")))
         val source = OwnDeviceGalleryStatusSource(enumerator)
-        source.refresh()
+        source.refresh(CUTOFF)
         assertEquals(1, source.size.value)
 
         enumerator.set(listOf(resource("A-primary.jpg", "A"), resource("C-primary.jpg", "C")))
-        source.refresh()
+        source.refresh(CUTOFF)
         assertEquals(2, source.size.value)
     }
 
@@ -70,31 +80,19 @@ class OwnDeviceGalleryStatusSourceTest {
                 datedResource("NEW-primary.jpg", "NEW", "2026-07-10T00:00:00Z"),
             ),
         )
-        val source = OwnDeviceGalleryStatusSource(enumerator, photoCutoff = { "2026-07-06T00:00:00Z" })
+        val source = OwnDeviceGalleryStatusSource(enumerator)
 
-        source.refresh()
+        source.refresh(CUTOFF)
 
         assertEquals(1, source.size.value, "only the post-cutoff asset (NEW) counts toward the total")
     }
 
     @Test
-    fun `a null cutoff counts the whole library`() = runTest {
-        val enumerator = InMemoryGalleryResourceEnumerator(
-            listOf(datedResource("OLD-primary.jpg", "OLD", "2000-01-01T00:00:00Z")),
-        )
-        val source = OwnDeviceGalleryStatusSource(enumerator, photoCutoff = { null })
-
-        source.refresh()
-
-        assertEquals(1, source.size.value, "null cutoff = whole-library total")
-    }
-
-    @Test
     fun `an undated asset is excluded under a cutoff`() = runTest {
-        val enumerator = InMemoryGalleryResourceEnumerator(listOf(resource("U-primary.jpg", "U")))
-        val source = OwnDeviceGalleryStatusSource(enumerator, photoCutoff = { "2026-07-06T00:00:00Z" })
+        val enumerator = InMemoryGalleryResourceEnumerator(listOf(undatedResource("U-primary.jpg", "U")))
+        val source = OwnDeviceGalleryStatusSource(enumerator)
 
-        source.refresh()
+        source.refresh(CUTOFF)
 
         assertEquals(0, source.size.value, "an asset with no creationDate is out of scope under a cutoff")
     }

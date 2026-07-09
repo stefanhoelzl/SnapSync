@@ -165,9 +165,9 @@ class IosPhotoKitUploadPlatform(
         }
     }
 
-    override suspend fun discoverResources(sinceToken: ByteArray?): Discovery =
+    override suspend fun discoverResources(sinceToken: ByteArray?, since: String): Discovery =
         log.invocation("platform.discoverResources", result = { "${it.resources.size} resource(s)" }) {
-            discovery.discover(sinceToken)
+            discovery.discover(sinceToken, since)
         }
 
     private fun mapState(state: PHAssetResourceUploadJobState): PlatformJobState = when (state) {

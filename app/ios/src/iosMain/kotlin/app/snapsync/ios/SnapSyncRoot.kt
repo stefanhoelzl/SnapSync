@@ -161,13 +161,13 @@ object SnapSyncRoot {
     // foreign photos (suppressed from upload — they live in the library but must not peg progress below
     // 100%, capability `photo-download`). Enumeration-only — no storage LIST (completeness now comes
     // from the ledger, below). Refreshes on foreground entry.
+    // The total is cutoff-scoped so the joined screen reaches "in sync" (capability `photo-date-cutoff`):
+    // pre-cutoff assets never upload, so they must not inflate `N`. The cutoff is supplied per refresh,
+    // from the joined membership — an unjoined device has no scope and is never refreshed.
     private val gallery: OwnDeviceGalleryStatusSource by lazy {
         OwnDeviceGalleryStatusSource(
             PhotoLibraryResourceEnumerator(),
             suppressedLocalIds = { downloadStore.suppressedLocalIds() },
-            // The total is cutoff-scoped so the joined screen reaches "in sync" (capability
-            // `photo-date-cutoff`): pre-cutoff assets never upload, so they must not inflate `N`.
-            photoCutoff = { config.config.value?.minPhotoDate },
         )
     }
 
@@ -449,7 +449,9 @@ object SnapSyncRoot {
      * (completed + in-flight), plus the foreign download line. Full foreground refresh.
      */
     private suspend fun refreshStatusSources() {
-        gallery.refresh()
+        // No membership → no capture-date scope → nothing to count; `N` stays 0 and the screen is at the
+        // setup gate anyway (capability `photo-date-cutoff`).
+        config.config.value?.minPhotoDate?.let { gallery.refresh(it) }
         ledgerCounts.refresh()
         downloadStatusSource.refresh() // the "downloaded X of Y" line (capability `photo-download`)
     }
@@ -623,6 +625,30 @@ object SnapSyncRoot {
         if (raw != null) {
             log.i { "applying SNAPSYNC_DEEPLINK launch-env deeplink" }
             onOpenUrl(raw)
+        }
+        true
+    }
+
+    /**
+     * Realize [launchEnvSeedApplied] once on first view creation (called from [MainViewController]).
+     */
+    fun applyLaunchEnvSeed() = log.invocation("applyLaunchEnvSeed") {
+        launchEnvSeedApplied
+    }
+
+    /**
+     * Dev/test trigger: if `SNAPSYNC_SEED_PHOTOS` is present, fill the photo library with that many
+     * synthetic assets (see [seedPhotoLibraryFromLaunchEnv]) so the capture-date-bounded walk can be
+     * exercised against a large library on device. Like `SNAPSYNC_DEEPLINK`, the variable is only
+     * injectable via a developer launch, so this is inert in production.
+     *
+     * Seeding is a **blocking** `performChangesAndWait` loop, so it runs on `Dispatchers.Default`, never
+     * this scope's `Dispatchers.Main` — the same reason the gallery walk hops off the main thread. The
+     * `logInvocation` wrap is *inside* the launch so its context spans the async body.
+     */
+    private val launchEnvSeedApplied: Boolean by lazy {
+        scope.launch(Dispatchers.Default) {
+            log.invocation("seedPhotoLibrary") { seedPhotoLibraryFromLaunchEnv(log) }
         }
         true
     }

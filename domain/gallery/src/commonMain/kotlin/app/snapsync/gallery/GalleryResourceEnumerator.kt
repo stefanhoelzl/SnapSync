@@ -14,15 +14,21 @@ import app.snapsync.engine.Resource
  */
 interface GalleryResourceEnumerator {
 
-    /** Every resource in the whole library — the full-enumeration set (the re-join seed source). */
-    suspend fun enumerate(): List<Resource>
+    /**
+     * Every resource of every asset captured at or after [since] — the full-enumeration set (the re-join
+     * seed source), scoped by the membership's capture-date cutoff (capability `photo-date-cutoff`). There
+     * is no unbounded variant: see [RawAssetSource.walkSince]. An implementation MAY return resources of
+     * assets before [since]; the caller's own cutoff filter remains authoritative.
+     */
+    suspend fun enumerate(since: String): List<Resource>
 
     /**
      * The resources of the given asset local identifiers — the incremental set the producer uses for
-     * changed assets. Identifiers are the raw PhotoKit `localIdentifier`s (with `/`); the
-     * implementation normalises them into the `<assetId>-…` key scheme.
+     * changed assets — **bounded by [since]**, so a changed but out-of-scope asset never costs a resource
+     * round-trip. Identifiers are the raw PhotoKit `localIdentifier`s (with `/`); the implementation
+     * normalises them into the `<assetId>-…` key scheme.
      */
-    suspend fun resources(localIdentifiers: List<String>): List<Resource>
+    suspend fun resources(localIdentifiers: List<String>, since: String): List<Resource>
 }
 
 /**
@@ -61,9 +67,9 @@ fun resourcesFrom(rawAssets: List<RawAsset>): List<Resource> =
  * (agnostic, tested) meet — the enumerator itself holds no decision.
  */
 class ResourceEnumerator(private val source: RawAssetSource) : GalleryResourceEnumerator {
-    override suspend fun enumerate(): List<Resource> = resourcesFrom(source.walkAll())
-    override suspend fun resources(localIdentifiers: List<String>): List<Resource> =
-        resourcesFrom(source.walk(localIdentifiers))
+    override suspend fun enumerate(since: String): List<Resource> = resourcesFrom(source.walkSince(since))
+    override suspend fun resources(localIdentifiers: List<String>, since: String): List<Resource> =
+        resourcesFrom(source.walk(localIdentifiers, since))
 }
 
 /**
@@ -80,10 +86,12 @@ class InMemoryGalleryResourceEnumerator(initial: List<Resource> = emptyList()) :
         all = resources
     }
 
-    override suspend fun enumerate(): List<Resource> = all
+    /** Mirrors the real walk's bound: resources of assets captured before [since] are not returned. */
+    override suspend fun enumerate(since: String): List<Resource> =
+        all.filter { (it.metadata[RESOURCE_META_CREATION_DATE] ?: "") >= since }
 
-    override suspend fun resources(localIdentifiers: List<String>): List<Resource> {
+    override suspend fun resources(localIdentifiers: List<String>, since: String): List<Resource> {
         val wanted = localIdentifiers.mapTo(mutableSetOf()) { normalizeAssetId(it) }
-        return all.filter { it.assetId in wanted }
+        return all.filter { it.assetId in wanted && (it.metadata[RESOURCE_META_CREATION_DATE] ?: "") >= since }
     }
 }

@@ -32,7 +32,7 @@ class LeaveWorldTest {
         assertNull(w.configSource.config.value)
         assertNull(w.marker.read())
         // ...but the imported photo survives (terminal / delete-proof).
-        assertTrue(w.gallery.walkAll().any { it.assetId == importedId })
+        assertTrue(w.gallery.current().any { it.assetId == importedId })
         assertTrue(importedId in w.downloadStore.suppressedLocalIds())
     }
 

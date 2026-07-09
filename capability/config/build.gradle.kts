@@ -19,6 +19,11 @@ kotlin {
             implementation(kotlin("test"))
             implementation(libs.coroutines.test)
         }
+        iosMain.dependencies {
+            // The Keychain store logs a legacy-item decode failure (capability `photo-date-cutoff`):
+            // a cutoff-less item reads as no config, and that must be diagnosable, not mysterious.
+            implementation(libs.kermit)
+        }
         jvmMain.dependencies {
             // JVM-only: the authoritative QR generator (Gradle `generateConfigQr` task). ZXing is
             // not on the app's runtime path.
