@@ -1,6 +1,8 @@
 package app.snapsync.gallery
 
 import kotlinx.cinterop.ExperimentalForeignApi
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import platform.Foundation.NSISO8601DateFormatter
 import platform.Photos.PHAsset
 import platform.Photos.PHAssetResource
@@ -18,17 +20,27 @@ import platform.UniformTypeIdentifiers.UTType
  * `UTType.preferredMIMEType` (UTI→MIME) stays **iOS-only** — Apple's UTI table must not be reimplemented
  * in `commonMain` — so the MIME is resolved here and carried out as a raw fact.
  *
+ * **The walk runs off the main thread.** `PHAssetResource.assetResourcesForAsset` is a *synchronous XPC*
+ * round-trip into `photolibraryd`'s `Photos.sqlite`, issued once per asset, so a whole-library walk blocks
+ * its caller for as long as the library is large. Both app-process callers reach this from
+ * `SnapSyncRoot`'s `Dispatchers.Main` scope (the status total's `refresh`, and — on the app-driven
+ * 18–26.0 tier — the upload pump's discovery), where that block trips the 10 s scene-update watchdog and
+ * the OS kills the app (`0x8BADF00D`). Every walk therefore hops to [Dispatchers.Default] — Kotlin/Native
+ * has no `Dispatchers.IO` — exactly as `clearRequestedOffMain` does for the ledger's synchronous DELETE.
+ * The extension process calls this too, where the hop is harmless (`process()` is already off-main).
+ *
  * Wiring-only and untestable (PhotoKit, device/simulator only); [PhotoKitSmokeTest] confirms this walk
  * glue runs on the simulator, and the pure mapping it feeds is unit-tested in `commonTest`.
  */
 @OptIn(ExperimentalForeignApi::class)
 class PhotoLibraryRawAssetSource : RawAssetSource {
 
-    override suspend fun walkAll(): List<RawAsset> =
+    override suspend fun walkAll(): List<RawAsset> = withContext(Dispatchers.Default) {
         walk(PHAsset.fetchAssetsWithOptions(null).localIdentifiers())
+    }
 
-    override suspend fun walk(localIdentifiers: List<String>): List<RawAsset> {
-        if (localIdentifiers.isEmpty()) return emptyList()
+    override suspend fun walk(localIdentifiers: List<String>): List<RawAsset> = withContext(Dispatchers.Default) {
+        if (localIdentifiers.isEmpty()) return@withContext emptyList()
         val assets = PHAsset.fetchAssetsWithLocalIdentifiers(localIdentifiers, null)
         val out = mutableListOf<RawAsset>()
         var index = 0uL
@@ -51,7 +63,7 @@ class PhotoLibraryRawAssetSource : RawAssetSource {
             // The RAW localIdentifier (with '/'); resourcesFrom normalizes it.
             out += RawAsset(assetId = asset.localIdentifier, creationDate = creationDate, rawResources = rawResources)
         }
-        return out
+        out
     }
 
     private fun PHFetchResult.localIdentifiers(): List<String> {
