@@ -347,6 +347,13 @@ string-building, no network or crypto.
   work — build/CI, dependency bumps, behavior-preserving refactors, docs — can skip OpenSpec and
   just branch → PR → `/ship`. Use judgment on the line between the two.
 - **The `openspec` CLI is not installed** — there is no global binary and no `package.json`. Invoke
-  it via npx, pinned to the version CI uses: `npx --yes @fission-ai/openspec@1.4.1 <cmd>` (e.g.
+  it via npx, pinned to the version CI uses: `npx --yes @fission-ai/openspec@1.5.0 <cmd>` (e.g.
   `… validate --specs --strict`, matching `.github/workflows/build.yml`). Do not run a bare
-  `openspec …`; it will fail with "command not found".
+  `openspec …`; it will fail with "command not found". The generated skills below say bare
+  `openspec …` — translate each call to the pinned npx form.
+- **The `.claude/opsx` skills and commands are generated**, not hand-written. They assume the
+  machine-global profile in `~/.config/openspec/config.json` is `core` (workflows propose ·
+  explore · apply · sync · archive) with `delivery: both`. Regenerate with
+  `npx --yes @fission-ai/openspec@1.5.0 config profile core` then `… update`, and commit the
+  output verbatim — hand-edits are overwritten on the next update. On a default profile, `update`
+  emits only four workflows and **deletes** the `sync` skill/command.
