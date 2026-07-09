@@ -11,7 +11,7 @@ import java.util.Properties
 import javax.imageio.ImageIO
 
 /**
- * The authoritative QR generator (design.md D10): encodes the runtime config — just the **event id**
+ * The authoritative QR generator (spec: deeplink-config): encodes the runtime config — just the **event id**
  * — into the canonical `snapsync://config?v=3&d=…` URL via [encodeConfigUrl] — the same codec the app
  * decodes with, so the wire format cannot drift — and renders a scannable QR to the terminal (and a
  * PNG fallback). No storage credential is encoded (the device holds none); the upload **host** is not

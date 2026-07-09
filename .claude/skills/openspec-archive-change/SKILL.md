@@ -68,7 +68,45 @@ Archive a completed change in the experimental workflow.
 
    If user chooses sync, use Task tool (subagent_type: "general-purpose", prompt: "Use Skill tool to invoke openspec-sync-specs for change '<name>'. Delta spec analysis: <include the analyzed delta spec summary>"). Proceed to archive regardless of choice.
 
-5. **Perform the archive**
+5. **Give every spec a real Purpose** (capability `openspec-archive-command`)
+
+   When the CLI creates a spec file it mints the placeholder:
+
+   ```
+   TBD - created by archiving change <name>. Update Purpose after archive.
+   ```
+
+   Nothing else ever replaces it, so the archive step must. **Before performing the archive:**
+
+   a. **Replace every placeholder this change produced.** For each spec whose `## Purpose` contains
+      `TBD - created by archiving`, write a real Purpose derived from the change's `proposal.md` (the
+      motivation — *why* the capability exists) **and** the delta spec's requirements (*what* it covers).
+
+      A Purpose that only paraphrases its own `SHALL` statements is a **failed Purpose** — the
+      requirements already say that. State what the capability is for and what problem it solves.
+
+   b. **Purposes must be self-contained.** A Purpose SHALL NOT defer the capability's meaning to a
+      document outside `openspec/`. Where a decision record is worth naming, cite it as
+      `Decision record: changes/archive/<id>` — a pointer *into* the archive, not out of the tree.
+
+   c. **Fail the archive on any surviving placeholder.** Check the **whole** spec tree, not just the
+      specs this change touched, so a placeholder left behind by an earlier archive surfaces here.
+
+      Scope the match to each spec's `## Purpose` section. A naive `grep -rl` over whole files gives a
+      **false positive** on `openspec/specs/openspec-archive-command/spec.md`, which legitimately quotes the
+      placeholder string in its requirements — and would make that spec permanently unarchivable:
+
+      ```bash
+      for f in openspec/specs/*/spec.md; do
+        awk '/^## Purpose/{p=1;next} /^## /{p=0} p' "$f" \
+          | grep -q "TBD - created by archiving" && echo "$f"
+      done
+      ```
+
+      If this prints anything, **stop and report the offending files** instead of archiving. Fix them,
+      then re-run the check.
+
+6. **Perform the archive**
 
    Create an `archive` directory under `planningHome.changesDir` if it doesn't exist:
    ```bash
@@ -85,7 +123,7 @@ Archive a completed change in the experimental workflow.
    mv "<changeRoot>" "<planningHome.changesDir>/archive/YYYY-MM-DD-<name>"
    ```
 
-6. **Display summary**
+7. **Display summary**
 
    Show archive completion summary including:
    - Change name
@@ -111,6 +149,10 @@ All artifacts complete. All tasks complete.
 - Always prompt for change selection if not provided
 - Use artifact graph (openspec status --json) for completion checking
 - Don't block archive on warnings - just inform and confirm
+- **DO block archive on a surviving `TBD - created by archiving` Purpose** (step 5c). This is not a
+  warning: a placeholder Purpose makes `openspec/specs/` lie about being the contract of record, and
+  nothing downstream ever fixes it. Report the files and stop.
+- Never write a Purpose that points outside `openspec/` for its meaning
 - Preserve .openspec.yaml when moving to archive (it moves with the directory)
 - Show clear summary of what happened
 - If sync is requested, use openspec-sync-specs approach (agent-driven)

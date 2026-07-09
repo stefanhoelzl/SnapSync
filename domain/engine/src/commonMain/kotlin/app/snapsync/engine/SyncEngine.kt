@@ -3,7 +3,7 @@ package app.snapsync.engine
 import co.touchlab.kermit.Logger
 
 /**
- * The unit the sync domain transports (design.md §2.2). Constructed by the platform, never by
+ * The unit the sync domain transports (spec: sync-engine). Constructed by the platform, never by
  * the engine — the sync domain knows only resources; assets live in a later layer above it.
  *
  * [filename] is pure identity: a plain string whose layout belongs to the caller (the future
@@ -33,7 +33,7 @@ class Resource(
 )
 
 /**
- * What the platform observed (design.md §2.2). The platform drives: it reports observations at
+ * What the platform observed (spec: sync-engine). The platform drives: it reports observations at
  * its own pace and acts on the [SyncDecision]s the engine answers with. Events are observations,
  * never bookkeeping — reports may arrive more than once (at-least-once delivery is structural:
  * the platform cannot commit its actions and its reports atomically), and the engine's ledger
@@ -90,7 +90,7 @@ class UploadRequest(
 )
 
 /**
- * One unit of platform work (design.md §2.2), carried by the [SyncDecision.Work] arms.
+ * One unit of platform work (spec: sync-engine), carried by the [SyncDecision.Work] arms.
  *
  * [attempt] discriminates execution: `0` → create a new platform upload job; `> 0` → retry the
  * existing one (or acknowledge-and-recreate it, the platform's choice).
@@ -132,7 +132,7 @@ sealed interface SyncDecision {
 }
 
 /**
- * The engine's request-minting seam (design.md §2.2): mints the executable request for a
+ * The engine's request-minting seam (spec: sync-engine): mints the executable request for a
  * resource. Implementations: S3 presigner, dumb-HTTP test provider.
  *
  * Contract:
@@ -151,7 +151,7 @@ interface UploadRequestProvider {
 }
 
 /**
- * The decision core (design.md §2.2): platforms drive it with [SyncEvent] observations, it
+ * The decision core (spec: sync-engine): platforms drive it with [SyncEvent] observations, it
  * answers with [SyncDecision]s. Its only state is the [ledger] — the durable per-key memory of
  * what was requested, completed, and failed, written exclusively by this engine.
  *
@@ -183,7 +183,7 @@ class SyncEngine(
     private val log = Logger.withTag("SyncEngine")
 
     /**
-     * Logging (design.md §7, field diagnostics — the headless iOS extension's only observability):
+     * Logging (spec: diagnostic-logging, field diagnostics — the headless iOS extension's only observability):
      * a failure WARNs with its mapped error, every issued [SyncDecision.Work] INFOs its arm + key +
      * attempt, and the [SyncEvent.UploadStarted] / [SyncEvent.UploadCompleted] confirmations INFO
      * "started" / "completed". The skip on re-enumeration ([SyncDecision.AlreadyUploaded] for
@@ -227,7 +227,7 @@ class SyncEngine(
     /** Pure query: read the ledger, mint for `Work`, write nothing (recording is [started]). */
     private suspend fun decide(resource: Resource): SyncDecision {
         val entry = ledger.entry(resource.filename)
-        // COMPLETED/REQUESTED = backed up or in flight → skip (an uploaded resource is immutable).
+        // COMPLETED/REQUESTED = uploaded or in flight → skip (an uploaded resource is immutable).
         // FAILED or absent → fresh upload. Only new keys ever upload.
         return when (entry?.state) {
             LedgerState.COMPLETED, LedgerState.REQUESTED -> SyncDecision.AlreadyUploaded

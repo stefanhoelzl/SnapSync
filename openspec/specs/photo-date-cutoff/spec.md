@@ -1,7 +1,22 @@
 # photo-date-cutoff Specification
 
 ## Purpose
-TBD - created by archiving change add-join-date-cutoff. Update Purpose after archive.
+
+A per-device, per-membership **capture-date cutoff**, chosen at join: the member contributes only photos taken
+from a moment they pick onward.
+
+Without it, joining an event shares a device's entire photo library — and because every uploaded asset enters
+the event union, every other member downloads it too. The joiner faced an all-or-nothing choice between
+sharing years of unrelated photos and not joining. The cutoff makes contribution scopeable, and it defaults to
+the event's creation time, which is almost always what the user means.
+
+**One cutoff gates both directions of the member's own contribution** — the byte upload and the manifest
+listing — so a photo excluded from the upload cannot leak into the event through the listing. It also scopes
+the own-device status total, so the screen counts what this device intends to share rather than everything it
+owns.
+
+Decision record: `changes/archive/2026-07-06-add-join-date-cutoff`.
+
 ## Requirements
 ### Requirement: Per-device, per-membership capture-date cutoff
 

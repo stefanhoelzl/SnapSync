@@ -9,7 +9,7 @@ import app.snapsync.deviceid.DeviceIdentity
  * The outcome of a confirmed join (capability `join-event`).
  * - [Committed]: enrolled and provisioned — the device is now joined.
  * - [AlreadyJoined]: the target is the currently-configured event — a no-op that does **not** re-enroll
- *   (protects a real asset manifest from the empty-manifest clobber; see design.md).
+ *   (protects a real asset manifest from the empty-manifest clobber; see the join-event spec).
  * - [EnrollFailed]: the enrollment PUT failed — nothing was persisted and no producer enabled.
  */
 enum class JoinOutcome { Committed, AlreadyJoined, EnrollFailed }

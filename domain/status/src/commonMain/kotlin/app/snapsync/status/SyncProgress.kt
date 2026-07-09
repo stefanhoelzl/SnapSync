@@ -3,7 +3,7 @@ package app.snapsync.status
 import kotlin.time.Duration
 
 /**
- * Snapshot of backup truth (design.md §2.4): completeness, classification, and in-flight activity all
+ * Snapshot of sharing truth (spec: sync-status): completeness, classification, and in-flight activity all
  * come from the extension's **ledger** (read read-only, both counts from one consistent `aggregates()`
  * round-trip); the total comes from the live own-device gallery. Reading the ledger for classification
  * is safe under the **no-deletion-during-an-active-event** invariant (it cannot over-count).
@@ -20,7 +20,7 @@ import kotlin.time.Duration
  * [failed] is structurally 0 from the listing-backed source (retry-forever never gives up a key) and
  * [estimatedRemaining] is always null (this version never estimates). Both fields exist for fakes.
  *
- * [active] is operational state — "the backup machinery is allowed to run" — derived from
+ * [active] is operational state — "the sharing machinery is allowed to run" — derived from
  * permission. It no longer drives classification (the setup gate shadows every inactive case), but
  * is retained as the shared operational-state rule's output.
  *

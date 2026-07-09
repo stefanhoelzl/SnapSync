@@ -1,7 +1,23 @@
 # ios-photokit-upload Specification
 
 ## Purpose
-TBD - created by archiving change ios-background-upload. Update Purpose after archive.
+
+The **OS-driven upload tier** for iOS ≥26.1: a PhotoKit background-upload app extension that the system
+invokes on its own cadence, discovers newly-qualifying photos, drives the shared upload cycle, and lets the
+OS perform the uploads — power- and network-aware, across suspension and lock. It exists because photos
+must reach the event without the user ever opening the app, and only the OS can schedule that.
+
+The extension is the **sole `LedgerWriter`** on this tier; the app reads the ledger read-only. The
+platform-agnostic orchestration deliberately lives in `:capability:upload` (which declares a `jvm()` target
+so the upload cycle is harness- and JVM-tested); what this capability covers is the iOS side of that seam —
+the PhotoKit adapter, the thin Swift pass-through shell, discovery via the persistent change token, job
+creation/retry/acknowledge disposition, the compile-time upload host, and the ATS constraint that the host
+be HTTPS.
+
+Uploads on iOS 18–26.0 are the app-driven tier instead — see `ios-url-session-upload`.
+
+Decision record: `changes/archive/2026-06-19-ios-background-upload`.
+
 ## Requirements
 ### Requirement: Background upload extension target
 

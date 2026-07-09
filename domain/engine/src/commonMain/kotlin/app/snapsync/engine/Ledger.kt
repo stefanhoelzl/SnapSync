@@ -7,7 +7,7 @@ import kotlinx.coroutines.flow.Flow
  * keyed by [Resource.filename], holding the [assetId] the resource belongs to (an opaque grouping
  * id, several resources of one photo share it), the last recorded lifecycle [state], and the
  * [attempt] it belongs to. An uploaded resource is immutable, so a `COMPLETED` entry's mere
- * existence is the proof of backup; there is no content version, and the ledger keeps no timestamp.
+ * existence is the proof of upload; there is no content version, and the ledger keeps no timestamp.
  */
 class LedgerEntry(
     val key: String,

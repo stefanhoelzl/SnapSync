@@ -1,7 +1,23 @@
 # photo-download Specification
 
 ## Purpose
-TBD - created by archiving change add-photo-download. Update Purpose after archive.
+
+The **receive** half of an event: a joined device automatically downloads the *other* contributors' complete
+assets from the event-wide union listing and imports them, full-fidelity, into the system Photos library — so
+a shared event's photos appear on every participant's phone without anyone opening the app.
+
+This is what turns a one-way contribution client into photo sharing. Foreign assets are selected by
+`deviceId` (anything not this device's); transfers run on a background `URLSession` over Wi-Fi and cellular;
+import preserves the original capture date so photos sort by when they were taken. Downloaded photos are
+suppressed from re-upload — no echo — and a photo the user deletes locally is never re-imported, because
+respecting a deletion matters more than completeness.
+
+The app renders **no gallery of its own**: collected photos live in the camera roll (and, per `event-album`,
+in a per-event album). Whether this device downloads at all is governed by the membership's participation
+direction (`join-event`).
+
+Decision record: `changes/archive/2026-06-30-add-photo-download`.
+
 ## Requirements
 ### Requirement: Foreign-asset selection by device identity
 

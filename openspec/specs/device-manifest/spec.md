@@ -3,7 +3,7 @@
 ## Purpose
 
 The per-event device manifest: one mutable JSON object per (event, device) at
-`/events/<eventId>/device/<deviceId>.json` that projects all of a device's not-deleted assets — with
+`/events/<eventId>/devices/<deviceId>.json` that projects all of a device's not-deleted assets — with
 their original-only resources, each typed by a generic `role` — into a single full-state snapshot. It
 supersedes the per-asset manifest: the upload extension is its sole writer, PUTting it synchronously
 in-cycle as a date-filtered projection of a device-global accumulator. Write-only in v1 (no in-app

@@ -1,7 +1,19 @@
 # device-config-endpoint Specification
 
 ## Purpose
-TBD - created by archiving change push-notification-infra. Update Purpose after archive.
+
+The backend's per-device configuration document — today, exactly one field: the device's APNs push token,
+stored at `devices/<deviceId>/config.json` in the device-partitioned namespace `device-namespace-reorg`
+reserved for it.
+
+It is the registry `event-notify-endpoint` reads to turn "every member of this event" into "every token to
+push". Authorization is **by device id alone**: the id is a high-entropy UUID minted in the shared Keychain,
+so possession of it is the capability — the same model the upload and listing routes use. Writes are
+last-write-wins, and the document is deleted when the device becomes fully orphaned, so a departed device
+leaves no token behind.
+
+Decision record: `changes/archive/2026-07-05-push-notification-infra`.
+
 ## Requirements
 ### Requirement: Device config write route
 

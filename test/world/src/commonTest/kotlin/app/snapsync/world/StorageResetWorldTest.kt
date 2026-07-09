@@ -26,7 +26,7 @@ class StorageResetWorldTest {
         w.addOwnAsset("A") // key A-primary.jpg
         w.backUpAndAck("A-primary.jpg")
 
-        // Backed up: object stored, ledger COMPLETED, and the event union sees it.
+        // Uploaded: object stored, ledger COMPLETED, and the event union sees it.
         assertTrue("A-primary.jpg" in w.store.objectsOf(w.ownDeviceId))
         assertEquals(LedgerState.COMPLETED, w.ledgerBackend.get("A-primary.jpg")?.state)
         assertEquals(1, w.store.union("E1")?.size)

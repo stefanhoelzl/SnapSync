@@ -322,7 +322,7 @@ object SnapSyncRoot {
     val host: StatusContainerHost by lazy {
         // The own-device source: ledger completeness + in-flight (one aggregates() read) × permission ×
         // the live own-device gallery total, minted into snapshots. Ledger-sourced, no storage LIST for
-        // upload status (design.md §2.4); safe under no-deletion-during-an-active-event.
+        // upload status (spec: sync-status); safe under no-deletion-during-an-active-event.
         val syncSource = LedgerBackedSyncStatusSource(ledgerCounts, permission, gallery, scope)
         enableBackgroundUploadOnGrant()
         ensureAlbumOnGrant()
@@ -372,7 +372,7 @@ object SnapSyncRoot {
     ) {
         host
         // Listen for the extension's cross-process liveness ding while foreground, so upload status moves
-        // live as the extension records completions/new jobs (design.md §2.3). Foreground-only: a
+        // live as the extension records completions/new jobs (spec: sync-status). Foreground-only: a
         // suspended app cannot act on the post, and this foreground entry already re-reads below.
         registerLivenessObserver()
         // App-driven upload tier (iOS 18–26.0): foreground entry pumps an upload cycle (completions then

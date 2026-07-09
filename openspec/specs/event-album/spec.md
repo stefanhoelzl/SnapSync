@@ -1,7 +1,23 @@
 # event-album Specification
 
 ## Purpose
-TBD - created by archiving change add-event-album. Update Purpose after archive.
+
+An opt-in, per-membership **album** in the system Photos library, named after the event, into which both the
+photos this device contributes and the photos it receives are mirrored.
+
+Without it an event's photos scatter into the camera roll: your own contributions blend into your timeline
+and the photos you receive land loose beside them, with nothing on the device saying *"this is event X"*. The
+album is the local mirror of the shared event — and it is the reason the app still needs no gallery of its
+own (`photo-download`): the grouping lives where the user already looks at photos.
+
+The **app is the sole album creator**, eagerly on the photo-permission grant, because album creation needs a
+grant the extension may not have. Album identity is remembered per event and **survives leave**, so a rejoin
+reuses the same album rather than spawning a duplicate. Uploaded photos are added at upload-cycle completion
+in whichever process ran the cycle; downloaded photos are added atomically inside the importer's existing
+commit, so a photo is never visible in the library but missing from the album.
+
+Decision record: `changes/archive/2026-07-08-add-event-album`.
+
 ## Requirements
 ### Requirement: Opt-in album mirroring per membership
 

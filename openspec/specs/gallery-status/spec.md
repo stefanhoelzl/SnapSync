@@ -6,8 +6,16 @@ The live photo-library size seam: the count of photos currently in the device li
 status projection as the sync total `N`. A platform-backed `StateFlow` (the `GalleryStatusSource`
 seam) that `:domain:status` combines with the ledger and permission — so the total reflects photos
 the instant they are added, before the background extension records anything. Lives in
-`:domain:gallery`; PhotoKit-backed on iOS, a settable in-memory implementation on JVM. Authoritative
-design: docs/design.md §2.4.
+`:domain:gallery`; PhotoKit-backed on iOS, a settable in-memory implementation on JVM.
+
+The total is **enumeration-only — no storage LIST** — and it is an *own-device* count: photos downloaded from
+other contributors are excluded, because a member's progress is about what they have to share, not about
+what has landed in their library. Sourcing `N` from the live library rather than from the ledger is what lets
+the screen show a photo as pending the moment it is taken, rather than only once a background cycle has
+noticed it.
+
+Decision record: `changes/archive/2026-06-22-gallery-counted-status`.
+
 ## Requirements
 ### Requirement: GalleryStatusSource seam
 

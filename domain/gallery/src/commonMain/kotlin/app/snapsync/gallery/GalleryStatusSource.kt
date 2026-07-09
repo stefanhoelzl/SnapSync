@@ -11,7 +11,7 @@ import kotlinx.coroutines.flow.StateFlow
  * [size] is the count of photos currently in the device photo library, used as the sync total `N`.
  * In this version it is the **whole-library** count, matching the extension's current (unfiltered)
  * discovery. When discovery later filters by capture date and media type, the same predicate MUST
- * drive this count so the two never diverge (see docs/design.md §3.2 and the gallery-status spec).
+ * drive this count so the two never diverge (see the gallery-status spec).
  *
  * The seam exposes the count only — never individual assets, identity, or per-asset state.
  */

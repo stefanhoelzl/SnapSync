@@ -10,9 +10,16 @@ device. It provides a backend object store computing the edge's read-models fait
 accepted, no golden fixture), a Ktor `MockEngine` mini-edge over the four common-Ktor seams,
 operator-driven upload/download job fakes, a one-own-plus-injectable-foreign device model, controllable
 failure levers, and composition helpers mirroring the extension composition root. Consumed by BOTH the
-desktop full-stack harness (`:app:desktop`) and `:test:integration`. Authoritative design:
-docs/design.md §2.4 (status projection), §3.2/§3.3 (discovery, flow), §5.1 (desktop harness), §6
-(testing rules).
+desktop full-stack harness (`:app:desktop`) and `:test:integration`.
+
+It exists because the code that most needs coverage — the upload cycle's adjudication, the rejoin reconcile,
+the download echo-suppression — is exactly the code that ran only inside an iOS extension that cannot be
+tested on a simulator. Faking the *execution edge* rather than the logic lets the real stack run anywhere,
+which is what makes testing rule 1 (every unit test also runs on the iOS simulator) achievable for
+orchestration and not just for pure functions.
+
+Decision record: `changes/archive/2026-07-03-add-harness-world-model`.
+
 ## Requirements
 ### Requirement: Controllable in-memory world module
 

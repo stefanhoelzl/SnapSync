@@ -80,7 +80,7 @@ sealed interface JoinPhase {
 /**
  * The joined-layer one-line health, the sole thing the status line renders. There is no standalone
  * "not syncing" state — the only reason contribution cannot run is missing permission ([NeedsAccess]),
- * the sole attention state (design.md D2).
+ * the sole attention state (spec: sync-status-screen).
  */
 sealed interface SyncHealth {
     /**
@@ -98,7 +98,7 @@ sealed interface SyncHealth {
 
     /**
      * Work remaining in at least one direction. Each arrow is shown by completeness and pulses by live
-     * activity (design.md D3/D4): [upload] from `synced < total` (shown) × `pending > 0` (pulse),
+     * activity (spec: sync-status-screen): [upload] from `synced < total` (shown) × `pending > 0` (pulse),
      * [download] from `downloaded < total` (shown) × `inFlight > 0` (pulse).
      */
     data class Syncing(val upload: Arrow, val download: Arrow) : SyncHealth

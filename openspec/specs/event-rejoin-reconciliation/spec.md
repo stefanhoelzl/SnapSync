@@ -1,7 +1,23 @@
 # event-rejoin-reconciliation Specification
 
 ## Purpose
-TBD - created by archiving change add-rejoin-reconciliation. Update Purpose after archive.
+
+The extension-side gate that runs **before** a (re)joined device uploads anything: it pulls the event's
+stored-file listing, seeds the ledger with one `COMPLETED` row per already-stored resource, and only then
+enables the producer. A device that re-joins therefore re-uploads **nothing** it has already contributed.
+
+Without it, a device rejoining against an empty ledger — after a delete-and-reinstall (the App Group is
+wiped) or a destructive ledger-schema migration — re-enumerates the whole library and re-uploads every
+photo that is already sitting in storage. The reconcile is gated on a persisted `joinedEventId` marker
+rather than ledger-emptiness, because the extension's process is short-lived and per-cycle: a zero-row join
+keyed on emptiness would never settle.
+
+This reconcile is also what keeps ledger-sourced status honest. `sync-status` classifies from the ledger
+under a no-deletion-during-an-active-event invariant, and (re)join is the sole point where the ledger and
+storage can diverge — seeding closes it.
+
+Decision record: `changes/archive/2026-06-27-add-rejoin-reconciliation`.
+
 ## Requirements
 ### Requirement: Reconciliation gate before enabling uploads
 

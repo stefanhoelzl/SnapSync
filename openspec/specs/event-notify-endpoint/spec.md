@@ -1,7 +1,20 @@
 # event-notify-endpoint Specification
 
 ## Purpose
-TBD - created by archiving change push-notification-infra. Update Purpose after archive.
+
+The fan-out route: given an event, enumerate its active member devices, read each one's registered push token
+(`device-config-endpoint`), and send every one of them a silent push via `apns-push-sender`.
+
+This is the backend half of "tell the other participants there are new photos". It is gated on event
+existence — an unknown event notifies nobody — and it is **best-effort by construction**: a member with no
+registered token, or a token APNs rejects, does not fail the fan-out. Push is an accelerant over foreground
+discovery and the download backstop, so a partially-delivered notify degrades to "those devices catch up
+later", never to lost photos.
+
+The caller is `upload-completion-notify`, which pokes this route after an uploading device drains a cycle.
+
+Decision record: `changes/archive/2026-07-05-push-notification-infra`.
+
 ## Requirements
 ### Requirement: Event notify route
 

@@ -7,7 +7,17 @@ background-upload extension PUTs a photo resource's bytes to it, and it streams 
 **native** Storage zone under a device-partitioned key (`devices/<deviceId>/files/<filename>`). It
 replaces v1's on-device presigning — no SigV4, no UNSIGNED-PAYLOAD; the device holds no storage
 credential (the byte route is ungated — the device id is the capability; the device-manifest route is
-gated on event existence). Authoritative design: docs/design.md §3.1 (keys), §4 (storage/auth).
+gated on event existence).
+
+**Why a proxy rather than presigned PUTs.** The OS-driven upload job fixes its destination URL at
+job-creation time and the *system*, not the app, reads and sends the bytes — so the device never sees them
+and cannot compute a payload hash. Whether a bunny S3-compatible presigned PUT would accept
+`UNSIGNED-PAYLOAD` was the pivot's top risk. Proxying removes the question entirely: the **edge** writes to
+storage with its `AccessKey`, and the device performs an ordinary PUT with no signature at all. The accepted
+cost is that the edge sees the bytes in transit.
+
+Decision record: `changes/archive/2026-06-22-add-bunny-upload-endpoint` (the proxy pivot),
+`changes/archive/2026-07-06-restructure-storage-url-layout` (the current key layout).
 ## Requirements
 ### Requirement: Streaming proxy PUT
 
@@ -216,8 +226,8 @@ is ungated.
 
 This section is **non-normative**. The endpoint's bunny-facing behavior above is verified by the
 `Deno.test` suite against a mocked upstream. The **iOS-facing** surface is frozen here but cannot be
-exercised in a backend-only change; these assumptions are the iOS follow-up's first job and mirror
-docs/design.md §8:
+exercised in a backend-only change; these assumptions are the iOS follow-up's first job, and this
+section is their only home:
 
 - **OPTIONS fallback.** That the iOS background uploader, given the non-resumable OPTIONS response,
   falls back to a plain `PUT` against this custom origin (raw S3 verified to need no preflight;

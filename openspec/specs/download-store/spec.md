@@ -1,7 +1,22 @@
 # download-store Specification
 
 ## Purpose
-TBD - created by archiving change add-photo-download. Update Purpose after archive.
+
+The durable record of what this device has downloaded from an event, and the read-only projection the upload
+side consults to avoid echoing those photos back. Written exclusively by the app; read by the extension
+through a schema shared between the two processes.
+
+Two properties carry the weight. **The suppression marker is written before the imported asset becomes
+observable** to the photo library — otherwise discovery could see a freshly-imported foreign photo and queue
+it for upload, sending the event its own bytes back. And **terminal rows are permanent**: once a resource is
+recorded as imported (or deliberately deleted by the user), that verdict never reverts, which is what makes
+"a downloaded photo the user deleted is not re-imported" hold across relaunches.
+
+A pending resource's presigned URL is refreshed on re-plan, because download links expire and a stale one
+must self-heal rather than strand the transfer.
+
+Decision record: `changes/archive/2026-06-30-add-photo-download`.
+
 ## Requirements
 ### Requirement: Unified download store, app-written
 

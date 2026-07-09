@@ -1,7 +1,21 @@
 # event-creation Specification
 
 ## Purpose
-TBD - created by archiving change add-event-creation. Update Purpose after archive.
+
+The backend's **event registry**: `POST /events` mints a server-side event (high-entropy id, name,
+creation time) and writes the marker object that makes the event *exist*, plus a metadata route that reports
+whether a given event id does.
+
+Before this capability an event was only a client-held UUID — the backend kept no state, possession of the id
+was the whole capability, and a listing could not distinguish an empty event from one that was never created.
+The marker is what every later event-scoped operation gates on: uploads, listings, and the leave cascade all
+ask "does this event exist?" and get a real answer.
+
+This capability is backend-only. The on-device flow that names an event and auto-joins it is
+`event-creation-ui`.
+
+Decision record: `changes/archive/2026-06-27-add-event-creation`.
+
 ## Requirements
 ### Requirement: Event creation route
 
