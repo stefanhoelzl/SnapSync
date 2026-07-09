@@ -1,14 +1,17 @@
 schema: spec-driven
 
 context: |
-  SnapSync: one-way iOS photo backup to S3 (Kotlin Multiplatform +
-  Compose), shipped via TestFlight.
+  SnapSync: an iOS app for sharing photos from an event (Kotlin
+  Multiplatform + Compose), shipped via TestFlight.
 
-  Design source of truth is docs/design.md; project rules live in
-  CLAUDE.md. Read them rather than restating them here.
+  There is no narrative design doc. openspec/specs/<capability>/spec.md is
+  the contract of record (Purpose + Requirements); the decision record —
+  rationale, alternatives, trade-offs — lives in
+  openspec/changes/archive/<id>/design.md, cited from each spec's Purpose.
+  Project rules live in CLAUDE.md. Read them rather than restating them here.
 
-  Specs are per-capability under openspec/specs/<capability>/spec.md.
-  Scope a change to the capabilities it actually touches.
+  Specs are per-capability. Scope a change to the capabilities it actually
+  touches. A spec's Purpose never defers its meaning outside openspec/.
 
   Tests belong in commonTest so they run on both JVM and
   iosSimulatorArm64. :app:ios is wiring-only and untested.

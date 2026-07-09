@@ -2,12 +2,24 @@
 
 ## Purpose
 
-The status projection: the user-facing truth about the backup, minted from the engine's ledger.
-Defines the `SyncStatus` snapshot contract (lifetime counts × the live gallery total, three-state
+The status projection: the user-facing truth about what this device has shared, minted from the engine's
+ledger. Defines the `SyncStatus` snapshot contract (lifetime counts × the live gallery total, three-state
 classification), the `SyncStatusSource` seam presentation consumes, and the ledger-backed source that
 combines the ledger's aggregate stream with permission-derived operational state and the live gallery
-size. Lives in `:domain:status`,
-which plugs the engine-type leak toward presentation. Authoritative design: docs/design.md §2.4.
+size. Lives in `:domain:status`, which plugs the engine-type leak toward presentation.
+
+**Why snapshots, not an event stream.** On iOS the uploads run in a separate process while the app is
+suspended or dead, so the app can only ever learn what happened by reading persisted state — the UI is
+inherently a projection, not a fold over events it witnessed. An event seam would duplicate the engine's fold
+into presentation with drift risk. Snapshots are self-healing: every emission is the whole truth, so there is
+no late-subscriber problem, no missed-event corruption, conflation is safe, and first render is the same code
+path as any update. Platform signals (library change, foreground entry, the extension's cross-process liveness
+ding, a join) are **invalidation dings** handled inside the source — they trigger a re-read and a fresh
+emission, and none of them leak into the contract.
+
+Decision record: `changes/archive/2026-06-12-status-core` (the snapshot seam),
+`changes/archive/2026-07-05-notify-driven-status` (the ledger-sourced, notify-driven source).
+
 ## Requirements
 ### Requirement: SyncStatusSource seam
 The status domain SHALL define `SyncStatusSource` whose `status` is a `StateFlow<SyncStatus>` —

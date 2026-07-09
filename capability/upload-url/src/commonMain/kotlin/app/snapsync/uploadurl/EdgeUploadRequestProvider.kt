@@ -5,7 +5,7 @@ import app.snapsync.engine.UploadRequest
 import app.snapsync.engine.UploadRequestProvider
 
 /**
- * The production [UploadRequestProvider] (docs/design.md §2.2, §4): a thin **local URL builder** for
+ * The production [UploadRequestProvider] (specs: sync-engine, bunny-upload-endpoint): a thin **local URL builder** for
  * the credential-free bunny edge proxy. It maps a [Resource] to a plain `PUT` against
  * `<host>/files/devices/<deviceId>/<encoded-filename>` — **no network, no signing, no crypto, no auth
  * header** (the byte route is ungated — see `bunny-upload-endpoint`) and **no custom metadata

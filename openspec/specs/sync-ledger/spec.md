@@ -7,7 +7,15 @@ its own changes), a three-way capability split — reader (per-key, engine-facin
 (records, single per platform, codified by construction), watcher (aggregate stream,
 status-facing) — and self-contained idempotent record operations. The ledger is what makes
 skipping provable, reports absorbable (at-least-once), full re-enumeration harmless, and status
-a read-only projection. Authoritative design: docs/design.md §2.2.
+a read-only projection.
+
+**Single record-writer is the load-bearing invariant**, and its process placement is a platform binding, not
+a property of this seam: on iOS ≥26.1 the upload extension is the sole writer and the app holds only a reader
+and a watcher; on iOS 18–26.0 no extension exists, so the app holds it. Codifying the split as three
+capabilities — reader, writer, watcher — makes the invariant a compile-time fact rather than a convention.
+
+Decision record: `changes/archive/2026-06-12-sync-engine-ledger`.
+
 ## Requirements
 ### Requirement: Storage seam — dumb row store
 The ledger SHALL access storage exclusively through a `LedgerBackend` interface with the row

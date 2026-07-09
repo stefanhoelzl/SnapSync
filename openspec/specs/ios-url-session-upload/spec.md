@@ -1,7 +1,25 @@
 # ios-url-session-upload Specification
 
 ## Purpose
-TBD - created by archiving change add-url-session-upload. Update Purpose after archive.
+
+The **app-driven upload tier** for iOS 18–26.0: with no PhotoKit upload extension available below 26.1, the
+main app process performs uploads itself over a background `URLSession`, pumped by `BGProcessingTask`, driving
+the same shared `UploadCycle` as the OS-driven tier.
+
+It exists because the host app deploys to iOS 18 while the extension target is pinned to 26.1, so without it
+a sub-26.1 device could join an event and show status but never contribute a single photo. The tier is
+selected per OS version at runtime; on this tier the **app** holds the single ledger record-writer, because
+no extension process exists to hold it.
+
+The pump necessarily reimplements what the OS gives the other tier for free — scheduling, backpressure,
+per-slot temp-file staging, a relaunch drain and a heartbeat — which is why it is the tier that is
+**simulator-testable end-to-end** (a background `URLSession` runs in the simulator), even though
+`BGProcessingTask` timing and true-suspend behavior remain device-only.
+
+See `ios-photokit-upload` for the OS-driven tier on iOS ≥26.1.
+
+Decision record: `changes/archive/2026-07-04-add-url-session-upload`.
+
 ## Requirements
 ### Requirement: App-driven upload host below iOS 26.1
 

@@ -13,7 +13,7 @@ kotlin {
         commonMain.dependencies {
             implementation(compose.runtime)
             implementation(compose.foundation)
-            // The ONLY module allowed to depend on Material 3 (design.md §5).
+            // The ONLY module allowed to depend on Material 3 (spec: design-system).
             implementation(compose.material3)
             // Material icon glyphs (e.g. the leave action's Logout). Contained here like Material 3 —
             // the `Icons.*` import never leaves this module; no `App*` signature carries a glyph type.

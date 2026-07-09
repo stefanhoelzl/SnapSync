@@ -1,7 +1,20 @@
 # ios-app-shell Specification
 
 ## Purpose
-TBD - created by archiving change ios-first-target. Update Purpose after archive.
+
+The iOS application process: a Compose Multiplatform entry point (`ComposeUIViewController` in
+`:app:ios`) hosting the shared `StatusScreen`, plus the live composition root that wires the real seams —
+the on-disk native ledger, the permission gate, the Keychain-backed event config, remote-notification
+registration and silent-push forwarding, and the enable toggle for the background-upload extension.
+
+This capability is the **platform shell only**. `:app:ios` is wiring, not logic: nothing testable lives
+here, so these requirements pin the app's structure, entry points, and OS integrations rather than any
+behavior — every decision they reach for belongs to a tested `domain`/`capability` module. It also carries
+the developer launch-environment config trigger (`SNAPSYNC_DEEPLINK`), a dev/test affordance that is inert
+in production because a launch env var is only injectable via a developer launch.
+
+Decision record: `changes/archive/2026-06-17-ios-first-target`.
+
 ## Requirements
 ### Requirement: iOS application shell
 

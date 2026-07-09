@@ -1,7 +1,26 @@
 # event-leave-endpoint Specification
 
 ## Purpose
-TBD - created by archiving change add-event-leave-lifecycle. Update Purpose after archive.
+
+The backend half of leaving: `DELETE /events/<eventId>/devices/<deviceId>` renames the departing device's
+manifest to a departed `.left.json` sibling — its already-shared photos stay downloadable for the remaining
+members — and when the **last** active member leaves, reaps the event tree and reference-checked-garbage-
+collects each freed device's byte partition and config.
+
+Before it, leave was local-only: the device forgot the event while its manifest, byte partition, and push
+token persisted on the backend forever, so an event's storage could never be reclaimed.
+
+The cascade is designed to be **leak-safe rather than atomic**: every partial failure and every race resolves
+to an orphan, never to destruction of in-use data. Membership is last-write-wins over the two sibling
+manifests' write times, so a stalled leave/rejoin settles on the intended state. The one real correctness
+premise is that the reap's active-member listing reads the storage **main region** — a stale replica read
+could reap an event out from under a concurrently-rejoining device.
+
+There is deliberately **no periodic reaper**: an event whose devices all vanish without a clean leave
+(uninstall, permanent offline) is never reclaimed. That abandon-leak is accepted.
+
+Decision record: `changes/archive/2026-07-06-add-event-leave-lifecycle`.
+
 ## Requirements
 ### Requirement: Leave route and departed rename
 

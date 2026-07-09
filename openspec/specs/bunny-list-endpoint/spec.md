@@ -14,7 +14,14 @@ capability model as upload).
 Its motivating consumer is a re-joined device pre-seeding its ledger: a reinstall wipes its ledger, so
 it reconciles against storage, seeding the resources of each complete asset by the reinstall-stable
 `filename`. Because a complete asset is immutable, a complete result is cacheable permanently.
-Authoritative design: docs/design.md §3.1 (keys, manifest, read-time completeness), §4 (storage/auth).
+
+This capability is the **sole authority on the download-URL format** — the listing's `url` is a presigned S3
+GET the edge mints per object, which the device fetches directly from bunny, keeping the backend off the
+download byte path.
+
+Decision record: `changes/archive/2026-06-26-add-bunny-list-endpoint` (the listing),
+`changes/archive/2026-07-02-add-s3-presigned-downloads` (presigned GET URLs),
+`changes/archive/2026-07-06-restructure-storage-url-layout` (the current key layout).
 ## Requirements
 ### Requirement: Per-event file listing route
 

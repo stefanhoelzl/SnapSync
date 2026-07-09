@@ -2,7 +2,7 @@
 
 ## Purpose
 
-The photo-library permission contracts and the inline gate that replaces the status hero until a full grant exists: permission is the only switch the user ever flips — backup is always-on once granted.
+The photo-library permission contracts and the inline gate that replaces the status hero until a full grant exists: permission is the only switch the user ever flips — sharing runs on its own once the grant is in place and an event is joined.
 ## Requirements
 ### Requirement: Permission domain contracts
 

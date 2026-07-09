@@ -40,7 +40,7 @@ dependencies {
     implementation(libs.kermit)
     implementation(compose.runtime)
     implementation(compose.foundation)
-    // The world inspector is deliberately raw Material 3, never App* (design.md §5.1); the application
+    // The world inspector is deliberately raw Material 3, never App* (spec: full-stack-harness); the application
     // needs the desktop window/runtime.
     implementation(compose.material3)
     implementation(compose.desktop.currentOs)

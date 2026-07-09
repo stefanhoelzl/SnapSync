@@ -4,7 +4,7 @@ The iOS platform layer. **Wiring-only and untested** (root `CLAUDE.md` hard rule
 logic — shared *or* iOS-specific — lives in `domain`/`capability` modules under test; nothing
 testable is parked here. This doc covers what is specific to the iOS surface. For on-device
 testing, sideloading, and App Store Connect chores see the **root `CLAUDE.md`**; for architecture
-and resolved decisions see **`docs/design.md`**.
+and resolved decisions see the `openspec/specs/` contracts and their `Decision record:` pointers into `openspec/changes/archive/`.
 
 ## Two processes, two frameworks
 

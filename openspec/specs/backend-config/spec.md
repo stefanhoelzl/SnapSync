@@ -1,7 +1,19 @@
 # backend-config Specification
 
 ## Purpose
-TBD - created by archiving change add-image-download. Update Purpose after archive.
+
+How the backend reads its runtime configuration: **environment variables only, fail-closed**. The storage
+zone name and host, the storage `AccessKey`, the public origin (`PUBLIC_BASE_URL`), and the APNs provider
+credentials all arrive from the Edge Script environment; **no secret appears in source**, and a missing
+required value stops the backend rather than degrading it silently.
+
+This matters because the backend is the only holder of the storage credential — the device deliberately holds
+none. A fail-open config would turn a deploy mistake into either a dead upload path or, worse, a leaked key.
+`PUBLIC_BASE_URL` gets its own requirement because the backend must mint absolute URLs that name the
+device-facing origin, which is a domain we control rather than whichever runtime is currently active.
+
+Decision record: `changes/archive/2026-06-27-add-image-download`.
+
 ## Requirements
 ### Requirement: Environment-only configuration, fail-closed
 

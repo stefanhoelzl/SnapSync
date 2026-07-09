@@ -8,7 +8,7 @@ package app.snapsync.gallery
  *
  * - [type] is the **raw** `PHAssetResourceType` value (a stable ABI integer), un-mapped to any role.
  * - [mimeContentType] is resolved **iOS-side** (via `UTType.preferredMIMEType`) and carried out as a
- *   raw fact — `commonMain` must not reimplement Apple's UTI→MIME table (see `docs/design.md §…`).
+ *   raw fact — `commonMain` must not reimplement Apple's UTI→MIME table (see the gallery-status spec).
  * - [handle] is the opaque `PHAssetResource`; it rides through `commonMain` uninterpreted into
  *   `Resource.data` (a JVM stand-in is valid), exactly as `Resource.data`/`PlatformUploadJob.handle` do.
  */

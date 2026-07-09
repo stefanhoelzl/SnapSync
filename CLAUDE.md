@@ -1,23 +1,27 @@
 # CLAUDE.md
 
-SnapSync v1 — a personal one-way iOS photo backup to S3 (Kotlin Multiplatform + Compose),
-shipped via TestFlight. The JVM desktop app is test equipment, not a product.
+SnapSync — an iOS app for **sharing photos from an event** (Kotlin Multiplatform + Compose), shipped
+via TestFlight. Join an event by scanning its QR, and your photos from that event are shared to it
+while everyone else's arrive in your library. The JVM desktop app is test equipment, not a product.
 
 Stack: Kotlin 2.4.0 · Compose MP 1.11.1 · JDK 25 · min iOS 18.0 · Orbit MVI · SQLDelight · Ktor.
 (Two upload tiers per OS version: OS-driven PhotoKit on iOS ≥26.1, app-driven background `URLSession`
-on iOS 18–26.0 — see `docs/design.md` and the `ios-photokit-upload` / `ios-url-session-upload` specs.)
+on iOS 18–26.0 — see the `ios-photokit-upload` / `ios-url-session-upload` specs.)
 (`gradle/libs.versions.toml` is the source of truth for versions.)
-
-<!-- Maintainer note: reference docs/design.md by path, do NOT @-import it — it's ~750 lines and
-     @-imports load fully into every session, blowing the context budget. Read-on-demand is intended. -->
 
 ## Read first
 
-- **`docs/design.md`** is the design source of truth — architecture, the platform seam, the
-  ledgered engine, sync semantics, UI rules, and every resolved/open decision. Read it before
-  changing behavior; do not restate or contradict it here.
-- **`openspec/specs/`** holds the per-capability specs; **`openspec/changes/`** holds in-flight
-  and archived change proposals.
+There is no narrative design doc. Two OpenSpec trees carry the whole design:
+
+- **`openspec/specs/<capability>/spec.md`** — the **contract of record**. One spec per capability, each
+  a `## Purpose` (what it is for, and why) plus `## Requirements` (SHALL/WHEN/THEN). A spec is
+  authoritative for its own contract; it never defers that to a doc outside `openspec/`.
+- **`openspec/changes/archive/<id>/`** — the **decision record**. Each archived change holds
+  `proposal.md` (what & why) and `design.md` (`## Context`, `## Goals / Non-Goals`, `## Decisions`) —
+  this is where rationale, rejected alternatives, and trade-offs live. Specs cite theirs as
+  `Decision record: changes/archive/<id>`.
+
+Read the spec for the capability you are changing, then its decision record before altering behavior.
 
 ## Build & test
 
@@ -37,19 +41,21 @@ on iOS 18–26.0 — see `docs/design.md` and the `ios-photokit-upload` / `ios-u
 `:domain:ui` status screen inside a phone-sized frame on the left, and a **control panel** on the right
 (raw Material 3 — it is test equipment, never `App*`). The panel **forges any display state** — permission presets,
 sync-state presets, and the engine console — so you can review and test all UI states without a
-device. See `docs/design.md §5.1`.
+device. See the `desktop-test-harness` spec.
 
 `./gradlew :app:desktop:run` launches the **full-stack world harness** (module `:app:desktop`): the same
 real status screen on the left — but its counts **emerge** from `:test:world`'s real `ListingSyncStatusSource`
 (never forged) — and a right-pane **world inspector** (raw M3) that drives the real stack: presets,
 **Invoke extension** (one `process()`-shaped cycle + download reconcile), the gallery/backend, the
 upload-job queue and downloads, failure levers, and an engine-console footer. The operator plays the OS
-(nothing auto-runs). See `docs/design.md §5.1` (capability `full-stack-harness`).
+(nothing auto-runs). See the `full-stack-harness` spec.
 
 ## On-device iOS (agent-driveable over USB)
 
-The iOS upload extension is **physical-device-only** on the iOS 27 beta (`docs/design.md §6`), and
-its *upload trigger* (`processJobs()`) is OS-scheduled — it cannot be forced. But everything around
+The iOS PhotoKit upload extension is **physical-device-only** (no simulator support; spec
+`ios-photokit-upload`). It ships against the **deprecated iOS 26.1** `PHBackgroundResourceUploadExtension`
+— the only protocol runnable on current GM devices — and
+its *upload trigger* (`process()`) is OS-scheduled — it cannot be forced. But everything around
 it — install, **launch**, **screenshot**, event-subscribe, logs — is **scriptable headless over
 USB, no root and no Mac**. Reach a connected iPhone through the host's usbmuxd — **this is specific
 to the codehydra sandbox** (the host socket is bridged at `/run/host/run/usbmuxd`).
@@ -101,7 +107,7 @@ SNAPSYNC_DEEPLINK=…` (use a **fresh event id**, per the note above, or the rec
 already-stored photos and nothing uploads) → the OS invokes the upload extension on its own cadence →
 confirm the objects landed in the backend's bunny storage zone (see *Verify real uploads* below; the
 `dvt screenshot` status counts are informational, not the authoritative landing check). **Still
-gated:** taps / UI gestures need a signed **WebDriverAgent** (`developer wda`), and `processJobs()`
+gated:** taps / UI gestures need a signed **WebDriverAgent** (`developer wda`), and `process()`
 **timing** is OS-owned — a re-provision reliably triggers an invocation but you cannot force *when* it
 runs.
 
@@ -270,6 +276,9 @@ agent use and inject that one instead.
 :capability:config     deeplink config provisioning (eventId)
 :capability:device-id  stable per-install device identity (shared Keychain)
 :capability:download   foreign-photo download → stage → import controller (photo-download)
+:capability:join       join use-case + DeviceEnroller (writes the per-event device manifest = the physical fact of membership) + EventDetailsSource (join-event)
+:capability:album      tested commonMain album orchestration: resolve-or-create the per-event album, dispatch-or-skip an add; PhotoKit behind seams (event-album)
+:capability:push       APNs token registration + PushReceiver seam + EventNotifier (POST /events/<id>/notify) (push-registration, upload-completion-notify)
 :capability:membership event-membership lifecycle: extension-side re-join reconciliation + leave use-case + LeaveNotifier (DELETE /events/<id>/devices/<id>) + device-file listing seam
 :capability:event-creation-ui  create-event screen seams: EventCreator/CreationStatusSource + HTTP creator
 :app:desktop           shared harness library (PhoneFrame + StatusPane, StatusContainerHost wiring both desktop harnesses reuse) AND the full-stack world harness app (:app:desktop:run): real StatusScreen whose counts EMERGE from :test:world's real ListingSyncStatusSource + a right-pane world inspector driving the world (capability full-stack-harness)
@@ -291,10 +300,10 @@ platform backend is selected structurally in the app modules.
 - **Design-system containment.** Only `:domain:ui:components` may import Material 3. **No M3 type
   may appear in any `App*` signature.** `App*` components are semantic, not customizable — params
   carry data/meaning, never appearance; **no `Modifier`/color/shape/textStyle params**. Screens
-  use `App*` exclusively (`docs/design.md §5`).
+  use `App*` exclusively (spec `design-system`).
 - **DI, not `expect`/`actual`.** Implementations are chosen by manual dependency injection in the
   app modules (composition root). The JVM target needs multiple impls per seam (in-memory fake +
-  the controllable harness fake), which `expect`/`actual` cannot express (`docs/design.md §2`).
+  the controllable harness fake), which `expect`/`actual` cannot express.
 - **iOS constrains `commonMain`.** Because iOS targets are present, `commonMain` is limited to the
   common stdlib — JVM-only APIs there break the iOS compile (verify with the proxy task above).
 - **`:app:ios` is wiring-only.** `:app:ios` and the `iosApp/` Swift host are a thin, **untestable**
@@ -320,7 +329,7 @@ platform backend is selected structurally in the app modules.
 
 ## Testing strategy
 
-Three standing rules (full detail: `docs/design.md §6`):
+Three standing rules:
 
 1. **Every unit test runs on the iOS simulator too.** Put logic tests in `commonTest` so they run
    on **both** JVM and `iosSimulatorArm64` — JVM is the fast loop, not the only coverage.

@@ -18,7 +18,7 @@ import platform.Foundation.dateWithTimeIntervalSinceNow
 /**
  * The iOS 18–26.0 [BackgroundScheduler] backed by `BGTaskScheduler`. `scheduleNext()` (re)submits the
  * one-shot `BGProcessingTaskRequest` heartbeat — network required, external power NOT required, so the
- * OS grants windows often enough to drain a first whole-library backup and to catch new captures while
+ * OS grants windows often enough to drain a first whole-library upload and to catch new captures while
  * the app is closed. The actual `BGTaskScheduler.register(...)` handler wiring lives in the thin Swift
  * shell (it must run before app launch finishes); this only (re)submits and cancels the request.
  */

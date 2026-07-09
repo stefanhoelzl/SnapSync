@@ -9,7 +9,15 @@ The device-facing origin is the custom domain `snapsync.stho.net` (a zone we con
 served with a publicly-trusted cert), `CNAME`'d to the **active** runtime — Deno Deploy today, while
 bunny investigates dropping iOS's zero-window upload SYNs. Because the origin is a domain we own,
 swapping the active runtime is a DNS repoint, not an app rebuild. Isolated from the Gradle/iOS
-workflows; no Bunny credential in source. Authoritative design: docs/design.md §4, §7.
+workflows; no Bunny credential in source.
+
+Deploying one bundle to two runtimes is deliberate insurance: the device-facing host is baked into the app at
+compile time (the OS-driven upload extension permits exactly one upload host), so an app rebuild is the one
+thing a runtime outage must never require. Owning the domain turns "switch runtimes" into a DNS repoint plus
+a server-side `PUBLIC_BASE_URL` flip.
+
+Decision record: `changes/archive/2026-06-22-add-bunny-upload-endpoint` (the pipeline),
+`changes/archive/2026-06-30-add-custom-domain` (the owned origin).
 
 ## Requirements
 

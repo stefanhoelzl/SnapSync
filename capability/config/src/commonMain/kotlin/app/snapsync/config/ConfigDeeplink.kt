@@ -8,7 +8,7 @@ import kotlinx.serialization.SerializationException
 import kotlinx.serialization.json.Json
 
 /**
- * The `snapsync://config?v=3&d=<base64url(json)>` wire format (design.md D1/D2): the runtime config
+ * The `snapsync://config?v=3&d=<base64url(json)>` wire format (spec: deeplink-config): the runtime config
  * payload — just the **event id** — carried in a single opaque, versioned param. The device holds no
  * storage credential; the event id is the upload capability. The upload **host** is not here: it is
  * fixed at compile time by the extension's `BackgroundUploadURLBase`. This file is the one

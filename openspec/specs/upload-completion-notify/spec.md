@@ -1,7 +1,20 @@
 # upload-completion-notify Specification
 
 ## Purpose
-TBD - created by archiving change notify-driven-download. Update Purpose after archive.
+
+The trigger that closes the sharing loop: after an uploading device drains a cycle in which at least one
+upload completed, it pokes `event-notify-endpoint`, which wakes every other member device to pull the new
+photos.
+
+Without it the push pipe exists but nothing calls it, so a co-contributor's photos are discovered only when
+the receiving user next opens the app. Firing **once per drained cycle** (not once per upload) is what keeps a
+burst of fifty photos from becoming fifty pushes.
+
+The notify is an **injected, best-effort, bounded** seam: it cannot fail the upload cycle, it cannot block it
+indefinitely, and it is a lambda rather than a named port so the tier composition roots stay wiring-only.
+
+Decision record: `changes/archive/2026-07-05-notify-driven-download`.
+
 ## Requirements
 ### Requirement: Notify fires once per drained cycle that completed an upload
 

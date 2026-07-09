@@ -8,8 +8,17 @@ decisions it answers with. The engine's only state is its ledger — the durable
 what was requested, completed, and failed — written exclusively by the engine. The sync domain
 transports resources grouped by an opaque `assetId` — the engine carries the `assetId` through to
 the ledger but does not interpret it; richer asset handling lives in a later layer above the seam;
-encoding and placement of identity live below it, in the upload-request provider. Authoritative
-design: docs/design.md §2.2.
+encoding and placement of identity live below it, in the upload-request provider.
+
+**Why a ledger, and not a stateless engine.** PhotoKit's change-token expiry is routine, and Apple's only
+remedy is a full re-enumeration. With no memory of what is already stored, every expiry would re-upload the
+entire library — tens of thousands of assets, hundreds of gigabytes. The ledger is what makes skipping
+*provable*: a `COMPLETED` key is never re-uploaded, so re-deriving the change feed is idempotent and full
+re-enumeration is harmless. Platforms therefore report **observations, never bookkeeping** — they do not
+filter, dedupe, or track what was uploaded, because exactly-once across the file system and the job system
+is impossible and reports are at-least-once by construction.
+
+Decision record: `changes/archive/2026-06-12-sync-engine-ledger`.
 
 ## Requirements
 

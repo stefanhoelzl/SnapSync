@@ -12,7 +12,8 @@ no on-device SigV4, no per-resource mint round-trip.
 Authoritative contracts: `openspec/specs/event-creation`, `openspec/specs/bunny-upload-endpoint`,
 `openspec/specs/bunny-list-endpoint`, `openspec/specs/device-manifest`,
 `openspec/specs/event-leave-endpoint`, and `openspec/specs/backend-config` (and
-`backend-deployment`); rationale in `docs/design.md` §3–§4.
+`backend-deployment`). Rationale lives in each spec's `## Purpose` and its `Decision record:`
+pointer into `openspec/changes/archive/`.
 
 ## Storage layout
 
@@ -211,7 +212,7 @@ Deno's `alias.deno.net` (auto-TLS via Let's Encrypt). Because we own the name, t
 (once the SYN-drop is fixed) is a **DNS repoint of `snapsync.stho.net` + a `PUBLIC_BASE_URL` flip —
 not a new iOS build**.
 
-## On-device caveats (unverified — see design.md §8)
+## On-device caveats (unverified — see `bunny-upload-endpoint` § Assumptions)
 
 This endpoint's bunny-facing behavior is tested; its **iOS-facing** surface is frozen but unverified
 until the iOS rewiring follow-up: OPTIONS fallback on a custom origin, which `2xx` the background

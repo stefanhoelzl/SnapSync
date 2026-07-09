@@ -16,7 +16,7 @@ dependencies {
     implementation(project(":domain:status"))
     implementation(project(":capability:config"))
     implementation(project(":capability:event-creation-ui"))
-    // The control panel is deliberately raw Material 3, not App* (design.md §5.1).
+    // The control panel is deliberately raw Material 3, not App* (spec: desktop-test-harness).
     implementation(compose.material3)
     implementation(compose.desktop.currentOs)
 }

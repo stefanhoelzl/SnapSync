@@ -378,7 +378,7 @@ class UploadCycleTest {
     @Test
     fun pruned_then_rediscovered_asset_is_uploaded_fresh() = runTest {
         val backend = InMemoryLedgerBackend()
-        // Was backed up, then deleted (pruned), then recovered from "Recently Deleted" (re-appears).
+        // Was uploaded, then deleted (pruned), then recovered from "Recently Deleted" (re-appears).
         LedgerWriter(backend).recordCompleted("x-photo.jpg", assetId = "x", attempt = 0)
         val platform = FakePlatform(
             discovered = listOf(resource("x-photo.jpg")),

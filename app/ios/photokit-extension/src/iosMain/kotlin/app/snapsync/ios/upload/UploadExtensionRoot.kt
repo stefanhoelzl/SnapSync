@@ -93,7 +93,7 @@ object UploadExtensionRoot {
     }
 
     // The cross-process liveness Darwin notification name, created once (a constant CFString for the
-    // process lifetime). See design.md §2.3 and the app-side observer in SnapSyncRoot.
+    // process lifetime). See the sync-status spec and the app-side observer in SnapSyncRoot.
     @OptIn(ExperimentalForeignApi::class)
     private val livenessName: CFStringRef? by lazy {
         CFStringCreateWithCString(null, UPLOAD_LIVENESS_DARWIN_NAME, kCFStringEncodingUTF8)
@@ -279,7 +279,7 @@ object UploadExtensionRoot {
                 CycleResult.FAILED
             }
         // Tell the app (if foreground) the ledger may have changed so upload status refreshes live
-        // (design.md §2.3): a payload-free cross-process Darwin ding, posted after EVERY run so both a
+        // (spec: sync-status): a payload-free cross-process Darwin ding, posted after EVERY run so both a
         // rising in-flight count and a drain are signalled. Best-effort — a post failure never affects
         // the returned result. The `LedgerBackend` itself still posts nothing; this is composition-root.
         runCatching { postLivenessNotification() }.onFailure { log.w(it) { "liveness post failed" } }
@@ -287,7 +287,7 @@ object UploadExtensionRoot {
         // finishes — so a drained cycle that returns COMPLETED leaves already-succeeded jobs
         // un-acknowledged until the next change. While the ledger still has pending (in-flight)
         // rows, return PROCESSING to request another invocation so their completions are recorded
-        // promptly; report COMPLETED only once everything is backed up (pending == 0), so the system
+        // promptly; report COMPLETED only once everything is uploaded (pending == 0), so the system
         // then rests. (The OS throttles re-invocation, so this polls at its cadence, not in a loop.)
         if (result == CycleResult.COMPLETED) {
             val pending = ledgerBackend.aggregates().pending

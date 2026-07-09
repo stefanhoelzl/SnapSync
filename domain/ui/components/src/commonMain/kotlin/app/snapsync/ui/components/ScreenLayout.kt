@@ -27,7 +27,7 @@ import androidx.compose.ui.unit.sp
  * optional prominent [heading] beneath it (the joined event's name), the vertical centering of the
  * body content (the screen is a glanceable status display), and a bottom action cluster centered
  * across the width. Screens supply one or more action composables; this container row-arranges them
- * centered with consistent spacing, so the screen never hardcodes anchor or row geometry (design.md §5).
+ * centered with consistent spacing, so the screen never hardcodes anchor or row geometry (spec: design-system).
  *
  * The background `Surface` fills the whole screen (painting edge-to-edge under the iOS notch /
  * home indicator), while the content `Column` insets past the safe-area before applying the

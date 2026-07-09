@@ -1,7 +1,23 @@
 # full-stack-harness Specification
 
 ## Purpose
-TBD - created by archiving change add-full-stack-harness. Update Purpose after archive.
+
+The **world harness** at `:app:desktop:run`: the real `StatusScreen` in a phone frame on the left, whose
+counts *emerge* from the real stack running against `:test:world` — never forged — and a right-pane world
+inspector that drives that world (presets, an operator-triggered `process()`-shaped cycle, the gallery and
+backend, the upload-job queue and downloads, failure levers).
+
+It exists because the forge harness (`desktop-test-harness`) can only ever *type in* what the screen shows,
+and `:test:world`'s only other consumer (`:test:integration`) asserts without rendering. Neither lets a human
+**watch the real stack behave**. Here the operator plays the OS — nothing auto-runs — so every emergent
+behavior (a rejoin seeding completed rows, backpressure on the job cap, a download suppressing an echo) can
+be produced on a laptop, with no device and no network.
+
+The inspector is **test equipment**: raw Material 3, never the `App*` design system, and it holds no logic —
+the real logic lives in `:test:world` (`harness-world-model`).
+
+Decision record: `changes/archive/2026-07-03-add-full-stack-harness`.
+
 ## Requirements
 ### Requirement: Dual-pane full-stack harness at `:app:desktop:run`
 

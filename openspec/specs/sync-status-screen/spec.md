@@ -3,9 +3,9 @@
 ## Purpose
 
 The shared status screen that observes sync status snapshots and shows the user, truthfully,
-what state their backup is in: in progress ("n of N images synced"), complete ("N images synced"),
-or nothing to sync. The snapshot contract and its classification are owned by the `sync-status`
-capability; this screen reduces and renders.
+how much of their library has been shared to the event: in progress ("n of N images synced"),
+complete ("N images synced"), or nothing to sync. The snapshot contract and its classification are
+owned by the `sync-status` capability; this screen reduces and renders.
 ## Requirements
 ### Requirement: Sync status snapshots reduce to UI state
 

@@ -21,7 +21,7 @@ enum class ResourceRole(val wire: String) {
 
 /**
  * Map a `PHAssetResourceType` raw value (its raw values are a stable ABI) to the generic [ResourceRole]
- * we back up, or `null` when the resource is **dropped** — a non-original edit artifact (full-size
+ * we upload, or `null` when the resource is **dropped** — a non-original edit artifact (full-size
  * renders, adjustment data, adjustment-base media), the RAW `alternatePhoto`, or a proxy. Only the
  * originals are kept, so an asset's resource set is fixed at capture and never grows: `photo`/`video`/
  * `audio` → [PRIMARY], `pairedVideo` → [LIVE].

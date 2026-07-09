@@ -14,7 +14,7 @@ import kotlinx.coroutines.launch
  * extension's ledger ([LedgerCountsSource] — `completed` and `pending` from one consistent
  * `aggregates()` read); the upload **total** is the live own-device gallery size ([GalleryStatusSource]);
  * `active` is derived from permission. The source issues **no storage LIST** for upload status — this is
- * the notify-driven, ledger-sourced projection (design.md §2.4). Reading the ledger for classification
+ * the notify-driven, ledger-sourced projection (spec: sync-status). Reading the ledger for classification
  * is safe under the **no-deletion-during-an-active-event** invariant (the ledger cannot over-count; the
  * sole ledger↔storage divergence point, (re)join, is reconciled by `event-rejoin-reconciliation`).
  *

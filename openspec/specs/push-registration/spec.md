@@ -1,7 +1,20 @@
 # push-registration Specification
 
 ## Purpose
-TBD - created by archiving change push-notification-infra. Update Purpose after archive.
+
+The device end of the backend→app channel: the app acquires its APNs token, registers it with the backend
+(`device-config-endpoint`), re-registers on rotation, and exposes a `PushReceiver` seam that an incoming
+silent push is forwarded into.
+
+The seams exist so that logic stays testable while `:app:ios` stays wiring-only — token acquisition and push
+delivery are OS callbacks, so both are ports, and everything downstream of them is ordinary tested code.
+
+Silent push is a **best-effort accelerant**, never a delivery guarantee: it is layered over the existing
+foreground discovery and the `BGProcessingTask` backstop, both of which remain correct if no push ever
+arrives.
+
+Decision record: `changes/archive/2026-07-05-push-notification-infra`.
+
 ## Requirements
 ### Requirement: APNs token acquisition seam
 
