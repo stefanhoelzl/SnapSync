@@ -57,6 +57,20 @@ class UploadCycle(
     // reaches this only past a joined-event guard, so a cutoff always exists. There is no safe default to
     // offer tests either — `""` compares `>=` true against every `creationDate`.
     private val photoCutoff: suspend () -> String,
+    // Re-join reconciliation (capability `event-rejoin-reconciliation`): the marker-gated seed that makes
+    // already-stored resources `COMPLETED` before the producer runs, so a re-joined / switched /
+    // reinstalled device re-uploads nothing it has already contributed. Returns whether the producer may
+    // create jobs this cycle — `false` defers (a failed/timed-out device listing), and this cycle creates
+    // nothing and leaves the ledger, cursor, and marker untouched so the next cycle retries.
+    //
+    // Required, with **no default**, for the same reason as [photoCutoff]: it lives in the CYCLE, not in
+    // each tier's composition root, because the cycle is the only thing that runs on EVERY route to a
+    // divergent ledger — a fresh join, an event switch, a leave-then-rejoin, and a delete-and-reinstall
+    // (which no provisioning path observes at all: a cold relaunch of an already-joined app provisions
+    // nothing). Root-wired reconciliation is exactly how the app-driven tier shipped without any, so a
+    // defaulted `{ true }` would re-open that hole silently. The cycle stays event-agnostic — the root's
+    // lambda closes over the eventId, like [onBatchUploaded].
+    private val reconcile: suspend () -> Boolean,
     // Notify hook (capability `upload-completion-notify`): fired once per FULLY-DRAINED cycle that
     // recorded >= 1 real completion, AFTER `onDiscovery` (the device-manifest PUT) — the only moment the
     // event union reflects the just-completed assets, so recipients woken by the fan-out find them. The
@@ -71,6 +85,20 @@ class UploadCycle(
     private val placeInAlbum: suspend (assetIds: Set<String>) -> Unit = {},
 ) {
     suspend fun run(): CycleResult {
+        // Phase 0 — re-join reconciliation (capability `event-rejoin-reconciliation`), BEFORE any upload
+        // job is created. On a marker mismatch it seeds the ledger from the device's stored-file listing
+        // so nothing already contributed re-uploads; on a settled join it is a no-op. A `false` return is
+        // a deferral (the listing fetch failed or timed out): create nothing this cycle and report a clean
+        // COMPLETED — a no-op, never a failure — so the next cycle retries with the marker still unset. A
+        // THROW is treated identically to `false` (never a FAILED cycle), preserving the deferral the
+        // roots previously applied with their own `runCatching`.
+        val mayUpload = runCatching { reconcile() }
+            .getOrElse { log.e(it) { "reconcile failed — deferring uploads this cycle" }; false }
+        if (!mayUpload) {
+            log.i { "reconcile deferred this cycle — creating no upload jobs" }
+            return CycleResult.COMPLETED
+        }
+
         // Phase 1 — first failures: re-point the system's single retry at a rebuilt edge URL
         // (stable, no expiry — the provider re-derives the identical destination locally).
         for (job in platform.fetchRetryJobs()) {

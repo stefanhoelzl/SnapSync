@@ -13,11 +13,15 @@ import app.snapsync.ios.discovery.IosDiscovery
 import app.snapsync.ios.discovery.IosDiscoveryStore
 import app.snapsync.ios.urlsession.IosBackgroundScheduler
 import app.snapsync.ios.urlsession.IosUrlSessionUploadPlatform
+import app.snapsync.membership.ExtensionReconciler
+import app.snapsync.membership.HttpDeviceFilesSource
+import app.snapsync.membership.IosJoinedEventMarker
 import app.snapsync.push.EventNotifier
 import app.snapsync.push.KtorPushHttpClient
 import app.snapsync.upload.BackgroundUploadPump
 import app.snapsync.upload.CycleResult
 import app.snapsync.upload.UploadCycle
+import app.snapsync.upload.UploadProducer
 import app.snapsync.upload.buildUploadConfig
 import app.snapsync.uploadurl.EdgeUploadRequestProvider
 import app.snapsync.logging.invocation
@@ -67,7 +71,7 @@ class UrlSessionUploadController(
     // cycle so this app-tier (iOS 18–26.0) adds them to the event album. Bound by SnapSyncRoot to the
     // album coordinator (gated on the opt-in); default no-op.
     private val albumPlacement: suspend (Set<String>) -> Unit = {},
-) {
+) : UploadProducer {
     companion object {
         const val SESSION_IDENTIFIER = "app.snapsync.upload.session"
         const val HEARTBEAT_TASK_IDENTIFIER = "app.snapsync.upload.heartbeat"
@@ -90,6 +94,24 @@ class UrlSessionUploadController(
 
     // Fires the event notify after a drained cycle that completed uploads (capability `upload-completion-notify`).
     private val notifier = EventNotifier(KtorPushHttpClient(httpClient), host)
+
+    // Re-join reconciliation (capability `event-rejoin-reconciliation`) — the SAME reconciler the ≥26.1
+    // extension runs, now on this tier too. It is marker-gated, so a settled join costs nothing; on a
+    // (re)join it `resetTo`s the ledger to exactly the device's stored files and clears the discovery
+    // cursor, so a switch / leave-then-rejoin / delete-and-reinstall re-uploads NOTHING already in the
+    // device's byte partition. This tier shipped without it — that is why a reinstall re-uploaded the whole
+    // post-cutoff library — and it is reached from inside `UploadCycle`, so no future tier can omit it.
+    private val reconciler = ExtensionReconciler(
+        files = HttpDeviceFilesSource(httpClient, host),
+        ledger = ledgerBackend,
+        marker = IosJoinedEventMarker(),
+        deviceId = deviceId,
+        // Force a full re-enumeration on a re-join: the App-Group cursor survives an app upgrade, so a
+        // settled cursor would scan incrementally and find nothing. The seeded ledger dedups, so this
+        // re-uploads nothing already stored — it only re-discovers genuinely-unstored work.
+        clearDiscoveryCursor = { discoveryStore.clearToken() },
+        log = log,
+    )
 
     private val platform = IosUrlSessionUploadPlatform(
         log = log,
@@ -129,6 +151,12 @@ class UrlSessionUploadController(
         // capability `photo-date-cutoff`) means not joined, so this cycle uploads nothing.
         val membership = configSource.config.value
         val config = membership?.let { buildUploadConfig(it.eventId, host) } ?: run {
+            // No joined event (never joined, or a leave). No cycle is built — but the reconciler still runs
+            // for the no-config case, because that is where a leave clears the `joinedEventId` marker
+            // (capability `event-rejoin-reconciliation`), keeping the ledger and cursor intact so a later
+            // provision of ANY event dedups against them. The joined case reconciles inside the cycle.
+            runCatching { reconciler.reconcile(null) }
+                .onFailure { log.w(it) { "leave-side marker clear failed" } }
             log.i { "url-session cycle skipped — no joined event / host (eventId=${membership?.eventId}, host=$host)" }
             return@invocation CycleResult.COMPLETED
         }
@@ -140,6 +168,11 @@ class UrlSessionUploadController(
         val cutoff = membership.minPhotoDate
         val result = UploadCycle(
             engine, ledger, platform, discoveryStore, log,
+            // Re-join reconciliation (capability `event-rejoin-reconciliation`): marker-gated, runs BEFORE
+            // any upload job is created. A settled join is a free no-op; a (re)join seeds already-stored
+            // resources COMPLETED so nothing already contributed re-uploads. A failed/timed-out listing
+            // returns false and defers the whole cycle — no jobs, marker unset, retried next cycle.
+            reconcile = { reconciler.reconcile(cycleEventId) },
             // Device manifest from THIS cycle's discovery, PUT after the byte jobs are created; bounded
             // and best-effort (any failure/timeout just retries next cycle). The union reflects the
             // uploads only after this PUT — the same drain point the notify below fires from.
@@ -172,17 +205,23 @@ class UrlSessionUploadController(
         result
     }
 
-    // ---- lifecycle / triggers (forwarded by SnapSyncRoot) ----
+    // ---- the UploadProducer seam (capability `upload-lifecycle`) ----
+    // The lifecycle DECISION — which verb on which transition — lives in the tested `UploadArm`
+    // (`:capability:upload`). This class supplies only this tier's MECHANISM.
 
-    /** On a full photo grant / app start: sweep orphaned staging, run a cycle, arm the heartbeat. */
-    fun start() {
-        // Wrap INSIDE the launch so `[url-session.start]` spans the async sweep + pump.
-        scope.launch {
-            log.invocation("url-session.start") {
-                runCatching { platform.sweepStaging() }.onFailure { log.w(it) { "sweepStaging failed" } }
-                pump.onForeground()
-            }
-        }
+    /**
+     * Begin/resume uploading: sweep staging temp files orphaned by a prior killed process, **arm the
+     * heartbeat**, then pump a cycle.
+     *
+     * `pump.onStart()` (not `onForeground()`) is what arms the heartbeat: it is the only trigger whose
+     * re-arm is unconditional, and therefore the only one that can submit the FIRST `BGProcessingTask`.
+     * Every other re-arm path presupposes one already exists, so before this the tier's cold-start kick
+     * for "new photos captured while the app is closed" never existed at all. The re-arm *policy* lives in
+     * the tested pump, not here — this shell is wiring-only.
+     */
+    override suspend fun start() = log.invocation("url-session.start") {
+        runCatching { platform.sweepStaging() }.onFailure { log.w(it) { "sweepStaging failed" } }
+        pump.onStart()
     }
 
     /** Foreground entry — pump a cycle (completions drive the rest while open). */
@@ -209,18 +248,23 @@ class UrlSessionUploadController(
         platform.reattach()
     }
 
-    /** Disable (access revoked): cancel in-flight transfers + the scheduled heartbeat. */
-    fun disable() = log.invocation("url-session.disable") {
+    /**
+     * Stop uploading (access revoked, a download-only membership, or a leave) — the `stop()` half of the
+     * [UploadProducer] seam. Cancels in-flight transfers and the scheduled heartbeat, and **destroys no
+     * durable state**: the ledger and the discovery cursor are left intact.
+     *
+     * There is deliberately **no** destructive counterpart. The ledger is device-global dedup state — its
+     * key is the bare filename with no event scoping, and leaving an event does not remove this device's
+     * bytes from its storage partition — so a `COMPLETED` row stays *true* across a leave, a switch, and a
+     * re-join (`sync-ledger`, "Event-independent key"). Wiping it would force a re-upload of everything
+     * already stored on the next join, which is exactly what the old `leave()` did. Only a triggered
+     * reconciliation's `resetTo` ever re-baselines the ledger, from the authoritative device listing.
+     *
+     * No `clearRequested` recovery is needed here either: stranded `REQUESTED` rows are already reconciled
+     * precisely from `getAllTasks` (see `fetchAckJobs`) — that is this tier's D5.
+     */
+    override suspend fun stop() = log.invocation("url-session.stop") {
         platform.cancelAll()
         scheduler.cancel()
-    }
-
-    /** Leave: cancel everything, then wipe the local ledger + discovery cursor. */
-    fun leave() = log.invocation("url-session.leave") {
-        disable()
-        scope.launch {
-            ledgerBackend.clear()
-            discoveryStore.clearToken()
-        }
     }
 }

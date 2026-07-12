@@ -244,13 +244,13 @@ class FullStackIntegrationTest {
             w.provision("E")
 
             // The REAL leave use-case, with the backend DELETE gated so it never completes — the flip
-            // must not wait on it. `disableExtension` is a no-op (local); the clear drives the reduction.
+            // must not wait on it. `stopUploads` is a no-op (local); the clear drives the reduction.
             val deleteGate = CompletableDeferred<Unit>()
             val notifyStarted = CompletableDeferred<String>()
             val leaveEvent = LeaveEvent(
                 config = w.configStore,
                 configSource = w.configSource,
-                disableExtension = {},
+                stopUploads = {},
                 notifyLeave = { id -> notifyStarted.complete(id); deleteGate.await() /* hangs */ },
                 scope = scope,
             )

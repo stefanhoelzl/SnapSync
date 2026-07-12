@@ -235,6 +235,9 @@ class World(
             ledger = ledger,
             platform = platform,
             store = discoveryStore,
+            // Re-join reconciliation (capability `event-rejoin-reconciliation`) now runs INSIDE the shared
+            // cycle on both tiers, so the harness reconciles here rather than in its runner.
+            reconcile = { reconciler().reconcile(eventId) },
             onDiscovery = { discovery ->
                 producer.produce(
                     eventId = eventId,
@@ -262,9 +265,13 @@ class World(
      */
     suspend fun runUploadCycle(requeuePending: Boolean = false): CycleResult {
         val payload = configCell.value
-        val mayUpload = runCatching { reconciler().reconcile(payload?.eventId) }.getOrElse { false }
         val config = buildUploadConfig(payload?.eventId, host)
-        if (config == null || !mayUpload) return CycleResult.COMPLETED
+        if (config == null) {
+            // Leave / never joined: no cycle. The reconciler still runs so a leave clears the join marker
+            // (keeping the ledger + cursor intact for cross-event dedup) — the roots do exactly this.
+            runCatching { reconciler().reconcile(null) }
+            return CycleResult.COMPLETED
+        }
         val result = runCatching { uploadCycle(config.eventId).run() }.getOrElse { CycleResult.FAILED }
         if (requeuePending && result == CycleResult.COMPLETED && ledgerBackend.aggregates().pending > 0) {
             return CycleResult.PROCESSING

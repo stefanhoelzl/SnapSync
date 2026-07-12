@@ -98,7 +98,73 @@ class UploadCycleTest {
         return UploadCycle(
             SyncEngine(StubUploadRequestProvider(), ledger), ledger, platform, store,
             photoCutoff = { TEST_CUTOFF },
+            reconcile = { true }, // a settled join — the gate itself is covered just below
         )
+    }
+
+    // ---- Phase 0: the re-join reconciliation gate (capability `event-rejoin-reconciliation`) ----------
+    // The gate lives in the CYCLE, not in each tier's composition root, because the cycle is the only
+    // thing that runs on every route to a divergent ledger. Root-wired reconciliation is exactly how the
+    // app-driven tier shipped with none, re-uploading the whole post-cutoff library after a reinstall.
+
+    /** Builds a cycle whose reconcile gate is [gate], recording call order into [order]. */
+    private fun gatedCycle(
+        backend: InMemoryLedgerBackend,
+        platform: FakePlatform,
+        store: DiscoveryStore = FakeStore(),
+        order: MutableList<String> = mutableListOf(),
+        gate: suspend () -> Boolean,
+    ): UploadCycle {
+        val ledger = LedgerWriter(backend)
+        return UploadCycle(
+            SyncEngine(StubUploadRequestProvider(), ledger), ledger, platform, store,
+            photoCutoff = { TEST_CUTOFF },
+            onDiscovery = { order += "discovery" },
+            reconcile = { order += "reconcile"; gate() },
+        )
+    }
+
+    @Test
+    fun reconcile_runs_before_any_upload_job_is_created() = runTest {
+        val order = mutableListOf<String>()
+        val platform = FakePlatform(discovered = listOf(resource("a")))
+        val cycle = gatedCycle(InMemoryLedgerBackend(), platform, order = order) { true }
+
+        assertEquals(CycleResult.COMPLETED, cycle.run())
+
+        assertEquals("reconcile", order.first(), "the seed must precede everything the cycle does")
+        assertEquals(listOf("a"), platform.created.map { it.filename })
+    }
+
+    @Test
+    fun a_deferred_reconcile_creates_no_jobs_and_reports_a_clean_completed() = runTest {
+        val store = FakeStore()
+        val platform = FakePlatform(
+            discovered = listOf(resource("a")),
+            ackJobs = listOf(platformJob("b-primary.heic", PlatformJobState.SUCCEEDED)),
+        )
+        // A failed/timed-out device listing: the reconciler returns false rather than seeding.
+        val cycle = gatedCycle(InMemoryLedgerBackend(), platform, store) { false }
+
+        // COMPLETED, never FAILED: a deferral is a clean no-op so the tier's scheduler simply retries.
+        assertEquals(CycleResult.COMPLETED, cycle.run())
+
+        assertTrue(platform.created.isEmpty(), "a deferred cycle must create no upload jobs")
+        assertTrue(platform.acknowledged.isEmpty(), "a deferred cycle must not adjudicate jobs either")
+        assertNull(platform.discoverSinceArg, "a deferred cycle must not even walk the library")
+        assertNull(store.saved, "the cursor must not advance on a deferred cycle")
+        assertTrue(!store.cleared, "a deferral leaves the cursor untouched so the next cycle retries")
+    }
+
+    @Test
+    fun a_throwing_reconcile_defers_rather_than_failing_the_cycle() = runTest {
+        val platform = FakePlatform(discovered = listOf(resource("a")))
+        val cycle = gatedCycle(InMemoryLedgerBackend(), platform) { error("listing boom") }
+
+        // The roots previously wrapped reconcile in their own runCatching; moving the gate into the cycle
+        // must not turn a throwing reconcile into a FAILED cycle.
+        assertEquals(CycleResult.COMPLETED, cycle.run())
+        assertTrue(platform.created.isEmpty(), "a throwing reconcile must not upload anything")
     }
 
     @Test
@@ -159,6 +225,7 @@ class UploadCycleTest {
             FakeStore(),
             suppressedAssetIds = { setOf("FOREIGN") },
             photoCutoff = { TEST_CUTOFF },
+            reconcile = { true },
         )
 
         cycle.run()
@@ -184,6 +251,7 @@ class UploadCycleTest {
             // The importer stored the '/'→'_' createdLocalId — the same normalized string.
             suppressedAssetIds = { setOf("ABC_L0_001") },
             photoCutoff = { TEST_CUTOFF },
+            reconcile = { true },
         )
 
         cycle.run()
@@ -449,6 +517,7 @@ class UploadCycleTest {
                 if (notifyThrows) error("notify boom")
             },
             photoCutoff = { TEST_CUTOFF },
+            reconcile = { true },
         )
     }
 
@@ -557,6 +626,7 @@ class UploadCycleTest {
         return UploadCycle(
             SyncEngine(StubUploadRequestProvider(), ledger), ledger, platform, FakeStore(),
             photoCutoff = { cutoff },
+            reconcile = { true },
         )
     }
 

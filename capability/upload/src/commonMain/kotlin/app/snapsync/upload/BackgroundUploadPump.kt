@@ -23,6 +23,11 @@ import kotlinx.coroutines.sync.withLock
  * in a background context the re-armed [scheduler] wakes the app.
  *
  * **Re-arm policy per trigger:**
+ * - [onStart] — the producer was started (a photo-access grant, or a membership provision): drain, and
+ *   **always** schedule the next wake. This is the only trigger that *arms the first* `BGProcessingTask`.
+ *   Without it nothing ever would: [onBackgroundTask] re-submits but needs a task to have already fired,
+ *   and [onSessionEvents] re-arms only when an in-flight background transfer completes — so the tier's
+ *   cold-start kick for "new photos captured while the app is closed" simply did not exist.
  * - [onForeground] / [onUploadCompleted] — foreground: drain; do **not** schedule (completions drive
  *   re-invocation while the app is open).
  * - [onSessionEvents] — background relaunch (`handleEventsForBackgroundURLSession`): drain; schedule
@@ -43,6 +48,15 @@ class BackgroundUploadPump(
     private val mutex = Mutex()
     private var draining = false
     private var retrigger = false
+
+    /**
+     * The producer was started (`UploadProducer.start()` — a photo-access grant or a membership
+     * provision): drain, and arm the heartbeat. The re-arm is unconditional because this is the one
+     * trigger that can *create* the first `BGProcessingTask`; every other re-arm path presupposes one.
+     */
+    suspend fun onStart() = log.invocation("pump.onStart") {
+        drive(scheduleOnProcessing = false, alwaysScheduleNext = true)
+    }
 
     /** App entered the foreground: run the cycle and let completions drive further work. */
     suspend fun onForeground() = log.invocation("pump.onForeground") {
