@@ -32,7 +32,8 @@ import app.snapsync.membership.clearRequestedOffMain
 import app.snapsync.membership.darwinHttpClient
 import app.snapsync.download.DownloadController
 import app.snapsync.download.HttpEventUnionSource
-import app.snapsync.download.IosPhotoDownloadJobs
+import app.snapsync.download.IosDownloadTransport
+import app.snapsync.download.QueuedPhotoDownloadJobs
 import app.snapsync.album.AlbumCoordinator
 import app.snapsync.album.IosAlbumManager
 import app.snapsync.album.IosAlbumMapStore
@@ -194,12 +195,18 @@ object SnapSyncRoot {
     // synchronously from inside a PhotoKit change block.
     private val downloadStore: SqlDelightDownloadStore by lazy { iosDownloadStore() }
 
-    // Background-URLSession byte transfers (discretionary/Wi-Fi) → durable App-Group staging.
-    private val downloadJobs: IosPhotoDownloadJobs by lazy {
+    // Background-URLSession byte transfers (Wi-Fi + cellular) → durable App-Group staging. The queue,
+    // bounded window, and cancellation lifecycle live in the tested QueuedPhotoDownloadJobs; the
+    // NSURLSession edge is IosDownloadTransport, rebuilt if the system ever invalidates the session.
+    private val downloadJobs: QueuedPhotoDownloadJobs by lazy {
         val container = NSFileManager.defaultManager
             .containerURLForSecurityApplicationGroupIdentifier(LEDGER_APP_GROUP)?.path
             ?: error("App Group container '$LEDGER_APP_GROUP' unavailable")
-        IosPhotoDownloadJobs(scope, "$container/download-staging")
+        QueuedPhotoDownloadJobs(
+            scope,
+            "$container/download-staging",
+            newTransport = { host -> IosDownloadTransport(host) },
+        )
     }
 
     // The orchestrator: union → foreign selection → download → full-fidelity import → suppression.
