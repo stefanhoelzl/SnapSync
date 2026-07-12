@@ -18,7 +18,10 @@ per-slot temp-file staging, a relaunch drain and a heartbeat — which is why it
 
 See `ios-photokit-upload` for the OS-driven tier on iOS ≥26.1.
 
-Decision record: `changes/archive/2026-07-04-add-url-session-upload`.
+Decision record: `changes/archive/2026-07-04-add-url-session-upload` (the tier),
+`changes/archive/2026-07-12-fix-download-session-lifecycle` (why no lifecycle verb may invalidate the
+background session — the `disable` bullet used to instruct exactly that, and the sibling download client
+that followed it aborted in production).
 
 ## Requirements
 ### Requirement: App-driven upload host below iOS 26.1
@@ -196,8 +199,9 @@ in-process and ordered, with **no** `setUploadJobExtensionEnabled` toggle:
 
 - **enable** (full photo-access grant): run a cycle immediately (foreground) and schedule the first
   `BGProcessingTask`.
-- **disable** (access revoked): invalidate/cancel the background `URLSession` and cancel the scheduled
-  task.
+- **disable** (access revoked): cancel all in-flight upload **tasks**, delete their staged temp files, and
+  cancel the scheduled task. The background `URLSession` itself SHALL be left intact — see "Cancellation
+  never invalidates the background session" below.
 - **re-provision** (valid `snapsync://` rescan): cancel in-flight tasks for the old event and delete
   their staged temp files, update the `eventId`, reconcile against storage (seed already-stored
   resources as `COMPLETED` via `:capability:membership`), then run a cycle — all ordered in one process,
@@ -212,6 +216,40 @@ in-process and ordered, with **no** `setUploadJobExtensionEnabled` toggle:
 #### Scenario: Leave cancels transfers and wipes local state
 - **WHEN** the user leaves the event on iOS 18–26.0
 - **THEN** in-flight tasks and the scheduled `BGProcessingTask` are cancelled, staged temp files are deleted, and the ledger, discovery cursor, and stored `eventId` are cleared
+
+#### Scenario: Disable cancels tasks without destroying the session
+- **WHEN** photo access is revoked on iOS 18–26.0
+- **THEN** the in-flight upload tasks and the scheduled `BGProcessingTask` are cancelled and staged temp files deleted, while the background `URLSession` remains valid — so a later re-grant can run a cycle without rebuilding it
+
+### Requirement: Cancellation never invalidates the background session
+
+Every lifecycle verb that stops transfers SHALL cancel the individual `URLSession` **tasks**, and none of
+them — **disable**, **re-provision**, **leave**, or **switch** — SHALL invalidate the background
+`URLSession`.
+
+A background `URLSession` is a process-lifetime singleton. Invalidation is **terminal**: creating a task on
+an invalidated session throws an Objective-C `NSException`, which Kotlin/Native cannot catch and which
+aborts the process. Because every one of these verbs is followed by a later upload — a re-grant after
+disable, a fresh cycle after re-provision, a new event after switch — a session destroyed as a means of
+cancelling is a crash awaiting the next cycle. Invalidation is reserved for process teardown or for
+deliberately discarding a session to rotate its identifier, and is used for neither here. The session
+identifier SHALL remain stable so `handleEventsForBackgroundURLSession` can re-adopt it across launches.
+
+This requirement records the rule the tier already implements, and removes the previous instruction to
+"invalidate/cancel the background `URLSession`" on disable — which, if implemented literally, would abort
+the app on the next upload after a revoke→re-grant. The same rule governs the download client
+(`photo-download`), where following that instruction did abort the app in production.
+
+#### Scenario: Re-grant after a disable uploads without a crash
+
+- **WHEN** photo access is revoked (cancelling transfers) and later granted again, and a cycle runs
+- **THEN** upload tasks are created on the still-valid background session and the app does not abort
+
+#### Scenario: No lifecycle verb invalidates the session
+
+- **WHEN** disable, re-provision, leave, or switch stops in-flight transfers
+- **THEN** each cancels the individual upload tasks and the background `URLSession` remains valid and
+  reusable
 
 ### Requirement: Module placement and testing split
 
