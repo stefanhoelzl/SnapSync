@@ -57,12 +57,27 @@ Swift shells are pass-throughs; all logic is Kotlin. Do not add parsing or decis
 - **App**: `app/ios/src/iosMain/.../SnapSyncRoot.kt` — app-lifetime singleton owning a
   `SupervisorJob` scope on `Dispatchers.Main` (outlives Compose recomposition). Assembles the real
   live stack lazily: `iosLedgerBackend` → `LedgerWatcher` → `LedgerSyncStatusSource` ×
-  `PhotoLibraryPermission` × `KeychainConfigStore` → `StatusContainerHost`. The app **reads** the
-  ledger and, on a full photo grant, enables the extension (`setUploadJobExtensionEnabled`).
+  `PhotoLibraryPermission` × `KeychainConfigStore` → `StatusContainerHost`.
 - **Extension**: `app/ios/photokit-extension/src/iosMain/.../UploadExtensionRoot.kt` — assembles the
   App-Group `LedgerWriter`, the `SyncEngine`, the upload provider, the `IosPhotoKitUploadPlatform`
   (composing the shared `IosDiscovery` from `:app:ios:photokit-discovery`), and the `UploadCycle`;
   `process()` runs one blocking discover→engine→job→drain cycle.
+
+**The upload lifecycle is NOT decided here** (capability `upload-lifecycle`). `SnapSyncRoot` selects
+**exactly one** `UploadProducer` for the process — `PhotoKitUploadProducer` (≥26.1) or
+`UrlSessionUploadController` (18–26.0) — and forwards membership transitions to the tested, tier-neutral
+`UploadArm` in `:capability:upload`. The seam has **two** verbs, `start()` and `stop()`, and **no
+destructive one**: no lifecycle transition (provision, switch, grant, direction change, leave) may clear
+the ledger or the discovery cursor. That state is device-global dedup and stays valid across events; only a
+triggered reconciliation's `resetTo` re-baselines it.
+
+This structure is load-bearing, not tidiness. The lifecycle *used* to live here as a pile of
+`if (useAppDrivenUpload)` branches, and because this module is wiring-only and untested, nothing caught
+that `provisionEvent` → `enableBackgroundUpload()` → `disableExtension()` resolved, on the app-driven tier,
+to a **full leave** (cancel transfers, cancel the heartbeat, wipe ledger + cursor) followed by a no-op
+enable. Joining an event tore the upload arm down and started nothing. Selecting one producer also makes
+the two tiers mutually exclusive *structurally* — `setUploadJobExtensionEnabled` lives inside the PhotoKit
+producer, which is simply not constructed on the other tier, so not even the dev force flag can enable both.
 
 **Single-writer invariant — the writer's process depends on the tier** (`sync-ledger`: exactly one
 record-writer; its process placement is a platform binding). On **iOS ≥26.1** the **extension** is the
@@ -94,14 +109,42 @@ App deploys **min iOS 18**. Upload runs on one of two tiers, selected at
 
 - **iOS ≥26.1 — PhotoKit (`ios-photokit-upload`).** The OS-driven upload extension, using the
   **deprecated 26.1** `PHBackgroundResourceUploadExtension` (the only protocol runnable on current GM
-  devices). The runtime guard keeps the `setUploadJobExtensionEnabled` call from trapping on lower
-  systems. A later move to the iOS 27 async `PHBackgroundResourceUploadJobExtension` is confined to the
-  Swift shell + deployment target.
+  devices). `setUploadJobExtensionEnabled` is confined to `PhotoKitUploadProducer`, which is only
+  constructed when this tier is selected — so it can never trap on a lower system. A later move to the
+  iOS 27 async `PHBackgroundResourceUploadJobExtension` is confined to the Swift shell + deployment
+  target — and, on the Kotlin side, to a third `UploadProducer`.
 - **iOS 18–26.0 — app-driven `URLSession` (`ios-url-session-upload`).** No appex exists; the **main
   app process** performs uploads over a background `URLSession` + `BGProcessingTask`, via
   `IosUrlSessionUploadPlatform` / `IosBackgroundScheduler` (`:app:ios:url-session-upload`) driving the
   same `:capability:upload` `UploadCycle` through the `BackgroundUploadPump`. On this tier the **app**
   is the single `LedgerWriter` (no extension process exists).
+
+**Forcing the app-driven tier on a device** (`SNAPSYNC_FORCE_URLSESSION_UPLOAD=1` as a launch env var, as
+with `SNAPSYNC_DEEPLINK`) is the **only way to exercise the 18–26.0 tier on the agent-driveable SE2**,
+which runs iOS 26.5 and would otherwise take the PhotoKit path. It selects the **tier and nothing else**:
+the transport stays a background `URLSession` (simulator-ness is read from `SIMULATOR_DEVICE_NAME`, not
+inferred from this flag), and the PhotoKit extension is never registered. It previously did all three
+wrong — foreground transport, *and* it still enabled the extension, giving two `LedgerWriter`s over one
+App-Group ledger — which made the SE2 an unfaithful proxy that masked bugs rather than exposing them.
+
+**Deregister the extension first** (≥26.1 devices only). The OS's upload-job registration record lives in
+the **system**, not the app, and survives app relaunch/reinstall. So once a device has run the PhotoKit
+tier, the OS keeps invoking the extension even under the force flag — the flag stops the app from
+*registering* it, but nothing *de*registers it — and the extension will happily upload behind the
+app-driven tier's back (two `LedgerWriter`s again, and it silently does the work you think you are
+testing). Turn it off headlessly with a **download-only** join on the PhotoKit tier (no force flag), which
+drives `arm.onProvision → photokit.stop → setUploadJobExtensionEnabled(false)`:
+
+```
+d=$(python3 -c "import json,base64;print(base64.urlsafe_b64encode(json.dumps(
+  {'eventId':'<uuid>','autoJoin':True,'minPhotoDate':'2001-01-01T00:00:00Z','direction':'download'}
+).encode()).decode().rstrip('='))")
+$P developer dvt launch app.snapsync --env SNAPSYNC_DEEPLINK="snapsync://config?v=3&d=$d" --userspace
+```
+
+Then relaunch with the force flag. Verify with `grep -c 'photokit\.'` on the app log (expect 0) and by
+checking the **extension's** `debug.log` stops gaining `cycle finished` lines. Irrelevant on a real
+18–26.0 device, where no appex can exist at all.
 
 ## Gotchas
 

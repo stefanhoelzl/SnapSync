@@ -200,7 +200,7 @@ class JoinGateIntegrationTest {
             val leaveEvent = LeaveEvent(
                 config = w.configStore,
                 configSource = w.configSource,
-                disableExtension = {},
+                stopUploads = {},
                 notifyLeave = { deleteGate.await() /* hangs */ },
                 scope = scope,
             )

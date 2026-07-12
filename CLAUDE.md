@@ -110,11 +110,14 @@ A one-photo dev device cannot distinguish a bounded fetch from an unbounded one.
 `SNAPSYNC_DEEPLINK` is a **dev/test trigger** (capability `ios-app-shell`): on launch the app
 forwards it through the same path as a scanned QR, (re)provisioning the event. It is read **once per
 process** and is inert in production (a launch env var is only injectable via a developer launch).
-**Note:** re-provision no longer forces a fresh whole-library upload — it now **reconciles against
-storage** (the `event-rejoin-reconciliation` join seeds already-stored photos as `COMPLETED` before
-enabling), so a relaunch against an event that already has objects uploads **nothing new**. To
-observe real uploads in the dev loop, point at a **fresh event id** (or clear the event's objects in
-the bunny zone) so the reconcile finds nothing to seed.
+**Note:** re-provision no longer forces a fresh whole-library upload — it **reconciles against storage**
+(`event-rejoin-reconciliation` seeds already-stored photos as `COMPLETED` before any upload job is
+created), so a relaunch against an event that already has objects uploads **nothing new**. The reconcile
+runs inside the shared `UploadCycle` and is a **required** constructor parameter, so it holds on **both**
+tiers. (It did not always: it was wired per-composition-root and the iOS 18–26.0 tier shipped without one,
+so a switch / leave-then-rejoin / reinstall re-uploaded the whole post-cutoff library. Fixed in
+`changes/archive/…-fix-app-driven-upload-lifecycle`.) To observe real uploads in the dev loop, point at a
+**fresh event id** (or clear the event's objects in the bunny zone) so the reconcile finds nothing to seed.
 
 **Restarting the app (black-screen trap).** `dvt launch --kill-existing` — and `dvt kill`/`pkill` —
 only send **SIGTERM**, which SnapSync ignores; a relaunch then layers a new instance on the

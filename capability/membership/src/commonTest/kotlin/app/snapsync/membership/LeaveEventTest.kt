@@ -36,7 +36,7 @@ class LeaveEventTest {
         LeaveEvent(
             config = config,
             configSource = FakeConfigSource("E1"),
-            disableExtension = { order += "disable" },
+            stopUploads = { order += "disable" },
             notifyLeave = { id -> order += "notify"; notifiedWith = id },
             scope = backgroundScope,
         ).leave()
@@ -58,7 +58,7 @@ class LeaveEventTest {
         LeaveEvent(
             config = config,
             configSource = FakeConfigSource("E7"),
-            disableExtension = {},
+            stopUploads = {},
             notifyLeave = { id -> notifyStartedWith = id; neverCompletes.await() /* hangs */ },
             scope = backgroundScope,
         ).leave() // returns promptly despite the notify below never completing
@@ -83,7 +83,7 @@ class LeaveEventTest {
         LeaveEvent(
             config = throwingConfig,
             configSource = FakeConfigSource("E2"),
-            disableExtension = { disabled = true },
+            stopUploads = { disabled = true },
             notifyLeave = { notified = true },
             scope = backgroundScope,
         ).leave()
@@ -103,7 +103,7 @@ class LeaveEventTest {
         LeaveEvent(
             config = config,
             configSource = FakeConfigSource("E3"),
-            disableExtension = { order += "disable" },
+            stopUploads = { order += "disable" },
             notifyLeave = { throw RuntimeException("offline") },
             scope = backgroundScope,
         ).leave()
@@ -122,7 +122,7 @@ class LeaveEventTest {
         LeaveEvent(
             config = config,
             configSource = FakeConfigSource("E4"),
-            disableExtension = { throw RuntimeException("photokit") },
+            stopUploads = { throw RuntimeException("photokit") },
             notifyLeave = {},
             scope = backgroundScope,
         ).leave()
@@ -138,7 +138,7 @@ class LeaveEventTest {
         LeaveEvent(
             config = config,
             configSource = FakeConfigSource(null), // nothing to leave
-            disableExtension = {},
+            stopUploads = {},
             notifyLeave = { notified = true },
             scope = backgroundScope,
         ).leave()

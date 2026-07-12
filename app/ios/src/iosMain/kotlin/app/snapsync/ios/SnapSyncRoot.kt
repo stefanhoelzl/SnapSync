@@ -28,7 +28,6 @@ import app.snapsync.push.PushTokenSource
 import app.snapsync.membership.HttpLeaveNotifier
 import app.snapsync.membership.LeaveEvent
 import app.snapsync.membership.LeaveNotifier
-import app.snapsync.membership.clearRequestedOffMain
 import app.snapsync.membership.darwinHttpClient
 import app.snapsync.download.DownloadController
 import app.snapsync.download.HttpEventUnionSource
@@ -43,7 +42,6 @@ import app.snapsync.download.StoreDownloadStatusSource
 import app.snapsync.downloadstore.SqlDelightDownloadStore
 import app.snapsync.downloadstore.iosDownloadStore
 import platform.Foundation.NSFileManager
-import app.snapsync.engine.DISCOVERY_TOKEN_KEY
 import app.snapsync.engine.LEDGER_APP_GROUP
 import app.snapsync.engine.LedgerBackend
 import app.snapsync.engine.iosLedgerBackend
@@ -52,6 +50,8 @@ import app.snapsync.status.LedgerCounts
 import app.snapsync.status.OwnDeviceGalleryStatusSource
 import app.snapsync.status.ReadingLedgerCountsSource
 import app.snapsync.upload.UPLOAD_LIVENESS_DARWIN_NAME
+import app.snapsync.upload.UploadArm
+import app.snapsync.upload.UploadProducer
 import app.snapsync.logging.FileLogWriter
 import app.snapsync.logging.PublicNSLogWriter
 import app.snapsync.logging.invocation
@@ -80,8 +80,6 @@ import platform.BackgroundTasks.BGTaskScheduler
 import platform.Foundation.NSBundle
 import platform.Foundation.NSOperatingSystemVersion
 import platform.Foundation.NSProcessInfo
-import platform.Foundation.NSUserDefaults
-import platform.Photos.PHPhotoLibrary
 import platform.UIKit.UIActivityViewController
 import platform.UIKit.UIApplication
 import platform.darwin.dispatch_async
@@ -98,9 +96,14 @@ import platform.darwin.dispatch_get_main_queue
  * Assembly is lazy so it runs once on first view creation: the storage-truth status sources
  * (completeness listing + on-disk manifests) × the gallery total × PhotoKit permission → the
  * listing-backed source → container. `permission` and `config` are each passed as both their ports
- * (one adapter implements both). Status derives from **storage truth, not the ledger** — the app no
- * longer reads the ledger (the background-upload extension is its sole, private owner) — and, on a
- * full grant, enables that extension where supported.
+ * (one adapter implements both).
+ *
+ * **Upload lifecycle lives elsewhere.** This root selects exactly one [UploadProducer] for the process
+ * (the PhotoKit extension registration on iOS ≥26.1, the in-app URLSession pump on 18–26.0) and forwards
+ * membership transitions to the tested, tier-neutral [UploadArm] in `:capability:upload`. The *decision* —
+ * which verb fires on provision / grant / leave — is not made here, because this module is wiring-only and
+ * untested by the project's hard rule, and parking that decision here is precisely how the app-driven tier
+ * shipped a provision path that destroyed its ledger and started nothing (capability `upload-lifecycle`).
  */
 object SnapSyncRoot {
 
@@ -243,16 +246,18 @@ object SnapSyncRoot {
     // call never blocks leaving). Used by BOTH the explicit Leave and a switch (see [provisionEvent]).
     private val leaveNotifier: LeaveNotifier by lazy { HttpLeaveNotifier(darwinHttpClient(), backendHost) }
 
-    // The leave use-case: disables the producer, clears the Keychain config (which flips the screen off
-    // the joined layer), then fires the backend notify fire-and-forget on the app-lifetime `scope` so a
-    // slow DELETE never freezes the screen. It constructs no ledger type; the extension resets its own
-    // private ledger, cursor, and joinedEventId marker on its next cycle once the configured event no
-    // longer matches. The eventId is snapshotted before the clear and passed into the notify.
+    // The leave use-case: stops the producer, clears the Keychain config (which flips the screen off the
+    // joined layer), then fires the backend notify fire-and-forget on the app-lifetime `scope` so a slow
+    // DELETE never freezes the screen. It constructs no ledger type and **destroys no dedup state**: the
+    // ledger, discovery cursor, and accumulator are device-global and stay valid across events, so a later
+    // join re-uploads nothing already in this device's byte partition. The reconciler clears the
+    // `joinedEventId` marker on the next cycle (`event-rejoin-reconciliation`). The eventId is snapshotted
+    // before the clear and passed into the notify.
     private val leaveEvent: LeaveEvent by lazy {
         LeaveEvent(
             config = config,
             configSource = config,
-            disableExtension = { disableExtension() },
+            stopUploads = { uploadArm.onLeave() },
             notifyLeave = { eventId -> leaveNotifier.leave(eventId, deviceId) },
             scope = scope,
         )
@@ -331,7 +336,7 @@ object SnapSyncRoot {
         // the live own-device gallery total, minted into snapshots. Ledger-sourced, no storage LIST for
         // upload status (spec: sync-status); safe under no-deletion-during-an-active-event.
         val syncSource = LedgerBackedSyncStatusSource(ledgerCounts, permission, gallery, scope)
-        enableBackgroundUploadOnGrant()
+        startUploadsOnGrant()
         ensureAlbumOnGrant()
         // Start registering the APNs token: the collector reacts to each token the AppDelegate delivers
         // (StateFlow-retained, so a token delivered before this launches is still registered).
@@ -555,10 +560,19 @@ object SnapSyncRoot {
     /**
      * Provision an event id — the shared path for both a scanned/typed deeplink and a freshly created
      * event. Persists the config (the container's `ConfigSource` is this instance), re-reads the gallery
-     * total and the storage-truth status sources (the new event has its own completeness listing), and
-     * re-enables the producer if access is granted. The app runs no join, fetch, or seed — the extension
-     * self-reconciles, gated by its `joinedEventId` marker. Re-enabling matters because a prior leave
-     * disabled the producer and the grant collector does not re-fire while permission is unchanged.
+     * total and the storage-truth status sources, then **starts** the producer if access is granted (via
+     * the tested, tier-neutral [UploadArm]). The app runs no join, fetch, or seed — the upload cycle
+     * self-reconciles, gated by its `joinedEventId` marker (`event-rejoin-reconciliation`).
+     *
+     * Starting here is load-bearing: the grant collector fires only on a *transition* to GRANTED, so a
+     * membership provisioned while access is already granted — the common case for every join after the
+     * first — would otherwise never start uploading at all.
+     *
+     * Nothing is cancelled, toggled, or reset. This path used to run a PhotoKit-shaped "disable→enable"
+     * ritual regardless of tier; on the app-driven tier its disable half resolved to a full *leave*
+     * (cancelling transfers and the heartbeat, wiping the ledger and the discovery cursor) while its enable
+     * half was a no-op below iOS 26.1 — so joining an event tore the upload arm down and started nothing,
+     * then re-uploaded the whole post-cutoff library. The seam now has no destructive verb to reach.
      */
     // Persist the WHOLE [EventConfig] the join/create use-case built and run the join side effects.
     // Taking the object (not its fields) is deliberate: the composition root must never destructure and
@@ -579,12 +593,19 @@ object SnapSyncRoot {
         // extension reads it (capability `photo-date-cutoff`).
         config.save(cfg)
         refreshStatusSources() // (re)joined event → re-enumerate own total + re-LIST completeness
-        // The upload arm runs only when the chosen direction includes upload (capability `join-event`).
-        // A download-only membership keeps the producer OFF and actively disables it: a grant that landed
-        // BEFORE this join may already have enabled it (the grant collector fires independently of the
-        // event), so skipping the enable is not enough — we must disable.
+        // Drive the upload arm through the tested, tier-neutral lifecycle (capability `upload-lifecycle`):
+        // with access granted it STARTS the producer (or stops it for a download-only membership), and with
+        // no access it defers to the grant collector. It cannot reach a destructive verb — the seam has
+        // none.
+        //
+        // Nothing is cancelled or reset here, and that is deliberate. In-flight transfers target the
+        // device's event-independent byte partition (`/files/devices/<deviceId>/<filename>` — the eventId
+        // never appears in the URL), so an upload in flight stays valid across a switch; cancelling it would
+        // re-upload identical bytes to an identical URL. The ledger and cursor are device-global dedup and
+        // are likewise left alone — the cycle's marker-gated reconciliation seeds already-stored resources
+        // as COMPLETED and clears the cursor before any job is created (`event-rejoin-reconciliation`).
+        uploadArm.onProvision()
         if (permission.permission.value == PermissionStatus.GRANTED) {
-            if (cfg.direction.includesUpload) enableBackgroundUpload() else disableExtension()
             // Create the event album now if opted in and permission is already granted (the grant
             // collector covers the grant-after-join case). Capability `event-album`.
             ensureAlbumIfOptedIn()
@@ -661,59 +682,6 @@ object SnapSyncRoot {
     }
 
     /**
-     * Enable the background-upload extension (idempotent), guarded so the iOS 26.1 call never traps on
-     * lower systems. The app runs no join, fetch, or seed — reconciliation lives inside the extension,
-     * gated by its `joinedEventId` marker (see `event-rejoin-reconciliation`); the extension
-     * self-reconciles on its next cycle. Called on a full grant and on every (re)provision.
-     *
-     * Registration is a **disable→enable toggle**, not a bare enable (`ios-background-upload` spec): the
-     * system's upload-job configuration record is keyed by bundle id and persists across app
-     * delete/reinstall and reboot, so a stale record (e.g. from a prior or differently-signed build)
-     * makes a bare `enable(true)` fail with `PHPhotosError 3202` ("existing configuration record"),
-     * after which the OS never launches the extension. The leading `enable(false)` deletes the stale
-     * record so `enable(true)` re-creates it cleanly for the currently-installed extension — and the
-     * re-register is what reliably prompts the OS to schedule `process()`. Idempotent-safe to repeat.
-     */
-    // Disable the extension AND recover the jobs the disable wipes (capability `ios-background-upload`).
-    // A disable (`setUploadJobExtensionEnabled(false)`) deletes the OS upload-job configuration, wiping
-    // every in-flight job. Two clears make that recoverable:
-    //   • clearRequested() — drop the now-orphaned REQUESTED rows (the engine never re-issues REQUESTED
-    //     and no API surfaces the vanished job, so without this they stay REQUESTED forever);
-    //   • reset the discovery cursor — clearRequested only makes the keys ABSENT; a settled cursor would
-    //     scan only incrementally and never re-surface them, so force a FULL re-enumeration next cycle
-    //     so they are re-discovered and re-created (COMPLETED rows stay, so stored files don't re-upload).
-    // The SINGLE disable path for both the re-register toggle and leave, so they cannot diverge. Neither
-    // is a per-key record write, so no `LedgerWriter` is built here. clearRequested is **awaited off-main
-    // with a bounded retry** (the tested `clearRequestedOffMain`) and completes BEFORE any re-enable —
-    // not the old fire-and-forget `scope.launch { clearRequested() }` on the main scope, which raced the
-    // immediate re-enable and could delete the re-enabled extension's fresh REQUESTED rows (§7.1).
-    private suspend fun disableExtension() {
-        // App-driven tier: no OS extension to toggle — cancel in-flight transfers + heartbeat and wipe
-        // the local ledger/cursor (leave). The app is the single writer here, so this owns the reset.
-        if (useAppDrivenUpload) { urlSessionUpload.leave(); return }
-        setUploadExtensionEnabled(false)
-        NSUserDefaults(suiteName = LEDGER_APP_GROUP).removeObjectForKey(DISCOVERY_TOKEN_KEY)
-        clearRequestedOffMain({ ledgerBackend.clearRequested() }, log = log)
-    }
-
-    private suspend fun enableBackgroundUpload() = log.invocation("enableBackgroundUpload") {
-        disableExtension() // awaited: the off-main REQUESTED clear completes BEFORE the re-enable below
-        setUploadExtensionEnabled(true)
-        log.i { "background-upload extension re-registered (disable→enable, cleared REQUESTED)" }
-    }
-
-    /**
-     * Toggle the background-upload extension registration, guarded so the iOS 26.1 call never traps on
-     * lower systems. Shared by [enableBackgroundUpload] and the leave use-case's disable lambda, so both
-     * go through one guarded path.
-     */
-    @OptIn(ExperimentalForeignApi::class)
-    private fun setUploadExtensionEnabled(enabled: Boolean) {
-        if (!backgroundUploadSupported()) return
-        PHPhotoLibrary.sharedPhotoLibrary().setUploadJobExtensionEnabled(enabled, error = null)
-    }
-
-    /**
      * Present the system share sheet (`UIActivityViewController`) carrying the invite deeplink, from
      * the current top-most view controller. Wiring-only and fire-and-forget — no completion handler;
      * the host already holds the URL and `UiState` is unaffected. iPhone-only/portrait, so no popover
@@ -734,12 +702,6 @@ object SnapSyncRoot {
         }
     }
 
-    /**
-     * The app's only producer-side responsibility: once photo access is full (`GRANTED`), register the
-     * background-upload extension so the system can invoke its `process()`. The app performs no upload,
-     * fetch, enumeration, or seed — the extension self-reconciles on its next cycle. Re-runs on each
-     * transition to GRANTED; the enable call is idempotent-safe to repeat.
-     */
     // Create the event album on the photo-permission grant (capability `event-album`): the app is the
     // sole creator, and sync needs the same grant, so the album exists before the first synced photo —
     // both processes then only ADD. Idempotent; a no-op when the membership opted out.
@@ -751,17 +713,24 @@ object SnapSyncRoot {
         }
     }
 
-    private fun enableBackgroundUploadOnGrant() {
+    /**
+     * Once photo access is full (`GRANTED`), start the upload producer through the tier-neutral arm
+     * (capability `upload-lifecycle`) — which, on the OS-driven tier, means registering the extension so
+     * the system can invoke its `process()`. The app itself performs no upload, fetch, enumeration, or
+     * seed; the cycle self-reconciles, gated by the `joinedEventId` marker.
+     *
+     * This fires only on a **transition** to GRANTED (`permission` is a `StateFlow`, which conflates an
+     * unchanged value — a foreground re-read of GRANTED→GRANTED does not re-emit). It therefore cannot
+     * rescue a membership provisioned while access was *already* granted: [provisionEvent] owns that case.
+     */
+    private fun startUploadsOnGrant() {
         scope.launch {
             permission.permission.collect { status ->
-                if (status != PermissionStatus.GRANTED) return@collect
-                // A download-only membership keeps the upload arm off even with photo access (needed for
-                // import). With no event yet, direction is irrelevant and the pre-enable is inert (the
-                // extension no-ops without a config). Capability `join-event`.
-                if (!uploadArmEnabled()) return@collect
-                // Per-version tier selection: PhotoKit extension on ≥26.1; the in-app URLSession pump on
-                // 18–26.0 (or the dev force flag). The app-driven start sweeps orphaned staging + pumps a cycle.
-                if (useAppDrivenUpload) urlSessionUpload.start() else enableBackgroundUpload()
+                // Note this fires on the TRANSITION to granted (a StateFlow conflates an unchanged value),
+                // so it can never rescue a membership provisioned while access was ALREADY granted —
+                // `provisionEvent` owns that case. Assuming otherwise is what let the destructive provision
+                // path look survivable.
+                if (status == PermissionStatus.GRANTED) uploadArm.onPermissionGranted()
             }
         }
     }
@@ -771,11 +740,48 @@ object SnapSyncRoot {
     private fun uploadArmEnabled(): Boolean =
         config.config.value?.direction?.includesUpload ?: true
 
+    // The tier's upload mechanism, chosen ONCE (capability `upload-lifecycle`, "Exactly one producer per
+    // process"). Both candidates are `by lazy`, so only the selected one is ever constructed — the
+    // non-selected tier's mechanism cannot run. This is what makes the two tiers mutually exclusive
+    // structurally rather than by a scattered runtime guard: `PhotoKitUploadProducer` simply does not
+    // exist on the app-driven tier, so no code path (including the dev force flag, which previously walked
+    // straight past the version guard and enabled BOTH tiers) can register the PhotoKit extension.
+    private val uploadProducer: UploadProducer by lazy {
+        if (useAppDrivenUpload) urlSessionUpload else photoKitProducer
+    }
+
+    // The tier-neutral lifecycle: which producer verb fires on which membership transition. Tested in
+    // `:capability:upload` (JVM + iosSimulatorArm64) — the decision no longer lives in this untested shell.
+    private val uploadArm: UploadArm by lazy {
+        UploadArm(
+            producer = uploadProducer,
+            isGranted = { permission.permission.value == PermissionStatus.GRANTED },
+            includesUpload = { uploadArmEnabled() },
+            log = log,
+        )
+    }
+
+    // The OS-driven (≥26.1) mechanism. Never constructed on the app-driven tier.
+    private val photoKitProducer: PhotoKitUploadProducer by lazy {
+        PhotoKitUploadProducer(ledgerBackend, log)
+    }
+
     // Dev/test force flag (like SNAPSYNC_DEEPLINK): forces the app-driven URLSession upload tier even on
-    // iOS ≥26.1 so it can be exercised on the simulator (which cannot run the PhotoKit extension). Inert
-    // in production — a launch env var is only injectable via a developer launch.
+    // iOS ≥26.1 so it can be exercised on a device or simulator that would otherwise run the extension.
+    // Inert in production — a launch env var is only injectable via a developer launch.
+    //
+    // It selects the TIER and nothing else (`ios-url-session-upload`): it no longer doubles as "use a
+    // foreground session". Conflating the two made the flag an unfaithful device-testing lever — the only
+    // agent-driveable device (an SE2 on iOS 26.5) could not impersonate the app-driven tier, because
+    // forcing it also downgraded the transport AND still registered the PhotoKit extension.
     private val forceUrlSessionUpload: Boolean =
         NSProcessInfo.processInfo.environment["SNAPSYNC_FORCE_URLSESSION_UPLOAD"] != null
+
+    // Whether this process is a SIMULATOR — a FACT read from the environment, not inferred from a flag
+    // someone has to remember to pass. A background `URLSession` runs on a device; the simulator is the
+    // only place the transport is downgraded.
+    private val isSimulator: Boolean =
+        NSProcessInfo.processInfo.environment["SIMULATOR_DEVICE_NAME"] != null
 
     /** True when uploads run in-process over a background URLSession (iOS 18–26.0, or the force flag). */
     private val useAppDrivenUpload: Boolean
@@ -784,12 +790,14 @@ object SnapSyncRoot {
     // The app-driven (iOS 18–26.0) upload tier's composition root. Built lazily and used only when
     // [useAppDrivenUpload]; on iOS ≥26.1 without the force flag it is never touched (the extension runs).
     private val urlSessionUpload: UrlSessionUploadController by lazy {
-        // Force-flagged (simulator) runs use a foreground session — the sim can't run a background one.
         UrlSessionUploadController(
             scope, ledgerBackend, config, deviceId, backendHost, log,
             httpClient = darwinHttpClient(),
             suppressedAssetIds = { downloadStore.suppressedLocalIds() },
-            useBackgroundSession = !forceUrlSessionUpload,
+            // A background session on any DEVICE — including a force-flagged one, which must be a faithful
+            // proxy for the tier real 18–26.0 users run. Only the simulator is downgraded, and that is keyed
+            // on actually being a simulator, not on the tier flag (`ios-url-session-upload`).
+            useBackgroundSession = !isSimulator,
             // In-process liveness: after each pump cycle, re-read the ledger counts so status moves live.
             onCycleComplete = { ledgerCounts.refresh() },
             // Event album (capability `event-album`): add this cycle's completed own photos to the event

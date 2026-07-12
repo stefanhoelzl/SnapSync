@@ -13,6 +13,58 @@ class BackgroundUploadPumpTest {
         override fun cancel() { cancelled++ }
     }
 
+    /**
+     * The enable path arms the heartbeat. `onStart` is the ONLY trigger that can submit the first
+     * `BGProcessingTask`: `onBackgroundTask` re-submits but presupposes a task already fired, and
+     * `onSessionEvents` re-arms only when an in-flight background transfer completes. Before this, the
+     * enable path called `onForeground` — which never schedules — so on iOS 18–26.0 the heartbeat was
+     * never armed at all and new photos captured while the app was closed had no cold-start kick.
+     */
+    @Test
+    fun onStart_drains_and_arms_the_first_background_task() = runTest {
+        val scheduler = FakeScheduler()
+        var runs = 0
+        val pump = BackgroundUploadPump(
+            runCycle = { runs++; CycleResult.COMPLETED },
+            scheduler = scheduler,
+        )
+
+        pump.onStart()
+
+        assertEquals(1, runs, "the enable path runs a cycle immediately")
+        assertEquals(1, scheduler.scheduled, "…and arms exactly one BGProcessingTask")
+    }
+
+    /** The arm is unconditional — a fully-drained cycle (nothing left to do) still leaves a heartbeat. */
+    @Test
+    fun onStart_arms_even_when_the_cycle_drains_completely() = runTest {
+        val scheduler = FakeScheduler()
+        val pump = BackgroundUploadPump(
+            runCycle = { CycleResult.COMPLETED }, // no work pending
+            scheduler = scheduler,
+        )
+
+        pump.onStart()
+
+        // A COMPLETED cycle means nothing to upload *now* — but the heartbeat is what catches photos
+        // captured later, while the app is closed. Arming only on PROCESSING would lose exactly that.
+        assertEquals(1, scheduler.scheduled)
+    }
+
+    /** Foreground entry still must NOT schedule — completions drive re-invocation while the app is open. */
+    @Test
+    fun onForeground_does_not_arm_a_task() = runTest {
+        val scheduler = FakeScheduler()
+        val pump = BackgroundUploadPump(
+            runCycle = { CycleResult.COMPLETED },
+            scheduler = scheduler,
+        )
+
+        pump.onForeground()
+
+        assertEquals(0, scheduler.scheduled, "foreground drains; it does not schedule background wakes")
+    }
+
     /** A trigger arriving mid-cycle coalesces into exactly one trailing re-run — never a parallel cycle. */
     @Test
     fun coalescesConcurrentTriggersIntoOneRerun() = runTest {

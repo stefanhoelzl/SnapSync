@@ -27,6 +27,7 @@ import app.snapsync.push.EventNotifier
 import app.snapsync.push.KtorPushHttpClient
 import app.snapsync.membership.ExtensionReconciler
 import app.snapsync.membership.HttpDeviceFilesSource
+import app.snapsync.membership.IosJoinedEventMarker
 import app.snapsync.membership.darwinHttpClient
 import app.snapsync.logging.FileLogWriter
 import app.snapsync.logging.PublicNSLogWriter
@@ -199,28 +200,25 @@ object UploadExtensionRoot {
         val payload = configSource.config.value
         val host = uploadHostFromBundle()
 
-        // Re-join reconciliation runs HERE, before any upload job is created (capability
-        // `event-rejoin-reconciliation`): on a (re)join it seeds already-stored photos as COMPLETED so
-        // the producer does not re-upload them, resets the private ledger on an event switch/leave, and
-        // — if the listing fetch fails — defers this cycle (uploads nothing, leaves the marker unset to
-        // retry). A settled join (marker matches the configured event) does no fetch and returns true.
-        val mayUpload = runCatching { reconciler.reconcile(payload?.eventId) }
-            .getOrElse { log.e(it) { "reconcile failed — deferring uploads this cycle" }; false }
-
         val config = buildUploadConfig(payload?.eventId, host)
-        if (payload == null || config == null || !mayUpload) {
-            // Not joined yet (no event id / unreadable config), a missing baked host, a leave reset, or a
-            // deferred reconcile — nothing to upload. A clean no-op completion, never a failure; the run
-            // re-tries next cycle. An unreadable config includes a legacy Keychain item with no cutoff
-            // (capability `photo-date-cutoff`): it reads as no config, so this cycle uploads nothing until
-            // the user re-joins — the safe outcome.
+        if (payload == null || config == null) {
+            // Not joined yet (no event id / unreadable config), a missing baked host, or a leave — nothing
+            // to upload, so no cycle is built. A clean no-op completion, never a failure. An unreadable
+            // config includes a legacy Keychain item with no cutoff (capability `photo-date-cutoff`): it
+            // reads as no config, so this cycle uploads nothing until the user re-joins — the safe outcome.
+            //
+            // The reconciler still runs for the NO-CONFIG case, because that is where a leave clears the
+            // `joinedEventId` marker (capability `event-rejoin-reconciliation`) — it keeps the ledger,
+            // cursor, and accumulator intact so a later provision of any event dedups against them. No
+            // cycle exists to carry this, so it stays here; the JOINED case reconciles inside the cycle.
+            runCatching { reconciler.reconcile(null) }
+                .onFailure { log.w(it) { "leave-side marker clear failed" } }
             log.i {
-                "skipping cycle — eventId present=${payload != null}, " +
-                    "host present=${!host.isNullOrEmpty()}, mayUpload=$mayUpload"
+                "skipping cycle — eventId present=${payload != null}, host present=${!host.isNullOrEmpty()}"
             }
             return@runBlocking CycleResult.COMPLETED
         }
-        log.i { "process: config present and reconciled — running cycle" }
+        log.i { "process: config present — running cycle (reconcile runs inside it)" }
         val engine = SyncEngine(
             // Bytes go to the device's event-independent partition (/files/devices/<deviceId>/…); the eventId
             // in `config` drives only the producer's event scope + the device-manifest write, not the
@@ -241,6 +239,11 @@ object UploadExtensionRoot {
         val cutoff = payload.minPhotoDate
         val cycle = UploadCycle(
             engine, ledger, platform, discoveryStore, log,
+            // Re-join reconciliation (capability `event-rejoin-reconciliation`) now runs INSIDE the shared
+            // cycle, before any upload job is created — the same gate, moved from this root into
+            // `:capability:upload` so BOTH tiers get it (the app-driven tier shipped without one). The
+            // cycle stays event-agnostic; this lambda closes over the eventId, like the notify hook.
+            reconcile = { reconciler.reconcile(config.eventId) },
             onDiscovery = { discovery ->
                 runCatching {
                     withTimeout(DEVICE_MANIFEST_TIMEOUT_MS) {
