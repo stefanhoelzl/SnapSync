@@ -2,6 +2,8 @@ package app.snapsync.attest
 
 import app.snapsync.deviceid.DeviceIdentity
 import co.touchlab.kermit.Logger
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 
@@ -53,6 +55,19 @@ class DeviceAttestation(
     private val now: () -> Long,
     private val log: Logger = Logger.withTag("DeviceAttestation"),
 ) {
+
+    private val _tokenChanged = MutableSharedFlow<Unit>(extraBufferCapacity = 1)
+
+    /**
+     * Emits whenever a NEW token is obtained (minted or renewed).
+     *
+     * Anything that had to be *sent* with the old credential and was refused must be re-sent — most
+     * importantly the APNs registration, which is `PUT` exactly once per OS-delivered token. If its `PUT`
+     * is refused (a fresh install races attestation, or the token is rejected), the OS never delivers that
+     * token again, so without this the device would go **permanently unregistered**: no silent pushes, no
+     * download wakes, and none of the wake-driven renewals this capability depends on.
+     */
+    val tokenChanged: Flow<Unit> = _tokenChanged
 
     /** What every request builder reads. MAY be absent or expired — a `401` is a retryable failure. */
     fun token(): String? = store.token()
@@ -128,6 +143,7 @@ class DeviceAttestation(
             }.getOrNull()
             if (renewed != null) {
                 store.setToken(renewed)
+                _tokenChanged.tryEmit(Unit)
                 log.i { "token renewed" }
                 return true
             }
@@ -149,6 +165,7 @@ class DeviceAttestation(
                 // assertion path, against a key the server has never heard of.
                 store.setKeyId(keyId)
                 store.setToken(minted)
+                _tokenChanged.tryEmit(Unit)
                 log.i { "attested and minted a fresh token" }
                 true
             }

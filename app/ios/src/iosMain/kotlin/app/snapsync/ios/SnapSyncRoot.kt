@@ -429,7 +429,19 @@ object SnapSyncRoot {
         ensureAlbumOnGrant()
         // Start registering the APNs token: the collector reacts to each token the AppDelegate delivers
         // (StateFlow-retained, so a token delivered before this launches is still registered).
-        scope.launch { pushRegistration.run(pushTokenSource) }
+        //
+        // ATTEST FIRST. The registration `PUT /devices/<id>` is gated, and on a fresh install the APNs
+        // token can arrive before this device has any attestation token — which is exactly what happened
+        // on the SE2: the PUT took a 401. Awaiting `ensureFresh` first removes that race.
+        //
+        // `tokenChanged` is the backstop, and it is the part that actually makes this SAFE: the OS
+        // delivers an APNs token ONCE and never re-delivers it, so a registration refused for any reason
+        // would otherwise never be retried, leaving the device permanently unregistered — no silent
+        // pushes, no download wakes, and none of the wake-driven renewals. Any new credential re-runs it.
+        scope.launch {
+            runCatching { attestation.ensureFresh() }
+            pushRegistration.run(pushTokenSource, attestation.tokenChanged)
+        }
         // `config` is passed as both ports (one Keychain adapter implements both), as `permission` is.
         // No EventStatus source: status is read from the listing; the extension owns reconciliation.
         StatusContainerHost(

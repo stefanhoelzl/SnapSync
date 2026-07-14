@@ -113,8 +113,11 @@
 
 - [x] 7.1 **PASSED on the SE2 against the live gate:** `GET /attest/challenge → 200`,
       `POST /attest/token → 201`, `DeviceAttestation: attested and minted a fresh token`.
-      *Observed: `PushRegistration` fires BEFORE attestation completes and takes one `401 unattested`, then
-      retries — harmless, and it self-heals on the next token.*
+      *Observed: `PushRegistration` fired BEFORE attestation completed and took a `401 unattested`. Its log
+      said "will retry on next token" — but the OS delivers an APNs token ONCE and never re-delivers it, so
+      **nothing would ever have retried**: the device would have been permanently unregistered (no silent
+      pushes → no download wakes → none of the wake-driven renewals). Fixed (design D10d): attest first,
+      AND re-register on `DeviceAttestation.tokenChanged`. A third bug the device run caught.*
 - [x] 7.2 **PASSED:** 25 objects landed in the bunny storage zone at 18:56–18:57 UTC — well after the gate
       went live at 18:15 — so every one traversed the token check. Verified against the zone, not the
       status screen.

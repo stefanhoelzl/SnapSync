@@ -4,6 +4,7 @@ import io.ktor.client.HttpClient
 import io.ktor.client.engine.mock.MockEngine
 import io.ktor.client.engine.mock.respond
 import io.ktor.http.HttpStatusCode
+import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.runTest
@@ -17,8 +18,13 @@ private class FakePushHttpClient(private val result: Result<Unit> = Result.succe
 
     val calls = mutableListOf<Call>()
 
+    /** When set, the FIRST put fails (the gated 401 a fresh install takes) and later ones succeed. */
+    var failFirstPut = false
+    private var puts = 0
+
     override suspend fun put(url: String, jsonBody: String): Result<Unit> {
         calls.add(Call(url, jsonBody))
+        if (failFirstPut && puts++ == 0) return Result.failure(IllegalStateException("HTTP 401 unattested"))
         return result
     }
 
@@ -124,5 +130,44 @@ class PushRegistrationTest {
         assertTrue(KtorPushHttpClient(HttpClient(ok)).post("https://e/events/x/notify").isSuccess)
         val bad = MockEngine { respond("nope", HttpStatusCode.BadGateway) }
         assertTrue(KtorPushHttpClient(HttpClient(bad)).post("https://e/events/x/notify").isFailure)
+    }
+
+    @Test
+    fun a_refused_registration_is_retried_when_a_new_credential_arrives() = runTest {
+        // The regression this exists to prevent. `PUT /devices/<id>` is gated, and on a fresh install the
+        // APNs token can arrive before the device has attested — so the registration takes a 401. The OS
+        // delivers an APNs token ONCE and never re-delivers it, so without a retry the device would sit
+        // PERMANENTLY unregistered: no silent pushes, no download wakes, and none of the wake-driven
+        // token renewals this whole design leans on.
+        val client = FakePushHttpClient().apply { failFirstPut = true }
+        val source = PushTokenSource("sandbox")
+        val credential = MutableSharedFlow<Unit>(extraBufferCapacity = 1)
+        val registration = PushRegistration(client, "https://edge.example", deviceId)
+
+        backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) {
+            registration.run(source, credential)
+        }
+
+        source.deliver("DEADBEEF") // …lands before attestation → refused
+        assertEquals(1, client.calls.size)
+
+        credential.emit(Unit) // the app attests; a new token arrives
+
+        assertEquals(2, client.calls.size) // …and the registration is re-sent
+        assertTrue(client.calls.all { it.body.contains("DEADBEEF") })
+    }
+
+    @Test
+    fun a_credential_change_with_no_apns_token_yet_registers_nothing() = runTest {
+        val client = FakePushHttpClient()
+        val credential = MutableSharedFlow<Unit>(extraBufferCapacity = 1)
+
+        backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) {
+            PushRegistration(client, "https://edge.example", deviceId).run(PushTokenSource("sandbox"), credential)
+        }
+
+        credential.emit(Unit) // attested, but the OS has delivered no APNs token yet
+
+        assertTrue(client.calls.isEmpty())
     }
 }
