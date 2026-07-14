@@ -167,6 +167,11 @@ upstream failure, timeout, aborted stream, or partial write SHALL be surfaced as
 endpoint SHALL NEVER return `2xx` for an unconfirmed or partial upload. (A false success would, under
 the engine's retry-forever policy, strand a truncated object permanently.)
 
+The `2xx` the endpoint returns SHALL be one the iOS background uploader accepts as success **as
+delivered through the bunny CDN pull zone** — a success code the uploader rejects would strand the
+resource retrying forever even though the object is durably stored, which is the same harm as a false
+failure and is invisible to the endpoint.
+
 #### Scenario: Upstream success propagated
 
 - **WHEN** bunny returns a success status confirming the stored object
@@ -177,16 +182,34 @@ the engine's retry-forever policy, strand a truncated object permanently.)
 - **WHEN** bunny returns an error, the request times out, or the stream aborts mid-upload
 - **THEN** the endpoint responds `5xx` and never `2xx`
 
+#### Scenario: The device-visible success code is accepted by the uploader
+
+- **WHEN** the iOS background uploader completes a `PUT` against the device-facing origin and the
+  endpoint's `2xx` reaches it through the pull zone
+- **THEN** the uploader treats the upload as successful and does not retry the resource
+
 ### Requirement: OPTIONS preflight falls back to plain PUT
 
-The endpoint SHALL respond to an `OPTIONS` request such that the iOS background uploader proceeds
-with a plain, single-shot (non-resumable) `PUT` — i.e. it SHALL NOT advertise resumable-upload
-support. (Server-side resumable uploads are a deferred future capability.)
+The endpoint SHALL respond to an `OPTIONS` request such that the iOS background uploader proceeds with
+a plain, single-shot (non-resumable) `PUT` — i.e. it SHALL NOT advertise resumable-upload support.
+(Server-side resumable uploads are a deferred future capability.)
+
+This SHALL hold **as observed by the device through the bunny CDN pull zone that fronts the Edge
+Script**, not merely at the script's origin. The pull zone is free to answer or rewrite `OPTIONS`
+itself, so the script's own response is not on its own sufficient: what the requirement constrains is
+the response the **device** receives from the device-facing origin.
 
 #### Scenario: OPTIONS does not advertise resumable
 
 - **WHEN** an `OPTIONS` request is received for an upload path
 - **THEN** the response does not advertise resumable-upload support, signaling a plain `PUT` path
+
+#### Scenario: The device-visible OPTIONS response, through the CDN, yields a plain PUT
+
+- **WHEN** the iOS background uploader preflights an upload path at the device-facing origin, and that
+  preflight is answered by the pull zone rather than by the script
+- **THEN** the response still advertises no resumable-upload support, and the uploader proceeds with a
+  plain, single-shot `PUT` that the endpoint stores
 
 ### Requirement: Device manifest write gated on event existence
 
@@ -222,18 +245,24 @@ is ungated.
 - **WHEN** a valid `PUT /files/devices/<deviceId>/<filename>` arrives
 - **THEN** the endpoint streams the body without reading any event marker (the byte route is ungated)
 
-## Assumptions (unverified on device)
+## Verified on device (non-normative)
 
-This section is **non-normative**. The endpoint's bunny-facing behavior above is verified by the
-`Deno.test` suite against a mocked upstream. The **iOS-facing** surface is frozen here but cannot be
-exercised in a backend-only change; these assumptions are the iOS follow-up's first job, and this
-section is their only home:
+This section is **non-normative**. It records that the endpoint's **iOS-facing** surface — which could
+never be exercised while bunny dropped iOS's zero-window upload SYNs, and which was therefore frozen
+here as a list of assumptions — has now been measured on a physical iPhone SE2 (iOS 26.5) against the
+live Edge Script, through its CDN pull zone
+(`changes/archive/2026-07-14-migrate-runtime-to-bunny`, group 4):
 
-- **OPTIONS fallback.** That the iOS background uploader, given the non-resumable OPTIONS response,
-  falls back to a plain `PUT` against this custom origin (raw S3 verified to need no preflight;
-  unverified here).
-- **Accepted success codes.** Which `2xx` code(s) the background uploader treats as success.
-- **Large-payload budget.** That the largest Live-Photo paired-video completes within the 30 s
-  **CPU** budget (expected: yes — pass-through is I/O-bound) and within any **undocumented
-  wall-clock/idle timeout** on a long-held streaming request. If violated, the fix is enabling
-  server-side resumable uploads.
+- **OPTIONS fallback — confirmed, and the pull zone no longer shadows it.** `OPTIONS` returns the
+  script's own `204` with `allow: PUT, OPTIONS` (`cdn-requestpullcode: 204` — the CDN forwards to origin
+  and relays). The earlier finding that a BunnyCDN pull zone answers `OPTIONS` itself with a generic
+  `200`, shadowing the script's handler (`changes/archive/2026-06-26-migrate-ios-upload-to-bunny`), is
+  **stale**; bunny changed that behavior.
+- **Accepted success codes — confirmed.** The OS-driven uploader accepts the endpoint's `201`: both
+  resources of a real asset completed with `attempt=0` (first try, no retry).
+- **Large-payload budget — confirmed.** A 4.5 MB Live-Photo paired video streamed through the CDN and
+  the Edge Script into storage on the first attempt. Edge Scripting's 30 s budget is **CPU**, so a
+  pass-through stream is cheap; the real ceiling is the **pull zone's 60 s request timeout**, which a
+  Live Photo's ~2–3 s video does not approach. Server-side resumable uploads remain **deferred**.
+- **Both upload tiers — confirmed.** The OS-driven PhotoKit extension (iOS ≥26.1) and the app-driven
+  background-`URLSession` pump (iOS 18–26.0) each land uploads against this endpoint.
