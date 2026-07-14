@@ -172,10 +172,10 @@ inside the PR would collide with the archive merge — and would also make the s
 since `backend-deployment` correctly says Deno Deploy is the active runtime right up until task 6.3
 flips the `CNAME`.
 
-- [ ] 8.1 Rewrite `openspec/specs/backend-deployment/spec.md`'s `## Purpose` prose: one runtime; the
+- [x] 8.1 Rewrite `openspec/specs/backend-deployment/spec.md`'s `## Purpose` prose: one runtime; the
       **no-scoped-keys ⇒ CI-can't-write-config ⇒ config-in-source** causal chain (without it a future
       reader deletes the account-key requirement as paranoia and silently re-opens the drift channel);
       `Decision record:` gains `changes/archive/<id>-migrate-runtime-to-bunny`.
-- [ ] 8.2 Delete the non-normative `## Assumptions (unverified on device)` section from
+- [x] 8.2 Delete the non-normative `## Assumptions (unverified on device)` section from
       `openspec/specs/bunny-upload-endpoint/spec.md` — group 4 turned those assumptions into facts.
-- [ ] 8.3 Delete `openspec/specs/backend-config/` (folded into `backend-deployment`).
+- [x] 8.3 Delete `openspec/specs/backend-config/` (folded into `backend-deployment`).

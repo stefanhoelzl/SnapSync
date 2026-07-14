@@ -122,7 +122,13 @@ content type, no role. `size` SHALL be the object's byte length as reported by t
 `url` SHALL be the **presigned S3 download URL** for that object, as defined by this spec's "Presigned
 S3 download URL" requirement (the per-device list and the event-wide union share that single authority).
 `filename` SHALL be the uploaded filename, decoded back from the stored key. Because each `url` is a
-time-limited signed URL, the per-device list response SHALL carry `Cache-Control: no-store`.
+time-limited signed URL, the per-device list response SHALL carry
+`Cache-Control: no-store, no-cache, max-age=0`.
+
+All three directives are sent deliberately. The endpoint is fronted by a bunny CDN pull zone, and bunny
+documents `no-cache` — **not** `no-store` — as the origin directive that suppresses pull-zone caching.
+Sending `no-store` alone would leave the listing's cacheability resting on undocumented behavior, and a
+cached listing would serve stale, expiring presigned URLs.
 
 #### Scenario: File entry carries the three fields
 
@@ -138,7 +144,13 @@ time-limited signed URL, the per-device list response SHALL carry `Cache-Control
 #### Scenario: The per-device list is non-cacheable
 
 - **WHEN** the endpoint responds `200` with a per-device listing
-- **THEN** the response carries `Cache-Control: no-store` (its `url`s are time-limited signed URLs)
+- **THEN** the response carries `Cache-Control: no-store, no-cache, max-age=0` (its `url`s are
+  time-limited signed URLs)
+
+#### Scenario: The CDN does not cache a per-device listing
+
+- **WHEN** the same per-device listing is requested twice through the pull zone
+- **THEN** each response is served from the origin (not a cached copy) and carries freshly-signed `url`s
 
 ### Requirement: Faithful outcome — no partial list
 
@@ -366,8 +378,10 @@ token (the event id is the capability; the marker is consulted for existence, no
 endpoint SHALL be **identity-blind**: it SHALL return every contributing device's complete assets,
 each tagged with its `deviceId`, and SHALL NOT accept any "own device" / exclude parameter — skipping
 the caller's own device is the client's concern, performed by `deviceId`. The response SHALL carry
-`Cache-Control: no-store` (the union is a live read over mutable manifests and listings). The endpoint
-SHALL NOT expose or forward the bunny account API key.
+`Cache-Control: no-store, no-cache, max-age=0` (the union is a live read over mutable manifests and
+listings, carrying time-limited signed URLs, and it is served through a bunny CDN pull zone that
+documents `no-cache` — not `no-store` — as the directive suppressing its cache). The endpoint SHALL NOT
+expose or forward the bunny account API key.
 
 #### Scenario: No token required
 
@@ -383,7 +397,13 @@ SHALL NOT expose or forward the bunny account API key.
 #### Scenario: Response is non-cacheable
 
 - **WHEN** the endpoint responds `200` with a union
-- **THEN** the response carries `Cache-Control: no-store`
+- **THEN** the response carries `Cache-Control: no-store, no-cache, max-age=0`
+
+#### Scenario: The CDN does not cache a union
+
+- **WHEN** the same event's union is requested twice through the pull zone
+- **THEN** each response is served from the origin (not a cached copy), reflecting any manifest or
+  listing change between the two reads
 
 #### Scenario: Account API key never exposed
 

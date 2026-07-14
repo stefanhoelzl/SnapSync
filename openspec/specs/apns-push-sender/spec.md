@@ -10,7 +10,7 @@ can pull new photos, never to interrupt the user. Delivery is reported **per tok
 can reject an individual token (expired, unregistered) without that being a failure of the fan-out, so the
 sender surfaces each outcome rather than collapsing them into one verdict.
 
-The provider credentials come from the environment, fail-closed (`backend-config`). The caller that decides
+The APNs signing key (`APNS_PRIVATE_KEY`) is one of the backend's two environment **secrets**, fail-closed at startup; the key id, team id, and topic are source constants (`backend-deployment`). The caller that decides
 *when* to send is `event-notify-endpoint`.
 
 Decision record: `changes/archive/2026-07-05-push-notification-infra`.

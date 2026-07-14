@@ -1,6 +1,6 @@
 // Hono app for the backend (capabilities `event-creation` + `bunny-upload-endpoint` +
 // `bunny-list-endpoint` + `device-config-endpoint` + `event-notify-endpoint`, over the shared
-// `backend-config`; pushes via `apns-push-sender`).
+// `backend-deployment`; pushes via `apns-push-sender`).
 //
 //   POST /events
 //     → mints an event: writes the marker `events/<id>/metadata.json`, returns {eventId,name,createdAt}.
