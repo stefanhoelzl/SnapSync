@@ -134,6 +134,30 @@ gated:** taps / UI gestures need a signed **WebDriverAgent** (`developer wda`), 
 **timing** is OS-owned — a re-provision reliably triggers an invocation but you cannot force *when* it
 runs.
 
+### `main` is the public alpha channel
+
+Every merge to `main` reaches **public** TestFlight testers, automatically and **silently** (capability
+`ios-testflight-delivery`). `ios.yml` runs `ios-build` + `ios-test` (the merge gates) → `ios-deliver`
+(export + upload) → **`ios-promote`**, which puts the build in the **`alpha` external group**, whose
+public link — <https://testflight.apple.com/join/pvqgV7Uz> — anyone may tap. **Uploading is not
+distributing:** without `ios-promote` a build reaches only the internal `development` group.
+
+- **Testers are never notified.** `ios-promote` sets `autoNotifyEnabled=false` on every build; testers
+  ride `main` via TestFlight auto-update. The suppression **must** precede the group assignment (the
+  notification fires on group availability) — do not reorder those steps.
+- **Every** `main` build is promoted, unfiltered. Docs-only and backend-only merges therefore ship a
+  binary-identical build. Deliberate: any filter risks a real fix *silently* never reaching testers,
+  which is worse than noise. (And a path filter on the trigger would freeze merges — `ios-build` /
+  `ios-test` are required checks, and a skipped required check is never posted.)
+- **Beta App Review is not a gate** — a build on an already-approved `MARKETING_VERSION` auto-approves
+  instantly, and a build can join the group while still `WAITING_FOR_REVIEW`.
+- ⚠️ **The `MARKETING_VERSION` trap.** Bumping it (it is pinned at `0.1.0`) forces a **real**
+  first-of-version Beta App Review taking **hours to days**. While it waits, each merge expires its
+  predecessor's submission (`--expire-build-submitted-for-review`, newest wins), so **nothing reaches
+  testers and nothing goes red**. A green pipeline delivering nothing is expected here, not a bug.
+- A promote cancelled by `concurrency: cancel-in-progress` (a second merge landing mid-poll) is also
+  expected — the newer run promotes the newer build; nothing is lost.
+
 ### Sideload a dev IPA (skip TestFlight)
 
 Dev IPAs are produced **on demand by the ssh-mac build loop** (see *Headless macOS build loop* below) —
