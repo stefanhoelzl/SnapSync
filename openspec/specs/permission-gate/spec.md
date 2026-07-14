@@ -2,7 +2,40 @@
 
 ## Purpose
 
-The photo-library permission contracts and the inline gate that replaces the status hero until a full grant exists: permission is the only switch the user ever flips — sharing runs on its own once the grant is in place and an event is joined.
+The photo-library grant is the **single switch the user ever flips**: once it is on and an event is
+joined, sharing runs on its own — no upload button, no per-photo consent. This capability owns that
+switch's contract so the rest of the app never touches a platform authorization API and never has to
+reason about a half-grant.
+
+It reduces the platform's authorization vocabulary to **three** values — `NOT_DETERMINED`, `DENIED`,
+`GRANTED` — where `GRANTED` means a **full** library grant and nothing less. iOS's `.limited` (the user
+hand-picks a few photos) collapses to `DENIED` on purpose: a partial library cannot answer "is
+everything shared?", so a screen built on it would report "In sync" over a library it cannot see. One
+coarse, honest signal is worth more here than a faithful mirror of the OS.
+
+It exposes exactly two ports, split by kind: `PermissionStatusSource` (state — a level-triggered
+`StateFlow` whose latest value is the whole truth, readable synchronously) and `PermissionRequester`
+(command — `request()` / `openSettings()`, **fire-and-forget**, returning nothing and never suspending).
+The asymmetry is the contract: a command can only *provoke* a change; the change itself is only ever
+observed on the state port. That is what keeps the OS's out-of-app Settings round-trip from being a
+special case.
+
+Permission is **not a state of the app**. Two surfaces reach the system dialog, and neither one blocks
+the product behind it:
+
+- the **joined layer's inline `NeedsAccess` status line** (capability `sync-status-screen`) — tapping it
+  requests on `NOT_DETERMINED` and opens Settings on `DENIED`, while the name, QR, share, and leave keep
+  rendering in full;
+- the **join gate's photo-access explainer** (capability `join-event`) — shown on a first join before the
+  dialog has ever been raised, so the user learns what the grant is *for* (their photos share
+  automatically; others' photos land in their library) before iOS's one-shot prompt appears.
+
+Both are **CTA-only priming**: the system dialog fires from a deliberate user action, never from merely
+observing `NOT_DETERMINED` — iOS raises it at most once, and a prompt spent before the user understands
+it is spent for good.
+
+Decision record: `changes/archive/2026-06-27-permission-on-status-screen`.
+
 ## Requirements
 ### Requirement: Permission domain contracts
 

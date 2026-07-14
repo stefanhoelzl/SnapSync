@@ -34,6 +34,7 @@ import kotlinx.datetime.TimeZone
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.runTest
@@ -924,5 +925,133 @@ class StatusContainerHostTest {
         advanceUntilIdle()
 
         assertEquals(0, requester.requests)
+    }
+
+    // ---- the photo-access explainer (capability `join-event`) -----------------------------------------
+
+    /** A first join (config absent) whose details load succeeds — the gate the explainer is decided in. */
+    private fun TestScope.firstJoinGate(
+        permission: PermissionStatus,
+        requester: SpyRequester,
+        configFake: FakeConfig = FakeConfig(null),
+        commitJoin: suspend (String, String, String, Direction, Boolean) -> Boolean = { _, _, _, _, _ -> false },
+    ) = host(
+        FakeSyncStatusSource(SyncStatus.Loading), backgroundScope,
+        permission = FakePermissionSource(permission),
+        requester = requester,
+        configFake = configFake,
+        loadJoinDetails = { JoinLoad.Found("My Party", "2026-07-06T00:00:00Z") },
+        commitJoin = commitJoin,
+    )
+
+    @Test
+    fun `a first join with permission never asked explains before the dialog`() = runTest {
+        val requester = SpyRequester()
+        firstJoinGate(PermissionStatus.NOT_DETERMINED, requester).test(this) {
+            runOnCreate()
+            containerHost.onOpenUrl(encodeConfigUrl(EventLinkPayload(EVENT_ID)))
+            expectState(
+                UiState.JoiningEvent(EVENT_ID, JoinPhase.ExplainAccess("My Party", "2026-07-06T00:00:00Z")),
+            )
+            cancelAndIgnoreRemainingItems()
+        }
+        // CTA-only priming: rendering the explainer must not have raised the system dialog.
+        assertEquals(0, requester.requests)
+    }
+
+    @Test
+    fun `acknowledging the explainer requests permission and advances to the confirm surface`() = runTest {
+        val requester = SpyRequester()
+        firstJoinGate(PermissionStatus.NOT_DETERMINED, requester).test(this) {
+            runOnCreate()
+            containerHost.onOpenUrl(encodeConfigUrl(EventLinkPayload(EVENT_ID)))
+            expectState(
+                UiState.JoiningEvent(EVENT_ID, JoinPhase.ExplainAccess("My Party", "2026-07-06T00:00:00Z")),
+            )
+            containerHost.onAcknowledgeAccess()
+            // The same name and cutoff cross over — ExplainAccess carries them solely to hand off to Ready.
+            expectState(
+                UiState.JoiningEvent(EVENT_ID, JoinPhase.Ready("My Party", "2026-07-06T00:00:00Z")),
+            )
+            cancelAndIgnoreRemainingItems()
+        }
+        assertEquals(1, requester.requests)
+    }
+
+    @Test
+    fun `already-granted access skips the explainer`() = runTest {
+        val requester = SpyRequester()
+        firstJoinGate(PermissionStatus.GRANTED, requester).test(this) {
+            runOnCreate()
+            containerHost.onOpenUrl(encodeConfigUrl(EventLinkPayload(EVENT_ID)))
+            expectState(UiState.JoiningEvent(EVENT_ID, JoinPhase.Ready("My Party", "2026-07-06T00:00:00Z")))
+            cancelAndIgnoreRemainingItems()
+        }
+        assertEquals(0, requester.requests)
+    }
+
+    /**
+     * iOS raises the photo dialog at most once — from `DENIED`, `request()` is a silent no-op. An explainer
+     * whose confirm produced no dialog would be a lie, so `DENIED` goes straight to the confirm surface and
+     * meets the joined layer's Settings affordance after the join.
+     */
+    @Test
+    fun `previously-denied access skips the explainer`() = runTest {
+        val requester = SpyRequester()
+        firstJoinGate(PermissionStatus.DENIED, requester).test(this) {
+            runOnCreate()
+            containerHost.onOpenUrl(encodeConfigUrl(EventLinkPayload(EVENT_ID)))
+            expectState(UiState.JoiningEvent(EVENT_ID, JoinPhase.Ready("My Party", "2026-07-06T00:00:00Z")))
+            cancelAndIgnoreRemainingItems()
+        }
+        assertEquals(0, requester.requests)
+    }
+
+    /**
+     * THE BRANCH-KEEPER. `readyOrExplain` gates the explainer on `config == null`, so a switch — which by
+     * definition has a config — can never produce it. This is what makes `SwitchDialog`'s
+     * `is JoinPhase.ExplainAccess -> Unit` branch provably dead rather than merely unreached.
+     */
+    @Test
+    fun `a switch never explains even with permission never asked`() = runTest {
+        val other = "22222222-2222-4222-8222-222222222222"
+        val requester = SpyRequester()
+        firstJoinGate(
+            PermissionStatus.NOT_DETERMINED, requester,
+            configFake = FakeConfig(SAMPLE_CONFIG), // already in an event → a switch, not a first join
+        ).test(this) {
+            runOnCreate()
+            containerHost.onOpenUrl(encodeConfigUrl(EventLinkPayload(other)))
+            expectState(
+                UiState.Joined(
+                    SyncHealth.NeedsAccess(PermissionStatus.NOT_DETERMINED),
+                    PendingSwitch(other, JoinPhase.Ready("My Party", "2026-07-06T00:00:00Z")),
+                ),
+            )
+            cancelAndIgnoreRemainingItems()
+        }
+        assertEquals(0, requester.requests)
+    }
+
+    @Test
+    fun `cancelling the explainer enrolls nothing and saves no config`() = runTest {
+        val requester = SpyRequester()
+        val configFake = FakeConfig(null)
+        var commits = 0
+        firstJoinGate(
+            PermissionStatus.NOT_DETERMINED, requester, configFake = configFake,
+            commitJoin = { _, _, _, _, _ -> commits++; true },
+        ).test(this) {
+            runOnCreate()
+            containerHost.onOpenUrl(encodeConfigUrl(EventLinkPayload(EVENT_ID)))
+            expectState(
+                UiState.JoiningEvent(EVENT_ID, JoinPhase.ExplainAccess("My Party", "2026-07-06T00:00:00Z")),
+            )
+            containerHost.onCancelJoin()
+            expectState(UiState.CreateEvent())
+            cancelAndIgnoreRemainingItems()
+        }
+        assertEquals(0, commits, "cancelling the explainer must not commit a join")
+        assertEquals(null, configFake.config.value, "cancelling the explainer must not save a config")
     }
 }

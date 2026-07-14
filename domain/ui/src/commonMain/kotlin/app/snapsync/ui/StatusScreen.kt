@@ -5,6 +5,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -24,6 +25,7 @@ import app.snapsync.presentation.UiState
 import app.snapsync.ui.components.AppConfirmDialog
 import app.snapsync.ui.components.AppDateTimeField
 import app.snapsync.ui.components.AppEventHero
+import app.snapsync.ui.components.AppExplainer
 import kotlinx.datetime.LocalDateTime
 import app.snapsync.ui.components.AppQrCode
 import app.snapsync.ui.components.AccessPrompt
@@ -61,6 +63,9 @@ fun StatusScreen(
     // the chosen participation direction (capability `join-event`), and the album opt-in (`saveToAlbum`,
     // capability `event-album`).
     onConfirmJoin: (String, Direction, Boolean) -> Unit = { _, _, _ -> },
+    // The photo-access explainer's confirm: requests permission, then advances to the confirm surface.
+    // The only route from the join gate to the system dialog (capability `join-event`).
+    onAcknowledgeAccess: () -> Unit = {},
     onCancelJoin: () -> Unit = {},
     onRetryLoad: () -> Unit = {},
     onRetryJoin: (String, Direction, Boolean) -> Unit = { _, _, _ -> },
@@ -100,7 +105,10 @@ fun StatusScreen(
                 UiState.CreatingEvent ->
                     StatusHero(StatusIndicator.Loading, "Creating your event …")
                 is UiState.JoiningEvent ->
-                    JoiningEventScreen(state.phase, cutoff, onConfirmJoin, onCancelJoin, onRetryLoad, onRetryJoin)
+                    JoiningEventScreen(
+                        state.phase, cutoff, onConfirmJoin, onAcknowledgeAccess,
+                        onCancelJoin, onRetryLoad, onRetryJoin,
+                    )
                 is UiState.Joined ->
                     JoinedLayer(state.health, inviteUrl, onRequestPermission, onOpenSettings)
             }
@@ -135,6 +143,19 @@ fun StatusScreen(
 }
 
 /**
+ * The loaded `createdAt` default, carried by the two phases that have one. `null` everywhere else
+ * (`Loading` before the fetch resolves; `NotFound`/`LoadFailed`; `Committing`/`CommitFailed` after the
+ * confirm) — which is why the cutoff row seeds from the first phase that *does* carry one, not from
+ * whichever phase the screen happened to mount at.
+ */
+private fun JoinPhase.defaultCutoff(): String? = when (this) {
+    is JoinPhase.ExplainAccess -> defaultCutoff
+    is JoinPhase.Ready -> defaultCutoff
+    JoinPhase.Loading, JoinPhase.NotFound, JoinPhase.LoadFailed -> null
+    is JoinPhase.Committing, is JoinPhase.CommitFailed -> null
+}
+
+/**
  * The full-screen "Join event" surface (capability `join-event`): the event summary is the hero, with
  * the participation-direction row, the capture-date cutoff row (capability `photo-date-cutoff`), and the
  * save-to-album opt-in (capability `event-album`), with Join / Cancel pinned to the bottom. Further future
@@ -153,18 +174,34 @@ private fun JoiningEventScreen(
     phase: JoinPhase,
     cutoff: CutoffFormatter,
     onConfirm: (String, Direction, Boolean) -> Unit,
+    onAcknowledgeAccess: () -> Unit,
     onCancel: () -> Unit,
     onRetryLoad: () -> Unit,
     onRetryJoin: (String, Direction, Boolean) -> Unit,
 ) {
-    // The chosen cutoff is **non-null by construction**, seeded once on first composition: from the loaded
-    // phase's `defaultCutoff` (itself non-null — the host resolves an absent/unparseable `createdAt` to
-    // now), else from now, which covers a screen mounted straight into CommitFailed. A join with no cutoff
-    // is therefore unrepresentable rather than merely guarded — it would upload the whole library
-    // (capability `photo-date-cutoff`). "Now" shares too few photos, which a re-join fixes; the opposite
-    // error cannot be undone.
-    var chosen by remember {
-        mutableStateOf((phase as? JoinPhase.Ready)?.let { cutoff.toLocal(it.defaultCutoff) } ?: cutoff.nowLocal())
+    // The chosen cutoff is **non-null by construction** — a join with no cutoff is unrepresentable rather
+    // than merely guarded, since it would upload the whole library (capability `photo-date-cutoff`).
+    //
+    // It is seeded once, from the FIRST phase that carries a `defaultCutoff` (the loaded `createdAt`, itself
+    // non-null — the host resolves an absent/unparseable one to now). Seeding on *first composition* was a
+    // bug: this screen mounts at `Loading` (that is what `startPending` sets before the details fetch), so
+    // the loaded default had not arrived yet, the seed fell through to `now`, and `remember` never re-ran —
+    // the row defaulted to now for every real join, defeating "defaulting to the loaded `createdAt`"
+    // (capability `join-event`). Every test mounted straight into `Ready`, so none of them saw it.
+    //
+    // Seeding *once* (not on every default-bearing phase) is what preserves a user's edit across
+    // Ready → Committing → CommitFailed: those two carry no default, and a retry must reuse what was chosen.
+    // A screen mounted straight into CommitFailed never seeds and keeps `now` — the safe direction: "now"
+    // shares too few photos, which a re-join fixes; the opposite error cannot be undone.
+    val loadedDefault = phase.defaultCutoff()
+    var chosen by remember { mutableStateOf(cutoff.nowLocal()) }
+    var seeded by remember { mutableStateOf(false) }
+    LaunchedEffect(loadedDefault) {
+        if (!seeded && loadedDefault != null) {
+            // An unparseable cutoff keeps `now` — the safe direction, and what the previous seed did too.
+            cutoff.toLocal(loadedDefault)?.let { chosen = it }
+            seeded = true
+        }
     }
     var chosenDirection by remember { mutableStateOf(Direction.Both) }
     var chosenSaveToAlbum by remember { mutableStateOf(false) }
@@ -179,6 +216,21 @@ private fun JoiningEventScreen(
             when (phase) {
                 JoinPhase.Loading ->
                     StatusHero(StatusIndicator.Loading, "Loading event details …")
+                // The photo-access explainer, ahead of the confirm and ahead of the system dialog
+                // (capability `join-event`). Share-first: the automatic sharing is the half that deserves
+                // informed consent, so it leads. Direction-neutral, because the direction row comes next —
+                // and full access is genuinely needed for both halves. The event is deliberately not named:
+                // this is a statement about what the app does. No "cutoff", no "upload", no "backup".
+                is JoinPhase.ExplainAccess ->
+                    AppExplainer(
+                        headline = "Photo access",
+                        paragraphs = listOf(
+                            "Photos you take will be shared automatically with everyone in the event.",
+                            "SnapSync needs access to your photo library to do this — and to save the " +
+                                "photos other members share with you.",
+                            "Only photos taken after the date you pick next are shared.",
+                        ),
+                    )
                 is JoinPhase.Ready ->
                     AppEventHero(
                         title = phase.name,
@@ -212,6 +264,12 @@ private fun JoiningEventScreen(
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
             when (phase) {
+                // "I understand" is the ONLY path from the join gate to the system dialog (CTA-only
+                // priming). Cancel is the same cancel every other phase pins — it abandons the join.
+                is JoinPhase.ExplainAccess -> {
+                    PrimaryButton(label = "I understand", onClick = onAcknowledgeAccess)
+                    SecondaryButton(label = "Cancel", onClick = onCancel)
+                }
                 is JoinPhase.Ready -> {
                     DirectionRow(selected = chosenDirection, onSelect = { chosenDirection = it })
                     CutoffRow(
@@ -340,6 +398,12 @@ private fun SwitchDialog(
     // Remembered so a retry after a failed commit reuses it (the CommitFailed phase carries only the name).
     var cutoff by remember { mutableStateOf<String?>(null) }
     when (val phase = switch.phase) {
+        // Unreachable. The photo-access explainer is a FIRST-join surface: `readyOrExplain` emits it only
+        // when `config == null`, and a switch by definition has a config. Anyone switching is already on the
+        // joined layer, where the `NeedsAccess` affordance handles a missing grant — so no explanation is
+        // lost. Kotlin's exhaustive `when` requires the branch; the container test "a switch never explains"
+        // is what keeps it dead (capability `join-event`).
+        is JoinPhase.ExplainAccess -> Unit
         is JoinPhase.Ready -> {
             cutoff = phase.defaultCutoff
             AppConfirmDialog(
