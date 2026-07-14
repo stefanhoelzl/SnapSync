@@ -1254,7 +1254,7 @@ Deno.test("spike PUT → records the observed headers, drains the body, stores N
   assertEquals(writes.length, 1);
   assert(keyOf(writes[0].url).startsWith("spike/"));
 
-  const records = await (await app.request("/__spike")).json() as {
+  const records = await (await app.request("/__spike/records")).json() as {
     path: string;
     bytesDrained: number;
     observedAtOrigin: Record<string, string>;
@@ -1278,7 +1278,16 @@ Deno.test("spike OPTIONS → 204 with no resumable advertised (same plain-PUT pa
 Deno.test("spike DELETE → clears the recordings", async () => {
   const { fetchImpl } = storageFake({ "spike/aaaa.json": { json: { path: "/__spike/x" } } });
   const app = createApp({ config: CONFIG, fetch: fetchImpl });
-  assertEquals((await (await app.request("/__spike")).json() as unknown[]).length, 1);
-  assertEquals((await app.request("/__spike", { method: "DELETE" })).status, 200);
-  assertEquals((await (await app.request("/__spike")).json() as unknown[]).length, 0);
+  assertEquals((await (await app.request("/__spike/records")).json() as unknown[]).length, 1);
+  assertEquals((await app.request("/__spike/records", { method: "DELETE" })).status, 200);
+  assertEquals((await (await app.request("/__spike/records")).json() as unknown[]).length, 0);
+});
+
+Deno.test("spike GET → an empty listing (so the extension's reconcile does NOT defer job creation)", async () => {
+  const { fetchImpl } = storageFake({});
+  const res = await createApp({ config: CONFIG, fetch: fetchImpl }).request(
+    `/__spike/files/devices/${D}`,
+  );
+  assertEquals(res.status, 200);
+  assertEquals(await res.json(), []);
 });
