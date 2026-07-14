@@ -118,17 +118,23 @@ reconcile seeds already-stored photos as `COMPLETED` and nothing uploads.
 
 ## 6. Cutover
 
-- [ ] 6.1 **Certificate first.** Add the hostname `snapsync.stho.net` to pull zone **6048703**, then
-      `POST /pullzone/6048703/requestExternalDnsCertificate` → publish the returned `_acme-challenge`
-      TXT in the `stho.net` Bunny DNS zone → `POST /pullzone/6048703/completeExternalDnsCertificate`.
-      This is what makes the flip zero-downtime: the HTTP-01 path would require DNS to point at bunny
-      *before* the cert exists, leaving a window where every request fails ATS.
-- [ ] 6.2 Merge the PR. CI deploys the bundle to bunny. The Deno Deploy **app** keeps serving its last
-      bundle — still a working DNS-repoint rollback.
-- [ ] 6.3 Flip the `CNAME`: `snapsync.stho.net` → the bunny pull zone (TTL is 300 s, so rollback is
-      ~5 minutes).
-- [ ] 6.4 Verify production on the real (TestFlight/installed) app: an upload lands in the zone, a join
-      succeeds, and a push wakes a device.
+> **Zero downtime was dropped as a goal** (see design Decision 4). Bunny's free cert is HTTP-01, so it
+> cannot be issued until DNS already points at bunny — there is a short gap where HTTPS fails. Accepted:
+> uploads retry forever (nothing is lost, only delayed); only a **join** attempted inside the gap is a
+> visible failure. So the order is flip → cert, back-to-back.
+
+- [x] 6.1 Attach the hostname `snapsync.stho.net` to pull zone **6048703**
+      (`POST /pullzone/6048703/addHostname` → `204`). Inert while DNS still points at Deno Deploy —
+      verified: `snapsync.stho.net` still resolves to `alias.deno.net` and answers `404` with
+      `server: deployd`. This is done ahead of time so the flip and the cert request are back-to-back.
+- [ ] 6.2 Merge the PR. CI deploys the bundle to bunny (the same bundle already hand-deployed in 2.4, so
+      this is a no-op in effect). The Deno Deploy **app** keeps serving its last bundle — still a working
+      DNS-repoint rollback.
+- [ ] 6.3 Flip the `CNAME`: `snapsync.stho.net` → `snap-sync-n8xmz.b-cdn.net` (TTL is 300 s, so rollback
+      is ~5 minutes), then **immediately** `GET /pullzone/loadFreeCertificate?hostname=snapsync.stho.net`
+      to close the TLS gap as fast as bunny will issue.
+- [ ] 6.4 Verify production on the real (TestFlight/installed) app: HTTPS serves with a valid cert, an
+      upload lands in the zone, a join succeeds, and a push wakes a device.
 
 ## 7. Teardown — only after group 6 is verified
 
