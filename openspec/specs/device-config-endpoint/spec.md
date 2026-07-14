@@ -13,7 +13,6 @@ last-write-wins, and the document is deleted when the device becomes fully orpha
 leaves no token behind.
 
 Decision record: `changes/archive/2026-07-05-push-notification-infra`.
-
 ## Requirements
 ### Requirement: Device config write route
 
@@ -122,4 +121,24 @@ destructive to a returning device.
 
 - **WHEN** an event is reaped but the device still has a manifest in another surviving event
 - **THEN** `devices/<deviceId>.json` is retained (the device is not orphaned)
+
+### Requirement: The device-config write requires a device token
+
+`PUT /devices/<deviceId>` SHALL require a valid device token (capability `device-attestation`) in
+`Authorization: Bearer`. A request without one SHALL be rejected with `401` and SHALL NOT write
+`devices/<deviceId>.json`.
+
+The device id remains the capability addressing *which* config is written; the token establishes that the
+writer is a genuine app instance at all.
+
+#### Scenario: An unauthenticated config write is refused
+
+- **WHEN** `PUT /devices/<uuid>` arrives with no valid token
+- **THEN** the endpoint responds `401` and writes no object
+
+#### Scenario: An attested config write proceeds unchanged
+
+- **WHEN** `PUT /devices/<uuid>` carries a valid token
+- **THEN** the push token is streamed into `devices/<deviceId>.json` with the same faithful `201`/`502`
+  outcome and last-write-wins semantics as before
 
