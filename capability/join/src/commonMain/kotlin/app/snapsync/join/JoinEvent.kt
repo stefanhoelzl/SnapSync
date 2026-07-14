@@ -3,6 +3,7 @@ package app.snapsync.join
 import app.snapsync.config.ConfigSource
 import app.snapsync.config.Direction
 import app.snapsync.config.EventConfig
+import app.snapsync.config.clampToFloor
 import app.snapsync.deviceid.DeviceIdentity
 
 /**
@@ -33,21 +34,35 @@ class JoinEvent(
 
     /**
      * Confirm the join for [eventId] with the loaded [name] (required, non-null — the gate only
-     * provisions from a loaded phase that carries a name), this device's chosen capture-date
-     * [minPhotoDate] cutoff (capability `photo-date-cutoff`; always present — a membership without a
-     * cutoff would upload the whole library), its chosen
-     * participation [direction] (capability `join-event`), and whether it opted into an event album
-     * ([saveToAlbum], capability `event-album`): enroll (register-only empty manifest) — for
-     * **every** direction, so a download-only device is still an enrolled member — then, only on a
-     * successful enrollment, provision (save config **with the cutoff and direction**). The injected
+     * provisions from a loaded phase that carries a name), the event's [startsAt] start date, this
+     * device's chosen capture-date [minPhotoDate] cutoff (capability `photo-date-cutoff`; always present
+     * — a membership without a cutoff would upload the whole library), its chosen participation
+     * [direction] (capability `join-event`), and whether it opted into an event album ([saveToAlbum],
+     * capability `event-album`): enroll (register-only empty manifest) — for **every** direction, so a
+     * download-only device is still an enrolled member — then, only on a successful enrollment, provision
+     * (save config **with the clamped cutoff, the start date, and the direction**). The injected
      * [provision] enables the upload producer only when [Direction.includesUpload] and runs the download
      * reconcile only when [Direction.includesDownload] (the latter gated inside the download controller).
      * Re-confirming the already-joined event is a [JoinOutcome.AlreadyJoined] no-op that skips enrollment
      * entirely (the cutoff and direction stay immutable — a change is a leave-then-rejoin).
+     *
+     * **The floor is applied here** (capability `photo-date-cutoff`): the persisted cutoff is
+     * `max(chosen, startsAt)`, never the raw [minPhotoDate]. Doing it in the use-case rather than in the
+     * UI is what makes it total — **every** entry path funnels through this one call (the interactive
+     * confirm, the switch confirm, the retry, and the `autoJoin` path carrying a deeplink-supplied
+     * cutoff), so none of them can forget it. That last one is the reason it matters: `minPhotoDate` is
+     * decoded from **any** `snapsync://` URL, so without the clamp a hostile QR carrying
+     * `autoJoin=true` + a distant-past cutoff would auto-confirm a join at near-whole-library scope
+     * *without a tap*.
+     *
+     * Because [startsAt] is immutable, the clamped value is stable for the life of the membership — which
+     * is what lets the upload cycle keep filtering on a single cutoff, with `startsAt` never reaching the
+     * upload path at all.
      */
     suspend fun join(
         eventId: String,
         name: String,
+        startsAt: String,
         minPhotoDate: String,
         direction: Direction,
         saveToAlbum: Boolean,
@@ -58,7 +73,8 @@ class JoinEvent(
             EventConfig(
                 eventId = eventId,
                 name = name,
-                minPhotoDate = minPhotoDate,
+                minPhotoDate = clampToFloor(chosen = minPhotoDate, startsAt = startsAt),
+                startsAt = startsAt,
                 direction = direction,
                 saveToAlbum = saveToAlbum,
             ),

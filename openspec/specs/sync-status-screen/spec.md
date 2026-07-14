@@ -46,34 +46,61 @@ The reduction SHALL be: a **pending interactive join with config absent** → `J
 (outranking the create layer); otherwise **config absent** → the create layer (per
 `event-creation-ui`); **config present** → `Joined`, **always**, regardless of permission, carrying a
 `pendingSwitch` when a switch confirmation is in progress. The `Joined` health descriptor SHALL be
-derived from permission and the latest snapshot:
+derived from permission, the membership's **`startsAt`**, and the latest snapshot, in this precedence:
 
 - permission ≠ `GRANTED` → `NeedsAccess(permission)` (the sole attention state; there is no separate
   "not syncing" state — the status projection's only operational signal is permission);
+- else the membership's **`startsAt` is in the future** → **`NotStarted(startsAt)`**;
 - else `SyncStatus.Loading` → a joined loading first-frame;
 - else `SyncStatus.Ready` → `InSync` when settled, else `Syncing(...)` (the completeness/activity
   arrow derivation is specified in *Joined-layer health descriptor and status line*).
+
+`NotStarted` SHALL rank **below** `NeedsAccess` and **above** the snapshot-derived values. Permission
+outranks it because permission is the only **actionable** state — it carries a tappable affordance, and a
+member must resolve it *before* the event begins or they will miss the start; burying it behind a clock
+line would ambush them with a permission prompt at the very moment the party starts. Everything below it
+is outranked because, before the start, nothing of the member's **can** be syncing (the floor guarantees
+it, capability `photo-date-cutoff`), so a snapshot-derived line would say nothing true that the clock
+line does not say better.
+
+`NotStarted` SHALL carry the start instant, so the screen can render *when* — a bare "not started yet"
+invites the question it fails to answer.
 
 `UiState` SHALL carry **no** upload/download counts — the joined states no longer surface `synced`,
 `total`, or an in-progress number. The event **name** and the invite URL are supplied to the screen as
 parameters (per `event-invite-qr` and the config capability), not as reduced state, so the reduction
 gains no branch for them.
 
-The reduction MUST depend only on the latest snapshot (no event history). The container's initial UI
-state SHALL be computed from the sources' current values at construction. `UiState.Loading` and every
-`Joined` health value are derived from real source values (never placeholders). Once a join has
-committed there is no join-status reduction: during the (re)join provisioning the screen simply shows
-the current `Joined` health (typically `Syncing`); the `JoiningEvent` family is the **pre-commit**
-confirmation gate only.
+The reduction MUST depend only on the latest snapshot (no event history) **and the current instant**. The
+container's initial UI state SHALL be computed from the sources' current values at construction.
+`UiState.Loading` and every `Joined` health value are derived from real source values (never
+placeholders). Once a join has committed there is no join-status reduction: during the (re)join
+provisioning the screen simply shows the current `Joined` health (typically `Syncing`); the
+`JoiningEvent` family is the **pre-commit** confirmation gate only.
+
+#### Scenario: A future start reduces to NotStarted
+- **WHEN** config is present, permission is `GRANTED`, and the membership's `startsAt` is in the future
+- **THEN** the UI state is `Joined` with health `NotStarted(startsAt)`, whatever the snapshot says
+
+#### Scenario: Permission outranks the not-started state
+- **WHEN** config is present, the membership's `startsAt` is in the future, and permission is `DENIED` or
+  `NOT_DETERMINED`
+- **THEN** the UI state is `Joined` with health `NeedsAccess(permission)` — the actionable state wins, so
+  the member can grant access before the event begins
+
+#### Scenario: A past start reduces from the snapshot as before
+- **WHEN** config is present, permission is `GRANTED`, and the membership's `startsAt` is at or before now
+- **THEN** the health derives from the snapshot exactly as it did before this change (`Loading` /
+  `InSync` / `Syncing`)
 
 #### Scenario: Settled snapshot reduces to In sync
-- **WHEN** config is present, permission is `GRANTED`, and a `Ready` snapshot with `completed == total`
-  is observed (downloads also settled)
+- **WHEN** config is present, permission is `GRANTED`, the event has started, and a `Ready` snapshot with
+  `completed == total` is observed (downloads also settled)
 - **THEN** the UI state is `Joined` with health `InSync`
 
 #### Scenario: Work remaining reduces to Syncing
-- **WHEN** config is present, permission is `GRANTED`, and a `Ready` snapshot with `completed < total`
-  is observed
+- **WHEN** config is present, permission is `GRANTED`, the event has started, and a `Ready` snapshot with
+  `completed < total` is observed
 - **THEN** the UI state is `Joined` with health `Syncing(...)`, and no synced/total counts are carried
 
 #### Scenario: Permission off with config present reduces to NeedsAccess, not a gate
@@ -101,6 +128,10 @@ line** — never numeric counts. The status line SHALL present one of:
 - `NeedsAccess` → an attention affordance reading "Turn on photo access" that is **tappable**:
   tapping SHALL invoke `onRequestPermission()` when permission is `NOT_DETERMINED` and
   `onOpenSettings()` when `DENIED`. It is the only status-line state that carries a background.
+- **`NotStarted`** → a **clock** indicator reading **"Starts &lt;date&gt;, &lt;time&gt;"**, rendered in the
+  device's local timezone. It is **not** tappable and carries **no** background (it is information, not
+  an action). It renders in the **same slot** as every other status line — directly beneath the invite
+  QR — so the joined layer never grows a second line.
 - `InSync` → a settled indicator (e.g. a check) reading "In sync", with no direction arrows.
 - `Syncing` → two independent direction arrows plus an **activity-dependent label**, each arrow in a
   shown/pulse state derived as follows, **masked by the membership's participation direction**
@@ -126,6 +157,12 @@ Any remaining work in an **enabled** direction SHALL be `Syncing` with that dire
 an upload-enabled membership) shows a **static** upload arrow under the "Synchronization pending…" label.
 The masking is **silent**: no textual mode label is rendered; the single remaining arrow implies the
 direction.
+
+#### Scenario: The not-started line names the start instant
+- **WHEN** the health is `NotStarted` for an event starting at `2026-07-14T18:00:00Z` and the device is in
+  a `UTC+2` zone
+- **THEN** the status line shows a clock indicator reading the start rendered in local time (`20:00` on
+  14 Jul), beneath the QR, flat and not tappable
 
 #### Scenario: Upload in flight pulses the up arrow and reads ongoing
 - **WHEN** direction includes both, `completed < total`, `pending > 0`, and downloads are complete
@@ -166,4 +203,34 @@ direction.
 - **WHEN** the health is `NeedsAccess(NOT_DETERMINED)` and the status line is tapped
 - **THEN** `onRequestPermission()` is invoked; **WHEN** the health is `NeedsAccess(DENIED)` and it is
   tapped, `onOpenSettings()` is invoked
+
+### Requirement: The not-started health advances on a foreground tick
+
+The presentation container SHALL re-evaluate `startsAt > now` on a **one-minute tick**, which SHALL run
+**only** while the app is foregrounded **and only** while the event has not yet started — it SHALL stop
+itself once the start passes, and SHALL NOT run for the entire life of a joined event. The tick is
+necessary because the `NotStarted` health depends on **wall-clock time**, not on any ledger event, so no
+snapshot emission would ever retire it when the start passes.
+
+The tick SHALL live in the **presentation** layer (which already owns a coroutine scope and the injected
+time source), **not** in `:domain:status`. The status projection SHALL remain a clock-free, read-only
+ledger→`SyncStatus` projection: it has no notion of wall-clock time today, and giving it one to render a
+label would be the wrong seam.
+
+A staleness of up to one minute is accepted: nothing of the member's can upload before the start in any
+case, so a briefly-late transition costs nothing but the label.
+
+#### Scenario: The clock line retires itself when the start passes
+- **WHEN** the app is foregrounded showing `NotStarted` and the event's `startsAt` passes
+- **THEN** within one minute the health re-derives to the snapshot-driven value (`InSync` / `Syncing`)
+  without any ledger event having occurred
+
+#### Scenario: The tick does not run after the start
+- **WHEN** the event has already started
+- **THEN** no tick is scheduled, the health deriving from the snapshot alone
+
+#### Scenario: The status projection stays clock-free
+- **WHEN** the `:domain:status` projection is inspected
+- **THEN** it reads only the ledger and holds no clock, the not-started derivation living entirely in the
+  presentation reduction
 

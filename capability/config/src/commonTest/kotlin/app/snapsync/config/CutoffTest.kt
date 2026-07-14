@@ -50,4 +50,54 @@ class CutoffTest {
         assertTrue("2026-07-06T14:32:10Z" < cutoff, "strictly before is out of scope")
         assertTrue("" < cutoff, "an undated asset (empty creationDate) is out of scope")
     }
+
+    // ── the event-start floor (capability `photo-date-cutoff`) ─────────────────────────────────────
+
+    private val startsAt = "2026-07-14T18:00:00Z"
+
+    @Test
+    fun `a cutoff below the event start is clamped up to it`() {
+        assertEquals(startsAt, clampToFloor(chosen = "2026-07-14T12:00:00Z", startsAt = startsAt))
+        assertEquals(startsAt, clampToFloor(chosen = "2001-01-01T00:00:00Z", startsAt = startsAt))
+    }
+
+    @Test
+    fun `a cutoff at or above the event start is honored unchanged`() {
+        assertEquals(startsAt, clampToFloor(chosen = startsAt, startsAt = startsAt))
+        assertEquals(
+            "2026-07-14T21:00:00Z",
+            clampToFloor(chosen = "2026-07-14T21:00:00Z", startsAt = startsAt),
+            "the member chooses freely ABOVE the floor",
+        )
+    }
+
+    @Test
+    fun `the floor only ever narrows scope`() {
+        // The whole safety argument in one assertion: whatever the member (or a hostile deeplink) picks,
+        // the persisted cutoff is never EARLIER than the event's start — so no photo taken before the
+        // event began can be uploaded to it.
+        val picks = listOf("", "2001-01-01T00:00:00Z", startsAt, "2099-12-31T23:59:59Z")
+        for (chosen in picks) {
+            assertTrue(
+                clampToFloor(chosen, startsAt) >= startsAt,
+                "clamp($chosen) must not fall below the floor",
+            )
+        }
+    }
+
+    @Test
+    fun `the empty-string cutoff cannot survive the clamp`() {
+        // "" is the trapdoor to whole-library scope (every string is >= ""). The floor closes it: even if
+        // an empty cutoff reached the clamp, it is raised to the event's start.
+        assertEquals(startsAt, clampToFloor(chosen = "", startsAt = startsAt))
+    }
+
+    @Test
+    fun `a future event start clamps every choice into the future`() {
+        // This is what makes "nothing syncs before the event starts" a theorem rather than a gate: a
+        // photo's creationDate cannot be in the future, so a future cutoff admits nothing.
+        val future = "2099-12-31T23:59:59Z"
+        assertEquals(future, clampToFloor(chosen = "2026-07-14T12:00:00Z", startsAt = future))
+        assertTrue("2026-07-14T12:00:00Z" < future, "no photo of today satisfies a 2099 cutoff")
+    }
 }

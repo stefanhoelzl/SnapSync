@@ -24,12 +24,19 @@ import app.snapsync.status.SyncStatus
 import app.snapsync.status.SyncProgress
 import app.snapsync.status.SyncStatusSource
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
+import kotlinx.datetime.LocalDateTime
 import org.orbitmvi.orbit.Container
 import org.orbitmvi.orbit.ContainerHost
 import org.orbitmvi.orbit.container
@@ -42,11 +49,15 @@ import org.orbitmvi.orbit.container
  */
 sealed interface JoinLoad {
     /**
-     * [name] is the (required, non-null) event name; [createdAt] (the event's UTC `…Z` creation
-     * timestamp) seeds the join screen's cutoff default. A details response lacking a name is a
-     * transient [Failed], never a nameless [Found] (the event-album title needs a name).
+     * [name] is the (required, non-null) event name; [startsAt] is the event's **start date** — a
+     * canonical UTC `…Z` string, likewise required and non-null. It is both the cutoff row's default and
+     * its **floor** (capability `photo-date-cutoff`).
+     *
+     * A details response lacking **either** is a transient [Failed], never a [Found] with a null name
+     * (the event-album title needs one) nor one with an invented `startsAt` (a defaulted floor is a
+     * *lowered* floor — the one direction the design forbids).
      */
-    data class Found(val name: String, val createdAt: String?) : JoinLoad
+    data class Found(val name: String, val startsAt: String) : JoinLoad
     data object NotFound : JoinLoad
     data object Failed : JoinLoad
 }
@@ -82,22 +93,26 @@ class StatusContainerHost(
     // Defaults are inert (load fails, commit does nothing) so non-iOS hosts and tests that don't
     // exercise join construct unchanged; iOS binds them to the `JoinEvent` use-case.
     private val loadJoinDetails: suspend (eventId: String) -> JoinLoad = { JoinLoad.Failed },
-    // `commitJoin` = enroll (register-only empty manifest) then provision with the chosen capture-date
-    // cutoff (capability `photo-date-cutoff`; always present), the chosen participation
-    // `direction` (capability `join-event`), and whether the join opted into an event album
-    // (`saveToAlbum`, capability `event-album`), returning `true` when joined.
+    // `commitJoin` = enroll (register-only empty manifest) then provision with the event's `startsAt`
+    // (capability `event-creation`), the chosen capture-date cutoff (capability `photo-date-cutoff`;
+    // always present), the chosen participation `direction` (capability `join-event`), and whether the
+    // join opted into an event album (`saveToAlbum`, capability `event-album`), returning `true` when
+    // joined. NB the CLAMP (`minPhotoDate = max(chosen, startsAt)`) is applied on the far side of this
+    // seam, inside `JoinEvent` — this container passes the chosen value through raw, so no entry path can
+    // reach a provision without the floor by forgetting to clamp here.
     private val commitJoin:
         suspend (
             eventId: String,
             name: String,
+            startsAt: String,
             minPhotoDate: String,
             direction: Direction,
             saveToAlbum: Boolean,
         ) -> Boolean =
-        { _, _, _, _, _ -> false },
-    // Supplies "now" as a cutoff string and validates a fetched `createdAt` (capability
-    // `photo-date-cutoff`). Injected so the fallback is unit-tested against a fixed clock on JVM and the
-    // iOS simulator; the screen receives an already-resolved, non-null default.
+        { _, _, _, _, _, _ -> false },
+    // Supplies "now" as a cutoff string and converts a local pick (capability `photo-date-cutoff`).
+    // Injected so the conversion and the not-started comparison are unit-tested against a fixed clock on
+    // JVM and the iOS simulator; the screen receives an already-resolved, non-null default.
     private val cutoffFormatter: CutoffFormatter = SystemCutoffFormatter(),
     // Dev-path abort logging (autoJoin has no UI to show a load/commit failure). No-op by default.
     private val log: (String) -> Unit = {},
@@ -113,6 +128,39 @@ class StatusContainerHost(
     // clears it on commit/cancel. Folded into the reduction as a sixth flow.
     private val pending = MutableStateFlow<PendingJoin?>(null)
 
+    /**
+     * "Now", re-emitted every minute **only** while the joined event has not begun (capability
+     * `sync-status-screen`).
+     *
+     * `SyncHealth.NotStarted` is the one health that depends on **wall-clock time** rather than the
+     * ledger, so no snapshot emission would ever retire it — without this, the clock line would sit there
+     * past the start until something unrelated happened to re-emit.
+     *
+     * It **self-terminates**: the loop breaks the moment `now >= startsAt`, so a started event carries no
+     * timer for the rest of its life, and an event with no config carries none at all. And because a
+     * backgrounded iOS app is *suspended* — its coroutines do not run — a `delay`-based ticker on the
+     * container scope is already foreground-only in practice; no lifecycle hook is needed to get that.
+     *
+     * Up to a minute of staleness is accepted: nothing of the member's can upload before the start in any
+     * case (the floor guarantees it), so a briefly-late transition costs the label and nothing else.
+     */
+    @OptIn(ExperimentalCoroutinesApi::class)
+    private val nowTick: Flow<String> =
+        configSource.config
+            .map { it?.startsAt }
+            .distinctUntilChanged()
+            .flatMapLatest { startsAt ->
+                flow {
+                    while (true) {
+                        val now = cutoffFormatter.nowCutoff()
+                        emit(now)
+                        // Canonical fixed-width UTC on both sides ⇒ lexicographic order IS chronological.
+                        if (startsAt == null || now >= startsAt) return@flow
+                        delay(NOT_STARTED_TICK_MILLIS)
+                    }
+                }
+            }
+
     override val container: Container<UiState, SetupEffect> =
         scope.container(
             // All seams hold their current truth synchronously, so the first state the screen can ever
@@ -124,12 +172,14 @@ class StatusContainerHost(
                 creationStatusSource.creationStatus.value,
                 downloadSource.progress.value,
                 pending.value,
+                cutoffFormatter.nowCutoff(),
             ),
         ) {
             intent {
                 // The sources combine into a holder; each new value reduces straight to a UI state.
-                // The screen reports no relative time, so there is no clock and no periodic re-render —
-                // only a real source change (or a pending-join transition) re-emits.
+                // The only clock-driven input is `nowTick`, and it runs ONLY while an event has not begun
+                // (see above) — every other re-emission is a real source change or a pending-join
+                // transition.
                 combine(
                     configSource.config,
                     permissionSource.permission,
@@ -137,6 +187,7 @@ class StatusContainerHost(
                     creationStatusSource.creationStatus,
                     downloadSource.progress,
                     pending,
+                    nowTick,
                 ) { values ->
                     @Suppress("UNCHECKED_CAST")
                     reduceFrom(
@@ -146,6 +197,7 @@ class StatusContainerHost(
                         values[3] as CreationStatus,
                         values[4] as DownloadProgress,
                         values[5] as PendingJoin?,
+                        values[6] as String,
                     )
                 }
                     .collect { ui -> reduce { ui } }
@@ -175,13 +227,19 @@ class StatusContainerHost(
             .stateIn(scope, SharingStarted.Eagerly, configSource.config.value?.name)
 
     /**
-     * Create a new event with [name] (event-creation-ui). Delegates to the injected [EventCreator]
-     * (fire-and-forget): it mints the event and, on success, provisions it through the same path a
-     * scanned QR uses (config goes present, the reduction leaves the create layer). Permission is not
-     * consulted here — a missing grant surfaces afterward via `PermissionBlocked`. The in-flight and
-     * failure outcomes arrive back through `CreationStatusSource`; nothing is reduced here.
+     * Create a new event with [name], starting at [startsAt] (event-creation-ui). Delegates to the
+     * injected [EventCreator] (fire-and-forget): it mints the event and, on success, provisions it
+     * through the same path a scanned QR uses (config goes present, the reduction leaves the create
+     * layer). Permission is not consulted here — a missing grant surfaces afterward via
+     * `PermissionBlocked`. The in-flight and failure outcomes arrive back through `CreationStatusSource`;
+     * nothing is reduced here.
+     *
+     * [startsAt] arrives as the screen's **local** wall-clock pick and is converted here, through the same
+     * [CutoffFormatter] the join surface uses — so the app has exactly one origin of "now" and one
+     * local→UTC conversion, and `:domain:ui` stays free of any clock or timezone knowledge.
      */
-    fun onCreateEvent(name: String) = intent { creator.create(name) }
+    fun onCreateEvent(name: String, startsAt: LocalDateTime) =
+        intent { creator.create(name, cutoffFormatter.toCutoff(startsAt)) }
 
     fun onRequestPermission() = intent { requester.request() }
 
@@ -273,7 +331,7 @@ class StatusContainerHost(
         val p = pending.value ?: return@intent
         val ph = p.phase as? JoinPhase.ExplainAccess ?: return@intent
         requester.request()
-        pending.value = p.copy(phase = JoinPhase.Ready(ph.name, ph.defaultCutoff))
+        pending.value = p.copy(phase = JoinPhase.Ready(ph.name, ph.startsAt))
     }
 
     /** Discard the pending join/switch, returning to the base screen. */
@@ -316,13 +374,13 @@ class StatusContainerHost(
      * Erring toward `now` shares too few photos, which the user can fix by re-joining with an earlier
      * date; erring toward whole-library cannot be undone.
      */
-    private fun cutoffOrNow(createdAt: String?): String =
-        createdAt?.let { cutoffFormatter.toLocal(it) }?.let { cutoffFormatter.toCutoff(it) }
-            ?: cutoffFormatter.toCutoff(cutoffFormatter.nowLocal())
-
     private suspend fun loadInto(eventId: String) {
         val phase = when (val load = loadJoinDetails(eventId)) {
-            is JoinLoad.Found -> readyOrExplain(load.name, cutoffOrNow(load.createdAt))
+            // No seed-from-createdAt and no fallback-to-now any more: `startsAt` is ALWAYS present on a
+            // successful load (the backend synthesizes one for legacy markers, and the details source
+            // fails the load rather than invent one), so the default is simply the event's start. The
+            // photo-access explainer still gates the Ready phase on a first join.
+            is JoinLoad.Found -> readyOrExplain(load.name, load.startsAt)
             JoinLoad.NotFound -> JoinPhase.NotFound
             JoinLoad.Failed -> JoinPhase.LoadFailed
         }
@@ -344,13 +402,13 @@ class StatusContainerHost(
      *   would be a lie; `DENIED` goes straight to the confirm and meets the Settings affordance after
      *   joining. `GRANTED` needs no explanation.
      */
-    private fun readyOrExplain(name: String, defaultCutoff: String): JoinPhase {
+    private fun readyOrExplain(name: String, startsAt: String): JoinPhase {
         val firstJoin = configSource.config.value == null
         val neverAsked = permissionSource.permission.value == PermissionStatus.NOT_DETERMINED
         return if (firstJoin && neverAsked) {
-            JoinPhase.ExplainAccess(name, defaultCutoff)
+            JoinPhase.ExplainAccess(name, startsAt)
         } else {
-            JoinPhase.Ready(name, defaultCutoff)
+            JoinPhase.Ready(name, startsAt)
         }
     }
 
@@ -362,19 +420,20 @@ class StatusContainerHost(
     ) {
         val p = pending.value ?: return
         // Only a loaded (Ready) or previously-failed (CommitFailed) surface can be confirmed; a
-        // still-loading/blocked/committing phase ignores the action. Both carry a non-null name.
-        val name = when (val ph = p.phase) {
-            is JoinPhase.Ready -> ph.name
-            is JoinPhase.CommitFailed -> ph.name
+        // still-loading/blocked/committing phase ignores the action. Both carry a non-null name AND a
+        // non-null startsAt — so a commit can never reach `JoinEvent` without the floor.
+        val (name, startsAt) = when (val ph = p.phase) {
+            is JoinPhase.Ready -> ph.name to ph.startsAt
+            is JoinPhase.CommitFailed -> ph.name to ph.startsAt
             else -> return
         }
-        pending.value = p.copy(phase = JoinPhase.Committing(name))
+        pending.value = p.copy(phase = JoinPhase.Committing(name, startsAt))
         if (withLeave) leave()
-        if (commitJoin(p.eventId, name, cutoff, direction, saveToAlbum)) {
+        if (commitJoin(p.eventId, name, startsAt, cutoff, direction, saveToAlbum)) {
             // Success: config flips present via ConfigSource → reduces to Joined; drop the overlay.
             if (pending.value?.eventId == p.eventId) pending.value = null
         } else if (pending.value?.eventId == p.eventId) {
-            pending.value = p.copy(phase = JoinPhase.CommitFailed(name))
+            pending.value = p.copy(phase = JoinPhase.CommitFailed(name, startsAt))
         }
     }
 
@@ -396,21 +455,35 @@ class StatusContainerHost(
         }
         val current = configSource.config.value
         if (current != null && current.eventId != eventId) leave()
-        // The auto-fired confirm uses the default cutoff (the loaded `createdAt`, or now when it is
-        // absent/unparseable), unless the deeplink supplied an explicit dev/test cutoff (capability
-        // `photo-date-cutoff`). Never an absent cutoff — the headless path has no surface to notice one.
-        val cutoff = explicitCutoff ?: cutoffOrNow(load.createdAt)
+        // The auto-fired confirm uses the event's `startsAt` as the cutoff, unless the deeplink supplied
+        // an explicit dev/test one (capability `photo-date-cutoff`). Never an absent cutoff — the headless
+        // path has no surface to notice one.
+        //
+        // An explicit cutoff is passed through RAW and clamped on the far side of `commitJoin`, inside
+        // `JoinEvent` — it gets no exemption from the floor, and that is the whole point. `minPhotoDate`
+        // is decoded from ANY `snapsync://` URL, so an unclamped override would let a hostile QR carrying
+        // `autoJoin=true` + a distant-past cutoff auto-confirm a join at near-whole-library scope WITHOUT
+        // A TAP. (Cost, accepted: the dev loop can no longer force a cutoff below the event's start — it
+        // creates the event with an early `startsAt` instead, which the unbounded picker permits.)
+        val cutoff = explicitCutoff ?: load.startsAt
         // The direction defaults to Both, unless the deeplink supplied an explicit dev/test override
         // (`both`/`upload`/`download`); an unrecognized token was already rejected by the decoder.
         val direction = explicitDirection?.let(Direction::fromWire) ?: Direction.Both
         // The album choice defaults to off, unless the deeplink supplied an explicit dev/test override
         // (capability `event-album`).
         val saveToAlbum = explicitSaveToAlbum ?: false
-        if (!commitJoin(eventId, load.name, cutoff, direction, saveToAlbum)) {
+        if (!commitJoin(eventId, load.name, load.startsAt, cutoff, direction, saveToAlbum)) {
             log("autoJoin aborted: enrollment failed for $eventId")
         }
     }
 }
+
+/**
+ * How often the not-started clock line re-checks the wall clock (capability `sync-status-screen`). One
+ * minute: the line names a start time to the minute, so a finer tick would buy nothing visible, and
+ * nothing of the member's can upload before the start regardless.
+ */
+private const val NOT_STARTED_TICK_MILLIS = 60_000L
 
 /** The pending join's target and phase; the reducer maps it to `JoiningEvent` or `Joined.pendingSwitch`. */
 private data class PendingJoin(val eventId: String, val phase: JoinPhase)
@@ -436,6 +509,7 @@ private fun reduceFrom(
     creation: CreationStatus,
     download: DownloadProgress,
     pending: PendingJoin?,
+    nowCutoff: String,
 ): UiState {
     if (config == null) {
         // A pending interactive join outranks the create layer (a switch whose leave already ran also
@@ -448,8 +522,16 @@ private fun reduceFrom(
         }
     }
     val health = when {
-        // Missing permission is the sole attention state — the only reason contribution cannot run.
+        // Missing permission is the sole attention state — the only reason contribution cannot run. It
+        // outranks NotStarted because it is the only ACTIONABLE state, and the member must resolve it
+        // BEFORE the event begins or they miss the start; hiding it behind the clock line would ambush
+        // them with a permission prompt at the very moment the party starts.
         permission != PermissionStatus.GRANTED -> SyncHealth.NeedsAccess(permission)
+        // The event has not begun. Outranks every snapshot-derived value because nothing of this member's
+        // CAN be syncing yet — the cutoff floor guarantees it (`minPhotoDate >= startsAt > now`, and a
+        // photo cannot be captured in the future) — so a snapshot line would say nothing true that this
+        // does not say better. Canonical fixed-width UTC on both sides ⇒ lexicographic IS chronological.
+        config.startsAt > nowCutoff -> SyncHealth.NotStarted(config.startsAt)
         // Joined but persisted state not read yet — a neutral first frame (the joined chrome still shows).
         snapshot is SyncStatus.Loading -> SyncHealth.Loading
         snapshot is SyncStatus.Ready -> syncHealth(snapshot.progress, download, config.direction)

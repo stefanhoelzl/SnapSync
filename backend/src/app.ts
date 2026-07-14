@@ -71,7 +71,12 @@
 
 import { Hono } from "hono";
 import { AwsClient } from "aws4fetch";
-import { validateEventName, validateFilename, validateUUID } from "./validators.ts";
+import {
+  validateEventName,
+  validateFilename,
+  validateStartsAt,
+  validateUUID,
+} from "./validators.ts";
 import type { Config } from "./config.ts";
 import { createApnsSender, type PushToken } from "./apns.ts";
 
@@ -176,12 +181,27 @@ function deviceConfigKey(deviceId: string): string {
   return `devices/${encodeURIComponent(deviceId)}.json`;
 }
 
-/** The event marker's contents — the registry record written on create. */
+/**
+ * The event marker's contents — the registry record written on create.
+ *
+ * `createdAt` and `startsAt` are DISTINCT facts and must not be conflated: `createdAt` is server-minted
+ * wall-clock at the moment the marker is written (and carries milliseconds, per `toISOString()`), while
+ * `startsAt` is the host's statement of when the event BEGAN — client-supplied, canonical cutoff shape,
+ * honored verbatim. `startsAt` is both the default and the FLOOR for every member's capture-date cutoff
+ * (capability `photo-date-cutoff`).
+ *
+ * Write-once: no route rewrites a stored marker. The backend has no owner field and no auth, so a
+ * mutation route would let anyone holding the event id retroactively widen every future joiner's scope.
+ */
 type EventMarker = {
   eventId: string;
   name: string;
   createdAt: string;
+  startsAt: string;
 };
+
+/** A marker as it may sit in storage — one written before `startsAt` existed lacks the field. */
+type StoredEventMarker = Omit<EventMarker, "startsAt"> & { startsAt?: string };
 
 export type FetchLike = (url: string, init: RequestInit) => Promise<Response>;
 
@@ -331,7 +351,14 @@ async function readMarker(
   });
   if (res.status === 404) return null; // event was never created
   if (!res.ok) throw new Error(`bunny marker GET returned ${res.status} for ${eventId}`);
-  return await res.json() as EventMarker;
+  const stored = await res.json() as StoredEventMarker;
+  // A marker written before `startsAt` existed is patched AT READ, never rewritten (the marker is
+  // write-once). Synthesizing here — the single place every marker read funnels through — is what keeps
+  // `startsAt` non-null for every consumer, so no client carries a nullable start date and every
+  // downstream type stays total. Such an event behaves exactly as it did before this change: the cutoff
+  // is seeded from creation. NB the synthesized value inherits `createdAt`'s MILLISECONDS, so it is not
+  // canonical; the app normalizes a createdAt-derived cutoff (capability `photo-date-cutoff`).
+  return { ...stored, startsAt: stored.startsAt ?? stored.createdAt };
 }
 
 /**
@@ -563,12 +590,17 @@ export function createApp({ fetch: fetchImpl, config }: Deps): Hono {
     if (name === null) {
       return c.text("invalid name", 400); // missing/empty/whitespace/too long
     }
+    const startsAt = validateStartsAt((body as { startsAt?: unknown } | null)?.startsAt);
+    if (startsAt === null) {
+      return c.text("invalid startsAt", 400); // missing/empty/non-canonical/not a real instant
+    }
     // The server is the source of truth for existence, so it mints the id; any client-supplied id is
-    // ignored (we only read `name` above).
+    // ignored (we only read `name` and `startsAt` above).
     const marker: EventMarker = {
       eventId: crypto.randomUUID(),
       name,
       createdAt: new Date().toISOString(),
+      startsAt,
     };
 
     const target = `https://${config.host}/${config.zone}/${markerKey(marker.eventId)}`;

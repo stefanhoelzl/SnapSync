@@ -142,6 +142,40 @@ class EventConfigTest {
     }
 
     @Test
+    fun `a legacy config JSON without startsAt decodes to its cutoff`() {
+        // THE migration this change rests on. Unlike `minPhotoDate`, `startsAt` DOES default — because
+        // `EventConfig` is the only holder of the `eventId` and the invite QR derives from it, so a
+        // decode failure would strand the member outside their own event with no way back in.
+        // `minPhotoDate` is the only default guaranteed consistent with the floor invariant
+        // (`minPhotoDate >= startsAt`, here with equality).
+        val legacy =
+            """{"eventId":"11111111-1111-4111-8111-111111111111","name":"Birthday","minPhotoDate":"$cutoff"}"""
+        val decoded = json.decodeFromString(EventConfig.serializer(), legacy)
+        assertEquals(cutoff, decoded.startsAt)
+        assertEquals(cutoff, decoded.minPhotoDate)
+    }
+
+    @Test
+    fun `persists startsAt across a serialization round-trip`() {
+        val config = EventConfig(
+            eventId = "11111111-1111-4111-8111-111111111111",
+            name = "Birthday",
+            minPhotoDate = "2026-07-14T21:00:00Z",
+            startsAt = "2026-07-14T18:00:00Z",
+        )
+        assertEquals(config, roundTrip(config))
+        // The two are independent facts: a member who joined late sits ABOVE the event's floor.
+        assertEquals("2026-07-14T18:00:00Z", roundTrip(config).startsAt)
+        assertEquals("2026-07-14T21:00:00Z", roundTrip(config).minPhotoDate)
+    }
+
+    @Test
+    fun `equality distinguishes a differing startsAt`() {
+        val base = EventConfig(eventId = "e", name = "n", minPhotoDate = cutoff)
+        assertEquals(false, base == base.copy(startsAt = "2001-01-01T00:00:00Z"))
+    }
+
+    @Test
     fun `an empty cutoff would admit every asset — it is never a valid value`() {
         // Guards the trap that makes `minPhotoDate = ""` an unsafe legacy default: the cutoff compare is
         // `creationDate >= minPhotoDate`, and every string is `>= ""`. The mirror case is the safe one an

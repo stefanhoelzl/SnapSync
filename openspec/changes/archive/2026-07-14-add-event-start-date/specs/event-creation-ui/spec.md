@@ -1,0 +1,202 @@
+## MODIFIED Requirements
+
+### Requirement: Create-event seams and status model
+
+The app-side create capability (`:capability:event-creation-ui`) SHALL define a command port and a
+state port, consumed separately by the presentation container (mirroring the
+`PermissionRequester` / `PermissionStatusSource` split):
+
+- `EventCreator` (command port): `fun create(name: String, startsAt: String)` — fire-and-forget. It MUST
+  NOT return a value and MUST NOT suspend; the outcome arrives exclusively via `CreationStatusSource`.
+  `startsAt` SHALL be a **canonical cutoff string** (`yyyy-MM-dd'T'HH:mm:ss'Z'`, capability
+  `photo-date-cutoff`), already converted from the user's local pick by the caller — so the capability
+  needs no clock, no timezone, and no dependency on the cutoff codec.
+- `CreationStatusSource` (state port): exposes `creationStatus: StateFlow<CreationStatus>`, a
+  level-triggered holder whose current value is always available synchronously; every emission is the
+  whole truth.
+
+`CreationStatus` SHALL have exactly three shapes: `Idle`, `InFlight`, and `Failed(reason)` where
+`reason` distinguishes an invalid-name rejection from a transient/server failure (so the screen can
+show the right copy). There SHALL be no `Succeeded` value — a successful create provisions config,
+which moves the reduction off the create layer.
+
+No new failure reason SHALL be added for an invalid `startsAt`. The app always sends a canonical value
+(it comes from a picker, converted through the one cutoff codec), so a `startsAt`-shaped `400` is
+unreachable from this client; inventing user-facing copy for a state no user can reach would be dead
+surface. The existing single `400` → invalid-name mapping stands.
+
+#### Scenario: Outcome arrives only via the state port
+- **WHEN** `EventCreator.create(name, startsAt)` is invoked
+- **THEN** `create` itself communicates nothing, and the in-flight and terminal outcomes are observed
+  as emissions of `CreationStatusSource.creationStatus`
+
+#### Scenario: The creator receives an already-canonical start date
+- **WHEN** `EventCreator.create` is invoked
+- **THEN** its `startsAt` argument is already in the canonical `yyyy-MM-dd'T'HH:mm:ss'Z'` shape, the
+  capability performing no clock read and no timezone conversion of its own
+
+#### Scenario: Status models in-flight and failure but never success
+- **WHEN** the creation status is inspected across a create attempt
+- **THEN** it holds `InFlight` during the request and `Failed(reason)` on failure, and a success is
+  represented by config becoming present (not by a `CreationStatus` value)
+
+### Requirement: Create mints an event then provisions it like a scanned QR
+
+The capability SHALL provide a create use-case that, on `create(name, startsAt)`, sets `creationStatus`
+to `InFlight`, calls the backend `POST /events` with the trimmed name **and the start date** via an
+injected client, and on a `201 { eventId, name, createdAt, startsAt }` **routes the returned `eventId`
+into the existing pending-join gate** — the same gate a scanned deeplink opens (see capability
+`join-event`) — rather than provisioning the config directly. The route SHALL be an **auto-routed but not
+auto-confirmed** pending join: the creator is taken to the join surface (which fetches the just-minted
+event's details, shows its name, and offers the cutoff selector defaulting to the event's `startsAt`) and
+completes the **same** confirm-to-enroll-and-provision flow every joiner uses.
+
+The creator is therefore subject to the **same floor as every other member** (capability
+`photo-date-cutoff`): the start date they just chose is the floor on their own cutoff too. This is not a
+special case — it falls out of create and scan converging on one gate.
+
+Because the `POST` has already minted the event, the gate holds a **real** `eventId`, performs a real
+details fetch, and enrolls normally; the config is saved (with name, `startsAt`, and the clamped cutoff)
+by the gate's provision step, not by the create use-case. On a successful mint `creationStatus` SHALL
+return to `Idle` (the pending join drives the reduction from there); on any failure (non-2xx, transport,
+or parse) it SHALL set `creationStatus` to `Failed(reason)`, SHALL NOT open the gate, and SHALL save no
+config. A cancelled or abandoned join after a successful mint SHALL leave the minted event as a harmless
+member-less marker (no rollback). The use-case MUST NOT inspect `PermissionStatus`.
+
+#### Scenario: Successful create opens the join gate for the minted event
+- **WHEN** `create("My Party", "2026-07-14T18:00:00Z")` is invoked and the backend returns `201` with `{eventId, name, createdAt, startsAt}`
+- **THEN** the returned `eventId` is routed into the pending-join gate, the join surface loads the event and shows the cutoff selector defaulting to the event's start, and the config is provisioned only when the creator confirms
+
+#### Scenario: The creator is bound by the floor they set
+- **WHEN** the creator sets a start date, is routed into the gate, and confirms
+- **THEN** the persisted cutoff is `max(chosen, startsAt)` exactly as for any other joiner — the creator
+  receives no exemption from the floor
+
+#### Scenario: Create ignores permission
+- **WHEN** `create(name, startsAt)` is invoked while photo permission is `NOT_DETERMINED` or `DENIED`
+- **THEN** the create proceeds (mints + opens the gate) without inspecting permission, and the missing
+  permission surfaces afterward via the joined-layer `NeedsAccess` status line (per `sync-status-screen`)
+
+#### Scenario: A failed create leaves config untouched and opens no gate
+- **WHEN** `create(name, startsAt)` is invoked and the backend request fails (non-2xx, transport, or parse)
+- **THEN** `creationStatus` becomes `Failed(reason)`, config is unchanged, and no pending join is opened
+
+#### Scenario: A cancelled join after a mint leaves a harmless marker
+- **WHEN** the mint succeeds, the gate opens, and the creator cancels before confirming
+- **THEN** no config is saved, the device is not enrolled, and the minted event remains as a member-less marker with no rollback
+
+### Requirement: HTTP event creator over an injected client
+
+The capability SHALL provide an `EventCreator` HTTP implementation over an injected Ktor `HttpClient`
+and a host string (the engine and host are supplied by the composition root, keeping the impl
+platform-neutral and testable with `MockEngine`), mirroring `HttpEventFilesSource`. It SHALL
+`POST <host>/events` (HTTPS, default ATS) with a JSON body `{ "name": <trimmed name>, "startsAt":
+<canonical start date> }`, parse a `201` body into `{ eventId, name, createdAt, startsAt }`, and map any
+non-2xx, transport, or parse error to a failed result the use-case turns into `Failed`. A `400` SHALL map
+to the invalid-name reason; any other non-2xx or transport/parse error SHALL map to the transient/server
+reason. The `startsAt` SHALL be sent **verbatim** — the client SHALL NOT reformat, re-zone, or re-derive
+it, the canonical shape being the caller's contract.
+
+#### Scenario: Create posts the name and the start date
+- **WHEN** the client is asked to create `"My Party"` starting `2026-07-14T18:00:00Z`
+- **THEN** the request body is exactly `{"name":"My Party","startsAt":"2026-07-14T18:00:00Z"}`
+
+#### Scenario: Create parses the event
+- **WHEN** the server responds `201` with `{eventId, name, createdAt, startsAt}`
+- **THEN** the parsed `eventId` is returned for provisioning
+
+#### Scenario: A 400 maps to the invalid-name reason
+- **WHEN** the server responds `400` to the create request
+- **THEN** the result is a failure carrying the invalid-name reason
+
+#### Scenario: A 502 or transport error maps to the transient reason
+- **WHEN** the server responds `502`, or the request fails to reach the server, or the body does not parse
+- **THEN** the result is a failure carrying the transient/server reason
+
+### Requirement: Create-event screen
+
+When the UI state is the create layer, the status screen SHALL render a create-event screen composed
+from `App*` components within `ScreenLayout`: an `AppTextField` for the event name, an **event start-date
+row** beneath it, a `PrimaryButton` labelled to create the event, and a passive hint that an event can
+also be joined by scanning its QR code with the Camera. The Create action SHALL be disabled while the
+trimmed name is empty, and the field SHALL accept at most 100 characters. The create-input state SHALL
+carry an optional inline error line rendered beneath the input. While the UI state is `CreatingEvent`,
+the screen SHALL show a preparing indicator and no input. The create layer SHALL NOT show the leave
+action.
+
+The **start-date row** SHALL render the currently-chosen start as a readable label with an **edit
+affordance** beside it (an `App*` component, see capability `design-system`), opening the design system's
+date/time picker. It SHALL default to **now**, and that default SHALL be **frozen at the moment the
+screen first composes** — it SHALL NOT be re-derived at submit. The label is the screen's whole
+statement about what will be sent, so a value that silently drifted between being displayed and being
+posted would make the screen lie. A start-date row SHALL always carry a value; there is no unset state.
+
+The start-date picker SHALL impose **no bounds**: a start may be chosen arbitrarily far in the past
+**or** in the future. A future start is a supported case (creating an event ahead of time), and an early
+start is how a host brings pre-existing photos into scope — including how a developer creates an event
+whose contents reach back to a seeded, distant-past library.
+
+#### Scenario: The start row defaults to now, frozen at composition
+- **WHEN** the create screen first composes at `18:04` and the user then spends ten minutes typing a name
+- **THEN** the start row still reads `18:04`, and `18:04` is the value posted — not the instant Create was tapped
+
+#### Scenario: Editing the start opens the picker and updates the label
+- **WHEN** the user activates the start row's edit affordance and picks a date and time
+- **THEN** the picker closes and the row's label shows the newly-picked start
+
+#### Scenario: The start is unbounded in both directions
+- **WHEN** the user picks a start years in the past, or one in the future
+- **THEN** the picker accepts it and the row shows it, no bound being imposed
+
+#### Scenario: Empty name disables Create
+- **WHEN** the create screen is shown and the name field is empty or whitespace-only
+- **THEN** the Create action is disabled
+
+#### Scenario: A typed name enables Create
+- **WHEN** the user types a non-empty name
+- **THEN** the Create action is enabled and activating it invokes `EventCreator.create` with the
+  trimmed name **and the chosen start date** through the container
+
+#### Scenario: The name field caps at 100 characters
+- **WHEN** the user attempts to enter more than 100 characters
+- **THEN** the field holds at 100 characters
+
+#### Scenario: The scan hint is present and passive
+- **WHEN** the create screen is shown
+- **THEN** it displays a passive "scan a QR to join" hint with no button
+
+#### Scenario: Creating shows a preparing indicator
+- **WHEN** the UI state is `CreatingEvent`
+- **THEN** the screen shows a preparing indicator and hides the input
+
+### Requirement: Create screen owns the deeplink intent and one inline error surface
+
+The container SHALL expose an `onCreateEvent(name: String, startsAt: LocalDateTime)` intent that converts
+the picked **local** date-time into the canonical cutoff string via the injected time source (capability
+`photo-date-cutoff` — the same `CutoffFormatter` the join surface already uses, so there is exactly one
+origin of "now" and one local→UTC conversion in the app) and calls `EventCreator.create`. The container
+SHALL retain the `onOpenUrl(raw: String)` intent that decodes an incoming deeplink via the
+`deeplink-config` decoder and, on success, provisions it (the QR-join path is unchanged). The create
+screen SHALL render a single inline error region serving two causes: a `Failed(reason)` create error
+(sticky until the next create attempt) and a transient, self-clearing invalid-deeplink error emitted
+when `onOpenUrl` receives a URL the decoder rejects. An invalid deeplink MUST NOT change persisted
+config.
+
+#### Scenario: The container converts the local pick to the canonical shape
+- **WHEN** `onCreateEvent` receives a local date-time from the screen
+- **THEN** it converts it through the injected time source into `yyyy-MM-dd'T'HH:mm:ss'Z'` and passes
+  that string to `EventCreator.create`, the screen never handling a cutoff string itself
+
+#### Scenario: Create failure shows a sticky inline error
+- **WHEN** a create attempt fails and the reduction returns to the create-input state
+- **THEN** the inline error shows the failure copy and persists until the next create attempt (which
+  re-enters `InFlight` and clears it)
+
+#### Scenario: Invalid deeplink flashes a transient error and changes nothing
+- **WHEN** `onOpenUrl` receives a URL the decoder rejects
+- **THEN** a transient invalid-link error is surfaced on the create screen, persisted config is
+  unchanged, and the error self-clears
+
+#### Scenario: A valid deeplink still joins from the create screen
+- **WHEN** `onOpenUrl` receives a structurally-valid `snapsync://config?…` URL while the create screen is shown
+- **THEN** the decoded config is provisioned (saved) and the existing join flow runs

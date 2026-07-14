@@ -23,13 +23,15 @@ import app.snapsync.presentation.SyncHealth
 import app.snapsync.presentation.SystemCutoffFormatter
 import app.snapsync.presentation.UiState
 import app.snapsync.ui.components.AppConfirmDialog
-import app.snapsync.ui.components.AppDateTimeField
 import app.snapsync.ui.components.AppEventHero
 import app.snapsync.ui.components.AppExplainer
 import kotlinx.datetime.LocalDateTime
 import app.snapsync.ui.components.AppQrCode
 import app.snapsync.ui.components.AccessPrompt
 import app.snapsync.ui.components.AppCheckboxRow
+import app.snapsync.ui.components.AppCutoffSelector
+import app.snapsync.ui.components.AppEventStartRow
+import app.snapsync.ui.components.CutoffChoice
 import app.snapsync.ui.components.AppDirectionSelector
 import app.snapsync.ui.components.AppStatusLine
 import app.snapsync.ui.components.AppSyncStatus
@@ -56,7 +58,7 @@ fun StatusScreen(
     inviteUrl: String? = null,
     // The joined event's name (fetched by id), shown as the heading; null until fetched.
     eventName: String? = null,
-    onCreateEvent: (String) -> Unit = {},
+    onCreateEvent: (String, LocalDateTime) -> Unit = { _, _ -> },
     transientError: String? = null,
     // Join-gate actions (capability `join-event`), routed to the container intents. The confirm/retry
     // actions carry the chosen capture-date cutoff (capability `photo-date-cutoff`; always present),
@@ -101,7 +103,7 @@ fun StatusScreen(
         ) {
             when (state) {
                 is UiState.CreateEvent ->
-                    CreateEventScreen(state, onCreateEvent, transientError)
+                    CreateEventScreen(state, onCreateEvent, transientError, cutoff)
                 UiState.CreatingEvent ->
                     StatusHero(StatusIndicator.Loading, "Creating your event …")
                 is UiState.JoiningEvent ->
@@ -110,7 +112,7 @@ fun StatusScreen(
                         onCancelJoin, onRetryLoad, onRetryJoin,
                     )
                 is UiState.Joined ->
-                    JoinedLayer(state.health, inviteUrl, onRequestPermission, onOpenSettings)
+                    JoinedLayer(state.health, inviteUrl, onRequestPermission, onOpenSettings, cutoff)
             }
         }
 
@@ -148,11 +150,20 @@ fun StatusScreen(
  * confirm) — which is why the cutoff row seeds from the first phase that *does* carry one, not from
  * whichever phase the screen happened to mount at.
  */
-private fun JoinPhase.defaultCutoff(): String? = when (this) {
-    is JoinPhase.ExplainAccess -> defaultCutoff
-    is JoinPhase.Ready -> defaultCutoff
+/**
+ * The event's start, from whichever phase carries it (capability `photo-date-cutoff`).
+ *
+ * Unlike the seed it replaces, this covers **Committing and CommitFailed too**. Those phases carry
+ * `startsAt` precisely because a Retry commits WITHOUT passing back through the loaded phase — reading it
+ * only from `Ready` would make a retry derive its cutoff from `now` instead of the start the user chose,
+ * silently discarding their selection at the one moment they are already recovering from a failure.
+ */
+private fun JoinPhase.startsAt(): String? = when (this) {
+    is JoinPhase.ExplainAccess -> startsAt
+    is JoinPhase.Ready -> startsAt
+    is JoinPhase.Committing -> startsAt
+    is JoinPhase.CommitFailed -> startsAt
     JoinPhase.Loading, JoinPhase.NotFound, JoinPhase.LoadFailed -> null
-    is JoinPhase.Committing, is JoinPhase.CommitFailed -> null
 }
 
 /**
@@ -179,33 +190,38 @@ private fun JoiningEventScreen(
     onRetryLoad: () -> Unit,
     onRetryJoin: (String, Direction, Boolean) -> Unit,
 ) {
-    // The chosen cutoff is **non-null by construction** — a join with no cutoff is unrepresentable rather
-    // than merely guarded, since it would upload the whole library (capability `photo-date-cutoff`).
+    // The cutoff is one of exactly two presets (capability `photo-date-cutoff`), defaulting to the event's
+    // start. A join with no cutoff is unrepresentable rather than merely guarded — it would upload the
+    // whole library.
     //
-    // It is seeded once, from the FIRST phase that carries a `defaultCutoff` (the loaded `createdAt`, itself
-    // non-null — the host resolves an absent/unparseable one to now). Seeding on *first composition* was a
-    // bug: this screen mounts at `Loading` (that is what `startPending` sets before the details fetch), so
-    // the loaded default had not arrived yet, the seed fell through to `now`, and `remember` never re-ran —
-    // the row defaulted to now for every real join, defeating "defaulting to the loaded `createdAt`"
-    // (capability `join-event`). Every test mounted straight into `Ready`, so none of them saw it.
-    //
-    // Seeding *once* (not on every default-bearing phase) is what preserves a user's edit across
-    // Ready → Committing → CommitFailed: those two carry no default, and a retry must reuse what was chosen.
-    // A screen mounted straight into CommitFailed never seeds and keeps `now` — the safe direction: "now"
-    // shares too few photos, which a re-join fixes; the opposite error cannot be undone.
-    val loadedDefault = phase.defaultCutoff()
-    var chosen by remember { mutableStateOf(cutoff.nowLocal()) }
-    var seeded by remember { mutableStateOf(false) }
-    LaunchedEffect(loadedDefault) {
-        if (!seeded && loadedDefault != null) {
-            // An unparseable cutoff keeps `now` — the safe direction, and what the previous seed did too.
-            cutoff.toLocal(loadedDefault)?.let { chosen = it }
-            seeded = true
-        }
-    }
+    // What is REMEMBERED is the preset, not an instant — the instant is derived fresh from the phase on
+    // every composition. That sidesteps by construction the seeding bug a `remember`-ed instant had: this
+    // screen mounts at `Loading` (what `startPending` sets before the details fetch), so anything seeded on
+    // first composition captured `now` and never re-ran when the loaded phase arrived. There is nothing to
+    // seed here, so there is nothing to go stale.
+    var chosenPreset by remember { mutableStateOf(CutoffChoice.EVENT_START) }
     var chosenDirection by remember { mutableStateOf(Direction.Both) }
     var chosenSaveToAlbum by remember { mutableStateOf(false) }
-    val chosenCutoff: String = cutoff.toCutoff(chosen)
+
+    // The event's start, as a local wall-clock value. Non-null on Ready (the host guarantees `startsAt`);
+    // a screen mounted straight into CommitFailed falls back to now, which is inert there — that phase
+    // renders no cutoff row, and its Retry re-sends the cutoff the Ready phase already committed.
+    val eventStart: LocalDateTime =
+        phase.startsAt()?.let { cutoff.toLocal(it) } ?: cutoff.nowLocal()
+    val nowLocal: LocalDateTime = cutoff.nowLocal()
+
+    // Pre-start, "Now" would clamp to the very same instant as "Event start" (`max(now, startsAt) ==
+    // startsAt`), so it is offered disabled rather than as a button that visibly does nothing.
+    val eventHasStarted: Boolean = cutoff.toCutoff(eventStart) <= cutoff.nowCutoff()
+
+    // What the member is actually committing to — rendered as the selector's label, so the value is never
+    // hidden. `JoinEvent` clamps this to `max(chosen, startsAt)` on the far side; picking EVENT_START (or
+    // NOW while the event has not started) simply lands on the floor already.
+    val resulting: LocalDateTime = when {
+        chosenPreset == CutoffChoice.EVENT_START || !eventHasStarted -> eventStart
+        else -> nowLocal
+    }
+    val chosenCutoff: String = cutoff.toCutoff(resulting)
 
     Column(modifier = Modifier.fillMaxSize()) {
         Column(
@@ -273,9 +289,11 @@ private fun JoiningEventScreen(
                 is JoinPhase.Ready -> {
                     DirectionRow(selected = chosenDirection, onSelect = { chosenDirection = it })
                     CutoffRow(
-                        value = chosen,
-                        onValueChange = { chosen = it },
-                        onOnlyFromNow = { chosen = cutoff.nowLocal() },
+                        selected = chosenPreset,
+                        onSelect = { chosenPreset = it },
+                        resulting = resulting,
+                        // Pre-start, "Now" clamps to the same instant as "Event start" — offered disabled.
+                        nowAvailable = eventHasStarted,
                         // The cutoff scopes uploads only — inert when the user opted out of uploading.
                         enabled = chosenDirection != Direction.DownloadOnly,
                     )
@@ -353,17 +371,25 @@ private fun SyncDirectionChoice.toDirection(): Direction = when (this) {
 }
 
 /**
- * The capture-date cutoff row on the join surface (capability `photo-date-cutoff`): a caption, the
- * date/time picker prefilled to the chosen value (default = the event's `createdAt`), and an "Only from
- * now" shortcut that snaps the cutoff to the current instant. Only photos taken at or after the chosen
- * value are uploaded and shared into the event. [enabled] is false under a download-only membership (the
- * cutoff scopes uploads only): the row stays visible but its inputs are inert.
+ * The capture-date cutoff row on the join surface (capability `photo-date-cutoff`): a caption and a
+ * two-preset selector — **Now** or **Event start** — with the resulting instant shown as a label, so the
+ * member always sees the value they are committing to. Only photos taken at or after it are uploaded and
+ * shared into the event.
+ *
+ * The free date+time picker that used to live here is gone. With the event's `startsAt` supplying both the
+ * default *and* a floor, an arbitrary picker could only offer values the clamp would reject (anything
+ * below the floor) — so the row collapses to a one-tap decision.
+ *
+ * [nowAvailable] is false before the event starts ("Now" would clamp to the same instant as "Event
+ * start"). [enabled] is false under a download-only membership (the cutoff scopes uploads only): the row
+ * stays visible but its inputs are inert.
  */
 @Composable
 private fun CutoffRow(
-    value: LocalDateTime?,
-    onValueChange: (LocalDateTime) -> Unit,
-    onOnlyFromNow: () -> Unit,
+    selected: CutoffChoice,
+    onSelect: (CutoffChoice) -> Unit,
+    resulting: LocalDateTime,
+    nowAvailable: Boolean = true,
     enabled: Boolean = true,
 ) {
     Column(
@@ -371,8 +397,13 @@ private fun CutoffRow(
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
         StatusHint("Only photos taken after this date are shared to the event.")
-        AppDateTimeField(value = value, onValueChange = onValueChange, enabled = enabled)
-        SecondaryButton(label = "Only from now", onClick = onOnlyFromNow, enabled = enabled)
+        AppCutoffSelector(
+            selected = selected,
+            onSelect = onSelect,
+            resulting = resulting,
+            nowAvailable = nowAvailable,
+            enabled = enabled,
+        )
     }
 }
 
@@ -392,10 +423,10 @@ private fun SwitchDialog(
     onRetryJoin: (String, Direction) -> Unit,
 ) {
     val current = currentEventName ?: "this event"
-    // The compact switch dialog has no picker: it uses the new event's default cutoff (its `createdAt`,
-    // or now when that is absent — resolved non-null by the host, capability `photo-date-cutoff`) and the
+    // The compact switch dialog has no picker: it uses the new event's default cutoff — its `startsAt`,
+    // which is also the FLOOR, so the switch lands exactly on it (capability `photo-date-cutoff`) — and the
     // default participation direction ([Direction.Both]).
-    // Remembered so a retry after a failed commit reuses it (the CommitFailed phase carries only the name).
+    // Remembered so a retry after a failed commit reuses it (the CommitFailed phase carries name+startsAt).
     var cutoff by remember { mutableStateOf<String?>(null) }
     when (val phase = switch.phase) {
         // Unreachable. The photo-access explainer is a FIRST-join surface: `readyOrExplain` emits it only
@@ -405,12 +436,12 @@ private fun SwitchDialog(
         // is what keeps it dead (capability `join-event`).
         is JoinPhase.ExplainAccess -> Unit
         is JoinPhase.Ready -> {
-            cutoff = phase.defaultCutoff
+            cutoff = phase.startsAt
             AppConfirmDialog(
                 title = "Leave $current and join ${phase.name}?",
                 confirmLabel = "Switch",
                 cancelLabel = "Cancel",
-                onConfirm = { onConfirmSwitch(phase.defaultCutoff, Direction.Both) },
+                onConfirm = { onConfirmSwitch(phase.startsAt, Direction.Both) },
                 onDismiss = onCancelSwitch,
             )
         }
@@ -456,6 +487,7 @@ private fun JoinedLayer(
     inviteUrl: String?,
     onRequestPermission: () -> Unit,
     onOpenSettings: () -> Unit,
+    cutoff: CutoffFormatter,
 ) {
     Column(
         modifier = Modifier.fillMaxWidth(),
@@ -466,7 +498,7 @@ private fun JoinedLayer(
             AppQrCode(content = inviteUrl, caption = "Scan to join this event")
         }
         AppStatusLine(
-            status = health.toAppSyncStatus(),
+            status = health.toAppSyncStatus(cutoff),
             onAttentionClick = {
                 if (health is SyncHealth.NeedsAccess) {
                     if (health.permission == PermissionStatus.NOT_DETERMINED) {
@@ -480,10 +512,16 @@ private fun JoinedLayer(
     }
 }
 
-private fun SyncHealth.toAppSyncStatus(): AppSyncStatus = when (this) {
+private fun SyncHealth.toAppSyncStatus(cutoff: CutoffFormatter): AppSyncStatus = when (this) {
     is SyncHealth.NeedsAccess -> AppSyncStatus.NeedsAccess(
         if (permission == PermissionStatus.NOT_DETERMINED) AccessPrompt.ALLOW else AccessPrompt.SETTINGS,
     )
+    // The clock line renders the start in the DEVICE's local zone — a guest in another timezone sees the
+    // event begin at their own wall-clock time, which is the honest reading of an instant. An unparseable
+    // startsAt cannot occur (the details source normalizes it, and the config decoder requires it), so an
+    // unreadable one degrades to the neutral first frame rather than crashing the joined screen.
+    is SyncHealth.NotStarted ->
+        cutoff.toLocal(startsAt)?.let { AppSyncStatus.NotStarted(it) } ?: AppSyncStatus.Loading
     SyncHealth.Loading -> AppSyncStatus.Loading
     SyncHealth.InSync -> AppSyncStatus.InSync
     is SyncHealth.Syncing -> AppSyncStatus.Syncing(upload.toLevel(), download.toLevel())
@@ -496,18 +534,25 @@ private fun Arrow.toLevel(): ArrowLevel = when (this) {
 }
 
 /**
- * The create-event landing layer (event-creation-ui): the hero sits centered while the name field +
- * Create button + scan hint are pinned to the bottom. Framed as sharing (not backup). The name lives
- * in local Compose state (only the submitted, trimmed value crosses the container); Create is disabled
- * until the trimmed name is non-empty, and the field caps at 100 characters.
+ * The create-event landing layer (event-creation-ui): the hero sits centered while the name field + start
+ * row + Create button + scan hint are pinned to the bottom. Framed as sharing (not backup). The name and
+ * the start live in local Compose state (only the submitted values cross the container); Create is
+ * disabled until the trimmed name is non-empty, and the field caps at 100 characters.
+ *
+ * The start defaults to **now, frozen at first composition** (`remember { … }`, not re-derived at submit).
+ * The label is the screen's whole statement about what will be sent, so a value that silently drifted
+ * between being displayed and being posted would make the screen lie. A slow typer therefore sets a start
+ * a few minutes in the past — harmless, since they are at their own event.
  */
 @Composable
 private fun CreateEventScreen(
     state: UiState.CreateEvent,
-    onCreateEvent: (String) -> Unit,
+    onCreateEvent: (String, LocalDateTime) -> Unit,
     transientError: String?,
+    cutoff: CutoffFormatter,
 ) {
     var name by remember { mutableStateOf("") }
+    var startsAt by remember { mutableStateOf(cutoff.nowLocal()) }
     Column(modifier = Modifier.fillMaxSize()) {
         // Hero centered in the space above the inputs.
         Column(
@@ -532,9 +577,10 @@ private fun CreateEventScreen(
                 maxLength = EVENT_NAME_MAX_LENGTH,
                 errorText = transientError ?: state.error,
             )
+            AppEventStartRow(value = startsAt, onValueChange = { startsAt = it })
             PrimaryButton(
                 label = "Create event",
-                onClick = { onCreateEvent(name) },
+                onClick = { onCreateEvent(name, startsAt) },
                 enabled = name.isNotBlank(),
             )
             StatusHint("Or scan a QR code in the Camera app to join one.")

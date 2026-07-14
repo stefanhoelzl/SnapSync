@@ -58,15 +58,31 @@ class MiniEdgeTest {
     @Test
     fun event_creation_mints_and_registers_marker() = runTest {
         val store = BackendStore()
-        val outcome = HttpEventCreationClient(miniEdgeClient(store), host).create("Party")
+        val outcome = HttpEventCreationClient(miniEdgeClient(store), host)
+            .create("Party", "2026-07-14T18:00:00Z")
         assertTrue(outcome is CreateOutcome.Created)
-        assertTrue(store.isRegistered((outcome as CreateOutcome.Created).eventId))
+        val eventId = (outcome as CreateOutcome.Created).eventId
+        assertTrue(store.isRegistered(eventId))
+        assertEquals("2026-07-14T18:00:00Z", store.startsAtOf(eventId), "the start date is stored")
     }
 
     @Test
     fun event_creation_rejects_blank_name() = runTest {
-        val outcome = HttpEventCreationClient(miniEdgeClient(BackendStore()), host).create("   ")
+        val outcome = HttpEventCreationClient(miniEdgeClient(BackendStore()), host)
+            .create("   ", "2026-07-14T18:00:00Z")
         assertEquals(CreateOutcome.InvalidName, outcome)
+    }
+
+    @Test
+    fun event_creation_rejects_a_non_canonical_startsAt() = runTest {
+        // The mini-edge is a FAITHFUL edge, not a lenient one: the real backend 400s a fractional-second
+        // or offset-bearing `startsAt`, so a client that shipped one would only fail on device. Here it
+        // fails in the fast loop instead.
+        val store = BackendStore()
+        for (bad in listOf("2026-07-14T18:00:00.000Z", "2026-07-14T18:00:00+02:00", "", "yesterday")) {
+            val outcome = HttpEventCreationClient(miniEdgeClient(store), host).create("Party", bad)
+            assertEquals(CreateOutcome.InvalidName, outcome, "startsAt=$bad must be rejected (400)")
+        }
     }
 
     @Test

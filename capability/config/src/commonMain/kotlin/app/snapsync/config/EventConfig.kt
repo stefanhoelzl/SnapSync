@@ -61,6 +61,28 @@ internal fun EventLinkPayload.sameAs(other: EventLinkPayload): Boolean =
  * `""` looks tempting: an undated *asset* — `creationDate == ""` — is correctly excluded by any real
  * cutoff.)
  *
+ * [startsAt] is the **event's** start date (capability `event-creation`) — set once by the host at
+ * creation, immutable, and the same canonical `…Z` shape as [minPhotoDate]. It is both the **default**
+ * and the **floor** for this membership's cutoff: the persisted [minPhotoDate] is always
+ * `max(chosen, startsAt)` (the clamp lives in `JoinEvent`), so the invariant `minPhotoDate >= startsAt`
+ * holds for every config. It is what the not-started status line compares against (`startsAt > now`,
+ * capability `sync-status-screen`).
+ *
+ * Unlike [minPhotoDate], [startsAt] **defaults** — to [minPhotoDate] — so a config persisted before this
+ * field existed decodes instead of failing. That asymmetry is deliberate and the reasoning is *not*
+ * transferable: [minPhotoDate]'s no-default harshness buys protection against uploading a whole camera
+ * roll, whereas [startsAt]'s would buy a status line. And the blast radius is severe — this class is the
+ * **only** holder of the `eventId`, and the invite QR is derived from it, so a decode failure destroys
+ * the member's event id *and* their QR with nothing in the app to surface either back; a host who is the
+ * only member yet would be locked out of their own event permanently, its uploaded photos stranded.
+ * [minPhotoDate] is the right default because it is the only value **guaranteed** consistent with the
+ * floor invariant (satisfying it with equality), and because it lands the not-started state correctly by
+ * construction: a legacy member joined an event that had already begun, so their cutoff was at or before
+ * "now" when they picked it, so the derived [startsAt] is never in the future.
+ *
+ * (The `@Serializable` plugin honours a default that references an **earlier** constructor parameter —
+ * verified by `EventConfigTest`. [startsAt] must therefore stay declared *after* [minPhotoDate].)
+ *
  * The extension reads the `eventId`, the `minPhotoDate` (the cutoff scopes its upload cycle), **and**
  * [saveToAlbum] (whether to add completed uploads to the event album) from the shared Keychain item; the
  * name is cosmetic, for the status-screen title.
@@ -75,6 +97,7 @@ data class EventConfig(
     val eventId: String,
     val name: String = "",
     val minPhotoDate: String,
+    val startsAt: String = minPhotoDate,
     val direction: Direction = Direction.Both,
     val saveToAlbum: Boolean = false,
 )

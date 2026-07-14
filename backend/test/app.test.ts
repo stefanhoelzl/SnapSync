@@ -21,7 +21,15 @@ const ZONE = `https://storage.bunnycdn.com/snapsync-zone`;
 // The presigned-download S3 endpoint (path-style: `<s3Host>/<zone>/<key>`).
 const S3_ZONE = `https://${CONFIG.s3Host}/${CONFIG.zone}`;
 const MARKER_URL = `${ZONE}/events/${E}/metadata.json`; // event registry marker
-const MARKER_BODY = { eventId: E, name: "Party", createdAt: "2026-06-27T00:00:00Z" };
+// `startsAt` is the CANONICAL cutoff shape (second precision, no fraction) while `createdAt` is whatever
+// `toISOString()` mints — the two are different facts and deliberately different shapes.
+const STARTS_AT = "2026-06-27T18:00:00Z";
+const MARKER_BODY = {
+  eventId: E,
+  name: "Party",
+  createdAt: "2026-06-27T00:00:00Z",
+  startsAt: STARTS_AT,
+};
 const markerPresent = { [MARKER_URL]: { body: MARKER_BODY } };
 
 /**
@@ -367,11 +375,11 @@ Deno.test("device list → a percent-encoded filename round-trips and re-encodes
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
-Deno.test("POST /events → 201 {eventId,name,createdAt} + one marker PUT to events/<id>/metadata.json", async () => {
+Deno.test("POST /events → 201 {eventId,name,createdAt,startsAt} + one marker PUT to events/<id>/metadata.json", async () => {
   const { calls, fetchImpl } = recorder();
   const res = await createApp({ config: CONFIG, fetch: fetchImpl }).request("/events", {
     method: "POST",
-    body: JSON.stringify({ name: "Birthday" }),
+    body: JSON.stringify({ name: "Birthday", startsAt: STARTS_AT }),
     headers: { "content-type": "application/json" },
   });
   assertEquals(res.status, 201);
@@ -379,6 +387,7 @@ Deno.test("POST /events → 201 {eventId,name,createdAt} + one marker PUT to eve
   assertEquals(json.name, "Birthday");
   assertEquals(UUID_RE.test(json.eventId), true);
   assertEquals(typeof json.createdAt, "string");
+  assertEquals(json.startsAt, STARTS_AT); // honored VERBATIM, not re-derived
   assertEquals(calls.length, 1);
   const put = calls[0];
   assertEquals(put.init.method, "PUT");
@@ -389,11 +398,58 @@ Deno.test("POST /events → 201 {eventId,name,createdAt} + one marker PUT to eve
   assertEquals(JSON.parse(put.init.body as string), json);
 });
 
+Deno.test("POST /events → createdAt and startsAt are independent facts", async () => {
+  const { fetchImpl } = recorder();
+  const res = await createApp({ config: CONFIG, fetch: fetchImpl }).request("/events", {
+    method: "POST",
+    body: JSON.stringify({ name: "Wedding", startsAt: "2001-01-01T09:00:00Z" }),
+  });
+  assertEquals(res.status, 201);
+  const json = await res.json();
+  // The host says the event began in 2001; the server still stamps its own creation time now.
+  assertEquals(json.startsAt, "2001-01-01T09:00:00Z");
+  assertEquals(json.createdAt === json.startsAt, false);
+});
+
+Deno.test("POST /events → a future startsAt is accepted (event created ahead of time)", async () => {
+  const { fetchImpl } = recorder();
+  const future = "2099-12-31T23:59:59Z";
+  const res = await createApp({ config: CONFIG, fetch: fetchImpl }).request("/events", {
+    method: "POST",
+    body: JSON.stringify({ name: "NYE", startsAt: future }),
+  });
+  assertEquals(res.status, 201);
+  assertEquals((await res.json()).startsAt, future);
+});
+
+Deno.test("POST /events → missing / empty / non-canonical startsAt → 400, no upstream", async () => {
+  const starts = [
+    undefined, // absent
+    "",
+    "2026-06-27T18:00:00.000Z", // fractional seconds — a bare NSISO8601DateFormatter rejects these
+    "2026-06-27T18:00:00+02:00", // offset — breaks the lexicographic compare
+    "2026-06-27T18:00:00", // no Z
+    "2026-06-27", // date only
+    "2026-13-45T99:99:99Z", // right shape, not a real instant
+    "yesterday",
+    12345,
+  ];
+  for (const startsAt of starts) {
+    const { calls, fetchImpl } = recorder();
+    const res = await createApp({ config: CONFIG, fetch: fetchImpl }).request("/events", {
+      method: "POST",
+      body: JSON.stringify({ name: "X", startsAt }),
+    });
+    assertEquals(res.status, 400, `startsAt=${JSON.stringify(startsAt)} should be rejected`);
+    assertEquals(calls.length, 0);
+  }
+});
+
 Deno.test("POST /events → name is trimmed before store and echo", async () => {
   const { calls, fetchImpl } = recorder();
   const res = await createApp({ config: CONFIG, fetch: fetchImpl }).request("/events", {
     method: "POST",
-    body: JSON.stringify({ name: "  Birthday  " }),
+    body: JSON.stringify({ name: "  Birthday  ", startsAt: STARTS_AT }),
   });
   assertEquals(res.status, 201);
   assertEquals((await res.json()).name, "Birthday");
@@ -404,7 +460,12 @@ Deno.test("POST /events → client-supplied id ignored, server mints a fresh UUI
   const { fetchImpl } = recorder();
   const res = await createApp({ config: CONFIG, fetch: fetchImpl }).request("/events", {
     method: "POST",
-    body: JSON.stringify({ name: "X", eventId: "client-supplied", id: "also-ignored" }),
+    body: JSON.stringify({
+      name: "X",
+      startsAt: STARTS_AT,
+      eventId: "client-supplied",
+      id: "also-ignored",
+    }),
   });
   assertEquals(res.status, 201);
   const json = await res.json();
@@ -416,16 +477,17 @@ Deno.test("POST /events → 100-char name accepted (boundary)", async () => {
   const { fetchImpl } = recorder();
   const res = await createApp({ config: CONFIG, fetch: fetchImpl }).request("/events", {
     method: "POST",
-    body: JSON.stringify({ name: "a".repeat(100) }),
+    body: JSON.stringify({ name: "a".repeat(100), startsAt: STARTS_AT }),
   });
   assertEquals(res.status, 201);
 });
 
 Deno.test("POST /events → empty / whitespace / over-long / missing / non-JSON → 400, no upstream", async () => {
+  // Each body carries a VALID startsAt, so these still test NAME validation and not the new field.
   const bodies = [
-    '{"name":""}',
-    '{"name":"   "}',
-    `{"name":"${"a".repeat(101)}"}`,
+    `{"name":"","startsAt":"${STARTS_AT}"}`,
+    `{"name":"   ","startsAt":"${STARTS_AT}"}`,
+    `{"name":"${"a".repeat(101)}","startsAt":"${STARTS_AT}"}`,
     "{}",
     "not json",
   ];
@@ -444,7 +506,7 @@ Deno.test("POST /events → marker PUT fails (500) → 502 (faithful create)", a
   const { fetchImpl } = recorder({ status: 500 });
   const res = await createApp({ config: CONFIG, fetch: fetchImpl }).request("/events", {
     method: "POST",
-    body: JSON.stringify({ name: "X" }),
+    body: JSON.stringify({ name: "X", startsAt: STARTS_AT }),
   });
   assertEquals(res.status, 502);
 });
@@ -453,7 +515,7 @@ Deno.test("POST /events → marker PUT throws → 502", async () => {
   const { fetchImpl } = recorder({ throws: true });
   const res = await createApp({ config: CONFIG, fetch: fetchImpl }).request("/events", {
     method: "POST",
-    body: JSON.stringify({ name: "X" }),
+    body: JSON.stringify({ name: "X", startsAt: STARTS_AT }),
   });
   assertEquals(res.status, 502);
 });
@@ -474,6 +536,19 @@ Deno.test("GET /events/:id → 200 marker (events/<id>/metadata.json) when prese
   assertEquals(await res.json(), MARKER_BODY);
   assertEquals(calls.length, 1);
   assertEquals(calls[0].url, MARKER_URL);
+});
+
+Deno.test("GET /events/:id → a legacy marker's startsAt is synthesized from createdAt", async () => {
+  // A marker written before `startsAt` existed. It is patched AT READ so the app never sees a null and
+  // every downstream type stays total — the stored object is NOT rewritten (the marker is write-once).
+  const legacy = { eventId: E, name: "Party", createdAt: "2026-06-27T00:00:00.182Z" };
+  const { calls, fetchImpl } = listFake({ [MARKER_URL]: { body: legacy } });
+  const res = await createApp({ config: CONFIG, fetch: fetchImpl }).request(`/events/${E}`);
+  assertEquals(res.status, 200);
+  assertEquals(await res.json(), { ...legacy, startsAt: "2026-06-27T00:00:00.182Z" });
+  // One read, and no write-back.
+  assertEquals(calls.length, 1);
+  assertEquals(calls[0].init.method ?? "GET", "GET");
 });
 
 Deno.test("GET /events/:id → 404 when marker absent", async () => {

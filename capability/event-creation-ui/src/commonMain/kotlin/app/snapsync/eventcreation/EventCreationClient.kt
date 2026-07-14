@@ -27,16 +27,20 @@ sealed interface CreateOutcome {
 
 /** The network seam for minting an event. */
 interface EventCreationClient {
-    suspend fun create(name: String): CreateOutcome
+    suspend fun create(name: String, startsAt: String): CreateOutcome
 }
 
 /**
  * The [EventCreationClient] over an injected Ktor [HttpClient] (the engine — Darwin on iOS — is
  * supplied by the composition root, so this stays platform-neutral and testable with `MockEngine`),
  * the twin of `HttpDeviceFilesSource`. It `POST`s `<host>/events` (HTTPS, default ATS) with a JSON
- * body `{ "name": <trimmed name> }`, parses a `201 { eventId, name, createdAt }`, maps `400` to
- * [CreateOutcome.InvalidName], and any other non-2xx / transport / parse failure to
- * [CreateOutcome.Transient].
+ * body `{ "name": <trimmed name>, "startsAt": <canonical start> }`, parses a
+ * `201 { eventId, name, createdAt, startsAt }`, maps `400` to [CreateOutcome.InvalidName], and any other
+ * non-2xx / transport / parse failure to [CreateOutcome.Transient].
+ *
+ * `startsAt` is sent **verbatim**: the caller's contract is that it is already the canonical cutoff shape
+ * (capability `photo-date-cutoff`), and the backend rejects anything else with a `400`. Reformatting or
+ * re-deriving it here would introduce a second origin for a value whose whole point is having exactly one.
  */
 class HttpEventCreationClient(
     private val client: HttpClient,
@@ -46,11 +50,13 @@ class HttpEventCreationClient(
 
     private val base = host.trimEnd('/')
 
-    override suspend fun create(name: String): CreateOutcome =
+    override suspend fun create(name: String, startsAt: String): CreateOutcome =
         runCatching {
             val response = client.post("$base/events") {
                 contentType(ContentType.Application.Json)
-                setBody(json.encodeToString(CreateRequest.serializer(), CreateRequest(name)))
+                setBody(
+                    json.encodeToString(CreateRequest.serializer(), CreateRequest(name, startsAt)),
+                )
             }
             when (response.status) {
                 HttpStatusCode.Created ->
@@ -62,12 +68,13 @@ class HttpEventCreationClient(
         }.getOrElse { CreateOutcome.Transient }
 
     @Serializable
-    private class CreateRequest(val name: String)
+    private class CreateRequest(val name: String, val startsAt: String)
 
     @Serializable
     private class CreatedDto(
         val eventId: String,
         val name: String? = null,
         val createdAt: String? = null,
+        val startsAt: String? = null,
     )
 }

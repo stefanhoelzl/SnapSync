@@ -29,9 +29,14 @@ class UnionAssetDto(
     val resources: List<UnionResourceDto>,
 )
 
-/** The `201` body of `POST /events`. */
+/** The `201` body of `POST /events` (and the `GET /events/<id>` marker). */
 @Serializable
-class CreatedEventDto(val eventId: String, val name: String, val createdAt: String)
+class CreatedEventDto(
+    val eventId: String,
+    val name: String,
+    val createdAt: String,
+    val startsAt: String,
+)
 
 /**
  * The in-memory model of the edge's byte store + registry (capability `harness-world-model`) — the
@@ -56,6 +61,9 @@ class BackendStore {
     private val events = mutableSetOf<String>()
     // Per-event human name (from `POST /events` or a direct injection), served by `GET /events/<id>`.
     private val eventNames = mutableMapOf<String, String>()
+    // Per-event start date (capability `event-creation`). Absent ⇒ a legacy marker, whose `startsAt` the
+    // mini-edge synthesizes from `createdAt` on read.
+    private val eventStarts = mutableMapOf<String, String>()
     // Per-device config docs (`devices/<id>.json`, the push token) — a SEPARATE namespace from
     // the byte store, so a config never appears in [deviceListing] or the [union].
     private val deviceConfigs = mutableMapOf<String, String>()
@@ -74,14 +82,25 @@ class BackendStore {
         byteStore.getOrPut(deviceId) { linkedSetOf() }.add(filename)
     }
 
-    /** Register an event marker (the `POST /events` effect / a direct injection), with an optional name. */
-    fun registerEvent(eventId: String, name: String? = null) {
+    /**
+     * Register an event marker (the `POST /events` effect / a direct injection), with an optional name and
+     * an optional [startsAt] — the event's start date, which is both the default and the FLOOR for every
+     * member's capture-date cutoff (capability `photo-date-cutoff`).
+     *
+     * An event registered with **no** `startsAt` models a marker written before start dates existed; the
+     * mini-edge's `GET` then synthesizes one from `createdAt`, exactly as the real backend does.
+     */
+    fun registerEvent(eventId: String, name: String? = null, startsAt: String? = null) {
         events.add(eventId)
         if (name != null) eventNames[eventId] = name
+        if (startsAt != null) eventStarts[eventId] = startsAt
     }
 
     /** The event's human name for `GET /events/<id>` (null when unnamed). */
     fun nameOf(eventId: String): String? = eventNames[eventId]
+
+    /** The event's start date for `GET /events/<id>` (null when registered without one — a legacy marker). */
+    fun startsAtOf(eventId: String): String? = eventStarts[eventId]
 
     /**
      * Wipe a device's stored byte objects (models an operator `reset-storage` deleting the

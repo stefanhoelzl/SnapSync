@@ -13,10 +13,15 @@ class CreateEventTest {
 
     private val eventId = "11111111-1111-4111-8111-111111111111"
 
+    /** The event's start date, already canonical — the caller converts the local pick, not this layer. */
+    private val startsAt = "2026-07-14T18:00:00Z"
+
     private class FakeClient(private val outcome: CreateOutcome) : EventCreationClient {
         var lastName: String? = null
-        override suspend fun create(name: String): CreateOutcome {
+        var lastStartsAt: String? = null
+        override suspend fun create(name: String, startsAt: String): CreateOutcome {
             lastName = name
+            lastStartsAt = startsAt
             return outcome
         }
     }
@@ -29,9 +34,10 @@ class CreateEventTest {
         val scope = CoroutineScope(UnconfinedTestDispatcher(testScheduler))
         val useCase = CreateEvent(client, status, onMinted = { eventId -> provisioned = eventId }, scope = scope)
 
-        useCase.create("  My Party  ")
+        useCase.create("  My Party  ", startsAt)
 
         assertEquals("My Party", client.lastName) // trimmed before the call
+        assertEquals(startsAt, client.lastStartsAt) // start date passed through VERBATIM, never re-derived
         assertEquals(eventId, provisioned) // handed to the join-gate routing hook
         assertEquals(CreationStatus.Idle, status.creationStatus.value) // no success state
     }
@@ -45,7 +51,7 @@ class CreateEventTest {
             FakeClient(CreateOutcome.InvalidName), status, onMinted = { eventId -> provisioned = eventId }, scope = scope,
         )
 
-        useCase.create("x")
+        useCase.create("x", startsAt)
 
         assertEquals(CreationStatus.Failed(CreationFailureReason.INVALID_NAME), status.creationStatus.value)
         assertNull(provisioned)
@@ -60,7 +66,7 @@ class CreateEventTest {
             FakeClient(CreateOutcome.Transient), status, onMinted = { eventId -> provisioned = eventId }, scope = scope,
         )
 
-        useCase.create("x")
+        useCase.create("x", startsAt)
 
         assertEquals(CreationStatus.Failed(CreationFailureReason.SERVER), status.creationStatus.value)
         assertNull(provisioned)

@@ -21,8 +21,10 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.withTimeout
 import kotlin.coroutines.coroutineContext
 import kotlin.test.Test
+import kotlinx.datetime.LocalDateTime
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 /**
@@ -32,6 +34,72 @@ import kotlin.test.assertTrue
  * JVM and `iosSimulatorArm64`.
  */
 class FullStackIntegrationTest {
+
+    @Test
+    fun a_future_start_event_uploads_nothing_and_reads_not_started() = worldTest {
+        // THE THEOREM the whole design rests on (capability `photo-date-cutoff`).
+        //
+        // Nothing syncs before the event starts — and NOT because a gate refuses. There is no gate. The
+        // join-time clamp makes the effective cutoff `max(chosen, startsAt)`, and a photo's capture date
+        // cannot lie in the future, so while `minPhotoDate >= startsAt > now` NO asset can satisfy
+        // `creationDate >= minPhotoDate`. `UploadCycle` is untouched by this change; the emptiness below
+        // is a consequence, not a feature.
+        val scope = CoroutineScope(coroutineContext + Job())
+        try {
+            val w = World()
+            val future = "2099-12-31T23:59:59Z"
+            // Pre-start, the clamp yields `minPhotoDate == startsAt` whatever the member chose.
+            w.provision("E", minPhotoDate = future, startsAt = future)
+            w.addOwnAsset("A") // dated DEFAULT_DATE (2026) — long before the event begins
+            w.ownGallery.refresh(future); w.ledgerCounts.refresh()
+
+            val host = statusHost(w, scope)
+            assertEquals(
+                UiState.Joined(SyncHealth.NotStarted(future)),
+                host.await { it.health() is SyncHealth.NotStarted },
+            )
+
+            // Run a cycle anyway: the real stack, the real upload cycle, no special-casing.
+            w.runUploadCycle()
+            w.ownGallery.refresh(future); w.ledgerCounts.refresh()
+
+            // World outcomes, not UiState alone: nothing was admitted, nothing was queued, nothing landed.
+            assertTrue(w.store.objectsOf(w.ownDeviceId).isEmpty(), "no object may land before the event starts")
+            assertNull(w.ledgerBackend.get("A-primary.jpg"), "the asset never even reached the ledger")
+            assertEquals(
+                UiState.Joined(SyncHealth.NotStarted(future)),
+                host.await { it.health() is SyncHealth.NotStarted },
+            )
+        } finally {
+            scope.cancel()
+        }
+    }
+
+    @Test
+    fun the_same_event_uploads_normally_once_its_start_is_in_the_past() = worldTest {
+        // The mirror of the theorem: with the start in the past the floor binds nothing, and the very same
+        // stack uploads exactly as it did before start dates existed.
+        val scope = CoroutineScope(coroutineContext + Job())
+        try {
+            val w = World()
+            w.provision("E", minPhotoDate = World.DEFAULT_CUTOFF, startsAt = World.DEFAULT_STARTS_AT)
+            w.addOwnAsset("A")
+            w.ownGallery.refresh(World.DEFAULT_CUTOFF); w.ledgerCounts.refresh()
+
+            val host = statusHost(w, scope)
+            host.await { it.health() is SyncHealth.Syncing } // NOT NotStarted
+
+            w.runUploadCycle()
+            w.platform.completeJob("A-primary.jpg")
+            w.runUploadCycle()
+            w.ownGallery.refresh(World.DEFAULT_CUTOFF); w.ledgerCounts.refresh()
+
+            assertTrue("A-primary.jpg" in w.store.objectsOf(w.ownDeviceId))
+            assertEquals(UiState.Joined(SyncHealth.InSync), host.await { it.health() is SyncHealth.InSync })
+        } finally {
+            scope.cancel()
+        }
+    }
 
     @Test
     fun upload_completion_advances_uistate_and_world_outcomes() = worldTest {
@@ -86,7 +154,7 @@ class FullStackIntegrationTest {
             assertEquals(UiState.CreateEvent(), host.container.stateFlow.value)
 
             w.ownGallery.refresh(World.DEFAULT_CUTOFF); w.ledgerCounts.refresh()
-            host.onCreateEvent("Party") // POST /events via the mini-edge → provision → gate lifts
+            host.onCreateEvent("Party", LocalDateTime(2026, 1, 1, 0, 0)) // POST /events → provision → gate lifts
             // Await the SETTLED health, not merely "left the create layer": the snapshot's first read is
             // itself asynchronous (`LedgerBackedSyncStatusSource` seeds `Loading` and reaches `Ready`
             // only once its collector runs), so `Joined(Loading)` — the neutral first frame — is a
