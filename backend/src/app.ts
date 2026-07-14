@@ -1,6 +1,21 @@
 // Hono app for the backend (capabilities `event-creation` + `bunny-upload-endpoint` +
-// `bunny-list-endpoint` + `device-config-endpoint` + `event-notify-endpoint`, over the shared
-// `backend-deployment`; pushes via `apns-push-sender`).
+// `bunny-list-endpoint` + `device-config-endpoint` + `event-notify-endpoint` + `device-attestation`,
+// over the shared `backend-deployment`; pushes via `apns-push-sender`).
+//
+// EVERY ROUTE BELOW REQUIRES A DEVICE TOKEN (capability `device-attestation`) — obtainable only by
+// completing App Attest, so the API is callable by a genuine, unmodified SnapSync on a genuine Apple
+// device and by nothing else. Exactly four things are ungated, and the list is CLOSED: the three
+// `/attest/*` routes (self-authenticating — they issue the token) and `OPTIONS` (the pull zone may answer
+// the preflight itself, so the script cannot gate it). See the middleware in `createApp`.
+//
+//   GET /attest/challenge
+//     → a stateless, HMAC-signed, time-bounded nonce. Writes NOTHING.
+//   POST /attest/token
+//     → verifies an App Attest attestation (chain → Apple's root, nonce, app-id hash, counter, aaguid),
+//       persists the attested public key at `devices/<id>.attest.json`, and mints a 30-day bearer token.
+//   POST /attest/renew
+//     → verifies a local Secure-Enclave ASSERTION against that stored key and mints a fresh token — no
+//       Apple round-trip, because re-attestation is the throttled path.
 //
 //   POST /events
 //     → mints an event: writes the marker `events/<id>/metadata.json`, returns {eventId,name,createdAt}.
@@ -17,10 +32,11 @@
 //       → best-effort fan-out via APNs. Bare 202 (no per-device results); 502 only if the member LIST
 //       fails. No production caller wired (the trigger is a deferred use case).
 //   PUT /files/devices/:deviceId/:filename
-//     → streams the request body into ONE bunny native Storage PUT. UNGATED (no marker read): bytes
-//       are device-partitioned and event-independent (`files/devices/<deviceId>/<filename>`), uploaded
-//       once and linked into events by reference. The device id is self-asserted (accepted abuse
-//       trade-off — see `bunny-upload-endpoint` §8; App Attest is the hardening path). (There is no
+//     → streams the request body into ONE bunny native Storage PUT. Requires the token, but reads NO
+//       marker: bytes are device-partitioned and event-independent (`files/devices/<deviceId>/<filename>`),
+//       uploaded once and linked into events by reference. The device id remains self-asserted — the token
+//       proves a genuine app instance, NOT ownership of the partition (a stated non-goal; the UUID is the
+//       capability). The OS performs this PUT and DOES carry the header (verified on device). (There is no
 //       download GET on this path — the listing hands out a presigned S3 URL fetched directly from S3.)
 //   GET /files/devices/:deviceId
 //     → lists the device's RAW stored objects (a single LIST of `files/devices/<deviceId>/`); each is
@@ -52,7 +68,9 @@
 // are mutually disjoint and never collide. Existence is a small `GET` of the marker (bunny's Edge Storage
 // API has no HEAD); a non-404 read failure surfaces as 502 (a transient failure is never mistaken for
 // absence). Only the device-manifest write, the metadata route, and the event-wide union read the
-// marker — the byte upload/download and per-device list routes are event-independent and ungated.
+// marker — the byte upload and per-device list routes are event-independent (they read no marker, though
+// they still require the token). The token check ALWAYS runs first, so an unauthenticated caller cannot
+// tell an existing event from a missing one.
 //
 // The per-device byte WRITE route is defined on a child Hono (`byteFile`) and mounted under
 // `/files/devices/:deviceId/:filename` via app.route(), so PUT (upload) and OPTIONS share it.
@@ -79,6 +97,17 @@ import {
 } from "./validators.ts";
 import type { Config } from "./config.ts";
 import { createApnsSender, type PushToken } from "./apns.ts";
+import {
+  type AttestEnvironment,
+  b64ToBytes,
+  bytesToB64,
+  challengeIsValid,
+  mintChallenge,
+  mintToken,
+  verifyAssertion,
+  verifyAttestation,
+  verifyToken,
+} from "./attest.ts";
 
 // The event registry's marker prefix. Because an eventId is a UUID, the marker
 // `events/<id>/metadata.json` is disjoint from any device manifest `events/<id>/devices/<deviceId>.json`
@@ -182,6 +211,24 @@ function deviceConfigKey(deviceId: string): string {
 }
 
 /**
+/**
+ * Storage key of a device's attestation record: `devices/<deviceId>.attest.json` (capability
+ * `device-attestation`). Holds the attested public key, written ONCE at attestation and read ONLY when
+ * renewing — never on a gated request, so no route pays a storage read to authenticate. A flat sibling of
+ * `devices/<deviceId>.json`, and disjoint from every other namespace.
+ */
+function deviceAttestKey(deviceId: string): string {
+  return `devices/${encodeURIComponent(deviceId)}.attest.json`;
+}
+
+/** A device's attestation record: the attested public key, base64, plus which environment attested it. */
+type AttestRecord = {
+  publicKey: string;
+  environment: AttestEnvironment;
+  attestedAt: string;
+};
+
+/**
  * The event marker's contents — the registry record written on create.
  *
  * `createdAt` and `startsAt` are DISTINCT facts and must not be conflated: `createdAt` is server-minted
@@ -190,7 +237,8 @@ function deviceConfigKey(deviceId: string): string {
  * honored verbatim. `startsAt` is both the default and the FLOOR for every member's capture-date cutoff
  * (capability `photo-date-cutoff`).
  *
- * Write-once: no route rewrites a stored marker. The backend has no owner field and no auth, so a
+ * Write-once: no route rewrites a stored marker. The backend has no owner field — attestation proves a
+ * genuine app instance, NOT ownership of an event (a stated non-goal of `device-attestation`) — so a
  * mutation route would let anyone holding the event id retroactively widen every future joiner's scope.
  */
 type EventMarker = {
@@ -213,6 +261,11 @@ export type Deps = {
   fetch: FetchLike;
   /** Validated storage config (built at startup via readConfig). */
   config: Config;
+  /**
+   * Wall clock, in epoch ms. Injected so tests can pin it — the device token and the challenge are both
+   * time-bounded, and a test for "an expired token is refused" cannot wait 30 days. Defaults to `Date.now`.
+   */
+  now?: () => number;
 };
 
 // A single entry from bunny's native Storage "List Files" response. We read only these fields;
@@ -507,7 +560,7 @@ async function readPushToken(
   }
 }
 
-export function createApp({ fetch: fetchImpl, config }: Deps): Hono {
+export function createApp({ fetch: fetchImpl, config, now = Date.now }: Deps): Hono {
   // The S3 signer used ONLY to presign download URLs (capability `bunny-list-endpoint`). Access Key ID =
   // the zone name, secret = the storage-zone `AccessKey`; pure Web-Crypto, no network. Uploads/reads/
   // listings stay on the native API and are not signed with this.
@@ -576,7 +629,142 @@ export function createApp({ fetch: fetchImpl, config }: Deps): Hono {
 
   const app = new Hono();
 
-  // Create an event (capability `event-creation`). Open (no token, matching the possession-is-
+  // ── THE GATE (capability `device-attestation`) ──────────────────────────────────────────────────
+  //
+  // Every route requires a device token, obtainable ONLY by completing App Attest — so the API is
+  // callable by a genuine, unmodified SnapSync on a genuine Apple device, and by nothing else. What this
+  // closes is bill/storage abuse: the byte route reads no marker, the device id is self-asserted, and the
+  // host ships in plaintext in every IPA, so before this an unbounded write to the zone was available to
+  // anyone who read the binary.
+  //
+  // Registered FIRST, as one middleware, which gives three properties for free:
+  //   * it runs BEFORE every event-existence gate, so an unauthenticated caller cannot even probe which
+  //     events exist (a 404-vs-401 difference would leak that);
+  //   * the ungated set is a CLOSED LIST in one readable place, so a future route cannot land ungated by
+  //     omission — it has to be added here deliberately;
+  //   * verification costs one HMAC comparison — no storage read, no Apple call — so the streaming
+  //     photo-upload hot path pays nothing for it.
+  //
+  // The exceptions, exhaustively:
+  //   * `/attest/*` — the three routes that ISSUE the token cannot require the token they issue. Each is
+  //     self-authenticating: the challenge is HMAC-signed and stateless, and token/renew carry an
+  //     attestation or an assertion that is verified before anything is minted.
+  //   * `OPTIONS` — the pull zone is free to answer the preflight ITSELF (it has been observed doing so),
+  //     so the script cannot gate it even if it wanted to; and a 401 here would break the plain-PUT
+  //     fallback the iOS uploader depends on.
+  app.use("*", async (c, next) => {
+    const path = new URL(c.req.url).pathname;
+    if (c.req.method === "OPTIONS" || path.startsWith("/attest/")) return await next();
+
+    const auth = c.req.header("authorization") ?? "";
+    const token = auth.startsWith("Bearer ") ? auth.slice("Bearer ".length).trim() : "";
+    if (!token || !await verifyToken(config, token, now())) {
+      return c.text("unattested", 401);
+    }
+    return await next();
+  });
+
+  // Issue a challenge. Stateless and self-authenticating (an HMAC over its own expiry), so this writes
+  // NOTHING — the one route a stranger can call cannot grow the bill this gate exists to protect.
+  app.get("/attest/challenge", async (c) => {
+    c.header("Cache-Control", NO_CACHE);
+    return c.json({ challenge: await mintChallenge(config, now()) });
+  });
+
+  // Attest: verify the attestation object, persist the attested public key, mint a token.
+  app.post("/attest/token", async (c) => {
+    let body: { deviceId?: string; keyId?: string; attestation?: string; challenge?: string };
+    try {
+      body = await c.req.json();
+    } catch {
+      return c.text("invalid body", 400);
+    }
+    const { deviceId, keyId, attestation, challenge } = body;
+    if (!deviceId || !validateUUID(deviceId) || !keyId || !attestation || !challenge) {
+      return c.text("invalid body", 400);
+    }
+    if (!await challengeIsValid(config, challenge, now())) return c.text("stale challenge", 401);
+
+    let verified;
+    try {
+      verified = await verifyAttestation(config, {
+        attestation: b64ToBytes(attestation),
+        challenge,
+        keyId: b64ToBytes(keyId),
+        at: new Date(now()),
+      });
+    } catch (e) {
+      console.error(`attest: attestation rejected for ${deviceId}: ${e}`);
+      return c.text("attestation rejected", 401);
+    }
+
+    // Persist the attested key so RENEWAL can verify a cheap local assertion against it instead of
+    // forcing a fresh attestation — which is the throttled path, and which would make renewal too
+    // expensive to attempt at every wake.
+    const record: AttestRecord = {
+      publicKey: bytesToB64(verified.publicKey),
+      environment: verified.environment,
+      attestedAt: new Date(now()).toISOString(),
+    };
+    try {
+      await putObject(
+        fetchImpl,
+        config,
+        deviceAttestKey(deviceId),
+        JSON.stringify(record),
+        "application/json",
+      );
+    } catch (e) {
+      console.error(`attest: could not persist the attestation record for ${deviceId}: ${e}`);
+      return c.text("upstream error", 502);
+    }
+
+    console.info(`attest: ${deviceId} attested (${verified.environment})`);
+    return c.json({ token: await mintToken(config, deviceId, now()) }, 201);
+  });
+
+  // Renew: verify an assertion against the stored key, mint a fresh token. No Apple round-trip, so this
+  // is cheap enough for the app to attempt at EVERY wake rather than in a narrow window near expiry.
+  app.post("/attest/renew", async (c) => {
+    let body: { deviceId?: string; assertion?: string; challenge?: string };
+    try {
+      body = await c.req.json();
+    } catch {
+      return c.text("invalid body", 400);
+    }
+    const { deviceId, assertion, challenge } = body;
+    if (!deviceId || !validateUUID(deviceId) || !assertion || !challenge) {
+      return c.text("invalid body", 400);
+    }
+    if (!await challengeIsValid(config, challenge, now())) return c.text("stale challenge", 401);
+
+    let record: AttestRecord;
+    try {
+      const raw = await readObjectText(fetchImpl, config, deviceAttestKey(deviceId));
+      if (raw === null) return c.text("not attested", 401); // never attested, or GC'd → attest afresh
+      record = JSON.parse(raw) as AttestRecord;
+    } catch (e) {
+      console.error(`renew: could not read the attestation record for ${deviceId}: ${e}`);
+      return c.text("upstream error", 502);
+    }
+
+    try {
+      await verifyAssertion({
+        assertion: b64ToBytes(assertion),
+        challenge,
+        publicKey: b64ToBytes(record.publicKey),
+        appId: config.attestAppId,
+      });
+    } catch (e) {
+      console.error(`renew: assertion rejected for ${deviceId}: ${e}`);
+      return c.text("assertion rejected", 401);
+    }
+
+    return c.json({ token: await mintToken(config, deviceId, now()) }, 201);
+  });
+
+  // Create an event (capability `event-creation`). GATED by the device token above (an ungated create
+  // let a stranger mint unbounded event markers). Beyond that gate it stays possession-is-
   // capability model). Validates the name, mints a server-side UUID, and writes the marker. Faithful
   // outcome: 201 only after bunny confirms the marker store; any upstream failure → 502.
   app.post("/events", async (c) => {
@@ -752,6 +940,11 @@ export function createApp({ fetch: fetchImpl, config }: Deps): Hono {
           await deleteObject(fetchImpl, config, `${deviceDir(freedId)}${f.ObjectName}`);
         }
         await deleteObject(fetchImpl, config, deviceConfigKey(freedId));
+        // …and its attestation record (capability `device-attestation`). Per-device state keyed by a
+        // device that now participates in nothing: leaving it behind leaks one object per departed
+        // device, forever. Safe to drop — a device that returns simply attests again, which writes a
+        // fresh record.
+        await deleteObject(fetchImpl, config, deviceAttestKey(freedId));
       }
       return c.body(null, 200);
     } catch (e) {

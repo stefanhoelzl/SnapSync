@@ -7,6 +7,10 @@ import app.snapsync.eventcreation.EventCreator
 import app.snapsync.eventcreation.HttpEventCreationClient
 import app.snapsync.eventcreation.HttpEventMetadataSource
 import app.snapsync.eventcreation.MutableCreationStatusSource
+import app.snapsync.attest.DeviceAttestation
+import app.snapsync.attest.HttpAttestClient
+import app.snapsync.attest.IosAttestKey
+import app.snapsync.attest.KeychainAttestStore
 import app.snapsync.deviceid.DeviceIdentity
 import app.snapsync.deviceid.KeychainDeviceIdentity
 import app.snapsync.join.EventDetails
@@ -19,6 +23,7 @@ import app.snapsync.presentation.JoinLoad
 import app.snapsync.gallery.PhotoLibraryResourceEnumerator
 import app.snapsync.permission.PermissionStatus
 import app.snapsync.permission.PhotoLibraryPermission
+import app.snapsync.presentation.MutableAttestedSource
 import app.snapsync.presentation.StatusContainerHost
 import app.snapsync.download.DownloadPushReceiver
 import app.snapsync.push.KtorPushHttpClient
@@ -57,6 +62,7 @@ import app.snapsync.logging.PublicNSLogWriter
 import app.snapsync.keychain.ProtectedDataGate
 import app.snapsync.logging.invocation
 import co.touchlab.kermit.Logger
+import io.ktor.client.HttpClient
 import kotlinx.cinterop.COpaquePointer
 import kotlinx.cinterop.ExperimentalForeignApi
 import kotlinx.cinterop.StableRef
@@ -79,6 +85,8 @@ import kotlinx.coroutines.launch
 import platform.BackgroundTasks.BGProcessingTaskRequest
 import platform.BackgroundTasks.BGTaskScheduler
 import platform.Foundation.NSBundle
+import platform.Foundation.NSDate
+import platform.Foundation.timeIntervalSince1970
 import platform.Foundation.NSOperatingSystemVersion
 import platform.Foundation.NSProcessInfo
 import platform.UIKit.UIActivityViewController
@@ -181,6 +189,67 @@ object SnapSyncRoot {
     // both roots.)
     private val deviceId: String by lazy { KeychainDeviceIdentity().deviceId() }
 
+    /**
+     * Device attestation (capability `device-attestation`) — the bearer token EVERY backend call carries.
+     *
+     * Lives in the app root because only the app CAN attest: `DCAppAttestService.isSupported` is `false`
+     * inside the upload extension and `true` here (measured on device). The extension is a pure reader of
+     * the token this writes into the shared Keychain.
+     *
+     * Its own HTTP client is deliberately UNauthenticated: the three `/attest/…` routes are the ones that
+     * issue the token, so authenticating them would be a cycle — and this lazy would deadlock on itself.
+     */
+    private val attestation: DeviceAttestation by lazy {
+        DeviceAttestation(
+            key = IosAttestKey(),
+            client = HttpAttestClient(darwinHttpClient(), backendHost),
+            store = KeychainAttestStore(),
+            identity = KeychainDeviceIdentity(),
+            now = { (NSDate().timeIntervalSince1970 * 1000).toLong() },
+        )
+    }
+
+    /**
+     * The ONE authenticated HTTP client every backend call goes through — create, event fetch, join,
+     * manifest, union, device config, leave, notify. Built once and shared, so no call site can be
+     * forgotten and a future one inherits the token for free. The token is read per request, so a renewal
+     * in the background is picked up without rebuilding anything.
+     */
+    private val http: HttpClient by lazy {
+        darwinHttpClient(
+            token = { attestation.token() },
+            // Rejected (not merely expired) → drop it and go get a new one right now. We are demonstrably
+            // online (the backend just answered), so this is the best possible moment to recover.
+            onRejected = {
+                attestation.onRejected()
+                refreshAttestation()
+            },
+        )
+    }
+
+    /**
+     * Refresh the token if it is stale. Called at EVERY point this process is already awake — launch,
+     * foreground, a silent-push wake, and each `BGTask` handler — rather than from a dedicated background
+     * task: iOS budgets task identifiers per app, so a third one would compete with the two we have and
+     * would still fire only when the system felt like it. Checking at every wake gets strictly more
+     * chances to renew than any schedule could.
+     *
+     * Best-effort and non-throwing: a background wake must not die because attestation failed.
+     */
+    private fun refreshAttestation() {
+        scope.launch {
+            val ok = runCatching { attestation.ensureFresh() }.getOrDefault(false)
+            // Surface it ONLY when we both lack a usable token and could not get one. A stale token that
+            // renews is a non-event; raising it would be noise. And because opening the app IS a wake, this
+            // normally clears before it can be seen — what survives is a device that is offline or being
+            // refused, which is a real problem that no amount of waiting fixes.
+            attested.set(ok || !attestation.isStale(attestation.token()))
+        }
+    }
+
+    /** Drives `SyncHealth.Unattested` (capability `device-attestation`). See [refreshAttestation]. */
+    private val attested = MutableAttestedSource()
+
     // The own-device upload TOTAL N (capability `sync-status`): gallery enumeration minus downloaded
     // foreign photos (suppressed from upload — they live in the library but must not peg progress below
     // 100%, capability `photo-download`). Enumeration-only — no storage LIST (completeness now comes
@@ -236,7 +305,7 @@ object SnapSyncRoot {
     private val downloadController: DownloadController by lazy {
         val uploadHost = NSBundle.mainBundle.objectForInfoDictionaryKey("BackgroundUploadURLBase") as? String ?: ""
         val controller = DownloadController(
-            union = HttpEventUnionSource(darwinHttpClient(), uploadHost),
+            union = HttpEventUnionSource(http, uploadHost),
             store = downloadStore,
             jobs = downloadJobs,
             importer = IosPhotoLibraryImporter(
@@ -264,7 +333,7 @@ object SnapSyncRoot {
     // capability `event-leave-endpoint`) — the backend renames the manifest to its departed
     // `.left.json` sibling and reaps/GCs the event when the last member leaves. Best-effort (a failed
     // call never blocks leaving). Used by BOTH the explicit Leave and a switch (see [provisionEvent]).
-    private val leaveNotifier: LeaveNotifier by lazy { HttpLeaveNotifier(darwinHttpClient(), backendHost) }
+    private val leaveNotifier: LeaveNotifier by lazy { HttpLeaveNotifier(http, backendHost) }
 
     // The leave use-case: stops the producer, clears the Keychain config (which flips the screen off the
     // joined layer), then fires the backend notify fire-and-forget on the app-lifetime `scope` so a slow
@@ -297,7 +366,7 @@ object SnapSyncRoot {
 
     // Fetches the event name by id for the scan path (create already has the name). Best-effort.
     private val metadataSource: HttpEventMetadataSource by lazy {
-        HttpEventMetadataSource(darwinHttpClient(), backendHost)
+        HttpEventMetadataSource(http, backendHost)
     }
 
     // --- Push notifications (capability `push-registration`) ---
@@ -313,7 +382,7 @@ object SnapSyncRoot {
     // client — on launch delivery and each rotation. Best-effort: a failed write is absorbed and retried
     // on the next token, never blocking join/upload/download. The collector is launched from [host].
     private val pushRegistration: PushRegistration by lazy {
-        PushRegistration(KtorPushHttpClient(darwinHttpClient()), backendHost, deviceId)
+        PushRegistration(KtorPushHttpClient(http), backendHost, deviceId)
     }
 
     // The silent-push receiver (capability `photo-download`): on a push for the ACTIVE event it runs
@@ -328,7 +397,7 @@ object SnapSyncRoot {
 
     private val eventCreator: EventCreator by lazy {
         CreateEvent(
-            client = HttpEventCreationClient(darwinHttpClient(), backendHost),
+            client = HttpEventCreationClient(http, backendHost),
             status = creationStatus,
             // Route the minted event into the SAME join gate a scan uses (capability `photo-date-cutoff`):
             // the creator loads the event, picks a capture-date cutoff, and confirms like any joiner.
@@ -345,8 +414,8 @@ object SnapSyncRoot {
         JoinEvent(
             configSource = config,
             deviceIdentity = object : DeviceIdentity { override fun deviceId() = deviceId },
-            details = HttpEventDetailsSource(darwinHttpClient(), backendHost),
-            enroller = ManifestDeviceEnroller(HttpDeviceManifestUploader(darwinHttpClient(), backendHost)),
+            details = HttpEventDetailsSource(http, backendHost),
+            enroller = ManifestDeviceEnroller(HttpDeviceManifestUploader(http, backendHost)),
             provision = ::provisionEvent,
         )
     }
@@ -383,6 +452,7 @@ object SnapSyncRoot {
             },
             log = { message -> log.i { message } },
             downloadSource = downloadStatusSource,
+            attestedSource = attested,
         )
     }
 
@@ -419,6 +489,9 @@ object SnapSyncRoot {
         scope.launch { config.config.value?.eventId?.let { downloadController.reconcile(it) } }
         // Keep the event title current (fills a name a scan couldn't fetch while offline).
         scope.launch { config.config.value?.eventId?.let { fetchAndStoreName(it) } }
+        // Wake point (capability `device-attestation`): renew the token if it is stale. This one also
+        // covers LAUNCH, which is the first foreground.
+        refreshAttestation()
     }
 
     /**
@@ -514,6 +587,10 @@ object SnapSyncRoot {
                 // the whole thing to the unlock rather than letting it fail — and, critically, without
                 // touching the Keychain, which is what minted a device id and aborted the process.
                 protectedData.runWhenAvailable("runDownloadBackstop") {
+                    // Wake point (capability `device-attestation`). This BGTask is the one recurring wake
+                    // the app gets that does NOT depend on an upload having succeeded — which matters,
+                    // because an expired token is exactly what stops uploads succeeding.
+                    refreshAttestation()
                     scope.launch {
                         runCatching { downloadController.importReady() }
                             .onFailure { log.w(it) { "download backstop import failed" } }
@@ -593,6 +670,9 @@ object SnapSyncRoot {
                 // A silent push is delivered to a locked device as readily as an unlocked one, and the
                 // reconcile reads the config (Keychain) and the download store. Defer rather than fail.
                 protectedData.runWhenAvailable("onSilentPush") {
+                    // Wake point (capability `device-attestation`). Inside the protected-data gate: the
+                    // Keychain holding the token is unreadable before the first unlock since boot.
+                    refreshAttestation()
                     scope.launch {
                         runCatching { pushReceiver.onSilentPush(eventId) }
                             .onFailure { log.w(it) { "silent push handling failed for $eventId" } }
@@ -840,7 +920,9 @@ object SnapSyncRoot {
     private val urlSessionUpload: UrlSessionUploadController by lazy {
         UrlSessionUploadController(
             scope, ledgerBackend, config, deviceId, backendHost, log,
-            httpClient = darwinHttpClient(),
+            httpClient = http,
+            // The app-driven tier performs its OWN uploads, so its request provider needs the token too.
+            token = { attestation.token() },
             suppressedAssetIds = { downloadStore.suppressedLocalIds() },
             // A background session on any DEVICE — including a force-flagged one, which must be a faithful
             // proxy for the tier real 18–26.0 users run. Only the simulator is downgraded, and that is keyed

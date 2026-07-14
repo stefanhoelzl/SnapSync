@@ -1,5 +1,16 @@
 import { assert, assertEquals } from "@std/assert";
-import { createApp, type FetchLike } from "../src/app.ts";
+import { createApp as createRealApp, type Deps, type FetchLike } from "../src/app.ts";
+import { mintToken } from "../src/attest.ts";
+
+// The whole API is gated on a device token (capability `device-attestation`), so every request in this
+// file needs one. Rather than thread a header through ~100 call sites, `createApp` is shadowed here by a
+// wrapper that pins the clock and attaches a valid token to each request — leaving every pre-existing
+// test reading exactly as it did, and testing exactly what it did.
+//
+// The GATE ITSELF is tested against the real, unwrapped app in attest.test.ts (an unauthenticated request
+// must be refused). Both halves are needed: this file proves the gate does not break the routes; that one
+// proves the gate is actually there.
+const NOW = Date.parse("2026-07-14T12:00:00Z");
 
 const E = "7a3f9c21-0000-4000-8000-000000000001"; // an eventId
 const D = "11111111-0000-4000-8000-000000000002"; // a deviceId
@@ -15,7 +26,26 @@ const CONFIG = {
   apnsTeamId: "E9Z8BADH58",
   apnsPrivateKey: "-----BEGIN PRIVATE KEY-----\nMIG...\n-----END PRIVATE KEY-----\n",
   apnsTopic: "app.snapsync",
+  attestTokenKey: "test-attest-token-key",
+  appAttestRootCa: "",
+  attestTokenTtlSeconds: 30 * 24 * 60 * 60,
+  attestAppId: "E9Z8BADH58.app.snapsync",
 };
+
+const TOKEN = await mintToken(CONFIG, "11111111-0000-4000-8000-000000000002", NOW);
+
+/** The real app, with the clock pinned and a valid device token attached to every request. */
+function createApp(deps: Omit<Deps, "now">) {
+  const app = createRealApp({ ...deps, now: () => NOW });
+  const request = app.request.bind(app);
+  return Object.assign(app, {
+    request: (path: string, init: RequestInit = {}) =>
+      request(path, {
+        ...init,
+        headers: { authorization: `Bearer ${TOKEN}`, ...(init.headers ?? {}) },
+      }),
+  });
+}
 
 const ZONE = `https://storage.bunnycdn.com/snapsync-zone`;
 // The presigned-download S3 endpoint (path-style: `<s3Host>/<zone>/<key>`).

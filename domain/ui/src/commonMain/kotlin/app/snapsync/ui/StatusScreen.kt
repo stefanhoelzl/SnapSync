@@ -522,6 +522,7 @@ private fun SyncHealth.toAppSyncStatus(cutoff: CutoffFormatter): AppSyncStatus =
     // unreadable one degrades to the neutral first frame rather than crashing the joined screen.
     is SyncHealth.NotStarted ->
         cutoff.toLocal(startsAt)?.let { AppSyncStatus.NotStarted(it) } ?: AppSyncStatus.Loading
+    SyncHealth.Unattested -> AppSyncStatus.CannotVerifyDevice
     SyncHealth.Loading -> AppSyncStatus.Loading
     SyncHealth.InSync -> AppSyncStatus.InSync
     is SyncHealth.Syncing -> AppSyncStatus.Syncing(upload.toLevel(), download.toLevel())

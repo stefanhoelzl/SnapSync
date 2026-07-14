@@ -38,6 +38,7 @@ kotlin {
             // The stable per-install device id (shared Keychain) the app's status lists by
             // (`/devices/<deviceId>/files/`) — the SAME item the extension reads (capability `device-identity`).
             implementation(project(":capability:device-id"))
+            implementation(project(":capability:attest"))
             implementation(project(":capability:join"))
             // The re-join reconciliation: the list fetch + JoinEvent gate, and the join status seam
             // (re-exported by :capability:membership) wired into the container.

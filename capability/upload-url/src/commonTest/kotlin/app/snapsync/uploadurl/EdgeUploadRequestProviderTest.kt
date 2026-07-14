@@ -19,8 +19,10 @@ class EdgeUploadRequestProviderTest {
         data = ByteArray(0),
     )
 
-    private fun provider(host: String = "https://edge.example") =
-        EdgeUploadRequestProvider(host, deviceId)
+    private fun provider(
+        host: String = "https://edge.example",
+        token: suspend () -> String? = { "tok-1" },
+    ) = EdgeUploadRequestProvider(host, deviceId, token)
 
     @Test
     fun builds_the_edge_url_for_an_unreserved_filename() = runTest {
@@ -39,14 +41,49 @@ class EdgeUploadRequestProviderTest {
     }
 
     @Test
-    fun headers_are_exactly_content_type_no_auth_no_metadata() = runTest {
+    fun headers_are_exactly_content_type_and_the_device_token_no_metadata() = runTest {
+        // The byte route is GATED (capability `device-attestation`), so the request carries the token —
+        // and still nothing else: no `Host` (URL-implied), and no `x-*-meta-*` even though the resource
+        // has metadata (the bunny native Storage API has no metadata headers).
         val req = provider().provide(resource("x.jpg", contentType = "image/heic"))
+        assertEquals(
+            mapOf("Content-Type" to "image/heic", "Authorization" to "Bearer tok-1"),
+            req.headers,
+        )
+    }
+
+    @Test
+    fun the_token_is_read_per_call_so_a_retry_picks_up_a_refreshed_one() = runTest {
+        // This is what heals an expired token with no special-casing anywhere: the engine re-mints the
+        // request from this provider on every retry. A provider that captured the token at construction
+        // would keep re-sending the dead one forever.
+        var current: String? = "stale"
+        val p = EdgeUploadRequestProvider("https://edge.example", deviceId) { current }
+
+        val before = p.provide(resource("x.jpg"))
+        assertEquals("Bearer stale", before.headers["Authorization"])
+
+        current = "fresh" // the app renewed in the background
+
+        val after = p.provide(resource("x.jpg"))
+        assertEquals("Bearer fresh", after.headers["Authorization"])
+        assertEquals(before.url, after.url) // …and the destination is byte-identical, as before
+    }
+
+    @Test
+    fun a_missing_token_still_yields_a_request() = runTest {
+        // Deliberately not a failure. A request with no token 401s, and a 401 is retryable; refusing to
+        // BUILD one would strand the resource instead. This is the normal state of a device that has not
+        // attested yet — and of the extension on a device whose token expired, since it cannot renew.
+        val req = provider(token = { null }).provide(resource("x.jpg", contentType = "image/heic"))
         assertEquals(mapOf("Content-Type" to "image/heic"), req.headers)
     }
 
     @Test
     fun url_has_no_query_string() = runTest {
         val req = provider().provide(resource("x.jpg"))
+        // The credential is in the HEADER, never the URL — which is what keeps the URL stable and
+        // expiry-free, so a retry re-derived hours later re-PUTs a byte-identical destination.
         assertTrue(!req.url.contains("?"), "edge URL must carry no auth query string: ${req.url}")
     }
 

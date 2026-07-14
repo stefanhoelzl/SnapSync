@@ -152,10 +152,12 @@ private fun host(
     commitJoin: suspend (String, String, String, String, Direction, Boolean) -> Boolean =
         { _, _, _, _, _, _ -> false },
     leave: suspend () -> Unit = {},
+    attested: AttestedSource = AlwaysAttested,
 ) = StatusContainerHost(
     source, permission, requester, configFake, configFake, scope,
     loadJoinDetails = loadJoinDetails, commitJoin = commitJoin, leave = leave,
     cutoffFormatter = fixedCutoffFormatter(),
+    attestedSource = attested,
 )
 
 class StatusContainerHostTest {
@@ -1192,5 +1194,61 @@ class StatusContainerHostTest {
         }
         assertEquals(0, commits, "cancelling the explainer must not commit a join")
         assertEquals(null, configFake.config.value, "cancelling the explainer must not save a config")
+    }
+
+    @Test
+    fun `a device that cannot verify itself reports Unattested rather than a cheerful Syncing`() = runTest {
+        // Without this, a device whose token died shows "Syncing…" forever while every upload 401s. The
+        // engine retries and loses nothing — but nothing ever arrives either, and nothing says so.
+        val source = FakeSyncStatusSource()
+        val attested = MutableAttestedSource(true)
+        host(source, backgroundScope, attested = attested).test(this) {
+            runOnCreate()
+            source.value = snapshot(pending = 5, completed = 0, total = 5)
+            expectState(syncing(up = Arrow.PULSING))
+
+            attested.set(false) // a renewal was attempted while the app was open — and it failed
+
+            expectState(UiState.Joined(SyncHealth.Unattested))
+            cancelAndIgnoreRemainingItems()
+        }
+    }
+
+    @Test
+    fun `it clears itself the moment the device can verify again`() = runTest {
+        // This is why a user should essentially never see it: opening the app IS a wake, and every wake
+        // renews. The state exists to catch the case where that renewal keeps failing.
+        val source = FakeSyncStatusSource()
+        val attested = MutableAttestedSource(false)
+        host(source, backgroundScope, attested = attested).test(this) {
+            // The initial state is already Unattested (asserted by the test above), so nothing is emitted
+            // until the flag flips — Orbit only re-emits on a CHANGE.
+            runOnCreate()
+            source.value = snapshot(pending = 5, completed = 0, total = 5)
+
+            attested.set(true) // the next wake renewed successfully
+
+            expectState(syncing(up = Arrow.PULSING))
+            cancelAndIgnoreRemainingItems()
+        }
+    }
+
+    @Test
+    fun `missing permission outranks a missing token`() = runTest {
+        // Without library access there is nothing to upload, so an unusable token is not yet the user's
+        // problem — and two attention states at once would just be confusing.
+        val source = FakeSyncStatusSource()
+        val permission = FakePermissionSource(PermissionStatus.GRANTED)
+        host(source, backgroundScope, permission = permission, attested = MutableAttestedSource(false))
+            .test(this) {
+                // Starts Unattested (no token, granted permission); revoking access must OUTRANK it.
+                runOnCreate()
+                source.value = snapshot(pending = 5, completed = 0, total = 5)
+
+                permission.permission.value = PermissionStatus.DENIED
+
+                expectState(needsAccess(PermissionStatus.DENIED))
+                cancelAndIgnoreRemainingItems()
+}
     }
 }
