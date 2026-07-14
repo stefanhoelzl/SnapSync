@@ -1,8 +1,4 @@
-# ios-testflight-delivery Specification
-
-## Purpose
-Signs and uploads the iOS device app to **TestFlight** on pushes to **`main` only**, as a release trail (no Beta App Review). Delivery runs in its **own job** (`ios-deliver`) that **depends on both merge gates** (`ios-build` and `ios-test`, capability `ios-ci`), so **a red test suite stops the release** — it exports and uploads the archive `ios-build` already produced, never recompiling it. Per-branch installability before merge is served out of band by the ssh-mac build loop (dev infrastructure), not TestFlight. Signing combines **two imported persistent certificates** (Apple Distribution + Apple Development, from GitHub Secrets) with **cloud-managed provisioning profiles** (App Store Connect Admin API key, no fastlane/`match`). Delivery is decoupled from merges **structurally** — a separate, `main`-only job that posts no required status check — rather than by `continue-on-error`, so a failed delivery is visibly red yet blocks nothing. Covers build numbering, export options, and the required signing credentials.
-## Requirements
+## ADDED Requirements
 
 ### Requirement: Delivery gates on the test suite
 
@@ -21,6 +17,8 @@ This closes a hole in the previous shape, where export and upload lived inside `
 #### Scenario: Both gates green delivers
 - **WHEN** a commit on `refs/heads/main` has both `ios-build` and `ios-test` green
 - **THEN** `ios-deliver` exports an `app-store-connect` signed IPA from `ios-build`'s archive and uploads it to TestFlight via App Store Connect
+
+## MODIFIED Requirements
 
 ### Requirement: Signed device build delivered to TestFlight on main only
 
@@ -74,30 +72,6 @@ All signing and upload credentials — the App Store Connect API key and the two
 - **WHEN** the `ios-build` job runs on any ref, or the `ios-deliver` job runs on `main`
 - **THEN** the App Store Connect API key and both certificate bundles are sourced from GitHub Secrets and are never stored in or restored from the Actions cache; only `~/.konan` is cached
 
-### Requirement: Monotonic build numbers from the CI run
-
-The app's `CURRENT_PROJECT_VERSION` (CFBundleVersion) SHALL be injected at build time from `github.run_number`, and `MARKETING_VERSION` SHALL be a fixed pre-release value (e.g. `0.1.0`). Because `github.run_number` is globally monotonic across all refs, each uploaded build — regardless of branch — SHALL carry a unique, strictly increasing build number for the marketing version, so TestFlight never rejects a duplicate and builds from different branches never collide.
-
-#### Scenario: Two pushes produce two increasing build numbers
-- **WHEN** two commits are pushed in sequence (to the same or different branches)
-- **THEN** each produces a TestFlight build whose `CFBundleVersion` equals its `github.run_number`, and the second is strictly greater than the first
-
-### Requirement: The build is App-Store-Connect uploadable
-
-The app SHALL include a **1024×1024 opaque** (no alpha channel) app icon in its asset catalog, so the uploaded build is not rejected for a missing or invalid app icon.
-
-#### Scenario: Upload is not rejected for a missing icon
-- **WHEN** a build is uploaded to TestFlight
-- **THEN** App Store Connect accepts it without a missing-/invalid-app-icon rejection
-
-### Requirement: Export compliance is pre-declared
-
-The app `Info.plist` SHALL set `ITSAppUsesNonExemptEncryption` to `NO`, and the export SHALL use an `ExportOptions.plist` with `method` `app-store-connect`, so uploads do not block on a manual export-compliance prompt.
-
-#### Scenario: Upload does not block on export compliance
-- **WHEN** a build is uploaded to TestFlight
-- **THEN** it is not held for a manual export-compliance answer, because `ITSAppUsesNonExemptEncryption` is already declared `NO`
-
 ### Requirement: Signing and upload credentials are configured as secrets
 
 The `ios-build` job (on every ref) and the `ios-deliver` job (on `main`) SHALL each source all Apple credentials from GitHub Secrets — the **Admin** App Store Connect API key (`ASC_KEY_ID`, `ASC_ISSUER_ID`, and `ASC_API_PRIVATE_KEY` holding the raw `.p8` PEM contents) and the two signing certificates (`SIGNING_CERT_P12_BASE64` / `SIGNING_CERT_PASSWORD` for Distribution and `SIGNING_DEV_CERT_P12_BASE64` / `SIGNING_DEV_CERT_PASSWORD` for Development). The Apple **Team ID** SHALL be committed in `Config.xcconfig` (it is not a secret).
@@ -105,3 +79,13 @@ The `ios-build` job (on every ref) and the `ios-deliver` job (on `main`) SHALL e
 #### Scenario: Credentials come from secrets, Team ID from config
 - **WHEN** the `ios-build` job signs, or the `ios-deliver` job exports and uploads
 - **THEN** the App Store Connect API key and both certificate bundles are read from GitHub Secrets, and the Team ID is read from the committed `Config.xcconfig`
+
+## REMOVED Requirements
+
+### Requirement: Signed device build delivered to TestFlight on every push
+
+**Reason**: retitled and rewritten as *Signed device build delivered to TestFlight on main only*, and split — the gating behaviour it implied is now stated explicitly by the new *Delivery gates on the test suite* requirement. The old text located export and upload inside the `ios-build` job, which is precisely the shape this change removes.
+
+### Requirement: Delivery is decoupled from the merge gate
+
+**Reason**: replaced by *Delivery never blocks merges, and never fails silently*. The old requirement mandated `continue-on-error` on the export and upload steps to keep a delivery flake from reddening the `ios-build` check. With delivery moved to its own `main`-only job that posts no required status check, the decoupling is structural and the suppression is not merely unnecessary but harmful — it made failed deliveries conclude green.

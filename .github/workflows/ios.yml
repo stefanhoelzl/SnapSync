@@ -1,31 +1,41 @@
-# iOS CI. Two parallel jobs on the macos-26 hosted runner (GM Xcode, no beta SDK), each reporting
-# a status check that gates merges (branch-protection):
+# iOS CI. Three jobs on the macos-26 hosted runner (GM Xcode, no beta SDK). TWO are the parallel
+# merge gates (branch-protection requires exactly these two status checks); the THIRD delivers, and
+# gates on both:
 #   * ios-build — on EVERY push (any ref) produces a SIGNED archive of the iOS DEVICE (iphoneos,
 #     arm64) app, linking the iosArm64 framework (the shipping target). The archive step compiles
-#     iosArm64, so it IS the merge gate. From that one archive it delivers a SINGLE channel:
-#       - TestFlight (main ONLY): export the App Store IPA and upload it, as a release trail. Gated
-#         to refs/heads/main so per-branch pushes stop consuming TestFlight uploads.
-#     On any other ref the archive is produced solely as the merge gate (no delivery artifact).
+#     iosArm64, so it IS the merge gate. This job is a PURE GATE: it exports nothing and uploads
+#     nothing to Apple. On main it hands the archive to ios-deliver as a workflow artifact.
 #     Per-branch device installability before merge is served OUT OF BAND by the ssh-mac build loop
 #     (.github/workflows/ssh-mac.yml; see CLAUDE.md), not by a CI artifact.
-#     Builds are identified by build number = github.run_number; cross-reference it to the
-#     branch/commit via the Actions run. The TestFlight export + upload steps are continue-on-error: a
-#     flaky delivery leaves the gate green and merges unblocked (the failure is still visible in the run).
 #   * ios-test  — runs the shared commonTest compiled to Kotlin/Native on a booted simulator
-#     (./gradlew iosSimulatorArm64Test), validating the iosSimulatorArm64 target.
-# Together the two jobs exercise BOTH Kotlin/Native targets (device via build, simulator via
-# test). The Linux-buildable work (JVM/desktop + the JVM run of all unit tests) stays in build.yml;
-# this workflow does only the irreducible Apple delta.
+#     (./gradlew iosSimulatorArm64Test), validating the iosSimulatorArm64 target. Runs in PARALLEL
+#     with ios-build (no `needs:`) — neither gate waits on the other.
+#   * ios-deliver — main ONLY, and `needs: [ios-build, ios-test]`: exports the App Store IPA from
+#     ios-build's archive and uploads it to TestFlight. Because it needs BOTH gates, a RED TEST SUITE
+#     NOW STOPS THE RELEASE. It previously could not: export+upload lived inside ios-build, which has
+#     no dependency on ios-test, so a green build shipped to TestFlight while the tests were failing
+#     on the very same commit (run #297 / build 297 did exactly that).
+# Together ios-build and ios-test exercise BOTH Kotlin/Native targets (device via build, simulator
+# via test). The Linux-buildable work (JVM/desktop + the JVM run of all unit tests) stays in
+# build.yml; this workflow does only the irreducible Apple delta.
+#
+# Why delivery is a SEPARATE JOB and not a step: it makes "delivery never blocks merges" STRUCTURAL
+# rather than a `continue-on-error` convention. ios-deliver runs only on main (post-merge) and posts
+# no branch-protection status check, so it is free to fail RED without blocking anything — which is
+# strictly better than the old continue-on-error, where a failed TestFlight upload left the run green
+# and the failure was easy to miss. Do NOT add ios-deliver to .github/rulesets/main.json: it never
+# runs on a PR branch, so as a required check it would never be posted and merges would freeze.
 #
 # Signing: TWO persistent certs — an Apple Distribution (SIGNING_CERT_* secrets) and an Apple
-# Development (SIGNING_DEV_CERT_* secrets) — are imported into one shared keychain each run, and
+# Development (SIGNING_DEV_CERT_* secrets) — are imported into one shared keychain, and
 # xcodebuild -allowProvisioningUpdates uses the App Store Connect API key (Admin role) to manage the
 # provisioning PROFILES in the cloud (profiles have no cap). Importing BOTH fixed certs is
 # deliberate: an empty runner keychain makes automatic signing mint a NEW cert every run, exhausting
 # Apple's per-account cert cap under every-push delivery. The Development cert matters because
 # `xcodebuild archive` provisions a development identity for the team in addition to the
 # distribution one — persisting only Distribution (the prior state) still churned Development certs.
-# No fastlane, no match.
+# BOTH jobs that invoke xcodebuild with -allowProvisioningUpdates (ios-build's archive and
+# ios-deliver's export) therefore import both certs, so neither can mint one. No fastlane, no match.
 name: ios
 
 on:
@@ -191,13 +201,101 @@ jobs:
       # `xcodebuild archive` provisions a development identity in addition to the distribution one
       # (dropping it would re-introduce per-run Development-cert churn).
 
-      # TestFlight channel (main ONLY): export the App Store IPA and upload it. Gated to
-      # refs/heads/main so per-branch pushes no longer consume TestFlight uploads (the limit we are
-      # avoiding) — per-branch installs are served out of band by the ssh-mac build loop. Still
-      # decoupled from the gate: continue-on-error keeps the job green if Apple's delivery flakes.
-      - name: Export signed IPA
+      # Hand the archive to ios-deliver (main ONLY). Export + TestFlight upload no longer happen here:
+      # they moved to ios-deliver, which needs BOTH gates green, so a red ios-test now stops the
+      # release. The device app is still compiled EXACTLY ONCE per push — ios-deliver re-signs and
+      # packages this archive, it never recompiles.
+      #
+      # TAR first, then upload: upload-artifact zips its payload and does not preserve executable bits
+      # or symlinks. Restoring a .app through that round-trip would corrupt the signed bundle and break
+      # `xcodebuild -exportArchive`. tar preserves the modes, so the archive survives the hand-off
+      # byte-for-byte.
+      - name: Pack the signed archive for delivery
         if: github.ref == 'refs/heads/main'
-        continue-on-error: true
+        run: tar -czf "$RUNNER_TEMP/SnapSync.xcarchive.tar.gz" -C "$RUNNER_TEMP" SnapSync.xcarchive
+
+      - name: Upload the signed archive for delivery
+        if: github.ref == 'refs/heads/main'
+        uses: actions/upload-artifact@v7.0.1
+        with:
+          name: ios-archive
+          path: ${{ runner.temp }}/SnapSync.xcarchive.tar.gz
+          # The archive is a build intermediate handed to the very next job in the same run — it is not
+          # a release artifact and nobody fetches it later. One day is ample and keeps the signed app
+          # (this is a public repo) from lingering.
+          retention-days: 1
+          if-no-files-found: error
+
+  # TestFlight delivery — main ONLY, and gated on BOTH merge checks (capability
+  # ios-testflight-delivery). `needs: [ios-build, ios-test]` is the whole point of this job: it is what
+  # makes a RED TEST SUITE STOP THE RELEASE. If either gate fails, this job never runs and nothing
+  # reaches TestFlight.
+  #
+  # This job posts NO branch-protection status check (see the ruleset note in the header): it only ever
+  # runs on main, so requiring it would freeze merges. That means it is free to fail RED and block
+  # nothing — which is why the old `continue-on-error` on export/upload is gone. A delivery flake is now
+  # a visibly red run instead of a green one hiding a failed step.
+  #
+  # No Java/Gradle/Konan setup here: this job compiles nothing. It re-signs and packages the archive
+  # ios-build already produced.
+  ios-deliver:
+    name: ios-deliver
+    needs: [ios-build, ios-test]
+    if: github.ref == 'refs/heads/main'
+    runs-on: macos-26
+    steps:
+      # Needed for iosApp/ExportOptions.plist (the export method + signing style).
+      - uses: actions/checkout@v7.0.0
+
+      - name: Prepare App Store Connect API key
+        env:
+          ASC_API_PRIVATE_KEY: ${{ secrets.ASC_API_PRIVATE_KEY }}
+        run: |
+          mkdir -p "$RUNNER_TEMP/asc"
+          printf '%s' "$ASC_API_PRIVATE_KEY" > "$RUNNER_TEMP/asc/AuthKey.p8"
+          echo "ASC_KEY_PATH=$RUNNER_TEMP/asc/AuthKey.p8" >> "$GITHUB_ENV"
+
+      - name: Generate ephemeral keychain password
+        run: |
+          PW="$(openssl rand -base64 24)"
+          echo "::add-mask::$PW"
+          echo "KEYCHAIN_PW=$PW" >> "$GITHUB_ENV"
+
+      # Import BOTH certs here too, for the same cert-cap reason as ios-build: the export below runs
+      # `-allowProvisioningUpdates`, and an empty keychain is what makes automatic signing mint a new
+      # cert. Distribution signs the App Store IPA; Development is imported so nothing can provision
+      # (and therefore mint) a development identity on this runner either.
+      - name: Import Distribution signing certificate
+        uses: apple-actions/import-codesign-certs@v7.0.0
+        with:
+          p12-file-base64: ${{ secrets.SIGNING_CERT_P12_BASE64 }}
+          p12-password: ${{ secrets.SIGNING_CERT_PASSWORD }}
+          keychain: snapsync-signing
+          keychain-password: ${{ env.KEYCHAIN_PW }}
+      - name: Import Development signing certificate
+        uses: apple-actions/import-codesign-certs@v7.0.0
+        with:
+          p12-file-base64: ${{ secrets.SIGNING_DEV_CERT_P12_BASE64 }}
+          p12-password: ${{ secrets.SIGNING_DEV_CERT_PASSWORD }}
+          keychain: snapsync-signing
+          create-keychain: false
+          keychain-password: ${{ env.KEYCHAIN_PW }}
+
+      - name: Download the signed archive
+        uses: actions/download-artifact@v8.0.1
+        with:
+          name: ios-archive
+          path: ${{ runner.temp }}
+
+      # Untar with the same modes ios-build packed (see the tar note there).
+      - name: Unpack the signed archive
+        run: tar -xzf "$RUNNER_TEMP/SnapSync.xcarchive.tar.gz" -C "$RUNNER_TEMP"
+
+      # Re-signs and packages the ALREADY-COMPILED archive into an App Store IPA. The build number
+      # (CURRENT_PROJECT_VERSION = github.run_number) was baked at archive time and is carried in the
+      # archive's Info.plist — this job is in the SAME run, so the delivered build number still equals
+      # this run's number.
+      - name: Export signed IPA
         env:
           ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
           ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
@@ -212,8 +310,6 @@ jobs:
             -authenticationKeyIssuerID "$ASC_ISSUER_ID"
 
       - name: Upload to TestFlight
-        if: github.ref == 'refs/heads/main'
-        continue-on-error: true
         uses: apple-actions/upload-testflight-build@v5
         with:
           app-path: ${{ runner.temp }}/export/SnapSync.ipa
