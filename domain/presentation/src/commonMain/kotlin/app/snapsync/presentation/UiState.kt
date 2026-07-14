@@ -57,6 +57,20 @@ sealed interface JoinPhase {
     data object Loading : JoinPhase
 
     /**
+     * The photo-access explainer (capability `join-event`): the consent surface shown **before** the
+     * system permission dialog is ever raised. Entered from the details fetch instead of [Ready], on a
+     * **first** join only (`config == null` — a switch never explains) and only while permission is
+     * `NOT_DETERMINED` (the sole state from which iOS can still raise the dialog; from `DENIED` a request
+     * is a silent no-op, so an explainer promising a dialog would be false).
+     *
+     * Its confirm requests permission and advances to [Ready]; its cancel discards the pending join like
+     * any other phase. [name] and [defaultCutoff] are carried **solely to hand off to [Ready]** — this
+     * phase renders neither. Permission is a snapshot taken when the phase is chosen, not an observation:
+     * the phase advances only by user action.
+     */
+    data class ExplainAccess(val name: String, val defaultCutoff: String) : JoinPhase
+
+    /**
      * Details loaded; the confirm (Join/Switch) is offered. [name] is the event name (required,
      * non-null — a details response without a name is a transient failure, not a loaded phase).
      * [defaultCutoff] seeds the capture-date cutoff row's default: the event's fetched `createdAt` when

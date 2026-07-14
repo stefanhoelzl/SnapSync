@@ -41,15 +41,27 @@ interface UploadProducer {
  * project's hard rule. Parking it there is exactly why the destructive-provision bug had no test.
  *
  * The arm is enabled when photo access is granted **and** the configured membership's direction includes
- * upload (capability `join-event`). With no event joined, [includesUpload] reports `true`: the arm is
- * allowed and is inert anyway, since a cycle without a config uploads nothing.
+ * upload (capability `join-event`). With **no event joined** there is no membership and therefore no
+ * direction, so the arm is *not* enabled and neither verb fires.
+ *
+ * That is why [membershipIncludesUpload] is three-valued rather than a `Boolean`: "no membership" is a
+ * distinct answer from "a membership that excludes upload", and collapsing the two in the composition
+ * root is what previously answered *enabled* for an absent membership (a `?: true`), starting a producer
+ * for an event that does not exist. Photo access can be `GRANTED` with no config — the join gate's
+ * photo-access explainer raises the system dialog **before** the join is confirmed (capability
+ * `join-event`), and that capability requires that "no config is saved and no upload producer is enabled
+ * until the user confirms". So this is not a nicety: a two-valued seam violates it. The root now supplies
+ * only a projection of the current config and defaults nothing.
  */
 class UploadArm(
     private val producer: UploadProducer,
     // Read fresh at each transition rather than passed in, so a caller cannot hand the arm a stale or
     // wrong view of the membership it is deciding about.
     private val isGranted: () -> Boolean,
-    private val includesUpload: () -> Boolean,
+    // The CURRENT membership's upload posture: `true` = joined and the direction includes upload,
+    // `false` = joined but download-only, `null` = **no event joined**. One read, so there is no race
+    // between "is there a membership" and "does it upload".
+    private val membershipIncludesUpload: () -> Boolean?,
     private val log: Logger = Logger.withTag("UploadArm"),
 ) {
 
@@ -72,16 +84,22 @@ class UploadArm(
      */
     suspend fun onProvision() = log.invocation("arm.onProvision") {
         if (!isGranted()) return@invocation
-        if (includesUpload()) producer.start() else producer.stop()
+        // A provision always has a membership, so `null` is unreachable here; treating it like
+        // download-only (stop) is the safe reading if it ever were.
+        if (membershipIncludesUpload() == true) producer.start() else producer.stop()
     }
 
     /**
-     * Photo access became `GRANTED`. Starts the producer unless the current membership is download-only.
+     * Photo access became `GRANTED`. Starts the producer unless the current membership is download-only —
+     * or unless there is **no membership at all**, in which case neither verb fires: there is no event to
+     * upload to, and starting here would enable a producer before the join is confirmed. The join's
+     * [onProvision] is what arms it.
+     *
      * This fires on the *transition*, so it cannot rescue a membership provisioned while access was already
      * granted — [onProvision] owns that case.
      */
     suspend fun onPermissionGranted() = log.invocation("arm.onPermissionGranted") {
-        if (includesUpload()) producer.start()
+        if (membershipIncludesUpload() == true) producer.start()
     }
 
     /**

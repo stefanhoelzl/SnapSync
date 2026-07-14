@@ -1,5 +1,8 @@
 package app.snapsync.ui
 
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.junit4.v2.createComposeRule
@@ -132,6 +135,79 @@ class JoinScreenTest {
         rule.onNodeWithText("Couldn't join").assertExists()
         rule.onNodeWithText("Retry").performClick()
         assertEquals(1, retried)
+    }
+
+    // ---- the photo-access explainer (capability `join-event`) -----------------------------------------
+
+    @Test
+    fun `explain-access phase shows the access copy with I understand and Cancel`() {
+        rule.setContent { StatusScreen(joining(JoinPhase.ExplainAccess("Anna's Wedding", CUTOFF))) }
+
+        rule.onNodeWithText("Photo access").assertExists()
+        rule.onNodeWithText("Photos you take will be shared automatically with everyone in the event.")
+            .assertExists()
+        rule.onNodeWithText("Only photos taken after the date you pick next are shared.").assertExists()
+        rule.onNodeWithText("I understand").assertExists()
+        rule.onNodeWithText("Cancel").assertExists()
+        // The explainer precedes the confirm surface: no Join, and none of the join rows yet.
+        rule.onNodeWithText("Join").assertDoesNotExist()
+        rule.onNodeWithText("Only from now").assertDoesNotExist()
+        // The event is deliberately NOT named — this is a statement about what the app does.
+        rule.onNodeWithText("Anna's Wedding").assertDoesNotExist()
+    }
+
+    @Test
+    fun `I understand acknowledges the explainer`() {
+        var acknowledged = 0
+        rule.setContent {
+            StatusScreen(
+                joining(JoinPhase.ExplainAccess("Anna's Wedding", CUTOFF)),
+                onAcknowledgeAccess = { acknowledged++ },
+            )
+        }
+        rule.onNodeWithText("I understand").performClick()
+        assertEquals(1, acknowledged)
+    }
+
+    @Test
+    fun `cancelling the explainer abandons the join`() {
+        var cancelled = 0
+        rule.setContent {
+            StatusScreen(
+                joining(JoinPhase.ExplainAccess("Anna's Wedding", CUTOFF)),
+                onCancelJoin = { cancelled++ },
+            )
+        }
+        rule.onNodeWithText("Cancel").performClick()
+        assertEquals(1, cancelled)
+    }
+
+    /**
+     * REGRESSION. The cutoff row must seed from the loaded `createdAt`, and the screen does **not** mount at
+     * a phase that carries one: the real flow is `Loading` → (`ExplainAccess`) → `Ready`. Seeding on first
+     * composition therefore fell through to `now` and `remember` never re-ran, so the row silently defaulted
+     * to now for every real join — defeating "a prefilled cutoff value (defaulting to the loaded
+     * `createdAt`)". Every other test in this file mounts straight into `Ready`, which is exactly why none
+     * of them caught it.
+     */
+    @Test
+    fun `the cutoff row seeds from the loaded default across the real phase sequence`() {
+        var phase by mutableStateOf<JoinPhase>(JoinPhase.Loading)
+        rule.setContent {
+            StatusScreen(joining(phase), cutoff = FixedCutoffFormatter())
+        }
+        rule.onNodeWithText("Loading event details …").assertExists()
+
+        // The details fetch resolves; permission was never asked, so the explainer comes first.
+        phase = JoinPhase.ExplainAccess("Anna's Wedding", "2026-07-04T18:00:00Z")
+        rule.waitForIdle()
+        rule.onNodeWithText("I understand").assertExists()
+
+        // "I understand" → the confirm surface. The row shows the EVENT'S createdAt (2026-07-04 18:00),
+        // not "now" (which this formatter renders as 2026-07-06 12:00).
+        phase = JoinPhase.Ready("Anna's Wedding", "2026-07-04T18:00:00Z")
+        rule.waitForIdle()
+        rule.onNodeWithText("2026-07-04 18:00").assertExists()
     }
 
     @Test

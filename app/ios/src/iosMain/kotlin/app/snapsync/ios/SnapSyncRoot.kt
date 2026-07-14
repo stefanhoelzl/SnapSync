@@ -782,11 +782,6 @@ object SnapSyncRoot {
         }
     }
 
-    // The upload arm is enabled unless the CURRENT membership is download-only; with no event joined
-    // (config null) the arm is allowed (inert without a config). Capability `join-event`.
-    private fun uploadArmEnabled(): Boolean =
-        config.config.value?.direction?.includesUpload ?: true
-
     // The tier's upload mechanism, chosen ONCE (capability `upload-lifecycle`, "Exactly one producer per
     // process"). Both candidates are `by lazy`, so only the selected one is ever constructed — the
     // non-selected tier's mechanism cannot run. This is what makes the two tiers mutually exclusive
@@ -803,7 +798,12 @@ object SnapSyncRoot {
         UploadArm(
             producer = uploadProducer,
             isGranted = { permission.permission.value == PermissionStatus.GRANTED },
-            includesUpload = { uploadArmEnabled() },
+            // A pure projection of the current membership — `null` when no event is joined. The root
+            // defaults nothing: whether an absent membership arms the producer is a lifecycle DECISION,
+            // and it lives in the tested `UploadArm`, not in this untested shell. A `?: true` here is what
+            // previously started a producer for no event (capability `upload-lifecycle`, "No membership,
+            // no arm").
+            membershipIncludesUpload = { config.config.value?.direction?.includesUpload },
             log = log,
         )
     }

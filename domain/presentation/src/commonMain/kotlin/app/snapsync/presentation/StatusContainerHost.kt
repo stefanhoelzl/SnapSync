@@ -53,7 +53,10 @@ sealed interface JoinLoad {
 
 class StatusContainerHost(
     syncSource: SyncStatusSource,
-    permissionSource: PermissionStatusSource,
+    // A `val` (not a bare param) because the join gate reads its CURRENT value at the moment the details
+    // load resolves, to decide whether to show the photo-access explainer (capability `join-event`). That
+    // is a snapshot, not an observation — the phase advances only by user action.
+    private val permissionSource: PermissionStatusSource,
     private val requester: PermissionRequester,
     private val configSource: ConfigSource,
     private val store: ConfigStore,
@@ -255,6 +258,24 @@ class StatusContainerHost(
     fun onRetryJoin(cutoff: String, direction: Direction, saveToAlbum: Boolean) =
         intent { commit(withLeave = false, cutoff = cutoff, direction = direction, saveToAlbum = saveToAlbum) }
 
+    /**
+     * The photo-access explainer was acknowledged ("I understand") — the **only** way the join gate
+     * reaches the system permission dialog (capability `join-event`: CTA-only priming; no phase
+     * auto-requests).
+     *
+     * Requests permission and advances to the confirm phase in one action. It does **not** await the
+     * outcome: `request()` returns nothing and cannot suspend (capability `permission-gate`) — the grant
+     * arrives only via `PermissionStatusSource` — so the phase advances immediately and the system dialog
+     * lands modally over the confirm surface, with the cutoff row already behind it. A no-op on any other
+     * phase.
+     */
+    fun onAcknowledgeAccess() = intent {
+        val p = pending.value ?: return@intent
+        val ph = p.phase as? JoinPhase.ExplainAccess ?: return@intent
+        requester.request()
+        pending.value = p.copy(phase = JoinPhase.Ready(ph.name, ph.defaultCutoff))
+    }
+
     /** Discard the pending join/switch, returning to the base screen. */
     fun onCancelJoin() = intent { pending.value = null }
 
@@ -301,12 +322,36 @@ class StatusContainerHost(
 
     private suspend fun loadInto(eventId: String) {
         val phase = when (val load = loadJoinDetails(eventId)) {
-            is JoinLoad.Found -> JoinPhase.Ready(load.name, cutoffOrNow(load.createdAt))
+            is JoinLoad.Found -> readyOrExplain(load.name, cutoffOrNow(load.createdAt))
             JoinLoad.NotFound -> JoinPhase.NotFound
             JoinLoad.Failed -> JoinPhase.LoadFailed
         }
         // Only apply if this fetch is still the active pending target (not cancelled/superseded).
         pending.value?.let { if (it.eventId == eventId) pending.value = it.copy(phase = phase) }
+    }
+
+    /**
+     * The loaded-details phase: the confirm surface, or the **photo-access explainer** ahead of it
+     * (capability `join-event`). The explainer is entered on exactly two conditions, read as a snapshot
+     * here and never re-derived:
+     *
+     * - **a first join** — `config == null`. A *switch* (config present) is confirmed over the joined
+     *   layer as a compact dialog, which is no place for an explanation, and anyone switching is already
+     *   sitting on the joined layer's `NeedsAccess` affordance. This is also what makes
+     *   `JoinPhase.ExplainAccess` unreachable from the switch surface.
+     * - **permission never asked** — `NOT_DETERMINED`, the only state from which iOS will still raise the
+     *   dialog. From `DENIED` a request is a silent no-op, so explaining and then producing no dialog
+     *   would be a lie; `DENIED` goes straight to the confirm and meets the Settings affordance after
+     *   joining. `GRANTED` needs no explanation.
+     */
+    private fun readyOrExplain(name: String, defaultCutoff: String): JoinPhase {
+        val firstJoin = configSource.config.value == null
+        val neverAsked = permissionSource.permission.value == PermissionStatus.NOT_DETERMINED
+        return if (firstJoin && neverAsked) {
+            JoinPhase.ExplainAccess(name, defaultCutoff)
+        } else {
+            JoinPhase.Ready(name, defaultCutoff)
+        }
     }
 
     private suspend fun commit(
@@ -372,6 +417,7 @@ private data class PendingJoin(val eventId: String, val phase: JoinPhase)
 
 /** The loaded/committing name carried by a phase, if any (for re-issuing the commit on confirm/retry). */
 private fun JoinPhase.name(): String? = when (this) {
+    is JoinPhase.ExplainAccess -> name
     is JoinPhase.Ready -> name
     is JoinPhase.Committing -> name
     is JoinPhase.CommitFailed -> name
