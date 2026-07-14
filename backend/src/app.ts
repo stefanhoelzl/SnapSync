@@ -944,17 +944,42 @@ export function createApp({ fetch: fetchImpl, config }: Deps): Hono {
   //                            build's `BackgroundUploadURLBase` here and the OS reports itself → (2)
   //   OPTIONS /__spike/*     → 204, advertising no resumable upload — identical to the real byte
   //                            route, so the uploader takes the same plain-PUT path it takes in prod
-  //   GET     /__spike       → read the recordings back
-  //   DELETE  /__spike       → clear them
+  //   GET     /__spike/records → read the recordings back
+  //   DELETE  /__spike/records → clear them
   //
   // `spike/` is disjoint from `events/`, `files/`, and `devices/`, so this cannot collide with real
   // data. The echo is safe to expose: it reflects only the caller's OWN request headers, and no token
   // scheme exists yet for it to leak.
   const SPIKE_PREFIX = "spike";
 
-  app.get("/__spike/echo", (c) => {
+  // ONE GET handler for everything under /__spike — Hono's `/__spike/*` matches the bare `/__spike`
+  // too, so separate routes would shadow each other:
+  //
+  //   …/echo     → the headers this origin observed (the pull-zone measurement)
+  //   …/records  → read the recorded header sets back
+  //   anything else → an EMPTY listing. This is load-bearing, not a stub. The extension lists
+  //             `<host>/files/devices/<id>` through this same baked host on every cycle, and its
+  //             re-join reconciliation DEFERS job creation when that listing fails — so a 404 here
+  //             would mean the cycle creates no jobs, uploads nothing, and the device run measures
+  //             nothing at all. Returning `[]` says "this device has stored nothing", which is
+  //             exactly the fresh-event state the upload probe needs.
+  app.get("/__spike/*", async (c) => {
     c.header("Cache-Control", NO_CACHE); // never let the pull zone answer this from cache
-    return c.json({ observedAtOrigin: Object.fromEntries(c.req.raw.headers) });
+    if (c.req.path.endsWith("/echo")) {
+      return c.json({ observedAtOrigin: Object.fromEntries(c.req.raw.headers) });
+    }
+    if (c.req.path.endsWith("/records")) {
+      const entries = await listDir(fetchImpl, config, `${SPIKE_PREFIX}/`);
+      const texts = await Promise.all(
+        (entries ?? [])
+          .filter((e) => !e.IsDirectory)
+          .map((e) =>
+            readObjectText(fetchImpl, config, `${SPIKE_PREFIX}/${decodeObjectName(e.ObjectName)}`)
+          ),
+      );
+      return c.json(texts.filter((t): t is string => t !== null).map((t) => JSON.parse(t)));
+    }
+    return c.json([]);
   });
 
   app.put("/__spike/*", async (c) => {
@@ -996,21 +1021,7 @@ export function createApp({ fetch: fetchImpl, config }: Deps): Hono {
     return c.body(null, 204);
   });
 
-  app.get("/__spike", async (c) => {
-    const entries = await listDir(fetchImpl, config, `${SPIKE_PREFIX}/`);
-    const texts = await Promise.all(
-      (entries ?? [])
-        .filter((e) => !e.IsDirectory)
-        .map((e) =>
-          readObjectText(fetchImpl, config, `${SPIKE_PREFIX}/${decodeObjectName(e.ObjectName)}`)
-        ),
-    );
-    const records = texts.filter((t): t is string => t !== null).map((t) => JSON.parse(t));
-    c.header("Cache-Control", NO_CACHE);
-    return c.json(records);
-  });
-
-  app.delete("/__spike", async (c) => {
+  app.delete("/__spike/records", async (c) => {
     const entries = await listDir(fetchImpl, config, `${SPIKE_PREFIX}/`);
     for (const e of entries ?? []) {
       if (e.IsDirectory) continue;
