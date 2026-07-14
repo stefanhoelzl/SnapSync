@@ -15,6 +15,7 @@ import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.ArrowDownward
 import androidx.compose.material.icons.filled.ArrowUpward
 import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.Schedule
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -27,6 +28,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
+import kotlinx.datetime.LocalDateTime
 
 /**
  * The joined-layer sync health, rendered as the single status line. A sealed semantic value (runtime
@@ -42,6 +44,16 @@ sealed interface AppSyncStatus {
 
     /** Work remaining; each arrow is [ArrowLevel.HIDDEN]/[ArrowLevel.STATIC]/[ArrowLevel.PULSING]. */
     data class Syncing(val upload: ArrowLevel, val download: ArrowLevel) : AppSyncStatus
+
+    /**
+     * The event has not begun (capability `sync-status-screen`). [startsAt] is the event's start as a
+     * plain local wall-clock value — the component owns the copy and the date formatting, as it already
+     * does for "In sync".
+     *
+     * Informational, not actionable: flat (no background) and NOT tappable. It carries the start instant
+     * because a bare "not started yet" invites exactly the question it fails to answer.
+     */
+    data class NotStarted(val startsAt: LocalDateTime) : AppSyncStatus
 
     /**
      * Photo access is off — the sole attention state; the only one with a background, tappable.
@@ -64,10 +76,10 @@ private val IconSize = 20.dp
 private val StaticAlpha = 0.38f
 
 /**
- * Renders the one-line sync health. `InSync`/`Syncing`/`Loading` are flat text-with-glyph (no
- * background — e.g. a bare green check for `InSync`); only `NeedsAccess` carries a background and is
- * tappable ([onAttentionClick]). A `Pulsing` arrow animates its opacity; a `Static` arrow is shown
- * dimmed without motion. No counts are shown.
+ * Renders the one-line sync health. `InSync`/`Syncing`/`Loading`/`NotStarted` are flat text-with-glyph
+ * (no background — e.g. a bare green check for `InSync`, a clock for `NotStarted`); only `NeedsAccess`
+ * carries a background and is tappable ([onAttentionClick]). A `Pulsing` arrow animates its opacity; a
+ * `Static` arrow is shown dimmed without motion. No counts are shown.
  */
 @Composable
 fun AppStatusLine(status: AppSyncStatus, onAttentionClick: () -> Unit = {}) {
@@ -100,6 +112,23 @@ fun AppStatusLine(status: AppSyncStatus, onAttentionClick: () -> Unit = {}) {
                 val ongoing = status.upload == ArrowLevel.PULSING || status.download == ArrowLevel.PULSING
                 val label = if (ongoing) "Synchronization ongoing…" else "Synchronization pending…"
                 LineText(label, MaterialTheme.colorScheme.onSurface)
+            }
+
+        is AppSyncStatus.NotStarted ->
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                Icon(
+                    Icons.Filled.Schedule, // a clock: the event exists, it simply has not begun
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.size(IconSize),
+                )
+                LineText(
+                    "Starts ${formatStartShort(status.startsAt)}",
+                    MaterialTheme.colorScheme.onSurface,
+                )
             }
 
         is AppSyncStatus.NeedsAccess ->

@@ -136,7 +136,17 @@ class WorldInspectorController(private val scope: CoroutineScope) {
             deviceIdentity = object : DeviceIdentity { override fun deviceId() = world.ownDeviceId },
             details = HttpEventDetailsSource(world.client, world.host),
             enroller = ManifestDeviceEnroller(world.manifestUploader),
-            provision = { cfg -> world.provision(cfg.eventId, cfg.name, cfg.minPhotoDate, cfg.direction); afterMutation() },
+            provision = { cfg ->
+                world.provision(
+                    eventId = cfg.eventId,
+                    name = cfg.name,
+                    minPhotoDate = cfg.minPhotoDate,
+                    startsAt = cfg.startsAt,
+                    direction = cfg.direction,
+                    saveToAlbum = cfg.saveToAlbum,
+                )
+                afterMutation()
+            },
         )
         // Route a minted event into the SAME pending-join gate a scan opens (not the world's default
         // provide-directly), so create shows the JoiningEvent surface with the direction + cutoff rows.
@@ -145,7 +155,7 @@ class WorldInspectorController(private val scope: CoroutineScope) {
 
     /** Details load for the join gate (GET /events/:id over the mini-edge), mapped to the gate's [JoinLoad]. */
     suspend fun loadJoinDetails(eventId: String): JoinLoad = when (val d = joinEvent.loadDetails(eventId)) {
-        is EventDetails.Found -> JoinLoad.Found(d.name, d.createdAt)
+        is EventDetails.Found -> JoinLoad.Found(d.name, d.startsAt)
         EventDetails.NotFound -> JoinLoad.NotFound
         EventDetails.Failed -> JoinLoad.Failed
     }
@@ -154,11 +164,12 @@ class WorldInspectorController(private val scope: CoroutineScope) {
     suspend fun commitJoin(
         eventId: String,
         name: String,
+        startsAt: String,
         cutoff: String,
         direction: Direction,
         saveToAlbum: Boolean,
     ): Boolean =
-        joinEvent.join(eventId, name, cutoff, direction, saveToAlbum) != JoinOutcome.EnrollFailed
+        joinEvent.join(eventId, name, startsAt, cutoff, direction, saveToAlbum) != JoinOutcome.EnrollFailed
 
     // ---- the OS invocation + token ---------------------------------------------------------------
 
@@ -188,7 +199,14 @@ class WorldInspectorController(private val scope: CoroutineScope) {
         appendConsole("re-provisioned $eventId (reconcile seeds stored assets COMPLETED)")
     }
 
-    fun createEvent(name: String) = launchMutation { creator.create(name) }
+    /**
+     * Create an event through the REAL `HttpEventCreationClient` → mini-edge → marker, with a chosen
+     * [startsAt]. The operator picks past or future so BOTH sides of the floor are drivable through the
+     * real stack — a future start is what proves the theorem the design rests on: nothing uploads, not
+     * because a gate refuses, but because the clamped cutoff admits no photo. The forge harness can only
+     * show the status line; only this world can show the empty object store behind it.
+     */
+    fun createEvent(name: String, startsAt: String) = launchMutation { creator.create(name, startsAt) }
 
     /** The inspector's Leave button — the same faithful edge as the phone-frame Leave affordance. */
     fun leaveEvent() = launchMutation { world.leave() }

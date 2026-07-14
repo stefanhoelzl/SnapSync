@@ -75,7 +75,16 @@ fun WorldInspector(controller: WorldInspectorController, modifier: Modifier = Mo
         Text("Joined event: ${snap.joinedEventId ?: "— none —"}", maxLines = 1, overflow = TextOverflow.Ellipsis)
         FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             OutlinedButton(enabled = snap.joinedEventId != null, onClick = { controller.reprovision() }) { Text("Re-provision") }
-            OutlinedButton(onClick = { controller.createEvent("Harness event") }) { Text("Create event") }
+            // Both sides of the event-start FLOOR, drivable through the real stack (capability
+            // `photo-date-cutoff`). "started" is the ordinary case. "not started" is the interesting one:
+            // the event's start is in the future, so the clamped cutoff admits NO photo — invoking the
+            // extension must leave the backend column empty while the phone frame reads the clock line.
+            OutlinedButton(onClick = { controller.createEvent("Harness event", PAST_START) }) {
+                Text("Create event (started)")
+            }
+            OutlinedButton(onClick = { controller.createEvent("Future event", FUTURE_START) }) {
+                Text("Create event (not started)")
+            }
             OutlinedButton(enabled = snap.joinedEventId != null, onClick = { controller.leaveEvent() }) { Text("Leave") }
         }
 
@@ -192,3 +201,14 @@ private fun TwoUp(left: @Composable () -> Unit, right: @Composable () -> Unit) {
         Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) { right() }
     }
 }
+
+/**
+ * Event-start presets for the inspector's Create controls (capability `full-stack-harness`). Canonical
+ * cutoff shape — the mini-edge 400s anything else, faithfully to the real backend.
+ *
+ * [PAST_START] precedes `World.DEFAULT_DATE`, so a default-dated gallery asset is in scope and uploads
+ * flow exactly as they did before start dates existed. [FUTURE_START] is far enough out that it stays in
+ * the future for the life of the project — a fixed constant, so the harness needs no clock.
+ */
+private const val PAST_START = "2026-01-01T00:00:00Z"
+private const val FUTURE_START = "2099-12-31T23:59:59Z"

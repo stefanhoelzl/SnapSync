@@ -64,21 +64,26 @@ sealed interface JoinPhase {
      * is a silent no-op, so an explainer promising a dialog would be false).
      *
      * Its confirm requests permission and advances to [Ready]; its cancel discards the pending join like
-     * any other phase. [name] and [defaultCutoff] are carried **solely to hand off to [Ready]** — this
+     * any other phase. [name] and [startsAt] are carried **solely to hand off to [Ready]** — this
      * phase renders neither. Permission is a snapshot taken when the phase is chosen, not an observation:
      * the phase advances only by user action.
      */
-    data class ExplainAccess(val name: String, val defaultCutoff: String) : JoinPhase
+    data class ExplainAccess(val name: String, val startsAt: String) : JoinPhase
 
     /**
      * Details loaded; the confirm (Join/Switch) is offered. [name] is the event name (required,
      * non-null — a details response without a name is a transient failure, not a loaded phase).
-     * [defaultCutoff] seeds the capture-date cutoff row's default: the event's fetched `createdAt` when
-     * it is present and parseable, otherwise **now** — never `null`, so the row is never empty and the
-     * confirm can never join at whole-library scope (capability `photo-date-cutoff`). Already a UTC `…Z`
-     * string.
+     *
+     * [startsAt] is the event's **start date** — required, non-null, already a canonical UTC `…Z` string
+     * (`HttpEventDetailsSource` normalizes it and fails the load rather than invent one). It is both the
+     * cutoff row's **default** and its **floor** (capability `photo-date-cutoff`): the row cannot be
+     * empty, and the confirm cannot join below it, so joining at whole-library scope is unrepresentable.
+     *
+     * It also decides the cutoff selector's shape: when [startsAt] is in the **future**, the "Now" preset
+     * would clamp to this same instant, so it is offered **disabled** rather than as a button that
+     * visibly does nothing.
      */
-    data class Ready(val name: String, val defaultCutoff: String) : JoinPhase
+    data class Ready(val name: String, val startsAt: String) : JoinPhase
 
     /** The event does not exist (404) — an invalid/expired invite; no confirm offered. */
     data object NotFound : JoinPhase
@@ -87,10 +92,15 @@ sealed interface JoinPhase {
     data object LoadFailed : JoinPhase
 
     /** The confirm was taken; enroll + provision are in flight. [name] carries the loaded name. */
-    data class Committing(val name: String) : JoinPhase
+    data class Committing(val name: String, val startsAt: String) : JoinPhase
 
-    /** Enrollment/commit failed (or a switch's join failed after leaving); a Retry re-runs the join. */
-    data class CommitFailed(val name: String) : JoinPhase
+    /**
+     * Enrollment/commit failed (or a switch's join failed after leaving); a Retry re-runs the join.
+     *
+     * [startsAt] rides along for the same reason [name] does: a Retry commits **without** passing back
+     * through the loaded phase, so the floor has to still be here or the retry would join unclamped.
+     */
+    data class CommitFailed(val name: String, val startsAt: String) : JoinPhase
 }
 
 /**
@@ -105,6 +115,23 @@ sealed interface SyncHealth {
      * only health that carries a background. Sharing the invite still works with no access.
      */
     data class NeedsAccess(val permission: PermissionStatus) : SyncHealth
+
+    /**
+     * The event has not begun: the membership's `startsAt` is still in the future (capability
+     * `sync-status-screen`). Carries the start instant so the screen can say *when* — a bare "not started
+     * yet" invites exactly the question it fails to answer.
+     *
+     * It ranks **below** [NeedsAccess] and **above** the snapshot-derived values. Permission outranks it
+     * because permission is the only **actionable** state, and a member must resolve it *before* the event
+     * begins or they will miss the start; burying it behind a clock line would ambush them with a
+     * permission prompt at the very moment the party starts. Everything below is outranked because, before
+     * the start, nothing of the member's **can** be syncing — the cutoff floor guarantees it (capability
+     * `photo-date-cutoff`), so a snapshot-derived line would say nothing true this does not say better.
+     *
+     * Unlike every other health, this one depends on **wall-clock time** rather than the ledger, so no
+     * snapshot emission retires it — `StatusContainerHost` runs a foreground tick for that.
+     */
+    data class NotStarted(val startsAt: String) : SyncHealth
 
     /** Joined, permission granted, but persisted state has not been read yet — a neutral first frame. */
     data object Loading : SyncHealth

@@ -178,16 +178,29 @@ class World(
      * [minPhotoDate] is this device's per-membership capture-date cutoff (capability `photo-date-cutoff`),
      * always present. It defaults to [DEFAULT_CUTOFF], which precedes [DEFAULT_DATE] so an asset added with
      * default arguments is in scope.
+     *
+     * [startsAt] is the EVENT's start date — the floor under [minPhotoDate]. It defaults to
+     * [DEFAULT_STARTS_AT], which is at or before [DEFAULT_CUTOFF], so a default provision is a started
+     * event whose floor binds nothing. Pass a FUTURE value to model an event that has not begun: the real
+     * stack then admits no photo at all, and the status line reads not-started.
      */
     fun provision(
         eventId: String,
         name: String? = null,
         minPhotoDate: String = DEFAULT_CUTOFF,
+        startsAt: String = DEFAULT_STARTS_AT,
         direction: Direction = Direction.Both,
         saveToAlbum: Boolean = false,
     ) {
-        store.registerEvent(eventId)
-        configCell.value = EventConfig(eventId, name ?: "", minPhotoDate, direction, saveToAlbum)
+        store.registerEvent(eventId, name, startsAt)
+        configCell.value = EventConfig(
+            eventId = eventId,
+            name = name ?: "",
+            minPhotoDate = minPhotoDate,
+            startsAt = startsAt,
+            direction = direction,
+            saveToAlbum = saveToAlbum,
+        )
     }
 
     /**
@@ -322,6 +335,14 @@ class World(
          * it did when a `null` cutoff meant whole-library. A cutoff is never absent.
          */
         const val DEFAULT_CUTOFF: String = "2026-01-01T00:00:00Z"
+
+        /**
+         * The default event start (capability `event-creation`) — the FLOOR under every membership's
+         * cutoff. At/before [DEFAULT_CUTOFF] and well before [DEFAULT_DATE], so a default provision models
+         * a **started** event whose floor binds nothing and the harness behaves exactly as it did before
+         * start dates existed. Pass a future value to `provision` to model an event that has not begun.
+         */
+        const val DEFAULT_STARTS_AT: String = "2026-01-01T00:00:00Z"
 
         /** A single primary raw resource (`PHAssetResourceType.photo` == 1). */
         fun primaryResource(

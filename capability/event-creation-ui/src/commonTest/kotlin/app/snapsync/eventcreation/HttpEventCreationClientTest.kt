@@ -30,30 +30,31 @@ class HttpEventCreationClientTest {
             method = request.method.value
             body = (request.body as TextContent).text
             respond(
-                content = """{"eventId":"$eventId","name":"My Party","createdAt":"2026-06-27T10:00:00Z"}""",
+                content =
+                    """{"eventId":"$eventId","name":"My Party","createdAt":"2026-06-27T10:00:00.182Z","startsAt":"2026-07-14T18:00:00Z"}""",
                 status = HttpStatusCode.Created,
                 headers = headersOf(HttpHeaders.ContentType, "application/json"),
             )
         }
         // The client is a dumb sender — trimming is the use-case's job (see CreateEventTest).
-        val outcome = client(engine).create("My Party")
+        val outcome = client(engine).create("My Party", "2026-07-14T18:00:00Z")
 
         assertEquals("https://edge.example/events", requested)
         assertEquals("POST", method)
-        assertEquals("""{"name":"My Party"}""", body)
+        assertEquals("""{"name":"My Party","startsAt":"2026-07-14T18:00:00Z"}""", body)
         assertEquals(CreateOutcome.Created(eventId, "My Party"), outcome)
     }
 
     @Test
     fun `400 maps to the invalid-name outcome`() = runTest {
         val engine = MockEngine { respondError(HttpStatusCode.BadRequest) }
-        assertEquals(CreateOutcome.InvalidName, client(engine).create("x"))
+        assertEquals(CreateOutcome.InvalidName, client(engine).create("x", "2026-07-14T18:00:00Z"))
     }
 
     @Test
     fun `502 maps to the transient outcome`() = runTest {
         val engine = MockEngine { respondError(HttpStatusCode.BadGateway) }
-        assertEquals(CreateOutcome.Transient, client(engine).create("x"))
+        assertEquals(CreateOutcome.Transient, client(engine).create("x", "2026-07-14T18:00:00Z"))
     }
 
     @Test
@@ -61,12 +62,12 @@ class HttpEventCreationClientTest {
         val engine = MockEngine {
             respond("not json", HttpStatusCode.Created, headersOf(HttpHeaders.ContentType, "application/json"))
         }
-        assertEquals(CreateOutcome.Transient, client(engine).create("x"))
+        assertEquals(CreateOutcome.Transient, client(engine).create("x", "2026-07-14T18:00:00Z"))
     }
 
     @Test
     fun `a transport failure maps to the transient outcome`() = runTest {
         val engine = MockEngine { throw RuntimeException("boom") }
-        assertTrue(client(engine).create("x") is CreateOutcome.Transient)
+        assertTrue(client(engine).create("x", "2026-07-14T18:00:00Z") is CreateOutcome.Transient)
     }
 }

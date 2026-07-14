@@ -22,9 +22,16 @@ sealed interface CreationStatus {
     data class Failed(val reason: CreationFailureReason) : CreationStatus
 }
 
-/** Why a create attempt failed, so the screen shows the right copy. */
+/**
+ * Why a create attempt failed, so the screen shows the right copy.
+ *
+ * There is deliberately **no** reason for an invalid `startsAt`, even though the backend 400s one: the
+ * app always sends a canonical value (it comes from a picker, converted through the one cutoff codec),
+ * so a startsAt-shaped 400 is unreachable from this client. Inventing user-facing copy for a state no
+ * user can reach would be dead surface — the single 400 → [INVALID_NAME] mapping stands.
+ */
 enum class CreationFailureReason {
-    /** The backend rejected the name (`400`). */
+    /** The backend rejected the request (`400`). In practice: the name. */
     INVALID_NAME,
 
     /** A transient/server failure (non-2xx other than 400, transport, or parse). */
@@ -35,9 +42,14 @@ enum class CreationFailureReason {
  * The command port for creating an event: fire-and-forget, like `PermissionRequester`. It MUST NOT
  * return a value and MUST NOT suspend; the outcome arrives exclusively via [CreationStatusSource]
  * (in-flight then either config becoming present, or [CreationStatus.Failed]).
+ *
+ * [startsAt] is the event's start date — the host's statement of when the event began (capability
+ * `event-creation`). It arrives here **already canonical** (`yyyy-MM-dd'T'HH:mm:ss'Z'`, capability
+ * `photo-date-cutoff`), converted from the user's local pick by the caller, so this capability needs no
+ * clock, no timezone, and no dependency on the cutoff codec.
  */
 interface EventCreator {
-    fun create(name: String)
+    fun create(name: String, startsAt: String)
 }
 
 /** Read face of the create status — what the presentation reduction consumes. */
@@ -57,5 +69,5 @@ class MutableCreationStatusSource(initial: CreationStatus = CreationStatus.Idle)
 
 /** A no-op [EventCreator] for hosts/tests that forge [CreationStatus] directly (e.g. the harness). */
 object NoOpEventCreator : EventCreator {
-    override fun create(name: String) = Unit
+    override fun create(name: String, startsAt: String) = Unit
 }

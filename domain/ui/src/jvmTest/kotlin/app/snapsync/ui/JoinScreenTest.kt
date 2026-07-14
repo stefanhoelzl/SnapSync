@@ -9,18 +9,29 @@ import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
-import app.snapsync.presentation.CutoffFormatter
 import app.snapsync.presentation.JoinPhase
+import app.snapsync.presentation.SystemCutoffFormatter
 import app.snapsync.presentation.PendingSwitch
 import app.snapsync.presentation.SyncHealth
 import app.snapsync.presentation.UiState
+import kotlin.time.Clock
+import kotlin.time.Instant
 import kotlin.test.Test
 import kotlin.test.assertEquals
-import kotlinx.datetime.LocalDateTime
+import kotlinx.datetime.TimeZone
 import org.junit.Rule
 
 /** The loaded phase always carries a cutoff — the host resolves an absent `createdAt` to now. */
 private const val CUTOFF = "2026-07-06T14:32:11Z"
+
+/** "Now" for the fixed test clock. */
+private const val NOW = "2026-07-06T12:00:00Z"
+
+/** An event that has ALREADY started (before [NOW]) — the ordinary case. */
+private const val EVENT_START = "2026-07-04T18:00:00Z"
+
+/** An event that has NOT started yet (after [NOW]) — where the "Now" preset collapses onto the floor. */
+private const val FUTURE_START = "2026-07-09T18:00:00Z"
 
 class JoinScreenTest {
 
@@ -29,12 +40,15 @@ class JoinScreenTest {
 
     private fun joining(phase: JoinPhase) = UiState.JoiningEvent("11111111-1111-4111-8111-111111111111", phase)
 
-    /** Deterministic formatter so the cutoff field renders a known string to click. */
-    private class FixedCutoffFormatter : CutoffFormatter {
-        override fun nowLocal() = LocalDateTime(2026, 7, 6, 12, 0)
-        override fun toCutoff(local: LocalDateTime) = "2026-07-06T12:00:00Z"
-        override fun toLocal(cutoff: String) = LocalDateTime(2026, 7, 4, 18, 0)
-    }
+    /**
+     * A REAL formatter on a fixed clock (UTC), not a constant-returning stub: the join surface now decides
+     * whether the event has started by comparing `startsAt` against "now", so a formatter that ignores its
+     * input could not express the pre-start case at all.
+     */
+    private fun fixedCutoff(now: String = NOW) = SystemCutoffFormatter(
+        clock = object : Clock { override fun now(): Instant = Instant.parse(now) },
+        zone = TimeZone.UTC,
+    )
 
     @Test
     fun `loading phase shows the loading label and no Join`() {
@@ -57,26 +71,49 @@ class JoinScreenTest {
     }
 
     @Test
-    fun `ready phase shows the capture-date cutoff row`() {
-        rule.setContent { StatusScreen(joining(JoinPhase.Ready("Anna's Wedding", "2026-07-04T18:00:00Z"))) }
-        // The cutoff row: a caption and the "Only from now" shortcut (capability photo-date-cutoff).
+    fun `ready phase shows the two-preset cutoff row with the event start as the default`() {
+        rule.setContent {
+            StatusScreen(joining(JoinPhase.Ready("Anna's Wedding", EVENT_START)), cutoff = fixedCutoff())
+        }
+        // The cutoff row: a caption, the two presets, and the RESULTING instant as a label — so the member
+        // always sees the value they are committing to (capability photo-date-cutoff).
         rule.onNodeWithText("Only photos taken after this date are shared to the event.").assertExists()
-        rule.onNodeWithText("Only from now").assertExists()
+        rule.onNodeWithText("Now").assertExists()
+        rule.onNodeWithText("Event start").assertExists()
+        // Default = Event start (4 Jul 18:00), NOT now (6 Jul 12:00).
+        rule.onNodeWithText("From 4 Jul 2026, 18:00").assertExists()
     }
 
     @Test
-    fun `tapping the cutoff field opens the date picker`() {
-        // Regression: a read-only OutlinedTextField swallows a `.clickable`, so the picker must open via
-        // the field's press interaction. The fixed formatter renders the field as "2026-07-04 18:00".
+    fun `selecting Now moves the cutoff to the current instant`() {
+        rule.setContent {
+            StatusScreen(joining(JoinPhase.Ready("Anna's Wedding", EVENT_START)), cutoff = fixedCutoff())
+        }
+        rule.onNodeWithText("Now").performClick()
+        rule.onNodeWithText("From 6 Jul 2026, 12:00").assertExists()
+    }
+
+    @Test
+    fun `before the event starts the Now preset is disabled`() {
+        // Pre-start, "Now" would clamp to the very same instant as "Event start" — so it is offered
+        // disabled rather than as a button that visibly does nothing.
         rule.setContent {
             StatusScreen(
-                joining(JoinPhase.Ready("Anna's Wedding", "2026-07-04T18:00:00Z")),
-                cutoff = FixedCutoffFormatter(),
+                joining(JoinPhase.Ready("Anna's Wedding", FUTURE_START)),
+                cutoff = fixedCutoff(),
             )
         }
-        rule.onNodeWithText("Next").assertDoesNotExist() // dialog not shown yet
-        rule.onNodeWithText("2026-07-04 18:00").performClick()
-        rule.onNodeWithText("Next").assertExists() // the DatePickerDialog's confirm button appeared
+        rule.onNodeWithText("Now").assertIsNotEnabled()
+        rule.onNodeWithText("Event start").assertIsEnabled()
+        rule.onNodeWithText("From 9 Jul 2026, 18:00").assertExists()
+    }
+
+    @Test
+    fun `after the event has started the Now preset is enabled`() {
+        rule.setContent {
+            StatusScreen(joining(JoinPhase.Ready("Anna's Wedding", EVENT_START)), cutoff = fixedCutoff())
+        }
+        rule.onNodeWithText("Now").assertIsEnabled()
     }
 
     @Test
@@ -96,18 +133,19 @@ class JoinScreenTest {
     }
 
     @Test
-    fun `selecting download-only disables the cutoff shortcut, and re-enabling restores it`() {
+    fun `selecting download-only disables the cutoff row and re-enabling restores it`() {
         rule.setContent {
-            StatusScreen(joining(JoinPhase.Ready("Anna's Wedding", "2026-07-04T18:00:00Z")))
+            StatusScreen(joining(JoinPhase.Ready("Anna's Wedding", EVENT_START)), cutoff = fixedCutoff())
         }
-        // Default Both → the cutoff shortcut is enabled.
-        rule.onNodeWithText("Only from now").assertIsEnabled()
+        // Default Both → the cutoff presets are live.
+        rule.onNodeWithText("Event start").assertIsEnabled()
         // Download-only (the down arrow) scopes no uploads → the cutoff row goes inert.
         rule.onNodeWithContentDescription("Only receive").performClick()
-        rule.onNodeWithText("Only from now").assertIsNotEnabled()
+        rule.onNodeWithText("Event start").assertIsNotEnabled()
+        rule.onNodeWithText("Now").assertIsNotEnabled()
         // Switching back to upload (the up arrow) re-enables it.
         rule.onNodeWithContentDescription("Only share").performClick()
-        rule.onNodeWithText("Only from now").assertIsEnabled()
+        rule.onNodeWithText("Event start").assertIsEnabled()
     }
 
     @Test
@@ -130,8 +168,14 @@ class JoinScreenTest {
     @Test
     fun `commit-failed phase offers Retry for the join`() {
         var retried = 0
-        rule.setContent { StatusScreen(joining(JoinPhase.CommitFailed("Anna's Wedding")), onRetryJoin = { _, _, _ -> retried++ }) }
-        // (CommitFailed still carries only the name; the cutoff is held in the screen's own state.)
+        rule.setContent {
+            StatusScreen(
+                joining(JoinPhase.CommitFailed("Anna's Wedding", EVENT_START)),
+                onRetryJoin = { _, _, _ -> retried++ },
+            )
+        }
+        // CommitFailed carries the startsAt too, so a Retry — which commits WITHOUT passing back through
+        // the loaded phase — still has the floor.
         rule.onNodeWithText("Couldn't join").assertExists()
         rule.onNodeWithText("Retry").performClick()
         assertEquals(1, retried)
@@ -191,23 +235,42 @@ class JoinScreenTest {
      * of them caught it.
      */
     @Test
-    fun `the cutoff row seeds from the loaded default across the real phase sequence`() {
+    fun `the cutoff row shows the event start across the real phase sequence`() {
         var phase by mutableStateOf<JoinPhase>(JoinPhase.Loading)
         rule.setContent {
-            StatusScreen(joining(phase), cutoff = FixedCutoffFormatter())
+            StatusScreen(joining(phase), cutoff = fixedCutoff())
         }
         rule.onNodeWithText("Loading event details …").assertExists()
 
         // The details fetch resolves; permission was never asked, so the explainer comes first.
-        phase = JoinPhase.ExplainAccess("Anna's Wedding", "2026-07-04T18:00:00Z")
+        phase = JoinPhase.ExplainAccess("Anna's Wedding", EVENT_START)
         rule.waitForIdle()
         rule.onNodeWithText("I understand").assertExists()
 
-        // "I understand" → the confirm surface. The row shows the EVENT'S createdAt (2026-07-04 18:00),
-        // not "now" (which this formatter renders as 2026-07-06 12:00).
-        phase = JoinPhase.Ready("Anna's Wedding", "2026-07-04T18:00:00Z")
+        // "I understand" → the confirm surface. The row shows the EVENT'S start (4 Jul 18:00), NOT "now"
+        // (which this clock puts at 6 Jul 12:00). The row derives its instant from the phase on every
+        // composition — nothing is captured at mount, so nothing can be stale.
+        phase = JoinPhase.Ready("Anna's Wedding", EVENT_START)
         rule.waitForIdle()
-        rule.onNodeWithText("2026-07-04 18:00").assertExists()
+        rule.onNodeWithText("From 4 Jul 2026, 18:00").assertExists()
+    }
+
+    @Test
+    fun `a retry after a failed commit still carries the event start, not now`() {
+        // The commit phases carry `startsAt` for exactly this reason: a retry commits WITHOUT passing back
+        // through the loaded phase. A surface that could read the start only from `Ready` would derive the
+        // retry's cutoff from `now` — silently discarding the user's choice at the one moment they are
+        // already recovering from a failure.
+        var retried: String? = null
+        rule.setContent {
+            StatusScreen(
+                joining(JoinPhase.CommitFailed("Anna's Wedding", EVENT_START)),
+                onRetryJoin = { cutoff, _, _ -> retried = cutoff },
+                cutoff = fixedCutoff(),
+            )
+        }
+        rule.onNodeWithText("Retry").performClick()
+        assertEquals(EVENT_START, retried, "the retry must carry the event start, not now")
     }
 
     @Test

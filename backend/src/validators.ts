@@ -35,3 +35,39 @@ export function validateEventName(raw: unknown): string | null {
   if (name.length === 0 || name.length > MAX_EVENT_NAME_LENGTH) return null;
   return name;
 }
+
+/**
+ * The canonical capture-date cutoff shape (capability `photo-date-cutoff`): UTC `Z`, SECOND precision,
+ * no offset, no fractional seconds. Anchored, so no prefix/suffix slips through.
+ */
+const CUTOFF_RE = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$/;
+
+/**
+ * Validate an event's `startsAt` from a create request body. Returns the value when it is EXACTLY the
+ * canonical cutoff shape `yyyy-MM-ddTHH:mm:ssZ` and names a real instant, else `null`.
+ *
+ * The canonical form is demanded AT THE BOUNDARY rather than accepted loosely and normalized, because
+ * `startsAt` is consumed directly as a capture-date cutoff: it is compared LEXICOGRAPHICALLY against
+ * PhotoKit `creationDate` and parsed by a bare `NSISO8601DateFormatter` (whose default options reject a
+ * fractional second). A marker holding the canonical form is usable as a cutoff with NO client-side
+ * normalization — unlike `createdAt`, which we mint with `toISOString()` and which therefore always
+ * carries milliseconds.
+ *
+ * The empty string is rejected like any other non-match, and that matters more than it looks: the cutoff
+ * compare is `creationDate >= cutoff` and EVERY string is `>= ""`, so an empty floor is no floor at all —
+ * it would silently restore whole-library scope while presenting as a present, non-null value.
+ *
+ * NOT bounded: an event may start arbitrarily far in the past (bringing existing photos into scope) or
+ * in the future (created ahead of time). Bounding it is not the backend's concern — the floor only ever
+ * NARROWS a member's scope.
+ */
+export function validateStartsAt(raw: unknown): string | null {
+  if (typeof raw !== "string") return null;
+  if (!CUTOFF_RE.test(raw)) return null;
+  // The shape is right; make sure it is a real instant (rejects e.g. 2026-13-45T99:99:99Z) and that it
+  // round-trips — `Date` silently rolls over out-of-range components, so compare rather than trust.
+  const parsed = new Date(raw);
+  if (Number.isNaN(parsed.getTime())) return null;
+  if (parsed.toISOString().replace(".000Z", "Z") !== raw) return null;
+  return raw;
+}

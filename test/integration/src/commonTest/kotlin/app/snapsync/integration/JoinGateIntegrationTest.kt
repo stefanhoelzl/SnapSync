@@ -49,11 +49,12 @@ private const val CUTOFF = "2026-01-01T00:00:00Z"
 class JoinGateIntegrationTest {
 
     @Test
-    fun the_join_gate_normalizes_the_backends_millisecond_createdAt_and_commits_what_it_showed() = worldTest {
-        // The full-stack equivalent of driving the join gate by hand (task 7.4). The world's mini-edge now
-        // mints `createdAt` with milliseconds exactly as the real backend does; the loaded phase must show
-        // a SECOND-PRECISION cutoff (the `photo-date-cutoff` format invariant, which the iOS fetch
-        // predicate depends on), and confirming must persist precisely the cutoff the surface displayed.
+    fun the_join_gate_normalizes_a_legacy_events_millisecond_startsAt_and_commits_what_it_showed() = worldTest {
+        // A LEGACY event — registered with no `startsAt`, as every marker written before start dates
+        // existed. The mini-edge synthesizes one from `createdAt`, which (faithfully to the real backend's
+        // `toISOString()`) carries MILLISECONDS. The loaded phase must therefore show a SECOND-PRECISION
+        // value (the `photo-date-cutoff` format invariant the iOS fetch predicate depends on), and
+        // confirming must persist precisely what the surface displayed.
         val scope = CoroutineScope(coroutineContext + Job())
         try {
             val w = World()
@@ -64,17 +65,22 @@ class JoinGateIntegrationTest {
             val phase = (host.await { (it as? UiState.JoiningEvent)?.phase is JoinPhase.Ready }
                 as UiState.JoiningEvent).phase as JoinPhase.Ready
 
-            assertEquals("2026-01-01T00:00:00Z", phase.defaultCutoff, "millisecond createdAt is truncated")
-            assertTrue(!phase.defaultCutoff.contains('.'), "a cutoff never carries fractional seconds")
+            assertEquals("2026-01-01T00:00:00Z", phase.startsAt, "a synthesized millisecond startsAt is truncated")
+            assertTrue(!phase.startsAt.contains('.'), "a cutoff never carries fractional seconds")
 
-            // Confirm with exactly what the surface showed — the picker's round-trip in the real screen.
-            host.onConfirmJoin(phase.defaultCutoff, Direction.Both, false)
+            // Confirm with exactly what the surface showed — the round-trip through the real screen.
+            host.onConfirmJoin(phase.startsAt, Direction.Both, false)
             host.await { it is UiState.Joined }
 
             assertEquals(
-                phase.defaultCutoff,
+                phase.startsAt,
                 w.configSource.config.value?.minPhotoDate,
                 "the persisted cutoff is the one the join surface displayed",
+            )
+            assertEquals(
+                phase.startsAt,
+                w.configSource.config.value?.startsAt,
+                "and the event's start is persisted alongside it, as the floor",
             )
         } finally {
             scope.cancel()
@@ -267,17 +273,56 @@ class JoinGateIntegrationTest {
         // Regression: the chosen cutoff must survive decode → autoConfirm → commitJoin → join →
         // provision → config. A wiring that drops it (as an early iOS build did) leaves the extension
         // whole-library. An autoJoin deeplink carries the dev/test cutoff explicitly.
+        //
+        // The cutoff here is ABOVE the event's start, so the floor binds nothing and it lands verbatim.
         val scope = CoroutineScope(coroutineContext + Job())
         try {
             val w = World()
-            w.store.registerEvent(EVENT_E, "Anna's Wedding")
+            w.store.registerEvent(EVENT_E, "Anna's Wedding", startsAt = "2026-01-01T00:00:00Z")
             val host = joinHost(w, scope)
 
-            val cutoff = "2020-01-01T00:00:00Z"
+            val cutoff = "2026-06-15T00:00:00Z"
             host.onOpenUrl(encodeConfigUrl(EventLinkPayload(EVENT_E, autoJoin = true, minPhotoDate = cutoff)))
             host.await { it is UiState.Joined }
 
             assertEquals(cutoff, w.configSource.config.value?.minPhotoDate, "the cutoff must be persisted in config")
+        } finally {
+            scope.cancel()
+        }
+    }
+
+    @Test
+    fun a_hostile_autoJoin_deeplink_cannot_widen_the_membership_below_the_event_start() = worldTest {
+        // THE attack the floor closes, proven end-to-end through the real stack.
+        //
+        // `minPhotoDate` is decoded from ANY `snapsync://` URL — it is documented as a dev/test key, but
+        // nothing stops an attacker putting it in a QR. Before the floor, a QR carrying `autoJoin=true`
+        // plus a distant-past cutoff auto-confirmed a join at near-whole-library scope WITHOUT A TAP:
+        // every photo the guest had ever taken would upload into a stranger's event.
+        //
+        // The clamp lives in `JoinEvent`, which every entry path funnels through — including this headless
+        // one, which has no surface on which a user could notice anything was wrong.
+        val scope = CoroutineScope(coroutineContext + Job())
+        try {
+            val w = World()
+            val startsAt = "2026-01-01T00:00:00Z"
+            w.store.registerEvent(EVENT_E, "Anna's Wedding", startsAt = startsAt)
+            val host = joinHost(w, scope)
+
+            host.onOpenUrl(
+                encodeConfigUrl(
+                    EventLinkPayload(EVENT_E, autoJoin = true, minPhotoDate = "2001-01-01T00:00:00Z"),
+                ),
+            )
+            host.await { it is UiState.Joined }
+
+            val config = w.configSource.config.value
+            assertEquals(startsAt, config?.minPhotoDate, "the 2001 cutoff must not survive the clamp")
+            assertEquals(startsAt, config?.startsAt)
+            assertTrue(
+                config!!.minPhotoDate >= config.startsAt,
+                "the floor invariant holds for every reachable membership",
+            )
         } finally {
             scope.cancel()
         }
@@ -297,7 +342,7 @@ class JoinGateIntegrationTest {
             deviceIdentity = object : DeviceIdentity { override fun deviceId() = w.ownDeviceId },
             details = HttpEventDetailsSource(w.client, w.host),
             enroller = ManifestDeviceEnroller(w.manifestUploader),
-            provision = { cfg -> w.provision(cfg.eventId, cfg.name, cfg.minPhotoDate) },
+            provision = { cfg -> w.provision(cfg.eventId, cfg.name, cfg.minPhotoDate, cfg.startsAt) },
         )
         return StatusContainerHost(
             syncSource = w.syncStatusSource(scope),
@@ -307,13 +352,15 @@ class JoinGateIntegrationTest {
             store = NoOpJoinConfigStore,
             scope = scope,
             loadJoinDetails = { id -> joinEvent.loadDetails(id).toJoinLoad() },
-            commitJoin = { id, name, cutoff, direction, saveToAlbum -> joinEvent.join(id, name, cutoff, direction, saveToAlbum) != JoinOutcome.EnrollFailed },
+            commitJoin = { id, name, startsAt, cutoff, direction, saveToAlbum ->
+                joinEvent.join(id, name, startsAt, cutoff, direction, saveToAlbum) != JoinOutcome.EnrollFailed
+            },
             leave = leave,
         )
     }
 
     private fun EventDetails.toJoinLoad(): JoinLoad = when (this) {
-        is EventDetails.Found -> JoinLoad.Found(name, createdAt)
+        is EventDetails.Found -> JoinLoad.Found(name, startsAt)
         EventDetails.NotFound -> JoinLoad.NotFound
         EventDetails.Failed -> JoinLoad.Failed
     }

@@ -154,6 +154,19 @@ class PanelController {
     fun showCreateFailedServer() =
         forgeCreate(CreationStatus.Failed(CreationFailureReason.SERVER))
 
+    /**
+     * Forge the joined layer's NOT-STARTED health (capability `sync-status-screen`) by giving the config a
+     * **future** `startsAt` — NOT by fabricating the health value.
+     *
+     * Forging the *input* rather than the *output* is what keeps the harness honest: it exercises the real
+     * reduction and its real precedence, so a regression in either shows up here. Compose it with a
+     * not-granted permission preset to see `NeedsAccess` correctly outrank the clock line.
+     */
+    fun showNotStarted() {
+        configState.value = NOT_STARTED_CONFIG
+        creationState.value = CreationStatus.Idle
+    }
+
     private fun forgeCreate(status: CreationStatus) {
         configState.value = null
         creationState.value = status
@@ -215,6 +228,19 @@ class PanelController {
             name = "Anna's Birthday",
             // A membership always carries a cutoff (capability `photo-date-cutoff`); the forge never uploads.
             minPhotoDate = "2026-01-01T00:00:00Z",
+        )
+
+        /**
+         * An event that has not begun. Its `startsAt` is far enough out to stay in the future for the life
+         * of the project, so the preset needs no clock. `minPhotoDate == startsAt` because that is exactly
+         * what the join-time clamp produces pre-start (`max(chosen, startsAt) == startsAt`) — a config that
+         * could not arise in production would forge a state the real reduction never sees.
+         */
+        val NOT_STARTED_CONFIG = EventConfig(
+            eventId = "00000000-0000-4000-8000-000000000000",
+            name = "New Year's Eve",
+            minPhotoDate = "2099-12-31T23:59:59Z",
+            startsAt = "2099-12-31T23:59:59Z",
         )
     }
 }

@@ -19,12 +19,13 @@ class HttpEventDetailsSourceTest {
         HttpEventDetailsSource(HttpClient(handler), "https://edge.example/")
 
     @Test
-    fun `200 yields Found with the name and createdAt from the event route`() = runTest {
+    fun `200 yields Found with the name and startsAt from the event route`() = runTest {
         var requested: String? = null
         val engine = MockEngine { request ->
             requested = request.url.toString()
             respond(
-                content = """{"eventId":"$eventId","name":"Anna's Birthday","createdAt":"2026-06-27T10:00:00Z"}""",
+                content =
+                    """{"eventId":"$eventId","name":"Anna's Birthday","createdAt":"2026-06-27T10:00:00.182Z","startsAt":"2026-07-14T18:00:00Z"}""",
                 status = HttpStatusCode.OK,
                 headers = headersOf(HttpHeaders.ContentType, "application/json"),
             )
@@ -33,7 +34,28 @@ class HttpEventDetailsSourceTest {
         val result = source(engine).fetch(eventId)
 
         assertEquals("https://edge.example/events/$eventId", requested)
-        assertEquals(EventDetails.Found("Anna's Birthday", "2026-06-27T10:00:00Z"), result)
+        // `startsAt` is the fact the gate needs — `createdAt` (millisecond-bearing) is ignored entirely.
+        assertEquals(EventDetails.Found("Anna's Birthday", "2026-07-14T18:00:00Z"), result)
+    }
+
+    @Test
+    fun `a legacy event's millisecond startsAt is normalized to the canonical cutoff shape`() = runTest {
+        // The backend synthesizes a legacy marker's `startsAt` from `createdAt`, which `toISOString()`
+        // mints WITH MILLISECONDS. Left raw, that value poisons two things downstream: the clamp is a
+        // LEXICOGRAPHIC maxOf (`…00.182Z` sorts before `…00Z`), and were it to win the clamp it would be
+        // persisted as the cutoff — which the iOS walk parses with a bare NSISO8601DateFormatter that
+        // REJECTS a fractional second, silently costing the bounded PhotoKit fetch.
+        val engine = MockEngine {
+            respond(
+                content =
+                    """{"eventId":"$eventId","name":"Legacy","createdAt":"2026-06-27T10:00:00.182Z","startsAt":"2026-06-27T10:00:00.182Z"}""",
+                status = HttpStatusCode.OK,
+                headers = headersOf(HttpHeaders.ContentType, "application/json"),
+            )
+        }
+        // Truncated toward the EARLIER instant — the inclusive direction, so a photo taken within the
+        // cutoff's own second is admitted rather than lost.
+        assertEquals(EventDetails.Found("Legacy", "2026-06-27T10:00:00Z"), source(engine).fetch(eventId))
     }
 
     @Test
@@ -61,7 +83,34 @@ class HttpEventDetailsSourceTest {
         // The event-album title needs a name; a nameless 200 is malformed → retryable Failed.
         val engine = MockEngine {
             respond(
-                content = """{"eventId":"$eventId","createdAt":"2026-06-27T10:00:00Z"}""",
+                content = """{"eventId":"$eventId","startsAt":"2026-07-14T18:00:00Z"}""",
+                status = HttpStatusCode.OK,
+                headers = headersOf(HttpHeaders.ContentType, "application/json"),
+            )
+        }
+        assertEquals(EventDetails.Failed, source(engine).fetch(eventId))
+    }
+
+    @Test
+    fun `a 200 without a startsAt yields Failed rather than an invented floor`() = runTest {
+        // `startsAt` is a FLOOR on this membership's cutoff. A client that defaulted a missing one — to
+        // now, to createdAt, to anything — would be silently LOWERING that floor, which is the one
+        // direction the design forbids. Failing loudly and offering Retry is the only safe reading.
+        val engine = MockEngine {
+            respond(
+                content = """{"eventId":"$eventId","name":"Anna's Birthday","createdAt":"2026-06-27T10:00:00Z"}""",
+                status = HttpStatusCode.OK,
+                headers = headersOf(HttpHeaders.ContentType, "application/json"),
+            )
+        }
+        assertEquals(EventDetails.Failed, source(engine).fetch(eventId))
+    }
+
+    @Test
+    fun `a 200 with an unparseable startsAt yields Failed`() = runTest {
+        val engine = MockEngine {
+            respond(
+                content = """{"eventId":"$eventId","name":"Anna's Birthday","startsAt":"yesterday"}""",
                 status = HttpStatusCode.OK,
                 headers = headersOf(HttpHeaders.ContentType, "application/json"),
             )

@@ -30,12 +30,14 @@ import kotlin.time.Duration
 import kotlinx.coroutines.CoroutineScope
 import kotlin.time.Clock
 import kotlin.time.Instant
+import kotlinx.datetime.LocalDateTime
 import kotlinx.datetime.TimeZone
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
+import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.runTest
 import org.orbitmvi.orbit.test.test
@@ -97,8 +99,10 @@ private class SpyRequester : PermissionRequester {
 
 private class SpyCreator : EventCreator {
     val created = mutableListOf<String>()
-    override fun create(name: String) {
+    val starts = mutableListOf<String>()
+    override fun create(name: String, startsAt: String) {
         created += name
+        starts += startsAt
     }
 }
 
@@ -130,6 +134,14 @@ private fun fixedCutoffFormatter() = SystemCutoffFormatter(
     zone = TimeZone.UTC,
 )
 
+/** A clock the test can move, so the not-started tick can be watched retiring itself. */
+private class MovableClock(var instant: Instant) : Clock {
+    override fun now(): Instant = instant
+}
+
+private fun movableCutoffFormatter(clock: MovableClock) =
+    SystemCutoffFormatter(clock = clock, zone = TimeZone.UTC)
+
 private fun host(
     source: FakeSyncStatusSource,
     scope: CoroutineScope,
@@ -137,7 +149,8 @@ private fun host(
     requester: PermissionRequester = SpyRequester(),
     configFake: FakeConfig = FakeConfig(),
     loadJoinDetails: suspend (String) -> JoinLoad = { JoinLoad.Failed },
-    commitJoin: suspend (String, String, String, Direction, Boolean) -> Boolean = { _, _, _, _, _ -> false },
+    commitJoin: suspend (String, String, String, String, Direction, Boolean) -> Boolean =
+        { _, _, _, _, _, _ -> false },
     leave: suspend () -> Unit = {},
 ) = StatusContainerHost(
     source, permission, requester, configFake, configFake, scope,
@@ -146,6 +159,103 @@ private fun host(
 )
 
 class StatusContainerHostTest {
+
+    // ── the not-started clock line (capability `sync-status-screen`) ──────────────────────────────
+
+    /** An event that has not begun: its start is after the fixed NOW_CUTOFF (2026-07-09T12:00:00Z). */
+    private val futureStart = "2026-07-09T18:00:00Z"
+
+    private fun notStartedConfig(startsAt: String = futureStart) = EventConfig(
+        eventId = EVENT_ID,
+        name = "Anna's Birthday",
+        // The floor guarantees this shape: `minPhotoDate == max(chosen, startsAt) == startsAt` pre-start.
+        minPhotoDate = startsAt,
+        startsAt = startsAt,
+    )
+
+    @Test
+    fun `a future event start reduces to NotStarted whatever the snapshot says`() = runTest {
+        // The snapshot says there is work to do; the clock says the event has not begun. The clock wins,
+        // because nothing of this member's CAN be syncing — the floor makes it impossible.
+        val host = host(
+            FakeSyncStatusSource(snapshot(pending = 3, total = 5)), backgroundScope,
+            permission = FakePermissionSource(PermissionStatus.GRANTED),
+            configFake = FakeConfig(notStartedConfig()),
+        )
+        assertEquals(UiState.Joined(SyncHealth.NotStarted(futureStart)), host.container.stateFlow.value)
+    }
+
+    @Test
+    fun `permission outranks the not-started state`() = runTest {
+        // Permission is the only ACTIONABLE state, and it must be resolved BEFORE the event begins or the
+        // member misses the start. Burying it behind the clock line would ambush them with a permission
+        // prompt at the very moment the party starts.
+        val host = host(
+            FakeSyncStatusSource(SyncStatus.Loading), backgroundScope,
+            permission = FakePermissionSource(PermissionStatus.DENIED),
+            configFake = FakeConfig(notStartedConfig()),
+        )
+        assertEquals(
+            UiState.Joined(SyncHealth.NeedsAccess(PermissionStatus.DENIED)),
+            host.container.stateFlow.value,
+        )
+    }
+
+    @Test
+    fun `a past event start reduces from the snapshot exactly as before`() = runTest {
+        val host = host(
+            FakeSyncStatusSource(snapshot(completed = 5, total = 5)), backgroundScope,
+            permission = FakePermissionSource(PermissionStatus.GRANTED),
+            configFake = FakeConfig(SAMPLE_CONFIG), // startsAt defaults to CUTOFF, which precedes now
+        )
+        assertEquals(inSync, host.container.stateFlow.value)
+    }
+
+    @Test
+    fun `an event starting exactly now is already started`() = runTest {
+        // The boundary: the comparison is `startsAt > now`, so the start instant itself is NOT "not
+        // started" — consistent with the cutoff's own at-or-after (`creationDate >= cutoff`) inclusivity.
+        val host = host(
+            FakeSyncStatusSource(snapshot(completed = 0, total = 0)), backgroundScope,
+            permission = FakePermissionSource(PermissionStatus.GRANTED),
+            configFake = FakeConfig(notStartedConfig(startsAt = NOW_CUTOFF)),
+        )
+        assertEquals(inSync, host.container.stateFlow.value)
+    }
+
+    @OptIn(ExperimentalCoroutinesApi::class)
+    @Test
+    fun `the foreground tick retires the clock line when the start passes`() = runTest {
+        // NotStarted is the one health driven by WALL-CLOCK time, not the ledger — no snapshot emission
+        // would ever retire it. Without the tick the clock line would sit there past the start until
+        // something unrelated happened to re-emit.
+        val clock = MovableClock(Instant.parse(NOW_CUTOFF))
+        val config = FakeConfig(notStartedConfig())
+        val host = StatusContainerHost(
+            FakeSyncStatusSource(snapshot(completed = 0, total = 0)),
+            FakePermissionSource(PermissionStatus.GRANTED), SpyRequester(),
+            config, config, backgroundScope,
+            cutoffFormatter = movableCutoffFormatter(clock),
+        )
+        host.test(this) {
+            runOnCreate()
+
+            // A minute passes; the event still has not begun, so the line stands.
+            advanceTimeBy(61_000)
+            assertEquals(
+                UiState.Joined(SyncHealth.NotStarted(futureStart)),
+                containerHost.container.stateFlow.value,
+            )
+
+            // The start passes. The next tick re-derives from the snapshot — no ledger event required,
+            // and no source has changed.
+            clock.instant = Instant.parse("2026-07-09T18:00:01Z")
+            advanceTimeBy(61_000)
+            assertEquals(inSync, containerHost.container.stateFlow.value)
+
+            cancelAndIgnoreRemainingItems()
+        }
+    }
 
     @Test
     fun `work in flight maps to Syncing with a pulsing up arrow`() = runTest {
@@ -243,6 +353,7 @@ class StatusContainerHostTest {
         return StatusContainerHost(
             FakeSyncStatusSource(), permission, SpyRequester(), config, config, scope,
             creationStatusSource = MutableCreationStatusSource(creation), creator = creator,
+            cutoffFormatter = fixedCutoffFormatter(),
         )
     }
 
@@ -286,14 +397,17 @@ class StatusContainerHostTest {
         val creator = SpyCreator()
         val host = createHost(CreationStatus.Idle, creator = creator, scope = backgroundScope)
         host.test(this) {
-            containerHost.onCreateEvent("My Party")
+            containerHost.onCreateEvent("My Party", LocalDateTime(2026, 7, 14, 18, 0))
         }
         advanceUntilIdle()
         assertEquals(listOf("My Party"), creator.created)
+        // The screen hands over a LOCAL pick; the container converts it through the one cutoff codec, so
+        // `:domain:ui` never touches a clock, a timezone, or a cutoff string.
+        assertEquals(listOf("2026-07-14T18:00:00Z"), creator.starts)
     }
 
     private class StubClient(private val outcome: CreateOutcome) : EventCreationClient {
-        override suspend fun create(name: String) = outcome
+        override suspend fun create(name: String, startsAt: String) = outcome
     }
 
     @OptIn(ExperimentalCoroutinesApi::class)
@@ -314,12 +428,15 @@ class StatusContainerHostTest {
             config, config, backgroundScope,
             creationStatusSource = creationStatus, creator = creator,
             loadJoinDetails = { JoinLoad.Found("My Party", "2026-07-06T00:00:00Z") },
-            commitJoin = { id, name, cutoff, direction, _ -> config.save(EventConfig(id, name, cutoff, direction)); true },
+            commitJoin = { id, name, startsAt, cutoff, direction, _ ->
+                config.save(EventConfig(id, name, cutoff, startsAt, direction))
+                true
+            },
         )
         host.test(this) {
             runOnCreate()
-            creator.create("My Party")
-            // minted → routed into the gate → loaded, offering Join with the createdAt default cutoff.
+            creator.create("My Party", "2026-07-06T00:00:00Z")
+            // minted → routed into the gate → loaded, offering Join with the event's start as the default.
             expectState(UiState.JoiningEvent(EVENT_ID, JoinPhase.Ready("My Party", "2026-07-06T00:00:00Z")))
             containerHost.onConfirmJoin("2026-07-06T00:00:00Z", Direction.Both, false)
             expectState(inSync) // confirm provisions → config present + granted + snapshot total 0 → settled
@@ -347,7 +464,7 @@ class StatusContainerHostTest {
         )
         host.test(this) {
             runOnCreate()
-            creator.create("My Party")
+            creator.create("My Party", "2026-07-06T00:00:00Z")
             expectState(UiState.CreateEvent(error = "Couldn't reach the server."))
             cancelAndIgnoreRemainingItems()
         }
@@ -518,50 +635,37 @@ class StatusContainerHostTest {
     }
 
     @Test
-    fun `a backend createdAt with milliseconds is normalized to the second-precision invariant`() = runTest {
-        // The backend mints `createdAt` with `new Date().toISOString()`, which ALWAYS carries milliseconds
-        // (`2026-07-09T19:24:17.182Z`). A fractional-second cutoff violates the format invariant and makes
-        // the iOS walk's bare NSISO8601DateFormatter return nil, silently costing the bounded fetch — the
-        // whole-library walk that trips the watchdog. Truncation is downward, i.e. the inclusive direction.
+    fun `the gate defaults the cutoff to the event start rather than to now`() = runTest {
+        // The seed-from-createdAt (and its fall-back-to-now) is GONE. `startsAt` is always present on a
+        // successful load — the backend synthesizes one for legacy markers and `HttpEventDetailsSource`
+        // fails the load rather than invent one — so the default is simply the event's start. Normalizing
+        // a millisecond-bearing value is that source's job now, and is tested there.
         host(
             FakeSyncStatusSource(SyncStatus.Loading), backgroundScope,
             permission = FakePermissionSource(PermissionStatus.GRANTED), configFake = FakeConfig(null),
-            loadJoinDetails = { JoinLoad.Found("Anna's Birthday", "2026-07-09T19:24:17.182Z") },
+            loadJoinDetails = { JoinLoad.Found("Anna's Birthday", "2026-07-04T18:00:00Z") },
         ).test(this) {
             runOnCreate()
             containerHost.onOpenUrl(encodeConfigUrl(EventLinkPayload(EVENT_ID)))
-            expectState(UiState.JoiningEvent(EVENT_ID, JoinPhase.Ready("Anna's Birthday", "2026-07-09T19:24:17Z")))
+            // Note it is NOT NOW_CUTOFF (2026-07-09): the event's own start wins.
+            expectState(
+                UiState.JoiningEvent(EVENT_ID, JoinPhase.Ready("Anna's Birthday", "2026-07-04T18:00:00Z")),
+            )
             cancelAndIgnoreRemainingItems()
         }
     }
 
     @Test
-    fun `an unparseable event createdAt seeds the cutoff to now rather than to nothing`() = runTest {
-        // A malformed marker must not leave the cutoff row empty: an absent cutoff would join at
-        // whole-library scope and upload the guest's entire camera roll into the event.
-        host(
-            FakeSyncStatusSource(SyncStatus.Loading), backgroundScope,
-            permission = FakePermissionSource(PermissionStatus.GRANTED), configFake = FakeConfig(null),
-            loadJoinDetails = { JoinLoad.Found("Anna's Birthday", "not-a-timestamp") },
-        ).test(this) {
-            runOnCreate()
-            containerHost.onOpenUrl(encodeConfigUrl(EventLinkPayload(EVENT_ID)))
-            expectState(UiState.JoiningEvent(EVENT_ID, JoinPhase.Ready("Anna's Birthday", NOW_CUTOFF)))
-            cancelAndIgnoreRemainingItems()
-        }
-    }
-
-    @Test
-    fun `autoJoin with no explicit cutoff and no createdAt commits with now`() = runTest {
+    fun `autoJoin with no explicit cutoff commits with the event start`() = runTest {
         // The headless dev launch has no surface on which an empty cutoff row could be noticed, so the
-        // fallback matters most here (capability `photo-date-cutoff`).
+        // default matters most here (capability `photo-date-cutoff`).
         val configFake = FakeConfig(null)
         var committedCutoff: String? = null
         host(
             FakeSyncStatusSource(SyncStatus.Loading), backgroundScope,
             permission = FakePermissionSource(PermissionStatus.GRANTED), configFake = configFake,
-            loadJoinDetails = { JoinLoad.Found("Anna's Birthday", null) },
-            commitJoin = { id, name, cutoff, _, _ ->
+            loadJoinDetails = { JoinLoad.Found("Anna's Birthday", CUTOFF) },
+            commitJoin = { id, name, _, cutoff, _, _ ->
                 committedCutoff = cutoff; configFake.save(EventConfig(id, name, cutoff)); true
             },
         ).test(this) {
@@ -570,7 +674,41 @@ class StatusContainerHostTest {
             expectState(joinedLoading)
             cancelAndIgnoreRemainingItems()
         }
-        assertEquals(NOW_CUTOFF, committedCutoff)
+        assertEquals(CUTOFF, committedCutoff)
+    }
+
+    @Test
+    fun `a hostile autoJoin deeplink cutoff reaches commitJoin raw so the use-case can clamp it`() = runTest {
+        // `minPhotoDate` is decoded from ANY `snapsync://` URL, so a QR carrying `autoJoin=true` + a
+        // distant-past cutoff would auto-confirm a join at near-whole-library scope WITHOUT A TAP. The
+        // container must NOT clamp it here and must NOT drop it: it passes the raw value across the seam,
+        // together with the event's `startsAt`, and `JoinEvent` applies `max(chosen, startsAt)` — the one
+        // site every entry path funnels through (see JoinEventTest).
+        val configFake = FakeConfig(null)
+        var seenStartsAt: String? = null
+        var seenCutoff: String? = null
+        host(
+            FakeSyncStatusSource(SyncStatus.Loading), backgroundScope,
+            permission = FakePermissionSource(PermissionStatus.GRANTED), configFake = configFake,
+            loadJoinDetails = { JoinLoad.Found("Anna's Birthday", CUTOFF) },
+            commitJoin = { id, name, startsAt, cutoff, _, _ ->
+                seenStartsAt = startsAt
+                seenCutoff = cutoff
+                configFake.save(EventConfig(id, name, cutoff))
+                true
+            },
+        ).test(this) {
+            runOnCreate()
+            containerHost.onOpenUrl(
+                encodeConfigUrl(
+                    EventLinkPayload(EVENT_ID, autoJoin = true, minPhotoDate = "2001-01-01T00:00:00Z"),
+                ),
+            )
+            expectState(joinedLoading)
+            cancelAndIgnoreRemainingItems()
+        }
+        assertEquals("2001-01-01T00:00:00Z", seenCutoff, "the hostile value is passed through, not swallowed")
+        assertEquals(CUTOFF, seenStartsAt, "...alongside the floor that will defeat it")
     }
 
     @Test
@@ -581,7 +719,7 @@ class StatusContainerHostTest {
             FakeSyncStatusSource(SyncStatus.Loading), backgroundScope,
             permission = FakePermissionSource(PermissionStatus.GRANTED), configFake = configFake,
             loadJoinDetails = { JoinLoad.Found("Anna's Birthday", "2026-07-06T14:32:11Z") },
-            commitJoin = { id, name, cutoff, _, _ ->
+            commitJoin = { id, name, _, cutoff, _, _ ->
                 committedCutoff = cutoff; configFake.save(EventConfig(id, name, cutoff)); true
             },
         ).test(this) {
@@ -602,12 +740,12 @@ class StatusContainerHostTest {
         host(
             FakeSyncStatusSource(SyncStatus.Loading), backgroundScope,
             permission = FakePermissionSource(PermissionStatus.GRANTED), configFake = configFake,
-            loadJoinDetails = { JoinLoad.Found("Anna's Birthday", null) },
-            commitJoin = { id, name, _, _, _ -> enrolled += id; configFake.save(EventConfig(id, name, CUTOFF)); true },
+            loadJoinDetails = { JoinLoad.Found("Anna's Birthday", CUTOFF) },
+            commitJoin = { id, name, _, _, _, _ -> enrolled += id; configFake.save(EventConfig(id, name, CUTOFF)); true },
         ).test(this) {
             runOnCreate()
             containerHost.onOpenUrl(encodeConfigUrl(EventLinkPayload(EVENT_ID)))
-            expectState(UiState.JoiningEvent(EVENT_ID, JoinPhase.Ready("Anna's Birthday", NOW_CUTOFF)))
+            expectState(UiState.JoiningEvent(EVENT_ID, JoinPhase.Ready("Anna's Birthday", CUTOFF)))
             containerHost.onConfirmJoin(CUTOFF, Direction.Both, false)
             expectState(joinedLoading) // commit saved config -> present + granted + Loading snapshot
             cancelAndIgnoreRemainingItems()
@@ -622,7 +760,7 @@ class StatusContainerHostTest {
             FakeSyncStatusSource(SyncStatus.Loading), backgroundScope,
             permission = FakePermissionSource(PermissionStatus.GRANTED), configFake = FakeConfig(null),
             loadJoinDetails = { JoinLoad.NotFound },
-            commitJoin = { _, _, _, _, _ -> commits++; true },
+            commitJoin = { _, _, _, _, _, _ -> commits++; true },
         ).test(this) {
             runOnCreate()
             containerHost.onOpenUrl(encodeConfigUrl(EventLinkPayload(EVENT_ID)))
@@ -641,13 +779,13 @@ class StatusContainerHostTest {
         host(
             FakeSyncStatusSource(SyncStatus.Loading), backgroundScope,
             permission = FakePermissionSource(PermissionStatus.GRANTED), configFake = FakeConfig(null),
-            loadJoinDetails = { if (attempt++ == 0) JoinLoad.Failed else JoinLoad.Found("Anna's Birthday", null) },
+            loadJoinDetails = { if (attempt++ == 0) JoinLoad.Failed else JoinLoad.Found("Anna's Birthday", CUTOFF) },
         ).test(this) {
             runOnCreate()
             containerHost.onOpenUrl(encodeConfigUrl(EventLinkPayload(EVENT_ID)))
             expectState(UiState.JoiningEvent(EVENT_ID, JoinPhase.LoadFailed))
             containerHost.onRetryLoad()
-            expectState(UiState.JoiningEvent(EVENT_ID, JoinPhase.Ready("Anna's Birthday", NOW_CUTOFF)))
+            expectState(UiState.JoiningEvent(EVENT_ID, JoinPhase.Ready("Anna's Birthday", CUTOFF)))
             cancelAndIgnoreRemainingItems()
         }
     }
@@ -657,14 +795,14 @@ class StatusContainerHostTest {
         host(
             FakeSyncStatusSource(SyncStatus.Loading), backgroundScope,
             permission = FakePermissionSource(PermissionStatus.GRANTED), configFake = FakeConfig(null),
-            loadJoinDetails = { JoinLoad.Found("Anna's Birthday", null) },
-            commitJoin = { _, _, _, _, _ -> false },
+            loadJoinDetails = { JoinLoad.Found("Anna's Birthday", CUTOFF) },
+            commitJoin = { _, _, _, _, _, _ -> false },
         ).test(this) {
             runOnCreate()
             containerHost.onOpenUrl(encodeConfigUrl(EventLinkPayload(EVENT_ID)))
-            expectState(UiState.JoiningEvent(EVENT_ID, JoinPhase.Ready("Anna's Birthday", NOW_CUTOFF)))
+            expectState(UiState.JoiningEvent(EVENT_ID, JoinPhase.Ready("Anna's Birthday", CUTOFF)))
             containerHost.onConfirmJoin(CUTOFF, Direction.Both, false)
-            expectState(UiState.JoiningEvent(EVENT_ID, JoinPhase.CommitFailed("Anna's Birthday")))
+            expectState(UiState.JoiningEvent(EVENT_ID, JoinPhase.CommitFailed("Anna's Birthday", CUTOFF)))
             cancelAndIgnoreRemainingItems()
         }
     }
@@ -675,7 +813,7 @@ class StatusContainerHostTest {
         host(
             FakeSyncStatusSource(SyncStatus.Loading), backgroundScope,
             permission = FakePermissionSource(PermissionStatus.GRANTED), configFake = FakeConfig(SAMPLE_CONFIG),
-            loadJoinDetails = { loads++; JoinLoad.Found("x", null) },
+            loadJoinDetails = { loads++; JoinLoad.Found("x", CUTOFF) },
         ).test(this) {
             runOnCreate()
             containerHost.onOpenUrl(encodeConfigUrl(EventLinkPayload(EVENT_ID)))
@@ -693,13 +831,13 @@ class StatusContainerHostTest {
         host(
             FakeSyncStatusSource(SyncStatus.Loading), backgroundScope,
             permission = FakePermissionSource(PermissionStatus.GRANTED), configFake = configFake,
-            loadJoinDetails = { JoinLoad.Found("New Event", null) },
-            commitJoin = { id, name, _, _, _ -> order += "join"; configFake.save(EventConfig(id, name, CUTOFF)); true },
+            loadJoinDetails = { JoinLoad.Found("New Event", CUTOFF) },
+            commitJoin = { id, name, _, _, _, _ -> order += "join"; configFake.save(EventConfig(id, name, CUTOFF)); true },
             leave = { order += "leave"; configFake.clear() },
         ).test(this) {
             runOnCreate()
             containerHost.onOpenUrl(encodeConfigUrl(EventLinkPayload(other)))
-            expectState(UiState.Joined(SyncHealth.Loading, PendingSwitch(other, JoinPhase.Ready("New Event", NOW_CUTOFF))))
+            expectState(UiState.Joined(SyncHealth.Loading, PendingSwitch(other, JoinPhase.Ready("New Event", CUTOFF))))
             containerHost.onConfirmSwitch(CUTOFF, Direction.Both)
             // leave clears config + join saves the new one; conflated to the settled joined layer.
             expectState(joinedLoading)
@@ -716,8 +854,8 @@ class StatusContainerHostTest {
         host(
             FakeSyncStatusSource(SyncStatus.Loading), backgroundScope,
             permission = FakePermissionSource(PermissionStatus.GRANTED), configFake = configFake,
-            loadJoinDetails = { JoinLoad.Found("Anna's Birthday", null) },
-            commitJoin = { id, name, _, _, _ -> committed = id; configFake.save(EventConfig(id, name, CUTOFF)); true },
+            loadJoinDetails = { JoinLoad.Found("Anna's Birthday", CUTOFF) },
+            commitJoin = { id, name, _, _, _, _ -> committed = id; configFake.save(EventConfig(id, name, CUTOFF)); true },
         ).test(this) {
             runOnCreate()
             containerHost.onOpenUrl(encodeConfigUrl(EventLinkPayload(EVENT_ID, autoJoin = true)))
@@ -735,14 +873,14 @@ class StatusContainerHostTest {
         host(
             FakeSyncStatusSource(SyncStatus.Loading), backgroundScope,
             permission = FakePermissionSource(PermissionStatus.GRANTED), configFake = configFake,
-            loadJoinDetails = { JoinLoad.Found("Anna's Birthday", null) },
-            commitJoin = { id, name, _, direction, _ ->
+            loadJoinDetails = { JoinLoad.Found("Anna's Birthday", CUTOFF) },
+            commitJoin = { id, name, _, _, direction, _ ->
                 committedDirection = direction; configFake.save(EventConfig(id, name, CUTOFF, direction = direction)); true
             },
         ).test(this) {
             runOnCreate()
             containerHost.onOpenUrl(encodeConfigUrl(EventLinkPayload(EVENT_ID)))
-            expectState(UiState.JoiningEvent(EVENT_ID, JoinPhase.Ready("Anna's Birthday", NOW_CUTOFF)))
+            expectState(UiState.JoiningEvent(EVENT_ID, JoinPhase.Ready("Anna's Birthday", CUTOFF)))
             containerHost.onConfirmJoin(CUTOFF, Direction.DownloadOnly, false)
             expectState(joinedLoading)
             cancelAndIgnoreRemainingItems()
@@ -758,8 +896,8 @@ class StatusContainerHostTest {
         host(
             FakeSyncStatusSource(SyncStatus.Loading), backgroundScope,
             permission = FakePermissionSource(PermissionStatus.GRANTED), configFake = configFake,
-            loadJoinDetails = { JoinLoad.Found("Anna's Birthday", null) },
-            commitJoin = { _, _, _, direction, _ -> committedDirection = direction; configFake.save(EventConfig(EVENT_ID, minPhotoDate = CUTOFF)); true },
+            loadJoinDetails = { JoinLoad.Found("Anna's Birthday", CUTOFF) },
+            commitJoin = { _, _, _, _, direction, _ -> committedDirection = direction; configFake.save(EventConfig(EVENT_ID, minPhotoDate = CUTOFF)); true },
         ).test(this) {
             runOnCreate()
             containerHost.onOpenUrl(encodeConfigUrl(EventLinkPayload(EVENT_ID, autoJoin = true)))
@@ -776,8 +914,8 @@ class StatusContainerHostTest {
         host(
             FakeSyncStatusSource(SyncStatus.Loading), backgroundScope,
             permission = FakePermissionSource(PermissionStatus.GRANTED), configFake = configFake,
-            loadJoinDetails = { JoinLoad.Found("Anna's Birthday", null) },
-            commitJoin = { _, _, _, direction, _ -> committedDirection = direction; configFake.save(EventConfig(EVENT_ID, minPhotoDate = CUTOFF)); true },
+            loadJoinDetails = { JoinLoad.Found("Anna's Birthday", CUTOFF) },
+            commitJoin = { _, _, _, _, direction, _ -> committedDirection = direction; configFake.save(EventConfig(EVENT_ID, minPhotoDate = CUTOFF)); true },
         ).test(this) {
             runOnCreate()
             containerHost.onOpenUrl(
@@ -934,7 +1072,8 @@ class StatusContainerHostTest {
         permission: PermissionStatus,
         requester: SpyRequester,
         configFake: FakeConfig = FakeConfig(null),
-        commitJoin: suspend (String, String, String, Direction, Boolean) -> Boolean = { _, _, _, _, _ -> false },
+        commitJoin: suspend (String, String, String, String, Direction, Boolean) -> Boolean =
+            { _, _, _, _, _, _ -> false },
     ) = host(
         FakeSyncStatusSource(SyncStatus.Loading), backgroundScope,
         permission = FakePermissionSource(permission),
@@ -1040,7 +1179,7 @@ class StatusContainerHostTest {
         var commits = 0
         firstJoinGate(
             PermissionStatus.NOT_DETERMINED, requester, configFake = configFake,
-            commitJoin = { _, _, _, _, _ -> commits++; true },
+            commitJoin = { _, _, _, _, _, _ -> commits++; true },
         ).test(this) {
             runOnCreate()
             containerHost.onOpenUrl(encodeConfigUrl(EventLinkPayload(EVENT_ID)))

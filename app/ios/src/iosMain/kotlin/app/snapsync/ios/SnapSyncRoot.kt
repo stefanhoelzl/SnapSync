@@ -377,8 +377,9 @@ object SnapSyncRoot {
             // fetched (GET), confirming enrolls (empty-manifest PUT) then provisions. `commitJoin` is
             // true unless enrollment failed (the same-event no-op is a success).
             loadJoinDetails = { eventId -> joinEvent.loadDetails(eventId).toJoinLoad() },
-            commitJoin = { eventId, name, cutoff, direction, saveToAlbum ->
-                joinEvent.join(eventId, name, cutoff, direction, saveToAlbum) != JoinOutcome.EnrollFailed
+            commitJoin = { eventId, name, startsAt, cutoff, direction, saveToAlbum ->
+                joinEvent.join(eventId, name, startsAt, cutoff, direction, saveToAlbum) !=
+                    JoinOutcome.EnrollFailed
             },
             log = { message -> log.i { message } },
             downloadSource = downloadStatusSource,
@@ -387,7 +388,7 @@ object SnapSyncRoot {
 
     // Adapt the join capability's [EventDetails] to the presentation-local [JoinLoad] the gate consumes.
     private fun EventDetails.toJoinLoad(): JoinLoad = when (this) {
-        is EventDetails.Found -> JoinLoad.Found(name, createdAt)
+        is EventDetails.Found -> JoinLoad.Found(name, startsAt)
         EventDetails.NotFound -> JoinLoad.NotFound
         EventDetails.Failed -> JoinLoad.Failed
     }

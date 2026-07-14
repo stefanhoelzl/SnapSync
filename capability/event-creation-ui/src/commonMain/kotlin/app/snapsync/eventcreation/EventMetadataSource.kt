@@ -45,5 +45,6 @@ class HttpEventMetadataSource(
         val eventId: String? = null,
         val name: String? = null,
         val createdAt: String? = null,
+        val startsAt: String? = null,
     )
 }

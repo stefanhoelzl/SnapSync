@@ -35,6 +35,29 @@ fun nowCutoff(clock: Clock): String = instantToCutoff(clock.now())
 fun localToCutoff(local: LocalDateTime, zone: TimeZone): String =
     instantToCutoff(local.toInstant(zone))
 
+/**
+ * Clamp a [chosen] cutoff up to the event's [startsAt] **floor** — the effective cutoff is
+ * `max(chosen, startsAt)` (capability `photo-date-cutoff`).
+ *
+ * This is applied ONCE, at join, and the result is what gets persisted as `EventConfig.minPhotoDate`.
+ * Because `startsAt` is immutable, the clamped value is stable for the life of the membership — which is
+ * what lets the upload cycle keep filtering on a single cutoff and keeps `startsAt` out of the upload
+ * path entirely.
+ *
+ * It is also the load-bearing half of "nothing syncs before the event starts": a photo's capture date
+ * cannot lie in the future, so while `minPhotoDate >= startsAt > now` NO asset satisfies
+ * `creationDate >= minPhotoDate`. The gate is a theorem, not a branch.
+ *
+ * The floor can only ever **narrow** a membership's scope. A host who sets a distant-past start lowers
+ * the *default* a joiner sees (which the joiner sees and can override upward); a host can never cause a
+ * photo taken before `startsAt` to be uploaded, nor raise a member above the member's own choice.
+ *
+ * A plain string `maxOf` is correct **only because** of the format invariant above: both operands are the
+ * canonical fixed-width UTC shape, so lexicographic order IS chronological order — the very same property
+ * the `creationDate >= cutoff` filter relies on. Feed it an off-shape string and it silently lies.
+ */
+fun clampToFloor(chosen: String, startsAt: String): String = maxOf(chosen, startsAt)
+
 private fun buildCutoff(year: Int, month: Int, day: Int, hour: Int, minute: Int, second: Int): String {
     fun p(n: Int, width: Int) = n.toString().padStart(width, '0')
     return "${p(year, 4)}-${p(month, 2)}-${p(day, 2)}T${p(hour, 2)}:${p(minute, 2)}:${p(second, 2)}Z"

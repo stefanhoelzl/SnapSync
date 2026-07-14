@@ -75,6 +75,14 @@ fun ControlPanel(controller: PanelController) {
             Button(onClick = { controller.showPermissionBlockedDenied() }) { Text("Photo access turned off") }
         }
 
+        Text("Event not started")
+        ButtonRow {
+            // Forges a FUTURE `startsAt` on the config and lets the REAL reduction derive the health — so
+            // this preset exercises the real precedence too. Combine it with a permission preset above to
+            // watch NeedsAccess correctly outrank the clock line.
+            Button(onClick = { controller.showNotStarted() }) { Text("Not started (clock line)") }
+        }
+
         Text("Sync")
         ButtonRow {
             Button(onClick = { controller.showLoading() }) { Text("Loading") }

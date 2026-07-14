@@ -82,18 +82,24 @@ fun miniEdgeClient(store: BackendStore): HttpClient {
 
                 // POST /events
                 method == HttpMethod.Post && segments.size == 1 && segments[0] == "events" -> {
-                    val name = runCatching {
-                        json.parseToJsonElement(body).jsonObject["name"]?.jsonPrimitive?.content
-                    }.getOrNull()
+                    val obj = runCatching { json.parseToJsonElement(body).jsonObject }.getOrNull()
+                    val name = obj?.get("name")?.jsonPrimitive?.content
                     if (name.isNullOrBlank() || name.trim().length > 100) {
                         return@MockEngine respond("invalid name", HttpStatusCode.BadRequest)
                     }
+                    // `startsAt` is REQUIRED and must be canonical — the mini-edge is a faithful edge, not
+                    // a lenient one. Accepting a sloppy value here would let a client ship a floor the real
+                    // backend would 400, and the bug would only surface on device.
+                    val startsAt = obj["startsAt"]?.jsonPrimitive?.content
+                    if (startsAt == null || !CANONICAL_CUTOFF.matches(startsAt)) {
+                        return@MockEngine respond("invalid startsAt", HttpStatusCode.BadRequest)
+                    }
                     val eventId = mintEventId(eventCounter++)
-                    store.registerEvent(eventId, name.trim())
+                    store.registerEvent(eventId, name.trim(), startsAt)
                     respond(
                         json.encodeToString(
                             CreatedEventDto.serializer(),
-                            CreatedEventDto(eventId, name.trim(), CREATED_AT),
+                            CreatedEventDto(eventId, name.trim(), CREATED_AT, startsAt),
                         ),
                         HttpStatusCode.Created,
                         jsonHeaders(),
@@ -109,7 +115,16 @@ fun miniEdgeClient(store: BackendStore): HttpClient {
                     respond(
                         json.encodeToString(
                             CreatedEventDto.serializer(),
-                            CreatedEventDto(segments[1], store.nameOf(segments[1]) ?: "", CREATED_AT),
+                            CreatedEventDto(
+                                segments[1],
+                                store.nameOf(segments[1]) ?: "",
+                                CREATED_AT,
+                                // A marker registered without a start date is a LEGACY one: synthesize
+                                // `startsAt` from `createdAt`, exactly as the real backend does on read.
+                                // Note that inherits createdAt's milliseconds — off-canonical on purpose,
+                                // so the app's normalization is exercised rather than assumed.
+                                store.startsAtOf(segments[1]) ?: CREATED_AT,
+                            ),
                         ),
                         HttpStatusCode.OK,
                         jsonHeaders(),
@@ -151,6 +166,13 @@ fun miniEdgeClient(store: BackendStore): HttpClient {
  * against the shape it actually receives. A fake backend must not be cleaner than the real one.
  */
 private const val CREATED_AT = "2026-01-01T00:00:00.000Z"
+
+/**
+ * The canonical capture-date cutoff shape the real backend demands of `startsAt` (second precision, UTC,
+ * no fraction, no offset — capability `photo-date-cutoff`). Unlike [CREATED_AT], a `startsAt` is CLEAN by
+ * contract: the real endpoint 400s anything else, so the world must too.
+ */
+private val CANONICAL_CUTOFF = Regex("""^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$""")
 
 /** Mint a canonical `8-4-4-4-12` v4-shaped UUID deterministically from a counter (no clock/random). */
 internal fun mintEventId(n: Long): String {
