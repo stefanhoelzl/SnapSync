@@ -166,18 +166,29 @@ So: build the bundle from the branch, push it by hand, verify, **then** merge. T
 while the script is dark; phase 3 merges *before* it flips, so at the moment bunny goes live the two
 agree.
 
-### 4. Pre-provision the certificate via DNS-01, then repoint
+### 4. Repoint first, then issue the cert over HTTP-01 — accept a brief TLS gap
 
-Bunny's default free-cert flow is HTTP-01 and *"your custom domain must point to Bunny using a CNAME
-record before SSL validation can succeed"* — a chicken-and-egg that would leave `snapsync.stho.net`
-resolving to bunny with **no valid cert** for seconds-to-minutes. Under default ATS every upload, event
-creation, and join fails during that window. Uploads retry, but joins are user-visible failures.
+Bunny's free-cert flow is HTTP-01: *"your custom domain must point to Bunny using a CNAME record before
+SSL validation can succeed."* So a cert cannot exist for `snapsync.stho.net` on bunny until DNS already
+points there — a chicken-and-egg that leaves a window (seconds to minutes) in which the origin resolves
+to bunny with **no valid cert**. Under default ATS (no exception ships) every request fails during it.
 
-Bunny documents an escape (Seamless Migration): add the hostname to pull zone `6048703` →
-`POST /pullzone/{id}/requestExternalDnsCertificate` → publish the returned `_acme-challenge` TXT in the
-`stho.net` Bunny DNS zone → `POST /pullzone/{id}/completeExternalDnsCertificate` → **then** flip the
-`CNAME`. HTTPS is valid from the first millisecond after the repoint. Renewals fall back to HTTP-01
-automatically once DNS points at bunny.
+**We accept that window.** Uploads retry forever, so nothing is lost — they simply land late. The only
+user-visible casualty is an event **join** attempted inside the gap, which fails and must be retried.
+For a single-operator TestFlight app that is a non-event, and the operator controls when the flip
+happens.
+
+*Considered and dropped: zero-downtime pre-provisioning.* Two routes exist in principle — bunny's
+"Seamless Migration" DNS-01 flow, and issuing a Let's Encrypt cert ourselves via DNS-01 (we own the
+`stho.net` zone) and uploading it with `POST /pullzone/{id}/addCertificate`. The first turned out not to
+be exposed on the public REST API under the endpoint names the docs' prose implies
+(`requestExternalDnsCertificate` → `404`); the second is real but is a meaningful chunk of ACME
+plumbing. Neither is worth it to close a gap this small with this blast radius. If SnapSync ever has
+users who are not the operator, revisit — the machinery is documented and the domain is ours.
+
+Ordering follows from this: **merge → flip the `CNAME` → immediately `loadFreeCertificate`** → verify.
+The hostname is attached to pull zone `6048703` ahead of time (inert while DNS points elsewhere), so the
+flip and the cert request are back-to-back and the gap is as short as bunny's issuance takes.
 
 ### 5. Harden the listing cache header
 
