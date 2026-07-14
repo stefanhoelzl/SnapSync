@@ -123,18 +123,37 @@ reconcile seeds already-stored photos as `COMPLETED` and nothing uploads.
 > uploads retry forever (nothing is lost, only delayed); only a **join** attempted inside the gap is a
 > visible failure. So the order is flip → cert, back-to-back.
 
-- [x] 6.1 Attach the hostname `snapsync.stho.net` to pull zone **6048703**
-      (`POST /pullzone/6048703/addHostname` → `204`). Inert while DNS still points at Deno Deploy —
-      verified: `snapsync.stho.net` still resolves to `alias.deno.net` and answers `404` with
-      `server: deployd`. This is done ahead of time so the flip and the cert request are back-to-back.
+- [x] 6.1 **Certificate pre-provisioned via DNS-01 — the flip WAS zero-downtime after all.** Attached the
+      hostname (`POST /pullzone/6048703/addHostname` → `204`), then issued the cert *before* moving DNS:
+      `POST /pullzone/requestExternalDnsCertificate` → `POST /pullzone/completeExternalDnsCertificate`.
+      **These routes are account-level, NOT under `/pullzone/{id}/`** — bunny's own seamless-migration
+      guide prints a buggy curl example with `{id}` in the path, which 404s. The undocumented `200` body
+      is `{TxtRecordName, TxtRecordValue, ExpiresAt}`.
+      Verified before flipping by forcing the connection to bunny's IP with the real SNI:
+      `CN=snapsync.stho.net`, Let's Encrypt, valid to 2026-10-12, accepted by curl against the public
+      trust store (so ATS accepts it), and the Edge Script answered `404` through the CDN.
+      **Note:** publishing the `_acme-challenge` TXT required deleting Deno's ACME delegation CNAME
+      (`_acme-challenge.snapsync → 48101e8fc7ec49d216fe2aeb6329fb5d._acme.deno.net`, ttl 300) — DNS
+      forbids a CNAME coexisting with another type at the same name. Deno's **existing** cert stays valid
+      (~90 days), so DNS rollback still serves HTTPS; it just can no longer auto-renew. Restore that
+      record if Deno is ever reinstated long-term.
 - [ ] 6.2 Merge the PR. CI deploys the bundle to bunny (the same bundle already hand-deployed in 2.4, so
       this is a no-op in effect). The Deno Deploy **app** keeps serving its last bundle — still a working
       DNS-repoint rollback.
-- [ ] 6.3 Flip the `CNAME`: `snapsync.stho.net` → `snap-sync-n8xmz.b-cdn.net` (TTL is 300 s, so rollback
-      is ~5 minutes), then **immediately** `GET /pullzone/loadFreeCertificate?hostname=snapsync.stho.net`
-      to close the TLS gap as fast as bunny will issue.
-- [ ] 6.4 Verify production on the real (TestFlight/installed) app: HTTPS serves with a valid cert, an
-      upload lands in the zone, a join succeeds, and a push wakes a device.
+- [x] 6.3 **FLIPPED.** `snapsync.stho.net` CNAME: `alias.deno.net` → `snap-sync-n8xmz.b-cdn.net`.
+      Propagated in ~4 min (300 s TTL). **No TLS gap** — the cert was already in place. Live hostname now
+      answers `server: BunnyCDN-DE1-1330` (was `deployd`) with a valid LE cert.
+- [x] 6.4a **Contract verified on the production hostname** (`curl`, no residue): `GET /events/<uuid>` →
+      `404`; `OPTIONS` → **`204`** (the script's own handler, not a CDN generic `200`);
+      `GET /files/devices/<uuid>` → `200 []` with `cache-control: no-cache`, `cdn-cache: MISS`. The 5
+      surviving real events are **intact and readable through the new runtime** (event `'test'` still
+      returns its 1 asset) — data continuity across the cutover, not just a live endpoint.
+- [ ] 6.4b **Device check on the production hostname — PENDING.** The sideloaded dev IPA bakes
+      `snap-sync-n8xmz.bunny.run`, i.e. the *same pull zone and the same Edge Script*, just a different
+      hostname; all four gates passed against it. What is still unproven on hardware is that exact
+      literal `https://snapsync.stho.net`. That comes from the TestFlight build produced by merging this
+      PR. **Do not run group 7 (teardown) until this is green** — it is the last thing standing between
+      us and an unrecoverable bunny.
 
 ## 7. Teardown — only after group 6 is verified
 
