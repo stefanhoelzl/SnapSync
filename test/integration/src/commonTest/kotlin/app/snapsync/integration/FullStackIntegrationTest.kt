@@ -87,7 +87,12 @@ class FullStackIntegrationTest {
 
             w.ownGallery.refresh(World.DEFAULT_CUTOFF); w.ledgerCounts.refresh()
             host.onCreateEvent("Party") // POST /events via the mini-edge → provision → gate lifts
-            val after = host.await { it !is UiState.CreateEvent && it !is UiState.CreatingEvent }
+            // Await the SETTLED health, not merely "left the create layer": the snapshot's first read is
+            // itself asynchronous (`LedgerBackedSyncStatusSource` seeds `Loading` and reaches `Ready`
+            // only once its collector runs), so `Joined(Loading)` — the neutral first frame — is a
+            // legitimate state between the gate lifting and the snapshot landing. A predicate that
+            // accepts it races the first read and asserts against a frame that is not settled yet.
+            val after = host.await { it.health() is SyncHealth.InSync }
             assertEquals(UiState.Joined(SyncHealth.InSync), after) // no photos in the library → settled
             assertTrue(w.configSource.config.value != null) // world outcome: config provisioned
         } finally {

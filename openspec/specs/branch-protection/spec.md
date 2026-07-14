@@ -9,7 +9,7 @@ Protection of the default branch via a committed ruleset (required build check, 
 The default branch SHALL be protected by a committed ruleset (`.github/rulesets/main.json`) that requires the `build` status check, **the iOS build status check reported by GitHub Actions** (context `ios-build`), **and the iOS test status check reported by GitHub Actions** (context `ios-test`), allows only rebase merges, requires linear history, requires a pull request, and forbids branch deletion and non-fast-forward (force) pushes.
 
 #### Scenario: Direct push to the default branch is rejected
-- **WHEN** someone attempts to push directly to `master`
+- **WHEN** someone attempts to push directly to `main`
 - **THEN** the push is rejected because a pull request is required
 
 #### Scenario: A PR cannot merge without the build check passing
