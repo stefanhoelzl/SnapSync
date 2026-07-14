@@ -1,11 +1,20 @@
 name: backend-deploy
 
-# Deploys the backend/ upload endpoint to BOTH bunny Edge Scripting and Deno Deploy. The device-facing
-# host is the custom domain `snapsync.stho.net` (we own it via Bunny DNS), CNAME'd to Deno Deploy while
-# bunny.net investigates dropping iOS's zero-window upload SYNs (the single main.ts serves both
-# runtimes — bunny via the SDK, Deno Deploy via Deno.serve). Path-scoped
-# to the backend sources, isolated from the Gradle/iOS workflows, and gated on green Deno
-# fmt/lint/check/test. Capability: backend-deployment.
+# Deploys the backend/ upload endpoint to bunny Edge Scripting — the ONE runtime. The device-facing host
+# is the custom domain `snapsync.stho.net` (we own it via Bunny DNS), CNAME'd to the pull zone fronting
+# the Edge Script. Path-scoped to the backend sources, isolated from the Gradle/iOS workflows, and gated
+# on green Deno fmt/lint/check/test. Capability: backend-deployment.
+#
+# This workflow ships CODE ONLY — it configures nothing. bunny issues no scoped API key (writing an Edge
+# Script's env vars needs the full-access ACCOUNT key, which also owns the photo storage zone and our DNS
+# zone), so CI holds only the script-scoped deploy key. That is precisely why every non-secret config
+# value is a SOURCE CONSTANT (backend/src/config.ts): config ships in the bundle with the code that reads
+# it, and cannot drift. Only two SECRETS live in the Edge Script env, set once by hand.
+#
+# There is deliberately no post-deploy boot probe: `POST /code` + `POST /publish` succeed whether or not
+# the script can boot, so a green run here does NOT prove the script serves. That was how the previous
+# Deno-Deploy-era config drift went unnoticed for two weeks. Prevention (config in source) replaces it —
+# so do NOT reintroduce platform-side required config without also reintroducing a probe.
 
 on:
   push:
@@ -42,8 +51,8 @@ jobs:
         working-directory: backend
         run: deno test
 
-      # Bundle to a single file — the deploy action uploads the file as-is (no bundling), and the
-      # SDK's serve() is runtime-aware (bundles a `case "bunny"` path).
+      # Bundle to a single file — the deploy action uploads the file as-is (no bundling). Must stay
+      # within the Edge Scripting 10 MB script limit.
       - name: Bundle
         working-directory: backend
         run: deno bundle src/main.ts -o dist/main.js
@@ -57,37 +66,3 @@ jobs:
           script_id: ${{ secrets.BUNNY_SCRIPT_ID }}
           deploy_key: ${{ secrets.BUNNY_DEPLOY_KEY }}
           file: backend/dist/main.js
-
-      # Ensure the app's runtime env is set BEFORE deploying — readConfig() THROWS on a missing var,
-      # so a new revision fails to boot ("the revision failed") without it. The BUNNY_STORAGE_* secrets
-      # (incl. the zone name = S3 access-key-id and the AccessKey = S3 secret) are configured in the
-      # dashboard; the non-secret PUBLIC_BASE_URL (backend origin for upload/event/list) and the S3
-      # presign endpoint (BUNNY_S3_REGION / BUNNY_S3_HOST) are kept in CI for reproducibility.
-      # Idempotent: `add` on first run, `update-value` on subsequent runs (add errors if the var exists).
-      - name: Configure Deno Deploy env
-        if: github.ref == 'refs/heads/main'
-        working-directory: backend
-        env:
-          DENO_DEPLOY_TOKEN: ${{ secrets.DENO_DEPLOY_TOKEN }}
-        run: |
-          set_env() {
-            deno deploy env add "$1" "$2" --org stefanhoelzl --app snapsync \
-              || deno deploy env update-value "$1" "$2" --org stefanhoelzl --app snapsync
-          }
-          set_env PUBLIC_BASE_URL "https://snapsync.stho.net"
-          set_env BUNNY_S3_REGION "de"
-          set_env BUNNY_S3_HOST "de-s3.storage.bunnycdn.com"
-
-      # Deno Deploy (the active iOS-facing host for now). The app's entrypoint (src/main.ts) is
-      # configured server-side; `deno deploy` uses the stored build config and the --org/--app to
-      # target the app. It persists a `deploy:` block into deno.json on the ephemeral runner (never
-      # committed). Requires the DENO_DEPLOY_TOKEN secret (the `ddo_` org token). Revert path: when
-      # bunny fixes the SYN drop, repoint `snapsync.stho.net` (Bunny DNS) at the bunny Edge Script and
-      # flip PUBLIC_BASE_URL above — a DNS + server-side change, NOT a new iOS build (the baked host is
-      # the custom domain, not a runtime-provider host).
-      - name: Deploy to Deno Deploy
-        if: github.ref == 'refs/heads/main'
-        working-directory: backend
-        env:
-          DENO_DEPLOY_TOKEN: ${{ secrets.DENO_DEPLOY_TOKEN }}
-        run: deno deploy --org stefanhoelzl --app snapsync --prod

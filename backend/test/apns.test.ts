@@ -7,7 +7,6 @@ const BASE: Omit<Config, "apnsPrivateKey"> = {
   zone: "z",
   host: "h",
   accessKey: "k",
-  baseUrl: "https://dl.example",
   s3Region: "de",
   s3Host: "de-s3.storage.bunnycdn.com",
   apnsKeyId: "ABC123KEYID",

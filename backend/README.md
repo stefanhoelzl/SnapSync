@@ -1,19 +1,25 @@
-# backend/ — SnapSync backend (bunny Edge Scripting / Deno Deploy)
+# backend/ — SnapSync backend (bunny Edge Scripting)
 
-A **streaming proxy** (Deno/TypeScript + **Hono**). One bundle deploys to **both** bunny Edge
-Scripting and Deno Deploy; the device-facing origin is the custom domain **`snapsync.stho.net`**
-(our Bunny DNS zone, Let's Encrypt cert), `CNAME`'d to the **active** runtime — **Deno Deploy
-today**, while bunny investigates dropping iOS's zero-window upload SYNs. It mints events, streams
-photo bytes from the iOS background-upload extension straight into a bunny **native** Storage zone,
-records per-event device manifests, and serves per-device and event-wide listings. Downloads are
-**presigned S3 GET URLs** the device fetches directly from bunny's S3 endpoint — no download proxy,
-no on-device SigV4, no per-resource mint round-trip.
+A **streaming proxy** (Deno/TypeScript + **Hono**) on **bunny Edge Scripting** — the one runtime.
+The device-facing origin is the custom domain **`snapsync.stho.net`** (our Bunny DNS zone, Let's
+Encrypt cert), `CNAME`'d to the bunny **pull zone** that fronts the Edge Script. It mints events,
+streams photo bytes from the iOS background-upload extension straight into a bunny **native**
+Storage zone, records per-event device manifests, and serves per-device and event-wide listings.
+Downloads are **presigned S3 GET URLs** the device fetches directly from bunny's S3 endpoint — no
+download proxy, no on-device SigV4, no per-resource mint round-trip.
+
+> A CDN pull zone sits between every device and this script. Anything the device depends on must
+> hold **as observed through the pull zone**, not merely at the origin — it may answer `OPTIONS`
+> itself, and it caches on the origin's `Cache-Control` (which is why the listing routes send
+> `no-cache`, not just `no-store`; bunny documents the former, never the latter). Deno Deploy, the
+> retired runtime, had no CDN in front and so could not exhibit this class of behavior at all.
 
 Authoritative contracts: `openspec/specs/event-creation`, `openspec/specs/bunny-upload-endpoint`,
 `openspec/specs/bunny-list-endpoint`, `openspec/specs/device-manifest`,
-`openspec/specs/event-leave-endpoint`, and `openspec/specs/backend-config` (and
-`backend-deployment`). Rationale lives in each spec's `## Purpose` and its `Decision record:`
-pointer into `openspec/changes/archive/`.
+`openspec/specs/event-leave-endpoint`, and `openspec/specs/backend-deployment` (which owns the
+deployment pipeline **and** the configuration contract — the former `backend-config` capability
+folded into it). Rationale lives in each spec's `## Purpose` and its `Decision record:` pointer into
+`openspec/changes/archive/`.
 
 ## Storage layout
 
@@ -55,7 +61,7 @@ PUT  /files/devices/<deviceId>/<filename>                 (byte upload — UNGAT
 GET  /files/devices/<deviceId>                            (per-device raw listing — UNGATED)
     →  single bunny native LIST of  files/devices/<deviceId>/
     →  200 [ {filename, size, url}, … ]  (200 [] for an empty/unknown partition) | 502 on LIST failure
-       url = a presigned S3 GET URL (below);  Cache-Control: no-store
+       url = a presigned S3 GET URL (below);  Cache-Control: no-store, no-cache, max-age=0
 
 PUT  /devices/<deviceId>                           (device config / push token — UNGATED by event)
     body: { pushToken: { kind: "apns", token, env } }  (streamed)     DEVICE-ID is the capability
@@ -89,7 +95,7 @@ GET  /events/<eventId>/files                               (event-wide UNION —
        complete assets only (every named resource present in the device's byte partition), flattened
        across devices, each tagged with its owning deviceId;  200 [] for an empty event
        any non-404 read failure anywhere (incl. a manifest JSON parse) → 502 (never a partial union)
-       Cache-Control: no-store
+       Cache-Control: no-store, no-cache, max-age=0
 ```
 
 - `eventId` / `deviceId` — **UUIDs** (Hono route params, validated). The UUID is the capability (no
@@ -119,9 +125,9 @@ GET  /events/<eventId>/files                               (event-wide UNION —
   `GET /events/<id>/files`. Any other method or unmatched path → **`404`** (Hono's default — no
   `405`). Bad UUID / unsafe filename / invalid name → `400`.
 
-> **Deployment invariant.** `BUNNY_STORAGE_HOST` MUST be the storage zone's **main** region host
-> (where writes land), never a replica endpoint. Bunny replicates asynchronously; reads from the
-> main region are read-after-write consistent, so a just-created marker is visible to the
+> **Deployment invariant.** The storage `HOST` constant MUST be the storage zone's **main** region
+> host (where writes land), never a replica endpoint. Bunny replicates asynchronously; reads from
+> the main region are read-after-write consistent, so a just-created marker is visible to the
 > immediately following join/list/upload. A replica host could lag and `404` a fresh event.
 >
 > The **leave** cascade depends on this too, and more sharply: its reap decision (is any active
@@ -129,7 +135,7 @@ GET  /events/<eventId>/files                               (event-wide UNION —
 > devices directories, and a stale replica read could miss a concurrent rejoin's fresh `<id>.json`
 > and reap an event out from under an active device. Every other failure mode of leave is a harmless
 > orphan; this is the one that would delete in-use data — so the reap MUST read the main region.
-> Never point `BUNNY_STORAGE_HOST` at a replica.
+> Never point the storage `HOST` constant at a replica.
 
 > **Note.** The byte-upload route is **ungated** (it reads no marker), so it never `404`s for an
 > "unknown event" — bytes are event-independent. Only the device-manifest write and the event union
@@ -145,31 +151,55 @@ src/app.ts        Hono app (createApp({config, fetch}) → routes): create + met
 src/apns.ts       createApnsSender(config, fetch) → { sendSilent(tokens) }: ES256 provider-JWT signing
                   (WebCrypto, memoized) + a silent HTTP/2 push per token; per-token best-effort outcomes.
 src/validators.ts validateUUID / validateFilename → boolean; validateEventName(raw) → trimmed | null
-src/config.ts     readConfig(env) → Config (zone/host/accessKey/PUBLIC_BASE_URL/S3 region+host/APNS_*;
-                  THROWS on any missing/blank var)
-src/main.ts       Edge Scripting / Deno entry: reads config at startup, serves createApp(...).fetch
+src/config.ts     the 7 non-secret SOURCE CONSTANTS (zone/host/S3 region+host/APNs kid+iss+topic) +
+                  readConfig(env) → Config, which reads only the 2 SECRETS and THROWS if either is
+                  missing/blank. Env is never consulted for a constant.
+src/main.ts       Edge Scripting entry: reads config at startup, serves createApp(...).fetch via the SDK
 test/*.test.ts    Deno tests (app via app.request(), upstream fetch + config injected)
 ```
 
-## Configuration (env only — no secrets in source)
+## Configuration — 7 source constants, 2 env secrets
 
-| Var                        | Meaning                                                                                                                           |
-| -------------------------- | --------------------------------------------------------------------------------------------------------------------------------- |
-| `BUNNY_STORAGE_ZONE`       | storage zone name (also the S3 Access Key ID + bucket)                                                                            |
-| `BUNNY_STORAGE_HOST`       | native host, e.g. `storage.bunnycdn.com` (DE/Falkenstein default)                                                                 |
-| `BUNNY_STORAGE_ACCESS_KEY` | storage-zone **password** (the `AccessKey`; also the S3 secret; NOT the account API key)                                          |
-| `PUBLIC_BASE_URL`          | the backend's public origin (no trailing slash) — the host clients reach for upload/event/list. **Not** part of any download URL. |
-| `BUNNY_S3_REGION`          | S3 region of the (S3-enabled) storage zone, e.g. `de` — used only to presign download URLs                                        |
-| `BUNNY_S3_HOST`            | bunny S3-compatible endpoint host, e.g. `de-s3.storage.bunnycdn.com` — the presigned-URL origin                                   |
-| `APNS_KEY_ID`              | APNs Auth Key id (the `.p8` Key ID) — the provider-JWT `kid`                                                                      |
-| `APNS_TEAM_ID`             | Apple team id (`E9Z8BADH58`) — the provider-JWT `iss`                                                                             |
-| `APNS_PRIVATE_KEY`         | the APNs Auth Key `.p8` **PEM contents** (not a path) — ES256-signs the provider JWT; runtime env, never a CI secret              |
-| `APNS_TOPIC`               | the push topic — the app bundle id `app.snapsync` (the `apns-topic` header)                                                       |
+**Non-secret config lives in `src/config.ts`, not in the environment. Source wins: the environment
+is not consulted for any of it**, so a stale platform variable cannot override git.
 
-`main.ts` reads these once at startup via `readConfig(Deno.env.toObject())`, which **throws** on any
-missing/blank var → a misconfigured deployment **fails to boot** (fail-closed at deploy, never a
-mis-targeted upload and never a blank/unsignable download URL). The validated `Config` is injected
-into the app, so the request handlers have no configuration path.
+| Source constant | Value                        | Meaning                                                                 |
+| --------------- | ---------------------------- | ----------------------------------------------------------------------- |
+| `ZONE`          | `snap-sync`                  | storage zone name (also the S3 Access Key ID + bucket)                  |
+| `HOST`          | `storage.bunnycdn.com`       | native Storage host (DE/Falkenstein) — **main region, never a replica** |
+| `S3_REGION`     | `de`                         | S3 region — used only to presign download URLs                          |
+| `S3_HOST`       | `de-s3.storage.bunnycdn.com` | bunny S3 endpoint — the presigned-URL origin                            |
+| `APNS_KEY_ID`   | the `.p8` Key ID             | the provider-JWT `kid`                                                  |
+| `APNS_TEAM_ID`  | `E9Z8BADH58`                 | the provider-JWT `iss`                                                  |
+| `APNS_TOPIC`    | `app.snapsync`               | the `apns-topic` header (the app bundle id)                             |
+
+Every one of these is a **public fact** — the team id and bundle id ship inside every IPA; the key
+id rides in the JWT header Apple receives. Committing them exposes nothing.
+
+| Env secret                 | Meaning                                                                                      |
+| -------------------------- | -------------------------------------------------------------------------------------------- |
+| `BUNNY_STORAGE_ACCESS_KEY` | storage-zone **password** (the `AccessKey`; also the S3 secret; **not** the account API key) |
+| `APNS_PRIVATE_KEY`         | the APNs Auth Key `.p8` **PEM contents** (not a path) — ES256-signs the provider JWT         |
+
+`main.ts` reads the two secrets once at startup via `readConfig(Deno.env.toObject())`, which
+**throws** on either being missing/blank → a misconfigured deployment **fails to boot** (fail-closed
+at deploy, never a mis-targeted upload and never a blank/unsignable download URL). The validated
+`Config` is injected into the app, so the request handlers have no configuration path. **No secret
+is in source.**
+
+> **Why config is in source.** Bunny issues **no scoped API key**: writing an Edge Script's
+> environment variables requires the full-access **account** key, which also owns the storage zone
+> holding every user's photos and the `stho.net` DNS zone. CI therefore holds only the
+> _script-scoped deploy key_ — and so **CI can ship code but cannot ship config**. That gap is not
+> theoretical: it is exactly how this backend died. On 2026-07-02 a change added two required env
+> vars, set them on the (then-active) Deno Deploy runtime only, and left the bunny script
+> fail-closed at boot for two weeks — with CI green throughout, because `POST /code` + `/publish`
+> succeed whether or not the script boots.
+>
+> Source-owned config closes it structurally: **a new non-secret value ships in the same bundle as
+> the code that reads it**, so it cannot be forgotten. The two secrets are exempt because they are
+> genuine credentials and change ~never. Do not "simplify" this by giving CI the account key — that
+> trades a config-drift bug for a blast radius over every user's photos.
 
 ## Develop & test
 
@@ -177,44 +207,52 @@ into the app, so the request handlers have no configuration path.
 deno task test          # full suite; upstream bunny mocked, config injected → offline, no perms
 deno task lint
 deno fmt --check
-# run locally (listens on 127.0.0.1:8080 via the SDK):
-BUNNY_STORAGE_ZONE=z BUNNY_STORAGE_HOST=storage.bunnycdn.com BUNNY_STORAGE_ACCESS_KEY=k \
-  BUNNY_S3_REGION=de BUNNY_S3_HOST=de-s3.storage.bunnycdn.com \
-  APNS_KEY_ID=k APNS_TEAM_ID=E9Z8BADH58 APNS_TOPIC=app.snapsync APNS_PRIVATE_KEY="$(cat AuthKey.p8)" \
-  PUBLIC_BASE_URL=http://127.0.0.1:8080 deno run --allow-net --allow-env src/main.ts
+# run locally (the SDK binds 127.0.0.1:8080 when no Edge Scripting runtime is present):
+BUNNY_STORAGE_ACCESS_KEY=k APNS_PRIVATE_KEY="$(cat AuthKey.p8)" \
+  deno run --allow-net --allow-env src/main.ts
 ```
 
-The APNs credentials are **runtime** env (the `AccessKey` category), set on the platform, **not**
-deploy-workflow secrets. Provision an APNs **Auth Key** (`.p8`) for team `E9Z8BADH58` once (App
-Store Connect API / portal) and set `APNS_KEY_ID` / `APNS_TEAM_ID` / `APNS_PRIVATE_KEY` (the `.p8`
-PEM) / `APNS_TOPIC=app.snapsync` as Edge Script / Deno Deploy environment variables.
+Two env vars, because everything else is a source constant. Note this targets the **real**
+`snap-sync` zone. To point a local run somewhere else, construct a `Config` literal and pass it to
+`createApp({ config, fetch })` directly — that is the injection seam the tests use — rather than
+reintroducing an env override.
 
-`createApp({ config, fetch })` takes an injected validated `config` and upstream `fetch`, so tests
-drive the real Hono app via `app.request()` without the network or `Deno.env`.
+Provision the APNs **Auth Key** (`.p8`) for team `E9Z8BADH58` once (App Store Connect API / portal)
+and set `APNS_PRIVATE_KEY` (the PEM) as an Edge Script **secret**. `APNS_KEY_ID` / `APNS_TEAM_ID` /
+`APNS_TOPIC` are source constants — update `config.ts` if the key is ever rotated.
 
 ## Deploy
 
 CI deploys via `.github/workflows/backend-deploy.yml` (path-scoped to `backend/**`, **gated on green
-`deno fmt`/`lint`/`check`/`test`**) using `BunnyWay/actions/deploy-script`. Provision once and set
-GH secrets:
+`deno fmt`/`lint`/`check`/`test`**) using `BunnyWay/actions/deploy-script`. It ships **code only** —
+it configures nothing (see above). Provision once:
 
-1. With the Bunny **account API key**, create an **S3-enabled** Storage zone (DE) → record the
-   `BUNNY_STORAGE_*` and `BUNNY_S3_*` values and set them as Edge Script **environment variables**.
-2. Create the Edge Scripting app → record its **script id** and a **deploy key**.
-3. Add GH secrets `BUNNY_SCRIPT_ID` and `BUNNY_DEPLOY_KEY` (the deploy key is script-scoped — the
-   account API key is **not** used by CI).
+1. With the Bunny **account API key**: an **S3-enabled** Storage zone (DE), and the Edge Scripting
+   app (record its **script id** and a **deploy key**). Set the two **secrets** on the Edge Script.
+2. Add GH secrets `BUNNY_SCRIPT_ID` and `BUNNY_DEPLOY_KEY`. The deploy key is script-scoped (it can
+   push code to that one script and nothing else); the **account API key is never in CI**.
 
-The same workflow also deploys to **Deno Deploy** (`--org stefanhoelzl --app snapsync`, secret
-`DENO_DEPLOY_TOKEN`) and sets `PUBLIC_BASE_URL` to the device-facing origin. **Deno Deploy is the
-active device-facing runtime** while bunny drops iOS's zero-window upload SYNs. The origin is the
-custom domain **`snapsync.stho.net`** — a `CNAME` in our `stho.net` Bunny DNS zone pointing at
-Deno's `alias.deno.net` (auto-TLS via Let's Encrypt). Because we own the name, the revert to bunny
-(once the SYN-drop is fixed) is a **DNS repoint of `snapsync.stho.net` + a `PUBLIC_BASE_URL` flip —
-not a new iOS build**.
+The device-facing origin is the custom domain **`snapsync.stho.net`** — a `CNAME` in our `stho.net`
+Bunny DNS zone pointing at the pull zone that fronts the Edge Script. Because we own the name,
+swapping the runtime that answers it stays a **DNS repoint, never a new iOS build** (the
+compile-time `BACKGROUND_UPLOAD_URL_BASE` names this domain, not a provider hostname). That property
+is what let Deno Deploy be retired without a TestFlight round — keep it.
 
-## On-device caveats (unverified — see `bunny-upload-endpoint` § Assumptions)
+> **No boot probe.** CI cannot tell a booting script from a dead one. Prevention (config in source)
+> replaces detection here; if you ever reintroduce platform-side _required_ config, reintroduce a
+> post-deploy probe with it (`GET /events/<uuid>` must answer `404`, not a bodyless `400`).
 
-This endpoint's bunny-facing behavior is tested; its **iOS-facing** surface is frozen but unverified
-until the iOS rewiring follow-up: OPTIONS fallback on a custom origin, which `2xx` the background
-uploader accepts, and whether the largest Live-Photo paired-video stays within the 30 s CPU budget /
-any undocumented wall-clock timeout (fix if it bites: server-side resumable uploads).
+> **bunny is load-bearing.** There is no second runtime and no warm standby. A bunny outage is a
+> SnapSync outage; recovery means standing a runtime back up from this bundle and repointing DNS.
+> The engine retries forever, so uploads are **delayed, never lost**.
+
+## Edge Scripting limits worth knowing
+
+- **30 s CPU** per request — CPU, _not_ wall clock, so a pure I/O pass-through stream is cheap. The
+  killers would be buffering the body (`request.bytes()` → blows the **128 MB** isolate) or per-byte
+  CPU (hashing/transform). The proxy does neither.
+- **No documented wall-clock timeout for the script** — but the **pull zone in front has a 60 s
+  request timeout** (`http_timeout`). That, not the CPU budget, is the real ceiling on a large
+  Live-Photo paired video over a slow link. If it ever bites, the fix is **server-side resumable
+  uploads**.
+- 10 MB script size, 500 ms startup, 50 subrequests, 128 env vars.
