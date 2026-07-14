@@ -5,6 +5,7 @@ import io.ktor.client.HttpClient
 import io.ktor.client.engine.darwin.Darwin
 import io.ktor.client.plugins.HttpSend
 import io.ktor.client.plugins.plugin
+import io.ktor.http.HttpStatusCode
 import io.ktor.http.contentLength
 import kotlin.time.TimeSource
 
@@ -20,12 +21,34 @@ private val httpLog = Logger.withTag("Http")
  * sites through this factory are covered without per-call edits. The stock Ktor `Logging` plugin
  * can't emit timing or sizes; this bespoke interceptor can. It logs through Kermit, so each line
  * inherits the ambient `[entryPoint]` prefix. `-1` size means the Content-Length was absent.
+ *
+ * **[token] authenticates every request made through this client** (capability `device-attestation`).
+ * Attaching it here rather than at each call site is the point: create, event fetch, join/manifest,
+ * union, device config, leave, notify, and the extension's reconcile listing ALL flow through this one
+ * factory, so none of them can be forgotten — and a future caller inherits the header for free.
+ *
+ * It is read **per request**, never captured once: the app renews the token in the background, and a
+ * client holding a stale copy would keep sending a dead credential long after a fresh one was available.
+ *
+ * A null token still sends the request, deliberately — it will `401`, and a `401` is a retryable failure.
+ * Refusing to send would strand the work instead. (The three `/attest/…` routes are ungated, so the
+ * bootstrap request that has no token yet is served regardless.)
  */
-fun darwinHttpClient(): HttpClient = HttpClient(Darwin).also { client ->
+fun darwinHttpClient(
+    token: () -> String? = { null },
+    onRejected: () -> Unit = {},
+): HttpClient = HttpClient(Darwin).also { client ->
     client.plugin(HttpSend).intercept { request ->
+        token()?.let { request.headers.append("Authorization", "Bearer $it") }
         val start = TimeSource.Monotonic.markNow()
         try {
             val call = execute(request)
+            // A 401 means the backend REJECTED this token — which is NOT the same as it having expired, and
+            // is the one case the expiry-based staleness check cannot see. It happens whenever the signing
+            // key is rotated, or the leave cascade collects this device's attestation record. Without acting
+            // on it, the app would keep re-sending a perfectly fresh-LOOKING but dead credential forever, and
+            // no wake would ever heal it.
+            if (call.response.status == HttpStatusCode.Unauthorized) onRejected()
             val ms = start.elapsedNow().inWholeMilliseconds
             val req = call.request.content.contentLength ?: -1L
             val resp = call.response.contentLength() ?: -1L

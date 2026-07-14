@@ -1,5 +1,7 @@
 package app.snapsync.ios.upload
 
+import app.snapsync.attest.AttestStore
+import app.snapsync.attest.KeychainAttestStore
 import app.snapsync.album.AlbumCoordinator
 import app.snapsync.album.IosAlbumManager
 import app.snapsync.album.IosAlbumMapStore
@@ -147,7 +149,35 @@ object UploadExtensionRoot {
     // One shared Darwin (NSURLSession) HTTP client for both in-cycle network calls (the reconcile
     // listing GET and the device.json PUT) — a single client avoids running two NSURLSession-backed
     // engines under the same `runBlocking`.
-    private val httpClient by lazy { darwinHttpClient() }
+    /**
+     * The device token (capability `device-attestation`), read from the **shared Keychain** — the app put
+     * it there.
+     *
+     * The extension is a strict READER. It never attests and never renews, because it *cannot*:
+     * `DCAppAttestService.isSupported` is `false` in an app extension and `true` in the app — measured on
+     * this device, in this very process, in a healthy cycle that uploaded a photo one second later.
+     *
+     * So an expired token is simply sent as-is. The upload `401`s, the engine retries forever (it is
+     * error-agnostic) and re-mints the request from the provider each attempt — so once the APP next wakes
+     * and renews, the very same resources upload with no special-casing anywhere in this file.
+     *
+     * Non-throwing: the Keychain is unreadable before the first unlock since boot, and this is called on a
+     * background wake, which is exactly when that happens. A null token is a `401`, which is retryable; a
+     * thrown error here would take down the cycle.
+     */
+    private val attestStore: AttestStore by lazy { KeychainAttestStore() }
+
+    private fun attestToken(): String? = runCatching { attestStore.token() }.getOrNull()
+
+    private val httpClient by lazy {
+        darwinHttpClient(
+            token = { attestToken() },
+            // The extension cannot attest, so it cannot recover on its own — but it CAN drop a token the
+            // backend has rejected. That is what makes the app re-mint at its next wake: `isStale(null)` is
+            // true, while a rejected-but-unexpired token would have looked perfectly fine forever.
+            onRejected = { runCatching { attestStore.clearToken() } },
+        )
+    }
 
     // Re-join reconciliation (capability `event-rejoin-reconciliation`), now extension-owned. Seeds
     // already-stored photos as COMPLETED before the producer runs so they are not re-uploaded; gated by
@@ -260,7 +290,7 @@ object UploadExtensionRoot {
             // Bytes go to the device's event-independent partition (/files/devices/<deviceId>/…); the eventId
             // in `config` drives only the producer's event scope + the device-manifest write, not the
             // byte URL.
-            EdgeUploadRequestProvider(config.host, deviceId),
+            EdgeUploadRequestProvider(config.host, deviceId) { attestToken() },
             ledger,
         )
         // Device manifest (capability `device-manifest`) is produced from the cycle's OWN discovery —

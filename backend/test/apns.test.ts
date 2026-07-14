@@ -12,6 +12,10 @@ const BASE: Omit<Config, "apnsPrivateKey"> = {
   apnsKeyId: "ABC123KEYID",
   apnsTeamId: "E9Z8BADH58",
   apnsTopic: "app.snapsync",
+  attestTokenKey: "test-attest-token-key",
+  appAttestRootCa: "",
+  attestTokenTtlSeconds: 30 * 24 * 60 * 60,
+  attestAppId: "E9Z8BADH58.app.snapsync",
 };
 
 // A real P-256 key so `crypto.subtle.sign` actually produces a valid ES256 JWT in-test.

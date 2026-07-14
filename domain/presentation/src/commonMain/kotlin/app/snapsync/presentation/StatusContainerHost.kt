@@ -121,6 +121,11 @@ class StatusContainerHost(
     // independent indicator that doesn't gate upload classification. Defaults to inert (always 0 of 0)
     // so non-iOS hosts/tests construct unchanged; iOS injects the store-backed source.
     downloadSource: DownloadStatusSource = InMemoryDownloadStatusSource(),
+    // Attestation health (capability `device-attestation`): false only when this device has no valid
+    // token AND the attempt to obtain one failed. Defaults to always-true so non-iOS hosts and every
+    // existing test construct unchanged; iOS injects the flag the composition root sets from
+    // `DeviceAttestation.ensureFresh()`.
+    attestedSource: AttestedSource = AlwaysAttested,
 ) : ContainerHost<UiState, SetupEffect> {
 
     // Event-driven overlay for an in-progress join/switch confirmation (capability `join-event`). Not
@@ -173,6 +178,7 @@ class StatusContainerHost(
                 downloadSource.progress.value,
                 pending.value,
                 cutoffFormatter.nowCutoff(),
+                attestedSource.attested.value,
             ),
         ) {
             intent {
@@ -188,6 +194,7 @@ class StatusContainerHost(
                     downloadSource.progress,
                     pending,
                     nowTick,
+                    attestedSource.attested,
                 ) { values ->
                     @Suppress("UNCHECKED_CAST")
                     reduceFrom(
@@ -198,6 +205,7 @@ class StatusContainerHost(
                         values[4] as DownloadProgress,
                         values[5] as PendingJoin?,
                         values[6] as String,
+                        values[7] as Boolean,
                     )
                 }
                     .collect { ui -> reduce { ui } }
@@ -510,6 +518,7 @@ private fun reduceFrom(
     download: DownloadProgress,
     pending: PendingJoin?,
     nowCutoff: String,
+    attested: Boolean,
 ): UiState {
     if (config == null) {
         // A pending interactive join outranks the create layer (a switch whose leave already ran also
@@ -532,6 +541,12 @@ private fun reduceFrom(
         // photo cannot be captured in the future) — so a snapshot line would say nothing true that this
         // does not say better. Canonical fixed-width UTC on both sides ⇒ lexicographic IS chronological.
         config.startsAt > nowCutoff -> SyncHealth.NotStarted(config.startsAt)
+        // Uploads are gated on an attestation token, and we could not get one. Ranked BELOW permission and
+        // BELOW NotStarted for the same reason: with no library access — or before the event begins —
+        // nothing of this member's can upload anyway, so an unusable token is not yet their problem, and
+        // two attention lines would only compete. Ranked ABOVE the sync progress, because "Syncing" would
+        // be a lie: nothing can upload at all.
+        !attested -> SyncHealth.Unattested
         // Joined but persisted state not read yet — a neutral first frame (the joined chrome still shows).
         snapshot is SyncStatus.Loading -> SyncHealth.Loading
         snapshot is SyncStatus.Ready -> syncHealth(snapshot.progress, download, config.direction)

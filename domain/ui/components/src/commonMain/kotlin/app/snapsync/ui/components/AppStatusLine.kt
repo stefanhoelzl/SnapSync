@@ -61,6 +61,19 @@ sealed interface AppSyncStatus {
      * so the copy matches the action.
      */
     data class NeedsAccess(val prompt: AccessPrompt) : AppSyncStatus
+
+    /**
+     * Sharing is blocked because this device could not verify itself with the backend — it is offline, or
+     * the backend is refusing it. Rendered like [NeedsAccess] (an attention line with a background), but
+     * NOT tappable: unlike a permission prompt, there is no action the user can take. It clears itself the
+     * moment verification succeeds.
+     *
+     * A user should essentially never see this: opening the app re-verifies, so merely looking at this
+     * screen normally clears it. It survives only when that re-verification keeps failing — which is the
+     * one case worth showing, because the alternative is a screen reporting "Syncing" while nothing can
+     * upload at all.
+     */
+    data object CannotVerifyDevice : AppSyncStatus
 }
 
 /** Which permission action the attention line offers: request the initial grant, or open Settings. */
@@ -77,9 +90,10 @@ private val StaticAlpha = 0.38f
 
 /**
  * Renders the one-line sync health. `InSync`/`Syncing`/`Loading`/`NotStarted` are flat text-with-glyph
- * (no background — e.g. a bare green check for `InSync`, a clock for `NotStarted`); only `NeedsAccess`
- * carries a background and is tappable ([onAttentionClick]). A `Pulsing` arrow animates its opacity; a
- * `Static` arrow is shown dimmed without motion. No counts are shown.
+ * (no background — e.g. a bare green check for `InSync`, a clock for `NotStarted`); `NeedsAccess` and
+ * `CannotVerifyDevice` carry a background, and only `NeedsAccess` is tappable ([onAttentionClick]) —
+ * `CannotVerifyDevice` offers the user no action, because there is none. A `Pulsing` arrow animates its
+ * opacity; a `Static` arrow is shown dimmed without motion. No counts are shown.
  */
 @Composable
 fun AppStatusLine(status: AppSyncStatus, onAttentionClick: () -> Unit = {}) {
@@ -152,6 +166,27 @@ fun AppStatusLine(status: AppSyncStatus, onAttentionClick: () -> Unit = {}) {
                         style = MaterialTheme.typography.titleMedium,
                     )
                     Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, contentDescription = null, modifier = Modifier.size(IconSize))
+                }
+            }
+
+        AppSyncStatus.CannotVerifyDevice ->
+            // The same attention treatment as NeedsAccess — but NOT tappable, and with no chevron: there
+            // is no action the user can take. It clears itself as soon as the device can reach the backend.
+            Surface(
+                color = AmberContainer,
+                contentColor = Amber,
+                shape = RoundedCornerShape(999.dp),
+            ) {
+                Row(
+                    modifier = Modifier.padding(horizontal = 15.dp, vertical = 9.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                ) {
+                    Icon(Icons.Filled.Warning, contentDescription = null, modifier = Modifier.size(IconSize))
+                    Text(
+                        text = "Can't verify this device — sharing is paused",
+                        style = MaterialTheme.typography.titleMedium,
+                    )
                 }
             }
     }

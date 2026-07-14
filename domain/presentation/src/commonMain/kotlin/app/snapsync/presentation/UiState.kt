@@ -133,6 +133,26 @@ sealed interface SyncHealth {
      */
     data class NotStarted(val startsAt: String) : SyncHealth
 
+    /**
+     * Uploads are blocked: this device holds no valid attestation token, and the attempt to obtain one
+     * **failed** (capability `device-attestation`).
+     *
+     * **A user should essentially never see this**, and that is by construction rather than by hope. The
+     * app renews at every wake — and *opening the app is a wake*, so the very act of looking at this screen
+     * triggers a renewal that clears it. It therefore only survives long enough to be rendered when the
+     * renewal itself fails: the device is offline, or the backend is refusing us. Both are real, persistent
+     * problems that no amount of waiting fixes, and both would otherwise be invisible — the uploads would
+     * simply `401` forever behind a screen that cheerfully said "Syncing".
+     *
+     * It is deliberately NOT raised merely because a token is stale. A stale token that renews on the next
+     * wake is a non-event, and flashing an error at the user for it would be noise.
+     *
+     * It ranks below [NotStarted] for the same reason it ranks below [NeedsAccess]: before the event
+     * begins, nothing of this member's **can** be uploading, so an unusable token is not yet their problem
+     * — and two attention lines at once would only compete.
+     */
+    data object Unattested : SyncHealth
+
     /** Joined, permission granted, but persisted state has not been read yet — a neutral first frame. */
     data object Loading : SyncHealth
 

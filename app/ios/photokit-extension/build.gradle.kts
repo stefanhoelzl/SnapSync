@@ -41,6 +41,7 @@ kotlin {
             implementation(project(":capability:upload-url"))
             implementation(project(":capability:album"))
             implementation(project(":capability:config"))
+            implementation(project(":capability:attest"))
             // The stable per-install device id (shared Keychain): the `/files/<deviceId>/` byte-store
             // partition and the per-event device-manifest key (capability `device-identity`).
             implementation(project(":capability:device-id"))

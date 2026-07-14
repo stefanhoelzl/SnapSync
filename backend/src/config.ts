@@ -44,6 +44,44 @@ const APNS_TEAM_ID = "E9Z8BADH58";
 /** APNs push topic — the app bundle id — sent as the `apns-topic` header. */
 const APNS_TOPIC = "app.snapsync";
 
+/**
+ * Apple's App Attest **root CA** — the trust anchor every attestation's certificate chain is verified
+ * against (capability `device-attestation`).
+ *
+ * A SOURCE CONSTANT, by the same rule as everything else here: it is a **public fact** (Apple publishes
+ * it at https://www.apple.com/certificateauthority/), so committing it exposes nothing — and shipping it
+ * in the same bundle as the code that reads it means a verification change can never be deployed without
+ * its trust anchor.
+ */
+const APPLE_APP_ATTEST_ROOT_CA = `-----BEGIN CERTIFICATE-----
+MIICITCCAaegAwIBAgIQC/O+DvHN0uD7jG5yH2IXmDAKBggqhkjOPQQDAzBSMSYw
+JAYDVQQDDB1BcHBsZSBBcHAgQXR0ZXN0YXRpb24gUm9vdCBDQTETMBEGA1UECgwK
+QXBwbGUgSW5jLjETMBEGA1UECAwKQ2FsaWZvcm5pYTAeFw0yMDAzMTgxODMyNTNa
+Fw00NTAzMTUwMDAwMDBaMFIxJjAkBgNVBAMMHUFwcGxlIEFwcCBBdHRlc3RhdGlv
+biBSb290IENBMRMwEQYDVQQKDApBcHBsZSBJbmMuMRMwEQYDVQQIDApDYWxpZm9y
+bmlhMHYwEAYHKoZIzj0CAQYFK4EEACIDYgAERTHhmLW07ATaFQIEVwTtT4dyctdh
+NbJhFs/Ii2FdCgAHGbpphY3+d8qjuDngIN3WVhQUBHAoMeQ/cLiP1sOUtgjqK9au
+Yen1mMEvRq9Sk3Jm5X8U62H+xTD3FE9TgS41o0IwQDAPBgNVHRMBAf8EBTADAQH/
+MB0GA1UdDgQWBBSskRBTM72+aEH/pwyp5frq5eWKoTAOBgNVHQ8BAf8EBAMCAQYw
+CgYIKoZIzj0EAwMDaAAwZQIwQgFGnByvsiVbpTKwSga0kP0e8EeDS4+sQmTvb7vn
+53O5+FRXgeLhpJ06ysC5PrOyAjEAp5U4xDgEgllF7En3VcE3iexZZtKeYnpqtijV
+oyFraWVIyd/dganmrduC1bmTBGwD
+-----END CERTIFICATE-----`;
+
+/**
+ * Device-token lifetime (capability `device-attestation`): 30 days.
+ *
+ * This is a **margin**, not a security knob. The extension cannot renew (App Attest is unavailable in an
+ * app extension — verified on device), so only the APP process refreshes the token, at whatever wakes it
+ * happens to get. Worse, the silent push that most reliably wakes it is triggered by a *successful*
+ * upload — so an expired token deadlocks its own renewal until the user next opens the app. 30 days is
+ * what makes falling into that rare.
+ *
+ * It is also, because the token's Keychain item is backup-restorable (like the device id), the ONLY bound
+ * on a token lifted from a backup. Do not lengthen it.
+ */
+const ATTEST_TOKEN_TTL_SECONDS = 30 * 24 * 60 * 60;
+
 export type Config = {
   /** bunny Storage zone name (also the S3 Access Key ID + bucket). */
   zone: string;
@@ -70,12 +108,34 @@ export type Config = {
   apnsPrivateKey: string;
   /** APNs push topic — the `apns-topic` header. */
   apnsTopic: string;
+  /**
+   * Signs and verifies the device bearer token (capability `device-attestation`). A SECRET: read from the
+   * environment, never in source.
+   */
+  attestTokenKey: string;
+  /** Apple's App Attest root CA (PEM) — the trust anchor for every attestation chain. */
+  appAttestRootCa: string;
+  /** Device-token lifetime, in seconds. */
+  attestTokenTtlSeconds: number;
+  /**
+   * The App Attest **app id** — `<teamId>.<bundleId>` — whose SHA-256 must equal an attestation's
+   * `rpIdHash`. Derived from the existing team/bundle constants so the two can never drift apart.
+   */
+  attestAppId: string;
 };
 
 /** The storage-zone password (the native `AccessKey`; also the S3 secret). The zone's password. */
 export const ENV_ACCESS_KEY = "BUNNY_STORAGE_ACCESS_KEY";
 /** The APNs Auth Key `.p8` PEM contents. */
 export const ENV_APNS_PRIVATE_KEY = "APNS_PRIVATE_KEY";
+/**
+ * The HMAC key signing the device bearer token (capability `device-attestation`).
+ *
+ * MUST be set on the Edge Script **before** the code reading it is merged: `readConfig` throws when it is
+ * missing, and CI ships code but cannot ship config — so merging first takes the backend down until it is
+ * set by hand. That is not hypothetical; it is how this backend stayed dead for two weeks.
+ */
+export const ENV_ATTEST_TOKEN_KEY = "ATTEST_TOKEN_KEY";
 
 /**
  * Build {@link Config}: the source constants above, plus the two secrets from `env`. Throws naming
@@ -88,9 +148,12 @@ export function readConfig(env: Record<string, string | undefined>): Config {
   // reject it when absent or whitespace-only.
   const apnsPrivateKey = env[ENV_APNS_PRIVATE_KEY];
 
+  const attestTokenKey = env[ENV_ATTEST_TOKEN_KEY]?.trim();
+
   const missing = [
     [ENV_ACCESS_KEY, accessKey],
     [ENV_APNS_PRIVATE_KEY, apnsPrivateKey?.trim()],
+    [ENV_ATTEST_TOKEN_KEY, attestTokenKey],
   ].filter(([, value]) => !value).map(([name]) => name);
 
   if (missing.length > 0) {
@@ -107,5 +170,11 @@ export function readConfig(env: Record<string, string | undefined>): Config {
     apnsTeamId: APNS_TEAM_ID,
     apnsPrivateKey: apnsPrivateKey!,
     apnsTopic: APNS_TOPIC,
+    attestTokenKey: attestTokenKey!,
+    appAttestRootCa: APPLE_APP_ATTEST_ROOT_CA,
+    attestTokenTtlSeconds: ATTEST_TOKEN_TTL_SECONDS,
+    // The gate's app id and the push topic are the SAME bundle id, and the attest chain's team is the
+    // SAME team that signs the APNs JWT — derive, never restate, so they cannot drift.
+    attestAppId: `${APNS_TEAM_ID}.${APNS_TOPIC}`,
   };
 }

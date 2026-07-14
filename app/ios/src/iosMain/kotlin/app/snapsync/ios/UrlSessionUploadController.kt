@@ -58,6 +58,10 @@ class UrlSessionUploadController(
     private val log: Logger,
     // The shared Darwin HTTP client — used for the in-cycle device-manifest PUT and the event-notify POST.
     private val httpClient: HttpClient,
+    // The device token (capability `device-attestation`), read PER REQUEST so a background renewal is
+    // picked up on the next retry. This tier uploads from the APP process, which is also the process that
+    // can attest — so unlike the extension, it is never stuck with a token it cannot refresh.
+    private val token: suspend () -> String?,
     // Echo-suppression (capability `photo-download`): the `assetId`s of foreign assets this device
     // downloaded + imported. Read once per cycle so an imported foreign asset is never re-uploaded (the
     // echo) — essential now that this tier writes the device manifest and so appears in the union.
@@ -161,7 +165,7 @@ class UrlSessionUploadController(
             return@invocation CycleResult.COMPLETED
         }
         log.i { "url-session runCycle: config ok (host=${config.host}) — invoking UploadCycle" }
-        val engine = SyncEngine(EdgeUploadRequestProvider(config.host, deviceId), ledger)
+        val engine = SyncEngine(EdgeUploadRequestProvider(config.host, deviceId, token), ledger)
         val cycleEventId = config.eventId // this cycle's event (config is re-read each cycle)
         // Per-device capture-date cutoff (photo-date-cutoff): scopes the discovery walk, the byte-upload
         // filter, AND the device-manifest projection. Always present. Read fresh with the config.

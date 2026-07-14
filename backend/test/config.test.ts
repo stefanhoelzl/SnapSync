@@ -1,15 +1,23 @@
 import { assertEquals, assertThrows } from "@std/assert";
 import { readConfig } from "../src/config.ts";
 
+/** Apple's App Attest root — a source constant, asserted here only so the shape stays honest. */
+const APPLE_ROOT_CA_PEM = readConfig({
+  BUNNY_STORAGE_ACCESS_KEY: "k",
+  APNS_PRIVATE_KEY: "p",
+  ATTEST_TOKEN_KEY: "t",
+}).appAttestRootCa;
+
 const PEM = "-----BEGIN PRIVATE KEY-----\nMIG...\n-----END PRIVATE KEY-----\n";
 
-/** The only two values the environment supplies. Everything else is a source constant. */
+/** The only three values the environment supplies. Everything else is a source constant. */
 const SECRETS = {
   BUNNY_STORAGE_ACCESS_KEY: "k",
   APNS_PRIVATE_KEY: PEM,
+  ATTEST_TOKEN_KEY: "t",
 };
 
-Deno.test("readConfig: the two secrets → Config, with the non-secrets from source", () => {
+Deno.test("readConfig: the three secrets → Config, with the non-secrets from source", () => {
   assertEquals(readConfig(SECRETS), {
     zone: "snap-sync-dev",
     host: "storage.bunnycdn.com",
@@ -20,10 +28,29 @@ Deno.test("readConfig: the two secrets → Config, with the non-secrets from sou
     apnsTeamId: "E9Z8BADH58",
     apnsPrivateKey: PEM,
     apnsTopic: "app.snapsync",
+    attestTokenKey: "t",
+    appAttestRootCa: APPLE_ROOT_CA_PEM,
+    attestTokenTtlSeconds: 30 * 24 * 60 * 60,
+    // Derived from the team + bundle constants, never restated — so the gate's app id and the push topic
+    // cannot drift apart.
+    attestAppId: "E9Z8BADH58.app.snapsync",
   });
 });
 
-Deno.test("readConfig: nothing but the two secrets is required to boot", () => {
+Deno.test("readConfig: missing token signing key → throws naming it (the gate can never be silently absent)", () => {
+  const { ATTEST_TOKEN_KEY: _omit, ...rest } = SECRETS;
+  assertThrows(() => readConfig(rest), Error, "ATTEST_TOKEN_KEY");
+});
+
+Deno.test("readConfig: blank token signing key → throws (treated as missing)", () => {
+  assertThrows(
+    () => readConfig({ ...SECRETS, ATTEST_TOKEN_KEY: "   " }),
+    Error,
+    "ATTEST_TOKEN_KEY",
+  );
+});
+
+Deno.test("readConfig: nothing but the three secrets is required to boot", () => {
   // An otherwise-empty environment is enough. This is the whole point: a new non-secret config value
   // ships with the code that reads it, so a deploy can never be missing one.
   const config = readConfig(SECRETS);
@@ -57,7 +84,7 @@ Deno.test("readConfig: blank APNs private key → throws (treated as missing)", 
   );
 });
 
-Deno.test("readConfig: an empty environment names BOTH missing secrets", () => {
+Deno.test("readConfig: an empty environment names EVERY missing secret", () => {
   assertThrows(() => readConfig({}), Error, "BUNNY_STORAGE_ACCESS_KEY");
   assertThrows(() => readConfig({}), Error, "APNS_PRIVATE_KEY");
 });
