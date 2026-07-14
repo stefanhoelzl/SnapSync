@@ -148,21 +148,29 @@ reconcile seeds already-stored photos as `COMPLETED` and nothing uploads.
       `GET /files/devices/<uuid>` → `200 []` with `cache-control: no-cache`, `cdn-cache: MISS`. The 5
       surviving real events are **intact and readable through the new runtime** (event `'test'` still
       returns its 1 asset) — data continuity across the cutover, not just a live endpoint.
-- [ ] 6.4b **Device check on the production hostname — PENDING.** The sideloaded dev IPA bakes
+- [ ] 6.4b **Device check on the production hostname — STILL PENDING** (the one open item). The sideloaded dev IPA bakes
       `snap-sync-n8xmz.bunny.run`, i.e. the *same pull zone and the same Edge Script*, just a different
       hostname; all four gates passed against it. What is still unproven on hardware is that exact
       literal `https://snapsync.stho.net`. That comes from the TestFlight build produced by merging this
-      PR. **Do not run group 7 (teardown) until this is green** — it is the last thing standing between
-      us and an unrecoverable bunny.
+      PR. Group 7 was nonetheless run at the operator's explicit direction, so this check no longer
+      gates anything — it is now a confirmation, not a gate. Post-cutover, the production hostname was
+      exercised end-to-end by hand (`POST /events` → `201`, `PUT` a byte object → `201`, list → the
+      object, presigned S3 URL → the exact bytes back), which is everything except an OS-driven PhotoKit
+      upload against that literal.
 
 ## 7. Teardown — only after group 6 is verified
 
-- [ ] 7.1 Delete the Deno Deploy `snapsync` app (org `stefanhoelzl`). **Not before 6.4** — the app is
-      the rollback target until the flip is confirmed good.
-- [ ] 7.2 Delete the `DENO_DEPLOY_TOKEN` GitHub Actions secret.
-- [ ] 7.3 Record in the change that bunny is now load-bearing with no fallback and no boot probe: a
-      bunny outage is a SnapSync outage, mitigated only by the ledger's retry-forever semantics
-      (uploads delayed, never lost).
+- [x] 7.1 **Deno Deploy app AND org deleted** (operator, dashboard — the `deno deploy` CLI has no delete
+      subcommand: create/env/database/logs/setup-*/switch/logout/sandbox only). This is the point of no
+      return: there is no longer a runtime to repoint DNS back to.
+- [x] 7.2 `DENO_DEPLOY_TOKEN` deleted from the repo's Actions secrets (it now pointed at a deleted org).
+      The only Deno-Deploy strings left on `main` are historical prose — the config-in-source rationale in
+      `config.ts`, `backend-deploy.yml`, and the README. No live wiring.
+- [x] 7.3 Recorded (proposal, design Risks, `backend-deployment` Purpose, `backend-deploy.yml`, and the
+      backend README): bunny is **load-bearing** — no fallback runtime, no deploy-time boot probe. A bunny
+      outage is a SnapSync outage, mitigated only by the ledger's retry-forever semantics (uploads
+      delayed, never lost). Prevention (config in source) replaces detection, so reintroducing
+      platform-side required config without a probe reopens the silent-corpse failure.
 
 ## 8. At archive time (`/opsx:archive` — NOT in the PR)
 
