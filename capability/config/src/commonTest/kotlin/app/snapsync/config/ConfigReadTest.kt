@@ -1,0 +1,53 @@
+package app.snapsync.config
+
+import app.snapsync.keychain.KeychainRead
+import kotlin.test.Test
+import kotlin.test.assertEquals
+import kotlin.test.assertIs
+
+/**
+ * *Unreadable is not absent* (capability `deeplink-config`). The extension takes "no config" to mean
+ * **this device left the event** and clears its `joinedEventId` marker — so conflating the two turned
+ * every locked-device wake into a false leave.
+ */
+class ConfigReadTest {
+
+    private val config = EventConfig(
+        eventId = "e1",
+        name = "Party",
+        minPhotoDate = "2026-07-01T00:00:00Z",
+        direction = Direction.Both,
+        saveToAlbum = true,
+    )
+
+    private fun decode(stored: String): EventConfig? = if (stored == "good") config else null
+
+    @Test
+    fun `a stored decodable item is Joined`() {
+        val read = configReadFrom(KeychainRead.Found("good", "AfterFirstUnlock"), ::decode)
+
+        assertEquals(ConfigRead.Joined(config), read)
+    }
+
+    @Test
+    fun `an absent item is None`() {
+        assertEquals(ConfigRead.None, configReadFrom(KeychainRead.Absent, ::decode))
+    }
+
+    // THE bug: a locked device answers Unavailable. Reported as None, the extension reads it as a
+    // LEAVE and clears its join marker — every cycle, for ever.
+    @Test
+    fun `an unreadable item is Unavailable and never None`() {
+        val read = configReadFrom(KeychainRead.Unavailable(-25308), ::decode)
+
+        assertIs<ConfigRead.Unavailable>(read)
+        assertEquals(-25308, read.status)
+    }
+
+    @Test
+    fun `an undecodable legacy item is None not Unavailable`() {
+        // A pre-cutoff item is genuinely unusable — the user must re-join. Retrying later cannot help,
+        // so this is None (the safe outcome), not Unavailable ("try again when unlocked").
+        assertEquals(ConfigRead.None, configReadFrom(KeychainRead.Found("legacy", "AfterFirstUnlock"), ::decode))
+    }
+}

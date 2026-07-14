@@ -54,6 +54,7 @@ import app.snapsync.upload.UploadArm
 import app.snapsync.upload.UploadProducer
 import app.snapsync.logging.FileLogWriter
 import app.snapsync.logging.PublicNSLogWriter
+import app.snapsync.keychain.ProtectedDataGate
 import app.snapsync.logging.invocation
 import co.touchlab.kermit.Logger
 import kotlinx.cinterop.COpaquePointer
@@ -129,6 +130,25 @@ object SnapSyncRoot {
     // The event config seam/store (one Keychain adapter is both), hoisted so a (re)provision can read
     // the current event id and the leave use-case can clear it.
     private val config: KeychainConfigStore by lazy { KeychainConfigStore() }
+
+    /**
+     * Protected-data availability (capability `ios-app-shell`): the Keychain and the app/App-Group
+     * containers are unreadable before the first unlock since boot, and a background wake can land in
+     * exactly that window. Rather than attempting a read, failing, and *interpreting* the failure — which
+     * is how a locked device came to mint a new device id (aborting the process) and how the extension
+     * came to read "no config" as a leave — the app asks iOS, and **defers** the work to the unlock.
+     *
+     * The gate's decision logic is tested in `:domain:keychain`; [IosProtectedData] is the thin
+     * `UIApplication` adapter, which lives here because that API is unavailable to app extensions.
+     */
+    private val protectedData: ProtectedDataGate by lazy {
+        ProtectedDataGate(IosProtectedData(), log).also { gate ->
+            // A background launch before the first unlock seeds an unreadable — therefore empty — config
+            // StateFlow. Re-read it the moment protected data arrives, or the screen would sit at the
+            // setup gate (and the upload arm stay idle) despite a perfectly good persisted membership.
+            gate.runWhenAvailable("reloadConfigOnUnlock") { config.reload() }
+        }
+    }
 
     // Event album (capability `event-album`): the shared leave-surviving `eventId → albumLocalId` map and
     // the coordinator. The APP is the SOLE creator (on the permission grant); both processes only add.
@@ -483,12 +503,25 @@ object SnapSyncRoot {
      */
     fun runDownloadBackstop(onComplete: () -> Unit) {
         scope.launch {
-            // Wrap INSIDE the launch so `[runDownloadBackstop]` spans the async import.
-            log.invocation("runDownloadBackstop") {
-                runCatching { downloadController.importReady() }
-                    .onFailure { log.w(it) { "download backstop import failed" } }
+            // Wrap INSIDE the launch so `[runDownloadBackstop]` spans the async import. The
+            // protected-data state rides the entry-point line (capability `ios-app-shell`): a background
+            // wake on a locked device is otherwise invisible, and it is the only place this class of bug
+            // shows up — no test can reach it.
+            log.invocation("runDownloadBackstop", params = "protectedData=${protectedData.isAvailable()}") {
+                // The import reads the download store and PhotoKit, and its album placement reads the
+                // album map. If protected data is unavailable (before the first unlock since boot), defer
+                // the whole thing to the unlock rather than letting it fail — and, critically, without
+                // touching the Keychain, which is what minted a device id and aborted the process.
+                protectedData.runWhenAvailable("runDownloadBackstop") {
+                    scope.launch {
+                        runCatching { downloadController.importReady() }
+                            .onFailure { log.w(it) { "download backstop import failed" } }
+                    }
+                }
             }
-            scheduleDownloadBackstop() // re-arm for the next idle window
+            // Re-arm for the next idle window and release the OS's task assertion immediately — even when
+            // the work above was deferred, since holding the BGTask open until an unlock is not an option.
+            scheduleDownloadBackstop()
             onComplete()
         }
     }
@@ -503,11 +536,14 @@ object SnapSyncRoot {
             .onFailure { log.w(it) { "could not schedule download backstop" } }
     }
 
-    fun handleBackgroundUrlSession(identifier: String, completionHandler: () -> Unit) {
+    fun handleBackgroundUrlSession(identifier: String, completionHandler: () -> Unit) = log.invocation(
+        "handleBackgroundUrlSession",
+        params = "identifier=$identifier protectedData=${protectedData.isAvailable()}",
+    ) {
         // Route by session identifier: the app-driven UPLOAD session (18–26.0) vs the download session.
         if (identifier == UrlSessionUploadController.SESSION_IDENTIFIER) {
             urlSessionUpload.onBackgroundSessionEvents(completionHandler)
-            return
+            return@invocation
         }
         // Downloads: the OS relaunched us to deliver background download completions. Adopt the session
         // so its delegate fires (staging + import run), and invoke the OS handler once events drain.
@@ -549,10 +585,21 @@ object SnapSyncRoot {
         scope.launch {
             // Wrap INSIDE the launch so `[onSilentPush]` spans the async reconcile (and the download
             // HTTP + import lines it drives trace back to this push).
-            log.invocation("onSilentPush", params = "eventId=$eventId") {
-                runCatching { pushReceiver.onSilentPush(eventId) }
-                    .onFailure { log.w(it) { "silent push handling failed for $eventId" } }
+            log.invocation(
+                "onSilentPush",
+                params = "eventId=$eventId protectedData=${protectedData.isAvailable()}",
+            ) {
+                // A silent push is delivered to a locked device as readily as an unlocked one, and the
+                // reconcile reads the config (Keychain) and the download store. Defer rather than fail.
+                protectedData.runWhenAvailable("onSilentPush") {
+                    scope.launch {
+                        runCatching { pushReceiver.onSilentPush(eventId) }
+                            .onFailure { log.w(it) { "silent push handling failed for $eventId" } }
+                    }
+                }
             }
+            // Always release the OS handler promptly — iOS gives a silent push a short budget and holding
+            // it open until an unlock would simply get us killed.
             completion()
         }
     }

@@ -19,10 +19,18 @@ kotlin {
             implementation(libs.coroutines.core)
             implementation(libs.kermit)
             implementation(libs.kotlinx.serialization.json)
+            // `KeychainRead` — the input to the one-shot Keychain → App-Group migration of the album
+            // map. `api`, because it appears in `albumMapSource`'s public signature.
+            api(project(":domain:keychain"))
         }
         commonTest.dependencies {
             implementation(kotlin("test"))
             implementation(libs.coroutines.test)
+        }
+        // The album map now lives in the shared App-Group NSUserDefaults suite (like the discovery
+        // cursor), not the Keychain: LEDGER_APP_GROUP is that suite's name.
+        iosMain.dependencies {
+            implementation(project(":domain:engine"))
         }
     }
 }

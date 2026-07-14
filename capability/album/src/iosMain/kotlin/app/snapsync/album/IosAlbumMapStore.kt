@@ -1,61 +1,45 @@
-@file:OptIn(ExperimentalForeignApi::class, BetaInteropApi::class)
-
 package app.snapsync.album
 
-import kotlinx.cinterop.BetaInteropApi
-import kotlinx.cinterop.ExperimentalForeignApi
-import kotlinx.cinterop.addressOf
-import kotlinx.cinterop.alloc
-import kotlinx.cinterop.memScoped
-import kotlinx.cinterop.ptr
-import kotlinx.cinterop.usePinned
-import kotlinx.cinterop.value
+import app.snapsync.engine.LEDGER_APP_GROUP
+import app.snapsync.keychain.IosKeychain
+import app.snapsync.keychain.Keychain
+import co.touchlab.kermit.Logger
 import kotlinx.serialization.builtins.MapSerializer
 import kotlinx.serialization.builtins.serializer
 import kotlinx.serialization.json.Json
-import platform.CoreFoundation.CFDictionaryAddValue
-import platform.CoreFoundation.CFDictionaryCreateMutable
-import platform.CoreFoundation.CFMutableDictionaryRef
-import platform.CoreFoundation.CFRelease
-import platform.CoreFoundation.CFStringCreateWithCString
-import platform.CoreFoundation.CFTypeRefVar
-import platform.CoreFoundation.kCFBooleanTrue
-import platform.CoreFoundation.kCFStringEncodingUTF8
-import platform.CoreFoundation.kCFTypeDictionaryKeyCallBacks
-import platform.CoreFoundation.kCFTypeDictionaryValueCallBacks
-import platform.Foundation.CFBridgingRelease
-import platform.Foundation.CFBridgingRetain
-import platform.Foundation.NSData
-import platform.Foundation.create
-import platform.Security.SecItemAdd
-import platform.Security.SecItemCopyMatching
-import platform.Security.SecItemDelete
-import platform.Security.errSecSuccess
-import platform.Security.kSecAttrAccount
-import platform.Security.kSecAttrService
-import platform.Security.kSecClass
-import platform.Security.kSecClassGenericPassword
-import platform.Security.kSecMatchLimit
-import platform.Security.kSecMatchLimitOne
-import platform.Security.kSecReturnData
-import platform.Security.kSecValueData
-import platform.posix.memcpy
+import platform.Foundation.NSUserDefaults
+
+/** The App-Group key holding the serialized `eventId → albumLocalId` map. */
+private const val ALBUM_MAP_KEY = "app.snapsync.album.map"
 
 /**
- * The iOS [AlbumMapStore] (capability `event-album`): the `eventId → albumLocalId` map, persisted as a
- * single JSON Keychain generic-password item in the **shared** keychain-access-group (no
- * `kSecAttrAccessGroup` set — it inherits the app's first/shared group, exactly like `KeychainConfigStore`),
- * so both the app (which writes on album creation) and the upload extension (which reads on placement) see
- * it. It uses a **distinct** service/account from the config item, so `LeaveEvent.leave()`'s config
- * `clear()` never touches it — the map **survives leave**, which is what lets a re-join reuse the same
- * album. Reads hit the Keychain directly each call (no cached `StateFlow`), so a cross-process reader is
- * always current.
+ * The iOS [AlbumMapStore] (capability `event-album`): the `eventId → albumLocalId` map, persisted as
+ * JSON in the **App-Group `NSUserDefaults` suite** — the same shared suite the discovery cursor uses —
+ * so both the app (which writes on album creation) and the upload extension (which reads on placement)
+ * see it.
+ *
+ * It used to live in the Keychain, and that was the bug: the extension reads this map while the OS has
+ * woken it on an *idle* — i.e. **locked** — device, where a `WhenUnlocked` Keychain item cannot be read
+ * at all. App-Group container data inherits `NSFileProtectionCompleteUntilFirstUserAuthentication`, so
+ * it is background-readable **by construction**, with no accessibility class to get wrong. The
+ * `event-album` spec asks only for "a shared store that survives leave", never for the Keychain — and a
+ * leave still does not touch this map, because `LeaveEvent.leave()` clears the config item, not this
+ * key.
+ *
+ * A legacy Keychain map is migrated **once**, then deleted (see [albumMapSource]) — so no stale item is
+ * left behind to outlive an uninstall, and no window exists in which the extension would skip album
+ * placement because the map had vanished.
+ *
+ * Reads hit the store directly each call (no cached state), so a cross-process reader is always current.
  */
 class IosAlbumMapStore(
-    private val service: String = "app.snapsync.album",
-    private val account: String = "albummap",
+    suiteName: String = LEDGER_APP_GROUP,
+    private val legacyKeychain: Keychain =
+        IosKeychain(service = "app.snapsync.album", account = "albummap"),
+    private val log: Logger = Logger.withTag("AlbumMap"),
 ) : AlbumMapStore {
 
+    private val defaults = NSUserDefaults(suiteName = suiteName)
     private val json = Json { ignoreUnknownKeys = true }
     private val serializer = MapSerializer(String.serializer(), String.serializer())
 
@@ -63,66 +47,40 @@ class IosAlbumMapStore(
 
     override fun put(eventId: String, albumLocalId: String) {
         val updated = readMap().toMutableMap().apply { this[eventId] = albumLocalId }
-        writeValue(json.encodeToString(serializer, updated))
+        write(json.encodeToString(serializer, updated))
     }
 
     private fun readMap(): Map<String, String> {
-        val stored = readValue() ?: return emptyMap()
-        return runCatching { json.decodeFromString(serializer, stored) }.getOrDefault(emptyMap())
+        // The App Group wins whenever it holds anything, so the legacy Keychain item is touched at most
+        // once per install: one extra read before the migration, and never again after it.
+        val stored = defaults.stringForKey(ALBUM_MAP_KEY)
+        if (stored != null) return decode(stored)
+
+        val legacy = runCatching { legacyKeychain.read() }.getOrNull() ?: return emptyMap()
+        return when (val source = albumMapSource(stored = null, legacy = legacy)) {
+            is AlbumMapSource.Current -> decode(source.raw) // fresh install: nothing anywhere
+            is AlbumMapSource.Migrate -> {
+                log.i { "migrating the event-album map out of the Keychain into the App Group" }
+                write(source.raw)
+                legacyKeychain.delete() // one-shot: never re-migrated, and no stale item left behind
+                decode(source.raw)
+            }
+            // Unreadable right now (protected data unavailable): do NOT delete it, and do NOT conclude
+            // the map is empty — an empty map would silently drop album placement for this import.
+            AlbumMapSource.Retry -> {
+                log.w { "legacy album map unreadable — deferring migration; no album placement this pass" }
+                emptyMap()
+            }
+        }
     }
 
-    private fun readValue(): String? = memScoped {
-        val query = baseQuery()
-        CFDictionaryAddValue(query, kSecReturnData, kCFBooleanTrue)
-        CFDictionaryAddValue(query, kSecMatchLimit, kSecMatchLimitOne)
-        val result = alloc<CFTypeRefVar>()
-        val status = SecItemCopyMatching(query, result.ptr)
-        CFRelease(query)
-        if (status != errSecSuccess) return@memScoped null
-        val data = CFBridgingRelease(result.value) as? NSData ?: return@memScoped null
-        data.toByteArray().decodeToString()
+    private fun decode(raw: String?): Map<String, String> {
+        if (raw == null) return emptyMap()
+        return runCatching { json.decodeFromString(serializer, raw) }.getOrDefault(emptyMap())
     }
 
-    private fun writeValue(value: String) {
-        deleteItem()
-        val addQuery = baseQuery()
-        val cfData = CFBridgingRetain(value.encodeToByteArray().toNSData())
-        CFDictionaryAddValue(addQuery, kSecValueData, cfData)
-        val status = SecItemAdd(addQuery, null)
-        CFRelease(addQuery)
-        CFBridgingRelease(cfData)
-        check(status == errSecSuccess) { "keychain add failed: $status" }
+    private fun write(raw: String) {
+        runCatching { defaults.setObject(raw, forKey = ALBUM_MAP_KEY) }
+            .onFailure { log.w(it) { "could not persist the event-album map" } }
     }
-
-    private fun deleteItem() {
-        val deleteQuery = baseQuery()
-        SecItemDelete(deleteQuery)
-        CFRelease(deleteQuery)
-    }
-
-    private fun baseQuery(): CFMutableDictionaryRef {
-        val dict = CFDictionaryCreateMutable(
-            null, 0, kCFTypeDictionaryKeyCallBacks.ptr, kCFTypeDictionaryValueCallBacks.ptr,
-        ) ?: error("could not allocate keychain query")
-        CFDictionaryAddValue(dict, kSecClass, kSecClassGenericPassword)
-        CFDictionaryAddValue(dict, kSecAttrService, cfString(service))
-        CFDictionaryAddValue(dict, kSecAttrAccount, cfString(account))
-        return dict
-    }
-
-    private fun cfString(value: String) =
-        CFStringCreateWithCString(null, value, kCFStringEncodingUTF8)
-}
-
-private fun ByteArray.toNSData(): NSData =
-    if (isEmpty()) {
-        NSData()
-    } else {
-        usePinned { NSData.create(bytes = it.addressOf(0), length = size.toULong()) }
-    }
-
-private fun NSData.toByteArray(): ByteArray {
-    val size = length.toInt()
-    if (size == 0) return ByteArray(0)
-    return ByteArray(size).apply { usePinned { memcpy(it.addressOf(0), bytes, length) } }
 }
