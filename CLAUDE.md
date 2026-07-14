@@ -286,6 +286,7 @@ agent use and inject that one instead.
 
 ```
 :domain:engine         sync core + SQL ledger (the only state); no platform deps
+:domain:keychain       cross-cutting Keychain access: the ONLY module that may touch SecItem* (a :test:architecture guard enforces it) — three-state read (found/absent/UNREADABLE), mint-only-on-absent, AfterFirstUnlock + in-place migration, ProtectedDataGate (capability architecture-guards; decision record: fix-locked-device-keychain-access)
 :domain:logging        cross-cutting diagnostics: logInvocation helper + LogContext ambient prefix + consolidated iOS device-log writers (Kermit-only leaf) (capability diagnostic-logging)
 :domain:status         ledger → SyncStatus projection (read-only)
 :domain:permission     permission seam (3-state)
@@ -311,6 +312,7 @@ agent use and inject that one instead.
 :app:ios:photokit-discovery  shared iOS PhotoKit discovery (IosDiscovery: change-token walk + PUT request builder + token archive; IosDiscoveryStore) — consumed by BOTH upload tiers; iosMain-only, no jvm/framework (keeps PhotoKit out of the platform-free :capability:upload)
 :app:ios:url-session-upload  app-driven iOS 18–26.0 upload adapters: IosUrlSessionUploadPlatform (background URLSession impl of UploadJobPlatform) + IosBackgroundScheduler (BGTaskScheduler) — runs in the MAIN APP process, composed into SnapSyncKit (no separate target); thin, untested
 :test:world            test-only shared infra: a controllable in-memory "world" (backend object store + read-models, MockEngine mini-edge, operator-driven UploadJobPlatform/download fakes) the REAL stack runs against + composition helpers mirroring the extension root; jvm()+iosSimulatorArm64. Consumed by :app:desktop AND :test:integration (capability harness-world-model)
+:test:architecture     test-only JVM guards for invariants the compiler cannot express (capability architecture-guards): Konsist — no SecItem* outside :domain:keychain (catches fully-qualified calls, which no linter can see on iosMain); plus the entitlements never raise default-data-protection to NSFileProtectionComplete (which would make every App-Group file unreadable while locked, killing the background tier)
 :test:integration      test-only: seam → UI-state integration over :test:world — asserts UiState AND world outcomes (objects landed, ledger COMPLETED, foreign photos imported)
 iosApp/                Xcode project (app + upload-extension targets) — not Gradle
 ```

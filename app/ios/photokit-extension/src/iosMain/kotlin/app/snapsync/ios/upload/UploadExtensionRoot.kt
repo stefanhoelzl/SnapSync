@@ -3,14 +3,18 @@ package app.snapsync.ios.upload
 import app.snapsync.album.AlbumCoordinator
 import app.snapsync.album.IosAlbumManager
 import app.snapsync.album.IosAlbumMapStore
+import app.snapsync.config.ConfigRead
 import app.snapsync.config.KeychainConfigStore
+import app.snapsync.keychain.KeychainUnavailable
 import app.snapsync.deviceid.KeychainDeviceIdentity
 import app.snapsync.gallery.denormalizeAssetId
 import app.snapsync.downloadstore.SuppressionSource
 import app.snapsync.downloadstore.iosSuppressionSource
 import app.snapsync.ios.discovery.IosDiscovery
 import app.snapsync.ios.discovery.IosDiscoveryStore
+import app.snapsync.upload.CycleGate
 import app.snapsync.upload.CycleResult
+import app.snapsync.upload.cycleGate
 import app.snapsync.upload.UPLOAD_LIVENESS_DARWIN_NAME
 import app.snapsync.upload.UploadCycle
 import app.snapsync.upload.buildUploadConfig
@@ -194,23 +198,56 @@ object UploadExtensionRoot {
     fun process(): CycleResult = log.invocation("process", result = { "$it" }) { runBlocking {
         // Re-read the Keychain each cycle: the extension process outlives a single invocation, and a
         // new event joined by the app (another process) does not notify this StateFlow — without the
-        // refresh the extension keeps uploading to the event it read at construction (a stale,
-        // previously-joined event). This is what makes "config is sourced fresh each cycle" true.
-        configSource.reload()
-        val payload = configSource.config.value
+        // refresh the extension keeps serving the event it read at construction (a stale, previously
+        // joined event). This is what makes "config is sourced fresh each cycle" true.
+        //
+        // THREE states, not two (capability `deeplink-config`). The OS invokes this extension when the
+        // device is idle — which usually means LOCKED — and a locked device could not read the Keychain
+        // at all before this was fixed. That read failure arrived here as `null` = "no event configured"
+        // = a LEAVE, so the reconciler below cleared the join marker on essentially every invocation,
+        // and the next readable cycle paid for a full re-join (device LIST + ledger clear-and-seed +
+        // discovery-cursor reset → a complete PhotoKit re-enumeration). The marker never settled.
+        val read = configSource.read()
+        // Resolving the device id can fail the same way the config read can (both are Keychain items),
+        // and every branch below needs it — the reconciler and the manifest producer each close over it,
+        // so even the leave-side branch touches it. An unresolvable id is "I could not look", never
+        // "no id": treat it exactly like an unreadable config rather than letting it out of `process()`.
+        // Resolving here is free (the lazy caches success; a failure is simply retried next cycle).
+        val idReadable = runCatching { deviceId }
+            .onFailure { if (it !is KeychainUnavailable) throw it }
+            .isSuccess
+
+        // The decision itself is tested in :capability:upload — this root is glue (it is wiring-only and
+        // untested by the project's hard rule, which is exactly how a "config is null → clear the join
+        // marker" decision came to live in an untested file in the first place).
+        val readable = read !is ConfigRead.Unavailable && idReadable
+        val payload = (read as? ConfigRead.Joined)?.config
         val host = uploadHostFromBundle()
 
-        val config = buildUploadConfig(payload?.eventId, host)
+        val gate = cycleGate(readable, payload?.eventId, host)
+        if (gate is CycleGate.Skip) {
+            // Unreadable ≠ left. Touch NOTHING: no reconcile, no marker clear, no cursor reset, no jobs.
+            // A clean completion; the next cycle — or the next unlock — retries.
+            log.w {
+                val status = (read as? ConfigRead.Unavailable)?.status
+                "skipping cycle — protected data unavailable (config status=$status, deviceId " +
+                    "readable=$idReadable). NOT treating this as a leave; nothing minted, nothing " +
+                    "reconciled, marker untouched."
+            }
+            return@runBlocking CycleResult.COMPLETED
+        }
+        val config = (gate as? CycleGate.Run)?.config
         if (payload == null || config == null) {
-            // Not joined yet (no event id / unreadable config), a missing baked host, or a leave — nothing
-            // to upload, so no cycle is built. A clean no-op completion, never a failure. An unreadable
-            // config includes a legacy Keychain item with no cutoff (capability `photo-date-cutoff`): it
-            // reads as no config, so this cycle uploads nothing until the user re-joins — the safe outcome.
+            // Definitively not joined: no item at all, a legacy item that cannot decode (capability
+            // `photo-date-cutoff`, where reading as no-config is the deliberate safe outcome), a missing
+            // baked host, or a leave. Nothing to upload, so no cycle is built — a clean no-op completion,
+            // never a failure.
             //
-            // The reconciler still runs for the NO-CONFIG case, because that is where a leave clears the
-            // `joinedEventId` marker (capability `event-rejoin-reconciliation`) — it keeps the ledger,
-            // cursor, and accumulator intact so a later provision of any event dedups against them. No
-            // cycle exists to carry this, so it stays here; the JOINED case reconciles inside the cycle.
+            // The reconciler still runs here, because this is where a leave clears the `joinedEventId`
+            // marker (capability `event-rejoin-reconciliation`) — it keeps the ledger, cursor, and
+            // accumulator intact so a later provision of any event dedups against them. No cycle exists
+            // to carry this, so it stays here; the JOINED case reconciles inside the cycle.
+            // Reaching this branch now means the config really IS absent, never merely unread.
             runCatching { reconciler.reconcile(null) }
                 .onFailure { log.w(it) { "leave-side marker clear failed" } }
             log.i {

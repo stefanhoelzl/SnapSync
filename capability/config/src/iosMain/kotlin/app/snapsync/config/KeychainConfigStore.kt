@@ -1,87 +1,91 @@
-@file:OptIn(ExperimentalForeignApi::class, BetaInteropApi::class)
-
 package app.snapsync.config
 
+import app.snapsync.keychain.ACCESSIBLE_AFTER_FIRST_UNLOCK
+import app.snapsync.keychain.IosKeychain
+import app.snapsync.keychain.Keychain
+import app.snapsync.keychain.KeychainRead
+import app.snapsync.keychain.needsMigration
 import co.touchlab.kermit.Logger
-import kotlinx.cinterop.BetaInteropApi
-import kotlinx.cinterop.ExperimentalForeignApi
-import kotlinx.cinterop.addressOf
-import kotlinx.cinterop.alloc
-import kotlinx.cinterop.memScoped
-import kotlinx.cinterop.ptr
-import kotlinx.cinterop.usePinned
-import kotlinx.cinterop.value
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.serialization.json.Json
-import platform.CoreFoundation.CFDictionaryAddValue
-import platform.CoreFoundation.CFDictionaryCreateMutable
-import platform.CoreFoundation.CFMutableDictionaryRef
-import platform.CoreFoundation.CFRelease
-import platform.CoreFoundation.CFStringCreateWithCString
-import platform.CoreFoundation.CFTypeRefVar
-import platform.CoreFoundation.kCFBooleanTrue
-import platform.CoreFoundation.kCFStringEncodingUTF8
-import platform.CoreFoundation.kCFTypeDictionaryKeyCallBacks
-import platform.CoreFoundation.kCFTypeDictionaryValueCallBacks
-import platform.Foundation.CFBridgingRelease
-import platform.Foundation.CFBridgingRetain
-import platform.Foundation.NSData
-import platform.Foundation.create
-import platform.Security.SecItemAdd
-import platform.Security.SecItemCopyMatching
-import platform.Security.SecItemDelete
-import platform.Security.errSecSuccess
-import platform.Security.kSecAttrAccount
-import platform.Security.kSecAttrService
-import platform.Security.kSecClass
-import platform.Security.kSecClassGenericPassword
-import platform.Security.kSecMatchLimit
-import platform.Security.kSecMatchLimitOne
-import platform.Security.kSecReturnData
-import platform.Security.kSecValueData
-import platform.posix.memcpy
 
 /**
- * The iOS [ConfigSource]/[ConfigStore]: persists the config as a single Keychain generic-password
- * item (encrypted at rest, survives app updates and process death). The value stored is the
- * canonical deeplink URL's UTF-8 bytes — reusing the one codec, so persistence rides the same
- * format as the wire.
+ * The iOS [ConfigSource]/[ConfigStore]/[ConfigReader]: persists the serialized [EventConfig] as a
+ * single Keychain generic-password item (encrypted at rest, survives app updates and process death).
+ *
+ * All Keychain access goes through `:domain:keychain` (capability `architecture-guards`: `SecItem*`
+ * lives in exactly one module), which is what makes the item **background-readable**: it is stored
+ * `kSecAttrAccessibleAfterFirstUnlock`, so the upload extension — which the OS invokes when the device
+ * is *idle*, and therefore usually *locked* — can actually read it. Under the old iOS default
+ * (`WhenUnlocked`) it could not, and the read failure was indistinguishable from "no event joined".
+ * A legacy item written under the weaker class is migrated in place on the first successful read.
  *
  * No `kSecAttrAccessGroup` is set: with the app's `keychain-access-groups` entitlement declaring the
  * shared group as its (only/first) entry, items land in that shared group by default, so the
  * background upload extension — declaring the same entitlement — reads the same item (its `eventId`
  * **and** its `minPhotoDate` cutoff, capability `photo-date-cutoff`; not its `direction`, which is an
  * app-side upload-arm gate — capability `join-event`). The whole [EventConfig] is serialized regardless,
- * so `direction` round-trips; a legacy item written before the field existed decodes to [Direction.Both]
+ * so `direction` round-trips; a legacy item written before the field existed decodes to `Direction.Both`
  * (`ignoreUnknownKeys`/default). This avoids hardcoding the team-id prefix in code; sharing is purely an
  * entitlement concern.
  *
  * Seeds [config] synchronously at construction, mirroring the permission adapter's synchronous-real
- * guarantee.
+ * guarantee. **Readers that act on the absence of a config must use [read], not [config]** — see
+ * [ConfigRead].
  */
 class KeychainConfigStore(
-    private val service: String = "app.snapsync.config",
-    private val account: String = "eventconfig",
+    private val keychain: Keychain = IosKeychain(service = "app.snapsync.config", account = "eventconfig"),
     private val log: Logger = Logger.withTag("keychainConfig"),
-) : ConfigSource, ConfigStore {
+) : ConfigSource, ConfigStore, ConfigReader {
 
     private val configJson = Json { ignoreUnknownKeys = true }
-    private val state = MutableStateFlow(readConfig())
+    private val state = MutableStateFlow(read().joinedOrNull())
     override val config: StateFlow<EventConfig?> = state
 
     override suspend fun save(config: EventConfig) {
         // Idempotent: re-saving an equal config (eventId + name + minPhotoDate + direction) is a no-op;
         // any difference replaces (data-class equality covers every field).
         if (state.value == config) return
-        writeValue(configJson.encodeToString(EventConfig.serializer(), config))
+        keychain.write(configJson.encodeToString(EventConfig.serializer(), config))
         state.value = config
     }
 
     override suspend fun clear() {
         // Idempotent: deleting an absent item is treated as success (the leave path tolerates it).
-        deleteItem()
+        keychain.delete()
         state.value = null
+    }
+
+    /**
+     * The three-state read (capability `deeplink-config`). Migrates a legacy item's accessibility class
+     * in place — value untouched — the first time it can be read.
+     *
+     * The extension's cycle reads through **this**, never through [config]: only a definite
+     * [ConfigRead.None] may be taken as "this device left the event".
+     */
+    override fun read(): ConfigRead {
+        val raw = keychain.read()
+        if (raw is KeychainRead.Found && needsMigration(raw.accessibility, ACCESSIBLE_AFTER_FIRST_UNLOCK)) {
+            keychain.migrateAccessibility()
+        }
+        if (raw is KeychainRead.Unavailable) {
+            log.w { "config keychain unreadable (status=${raw.status}) — NOT 'no config'; caller must defer" }
+        }
+        return configReadFrom(raw) { stored ->
+            // A legacy item that does not decode reads as no config, deliberately (capability
+            // `photo-date-cutoff`): the device falls back to the setup gate and the user re-scans, and
+            // nothing uploads meanwhile. No default cutoff is substituted — this store seeds
+            // synchronously and cannot fetch the event's `createdAt`, and the empty string is not a
+            // legal cutoff (it would admit the whole library).
+            runCatching { configJson.decodeFromString(EventConfig.serializer(), stored) }
+                .onFailure {
+                    log.w(it) {
+                        "keychain item did not decode (legacy item without a cutoff?) — reading as no config; re-join required"
+                    }
+                }
+                .getOrNull()
+        }
     }
 
     /**
@@ -89,88 +93,14 @@ class KeychainConfigStore(
      * does not notify this process's [StateFlow], so a cross-process **reader** — the upload
      * extension, which lives across multiple `process()` cycles — must refresh before each read or it
      * keeps serving the event it saw at construction (uploading to a stale, previously-joined event).
+     *
+     * The app also calls this when protected data becomes available, since a config that was
+     * unreadable at construction (a background launch before the first unlock) seeded `null`.
      */
     fun reload() {
-        state.value = readConfig()
+        state.value = read().joinedOrNull()
     }
 
-    /**
-     * Decode the stored item, or `null` when there is none — **or when it carries no cutoff**.
-     *
-     * `EventConfig.minPhotoDate` is required with no default (capability `photo-date-cutoff`), so an item
-     * written before the cutoff existed throws `MissingFieldException` here and reads as no config. The
-     * same is true of the older pre-name-split form (a bare `snapsync://` deeplink URL), which carries an
-     * `eventId` and nothing else: it cannot supply a cutoff, so it too reads as no config rather than
-     * being upgraded in place.
-     *
-     * Reading as no config is the **safe** outcome and is deliberate: the device falls back to the setup
-     * gate and the user re-scans the invite, while neither this process nor the upload extension uploads
-     * anything meanwhile. No default cutoff is substituted — this store seeds synchronously and cannot
-     * fetch the event's `createdAt`, and the empty string is not a legal cutoff (it would admit the whole
-     * library; see [EventConfig]).
-     */
-    private fun readConfig(): EventConfig? {
-        val stored = readValue() ?: return null
-        return runCatching { configJson.decodeFromString(EventConfig.serializer(), stored) }
-            .onFailure { log.w(it) { "keychain item did not decode (legacy item without a cutoff?) — reading as no config; re-join required" } }
-            .getOrNull()
-    }
-
-    private fun readValue(): String? = memScoped {
-        val query = baseQuery()
-        CFDictionaryAddValue(query, kSecReturnData, kCFBooleanTrue)
-        CFDictionaryAddValue(query, kSecMatchLimit, kSecMatchLimitOne)
-        val result = alloc<CFTypeRefVar>()
-        val status = SecItemCopyMatching(query, result.ptr)
-        CFRelease(query)
-        if (status != errSecSuccess) return@memScoped null
-        val data = CFBridgingRelease(result.value) as? NSData ?: return@memScoped null
-        data.toByteArray().decodeToString()
-    }
-
-    private fun writeValue(url: String) {
-        // Replace-by-delete-then-add keeps the write idempotent regardless of prior presence.
-        deleteItem()
-
-        val addQuery = baseQuery()
-        val cfData = CFBridgingRetain(url.encodeToByteArray().toNSData())
-        CFDictionaryAddValue(addQuery, kSecValueData, cfData)
-        val status = SecItemAdd(addQuery, null)
-        CFRelease(addQuery)
-        CFBridgingRelease(cfData)
-        check(status == errSecSuccess) { "keychain add failed: $status" }
-    }
-
-    private fun deleteItem() {
-        // Deleting an absent item returns errSecItemNotFound, which we tolerate (idempotent).
-        val deleteQuery = baseQuery()
-        SecItemDelete(deleteQuery)
-        CFRelease(deleteQuery)
-    }
-
-    private fun baseQuery(): CFMutableDictionaryRef {
-        val dict = CFDictionaryCreateMutable(
-            null, 0, kCFTypeDictionaryKeyCallBacks.ptr, kCFTypeDictionaryValueCallBacks.ptr,
-        ) ?: error("could not allocate keychain query")
-        CFDictionaryAddValue(dict, kSecClass, kSecClassGenericPassword)
-        CFDictionaryAddValue(dict, kSecAttrService, cfString(service))
-        CFDictionaryAddValue(dict, kSecAttrAccount, cfString(account))
-        return dict
-    }
-
-    private fun cfString(value: String) =
-        CFStringCreateWithCString(null, value, kCFStringEncodingUTF8)
-}
-
-private fun ByteArray.toNSData(): NSData =
-    if (isEmpty()) {
-        NSData()
-    } else {
-        usePinned { NSData.create(bytes = it.addressOf(0), length = size.toULong()) }
-    }
-
-private fun NSData.toByteArray(): ByteArray {
-    val size = length.toInt()
-    if (size == 0) return ByteArray(0)
-    return ByteArray(size).apply { usePinned { memcpy(it.addressOf(0), bytes, length) } }
+    /** `null` for both *absent* and *unreadable* — acceptable for the UI-facing [config], never for the reconciler. */
+    private fun ConfigRead.joinedOrNull(): EventConfig? = (this as? ConfigRead.Joined)?.config
 }
