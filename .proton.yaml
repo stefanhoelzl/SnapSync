@@ -5,4 +5,3 @@ snap-sync:
   BUNNY_API_KEY: bunny/api-key
   BUNNY_STORAGE_ACCESS_KEY: bunny/storage-access-key
   BUNNY_SCRIPT_DEPLOYMENT_KEY: bunny/script-deployment-key
-  DENO_DEPLOY_TOKEN: deno/token

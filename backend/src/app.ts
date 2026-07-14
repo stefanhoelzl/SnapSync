@@ -25,7 +25,8 @@
 //   GET /files/devices/:deviceId
 //     → lists the device's RAW stored objects (a single LIST of `files/devices/<deviceId>/`); each is
 //       `{ filename, size, url }` where `url` is a presigned S3 GET URL. No manifest read, no
-//       completeness, no event gate. `Cache-Control: no-store` (the urls are time-limited).
+//       completeness, no event gate. `Cache-Control: no-store, no-cache, max-age=0` (time-limited urls;
+//       see NO_CACHE — the pull zone honors `no-cache`, not `no-store`).
 //   PUT /events/:eventId/devices/:deviceId
 //     → streams a JSON device manifest into `events/<eventId>/devices/<deviceId>.json`. GATED on event
 //       existence (the marker read) so a manifest is never written under a non-existent event.
@@ -41,8 +42,9 @@
 //       devices, each tagged with its owning deviceId. GATED on event existence (marker read). Fans
 //       out: marker → LIST `events/<id>/devices/` → per device (read device.json + LIST its files) →
 //       complete-only projection. Faithful: any non-404 read failure anywhere (incl. a manifest JSON
-//       parse failure) → 502 (never a partial union). `Cache-Control: no-store` (live read over
-//       mutable manifests + listings). Identity-blind: own-vs-foreign skip is the client's concern.
+//       parse failure) → 502 (never a partial union). `Cache-Control: no-store, no-cache, max-age=0`
+//       (live read over mutable manifests + listings; see NO_CACHE). Identity-blind: own-vs-foreign
+//       skip is the client's concern.
 //
 // EVENT REGISTRY: an event exists iff the object `events/<id>/metadata.json` is present. Because an
 // eventId is a UUID, the marker key `events/<id>/metadata.json`, the device-manifest keys
@@ -248,6 +250,12 @@ type UnionAsset = {
 // 7 days — the S3 presign maximum. The device re-presigns (re-reads the union) on every foreground well
 // within this window, so a queued background download that outlives one URL self-heals with a fresh one.
 const PRESIGN_EXPIRY_SECONDS = 604800;
+
+// The listing routes' cache header. All three directives are deliberate: the Edge Script is fronted by a
+// bunny CDN pull zone, and bunny documents `no-cache` — NOT `no-store` — as the origin directive that
+// suppresses its cache. `no-store` alone would rest the listings' cacheability on undocumented behavior,
+// and a cached listing serves stale, expiring presigned URLs.
+const NO_CACHE = "no-store, no-cache, max-age=0";
 
 /**
  * Mint an AWS SigV4 **presigned S3 GET URL** for a stored object (the download-URL authority for
@@ -791,7 +799,7 @@ export function createApp({ fetch: fetchImpl, config }: Deps): Hono {
         }),
       );
 
-      c.header("Cache-Control", "no-store"); // live read over mutable manifests + listings
+      c.header("Cache-Control", NO_CACHE); // live read over mutable manifests + listings
       return c.json(perDevice.flat());
     } catch (e) {
       console.error(`union: assembly failed for event ${eventId}: ${e}`);
@@ -812,7 +820,7 @@ export function createApp({ fetch: fetchImpl, config }: Deps): Hono {
       // Single LIST of the device dir → its objects. 404/absent → no objects → []. Any other LIST
       // failure throws → 502, so a partial list is never returned.
       const entries = await listDir(fetchImpl, config, deviceDir(deviceId));
-      c.header("Cache-Control", "no-store"); // each `url` is a time-limited presigned S3 URL
+      c.header("Cache-Control", NO_CACHE); // each `url` is a time-limited presigned S3 URL
       if (entries === null) return c.json([] as FileEntry[]);
 
       const files: FileEntry[] = await Promise.all(

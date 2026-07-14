@@ -9,7 +9,6 @@ const CONFIG = {
   zone: "snapsync-zone",
   host: "storage.bunnycdn.com",
   accessKey: "zone-password",
-  baseUrl: "https://dl.example",
   s3Region: "de",
   s3Host: "de-s3.storage.bunnycdn.com",
   apnsKeyId: "ABC123KEYID",
@@ -306,7 +305,8 @@ Deno.test("device list → raw files as { filename, size, url }, one LIST, no fu
   });
   const res = await createApp({ config: CONFIG, fetch: fetchImpl }).request(DEVLIST_PATH);
   assertEquals(res.status, 200);
-  assertEquals(res.headers.get("Cache-Control"), "no-store"); // urls are time-limited presigned
+  // All three directives: the pull zone fronting the script honors `no-cache`, not `no-store`.
+  assertEquals(res.headers.get("Cache-Control"), "no-store, no-cache, max-age=0");
   const body = await res.json();
   assertEquals(
     body.map((e: { filename: string; size: number }) => ({ filename: e.filename, size: e.size })),
@@ -538,7 +538,7 @@ Deno.test("union → two devices' complete assets, flattened, tagged by deviceId
   });
   const r = await createApp({ config: CONFIG, fetch: fetchImpl }).request(`/events/${E}/files`);
   assertEquals(r.status, 200);
-  assertEquals(r.headers.get("Cache-Control"), "no-store");
+  assertEquals(r.headers.get("Cache-Control"), "no-store, no-cache, max-age=0");
   const union = await r.json();
   // Structure + non-url fields (each `url` is a dynamic presigned URL, asserted separately below).
   const stripUrls = (a: { resources: { url: string }[] }) => ({
