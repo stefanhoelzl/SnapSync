@@ -7,6 +7,9 @@ import kotlin.test.assertFalse
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 import kotlinx.coroutines.async
+import kotlinx.coroutines.flow.toList
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.test.runTest
 
@@ -279,5 +282,29 @@ class DeviceAttestationTest {
         assertTrue(results.all { it })
         assertEquals(1, client.renewCalls) // …not 5
         assertEquals(1, key.asserted)
+    }
+
+    @Test
+    fun `obtaining a token announces it - so a refused registration can be re-sent`() = runTest {
+        // The APNs registration PUT is gated and is sent ONCE per OS-delivered token. If it was refused
+        // because this device had not attested yet, only a new credential can prompt a retry — so a mint
+        // and a renew must both announce themselves, or the device stays permanently unregistered.
+        val minted = attestation()
+        val mints = mutableListOf<Unit>()
+        backgroundScope.launch { minted.first.tokenChanged.toList(mints) }
+        runCurrent()
+
+        assertTrue(minted.first.ensureFresh()) // a fresh install ATTESTS
+        runCurrent()
+        assertEquals(1, mints.size)
+
+        val renewed = attestation(store = InMemoryAttestStore(token = token(1), keyId = "k"))
+        val renews = mutableListOf<Unit>()
+        backgroundScope.launch { renewed.first.tokenChanged.toList(renews) }
+        runCurrent()
+
+        assertTrue(renewed.first.ensureFresh()) // an attested device RENEWS
+        runCurrent()
+        assertEquals(1, renews.size)
     }
 }

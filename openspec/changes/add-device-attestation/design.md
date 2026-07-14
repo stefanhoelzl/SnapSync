@@ -211,6 +211,21 @@ for a refresh — a single rejection produced **three concurrent `/attest/renew`
 run, but it is a thundering herd aimed at the one path Apple throttles, and every refresh after the first
 is pure waste.
 
+### D10d. A refused APNs registration must be retried on the next credential
+
+The app attests **before** starting push registration, and `PushRegistration.run` additionally
+re-registers whenever a new token is obtained (`DeviceAttestation.tokenChanged`).
+
+The ordering alone is not enough, and the retry is not an optimization — without it a refused
+registration is **permanent**. `PUT /devices/<id>` is now gated, and on a fresh install the OS can deliver
+the APNs token before the device has attested, so the registration takes a `401` (observed on the SE2).
+The OS delivers an APNs token **once** and never re-delivers it, and `run` collects that token flow — so
+nothing would ever retry. The device would sit permanently unregistered: no silent pushes, hence no
+download wakes, hence none of the wake-driven renewals this design leans on (D5). A gate that quietly
+disabled push for every fresh install would have been a nasty thing to discover in the field.
+
+The `PUT` is idempotent (last-write-wins), so a redundant re-registration costs nothing.
+
 ### D11. Failures reduce into the existing error state; the harness stays token-blind
 
 Attestation and `401` failures become a sealed domain error reduced into the **existing** visible error
