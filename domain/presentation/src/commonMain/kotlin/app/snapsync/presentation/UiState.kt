@@ -76,7 +76,7 @@ sealed interface JoinPhase {
      *
      * [startsAt] is the event's **start date** — required, non-null, already a canonical UTC `…Z` string
      * (`HttpEventDetailsSource` normalizes it and fails the load rather than invent one). It is both the
-     * cutoff row's **default** and its **floor** (capability `photo-date-cutoff`): the row cannot be
+     * cutoff row's **default** and its **floor** (capability `photo-selection-policy`): the row cannot be
      * empty, and the confirm cannot join below it, so joining at whole-library scope is unrepresentable.
      *
      * It also decides the cutoff selector's shape: when [startsAt] is in the **future**, the "Now" preset
@@ -126,7 +126,7 @@ sealed interface SyncHealth {
      * begins or they will miss the start; burying it behind a clock line would ambush them with a
      * permission prompt at the very moment the party starts. Everything below is outranked because, before
      * the start, nothing of the member's **can** be syncing — the cutoff floor guarantees it (capability
-     * `photo-date-cutoff`), so a snapshot-derived line would say nothing true this does not say better.
+     * `photo-selection-policy`), so a snapshot-derived line would say nothing true this does not say better.
      *
      * Unlike every other health, this one depends on **wall-clock time** rather than the ledger, so no
      * snapshot emission retires it — `StatusContainerHost` runs a foreground tick for that.

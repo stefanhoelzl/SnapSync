@@ -60,7 +60,7 @@ outranks it because permission is the only **actionable** state — it carries a
 member must resolve it *before* the event begins or they will miss the start; burying it behind a clock
 line would ambush them with a permission prompt at the very moment the party starts. Everything below it
 is outranked because, before the start, nothing of the member's **can** be syncing (the floor guarantees
-it, capability `photo-date-cutoff`), so a snapshot-derived line would say nothing true that the clock
+it, capability `photo-selection-policy`), so a snapshot-derived line would say nothing true that the clock
 line does not say better.
 
 `NotStarted` SHALL carry the start instant, so the screen can render *when* — a bare "not started yet"

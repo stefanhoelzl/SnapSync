@@ -226,7 +226,7 @@ class PanelController {
         val CANNED_CONFIG = EventConfig(
             eventId = "00000000-0000-4000-8000-000000000000",
             name = "Anna's Birthday",
-            // A membership always carries a cutoff (capability `photo-date-cutoff`); the forge never uploads.
+            // A membership always carries a cutoff (capability `photo-selection-policy`); the forge never uploads.
             minPhotoDate = "2026-01-01T00:00:00Z",
         )
 

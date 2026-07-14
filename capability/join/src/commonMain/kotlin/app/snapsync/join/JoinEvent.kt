@@ -35,7 +35,7 @@ class JoinEvent(
     /**
      * Confirm the join for [eventId] with the loaded [name] (required, non-null — the gate only
      * provisions from a loaded phase that carries a name), the event's [startsAt] start date, this
-     * device's chosen capture-date [minPhotoDate] cutoff (capability `photo-date-cutoff`; always present
+     * device's chosen capture-date [minPhotoDate] cutoff (capability `photo-selection-policy`; always present
      * — a membership without a cutoff would upload the whole library), its chosen participation
      * [direction] (capability `join-event`), and whether it opted into an event album ([saveToAlbum],
      * capability `event-album`): enroll (register-only empty manifest) — for **every** direction, so a
@@ -46,7 +46,7 @@ class JoinEvent(
      * Re-confirming the already-joined event is a [JoinOutcome.AlreadyJoined] no-op that skips enrollment
      * entirely (the cutoff and direction stay immutable — a change is a leave-then-rejoin).
      *
-     * **The floor is applied here** (capability `photo-date-cutoff`): the persisted cutoff is
+     * **The floor is applied here** (capability `photo-selection-policy`): the persisted cutoff is
      * `max(chosen, startsAt)`, never the raw [minPhotoDate]. Doing it in the use-case rather than in the
      * UI is what makes it total — **every** entry path funnels through this one call (the interactive
      * confirm, the switch confirm, the retry, and the `autoJoin` path carrying a deeplink-supplied

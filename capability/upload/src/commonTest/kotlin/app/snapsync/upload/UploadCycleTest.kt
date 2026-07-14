@@ -1,5 +1,6 @@
 package app.snapsync.upload
 
+import app.snapsync.engine.LedgerEntry
 import app.snapsync.engine.LedgerState
 import app.snapsync.engine.LedgerWriter
 import app.snapsync.engine.Resource
@@ -7,7 +8,19 @@ import app.snapsync.engine.SyncEngine
 import app.snapsync.engine.UploadError
 import app.snapsync.engine.UploadRequest
 import app.snapsync.engine.UploadRequestProvider
+import app.snapsync.gallery.MEDIA_TYPE_IMAGE
+import app.snapsync.gallery.MEDIA_TYPE_VIDEO
+import app.snapsync.gallery.MIME_GIF
 import app.snapsync.gallery.RESOURCE_META_CREATION_DATE
+import app.snapsync.gallery.RESOURCE_META_HAS_ADJUSTMENTS
+import app.snapsync.gallery.RESOURCE_META_MEDIA_SUBTYPES
+import app.snapsync.gallery.RESOURCE_META_MEDIA_TYPE
+import app.snapsync.gallery.RESOURCE_META_MIME
+import app.snapsync.gallery.RESOURCE_META_PIXEL_HEIGHT
+import app.snapsync.gallery.RESOURCE_META_PIXEL_WIDTH
+import app.snapsync.gallery.SUBTYPE_NONE
+import app.snapsync.gallery.SUBTYPE_SCREENSHOT
+import app.snapsync.gallery.SUBTYPE_SCREEN_RECORDING
 import app.snapsync.gallery.normalizeAssetId
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
@@ -20,7 +33,7 @@ class UploadCycleTest {
 
     /**
      * A permissive test cutoff, and a capture date after it. Every membership carries a cutoff (capability
-     * `photo-date-cutoff`), so a cycle cannot be built without one; these keep the non-cutoff tests
+     * `photo-selection-policy`), so a cycle cannot be built without one; these keep the non-cutoff tests
      * exercising what they mean to.
      */
     private companion object {
@@ -78,7 +91,7 @@ class UploadCycleTest {
         override fun clearToken() { cleared = true }
     }
 
-    // Dated by default: every membership carries a cutoff (capability `photo-date-cutoff`), and an asset
+    // Dated by default: every membership carries a cutoff (capability `photo-selection-policy`), and an asset
     // with no `creationDate` sorts before any cutoff, so an undated resource is always out of scope.
     private fun resource(name: String, assetId: String = name) =
         Resource(
@@ -609,7 +622,7 @@ class UploadCycleTest {
         assertEquals(listOf("manifest"), order) // re-ack is not a completion → no notify
     }
 
-    // ── Capture-date cutoff (capability `photo-date-cutoff`) ──────────────────────────────────────────
+    // ── Capture-date cutoff (capability `photo-selection-policy`) ──────────────────────────────────────────
 
     private fun datedResource(name: String, creationDate: String, assetId: String = name) =
         Resource(
@@ -662,7 +675,7 @@ class UploadCycleTest {
     @Test
     fun the_cutoff_is_passed_to_the_platform_as_a_walk_bound() = runTest {
         // The cutoff scopes the platform's own fetch, so a full enumeration does not walk the whole
-        // library (capability `photo-date-cutoff`). The cycle's filter below stays authoritative.
+        // library (capability `photo-selection-policy`). The cycle's filter below stays authoritative.
         val backend = InMemoryLedgerBackend()
         val platform = FakePlatform(discovered = emptyList())
 
@@ -694,5 +707,194 @@ class UploadCycleTest {
         cycleWithCutoff(backend, platform, "2026-07-06T00:00:00Z").run()
 
         assertTrue(platform.created.isEmpty(), "an asset with no creationDate is out of scope under a cutoff")
+    }
+
+    // ── Origin exclusions (capability `photo-selection-policy`) ────────────────────────────────────────
+    // The cutoff bounds WHEN a photo was taken; these bound WHAT it is. Note the existing tests above are
+    // unaffected: `resource()` carries no origin facts, and absent facts ADMIT (admit-on-doubt).
+
+    /** A resource carrying the origin facts the enumerator would have stashed on it. */
+    private fun originResource(
+        name: String,
+        assetId: String = name,
+        subtypes: Long = SUBTYPE_NONE,
+        mediaType: Long = MEDIA_TYPE_IMAGE,
+        width: Long = 4032,
+        height: Long = 3024,
+        adjusted: Boolean = false,
+        mime: String = "image/heic",
+    ) = Resource(
+        filename = name, assetId = assetId, contentType = "public.heic",
+        metadata = mapOf(
+            RESOURCE_META_CREATION_DATE to IN_SCOPE_DATE,
+            RESOURCE_META_MIME to mime,
+            RESOURCE_META_MEDIA_SUBTYPES to subtypes.toString(),
+            RESOURCE_META_MEDIA_TYPE to mediaType.toString(),
+            RESOURCE_META_PIXEL_WIDTH to width.toString(),
+            RESOURCE_META_PIXEL_HEIGHT to height.toString(),
+            RESOURCE_META_HAS_ADJUSTMENTS to adjusted.toString(),
+        ),
+        data = Unit,
+    )
+
+    /** A cycle with an album-exclusion port, and a manifest hook recording what the manifest actually saw. */
+    private fun originCycle(
+        backend: InMemoryLedgerBackend,
+        platform: FakePlatform,
+        albumExcluded: Set<String> = emptySet(),
+        manifestSaw: MutableList<String> = mutableListOf(),
+    ): UploadCycle {
+        val ledger = LedgerWriter(backend)
+        return UploadCycle(
+            SyncEngine(StubUploadRequestProvider(), ledger), ledger, platform, FakeStore(),
+            onDiscovery = { d -> manifestSaw += d.resources.map { it.filename } },
+            albumExcludedAssetIds = { albumExcluded },
+            photoCutoff = { TEST_CUTOFF },
+            reconcile = { true },
+        )
+    }
+
+    @Test
+    fun a_screenshot_never_reaches_the_engine() = runTest {
+        val backend = InMemoryLedgerBackend()
+        val platform = FakePlatform(
+            discovered = listOf(
+                originResource("shot-primary.png", "shot", subtypes = SUBTYPE_SCREENSHOT),
+                originResource("cam-primary.heic", "cam"),
+            ),
+        )
+
+        originCycle(backend, platform).run()
+
+        assertEquals(listOf("cam-primary.heic"), platform.created.map { it.filename })
+        assertNull(backend.get("shot-primary.png"), "an excluded asset creates no ledger row")
+    }
+
+    @Test
+    fun a_screen_recording_and_a_gif_are_excluded() = runTest {
+        val platform = FakePlatform(
+            discovered = listOf(
+                originResource("rec.mov", "rec", subtypes = SUBTYPE_SCREEN_RECORDING, mediaType = MEDIA_TYPE_VIDEO),
+                originResource("meme.gif", "meme", mime = MIME_GIF),
+                originResource("cam.heic", "cam"),
+            ),
+        )
+
+        originCycle(InMemoryLedgerBackend(), platform).run()
+
+        assertEquals(listOf("cam.heic"), platform.created.map { it.filename })
+    }
+
+    @Test
+    fun a_compressed_received_image_is_excluded_but_a_1080p_video_is_not() = runTest {
+        // The video floor is separate and lower ON PURPOSE: 1080p is 2.07 MP, BELOW the 3 MP image floor.
+        // A single shared floor would silently drop every 1080p recording taken at the event.
+        val platform = FakePlatform(
+            discovered = listOf(
+                originResource("wa.jpg", "wa", width = 1600, height = 1200), // 1.9 MP → excluded
+                originResource("clip.mov", "clip", mediaType = MEDIA_TYPE_VIDEO, width = 1920, height = 1080),
+            ),
+        )
+
+        originCycle(InMemoryLedgerBackend(), platform).run()
+
+        assertEquals(listOf("clip.mov"), platform.created.map { it.filename }, "the 1080p recording survives")
+    }
+
+    @Test
+    fun an_edited_photo_below_the_floor_is_admitted() = runTest {
+        // A crop renders small. Without the hasAdjustments guard this real capture would silently vanish.
+        val platform = FakePlatform(
+            discovered = listOf(originResource("crop.heic", "crop", width = 1000, height = 800, adjusted = true)),
+        )
+
+        originCycle(InMemoryLedgerBackend(), platform).run()
+
+        assertEquals(listOf("crop.heic"), platform.created.map { it.filename })
+    }
+
+    @Test
+    fun a_denylisted_album_member_is_excluded_via_the_injected_port() = runTest {
+        val platform = FakePlatform(
+            discovered = listOf(originResource("wa.heic", "wa"), originResource("cam.heic", "cam")),
+        )
+
+        originCycle(InMemoryLedgerBackend(), platform, albumExcluded = setOf("wa")).run()
+
+        assertEquals(listOf("cam.heic"), platform.created.map { it.filename })
+    }
+
+    @Test
+    fun the_origin_filter_covers_the_incremental_walk() = runTest {
+        val platform = FakePlatform(
+            discovered = listOf(originResource("shot.png", "shot", subtypes = SUBTYPE_SCREENSHOT)),
+            fullEnumeration = false,
+        )
+
+        originCycle(InMemoryLedgerBackend(), platform).run()
+
+        assertTrue(platform.created.isEmpty(), "excluded on the incremental walk exactly as on a full one")
+    }
+
+    @Test
+    fun an_excluded_asset_never_reaches_the_device_manifest() = runTest {
+        // THE leak this change closes. The manifest hook used to be handed the RAW discovery, so an
+        // excluded asset landed in the device-global accumulator, projected into device.json, entered the
+        // event union — and every other member tried to download bytes that were never uploaded.
+        val manifestSaw = mutableListOf<String>()
+        val platform = FakePlatform(
+            discovered = listOf(
+                originResource("shot.png", "shot", subtypes = SUBTYPE_SCREENSHOT),
+                originResource("wa.heic", "wa"),
+                originResource("cam.heic", "cam"),
+            ),
+            fullEnumeration = true,
+        )
+
+        originCycle(InMemoryLedgerBackend(), platform, albumExcluded = setOf("wa"), manifestSaw = manifestSaw).run()
+
+        assertEquals(listOf("cam.heic"), manifestSaw, "the manifest sees only the admitted set")
+    }
+
+    @Test
+    fun a_pre_cutoff_asset_still_reaches_the_manifest_hook_but_an_excluded_one_does_not() = runTest {
+        // The two exclusions land on OPPOSITE sides of the manifest accumulator, deliberately. The cutoff
+        // is per-membership, so a pre-cutoff asset must stay in the device-global accumulator (another
+        // event's cutoff may admit it) and is dropped by the per-event projection instead. The origin
+        // exclusions are event-independent, so they are applied before the accumulator.
+        val manifestSaw = mutableListOf<String>()
+        val platform = FakePlatform(
+            discovered = listOf(
+                datedResource("old.heic", "2020-01-01T00:00:00Z", "old"), // pre-cutoff, no origin facts
+                originResource("shot.png", "shot", subtypes = SUBTYPE_SCREENSHOT),
+            ),
+            fullEnumeration = true,
+        )
+
+        originCycle(InMemoryLedgerBackend(), platform, manifestSaw = manifestSaw).run()
+
+        assertEquals(listOf("old.heic"), manifestSaw, "pre-cutoff stays in the accumulator; the screenshot does not")
+        assertTrue(platform.created.isEmpty(), "…and neither is uploaded")
+    }
+
+    @Test
+    fun an_excluded_asset_is_pruned_from_the_ledger_on_a_full_enumeration() = runTest {
+        // The free retroactive cleanup: a previously-uploaded screenshot loses its ledger row the next time
+        // a full enumeration runs (token expiry, re-join, reinstall), so it drops out of device.json and
+        // leaves the event union. Its bytes stay in storage — no object is ever deleted.
+        val backend = InMemoryLedgerBackend()
+        backend.put(LedgerEntry(key = "shot.png", assetId = "shot", state = LedgerState.COMPLETED, attempt = 0))
+        val platform = FakePlatform(
+            discovered = listOf(
+                originResource("shot.png", "shot", subtypes = SUBTYPE_SCREENSHOT),
+                originResource("cam.heic", "cam"),
+            ),
+            fullEnumeration = true,
+        )
+
+        originCycle(backend, platform).run()
+
+        assertNull(backend.get("shot.png"), "retainAssets prunes the now-excluded asset's row")
+        assertTrue(backend.get("cam.heic") != null, "the admitted asset keeps its row")
     }
 }

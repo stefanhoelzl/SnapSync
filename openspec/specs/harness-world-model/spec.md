@@ -374,4 +374,4 @@ because that is exactly what the real backend guarantees, and a world that emitt
 - **WHEN** the world holds an event whose `startsAt` is in the future, a device joins it, and the
   operator invokes an upload cycle over a gallery of photos
 - **THEN** no object lands in the world's store and the ledger gains no entry — the floor admitting
-  nothing (capability `photo-date-cutoff`)
+  nothing (capability `photo-selection-policy`)

@@ -10,7 +10,7 @@ class EventConfigTest {
 
     private val json = Json { ignoreUnknownKeys = true }
 
-    /** Every config carries a cutoff; it is required (capability `photo-date-cutoff`). */
+    /** Every config carries a cutoff; it is required (capability `photo-selection-policy`). */
     private val cutoff = "2026-07-06T14:32:11Z"
 
     private fun roundTrip(config: EventConfig): EventConfig =

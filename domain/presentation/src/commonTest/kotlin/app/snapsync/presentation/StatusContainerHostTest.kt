@@ -118,7 +118,7 @@ private fun snapshot(
 /** What the fixed clock below yields as a cutoff — the seed when `createdAt` is absent or unparseable. */
 private const val NOW_CUTOFF = "2026-07-09T12:00:00Z"
 
-/** A membership always carries a cutoff (capability `photo-date-cutoff`); no join can pass `null`. */
+/** A membership always carries a cutoff (capability `photo-selection-policy`); no join can pass `null`. */
 private const val CUTOFF = "2026-07-06T14:32:11Z"
 
 /**
@@ -623,7 +623,7 @@ class StatusContainerHostTest {
     @Test
     fun `a second-precision event createdAt survives normalization unchanged`() = runTest {
         // A `createdAt` already at second precision round-trips through normalization unchanged
-        // (capability `photo-date-cutoff`).
+        // (capability `photo-selection-policy`).
         host(
             FakeSyncStatusSource(SyncStatus.Loading), backgroundScope,
             permission = FakePermissionSource(PermissionStatus.GRANTED), configFake = FakeConfig(null),
@@ -660,7 +660,7 @@ class StatusContainerHostTest {
     @Test
     fun `autoJoin with no explicit cutoff commits with the event start`() = runTest {
         // The headless dev launch has no surface on which an empty cutoff row could be noticed, so the
-        // default matters most here (capability `photo-date-cutoff`).
+        // default matters most here (capability `photo-selection-policy`).
         val configFake = FakeConfig(null)
         var committedCutoff: String? = null
         host(

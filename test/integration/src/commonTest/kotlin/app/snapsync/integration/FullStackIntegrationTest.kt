@@ -37,7 +37,7 @@ class FullStackIntegrationTest {
 
     @Test
     fun a_future_start_event_uploads_nothing_and_reads_not_started() = worldTest {
-        // THE THEOREM the whole design rests on (capability `photo-date-cutoff`).
+        // THE THEOREM the whole design rests on (capability `photo-selection-policy`).
         //
         // Nothing syncs before the event starts — and NOT because a gate refuses. There is no gate. The
         // join-time clamp makes the effective cutoff `max(chosen, startsAt)`, and a photo's capture date

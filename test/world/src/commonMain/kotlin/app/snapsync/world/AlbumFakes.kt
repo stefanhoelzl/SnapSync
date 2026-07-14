@@ -14,6 +14,18 @@ class FakeAlbumManager : AlbumManager {
     val added = mutableListOf<Pair<String, List<String>>>()   // (albumId, rawLocalIds)
     private val live = mutableSetOf<String>()
 
+    /**
+     * Pre-existing albums the *user's other apps* made — title → the normalized assetIds inside them. This
+     * is the lever that lets the harness and the integration tests forge "this photo arrived via WhatsApp"
+     * without PhotoKit (capability `photo-selection-policy`).
+     */
+    val membership = mutableMapOf<String, MutableSet<String>>()
+
+    /** Put [assetId] into an album titled [title] — e.g. `placeIn("WhatsApp", "A1")`. */
+    fun placeIn(title: String, assetId: String) {
+        membership.getOrPut(title) { mutableSetOf() }.add(assetId)
+    }
+
     /** Simulate the user deleting an album (so `exists` returns false and a re-join recreates). */
     fun delete(albumId: String) { live.remove(albumId) }
 
@@ -32,6 +44,12 @@ class FakeAlbumManager : AlbumManager {
     override suspend fun add(albumLocalId: String, rawLocalIds: List<String>) {
         added.add(albumLocalId to rawLocalIds)
     }
+
+    /** Mirrors the real seam: case-insensitive exact title match over the forged [membership]. */
+    override suspend fun assetIdsInAlbums(titles: Set<String>, since: String): Set<String> =
+        membership.entries
+            .filter { (title, _) -> titles.any { it.equals(title.trim(), ignoreCase = true) } }
+            .flatMapTo(mutableSetOf()) { it.value }
 }
 
 /** An in-memory [AlbumMapStore] for the world — the leave-surviving `eventId → albumLocalId` map. */

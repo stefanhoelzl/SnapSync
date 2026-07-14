@@ -22,6 +22,10 @@ kotlin {
             // `KeychainRead` — the input to the one-shot Keychain → App-Group migration of the album
             // map. `api`, because it appears in `albumMapSource`'s public signature.
             api(project(":domain:keychain"))
+            // `normalizeAssetId` — the album-membership seam returns asset ids in the SAME normalized
+            // shape the ledger and upload keys use, so the upload cycle can match them directly
+            // (capability `photo-selection-policy`). :domain:gallery owns that vocabulary.
+            implementation(project(":domain:gallery"))
         }
         commonTest.dependencies {
             implementation(kotlin("test"))

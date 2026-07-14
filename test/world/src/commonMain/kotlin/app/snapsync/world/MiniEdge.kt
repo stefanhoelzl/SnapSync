@@ -160,7 +160,7 @@ fun miniEdgeClient(store: BackendStore): HttpClient {
  *
  * **Carries milliseconds on purpose.** The real backend mints this with `new Date().toISOString()`, which
  * always emits `.sss` — and a fractional-second `createdAt` is exactly what broke the capture-date cutoff
- * (`photo-date-cutoff`): reused verbatim it violates the second-precision invariant, and a bare
+ * (`photo-selection-policy`): reused verbatim it violates the second-precision invariant, and a bare
  * `NSISO8601DateFormatter` then fails to parse it, silently costing the bounded PhotoKit fetch. The world
  * previously minted a *tidier* timestamp than production, so the join gate's normalization went untested
  * against the shape it actually receives. A fake backend must not be cleaner than the real one.
@@ -169,7 +169,7 @@ private const val CREATED_AT = "2026-01-01T00:00:00.000Z"
 
 /**
  * The canonical capture-date cutoff shape the real backend demands of `startsAt` (second precision, UTC,
- * no fraction, no offset — capability `photo-date-cutoff`). Unlike [CREATED_AT], a `startsAt` is CLEAN by
+ * no fraction, no offset — capability `photo-selection-policy`). Unlike [CREATED_AT], a `startsAt` is CLEAN by
  * contract: the real endpoint 400s anything else, so the world must too.
  */
 private val CANONICAL_CUTOFF = Regex("""^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$""")

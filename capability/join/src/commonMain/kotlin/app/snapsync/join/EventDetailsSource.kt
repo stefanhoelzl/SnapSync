@@ -27,7 +27,7 @@ sealed interface EventDetails {
      * rejects a non-canonical one on create and synthesizes one from `createdAt` for markers written
      * before it existed, so the app never sees a null. A `200` lacking it is therefore malformed /
      * transient → [Failed], never a [Found] with an invented one — [startsAt] is a **floor** on this
-     * membership's cutoff (capability `photo-date-cutoff`), and a client that defaulted it would be
+     * membership's cutoff (capability `photo-selection-policy`), and a client that defaulted it would be
      * silently *lowering* that floor. Failing loudly and retrying is the only safe reading.
      */
     data class Found(val name: String, val startsAt: String) : EventDetails

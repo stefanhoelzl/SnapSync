@@ -76,7 +76,7 @@ fun WorldInspector(controller: WorldInspectorController, modifier: Modifier = Mo
         FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             OutlinedButton(enabled = snap.joinedEventId != null, onClick = { controller.reprovision() }) { Text("Re-provision") }
             // Both sides of the event-start FLOOR, drivable through the real stack (capability
-            // `photo-date-cutoff`). "started" is the ordinary case. "not started" is the interesting one:
+            // `photo-selection-policy`). "started" is the ordinary case. "not started" is the interesting one:
             // the event's start is in the future, so the clamped cutoff admits NO photo — invoking the
             // extension must leave the backend column empty while the phone frame reads the clock line.
             OutlinedButton(onClick = { controller.createEvent("Harness event", PAST_START) }) {
@@ -93,13 +93,36 @@ fun WorldInspector(controller: WorldInspectorController, modifier: Modifier = Mo
         TwoUp(
             left = {
                 Button(onClick = { controller.addAsset() }) { Text("+ Add asset") }
+                // Selection policy (capability `photo-selection-policy`): each of these adds a real asset to
+                // the gallery that the policy EXCLUDES — it must appear here and then never upload, never
+                // enter the union, and never inflate N. "+ 1080p video" is the control: it is BELOW the
+                // image floor but above the video floor, so it must still upload.
+                Faint("selection policy — these must NOT upload (except the video):")
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    OutlinedButton(onClick = { controller.addScreenshot() }) { Text("+ Screenshot") }
+                    Spacer(Modifier.width(6.dp))
+                    OutlinedButton(onClick = { controller.addScreenRecording() }) { Text("+ Screen rec") }
+                    Spacer(Modifier.width(6.dp))
+                    OutlinedButton(onClick = { controller.addGif() }) { Text("+ GIF") }
+                }
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    OutlinedButton(onClick = { controller.addLowResPhoto() }) { Text("+ Low-res") }
+                    Spacer(Modifier.width(6.dp))
+                    OutlinedButton(onClick = { controller.addWhatsAppAlbumPhoto() }) { Text("+ WhatsApp album") }
+                    Spacer(Modifier.width(6.dp))
+                    OutlinedButton(onClick = { controller.addHdVideo() }) { Text("+ 1080p video") }
+                }
                 if (snap.galleryRows.isEmpty()) Faint("(empty gallery)")
                 snap.galleryRows.forEach { row ->
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         OutlinedButton(onClick = { controller.removeAsset(row.assetId) }) { Text("✕") }
                         Spacer(Modifier.width(6.dp))
                         Text(
-                            row.assetId + if (row.suppressed) "  ⛔ upload-suppressed" else "",
+                            buildString {
+                                append(row.assetId)
+                                if (row.suppressed) append("  ⛔ upload-suppressed")
+                                if (row.policyExcluded) append("  🚫 policy-excluded")
+                            },
                             maxLines = 1, overflow = TextOverflow.Ellipsis,
                         )
                     }

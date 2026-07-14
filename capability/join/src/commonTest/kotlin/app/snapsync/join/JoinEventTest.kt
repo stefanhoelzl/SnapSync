@@ -16,11 +16,11 @@ private const val EVENT_A = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"
 private const val EVENT_B = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb"
 private const val DEVICE = "dddddddd-dddd-4ddd-8ddd-dddddddddddd"
 
-/** Every membership carries a cutoff (capability `photo-date-cutoff`); there is no "no cutoff" join. */
+/** Every membership carries a cutoff (capability `photo-selection-policy`); there is no "no cutoff" join. */
 private const val CUTOFF = "2026-07-06T14:32:11Z"
 
 /**
- * The event's start date — the FLOOR under every membership's cutoff (capability `photo-date-cutoff`).
+ * The event's start date — the FLOOR under every membership's cutoff (capability `photo-selection-policy`).
  * Deliberately earlier than [CUTOFF], so the clamp is a no-op for the tests that predate it and they go
  * on asserting exactly what they always did. The clamp's own behavior is pinned separately, below.
  */
@@ -145,7 +145,7 @@ fun `loadDetails surfaces found not-found and failed distinctly`() = runTest {
         }
     }
 
-    // ── the event-start floor (capability `photo-date-cutoff`) ────────────────────────────────────
+    // ── the event-start floor (capability `photo-selection-policy`) ────────────────────────────────────
 
     @Test
     fun `a cutoff below the event start is clamped up to it`() = runTest {

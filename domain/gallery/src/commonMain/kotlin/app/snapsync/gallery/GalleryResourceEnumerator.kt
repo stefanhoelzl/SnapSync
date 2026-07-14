@@ -16,7 +16,7 @@ interface GalleryResourceEnumerator {
 
     /**
      * Every resource of every asset captured at or after [since] — the full-enumeration set (the re-join
-     * seed source), scoped by the membership's capture-date cutoff (capability `photo-date-cutoff`). There
+     * seed source), scoped by the membership's capture-date cutoff (capability `photo-selection-policy`). There
      * is no unbounded variant: see [RawAssetSource.walkSince]. An implementation MAY return resources of
      * assets before [since]; the caller's own cutoff filter remains authoritative.
      */
@@ -54,6 +54,12 @@ fun resourcesFrom(rawAssets: List<RawAsset>): List<Resource> =
                     RESOURCE_META_CREATION_DATE to asset.creationDate,
                     RESOURCE_META_ORIGINAL_FILENAME to raw.originalFilename,
                     RESOURCE_META_MIME to raw.mimeContentType,
+                    // Origin facts (capability `photo-selection-policy`) — carried, never acted on here.
+                    RESOURCE_META_MEDIA_SUBTYPES to asset.mediaSubtypes.toString(),
+                    RESOURCE_META_MEDIA_TYPE to asset.mediaType.toString(),
+                    RESOURCE_META_PIXEL_WIDTH to asset.pixelWidth.toString(),
+                    RESOURCE_META_PIXEL_HEIGHT to asset.pixelHeight.toString(),
+                    RESOURCE_META_HAS_ADJUSTMENTS to asset.hasAdjustments.toString(),
                 ),
                 data = raw.handle,
             )

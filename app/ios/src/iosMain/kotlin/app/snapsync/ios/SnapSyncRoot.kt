@@ -39,6 +39,7 @@ import app.snapsync.download.HttpEventUnionSource
 import app.snapsync.download.IosDownloadTransport
 import app.snapsync.download.QueuedPhotoDownloadJobs
 import app.snapsync.album.AlbumCoordinator
+import app.snapsync.album.DENYLISTED_ALBUM_TITLES
 import app.snapsync.album.IosAlbumManager
 import app.snapsync.album.IosAlbumMapStore
 import app.snapsync.download.IosPhotoLibraryImporter
@@ -88,7 +89,10 @@ import platform.Foundation.NSBundle
 import platform.Foundation.NSDate
 import platform.Foundation.timeIntervalSince1970
 import platform.Foundation.NSOperatingSystemVersion
+import platform.Foundation.NSPredicate
 import platform.Foundation.NSProcessInfo
+import platform.Photos.PHAsset
+import platform.Photos.PHFetchOptions
 import platform.UIKit.UIActivityViewController
 import platform.UIKit.UIApplication
 import platform.darwin.dispatch_async
@@ -161,9 +165,23 @@ object SnapSyncRoot {
     // Event album (capability `event-album`): the shared leave-surviving `eventId → albumLocalId` map and
     // the coordinator. The APP is the SOLE creator (on the permission grant); both processes only add.
     private val albumMapStore: IosAlbumMapStore by lazy { IosAlbumMapStore() }
+    // Hoisted: the selection policy also reads the manager (denylisted-album membership), not just the
+    // coordinator (capability `photo-selection-policy`).
+    private val albumManager: IosAlbumManager by lazy { IosAlbumManager() }
     private val albumCoordinator: AlbumCoordinator by lazy {
-        AlbumCoordinator(IosAlbumManager(), albumMapStore)
+        AlbumCoordinator(albumManager, albumMapStore)
     }
+
+    /**
+     * The normalized `assetId`s sitting in an album a messaging/social app made (capability
+     * `photo-selection-policy`). Supplied to BOTH the upload cycle (via the app-driven tier's controller)
+     * and the own-device status total — they enumerate independently, so a rule applied to one and not the
+     * other would peg the joined screen below 100% forever.
+     */
+    private suspend fun albumExcludedAssetIds(cutoff: String): Set<String> =
+        runCatching { albumManager.assetIdsInAlbums(DENYLISTED_ALBUM_TITLES, cutoff) }
+            .onFailure { log.w(it) { "denylisted-album lookup failed — admitting on doubt this cycle" } }
+            .getOrDefault(emptySet()) // admit-on-doubt: a failed lookup must never DROP a real photo
 
     // The event album's `localIdentifier` for the CURRENT membership, or null when it opted out or the
     // album has not been created yet — the atomic album-add lookup the download importer borrows.
@@ -254,13 +272,18 @@ object SnapSyncRoot {
     // foreign photos (suppressed from upload — they live in the library but must not peg progress below
     // 100%, capability `photo-download`). Enumeration-only — no storage LIST (completeness now comes
     // from the ledger, below). Refreshes on foreground entry.
-    // The total is cutoff-scoped so the joined screen reaches "in sync" (capability `photo-date-cutoff`):
+    // The total is cutoff-scoped so the joined screen reaches "in sync" (capability `photo-selection-policy`):
     // pre-cutoff assets never upload, so they must not inflate `N`. The cutoff is supplied per refresh,
     // from the joined membership — an unjoined device has no scope and is never refreshed.
+    // The origin exclusions scope the total too (capability `photo-selection-policy`): a screenshot is never
+    // uploaded, so counting it would peg the screen below 100% exactly as a pre-cutoff asset would. The
+    // resource-fact rules are applied inside the source; album membership comes through this lookup — the
+    // SAME one the upload cycle gets, because the two enumerate independently.
     private val gallery: OwnDeviceGalleryStatusSource by lazy {
         OwnDeviceGalleryStatusSource(
             PhotoLibraryResourceEnumerator(),
             suppressedLocalIds = { downloadStore.suppressedLocalIds() },
+            albumExcludedAssetIds = { cutoff -> albumExcludedAssetIds(cutoff) },
         )
     }
 
@@ -399,7 +422,7 @@ object SnapSyncRoot {
         CreateEvent(
             client = HttpEventCreationClient(http, backendHost),
             status = creationStatus,
-            // Route the minted event into the SAME join gate a scan uses (capability `photo-date-cutoff`):
+            // Route the minted event into the SAME join gate a scan uses (capability `photo-selection-policy`):
             // the creator loads the event, picks a capture-date cutoff, and confirms like any joiner.
             onMinted = { eventId -> host.onEventCreated(eventId) },
             scope = scope,
@@ -568,7 +591,7 @@ object SnapSyncRoot {
      */
     private suspend fun refreshStatusSources() {
         // No membership → no capture-date scope → nothing to count; `N` stays 0 and the screen is at the
-        // setup gate anyway (capability `photo-date-cutoff`).
+        // setup gate anyway (capability `photo-selection-policy`).
         config.config.value?.minPhotoDate?.let { gallery.refresh(it) }
         ledgerCounts.refresh()
         downloadStatusSource.refresh() // the "downloaded X of Y" line (capability `photo-download`)
@@ -730,7 +753,7 @@ object SnapSyncRoot {
         }
         // Persist the full config as-is (join never blocks on the cosmetic name); the container's
         // ConfigSource is this instance. The per-device capture-date cutoff rides along untouched, so the
-        // extension reads it (capability `photo-date-cutoff`).
+        // extension reads it (capability `photo-selection-policy`).
         config.save(cfg)
         refreshStatusSources() // (re)joined event → re-enumerate own total + re-LIST completeness
         // Drive the upload arm through the tested, tier-neutral lifecycle (capability `upload-lifecycle`):
@@ -766,7 +789,7 @@ object SnapSyncRoot {
         val fetched = metadataSource.name(eventId) ?: return
         val current = config.config.value
         if (current?.eventId == eventId && current.name != fetched) {
-            // Preserve the persisted cutoff — a name refresh must not clobber minPhotoDate (photo-date-cutoff).
+            // Preserve the persisted cutoff — a name refresh must not clobber minPhotoDate (photo-selection-policy).
             config.save(current.copy(name = fetched))
         }
     }
@@ -816,9 +839,57 @@ object SnapSyncRoot {
      */
     private val launchEnvSeedApplied: Boolean by lazy {
         scope.launch(Dispatchers.Default) {
-            log.invocation("seedPhotoLibrary") { seedPhotoLibraryFromLaunchEnv(log) }
+            log.invocation("seedPhotoLibrary") {
+                seedPhotoLibraryFromLaunchEnv(log)
+                // Seeding is blocking, so the probe below is sequenced INSIDE this launch — it must read a
+                // library the seed has already committed, or it measures the wrong thing.
+                runLaunchEnvPolicyProbe()
+            }
         }
         true
+    }
+
+    /**
+     * Dev/test trigger: `SNAPSYNC_POLICY_PROBE=<cutoff>` runs the **real** own-device status refresh against
+     * that cutoff — the real `PhotoLibraryResourceEnumerator` (and so the real `PHFetchOptions` predicate),
+     * the real origin rules, the real denylisted-album lookup — and logs the result
+     * (capability `photo-selection-policy`).
+     *
+     * It exists because the policy is otherwise **unobservable on a device without a joined event**: the
+     * status total only refreshes for a membership, and event *creation* is attest-gated, so there is no
+     * headless route to one. But the policy's entire decision happens **before any HTTP call**, so a
+     * membership is not actually needed to test it — only a cutoff. This gives the cutoff directly.
+     *
+     * What it proves, in one line of `debug.log`: the fetch predicate returns assets at all (the wrong
+     * exclusion form returns **zero rows without raising**, which is the failure that would silently empty
+     * the library), how many the origin rules excluded, and the resulting `N`. Pair with
+     * `SNAPSYNC_SEED_POLICY`, whose assets straddle the resolution floor by construction.
+     */
+    private suspend fun runLaunchEnvPolicyProbe() {
+        val cutoff = NSProcessInfo.processInfo.environment["SNAPSYNC_POLICY_PROBE"] as? String ?: return
+
+        // Subtype census, on the RAW library (no exclusion predicate) — this is the part the status refresh
+        // below cannot show, because the production predicate drops screenshots and screen recordings at the
+        // fetch, so they never reach the count `refresh` reads. Here we look for them directly:
+        //   - `total` is the whole library, so `total - enumerated(below)` is what the predicate dropped;
+        //   - the two SELECT counts confirm the subtype bits actually match real, OS-generated assets — the
+        //     one thing a synthesized library cannot prove (`PHAssetCreationRequest` cannot set a subtype).
+        // The SELECT form `(mediaSubtypes & N) != 0` is used, NOT the exclusion form; both use the plural key.
+        val total = PHAsset.fetchAssetsWithOptions(null).count.toLong()
+        val screenshots = PHAsset.fetchAssetsWithOptions(
+            PHFetchOptions().apply { predicate = NSPredicate.predicateWithFormat("(mediaSubtypes & 4) != 0", argumentArray = null) },
+        ).count.toLong()
+        val recordings = PHAsset.fetchAssetsWithOptions(
+            PHFetchOptions().apply { predicate = NSPredicate.predicateWithFormat("(mediaSubtypes & 524288) != 0", argumentArray = null) },
+        ).count.toLong()
+        log.i {
+            "policy probe: subtype census — library total=$total, screenshots=$screenshots, " +
+                "screen-recordings=$recordings (these are what the fetch predicate drops before enumeration)"
+        }
+
+        log.i { "policy probe: refreshing the own-device total against cutoff=$cutoff" }
+        gallery.refresh(cutoff)
+        log.i { "policy probe: N=${gallery.size.value} (see the `gallery:` line above for the breakdown)" }
     }
 
     /**
@@ -936,6 +1007,10 @@ object SnapSyncRoot {
             // The app-driven tier performs its OWN uploads, so its request provider needs the token too.
             token = { attestation.token() },
             suppressedAssetIds = { downloadStore.suppressedLocalIds() },
+            // Denylisted-album membership (capability `photo-selection-policy`). Supplied on THIS tier too:
+            // both tiers funnel through the shared UploadCycle, and a policy wired on only one of them is
+            // exactly the class of bug that shipped the app-driven tier without a re-join reconciler.
+            albumExcludedAssetIds = { cutoff -> albumExcludedAssetIds(cutoff) },
             // A background session on any DEVICE — including a force-flagged one, which must be a faithful
             // proxy for the tier real 18–26.0 users run. Only the simulator is downgraded, and that is keyed
             // on actually being a simulator, not on the tier flag (`ios-url-session-upload`).

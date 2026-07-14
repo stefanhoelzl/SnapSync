@@ -26,7 +26,7 @@ always be available synchronously and SHALL always be a real, source-derived cou
 or negative sentinel). The seam exposes the count only; it does not expose individual assets, identity,
 or per-asset state.
 
-The count SHALL be **scoped by the membership's capture-date cutoff** (capability `photo-date-cutoff`),
+The count SHALL be **scoped by the membership's capture-date cutoff** (capability `photo-selection-policy`),
 which is always present — the same bound that scopes the upload cycle's discovery, so the count and the
 admitted set never diverge. There is no whole-library count.
 

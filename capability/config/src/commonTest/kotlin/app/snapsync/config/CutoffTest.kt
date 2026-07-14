@@ -51,7 +51,7 @@ class CutoffTest {
         assertTrue("" < cutoff, "an undated asset (empty creationDate) is out of scope")
     }
 
-    // ── the event-start floor (capability `photo-date-cutoff`) ─────────────────────────────────────
+    // ── the event-start floor (capability `photo-selection-policy`) ─────────────────────────────────────
 
     private val startsAt = "2026-07-14T18:00:00Z"
 

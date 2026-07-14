@@ -76,7 +76,7 @@ class JoinScreenTest {
             StatusScreen(joining(JoinPhase.Ready("Anna's Wedding", EVENT_START)), cutoff = fixedCutoff())
         }
         // The cutoff row: a caption, the two presets, and the RESULTING instant as a label — so the member
-        // always sees the value they are committing to (capability photo-date-cutoff).
+        // always sees the value they are committing to (capability photo-selection-policy).
         rule.onNodeWithText("Only photos taken after this date are shared to the event.").assertExists()
         rule.onNodeWithText("Now").assertExists()
         rule.onNodeWithText("Event start").assertExists()

@@ -43,7 +43,7 @@ private const val EVENT_F = "22222222-2222-4222-8222-222222222222"
  * `GET /event/:id` details gate, register-only enrollment PUT, and the switch composition — asserting
  * both `UiState` and world outcomes (config provisioned, manifest membership landed).
  */
-/** A membership always carries a cutoff (capability `photo-date-cutoff`). */
+/** A membership always carries a cutoff (capability `photo-selection-policy`). */
 private const val CUTOFF = "2026-01-01T00:00:00Z"
 
 class JoinGateIntegrationTest {
@@ -53,7 +53,7 @@ class JoinGateIntegrationTest {
         // A LEGACY event — registered with no `startsAt`, as every marker written before start dates
         // existed. The mini-edge synthesizes one from `createdAt`, which (faithfully to the real backend's
         // `toISOString()`) carries MILLISECONDS. The loaded phase must therefore show a SECOND-PRECISION
-        // value (the `photo-date-cutoff` format invariant the iOS fetch predicate depends on), and
+        // value (the `photo-selection-policy` format invariant the iOS fetch predicate depends on), and
         // confirming must persist precisely what the surface displayed.
         val scope = CoroutineScope(coroutineContext + Job())
         try {

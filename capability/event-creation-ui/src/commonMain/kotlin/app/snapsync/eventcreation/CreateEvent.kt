@@ -12,12 +12,12 @@ import kotlinx.coroutines.launch
  * - on [CreateOutcome.Created], hands the returned `eventId` to [onMinted] (the composition root routes
  *   it into the pending-join gate, non-auto-confirmed — the creator loads the event, picks a
  *   capture-date cutoff, and confirms like any joiner) and returns the status to [CreationStatus.Idle]
- *   (the pending join now drives the reduction — see `event-creation-ui` / `photo-date-cutoff`);
+ *   (the pending join now drives the reduction — see `event-creation-ui` / `photo-selection-policy`);
  * - on failure, sets [CreationStatus.Failed] with the matching reason and opens no gate.
  *
  * Because create and scan converge on that one gate, the creator is bound by the **same floor** as every
  * other member: the start date they just chose is the floor on their own cutoff too (capability
- * `photo-date-cutoff`). That is not a special case here — it simply falls out, and this use-case does no
+ * `photo-selection-policy`). That is not a special case here — it simply falls out, and this use-case does no
  * clamping of its own.
  *
  * It never inspects `PermissionStatus`: a missing grant surfaces afterward via the existing

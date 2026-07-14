@@ -17,7 +17,7 @@ high-entropy **canonical UUID**; possession of it is the upload capability (the 
 by event id alone). `autoJoin` SHALL default to `false` when absent; it is a **dev/test** hint that
 requests the join gate auto-confirm (see capability `join-event`). `minPhotoDate` SHALL be absent by
 default; it is a **dev/test** capture-date cutoff (a UTC `yyyy-MM-dd'T'HH:mm:ss'Z'` string, capability
-`photo-date-cutoff`) that, on an auto-confirmed join, forces a specific cutoff so a headless launch can
+`photo-selection-policy`) that, on an auto-confirmed join, forces a specific cutoff so a headless launch can
 observe date filtering. `direction` SHALL be absent by default; it is a **dev/test**
 participation-direction override — one of `both`, `upload`, or `download` — that, on an auto-confirmed
 join, forces the joined membership's direction (see capability `join-event`). `saveToAlbum` SHALL be
@@ -98,7 +98,7 @@ deeplink wire type `EventLinkPayload`): `eventId` is the joined event; `name` is
 name — a **required, non-null** value (the join gate only provisions from a loaded phase that carries a
 name, capability `join-event`; a legacy item persisted without a name decodes to an empty string and is
 refreshed on foreground, so the type is never null); `minPhotoDate` is this device's chosen capture-date
-cutoff for the event (capability `photo-date-cutoff`), **nullable** (absent = whole-library scope);
+cutoff for the event (capability `photo-selection-policy`), **nullable** (absent = whole-library scope);
 `direction` is this device's chosen participation direction — a `Direction` enum with values `Both`,
 `UploadOnly`, `DownloadOnly` — that **SHALL default to `Both`** when absent from persisted or decoded
 state; `saveToAlbum` is whether this membership gathers its synced photos into an event album (capability
@@ -151,7 +151,7 @@ The capability SHALL provide an iOS adapter (`iosMain`) implementing both `Confi
 `name`, its **required, non-null** `minPhotoDate`, its `direction`, and its `saveToAlbum`) as a single
 Keychain item under a **shared keychain-access-group** (paired with an App Group) so the background
 upload extension can read the same event config — the extension reads the `eventId`, the `minPhotoDate`
-(the cutoff that scopes its upload cycle, capability `photo-date-cutoff`), **and the `saveToAlbum` flag**
+(the cutoff that scopes its upload cycle, capability `photo-selection-policy`), **and the `saveToAlbum` flag**
 (to decide whether to add completed uploads to the event album, capability `event-album`). It SHALL seed
 its `config` `StateFlow` **synchronously** at construction by reading the Keychain item (mapping a missing
 item to `null`), and `save` SHALL write the item and then emit. `clear` SHALL delete the item and then
@@ -170,7 +170,7 @@ read, preserving its value exactly.
 An item lacking `minPhotoDate` SHALL **fail to decode and read as no config** (`config.value == null`),
 rather than decoding to any default. No default cutoff SHALL be substituted at decode time: the store
 seeds synchronously and cannot consult the event's `createdAt`, and the empty string is not a legal cutoff
-(capability `photo-date-cutoff`, *Cutoff string format invariant*). The decode failure SHALL be logged.
+(capability `photo-selection-policy`, *Cutoff string format invariant*). The decode failure SHALL be logged.
 The device therefore presents the setup gate and the user re-scans the invite; neither the app nor the
 extension uploads while no config is readable. The item SHALL persist across app updates and survive
 process death.
@@ -272,7 +272,7 @@ event's `name` **and** `createdAt` before the confirm, and provision (save the c
 the chosen cutoff) only on confirm. On **create**, the create path SHALL route the minted `eventId` into
 that **same** join gate (capability `event-creation-ui`), which fetches `GET /events/:id` for the `name`
 and `createdAt` and provisions on confirm — the create path itself SHALL save no config directly. In both
-paths the fetched `createdAt` SHALL seed the default cutoff (capability `photo-date-cutoff`). The event
+paths the fetched `createdAt` SHALL seed the default cutoff (capability `photo-selection-policy`). The event
 `name` is **required and non-null**: the join gate treats a details response lacking a name as a
 retryable failure, never a loaded phase, so a provisioned `EventConfig` always carries a real name (the
 backend enforces name-required on create, capability `event-creation`). The name SHALL be refreshed by

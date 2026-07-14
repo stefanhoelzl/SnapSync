@@ -81,7 +81,7 @@ replace the prior object, and any transient staleness SHALL self-heal on the nex
 The manifest's entries SHALL derive from a device-global accumulator holding every discovered,
 not-deleted asset with its manifest detail. Each event's manifest SHALL be the date-filtered
 projection of that accumulator — the assets whose capture date is at or after **the device's configured
-start for that event** (its per-membership capture-date cutoff, capability `photo-date-cutoff`). Under a
+start for that event** (its per-membership capture-date cutoff, capability `photo-selection-policy`). Under a
 whole-library scope (no cutoff) the projection SHALL be the identity over the accumulator. The
 accumulator SHALL remain device-global even when a cutoff is set — it holds every discovered asset,
 including those excluded from the current projection — so that a differing cutoff (a future edit, or a

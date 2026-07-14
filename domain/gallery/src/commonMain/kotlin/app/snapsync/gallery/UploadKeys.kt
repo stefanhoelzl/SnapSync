@@ -80,6 +80,20 @@ const val RESOURCE_META_ORIGINAL_FILENAME: String = "originalFilename"
 const val RESOURCE_META_MIME: String = "mimeContentType"
 
 /**
+ * The **origin facts** (capability `photo-selection-policy`), stashed alongside the manifest detail so the
+ * selection policy can decide in `commonMain` on a `Resource` — which is all the upload cycle ever sees (the
+ * `RawAsset` is consumed by [resourcesFrom] before the cycle is reached).
+ *
+ * The device-manifest producer reads only the three keys above by name, so these extra entries are inert to
+ * it. Values are decimal strings (`"true"`/`"false"` for the flag); [excludedAssetIds] parses them back.
+ */
+const val RESOURCE_META_MEDIA_SUBTYPES: String = "mediaSubtypes"
+const val RESOURCE_META_MEDIA_TYPE: String = "mediaType"
+const val RESOURCE_META_PIXEL_WIDTH: String = "pixelWidth"
+const val RESOURCE_META_PIXEL_HEIGHT: String = "pixelHeight"
+const val RESOURCE_META_HAS_ADJUSTMENTS: String = "hasAdjustments"
+
+/**
  * Recover the [ResourceRole] from an upload-key [filename] (`"<assetId>-<role>.<ext>"`): the role token
  * is the segment after the **last** `-` and before the `.` (`primary`/`live`; the role token carries
  * no `-`, though an `assetId` may). Defaults to [ResourceRole.PRIMARY] for an unrecognised token (never

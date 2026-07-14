@@ -20,6 +20,8 @@ private class FakeAlbumManager(
 
     override suspend fun exists(albumLocalId: String): Boolean = albumLocalId in existingIds
 
+    override suspend fun assetIdsInAlbums(titles: Set<String>, since: String): Set<String> = emptySet()
+
     override suspend fun add(albumLocalId: String, rawLocalIds: List<String>) {
         added.add(albumLocalId to rawLocalIds)
     }
@@ -102,6 +104,7 @@ class AlbumCoordinatorTest {
         val manager = object : AlbumManager {
             override suspend fun ensureCreated(name: String): String? = "x"
             override suspend fun exists(albumLocalId: String): Boolean = true
+            override suspend fun assetIdsInAlbums(titles: Set<String>, since: String): Set<String> = emptySet()
             override suspend fun add(albumLocalId: String, rawLocalIds: List<String>) = error("boom")
         }
         val store = InMemoryAlbumMapStore().apply { put(event, "album-X") }
