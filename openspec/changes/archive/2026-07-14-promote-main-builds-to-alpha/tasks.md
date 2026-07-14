@@ -14,9 +14,9 @@
 
 `openspec archive` is what "updates main specs"; there is no standalone `sync` in the pinned CLI. Hand-applying the delta now would collide with it. 2.2 and 2.3 are the parts `archive` **cannot** do (deltas carry no `## Purpose`, and the archive id does not exist until archive time), so they are hand edits to make **during** the archive step.
 
-- [ ] 2.1 Let `/opsx:archive` sync the delta into `openspec/specs/ios-testflight-delivery/spec.md` (the `ADDED` requirements + the `MODIFIED` "Delivery never blocks merges, and never fails silently").
-- [ ] 2.2 Rewrite that spec's `## Purpose` by hand: it currently claims delivery happens "as a release trail (**no Beta App Review**)", which the build-310 probe falsified. It must now describe the full path — merge → archive → export/upload → promote into the public `alpha` external group — and state that Beta App Review is in the loop but auto-approves for an already-approved `MARKETING_VERSION`.
-- [ ] 2.3 Add the `Decision record: changes/archive/<id>` citation for this change.
+- [x] 2.1 Let `/opsx:archive` sync the delta into `openspec/specs/ios-testflight-delivery/spec.md` (the `ADDED` requirements + the `MODIFIED` "Delivery never blocks merges, and never fails silently").
+- [x] 2.2 Rewrite that spec's `## Purpose` by hand: it currently claims delivery happens "as a release trail (**no Beta App Review**)", which the build-310 probe falsified. It must now describe the full path — merge → archive → export/upload → promote into the public `alpha` external group — and state that Beta App Review is in the loop but auto-approves for an already-approved `MARKETING_VERSION`.
+- [x] 2.3 Add the `Decision record: changes/archive/<id>` citation for this change.
 
 ## 3. Documentation
 
@@ -25,7 +25,7 @@
 
 ## 4. Verification — done, on a throwaway branch run
 
-Rather than wait for merge, the four `main`-only guards were temporarily relaxed onto `refs/heads/alpha` (commit `8c962a7`, reverted by `c88e1a7`) and the full chain `ios-build → ios-deliver → ios-promote` was run for real on [run 29353145285](https://github.com/stefanhoelzl/SnapSync/actions/runs/29353145285), producing **build 318**. All four jobs green.
+Rather than wait for merge, the four `main`-only guards were temporarily relaxed onto `refs/heads/alpha` by a throwaway commit (since dropped from history — the repo rebase-merges, so a commit titled *"TEMP: DO NOT MERGE"* would otherwise have landed on `main` forever), and the full chain `ios-build → ios-deliver → ios-promote` was run for real on [run 29353145285](https://github.com/stefanhoelzl/SnapSync/actions/runs/29353145285), producing **build 318**. All four jobs green.
 
 - [x] 4.1 Confirmed against the live App Store Connect API, not just a green check: build 318 is **in the `alpha` group**, `externalBuildState: BETA_APPROVED`, `autoNotifyEnabled: false`. The suppression held — no tester was notified. (The group had **0 testers** at the time, so nothing was actually distributed.)
 - [x] 4.2 Measured — **and the estimate in `design.md` was badly wrong, in the safe direction.** `ios-promote` did its work in **8 seconds**: the build was discoverable on the *first* lookup (zero retries) and already `VALID` 96 s after upload. The predicted "3–15 min of waiting" does not exist for an app this size. `FIND_TIMEOUT_S = 600` and `--max-build-processing-wait 20` are therefore vastly slack — **left as-is deliberately**: they cost nothing on a fast day and are the only thing standing between a slow day at Apple and a red run. Tightening them would trade real safety for no gain. The *reasoning* for Ubuntu still holds (no Apple toolchain needed), but the "keep the idle off a macOS runner" premise it was sold on was inflated.
