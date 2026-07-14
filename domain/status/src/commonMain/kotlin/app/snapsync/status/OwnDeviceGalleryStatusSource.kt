@@ -3,6 +3,7 @@ package app.snapsync.status
 import app.snapsync.gallery.GalleryResourceEnumerator
 import app.snapsync.gallery.GalleryStatusSource
 import app.snapsync.gallery.RESOURCE_META_CREATION_DATE
+import app.snapsync.gallery.excludedAssetIds
 import co.touchlab.kermit.Logger
 import kotlin.time.TimeSource
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -22,7 +23,7 @@ import kotlinx.coroutines.flow.asStateFlow
  * downloaded). [suppressedLocalIds] (the download store's `createdLocalId` set, byte-identical to the
  * enumerator's `assetId` form) is excluded from the total.
  *
- * **The capture-date cutoff scopes the total too** (capability `photo-date-cutoff`): an asset whose
+ * **The capture-date cutoff scopes the total too** (capability `photo-selection-policy`): an asset whose
  * `creationDate` precedes [photoCutoff] is neither uploaded nor listed in the manifest, so counting it
  * would peg upload progress permanently below 100% ("pending" forever). The total therefore counts only
  * assets at or after the cutoff — the same set the upload cycle admits — so the joined screen settles to
@@ -43,6 +44,11 @@ import kotlinx.coroutines.flow.asStateFlow
 class OwnDeviceGalleryStatusSource(
     private val enumerator: GalleryResourceEnumerator,
     private val suppressedLocalIds: suspend () -> Set<String> = { emptySet() },
+    // Denylisted-album membership (capability `photo-selection-policy`) — the SAME lookup the upload cycle
+    // is given. The origin rules that read facts off the resource are applied inline below via
+    // `excludedAssetIds`; album membership is the one that needs a platform lookup, so it is injected.
+    // Takes the cutoff, which scopes the album member fetch exactly as it scopes the walk.
+    private val albumExcludedAssetIds: suspend (String) -> Set<String> = { emptySet() },
     private val log: Logger = Logger.withTag("gallery"),
     private val timeSource: TimeSource = TimeSource.Monotonic,
 ) : GalleryStatusSource {
@@ -64,22 +70,31 @@ class OwnDeviceGalleryStatusSource(
     suspend fun refresh(cutoff: String) {
         val started = timeSource.markNow()
         val suppressed = suppressedLocalIds()
-        // Own universe = enumerated assets minus downloads (echo) minus pre-cutoff (photo-date-cutoff) —
-        // exactly the set the upload cycle admits, so completeness can reach 100%.
+        // Own universe = enumerated assets minus downloads (echo) minus pre-cutoff minus origin-excluded
+        // (capability `photo-selection-policy`) — exactly the set the upload cycle admits, so completeness
+        // can reach 100%.
+        //
+        // The identity with the cycle's admitted set is a REQUIREMENT, not a coincidence: this runs in the
+        // app process and the cycle runs in the upload path, they enumerate independently, and any rule
+        // applied there but not here would count an asset that is never uploaded — pegging the joined screen
+        // below 100% forever, which is the exact failure the cutoff scoping already exists to prevent.
         val enumerated = enumerator.enumerate(cutoff)
         val preCutoff = enumerated.count { (it.metadata[RESOURCE_META_CREATION_DATE] ?: "") < cutoff }
+        val originExcluded = excludedAssetIds(enumerated) + albumExcludedAssetIds(cutoff)
         val size = enumerated
             .asSequence()
             .filter { (it.metadata[RESOURCE_META_CREATION_DATE] ?: "") >= cutoff }
             .map { it.assetId }
             .filter { it !in suppressed }
+            .filter { it !in originExcluded }
             .distinct()
             .count()
         _size.value = size
         val elapsed = started.elapsedNow()
         log.i {
             "gallery: enumerated ${enumerated.size} resource(s) since $cutoff " +
-                "($preCutoff over-returned pre-cutoff, ${suppressed.size} suppressed) " +
+                "($preCutoff over-returned pre-cutoff, ${suppressed.size} suppressed, " +
+                "${originExcluded.size} origin-excluded) " +
                 "→ N=$size own in-scope asset(s) in ${elapsed.inWholeMilliseconds}ms"
         }
     }

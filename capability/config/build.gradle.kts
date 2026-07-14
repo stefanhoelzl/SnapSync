@@ -12,7 +12,7 @@ kotlin {
         commonMain.dependencies {
             api(libs.coroutines.core)
             implementation(libs.kotlinx.serialization.json)
-            // Capability `photo-date-cutoff`: "now" + local→UTC conversion for the capture-date cutoff.
+            // Capability `photo-selection-policy`: "now" + local→UTC conversion for the capture-date cutoff.
             implementation(libs.kotlinx.datetime)
             // The three-state Keychain read (`KeychainRead`) that `ConfigRead` is derived from —
             // `api`, because it appears in `configReadFrom`'s public signature. The mapping is pure and
@@ -24,7 +24,7 @@ kotlin {
             implementation(libs.coroutines.test)
         }
         iosMain.dependencies {
-            // The Keychain store logs a legacy-item decode failure (capability `photo-date-cutoff`):
+            // The Keychain store logs a legacy-item decode failure (capability `photo-selection-policy`):
             // a cutoff-less item reads as no config, and that must be diagnosable, not mysterious.
             implementation(libs.kermit)
         }

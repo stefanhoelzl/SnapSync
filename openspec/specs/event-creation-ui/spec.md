@@ -25,7 +25,7 @@ state port, consumed separately by the presentation container (mirroring the
 - `EventCreator` (command port): `fun create(name: String, startsAt: String)` — fire-and-forget. It MUST
   NOT return a value and MUST NOT suspend; the outcome arrives exclusively via `CreationStatusSource`.
   `startsAt` SHALL be a **canonical cutoff string** (`yyyy-MM-dd'T'HH:mm:ss'Z'`, capability
-  `photo-date-cutoff`), already converted from the user's local pick by the caller — so the capability
+  `photo-selection-policy`), already converted from the user's local pick by the caller — so the capability
   needs no clock, no timezone, and no dependency on the cutoff codec.
 - `CreationStatusSource` (state port): exposes `creationStatus: StateFlow<CreationStatus>`, a
   level-triggered holder whose current value is always available synchronously; every emission is the
@@ -68,7 +68,7 @@ event's details, shows its name, and offers the cutoff selector defaulting to th
 completes the **same** confirm-to-enroll-and-provision flow every joiner uses.
 
 The creator is therefore subject to the **same floor as every other member** (capability
-`photo-date-cutoff`): the start date they just chose is the floor on their own cutoff too. This is not a
+`photo-selection-policy`): the start date they just chose is the floor on their own cutoff too. This is not a
 special case — it falls out of create and scan converging on one gate.
 
 Because the `POST` has already minted the event, the gate holds a **real** `eventId`, performs a real
@@ -223,7 +223,7 @@ whose contents reach back to a seeded, distant-past library.
 
 The container SHALL expose an `onCreateEvent(name: String, startsAt: LocalDateTime)` intent that converts
 the picked **local** date-time into the canonical cutoff string via the injected time source (capability
-`photo-date-cutoff` — the same `CutoffFormatter` the join surface already uses, so there is exactly one
+`photo-selection-policy` — the same `CutoffFormatter` the join surface already uses, so there is exactly one
 origin of "now" and one local→UTC conversion in the app) and calls `EventCreator.create`. The container
 SHALL retain the `onOpenUrl(raw: String)` intent that decodes an incoming deeplink via the
 `deeplink-config` decoder and, on success, provisions it (the QR-join path is unchanged). The create

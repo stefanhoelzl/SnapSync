@@ -51,7 +51,7 @@ sealed interface JoinLoad {
     /**
      * [name] is the (required, non-null) event name; [startsAt] is the event's **start date** — a
      * canonical UTC `…Z` string, likewise required and non-null. It is both the cutoff row's default and
-     * its **floor** (capability `photo-date-cutoff`).
+     * its **floor** (capability `photo-selection-policy`).
      *
      * A details response lacking **either** is a transient [Failed], never a [Found] with a null name
      * (the event-album title needs one) nor one with an invented `startsAt` (a defaulted floor is a
@@ -94,7 +94,7 @@ class StatusContainerHost(
     // exercise join construct unchanged; iOS binds them to the `JoinEvent` use-case.
     private val loadJoinDetails: suspend (eventId: String) -> JoinLoad = { JoinLoad.Failed },
     // `commitJoin` = enroll (register-only empty manifest) then provision with the event's `startsAt`
-    // (capability `event-creation`), the chosen capture-date cutoff (capability `photo-date-cutoff`;
+    // (capability `event-creation`), the chosen capture-date cutoff (capability `photo-selection-policy`;
     // always present), the chosen participation `direction` (capability `join-event`), and whether the
     // join opted into an event album (`saveToAlbum`, capability `event-album`), returning `true` when
     // joined. NB the CLAMP (`minPhotoDate = max(chosen, startsAt)`) is applied on the far side of this
@@ -110,7 +110,7 @@ class StatusContainerHost(
             saveToAlbum: Boolean,
         ) -> Boolean =
         { _, _, _, _, _, _ -> false },
-    // Supplies "now" as a cutoff string and converts a local pick (capability `photo-date-cutoff`).
+    // Supplies "now" as a cutoff string and converts a local pick (capability `photo-selection-policy`).
     // Injected so the conversion and the not-started comparison are unit-tested against a fixed clock on
     // JVM and the iOS simulator; the screen receives an already-resolved, non-null default.
     private val cutoffFormatter: CutoffFormatter = SystemCutoffFormatter(),
@@ -366,7 +366,7 @@ class StatusContainerHost(
 
     /**
      * The event's `createdAt` **normalized** into a cutoff, falling back to **now** (capability
-     * `photo-date-cutoff`). A membership always carries a cutoff, so a missing or unparseable
+     * `photo-selection-policy`). A membership always carries a cutoff, so a missing or unparseable
      * `createdAt` — a malformed event marker — must not leave the join surface with an empty cutoff row
      * and an enabled confirm, which would join at whole-library scope and upload the whole camera roll to
      * the event.
@@ -464,7 +464,7 @@ class StatusContainerHost(
         val current = configSource.config.value
         if (current != null && current.eventId != eventId) leave()
         // The auto-fired confirm uses the event's `startsAt` as the cutoff, unless the deeplink supplied
-        // an explicit dev/test one (capability `photo-date-cutoff`). Never an absent cutoff — the headless
+        // an explicit dev/test one (capability `photo-selection-policy`). Never an absent cutoff — the headless
         // path has no surface to notice one.
         //
         // An explicit cutoff is passed through RAW and clamped on the far side of `commitJoin`, inside

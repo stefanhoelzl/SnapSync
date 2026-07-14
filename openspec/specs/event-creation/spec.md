@@ -100,7 +100,7 @@ string, or does not match that exact shape SHALL yield `400` and SHALL NOT make 
 
 The canonical form is required **at the boundary**, rather than accepted loosely and normalized, because
 `startsAt` is consumed directly as a capture-date cutoff: it is compared lexicographically against
-PhotoKit `creationDate` and parsed by a bare `NSISO8601DateFormatter` (capability `photo-date-cutoff`).
+PhotoKit `creationDate` and parsed by a bare `NSISO8601DateFormatter` (capability `photo-selection-policy`).
 A marker that stores the canonical form is usable as a cutoff with **no** client-side normalization —
 unlike `createdAt`, which the backend mints with `new Date().toISOString()` and which therefore always
 carries milliseconds.

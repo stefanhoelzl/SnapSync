@@ -24,6 +24,24 @@ interface AlbumManager {
      * [albumLocalId]. Best-effort: a missing asset is skipped, adding an already-present asset is a no-op.
      */
     suspend fun add(albumLocalId: String, rawLocalIds: List<String>)
+
+    /**
+     * The **normalized** asset ids (`'/'→'_'`, as the ledger and upload keys carry them) of every asset that
+     * belongs to a **user album** whose title matches one of [titles], captured at or after [since].
+     *
+     * **Decision-free** (capability `photo-selection-policy`): the titles to look for are a *parameter*. The
+     * policy — which titles are denied — lives in `commonMain` ([DENYLISTED_ALBUM_TITLES]), never in this
+     * untestable platform shell, per the same rule that keeps album *placement* decisions out of it.
+     *
+     * Matching is on **user albums by title only**. A smart album's title is system-localized ("Screenshots"
+     * / "Bildschirmfotos"), so title-matching one is meaningless — smart albums are excluded by *subtype*
+     * elsewhere, and screenshots do not need this seam at all.
+     *
+     * Cost is proportional to the number of albums, **not** the number of assets: one collection fetch per
+     * album, with [since] pushed into the member fetch. It must never become a per-asset membership test —
+     * that is the shape that made the whole-library walk expensive in the first place.
+     */
+    suspend fun assetIdsInAlbums(titles: Set<String>, since: String): Set<String>
 }
 
 /**

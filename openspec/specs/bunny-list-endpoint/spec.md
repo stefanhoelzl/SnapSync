@@ -273,7 +273,7 @@ same single-LIST per-device read the per-device list route uses). Every upstream
 manifest-directory LIST, each manifest read, each per-device file LIST) SHALL carry the storage zone's
 `AccessKey` header from configuration and never the account API key. The stored device manifest is
 **already** the device's configured date-filtered projection (its per-membership capture-date cutoff,
-`device-manifest` / `photo-date-cutoff`), so the union SHALL trust its `assets` list and SHALL NOT
+`device-manifest` / `photo-selection-policy`), so the union SHALL trust its `assets` list and SHALL NOT
 re-apply any date filter.
 
 #### Scenario: Devices enumerated with one LIST

@@ -66,6 +66,11 @@ class UrlSessionUploadController(
     // downloaded + imported. Read once per cycle so an imported foreign asset is never re-uploaded (the
     // echo) — essential now that this tier writes the device manifest and so appears in the union.
     private val suppressedAssetIds: suspend () -> Set<String>,
+    // Denylisted-album membership (capability `photo-selection-policy`) — the SAME port the PhotoKit tier
+    // gets. Both tiers funnel through the shared UploadCycle, so the policy must be supplied on both or the
+    // 18–26.0 tier would happily upload the WhatsApp album the ≥26.1 tier refuses. Takes the cutoff, which
+    // scopes the album member fetch.
+    private val albumExcludedAssetIds: suspend (String) -> Set<String> = { emptySet() },
     // False on the dev/test-forced (simulator) path — the sim can't run a background NSURLSession.
     private val useBackgroundSession: Boolean = true,
     // Fired after each in-process pump cycle so foreground upload status refreshes live (the app-driven
@@ -152,7 +157,7 @@ class UrlSessionUploadController(
     private suspend fun runCycle(): CycleResult = log.invocation("url-session.runCycle", result = { "$it" }) {
         configSource.reload()
         // Read the membership once: an unreadable config (including a legacy Keychain item with no cutoff,
-        // capability `photo-date-cutoff`) means not joined, so this cycle uploads nothing.
+        // capability `photo-selection-policy`) means not joined, so this cycle uploads nothing.
         val membership = configSource.config.value
         val config = membership?.let { buildUploadConfig(it.eventId, host) } ?: run {
             // No joined event (never joined, or a leave). No cycle is built — but the reconciler still runs
@@ -167,7 +172,7 @@ class UrlSessionUploadController(
         log.i { "url-session runCycle: config ok (host=${config.host}) — invoking UploadCycle" }
         val engine = SyncEngine(EdgeUploadRequestProvider(config.host, deviceId, token), ledger)
         val cycleEventId = config.eventId // this cycle's event (config is re-read each cycle)
-        // Per-device capture-date cutoff (photo-date-cutoff): scopes the discovery walk, the byte-upload
+        // Per-device capture-date cutoff (photo-selection-policy): scopes the discovery walk, the byte-upload
         // filter, AND the device-manifest projection. Always present. Read fresh with the config.
         val cutoff = membership.minPhotoDate
         val result = UploadCycle(
@@ -185,7 +190,7 @@ class UrlSessionUploadController(
                     withTimeout(DEVICE_MANIFEST_TIMEOUT_MS) {
                         deviceManifestProducer.produce(
                             eventId = cycleEventId,
-                            startDate = cutoff, // per-device capture-date cutoff (photo-date-cutoff)
+                            startDate = cutoff, // per-device capture-date cutoff (photo-selection-policy)
                             discovered = deviceManifestAssetsFromResources(discovery.resources),
                             removedAssetIds = discovery.removedAssetIds.toSet(),
                             fullEnumeration = discovery.fullEnumeration,
@@ -201,7 +206,9 @@ class UrlSessionUploadController(
             },
             // Echo-suppression: never re-upload an asset this device downloaded + imported.
             suppressedAssetIds = suppressedAssetIds,
-            // Per-device capture-date cutoff: pre-cutoff photos' bytes never upload (photo-date-cutoff).
+            // Denylisted-album membership (capability `photo-selection-policy`), scoped by the cutoff.
+            albumExcludedAssetIds = { albumExcludedAssetIds(cutoff) },
+            // Per-device capture-date cutoff: pre-cutoff photos' bytes never upload (photo-selection-policy).
             photoCutoff = { cutoff },
             // Event album (capability `event-album`): add this cycle's completed own photos to the album.
             placeInAlbum = albumPlacement,

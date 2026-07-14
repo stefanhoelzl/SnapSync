@@ -37,7 +37,7 @@ export function validateEventName(raw: unknown): string | null {
 }
 
 /**
- * The canonical capture-date cutoff shape (capability `photo-date-cutoff`): UTC `Z`, SECOND precision,
+ * The canonical capture-date cutoff shape (capability `photo-selection-policy`): UTC `Z`, SECOND precision,
  * no offset, no fractional seconds. Anchored, so no prefix/suffix slips through.
  */
 const CUTOFF_RE = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$/;

@@ -85,7 +85,7 @@ class BackendStore {
     /**
      * Register an event marker (the `POST /events` effect / a direct injection), with an optional name and
      * an optional [startsAt] — the event's start date, which is both the default and the FLOOR for every
-     * member's capture-date cutoff (capability `photo-date-cutoff`).
+     * member's capture-date cutoff (capability `photo-selection-policy`).
      *
      * An event registered with **no** `startsAt` models a marker written before start dates existed; the
      * mini-edge's `GET` then synthesizes one from `createdAt`, exactly as the real backend does.

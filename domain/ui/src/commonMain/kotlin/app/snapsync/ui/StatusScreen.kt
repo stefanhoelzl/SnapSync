@@ -61,7 +61,7 @@ fun StatusScreen(
     onCreateEvent: (String, LocalDateTime) -> Unit = { _, _ -> },
     transientError: String? = null,
     // Join-gate actions (capability `join-event`), routed to the container intents. The confirm/retry
-    // actions carry the chosen capture-date cutoff (capability `photo-date-cutoff`; always present),
+    // actions carry the chosen capture-date cutoff (capability `photo-selection-policy`; always present),
     // the chosen participation direction (capability `join-event`), and the album opt-in (`saveToAlbum`,
     // capability `event-album`).
     onConfirmJoin: (String, Direction, Boolean) -> Unit = { _, _, _ -> },
@@ -151,7 +151,7 @@ fun StatusScreen(
  * whichever phase the screen happened to mount at.
  */
 /**
- * The event's start, from whichever phase carries it (capability `photo-date-cutoff`).
+ * The event's start, from whichever phase carries it (capability `photo-selection-policy`).
  *
  * Unlike the seed it replaces, this covers **Committing and CommitFailed too**. Those phases carry
  * `startsAt` precisely because a Retry commits WITHOUT passing back through the loaded phase — reading it
@@ -168,7 +168,7 @@ private fun JoinPhase.startsAt(): String? = when (this) {
 
 /**
  * The full-screen "Join event" surface (capability `join-event`): the event summary is the hero, with
- * the participation-direction row, the capture-date cutoff row (capability `photo-date-cutoff`), and the
+ * the participation-direction row, the capture-date cutoff row (capability `photo-selection-policy`), and the
  * save-to-album opt-in (capability `event-album`), with Join / Cancel pinned to the bottom. Further future
  * options slot in as more rows in this same column. Renders each [JoinPhase]: loading details,
  * ready-to-join, blocked (invalid invite), a retryable load/commit failure.
@@ -190,7 +190,7 @@ private fun JoiningEventScreen(
     onRetryLoad: () -> Unit,
     onRetryJoin: (String, Direction, Boolean) -> Unit,
 ) {
-    // The cutoff is one of exactly two presets (capability `photo-date-cutoff`), defaulting to the event's
+    // The cutoff is one of exactly two presets (capability `photo-selection-policy`), defaulting to the event's
     // start. A join with no cutoff is unrepresentable rather than merely guarded — it would upload the
     // whole library.
     //
@@ -371,7 +371,7 @@ private fun SyncDirectionChoice.toDirection(): Direction = when (this) {
 }
 
 /**
- * The capture-date cutoff row on the join surface (capability `photo-date-cutoff`): a caption and a
+ * The capture-date cutoff row on the join surface (capability `photo-selection-policy`): a caption and a
  * two-preset selector — **Now** or **Event start** — with the resulting instant shown as a label, so the
  * member always sees the value they are committing to. Only photos taken at or after it are uploaded and
  * shared into the event.
@@ -424,7 +424,7 @@ private fun SwitchDialog(
 ) {
     val current = currentEventName ?: "this event"
     // The compact switch dialog has no picker: it uses the new event's default cutoff — its `startsAt`,
-    // which is also the FLOOR, so the switch lands exactly on it (capability `photo-date-cutoff`) — and the
+    // which is also the FLOOR, so the switch lands exactly on it (capability `photo-selection-policy`) — and the
     // default participation direction ([Direction.Both]).
     // Remembered so a retry after a failed commit reuses it (the CommitFailed phase carries name+startsAt).
     var cutoff by remember { mutableStateOf<String?>(null) }

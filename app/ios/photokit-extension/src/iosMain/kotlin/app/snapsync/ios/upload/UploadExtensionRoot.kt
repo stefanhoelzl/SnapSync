@@ -3,6 +3,7 @@ package app.snapsync.ios.upload
 import app.snapsync.attest.AttestStore
 import app.snapsync.attest.KeychainAttestStore
 import app.snapsync.album.AlbumCoordinator
+import app.snapsync.album.DENYLISTED_ALBUM_TITLES
 import app.snapsync.album.IosAlbumManager
 import app.snapsync.album.IosAlbumMapStore
 import app.snapsync.config.ConfigRead
@@ -137,8 +138,10 @@ object UploadExtensionRoot {
 
     // Event album (capability `event-album`): the coordinator over the shared leave-surviving map and the
     // PhotoKit album manager. The extension only ever ADDS completed uploads (the app is the sole creator).
+    // The manager is hoisted because the selection policy also reads it (denylisted-album membership).
+    private val albumManager: IosAlbumManager by lazy { IosAlbumManager() }
     private val albumCoordinator: AlbumCoordinator by lazy {
-        AlbumCoordinator(IosAlbumManager(), IosAlbumMapStore())
+        AlbumCoordinator(albumManager, IosAlbumMapStore())
     }
 
     // The stable per-install device id (shared Keychain, minted once): the `/files/devices/<deviceId>/`
@@ -269,7 +272,7 @@ object UploadExtensionRoot {
         val config = (gate as? CycleGate.Run)?.config
         if (payload == null || config == null) {
             // Definitively not joined: no item at all, a legacy item that cannot decode (capability
-            // `photo-date-cutoff`, where reading as no-config is the deliberate safe outcome), a missing
+            // `photo-selection-policy`, where reading as no-config is the deliberate safe outcome), a missing
             // baked host, or a leave. Nothing to upload, so no cycle is built — a clean no-op completion,
             // never a failure.
             //
@@ -299,7 +302,7 @@ object UploadExtensionRoot {
         // by `withTimeout` so it can never stall the cycle to the OS's force-kill; it is best-effort
         // and write-only in v1, so any failure/timeout just retries next cycle (skip-if-unchanged
         // makes that cheap).
-        // Capture-date cutoff (capability `photo-date-cutoff`): this device's per-membership
+        // Capture-date cutoff (capability `photo-selection-policy`): this device's per-membership
         // `EventConfig.minPhotoDate` (v1: the single joined event) — always present. It scopes the
         // discovery walk, the byte-upload filter (below), and the device-manifest projection
         // (`startDate`), so the bytes uploaded equal the assets shared into the event union.
@@ -316,7 +319,7 @@ object UploadExtensionRoot {
                     withTimeout(DEVICE_MANIFEST_TIMEOUT_MS) {
                         deviceManifestProducer.produce(
                             eventId = config.eventId,
-                            startDate = cutoff, // per-device capture-date cutoff (photo-date-cutoff)
+                            startDate = cutoff, // per-device capture-date cutoff (photo-selection-policy)
                             discovered = deviceManifestAssetsFromResources(discovery.resources),
                             removedAssetIds = discovery.removedAssetIds.toSet(),
                             fullEnumeration = discovery.fullEnumeration,
@@ -334,7 +337,11 @@ object UploadExtensionRoot {
             },
             // Echo-suppression: never re-upload an asset this device downloaded + imported.
             suppressedAssetIds = { suppression.suppressedLocalIds() },
-            // Per-device capture-date cutoff: pre-cutoff photos' bytes never upload (photo-date-cutoff).
+            // Denylisted-album membership (capability `photo-selection-policy`): photos a messaging app
+            // saved into its own album were received, not taken. The POLICY (which titles) is the
+            // `commonMain` constant; this only performs the lookup. Cost is O(albums), not O(assets).
+            albumExcludedAssetIds = { albumManager.assetIdsInAlbums(DENYLISTED_ALBUM_TITLES, cutoff) },
+            // Per-device capture-date cutoff: pre-cutoff photos' bytes never upload (photo-selection-policy).
             photoCutoff = { cutoff },
             // Event album (capability `event-album`): add this cycle's completed own photos to the event
             // album (extension tier, ≥26.1 — verified on device). Recover each raw `localIdentifier` from

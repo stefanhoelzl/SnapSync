@@ -11,7 +11,7 @@ import kotlinx.serialization.Serializable
  *
  * [autoJoin] is a **dev/test** hint (default `false`): when `true`, the join gate auto-confirms
  * instead of waiting for a tap (capability `join-event`). [minPhotoDate] is likewise a **dev/test**
- * key (default absent): a capture-date cutoff (UTC `…Z` string, capability `photo-date-cutoff`) that,
+ * key (default absent): a capture-date cutoff (UTC `…Z` string, capability `photo-selection-policy`) that,
  * on an auto-confirmed join, forces a specific cutoff so a headless launch can observe date filtering.
  * [direction] is likewise a **dev/test** key (default absent): a participation-direction override — one
  * of the [Direction.wire] tokens `both`/`upload`/`download` — that, on an auto-confirmed join, forces the
@@ -42,13 +42,13 @@ internal fun EventLinkPayload.sameAs(other: EventLinkPayload): Boolean =
 /**
  * The **persisted, joined-event state** (distinct from the [EventLinkPayload] wire type): the joined
  * `eventId`, the human-readable event `name`, and this device's chosen capture-date [minPhotoDate]
- * cutoff for the event (capability `photo-date-cutoff`). The name is a **required, non-null** value: the
+ * cutoff for the event (capability `photo-selection-policy`). The name is a **required, non-null** value: the
  * join gate only provisions from a loaded phase that carries a name (capability `join-event`), and the
  * backend enforces name-required on create (capability `event-creation`), so a nameless event cannot
  * exist. It defaults to `""` **only** so a legacy item persisted before the name was reliably set decodes
  * non-null (refreshed on the next foreground fetch), never a decode crash.
  *
- * [minPhotoDate] is **required and non-null**, with **no default** (capability `photo-date-cutoff`): the
+ * [minPhotoDate] is **required and non-null**, with **no default** (capability `photo-selection-policy`): the
  * per-device, per-membership capture-date cutoff, a UTC `…Z` string. A membership with no cutoff is not a
  * representable state — an absent cutoff once meant whole-library scope, which under event photo sharing
  * uploads a guest's entire camera roll to another person's event.

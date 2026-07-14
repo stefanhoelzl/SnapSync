@@ -31,7 +31,7 @@ import platform.UniformTypeIdentifiers.UTType
  * is linear in the number of assets fetched. Two defences:
  *
  * 1. The capture-date bound is pushed into the `PHFetchOptions` predicate, so only assets at or after the
- *    membership's cutoff are fetched at all (capability `photo-date-cutoff`). Previously the whole library
+ *    membership's cutoff are fetched at all (capability `photo-selection-policy`). Previously the whole library
  *    was walked and the cutoff applied afterwards — thousands of round-trips to keep an evening's photos.
  * 2. Every walk hops to [Dispatchers.Default] — Kotlin/Native has no `Dispatchers.IO` — exactly as
  *    `clearRequestedOffMain` does for the ledger's synchronous DELETE. Both app-process callers reach this
@@ -60,8 +60,9 @@ class PhotoLibraryRawAssetSource : RawAssetSource {
         }
 
     /**
-     * Push the capture-date bound into the fetch, so `assetResourcesForAsset` is issued only for in-scope
-     * assets — the difference between one round-trip per library asset and one per event photo.
+     * Push the capture-date bound **and the cheap origin exclusions** into the fetch, so
+     * `assetResourcesForAsset` is issued only for assets that could plausibly be admitted — the difference
+     * between one round-trip per library asset and one per event photo.
      *
      * **Deliberately widened by [PREDICATE_WIDEN_SECONDS].** The authoritative bound is a *lexicographic*
      * `creationDate >= since` compare on ISO-8601 strings, applied downstream in `commonMain`; this
@@ -70,12 +71,34 @@ class PhotoLibraryRawAssetSource : RawAssetSource {
      * and the downstream filter drops them, while under-returning silently loses a photo that nothing can
      * add back. So the predicate errs wide, and an unparseable bound drops it entirely rather than
      * fetching nothing.
+     *
+     * **The whole predicate is an optimization, never a decision** (capability `photo-selection-policy`): the
+     * `commonMain` filter is authoritative and runs over whatever comes back, so this MAY return a superset
+     * of the admitted set but MUST NOT return a subset. That asymmetry is why only the *subtype* exclusion
+     * rides along here and the resolution floors do not — see below.
+     *
+     * **Three device-verified constraints on PhotoKit's predicate parser** (SE2, iOS 26.5.2; these are
+     * measured facts, not preferences — re-verify on a device before adding any key):
+     *
+     * 1. A subtype exclusion MUST be written `NOT ((mediaSubtypes & N) != 0)`. The natural
+     *    `(mediaSubtypes & N) == 0` form returns **zero rows** — silently, without raising — even with the
+     *    documented plural `mediaSubtypes` key. Shipping it would starve the walk of every asset. (The
+     *    *singular* `mediaSubtype` key likewise returns zero rows without raising, so a one-character typo
+     *    here empties the library. This is almost certainly the origin of the decade of bug reports.)
+     * 2. Predicate **arithmetic** raises an uncatchable `NSException` and aborts the process, so
+     *    `pixelWidth * pixelHeight` is impossible. The megapixel floors therefore live **only** in
+     *    `commonMain`; a bounding-box approximation could ride along here, but it is deliberately omitted —
+     *    it could only ever narrow, and the floors' whole point is to be conservative.
+     * 3. `hasAdjustments` is not a supported key and likewise aborts the process. The adjustments guard is
+     *    `commonMain`-only.
      */
     private fun fetchOptionsSince(since: String): PHFetchOptions? {
         val bound = parseBound(since) ?: return null
         return PHFetchOptions().apply {
             predicate = NSPredicate.predicateWithFormat(
-                predicateFormat = "creationDate >= %@",
+                // Bit values inlined: they are stable ABI constants, which sidesteps NSNumber boxing.
+                // NB the NOT-form — see constraint (1) above. Do not "simplify" this to `== 0`.
+                predicateFormat = "creationDate >= %@ AND NOT ((mediaSubtypes & $EXCLUDED_SUBTYPE_MASK) != 0)",
                 argumentArray = listOf(bound.dateByAddingTimeInterval(-PREDICATE_WIDEN_SECONDS)),
             )
         }
@@ -86,7 +109,7 @@ class PhotoLibraryRawAssetSource : RawAssetSource {
      *
      * A bare `NSISO8601DateFormatter` uses `.withInternetDateTime`, which does not accept a `.sss`
      * fraction and returns `nil` for `2026-07-09T19:24:17.182Z`. Cutoffs are supposed to be second
-     * precision (capability `photo-date-cutoff`), and the join gate now normalizes them — but a cutoff
+     * precision (capability `photo-selection-policy`), and the join gate now normalizes them — but a cutoff
      * persisted by an older build carries the backend's raw `new Date().toISOString()` milliseconds. Losing
      * the predicate there would silently restore the whole-library fetch that trips the watchdog, so parse
      * both shapes rather than trust the invariant.
@@ -115,7 +138,7 @@ class PhotoLibraryRawAssetSource : RawAssetSource {
             // Per-asset capture timestamp (ISO-8601), reused for every resource of the asset.
             val creationDate = asset.creationDate?.let { NSISO8601DateFormatter().stringFromDate(it) } ?: ""
             // The authoritative compare is lexicographic on this exact shape (capability
-            // `photo-date-cutoff`); an undated asset sorts before every cutoff and is skipped.
+            // `photo-selection-policy`); an undated asset sorts before every cutoff and is skipped.
             if (creationDate < since) continue
             val rawResources = PHAssetResource.assetResourcesForAsset(asset).map { any ->
                 val resource = any as PHAssetResource
@@ -128,8 +151,20 @@ class PhotoLibraryRawAssetSource : RawAssetSource {
                     handle = resource, // opaque PHAssetResource, crosses uninterpreted
                 )
             }
-            // The RAW localIdentifier (with '/'); resourcesFrom normalizes it.
-            out += RawAsset(assetId = asset.localIdentifier, creationDate = creationDate, rawResources = rawResources)
+            // The RAW localIdentifier (with '/'); resourcesFrom normalizes it. The five origin facts are
+            // plain in-memory `PHAsset` properties — no extra XPC round-trip; the expensive call above is
+            // the only one per asset (capability `photo-selection-policy`). They cross as FACTS: nothing is
+            // dropped here on a subtype, a dimension, or an adjustment — the upload cycle's filter decides.
+            out += RawAsset(
+                assetId = asset.localIdentifier,
+                creationDate = creationDate,
+                rawResources = rawResources,
+                mediaSubtypes = asset.mediaSubtypes.toLong(),
+                mediaType = asset.mediaType.toLong(),
+                pixelWidth = asset.pixelWidth.toLong(),
+                pixelHeight = asset.pixelHeight.toLong(),
+                hasAdjustments = asset.hasAdjustments,
+            )
         }
         return out
     }

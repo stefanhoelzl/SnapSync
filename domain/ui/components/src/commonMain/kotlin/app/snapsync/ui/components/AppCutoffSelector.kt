@@ -18,7 +18,7 @@ import androidx.compose.ui.unit.dp
 import kotlinx.datetime.LocalDateTime
 
 /**
- * Which capture-date cutoff a joining member chose (capability `photo-date-cutoff`). A semantic value —
+ * Which capture-date cutoff a joining member chose (capability `photo-selection-policy`). A semantic value —
  * the caller maps it to an actual cutoff instant, so the design system stays decoupled from the config
  * capability (mirrors the [SyncDirectionChoice] split).
  *

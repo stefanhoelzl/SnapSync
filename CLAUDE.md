@@ -9,6 +9,16 @@ app is test equipment, not a product.
 > what was "back up everything of mine" becomes "upload a guest's whole camera roll to a stranger's
 > event". A membership's cutoff is therefore **required**, never absent.
 
+What a member contributes is decided by **one** policy at **one** place (capability
+`photo-selection-policy`, enforced in `UploadCycle`'s resource selection): the cutoff bounds *when* a photo
+was taken; the **origin exclusions** bound *what it is* — screenshots, screen recordings, GIFs,
+sub-floor-resolution received media, and members of a denylisted album (WhatsApp, Telegram, …) never enter
+an event. PhotoKit exposes **no** camera-origin flag on any iOS through 26, so the policy can only
+*subtract* known non-captures and **admits on doubt**: a stray uploaded meme is harmless and visible, while
+an event photo that silently fails to upload is invisible and unfixable. The same policy gates the byte
+upload, the device manifest (or an excluded photo leaks into the event union), **and** the status total `N`
+(or the screen pegs below 100% forever).
+
 Stack: Kotlin 2.4.0 · Compose MP 1.11.1 · JDK 25 · min iOS 18.0 · Orbit MVI · SQLDelight · Ktor.
 (Two upload tiers per OS version: OS-driven PhotoKit on iOS ≥26.1, app-driven background `URLSession`
 on iOS 18–26.0 — see the `ios-photokit-upload` / `ios-url-session-upload` specs.)
@@ -106,6 +116,26 @@ $P developer dvt launch app.snapsync --env SNAPSYNC_SEED_PHOTOS=4000 --userspace
 Why it matters: the walk's cost is one synchronous PhotoKit XPC round-trip **per asset**
 (`assetResourcesForAsset`, ~110 ms each on an SE2), so ~90 assets exhaust the 10 s scene-update watchdog.
 A one-photo dev device cannot distinguish a bounded fetch from an unbounded one.
+
+**These seeds never upload, by design** — they are dated 2001, i.e. before any plausible cutoff. (They are
+also 64×64, three orders of magnitude below the selection policy's 3 MP image floor, so they are doubly out
+of scope.) They exercise the *walk*, not the upload.
+
+**Seeding for the selection policy.** `SNAPSYNC_SEED_POLICY=<n>` seeds `n` assets dated **an hour ahead**
+— past any cutoff an event created today can carry (the cutoff is clamped to `max(chosen, startsAt)`) —
+**alternating above and below the 3 MP floor**. It exists because a dev device may hold *no real photos at
+all*, and without an asset the policy admits, a run cannot tell "the policy correctly excluded everything"
+from "the fetch predicate silently returned nothing" — and the wrong predicate form returns **zero rows
+without raising**, so that is precisely the confusion that matters. One launch answers everything: the walk
+returns assets, exactly the below-floor half is `origin-excluded`, and only the rest uploads.
+```
+$P developer dvt launch app.snapsync --env SNAPSYNC_SEED_POLICY=20 \
+  --env SNAPSYNC_DEEPLINK="snapsync://config?v=3&d=<…fresh event…>" --userspace
+```
+Read the outcome from the two log lines the policy emits **before any HTTP call** — so an attestation `401`
+can never be mistaken for an exclusion:
+- app: `gallery: enumerated N resource(s) … (M origin-excluded) → N=…`
+- extension: `origin policy dropped N resource(s)`
 
 `SNAPSYNC_DEEPLINK` is a **dev/test trigger** (capability `ios-app-shell`): on launch the app
 forwards it through the same path as a scanned QR, (re)provisioning the event. It is read **once per
@@ -314,7 +344,7 @@ agent use and inject that one instead.
 :domain:logging        cross-cutting diagnostics: logInvocation helper + LogContext ambient prefix + consolidated iOS device-log writers (Kermit-only leaf) (capability diagnostic-logging)
 :domain:status         ledger → SyncStatus projection (read-only)
 :domain:permission     permission seam (3-state)
-:domain:gallery        library resource-enumeration seam + upload-key/role layout (uploadKey, resourceRole, assetIdFromUploadKey, normalizeAssetId) + device manifest
+:domain:gallery        library resource-enumeration seam + upload-key/role layout (uploadKey, resourceRole, assetIdFromUploadKey, normalizeAssetId) + device manifest + the origin-exclusion rules of the selection policy (SelectionPolicy.excludedAssetIds — screenshots/screen-recordings by mediaSubtype, GIFs by MIME, resolution floors; capability photo-selection-policy). The policy lives HERE because :capability:upload and :domain:status must apply the identical rules and it is the only module both can see
 :domain:download-store  app-written download store + read-only SuppressionSource projection (echo-suppression)
 :domain:presentation   Orbit MVI container + UiState (Compose-free, no engine dep)
 :domain:ui             Compose screens (written against App* only)
@@ -325,7 +355,7 @@ agent use and inject that one instead.
 :capability:device-id  stable per-install device identity (shared Keychain)
 :capability:download   foreign-photo download → stage → import controller (photo-download)
 :capability:join       join use-case + DeviceEnroller (writes the per-event device manifest = the physical fact of membership) + EventDetailsSource (join-event)
-:capability:album      tested commonMain album orchestration: resolve-or-create the per-event album, dispatch-or-skip an add; PhotoKit behind seams (event-album)
+:capability:album      tested commonMain album orchestration: resolve-or-create the per-event album, dispatch-or-skip an add; PhotoKit behind seams (event-album). Also the album DENYLIST (DENYLISTED_ALBUM_TITLES — WhatsApp, Telegram, …) + the decision-free AlbumManager.assetIdsInAlbums membership lookup it feeds (capability photo-selection-policy)
 :capability:push       APNs token registration + PushReceiver seam + EventNotifier (POST /events/<id>/notify) (push-registration, upload-completion-notify)
 :capability:membership event-membership lifecycle: extension-side re-join reconciliation + leave use-case + LeaveNotifier (DELETE /events/<id>/devices/<id>) + device-file listing seam
 :capability:event-creation-ui  create-event screen seams: EventCreator/CreationStatusSource + HTTP creator

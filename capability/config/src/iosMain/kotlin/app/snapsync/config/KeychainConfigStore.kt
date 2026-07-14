@@ -24,7 +24,7 @@ import kotlinx.serialization.json.Json
  * No `kSecAttrAccessGroup` is set: with the app's `keychain-access-groups` entitlement declaring the
  * shared group as its (only/first) entry, items land in that shared group by default, so the
  * background upload extension — declaring the same entitlement — reads the same item (its `eventId`
- * **and** its `minPhotoDate` cutoff, capability `photo-date-cutoff`; not its `direction`, which is an
+ * **and** its `minPhotoDate` cutoff, capability `photo-selection-policy`; not its `direction`, which is an
  * app-side upload-arm gate — capability `join-event`). The whole [EventConfig] is serialized regardless,
  * so `direction` round-trips; a legacy item written before the field existed decodes to `Direction.Both`
  * (`ignoreUnknownKeys`/default). This avoids hardcoding the team-id prefix in code; sharing is purely an
@@ -74,7 +74,7 @@ class KeychainConfigStore(
         }
         return configReadFrom(raw) { stored ->
             // A legacy item that does not decode reads as no config, deliberately (capability
-            // `photo-date-cutoff`): the device falls back to the setup gate and the user re-scans, and
+            // `photo-selection-policy`): the device falls back to the setup gate and the user re-scans, and
             // nothing uploads meanwhile. No default cutoff is substituted — this store seeds
             // synchronously and cannot fetch the event's `createdAt`, and the empty string is not a
             // legal cutoff (it would admit the whole library).

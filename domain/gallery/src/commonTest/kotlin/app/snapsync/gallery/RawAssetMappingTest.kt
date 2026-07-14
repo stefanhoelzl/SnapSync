@@ -48,6 +48,57 @@ class RawAssetMappingTest {
     }
 
     @Test
+    fun origin_facts_survive_the_mapping_onto_every_resource_of_the_asset() {
+        val asset = RawAsset(
+            assetId = "ABC/L0/001",
+            creationDate = "2026-07-01T00:00:00Z",
+            rawResources = listOf(
+                raw(1L, uti = "public.heic", mime = "image/heic", name = "IMG_0001.HEIC"),
+                raw(9L, uti = "com.apple.quicktime-movie", mime = "video/quicktime", name = "IMG_0001.MOV"),
+            ),
+            mediaSubtypes = SUBTYPE_SCREENSHOT,
+            mediaType = MEDIA_TYPE_IMAGE,
+            pixelWidth = 750,
+            pixelHeight = 1334,
+            hasAdjustments = true,
+        )
+
+        val resources = resourcesFrom(listOf(asset))
+
+        // Every resource of the asset carries the asset's facts — the policy decides per-asset, so the
+        // paired video must not be left without the facts that condemn (or save) its primary.
+        assertEquals(2, resources.size)
+        for (r in resources) {
+            assertEquals("${SUBTYPE_SCREENSHOT}", r.metadata[RESOURCE_META_MEDIA_SUBTYPES])
+            assertEquals("${MEDIA_TYPE_IMAGE}", r.metadata[RESOURCE_META_MEDIA_TYPE])
+            assertEquals("750", r.metadata[RESOURCE_META_PIXEL_WIDTH])
+            assertEquals("1334", r.metadata[RESOURCE_META_PIXEL_HEIGHT])
+            assertEquals("true", r.metadata[RESOURCE_META_HAS_ADJUSTMENTS])
+        }
+    }
+
+    @Test
+    fun the_walk_stays_decision_free_a_screenshot_is_mapped_not_dropped() = runTest {
+        // The walk and the mapping carry facts; they never exclude. A screenshot must cross this seam intact
+        // — the authoritative filter lives downstream in the upload cycle, and putting it here instead would
+        // hide it from `:capability:upload`'s tests and from the status total.
+        val screenshot = RawAsset(
+            assetId = "S1",
+            creationDate = "2026-07-01T00:00:00Z",
+            rawResources = listOf(raw(1L, uti = "public.png", mime = "image/png", name = "IMG_0002.PNG")),
+            mediaSubtypes = SUBTYPE_SCREENSHOT,
+            pixelWidth = 750,
+            pixelHeight = 1334,
+        )
+        val source = InMemoryRawAssetSource(listOf(screenshot))
+
+        val resources = ResourceEnumerator(source).enumerate("2026-01-01T00:00:00Z")
+
+        assertEquals(1, resources.size, "the walk emits the screenshot as a fact — it does not drop it")
+        assertEquals(setOf("S1"), excludedAssetIds(resources), "…and the policy is what excludes it")
+    }
+
+    @Test
     fun opaque_handle_rides_into_resource_data_uninterpreted() {
         val marker = Any()
         val resources = resourcesFrom(listOf(RawAsset("A", "", listOf(raw(1L, handle = marker)))))
@@ -81,7 +132,7 @@ class RawAssetMappingTest {
 
     @Test
     fun the_bounded_walk_excludes_assets_captured_before_the_bound() = runTest {
-        // There is no unbounded walk (capability `photo-date-cutoff`): the whole-library enumeration cost
+        // There is no unbounded walk (capability `photo-selection-policy`): the whole-library enumeration cost
         // one synchronous PhotoKit round-trip per asset, and a membership always has a cutoff to scope it.
         val source = InMemoryRawAssetSource(
             listOf(

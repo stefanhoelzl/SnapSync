@@ -9,7 +9,7 @@ import kotlinx.datetime.toLocalDateTime
 
 /**
  * Bridges the join screen's **local** date-time picker and the UTC `…Z` capture-date cutoff string
- * (capability `photo-date-cutoff`). Injected into the screen so `:domain:ui` needs no clock or
+ * (capability `photo-selection-policy`). Injected into the screen so `:domain:ui` needs no clock or
  * timezone knowledge: it holds only a `LocalDateTime` and calls these three methods. The default
  * [SystemCutoffFormatter] is the production implementation (device clock + device zone); tests pass a
  * fixed clock/zone for determinism.

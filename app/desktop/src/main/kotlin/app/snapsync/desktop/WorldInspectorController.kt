@@ -22,6 +22,8 @@ import app.snapsync.permission.PermissionStatus
 import app.snapsync.permission.PermissionStatusSource
 import app.snapsync.presentation.JoinLoad
 import app.snapsync.presentation.StatusContainerHost
+import app.snapsync.album.DENYLISTED_ALBUM_TITLES
+import app.snapsync.gallery.excludedAssetIds
 import app.snapsync.status.DownloadStatusSource
 import app.snapsync.status.SyncStatusSource
 import app.snapsync.world.World
@@ -217,6 +219,37 @@ class WorldInspectorController(private val scope: CoroutineScope) {
 
     fun removeAsset(assetId: String) = launchMutation { world.removeAsset(assetId) }
 
+    // ---- selection policy (capability `photo-selection-policy`) -----------------------------------
+    // Each button adds an asset the policy EXCLUDES, so the operator can watch it land in the gallery and
+    // then *not* upload and *not* enter the union — and can see that N does not inflate, which is the part
+    // a unit test cannot show at a glance.
+
+    /** A screenshot — excluded by media subtype. */
+    fun addScreenshot() = launchMutation { world.addScreenshot("shot-${ownAssetSeq++}") }
+
+    /** A screen recording — excluded by media subtype. */
+    fun addScreenRecording() = launchMutation { world.addScreenRecording("rec-${ownAssetSeq++}") }
+
+    /** A messenger-compressed image (1600×1200 ≈ 1.9 MP) — below the 3 MP image floor. */
+    fun addLowResPhoto() = launchMutation { world.addLowResPhoto("lowres-${ownAssetSeq++}") }
+
+    /** A GIF — excluded by MIME. */
+    fun addGif() = launchMutation { world.addGif("gif-${ownAssetSeq++}") }
+
+    /**
+     * A 1080p recording. This one must **upload**: 2.07 MP is below the *image* floor but above the *video*
+     * floor. It is here precisely so a regression that collapses the two floors is visible as a video that
+     * silently stops appearing.
+     */
+    fun addHdVideo() = launchMutation { world.addHdVideo("video-${ownAssetSeq++}") }
+
+    /** An ordinary photo that WhatsApp also saved into its album — excluded by the album denylist. */
+    fun addWhatsAppAlbumPhoto() = launchMutation {
+        val id = "wa-${ownAssetSeq++}"
+        world.addOwnAsset(id)
+        world.placeInAlbum("WhatsApp", id)
+    }
+
     // ---- backend ---------------------------------------------------------------------------------
 
     /** Inject one foreign device carrying a single complete asset into the joined event. */
@@ -316,7 +349,7 @@ class WorldInspectorController(private val scope: CoroutineScope) {
      */
     private suspend fun refreshStatus() {
         // The joined membership's cutoff scopes the total; unjoined, the world's default keeps the
-        // inspector's counts drivable (capability `photo-date-cutoff`).
+        // inspector's counts drivable (capability `photo-selection-policy`).
         world.ownGallery.refresh(world.configSource.config.value?.minPhotoDate ?: World.DEFAULT_CUTOFF)
         world.ledgerCounts.refresh()
         downloadSource.refresh()
@@ -324,8 +357,21 @@ class WorldInspectorController(private val scope: CoroutineScope) {
 
     private suspend fun snapshotNow(): InspectorSnapshot {
         val suppressed = world.downloadStore.suppressedLocalIds()
+        // What the selection policy would exclude (capability `photo-selection-policy`) — computed with the
+        // REAL policy over the REAL enumeration, so the row badge cannot drift from what the cycle does.
+        // Without this the levers are mute: an operator would add a screenshot, watch it sit in the gallery,
+        // and have no way to tell "correctly excluded" from "silently broken".
+        val cutoff = world.configSource.config.value?.minPhotoDate ?: World.DEFAULT_CUTOFF
+        val policyExcluded = excludedAssetIds(world.enumerator.enumerate(cutoff)) +
+            world.albumManager.assetIdsInAlbums(DENYLISTED_ALBUM_TITLES, cutoff)
         val galleryRows = world.gallery.current()
-            .map { GalleryRow(it.assetId, suppressed = it.assetId in suppressed) }
+            .map {
+                GalleryRow(
+                    it.assetId,
+                    suppressed = it.assetId in suppressed,
+                    policyExcluded = it.assetId in policyExcluded,
+                )
+            }
         val deviceIds = listOf(world.ownDeviceId) + injectedDeviceIds
         val backend = deviceIds.map { id ->
             DeviceObjects(deviceId = id, own = id == world.ownDeviceId, objects = world.store.objectsOf(id).toList())
@@ -366,7 +412,7 @@ data class InspectorSnapshot(
     }
 }
 
-data class GalleryRow(val assetId: String, val suppressed: Boolean)
+data class GalleryRow(val assetId: String, val suppressed: Boolean, val policyExcluded: Boolean = false)
 data class DeviceObjects(val deviceId: String, val own: Boolean, val objects: List<String>)
 data class JobRow(val key: String, val attempts: Int)
 data class DownloadRow(val deviceId: String, val assetId: String, val resourceKey: String)

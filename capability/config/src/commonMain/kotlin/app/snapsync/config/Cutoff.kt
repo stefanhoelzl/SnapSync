@@ -8,7 +8,7 @@ import kotlinx.datetime.toInstant
 import kotlinx.datetime.toLocalDateTime
 
 /**
- * Capture-date cutoff string helpers (capability `photo-date-cutoff`).
+ * Capture-date cutoff string helpers (capability `photo-selection-policy`).
  *
  * A cutoff is compared against an asset's `creationDate` **lexicographically** (`creationDate >=
  * cutoff`), so it MUST be byte-identical in shape to what the iOS enumerator produces — a bare
@@ -37,7 +37,7 @@ fun localToCutoff(local: LocalDateTime, zone: TimeZone): String =
 
 /**
  * Clamp a [chosen] cutoff up to the event's [startsAt] **floor** — the effective cutoff is
- * `max(chosen, startsAt)` (capability `photo-date-cutoff`).
+ * `max(chosen, startsAt)` (capability `photo-selection-policy`).
  *
  * This is applied ONCE, at join, and the result is what gets persisted as `EventConfig.minPhotoDate`.
  * Because `startsAt` is immutable, the clamped value is stable for the life of the membership — which is

@@ -18,7 +18,7 @@ kotlin {
             // the container's constructor — so they surface in this module's API.
             api(project(":capability:event-creation-ui"))
             api(libs.orbit.core)
-            // Capability `photo-date-cutoff`: LocalDateTime appears in CutoffFormatter's signature (used
+            // Capability `photo-selection-policy`: LocalDateTime appears in CutoffFormatter's signature (used
             // by the join screen in :domain:ui), so it is part of this module's API.
             api(libs.kotlinx.datetime)
         }

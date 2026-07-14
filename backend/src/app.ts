@@ -235,7 +235,7 @@ type AttestRecord = {
  * wall-clock at the moment the marker is written (and carries milliseconds, per `toISOString()`), while
  * `startsAt` is the host's statement of when the event BEGAN — client-supplied, canonical cutoff shape,
  * honored verbatim. `startsAt` is both the default and the FLOOR for every member's capture-date cutoff
- * (capability `photo-date-cutoff`).
+ * (capability `photo-selection-policy`).
  *
  * Write-once: no route rewrites a stored marker. The backend has no owner field — attestation proves a
  * genuine app instance, NOT ownership of an event (a stated non-goal of `device-attestation`) — so a
@@ -410,7 +410,7 @@ async function readMarker(
   // `startsAt` non-null for every consumer, so no client carries a nullable start date and every
   // downstream type stays total. Such an event behaves exactly as it did before this change: the cutoff
   // is seeded from creation. NB the synthesized value inherits `createdAt`'s MILLISECONDS, so it is not
-  // canonical; the app normalizes a createdAt-derived cutoff (capability `photo-date-cutoff`).
+  // canonical; the app normalizes a createdAt-derived cutoff (capability `photo-selection-policy`).
   return { ...stored, startsAt: stored.startsAt ?? stored.createdAt };
 }
 

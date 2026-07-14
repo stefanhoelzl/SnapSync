@@ -24,7 +24,7 @@ sealed interface ConfigRead {
 
     /**
      * There is definitively no usable config: the item is absent, **or** it is a legacy item that does
-     * not decode (e.g. one written before `minPhotoDate` existed — capability `photo-date-cutoff`,
+     * not decode (e.g. one written before `minPhotoDate` existed — capability `photo-selection-policy`,
      * where reading as no-config is the deliberate safe outcome). This is the only outcome that may
      * drive the leave-side reconciliation.
      */

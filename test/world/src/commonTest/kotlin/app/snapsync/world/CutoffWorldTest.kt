@@ -4,7 +4,7 @@ import kotlin.test.Test
 import kotlin.test.assertTrue
 
 /**
- * A device joined with a capture-date cutoff (capability `photo-date-cutoff`) uploads and shares
+ * A device joined with a capture-date cutoff (capability `photo-selection-policy`) uploads and shares
  * **only** its post-cutoff photos: a pre-cutoff asset never lands as bytes and never enters the event
  * union (so no other member can download it), while a post-cutoff asset does. This exercises the one
  * cutoff driving BOTH the byte-upload filter and the device-manifest projection through the real stack.

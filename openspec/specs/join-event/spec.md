@@ -8,7 +8,7 @@ backend and provisions the config.
 
 The surface is deliberately a **distinct, extensible `UiState` family** rather than a bare confirm dialog,
 because joining is where a member's participation is *configured*, and those options were always going to
-accumulate: the capture-date cutoff (`photo-date-cutoff`), the upload/download direction
+accumulate: the capture-date cutoff (`photo-selection-policy`), the upload/download direction
 (`add-join-direction-mode`), and the per-event album opt-in (`event-album`) are all rows on this screen. A
 dialog could not have grown them.
 
@@ -50,7 +50,7 @@ these outcomes:
 - **200 with a name** → a **loaded** phase showing the event **name** (a **required, non-null** value)
   and carrying the event's **`startsAt`** (both read from the `{ eventId, name, createdAt, startsAt }`
   body), with the confirm action (Join) enabled. The loaded `startsAt` SHALL be the cutoff row's
-  **default** *and* its **floor** (see capability `photo-date-cutoff`). `startsAt` is **always present**
+  **default** *and* its **floor** (see capability `photo-selection-policy`). `startsAt` is **always present**
   on a 200 — the backend synthesizes it from `createdAt` for markers written before it existed
   (capability `event-creation`) — so the loaded phase SHALL carry it non-null and there is **no**
   seed-from-`createdAt` fallback and **no** seed-to-now fallback;
@@ -68,7 +68,7 @@ these outcomes:
 The confirm action SHALL NOT be offered while loading, blocked, or failed. The join surface SHALL hold a
 cutoff that is **always present**: the loaded phase's cutoff and the surface's chosen cutoff SHALL both be
 non-nullable, so a join with no cutoff is unrepresentable rather than guarded against at confirm time
-(capability `photo-date-cutoff`). Because the loaded phase carries a non-null name, downstream
+(capability `photo-selection-policy`). Because the loaded phase carries a non-null name, downstream
 provisioning and album titling (capability `event-album`) always have a name to use.
 
 #### Scenario: Details load and enable confirm
@@ -104,7 +104,7 @@ The `JoinEvent` use-case SHALL, on confirm, **first** enroll the device by writi
 empty** device manifest (no assets) via `PUT /events/:eventId/devices/:deviceId`, and **only on a
 successful (201) enrollment** commit the join by saving the config (`eventId`, the loaded name, the
 event's **`startsAt`**, the **clamped** capture-date cutoff — see below and capability
-`photo-date-cutoff` — the chosen participation **direction**, **and whether the join opted into an event
+`photo-selection-policy` — the chosen participation **direction**, **and whether the join opted into an event
 album — `saveToAlbum`**, capability `event-album`) and, **when the chosen direction includes upload**
 (`Both` or `UploadOnly`), enabling the background-upload producer.
 
@@ -220,7 +220,7 @@ actions:
   always has exactly one selection.
 - a **capture-date cutoff row**, which SHALL be a **two-preset selector** — **Now** and **Event start** —
   **defaulting to Event start**, together with a **label rendering the resulting instant** so the member
-  always sees the value they are committing to (capability `photo-date-cutoff`). The free date+time
+  always sees the value they are committing to (capability `photo-selection-policy`). The free date+time
   picker is **removed** from this surface (see the REMOVED requirement below).
   - When the event's `startsAt` is **in the future**, the **Now** preset SHALL be rendered **disabled**:
     it would clamp to the same instant as **Event start** (`max(now, startsAt) == startsAt`), and a
@@ -274,7 +274,7 @@ When a decoded deeplink carries `autoJoin = true`, the system SHALL run the **sa
 fetch details, and (when already joined to a different event) leave-then-join — but SHALL **auto-fire**
 the confirm once details reach the loaded phase, rather than waiting for a user tap. The auto-fired
 confirm SHALL use the **default** cutoff (the loaded event's **`startsAt`** — never an absent cutoff,
-capability `photo-date-cutoff`) unless the deeplink carries an explicit dev/test cutoff (see capability
+capability `photo-selection-policy`) unless the deeplink carries an explicit dev/test cutoff (see capability
 `deeplink-config`), in which case that value SHALL be used **subject to the floor**: the persisted cutoff
 is `max(override, startsAt)`, so a deeplink cutoff can raise a membership above the event's start but
 never lower it below. SHALL use the **default** direction **Both** unless the deeplink carries an explicit

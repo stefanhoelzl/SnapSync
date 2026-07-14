@@ -18,7 +18,14 @@ import app.snapsync.gallery.DeviceManifestAsset
 import app.snapsync.gallery.denormalizeAssetId
 import app.snapsync.gallery.DeviceManifestProducer
 import app.snapsync.gallery.GalleryResourceEnumerator
+import app.snapsync.album.DENYLISTED_ALBUM_TITLES
 import app.snapsync.gallery.InMemoryRawAssetSource
+import app.snapsync.gallery.MEDIA_TYPE_IMAGE
+import app.snapsync.gallery.MEDIA_TYPE_VIDEO
+import app.snapsync.gallery.MIME_GIF
+import app.snapsync.gallery.SUBTYPE_NONE
+import app.snapsync.gallery.SUBTYPE_SCREENSHOT
+import app.snapsync.gallery.SUBTYPE_SCREEN_RECORDING
 import app.snapsync.gallery.ManifestResource
 import app.snapsync.gallery.RawAsset
 import app.snapsync.gallery.RawResource
@@ -110,6 +117,10 @@ class World(
         OwnDeviceGalleryStatusSource(
             enumerator = enumerator,
             suppressedLocalIds = { downloadStore.suppressedLocalIds() },
+            // The SAME policy the cycle gets — the whole point of the requirement (capability
+            // `photo-selection-policy`): if the total counted what the cycle refuses to upload, the
+            // harness's status pane would sit below 100% forever, which is what this must prove it doesn't.
+            albumExcludedAssetIds = { cutoff -> albumManager.assetIdsInAlbums(DENYLISTED_ALBUM_TITLES, cutoff) },
         )
     // Completed + pending both read from the world's real ledger (one consistent aggregates() read).
     val ledgerCounts: ReadingLedgerCountsSource = ReadingLedgerCountsSource {
@@ -148,13 +159,74 @@ class World(
 
     // ---- device model + operator gallery actions ------------------------------------------------
 
-    /** Add one of the OWN device's photos to the gallery (default: a single primary JPEG). */
+    /**
+     * Add one of the OWN device's photos to the gallery (default: a single primary JPEG).
+     *
+     * The origin facts default to an ordinary 12 MP camera photo, so an asset added without them is
+     * **admitted** by the selection policy (capability `photo-selection-policy`) — see [addScreenshot] and
+     * friends to forge one that is not.
+     */
     suspend fun addOwnAsset(
         assetId: String,
         creationDate: String = DEFAULT_DATE,
         resources: List<RawResource> = listOf(primaryResource()),
+        mediaSubtypes: Long = SUBTYPE_NONE,
+        mediaType: Long = MEDIA_TYPE_IMAGE,
+        pixelWidth: Long = 4032,
+        pixelHeight: Long = 3024,
+        hasAdjustments: Boolean = false,
     ) {
-        gallery.set(gallery.current() + RawAsset(assetId, creationDate, resources))
+        gallery.set(
+            gallery.current() + RawAsset(
+                assetId = assetId,
+                creationDate = creationDate,
+                rawResources = resources,
+                mediaSubtypes = mediaSubtypes,
+                mediaType = mediaType,
+                pixelWidth = pixelWidth,
+                pixelHeight = pixelHeight,
+                hasAdjustments = hasAdjustments,
+            ),
+        )
+    }
+
+    // ---- selection-policy levers (capability `photo-selection-policy`) ---------------------------
+    // Each forges one category the policy excludes, so every rule is exercisable in the harness and the
+    // integration tests without PhotoKit — and so an operator can *see* that a screenshot never uploads.
+
+    /** A screenshot. Excluded by media subtype — the sharpest and highest-frequency case. */
+    suspend fun addScreenshot(assetId: String, creationDate: String = DEFAULT_DATE) =
+        addOwnAsset(assetId, creationDate, mediaSubtypes = SUBTYPE_SCREENSHOT, pixelWidth = 750, pixelHeight = 1334)
+
+    /** A screen recording. Excluded by media subtype. */
+    suspend fun addScreenRecording(assetId: String, creationDate: String = DEFAULT_DATE) =
+        addOwnAsset(
+            assetId, creationDate,
+            mediaSubtypes = SUBTYPE_SCREEN_RECORDING, mediaType = MEDIA_TYPE_VIDEO,
+            pixelWidth = 886, pixelHeight = 1920,
+        )
+
+    /** A compressed image as a messenger would have saved it (1600×1200 ≈ 1.9 MP). Below the image floor. */
+    suspend fun addLowResPhoto(assetId: String, creationDate: String = DEFAULT_DATE) =
+        addOwnAsset(assetId, creationDate, pixelWidth = 1600, pixelHeight = 1200)
+
+    /** A 1080p recording — BELOW the image floor but ABOVE the video floor, so it must be **admitted**. */
+    suspend fun addHdVideo(assetId: String, creationDate: String = DEFAULT_DATE) =
+        addOwnAsset(
+            assetId, creationDate,
+            mediaType = MEDIA_TYPE_VIDEO, pixelWidth = 1920, pixelHeight = 1080,
+        )
+
+    /** A GIF. Excluded by MIME — never a camera capture, not even one exported from a Live Photo. */
+    suspend fun addGif(assetId: String, creationDate: String = DEFAULT_DATE) =
+        addOwnAsset(
+            assetId, creationDate,
+            resources = listOf(primaryResource(filename = "giphy.gif", contentType = MIME_GIF)),
+        )
+
+    /** Put an existing own asset into an album some app made — e.g. `placeInAlbum("WhatsApp", "A1")`. */
+    fun placeInAlbum(albumTitle: String, assetId: String) {
+        albumManager.placeIn(albumTitle, assetId)
     }
 
     /** Remove an own asset from the gallery (surfaces as `removedAssetIds` on the next incremental cycle). */
@@ -175,7 +247,7 @@ class World(
 
     /**
      * Join/provision an event: register its marker and make its config present (the config gate lifts).
-     * [minPhotoDate] is this device's per-membership capture-date cutoff (capability `photo-date-cutoff`),
+     * [minPhotoDate] is this device's per-membership capture-date cutoff (capability `photo-selection-policy`),
      * always present. It defaults to [DEFAULT_CUTOFF], which precedes [DEFAULT_DATE] so an asset added with
      * default arguments is in scope.
      *
@@ -239,7 +311,7 @@ class World(
     fun uploadCycle(eventId: String): UploadCycle {
         val engine = SyncEngine(EdgeUploadRequestProvider(host, ownDeviceId), ledger)
         val producer = manifestProducer()
-        // Per-device capture-date cutoff (photo-date-cutoff): scopes the discovery walk, the byte-upload
+        // Per-device capture-date cutoff (photo-selection-policy): scopes the discovery walk, the byte-upload
         // filter, AND the device-manifest projection. Always present on a joined membership; a cycle
         // assembled for an unjoined world falls back to the world's default so the harness stays drivable.
         val cutoff = configCell.value?.minPhotoDate ?: DEFAULT_CUTOFF
@@ -261,6 +333,10 @@ class World(
                 )
             },
             suppressedAssetIds = { downloadStore.suppressedLocalIds() },
+            // Denylisted-album membership (capability `photo-selection-policy`) — the REAL policy constant
+            // over the world's forgeable album membership, exactly as both composition roots wire it. The
+            // world runs the real rules; only the PhotoKit lookup is faked.
+            albumExcludedAssetIds = { albumManager.assetIdsInAlbums(DENYLISTED_ALBUM_TITLES, cutoff) },
             photoCutoff = { cutoff },
             // Event album (capability `event-album`): add this cycle's completed own photos to the album,
             // gated on the opt-in; raw localId recovered by reversing `_`→`/` (as the real roots do).
@@ -330,7 +406,7 @@ class World(
         const val DEFAULT_DATE: String = "2026-06-01T10:00:00Z"
 
         /**
-         * The world's default capture-date cutoff (capability `photo-date-cutoff`). Strictly precedes
+         * The world's default capture-date cutoff (capability `photo-selection-policy`). Strictly precedes
          * [DEFAULT_DATE], so an asset added with default arguments is in scope and the harness behaves as
          * it did when a `null` cutoff meant whole-library. A cutoff is never absent.
          */

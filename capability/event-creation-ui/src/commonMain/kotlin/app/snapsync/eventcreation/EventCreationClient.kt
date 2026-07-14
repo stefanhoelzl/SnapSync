@@ -39,7 +39,7 @@ interface EventCreationClient {
  * non-2xx / transport / parse failure to [CreateOutcome.Transient].
  *
  * `startsAt` is sent **verbatim**: the caller's contract is that it is already the canonical cutoff shape
- * (capability `photo-date-cutoff`), and the backend rejects anything else with a `400`. Reformatting or
+ * (capability `photo-selection-policy`), and the backend rejects anything else with a `400`. Reformatting or
  * re-deriving it here would introduce a second origin for a value whose whole point is having exactly one.
  */
 class HttpEventCreationClient(
