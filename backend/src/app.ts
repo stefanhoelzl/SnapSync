@@ -923,6 +923,107 @@ export function createApp({ fetch: fetchImpl, config }: Deps): Hono {
     return c.body(null, 202);
   });
 
+  // ── TEMPORARY SPIKE INSTRUMENT — DELETE WITH THE FOLLOW-UP PR ────────────────────────────────────
+  //
+  // Measures two unknowns that gate the App Attest design (a request-scoped bearer token on every
+  // route). Neither is answerable from Linux, from source, or from the origin alone — both are
+  // properties of what the DEVICE and the PULL ZONE actually put on the wire:
+  //
+  //   1. Does the bunny pull zone forward `Authorization` (and a custom `X-SnapSync-Token`) to this
+  //      origin, unmodified? A CDN is free to strip, rewrite, or cache-key on `Authorization`, and
+  //      this zone has already been observed answering `OPTIONS` itself (see `bunny-upload-endpoint`).
+  //      If it strips the header, the token cannot ride there and must move to a custom header.
+  //   2. Does the OS-performed background upload carry the extension's custom request headers to the
+  //      wire? Today the uploader only ever sets `Content-Type` — which the OS would set anyway — so
+  //      NOTHING in this codebase proves an arbitrary header survives `PHBackgroundResourceUploadTask`.
+  //      If it does not, no header-borne credential can gate the byte route at all.
+  //
+  //   GET     /__spike/echo  → the headers THIS ORIGIN observed (curl it through the pull zone → (1))
+  //   PUT     /__spike/*     → records the observed headers at `spike/<uuid>.json`; the body is
+  //                            STREAMED AND DISCARDED (no photo bytes are ever stored). Point a dev
+  //                            build's `BackgroundUploadURLBase` here and the OS reports itself → (2)
+  //   OPTIONS /__spike/*     → 204, advertising no resumable upload — identical to the real byte
+  //                            route, so the uploader takes the same plain-PUT path it takes in prod
+  //   GET     /__spike       → read the recordings back
+  //   DELETE  /__spike       → clear them
+  //
+  // `spike/` is disjoint from `events/`, `files/`, and `devices/`, so this cannot collide with real
+  // data. The echo is safe to expose: it reflects only the caller's OWN request headers, and no token
+  // scheme exists yet for it to leak.
+  const SPIKE_PREFIX = "spike";
+
+  app.get("/__spike/echo", (c) => {
+    c.header("Cache-Control", NO_CACHE); // never let the pull zone answer this from cache
+    return c.json({ observedAtOrigin: Object.fromEntries(c.req.raw.headers) });
+  });
+
+  app.put("/__spike/*", async (c) => {
+    const record = {
+      recordedAt: new Date().toISOString(),
+      method: "PUT",
+      path: c.req.path,
+      observedAtOrigin: Object.fromEntries(c.req.raw.headers),
+    };
+
+    // Drain the body chunk-by-chunk WITHOUT buffering: a photo resource is tens of MB and this is an
+    // edge worker. We must still consume it — a cancel mid-stream would look to the uploader like a
+    // reset connection, which is precisely the failure we are trying not to confuse ourselves with.
+    const reader = c.req.raw.body?.getReader();
+    let bytes = 0;
+    while (reader) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      bytes += value?.byteLength ?? 0;
+    }
+
+    try {
+      await putObject(
+        fetchImpl,
+        config,
+        `${SPIKE_PREFIX}/${crypto.randomUUID()}.json`,
+        JSON.stringify({ ...record, bytesDrained: bytes }),
+        "application/json",
+      );
+    } catch (e) {
+      console.error(`spike: recording failed: ${e}`);
+      return c.text("upstream error", 502);
+    }
+    return c.body(null, 201);
+  });
+
+  app.options("/__spike/*", (c) => {
+    c.header("Allow", "PUT, OPTIONS");
+    return c.body(null, 204);
+  });
+
+  app.get("/__spike", async (c) => {
+    const entries = await listDir(fetchImpl, config, `${SPIKE_PREFIX}/`);
+    const texts = await Promise.all(
+      (entries ?? [])
+        .filter((e) => !e.IsDirectory)
+        .map((e) =>
+          readObjectText(fetchImpl, config, `${SPIKE_PREFIX}/${decodeObjectName(e.ObjectName)}`)
+        ),
+    );
+    const records = texts.filter((t): t is string => t !== null).map((t) => JSON.parse(t));
+    c.header("Cache-Control", NO_CACHE);
+    return c.json(records);
+  });
+
+  app.delete("/__spike", async (c) => {
+    const entries = await listDir(fetchImpl, config, `${SPIKE_PREFIX}/`);
+    for (const e of entries ?? []) {
+      if (e.IsDirectory) continue;
+      await deleteObject(
+        fetchImpl,
+        config,
+        `${SPIKE_PREFIX}/${decodeObjectName(e.ObjectName)}`,
+      );
+    }
+    return c.body(null, 200);
+  });
+  // ── END TEMPORARY SPIKE INSTRUMENT ───────────────────────────────────────────────────────────────
+
   // Mount the per-device byte object routes; any unmatched path or wrong method → Hono's 404.
   app.route("/files/devices/:deviceId/:filename", byteFile);
   return app;
