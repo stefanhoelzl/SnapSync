@@ -31,6 +31,12 @@ import kotlinx.coroutines.flow.MutableStateFlow
  * Returns `null` for an unrecognized name, the signal the app shell falls back on to render the live
  * production stack.
  */
+/**
+ * Whether [state] names a recognized forge state — so the app shell can decide it is forging (and skip
+ * booting the live stack from OS lifecycle hooks) without constructing the host.
+ */
+fun isForgeState(state: String): Boolean = ForgePreset.byId(state) != null
+
 fun forgeStatusHost(state: String, scope: CoroutineScope): StatusContainerHost? {
     val preset = ForgePreset.byId(state) ?: return null
     return StatusContainerHost(
