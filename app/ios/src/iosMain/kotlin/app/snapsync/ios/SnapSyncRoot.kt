@@ -26,6 +26,7 @@ import app.snapsync.permission.PhotoLibraryPermission
 import app.snapsync.presentation.MutableAttestedSource
 import app.snapsync.presentation.StatusContainerHost
 import app.snapsync.presentation.forgeStatusHost
+import app.snapsync.presentation.isForgeState
 import app.snapsync.download.DownloadPushReceiver
 import app.snapsync.push.KtorPushHttpClient
 import app.snapsync.push.PushReceiver
@@ -492,21 +493,27 @@ object SnapSyncRoot {
         )
     }
 
+    // The dev/test `SNAPSYNC_FORGE_STATE` launch-env variable (capability `ios-app-shell`), read once
+    // per process. When it names a recognized forge state the app renders a forged screen for a
+    // marketing screenshot and MUST NOT boot the live stack: the unsigned simulator the screenshots run
+    // in has no App-Group ledger container, no App Attest, no PhotoKit grant, and no backend — touching
+    // any of them crashes the process. Inert in production (a launch env var is only injectable via a
+    // developer launch, exactly as with `SNAPSYNC_DEEPLINK`).
+    private val forgeState: String? = NSProcessInfo.processInfo.environment["SNAPSYNC_FORGE_STATE"] as? String
+    private val isForging: Boolean = forgeState?.let { isForgeState(it) } == true
+
     /**
-     * The host [MainViewController] renders. Resolved **once per process** (`by lazy`): when the
-     * dev/test `SNAPSYNC_FORGE_STATE` launch-env variable names a recognized forge state, this is a
-     * host over forged sources (capability `ios-app-shell`) for capturing marketing screenshots of the
-     * real `StatusScreen` in a simulator — with no backend, attestation, or photo access. Otherwise it
-     * is the live [host]; because `?:` only evaluates its right side when the left is null, an absent or
-     * unrecognized variable never even touches the live stack while forging, and forging never assembles
-     * it. Inert in production: the variable is only injectable via a developer launch, exactly as with
-     * `SNAPSYNC_DEEPLINK`.
+     * The host [MainViewController] renders. Resolved **once per process** (`by lazy`): the forged host
+     * when [isForging], else the live [host]. When forging the live [host] is never touched, so the real
+     * stack is never assembled.
      */
     val renderHost: StatusContainerHost by lazy {
-        val forgeState = NSProcessInfo.processInfo.environment["SNAPSYNC_FORGE_STATE"] as? String
-        val forged = forgeState?.let { forgeStatusHost(it, scope) }
-        if (forged != null) log.i { "rendering SNAPSYNC_FORGE_STATE=$forgeState" }
-        forged ?: host
+        if (isForging) {
+            log.i { "rendering SNAPSYNC_FORGE_STATE=$forgeState" }
+            forgeStatusHost(forgeState!!, scope)!!
+        } else {
+            host
+        }
     }
 
     // Adapt the join capability's [EventDetails] to the presentation-local [JoinLoad] the gate consumes.
@@ -526,6 +533,12 @@ object SnapSyncRoot {
         "onForeground",
         params = "useAppDrivenUpload=$useAppDrivenUpload force=$forceUrlSessionUpload osSupported=${backgroundUploadSupported()}",
     ) {
+        // In forge mode the process exists only to render a screenshot; booting the live stack here
+        // (App-Group ledger, App Attest, PhotoKit, network) would crash the unsigned simulator app.
+        if (isForging) {
+            log.i { "forge mode: skipping live foreground work" }
+            return@invocation
+        }
         host
         // Listen for the extension's cross-process liveness ding while foreground, so upload status moves
         // live as the extension records completions/new jobs (spec: sync-status). Foreground-only: a
@@ -553,6 +566,7 @@ object SnapSyncRoot {
      * (capability `photo-download`, 5.4). Status liveness itself stays event-driven (foreground entry).
      */
     fun onBackground() = log.invocation("onBackground") {
+        if (isForging) return@invocation
         unregisterLivenessObserver()
         scheduleDownloadBackstop()
         log.i { "=== app entering background ===" }

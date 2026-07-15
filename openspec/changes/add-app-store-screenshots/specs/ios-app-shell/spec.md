@@ -11,6 +11,12 @@ live container. The forged screen SHALL therefore render **live** `UiState` from
 `StatusContainerHost`, **not a static `UiState`**, preserving the shell invariant; the
 trigger substitutes the container's **inputs**, never its output.
 
+While a forge state is active, the app SHALL NOT assemble the live stack: the OS-lifecycle hooks
+that would boot it (foreground/background scene transitions, remote-notification and push forwarding)
+SHALL be inert, because the unsigned simulator the screenshots run in has no App-Group ledger
+container, no App Attest, no photo-library grant, and no backend — and touching any of them would
+crash the process. Rendering the forged host SHALL be the process's only significant work.
+
 The forge factory SHALL map a recognized state name to forged source values that drive the
 real reduction (`StatusContainerHost`) to the intended frame, and SHALL produce **only
 frames the real reduction can reach** — it SHALL NOT fabricate a `UiState` the production
@@ -60,6 +66,12 @@ inert in production **with no compile-time guard**.
 - **THEN** the container reaches `Joined(SyncHealth.InSync)` using the benign default
   `attestedSource` and `downloadSource` with only permission, config, and sync-status
   forged — with no network call, no attestation token, and no photo-library access
+
+#### Scenario: Forge mode does not boot the live stack
+- **WHEN** a forge state is active and the app's scene transitions to foreground (or background)
+- **THEN** the OS-lifecycle hook is inert — it assembles no live stack, opens no ledger, requests no
+  attestation, reads no photo library, and makes no network call — so the process only renders the
+  forged screen
 
 #### Scenario: Absent variable renders the live production stack
 - **WHEN** the app is launched from SpringBoard or TestFlight with no `SNAPSYNC_FORGE_STATE`
