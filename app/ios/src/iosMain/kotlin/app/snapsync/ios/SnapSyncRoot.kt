@@ -25,6 +25,7 @@ import app.snapsync.permission.PermissionStatus
 import app.snapsync.permission.PhotoLibraryPermission
 import app.snapsync.presentation.MutableAttestedSource
 import app.snapsync.presentation.StatusContainerHost
+import app.snapsync.presentation.forgeStatusHost
 import app.snapsync.download.DownloadPushReceiver
 import app.snapsync.push.KtorPushHttpClient
 import app.snapsync.push.PushReceiver
@@ -489,6 +490,23 @@ object SnapSyncRoot {
             downloadSource = downloadStatusSource,
             attestedSource = attested,
         )
+    }
+
+    /**
+     * The host [MainViewController] renders. Resolved **once per process** (`by lazy`): when the
+     * dev/test `SNAPSYNC_FORGE_STATE` launch-env variable names a recognized forge state, this is a
+     * host over forged sources (capability `ios-app-shell`) for capturing marketing screenshots of the
+     * real `StatusScreen` in a simulator — with no backend, attestation, or photo access. Otherwise it
+     * is the live [host]; because `?:` only evaluates its right side when the left is null, an absent or
+     * unrecognized variable never even touches the live stack while forging, and forging never assembles
+     * it. Inert in production: the variable is only injectable via a developer launch, exactly as with
+     * `SNAPSYNC_DEEPLINK`.
+     */
+    val renderHost: StatusContainerHost by lazy {
+        val forgeState = NSProcessInfo.processInfo.environment["SNAPSYNC_FORGE_STATE"] as? String
+        val forged = forgeState?.let { forgeStatusHost(it, scope) }
+        if (forged != null) log.i { "rendering SNAPSYNC_FORGE_STATE=$forgeState" }
+        forged ?: host
     }
 
     // Adapt the join capability's [EventDetails] to the presentation-local [JoinLoad] the gate consumes.

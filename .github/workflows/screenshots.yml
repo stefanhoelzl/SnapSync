@@ -1,0 +1,129 @@
+# App Store / landing-page marketing screenshots. DISPATCH-ONLY and NON-GATING dev infra — like
+# ssh-mac.yml, it posts no status check and never blocks a merge. It changes no product behavior; the
+# only product-facing part (the SNAPSYNC_FORGE_STATE launch trigger) is spec'd in ios-app-shell. Its
+# rationale (why it exists at all, and every knob below) lives here so there is no separate capability.
+#
+# WHAT IT DOES: builds the app for the iOS simulator, boots a 6.9" iPhone, launches the app once per
+# marketing state with SNAPSYNC_FORGE_STATE (which renders the shared StatusScreen over forged sources —
+# no backend, attestation, or photo access), captures each with `simctl io screenshot`, composites each
+# onto a brand-green band with a headline, and uploads the set as a workflow ARTIFACT. A human then
+# places the PNGs on the App Store listing / landing page — this workflow does NOT auto-upload to App
+# Store Connect (that path needs the Admin key + raw REST and touches the public listing; deliberately
+# out of scope).
+#
+# WHY 6.9" ONLY: it is Apple's single REQUIRED iPhone screenshot class (iPhone 16 Pro Max, 1320x2868)
+# and App Store Connect auto-scales it down to the 6.5"/6.7" listings. Older classes and iPad are not
+# required (SnapSync is iPhone-only) and are deliberately omitted.
+#
+# WHY macos-26: only a macOS runner boots iOS simulators, and only the simulator gives authentic iOS
+# chrome (a real status bar, system fonts) at exact device resolution. The real device is unreachable
+# from a GitHub runner (it is USB-bridged into the codehydra sandbox), so an authentic on-device pass is
+# an out-of-band operator runbook (see CLAUDE.md `dvt screenshot`), not this CI stage.
+
+name: screenshots
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  screenshots:
+    runs-on: macos-26
+    steps:
+      - uses: actions/checkout@v7.0.0
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: 25
+      - uses: gradle/actions/setup-gradle@v5
+      # Same Kotlin/Native cache as ios.yml so a warm run skips the toolchain download and klib recompile.
+      - name: Cache Kotlin/Native (~/.konan)
+        uses: actions/cache@v5
+        with:
+          path: ~/.konan
+          key: konan-${{ runner.os }}-${{ hashFiles('gradle/libs.versions.toml') }}
+          restore-keys: |
+            konan-${{ runner.os }}-
+
+      # Build the app for the simulator SDK. UNSIGNED (a simulator .app needs no code signing —
+      # ios-app-shell "No code signing required for the simulator build"). Debug so the Kotlin/Native
+      # framework link skips the LLVM optimizer — a screenshot needs no optimization.
+      #
+      # NB the SPIKE (tasks.md 1.x): this builds the whole `iosApp` scheme, which pulls the PhotoKit
+      # BackgroundUploadExtension into the closure. That extension conforms to
+      # PHBackgroundResourceUploadExtension with no `#if targetEnvironment(simulator)` guard; if it does
+      # not compile for the simulator SDK, switch this to an app-target-only build
+      # (`-target iosApp` in place of `-scheme iosApp`) — the extension is irrelevant to a UI screenshot.
+      - name: Build the app for the iOS simulator
+        run: |
+          xcodebuild \
+            -project iosApp/iosApp.xcodeproj \
+            -scheme iosApp \
+            -configuration Debug \
+            -sdk iphonesimulator \
+            -destination 'generic/platform=iOS Simulator' \
+            -derivedDataPath build/ios \
+            CODE_SIGNING_ALLOWED=NO \
+            build
+          APP="$(find build/ios/Build/Products -maxdepth 2 -name '*.app' -path '*-iphonesimulator*' | head -1)"
+          if [ -z "$APP" ]; then echo "::error::no simulator .app produced"; exit 1; fi
+          echo "APP_PATH=$APP" >> "$GITHUB_ENV"
+
+      # Create + boot a 6.9" iPhone on the runner's newest iOS runtime, then install the app.
+      - name: Boot the 6.9" simulator and install
+        run: |
+          DEVICE="$(xcrun simctl create screenshots-6.9 'iPhone 16 Pro Max')"
+          echo "DEVICE=$DEVICE" >> "$GITHUB_ENV"
+          xcrun simctl boot "$DEVICE"
+          xcrun simctl bootstatus "$DEVICE" -b
+          xcrun simctl install "$DEVICE" "$APP_PATH"
+
+      # The clean App Store status bar: 9:41, full battery (charged), full signal. Persists per device
+      # across launches, so one override covers every capture below.
+      - name: Clean the status bar
+        run: |
+          xcrun simctl status_bar "$DEVICE" override \
+            --time "9:41" \
+            --batteryState charged --batteryLevel 100 \
+            --cellularBars 4 --wifiBars 3
+
+      # Launch once per state with the forge env var (SIMCTL_CHILD_ passes it to the app process),
+      # let it render, capture, then terminate before the next launch (a fresh process per state).
+      - name: Capture each forged state
+        run: |
+          mkdir -p shots
+          for STATE in create joining in_sync; do
+            xcrun simctl terminate "$DEVICE" app.snapsync 2>/dev/null || true
+            SIMCTL_CHILD_SNAPSYNC_FORGE_STATE="$STATE" \
+              xcrun simctl launch --terminate-running-process "$DEVICE" app.snapsync
+            sleep 4  # let Compose settle its first frame
+            xcrun simctl io "$DEVICE" screenshot "shots/$STATE.png"
+          done
+          xcrun simctl terminate "$DEVICE" app.snapsync 2>/dev/null || true
+
+      # Composite each raw shot onto a brand-green (#0E9D6B) 1320x2868 canvas with a placeholder
+      # headline. Headlines/art are intentionally provisional — retune here without touching the
+      # capture pipeline. Output at the exact 6.9" resolution App Store Connect expects.
+      - name: Composite marketing frames
+        run: |
+          brew list imagemagick >/dev/null 2>&1 || brew install imagemagick
+          mkdir -p "out/en-US/6.9"
+          compose() { # <raw> <headline> <out>
+            magick -size 1320x2868 "xc:#0E9D6B" \
+              \( "$1" -resize 1120x \) -gravity south -geometry +0+100 -composite \
+              -gravity north -fill white -font Helvetica-Bold -pointsize 84 \
+              -annotate +0+220 "$2" \
+              "$3"
+          }
+          compose shots/create.png   "Start an event in seconds"        "out/en-US/6.9/01-create.png"
+          compose shots/joining.png  "One scan — everyone's in"         "out/en-US/6.9/02-joining.png"
+          compose shots/in_sync.png  "Every photo, shared automatically" "out/en-US/6.9/03-in-sync.png"
+
+      - name: Upload screenshots
+        uses: actions/upload-artifact@v4
+        with:
+          name: app-store-screenshots
+          path: out/
+          if-no-files-found: error

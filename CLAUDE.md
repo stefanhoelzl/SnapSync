@@ -149,6 +149,15 @@ so a switch / leave-then-rejoin / reinstall re-uploaded the whole post-cutoff li
 `changes/archive/…-fix-app-driven-upload-lifecycle`.) To observe real uploads in the dev loop, point at a
 **fresh event id** (or clear the event's objects in the bunny zone) so the reconcile finds nothing to seed.
 
+`SNAPSYNC_FORGE_STATE=<state>` is a third **dev/test trigger** (capability `ios-app-shell`), read **once
+per process** and inert in production: it mounts the real `StatusScreen` over **forged sources** for a
+recognized state (`create` · `joining` · `in_sync`) — no backend, attestation, or photo access — so a
+marketing/App-Store screenshot can be captured of any state. The forge substitutes the container's
+*inputs*, not a static `UiState`, so it can only render a frame the real reduction can reach (the
+name→sources map is the tested `forgeStatusHost` factory in `:domain:presentation`). This is what the
+non-gating, dispatch-only `.github/workflows/screenshots.yml` drives on a simulator (`macos-26`) —
+`simctl launch … SNAPSYNC_FORGE_STATE=<state>` → `simctl io screenshot` → composite → artifact.
+
 **Restarting the app (black-screen trap).** `dvt launch --kill-existing` — and `dvt kill`/`pkill` —
 only send **SIGTERM**, which SnapSync ignores; a relaunch then layers a new instance on the
 still-alive old one and the app sticks on a **black launch screen** (status bar visible, content
