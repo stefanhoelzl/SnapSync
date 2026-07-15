@@ -1,0 +1,66 @@
+# App Store listing metadata sync (capability ios-appstore-metadata). Two jobs, mirroring the
+# gate/deliver split of ios.yml:
+#   * appstore-metadata-validate — EVERY ref, ubuntu, NO secrets: validates the committed metadata/
+#     files OFFLINE (schema + App Store character limits + URL format). It is a REQUIRED status check
+#     (.github/rulesets/main.json) — safe to require because it runs on every ref and always posts,
+#     so it can never freeze merges the way a main-only required check would.
+#   * appstore-metadata-apply — main ONLY, `needs` the validator, ubuntu, reuses the EXISTING Admin
+#     ASC key (no new secret, no Xcode/keychain/cert): resolves the currently EDITABLE App Store
+#     version at run time and pushes the listing text to its localizations, declaratively (file wins;
+#     absent field = no-op). It never edits a version in review and never creates one. Like
+#     ios-deliver/ios-promote it posts NO required check and is free to fail RED without blocking a
+#     merge (do NOT add it to .github/rulesets/main.json).
+#
+# Text only: screenshots/app previews are binaries with no CLI path and are out of scope (manual).
+# The metadata tool `asc` is a pinned, checksum-verified third-party binary (see asc_fetch.sh).
+name: appstore
+
+on:
+  push:
+
+permissions:
+  contents: read
+
+# Own concurrency group so this does not cancel / get cancelled by the Linux (build.yml) or iOS
+# (ios.yml) runs; a newer push to a ref cancels its own in-progress appstore run.
+concurrency:
+  group: appstore-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  appstore-metadata-validate:
+    # This display name is the status-check context required by .github/rulesets/main.json.
+    # Changing it without updating the ruleset would freeze merges (the required check would never
+    # be posted).
+    name: appstore-metadata-validate
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7.0.0
+      - name: Fetch pinned asc
+        run: bash .github/scripts/asc_fetch.sh "$RUNNER_TEMP/asc"
+      - name: Validate metadata offline
+        run: |
+          "$RUNNER_TEMP/asc" metadata validate --dir metadata
+
+  appstore-metadata-apply:
+    name: appstore-metadata-apply
+    needs: appstore-metadata-validate
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    env:
+      # The same Admin key ios-build / ios-deliver / ios-promote use — asc reads its OWN var names.
+      # No new secret is introduced. (Design open question: a scoped key would be safer than Admin.)
+      ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+      ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+      ASC_PRIVATE_KEY: ${{ secrets.ASC_API_PRIVATE_KEY }}
+      ASC_BYPASS_KEYCHAIN: "1"
+      DO_NOT_TRACK: "1"
+      ASC_APP_ID: "6781692480"
+    steps:
+      - uses: actions/checkout@v7.0.0
+      - name: Fetch pinned asc
+        run: bash .github/scripts/asc_fetch.sh "$RUNNER_TEMP/asc"
+      - name: Resolve editable version and apply the listing
+        env:
+          ASC: ${{ runner.temp }}/asc
+        run: bash .github/scripts/asc_metadata_apply.sh
