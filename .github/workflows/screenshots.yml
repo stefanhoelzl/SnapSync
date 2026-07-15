@@ -24,11 +24,6 @@ name: screenshots
 
 on:
   workflow_dispatch:
-  # TEMPORARY (revert before merge): a new workflow_dispatch workflow is not dispatchable until it
-  # exists on the default branch, so this branch-scoped push trigger validates the pipeline once on
-  # ci-screenshot. Remove this `push:` block — leaving only workflow_dispatch — before shipping.
-  push:
-    branches: [ci-screenshot]
 
 permissions:
   contents: read
@@ -140,8 +135,8 @@ jobs:
           compose() { # <raw> <headline> <out>
             magick -size 1320x2868 "xc:#0E9D6B" \
               \( "$1" -resize 1120x \) -gravity south -geometry +0+100 -composite \
-              -gravity north -fill white -font "$FONT" -pointsize 84 \
-              -annotate +0+220 "$2" \
+              -gravity north -fill white -font "$FONT" -pointsize 68 \
+              -annotate +0+240 "$2" \
               "$3"
           }
           compose shots/create.png   "Start an event in seconds"        "out/en-US/6.9/01-create.png"
