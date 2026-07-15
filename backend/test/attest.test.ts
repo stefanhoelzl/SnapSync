@@ -245,6 +245,24 @@ Deno.test("gate: OPTIONS is answered without a token (the pull zone may answer i
   assertEquals(res.headers.get("Allow"), "PUT, OPTIONS"); // still no resumable → plain PUT
 });
 
+Deno.test("gate: the marketing page at / is served without a token", async () => {
+  const { calls, app: a } = app();
+  const res = await a.request("/");
+  assertEquals(res.status, 200); // NOT 401 — `marketing-site` is on the closed ungated list
+  assertEquals(calls.length, 0); // and serving it reads no storage
+});
+
+Deno.test("gate: the / exception is exact-path and GET/HEAD-only — it leaks to nothing else", async () => {
+  const { app: a } = app();
+  // A non-root path is still gated, even for GET…
+  assertEquals((await a.request("/events")).status, 401);
+  assertEquals((await a.request(`/events/${E}`)).status, 401);
+  // …a path that merely begins with "/" but is not exactly "/" is not admitted…
+  assertEquals((await a.request("/index.html")).status, 401);
+  // …and a mutating method on "/" is gated, not served.
+  assertEquals((await a.request("/", { method: "POST" })).status, 401);
+});
+
 Deno.test("gate: a gated GET is never cacheable (the pull zone does not vary on Authorization)", async () => {
   // Load-bearing for AUTHORIZATION, not just freshness: the CDN forwards `Authorization` but does not
   // key its cache on it, so a cacheable gated response would be served to a DIFFERENT device.
