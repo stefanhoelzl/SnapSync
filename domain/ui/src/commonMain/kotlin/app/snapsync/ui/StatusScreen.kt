@@ -23,6 +23,7 @@ import app.snapsync.presentation.SyncHealth
 import app.snapsync.presentation.SystemCutoffFormatter
 import app.snapsync.presentation.UiState
 import app.snapsync.ui.components.AppConfirmDialog
+import app.snapsync.ui.components.AppDestructiveConfirmDialog
 import app.snapsync.ui.components.AppEventHero
 import app.snapsync.ui.components.AppExplainer
 import kotlinx.datetime.LocalDateTime
@@ -117,7 +118,7 @@ fun StatusScreen(
         }
 
         if (confirmingLeave) {
-            AppConfirmDialog(
+            AppDestructiveConfirmDialog(
                 title = "Leave this event?",
                 confirmLabel = "Leave",
                 cancelLabel = "Stay",
@@ -437,7 +438,7 @@ private fun SwitchDialog(
         is JoinPhase.ExplainAccess -> Unit
         is JoinPhase.Ready -> {
             cutoff = phase.startsAt
-            AppConfirmDialog(
+            AppDestructiveConfirmDialog(
                 title = "Leave $current and join ${phase.name}?",
                 confirmLabel = "Switch",
                 cancelLabel = "Cancel",

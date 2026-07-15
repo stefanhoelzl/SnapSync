@@ -287,4 +287,21 @@ class JoinScreenTest {
         rule.onNodeWithText("Switch").performClick()
         assertEquals(1, switched)
     }
+
+    @Test
+    fun `switch dialog for a missing event stays a plain confirmation and cancels`() {
+        // Only the Ready "Switch" (which leaves the current event) is destructive; the non-destructive
+        // phases — invalid invite here, and the retry phases — must keep the plain AppConfirmDialog.
+        // Guards that the shared dialog-scaffold refactor did not sweep every phase into the destructive path.
+        var cancelled = 0
+        rule.setContent {
+            StatusScreen(
+                UiState.Joined(SyncHealth.Loading, PendingSwitch("22222222-2222-4222-8222-222222222222", JoinPhase.NotFound)),
+                onCancelSwitch = { cancelled++ },
+            )
+        }
+        rule.onNodeWithText("This invite is invalid or the event no longer exists.").assertExists()
+        rule.onNodeWithText("OK").performClick()
+        assertEquals(1, cancelled)
+    }
 }
