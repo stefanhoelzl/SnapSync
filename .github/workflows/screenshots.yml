@@ -100,13 +100,26 @@ jobs:
         run: |
           mkdir -p shots
           for STATE in create joining in_sync; do
+            # Hard reset between states: SnapSync ignores SIGTERM (Skiko runloop), so a relaunch that
+            # LAYERS over a still-alive instance breaks the frame. Terminate, wait, then launch fresh —
+            # no --terminate-running-process (which layers). A longer settle covers cold Compose init.
             xcrun simctl terminate "$DEVICE" app.snapsync 2>/dev/null || true
+            sleep 2
             SIMCTL_CHILD_SNAPSYNC_FORGE_STATE="$STATE" \
-              xcrun simctl launch --terminate-running-process "$DEVICE" app.snapsync
-            sleep 4  # let Compose settle its first frame
+              xcrun simctl launch "$DEVICE" app.snapsync
+            sleep 8
+            echo "running after $STATE launch: $(xcrun simctl spawn "$DEVICE" launchctl list 2>/dev/null | grep -c app.snapsync)"
             xcrun simctl io "$DEVICE" screenshot "shots/$STATE.png"
           done
           xcrun simctl terminate "$DEVICE" app.snapsync 2>/dev/null || true
+          # Diagnostics: dump any crash reports so a launch-into-Joined crash is attributable, not guessed.
+          echo "=== crash reports ==="
+          CR="$HOME/Library/Developer/CoreSimulator/Devices/$DEVICE/data/Library/Logs/DiagnosticReports"
+          if ls "$CR"/*.ips >/dev/null 2>&1; then
+            for f in "$CR"/*.ips; do echo "--- $f ---"; head -50 "$f"; done
+          else
+            echo "no crash reports"
+          fi
 
       # Composite each raw shot onto a brand-green (#0E9D6B) 1320x2868 canvas with a placeholder
       # headline. Headlines/art are intentionally provisional — retune here without touching the
