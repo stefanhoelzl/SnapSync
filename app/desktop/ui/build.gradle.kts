@@ -14,6 +14,7 @@ dependencies {
     // The stand-in seams the forge `PanelController` constructs its cells from.
     implementation(project(":domain:permission"))
     implementation(project(":domain:status"))
+    implementation(project(":domain:presentation"))
     implementation(project(":capability:config"))
     implementation(project(":capability:event-creation-ui"))
     // The control panel is deliberately raw Material 3, not App* (spec: desktop-test-harness).

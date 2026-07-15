@@ -27,7 +27,6 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
@@ -126,12 +125,13 @@ class StatusContainerHost(
     // existing test construct unchanged; iOS injects the flag the composition root sets from
     // `DeviceAttestation.ensureFresh()`.
     attestedSource: AttestedSource = AlwaysAttested,
-) : ContainerHost<UiState, SetupEffect> {
-
     // Event-driven overlay for an in-progress join/switch confirmation (capability `join-event`). Not
     // derived from the level-triggered sources — the gate sets it on a decoded interactive deeplink and
-    // clears it on commit/cancel. Folded into the reduction as a sixth flow.
-    private val pending = MutableStateFlow<PendingJoin?>(null)
+    // clears it on commit/cancel, folded into the reduction as a sixth flow. Injected (defaulting to a
+    // fresh internal instance) so the forge harness can forge any `JoinPhase` by writing this cell
+    // directly; production and the full-stack harness accept the default and let the gate drive it.
+    private val pending: MutablePendingJoinSource = MutablePendingJoinSource(),
+) : ContainerHost<UiState, SetupEffect> {
 
     /**
      * "Now", re-emitted every minute **only** while the joined event has not begun (capability
@@ -176,7 +176,7 @@ class StatusContainerHost(
                 syncSource.status.value,
                 creationStatusSource.creationStatus.value,
                 downloadSource.progress.value,
-                pending.value,
+                pending.state.value,
                 cutoffFormatter.nowCutoff(),
                 attestedSource.attested.value,
             ),
@@ -192,7 +192,7 @@ class StatusContainerHost(
                     syncSource.status,
                     creationStatusSource.creationStatus,
                     downloadSource.progress,
-                    pending,
+                    pending.state,
                     nowTick,
                     attestedSource.attested,
                 ) { values ->
@@ -300,8 +300,8 @@ class StatusContainerHost(
 
     /** Retry the details fetch after a transient load failure. */
     fun onRetryLoad() = intent {
-        val p = pending.value ?: return@intent
-        pending.value = p.copy(phase = JoinPhase.Loading)
+        val p = pending.state.value ?: return@intent
+        pending.set(p.copy(phase = JoinPhase.Loading))
         loadInto(p.eventId)
     }
 
@@ -336,17 +336,17 @@ class StatusContainerHost(
      * phase.
      */
     fun onAcknowledgeAccess() = intent {
-        val p = pending.value ?: return@intent
+        val p = pending.state.value ?: return@intent
         val ph = p.phase as? JoinPhase.ExplainAccess ?: return@intent
         requester.request()
-        pending.value = p.copy(phase = JoinPhase.Ready(ph.name, ph.startsAt))
+        pending.set(p.copy(phase = JoinPhase.Ready(ph.name, ph.startsAt)))
     }
 
     /** Discard the pending join/switch, returning to the base screen. */
-    fun onCancelJoin() = intent { pending.value = null }
+    fun onCancelJoin() = intent { pending.set(null) }
 
     /** Discard the pending switch, staying in the current event. */
-    fun onCancelSwitch() = intent { pending.value = null }
+    fun onCancelSwitch() = intent { pending.set(null) }
 
     /**
      * A create just minted [eventId] (capability `event-creation-ui`): route it into the **same**
@@ -360,7 +360,7 @@ class StatusContainerHost(
     // transition reduces through the container's own pipeline deterministically. A modal join is fine
     // to serialize; a real fetch suspends here, yielding a Loading frame before the result.
     private suspend fun startPending(eventId: String) {
-        pending.value = PendingJoin(eventId, JoinPhase.Loading)
+        pending.set(PendingJoin(eventId, JoinPhase.Loading))
         loadInto(eventId)
     }
 
@@ -393,7 +393,7 @@ class StatusContainerHost(
             JoinLoad.Failed -> JoinPhase.LoadFailed
         }
         // Only apply if this fetch is still the active pending target (not cancelled/superseded).
-        pending.value?.let { if (it.eventId == eventId) pending.value = it.copy(phase = phase) }
+        pending.state.value?.let { if (it.eventId == eventId) pending.set(it.copy(phase = phase)) }
     }
 
     /**
@@ -426,7 +426,7 @@ class StatusContainerHost(
         direction: Direction,
         saveToAlbum: Boolean,
     ) {
-        val p = pending.value ?: return
+        val p = pending.state.value ?: return
         // Only a loaded (Ready) or previously-failed (CommitFailed) surface can be confirmed; a
         // still-loading/blocked/committing phase ignores the action. Both carry a non-null name AND a
         // non-null startsAt — so a commit can never reach `JoinEvent` without the floor.
@@ -435,13 +435,13 @@ class StatusContainerHost(
             is JoinPhase.CommitFailed -> ph.name to ph.startsAt
             else -> return
         }
-        pending.value = p.copy(phase = JoinPhase.Committing(name, startsAt))
+        pending.set(p.copy(phase = JoinPhase.Committing(name, startsAt)))
         if (withLeave) leave()
         if (commitJoin(p.eventId, name, startsAt, cutoff, direction, saveToAlbum)) {
             // Success: config flips present via ConfigSource → reduces to Joined; drop the overlay.
-            if (pending.value?.eventId == p.eventId) pending.value = null
-        } else if (pending.value?.eventId == p.eventId) {
-            pending.value = p.copy(phase = JoinPhase.CommitFailed(name, startsAt))
+            if (pending.state.value?.eventId == p.eventId) pending.set(null)
+        } else if (pending.state.value?.eventId == p.eventId) {
+            pending.set(p.copy(phase = JoinPhase.CommitFailed(name, startsAt)))
         }
     }
 
@@ -492,9 +492,6 @@ class StatusContainerHost(
  * nothing of the member's can upload before the start regardless.
  */
 private const val NOT_STARTED_TICK_MILLIS = 60_000L
-
-/** The pending join's target and phase; the reducer maps it to `JoiningEvent` or `Joined.pendingSwitch`. */
-private data class PendingJoin(val eventId: String, val phase: JoinPhase)
 
 /** The loaded/committing name carried by a phase, if any (for re-issuing the commit on confirm/retry). */
 private fun JoinPhase.name(): String? = when (this) {

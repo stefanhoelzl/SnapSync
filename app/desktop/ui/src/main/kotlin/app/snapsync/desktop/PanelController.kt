@@ -5,6 +5,10 @@ import app.snapsync.config.ConfigStore
 import app.snapsync.permission.PermissionRequester
 import app.snapsync.permission.PermissionStatus
 import app.snapsync.permission.PermissionStatusSource
+import app.snapsync.presentation.JoinPhase
+import app.snapsync.presentation.MutableAttestedSource
+import app.snapsync.presentation.MutablePendingJoinSource
+import app.snapsync.presentation.PendingJoin
 import app.snapsync.config.EventConfig
 import app.snapsync.eventcreation.CreationFailureReason
 import app.snapsync.eventcreation.CreationStatus
@@ -39,6 +43,17 @@ class PanelController {
     private val configState = MutableStateFlow<EventConfig?>(null)
     private val creationState = MutableStateFlow<CreationStatus>(CreationStatus.Idle)
     private val armedGrants = MutableStateFlow(true)
+
+    // The attestation cell (capability `device-attestation`): forge `SyncHealth.Unattested`. Injected
+    // into the container via StatusPane. Because `!attested` outranks the sync states, every other
+    // precondition-forcing preset resets it to attested (see `resetOverlays`), so it can't stick and
+    // mask a later screen.
+    val attestedSource = MutableAttestedSource()
+
+    // The join/switch overlay cell (capability `join-event`): forge any `JoinPhase` by writing it here.
+    // Only the join and switch presets set it non-null; every other preset clears it (see
+    // `resetOverlays`), so a lingering overlay can't render a join/switch surface over another screen.
+    val pendingJoinSource = MutablePendingJoinSource()
 
     val syncSource: SyncStatusSource = object : SyncStatusSource {
         override val status = syncState
@@ -125,18 +140,79 @@ class PanelController {
     // force config present (unlike the bare permission presets above) to land on PermissionBlocked
     // in one click — the not-determined priming and the revoked/denied settings path.
     fun showPermissionBlockedNotDetermined() {
+        resetOverlays()
         configState.value = CANNED_CONFIG
         permissionState.value = PermissionStatus.NOT_DETERMINED
     }
 
     fun showPermissionBlockedDenied() {
+        resetOverlays()
         configState.value = CANNED_CONFIG
         permissionState.value = PermissionStatus.DENIED
+    }
+
+    // Join-gate presets (capability `join-event`): forge the full-screen `UiState.JoiningEvent` by
+    // forcing config ABSENT (the gate's precondition) and writing the target `JoinPhase` into the
+    // pending-join cell. The real reduction produces `JoiningEvent` from `config == null && pending`.
+    // Canned name/startsAt payloads feed the phases that carry them; a PAST `startsAt` keeps the cutoff
+    // row's "Now" preset enabled (the common case).
+    fun showJoinLoading() = forgeJoin(JoinPhase.Loading)
+
+    fun showJoinExplainAccess() = forgeJoin(JoinPhase.ExplainAccess(JOIN_NAME, JOIN_STARTS_AT))
+
+    fun showJoinReady() = forgeJoin(JoinPhase.Ready(JOIN_NAME, JOIN_STARTS_AT))
+
+    fun showJoinNotFound() = forgeJoin(JoinPhase.NotFound)
+
+    fun showJoinLoadFailed() = forgeJoin(JoinPhase.LoadFailed)
+
+    fun showJoinCommitting() = forgeJoin(JoinPhase.Committing(JOIN_NAME, JOIN_STARTS_AT))
+
+    fun showJoinCommitFailed() = forgeJoin(JoinPhase.CommitFailed(JOIN_NAME, JOIN_STARTS_AT))
+
+    private fun forgeJoin(phase: JoinPhase) {
+        configState.value = null
+        creationState.value = CreationStatus.Idle
+        attestedSource.set(true)
+        pendingJoinSource.set(PendingJoin(JOIN_EVENT_ID, phase))
+    }
+
+    // Switch-confirmation presets (capability `join-event`): forge `Joined.pendingSwitch` — the
+    // leave-style dialog over the joined layer when a DIFFERENT event is scanned while joined. Force
+    // config present + granted + a settled sync (so the joined layer underneath is coherent), then write
+    // the phase; the reducer maps `pending != null` with config present to `pendingSwitch`. The new
+    // event's name differs from the current config's so the dialog reads "Leave Anna's Birthday and join
+    // Bob's Wedding?". Only the four phases the switch dialog renders are offered.
+    fun showSwitchReady() = forgeSwitch(JoinPhase.Ready(JOIN_NAME, JOIN_STARTS_AT))
+
+    fun showSwitchNotFound() = forgeSwitch(JoinPhase.NotFound)
+
+    fun showSwitchLoadFailed() = forgeSwitch(JoinPhase.LoadFailed)
+
+    fun showSwitchCommitFailed() = forgeSwitch(JoinPhase.CommitFailed(JOIN_NAME, JOIN_STARTS_AT))
+
+    private fun forgeSwitch(phase: JoinPhase) {
+        permissionState.value = PermissionStatus.GRANTED
+        configState.value = CANNED_CONFIG
+        syncState.value = SyncStatus.Ready(progress(completed = 34, total = 34))
+        attestedSource.set(true)
+        pendingJoinSource.set(PendingJoin(JOIN_EVENT_ID, phase))
+    }
+
+    // Unattested preset (capability `device-attestation`): force config present + granted, clear any
+    // overlay, and drop the attested cell so `!attested` reduces to `SyncHealth.Unattested`. Every other
+    // precondition-forcing preset restores the cell (see `resetOverlays`), so this never sticks.
+    fun showUnattested() {
+        pendingJoinSource.set(null)
+        permissionState.value = PermissionStatus.GRANTED
+        configState.value = CANNED_CONFIG
+        attestedSource.set(false)
     }
 
     // Loading has no SyncProgress payload, so it bypasses forgeSync; like the others it forces
     // both gates (Granted + config present), since the reducer only surfaces Loading once both pass.
     fun showLoading() {
+        resetOverlays()
         permissionState.value = PermissionStatus.GRANTED
         configState.value = CANNED_CONFIG
         syncState.value = SyncStatus.Loading
@@ -163,11 +239,13 @@ class PanelController {
      * not-granted permission preset to see `NeedsAccess` correctly outrank the clock line.
      */
     fun showNotStarted() {
+        resetOverlays()
         configState.value = NOT_STARTED_CONFIG
         creationState.value = CreationStatus.Idle
     }
 
     private fun forgeCreate(status: CreationStatus) {
+        resetOverlays()
         configState.value = null
         creationState.value = status
     }
@@ -208,11 +286,22 @@ class PanelController {
     }
 
     // A sync preset's intent is "show me this screen" — impossible while the setup gate is up, so
-    // it forces both preconditions (permission granted AND config present).
+    // it forces both preconditions (permission granted AND config present) and clears the overlays.
     private fun forgeSync(status: SyncProgress) {
+        resetOverlays()
         permissionState.value = PermissionStatus.GRANTED
         configState.value = CANNED_CONFIG
         syncState.value = SyncStatus.Ready(status)
+    }
+
+    // Clears the join/switch overlay and restores the attested cell — the shared precondition of every
+    // "show me THIS screen" preset (sync, create, not-started, permission-blocked). Only the join and
+    // switch presets set an overlay, and only the unattested preset drops the attested cell; this is how
+    // the rest keep both clear, so a lingering overlay never renders a join/switch surface over the
+    // intended screen and `Unattested` never sticks and masks a later screen.
+    private fun resetOverlays() {
+        pendingJoinSource.set(null)
+        attestedSource.set(true)
     }
 
     private fun progress(pending: Int = 0, completed: Int, total: Int) = SyncProgress(
@@ -221,6 +310,13 @@ class PanelController {
     )
 
     private companion object {
+        // Canned join/switch payloads. The event being joined/switched-to is DIFFERENT from the current
+        // config (CANNED_CONFIG, "Anna's Birthday") so the switch dialog reads sensibly. A PAST startsAt
+        // keeps the join surface's cutoff "Now" preset enabled.
+        const val JOIN_EVENT_ID = "11111111-1111-4111-8111-111111111111"
+        const val JOIN_NAME = "Bob's Wedding"
+        const val JOIN_STARTS_AT = "2026-06-01T12:00:00Z"
+
         // A stand-in config so the "joined an event" step shows connected; never used to upload. The
         // name gives the joined layer a title to review.
         val CANNED_CONFIG = EventConfig(
