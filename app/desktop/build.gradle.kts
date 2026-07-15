@@ -23,6 +23,9 @@ dependencies {
     implementation(project(":domain:status"))
     implementation(project(":domain:presentation"))
     implementation(project(":domain:ui"))
+    // `StatusPane` provides the design-system's test-only `LocalDarkThemeOverride` around the phone
+    // pane, so the components module is a direct dependency rather than transitive through `:domain:ui`.
+    implementation(project(":domain:ui:components"))
     implementation(project(":capability:config"))
     // `StatusPane` names the create-event seams (`CreationStatusSource`/`EventCreator`) in its
     // signature, so the edge is explicit here rather than transitive.
