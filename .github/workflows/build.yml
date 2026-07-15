@@ -2,6 +2,10 @@ name: build
 
 on:
   push:
+    # BRANCHES only. A `vX.Y` tag is handled by ios-release.yml (App Store release); excluding tags
+    # here keeps a release from triggering a redundant Linux build + spec-validate. Every branch push
+    # still runs (no path filter), so the required `build` check is posted on every branch and PR.
+    branches: ["**"]
 
 permissions:
   contents: read

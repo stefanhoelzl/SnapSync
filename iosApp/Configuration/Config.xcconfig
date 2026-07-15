@@ -1,6 +1,16 @@
 // Shared build configuration consumed by iosApp.xcodeproj.
 APP_NAME = SnapSync
 BUNDLE_ID = app.snapsync
+// Public version (CFBundleShortVersionString) DEFAULT/FALLBACK, inherited by BOTH the app and the
+// background-upload extension targets (this is the project-level base config; neither target pins a
+// target-level MARKETING_VERSION any more). This is the fixed pre-release value every plain/local and
+// main/alpha TestFlight build carries — main is NEVER bumped, so it never triggers a first-of-version
+// Beta App Review (the "MARKETING_VERSION trap"). The tag-driven App Store release channel
+// (ios-appstore-release / .github/workflows/ios-release.yml) OVERRIDES this on the xcodebuild line
+// per release (MARKETING_VERSION=<tag minus v>), without editing this file.
+// ⚠️ Do NOT set the Version field in Xcode's target → General tab: Xcode would write a target-level
+// MARKETING_VERSION back into project.pbxproj, shadowing this value again.
+MARKETING_VERSION = 0.1.0
 // Apple Team ID — drives DEVELOPMENT_TEAM for signed device/TestFlight builds.
 // Not a secret (visible in any shipped IPA); the simulator gate ignores it (CODE_SIGNING_ALLOWED=NO).
 TEAM_ID = E9Z8BADH58

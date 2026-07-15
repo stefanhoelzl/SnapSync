@@ -181,12 +181,37 @@ distributing:** without `ios-promote` a build reaches only the internal `develop
   `ios-test` are required checks, and a skipped required check is never posted.)
 - **Beta App Review is not a gate** — a build on an already-approved `MARKETING_VERSION` auto-approves
   instantly, and a build can join the group while still `WAITING_FOR_REVIEW`.
-- ⚠️ **The `MARKETING_VERSION` trap.** Bumping it (it is pinned at `0.1.0`) forces a **real**
-  first-of-version Beta App Review taking **hours to days**. While it waits, each merge expires its
+- ⚠️ **The `MARKETING_VERSION` trap — avoided by design; do not re-introduce it.** The fallback is
+  pinned at `0.1.0` in **`Config.xcconfig`** (inherited by both targets; no target-level entry in
+  `project.pbxproj`), and **`main` is never bumped** — real store versions are injected per release by
+  the tag channel below. *Were* you to bump the committed fallback, it would force a **real**
+  first-of-version Beta App Review taking **hours to days**, during which each merge expires its
   predecessor's submission (`--expire-build-submitted-for-review`, newest wins), so **nothing reaches
-  testers and nothing goes red**. A green pipeline delivering nothing is expected here, not a bug.
+  testers and nothing goes red** — a green pipeline delivering nothing. Don't bump it; push a tag.
 - A promote cancelled by `concurrency: cancel-in-progress` (a second merge landing mid-poll) is also
   expected — the newer run promotes the newer build; nothing is lost.
+- **APNs is production for every TestFlight/App Store build.** CI Release archives inject
+  `APS_ENVIRONMENT=production` / `APNS_ENV=production` (in the `ios-archive` composite action); only
+  dev-sideload builds (the `ios.yml` `workflow_dispatch` dev-IPA path and ssh-mac) stay
+  `development`/`sandbox`. The `Config.xcconfig` values are the dev default, overridden for distribution.
+
+### App Store releases are tag-driven (`git push vX.Y`)
+
+Pushing a **`vX.Y`** tag runs `.github/workflows/ios-release.yml` (capability `ios-appstore-release`),
+which builds an `X.Y` archive (version injected from the tag — committed source is never bumped, so the
+alpha channel is untouched), uploads it to App Store Connect, **finds-or-creates** the `X.Y` App Store
+version record, and **attaches** the build — then **stops before Submit** (the listing / screenshots /
+privacy that App Review needs live in other workspaces; a human clicks Submit once they're ready).
+
+- **Version scheme is two-part** (`v1.0` → store version "1.0"); a hotfix is a minor bump (no `X.Y.Z`).
+  A malformed tag fails the run.
+- **Guards**: the tag must be an ancestor of `origin/main` **and** every check-run on that commit must
+  be green (including the allowed-red `ios-deliver`/`ios-promote`). A commit whose full pipeline isn't
+  green does not reach the store. **Escape hatch:** a cancelled/red `ios-promote` on your target commit
+  blocks the release — re-run that idempotent job to green, then re-push the tag.
+- Tags fire **only** this workflow: `build.yml` and `ios.yml` exclude tags from their `push` triggers.
+- It posts **no** required status check (not in `main.json`); a failed release is red but blocks nothing.
+  It reuses the existing Admin ASC key — no new secret. Build number = the release run's `run_number`.
 
 ### Sideload a dev IPA (skip TestFlight)
 

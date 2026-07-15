@@ -44,6 +44,11 @@ name: ios
 
 on:
   push:
+    # BRANCHES only. A `vX.Y` tag is handled by ios-release.yml (App Store release); excluding tags
+    # here keeps a release from triggering a redundant alpha archive/deliver/promote. Every branch push
+    # still runs (no path filter), so the required `ios-build` / `ios-test` checks are posted on every
+    # branch and PR and no merge can freeze.
+    branches: ["**"]
   # Manual dispatch to override the compile-time upload host (PhotoKit forces the host to be
   # compile-time). A plain push supplies no input → the archive does NOT override the build setting,
   # so it bakes the Config.xcconfig default (the deployed HTTPS backend, the single source of the
@@ -77,72 +82,6 @@ jobs:
     runs-on: macos-26
     steps:
       - uses: actions/checkout@v7.0.0
-      - uses: actions/setup-java@v5
-        with:
-          distribution: temurin
-          java-version: 25
-      - uses: gradle/actions/setup-gradle@v5
-      # Cache the Kotlin/Native toolchain + compiled klibs (cold ~12 min -> warm a few min).
-      # Keyed on libs.versions.toml so a Kotlin/Native version bump invalidates the cache.
-      - name: Cache Kotlin/Native (~/.konan)
-        uses: actions/cache@v5
-        with:
-          path: ~/.konan
-          key: konan-${{ runner.os }}-${{ hashFiles('gradle/libs.versions.toml') }}
-          restore-keys: |
-            konan-${{ runner.os }}-
-
-      # Compile the background-upload extension's Kotlin core (the shipping iosArm64 framework). It
-      # is not yet reachable from the iosApp Xcode project (no extension target), so the archive
-      # below would not touch it — compile it here, in the device-BUILD job, so it stays a merge
-      # gate. Removed once the Xcode extension target links SnapSyncUploadKit into the archive.
-      - name: Compile the background-upload extension framework
-        run: ./gradlew :app:ios:photokit-extension:compileKotlinIosArm64
-
-      # The signed archive both compiles iosArm64 (so it IS the build gate) AND is the delivery
-      # source. Write the App Store Connect API key (.p8) for xcodebuild's auth flags.
-      - name: Prepare App Store Connect API key
-        env:
-          ASC_API_PRIVATE_KEY: ${{ secrets.ASC_API_PRIVATE_KEY }}
-        run: |
-          mkdir -p "$RUNNER_TEMP/asc"
-          printf '%s' "$ASC_API_PRIVATE_KEY" > "$RUNNER_TEMP/asc/AuthKey.p8"
-          echo "ASC_KEY_PATH=$RUNNER_TEMP/asc/AuthKey.p8" >> "$GITHUB_ENV"
-
-      # Mint a fresh random password for the throwaway signing keychain and share it across both
-      # import steps via $GITHUB_ENV (masked so it never prints). The keychain dies with the
-      # ephemeral runner, so the password protects nothing — a per-run random value just avoids a
-      # hardcoded credential in this file.
-      - name: Generate ephemeral keychain password
-        run: |
-          PW="$(openssl rand -base64 24)"
-          echo "::add-mask::$PW"
-          echo "KEYCHAIN_PW=$PW" >> "$GITHUB_ENV"
-
-      # Import BOTH persistent signing certs into ONE keychain so automatic signing reuses them
-      # instead of minting fresh certs every run (which would exhaust Apple's per-account cert cap
-      # under every-push delivery). Distribution alone is not enough: `xcodebuild archive
-      # -allowProvisioningUpdates` also provisions a DEVELOPMENT identity for the team, and an empty
-      # runner keychain made it mint a new Development cert each run — the actual cap-exhaustion bug.
-      # A shared explicit keychain (not the default auto-password `signing_temp`) lets the second
-      # import target the same keychain with the password minted above. Both pinned to the exact
-      # release, not the float.
-      - name: Import Distribution signing certificate
-        uses: apple-actions/import-codesign-certs@v7.0.0
-        with:
-          p12-file-base64: ${{ secrets.SIGNING_CERT_P12_BASE64 }}
-          p12-password: ${{ secrets.SIGNING_CERT_PASSWORD }}
-          keychain: snapsync-signing
-          keychain-password: ${{ env.KEYCHAIN_PW }}
-      - name: Import Development signing certificate
-        uses: apple-actions/import-codesign-certs@v7.0.0
-        with:
-          p12-file-base64: ${{ secrets.SIGNING_DEV_CERT_P12_BASE64 }}
-          p12-password: ${{ secrets.SIGNING_DEV_CERT_PASSWORD }}
-          keychain: snapsync-signing
-          create-keychain: false
-          keychain-password: ${{ env.KEYCHAIN_PW }}
-
       # Reject a non-HTTPS upload_host before archiving: default ATS (HTTPS-only) forbids plaintext,
       # so a baked http:// host would silently fail every upload on device. Empty input = no override
       # (the archive uses the Config.xcconfig default), so this is a no-op for ordinary pushes.
@@ -155,55 +94,51 @@ jobs:
             exit 1
           fi
 
-      # Pick the build configuration and compute the optional host override. A workflow_dispatch with
-      # an (HTTPS) `upload_host` builds DEBUG so the Kotlin/Native framework link skips the LLVM
-      # optimizer (the bulk of the ~6 min archive); the dev/sideload IPA needs no optimization, and
-      # `-configuration Debug` makes embedAndSignAppleFrameworkForXcode build linkDebugFramework via
-      # $(CONFIGURATION). EVERY push (the merge gate) and any plain dispatch (empty upload_host) stay
-      # RELEASE and set NO override, so the archive bakes the Config.xcconfig default (the deployed
-      # HTTPS backend, the single source of the host literal). To get a Release-representative IPA
-      # from a manual run, leave `upload_host` empty.
-      - name: Select build configuration and host override
+      # Pick the build configuration, host override, and APNs environment. A workflow_dispatch with an
+      # (HTTPS) `upload_host` builds a DEBUG dev-IPA (skips the LLVM optimizer, the bulk of the ~6 min
+      # archive) and keeps the Config.xcconfig development/sandbox APNs default. EVERY push (the merge
+      # gate) and any plain dispatch stay RELEASE, set NO host override (bake the Config.xcconfig host),
+      # and set APNs to PRODUCTION — a TestFlight/App Store distribution build must be production
+      # (capability ios-testflight-delivery); only the dev-sideload path stays sandbox.
+      - name: Select build configuration, host override, and APNs environment
         env:
           UPLOAD_HOST: ${{ inputs.upload_host }}
         run: |
           if [ "${{ github.event_name }}" = "workflow_dispatch" ] && [ -n "$UPLOAD_HOST" ]; then
             echo "BUILD_CONFIG=Debug" >> "$GITHUB_ENV"
-            echo "UPLOAD_HOST_OVERRIDE=BACKGROUND_UPLOAD_URL_BASE=$UPLOAD_HOST" >> "$GITHUB_ENV"
+            echo "UPLOAD_HOST_OUT=$UPLOAD_HOST" >> "$GITHUB_ENV"
+            echo "APS_ENV_OUT=" >> "$GITHUB_ENV"
+            echo "APNS_ENV_OUT=" >> "$GITHUB_ENV"
           else
             echo "BUILD_CONFIG=Release" >> "$GITHUB_ENV"
-            echo "UPLOAD_HOST_OVERRIDE=" >> "$GITHUB_ENV"
+            echo "UPLOAD_HOST_OUT=" >> "$GITHUB_ENV"
+            echo "APS_ENV_OUT=production" >> "$GITHUB_ENV"
+            echo "APNS_ENV_OUT=production" >> "$GITHUB_ENV"
           fi
 
-      # Build number = the monotonic run number. -allowProvisioningUpdates still cloud-manages the
-      # provisioning PROFILE, but now reuses the imported cert above rather than creating a new one.
-      # This is the required merge gate: it compiles the shipping iosArm64 framework.
+      # The signed archive doubles as the merge gate (it compiles the shipping iosArm64 framework) and
+      # the delivery source. All the archive+sign scaffolding — Java/Gradle/Konan setup, the extension
+      # compile, the ASC key, the ephemeral keychain, BOTH persistent certs, and the archive — lives in
+      # the shared composite action so the tag release (ios-release.yml) reuses it byte-for-byte. Build
+      # number = the monotonic run number. marketing-version stays EMPTY here so the archive bakes the
+      # Config.xcconfig fallback (0.1.0, alpha); only the release overrides it from the tag.
       - name: Archive signed device app
-        env:
-          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
-          ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
-        run: |
-          xcodebuild \
-            -project iosApp/iosApp.xcodeproj \
-            -scheme iosApp \
-            -configuration "$BUILD_CONFIG" \
-            -sdk iphoneos \
-            -destination 'generic/platform=iOS' \
-            -archivePath "$RUNNER_TEMP/SnapSync.xcarchive" \
-            -derivedDataPath build/ios \
-            -allowProvisioningUpdates \
-            -authenticationKeyPath "$ASC_KEY_PATH" \
-            -authenticationKeyID "$ASC_KEY_ID" \
-            -authenticationKeyIssuerID "$ASC_ISSUER_ID" \
-            CURRENT_PROJECT_VERSION=${{ github.run_number }} \
-            $UPLOAD_HOST_OVERRIDE \
-            archive
-
-      # Per-branch device installability before merge is served OUT OF BAND by the ssh-mac build loop
-      # (.github/workflows/ssh-mac.yml; see CLAUDE.md), not by a CI dev-IPA artifact — this job no
-      # longer exports a development IPA. The Development cert is still imported above because
-      # `xcodebuild archive` provisions a development identity in addition to the distribution one
-      # (dropping it would re-introduce per-run Development-cert churn).
+        uses: ./.github/actions/ios-archive
+        with:
+          build-config: ${{ env.BUILD_CONFIG }}
+          marketing-version: ""
+          aps-environment: ${{ env.APS_ENV_OUT }}
+          apns-env: ${{ env.APNS_ENV_OUT }}
+          upload-host: ${{ env.UPLOAD_HOST_OUT }}
+          current-project-version: ${{ github.run_number }}
+          archive-path: ${{ runner.temp }}/SnapSync.xcarchive
+          asc-key-id: ${{ secrets.ASC_KEY_ID }}
+          asc-issuer-id: ${{ secrets.ASC_ISSUER_ID }}
+          asc-api-private-key: ${{ secrets.ASC_API_PRIVATE_KEY }}
+          signing-cert-p12-base64: ${{ secrets.SIGNING_CERT_P12_BASE64 }}
+          signing-cert-password: ${{ secrets.SIGNING_CERT_PASSWORD }}
+          signing-dev-cert-p12-base64: ${{ secrets.SIGNING_DEV_CERT_P12_BASE64 }}
+          signing-dev-cert-password: ${{ secrets.SIGNING_DEV_CERT_PASSWORD }}
 
       # Hand the archive to ios-deliver (main ONLY). Export + TestFlight upload no longer happen here:
       # they moved to ios-deliver, which needs BOTH gates green, so a red ios-test now stops the

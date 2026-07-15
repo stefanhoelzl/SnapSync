@@ -1,0 +1,175 @@
+# Shared "archive a signed iOS device app" steps, used by BOTH the alpha merge gate
+# (ios.yml → ios-build) and the tag-driven App Store release (ios-release.yml).
+#
+# WHY a COMPOSITE action and not a reusable (workflow_call) workflow: a reusable workflow renames the
+# caller's status-check context to "<job> / <inner-job>", which would rename `ios-build` and freeze
+# merges (branch-protection requires exactly "ios-build"). A composite action is STEP-level, so the
+# calling job keeps its name (= its required status-check context) unchanged.
+#
+# It holds the security-sensitive scaffolding that was previously duplicated inline: Java/Gradle/Konan
+# setup, the extension-framework compile (the shipping iosArm64 klib), the App Store Connect API key,
+# an ephemeral signing keychain, and BOTH persistent certs (Distribution + Development — importing both
+# is deliberate: an empty keychain makes automatic signing mint a NEW cert each run, and
+# `xcodebuild archive` provisions a development identity in addition to the distribution one; see
+# ios.yml's header and the ios-testflight-delivery spec).
+#
+# Version / APNs / host are INJECTED on the xcodebuild line (never read from a committed bump):
+#   * marketing-version  — empty = the Config.xcconfig fallback (0.1.0, alpha); the release passes the tag.
+#   * aps-environment / apns-env — Release archives pass `production`; Debug/dev-IPA leaves the
+#     Config.xcconfig development/sandbox default.
+#   * upload-host — empty = the baked deployed host; the dev-IPA path may point elsewhere (HTTPS-only).
+name: iOS archive (signed)
+description: Compile the extension framework, import signing certs, and produce a signed device xcarchive.
+
+inputs:
+  build-config:
+    description: Xcode configuration. Release for TestFlight/App Store distribution; Debug for the dev-IPA.
+    default: Release
+  marketing-version:
+    description: Override MARKETING_VERSION (CFBundleShortVersionString). Empty = Config.xcconfig fallback.
+    default: ""
+  aps-environment:
+    description: Override APS_ENVIRONMENT (aps-environment entitlement). Empty = Config.xcconfig default (development).
+    default: ""
+  apns-env:
+    description: Override APNS_ENV (Info.plist). Empty = Config.xcconfig default (sandbox).
+    default: ""
+  upload-host:
+    description: Override BACKGROUND_UPLOAD_URL_BASE (HTTPS-only). Empty = the baked Config.xcconfig host.
+    default: ""
+  current-project-version:
+    description: CFBundleVersion (build number) — the caller's github.run_number.
+    required: true
+  archive-path:
+    description: Output path for the produced .xcarchive.
+    required: true
+  asc-key-id:
+    description: App Store Connect API key id (Admin).
+    required: true
+  asc-issuer-id:
+    description: App Store Connect issuer id.
+    required: true
+  asc-api-private-key:
+    description: App Store Connect .p8 private key (PEM contents).
+    required: true
+  signing-cert-p12-base64:
+    description: Apple Distribution cert (.p12, base64).
+    required: true
+  signing-cert-password:
+    description: Password for the Distribution .p12.
+    required: true
+  signing-dev-cert-p12-base64:
+    description: Apple Development cert (.p12, base64).
+    required: true
+  signing-dev-cert-password:
+    description: Password for the Development .p12.
+    required: true
+
+runs:
+  using: composite
+  steps:
+    - uses: actions/setup-java@v5
+      with:
+        distribution: temurin
+        java-version: 25
+    - uses: gradle/actions/setup-gradle@v5
+
+    # Cache the Kotlin/Native toolchain + compiled klibs. Keyed on libs.versions.toml so a
+    # Kotlin/Native bump invalidates the cache.
+    - name: Cache Kotlin/Native (~/.konan)
+      uses: actions/cache@v5
+      with:
+        path: ~/.konan
+        key: konan-${{ runner.os }}-${{ hashFiles('gradle/libs.versions.toml') }}
+        restore-keys: |
+          konan-${{ runner.os }}-
+
+    # Compile the background-upload extension's Kotlin core (the shipping iosArm64 framework). The
+    # Xcode project has no extension target yet, so the archive below would not touch it — compile it
+    # here so it stays part of the gate/archive.
+    - name: Compile the background-upload extension framework
+      shell: bash
+      run: ./gradlew :app:ios:photokit-extension:compileKotlinIosArm64
+
+    # Write the App Store Connect API key (.p8) for xcodebuild's auth flags.
+    - name: Prepare App Store Connect API key
+      shell: bash
+      env:
+        ASC_API_PRIVATE_KEY: ${{ inputs.asc-api-private-key }}
+      run: |
+        mkdir -p "$RUNNER_TEMP/asc"
+        printf '%s' "$ASC_API_PRIVATE_KEY" > "$RUNNER_TEMP/asc/AuthKey.p8"
+        echo "ASC_KEY_PATH=$RUNNER_TEMP/asc/AuthKey.p8" >> "$GITHUB_ENV"
+
+    # Random password for the throwaway signing keychain, shared across both imports via $GITHUB_ENV
+    # (masked). The keychain dies with the ephemeral runner, so this protects nothing — it just avoids
+    # a hardcoded credential.
+    - name: Generate ephemeral keychain password
+      shell: bash
+      run: |
+        PW="$(openssl rand -base64 24)"
+        echo "::add-mask::$PW"
+        echo "KEYCHAIN_PW=$PW" >> "$GITHUB_ENV"
+
+    # Import BOTH persistent certs into ONE keychain so automatic signing reuses them instead of
+    # minting a fresh cert every run (which would exhaust Apple's per-account cert cap).
+    - name: Import Distribution signing certificate
+      uses: apple-actions/import-codesign-certs@v7.0.0
+      with:
+        p12-file-base64: ${{ inputs.signing-cert-p12-base64 }}
+        p12-password: ${{ inputs.signing-cert-password }}
+        keychain: snapsync-signing
+        keychain-password: ${{ env.KEYCHAIN_PW }}
+    - name: Import Development signing certificate
+      uses: apple-actions/import-codesign-certs@v7.0.0
+      with:
+        p12-file-base64: ${{ inputs.signing-dev-cert-p12-base64 }}
+        p12-password: ${{ inputs.signing-dev-cert-password }}
+        keychain: snapsync-signing
+        create-keychain: false
+        keychain-password: ${{ env.KEYCHAIN_PW }}
+
+    # Assemble the optional xcodebuild build-setting overrides. Each is applied only when non-empty, so
+    # an omitted input leaves the Config.xcconfig default in place. The `$()` trick is unnecessary on
+    # the CLI (only xcconfig comments need it).
+    - name: Assemble xcodebuild overrides
+      shell: bash
+      env:
+        IN_MARKETING_VERSION: ${{ inputs.marketing-version }}
+        IN_APS_ENVIRONMENT: ${{ inputs.aps-environment }}
+        IN_APNS_ENV: ${{ inputs.apns-env }}
+        IN_UPLOAD_HOST: ${{ inputs.upload-host }}
+      run: |
+        args=""
+        [ -n "$IN_MARKETING_VERSION" ] && args="$args MARKETING_VERSION=$IN_MARKETING_VERSION"
+        [ -n "$IN_APS_ENVIRONMENT" ]   && args="$args APS_ENVIRONMENT=$IN_APS_ENVIRONMENT"
+        [ -n "$IN_APNS_ENV" ]          && args="$args APNS_ENV=$IN_APNS_ENV"
+        [ -n "$IN_UPLOAD_HOST" ]       && args="$args BACKGROUND_UPLOAD_URL_BASE=$IN_UPLOAD_HOST"
+        echo "XCB_OVERRIDES=$args" >> "$GITHUB_ENV"
+
+    # The signed archive both compiles iosArm64 (so it doubles as the build gate) and is the delivery
+    # source. -allowProvisioningUpdates cloud-manages the PROFILE while reusing the imported cert.
+    - name: Archive signed device app
+      shell: bash
+      env:
+        ASC_KEY_ID: ${{ inputs.asc-key-id }}
+        ASC_ISSUER_ID: ${{ inputs.asc-issuer-id }}
+        BUILD_CONFIG: ${{ inputs.build-config }}
+        ARCHIVE_PATH: ${{ inputs.archive-path }}
+        CPV: ${{ inputs.current-project-version }}
+      run: |
+        xcodebuild \
+          -project iosApp/iosApp.xcodeproj \
+          -scheme iosApp \
+          -configuration "$BUILD_CONFIG" \
+          -sdk iphoneos \
+          -destination 'generic/platform=iOS' \
+          -archivePath "$ARCHIVE_PATH" \
+          -derivedDataPath build/ios \
+          -allowProvisioningUpdates \
+          -authenticationKeyPath "$ASC_KEY_PATH" \
+          -authenticationKeyID "$ASC_KEY_ID" \
+          -authenticationKeyIssuerID "$ASC_ISSUER_ID" \
+          CURRENT_PROJECT_VERSION="$CPV" \
+          $XCB_OVERRIDES \
+          archive
