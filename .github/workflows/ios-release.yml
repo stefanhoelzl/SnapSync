@@ -1,0 +1,160 @@
+# Tag-driven App Store release (capability ios-appstore-release). Pushing a `vX.Y` tag builds an
+# `X.Y`-versioned signed archive, uploads it to App Store Connect, finds-or-creates the matching App
+# Store version record, and ATTACHES the build to it — stopping BEFORE submit-for-review (the listing /
+# screenshots / privacy that App Review needs are owned elsewhere; a human clicks Submit later).
+#
+# The store version is DERIVED FROM THE TAG and injected as MARKETING_VERSION at build time (same
+# mechanism ios.yml uses for CURRENT_PROJECT_VERSION). Committed source is never bumped, so `main`/alpha
+# keeps its pinned 0.1.0 fallback and NEVER triggers a first-of-version Beta App Review.
+#
+# A tag is only a pointer, so a release is guarded: the tag must match ^v\d+\.\d+$, its commit must be
+# an ancestor of origin/main, and EVERY check-run on that commit must be green (excluding this
+# workflow's own in-progress runs). A commit whose full pipeline — including promotion to alpha — is not
+# green does not jump to the App Store. A cancelled/red ios-promote on the target commit is remedied by
+# re-running that idempotent job (capability ios-testflight-delivery) and re-pushing the tag.
+#
+# Tags fire ONLY this workflow: build.yml and ios.yml exclude tags from their push triggers, so the only
+# in-progress check-runs on the tag SHA at guard time are this job's own.
+#
+# This workflow posts NO branch-protection status check and is NOT in .github/rulesets/main.json: it
+# never runs on a PR branch, so requiring it would freeze merges. A failed release is RED but blocks
+# nothing. It reuses the EXISTING Admin App Store Connect key — no new secret.
+name: ios-release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: read
+  checks: read
+
+# Per-tag group: a re-pushed SAME tag cancels its own in-flight run, but distinct versions (v1.0 vs
+# v1.1) have distinct refs and never cancel each other.
+concurrency:
+  group: ios-release-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  release:
+    name: ios-release
+    runs-on: macos-26
+    env:
+      ASC_APP_ID: "6781692480"
+    steps:
+      # fetch-depth: 0 so the ancestor check below can see origin/main's history.
+      - uses: actions/checkout@v7.0.0
+        with:
+          fetch-depth: 0
+
+      # Guard 1: the tag must be two-part vX.Y. Derive the store version (tag minus the leading v).
+      - name: Validate the tag and derive the store version
+        run: |
+          TAG="$GITHUB_REF_NAME"
+          if [[ ! "$TAG" =~ ^v[0-9]+\.[0-9]+$ ]]; then
+            echo "::error::tag '$TAG' must match ^v[0-9]+\.[0-9]+$ (two-part, e.g. v1.0)"
+            exit 1
+          fi
+          echo "STORE_VERSION=${TAG#v}" >> "$GITHUB_ENV"
+          echo "releasing store version ${TAG#v} from tag $TAG"
+
+      # Guard 2: the tagged commit must already be on main (gated + on the alpha channel).
+      - name: Require the tag commit to be an ancestor of origin/main
+        run: |
+          git fetch --no-tags origin main
+          if ! git merge-base --is-ancestor "$GITHUB_SHA" FETCH_HEAD; then
+            echo "::error::tag commit $GITHUB_SHA is not an ancestor of origin/main — refusing to release"
+            exit 1
+          fi
+          echo "commit $GITHUB_SHA is on main"
+
+      # Guard 3: every check-run on the tagged commit must be green. In-progress/queued runs are this
+      # workflow's own (tags fire only ios-release), so they are ignored; every COMPLETED check-run must
+      # have concluded success. A commit with no completed check-runs (impossible for a main commit) is
+      # refused rather than passing vacuously.
+      - name: Require every check-run on the tag commit to be green
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          python3 - "$GITHUB_SHA" <<'PY'
+          import json, os, subprocess, sys
+          sha = sys.argv[1]
+          repo = os.environ["GITHUB_REPOSITORY"]
+          out = subprocess.check_output([
+              "gh", "api", "--paginate",
+              f"/repos/{repo}/commits/{sha}/check-runs",
+              "--jq", ".check_runs[] | {name, status, conclusion}",
+          ]).decode()
+          runs = [json.loads(line) for line in out.splitlines() if line.strip()]
+          completed = [r for r in runs if r["status"] == "completed"]
+          skipped = [r for r in runs if r["status"] != "completed"]
+          bad = [r for r in completed if r["conclusion"] != "success"]
+          for r in skipped:
+              print(f"ignoring in-progress check-run '{r['name']}' (this release workflow's own)")
+          if bad:
+              for r in bad:
+                  print(f"::error::check-run '{r['name']}' concluded {r['conclusion']} on {sha}")
+              sys.exit(1)
+          if not completed:
+              print(f"::error::no completed check-runs on {sha} — refusing to release")
+              sys.exit(1)
+          print(f"all {len(completed)} completed check-run(s) green")
+          PY
+
+      # Build the X.Y-versioned signed archive via the shared composite action: MARKETING_VERSION from
+      # the tag, production APNs (a real App Store build), Release config, build number = run_number.
+      - name: Archive signed device app
+        uses: ./.github/actions/ios-archive
+        with:
+          build-config: Release
+          marketing-version: ${{ env.STORE_VERSION }}
+          aps-environment: production
+          apns-env: production
+          current-project-version: ${{ github.run_number }}
+          archive-path: ${{ runner.temp }}/SnapSync.xcarchive
+          asc-key-id: ${{ secrets.ASC_KEY_ID }}
+          asc-issuer-id: ${{ secrets.ASC_ISSUER_ID }}
+          asc-api-private-key: ${{ secrets.ASC_API_PRIVATE_KEY }}
+          signing-cert-p12-base64: ${{ secrets.SIGNING_CERT_P12_BASE64 }}
+          signing-cert-password: ${{ secrets.SIGNING_CERT_PASSWORD }}
+          signing-dev-cert-p12-base64: ${{ secrets.SIGNING_DEV_CERT_P12_BASE64 }}
+          signing-dev-cert-password: ${{ secrets.SIGNING_DEV_CERT_PASSWORD }}
+
+      # Export the App Store IPA from the archive. The composite already set up the keychain and wrote
+      # $ASC_KEY_PATH in THIS job, so the export reuses both (no re-import needed).
+      - name: Export signed IPA
+        env:
+          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+        run: |
+          xcodebuild -exportArchive \
+            -archivePath "$RUNNER_TEMP/SnapSync.xcarchive" \
+            -exportPath "$RUNNER_TEMP/export" \
+            -exportOptionsPlist iosApp/ExportOptions.plist \
+            -allowProvisioningUpdates \
+            -authenticationKeyPath "$ASC_KEY_PATH" \
+            -authenticationKeyID "$ASC_KEY_ID" \
+            -authenticationKeyIssuerID "$ASC_ISSUER_ID"
+
+      # Upload to App Store Connect (the same action ios-deliver uses). This uploads the build for ASC
+      # processing; it does NOT add it to any beta group — a release build is a STORE build, not alpha.
+      - name: Upload to App Store Connect
+        uses: apple-actions/upload-testflight-build@v5
+        with:
+          app-path: ${{ runner.temp }}/export/SnapSync.ipa
+          issuer-id: ${{ secrets.ASC_ISSUER_ID }}
+          api-key-id: ${{ secrets.ASC_KEY_ID }}
+          api-private-key: ${{ secrets.ASC_API_PRIVATE_KEY }}
+
+      # Find-or-create the X.Y App Store version record and attach this build. Waits for the build to be
+      # VALID, is idempotent, and STOPS before submit. A human submits once the listing is complete.
+      - name: Attach the build to its App Store version record
+        env:
+          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+          ASC_API_PRIVATE_KEY: ${{ secrets.ASC_API_PRIVATE_KEY }}
+        run: |
+          pip install --quiet 'pyjwt[crypto]' requests
+          python .github/scripts/appstore_release.py release \
+            "$ASC_APP_ID" "${{ github.run_number }}" "$STORE_VERSION"
