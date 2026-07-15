@@ -31,11 +31,18 @@ import androidx.compose.ui.unit.dp
  */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-fun ControlPanel(controller: PanelController) {
+fun ControlPanel(controller: PanelController, dark: Boolean, onDarkChange: (Boolean) -> Unit) {
     Column(
         modifier = Modifier.fillMaxHeight().verticalScroll(rememberScrollState()).padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
+        // Test-only view control: forces the phone pane's theme (this panel's own chrome is unaffected).
+        Text("Theme (phone pane)")
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Switch(checked = dark, onCheckedChange = onDarkChange)
+            Text(if (dark) "Dark" else "Light")
+        }
+
         Text("Config")
         val config by controller.currentConfig.collectAsState()
         Row(verticalAlignment = Alignment.CenterVertically) {

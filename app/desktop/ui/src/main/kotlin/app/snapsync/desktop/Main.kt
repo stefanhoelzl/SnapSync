@@ -4,8 +4,11 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.DpSize
 import androidx.compose.ui.unit.dp
@@ -23,6 +26,8 @@ fun main() = application {
     ) {
         val controller = remember { PanelController() }
         val scope = rememberCoroutineScope()
+        // Phone-pane theme override (test equipment): default Light, matching the harness's appearance.
+        var dark by remember { mutableStateOf(false) }
 
         MaterialTheme {
             Surface {
@@ -49,8 +54,9 @@ fun main() = application {
                             println("share invite → $url")
                         },
                         scope = scope,
+                        darkThemeOverride = dark,
                     )
-                    ControlPanel(controller)
+                    ControlPanel(controller, dark = dark, onDarkChange = { dark = it })
                 }
             }
         }

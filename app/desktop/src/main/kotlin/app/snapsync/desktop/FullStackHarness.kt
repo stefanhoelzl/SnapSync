@@ -5,9 +5,12 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.DpSize
 import androidx.compose.ui.unit.dp
@@ -40,6 +43,9 @@ fun main() = application {
     ) {
         val scope = rememberCoroutineScope()
         val controller = remember { WorldInspectorController(scope) }
+        // Phone-pane theme override (test equipment): default Light, and held OUTSIDE the
+        // `key(generation)` block below so a preset (fresh world) does not reset it.
+        var dark by remember { mutableStateOf(false) }
 
         // Engine console tap: funnel the real stack's Kermit output into the inspector footer. Installed
         // once; a pure read of existing log output (no change to :test:world / production).
@@ -80,9 +86,15 @@ fun main() = application {
                             scope = scope,
                             // The real Leave affordance runs the faithful edge (imports retained).
                             leave = controller.leave,
+                            darkThemeOverride = dark,
                         )
                     }
-                    WorldInspector(controller, Modifier.weight(1f).fillMaxHeight())
+                    WorldInspector(
+                        controller,
+                        dark = dark,
+                        onDarkChange = { dark = it },
+                        modifier = Modifier.weight(1f).fillMaxHeight(),
+                    )
                 }
             }
         }

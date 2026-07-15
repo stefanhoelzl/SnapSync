@@ -37,12 +37,24 @@ import app.snapsync.permission.PermissionStatus
  */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-fun WorldInspector(controller: WorldInspectorController, modifier: Modifier = Modifier) {
+fun WorldInspector(
+    controller: WorldInspectorController,
+    dark: Boolean,
+    onDarkChange: (Boolean) -> Unit,
+    modifier: Modifier = Modifier,
+) {
     val snap = controller.snapshot
     Column(
         modifier = modifier.verticalScroll(rememberScrollState()).padding(start = 16.dp),
         verticalArrangement = Arrangement.spacedBy(6.dp),
     ) {
+        // ---- Phone-pane theme (test-only view control; no world state) --------------------------
+        Header("Theme (phone pane)")
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Switch(checked = dark, onCheckedChange = onDarkChange)
+            Text(if (dark) "Dark" else "Light")
+        }
+
         // ---- Presets + the OS invocation --------------------------------------------------------
         Header("Presets")
         FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {

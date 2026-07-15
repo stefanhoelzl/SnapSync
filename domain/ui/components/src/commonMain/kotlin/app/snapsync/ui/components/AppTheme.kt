@@ -5,6 +5,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.graphics.Color
 
 // SnapSync's green brand identity (the design-system skin — screens never see these). A confident
@@ -36,14 +37,25 @@ private val DarkColors = darkColorScheme(
 )
 
 /**
- * The Material 3 skin. Follows the platform light/dark setting; the QR component always renders
+ * A **test-only** ambient override for the theme selection. Default `null` means "follow the platform
+ * light/dark setting" — production never provides it, so [AppTheme] behaves exactly as if it did not
+ * exist. A desktop harness provides `true`/`false` to render the dark/light skin deterministically for
+ * review (the desktop's own `isSystemInDarkTheme()` is unreliable). It is a CompositionLocal, not an
+ * `App*` parameter, so it introduces no appearance parameter on any design-system signature.
+ */
+val LocalDarkThemeOverride = staticCompositionLocalOf<Boolean?> { null }
+
+/**
+ * The Material 3 skin. Follows the platform light/dark setting by default, unless
+ * [LocalDarkThemeOverride] forces a theme (test harness only). The QR component always renders
  * dark-on-light on a light card (see [AppQrCode]) so it stays scannable in both themes — the skin
  * never inverts it.
  */
 @Composable
 fun AppTheme(content: @Composable () -> Unit) {
+    val dark = LocalDarkThemeOverride.current ?: isSystemInDarkTheme()
     MaterialTheme(
-        colorScheme = if (isSystemInDarkTheme()) DarkColors else LightColors,
+        colorScheme = if (dark) DarkColors else LightColors,
         content = content,
     )
 }

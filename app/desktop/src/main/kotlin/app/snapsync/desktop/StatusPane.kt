@@ -1,6 +1,7 @@
 package app.snapsync.desktop
 
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
@@ -16,6 +17,7 @@ import app.snapsync.presentation.StatusContainerHost
 import app.snapsync.status.DownloadStatusSource
 import app.snapsync.status.SyncStatusSource
 import app.snapsync.ui.StatusScreen
+import app.snapsync.ui.components.LocalDarkThemeOverride
 import kotlinx.coroutines.CoroutineScope
 
 /**
@@ -50,6 +52,10 @@ fun StatusPane(
         { _, _, _, _, _, _ -> false },
     // Exposes the constructed container so a harness's right pane can drive the gate (e.g. onOpenUrl).
     onHostReady: (StatusContainerHost) -> Unit = {},
+    // Test-only theme override for the phone pane: `null` follows the (unreliable) desktop OS setting,
+    // `true`/`false` forces dark/light so the real skin is reviewable without a device. Scoped to the
+    // rendered `StatusScreen` only, so the harness's own control chrome is unaffected.
+    darkThemeOverride: Boolean? = null,
 ) {
     val host = remember {
         StatusContainerHost(
@@ -78,6 +84,10 @@ fun StatusPane(
         // the full-stack world harness binds it to `World.leave()`. Share is a clipboard/log stub; the
         // QR renders from the canned invite URL. Download progress now folds into the status line's
         // arrows via the reduction, so no separate download line is passed.
+        //
+        // The theme override is provided around the real `StatusScreen` (which wraps itself in
+        // `AppTheme`), so the harness toggle flips the phone pane's skin without touching its own chrome.
+        CompositionLocalProvider(LocalDarkThemeOverride provides darkThemeOverride) {
         StatusScreen(
             state,
             host::onRequestPermission,
@@ -95,5 +105,6 @@ fun StatusPane(
             onConfirmSwitch = host::onConfirmSwitch,
             onCancelSwitch = host::onCancelSwitch,
         )
+        }
     }
 }
