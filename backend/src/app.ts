@@ -109,6 +109,10 @@ import {
   verifyToken,
 } from "./attest.ts";
 
+// The marketing/landing page (capability `marketing-site`), embedded at build time. `deno bundle` inlines
+// this text import, so the page ships inside the single bundle — served from memory, no runtime file read.
+import LANDING_HTML from "./landing.html" with { type: "text" };
+
 // The event registry's marker prefix. Because an eventId is a UUID, the marker
 // `events/<id>/metadata.json` is disjoint from any device manifest `events/<id>/devices/<deviceId>.json`
 // and from the byte store `files/devices/<deviceId>/…`.
@@ -329,6 +333,11 @@ const PRESIGN_EXPIRY_SECONDS = 604800;
 // suppresses its cache. `no-store` alone would rest the listings' cacheability on undocumented behavior,
 // and a cached listing serves stale, expiring presigned URLs.
 const NO_CACHE = "no-store, no-cache, max-age=0";
+
+// The marketing page is PUBLIC and static — the deliberate inverse of the listings' NO_CACHE. A `public`
+// directive lets the bunny pull zone serve it from the edge, keeping the Edge Script off the request hot
+// path (capability `marketing-site`).
+const PUBLIC_CACHE = "public, max-age=300";
 
 /**
  * Mint an AWS SigV4 **presigned S3 GET URL** for a stored object (the download-URL authority for
@@ -654,7 +663,17 @@ export function createApp({ fetch: fetchImpl, config, now = Date.now }: Deps): H
   //     fallback the iOS uploader depends on.
   app.use("*", async (c, next) => {
     const path = new URL(c.req.url).pathname;
-    if (c.req.method === "OPTIONS" || path.startsWith("/attest/")) return await next();
+    const method = c.req.method;
+    // Ungated (closed list): OPTIONS, the `/attest/*` token issuers, and the public marketing page at
+    // EXACTLY `/` (capability `marketing-site`). The marketing exception is exact-path and GET/HEAD-only —
+    // never a prefix, never a mutating method — so no gated route can be reached through it.
+    if (
+      method === "OPTIONS" ||
+      path.startsWith("/attest/") ||
+      ((method === "GET" || method === "HEAD") && path === "/")
+    ) {
+      return await next();
+    }
 
     const auth = c.req.header("authorization") ?? "";
     const token = auth.startsWith("Bearer ") ? auth.slice("Bearer ".length).trim() : "";
@@ -662,6 +681,16 @@ export function createApp({ fetch: fetchImpl, config, now = Date.now }: Deps): H
       return c.text("unattested", 401);
     }
     return await next();
+  });
+
+  // The public marketing/landing page (capability `marketing-site`): a single source-owned static page,
+  // served from memory with no storage or Apple call. Cacheable (PUBLIC_CACHE) so the pull zone answers
+  // from the edge. GET returns the page; HEAD returns the same headers with no body. The gate above admits
+  // both at exactly `/`.
+  app.on(["GET", "HEAD"], "/", (c) => {
+    c.header("Cache-Control", PUBLIC_CACHE);
+    c.header("Content-Type", "text/html; charset=utf-8");
+    return c.req.method === "HEAD" ? c.body(null) : c.body(LANDING_HTML);
   });
 
   // Issue a challenge. Stateless and self-authenticating (an HMAC over its own expiry), so this writes

@@ -18,6 +18,7 @@
     "@peculiar/x509": "npm:@peculiar/x509@^1.12"
   },
   "fmt": {
-    "lineWidth": 100
+    "lineWidth": 100,
+    "exclude": ["src/landing.html"]
   }
 }
