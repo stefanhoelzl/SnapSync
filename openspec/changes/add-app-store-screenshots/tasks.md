@@ -1,9 +1,9 @@
-> **Spike ran on ssh-mac (2026-07-15, `macos-26`, Xcode 26.5) and PASSED** — the full-scheme simulator
-> build succeeds with the extension in the closure. The only remaining item is **5.1** (retrieve/eyeball
-> the composited artifacts): its natural home is a live `screenshots.yml` dispatch once the branch is
-> pushed — a mid-spike attempt to capture on ssh-mac was cut off when the cloudflared quick tunnel
-> dropped during simulator boot, so the PNGs were not pulled back. Everything else is implemented and
-> verified (`:domain:presentation:jvmTest` + `compileIosMainKotlinMetadata` + the spike build).
+> **Validated end-to-end.** Spike (ssh-mac, `macos-26`, Xcode 26.5): the full-scheme simulator build
+> succeeds with the extension in the closure. The pipeline then ran green in CI and, after two fixes
+> (ImageMagick font path; forge mode must not boot the live stack from the scene lifecycle — it was
+> crashing the unsigned sim app), produces correct composited marketing shots of all three states
+> (create / joining-with-QR / in_sync), verified visually both on ssh-mac and from the CI artifact.
+> The temporary branch `push` trigger used to validate on-branch has been reverted to dispatch-only.
 
 ## 1. Spike: simulator build feasibility
 
@@ -34,6 +34,6 @@
 
 ## 5. Validation & docs
 
-- [ ] 5.1 Dispatch the workflow and confirm three composited artifacts are produced and legible (macOS-gated)
+- [x] 5.1 Ran the workflow in CI (via a temporary branch push trigger, since reverted): three composited 1320×2868 artifacts produced and verified legible — create, joining (event title + invite QR + "Synchronization pending…"), in_sync ("In sync"); also confirmed live on ssh-mac
 - [x] 5.2 `npx --yes @fission-ai/openspec@1.5.0 validate --specs --strict` passes (47/0)
 - [x] 5.3 Documented the new `SNAPSYNC_FORGE_STATE` dev launch-env trigger in root `CLAUDE.md` alongside `SNAPSYNC_DEEPLINK` / the seeders
