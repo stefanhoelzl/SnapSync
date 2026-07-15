@@ -12,7 +12,10 @@ import app.snapsync.eventcreation.CreationStatusSource
 import app.snapsync.eventcreation.EventCreator
 import app.snapsync.permission.PermissionRequester
 import app.snapsync.permission.PermissionStatusSource
+import app.snapsync.presentation.AlwaysAttested
+import app.snapsync.presentation.AttestedSource
 import app.snapsync.presentation.JoinLoad
+import app.snapsync.presentation.MutablePendingJoinSource
 import app.snapsync.presentation.StatusContainerHost
 import app.snapsync.status.DownloadStatusSource
 import app.snapsync.status.SyncStatusSource
@@ -50,6 +53,14 @@ fun StatusPane(
     loadJoinDetails: suspend (String) -> JoinLoad = { JoinLoad.Failed },
     commitJoin: suspend (String, String, String, String, Direction, Boolean) -> Boolean =
         { _, _, _, _, _, _ -> false },
+    // Attestation health (capability `device-attestation`): defaulted to always-attested so the
+    // full-stack harness constructs unchanged; the forge harness injects a MutableAttestedSource so
+    // `SyncHealth.Unattested` is forgeable.
+    attestedSource: AttestedSource = AlwaysAttested,
+    // The join/switch overlay cell (capability `join-event`): defaulted to a fresh internal instance so
+    // the full-stack harness's real gate drives it as before; the forge harness injects its own so any
+    // `JoinPhase` is forgeable by writing this cell.
+    pending: MutablePendingJoinSource = MutablePendingJoinSource(),
     // Exposes the constructed container so a harness's right pane can drive the gate (e.g. onOpenUrl).
     onHostReady: (StatusContainerHost) -> Unit = {},
     // Test-only theme override for the phone pane: `null` follows the (unreliable) desktop OS setting,
@@ -72,6 +83,8 @@ fun StatusPane(
             loadJoinDetails = loadJoinDetails,
             commitJoin = commitJoin,
             downloadSource = downloadSource,
+            attestedSource = attestedSource,
+            pending = pending,
         ).also(onHostReady)
     }
     val state by host.container.stateFlow.collectAsState()

@@ -58,6 +58,17 @@ fun ControlPanel(controller: PanelController, dark: Boolean, onDarkChange: (Bool
             Button(onClick = { controller.showCreateFailedServer() }) { Text("Failed: server error") }
         }
 
+        Text("Join event (config absent — full-screen JoiningEvent)")
+        ButtonRow {
+            Button(onClick = { controller.showJoinLoading() }) { Text("Loading") }
+            Button(onClick = { controller.showJoinExplainAccess() }) { Text("Explain access") }
+            Button(onClick = { controller.showJoinReady() }) { Text("Ready (confirm)") }
+            Button(onClick = { controller.showJoinNotFound() }) { Text("Not found") }
+            Button(onClick = { controller.showJoinLoadFailed() }) { Text("Load failed") }
+            Button(onClick = { controller.showJoinCommitting() }) { Text("Committing") }
+            Button(onClick = { controller.showJoinCommitFailed() }) { Text("Commit failed") }
+        }
+
         Text("Permission")
         ButtonRow {
             Button(onClick = { controller.showPermissionNotDetermined() }) { Text("Not determined") }
@@ -80,6 +91,19 @@ fun ControlPanel(controller: PanelController, dark: Boolean, onDarkChange: (Bool
         ButtonRow {
             Button(onClick = { controller.showPermissionBlockedNotDetermined() }) { Text("Allow access (priming)") }
             Button(onClick = { controller.showPermissionBlockedDenied() }) { Text("Photo access turned off") }
+        }
+
+        Text("Switch confirmation (joined — dialog over the joined layer)")
+        ButtonRow {
+            Button(onClick = { controller.showSwitchReady() }) { Text("Ready (switch?)") }
+            Button(onClick = { controller.showSwitchNotFound() }) { Text("Not found") }
+            Button(onClick = { controller.showSwitchLoadFailed() }) { Text("Load failed") }
+            Button(onClick = { controller.showSwitchCommitFailed() }) { Text("Commit failed") }
+        }
+
+        Text("Attestation (joined)")
+        ButtonRow {
+            Button(onClick = { controller.showUnattested() }) { Text("Unattested (can't verify device)") }
         }
 
         Text("Event not started")

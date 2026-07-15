@@ -55,6 +55,10 @@ fun main() = application {
                         },
                         scope = scope,
                         darkThemeOverride = dark,
+                        // The forge's join/switch and attestation cells, so the panel can forge the
+                        // join gate (JoiningEvent / pendingSwitch) and SyncHealth.Unattested.
+                        attestedSource = controller.attestedSource,
+                        pending = controller.pendingJoinSource,
                     )
                     ControlPanel(controller, dark = dark, onDarkChange = { dark = it })
                 }
