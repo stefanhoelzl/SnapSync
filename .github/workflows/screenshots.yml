@@ -24,6 +24,11 @@ name: screenshots
 
 on:
   workflow_dispatch:
+  # TEMPORARY (revert before merge): a new workflow_dispatch workflow is not dispatchable until it
+  # exists on the default branch, so this branch-scoped push trigger validates the pipeline once on
+  # ci-screenshot. Remove this `push:` block — leaving only workflow_dispatch — before shipping.
+  push:
+    branches: [ci-screenshot]
 
 permissions:
   contents: read
