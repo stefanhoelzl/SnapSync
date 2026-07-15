@@ -15,7 +15,6 @@ the screen show a photo as pending the moment it is taken, rather than only once
 noticed it.
 
 Decision record: `changes/archive/2026-06-22-gallery-counted-status`.
-
 ## Requirements
 ### Requirement: GalleryStatusSource seam
 
@@ -26,9 +25,14 @@ always be available synchronously and SHALL always be a real, source-derived cou
 or negative sentinel). The seam exposes the count only; it does not expose individual assets, identity,
 or per-asset state.
 
-The count SHALL be **scoped by the membership's capture-date cutoff** (capability `photo-selection-policy`),
-which is always present — the same bound that scopes the upload cycle's discovery, so the count and the
-admitted set never diverge. There is no whole-library count.
+The count SHALL be **scoped by the membership's selection policy** (capability `photo-selection-policy`) —
+its capture-date cutoff, which is always present, **and** its origin exclusions — the same policy that scopes
+the upload cycle's discovery, so the count and the admitted set never diverge. There is no whole-library
+count.
+
+Scoping by the cutoff alone is insufficient: an origin-excluded asset that counted toward `N` but was never
+uploaded would peg completeness permanently below 100% and hold the joined screen at "pending" forever — the
+same failure the cutoff scoping exists to prevent.
 
 #### Scenario: Current size is available synchronously
 
@@ -45,6 +49,12 @@ admitted set never diverge. There is no whole-library count.
 - **WHEN** the membership's cutoff is `C` and the library holds assets both before and at-or-after `C`
 - **THEN** `size.value` counts only the at-or-after assets — the same bound the upload cycle's discovery
   applies
+
+#### Scenario: The count applies the same origin exclusions the cycle applies
+
+- **WHEN** the library holds a screenshot captured after the cutoff, alongside an admitted camera photo
+- **THEN** `size.value` counts only the camera photo, so the joined screen can reach "in sync" once that
+  photo uploads
 
 ### Requirement: Live re-emission on library change
 
@@ -184,8 +194,8 @@ seam off presentation").
 `:domain:gallery` SHALL define a **decision-free** raw-asset walk seam that exposes the PhotoKit library
 as raw facts, carrying **no** sync or fan-out decisions. It SHALL surface a `RawAsset` per asset —
 carrying the **raw** `localIdentifier` (still containing `/`, un-normalized), the resolved
-`creationDate`, and a list of `RawResource` — and a `RawResource` per platform resource, carrying the
-**raw** `PHAssetResourceType` value (a stable ABI integer, un-mapped to any role), the
+`creationDate`, the **origin facts** below, and a list of `RawResource` — and a `RawResource` per platform
+resource, carrying the **raw** `PHAssetResourceType` value (a stable ABI integer, un-mapped to any role), the
 `uniformTypeIdentifier`, the original filename, the **iOS-resolved** MIME content type, and an **opaque
 handle** to the underlying `PHAssetResource`. The walk SHALL NOT filter by role, derive any upload key,
 normalize the `assetId`, or drop any resource — every original and non-original resource crosses as a
@@ -195,6 +205,12 @@ fact — `commonMain` SHALL NOT reimplement the UTI→MIME table. The seam SHALL
 whole-library walk and a **bounded** by-local-identifiers walk — each taking a capture-date lower bound as
 a parameter; it SHALL NOT offer an unbounded walk of either shape. The bound is a **scope parameter, not a
 decision**: what the bound is remains a `commonMain` choice, and the walk merely receives it.
+
+`RawAsset` SHALL additionally carry, as raw facts, the asset's `mediaSubtypes` (the raw bitmask, a stable ABI
+integer), `mediaType`, `pixelWidth`, `pixelHeight`, and `hasAdjustments`. These are the inputs the selection
+policy's origin rules decide on (capability `photo-selection-policy`), and they cross as **facts, not
+decisions** — the walk SHALL NOT itself exclude an asset on any of them. All five are in-memory properties of
+the fetched platform asset, so surfacing them SHALL NOT introduce any additional per-asset round-trip.
 
 The bound on the by-identifiers walk is **not** redundant with a platform change feed. A change feed
 reports what *changed*, not what is in *scope*: an iCloud sync or a bulk import surfaces thousands of
@@ -206,41 +222,47 @@ mapping is driven on the JVM and the iOS simulator without PhotoKit. The opaque 
 `commonMain` uninterpreted (a JVM stand-in is valid), exactly as `Resource.data` does.
 
 The PhotoKit implementation SHALL apply the bound to its `PHFetchOptions` predicate so that only in-scope
-assets are fetched and the per-asset resource round-trip is issued only for those. That predicate is an
-**optimization only**: the pure `commonMain` cutoff filter downstream remains authoritative, so the
-predicate MAY return a superset of the in-scope assets but MUST NOT return a subset. Where the predicate's
-date evaluation could disagree with the authoritative lexicographic string compare at the boundary, the
-predicate SHALL be **widened**, never narrowed.
+assets are fetched and the per-asset resource round-trip is issued only for those. It MAY additionally narrow
+the predicate by the origin rules it can express — media subtype, and a **bounding box** over `pixelWidth` /
+`pixelHeight`. That predicate is an **optimization only**: the pure `commonMain` selection filter downstream
+remains authoritative, so the predicate MAY return a superset of the admitted assets but MUST NOT return a
+subset. Where the predicate's evaluation could disagree with the authoritative `commonMain` decision at a
+boundary, the predicate SHALL be **widened**, never narrowed.
+
+Three constraints on that predicate are **device-verified facts about PhotoKit**, not preferences, and an
+implementation SHALL observe them:
+
+- A media-subtype exclusion SHALL be written `NOT ((mediaSubtypes & N) != 0)`. The form
+  `(mediaSubtypes & N) == 0` returns **zero rows** — it does not raise — even with the documented plural
+  `mediaSubtypes` key. Shipping it would starve the walk of every asset.
+- The predicate SHALL NOT contain **arithmetic** (for example `pixelWidth * pixelHeight`); it raises an
+  uncatchable `NSException` and aborts the process. A resolution floor SHALL therefore be expressed in the
+  predicate only as a **bounding box**, with the authoritative area comparison in `commonMain`.
+- The predicate SHALL NOT reference `hasAdjustments`; it is not a supported key and likewise aborts the
+  process. The adjustments guard SHALL live in `commonMain`.
 
 #### Scenario: The walk emits raw facts with no decisions
-- **WHEN** the raw-asset walk enumerates an asset with original and non-original (edit-artifact/proxy)
-  resources
-- **THEN** it emits a `RawAsset` carrying the raw un-normalized `localIdentifier` and one `RawResource`
-  per platform resource — including the non-original ones — each carrying the raw `PHAssetResourceType`
-  value, UTI, iOS-resolved MIME, original filename, and opaque handle, with no role filtering, key
-  derivation, or normalization applied
 
-#### Scenario: MIME is a raw fact resolved iOS-side
-- **WHEN** a `RawResource` is produced for a resource with a given `uniformTypeIdentifier`
-- **THEN** its `mimeContentType` is the iOS-resolved `UTType.preferredMIMEType` (or
-  `application/octet-stream` when unresolved), and `commonMain` never computes it from the UTI
+- **WHEN** the walk encounters an asset with both original and non-original resources
+- **THEN** it emits every resource as a raw fact, applying no role filter, no key derivation, and no
+  `assetId` normalization
 
-#### Scenario: The bounded walk takes a lower bound and no unbounded walk exists
-- **WHEN** a consumer walks the library, by capture date or by local identifiers
-- **THEN** it must supply a capture-date lower bound, and no unbounded walk of either shape is available
-  on the seam
+#### Scenario: Origin facts cross as facts, not decisions
 
-#### Scenario: A changed but out-of-scope asset costs no resource round-trip
-- **WHEN** the by-identifiers walk is given an asset whose `creationDate` precedes the bound (a changed
-  asset the platform's change feed surfaced, e.g. from an iCloud sync)
-- **THEN** the asset is skipped without its resources being read, and it is absent from the result
+- **WHEN** the walk encounters a screenshot asset
+- **THEN** it emits the asset with its `mediaSubtypes` bitmask intact and does **not** drop it — the
+  exclusion decision belongs to the `commonMain` selection filter
 
-#### Scenario: The platform predicate may over-return but never under-return
-- **WHEN** the PhotoKit walk's fetch predicate is evaluated for a bound `C`
-- **THEN** every asset whose `creationDate` is at or after `C` is present in the fetch result, even if
-  assets before `C` are also present, and the downstream pure filter removes the latter
+#### Scenario: Origin facts add no per-asset round-trip
 
-#### Scenario: The walk is settable for tests
-- **WHEN** a test sets the in-memory raw-asset walk to a list of `RawAsset`s
-- **THEN** the bounded and by-identifiers walks return exactly those, on JVM and on the iOS simulator
+- **WHEN** the walk reads an asset's `mediaSubtypes`, `mediaType`, `pixelWidth`, `pixelHeight` and
+  `hasAdjustments`
+- **THEN** it issues no platform round-trip beyond the ones it already makes, because all five are in-memory
+  properties of the already-fetched asset
+
+#### Scenario: A predicate that cannot express an exclusion still yields the correct admitted set
+
+- **WHEN** the fetch predicate returns assets the selection policy excludes (because the predicate cannot
+  express that rule, or was deliberately widened)
+- **THEN** the authoritative `commonMain` filter excludes them, so the admitted set is unchanged
 
