@@ -115,10 +115,19 @@ jobs:
         run: |
           brew list imagemagick >/dev/null 2>&1 || brew install imagemagick
           mkdir -p "out/en-US/6.9"
+          # ImageMagick 7 cannot resolve Apple font ALIASES (e.g. "Helvetica-Bold"); it needs a font
+          # FILE path. Pick the first present, ending on Helvetica.ttc which ships on every macOS.
+          FONT=""
+          for f in "/System/Library/Fonts/Supplemental/Arial Bold.ttf" \
+                   "/System/Library/Fonts/HelveticaNeue.ttc" \
+                   "/System/Library/Fonts/Helvetica.ttc"; do
+            [ -f "$f" ] && { FONT="$f"; break; }
+          done
+          echo "using font: $FONT"
           compose() { # <raw> <headline> <out>
             magick -size 1320x2868 "xc:#0E9D6B" \
               \( "$1" -resize 1120x \) -gravity south -geometry +0+100 -composite \
-              -gravity north -fill white -font Helvetica-Bold -pointsize 84 \
+              -gravity north -fill white -font "$FONT" -pointsize 84 \
               -annotate +0+220 "$2" \
               "$3"
           }
