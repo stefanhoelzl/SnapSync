@@ -18,10 +18,15 @@ import kotlinx.coroutines.delay
  * [SnapSyncRoot]: the Orbit container's `stateFlow`, with the gate intents routed back to the host.
  * It also collects the container's side effects to surface the transient invalid-link error on the
  * setup screen (self-clearing after a few seconds). `StatusScreen` wraps itself in `AppTheme`.
+ *
+ * The host is [SnapSyncRoot.renderHost] — the live stack in production, or a forged-source host when
+ * the dev/test `SNAPSYNC_FORGE_STATE` launch-env variable is set (capability `ios-app-shell`). Either
+ * way the screen renders `container.stateFlow` live; the forge substitutes the container's inputs, not
+ * a static `UiState`.
  */
 @Suppress("FunctionName", "unused")
 fun MainViewController() = ComposeUIViewController {
-    val host = SnapSyncRoot.host
+    val host = SnapSyncRoot.renderHost
     val state by host.container.stateFlow.collectAsState()
     // The event's invite deeplink (null until an event is configured) — rendered as the join QR in the
     // joined layer and handed to the share sheet.
