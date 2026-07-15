@@ -256,7 +256,18 @@ sshmac 'cd snapsync && ./gradlew iosSimulatorArm64Test'
 # 6a. Build an UNSIGNED archive (compiles the Kotlin frameworks + assembles app+appex). The Xcode project
 #     is CODE_SIGN_STYLE=Automatic, which needs -allowProvisioningUpdates + the Admin ASC key (absent
 #     here) — so a *signed* archive is impossible on the box. Build unsigned, re-sign by hand (6b).
-sshmac 'cd snapsync && xcodebuild -project iosApp/iosApp.xcodeproj -scheme iosApp -configuration Release \
+#     BUILD DEBUG, NOT RELEASE. `-configuration Debug` links `linkDebugFramework`, skipping the
+#     Kotlin/Native LLVM optimizer that dominates a Release link — and it reruns FULLY on every relink,
+#     so it costs you on every iterate, not just cold. Measured on the warm runner (macos-26, 3 cores,
+#     Xcode 26.5, ~/.konan warm), archive of a ONE-FILE Kotlin change: Release 449s vs Debug 57s (~8×);
+#     cold-from-empty-build/: Release 523s vs Debug 348s; no-op rebuild ~30s either way. The dev/sideload
+#     IPA needs no optimization (ios.yml's on-demand dev path already builds Debug for exactly this), and
+#     the Debug archive is a complete installable bundle (arm64 app binary + BackgroundUploadExtension.appex
+#     in Extensions/) — the 6b re-sign is config-agnostic, so ONLY this -configuration line changes. Switch
+#     to Release only when you need an optimization-representative build. Keep the cold cost paid once: never
+#     wipe build/ or .gradle between iterates (the step-6 rsync already excludes them) and keep the Gradle
+#     daemon alive (no --no-daemon) — an incremental Debug iterate is then ~1 min.
+sshmac 'cd snapsync && xcodebuild -project iosApp/iosApp.xcodeproj -scheme iosApp -configuration Debug \
           -destination "generic/platform=iOS" -archivePath "$HOME/artifacts/SnapSync.xcarchive" \
           CODE_SIGNING_ALLOWED=NO archive'
 # 6b. Manually re-sign the archive INSIDE-OUT with the baked profiles, then repackage the IPA.
