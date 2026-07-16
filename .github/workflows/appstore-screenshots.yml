@@ -59,13 +59,20 @@ jobs:
 
       # The composite moved off the macOS capture runner, so the macOS system fonts it used are gone;
       # fonts-liberation gives a bold sans that is metric-compatible with Arial.
+      #
+      # ubuntu's `imagemagick` package is ImageMagick **6**, whose binary is `convert` — there is NO
+      # `magick` here (that is IM7's unified command, and apt offers no IM7 at all). The compose script
+      # supports both; this only has to install one and prove it runs.
       - name: Install ImageMagick
         run: |
-          command -v magick >/dev/null 2>&1 || {
-            sudo apt-get -qq update
-            sudo apt-get -qq install -y imagemagick fonts-liberation
-          }
-          magick --version | head -1
+          set -euo pipefail
+          sudo apt-get -qq update
+          sudo apt-get -qq install -y imagemagick fonts-liberation
+          # NOT `... --version | head -1`: a pipeline returns the LAST command's status, so `head` succeeds
+          # even when the binary does not exist — which is exactly how a missing `magick` passed this step
+          # and failed two steps later as `command not found`.
+          if command -v magick >/dev/null 2>&1; then magick --version; else convert --version; fi
+          fc-list | grep -qiE "liberation|dejavu" || { echo "::error::no bold sans font installed"; exit 1; }
 
       - name: Fetch pinned asc
         run: bash .github/scripts/asc_fetch.sh "$RUNNER_TEMP/asc"

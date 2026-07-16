@@ -33,9 +33,22 @@ BRAND="#0E9D6B"   # AppTheme's GreenLight; the light captures sit on the light b
 [ -d "$RAW_DIR" ] || { echo "::error::$RAW_DIR not found — commit the raw captures first"; exit 1; }
 [ -f "$HEADLINES" ] || { echo "::error::$HEADLINES not found"; exit 1; }
 
-# ImageMagick 7 cannot resolve font ALIASES; it needs a font FILE path. This runs on UBUNTU (the composite
+# ImageMagick cannot resolve font ALIASES; it needs a font FILE path. This runs on UBUNTU (the composite
 # moved off the macOS capture runner), so the macOS system fonts the capture workflow used are gone.
 # Liberation Sans is metric-compatible with Arial; DejaVu ships on every ubuntu image as the backstop.
+# ImageMagick 6 vs 7. Ubuntu's `imagemagick` package is **6** (6.9.x), whose binaries are `convert` and
+# `identify`; the unified `magick` is ImageMagick **7** and does NOT exist there — apt offers no IM7 at all.
+# macOS/brew and most container images ship 7. Support both rather than pinning the environment: the syntax
+# below is common to both.
+if command -v magick >/dev/null 2>&1; then
+  IM="magick"; IDENTIFY="magick identify"
+elif command -v convert >/dev/null 2>&1; then
+  IM="convert"; IDENTIFY="identify"
+else
+  echo "::error::no ImageMagick found (need `magick` from IM7 or `convert` from IM6)"; exit 1
+fi
+echo "using imagemagick: $IM ($($IM --version | head -1))"
+
 FONT=""
 for f in "/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf" \
          "/usr/share/fonts/liberation-sans/LiberationSans-Bold.ttf" \
@@ -58,25 +71,35 @@ for STATE in create joining in_sync; do
   HEADLINE="$(jq -er --arg s "$STATE" '.headlines[$s]' "$HEADLINES")"
   OUT="$OUT_DIR/$LOCALE/$(printf '%02d' "$i")-${STATE}.png"
 
-  # Round the shot's corners (clone -> transparent -> white roundrectangle -> DstIn keeps only what the
-  # rectangle covers), drop it on the brand canvas, then set the headline.
+  TMP="$(mktemp -d)"
+
+  # Resize first and read the real height back, so the mask below can be drawn with LITERAL numbers.
+  # ImageMagick 6 does NOT expand `%[fx:…]` inside `-draw` (7 does), so an fx-sized roundrectangle fails
+  # there with "non-conforming drawing primitive definition". Computing the geometry in the shell is the
+  # portable form — and it is clearer anyway.
+  $IM "$RAW" -resize "${SHOT_W}x" "$TMP/shot.png"
+  SHOT_H="$($IDENTIFY -format '%h' "$TMP/shot.png")"
+
+  # Rounded corners, never a device frame (see the header). White where the shot shows through.
+  $IM -size "${SHOT_W}x${SHOT_H}" xc:none -fill white \
+    -draw "roundrectangle 0,0,$((SHOT_W - 1)),$((SHOT_H - 1)),$CORNER,$CORNER" "$TMP/mask.png"
+  $IM "$TMP/shot.png" "$TMP/mask.png" -alpha off -compose CopyOpacity -composite "$TMP/rounded.png"
+
+  # Brand canvas + the rounded shot + the headline.
   #
   # `caption:` word-WRAPS inside a fixed box at a fixed pointsize, so a long headline becomes two lines
   # rather than bleeding off the canvas (`-annotate` neither wraps nor clips safely). Any copy length fits
   # by construction — which is why the headline needs no length gate.
-  magick -size "${CANVAS_W}x${CANVAS_H}" "xc:$BRAND" \
-    \( "$RAW" -resize "${SHOT_W}x" \
-       \( +clone -alpha transparent -background none \
-          -fill white -draw "roundrectangle 0,0,%[fx:w-1],%[fx:h-1],$CORNER,$CORNER" \) \
-       -alpha set -compose DstIn -composite \
-    \) -gravity south -geometry +0+100 -compose over -composite \
+  $IM -size "${CANVAS_W}x${CANVAS_H}" "xc:$BRAND" \
+    "$TMP/rounded.png" -gravity south -geometry +0+100 -compose over -composite \
     \( -background none -fill white -font "$FONT" -pointsize 72 \
        -size 1140x -gravity center caption:"$HEADLINE" \) \
     -gravity north -geometry +0+170 -compose over -composite \
     "$OUT"
+  rm -rf "$TMP"
 
   # A wrong size is rejected by App Store Connect, so fail here where the cause is obvious.
-  GOT="$(magick identify -format '%wx%h' "$OUT")"
+  GOT="$($IDENTIFY -format '%wx%h' "$OUT")"
   [ "$GOT" = "${CANVAS_W}x${CANVAS_H}" ] || { echo "::error::$OUT is $GOT, expected ${CANVAS_W}x${CANVAS_H}"; exit 1; }
   echo "composed $OUT  ($HEADLINE)"
 done
