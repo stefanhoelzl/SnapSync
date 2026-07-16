@@ -15,3 +15,45 @@ context: |
 
   Tests belong in commonTest so they run on both JVM and
   iosSimulatorArm64. :app:ios is wiring-only and untested.
+
+  ARCHIVING — three gates, all BEFORE reporting success. They live here rather
+  than in .claude/ because `openspec update` regenerates that and deletes them
+  (measured). Contract + rationale: capability openspec-archive-command.
+
+  1. Placeholder Purpose. No spec's `## Purpose` may contain the CLI's minted
+     "TBD - created by archiving". Check the WHOLE tree — a placeholder from an
+     earlier archive surfaces at this one. Scope the match to the Purpose
+     section: openspec-archive-command legitimately quotes that string in its
+     Requirements, and a whole-file grep would make it permanently unarchivable.
+
+       for f in openspec/specs/*/spec.md; do
+         awk '/^## Purpose/{p=1;next} /^## /{p=0} p' "$f" \
+           | grep -q "TBD - created by archiving" && echo "$f"
+       done
+
+     Anything printed: STOP, name the files, do not archive.
+
+  2. Delta completeness. Enumerate the modules your diff touched. Resolve each
+     to its owning capability via CLAUDE.md's module list. For each, either name
+     that capability's delta or record why none is needed (e.g. the change is
+     behavior-preserving there). An unaccounted module: STOP and name it.
+     Recording a reason is enough — the gate exists to force the question, not
+     to demand a delta. A module the map does not name is unaccounted: fix the
+     map, which is how the map stays true.
+
+  3. Dead types. For every type declaration your diff REMOVES that exists nowhere
+     else in the tree, grep openspec/specs/ for it; any spec still naming it must
+     be fixed or accounted for. This is the only gate that reaches a spec your
+     change never touched.
+
+       git diff <base>..HEAD -- '*.kt' | grep '^-' | grep -vE '^---' \
+         | grep -oE '\b(class|object|interface|fun)\s+[A-Z][A-Za-z0-9]{4,}'
+
+     Match CamelCase `fun` too — Kotlin's fake-constructor idiom is a type
+     (ListingSyncStatusSource was one, and a class/object/interface-only match
+     misses it). Do NOT widen to `val`/lowercase `fun`: that matches `config`
+     and `url` and flags every spec in the tree.
+
+  A MODIFIED delta restates a WHOLE requirement, so it silently drops whatever
+  you did not scroll to. Build each one from the current main spec and diff it —
+  the removed lines must be only the ones you intended.

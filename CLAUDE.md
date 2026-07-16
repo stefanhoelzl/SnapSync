@@ -732,3 +732,15 @@ string-building, no network or crypto.
   `npx --yes @fission-ai/openspec@1.5.0 config profile core` then `… update`, and commit the
   output verbatim — hand-edits are overwritten on the next update. On a default profile, `update`
   emits only four workflows and **deletes** the `sync` skill/command.
+  **Regenerating is a no-op today, and must stay one**: `.claude/` is byte-identical to generated
+  output, so `update --force` changes nothing. It was not always — the archive's placeholder gate was
+  hand-patched into `SKILL.md` (and only there, which is why `/opsx:archive` never had it), and
+  `update --force` silently deleted it, with a green run. Anything an archive must *enforce* belongs
+  in **`openspec/config.yaml`**'s `context:` block — hand-authored, injected into every agent in this
+  root, and the one surface `update` does not rewrite (capability `openspec-archive-command`). Never
+  patch a rule into `.claude/`; the tool will take it away and tell no one.
+- **`openspec validate --specs --strict` checks structure, not truth.** It asks whether a spec has a
+  Purpose, Requirements, and SHALL/WHEN/THEN with a scenario — it has never opened a `.kt` file. It
+  passed 50/50 on a tree carrying 28 audited drifts (four specs contradicting themselves *within one
+  file*), and it passes 50/50 now that they are swept: the same answer with the lies in and with them
+  out. Green means well-formed. It does not mean true, and nothing in CI does.
