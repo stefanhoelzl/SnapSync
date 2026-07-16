@@ -885,7 +885,7 @@ object SnapSyncRoot {
      *
      * Seeding is a **blocking** `performChangesAndWait` loop, so it runs on `Dispatchers.Default`, never
      * this scope's `Dispatchers.Main` — the same reason the gallery walk hops off the main thread. The
-     * `logInvocation` wrap is *inside* the launch so its context spans the async body.
+     * `Logger.invocation` wrap is *inside* the launch so its context spans the async body.
      */
     private val launchEnvSeedApplied: Boolean by lazy {
         scope.launch(Dispatchers.Default) {

@@ -59,7 +59,7 @@ sync-state presets, and the engine console — so you can review and test all UI
 device. See the `desktop-test-harness` spec.
 
 `./gradlew :app:desktop:run` launches the **full-stack world harness** (module `:app:desktop`): the same
-real status screen on the left — but its counts **emerge** from `:test:world`'s real `ListingSyncStatusSource`
+real status screen on the left — but its counts **emerge** from `:test:world`'s real `LedgerBackedSyncStatusSource`
 (never forged) — and a right-pane **world inspector** (raw M3) that drives the real stack: presets,
 **Invoke extension** (one `process()`-shaped cycle + download reconcile), the gallery/backend, the
 upload-job queue and downloads, failure levers, and an engine-console footer. The operator plays the OS
@@ -585,7 +585,7 @@ agent use and inject that one instead.
 ```
 :domain:engine         sync core + SQL ledger (the only state); no platform deps
 :domain:keychain       cross-cutting Keychain access: the ONLY module that may touch SecItem* (a :test:architecture guard enforces it) — three-state read (found/absent/UNREADABLE), mint-only-on-absent, AfterFirstUnlock + in-place migration, ProtectedDataGate (capability architecture-guards; decision record: fix-locked-device-keychain-access)
-:domain:logging        cross-cutting diagnostics: logInvocation helper + LogContext ambient prefix + consolidated iOS device-log writers (Kermit-only leaf) (capability diagnostic-logging)
+:domain:logging        cross-cutting diagnostics: Logger.invocation helper + LogContext ambient prefix + consolidated iOS device-log writers (Kermit-only leaf) (capability diagnostic-logging)
 :domain:status         ledger → SyncStatus projection (read-only)
 :domain:permission     permission seam (3-state)
 :domain:gallery        library resource-enumeration seam + upload-key/role layout (uploadKey, resourceRole, assetIdFromUploadKey, normalizeAssetId) + device manifest + the origin-exclusion rules of the selection policy (SelectionPolicy.excludedAssetIds — screenshots/screen-recordings by mediaSubtype, GIFs by MIME, resolution floors; capability photo-selection-policy). The policy lives HERE because :capability:upload and :domain:status must apply the identical rules and it is the only module both can see
@@ -604,7 +604,7 @@ agent use and inject that one instead.
 :capability:push       APNs token registration + PushReceiver seam + EventNotifier (POST /events/<id>/notify) (push-registration, upload-completion-notify)
 :capability:membership event-membership lifecycle: extension-side re-join reconciliation + leave use-case + LeaveNotifier (DELETE /events/<id>/devices/<id>) + device-file listing seam
 :capability:event-creation-ui  create-event screen seams: EventCreator/CreationStatusSource + HTTP creator
-:app:desktop           shared harness library (PhoneFrame + StatusPane, StatusContainerHost wiring both desktop harnesses reuse) AND the full-stack world harness app (:app:desktop:run): real StatusScreen whose counts EMERGE from :test:world's real ListingSyncStatusSource + a right-pane world inspector driving the world (capability full-stack-harness)
+:app:desktop           shared harness library (PhoneFrame + StatusPane, StatusContainerHost wiring both desktop harnesses reuse) AND the full-stack world harness app (:app:desktop:run): real StatusScreen whose counts EMERGE from :test:world's real LedgerBackedSyncStatusSource + a right-pane world inspector driving the world (capability full-stack-harness)
 :app:desktop:ui        forge harness (:app:desktop:ui:run): phone frame + control panel that forges any UI state; depends on :app:desktop
 :app:ios               iOS app wiring + framework export (thin, untested)
 :app:ios:photokit-extension  iOS ≥26.1 background-upload extension: PhotoKit adapter (IosPhotoKitUploadPlatform) + composition root, composing :capability:upload + :app:ios:photokit-discovery — thin, untested (orchestration + tests live in :capability:upload)
@@ -638,7 +638,7 @@ platform backend is selected structurally in the app modules.
 ## Logging & errors
 
 - Log via **Kermit** (multiplatform). Cross-cutting logging infra lives in **`:domain:logging`**: the
-  `logInvocation` enter/exit helper (params + result + duration), the process-global `LogContext`
+  `Logger.invocation` enter/exit helper (params + result + duration), the process-global `LogContext`
   ambient prefix, and the consolidated iOS device-log writers (`FileLogWriter`/`PublicNSLogWriter`).
 - **Device diagnostics** (capability `diagnostic-logging`): the app and extension are separate
   processes, each writing its **own** verbatim, un-redacted `Documents/debug.log` (the App Group
@@ -653,7 +653,7 @@ platform backend is selected structurally in the app modules.
   Swift, route diagnostics through Kotlin (`SnapSyncRoot`) so they land in `debug.log`. Every line carries
   a
   `[<entryPoint>]` prefix (e.g. `[onSilentPush]`, `[process]`) tracing it to what triggered it; wrap
-  new platform invocations / entry points with `logInvocation` and, for `scope.launch` work, wrap
+  new platform invocations / entry points with `Logger.invocation` and, for `scope.launch` work, wrap
   *inside* the launch so the context spans the async body.
 - Errors are **reduced into state**: sealed domain errors → `UiState`, converted at capability
   boundaries — not thrown to the UI. This is also what lets the harness force any failure state.
