@@ -108,9 +108,15 @@ That is a **product-wiring change across two shells**, with its own reasoning an
 belongs in its own change rather than riding a screenshots pipeline. Deferring keeps this change's blast
 radius honest.
 
-**Consequence, accepted:** `create` light+dark re-diff on every regeneration (a 73×30 px region), and the
-listing shows the capture minute. The other four captures render no date and stay byte-stable, so `-strip`
-still buys a meaningful diff for two-thirds of the set.
+**Consequence, accepted, and measured across two runs of the same commit:** `create`'s two captures re-diff
+on every regeneration — in **exactly** the 90×32 px timestamp region and nowhere else — while
+`joining-light/dark` and `in_sync-light/dark` come back **byte-identical**. So the listing shows the capture
+minute, and a diff in the other four means the UI genuinely moved.
+
+The light/dark pair is at least *coherent*: capturing both from **one** process seconds apart (D2's
+single-launch loop) rather than two passes minutes apart means they agree on the minute. The earlier
+per-appearance loop produced `15:47` light against `15:49` dark — so toggling your theme on the landing page
+visibly jumped the timestamp. That artifact is gone; only the frozen minute remains.
 
 ### D4: `asc screenshots upload --replace`, path-gated
 
@@ -180,11 +186,21 @@ and have `appstore.yml` reach into a backend path.
 
 ## Risks / Trade-offs
 
-- **[A system notification can land in a capture]** — observed once (*"Ready for Apple Intelligence"*), in an
-  ad-hoc run; **0 of 9** real CI captures were affected. → The **human-in-the-loop commit is the mitigation**:
-  the runbook says eyeball before `git add`, and a banner is glaring. A colour assertion is *not* viable —
-  legitimate content (`in_sync`'s "Anna's Birthday") renders in the same band, which is why the obvious
-  cheap check produces false positives.
+- **[A system notification can land in a capture]** — *"Ready for Apple Intelligence"*, fired by **fresh-device
+  onboarding**. Measured, not guessed, and the rate moved as the design did: it hit **1 of 2 runs** of the
+  6-shot loop (an earlier estimate of "1 in 11, never in CI" was simply wrong — and the dark pass had doubled
+  the exposure window). Reducing the capture window (3 launches, polls instead of `sleep 8`) took the loop
+  154s → 125s, and the verification run came back clean. → The **human-in-the-loop commit remains the
+  mitigation**: the runbook says eyeball before `git add`, and a banner is glaring. A colour assertion is
+  *not* viable — legitimate content (`in_sync`'s "Anna's Birthday") renders in the same band, which is why
+  the obvious cheap check false-positives. If it recurs, capture-twice-and-compare would make it a loud
+  failure, at ~40s.
+- **[Reusing a pre-created simulator does not work]** — `simctl create` costs a first-boot migration and
+  **boot+install (209–224s) outlasts capturing all six shots**, so reusing the runner image's device looked
+  like the best lever *and the fresh-device onboarding it skips is the banner's source*. It was tried and
+  the image ships no `iPhone 16 Pro Max`: the run logs `no pre-created iPhone 16 Pro Max — creating one`. The
+  workflow keeps the lookup and falls back to creating, so it costs nothing and starts working the day the
+  image gains one.
 - **[The listing shows the capture minute]** — `create` renders the wall clock (D3); a committed shot freezes
   it. → Accepted for now; the fix is a follow-up because the seam is in the shells, not the forge.
 - **[Frozen dates age]** — `joining` already ships `EVENT_START = 2026-07-20` (pre-existing, inherited). →

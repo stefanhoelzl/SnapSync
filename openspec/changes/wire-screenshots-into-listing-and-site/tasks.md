@@ -30,6 +30,6 @@
 
 - [x] 5.1 `./gradlew build` and `./gradlew compileIosMainKotlinMetadata` green.
 - [x] 5.2 Backend: `deno fmt --check`, `deno lint`, `deno check src/*.ts`, `deno test` green from a clean clone with only Deno installed.
-- [ ] 5.3 Confirm a re-dispatch with an unchanged UI produces byte-identical raws for `joining`/`in_sync`. `create` will still differ every run — it renders the wall clock (design D3); that is the accepted, deferred limitation, not a regression.
+- [x] 5.3 Confirm a re-dispatch with an unchanged UI produces byte-identical raws for `joining`/`in_sync`. `create` will still differ every run — it renders the wall clock (design D3); that is the accepted, deferred limitation, not a regression.
 - [ ] 5.4 Confirm the live listing shows the committed set and `snapsync.stho.net` serves the screenshots in both themes.
 - [x] 5.5 `npx --yes @fission-ai/openspec@1.5.0 validate --specs --strict`.
