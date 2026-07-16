@@ -1,7 +1,15 @@
 # ios-appstore-release Specification
 
 ## Purpose
-TBD - created by archiving change add-appstore-release-pipeline. Update Purpose after archive.
+
+Makes a pushed **`vX.Y` git tag the trigger for an App Store release** of version `X.Y`. Where `ios-testflight-delivery` makes `main` the public *alpha* channel, this capability makes a tag the *store* channel: one workflow (`ios-release.yml`) builds an `X.Y`-versioned archive, uploads it to App Store Connect, finds-or-creates the matching App Store version record, and attaches the build — stopping short of submit-for-review (the listing, screenshots and privacy that App Review requires are owned elsewhere and completed by a human before Submit).
+
+The store version is **derived from the tag** and injected as `MARKETING_VERSION` at build time — the same mechanism `ios-testflight-delivery` uses for `CURRENT_PROJECT_VERSION`. Committed source is never bumped, so `main`/alpha keeps its pinned fallback and **never triggers a first-of-version Beta App Review** (the "MARKETING_VERSION trap"): real versions reach the store through tags, not through a committed bump.
+
+A tag is only a pointer, so a release is guarded: the tag must be well-formed (`vX.Y`), its commit must already be on `main`, and that commit's **entire CI pipeline must be green** — a commit that never cleanly reached the alpha channel does not jump to the App Store.
+
+Decision record: `changes/archive/2026-07-15-add-appstore-release-pipeline`
+
 ## Requirements
 ### Requirement: A `vX.Y` tag drives an App Store release
 
