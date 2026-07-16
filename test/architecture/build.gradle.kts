@@ -48,6 +48,11 @@ tasks.test {
             include("backend/src/config.ts")
             include("iosApp/Configuration/Config.xcconfig")
             include("iosApp/iosApp/Info.plist")
+            // The Swift shell. It is wiring-only and UNTESTED by the project's hard rule — which is
+            // exactly how it shipped an app that silently dropped every event link (2026-07-16): no
+            // guard had ever read it. We do not test its behaviour here (only a device can); we pin the
+            // STRUCTURE that behaviour depends on.
+            include("iosApp/**/*.swift")
             // `**` also matches GENERATED sources under each module's `build/` directory (e.g.
             // `app/desktop/build/generated/.../src/…`), which are other tasks' outputs. Guards read
             // hand-written source only.

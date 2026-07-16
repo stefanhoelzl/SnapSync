@@ -379,12 +379,21 @@ sshmac 'cd snapsync && xcodebuild -project iosApp/iosApp.xcodeproj -scheme iosAp
 #     CODE_SIGNING_ALLOWED=NO archive has EMPTY entitlements, so any export ships an IPA that aborts at
 #     launch on the App-Group container ("client is not entitled"). Re-signing with the entitlements
 #     RESOLVED inside each profile (app-groups/keychain/aps/get-task-allow) is the working path.
+#
+#     ⚠️ RESOLVING OUT OF THE PROFILE SILENTLY DESTROYS `associated-domains`. A DEV profile grants the
+#     WILDCARD `*` (permission to claim ANY domain) — so a straight resolve signs the app entitled to `*`
+#     and claiming NOTHING, and every universal link then silently fails (verified 2026-07-16; it is also
+#     why a pre-change build showed `associated-domains: *`). Narrow it to what the app actually declares
+#     BEFORE signing — valid, because entitlements need only be a SUBSET of the profile's grant, and `*`
+#     permits this. Use PlistBuddy: `plutil` CANNOT touch this key, it reads the dots as a key path and
+#     fails "Key path not found".
 sshmac 'bash -se' <<'SIGN'
 set -e; cd "$HOME/artifacts"
 PD="$HOME/Library/MobileDevice/Provisioning Profiles"
 ID=$(security find-identity -v -p codesigning | awk '/Apple Development/{print $2; exit}')
 APP="SnapSync.xcarchive/Products/Applications/SnapSync.app"
 EXT="$APP/Extensions/BackgroundUploadExtension.appex"          # iOS 26 uses Extensions/, NOT PlugIns/
+PB=/usr/libexec/PlistBuddy; K=":com.apple.developer.associated-domains"
 for p in "$PD"/*.mobileprovision; do                          # match each profile by its bundle id
   aid=$(security cms -D -i "$p" | plutil -extract Entitlements.application-identifier raw -)
   case "$aid" in
@@ -392,8 +401,13 @@ for p in "$PD"/*.mobileprovision; do                          # match each profi
     *.app.snapsync)                  security cms -D -i "$p" | plutil -extract Entitlements xml1 -o app.plist -; cp "$p" "$APP/embedded.mobileprovision";;
   esac
 done
+$PB -c "Delete $K" app.plist                                  # replace the profile's `*` wildcard…
+$PB -c "Add $K array" app.plist
+$PB -c "Add $K:0 string applinks:snapsync.stho.net" app.plist # …with the domain the app really claims
 codesign -f -s "$ID" --entitlements ext.plist "$EXT"          # sign the extension first (inside-out)…
 codesign -f -s "$ID" --entitlements app.plist "$APP"          # …then the app (statically-linked, no nested dylibs)
+# Verify the claim survived — `*` here means universal links are dead and NOTHING will say so:
+codesign -d --entitlements :- "$APP" 2>/dev/null | plutil -p - | grep -A2 associated-domains
 codesign -v "$EXT" && codesign -v "$APP"
 rm -rf Payload && mkdir Payload && cp -R "$APP" Payload/ && zip -qry SnapSync.ipa Payload
 SIGN
@@ -462,6 +476,31 @@ Verified on device: the stock **Camera app honors AASA** on a scanned QR, and iO
 to the app. Opening a real link and landing on the event proves the entitlement, the AASA, and fragment
 delivery in one observation; a stripped fragment would surface visibly as the invalid-link error, never
 silently.
+
+⚠️ **A green AASA proves nothing about delivery.** Both curls above can pass while every link is dead:
+iOS matches the AASA, foregrounds the app, and the app drops the URL — indistinguishable from success,
+and on an unjoined device the create screen it lands on is the correct resting state. That shipped
+(2026-07-16). The link is delivered as an `NSUserActivity` to the **scene** delegate — a SwiftUI
+`WindowGroup` is a scene — so `scene(_:willConnectTo:options:)` (app NOT running) and `scene(_:continue:)`
+(running) are the only hooks that work. `.onOpenURL` never fires for a universal link;
+`.onContinueUserActivity` is warm-only; `application(_:continue:)` is never called in a SwiftUI app. A
+`:test:architecture` guard now pins this (`EventLinkDeliveryTest`).
+
+**The authoritative on-device check is `debug.log`, not the screen** (spec `ios-app-shell`):
+```
+uvx pymobiledevice3 apps pull app.snapsync Documents/debug.log     # then read the [onOpenUrl] lines
+```
+A **cold** delivery is an `onOpenUrl` sharing a timestamp with `=== app process start ===`; a **warm** one
+has no preceding process start. A multi-second gap after a launch means a *second* scan delivered warm —
+misreading that gap is how "cold works" was concluded wrongly the first time. Both cases must appear,
+exactly once each. **`swcd` is NOT visible in `idevicesyslog`** (measured: 23,525 lines across an install,
+zero AASA activity) — don't retry that. Apple's TN3155 instead exposes approval state via `swcutil` inside
+a **sysdiagnose** (`swcutil_show.txt` → `Site/Fmwk Approval: approved`), fetchable headlessly with
+`$P developer core-device sysdiagnose` — untried here, but the documented route.
+
+⚠️ **Changing the AASA needs an app REINSTALL.** Devices download it from Apple's CDN at install and
+re-check roughly weekly; there is **no invalidation** (TN3155). A changed path/appID does not reach
+installed apps on its own.
 
 ### Verify real uploads
 
@@ -573,7 +612,13 @@ platform backend is selected structurally in the app modules.
   container is not pullable — verified). Pull both:
   `pymobiledevice3 apps pull app.snapsync Documents/debug.log` and
   `… app.snapsync.BackgroundUpload Documents/debug.log`. `debug.log` is the **canonical un-redacted
-  channel** (os_log redacts `<private>`); it rolls to `debug.log.1` past 10 MB. Every line carries a
+  channel** (os_log redacts `<private>`); it rolls to `debug.log.1` past 10 MB.
+  ⚠️ **Do not reach for `NSLog` when debugging — not even "just this once", not even from Swift.** An
+  interpolated `NSLog("x \(y)")` is a *dynamic format string*, which os_log redacts wholesale: your line
+  never appears in `idevicesyslog` and the capture looks like "the code never ran". This is written
+  above; it was ignored anyway on 2026-07-16 and burned a full build/install/scan cycle to re-learn. From
+  Swift, route diagnostics through Kotlin (`SnapSyncRoot`) so they land in `debug.log`. Every line carries
+  a
   `[<entryPoint>]` prefix (e.g. `[onSilentPush]`, `[process]`) tracing it to what triggered it; wrap
   new platform invocations / entry points with `logInvocation` and, for `scope.launch` work, wrap
   *inside* the launch so the context spans the async body.

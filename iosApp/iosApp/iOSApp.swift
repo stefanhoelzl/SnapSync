@@ -42,6 +42,22 @@ final class AppDelegate: NSObject, UIApplicationDelegate {
         return true
     }
 
+    // Route scene callbacks to SnapSyncSceneDelegate — the ONLY way this app can receive an event link
+    // (capability `event-link`). A SwiftUI `WindowGroup` IS a scene, so per Apple ("Supporting universal
+    // links in your app") the system delivers the link's NSUserActivity to the SCENE delegate, and in a
+    // SwiftUI app only `didFinishLaunchingWithOptions` and `applicationWillTerminate` are called on THIS
+    // delegate — so an `application(_:continue:restorationHandler:)` here would never fire. It was tried
+    // (2026-07-16) and never ran once.
+    func application(
+        _ application: UIApplication,
+        configurationForConnecting connectingSceneSession: UISceneSession,
+        options: UIScene.ConnectionOptions
+    ) -> UISceneConfiguration {
+        let config = UISceneConfiguration(name: nil, sessionRole: connectingSceneSession.role)
+        config.delegateClass = SnapSyncSceneDelegate.self
+        return config
+    }
+
     func application(
         _ application: UIApplication,
         handleEventsForBackgroundURLSession identifier: String,
@@ -87,6 +103,57 @@ final class AppDelegate: NSObject, UIApplicationDelegate {
     }
 }
 
+// THE event-link entry point (capability `event-link`). iOS delivers a Universal Link as an
+// NSUserActivity of type NSUserActivityTypeBrowsingWeb, and because a SwiftUI `WindowGroup` IS a scene,
+// it arrives HERE — at the scene delegate — and nowhere else. Apple, "Supporting universal links in
+// your app": *if your app has opted into Scenes, and your app is not running, the system delivers the
+// universal link to `scene(_:willConnectTo:options:)` after launch, and to `scene(_:continue:)` when the
+// link is tapped while your app is running or suspended in memory.*
+//
+// BOTH callbacks are required, and they are NOT alternatives — they are the cold and warm halves:
+//   * willConnectTo → the app was NOT running. This is the case that matters: a stranger tapping an
+//     invite never has SnapSync running.
+//   * continue      → the app was running or suspended.
+//
+// Everything else was tried on device (2026-07-16) and does NOT work, however much the internet
+// recommends it:
+//   * `.onOpenURL` — the `application(_:open:options:)` path, which is what the retired `snapsync://`
+//     custom scheme used. Never fires for a universal link. THIS SHIPPED, and every link silently died.
+//   * `.onContinueUserActivity` — warm only; on a cold launch the activity is delivered before the view
+//     attaches, and SwiftUI does not replay it.
+//   * `AppDelegate.application(_:continue:restorationHandler:)` — never called at all: a SwiftUI app
+//     gets only `didFinishLaunchingWithOptions` and `applicationWillTerminate` on its app delegate.
+//
+// Why this cost a whole device session to find: the failure is SILENT and looks like success. iOS still
+// matches the AASA and still foregrounds the app, so the link "works" — it just drops the URL. On an
+// unjoined device the create screen it lands on is the correct resting state, so nothing looks wrong.
+// No automated test can catch it: the decoder, the AASA, and the entitlement are all provably fine, and
+// this seam is the one layer the project cannot test.
+//
+// Stay a pass-through: hand Kotlin the raw `absoluteString`, never a trimmed URL — the entire payload
+// rides in the FRAGMENT, so dropping it drops the event id.
+final class SnapSyncSceneDelegate: NSObject, UIWindowSceneDelegate {
+    // COLD: the link that launched us arrives in the connection options.
+    func scene(
+        _ scene: UIScene,
+        willConnectTo session: UISceneSession,
+        options connectionOptions: UIScene.ConnectionOptions
+    ) {
+        connectionOptions.userActivities.forEach(forwardIfEventLink)
+    }
+
+    // WARM: the app was already running or suspended.
+    func scene(_ scene: UIScene, continue userActivity: NSUserActivity) {
+        forwardIfEventLink(userActivity)
+    }
+
+    private func forwardIfEventLink(_ userActivity: NSUserActivity) {
+        guard userActivity.activityType == NSUserActivityTypeBrowsingWeb,
+              let url = userActivity.webpageURL else { return }
+        SnapSyncRoot.shared.onOpenUrl(url: url.absoluteString)
+    }
+}
+
 // SwiftUI App lifecycle is scene-based, which satisfies the iOS 27 SDK's mandatory UIScene
 // adoption; the delegate adaptor adds only the background-URLSession relaunch hook above.
 @main
@@ -97,14 +164,10 @@ struct iOSApp: App {
     var body: some Scene {
         WindowGroup {
             ContentView()
-                // An HTTPS event link opens here, cold or warm — matched to us by the
-                // associated-domains entitlement (capability `event-link`). Stay a thin pass-through:
-                // hand the raw URL string to Kotlin, which decodes, validates, and persists it. No
-                // parsing in Swift — and pass `absoluteString`, never a trimmed URL: the entire
-                // payload rides in the FRAGMENT, so dropping it would drop the event id.
-                .onOpenURL { url in
-                    SnapSyncRoot.shared.onOpenUrl(url: url.absoluteString)
-                }
+                // NOTE: the event link does NOT arrive here. It is delivered as an NSUserActivity to
+                // `AppDelegate.application(_:continue:restorationHandler:)` — see the long note there
+                // before reaching for `.onOpenURL`/`.onContinueUserActivity`; both were tried on device
+                // and neither is sufficient.
         }
         // Forward the scene's foreground transitions to Kotlin, which gates the observed-completions
         // poll that keeps upload progress live while the screen is shown. Pass-through only.
