@@ -49,8 +49,11 @@ already-completed key.
 ### Requirement: Notify is an injected best-effort, bounded seam
 
 The notify trigger SHALL be an **injected seam** so the upload cycle stays event-agnostic and
-platform-free (exercised on both JVM and `iosSimulatorArm64` with a fake), with a default no-op for
-tests and harness. The seam carries the configured event id at the composition root; the cycle SHALL
+platform-free (exercised on both JVM and `iosSimulatorArm64` with a fake). It SHALL be a **required**
+constructor parameter with **no default**: a defaulted seam is one a composition root can omit silently,
+and this one was omitted, which is why this capability had no integration coverage at all. A harness or
+test that does not care still has to say so by passing a no-op. The seam carries the configured event id
+at the composition root; the cycle SHALL
 NOT itself construct any event id, URL, or HTTP client. The notify send SHALL be **best-effort**:
 **non-throwing**, subject to a **bounded timeout**, and performed with **no retry** — a failing, slow,
 or hung notify SHALL NOT fail, stall, or delay the upload cycle beyond that bound. Upload completions
@@ -67,20 +70,25 @@ foreground reconcile on recipients is the standing backstop).
 - **WHEN** the notify send hangs or is slow
 - **THEN** it is abandoned at its timeout bound and does not stall the upload cycle
 
-#### Scenario: Default seam is inert
+#### Scenario: The seam cannot be omitted
 
-- **WHEN** the upload cycle is constructed without an injected notifier (tests/harness)
-- **THEN** a drained cycle with completions performs no notify and behaves exactly as before
+- **WHEN** an upload cycle is constructed
+- **THEN** a notifier must be supplied explicitly — there is no default, so a composition root that wants no notify passes a no-op rather than saying nothing
 
 ### Requirement: Event notify request shape
 
-The notifier SHALL issue an HTTP `POST` to `<host>/event/<eventId>/notify` for the cycle's configured
-event id, with **no request body** and **no authorization token** (the event id is the capability). It
-SHALL build the request with string composition only — no crypto, no signing — reusing the shared
-injected HTTP client, and SHALL treat any 2xx as success and any other outcome as an absorbed failure.
+The notifier SHALL issue an HTTP `POST` to `<host>/events/<eventId>/notify` for the cycle's configured
+event id, with **no request body**. It SHALL build the request with string composition only — no crypto,
+no signing — reusing the shared injected HTTP client, and SHALL treat any 2xx as success and any other
+outcome as an absorbed failure.
+
+The request carries the device's App Attest token, because it rides the shared client and the endpoint
+requires it (capabilities `device-attestation`, `event-notify-endpoint`). The notifier does not attach it
+itself — the shared client appends `Authorization: Bearer <token>` to every request through it — so a
+notify built here is authorized by construction rather than by the event id.
 
 #### Scenario: Notify POSTs the route with no body
 
 - **WHEN** the notifier fires for event id `E`
-- **THEN** it issues `POST <host>/event/E/notify` carrying no request body and no authorization token
+- **THEN** it issues `POST <host>/events/E/notify` carrying no request body
 
