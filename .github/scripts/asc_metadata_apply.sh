@@ -35,8 +35,15 @@ if [ ! -d "$DIR/version/$version" ]; then
   exit 1
 fi
 
-# Declarative push of the version localizations. --confirm for non-interactive CI; NO --allow-deletes
-# (absent field = no-op). Scoped to localizations so app-info/app-level fields are out of scope.
+# Declarative push of the localizations. --confirm for non-interactive CI; NO --allow-deletes
+# (absent field = no-op).
+#
+# `--include localizations` covers BOTH version/<v>/<locale>.json and app-info/<locale>.json: the tool
+# self-resolves the appInfoId from the app id and plans `"scope": "app-info"` writes without an
+# `--app-info` flag (which is documented as an override for apps with multiple app-infos, not a
+# requirement). Verified by --dry-run of this exact command; see
+# `changes/archive/2026-07-16-close-appstore-submission-gaps`. What is out of scope is app-level
+# ATTRIBUTES (e.g. a version's copyright) — a closed schema the tool rejects — not app-info text.
 "$ASC" metadata push \
   --app "$APP" \
   --version "$version" \
