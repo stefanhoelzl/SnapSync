@@ -107,6 +107,7 @@ Deno.test("landing: the app icon is the favicon, inlined", async () => {
   assert(m, "no inlined favicon link");
   // Sized for a tab, not reused from the full-resolution app icon: a favicon renders at 16-32px, and the
   // page already inlines a ~98KB 1024px blob for the brandmark. Guard against that creeping back.
+  // (PNG, not WebP: a favicon must render in every browser, and Safari's WebP-favicon support is patchy.)
   assert(
     m[1].length < 20_000,
     `favicon is ${(m[1].length / 1024).toFixed(0)}KB — too big for a tab icon`,
