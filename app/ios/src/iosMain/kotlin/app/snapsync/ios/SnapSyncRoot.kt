@@ -20,6 +20,7 @@ import app.snapsync.join.JoinEvent
 import app.snapsync.join.JoinOutcome
 import app.snapsync.join.ManifestDeviceEnroller
 import app.snapsync.presentation.JoinLoad
+import app.snapsync.gallery.Contribution
 import app.snapsync.gallery.PhotoLibraryResourceEnumerator
 import app.snapsync.permission.PermissionStatus
 import app.snapsync.permission.PhotoLibraryPermission
@@ -58,6 +59,7 @@ import app.snapsync.status.LedgerCounts
 import app.snapsync.status.OwnDeviceGalleryStatusSource
 import app.snapsync.status.ReadingLedgerCountsSource
 import app.snapsync.upload.UPLOAD_LIVENESS_DARWIN_NAME
+import app.snapsync.upload.FanOutPushReceiver
 import app.snapsync.upload.UploadArm
 import app.snapsync.upload.UploadProducer
 import app.snapsync.logging.FileLogWriter
@@ -343,7 +345,9 @@ object SnapSyncRoot {
             // The download arm runs only when the joined membership's direction includes download
             // (capability `join-event`) — an upload-only membership reconciles nothing. No event joined
             // (config null) → nothing to reconcile anyway; default true is harmless there.
-            downloadEnabled = { config.config.value?.direction?.includesDownload ?: true },
+            // Three-valued, no fallback: no membership → `null` → no arm. The `?: true` this replaces made
+            // "no membership" mean "download freely" (capability `photo-download`).
+            downloadEnabled = { config.config.value?.direction?.includesDownload },
         )
         // Deliver each staged resource back to the controller off the URLSession delegate thread.
         downloadJobs.onStaged = { ref, key, path -> scope.launch { controller.onResourceStaged(ref, key, path) } }
@@ -410,14 +414,23 @@ object SnapSyncRoot {
         PushRegistration(KtorPushHttpClient(http), backendHost, deviceId)
     }
 
-    // The silent-push receiver (capability `photo-download`): on a push for the ACTIVE event it runs
-    // download discovery; a push for any other event (e.g. a locally-left event whose backend membership
-    // persists) is a no-op. The active-event guard reads the current config eventId.
+    // The silent-push receivers, fanned out to BOTH arms. A push means "the event changed", which is news
+    // to each of them: foreign photos to pull (capability `photo-download`), and — since the event is
+    // demonstrably live — a good moment to contribute our own (capability `ios-url-session-upload`).
+    //
+    // Each arm keeps its OWN active-event guard, in its own tested capability; this root only composes them.
+    // Both guards answer "is this push for my current event", so a push for any other event (e.g. a
+    // locally-left event whose backend membership persists and keeps pushing us) is a no-op in both.
+    //
+    // The upload arm is added only on the app-driven tier, where a pump exists to drive. On iOS ≥26.1 the OS
+    // owns upload scheduling and we have no lever — the extension is invoked on its own cadence.
     private val pushReceiver: PushReceiver by lazy {
-        DownloadPushReceiver(
+        val download = DownloadPushReceiver(
             activeEventId = { config.config.value?.eventId },
             controller = downloadController,
         )
+        if (!useAppDrivenUpload) return@lazy download
+        FanOutPushReceiver(listOf(download, urlSessionUpload.pushReceiver))
     }
 
     private val eventCreator: EventCreator by lazy {
@@ -622,9 +635,13 @@ object SnapSyncRoot {
      * (completed + in-flight), plus the foreign download line. Full foreground refresh.
      */
     private suspend fun refreshStatusSources() {
-        // No membership → no capture-date scope → nothing to count; `N` stays 0 and the screen is at the
-        // setup gate anyway (capability `photo-selection-policy`).
-        config.config.value?.minPhotoDate?.let { gallery.refresh(it) }
+        // No membership → nothing to count; `N` stays 0 and the screen is at the setup gate anyway
+        // (capability `photo-selection-policy`). A membership that contributes nothing (download-only)
+        // counts 0 too — but that is the source's decision, from the Contribution, not this shell's: the
+        // roots pass facts, never branches.
+        config.config.value?.let { cfg ->
+            gallery.refresh(Contribution.of(cfg.direction.includesUpload, cfg.minPhotoDate))
+        }
         ledgerCounts.refresh()
         downloadStatusSource.refresh() // the "downloaded X of Y" line (capability `photo-download`)
     }
@@ -921,7 +938,11 @@ object SnapSyncRoot {
         }
 
         log.i { "policy probe: refreshing the own-device total against cutoff=$cutoff" }
-        gallery.refresh(cutoff)
+        // `Since` directly, NOT `Contribution.of(...)`: the probe runs with no membership by design (that is
+        // the whole point — the policy is otherwise unobservable without a joined event), so there is no
+        // direction to read. `None` would skip the walk and prove nothing; this probe exists to make the walk
+        // happen and report what it found.
+        gallery.refresh(Contribution.Since(cutoff))
         log.i { "policy probe: N=${gallery.size.value} (see the `gallery:` line above for the breakdown)" }
     }
 

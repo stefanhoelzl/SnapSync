@@ -1,5 +1,6 @@
 package app.snapsync.status
 
+import app.snapsync.gallery.Contribution
 import app.snapsync.gallery.GalleryResourceEnumerator
 import app.snapsync.gallery.GalleryStatusSource
 import app.snapsync.gallery.RESOURCE_META_CREATION_DATE
@@ -24,7 +25,7 @@ import kotlinx.coroutines.flow.asStateFlow
  * enumerator's `assetId` form) is excluded from the total.
  *
  * **The capture-date cutoff scopes the total too** (capability `photo-selection-policy`): an asset whose
- * `creationDate` precedes [photoCutoff] is neither uploaded nor listed in the manifest, so counting it
+ * `creationDate` precedes the contribution's cutoff is neither uploaded nor listed in the manifest, so counting it
  * would peg upload progress permanently below 100% ("pending" forever). The total therefore counts only
  * assets at or after the cutoff — the same set the upload cycle admits — so the joined screen settles to
  * "in sync" once every in-scope asset is uploaded. A membership always carries a cutoff, so there is no
@@ -59,7 +60,19 @@ class OwnDeviceGalleryStatusSource(
     override val size: StateFlow<Int> = _size.asStateFlow()
 
     /**
-     * Re-enumerate within [cutoff] (the joined membership's capture-date cutoff) and recompute `N`.
+     * Re-enumerate within [contribution] (what the joined membership contributes) and recompute `N`.
+     *
+     * **The direction gate, for the total** (capability `photo-selection-policy`). `N` must count *the same
+     * set the upload cycle admits* — this source's own invariant, a few lines up. The cutoff and the origin
+     * exclusions were always honoured on both sides; the participation **direction** was honoured on
+     * neither, and each side improvised around its absence. The cycle's side uploaded a non-contributor's
+     * camera roll (capability `upload-lifecycle`). This side left `N` reporting a library that would never
+     * be uploaded, and the status screen force-hid the arrow over a total that could never settle. Same
+     * omission, two symptoms.
+     *
+     * [Contribution.None] therefore reports `0` **without enumerating**. The short-circuit must live here:
+     * `N` is a *parallel* computation that no upload gate feeds — unlike the download arm, whose total flows
+     * through its gate and is zero for free.
      *
      * The enumeration's cost and shape are **logged** (capability `diagnostic-logging`). This walk is one
      * synchronous PhotoKit round-trip per in-scope asset — the cost the capture-date bound exists to
@@ -67,7 +80,17 @@ class OwnDeviceGalleryStatusSource(
      * bounding anything is invisible on a real device: a bounded and an unbounded fetch differ only in how
      * many assets they touch, and that number is otherwise never reported.
      */
-    suspend fun refresh(cutoff: String) {
+    suspend fun refresh(contribution: Contribution) {
+        val cutoff = when (contribution) {
+            Contribution.None -> {
+                // Not a walk that finds nothing — no walk at all. A 4000-photo library would cost minutes
+                // of XPC to arrive at the empty set the direction already told us.
+                _size.value = 0
+                log.i { "gallery: this membership contributes nothing → N=0 (no enumeration)" }
+                return
+            }
+            is Contribution.Since -> contribution.cutoff
+        }
         val started = timeSource.markNow()
         val suppressed = suppressedLocalIds()
         // Own universe = enumerated assets minus downloads (echo) minus pre-cutoff minus origin-excluded

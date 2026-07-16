@@ -55,7 +55,7 @@ class DownloadControllerTest {
         store: InMemoryDownloadStore = InMemoryDownloadStore(),
         jobs: RecordingJobs = RecordingJobs(),
         importer: FakeImporter = FakeImporter(),
-        downloadEnabled: () -> Boolean = { true },
+        downloadEnabled: () -> Boolean? = { true },
     ) = DownloadController(union, store, jobs, importer, myDevice, downloadEnabled)
 
     @Test
@@ -103,6 +103,23 @@ class DownloadControllerTest {
         importer.failNext = false
         c.importReady() // retry succeeds
         assertTrue(store.isImported(ref))
+    }
+
+    @Test
+    fun reconcile_is_a_noop_when_there_is_no_membership_at_all() = runTest {
+        // `null` = no membership, a DISTINCT answer from "a membership that excludes download" — and
+        // neither enables the arm. The gate used to be two-valued, bound at the root with a `?: true`, so
+        // this case resolved to "download freely": the same collapse `UploadArm`'s KDoc blames for starting
+        // an upload producer for an event that did not exist. It was unreachable only because every caller
+        // happened to pass a config-derived event id — a property of the callers, not of the gate.
+        val store = InMemoryDownloadStore()
+        val jobs = RecordingJobs()
+        val union = FakeUnion(listOf(asset("DEVICE-A", "FOREIGN")))
+        controller(union, store = store, jobs = jobs, downloadEnabled = { null }).reconcile("event")
+
+        assertEquals(0, union.calls, "no union fetch without a membership to reconcile against")
+        assertTrue(jobs.enqueued.isEmpty(), "no downloads enqueued")
+        assertEquals(0, store.importedCount())
     }
 
     @Test

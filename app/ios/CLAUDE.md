@@ -63,7 +63,18 @@ Swift shells are pass-throughs; all logic is Kotlin. Do not add parsing or decis
   (composing the shared `IosDiscovery` from `:app:ios:photokit-discovery`), and the `UploadCycle`;
   `process()` runs one blocking discover→engine→job→drain cycle.
 
-**The upload lifecycle is NOT decided here** (capability `upload-lifecycle`). `SnapSyncRoot` selects
+**Neither is the direction gate** (capability `upload-lifecycle`). Whether a membership uploads **at all** is
+decided inside `UploadCycle`, from a required `Contribution` (`:domain:gallery`) carrying the membership's
+direction *and* its cutoff: `None` → the cycle returns `CycleResult.SKIPPED` before any walk, job, manifest, or
+notify, and the pump then schedules no `BGProcessingTask`. The roots only pass **facts** —
+`Contribution.of(direction.includesUpload, minPhotoDate)` — and never the branch.
+That gate sits at the **choke point every trigger funnels through**, not at the arm's invoker, because an
+invoker-gate is only as good as its enumeration of invokers. It used to be one: a download-only membership was
+handled by simply not enabling the producer, on the reasoning that "the OS never invokes the extension" — true
+on ≥26.1, false here, where the *app* invokes its own cycle. `onForeground` walked straight past it and
+uploaded the camera roll of a member who had been promised "you won't share yours".
+
+**The upload lifecycle is NOT decided here** either (same capability). `SnapSyncRoot` selects
 **exactly one** `UploadProducer` for the process — `PhotoKitUploadProducer` (≥26.1) or
 `UrlSessionUploadController` (18–26.0) — and forwards membership transitions to the tested, tier-neutral
 `UploadArm` in `:capability:upload`. The seam has **two** verbs, `start()` and `stop()`, and **no
@@ -149,9 +160,16 @@ d=$(python3 -c "import json,base64;print(base64.urlsafe_b64encode(json.dumps(
 $P developer dvt launch app.snapsync --env SNAPSYNC_EVENT_LINK="https://snapsync.stho.net/join#v=3&d=$d" --userspace
 ```
 
-Then relaunch with the force flag. Verify with `grep -c 'photokit\.'` on the app log (expect 0) and by
-checking the **extension's** `debug.log` stops gaining `cycle finished` lines. Irrelevant on a real
-18–26.0 device, where no appex can exist at all.
+Then relaunch with the force flag **and a fresh deeplink for whatever you are actually testing** — the
+download-only config above persists otherwise, and the app-driven tier will then correctly decline every
+cycle (`cycle skipped — this membership contributes nothing`), which looks exactly like a broken test rig.
+That decline is new: before the direction gate landed, this same sequence — deregister via a download-only
+join, then relaunch forced — uploaded the device's whole post-cutoff library, because the app-driven tier
+honoured no direction at all. If you are chasing a historical report from that era, that is the explanation.
+
+Verify with `grep -c 'photokit\.'` on the app log (expect 0) and by checking the **extension's**
+`debug.log` stops gaining `cycle finished` lines. Irrelevant on a real 18–26.0 device, where no appex can
+exist at all.
 
 ## Gotchas
 

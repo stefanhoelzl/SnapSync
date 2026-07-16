@@ -8,6 +8,7 @@ import app.snapsync.engine.SyncEngine
 import app.snapsync.engine.UploadError
 import app.snapsync.engine.UploadRequest
 import app.snapsync.engine.UploadRequestProvider
+import app.snapsync.gallery.Contribution
 import app.snapsync.gallery.MEDIA_TYPE_IMAGE
 import app.snapsync.gallery.MEDIA_TYPE_VIDEO
 import app.snapsync.gallery.MIME_GIF
@@ -110,9 +111,84 @@ class UploadCycleTest {
         val ledger = LedgerWriter(backend)
         return UploadCycle(
             SyncEngine(StubUploadRequestProvider(), ledger), ledger, platform, store,
-            photoCutoff = { TEST_CUTOFF },
+            contribution = Contribution.Since(TEST_CUTOFF),
             reconcile = { true }, // a settled join — the gate itself is covered just below
         )
+    }
+
+    // ---- The direction gate (capability `upload-lifecycle`) -------------------------------------------
+    // It sits at the CHOKE POINT — this function, which every trigger on every tier funnels through — and
+    // NOT at the arm's invoker. An invoker-gate is only as sound as its enumeration of invokers, and a new
+    // tier invalidates that enumeration silently: D3 of `2026-07-07-add-join-direction-mode` reasoned "the
+    // producer is never enabled, so the OS never invokes the extension", three days after a tier shipped in
+    // which the APP invokes the cycle. A download-only membership then uploaded the member's camera roll on
+    // every foreground, while the join gate promised "you won't share yours".
+
+    /** Builds a cycle for a membership that contributes nothing, recording anything it dares to do. */
+    private fun decliningCycle(
+        backend: InMemoryLedgerBackend,
+        platform: FakePlatform,
+        store: DiscoveryStore,
+        order: MutableList<String> = mutableListOf(),
+    ): UploadCycle {
+        val ledger = LedgerWriter(backend)
+        return UploadCycle(
+            SyncEngine(StubUploadRequestProvider(), ledger), ledger, platform, store,
+            contribution = Contribution.None,
+            onDiscovery = { order += "discovery" },
+            onBatchUploaded = { order += "notify" },
+            reconcile = { order += "reconcile"; true },
+        )
+    }
+
+    @Test
+    fun a_non_contributing_membership_creates_no_job_and_lists_nothing() = runTest {
+        val store = FakeStore()
+        // A library full of perfectly admissible work: in scope, no origin exclusion, nothing in flight.
+        // The ONLY reason nothing happens is the membership's direction.
+        val platform = FakePlatform(
+            discovered = listOf(resource("a"), resource("b")),
+            ackJobs = listOf(platformJob("c-primary.heic", PlatformJobState.SUCCEEDED)),
+        )
+        val order = mutableListOf<String>()
+
+        val result = decliningCycle(InMemoryLedgerBackend(), platform, store, order).run()
+
+        assertEquals(CycleResult.SKIPPED, result, "declined, and distinguishable from a drained cycle")
+        assertTrue(platform.created.isEmpty(), "no upload job for a membership that contributes nothing")
+        // The union-leak half, and the worse one: a manifest listing the member's assets offers them to
+        // every other member as bytes that were never uploaded (capability `photo-selection-policy`).
+        assertTrue("discovery" !in order, "no device manifest is written")
+        assertTrue("notify" !in order, "no event notify is fired")
+    }
+
+    /**
+     * The gate precedes EVERYTHING — including the reconcile. A non-contributor must not walk its library to
+     * discover it contributes nothing: the walk costs one PhotoKit round-trip per asset (~110 ms on an SE2),
+     * so a per-asset answer would spend minutes arriving at the empty set.
+     */
+    @Test
+    fun the_gate_precedes_the_reconcile_and_the_walk() = runTest {
+        val store = FakeStore()
+        val platform = FakePlatform(discovered = listOf(resource("a")))
+        val order = mutableListOf<String>()
+
+        decliningCycle(InMemoryLedgerBackend(), platform, store, order).run()
+
+        assertEquals(emptyList(), order, "nothing runs — not even the reconcile")
+        assertNull(platform.discoverSinceArg, "the library is never enumerated")
+    }
+
+    /** A declined cycle discovered nothing, so it advances nothing: the cursor stays exactly where it was. */
+    @Test
+    fun a_declined_cycle_does_not_advance_or_clear_the_discovery_cursor() = runTest {
+        val store = FakeStore()
+        val platform = FakePlatform(discovered = listOf(resource("a")))
+
+        decliningCycle(InMemoryLedgerBackend(), platform, store).run()
+
+        assertNull(store.saved, "the cursor must not advance")
+        assertTrue(!store.cleared, "nor be cleared — this membership's state is untouched, not reset")
     }
 
     // ---- Phase 0: the re-join reconciliation gate (capability `event-rejoin-reconciliation`) ----------
@@ -131,7 +207,7 @@ class UploadCycleTest {
         val ledger = LedgerWriter(backend)
         return UploadCycle(
             SyncEngine(StubUploadRequestProvider(), ledger), ledger, platform, store,
-            photoCutoff = { TEST_CUTOFF },
+            contribution = Contribution.Since(TEST_CUTOFF),
             onDiscovery = { order += "discovery" },
             reconcile = { order += "reconcile"; gate() },
         )
@@ -237,7 +313,7 @@ class UploadCycleTest {
             platform,
             FakeStore(),
             suppressedAssetIds = { setOf("FOREIGN") },
-            photoCutoff = { TEST_CUTOFF },
+            contribution = Contribution.Since(TEST_CUTOFF),
             reconcile = { true },
         )
 
@@ -263,7 +339,7 @@ class UploadCycleTest {
             FakeStore(),
             // The importer stored the '/'→'_' createdLocalId — the same normalized string.
             suppressedAssetIds = { setOf("ABC_L0_001") },
-            photoCutoff = { TEST_CUTOFF },
+            contribution = Contribution.Since(TEST_CUTOFF),
             reconcile = { true },
         )
 
@@ -529,7 +605,7 @@ class UploadCycleTest {
                 order += "notify"
                 if (notifyThrows) error("notify boom")
             },
-            photoCutoff = { TEST_CUTOFF },
+            contribution = Contribution.Since(TEST_CUTOFF),
             reconcile = { true },
         )
     }
@@ -638,7 +714,7 @@ class UploadCycleTest {
         val ledger = LedgerWriter(backend)
         return UploadCycle(
             SyncEngine(StubUploadRequestProvider(), ledger), ledger, platform, FakeStore(),
-            photoCutoff = { cutoff },
+            contribution = Contribution.Since(cutoff),
             reconcile = { true },
         )
     }
@@ -749,7 +825,7 @@ class UploadCycleTest {
             SyncEngine(StubUploadRequestProvider(), ledger), ledger, platform, FakeStore(),
             onDiscovery = { d -> manifestSaw += d.resources.map { it.filename } },
             albumExcludedAssetIds = { albumExcluded },
-            photoCutoff = { TEST_CUTOFF },
+            contribution = Contribution.Since(TEST_CUTOFF),
             reconcile = { true },
         )
     }

@@ -204,6 +204,29 @@ name→sources map is the tested `forgeStatusHost` factory in `:domain:presentat
 non-gating, dispatch-only `.github/workflows/screenshots.yml` drives on a simulator (`macos-26`) —
 `simctl launch … SNAPSYNC_FORGE_STATE=<state>` → `simctl io screenshot` → composite → artifact.
 
+⚠️ **A "fresh event id" must be a real event you created — not an invented UUID.** `autoJoin` loads the
+event's details first and **aborts on a miss**, leaving the *previous* membership untouched:
+
+```
+autoJoin aborted: details load did not succeed for <id> (NotFound)
+```
+
+The launch still succeeds and the app runs on happily — **with the old config** — so a run that assumes its
+link applied is measuring the previous membership. (Observed: a `direction=download` link with an invented id
+left a `Both` membership joined and uploading, which reads exactly like a broken direction gate. Always
+confirm the id in `debug.log` — `reconcile(eventId=…)` and `config ok` — matches the one you passed.)
+
+**One event per membership shape.** `direction`, the cutoff, and the album opt-in are **fixed at join**, and
+re-scanning the *already-joined* event short-circuits as `AlreadyJoined` (capability `join-event`) — so
+`SNAPSYNC_EVENT_LINK` can change **none** of them for the event you are already in. Exercising a different
+direction needs a **different event that already exists**. There is no headless route to creating one
+(`POST /events` is attest-gated, and create auto-routes into the pending-join gate, which wants a tap), so
+pre-create a couple of events in the app — one per membership shape you test — and reuse their ids.
+
+🚫 **Never point it at an event you do not own.** A `direction=download` join imports that event's photos into
+this device's library and registers this device on its backend membership. Log-scraped ids are someone's real
+event.
+
 **Restarting the app (black-screen trap).** `dvt launch --kill-existing` — and `dvt kill`/`pkill` —
 only send **SIGTERM**, which SnapSync ignores; a relaunch then layers a new instance on the
 still-alive old one and the app sticks on a **black launch screen** (status bar visible, content
