@@ -3,13 +3,23 @@
 # only product-facing part (the SNAPSYNC_FORGE_STATE launch trigger) is spec'd in ios-app-shell. Its
 # rationale (why it exists at all, and every knob below) lives here so there is no separate capability.
 #
-# WHAT IT DOES: builds the app for the iOS simulator, boots a 6.9" iPhone, launches the app once per
-# marketing state with SNAPSYNC_FORGE_STATE (which renders the shared StatusScreen over forged sources —
-# no backend, attestation, or photo access), captures each with `simctl io screenshot`, composites each
-# onto a brand-green band with a headline, and uploads the set as a workflow ARTIFACT. A human then
-# places the PNGs on the App Store listing / landing page — this workflow does NOT auto-upload to App
-# Store Connect (that path needs the Admin key + raw REST and touches the public listing; deliberately
-# out of scope).
+# WHAT IT DOES: builds the app for the iOS simulator, boots a 6.9" iPhone, and launches the app once per
+# (appearance, marketing state) with SNAPSYNC_FORGE_STATE (which renders the shared StatusScreen over
+# forged sources — no backend, attestation, or photo access), capturing each with `simctl io screenshot`.
+# It uploads **6 RAW captures** (3 states x light/dark) as a workflow ARTIFACT and stops there.
+#
+# RAW ONLY, BY DESIGN. An operator commits these to `screenshots/` and they become the SINGLE SOURCE OF
+# TRUTH for two surfaces, each of which composites its own way: `appstore.yml` bakes on the brand band +
+# headline and uploads to App Store Connect; the backend derives small WebP for the landing page. Emitting
+# raws (rather than finished frames) is what lets a headline or a size change re-render WITHOUT a 10-20
+# minute macOS run. See `changes/archive/…-wire-screenshots-into-listing-and-site`.
+#
+# WHY COMMIT simctl'S OUTPUT: `simctl` stamps no timestamp — its only PNG metadata is an `eXIf` chunk of
+# dimensions + colour space, byte-identical across captures. So a re-run with an unchanged UI produces an
+# unchanged file and `git status` stays clean; a diff means the UI really moved. (Every PNG ImageMagick
+# writes carries `tIME`/`date:*`, so committing composites would churn on every regeneration — another
+# reason composition belongs downstream.) NB the `create` shot is the exception: it renders the wall clock,
+# so it re-diffs every run until that is fixed (see the change's design D3).
 #
 # WHY 6.9" ONLY: it is Apple's single REQUIRED iPhone screenshot class (iPhone 16 Pro Max, 1320x2868)
 # and App Store Connect auto-scales it down to the 6.5"/6.7" listings. Older classes and iPad are not
@@ -51,11 +61,15 @@ jobs:
       # ios-app-shell "No code signing required for the simulator build"). Debug so the Kotlin/Native
       # framework link skips the LLVM optimizer — a screenshot needs no optimization.
       #
-      # NB the SPIKE (tasks.md 1.x): this builds the whole `iosApp` scheme, which pulls the PhotoKit
-      # BackgroundUploadExtension into the closure. That extension conforms to
-      # PHBackgroundResourceUploadExtension with no `#if targetEnvironment(simulator)` guard; if it does
-      # not compile for the simulator SDK, switch this to an app-target-only build
-      # (`-target iosApp` in place of `-scheme iosApp`) — the extension is irrelevant to a UI screenshot.
+      # This builds the whole `iosApp` scheme, so the PhotoKit BackgroundUploadExtension is in the closure
+      # (it compiles for the simulator SDK — proven by the predecessor change's spike).
+      #
+      # The extension is irrelevant to a UI screenshot and costs ~78s of the ~368s build (21%; the other
+      # 79% is the Compose/Skiko framework link, which is not cacheable and genuinely needed). Dropping it
+      # is NOT the one-word swap this comment used to claim: `-target iosApp` in place of `-scheme iosApp`
+      # FAILS — `xcodebuild` rejects `-target` together with `-derivedDataPath` ("The flag -scheme,
+      # -testProductsPath, or -xctestrun is required when specifying -derivedDataPath"), which this step
+      # uses. Doing it properly needs a dedicated app-only scheme in the Xcode project.
       - name: Build the app for the iOS simulator
         run: |
           xcodebuild \
@@ -89,22 +103,33 @@ jobs:
             --batteryState charged --batteryLevel 100 \
             --cellularBars 4 --wifiBars 3
 
-      # Launch once per state with the forge env var (SIMCTL_CHILD_ passes it to the app process),
-      # let it render, capture, then terminate before the next launch (a fresh process per state).
-      - name: Capture each forged state
+      # Launch once per (appearance, state) with the forge env var (SIMCTL_CHILD_ passes it to the app
+      # process), let it render, capture, then terminate before the next launch (a fresh process per shot).
+      #
+      # The APPEARANCE pass drives the app's REAL dark theme: `AppTheme` selects on
+      # `isSystemInDarkTheme()`, which Compose/iOS resolves from the UIKit trait collection
+      # (`LocalSystemTheme` -> `userInterfaceStyle`) — exactly what `simctl ui appearance` sets. So no
+      # app change, no theme override, and the dark shot is a frame the production app genuinely
+      # renders. Verified: the captures come back with backgrounds #F4F6F8 / #0C0E12, the literal
+      # `AppTheme` LightColors/DarkColors constants.
+      - name: Capture each forged state, light and dark
         run: |
           mkdir -p shots
-          for STATE in create joining in_sync; do
-            # Hard reset between states: SnapSync ignores SIGTERM (Skiko runloop), so a relaunch that
-            # LAYERS over a still-alive instance breaks the frame. Terminate, wait, then launch fresh —
-            # no --terminate-running-process (which layers). A longer settle covers cold Compose init.
-            xcrun simctl terminate "$DEVICE" app.snapsync 2>/dev/null || true
-            sleep 2
-            SIMCTL_CHILD_SNAPSYNC_FORGE_STATE="$STATE" \
-              xcrun simctl launch "$DEVICE" app.snapsync
-            sleep 8
-            echo "running after $STATE launch: $(xcrun simctl spawn "$DEVICE" launchctl list 2>/dev/null | grep -c app.snapsync)"
-            xcrun simctl io "$DEVICE" screenshot "shots/$STATE.png"
+          for MODE in light dark; do
+            xcrun simctl ui "$DEVICE" appearance "$MODE"
+            echo "appearance now: $(xcrun simctl ui "$DEVICE" appearance)"
+            for STATE in create joining in_sync; do
+              # Hard reset between shots: SnapSync ignores SIGTERM (Skiko runloop), so a relaunch that
+              # LAYERS over a still-alive instance breaks the frame. Terminate, wait, then launch fresh —
+              # no --terminate-running-process (which layers). A longer settle covers cold Compose init.
+              xcrun simctl terminate "$DEVICE" app.snapsync 2>/dev/null || true
+              sleep 2
+              SIMCTL_CHILD_SNAPSYNC_FORGE_STATE="$STATE" \
+                xcrun simctl launch "$DEVICE" app.snapsync
+              sleep 8
+              echo "running after $MODE/$STATE launch: $(xcrun simctl spawn "$DEVICE" launchctl list 2>/dev/null | grep -c app.snapsync)"
+              xcrun simctl io "$DEVICE" screenshot "shots/$STATE-$MODE.png"
+            done
           done
           xcrun simctl terminate "$DEVICE" app.snapsync 2>/dev/null || true
           # Diagnostics: dump any crash reports so a launch-into-Joined crash is attributable, not guessed.
@@ -116,40 +141,17 @@ jobs:
             echo "no crash reports"
           fi
 
-      # Composite each raw shot onto a brand-green (#0E9D6B) 1320x2868 canvas with a placeholder
-      # headline. Headlines/art are intentionally provisional — retune here without touching the
-      # capture pipeline. Output at the exact 6.9" resolution App Store Connect expects.
-      - name: Composite marketing frames
+      # Fail loudly rather than upload a short set: a missing shot means a launch or capture failed, and
+      # the operator is about to commit these as the source of truth for two surfaces.
+      - name: Check the set is complete
         run: |
-          brew list imagemagick >/dev/null 2>&1 || brew install imagemagick
-          mkdir -p "out/en-US/6.9"
-          # ImageMagick 7 cannot resolve Apple font ALIASES (e.g. "Helvetica-Bold"); it needs a font
-          # FILE path. Pick the first present, ending on Helvetica.ttc which ships on every macOS.
-          FONT=""
-          for f in "/System/Library/Fonts/Supplemental/Arial Bold.ttf" \
-                   "/System/Library/Fonts/HelveticaNeue.ttc" \
-                   "/System/Library/Fonts/Helvetica.ttc"; do
-            [ -f "$f" ] && { FONT="$f"; break; }
-          done
-          echo "using font: $FONT"
-          # `caption:` word-WRAPS inside a fixed 1140px box at a fixed pointsize, so a long headline
-          # becomes two lines instead of bleeding off the 1320px canvas (which `-annotate` did — it
-          # neither wraps nor clips-safely). Any future copy length fits by construction.
-          compose() { # <raw> <headline> <out>
-            magick -size 1320x2868 "xc:#0E9D6B" \
-              \( "$1" -resize 1120x \) -gravity south -geometry +0+100 -composite \
-              \( -background none -fill white -font "$FONT" -pointsize 72 \
-                 -size 1140x -gravity center caption:"$2" \) \
-              -gravity north -geometry +0+170 -composite \
-              "$3"
-          }
-          compose shots/create.png   "Start an event in seconds"        "out/en-US/6.9/01-create.png"
-          compose shots/joining.png  "One scan — everyone's in"         "out/en-US/6.9/02-joining.png"
-          compose shots/in_sync.png  "Every photo, shared automatically" "out/en-US/6.9/03-in-sync.png"
+          COUNT="$(find shots -name '*.png' | wc -l | tr -d ' ')"
+          echo "captured $COUNT shot(s):"; ls -l shots
+          [ "$COUNT" -eq 6 ] || { echo "::error::expected 6 raw captures, got $COUNT"; exit 1; }
 
-      - name: Upload screenshots
-        uses: actions/upload-artifact@v4
+      - name: Upload the raw captures
+        uses: actions/upload-artifact@v7.0.1
         with:
-          name: app-store-screenshots
-          path: out/
+          name: screenshots-raw
+          path: shots/
           if-no-files-found: error
