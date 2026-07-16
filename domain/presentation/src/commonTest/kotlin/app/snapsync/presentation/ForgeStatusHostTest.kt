@@ -4,6 +4,7 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.runTest
 
 /**
@@ -23,19 +24,16 @@ class ForgeStatusHostTest {
     }
 
     @Test
-    fun `joining forges the joined layer with a static non-pulsing upload arrow and the invite QR`() =
-        runTest {
-            val host = assertNotNull(forgeStatusHost("joining", backgroundScope))
-            // synced (12) < total (47), nothing in flight → STATIC, deterministic (no animation to
-            // race the capture); download arm masked to HIDDEN by the empty default download source.
-            assertEquals(
-                UiState.Joined(SyncHealth.Syncing(Arrow.STATIC, Arrow.HIDDEN)),
-                host.container.stateFlow.value,
-            )
-            // The title and the QR both come from the forged config — no name fetch, no scanned QR.
-            assertEquals("Anna's Birthday", host.eventName.value)
-            assertNotNull(host.inviteUrl.value)
-        }
+    fun `joining forges the real join confirmation gate from an interactive invite deeplink`() = runTest {
+        val host = assertNotNull(forgeStatusHost("joining", backgroundScope))
+        // The factory dispatched the invite deeplink as an Orbit intent, which runs on Orbit's own
+        // (real) dispatcher rather than the test scheduler — so AWAIT the gate instead of advancing
+        // virtual time. The gate reduced ITSELF from the forged inputs: an interactive deeplink + a
+        // Found details load, with config absent (a first join, not a switch) and permission granted
+        // (so readyOrExplain picks Ready rather than the access explainer).
+        val state = host.container.stateFlow.first { it is UiState.JoiningEvent }
+        assertEquals(UiState.JoiningEvent(EVENT_ID, JoinPhase.Ready(EVENT_NAME, EVENT_START)), state)
+    }
 
     @Test
     fun `in_sync forges the settled joined layer`() = runTest {
