@@ -45,8 +45,8 @@ two entry points never collide.
 ### Requirement: Left-pane status emerges from the real stack
 
 The left pane's `StatusScreen` SHALL be driven by the world's **real** platform-agnostic sources, not
-forged cells: the real `ListingSyncStatusSource` (`world.syncStatusSource(scope)`), the real
-listing-backed download status (`StoreDownloadStatusSource` over the world's download store), the real
+forged cells: the real `LedgerBackedSyncStatusSource` (`world.syncStatusSource(scope)`), the real
+store-backed download status (`StoreDownloadStatusSource` over the world's download store), the real
 `CreateEvent` (an `EventCreator`), the world's creation-status and permission sources, and the world's
 config source. No forged `SyncStatus`/`DownloadProgress` cell SHALL exist in the full-stack harness —
 every count shown on the phone frame SHALL be computed by the real projection over real world state.
@@ -60,7 +60,7 @@ every count shown on the phone frame SHALL be computed by the real projection ov
 #### Scenario: The status counts cannot be typed in
 
 - **WHEN** the harness code is inspected
-- **THEN** the left pane's sync and download sources are the world's real `ListingSyncStatusSource`
+- **THEN** the left pane's sync and download sources are the world's real `LedgerBackedSyncStatusSource`
   and `StoreDownloadStatusSource`, with no writable `SyncStatus`/`DownloadProgress` override cell
 
 ### Requirement: Operator-driven Invoke-extension cycle
@@ -86,10 +86,10 @@ forces the next invocation's discovery to be a full enumeration.
 
 ### Requirement: Counts are pull-based — the operator refreshes after each mutation
 
-Every world-mutating inspector action SHALL end by refreshing the completed source, the in-flight
-source, and the download source, so the real `ListingSyncStatusSource` projection re-emits — the
+Every world-mutating inspector action SHALL end by refreshing the gallery source, the ledger-count
+source, and the download source, so the real `LedgerBackedSyncStatusSource` projection re-emits — the
 operator playing the same foreground-refresh the iOS composition root performs. This is required
-because those completed-assets, in-flight, and download sources update their `StateFlow`s only on
+because those gallery, ledger-count, and download sources update their `StateFlow`s only on
 `refresh()`. Permission changes SHALL reflect without a refresh (the permission source is a live
 `StateFlow`).
 
