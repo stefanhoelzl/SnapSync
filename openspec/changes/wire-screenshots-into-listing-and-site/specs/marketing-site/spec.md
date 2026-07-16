@@ -44,6 +44,49 @@ the page's dark palette (and the inverse). Both renderings SHALL be inlined.
 - **WHEN** the page is rendered by a client reporting `prefers-color-scheme: light`
 - **THEN** the light rendering of each screenshot is displayed
 
+### Requirement: The page is revalidatable
+
+The `GET /` response SHALL carry an `ETag` derived from the served page, so that it changes exactly when the
+page changes and cannot be forgotten on a deploy. When a request presents a matching `If-None-Match`, the
+response SHALL be `304` with no body and SHALL still carry the caching headers, so a cache learns from it;
+a non-matching `If-None-Match` SHALL be served the page as normal.
+
+This does **not** invalidate anything — a cache serves its stored copy for `max-age` without revalidating,
+so staleness is already bounded by "The landing page is cached at the edge". It bounds the *cost* of the
+revalidation that follows: inlining the screenshots takes the page to roughly 290KB, so a returning client
+re-checking it exchanges a full re-send for an empty 304.
+
+#### Scenario: The response carries an ETag
+
+- **WHEN** `GET /` is served
+- **THEN** the response carries an `ETag` header
+
+#### Scenario: A matching conditional request is answered 304
+
+- **WHEN** `GET /` is requested with an `If-None-Match` equal to the page's current `ETag`
+- **THEN** the response is `304` with no body, and still carries the `Cache-Control` and `ETag` headers
+
+#### Scenario: A stale conditional request is served the page
+
+- **WHEN** `GET /` is requested with an `If-None-Match` that does not match
+- **THEN** the response is `200` with the landing-page body
+
+#### Scenario: The ETag tracks the page
+
+- **WHEN** the served page's content is unchanged
+- **THEN** its `ETag` is unchanged
+
+### Requirement: The page carries the app's icon as its favicon
+
+The page SHALL declare a favicon showing the app's icon, **inlined** like every other asset so the page
+issues no external network request. It SHALL be sized for a favicon rather than reusing the full-resolution
+app icon, which renders at 16–32px and would otherwise dominate the document.
+
+#### Scenario: A favicon is declared and inlined
+
+- **WHEN** the page body is inspected
+- **THEN** it declares an icon link whose href is an inlined `data:` URI and not an external origin
+
 ### Requirement: The screenshots are browsable without scripting
 
 The screenshots SHALL be browsable on a narrow viewport without any script, preserving the page's

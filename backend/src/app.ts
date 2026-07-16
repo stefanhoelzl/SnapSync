@@ -141,6 +141,24 @@ const LANDING_PAGE: string = (() => {
   return page;
 })();
 
+/**
+ * The landing page's entity tag — derived FROM the built page, so it changes exactly when the page changes
+ * and cannot be forgotten on a deploy.
+ *
+ * FNV-1a over the content, salted with its length. A non-cryptographic hash is the right tool here: an ETag
+ * only has to *differ* when the bytes differ, and nothing about this is adversarial. Deliberately sync —
+ * `crypto.subtle.digest` is async, and a top-level `await` in the entry module is not a thing to introduce
+ * into an Edge Script bundle for the sake of a cache header.
+ */
+const LANDING_ETAG: string = (() => {
+  let h = 0x811c9dc5;
+  for (let i = 0; i < LANDING_PAGE.length; i++) {
+    h ^= LANDING_PAGE.charCodeAt(i);
+    h = Math.imul(h, 0x01000193);
+  }
+  return `"${LANDING_PAGE.length.toString(36)}-${(h >>> 0).toString(36)}"`;
+})();
+
 // The event registry's marker prefix. Because an eventId is a UUID, the marker
 // `events/<id>/metadata.json` is disjoint from any device manifest `events/<id>/devices/<deviceId>.json`
 // and from the byte store `files/devices/<deviceId>/…`.
@@ -721,8 +739,17 @@ export function createApp({ fetch: fetchImpl, config, now = Date.now }: Deps): H
   // served from memory with no storage or Apple call. Cacheable (PUBLIC_CACHE) so the pull zone answers
   // from the edge. GET returns the page; HEAD returns the same headers with no body. The gate above admits
   // both at exactly `/`.
+  //
+  // The ETag does NOT invalidate anything — `max-age` already caps staleness, because a cache serves its
+  // stored copy for that long without asking. What it buys is the revalidation AFTER that: the page is
+  // ~290KB (mostly inlined screenshots), so a returning visitor re-checking it costs a ~200-byte 304
+  // instead of re-sending the whole thing. It changes exactly when the built page changes, so it needs no
+  // maintenance and cannot go stale.
   app.on(["GET", "HEAD"], "/", (c) => {
     c.header("Cache-Control", PUBLIC_CACHE);
+    c.header("ETag", LANDING_ETAG);
+    // A conditional hit must still carry the caching headers, or the cache learns nothing from the 304.
+    if (c.req.header("If-None-Match") === LANDING_ETAG) return c.body(null, 304);
     c.header("Content-Type", "text/html; charset=utf-8");
     return c.req.method === "HEAD" ? c.body(null) : c.body(LANDING_PAGE);
   });
