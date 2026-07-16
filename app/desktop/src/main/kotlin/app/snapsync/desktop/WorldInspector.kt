@@ -23,6 +23,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -186,6 +187,27 @@ fun WorldInspector(
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Switch(checked = snap.backendOffline, onCheckedChange = { controller.setBackendOffline(it) })
                     Text(if (snap.backendOffline) "backend OFFLINE (502)" else "backend online")
+                }
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    // The membership read's THIRD state (capability `upload-lifecycle`). Not a mood: an
+                    // unreadable read must skip — touching no marker, no cursor, no job — where an absent
+                    // one drives the leave path. It is a switch because it is otherwise unreachable by a
+                    // reviewer: the config cell has only joined/absent, and the dev SE2 has no passcode, so
+                    // no data protection, so it cannot enter this state at all.
+                    // Tagged so `:test:harness-driver` can drive it headlessly: a Switch carries no text,
+                    // and its label is a sibling node, so `text=` cannot reach it.
+                    Switch(
+                        modifier = Modifier.testTag("membership-unreadable"),
+                        checked = snap.membershipUnreadable,
+                        onCheckedChange = { controller.setMembershipUnreadable(it) },
+                    )
+                    Text(
+                        if (snap.membershipUnreadable) {
+                            "membership UNREADABLE (locked keychain → cycle skips, marker survives)"
+                        } else {
+                            "membership readable"
+                        },
+                    )
                 }
                 OutlinedButton(onClick = { controller.armImportFailure() }) { Text("Arm import failure") }
             },

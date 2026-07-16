@@ -45,7 +45,9 @@ import app.snapsync.status.ReadingLedgerCountsSource
 import app.snapsync.status.SyncStatusSource
 import app.snapsync.upload.CycleResult
 import app.snapsync.upload.UploadCycle
-import app.snapsync.upload.buildUploadConfig
+import app.snapsync.upload.CycleGate
+import app.snapsync.upload.JoinedMembership
+import app.snapsync.upload.cycleGate
 import app.snapsync.uploadurl.EdgeUploadRequestProvider
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -294,7 +296,40 @@ class World(
         marker.clear()
     }
 
-    // ---- composition helpers (mirror UploadExtensionRoot.process()) -----------------------------
+    // ---- composition (the REAL cycle, not a mirror of a root) -----------------------------------
+    //
+    // These build the same object graph a composition root builds and hand it to the same
+    // `UploadCycle` — they do not re-implement what a root does. The distinction is load-bearing: this
+    // file used to mirror `UploadExtensionRoot.process()` by hand, and before the app-driven tier's
+    // reconciler was fixed the MIRROR reconciled while the real tier did not. A mirror that is more
+    // correct than production is worse than one that is wrong — it stays green while the defect ships.
+
+    /**
+     * Force the membership to read as **unreadable** (capability `upload-lifecycle`) — the state a real
+     * device is in before its first unlock after a boot, where the Keychain cannot be read at all.
+     *
+     * It is a lever rather than a property of [configCell] because a nullable cell can express only
+     * *joined* or *absent*, which is exactly the modelling gap that mattered: the outcome three shipped
+     * bugs turned on was the one no test could reach. Set it and a cycle takes [CycleGate.Skip].
+     */
+    var membershipUnreadable: Boolean = false
+
+    /**
+     * The world's membership read, translated into the shared vocabulary — the world's equivalent of a
+     * root's `readGate()`, and like a root's, a translation rather than a decision: `cycleGate` decides.
+     */
+    fun readGate(): CycleGate = cycleGate(
+        configReadable = !membershipUnreadable,
+        membership = configCell.value?.let {
+            JoinedMembership(
+                eventId = it.eventId,
+                contribution = Contribution.of(it.direction.includesUpload, it.minPhotoDate),
+                saveToAlbum = it.saveToAlbum,
+            )
+        },
+        host = host,
+        skipDetail = "world: membership forced unreadable",
+    )
 
     fun reconciler(): ExtensionReconciler =
         ExtensionReconciler(
@@ -318,33 +353,40 @@ class World(
      * real stack here. A download-only membership uploads nothing and counts nothing *because the production
      * code says so*, not because the harness arranged it.
      *
-     * An unjoined world falls back to the default cutoff so the harness stays drivable (there is no
-     * direction to read without a membership).
+     * An **unjoined** world contributes [Contribution.None], not a default cutoff. There is no membership,
+     * so there is nothing to contribute and `N` is 0 — the same answer the cycle reaches. This used to
+     * invent `DEFAULT_CUTOFF` (and `includesUpload = true`) so the harness "stayed drivable", which made the
+     * world the one place in the system where a cutoff appears without a membership behind it — against the
+     * invariant the whole selection policy rests on.
      */
-    fun contribution(): Contribution = Contribution.of(
-        includesUpload = configCell.value?.direction?.includesUpload ?: true,
-        cutoff = configCell.value?.minPhotoDate ?: DEFAULT_CUTOFF,
-    )
+    fun contribution(): Contribution = configCell.value?.let {
+        Contribution.of(includesUpload = it.direction.includesUpload, cutoff = it.minPhotoDate)
+    } ?: Contribution.None
 
-    /** Assemble the real cycle for [eventId], wiring the manifest hook and echo-suppression. */
-    fun uploadCycle(eventId: String): UploadCycle {
-        val engine = SyncEngine(EdgeUploadRequestProvider(host, ownDeviceId), ledger)
-        val producer = manifestProducer()
-        // Per-device capture-date cutoff (photo-selection-policy): scopes the discovery walk, the byte-upload
-        // filter, AND the device-manifest projection. Always present on a joined membership; a cycle
-        // assembled for an unjoined world falls back to the world's default so the harness stays drivable.
-        val cutoff = configCell.value?.minPhotoDate ?: DEFAULT_CUTOFF
-        val contribution = contribution()
-        return UploadCycle(
-            engine = engine,
+    /**
+     * Every event this world's cycles notified (capability `upload-completion-notify`), in order.
+     *
+     * The mini-edge has no notify route, so this records the call rather than serving it. It exists
+     * because the world used to omit `onBatchUploaded` entirely — silently, via the port's old default —
+     * which is why the notify had no integration coverage at all. Recording it is the minimum that makes
+     * "a drained cycle with completions notifies exactly once, after the manifest PUT" observable here.
+     */
+    val notified: MutableList<String> = mutableListOf()
+
+    /**
+     * The real cycle — long-lived, as on both tiers: it re-reads the membership itself through [readGate]
+     * on every `run()`, so a provision, leave, or switch takes effect on the next cycle.
+     */
+    val cycle: UploadCycle by lazy {
+        UploadCycle(
+            readGate = ::readGate,
+            engineFor = { config -> SyncEngine(EdgeUploadRequestProvider(config.host, ownDeviceId), ledger) },
             ledger = ledger,
             platform = platform,
             store = discoveryStore,
-            // Re-join reconciliation (capability `event-rejoin-reconciliation`) now runs INSIDE the shared
-            // cycle on both tiers, so the harness reconciles here rather than in its runner.
-            reconcile = { reconciler().reconcile(eventId) },
-            onDiscovery = { discovery ->
-                producer.produce(
+            reconcile = { eventId -> reconciler().reconcile(eventId) },
+            onDiscovery = { eventId, cutoff, discovery ->
+                manifestProducer().produce(
                     eventId = eventId,
                     startDate = cutoff,
                     discovered = deviceManifestAssetsFromResources(discovery.resources),
@@ -356,32 +398,25 @@ class World(
             // Denylisted-album membership (capability `photo-selection-policy`) — the REAL policy constant
             // over the world's forgeable album membership, exactly as both composition roots wire it. The
             // world runs the real rules; only the PhotoKit lookup is faked.
-            albumExcludedAssetIds = { albumManager.assetIdsInAlbums(DENYLISTED_ALBUM_TITLES, cutoff) },
-            contribution = contribution,
-            // Event album (capability `event-album`): add this cycle's completed own photos to the album,
-            // gated on the opt-in; raw localId recovered by reversing `_`→`/` (as the real roots do).
-            placeInAlbum = { assetIds ->
-                if (configCell.value?.saveToAlbum == true) {
-                    albumCoordinator.place(eventId, assetIds.map(::denormalizeAssetId))
-                }
+            albumExcludedAssetIds = { cutoff -> albumManager.assetIdsInAlbums(DENYLISTED_ALBUM_TITLES, cutoff) },
+            onBatchUploaded = { eventId -> notified += eventId },
+            // Event album (capability `event-album`): the cycle applies the membership's opt-in, which it
+            // read at its gate; raw localId recovered by reversing `_`→`/` (as the real roots do).
+            placeInAlbum = { eventId, assetIds ->
+                albumCoordinator.place(eventId, assetIds.map(::denormalizeAssetId))
             },
         )
     }
 
     /**
-     * The `process()`-shaped runner: reload config → reconcile → build config → run the real cycle. When
-     * [requeuePending] is set, models the extension's "pending > 0 ⇒ PROCESSING" re-invocation request.
+     * Run one cycle. The membership read, the gate, the leave-side reconcile, and the assembly are all
+     * inside the real [cycle] now — what is left here is the extension tier's own "pending > 0 ⇒
+     * PROCESSING" re-invocation request, which [requeuePending] models. That rule is genuinely
+     * tier-specific (the app-driven tier has completion callbacks and needs no such poll), so it is the
+     * one thing this runner may hold.
      */
     suspend fun runUploadCycle(requeuePending: Boolean = false): CycleResult {
-        val payload = configCell.value
-        val config = buildUploadConfig(payload?.eventId, host)
-        if (config == null) {
-            // Leave / never joined: no cycle. The reconciler still runs so a leave clears the join marker
-            // (keeping the ledger + cursor intact for cross-event dedup) — the roots do exactly this.
-            runCatching { reconciler().reconcile(null) }
-            return CycleResult.COMPLETED
-        }
-        val result = runCatching { uploadCycle(config.eventId).run() }.getOrElse { CycleResult.FAILED }
+        val result = runCatching { cycle.run() }.getOrElse { CycleResult.FAILED }
         if (requeuePending && result == CycleResult.COMPLETED && ledgerBackend.aggregates().pending > 0) {
             return CycleResult.PROCESSING
         }

@@ -40,6 +40,8 @@ class UploadCycleTest {
     private companion object {
         const val TEST_CUTOFF = "2026-01-01T00:00:00Z"
         const val IN_SCOPE_DATE = "2026-06-01T10:00:00Z"
+        const val TEST_HOST = "https://edge.example"
+        const val TEST_EVENT = "event-1"
     }
 
     /** A no-network provider returning a throwaway destination — the cycle never inspects the URL. */
@@ -103,17 +105,164 @@ class UploadCycleTest {
     private fun platformJob(key: String, state: PlatformJobState, error: UploadError? = null) =
         PlatformUploadJob(key = key, contentType = "image/jpeg", state = state, error = error, data = Unit, handle = Unit)
 
+    /**
+     * The one place a cycle is built for these tests, so each test states only what it is about.
+     *
+     * The defaults live HERE, once and visibly, rather than on `UploadCycle`'s own parameters — that is the
+     * distinction the required-ports rule draws (capability `upload-lifecycle`). A default on the class
+     * lets a *composition root* inherit an unstated policy, which is how the app-driven tier shipped
+     * without a re-join reconciler and how it nearly shipped without an album denylist. A default in a test
+     * helper is an answer stated once, in the file that reads it.
+     *
+     * [readGate] defaults to a joined membership on [TEST_EVENT]: nearly every test here is about the
+     * phases, not the entry gate, and the gate's own three outcomes are covered in [CycleGateTest] and in
+     * the entry-gate tests below.
+     */
+    private fun cycle(
+        backend: InMemoryLedgerBackend,
+        platform: FakePlatform,
+        store: DiscoveryStore = FakeStore(),
+        contribution: Contribution = Contribution.Since(TEST_CUTOFF),
+        saveToAlbum: Boolean = true,
+        readGate: (() -> CycleGate)? = null,
+        reconcile: suspend (String?) -> Boolean = { true }, // a settled join unless a test says otherwise
+        onDiscovery: suspend (String, String, Discovery) -> Unit = { _, _, _ -> },
+        suppressedAssetIds: suspend () -> Set<String> = { emptySet() },
+        albumExcludedAssetIds: suspend (String) -> Set<String> = { emptySet() },
+        onBatchUploaded: suspend (String) -> Unit = {},
+        placeInAlbum: suspend (String, Set<String>) -> Unit = { _, _ -> },
+    ): UploadCycle {
+        val ledger = LedgerWriter(backend)
+        return UploadCycle(
+            readGate = readGate ?: {
+                CycleGate.Run(
+                    UploadConfig(host = TEST_HOST, eventId = TEST_EVENT),
+                    JoinedMembership(eventId = TEST_EVENT, contribution = contribution, saveToAlbum = saveToAlbum),
+                )
+            },
+            engineFor = { SyncEngine(StubUploadRequestProvider(), ledger) },
+            ledger = ledger,
+            platform = platform,
+            store = store,
+            reconcile = reconcile,
+            onDiscovery = onDiscovery,
+            suppressedAssetIds = suppressedAssetIds,
+            albumExcludedAssetIds = albumExcludedAssetIds,
+            onBatchUploaded = onBatchUploaded,
+            placeInAlbum = placeInAlbum,
+        )
+    }
+
     private fun cycleOver(
         backend: InMemoryLedgerBackend,
         platform: FakePlatform,
         store: DiscoveryStore = FakeStore(),
-    ): UploadCycle {
-        val ledger = LedgerWriter(backend)
-        return UploadCycle(
-            SyncEngine(StubUploadRequestProvider(), ledger), ledger, platform, store,
-            contribution = Contribution.Since(TEST_CUTOFF),
-            reconcile = { true }, // a settled join — the gate itself is covered just below
+    ): UploadCycle = cycle(backend, platform, store)
+
+    // ---- The entry gate (capability `upload-lifecycle`) -----------------------------------------------
+    // The three-state membership read, decided HERE rather than in each composition root. A root reaches
+    // this decision only for the tiers its author enumerated: the OS-invoked tier gated on `cycleGate`, and
+    // the app-driven tier read a two-state `StateFlow` that cannot express "unreadable" — so a failed
+    // Keychain read arrived as a leave and cleared the join marker of a device that never left.
+
+    @Test
+    fun an_unreadable_membership_touches_nothing() = runTest {
+        val backend = InMemoryLedgerBackend()
+        // A cursor that must not advance, and a library full of admissible work: the ONLY reason nothing
+        // happens is that the membership could not be read.
+        val store = FakeStore(token = "cursor-before".encodeToByteArray())
+        val touched = mutableListOf<String>()
+        val platform = FakePlatform(
+            discovered = listOf(resource("A-primary.heic"), resource("B-primary.heic")),
+            fullEnumeration = true,
         )
+
+        val result = cycle(
+            backend, platform, store,
+            readGate = { CycleGate.Skip("config status=-25308, deviceId readable=false") },
+            reconcile = { touched += "reconcile"; true },
+            onDiscovery = { _, _, _ -> touched += "discovery" },
+            onBatchUploaded = { touched += "notify" },
+        ).run()
+
+        assertEquals(CycleResult.COMPLETED, result, "an unreadable read is a clean no-op, never a failure")
+        assertEquals(emptyList<String>(), touched, "unreadable ≠ left: no reconcile, no marker clear, no hooks")
+        assertEquals(emptyList<String>(), platform.created.map { it.filename }, "no upload job")
+        assertNull(store.saved, "the discovery cursor must not advance")
+    }
+
+    // THE regression this gate exists for, at the choke point: the reconciler's `null` call is what clears
+    // the persisted joinedEventId marker, and an unreadable config must never reach it.
+    @Test
+    fun an_unreadable_membership_never_reaches_the_leave_side_reconcile() = runTest {
+        val backend = InMemoryLedgerBackend()
+        var reconciledWith: List<String?> = emptyList()
+
+        cycle(
+            backend, FakePlatform(), FakeStore(),
+            readGate = { CycleGate.Skip("protected data unavailable") },
+            reconcile = { eventId -> reconciledWith = reconciledWith + eventId; true },
+        ).run()
+
+        assertEquals(emptyList<String?>(), reconciledWith, "the marker of a device that never left must survive")
+    }
+
+    @Test
+    fun a_definitively_absent_membership_reconciles_the_leave_side_and_uploads_nothing() = runTest {
+        val backend = InMemoryLedgerBackend()
+        val platform = FakePlatform(discovered = listOf(resource("A-primary.heic")))
+        var reconciledWith: List<String?> = listOf("unset")
+
+        val result = cycle(
+            backend, platform, FakeStore(),
+            readGate = { CycleGate.NotJoined },
+            reconcile = { eventId -> reconciledWith = listOf(eventId); true },
+        ).run()
+
+        assertEquals(CycleResult.COMPLETED, result)
+        assertEquals(listOf<String?>(null), reconciledWith, "a real leave still clears the join marker")
+        assertEquals(emptyList<String>(), platform.created.map { it.filename }, "a leave creates no upload job")
+    }
+
+    @Test
+    fun a_failing_leave_side_reconcile_still_completes_cleanly() = runTest {
+        val result = cycle(
+            InMemoryLedgerBackend(), FakePlatform(), FakeStore(),
+            readGate = { CycleGate.NotJoined },
+            reconcile = { error("marker clear boom") },
+        ).run()
+
+        assertEquals(CycleResult.COMPLETED, result, "a failed marker clear is a warning, never a FAILED cycle")
+    }
+
+    @Test
+    fun the_gate_is_re_read_every_cycle_so_a_leave_takes_effect_without_a_relaunch() = runTest {
+        // The cycle is long-lived: a tier whose process survives across cycles must see a membership
+        // change on the next run, not on the next launch.
+        val backend = InMemoryLedgerBackend()
+        val platform = FakePlatform(discovered = listOf(resource("A-primary.heic")))
+        var joined = true
+
+        val c = cycle(
+            backend, platform, FakeStore(),
+            readGate = {
+                if (joined) {
+                    CycleGate.Run(
+                        UploadConfig(TEST_HOST, TEST_EVENT),
+                        JoinedMembership(TEST_EVENT, Contribution.Since(TEST_CUTOFF), saveToAlbum = false),
+                    )
+                } else {
+                    CycleGate.NotJoined
+                }
+            },
+        )
+
+        c.run()
+        assertEquals(1, platform.created.size, "joined: the cycle uploads")
+
+        joined = false
+        c.run()
+        assertEquals(1, platform.created.size, "left: the SAME cycle instance creates nothing more")
     }
 
     // ---- The direction gate (capability `upload-lifecycle`) -------------------------------------------
@@ -130,16 +279,13 @@ class UploadCycleTest {
         platform: FakePlatform,
         store: DiscoveryStore,
         order: MutableList<String> = mutableListOf(),
-    ): UploadCycle {
-        val ledger = LedgerWriter(backend)
-        return UploadCycle(
-            SyncEngine(StubUploadRequestProvider(), ledger), ledger, platform, store,
-            contribution = Contribution.None,
-            onDiscovery = { order += "discovery" },
-            onBatchUploaded = { order += "notify" },
-            reconcile = { order += "reconcile"; true },
-        )
-    }
+    ): UploadCycle = cycle(
+        backend, platform, store,
+        contribution = Contribution.None,
+        onDiscovery = { _, _, _ -> order += "discovery" },
+        onBatchUploaded = { order += "notify" },
+        reconcile = { order += "reconcile"; true },
+    )
 
     @Test
     fun a_non_contributing_membership_creates_no_job_and_lists_nothing() = runTest {
@@ -203,15 +349,11 @@ class UploadCycleTest {
         store: DiscoveryStore = FakeStore(),
         order: MutableList<String> = mutableListOf(),
         gate: suspend () -> Boolean,
-    ): UploadCycle {
-        val ledger = LedgerWriter(backend)
-        return UploadCycle(
-            SyncEngine(StubUploadRequestProvider(), ledger), ledger, platform, store,
-            contribution = Contribution.Since(TEST_CUTOFF),
-            onDiscovery = { order += "discovery" },
-            reconcile = { order += "reconcile"; gate() },
-        )
-    }
+    ): UploadCycle = cycle(
+        backend, platform, store,
+        onDiscovery = { _, _, _ -> order += "discovery" },
+        reconcile = { order += "reconcile"; gate() },
+    )
 
     @Test
     fun reconcile_runs_before_any_upload_job_is_created() = runTest {
@@ -306,16 +448,7 @@ class UploadCycleTest {
             discovered = listOf(resource("FOREIGN-primary.heic", "FOREIGN"), resource("MINE-primary.heic", "MINE")),
             fullEnumeration = true,
         )
-        val ledger = LedgerWriter(backend)
-        val cycle = UploadCycle(
-            SyncEngine(StubUploadRequestProvider(), ledger),
-            ledger,
-            platform,
-            FakeStore(),
-            suppressedAssetIds = { setOf("FOREIGN") },
-            contribution = Contribution.Since(TEST_CUTOFF),
-            reconcile = { true },
-        )
+        val cycle = cycle(backend, platform, suppressedAssetIds = { setOf("FOREIGN") })
 
         cycle.run()
 
@@ -331,16 +464,10 @@ class UploadCycleTest {
         val backend = InMemoryLedgerBackend()
         val normalized = normalizeAssetId("ABC/L0/001") // "ABC_L0_001" — the discovery-side transform
         val platform = FakePlatform(discovered = listOf(resource("$normalized-primary.heic", normalized)))
-        val ledger = LedgerWriter(backend)
-        val cycle = UploadCycle(
-            SyncEngine(StubUploadRequestProvider(), ledger),
-            ledger,
-            platform,
-            FakeStore(),
+        val cycle = cycle(
+            backend, platform,
             // The importer stored the '/'→'_' createdLocalId — the same normalized string.
             suppressedAssetIds = { setOf("ABC_L0_001") },
-            contribution = Contribution.Since(TEST_CUTOFF),
-            reconcile = { true },
         )
 
         cycle.run()
@@ -596,19 +723,14 @@ class UploadCycleTest {
         order: MutableList<String>,
         store: DiscoveryStore = FakeStore(),
         notifyThrows: Boolean = false,
-    ): UploadCycle {
-        val ledger = LedgerWriter(backend)
-        return UploadCycle(
-            SyncEngine(StubUploadRequestProvider(), ledger), ledger, platform, store,
-            onDiscovery = { order += "manifest" },
-            onBatchUploaded = {
-                order += "notify"
-                if (notifyThrows) error("notify boom")
-            },
-            contribution = Contribution.Since(TEST_CUTOFF),
-            reconcile = { true },
-        )
-    }
+    ): UploadCycle = cycle(
+        backend, platform, store,
+        onDiscovery = { _, _, _ -> order += "manifest" },
+        onBatchUploaded = {
+            order += "notify"
+            if (notifyThrows) error("notify boom")
+        },
+    )
 
     @Test
     fun drained_cycle_with_a_completion_notifies_once_after_the_manifest_write() = runTest {
@@ -710,14 +832,7 @@ class UploadCycleTest {
         backend: InMemoryLedgerBackend,
         platform: FakePlatform,
         cutoff: String,
-    ): UploadCycle {
-        val ledger = LedgerWriter(backend)
-        return UploadCycle(
-            SyncEngine(StubUploadRequestProvider(), ledger), ledger, platform, FakeStore(),
-            contribution = Contribution.Since(cutoff),
-            reconcile = { true },
-        )
-    }
+    ): UploadCycle = cycle(backend, platform, contribution = Contribution.Since(cutoff))
 
     @Test
     fun cutoff_excludes_pre_cutoff_resources_from_upload() = runTest {
@@ -819,16 +934,11 @@ class UploadCycleTest {
         platform: FakePlatform,
         albumExcluded: Set<String> = emptySet(),
         manifestSaw: MutableList<String> = mutableListOf(),
-    ): UploadCycle {
-        val ledger = LedgerWriter(backend)
-        return UploadCycle(
-            SyncEngine(StubUploadRequestProvider(), ledger), ledger, platform, FakeStore(),
-            onDiscovery = { d -> manifestSaw += d.resources.map { it.filename } },
-            albumExcludedAssetIds = { albumExcluded },
-            contribution = Contribution.Since(TEST_CUTOFF),
-            reconcile = { true },
-        )
-    }
+    ): UploadCycle = cycle(
+        backend, platform,
+        onDiscovery = { _, _, d -> manifestSaw += d.resources.map { it.filename } },
+        albumExcludedAssetIds = { albumExcluded },
+    )
 
     @Test
     fun a_screenshot_never_reaches_the_engine() = runTest {

@@ -1056,7 +1056,12 @@ object SnapSyncRoot {
     // [useAppDrivenUpload]; on iOS ≥26.1 without the force flag it is never touched (the extension runs).
     private val urlSessionUpload: UrlSessionUploadController by lazy {
         UrlSessionUploadController(
-            scope, ledgerBackend, config, deviceId, backendHost, log,
+            scope, ledgerBackend, config,
+            // A supplier, not the resolved id: the cycle's gate probes it each run, so an unreadable
+            // Keychain skips the cycle cleanly instead of throwing out of it. The lazy caches the first
+            // success, so this is one read per process, as before.
+            resolveDeviceId = { deviceId },
+            host = backendHost, log = log,
             httpClient = http,
             // The app-driven tier performs its OWN uploads, so its request provider needs the token too.
             token = { attestation.token() },
@@ -1072,12 +1077,13 @@ object SnapSyncRoot {
             // In-process liveness: after each pump cycle, re-read the ledger counts so status moves live.
             onCycleComplete = { ledgerCounts.refresh() },
             // Event album (capability `event-album`): add this cycle's completed own photos to the event
-            // album (app tier, 18–26.0), gated on the opt-in; raw localId recovered by reversing `_`→`/`.
-            albumPlacement = { assetIds ->
-                val cfg = config.config.value
-                if (cfg != null && cfg.saveToAlbum) {
-                    albumCoordinator.place(cfg.eventId, assetIds.map(::denormalizeAssetId))
-                }
+            // album (app tier, 18–26.0); raw localId recovered by reversing `_`→`/`.
+            //
+            // The event and the opt-in arrive from the cycle, which read them at its gate. This used to
+            // re-read `config.config.value` here to recover both — a SECOND read, through the two-state
+            // port that cannot express "unreadable", to re-derive facts the cycle already had.
+            albumPlacement = { eventId, assetIds ->
+                albumCoordinator.place(eventId, assetIds.map(::denormalizeAssetId))
             },
         )
     }
