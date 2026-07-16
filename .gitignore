@@ -8,3 +8,6 @@ local.properties
 
 # backend bundle output (built in CI, deployed; never committed)
 backend/dist/
+
+# Derived from the committed raws in screenshots/ by `deno task shots` (capability marketing-site).
+backend/src/shots.generated.ts

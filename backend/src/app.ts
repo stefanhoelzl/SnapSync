@@ -112,6 +112,34 @@ import {
 // The marketing/landing page (capability `marketing-site`), embedded at build time. `deno bundle` inlines
 // this text import, so the page ships inside the single bundle — served from memory, no runtime file read.
 import LANDING_HTML from "./landing.html" with { type: "text" };
+// The page's screenshots, derived from the committed raws in `screenshots/` by `deno task shots` (which
+// every deno task runs first). Generated, not committed — see scripts/shots.ts.
+import { SHOT_DATA_URIS } from "./shots.generated.ts";
+
+/**
+ * The page with its `{{SHOT_*}}` placeholders replaced by inlined `data:` URIs — computed ONCE here at
+ * module scope, not per request, and folded into the bundle by `deno bundle`. This is a string
+ * substitution, not a file read: `marketing-site` requires serving the page to touch neither the disk nor
+ * an upstream.
+ *
+ * The leftover check is the point: a renamed state or a stale placeholder would otherwise ship `{{SHOT_…}}`
+ * as literal text on the public page, and nothing else would notice. Fail at boot instead.
+ */
+const LANDING_PAGE: string = (() => {
+  const page = Object.entries(SHOT_DATA_URIS).reduce(
+    (html, [key, uri]) => html.replaceAll(`{{${key}}}`, uri),
+    LANDING_HTML,
+  );
+  const leftover = page.match(/\{\{SHOT_[A-Z_]+\}\}/g);
+  if (leftover) {
+    throw new Error(
+      `landing page has unsubstituted screenshot placeholders: ${
+        [...new Set(leftover)].join(", ")
+      }`,
+    );
+  }
+  return page;
+})();
 
 // The event registry's marker prefix. Because an eventId is a UUID, the marker
 // `events/<id>/metadata.json` is disjoint from any device manifest `events/<id>/devices/<deviceId>.json`
@@ -696,7 +724,7 @@ export function createApp({ fetch: fetchImpl, config, now = Date.now }: Deps): H
   app.on(["GET", "HEAD"], "/", (c) => {
     c.header("Cache-Control", PUBLIC_CACHE);
     c.header("Content-Type", "text/html; charset=utf-8");
-    return c.req.method === "HEAD" ? c.body(null) : c.body(LANDING_HTML);
+    return c.req.method === "HEAD" ? c.body(null) : c.body(LANDING_PAGE);
   });
 
   // The Apple App Site Association document (capability `event-link`): what makes the event link a

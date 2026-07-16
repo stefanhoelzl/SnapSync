@@ -37,14 +37,68 @@ Deno.test("landing: the page carries the App Store submission surface", async ()
 
 Deno.test("landing: the page is self-contained — no external assets, no tracking", async () => {
   const body = await (await app().request("/")).text();
-  // Asset-loading attributes must never point off-host (the icon is an inlined data: URI). Anchor hrefs to
-  // Apple/GitHub are navigation, not asset loads, so only asset-loading forms are checked.
+  // Asset-loading attributes must never point off-host (the icon and screenshots are inlined data: URIs).
+  // Anchor hrefs to Apple/GitHub are navigation, not asset loads, so only asset-loading forms are checked.
   assert(
     !/(?:src|srcset)\s*=\s*["']https?:/i.test(body),
     "external src=/srcset= asset reference found",
   );
   assert(!/<link\b[^>]*href\s*=\s*["']https?:/i.test(body), "external <link> stylesheet found");
   assert(!/<script\b/i.test(body), "unexpected <script> tag (page must ship no JS)");
+});
+
+// The app's screenshots (capability `marketing-site`). They are DERIVED at build time from the committed
+// raws in screenshots/ — the same source the App Store listing composites from — so the page and the
+// listing can never depict different software.
+Deno.test("landing: the page shows the app, inlined", async () => {
+  const body = await (await app().request("/")).text();
+  const imgs = [...body.matchAll(/<img[^>]+src="(data:image\/webp;base64,[^"]+)"/g)];
+  assertEquals(imgs.length, 3, "expected three inlined screenshots");
+  // A data: URI proves the derive ran AND that nothing is fetched at render time. Guard against a
+  // truncated/empty encode shipping as a technically-valid URI.
+  for (const [, uri] of imgs) {
+    assert(uri.length > 2000, `screenshot data URI implausibly small: ${uri.length}b`);
+  }
+});
+
+Deno.test("landing: each screenshot has a dark rendering selected by prefers-color-scheme", async () => {
+  const body = await (await app().request("/")).text();
+  const darks = [
+    ...body.matchAll(
+      /<source[^>]+srcset="(data:image\/webp;base64,[^"]+)"[^>]*media="\(prefers-color-scheme: dark\)"/g,
+    ),
+  ];
+  assertEquals(darks.length, 3, "expected a dark <source> per screenshot");
+  // A light shot inside the page's dark palette is exactly what the theme work exists to avoid, so the
+  // dark rendering must differ from the light one — not merely be present.
+  const lights = [...body.matchAll(/<img[^>]+src="(data:image\/webp;base64,[^"]+)"/g)].map((m) =>
+    m[1]
+  );
+  for (let i = 0; i < darks.length; i++) {
+    assert(darks[i][1] !== lights[i], `dark screenshot ${i} is identical to the light one`);
+  }
+});
+
+Deno.test("landing: no screenshot placeholder survives into the page", async () => {
+  const body = await (await app().request("/")).text();
+  // A renamed state or stale placeholder would otherwise ship `{{SHOT_…}}` as literal text on the public
+  // page. app.ts throws at module init; this pins the guarantee to the served response.
+  assert(
+    !/\{\{SHOT_[A-Z_]+\}\}/.test(body),
+    "unsubstituted {{SHOT_*}} placeholder in the served page",
+  );
+});
+
+Deno.test("landing: screenshot headlines are document text, not baked pixels", async () => {
+  const body = await (await app().request("/")).text();
+  // The App Store composite bakes its headline in because Apple gives no text layer; the page has one, so
+  // its copy stays selectable, searchable and available to assistive technology.
+  for (const caption of ["Start an event", "Scan to join", "Everyone's in sync"]) {
+    assertStringIncludes(body, caption);
+  }
+  // The scroll container must be reachable and named for keyboard/AT users.
+  assertStringIncludes(body, 'tabindex="0"');
+  assertStringIncludes(body, 'aria-label="Screenshots of SnapSync, scrollable"');
 });
 
 Deno.test("landing: HEAD / returns the headers with no body", async () => {
