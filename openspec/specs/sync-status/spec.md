@@ -42,7 +42,7 @@ is `Loading`.
 - **THEN** its `status.value` is `Ready(snapshot)` immediately, never `Loading`
 
 ### Requirement: Module placement plugs the engine leak
-`SyncStatus`, `SyncState`, `SyncStatusSource`, and the listing-backed source SHALL live in
+`SyncStatus`, `SyncState`, `SyncStatusSource`, and the ledger-backed source SHALL live in
 `:domain:status`, which depends on `:domain:permission` and `:domain:gallery` (and the event file-list
 seam) with **implementation** scope only and SHALL **no longer depend on `:domain:engine`** (no ledger
 type is reachable from status). `:domain:presentation` SHALL depend on `:domain:status` (and
@@ -84,11 +84,17 @@ extension's ledger via `aggregates().completed`). `total` is the live photo-libr
 size, `N`) — **not** a storage or ledger-discovered count, so it reflects photos not yet discovered or
 uploaded. `active` is operational state ("the backup machinery is allowed to run"), never an
 event-recency heuristic. `pending` is the **ledger-reported in-flight asset count** — assets with **any
-non-`COMPLETED` ledger row** (a job created but not yet done), from `aggregates().pending`. `completed`
-and `pending` SHALL be read from the **same** `aggregates()` round-trip so they are mutually consistent
-(the two asset sets are disjoint, so `pending` is never greater than the discovered remainder); both are
-read **read-only** from the shared ledger, and `pending` remains available but does **not** drive
-classification. `SyncProgress` carries no completion timestamp — the status surface reports completeness
+non-`COMPLETED` ledger row** (a job created but not yet done), from `aggregates().pending` — **clamped to
+the shown remainder**: `pending = min(ledgerPending, total − completed)`. `completed` and `pending` SHALL
+be read from the **same** `aggregates()` round-trip so they are mutually consistent; both are read
+**read-only** from the shared ledger, and `pending` remains available but does **not** drive
+classification.
+
+The clamp is required, not defensive. The two counts come from different universes — `pending` from the
+ledger, `total` from a live gallery enumeration — so a photo deleted from the library but not yet pruned
+from the ledger is counted in `pending` while absent from `total`, and an unclamped `pending` then reads
+above the remainder the screen shows. It is display-only: it never changes what is uploaded, only what
+the count can say. `SyncProgress` carries no completion timestamp — the status surface reports completeness
 and live activity only, never how long ago anything happened.
 
 The type SHALL expose a computed `state` as the single source of truth for classification. Let
@@ -187,7 +193,8 @@ and SHALL issue **no** storage LIST for upload status — `completed` is the led
 It SHALL seed its `status` with `SyncStatus.Loading` and, on the scope, combine the ledger counts,
 permission, and the gallery size to emit `SyncStatus.Ready(SyncProgress)` once **all three** have each
 produced a first value, re-emitting a new `Ready` per input change. Each minted `SyncProgress` SHALL set
-`completed` = the ledger complete-asset count, `pending` = the ledger in-flight count, `total` = the
+`completed` = the ledger complete-asset count, `pending` = the ledger in-flight count **clamped to
+`total − completed`**, `total` = the
 gallery size, `active = (permission == GRANTED)`, `failed = 0`, and `estimatedRemaining = null`, and
 SHALL carry no completion timestamp.
 
