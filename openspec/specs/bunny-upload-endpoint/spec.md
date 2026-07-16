@@ -4,10 +4,11 @@
 
 A streaming proxy upload endpoint on bunny.net Edge Scripting (Deno + Hono): the iOS
 background-upload extension PUTs a photo resource's bytes to it, and it streams them into a bunny
-**native** Storage zone under a device-partitioned key (`devices/<deviceId>/files/<filename>`). It
+**native** Storage zone under a device-partitioned key (`files/devices/<deviceId>/<filename>`). It
 replaces v1's on-device presigning — no SigV4, no UNSIGNED-PAYLOAD; the device holds no storage
-credential (the byte route is ungated — the device id is the capability; the device-manifest route is
-gated on event existence).
+credential. The caller is authorized by an App Attest device token (capability `device-attestation`);
+the device id in the path addresses the write rather than authorizing it, and the device-manifest route
+additionally consults the event marker for existence.
 
 **Why a proxy rather than presigned PUTs.** The OS-driven upload job fixes its destination URL at
 job-creation time and the *system*, not the app, reads and sends the bytes — so the device never sees them

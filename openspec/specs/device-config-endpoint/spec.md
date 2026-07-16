@@ -3,8 +3,8 @@
 ## Purpose
 
 The backend's per-device configuration document — today, exactly one field: the device's APNs push token,
-stored at `devices/<deviceId>/config.json` in the device-partitioned namespace `device-namespace-reorg`
-reserved for it.
+stored at `devices/<deviceId>.json`, its own key namespace, disjoint from the `files/devices/<deviceId>/`
+byte partition so a config never appears in a device listing or an event union.
 
 It is the registry `event-notify-endpoint` reads to turn "every member of this event" into "every token to
 push". Authorization is **by device id alone**: the id is a high-entropy UUID minted in the shared Keychain,
