@@ -9,6 +9,7 @@ import app.snapsync.engine.SyncEvent
 import app.snapsync.engine.UploadError
 import app.snapsync.engine.UploadJob
 import app.snapsync.engine.UploadRequest
+import app.snapsync.gallery.Contribution
 import app.snapsync.gallery.RESOURCE_META_CREATION_DATE
 import app.snapsync.gallery.assetIdFromUploadKey
 import app.snapsync.gallery.excludedAssetIds
@@ -58,15 +59,31 @@ class UploadCycle(
     // stays in `commonMain` (`:capability:album`'s DENYLISTED_ALBUM_TITLES); this port only carries the
     // answer. Cost is O(albums), not O(assets). Default empty for tests/harness.
     private val albumExcludedAssetIds: suspend () -> Set<String> = { emptySet() },
-    // Capture-date cutoff (capability `photo-selection-policy`): the MINIMUM cutoff across the device's
-    // memberships (v1: the single joined event's `EventConfig.minPhotoDate`). Read once per cycle;
-    // discovery drops every resource whose asset `creationDate` precedes it BEFORE the engine sees it, so
-    // a pre-cutoff photo's bytes are never uploaded. Applied to both the full and the incremental walk.
+    // What this membership contributes (capability `photo-selection-policy`) — the selection policy's
+    // per-membership inputs: its participation direction AND its capture-date cutoff, in one value.
     //
-    // Required, with **no default**: a cycle without a cutoff would upload the whole library. Every caller
-    // reaches this only past a joined-event guard, so a cutoff always exists. There is no safe default to
-    // offer tests either — `""` compares `>=` true against every `creationDate`.
-    private val photoCutoff: suspend () -> String,
+    // `Since(cutoff)`: discovery drops every resource whose asset `creationDate` precedes the cutoff BEFORE
+    // the engine sees it, so a pre-cutoff photo's bytes are never uploaded. Applied to both the full and the
+    // incremental walk. (The cutoff is the MINIMUM across the device's memberships — v1: the single joined
+    // event's `EventConfig.minPhotoDate`.)
+    //
+    // `None`: this membership contributes nothing, and `run()` returns SKIPPED before anything happens —
+    // this is THE upload arm's direction gate (capability `upload-lifecycle`). It lives here, at the choke
+    // point every trigger on every tier funnels through, and NOT at the arm's invoker: an invoker-gate is
+    // only as sound as its enumeration of invokers, and a new tier invalidates that enumeration silently.
+    // That is not hypothetical — it is exactly how a download-only membership came to upload the member's
+    // camera roll on the app-driven tier while the join gate promised "you won't share yours".
+    //
+    // A plain value, not a supplier: this cycle is constructed per run, after config is re-read, so
+    // construction IS the fresh read. (`DownloadController`'s equivalent gate is a lambda because that
+    // controller is a long-lived field and genuinely must re-read.)
+    //
+    // Required, with **no default**, for the same reason as [reconcile] — and in BOTH polarities. A
+    // permissive default (`Since("")`) uploads the whole library from the beginning of time: `""` compares
+    // `>=` true against every `creationDate`. A fail-closed default (`None`) is worse, because it is silent:
+    // a contributing member would share nothing while the screen read "In sync" — the invisible failure this
+    // codebase is organized against. There is no safe value, so the type offers none.
+    private val contribution: Contribution,
     // Re-join reconciliation (capability `event-rejoin-reconciliation`): the marker-gated seed that makes
     // already-stored resources `COMPLETED` before the producer runs, so a re-joined / switched /
     // reinstalled device re-uploads nothing it has already contributed. Returns whether the producer may
@@ -95,6 +112,25 @@ class UploadCycle(
     private val placeInAlbum: suspend (assetIds: Set<String>) -> Unit = {},
 ) {
     suspend fun run(): CycleResult {
+        // THE DIRECTION GATE (capability `upload-lifecycle`) — first, before everything.
+        //
+        // Ahead of the reconcile, the walk, job creation, the manifest write, and the notify: a
+        // non-contributor must not enumerate its library to discover it contributes nothing (the walk costs
+        // ~110 ms of PhotoKit XPC per asset). Nothing below this line runs, and the discovery cursor is left
+        // exactly where it was.
+        //
+        // Skipping the acknowledgement pass is safe on both tiers: on iOS ≥26.1 the OS presents no jobs
+        // because `stop()` deregistered the extension (`setUploadJobExtensionEnabled(false)` wipes the
+        // configuration and every in-flight job), and the app-driven tier has no appex, so there is no
+        // "acknowledge or the system errors 50008" obligation to honour here.
+        val scope = when (val c = contribution) {
+            Contribution.None -> {
+                log.i { "cycle skipped — this membership contributes nothing (direction excludes upload)" }
+                return CycleResult.SKIPPED
+            }
+            is Contribution.Since -> c.cutoff
+        }
+
         // Phase 0 — re-join reconciliation (capability `event-rejoin-reconciliation`), BEFORE any upload
         // job is created. On a marker mismatch it seeds the ledger from the device's stored-file listing
         // so nothing already contributed re-uploads; on a settled join it is a no-op. A `false` return is
@@ -169,9 +205,10 @@ class UploadCycle(
         if (capHit) return CycleResult.PROCESSING // cursor NOT advanced
 
         // Phase 3 — discover new/changed resources; REQUESTED-skip filters everything in flight. The
-        // cutoff is read first and passed in, so a full enumeration is scoped at the platform fetch rather
-        // than walked whole and filtered afterwards (capability `photo-selection-policy`).
-        val cutoff = photoCutoff()
+        // cutoff came in with the contribution and is passed down, so a full enumeration is scoped at the
+        // platform fetch rather than walked whole and filtered afterwards (capability
+        // `photo-selection-policy`).
+        val cutoff = scope
         val discovery = platform.discoverResources(store.loadToken(), cutoff)
         log.i { "discovered ${discovery.resources.size} resource(s)" }
 

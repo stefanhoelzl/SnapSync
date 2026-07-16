@@ -5,6 +5,7 @@ import app.snapsync.engine.LEDGER_APP_GROUP
 import app.snapsync.engine.LedgerBackend
 import app.snapsync.engine.LedgerWriter
 import app.snapsync.engine.SyncEngine
+import app.snapsync.gallery.Contribution
 import app.snapsync.gallery.DeviceManifestProducer
 import app.snapsync.gallery.IosDeviceManifestStore
 import app.snapsync.gallery.PhotoLibraryResourceEnumerator
@@ -18,9 +19,11 @@ import app.snapsync.membership.HttpDeviceFilesSource
 import app.snapsync.membership.IosJoinedEventMarker
 import app.snapsync.push.EventNotifier
 import app.snapsync.push.KtorPushHttpClient
+import app.snapsync.push.PushReceiver
 import app.snapsync.upload.BackgroundUploadPump
 import app.snapsync.upload.CycleResult
 import app.snapsync.upload.UploadCycle
+import app.snapsync.upload.UploadPushReceiver
 import app.snapsync.upload.UploadProducer
 import app.snapsync.upload.buildUploadConfig
 import app.snapsync.uploadurl.EdgeUploadRequestProvider
@@ -45,9 +48,11 @@ private const val NOTIFY_TIMEOUT_MS = 8_000L
  * single `LedgerWriter`** — there is no extension process, so the cross-process single-writer concern
  * does not apply (`sync-ledger`: the record-writer's process placement is a platform binding).
  *
- * [BackgroundUploadPump] is the in-app reimplementation of the OS scheduler; the four triggers are
- * forwarded from [SnapSyncRoot] (foreground, `BGProcessingTask`, background-session relaunch,
- * per-completion). Config is re-read each cycle so a newly-joined event takes effect.
+ * [BackgroundUploadPump] is the in-app reimplementation of the OS scheduler; its triggers are forwarded
+ * from [SnapSyncRoot] (foreground, `BGProcessingTask`, background-session relaunch, per-completion) plus
+ * a producer start and a **silent push** for the active event, the latter via [pushReceiver]. Config is
+ * re-read each cycle so a newly-joined event takes effect — including the membership's `Contribution`,
+ * which is what makes a download-only membership's cycle decline (capability `upload-lifecycle`).
  */
 class UrlSessionUploadController(
     private val scope: CoroutineScope,
@@ -134,6 +139,22 @@ class UrlSessionUploadController(
         onTerminal = { scope.launch { pump.onUploadCompleted() } },
     )
 
+    /**
+     * The upload arm's silent-push receiver (capability `ios-url-session-upload`) — composed **here**, the
+     * tier's own composition root, because this is where the pump lives; the pump itself stays private.
+     * [SnapSyncRoot] fans one push out to this and the download arm's receiver, so neither arm learns about
+     * the other.
+     *
+     * The active-event guard is inside `UploadPushReceiver` (a tested capability), not here — this property
+     * is wiring, per the project's hard rule.
+     */
+    val pushReceiver: PushReceiver by lazy {
+        UploadPushReceiver(
+            activeEventId = { configSource.config.value?.eventId },
+            pump = pump,
+        )
+    }
+
     private val pump = BackgroundUploadPump(
         runCycle = { runCycle() },
         scheduler = scheduler,
@@ -175,6 +196,13 @@ class UrlSessionUploadController(
         // Per-device capture-date cutoff (photo-selection-policy): scopes the discovery walk, the byte-upload
         // filter, AND the device-manifest projection. Always present. Read fresh with the config.
         val cutoff = membership.minPhotoDate
+        // What this membership contributes (capability `photo-selection-policy`): the direction AND the
+        // cutoff, in one value. A download-only membership contributes `None`, and the CYCLE declines —
+        // the gate is not here. This module is wiring-only and untested by the project's hard rule, which
+        // is precisely why the previous direction gate (an invoker-gate, in this shell's tier selection)
+        // had no test and let a download-only membership upload the member's camera roll on this tier
+        // (capability `upload-lifecycle`).
+        val contribution = Contribution.of(membership.direction.includesUpload, cutoff)
         val result = UploadCycle(
             engine, ledger, platform, discoveryStore, log,
             // Re-join reconciliation (capability `event-rejoin-reconciliation`): marker-gated, runs BEFORE
@@ -208,8 +236,7 @@ class UrlSessionUploadController(
             suppressedAssetIds = suppressedAssetIds,
             // Denylisted-album membership (capability `photo-selection-policy`), scoped by the cutoff.
             albumExcludedAssetIds = { albumExcludedAssetIds(cutoff) },
-            // Per-device capture-date cutoff: pre-cutoff photos' bytes never upload (photo-selection-policy).
-            photoCutoff = { cutoff },
+            contribution = contribution,
             // Event album (capability `event-album`): add this cycle's completed own photos to the album.
             placeInAlbum = albumPlacement,
         ).run()

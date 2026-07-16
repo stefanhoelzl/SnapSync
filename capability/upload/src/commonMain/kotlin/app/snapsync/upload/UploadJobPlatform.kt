@@ -87,5 +87,31 @@ class Discovery(
     val fullEnumeration: Boolean = false,
 )
 
-/** The terminal disposition of one cycle; the Swift shell maps it to the system result. */
-enum class CycleResult { COMPLETED, PROCESSING, FAILED }
+/**
+ * The terminal disposition of one cycle; the Swift shell maps it to the system result.
+ *
+ * [SKIPPED] is not a flavour of [COMPLETED]: a caller that re-arms background work must be able to tell
+ * "there is nothing left to do **right now**" from "this device contributes nothing, **ever**". Collapsing
+ * them re-arms a heartbeat forever on a device that will never upload. Keeping them apart is also what makes
+ * every `when` over this enum a decision the compiler forces, rather than a default someone inherits.
+ */
+enum class CycleResult {
+    /** The cycle drained: discovery is exhausted and nothing is pending. */
+    COMPLETED,
+
+    /** Work remains (cap reached / backpressure); an external trigger must re-invoke. */
+    PROCESSING,
+
+    /** The cycle failed. */
+    FAILED,
+
+    /**
+     * The cycle **declined**: this membership contributes nothing (`Contribution.None` — its participation
+     * direction excludes upload, capability `upload-lifecycle`). No walk, no job, no manifest, no notify, and
+     * the discovery cursor is not advanced.
+     *
+     * Distinct from [COMPLETED] because the re-arm answer differs: a drained cycle may deserve another wake,
+     * a declined one never does.
+     */
+    SKIPPED,
+}

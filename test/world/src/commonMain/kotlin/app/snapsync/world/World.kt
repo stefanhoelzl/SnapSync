@@ -14,6 +14,7 @@ import app.snapsync.engine.SyncEngine
 import app.snapsync.eventcreation.CreateEvent
 import app.snapsync.eventcreation.HttpEventCreationClient
 import app.snapsync.eventcreation.MutableCreationStatusSource
+import app.snapsync.gallery.Contribution
 import app.snapsync.gallery.DeviceManifestAsset
 import app.snapsync.gallery.denormalizeAssetId
 import app.snapsync.gallery.DeviceManifestProducer
@@ -133,7 +134,7 @@ class World(
             unionSource, downloadStore, downloadJobs, importer, myDeviceId = ownDeviceId,
             // Mirror SnapSyncRoot: the download arm runs only when the joined direction includes download
             // (capability `join-event`), so a reconcile on an upload-only membership is a no-op.
-            downloadEnabled = { configCell.value?.direction?.includesDownload ?: true },
+            downloadEnabled = { configCell.value?.direction?.includesDownload },
         )
 
     // ---- failure levers -------------------------------------------------------------------------
@@ -307,6 +308,24 @@ class World(
     fun manifestProducer(): DeviceManifestProducer =
         DeviceManifestProducer(manifestStore, manifestUploader, ownDeviceId)
 
+    /**
+     * What the joined membership contributes (capability `photo-selection-policy`) — its participation
+     * direction AND its cutoff, derived from the config cell through the **same** `Contribution.of` the
+     * composition roots use. Both consumers of the policy take this: the upload cycle (which declines with
+     * `SKIPPED` for `None`) and the own-device total `N` (which reports 0 without walking).
+     *
+     * The world therefore runs the real direction gate rather than modelling one — the point of driving the
+     * real stack here. A download-only membership uploads nothing and counts nothing *because the production
+     * code says so*, not because the harness arranged it.
+     *
+     * An unjoined world falls back to the default cutoff so the harness stays drivable (there is no
+     * direction to read without a membership).
+     */
+    fun contribution(): Contribution = Contribution.of(
+        includesUpload = configCell.value?.direction?.includesUpload ?: true,
+        cutoff = configCell.value?.minPhotoDate ?: DEFAULT_CUTOFF,
+    )
+
     /** Assemble the real cycle for [eventId], wiring the manifest hook and echo-suppression. */
     fun uploadCycle(eventId: String): UploadCycle {
         val engine = SyncEngine(EdgeUploadRequestProvider(host, ownDeviceId), ledger)
@@ -315,6 +334,7 @@ class World(
         // filter, AND the device-manifest projection. Always present on a joined membership; a cycle
         // assembled for an unjoined world falls back to the world's default so the harness stays drivable.
         val cutoff = configCell.value?.minPhotoDate ?: DEFAULT_CUTOFF
+        val contribution = contribution()
         return UploadCycle(
             engine = engine,
             ledger = ledger,
@@ -337,7 +357,7 @@ class World(
             // over the world's forgeable album membership, exactly as both composition roots wire it. The
             // world runs the real rules; only the PhotoKit lookup is faked.
             albumExcludedAssetIds = { albumManager.assetIdsInAlbums(DENYLISTED_ALBUM_TITLES, cutoff) },
-            photoCutoff = { cutoff },
+            contribution = contribution,
             // Event album (capability `event-album`): add this cycle's completed own photos to the album,
             // gated on the opt-in; raw localId recovered by reversing `_`→`/` (as the real roots do).
             placeInAlbum = { assetIds ->

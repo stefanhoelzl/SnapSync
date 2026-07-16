@@ -3,6 +3,7 @@ package app.snapsync.integration
 import app.snapsync.config.ConfigStore
 import app.snapsync.config.Direction
 import app.snapsync.config.EventConfig
+import app.snapsync.gallery.Contribution
 import app.snapsync.engine.LedgerState
 import app.snapsync.membership.LeaveEvent
 import app.snapsync.permission.PermissionRequester
@@ -51,7 +52,7 @@ class FullStackIntegrationTest {
             // Pre-start, the clamp yields `minPhotoDate == startsAt` whatever the member chose.
             w.provision("E", minPhotoDate = future, startsAt = future)
             w.addOwnAsset("A") // dated DEFAULT_DATE (2026) — long before the event begins
-            w.ownGallery.refresh(future); w.ledgerCounts.refresh()
+            w.ownGallery.refresh(Contribution.Since(future)); w.ledgerCounts.refresh()
 
             val host = statusHost(w, scope)
             assertEquals(
@@ -61,7 +62,7 @@ class FullStackIntegrationTest {
 
             // Run a cycle anyway: the real stack, the real upload cycle, no special-casing.
             w.runUploadCycle()
-            w.ownGallery.refresh(future); w.ledgerCounts.refresh()
+            w.ownGallery.refresh(Contribution.Since(future)); w.ledgerCounts.refresh()
 
             // World outcomes, not UiState alone: nothing was admitted, nothing was queued, nothing landed.
             assertTrue(w.store.objectsOf(w.ownDeviceId).isEmpty(), "no object may land before the event starts")
@@ -84,7 +85,7 @@ class FullStackIntegrationTest {
             val w = World()
             w.provision("E", minPhotoDate = World.DEFAULT_CUTOFF, startsAt = World.DEFAULT_STARTS_AT)
             w.addOwnAsset("A")
-            w.ownGallery.refresh(World.DEFAULT_CUTOFF); w.ledgerCounts.refresh()
+            w.ownGallery.refresh(w.contribution()); w.ledgerCounts.refresh()
 
             val host = statusHost(w, scope)
             host.await { it.health() is SyncHealth.Syncing } // NOT NotStarted
@@ -92,7 +93,7 @@ class FullStackIntegrationTest {
             w.runUploadCycle()
             w.platform.completeJob("A-primary.jpg")
             w.runUploadCycle()
-            w.ownGallery.refresh(World.DEFAULT_CUTOFF); w.ledgerCounts.refresh()
+            w.ownGallery.refresh(w.contribution()); w.ledgerCounts.refresh()
 
             assertTrue("A-primary.jpg" in w.store.objectsOf(w.ownDeviceId))
             assertEquals(UiState.Joined(SyncHealth.InSync), host.await { it.health() is SyncHealth.InSync })
@@ -108,7 +109,7 @@ class FullStackIntegrationTest {
             val w = World()
             w.provision("E")
             w.addOwnAsset("A")
-            w.ownGallery.refresh(World.DEFAULT_CUTOFF); w.ledgerCounts.refresh()
+            w.ownGallery.refresh(w.contribution()); w.ledgerCounts.refresh()
 
             val host = statusHost(w, scope)
             // total = 1, nothing uploaded yet, no job created → Syncing with a static up arrow.
@@ -125,7 +126,7 @@ class FullStackIntegrationTest {
             // Operator completes the job (store-direct deposit) → next cycle acks → COMPLETED → settled.
             w.platform.completeJob("A-primary.jpg")
             w.runUploadCycle()
-            w.ownGallery.refresh(World.DEFAULT_CUTOFF); w.ledgerCounts.refresh()
+            w.ownGallery.refresh(w.contribution()); w.ledgerCounts.refresh()
             assertEquals(UiState.Joined(SyncHealth.InSync), host.await { it.health() is SyncHealth.InSync })
 
             // World outcomes (not UiState alone):
@@ -153,7 +154,7 @@ class FullStackIntegrationTest {
             )
             assertEquals(UiState.CreateEvent(), host.container.stateFlow.value)
 
-            w.ownGallery.refresh(World.DEFAULT_CUTOFF); w.ledgerCounts.refresh()
+            w.ownGallery.refresh(w.contribution()); w.ledgerCounts.refresh()
             host.onCreateEvent("Party", LocalDateTime(2026, 1, 1, 0, 0)) // POST /events → provision → gate lifts
             // Await the SETTLED health, not merely "left the create layer": the snapshot's first read is
             // itself asynchronous (`LedgerBackedSyncStatusSource` seeds `Loading` and reaches `Ready`
@@ -180,7 +181,7 @@ class FullStackIntegrationTest {
             w.stageAllDownloads()
             assertTrue(w.importer.imported.isNotEmpty()) // world outcome: foreign photo imported
 
-            w.ownGallery.refresh(World.DEFAULT_CUTOFF); w.ledgerCounts.refresh()
+            w.ownGallery.refresh(w.contribution()); w.ledgerCounts.refresh()
             val host = statusHost(w, scope)
             // The imported foreign asset is suppressed from the OWN upload universe → own status settled.
             assertEquals(SyncHealth.InSync, host.await { it.health() is SyncHealth.InSync }.health())
@@ -224,7 +225,7 @@ class FullStackIntegrationTest {
             w.runUploadCycle()
             w.platform.completeJob("A-primary.jpg")
             w.runUploadCycle()
-            w.ownGallery.refresh(World.DEFAULT_CUTOFF); w.ledgerCounts.refresh()
+            w.ownGallery.refresh(w.contribution()); w.ledgerCounts.refresh()
             assertTrue("A-primary.jpg" in w.store.objectsOf(w.ownDeviceId))
 
             // The real container with leave wired to the world's faithful leave (real DELETE seam).
@@ -274,8 +275,10 @@ class FullStackIntegrationTest {
             w.stageAllDownloads()
             assertTrue(w.importer.imported.isEmpty(), "upload-only imports no foreign photos")
 
-            // Status: uploads complete + download masked → In sync.
-            w.ownGallery.refresh(World.DEFAULT_CUTOFF); w.ledgerCounts.refresh()
+            // Status: uploads complete, and the download total is 0 because an upload-only membership never
+            // reconciles, so nothing was ever planned (capability `photo-download`) → both arrows hidden →
+            // In sync. That total flows THROUGH the download gate, which is why this arm never needed a mask.
+            w.ownGallery.refresh(w.contribution()); w.ledgerCounts.refresh()
             val host = statusHost(w, scope)
             assertEquals(SyncHealth.InSync, host.await { it.health() is SyncHealth.InSync }.health())
         } finally {
@@ -284,7 +287,7 @@ class FullStackIntegrationTest {
     }
 
     @Test
-    fun download_only_imports_foreign_but_uploads_nothing_and_masks_the_upload_arrow() = worldTest {
+    fun download_only_imports_foreign_and_reads_in_sync_through_a_zero_total() = worldTest {
         val scope = CoroutineScope(coroutineContext + Job())
         try {
             val w = World()
@@ -297,16 +300,59 @@ class FullStackIntegrationTest {
             w.stageAllDownloads()
             assertTrue(w.importer.imported.isNotEmpty(), "download-only imports foreign photos")
 
-            // Upload arm is disabled — the producer never runs, so no own object lands.
+            // Upload arm: DRIVE it. This assertion used to stand with no `runUploadCycle()` above it at
+            // all — "the producer never runs" (D3's assumption) used as the test's METHOD rather than its
+            // finding, so it passed whether or not the gate existed. It did not exist, and this test was
+            // green throughout.
+            w.runUploadCycle()
             assertTrue(w.store.objectsOf(w.ownDeviceId).isEmpty(), "download-only uploads nothing")
 
-            // Status: the upload arrow is masked, so an un-uploaded gallery does NOT keep it out of sync.
-            w.ownGallery.refresh(World.DEFAULT_CUTOFF); w.ledgerCounts.refresh()
+            // Status reads "In sync" because N is 0 — NOT because an arrow is masked. The masks are gone
+            // (capability `sync-status-screen`), so this is now load-bearing: were the total to report the
+            // un-uploaded gallery, the upload arrow would show and this would fail.
+            w.ownGallery.refresh(w.contribution()); w.ledgerCounts.refresh()
+            assertEquals(0, w.ownGallery.size.value, "a non-contributing membership counts nothing")
             val host = statusHost(w, scope)
             assertEquals(SyncHealth.InSync, host.await { it.health() is SyncHealth.InSync }.health())
         } finally {
             scope.cancel()
         }
+    }
+
+    @Test
+    fun download_only_uploads_nothing_when_the_cycle_actually_runs() = worldTest {
+        // THE PRIVACY INVARIANT (capability `upload-lifecycle`). The join gate promises "Only receive the
+        // event's photos — you won't share yours". This asserts the stack keeps that promise when the cycle
+        // is DRIVEN — which is the only interesting case.
+        //
+        // Its sibling above asserts the same property without ever invoking the cycle, taking "the producer
+        // never runs" as its method rather than its finding. That is D3's assumption
+        // (`changes/archive/2026-07-07-add-join-direction-mode`) restated as a test, and it holds only where
+        // the OS is the sole invoker. On the app-driven tier (iOS 18–26.0) the APP invokes the cycle —
+        // foreground entry, the heartbeat, a silent push — and every one of those reaches exactly this call.
+        val w = World()
+        w.provision("E", direction = Direction.DownloadOnly)
+        w.addOwnAsset("A")
+
+        w.runUploadCycle()
+        w.platform.completeJob("A-primary.jpg") // a no-op once the gate holds: no such job exists
+        w.runUploadCycle()
+
+        assertTrue(
+            w.platform.created.isEmpty(),
+            "download-only must create no upload job — the member was promised they would share nothing",
+        )
+        assertTrue(
+            w.store.objectsOf(w.ownDeviceId).isEmpty(),
+            "download-only must upload no bytes",
+        )
+        // The union leak, distinct from the bytes: a manifest listing the member's assets offers them to
+        // every other member (capability `photo-selection-policy`, "One policy gates both byte upload and
+        // manifest listing").
+        assertTrue(
+            w.store.manifestOf("E", w.ownDeviceId)?.assets.isNullOrEmpty(),
+            "download-only must list no asset in its device manifest",
+        )
     }
 
     @Test

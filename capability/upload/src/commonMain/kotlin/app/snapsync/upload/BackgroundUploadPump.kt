@@ -7,7 +7,7 @@ import kotlinx.coroutines.sync.withLock
 
 /**
  * The app-driven (iOS 18–26.0) upload driver — the in-app reimplementation of the OS scheduler that,
- * on the PhotoKit tier, invokes `process()`. It drives [UploadCycle] via [runCycle] from four
+ * on the PhotoKit tier, invokes `process()`. It drives [UploadCycle] via [runCycle] from six
  * triggers and re-arms via [scheduler].
  *
  * **Single-flight.** At most one cycle runs at a time; the ledger has a single writer, so two
@@ -22,14 +22,28 @@ import kotlinx.coroutines.sync.withLock
  * trigger re-invokes: in the foreground the next upload completion ([onUploadCompleted]) frees a slot;
  * in a background context the re-armed [scheduler] wakes the app.
  *
- * **Re-arm policy per trigger:**
+ * **SKIPPED never re-arms — this overrides every trigger below.** A cycle that returns
+ * [CycleResult.SKIPPED] declined because this membership contributes nothing (capability
+ * `upload-lifecycle`). That answer cannot change until a provision or a permission grant, both of which
+ * arrive as [onStart] — so scheduling anything here would wake the device forever to decline again. See
+ * [shouldSchedule], which states the policy over the whole enum so a new variant must be decided, not
+ * inherited.
+ *
+ * **Re-arm policy per trigger** (all subject to the SKIPPED rule above):
  * - [onStart] — the producer was started (a photo-access grant, or a membership provision): drain, and
  *   **always** schedule the next wake. This is the only trigger that *arms the first* `BGProcessingTask`.
  *   Without it nothing ever would: [onBackgroundTask] re-submits but needs a task to have already fired,
  *   and [onSessionEvents] re-arms only when an in-flight background transfer completes — so the tier's
  *   cold-start kick for "new photos captured while the app is closed" simply did not exist.
- * - [onForeground] / [onUploadCompleted] — foreground: drain; do **not** schedule (completions drive
- *   re-invocation while the app is open).
+ * - [onForeground] — drain, and **always** schedule. A force-quit cancels every pending `BGTaskScheduler`
+ *   request and iOS will not relaunch the app until the user opens it, so the re-submission chain is
+ *   severed with nothing to restore it; reopening the app is exactly when the device is available to
+ *   re-arm, and it used to be the one event that didn't.
+ * - [onSilentPush] — a push for the **active event** (guarded upstream by `UploadPushReceiver`): drain,
+ *   and **always** schedule. The heartbeat is deferred at OS discretion; a push is the reliable wake, and
+ *   it clusters exactly when an event is live.
+ * - [onUploadCompleted] — foreground: drain; do **not** schedule (completions drive re-invocation while
+ *   the app is open).
  * - [onSessionEvents] — background relaunch (`handleEventsForBackgroundURLSession`): drain; schedule
  *   the next wake **iff** work remains ([CycleResult.PROCESSING]).
  * - [onBackgroundTask] — the `BGProcessingTask` heartbeat: drain; **always** re-submit the next task
@@ -58,9 +72,37 @@ class BackgroundUploadPump(
         drive(scheduleOnProcessing = false, alwaysScheduleNext = true)
     }
 
-    /** App entered the foreground: run the cycle and let completions drive further work. */
+    /**
+     * App entered the foreground: run the cycle, let completions drive further work — **and re-arm the
+     * heartbeat**.
+     *
+     * The re-arm is not redundant with [onStart]. A force-quit cancels every pending `BGTaskScheduler`
+     * request, and iOS does not relaunch a force-quit app until the user opens it — so the chain
+     * `onStart → scheduleNext → each handler re-submits` is severed with nothing to restore it until the
+     * next provision or permission grant. Reopening the app is precisely the moment the device is available
+     * to be re-armed, and it was the one event that did not do so: new photos captured while closed then
+     * waited for a membership transition that may never come.
+     */
     suspend fun onForeground() = log.invocation("pump.onForeground") {
-        drive(scheduleOnProcessing = false, alwaysScheduleNext = false)
+        drive(scheduleOnProcessing = false, alwaysScheduleNext = true)
+    }
+
+    /**
+     * A silent push arrived for this device's **active event**: drain, and re-arm.
+     *
+     * The reliable wake. `BGProcessingTask` is scheduled at the OS's discretion and is routinely deferred far
+     * beyond its `earliestBeginDate` — least dependable exactly when an event is live and photos are being
+     * taken. A push, by contrast, *clusters* on live events: it is emitted when another member's device drains
+     * a cycle that completed an upload (capability `upload-completion-notify`). So the arrival of a peer's
+     * photo is also this device's best opportunity to contribute its own.
+     *
+     * The active-event decision is **not** made here — it belongs to the tested receive seam
+     * (`UploadPushReceiver`), mirroring the download arm's. This trigger presumes it has already passed, and
+     * is orthogonal to the direction gate: a push for the active event on a download-only membership reaches
+     * this method, and the cycle then declines with [CycleResult.SKIPPED], scheduling nothing.
+     */
+    suspend fun onSilentPush() = log.invocation("pump.onSilentPush") {
+        drive(scheduleOnProcessing = false, alwaysScheduleNext = true)
     }
 
     /** An upload finished while foregrounded (a slot freed): pump the next batch. */
@@ -76,6 +118,27 @@ class BackgroundUploadPump(
     /** A `BGProcessingTask` window opened: top up and re-submit the next heartbeat unconditionally. */
     suspend fun onBackgroundTask() = log.invocation("pump.onBackgroundTask") {
         drive(scheduleOnProcessing = true, alwaysScheduleNext = true)
+    }
+
+    /**
+     * The re-arm decision for one drained cycle's [last] result — stated exhaustively, so a future
+     * [CycleResult] variant is a compile error here rather than a policy someone silently inherits.
+     *
+     * [CycleResult.SKIPPED] schedules **nothing**, at every trigger — including [onBackgroundTask], whose
+     * re-arm is otherwise unconditional. The cycle declined because this membership contributes nothing
+     * (capability `upload-lifecycle`), and that answer will not change until a provision or a permission
+     * grant re-arms via [onStart]. Re-arming here would wake the device forever to decline again.
+     */
+    private fun shouldSchedule(
+        last: CycleResult,
+        scheduleOnProcessing: Boolean,
+        alwaysScheduleNext: Boolean,
+    ): Boolean = when (last) {
+        // Contributes nothing: never re-arm, whatever the trigger asked for.
+        CycleResult.SKIPPED -> false
+        // Work remains: re-arm in a background context; in the foreground a completion re-invokes.
+        CycleResult.PROCESSING -> alwaysScheduleNext || scheduleOnProcessing
+        CycleResult.COMPLETED, CycleResult.FAILED -> alwaysScheduleNext
     }
 
     private suspend fun drive(scheduleOnProcessing: Boolean, alwaysScheduleNext: Boolean) {
@@ -114,8 +177,9 @@ class BackgroundUploadPump(
         }
 
         // Re-arm outside the lock. The heartbeat always re-submits; a background relaunch re-arms iff
-        // work remains; a foreground PROCESSING schedules nothing — it waits for the next completion.
-        if (alwaysScheduleNext || (scheduleOnProcessing && last == CycleResult.PROCESSING)) {
+        // work remains; a foreground PROCESSING schedules nothing — it waits for the next completion; and
+        // a SKIPPED cycle schedules nothing at all, however the trigger asked.
+        if (shouldSchedule(last, scheduleOnProcessing, alwaysScheduleNext)) {
             scheduler.scheduleNext()
         }
     }

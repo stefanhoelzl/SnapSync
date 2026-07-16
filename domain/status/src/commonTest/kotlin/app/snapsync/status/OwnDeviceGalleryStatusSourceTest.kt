@@ -1,6 +1,8 @@
 package app.snapsync.status
 
 import app.snapsync.engine.Resource
+import app.snapsync.gallery.Contribution
+import app.snapsync.gallery.GalleryResourceEnumerator
 import app.snapsync.gallery.InMemoryGalleryResourceEnumerator
 import app.snapsync.gallery.MEDIA_TYPE_IMAGE
 import app.snapsync.gallery.RESOURCE_META_CREATION_DATE
@@ -21,6 +23,59 @@ private const val CUTOFF = "2026-07-06T00:00:00Z"
 private const val IN_SCOPE = "2026-07-10T00:00:00Z"
 
 class OwnDeviceGalleryStatusSourceTest {
+
+    /** Records whether the walk happened at all — "counted 0" and "never looked" are different claims. */
+    private class RecordingEnumerator(
+        private val delegate: GalleryResourceEnumerator,
+    ) : GalleryResourceEnumerator {
+        var walks = 0
+        override suspend fun enumerate(since: String): List<Resource> {
+            walks++
+            return delegate.enumerate(since)
+        }
+        override suspend fun resources(localIdentifiers: List<String>, since: String): List<Resource> =
+            delegate.resources(localIdentifiers, since)
+    }
+
+    // ---- The direction gate, for the total (capability `photo-selection-policy`) ----------------------
+    // N must count "the same set the upload cycle admits" — the invariant this class states about itself.
+    // The cutoff and origin exclusions were honoured on both sides; the participation direction on neither.
+    // Unlike the download arm's total (which flows THROUGH its gate and is zero for free), N is a parallel
+    // computation no upload gate feeds — so the short-circuit has to be right here or not at all.
+
+    @Test
+    fun `a non-contributing membership totals zero without walking the library`() = runTest {
+        val enumerator = RecordingEnumerator(
+            InMemoryGalleryResourceEnumerator(
+                listOf(resource("A-primary.jpg", "A"), resource("B-primary.jpg", "B")),
+            ),
+        )
+        val source = OwnDeviceGalleryStatusSource(enumerator)
+
+        source.refresh(Contribution.None)
+
+        assertEquals(0, source.size.value, "a member who shares nothing has nothing to count")
+        // The load-bearing half. Counting 0 by walking 4000 assets would be ~7 minutes of PhotoKit XPC to
+        // learn what the direction already said. The gate must precede the walk, not filter it.
+        assertEquals(0, enumerator.walks, "the library is never enumerated for a non-contributor")
+    }
+
+    @Test
+    fun `a contributing membership still walks and counts`() = runTest {
+        // The control: None is not a blanket off-switch, it is one branch. Since must behave exactly as the
+        // bare cutoff did before, or this change quietly broke every normal member's progress.
+        val enumerator = RecordingEnumerator(
+            InMemoryGalleryResourceEnumerator(
+                listOf(resource("A-primary.jpg", "A"), resource("B-primary.jpg", "B")),
+            ),
+        )
+        val source = OwnDeviceGalleryStatusSource(enumerator)
+
+        source.refresh(Contribution.Since(CUTOFF))
+
+        assertEquals(2, source.size.value)
+        assertEquals(1, enumerator.walks)
+    }
 
     /** Dated in scope by default: an asset with no `creationDate` is out of scope under any cutoff. */
     private fun resource(filename: String, assetId: String) =
@@ -66,7 +121,7 @@ class OwnDeviceGalleryStatusSourceTest {
         )
         val source = OwnDeviceGalleryStatusSource(enumerator)
 
-        source.refresh(CUTOFF)
+        source.refresh(Contribution.Since(CUTOFF))
 
         assertEquals(1, source.size.value, "only the camera photo counts toward N")
     }
@@ -78,7 +133,7 @@ class OwnDeviceGalleryStatusSourceTest {
         )
         val source = OwnDeviceGalleryStatusSource(enumerator, albumExcludedAssetIds = { setOf("WA") })
 
-        source.refresh(CUTOFF)
+        source.refresh(Contribution.Since(CUTOFF))
 
         assertEquals(1, source.size.value)
     }
@@ -94,7 +149,7 @@ class OwnDeviceGalleryStatusSourceTest {
         )
         val source = OwnDeviceGalleryStatusSource(enumerator)
 
-        source.refresh(CUTOFF)
+        source.refresh(Contribution.Since(CUTOFF))
 
         assertEquals(2, source.size.value) // A and B — counted by photo, not resource row
     }
@@ -111,7 +166,7 @@ class OwnDeviceGalleryStatusSourceTest {
         )
         val source = OwnDeviceGalleryStatusSource(enumerator, suppressedLocalIds = { setOf("B") })
 
-        source.refresh(CUTOFF)
+        source.refresh(Contribution.Since(CUTOFF))
 
         assertEquals(1, source.size.value, "total counts only own assets (A), not the downloaded B")
     }
@@ -120,11 +175,11 @@ class OwnDeviceGalleryStatusSourceTest {
     fun `refresh recomputes after the library changes`() = runTest {
         val enumerator = InMemoryGalleryResourceEnumerator(listOf(resource("A-primary.jpg", "A")))
         val source = OwnDeviceGalleryStatusSource(enumerator)
-        source.refresh(CUTOFF)
+        source.refresh(Contribution.Since(CUTOFF))
         assertEquals(1, source.size.value)
 
         enumerator.set(listOf(resource("A-primary.jpg", "A"), resource("C-primary.jpg", "C")))
-        source.refresh(CUTOFF)
+        source.refresh(Contribution.Since(CUTOFF))
         assertEquals(2, source.size.value)
     }
 
@@ -140,7 +195,7 @@ class OwnDeviceGalleryStatusSourceTest {
         )
         val source = OwnDeviceGalleryStatusSource(enumerator)
 
-        source.refresh(CUTOFF)
+        source.refresh(Contribution.Since(CUTOFF))
 
         assertEquals(1, source.size.value, "only the post-cutoff asset (NEW) counts toward the total")
     }
@@ -150,7 +205,7 @@ class OwnDeviceGalleryStatusSourceTest {
         val enumerator = InMemoryGalleryResourceEnumerator(listOf(undatedResource("U-primary.jpg", "U")))
         val source = OwnDeviceGalleryStatusSource(enumerator)
 
-        source.refresh(CUTOFF)
+        source.refresh(Contribution.Since(CUTOFF))
 
         assertEquals(0, source.size.value, "an asset with no creationDate is out of scope under a cutoff")
     }

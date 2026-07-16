@@ -295,51 +295,70 @@ class StatusContainerHostTest {
         )
     }
 
-    @Test
-    fun `upload-only masks the download arrow and keeps the upload arrow`() = runTest {
-        val source = FakeSyncStatusSource()
-        // Download progress would show a pulsing down arrow — but upload-only masks it.
-        directionHost(source, backgroundScope, Direction.UploadOnly, DownloadProgress(1, 5, inFlight = 2))
-            .test(this) {
-                runOnCreate()
-                source.value = snapshot(pending = 0, completed = 2, total = 5) // uploads incomplete
-                expectState(syncing(up = Arrow.STATIC, down = Arrow.HIDDEN))
-                cancelAndIgnoreRemainingItems()
-            }
-    }
+    // ---- An opted-out arm hides itself through its ZERO TOTAL, not through a mask -----------------------
+    //
+    // Four tests used to live here asserting the direction mask: they fed a download-only membership
+    // `total = 5` (a gallery of un-uploaded photos) and checked the arrow was force-hidden over the top.
+    // That input is now UNREACHABLE — a non-contributing membership's N is 0 (capability
+    // `photo-selection-policy`), and an upload-only membership never reconciles, so its download total is 0
+    // (capability `photo-download`). They tested a mechanism that no longer exists against a state the system
+    // can no longer produce.
+    //
+    // The contract they protected is not lost; it is proved across the three layers that actually own it:
+    //  · `:domain:status`      — a non-contributing membership totals 0, without walking the library
+    //  · here                  — a zero total hides its arrow, and a NON-zero one shows it (below)
+    //  · `:test:integration`   — a real download-only join reads "In sync" through the real stack
+    // Which is the point: the direction contract is now kept by the counts, so this layer need not know it.
 
     @Test
-    fun `upload-only reads In sync once uploads complete regardless of foreign downloads`() = runTest {
+    fun `an opted-out arm hides its arrow through a zero total`() = runTest {
         val source = FakeSyncStatusSource(SyncStatus.Loading)
-        directionHost(source, backgroundScope, Direction.UploadOnly, DownloadProgress(1, 5, inFlight = 2))
-            .test(this) {
-                runOnCreate()
-                source.value = snapshot(completed = 5, total = 5) // uploads complete
-                expectState(inSync) // download arrow masked → both hidden → In sync
-                cancelAndIgnoreRemainingItems()
-            }
-    }
-
-    @Test
-    fun `download-only masks the upload arrow and keeps the download arrow`() = runTest {
-        val source = FakeSyncStatusSource(SyncStatus.Loading)
+        // A download-only membership as the system can actually present it: nothing to upload (N=0),
+        // imports still arriving. No mask involved — `0 < 0` is false.
         directionHost(source, backgroundScope, Direction.DownloadOnly, DownloadProgress(2, 5, inFlight = 1))
             .test(this) {
                 runOnCreate()
-                source.value = snapshot(completed = 0, total = 5) // gallery has un-uploaded photos
+                source.value = snapshot(completed = 0, total = 0)
                 expectState(syncing(up = Arrow.HIDDEN, down = Arrow.PULSING))
                 cancelAndIgnoreRemainingItems()
             }
     }
 
     @Test
-    fun `download-only reads In sync once imports complete regardless of the un-uploaded gallery`() = runTest {
+    fun `both arms at zero read In sync whatever the membership`() = runTest {
         val source = FakeSyncStatusSource(SyncStatus.Loading)
         directionHost(source, backgroundScope, Direction.DownloadOnly, DownloadProgress(5, 5))
             .test(this) {
                 runOnCreate()
-                source.value = snapshot(completed = 0, total = 5) // un-uploaded gallery, but upload masked
+                source.value = snapshot(completed = 0, total = 0) // contributes nothing → nothing outstanding
                 expectState(inSync)
+                cancelAndIgnoreRemainingItems()
+            }
+    }
+
+    /**
+     * **The smoke detector** (capability `sync-status-screen`).
+     *
+     * If a non-contributing membership ever reports upload work, the arrow SHOWS. There is no mask left to
+     * swallow it. This is the single most important assertion in this file, and it is the one the old mask
+     * made impossible: for a full release cycle a download-only member's camera roll uploaded to a stranger's
+     * event while this screen read a serene "In sync", because the one surface that could have told them was
+     * the surface hiding it (capability `upload-lifecycle`).
+     *
+     * If the counts are right this state never occurs. If they are wrong, an arrow the member never asked for
+     * is the only signal anyone gets — so the display must never assert a contract the system is not keeping.
+     */
+    @Test
+    fun `an upload arrow shows if a non-contributing membership ever reports upload work`() = runTest {
+        val source = FakeSyncStatusSource(SyncStatus.Loading)
+        directionHost(source, backgroundScope, Direction.DownloadOnly, DownloadProgress(5, 5))
+            .test(this) {
+                runOnCreate()
+                // The direction gate is NOT being honoured somewhere upstream: work is being reported for a
+                // membership that promised to share nothing.
+                source.value = snapshot(pending = 2, completed = 1, total = 5)
+                // Surfaced, not concealed.
+                expectState(syncing(up = Arrow.PULSING, down = Arrow.HIDDEN))
                 cancelAndIgnoreRemainingItems()
             }
     }

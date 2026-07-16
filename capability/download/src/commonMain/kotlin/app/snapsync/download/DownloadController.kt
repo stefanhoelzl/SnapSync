@@ -26,9 +26,17 @@ class DownloadController(
     // as a plain predicate so this capability gains no config dependency; the composition root binds it to
     // `EventConfig.direction.includesDownload`. This is the SINGLE choke point — every trigger (join,
     // foreground, push) funnels through `reconcile`, so the gate lives here and not in the untested shell.
-    // The default `{ true }` (bidirectional) keeps existing callers/tests unchanged. It is orthogonal to
-    // the push receiver's active-event guard (which answers "is this push for my event").
-    private val downloadEnabled: () -> Boolean = { true },
+    // It is orthogonal to the push receiver's active-event guard (which answers "is this push for my event").
+    //
+    // **Three-valued, and required.** `true` = joined and the direction includes download; `false` = joined
+    // but upload-only; `null` = **no membership at all**. Those last two are different answers and neither
+    // enables the arm — collapsing them is not a nicety. This was `() -> Boolean = { true }`, bound at the
+    // root with a `?: true`, so "we have no membership" resolved to "download freely": the same `?: true`
+    // shape `UploadArm`'s KDoc blames for starting an upload producer for an event that did not exist. It was
+    // unreachable only because every caller happened to pass a config-derived event id — a property of the
+    // callers, not of the gate. The default is gone for the same reason the cutoff and the reconcile have
+    // none: a permissive default on a safety gate is how a caller ships without one.
+    private val downloadEnabled: () -> Boolean?,
     private val log: Logger = Logger.withTag("DownloadController"),
 ) {
 
@@ -42,9 +50,11 @@ class DownloadController(
      * already-imported and already-planned assets are no-ops, and only not-yet-staged resources enqueue.
      */
     suspend fun reconcile(eventId: String) = log.invocation("reconcile", params = "eventId=$eventId") {
-        if (!downloadEnabled()) {
-            // Upload-only membership: skip discovery entirely (no union fetch, no enqueue, no import).
-            log.i { "reconcile skipped — download disabled for this membership" }
+        // `!= true` covers BOTH non-answers: an upload-only membership (`false`) and no membership at all
+        // (`null`). Neither enables the arm, and neither is inferred from the other.
+        if (downloadEnabled() != true) {
+            // Upload-only membership, or none: skip discovery entirely (no union fetch, no enqueue, no import).
+            log.i { "reconcile skipped — this membership does not download" }
             return@invocation
         }
         val assets = union.union(eventId).getOrElse {

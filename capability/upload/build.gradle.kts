@@ -16,6 +16,7 @@ kotlin {
     iosSimulatorArm64()
     sourceSets {
         commonMain.dependencies {
+            api(project(":capability:push")) // the PushReceiver seam UploadPushReceiver implements
             implementation(project(":domain:logging"))
             implementation(project(":domain:engine"))
             implementation(project(":domain:gallery"))

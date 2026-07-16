@@ -546,7 +546,7 @@ private fun reduceFrom(
         !attested -> SyncHealth.Unattested
         // Joined but persisted state not read yet — a neutral first frame (the joined chrome still shows).
         snapshot is SyncStatus.Loading -> SyncHealth.Loading
-        snapshot is SyncStatus.Ready -> syncHealth(snapshot.progress, download, config.direction)
+        snapshot is SyncStatus.Ready -> syncHealth(snapshot.progress, download)
         else -> SyncHealth.Loading
     }
     // A pending join for a DIFFERENT event while joined is a switch confirmation over the joined screen.
@@ -555,24 +555,25 @@ private fun reduceFrom(
 }
 
 // Shown tracks completeness (never lies about "everything up/received"); pulse tracks live activity
-// (never fakes motion). The membership's participation [direction] MASKS the opted-out arm: an
-// upload-only membership force-hides the download arrow, a download-only membership force-hides the
-// upload arrow. `InSync` is then computed over the enabled direction(s) only — the collapse rule
-// (both arrows hidden → InSync) treats a masked arrow as hidden, so a download-only device reads "In
-// sync" once imports complete regardless of its un-uploaded gallery, and vice versa. The masking is
-// silent (no textual mode label); the single remaining arrow implies the direction (capability
-// `join-event`).
-private fun syncHealth(progress: SyncProgress, download: DownloadProgress, direction: Direction): SyncHealth {
-    val upload = if (!direction.includesUpload) {
-        Arrow.HIDDEN
-    } else {
-        arrowOf(shown = progress.synced < progress.total, pulsing = progress.pending > 0)
-    }
-    val downloadArrow = if (!direction.includesDownload) {
-        Arrow.HIDDEN
-    } else {
-        arrowOf(shown = download.downloaded < download.total, pulsing = download.inFlight > 0)
-    }
+// (never fakes motion). Each arrow derives from ITS OWN COUNTS ALONE — this function does not read the
+// membership's direction, and never force-hides.
+//
+// It used to. An opted-out arm was masked here, and `InSync` collapsed over the "enabled" directions. That
+// is no longer needed, because an opted-out direction now contributes no work and so has a zero total: the
+// upload total is 0 for a non-contributing membership (capability `photo-selection-policy`), and the
+// download total is 0 for a membership that never reconciles (capability `photo-download`, whose total is
+// populated only by that reconcile). The arrows agree with the direction because the counts already do.
+//
+// The mask is not merely redundant now — it was actively harmful, and removing it is the point. A
+// force-hidden arrow can only ever conceal a MISMATCH between the direction contract and what the system is
+// actually doing. Concealing that mismatch is exactly how a download-only membership uploaded its member's
+// camera roll for a full release cycle while this screen read "In sync" (capability `upload-lifecycle`): the
+// one surface that would have shown them an upload they never asked for was the surface that hid it. If the
+// counts are right, the arrow is already right; if they are wrong, an arrow the member never asked for is
+// the only signal anyone gets. The display must not assert a contract the system is not keeping.
+private fun syncHealth(progress: SyncProgress, download: DownloadProgress): SyncHealth {
+    val upload = arrowOf(shown = progress.synced < progress.total, pulsing = progress.pending > 0)
+    val downloadArrow = arrowOf(shown = download.downloaded < download.total, pulsing = download.inFlight > 0)
     return if (upload == Arrow.HIDDEN && downloadArrow == Arrow.HIDDEN) {
         SyncHealth.InSync
     } else {

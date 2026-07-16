@@ -10,6 +10,7 @@ import app.snapsync.config.ConfigRead
 import app.snapsync.config.KeychainConfigStore
 import app.snapsync.keychain.KeychainUnavailable
 import app.snapsync.deviceid.KeychainDeviceIdentity
+import app.snapsync.gallery.Contribution
 import app.snapsync.gallery.denormalizeAssetId
 import app.snapsync.downloadstore.SuppressionSource
 import app.snapsync.downloadstore.iosSuppressionSource
@@ -307,6 +308,13 @@ object UploadExtensionRoot {
         // discovery walk, the byte-upload filter (below), and the device-manifest projection
         // (`startDate`), so the bytes uploaded equal the assets shared into the event union.
         val cutoff = payload.minPhotoDate
+        // What this membership contributes (capability `photo-selection-policy`): direction AND cutoff.
+        // This tier is already protected by a real invoker removal — `stop()` calls
+        // `setUploadJobExtensionEnabled(false)`, so the OS stops invoking the extension for a download-only
+        // membership — but the gate is stated here too because it belongs to the CYCLE, not to a tier
+        // (capability `upload-lifecycle`). The registration record is system-side and survives; a cycle that
+        // runs anyway must still decline.
+        val contribution = Contribution.of(payload.direction.includesUpload, cutoff)
         val cycle = UploadCycle(
             engine, ledger, platform, discoveryStore, log,
             // Re-join reconciliation (capability `event-rejoin-reconciliation`) now runs INSIDE the shared
@@ -341,8 +349,7 @@ object UploadExtensionRoot {
             // saved into its own album were received, not taken. The POLICY (which titles) is the
             // `commonMain` constant; this only performs the lookup. Cost is O(albums), not O(assets).
             albumExcludedAssetIds = { albumManager.assetIdsInAlbums(DENYLISTED_ALBUM_TITLES, cutoff) },
-            // Per-device capture-date cutoff: pre-cutoff photos' bytes never upload (photo-selection-policy).
-            photoCutoff = { cutoff },
+            contribution = contribution,
             // Event album (capability `event-album`): add this cycle's completed own photos to the event
             // album (extension tier, ≥26.1 — verified on device). Recover each raw `localIdentifier` from
             // the normalized `assetId` (reverse `_`→`/`) to fetch the PHAsset. Gated on the opt-in.

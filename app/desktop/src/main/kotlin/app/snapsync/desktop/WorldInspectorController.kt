@@ -348,9 +348,10 @@ class WorldInspectorController(private val scope: CoroutineScope) {
      * `LedgerBackedSyncStatusSource` projection re-emits only after we pull them.
      */
     private suspend fun refreshStatus() {
-        // The joined membership's cutoff scopes the total; unjoined, the world's default keeps the
-        // inspector's counts drivable (capability `photo-selection-policy`).
-        world.ownGallery.refresh(world.configSource.config.value?.minPhotoDate ?: World.DEFAULT_CUTOFF)
+        // What the membership contributes scopes the total — its direction AND its cutoff (capability
+        // `photo-selection-policy`). Derived by the world exactly as the composition roots derive it, so a
+        // download-only join shows the operator N=0, not a total that can never settle.
+        world.ownGallery.refresh(world.contribution())
         world.ledgerCounts.refresh()
         downloadSource.refresh()
     }
