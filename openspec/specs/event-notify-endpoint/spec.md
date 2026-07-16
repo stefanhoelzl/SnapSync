@@ -24,10 +24,11 @@ match a UUID pattern. A request whose path does not match this route (missing a 
 SHALL yield `404`; a matched request whose `eventId` is not a UUID SHALL yield `400`; neither case
 SHALL make an upstream request. A request using any method other than `POST` on this path SHALL yield
 `404` (no matching route). The route SHALL be served by the same application as the upload, list, and
-union endpoints. The endpoint SHALL NOT require any authorization token and SHALL NOT accept any
-caller-supplied payload or device-exclusion parameter. The dispatched push payload is **server-chosen**
-and carries the route's `eventId` (so a receiving device knows which event to reconcile); the caller
-supplies nothing beyond the path, and any device exclusion is a future use-case concern.
+union endpoints. The caller SHALL hold a valid App Attest device token (capability `device-attestation`);
+see the token requirement below. The endpoint SHALL NOT accept any caller-supplied payload or
+device-exclusion parameter. The dispatched push payload is **server-chosen** and carries the route's
+`eventId` (so a receiving device knows which event to reconcile); the caller supplies nothing beyond the
+path, and any device exclusion is a future use-case concern.
 
 #### Scenario: Valid event id accepted
 
@@ -45,11 +46,16 @@ supplies nothing beyond the path, and any device exclusion is a future use-case 
 - **WHEN** the path does not match `/events/<eventId>/notify`, or the method is not `POST`
 - **THEN** the endpoint responds `404` and makes no upstream request
 
-#### Scenario: No token or caller payload required
+#### Scenario: A notify without a token is rejected
 
-- **WHEN** a `POST /events/<uuid>/notify` carries a valid event id, no authorization token, and no body
-- **THEN** it is accepted (the event id is the capability; the push payload is server-chosen and
-  carries the route's event id)
+- **WHEN** a `POST /events/<uuid>/notify` carries a valid event id and no body, but no authorization token
+- **THEN** it is rejected with `401` and no push is dispatched
+
+#### Scenario: The caller supplies nothing beyond the path
+
+- **WHEN** an authorized `POST /events/<uuid>/notify` is accepted
+- **THEN** the push payload is server-chosen and carries the route's event id; no caller-supplied body or
+  device-exclusion parameter is read
 
 ### Requirement: Notify gated on event existence
 

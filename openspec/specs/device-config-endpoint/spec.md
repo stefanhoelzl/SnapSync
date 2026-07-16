@@ -64,18 +64,23 @@ received (it is the device's self-asserted registration); it SHALL NOT mint or t
   "env": "sandbox" } }`
 - **THEN** the stored `devices/<uuid>.json` carries that `pushToken` object verbatim
 
-### Requirement: Authorization by device id only
+### Requirement: Addressed by device id, authorized by token
 
-The config write is addressed by the device-id path alone — the endpoint SHALL NOT require any
-authorization token, and SHALL NOT consult any event id or event marker (a device's config is
-event-independent). Possession of the (unguessable, per-install) `deviceId` is the capability, the same
-trust model as the byte-upload route that writes `files/devices/<deviceId>/…`. The endpoint SHALL NOT
-expose or forward the bunny account API key.
+The config write is **addressed** by the device-id path alone: it SHALL NOT consult any event id or event
+marker, because a device's config is event-independent. Addressing is not authorization — the caller SHALL
+hold a valid App Attest device token (capability `device-attestation`), the same gate the byte-upload route
+carries. The (unguessable, per-install) `deviceId` says *which* config is being written, not *that the
+caller may write it*. The endpoint SHALL NOT expose or forward the bunny account API key.
 
-#### Scenario: No token required
+#### Scenario: A write without a token is rejected
 
 - **WHEN** a `PUT /devices/<uuid>` carries a valid device id and body but no authorization token
-- **THEN** the write is accepted (the device id is the capability)
+- **THEN** it is rejected with `401` and nothing is written
+
+#### Scenario: The write consults no event
+
+- **WHEN** an authorized `PUT /devices/<uuid>` is accepted
+- **THEN** no event id or event marker is read — the config is event-independent
 
 #### Scenario: Account API key never exposed
 

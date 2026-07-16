@@ -3,13 +3,12 @@
 ## Purpose
 
 A read-only, **per-device** listing on the backend (Deno + Hono), served by the same app as
-`bunny-upload-endpoint`. `GET /devices/<deviceId>/files` returns a JSON array of the device's **raw
-stored objects** under `devices/<deviceId>/files/` (each entry a `{filename, size, url}`) — a single bunny
+`bunny-upload-endpoint`. `GET /files/devices/<deviceId>` returns a JSON array of the device's **raw
+stored objects** under `files/devices/<deviceId>/` (each entry a `{filename, size, url}`) — a single bunny
 native Storage LIST, with **no** manifest reads and **no** server-side completeness computation.
-The byte store is device-partitioned and event-independent, so the listing is global to the device;
-the app derives own-device completeness by intersecting this listing with its gallery enumeration
-(`sync-status`). Authorized by possession of the device id alone (no token, no registry — the same
-capability model as upload).
+The byte store is device-partitioned and event-independent, so the listing is global to the device.
+Authorized by a valid App Attest device token (capability `device-attestation`); the device id addresses
+the listing, it does not authorize it.
 
 Its motivating consumer is a re-joined device pre-seeding its ledger: a reinstall wipes its ledger, so
 it reconciles against storage, seeding the resources of each complete asset by the reinstall-stable

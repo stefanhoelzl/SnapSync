@@ -110,13 +110,12 @@ using `PUT`, attaching the storage zone's `AccessKey` header (the storage-zone p
 `<key>` is the bare key derived per the key requirement (`files/devices/<deviceId>/<filename>` for the
 byte route, `events/<eventId>/devices/<deviceId>.json` for the device-manifest route). It SHALL forward
 the request's `Content-Type` to bunny, defaulting to `application/octet-stream` when absent (the
-device-manifest route carries `application/json`). Authorization of the *caller* is structural, not
-token-based — the endpoint SHALL NOT require any token. The byte route is **ungated**: possession of
-the edge host alone authorizes a `/files/devices/<deviceId>/` write (the device id is self-asserted).
-The device-manifest route consults the event marker for **existence** only (see the device-manifest
-gate requirement); that is an existence check, not an authorization step — any caller possessing a
-valid, existing event id is authorized to write the manifest. The endpoint SHALL NOT expose or forward
-the bunny account API key.
+device-manifest route carries `application/json`). The caller SHALL hold a valid App Attest device token
+(capability `device-attestation`); see the token requirement below, which is the authorization step.
+Beyond that token, addressing is self-asserted: a `/files/devices/<deviceId>/` write names its own device
+id, and the device-manifest route consults the event marker for **existence** only (see the
+device-manifest gate requirement) — an existence check, not a second authorization step. The endpoint
+SHALL NOT expose or forward the bunny account API key.
 
 #### Scenario: Upstream URL composed from zone, region, and key
 
@@ -129,11 +128,11 @@ the bunny account API key.
 - **WHEN** the request carries a `Content-Type`
 - **THEN** the same value is sent upstream; **WHEN** it is absent, `application/octet-stream` is sent
 
-#### Scenario: No token required
+#### Scenario: A write without a token is rejected
 
 - **WHEN** a request carries a valid path and body but no authorization token
-- **THEN** the write is accepted (the byte route is ungated; the manifest route requires only an
-  existing event id)
+- **THEN** it is rejected with `401` and nothing is forwarded upstream — the device id addresses the
+  write, it does not authorize it
 
 ### Requirement: Last-write-wins
 
