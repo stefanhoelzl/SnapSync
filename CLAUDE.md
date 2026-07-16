@@ -221,15 +221,16 @@ gh run download "$RID" -n screenshots-raw -D screenshots
 git add screenshots/ && git commit
 ```
 
-- **Eyeball them before committing — this is the only check there is.** A system notification can land in a
-  capture (seen once: *"Ready for Apple Intelligence"*, on a freshly-created device; never in a real CI
-  run). Re-dispatch if one does. This is **not** automatable by asserting the top band is flat: `in_sync`
-  legitimately renders "Anna's Birthday" there, so a colour check false-positives. A human glance is both
-  cheaper and more general — it catches whatever iOS 27 decides to pop up too.
-- **Only `create` should re-diff on an unchanged UI.** It renders the wall clock, so its two shots differ
-  every run (and disagree with each other — light and dark are captured minutes apart). The other four are
-  byte-identical, because `simctl` writes no timestamp. A diff in `joining`/`in_sync` means the UI really
-  moved.
+- **Eyeball them before committing — this is the only check there is.** A system notification
+  (*"Ready for Apple Intelligence"*, fired by fresh-device onboarding) can land in a capture; it hit **1 of
+  2 runs** before the loop was tightened. Re-dispatch if one does. This is **not** automatable by asserting
+  the top band is flat: `in_sync` legitimately renders "Anna's Birthday" there, so a colour check
+  false-positives. A human glance is cheaper and catches whatever iOS pops up next.
+- **Only `create` should re-diff on an unchanged UI** — and only in the timestamp, because it renders the
+  wall clock. Verified across two runs of one commit: `joining` and `in_sync` come back **byte-identical**
+  (`simctl` writes no timestamp) while `create` differs in a 90×32 px region and nowhere else. So a diff
+  anywhere else means the UI really moved. Light and dark agree on the minute — both come from one launch,
+  seconds apart.
 - **A headline or size change needs NO dispatch** — both consumers composite from the committed raws.
   Edit `metadata/screenshots/en-US.json` (App Store copy) or `landing.html` and push.
 - The App Store upload fires only on `main` and only when `screenshots/**` or `metadata/**` changes; it
