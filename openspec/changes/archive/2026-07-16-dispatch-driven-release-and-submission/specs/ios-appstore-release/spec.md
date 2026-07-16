@@ -1,48 +1,69 @@
-# ios-appstore-release Specification
+## RENAMED Requirements
 
-## Purpose
+- FROM: `### Requirement: A `vX.Y` tag drives an App Store release`
+- TO: `### Requirement: A dispatch drives an App Store release and records it as a tag`
 
-Makes a **dispatched workflow run the trigger for an App Store release** of version `X.Y`, and the `vX.Y` git
-tag its **receipt**. Where `ios-testflight-delivery` makes `main` the public *alpha* channel, this capability
-is the *store* channel: one workflow (`ios-release.yml`) builds an `X.Y`-versioned archive, uploads it to App
-Store Connect, finds-or-creates the matching version record, attaches the build, applies the App Review
-details the repo owns, optionally **submits for review**, and — last — creates the tag.
+- FROM: `### Requirement: The release version is injected from the tag, never committed`
+- TO: `### Requirement: The release version is injected per release, never committed`
 
-The trigger is a dispatch rather than a tag push because a release must be **re-runnable**: a flaked
-tag-driven release demanded a delete-and-re-push dance, while a dispatch is a button, and the one step that
-reaches App Review is the last place to make retrying awkward. The tag is inverted to match — it *records*
-what shipped instead of commanding it — so it is checked **first** (an existing tag refuses the release,
-before a ~30-minute build) and written **last** (a failed run leaves none, and retries cleanly).
+## MODIFIED Requirements
 
-The store version is the **`version` input**, injected as `MARKETING_VERSION` at build time — the same
-mechanism `ios-testflight-delivery` uses for `CURRENT_PROJECT_VERSION`. Committed source is never bumped, so
-`main`/alpha keeps its pinned fallback and **never triggers a first-of-version Beta App Review** (the
-"MARKETING_VERSION trap"): real versions reach the store per release, not through a committed bump.
+### Requirement: A dispatch drives an App Store release and records it as a tag
 
-A dispatch can run from **any** ref, which makes the guards load-bearing rather than incidental: the version
-must be well-formed, the tag must be free, the commit must already be on `main`, and that commit's **entire CI
-pipeline must be green** — a commit that never cleanly reached the alpha channel does not jump to the App
-Store. The green check excludes the check-suites this workflow itself produced for the commit, so a *failed*
-release never poisons its own retry.
+App Store releases SHALL be performed by a dedicated workflow `.github/workflows/ios-release.yml` triggered by
+`on: workflow_dispatch`, taking a required `version` input and a `submit` boolean input defaulting to
+**false**. The workflow SHALL accept only a `version` matching `^\d+\.\d+$` (two-part, Apple-style) and SHALL
+fail fast on any other shape. The **store version** SHALL be that input, used as the build's
+`MARKETING_VERSION` and as the App Store version record's `versionString`. Because the scheme is two-part, a
+patch is expressed as a minor bump (there is no `X.Y.Z`).
 
-**Submitting is opt-in and gated.** It happens only when explicitly requested, and only if the tool's
-readiness report finds no blocker; the gate is **ours**, because a submission is outward-facing and
-effectively irreversible. What App Review reads is repo-owned like the rest of the listing — only the
-**contact details** live in secrets, because the repository is public and they are personal data. The app has
-no account or sign-up, so no demo credentials exist to give.
+The workflow SHALL **create** the `vX.Y` tag (`v` + the version input) on the released commit, as the durable
+record of what shipped. It SHALL verify **before building** that the tag does not already exist and SHALL fail
+if it does, and it SHALL create the tag **only after** every other step has succeeded — so that a failed run
+leaves no tag and can be retried, and a released tag is never moved. The workflow SHALL release the dispatched
+ref's commit; it takes no commit or SHA input.
 
-Two jobs, for a mundane reason worth stating: the build needs macOS, while every App Store Connect call needs
-`asc`, which is fetched as a **linux** binary. Splitting them also keeps `contents: write` — required to push
-the tag — off the job that holds the signing certificates.
+The workflow's `concurrency` group SHALL key on the `version` input, not on `github.ref`, so that concurrent
+releases of distinct versions do not cancel one another. The workflow SHALL hold `contents: write` permission
+for the tag push.
 
-Decision record: `changes/archive/2026-07-15-add-appstore-release-pipeline` (the pipeline),
-`changes/archive/2026-07-16-close-appstore-submission-gaps` (the copyright — and why it is set at
-record creation rather than by the declarative metadata push),
-`changes/archive/2026-07-16-dispatch-driven-release-and-submission` (the dispatch trigger, the
-tag-as-receipt inversion, the submission path — and why an unlisted request *follows* a submission
-while App Store Connect's "Private" is a one-way door to org-only distribution)
+#### Scenario: A dispatched release builds and records its version
+- **WHEN** the workflow is dispatched with `version` `1.2`
+- **THEN** it treats `1.2` as the store version for the build and the App Store version record, and on success creates the tag `v1.2` on the released commit
 
-## Requirements
+#### Scenario: A malformed version fails fast
+- **WHEN** the workflow is dispatched with a `version` that does not match `^\d+\.\d+$` (e.g. `1`, `1.2.3`, `v1.0`, `release-1`)
+- **THEN** the workflow fails before building or uploading anything
+
+#### Scenario: An existing tag refuses the release before building
+- **WHEN** the workflow is dispatched with a `version` whose `vX.Y` tag already exists
+- **THEN** the workflow fails before building or uploading anything, and does not move the existing tag
+
+#### Scenario: A failed release leaves no tag
+- **WHEN** a dispatched release fails at any step before the tag is created
+- **THEN** no `vX.Y` tag exists, and re-dispatching the same version is not blocked by the tag guard
+
+#### Scenario: Concurrent releases of distinct versions do not cancel each other
+- **WHEN** a release of `1.1` is in flight and a release of `1.2` is dispatched
+- **THEN** the `1.1` run is not cancelled
+
+### Requirement: The release version is injected per release, never committed
+
+The workflow SHALL set `MARKETING_VERSION` to the store version from the `version` input on the `xcodebuild`
+command line, overriding the committed fallback for that build only, and SHALL NOT edit any committed version
+file (`Config.xcconfig` or `project.pbxproj`). The injected version SHALL apply to **both** the app and the
+background-upload extension targets in the one archive, so their `CFBundleShortVersionString` stay in lockstep.
+Because no commit carries a version bump, `main`/alpha builds continue to carry the pinned fallback and no
+first-of-version Beta App Review is triggered by a release.
+
+#### Scenario: The store version is baked without a commit
+- **WHEN** `ios-release.yml` archives the app for a release dispatched with `version` `1.2`
+- **THEN** `xcodebuild` is invoked with `MARKETING_VERSION=1.2`, both the app and extension bundles carry `CFBundleShortVersionString` `1.2`, and no committed file is modified by the run
+
+#### Scenario: A release does not disturb the alpha channel
+- **WHEN** a version is released
+- **THEN** the committed `MARKETING_VERSION` fallback is unchanged, so subsequent `main` builds still carry the fallback and no first-of-version Beta App Review is triggered on the alpha channel
+
 ### Requirement: A release only builds a merged, fully-green commit
 
 Before building or uploading, the workflow SHALL verify that the released commit is an **ancestor of
@@ -144,87 +165,7 @@ so it is visible, while blocking no merge.
 - **WHEN** any step of a dispatched release fails
 - **THEN** the `ios-release` run concludes as failure (red) and is plainly visible, while no merge is blocked and no required check is affected
 
-### Requirement: A created version record carries the copyright
-
-When the release workflow **creates** an App Store version record, it SHALL set the record's `copyright`
-attribute in the create request, so the record is never born without one. The copyright SHALL be a
-committed constant of the form `YYYY Name`, where `YYYY` is the year of **first publication** — it SHALL
-NOT track the current calendar year.
-
-The workflow SHALL NOT modify the copyright of a version record that **already exists**: an existing
-record is reused as-is (capability requirement "The build is attached to its App Store version record"),
-so a value set by hand in the ASC web console is left intact. Copyright is therefore enforced at birth
-rather than reconciled per run — it is a version **attribute**, so it cannot ride the declarative
-per-locale metadata push (whose schema is closed to it), and the App Store Connect API does not expose it
-for read-back through the metadata tool, making per-run drift detection impossible.
-
-#### Scenario: A created record is born with the copyright
-- **WHEN** the release workflow creates the App Store version record for a `vX.Y` tag because none exists
-- **THEN** the create request sets the record's `copyright`, and the resulting record carries it
-
-#### Scenario: An existing record's copyright is not touched
-- **WHEN** the release workflow finds an App Store version record that already exists for the store version
-- **THEN** it reuses that record and makes no change to its `copyright`
-
-#### Scenario: The copyright year does not track the calendar
-- **WHEN** a release runs in a calendar year later than the app's first publication
-- **THEN** the copyright applied to a newly created record still carries the year of first publication
-
-### Requirement: A dispatch drives an App Store release and records it as a tag
-
-App Store releases SHALL be performed by a dedicated workflow `.github/workflows/ios-release.yml` triggered by
-`on: workflow_dispatch`, taking a required `version` input and a `submit` boolean input defaulting to
-**false**. The workflow SHALL accept only a `version` matching `^\d+\.\d+$` (two-part, Apple-style) and SHALL
-fail fast on any other shape. The **store version** SHALL be that input, used as the build's
-`MARKETING_VERSION` and as the App Store version record's `versionString`. Because the scheme is two-part, a
-patch is expressed as a minor bump (there is no `X.Y.Z`).
-
-The workflow SHALL **create** the `vX.Y` tag (`v` + the version input) on the released commit, as the durable
-record of what shipped. It SHALL verify **before building** that the tag does not already exist and SHALL fail
-if it does, and it SHALL create the tag **only after** every other step has succeeded — so that a failed run
-leaves no tag and can be retried, and a released tag is never moved. The workflow SHALL release the dispatched
-ref's commit; it takes no commit or SHA input.
-
-The workflow's `concurrency` group SHALL key on the `version` input, not on `github.ref`, so that concurrent
-releases of distinct versions do not cancel one another. The workflow SHALL hold `contents: write` permission
-for the tag push.
-
-#### Scenario: A dispatched release builds and records its version
-- **WHEN** the workflow is dispatched with `version` `1.2`
-- **THEN** it treats `1.2` as the store version for the build and the App Store version record, and on success creates the tag `v1.2` on the released commit
-
-#### Scenario: A malformed version fails fast
-- **WHEN** the workflow is dispatched with a `version` that does not match `^\d+\.\d+$` (e.g. `1`, `1.2.3`, `v1.0`, `release-1`)
-- **THEN** the workflow fails before building or uploading anything
-
-#### Scenario: An existing tag refuses the release before building
-- **WHEN** the workflow is dispatched with a `version` whose `vX.Y` tag already exists
-- **THEN** the workflow fails before building or uploading anything, and does not move the existing tag
-
-#### Scenario: A failed release leaves no tag
-- **WHEN** a dispatched release fails at any step before the tag is created
-- **THEN** no `vX.Y` tag exists, and re-dispatching the same version is not blocked by the tag guard
-
-#### Scenario: Concurrent releases of distinct versions do not cancel each other
-- **WHEN** a release of `1.1` is in flight and a release of `1.2` is dispatched
-- **THEN** the `1.1` run is not cancelled
-
-### Requirement: The release version is injected per release, never committed
-
-The workflow SHALL set `MARKETING_VERSION` to the store version from the `version` input on the `xcodebuild`
-command line, overriding the committed fallback for that build only, and SHALL NOT edit any committed version
-file (`Config.xcconfig` or `project.pbxproj`). The injected version SHALL apply to **both** the app and the
-background-upload extension targets in the one archive, so their `CFBundleShortVersionString` stay in lockstep.
-Because no commit carries a version bump, `main`/alpha builds continue to carry the pinned fallback and no
-first-of-version Beta App Review is triggered by a release.
-
-#### Scenario: The store version is baked without a commit
-- **WHEN** `ios-release.yml` archives the app for a release dispatched with `version` `1.2`
-- **THEN** `xcodebuild` is invoked with `MARKETING_VERSION=1.2`, both the app and extension bundles carry `CFBundleShortVersionString` `1.2`, and no committed file is modified by the run
-
-#### Scenario: A release does not disturb the alpha channel
-- **WHEN** a version is released
-- **THEN** the committed `MARKETING_VERSION` fallback is unchanged, so subsequent `main` builds still carry the fallback and no first-of-version Beta App Review is triggered on the alpha channel
+## ADDED Requirements
 
 ### Requirement: Submission is explicit, and refused when the version is not ready
 
@@ -284,4 +225,3 @@ or sign-up and therefore no credentials to supply.
 #### Scenario: No demo account is offered
 - **WHEN** the review details are applied
 - **THEN** they declare that no demo account is required
-

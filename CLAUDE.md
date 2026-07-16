@@ -294,10 +294,10 @@ distributing:** without `ios-promote` a build reaches only the internal `develop
 - ⚠️ **The `MARKETING_VERSION` trap — avoided by design; do not re-introduce it.** The fallback is
   pinned at `0.1.0` in **`Config.xcconfig`** (inherited by both targets; no target-level entry in
   `project.pbxproj`), and **`main` is never bumped** — real store versions are injected per release by
-  the tag channel below. *Were* you to bump the committed fallback, it would force a **real**
+  the release channel below. *Were* you to bump the committed fallback, it would force a **real**
   first-of-version Beta App Review taking **hours to days**, during which each merge expires its
   predecessor's submission (`--expire-build-submitted-for-review`, newest wins), so **nothing reaches
-  testers and nothing goes red** — a green pipeline delivering nothing. Don't bump it; push a tag.
+  testers and nothing goes red** — a green pipeline delivering nothing. Don't bump it; dispatch a release.
 - A promote cancelled by `concurrency: cancel-in-progress` (a second merge landing mid-poll) is also
   expected — the newer run promotes the newer build; nothing is lost.
 - **APNs is production for every TestFlight/App Store build.** CI Release archives inject
@@ -305,23 +305,58 @@ distributing:** without `ios-promote` a build reaches only the internal `develop
   dev-sideload builds (the `ios.yml` `workflow_dispatch` dev-IPA path and ssh-mac) stay
   `development`/`sandbox`. The `Config.xcconfig` values are the dev default, overridden for distribution.
 
-### App Store releases are tag-driven (`git push vX.Y`)
+### App Store releases are dispatch-driven (the tag is the RECEIPT, not the trigger)
 
-Pushing a **`vX.Y`** tag runs `.github/workflows/ios-release.yml` (capability `ios-appstore-release`),
-which builds an `X.Y` archive (version injected from the tag — committed source is never bumped, so the
-alpha channel is untouched), uploads it to App Store Connect, **finds-or-creates** the `X.Y` App Store
-version record, and **attaches** the build — then **stops before Submit** (the listing / screenshots /
-privacy that App Review needs live in other workspaces; a human clicks Submit once they're ready).
+```
+gh workflow run ios-release.yml --ref main -f version=1.0             # build + attach, no submit
+gh workflow run ios-release.yml --ref main -f version=1.0 -f submit=true
+```
 
-- **Version scheme is two-part** (`v1.0` → store version "1.0"); a hotfix is a minor bump (no `X.Y.Z`).
-  A malformed tag fails the run.
-- **Guards**: the tag must be an ancestor of `origin/main` **and** every check-run on that commit must
-  be green (including the allowed-red `ios-deliver`/`ios-promote`). A commit whose full pipeline isn't
-  green does not reach the store. **Escape hatch:** a cancelled/red `ios-promote` on your target commit
-  blocks the release — re-run that idempotent job to green, then re-push the tag.
-- Tags fire **only** this workflow: `build.yml` and `ios.yml` exclude tags from their `push` triggers.
+`.github/workflows/ios-release.yml` (capability `ios-appstore-release`) builds an `X.Y` archive (version
+injected from the **`version` input** — committed source is never bumped, so the alpha channel is
+untouched), uploads it, **finds-or-creates** the `X.Y` App Store version record, **attaches** the build,
+applies the **App Review details** from the repo, optionally **submits**, and — last — **creates the
+`vX.Y` tag**. ⚠️ **Don't push a `vX.Y` tag by hand**: tags no longer trigger anything, and a tag you push
+yourself makes that version permanently un-releasable (the guard below refuses an existing tag).
+
+- **Two jobs.** `build` (macOS: guards → archive → export → upload) then `finish` (ubuntu: attach →
+  review details → submit → tag). `asc` is fetched as a **linux** binary verified with `sha256sum`, which
+  macOS lacks — hence the split, which also keeps `contents: write` (for the tag push) off the job
+  holding the signing certs.
+- **Version scheme is two-part** (`-f version=1.0` → store version "1.0", tag `v1.0`); a hotfix is a minor
+  bump (no `X.Y.Z`). A malformed version fails the run.
+- **Guards**, in order: version matches `^\d+\.\d+$`; **the tag must not already exist** (checked first,
+  so a doomed release fails in seconds rather than after a ~30 min build); the commit is an ancestor of
+  `origin/main` (**load-bearing** — a dispatch can run from any ref); and every check-run on that commit
+  is green (including the allowed-red `ios-deliver`/`ios-promote`). **Escape hatch:** a cancelled/red
+  `ios-promote` on your target commit blocks the release — re-run that idempotent job to green, then
+  re-dispatch.
+- **The tag is created LAST, on success only** — so a failed run leaves no tag and retries cleanly. The
+  green guard excludes this workflow's own check-suites (any run, any state), so a *failed* release does
+  not poison its own retry.
+- **Releasing an older commit**: dispatch picks a *ref*, not a SHA. Point a branch at the commit and
+  dispatch from that.
+- **Submit is opt-in and gated**: `-f submit=true` only submits if `asc review doctor` reports zero
+  blocking checks; otherwise the run refuses and prints them.
+- **Review details are repo-owned**: prose in `metadata/review/notes.md` (deliberately outside the
+  metadata tool's canonical schema — an unknown key there fails a required check and freezes merges);
+  contact from the `ASC_REVIEW_CONTACT_*` secrets (this repo is public, so they can be neither committed
+  nor passed as inputs, which render publicly in the Actions UI). No demo account: the app has no sign-up.
 - It posts **no** required status check (not in `main.json`); a failed release is red but blocks nothing.
-  It reuses the existing Admin ASC key — no new secret. Build number = the release run's `run_number`.
+  It introduces no new **ASC credential** (the contact secrets grant no ASC access). Build number = the
+  release run's `run_number`.
+
+**Unlisted App Distribution** (if you want the app link-only, not searchable) — ⚠️ **the sequencing is the
+reverse of the intuition**, and ASC's "Private" is a trap:
+- Apple **declines** an unlisted request for an app that has not been submitted to review. Submit v1.0
+  **first** (the committed review notes already declare the intent, which Apple requires), get approved,
+  *then* file the request at <https://developer.apple.com/contact/request/unlisted-app-distribution>.
+  There is **no API** for it.
+- 🚫 **Never select "Private" in Pricing and Availability.** That is **Custom Apps** (Apple Business
+  Manager — org-only, no consumer can install), *not* unlisted. It is a **one-way door**: once approved,
+  the distribution method can't be changed, and switching private↔public needs a **brand-new app record**
+  — burning app id `6781692480` and everything configured on it. Public→unlisted *is* allowed, so staying
+  Public keeps every option open.
 
 ### Sideload a dev IPA (skip TestFlight)
 
