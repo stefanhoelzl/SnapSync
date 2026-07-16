@@ -1,0 +1,22 @@
+{
+  "_comment": [
+    "Per-locale headline copy baked onto the App Store screenshots by appstore.yml, keyed by the",
+    "forge state each raw capture in screenshots/ was taken from. Version-controlled here, next to the",
+    "rest of the listing, so the copy is reviewable in a PR rather than living only in a CI script.",
+    "",
+    "This file is DELIBERATELY outside the metadata tool's schema. `asc metadata validate` decodes only",
+    "version/<v>/<locale>.json and app-info/<locale>.json, and its decode is STRICT — an unknown key",
+    "there fails with `json: unknown field \"...\"`. Since appstore-metadata-validate is a REQUIRED status",
+    "check, putting headlines in those files would freeze every merge. `asc` ignores this subtree.",
+    "",
+    "No length limit applies: unlike `keywords` (<=100) these are not Apple fields, and the compositor's",
+    "`caption:` word-wraps inside a fixed box, so any copy length fits by construction.",
+    "",
+    "Changing a headline needs NO macOS run — appstore.yml re-composites from the committed raws."
+  ],
+  "headlines": {
+    "create": "Start an event in seconds",
+    "joining": "One scan — everyone's in",
+    "in_sync": "Every photo, shared automatically"
+  }
+}
