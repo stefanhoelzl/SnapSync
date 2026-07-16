@@ -79,8 +79,12 @@ uploaded the camera roll of a member who had been promised "you won't share your
 `UrlSessionUploadController` (18–26.0) — and forwards membership transitions to the tested, tier-neutral
 `UploadArm` in `:capability:upload`. The seam has **two** verbs, `start()` and `stop()`, and **no
 destructive one**: no lifecycle transition (provision, switch, grant, direction change, leave) may clear
-the ledger or the discovery cursor. That state is device-global dedup and stays valid across events; only a
-triggered reconciliation's `resetTo` re-baselines it.
+the **ledger**. That is device-global dedup — it stays valid across events, and only a triggered
+reconciliation's `resetTo` re-baselines it. The **discovery cursor** is not dedup state and is not covered:
+a tier's `stop()` may clear it to repair damage its own mechanism causes, and PhotoKit's does — the OS's
+extension-disable wipes every in-flight job, and `clearRequested()` alone would leave those photos behind a
+settled cursor that never re-surfaces them. That costs a re-enumeration, not a re-upload, because the ledger
+it does not touch still knows what is stored (`upload-lifecycle`, `ios-photokit-upload`).
 
 This structure is load-bearing, not tidiness. The lifecycle *used* to live here as a pile of
 `if (useAppDrivenUpload)` branches, and because this module is wiring-only and untested, nothing caught
