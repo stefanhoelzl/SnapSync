@@ -127,6 +127,20 @@ upload:
 - the text apply stays unfiltered — gating it would weaken its spec'd *"a console hand-edit is
   overwritten"* promise to "…eventually".
 
+**The upload lives in its own workflow file** (`appstore-screenshots.yml`), not as a job in `appstore.yml`.
+Two structural reasons, both discovered while implementing:
+
+1. **The trigger can then *be* the gate.** A `paths:` trigger states the dependency exactly — no
+   changed-files job, no `github.event.before` / `HEAD^` / all-zeros guesswork. That is only safe in a file
+   holding **no required check**; `appstore.yml` hosts `appstore-metadata-validate`, so path-filtering it
+   would freeze merges.
+2. **Cancellation would corrupt the listing.** `--replace` deletes the set before uploading, so a cancel
+   mid-flight leaves a **partial set on the public storefront**. `appstore.yml` runs
+   `cancel-in-progress: true` *deliberately* (a newer text apply should supersede an older one rather than
+   race it) — and that cancels the whole **run**, which a job-level `concurrency` **cannot** opt out of. A
+   separate file is the only way to hold `cancel-in-progress: false` for the destructive step without
+   breaking the text apply's newest-wins property. Uploads then serialise, and the newest still lands last.
+
 The existing editable-version gate is reused unchanged. It matters **more** for screenshots than for text:
 `upload --replace` is destructive, and `asc`'s behaviour on an in-review version is undefined
 (upstream epic #587).
