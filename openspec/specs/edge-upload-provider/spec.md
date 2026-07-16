@@ -3,8 +3,10 @@
 ## Purpose
 
 The on-device, network-free `UploadRequestProvider` that builds the bunny edge upload URL
-(`/devices/<deviceId>/files/<encoded-filename>`) using only string-building — no crypto, no signing,
-no network I/O. It sets `Content-Type` only and carries the deterministic, injective
+(`/files/devices/<deviceId>/<encoded-filename>`) using only string-building — no crypto, no signing,
+no network I/O. It sets `Content-Type` and, when one is available, the device token's
+`Authorization: Bearer` header (capability `device-attestation`) — reading that token is the provider's
+only side effect, and it still mints nothing. It carries the deterministic, injective
 filename→destination mapping that anchors upload idempotency. Lives in `:capability:upload-url`.
 ## Requirements
 ### Requirement: Pure URL-building provider
@@ -56,7 +58,7 @@ so the edge endpoint decodes it back to one slash-free segment.
 - **WHEN** the same `resource` is built for the same `(host, deviceId)`
 - **THEN** the URL is the same byte destination with no `eventId` anywhere in the path
 
-### Requirement: Returned request shape — Content-Type only, no auth, no metadata
+### Requirement: Returned request shape — Content-Type and Authorization, no metadata
 
 `UploadRequest.headers` SHALL contain exactly `Content-Type` (from `resource.contentType`) and
 `Authorization` (`Bearer <token>`, the device token of capability `device-attestation`) — and nothing
