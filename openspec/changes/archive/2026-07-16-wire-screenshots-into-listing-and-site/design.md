@@ -221,6 +221,21 @@ upload job reverts the listing (`--replace` is not re-run, so the live set simpl
 forge clock and `-strip` are independently valuable and can land first. No data model, no gate, no delivery
 change.
 
+## Verify on the first `main` run
+
+Two properties can only be observed **after** the merge that enables them — the ASC key lives on a main-only
+job, and the page must actually deploy. They are not open design questions; they are the first run's
+acceptance check.
+
+- **The screenshot upload's dry-run.** `asc_screenshots_upload.sh` always `--dry-run`s before it applies, so
+  the safety is structural — but confirm the planned set on the first run (an editable version present, the
+  three composites, `--replace` reporting the deletions it intends). If no version is editable, the correct
+  outcome is a **green no-op**, not a failure.
+- **Both surfaces actually serve it.** The listing shows the committed set, and `snapsync.stho.net` serves
+  the screenshots in both themes. Merging touches `screenshots/**`, so `appstore-screenshots.yml` and
+  `backend-deploy.yml` both fire on their path triggers — if either does **not** fire, the path filters are
+  wrong and that is the thing to fix.
+
 ## Open Questions
 
 - **The wall clock (D3)** — a follow-up should expose `StatusContainerHost.cutoffFormatter` and pass it at
