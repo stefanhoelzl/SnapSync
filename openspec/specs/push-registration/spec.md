@@ -73,7 +73,7 @@ registration SHALL NOT block join, upload, or download).
 
 The app SHALL register the token when it becomes available after launch, and again whenever the APNs
 token rotates (a new token delivered by the OS). Registration SHALL be idempotent — re-registering the
-same token overwrites an identical `config.json` (last-write-wins at the endpoint) — so repeated
+same token overwrites an identical `devices/<deviceId>.json` (last-write-wins at the endpoint) — so repeated
 launches with an unchanged token are harmless.
 
 #### Scenario: Registration fires on launch once the token is available
