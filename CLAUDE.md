@@ -202,7 +202,38 @@ marketing/App-Store screenshot can be captured of any state. The forge substitut
 *inputs*, not a static `UiState`, so it can only render a frame the real reduction can reach (the
 name→sources map is the tested `forgeStatusHost` factory in `:domain:presentation`). This is what the
 non-gating, dispatch-only `.github/workflows/screenshots.yml` drives on a simulator (`macos-26`) —
-`simctl launch … SNAPSYNC_FORGE_STATE=<state>` → `simctl io screenshot` → composite → artifact.
+`simctl launch … SNAPSYNC_FORGE_STATE=<state>` → `simctl io screenshot` → **6 raw captures**.
+
+### Refreshing the marketing screenshots (operator runbook)
+
+`screenshots/*.png` — 6 raws, 3 forge states × light/dark — are the **single source of truth for two
+surfaces**: `appstore-screenshots.yml` composites the App Store listing images from them, and the backend
+derives the landing page's WebP from them (`deno task shots`). So **refreshing them is a commit**, and
+committing one is what ships both. Nothing regenerates automatically — the capture is dispatch-only.
+
+Do this when the UI changes:
+
+```
+gh workflow run screenshots.yml --ref <branch>          # ~11-19 min (the Compose/Skiko link dominates)
+RID=$(gh run list -w screenshots.yml -L1 --json databaseId -q '.[0].databaseId')
+gh run download "$RID" -n screenshots-raw -D screenshots
+# LOOK AT THEM (see below), then:
+git add screenshots/ && git commit
+```
+
+- **Eyeball them before committing — this is the only check there is.** A system notification can land in a
+  capture (seen once: *"Ready for Apple Intelligence"*, on a freshly-created device; never in a real CI
+  run). Re-dispatch if one does. This is **not** automatable by asserting the top band is flat: `in_sync`
+  legitimately renders "Anna's Birthday" there, so a colour check false-positives. A human glance is both
+  cheaper and more general — it catches whatever iOS 27 decides to pop up too.
+- **Only `create` should re-diff on an unchanged UI.** It renders the wall clock, so its two shots differ
+  every run (and disagree with each other — light and dark are captured minutes apart). The other four are
+  byte-identical, because `simctl` writes no timestamp. A diff in `joining`/`in_sync` means the UI really
+  moved.
+- **A headline or size change needs NO dispatch** — both consumers composite from the committed raws.
+  Edit `metadata/screenshots/en-US.json` (App Store copy) or `landing.html` and push.
+- The App Store upload fires only on `main` and only when `screenshots/**` or `metadata/**` changes; it
+  replaces the live set, behind the editable-version gate (never a version in review).
 
 ⚠️ **A "fresh event id" must be a real event you created — not an invented UUID.** `autoJoin` loads the
 event's details first and **aborts on a miss**, leaving the *previous* membership untouched:
