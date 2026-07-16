@@ -199,7 +199,6 @@ forwarding — SHALL live in the thin, untested Swift shell and forward into the
 - **THEN** it runs on JVM and `iosSimulatorArm64` against a fake `BackgroundScheduler` and a fake `UploadCycle`, with no `BGTaskScheduler` dependency
 
 ### Requirement: App-driven lifecycle
-
 On iOS 18–26.0 the enable / disable / re-provision / leave lifecycle SHALL be performed by the app
 in-process and ordered, with **no** `setUploadJobExtensionEnabled` toggle. The **decision** of which
 verb fires on which transition belongs to `upload-lifecycle`; this requirement binds the app-driven
@@ -215,7 +214,7 @@ producer's **mechanism**:
   cursor. No blanket `clearRequested` recovery is needed: stranded `REQUESTED` rows are already
   reconciled precisely from `getAllTasks` (see "Precise in-flight reconciliation replaces blanket
   clear").
-- **re-provision** (a valid `snapsync://` config for a **different** event; re-confirming the
+- **re-provision** (a valid event link for a **different** event; re-confirming the
   already-joined event is a no-op that never reaches provisioning): persist the new `eventId` and
   `start()`. In-flight transfers SHALL **NOT** be cancelled and their staged temp files SHALL **NOT**
   be deleted — the byte destination is the device's event-independent partition
@@ -233,7 +232,7 @@ producer's **mechanism**:
 
 #### Scenario: Re-provision is an in-process ordered sequence
 
-- **WHEN** a new valid `snapsync://` config for a different event is scanned on iOS 18–26.0
+- **WHEN** a new valid event link for a different event is scanned on iOS 18–26.0
 - **THEN** the app persists the new event and runs a cycle whose reconciliation seeds already-stored resources to `COMPLETED` before any upload job is created — with no OS toggle, no ledger wipe, and no cross-process timing hazard
 
 #### Scenario: Re-provision does not cancel in-flight transfers
@@ -347,4 +346,3 @@ tier on a hardware device whose OS is ≥26.1.
 
 - **WHEN** the app-driven tier is forced on a physical device whose OS is ≥26.1
 - **THEN** `setUploadJobExtensionEnabled` is never called, only the app-driven producer is live, and exactly one process holds the `LedgerWriter`
-

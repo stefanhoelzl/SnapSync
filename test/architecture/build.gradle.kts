@@ -40,6 +40,14 @@ tasks.test {
             include("app/**/src/**/*.kt")
             include("test/**/src/**/*.kt")
             include("iosApp/**/*.entitlements")
+            // The event-link domain guard's subjects (capability `event-link`). Without these the task
+            // reports UP-TO-DATE after a backend-only or xcconfig-only edit — and the domain drift it
+            // exists to catch is exactly the kind of edit that touches nothing else. Verified: changing
+            // `LINK_DOMAIN` alone left the task UP-TO-DATE until they were declared here.
+            include("gradle.properties")
+            include("backend/src/config.ts")
+            include("iosApp/Configuration/Config.xcconfig")
+            include("iosApp/iosApp/Info.plist")
             // `**` also matches GENERATED sources under each module's `build/` directory (e.g.
             // `app/desktop/build/generated/.../src/…`), which are other tasks' outputs. Guards read
             // hand-written source only.

@@ -34,6 +34,10 @@ Deno.test("readConfig: the three secrets → Config, with the non-secrets from s
     // Derived from the team + bundle constants, never restated — so the gate's app id and the push topic
     // cannot drift apart.
     attestAppId: "E9Z8BADH58.app.snapsync",
+    // The event link's domain (capability `event-link`). MUST equal `snapsync.domain` in
+    // gradle.properties; a :test:architecture guard holds that seam, since Gradle cannot reach here.
+    linkDomain: "snapsync.stho.net",
+    appStoreUrl: "https://apps.apple.com/app/id6781692480",
   });
 });
 

@@ -13,7 +13,7 @@ sealed interface UiState {
      * The create-event landing layer (event-creation-ui), shown while no event is connected
      * (`config == null`) and no create is in flight. Carries an optional pre-formatted inline
      * [error] — the last create failure's copy (sticky until the next attempt) or a transient
-     * invalid-deeplink message. Config-absent outranks everything, so this is the top reduction rung.
+     * invalid-link message. Config-absent outranks everything, so this is the top reduction rung.
      */
     data class CreateEvent(val error: String? = null) : UiState
 
@@ -35,14 +35,14 @@ sealed interface UiState {
     /**
      * An event is connected (`config != null`) — the joined layer. Always renders the invite (name,
      * QR, share) and leave, regardless of permission; [health] is the one-line status mood.
-     * [pendingSwitch] overlays a leave-style switch confirmation when a deeplink for a **different**
+     * [pendingSwitch] overlays a leave-style switch confirmation when an event link for a **different**
      * event was scanned while joined (capability `join-event`).
      */
     data class Joined(val health: SyncHealth, val pendingSwitch: PendingSwitch? = null) : UiState
 }
 
 /**
- * A leave-style switch confirmation over the joined screen: a deeplink for a **different** [eventId]
+ * A leave-style switch confirmation over the joined screen: an event link for a **different** [eventId]
  * was scanned while already joined. [phase] mirrors a first join (details load then commit); on
  * confirm the container runs leave-then-join.
  */

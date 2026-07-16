@@ -5,7 +5,7 @@ import kotlin.test.assertEquals
 import kotlin.test.assertIs
 
 /**
- * The skip-or-leave-or-run gate (capability `deeplink-config`, *An unreadable config is not an absent
+ * The skip-or-leave-or-run gate (capability `event-link`, *An unreadable config is not an absent
  * config*). [CycleGate.NotJoined] runs the leave-side reconciliation, which **clears the
  * `joinedEventId` marker** — so the difference between "unreadable" and "absent" is the difference
  * between a settled join and a false leave on every locked wake.

@@ -11,7 +11,9 @@ fronting the owned domain through a bunny pull zone — serves **one self-contai
 support routed to the project's GitHub issues. The page is **source-owned** (embedded in the deployed
 bundle, no runtime file read or upstream call) so it cannot drift from the code that serves it, and
 **cacheable at the pull zone** so it is served from the edge and never sits on the upload hot path. It is
-the **sole public, unauthenticated route** in an otherwise fully attested API — an exact-path exception
+**one of a small closed set** of public, unauthenticated routes in an otherwise fully attested API (the
+event link's AASA and its `GET /join` App Store fallback are the others, and belong to capability
+`event-link`) — an exact-path exception
 that widens the gate for nothing else (see `device-attestation`).
 
 Decision record: `changes/archive/2026-07-15-add-marketing-page`.

@@ -44,6 +44,8 @@ const CONFIG: Config = {
   appAttestRootCa: APPLE_ROOT_CA,
   attestTokenTtlSeconds: 30 * DAY / 1000,
   attestAppId: "E9Z8BADH58.app.snapsync",
+  linkDomain: "snapsync.stho.net",
+  appStoreUrl: "https://apps.apple.com/app/id6781692480",
 };
 
 /** The same config, but claiming the FIXTURE's app — so the real attestation's rpIdHash matches. */
@@ -261,6 +263,37 @@ Deno.test("gate: the / exception is exact-path and GET/HEAD-only — it leaks to
   assertEquals((await a.request("/index.html")).status, 401);
   // …and a mutating method on "/" is gated, not served.
   assertEquals((await a.request("/", { method: "POST" })).status, 401);
+});
+
+Deno.test("gate: the event link's AASA is served without a token", async () => {
+  const { calls, app: a } = app();
+  const res = await a.request("/.well-known/apple-app-site-association");
+  // NOT 401 — Apple's CDN and the device fetch this with no Authorization header and cannot be made to
+  // send one, so gating it would silently defeat EVERY event link (capability `event-link`).
+  assertEquals(res.status, 200);
+  assertEquals(calls.length, 0); // and serving it reads no storage
+});
+
+Deno.test("gate: the /join App Store fallback is served without a token", async () => {
+  const { calls, app: a } = app();
+  const res = await a.request("/join");
+  assertEquals(res.status, 302); // NOT 401 — its entire audience has no app, and so no attestation
+  assertEquals(calls.length, 0); // and serving it reads no storage
+});
+
+Deno.test("gate: the event-link exceptions are exact-path and GET/HEAD-only — they leak to nothing else", async () => {
+  const { app: a } = app();
+  // A path that merely BEGINS with an admitted one is not admitted…
+  assertEquals((await a.request("/joinx")).status, 401);
+  assertEquals((await a.request("/join/anything")).status, 401);
+  assertEquals((await a.request("/.well-known/other")).status, 401);
+  assertEquals((await a.request("/.well-known/apple-app-site-association/x")).status, 401);
+  // …and a mutating method on either is gated, not served.
+  assertEquals((await a.request("/join", { method: "POST" })).status, 401);
+  assertEquals(
+    (await a.request("/.well-known/apple-app-site-association", { method: "POST" })).status,
+    401,
+  );
 });
 
 Deno.test("gate: a gated GET is never cacheable (the pull zone does not vary on Authorization)", async () => {

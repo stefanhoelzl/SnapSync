@@ -75,7 +75,7 @@ interface ConfigSource {
  * Saving a config equal (field-for-field, incl. `name`) to the current one is an idempotent no-op;
  * saving a config differing in `eventId` **or** `name` replaces it and emits (a name-only change
  * updates the title without any ledger effect — the switch-reset on an `eventId` change is
- * orchestrated by the provision path, not this seam; see the deeplink-config spec). [clear] is the inverse:
+ * orchestrated by the provision path, not this seam; see the event-link spec). [clear] is the inverse:
  * it removes the persisted config and updates the [ConfigSource] to `null` (an idempotent no-op when
  * none is persisted), and — like [save] — leaves the ledger untouched (the caller orchestrates any
  * ledger reset; see the `leave-event` capability). Implementations typically also implement

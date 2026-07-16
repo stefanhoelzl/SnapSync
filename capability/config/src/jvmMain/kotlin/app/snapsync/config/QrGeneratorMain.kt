@@ -11,8 +11,8 @@ import java.util.Properties
 import javax.imageio.ImageIO
 
 /**
- * The authoritative QR generator (spec: deeplink-config): encodes the runtime config — just the **event id**
- * — into the canonical `snapsync://config?v=3&d=…` URL via [encodeConfigUrl] — the same codec the app
+ * The authoritative QR generator (spec: event-link): encodes the runtime config — just the **event id**
+ * — into the canonical `https://<domain>/join#v=3&d=…` URL via [encodeEventUrl] — the same codec the app
  * decodes with, so the wire format cannot drift — and renders a scannable QR to the terminal (and a
  * PNG fallback). No storage credential is encoded (the device holds none); the upload **host** is not
  * encoded either — it is baked into the IPA at compile time (`BackgroundUploadURLBase`).
@@ -34,12 +34,12 @@ fun main() {
         eventId = value("SNAPSYNC_EVENT_ID", "snapsync.eventId"),
     )
 
-    val url = encodeConfigUrl(payload)
+    val url = encodeEventUrl(payload)
     val out = System.getenv("SNAPSYNC_QR_OUT") ?: props.getProperty("qr.out") ?: "build/snapsync-config-qr.png"
 
     writeQrPng(url, File(out))
 
-    println("SnapSync config deeplink:")
+    println("SnapSync event link:")
     println(url)
     println()
     println(renderQrToTerminal(url))

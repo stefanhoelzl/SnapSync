@@ -141,7 +141,7 @@ P="uvx --python 3.14 pymobiledevice3"
 $P developer dvt launch app.snapsync --userspace                 # launch (prints the pid)
 $P developer dvt screenshot shot.png --userspace                 # real screen capture (auto-mounts the DDI)
 $P developer dvt launch app.snapsync \                           # subscribe to an event headlessly:
-  --env SNAPSYNC_DEEPLINK="snapsync://config?v=3&d=<base64url({\"eventId\":\"<uuid>\"})>" --userspace
+  --env SNAPSYNC_EVENT_LINK="https://snapsync.stho.net/join#v=3&d=<base64url({\"eventId\":\"<uuid>\"})>" --userspace
 uvx pymobiledevice3 apps pull app.snapsync Documents/debug.log   # pull the file logger (re-provision line, etc.)
 ```
 
@@ -149,7 +149,7 @@ uvx pymobiledevice3 apps pull app.snapsync Documents/debug.log   # pull the file
 (`app/ios/.../DevPhotoSeeder.kt`): on launch the app creates `<n>` synthetic `PHAsset`s dated from
 2001-01-01 forward, one minute apart, so the capture-date-bounded walk can be exercised against a large
 library on device. ~85 s for 4000 assets on an SE2. Inert in production for the same reason as
-`SNAPSYNC_DEEPLINK` (a launch env var is only injectable via a developer launch).
+`SNAPSYNC_EVENT_LINK` (a launch env var is only injectable via a developer launch).
 **It writes to the real photo library** — deleting the assets again needs taps (`deleteAssets` always
 raises a system confirmation), which is why they are parked in one year of the Photos timeline. Use it on
 a dev device only.
@@ -173,16 +173,19 @@ without raising**, so that is precisely the confusion that matters. One launch a
 returns assets, exactly the below-floor half is `origin-excluded`, and only the rest uploads.
 ```
 $P developer dvt launch app.snapsync --env SNAPSYNC_SEED_POLICY=20 \
-  --env SNAPSYNC_DEEPLINK="snapsync://config?v=3&d=<…fresh event…>" --userspace
+  --env SNAPSYNC_EVENT_LINK="https://snapsync.stho.net/join#v=3&d=<…fresh event…>" --userspace
 ```
 Read the outcome from the two log lines the policy emits **before any HTTP call** — so an attestation `401`
 can never be mistaken for an exclusion:
 - app: `gallery: enumerated N resource(s) … (M origin-excluded) → N=…`
 - extension: `origin policy dropped N resource(s)`
 
-`SNAPSYNC_DEEPLINK` is a **dev/test trigger** (capability `ios-app-shell`): on launch the app
+`SNAPSYNC_EVENT_LINK` is a **dev/test trigger** (capability `ios-app-shell`): on launch the app
 forwards it through the same path as a scanned QR, (re)provisioning the event. It is read **once per
 process** and is inert in production (a launch env var is only injectable via a developer launch).
+**It bypasses AASA entirely** — it hands the URL straight to the decoder, so it exercises the
+decode→gate→join path and proves **nothing** about whether the Universal Link actually resolves. To test
+the *link*, tap one (see *Verifying the event link* below).
 **Note:** re-provision no longer forces a fresh whole-library upload — it **reconciles against storage**
 (`event-rejoin-reconciliation` seeds already-stored photos as `COMPLETED` before any upload job is
 created), so a relaunch against an event that already has objects uploads **nothing new**. The reconcile
@@ -208,7 +211,7 @@ black). To truly restart: `dvt signal <pid> 9` (SIGKILL) **then** `dvt launch` (
 Take the screenshot promptly after a single launch; avoid rapid relaunch cycles.
 
 **The headless per-build loop:** CI builds the dev IPA → `apps install` → `dvt launch --env
-SNAPSYNC_DEEPLINK=…` (use a **fresh event id**, per the note above, or the reconcile will seed
+SNAPSYNC_EVENT_LINK=…` (use a **fresh event id**, per the note above, or the reconcile will seed
 already-stored photos and nothing uploads) → the OS invokes the upload extension on its own cadence →
 confirm the objects landed in the backend's bunny storage zone (see *Verify real uploads* below; the
 `dvt screenshot` status counts are informational, not the authoritative landing check). **Still
@@ -378,12 +381,64 @@ sshmac 'touch /tmp/ssh-mac-stop'                                            # en
 Same one-time device prerequisites as *Sideload a dev IPA* (registered UDID + Developer Mode). The
 `DEV_PROVISIONING_PROFILE_BASE64` secret is a **tar of both** the app (`app.snapsync`, profile *SnapSync
 Dev Push*) and extension (`app.snapsync.BackgroundUpload`, *SnapSync Ext Dev Push*) dev profiles — the
-re-sign step above signs both targets. Refresh it when they expire (~yearly) or you register a new
-device: dev-export any build, tar both `embedded.mobileprovision` (app's `Payload/*.app/` + extension's
-`Extensions/*.appex/`), and `gh secret set`. The non-root sshd + `cloudflared access ssh` handshake were
+re-sign step above signs both targets. Refresh it when they expire (~yearly), when you register a new
+device, **or when you enable a bundle-id capability** — that last one silently *invalidates* the affected
+profile (verified 2026-07-16: enabling Associated Domains flipped *SnapSync Dev Push* to `INVALID` while
+the extension's profile, whose bundle id gained nothing, stayed `ACTIVE`). A stale profile is the worst
+kind of failure here: the re-sign resolves entitlements **out of the profile**, so the IPA installs and
+launches fine and merely lacks the capability — no error, no log line.
+
+Refreshing needs **no Mac and no build** — mint and download both profiles over the ASC API from Linux
+(`$A` from the *App Store Connect via API* section below), then tar them **flat** (the workflow globs
+`$WORK/*.mobileprovision` and installs each by its embedded UUID, so filenames are free but nesting
+breaks it):
+```
+P="proton-env -- uvx --from codemagic-cli-tools app-store-connect"
+$P profiles list $A --json                        # find the INVALID one + note cert/device ids
+$P profiles delete <INVALID_PROFILE_ID> $A        # Apple rejects a duplicate name; delete first
+$P profiles create <BUNDLE_RESOURCE_ID> $A --certificate-ids <CERT> --device-ids <DEVICE> \
+     --type IOS_APP_DEVELOPMENT --name "SnapSync Dev Push" --save
+$P profiles get <EXT_PROFILE_ID> $A --save        # the extension's, still ACTIVE — grab it as-is
+# both land in ~/Library/Developer/Xcode/UserData/Provisioning Profiles/
+tar -cf p.tar -C <dir> app.mobileprovision ext.mobileprovision   # FLAT
+base64 -w0 p.tar | gh secret set DEV_PROVISIONING_PROFILE_BASE64
+```
+Verify before shipping — decode each and confirm the app's carries what you added and the extension's
+does not: `openssl smime -inform DER -verify -noverify -in <p>.mobileprovision` (works on Linux; no
+`security cms` needed). The non-root sshd + `cloudflared access ssh` handshake were
 proven on 2026-07-01; the **unsigned-archive + manual re-sign** path (replacing the earlier
 `-exportArchive` claim, which does not reuse installed profiles without an ASC key) was proven on
 2026-07-05 — a dev IPA built this way installs and launches on the SE2.
+
+### Verifying the event link
+
+An invite is an HTTPS **Universal Link** — `https://snapsync.stho.net/join#v=3&d=<base64url>` (capability
+`event-link`). The payload rides in the **fragment** on purpose: a browser never sends it, so the
+`eventId` (which *is* the upload capability) never reaches the backend or its CDN even when someone
+without the app opens the link and gets redirected to the App Store.
+
+Two checks run from Linux with **no device**:
+
+```
+# 1. our origin, THROUGH the pull zone — must be JSON with no redirect
+curl -sSI https://snapsync.stho.net/.well-known/apple-app-site-association
+# 2. what Apple actually hands a device (it caches, and parse errors show up as a miss)
+curl -sS https://app-site-association.cdn-apple.com/a/v1/snapsync.stho.net
+```
+
+That second endpoint is the cheap oracle: it 404s until Apple has fetched and **accepted** our AASA, and
+200s once it has. It is also why we ship plain `applinks:` with no `?mode=developer` — CDN staleness is
+one curl away from being diagnosed rather than an invisible wait.
+
+⚠️ **Apple's own apps are not AASA-wired** — `apps.apple.com` serves an empty file, `maps.apple.com`
+404s, `music.apple.com` serves HTML; they are special-cased inside the OS. So an `apps.apple.com` QR is a
+**worthless** test target that appears to pass. Test with a real third-party universal link (verify the
+domain against the CDN endpoint above first).
+
+Verified on device: the stock **Camera app honors AASA** on a scanned QR, and iOS **delivers the fragment**
+to the app. Opening a real link and landing on the event proves the entitlement, the AASA, and fragment
+delivery in one observation; a stripped fragment would surface visibly as the invalid-link error, never
+silently.
 
 ### Verify real uploads
 
@@ -403,16 +458,23 @@ bespoke protection on the CI certs), so prefer read-only subcommands and keep mu
 deliberate.
 
 ```
-# proton-env injects these three (same values as the CI secrets
-# ASC_ISSUER_ID / ASC_KEY_ID / ASC_API_PRIVATE_KEY):
-#   APP_STORE_CONNECT_ISSUER_ID
-#   APP_STORE_CONNECT_KEY_IDENTIFIER
-#   APP_STORE_CONNECT_PRIVATE_KEY   # full .p8 PEM content (not a path)
+# proton-env injects these three (the same values as the CI secrets of the same names):
+#   ASC_ISSUER_ID
+#   ASC_KEY_ID
+#   ASC_AUTH_KEY     # full .p8 PEM content (not a path)
+#
+# ⚠️ Those names are NOT what the codemagic CLI looks for (it wants APP_STORE_CONNECT_ISSUER_ID /
+# _KEY_IDENTIFIER / _PRIVATE_KEY), so a bare `proton-env -- app-store-connect …` fails with
+# "Missing value ISSUER_ID". Bridge them with the CLI's own `@env:` prefix — no shell remap needed:
+A="--issuer-id @env:ASC_ISSUER_ID --key-id @env:ASC_KEY_ID --private-key @env:ASC_AUTH_KEY"
 
-proton-env -- uvx --from codemagic-cli-tools app-store-connect certificates list --json
-proton-env -- uvx --from codemagic-cli-tools app-store-connect devices list --json
-proton-env -- uvx --from codemagic-cli-tools app-store-connect profiles list --json
-proton-env -- uvx --from codemagic-cli-tools app-store-connect bundle-ids list --json
+proton-env -- uvx --from codemagic-cli-tools app-store-connect certificates list $A --json
+proton-env -- uvx --from codemagic-cli-tools app-store-connect devices list $A --json
+proton-env -- uvx --from codemagic-cli-tools app-store-connect profiles list $A --json
+proton-env -- uvx --from codemagic-cli-tools app-store-connect bundle-ids list $A --json
+# The CLI prints JSON to STDOUT and its own logs to STDERR — capture them separately, and note that
+# `--capability` takes N values, so the bundle-id positional must come BEFORE it or it gets eaten:
+#   … bundle-ids enable-capabilities <BUNDLE_RESOURCE_ID> $A --capability "Associated Domains"
 # metadata: app-store-version-localizations (descriptions/keywords),
 #           beta-build-localizations (TestFlight "what to test")
 ```
@@ -439,7 +501,7 @@ agent use and inject that one instead.
 :domain:ui:components   App* design system + the Material 3 skin
 :capability:upload     upload orchestration: UploadCycle + the UploadJobPlatform seam + DiscoveryStore + UploadConfig + the app-driven BackgroundUploadPump/BackgroundScheduler (jvm()+ios, JVM/harness-covered; deps :domain:engine + :domain:gallery)
 :capability:upload-url local edge-URL builder (no network/crypto) — the UploadRequestProvider
-:capability:config     deeplink config provisioning (eventId)
+:capability:config     event-link provisioning: the HTTPS Universal Link codec + eventId config (event-link)
 :capability:device-id  stable per-install device identity (shared Keychain)
 :capability:download   foreign-photo download → stage → import controller (photo-download)
 :capability:join       join use-case + DeviceEnroller (writes the per-event device manifest = the physical fact of membership) + EventDetailsSource (join-event)

@@ -45,7 +45,7 @@ You cannot build or run any of this on Linux. Use the proxy:
 Swift shells are pass-throughs; all logic is Kotlin. Do not add parsing or decisions in Swift.
 
 - **App entry** (`iosApp/iosApp/iOSApp.swift`): SwiftUI `@main` scene. `.onOpenURL` forwards the raw
-  `snapsync://` deeplink string to `SnapSyncRoot.shared.onOpenUrl(...)` — Kotlin decodes/validates/
+  event-link URL string (fragment included) to `SnapSyncRoot.shared.onOpenUrl(...)` — Kotlin decodes/validates/
   persists. `ContentView.swift` bridges `MainViewControllerKt.MainViewController()` (Compose) into
   SwiftUI.
 - **Extension principal** (`iosApp/BackgroundUploadExtension/BackgroundUploadExtension.swift`):
@@ -94,8 +94,15 @@ constructs no writer.
 - **Keychain group `$(AppIdentifierPrefix)app.snapsync.shared`** (both `*.entitlements`): lets the
   extension read the event config (the `eventId`) the app stores (`KeychainConfigStore`, which omits
   `kSecAttrAccessGroup` and relies on this default group). Keychain groups need **no** portal step.
-- **App `Info.plist`**: `CFBundleURLTypes` registers the `snapsync` scheme (Camera-scanned QR
-  deeplink); `CADisableMinimumFrameDurationOnPhone = true` is **mandatory** — Compose MP ≥1.7
+- **Associated domain `applinks:snapsync.stho.net`** (app entitlements only, via
+  `$(ASSOCIATED_DOMAIN)`): claims the event link's Universal Link (capability `event-link`), which is
+  how a Camera-scanned QR opens the app. Like App Groups (and unlike keychain groups) **it must be
+  enabled on the app.snapsync App ID in the portal**, or signed builds fail to provision — and
+  enabling it *invalidates existing profiles*, so the ssh-mac loop's baked secret needs refreshing
+  (root `CLAUDE.md`). The **extension declares none**: it never handles URLs.
+- **App `Info.plist`**: registers **no** `CFBundleURLTypes` — the `snapsync` scheme is retired, and a
+  scheme re-added here would route links the one authoritative codec no longer accepts.
+  `CADisableMinimumFrameDurationOnPhone = true` is **mandatory** — Compose MP ≥1.7
   hard-aborts at launch without it. Portrait-only, iPhone-only.
 - **Extension `Info.plist`**: `EXExtensionPointIdentifier = com.apple.photos.background-upload` and
   `BackgroundUploadURLBase = $(BACKGROUND_UPLOAD_URL_BASE)` — the compile-time host the system
@@ -120,7 +127,7 @@ App deploys **min iOS 18**. Upload runs on one of two tiers, selected at
   is the single `LedgerWriter` (no extension process exists).
 
 **Forcing the app-driven tier on a device** (`SNAPSYNC_FORCE_URLSESSION_UPLOAD=1` as a launch env var, as
-with `SNAPSYNC_DEEPLINK`) is the **only way to exercise the 18–26.0 tier on the agent-driveable SE2**,
+with `SNAPSYNC_EVENT_LINK`) is the **only way to exercise the 18–26.0 tier on the agent-driveable SE2**,
 which runs iOS 26.5 and would otherwise take the PhotoKit path. It selects the **tier and nothing else**:
 the transport stays a background `URLSession` (simulator-ness is read from `SIMULATOR_DEVICE_NAME`, not
 inferred from this flag), and the PhotoKit extension is never registered. It previously did all three
@@ -139,7 +146,7 @@ drives `arm.onProvision → photokit.stop → setUploadJobExtensionEnabled(false
 d=$(python3 -c "import json,base64;print(base64.urlsafe_b64encode(json.dumps(
   {'eventId':'<uuid>','autoJoin':True,'minPhotoDate':'2001-01-01T00:00:00Z','direction':'download'}
 ).encode()).decode().rstrip('='))")
-$P developer dvt launch app.snapsync --env SNAPSYNC_DEEPLINK="snapsync://config?v=3&d=$d" --userspace
+$P developer dvt launch app.snapsync --env SNAPSYNC_EVENT_LINK="https://snapsync.stho.net/join#v=3&d=$d" --userspace
 ```
 
 Then relaunch with the force flag. Verify with `grep -c 'photokit\.'` on the app log (expect 0) and by

@@ -10,8 +10,8 @@ import kotlinx.serialization.json.Json
 /**
  * Fetches an event's human-readable name by id — the scan-path name source (create already receives
  * the name from `POST /events`). Best-effort and non-throwing: a failure/offline/404 yields `null` so
- * joining never blocks on the cosmetic name (see `deeplink-config` — *Event name is fetched, not
- * carried in the deeplink*).
+ * joining never blocks on the cosmetic name (see `event-link` — *Event name is fetched, not
+ * carried in the event link*).
  */
 interface EventMetadataSource {
     suspend fun name(eventId: String): String?

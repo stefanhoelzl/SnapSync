@@ -58,7 +58,7 @@ class KeychainConfigStore(
     }
 
     /**
-     * The three-state read (capability `deeplink-config`). Migrates a legacy item's accessibility class
+     * The three-state read (capability `event-link`). Migrates a legacy item's accessibility class
      * in place — value untouched — the first time it can be read.
      *
      * The extension's cycle reads through **this**, never through [config]: only a definite

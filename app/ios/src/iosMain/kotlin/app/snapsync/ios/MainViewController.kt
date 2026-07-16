@@ -28,15 +28,15 @@ import kotlinx.coroutines.delay
 fun MainViewController() = ComposeUIViewController {
     val host = SnapSyncRoot.renderHost
     val state by host.container.stateFlow.collectAsState()
-    // The event's invite deeplink (null until an event is configured) — rendered as the join QR in the
+    // The event's invite link (null until an event is configured) — rendered as the join QR in the
     // joined layer and handed to the share sheet.
     val inviteUrl by host.inviteUrl.collectAsState()
     // The joined event's name for the screen title (fetched by id; null until fetched).
     val eventName by host.eventName.collectAsState()
 
-    // Dev/test: apply a `SNAPSYNC_DEEPLINK` launch-env deeplink once per process (no-op in
+    // Dev/test: apply a `SNAPSYNC_EVENT_LINK` launch-env event link once per process (no-op in
     // production, where no such env var exists). Runs after `host` is realized; safe to repeat.
-    LaunchedEffect(Unit) { SnapSyncRoot.applyLaunchEnvDeeplink() }
+    LaunchedEffect(Unit) { SnapSyncRoot.applyLaunchEnvEventLink() }
     // Dev/test: fill the library with `SNAPSYNC_SEED_PHOTOS` synthetic assets (no-op in production).
     LaunchedEffect(Unit) { SnapSyncRoot.applyLaunchEnvSeed() }
 

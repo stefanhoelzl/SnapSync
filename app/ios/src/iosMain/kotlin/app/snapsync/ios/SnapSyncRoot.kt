@@ -476,7 +476,7 @@ object SnapSyncRoot {
             // suppression rows are permanent), then run the leave use-case (disable producer → notify the
             // backend it is leaving → clear config/producer). Imported foreign photos are never touched.
             leave = { downloadController.onLeaveOrSwitch(); leaveEvent.leave() },
-            // Fire-and-forget share of the invite deeplink (the host owns the URL). Wiring-only:
+            // Fire-and-forget share of the invite link (the host owns the URL). Wiring-only:
             // present the system share sheet over the current top view controller.
             share = { url -> presentShareSheet(url) },
             // The join gate (capability `join-event`): a scanned QR opens the confirmation; details are
@@ -498,7 +498,7 @@ object SnapSyncRoot {
     // marketing screenshot and MUST NOT boot the live stack: the unsigned simulator the screenshots run
     // in has no App-Group ledger container, no App Attest, no PhotoKit grant, and no backend — touching
     // any of them crashes the process. Inert in production (a launch env var is only injectable via a
-    // developer launch, exactly as with `SNAPSYNC_DEEPLINK`).
+    // developer launch, exactly as with `SNAPSYNC_EVENT_LINK`).
     private val forgeState: String? = NSProcessInfo.processInfo.environment["SNAPSYNC_FORGE_STATE"] as? String
     private val isForging: Boolean = forgeState?.let { isForgeState(it) } == true
 
@@ -696,7 +696,8 @@ object SnapSyncRoot {
     }
 
     /**
-     * A `snapsync://` deeplink arrived (forwarded raw from the Swift entry point). Routed straight to
+     * An event link arrived (forwarded raw from the Swift entry point — the complete URL, fragment
+     * included, since the fragment carries the whole payload). Routed straight to
      * the container's **join gate** (capability `join-event`): it decodes, and either opens the
      * confirmation (a first join → full-screen; a different event while joined → switch dialog),
      * auto-confirms when the link carries `autoJoin=true` (the dev/headless trigger), or flashes the
@@ -753,7 +754,7 @@ object SnapSyncRoot {
     }
 
     /**
-     * Provision an event id — the shared path for both a scanned/typed deeplink and a freshly created
+     * Provision an event id — the shared path for both a scanned or typed event link and a freshly created
      * event. Persists the config (the container's `ConfigSource` is this instance), re-reads the gallery
      * total and the storage-truth status sources, then **starts** the producer if access is granted (via
      * the tested, tier-neutral [UploadArm]). The app runs no join, fetch, or seed — the upload cycle
@@ -778,7 +779,7 @@ object SnapSyncRoot {
         params = "eventId=${cfg.eventId} named=${cfg.name.isNotEmpty()} cutoff=${cfg.minPhotoDate}",
     ) {
         // Switch: provisioning a DIFFERENT event while joined leaves the previous one on the backend
-        // first (best-effort — a failure never prevents the switch; see `deeplink-config`). Re-scanning
+        // first (best-effort — a failure never prevents the switch; see `event-link`). Re-scanning
         // the same event is not a switch and fires no leave. The confirm dialog for this is a later change.
         config.config.value?.eventId?.let { previous ->
             if (previous != cfg.eventId) leaveNotifier.leave(previous, deviceId)
@@ -827,15 +828,15 @@ object SnapSyncRoot {
     }
 
     /**
-     * Realize [launchEnvDeeplinkApplied] once on first view creation (called from
+     * Realize [launchEnvEventLinkApplied] once on first view creation (called from
      * [MainViewController]). Touching the `by lazy` runs the env read exactly once per process.
      */
-    fun applyLaunchEnvDeeplink() = log.invocation("applyLaunchEnvDeeplink") {
-        launchEnvDeeplinkApplied
+    fun applyLaunchEnvEventLink() = log.invocation("applyLaunchEnvEventLink") {
+        launchEnvEventLinkApplied
     }
 
     /**
-     * Dev/test trigger: if a `SNAPSYNC_DEEPLINK` process-environment variable is present, forward its
+     * Dev/test trigger: if a `SNAPSYNC_EVENT_LINK` process-environment variable is present, forward its
      * value through [onOpenUrl] exactly as a scanned QR would, provisioning the event headlessly over
      * USB. The variable is only injectable via a developer launch
      * (`pymobiledevice3 developer dvt launch --env …`); SpringBoard and TestFlight launches carry a
@@ -843,10 +844,10 @@ object SnapSyncRoot {
      * process** (`by lazy`): a fresh cold launch with the variable still set re-provisions (the
      * intended per-build re-trigger); a mere view recreation within the same process does not.
      */
-    private val launchEnvDeeplinkApplied: Boolean by lazy {
-        val raw = NSProcessInfo.processInfo.environment["SNAPSYNC_DEEPLINK"] as? String
+    private val launchEnvEventLinkApplied: Boolean by lazy {
+        val raw = NSProcessInfo.processInfo.environment["SNAPSYNC_EVENT_LINK"] as? String
         if (raw != null) {
-            log.i { "applying SNAPSYNC_DEEPLINK launch-env deeplink" }
+            log.i { "applying SNAPSYNC_EVENT_LINK launch-env event link" }
             onOpenUrl(raw)
         }
         true
@@ -862,7 +863,7 @@ object SnapSyncRoot {
     /**
      * Dev/test trigger: if `SNAPSYNC_SEED_PHOTOS` is present, fill the photo library with that many
      * synthetic assets (see [seedPhotoLibraryFromLaunchEnv]) so the capture-date-bounded walk can be
-     * exercised against a large library on device. Like `SNAPSYNC_DEEPLINK`, the variable is only
+     * exercised against a large library on device. Like `SNAPSYNC_EVENT_LINK`, the variable is only
      * injectable via a developer launch, so this is inert in production.
      *
      * Seeding is a **blocking** `performChangesAndWait` loop, so it runs on `Dispatchers.Default`, never
@@ -925,7 +926,7 @@ object SnapSyncRoot {
     }
 
     /**
-     * Present the system share sheet (`UIActivityViewController`) carrying the invite deeplink, from
+     * Present the system share sheet (`UIActivityViewController`) carrying the invite link, from
      * the current top-most view controller. Wiring-only and fire-and-forget — no completion handler;
      * the host already holds the URL and `UiState` is unaffected. iPhone-only/portrait, so no popover
      * source is needed.
@@ -1009,7 +1010,7 @@ object SnapSyncRoot {
         PhotoKitUploadProducer(ledgerBackend, log)
     }
 
-    // Dev/test force flag (like SNAPSYNC_DEEPLINK): forces the app-driven URLSession upload tier even on
+    // Dev/test force flag (like SNAPSYNC_EVENT_LINK): forces the app-driven URLSession upload tier even on
     // iOS ≥26.1 so it can be exercised on a device or simulator that would otherwise run the extension.
     // Inert in production — a launch env var is only injectable via a developer launch.
     //

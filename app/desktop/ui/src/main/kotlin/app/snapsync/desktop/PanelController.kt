@@ -70,7 +70,7 @@ class PanelController {
     }
 
     // The config seam + store. The toggle drives the cell directly; the store exists only to
-    // satisfy the container's constructor (the harness never decodes a real deeplink).
+    // satisfy the container's constructor (the harness never decodes a real event link).
     val configSource: ConfigSource = object : ConfigSource {
         override val config = configState
     }

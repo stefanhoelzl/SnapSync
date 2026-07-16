@@ -14,7 +14,7 @@ import io.ktor.http.isSuccess
  * It is **best-effort**: it returns a failed [Result] (never throws) so the caller's local teardown
  * proceeds regardless — a dropped notify simply leaves the backend membership in place (the accepted
  * abandon-leak), it never blocks or rolls back leaving locally. Invoked by both the explicit Leave
- * action and the switch path (provisioning a different event while joined; see `deeplink-config`).
+ * action and the switch path (provisioning a different event while joined; see `event-link`).
  */
 interface LeaveNotifier {
     suspend fun leave(eventId: String, deviceId: String): Result<Unit>

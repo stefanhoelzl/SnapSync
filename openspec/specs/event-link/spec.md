@@ -1,18 +1,32 @@
-# deeplink-config Specification
+# event-link Specification
 
 ## Purpose
 
-The `snapsync://` config deeplink: its URL scheme and payload contract, a pure structural
-decoder, the `ConfigSource`/`ConfigStore` seams, the iOS Keychain-backed store, and the
-authoritative QR generator that is the single encoder of the deeplink.
-## Requirements
-### Requirement: snapsync:// URL scheme and payload contract
+The SnapSync event link — the HTTPS Universal Link `https://snapsync.stho.net/join#v=3&d=<payload>` that
+carries an invitation to an event. It exists so an invite reaches someone who **does not yet have
+SnapSync**: iOS opens the app when it is installed, and the backend redirects to the App Store when it is
+not. Its payload rides in the URL **fragment**, which a browser never transmits, so the `eventId` — which
+*is* the upload capability — never reaches a server even on that fallback path.
 
-The system SHALL define a custom URL scheme `snapsync` whose config deeplink has the form
-`snapsync://config?v=3&d=<payload>`, where `<payload>` is the base64url encoding (RFC 4648
+This capability owns the URL and payload contract, the pure structural decoder, the `ConfigSource`/
+`ConfigStore` seams, the iOS Keychain-backed store, the authoritative QR generator that is the link's
+single encoder, the Apple App Site Association document the link depends on, and the `GET /join` App
+Store fallback.
+
+Supersedes `deeplink-config` and its retired `snapsync://config?…` custom scheme, whose three premises —
+no domain to own, no AASA to serve, and an app that is "always installed" — had all expired.
+
+Decision record: `changes/archive/2026-07-16-migrate-to-universal-links`
+
+## Requirements
+
+### Requirement: Event link URL and payload contract
+
+The system SHALL define an HTTPS **Universal Link** whose event link has the form
+`https://snapsync.stho.net/join#v=3&d=<payload>`, where `<payload>` is the base64url encoding (RFC 4648
 §5, no padding) of a UTF-8 JSON object whose **required** key is `eventId` (a string) and whose
 **optional** keys are `autoJoin` (a boolean), `minPhotoDate` (a string), `direction` (a string), and
-`saveToAlbum` (a boolean) — the deeplink wire payload (`EventLinkPayload`). The `eventId` SHALL be a
+`saveToAlbum` (a boolean) — the event-link wire payload (`EventLinkPayload`). The `eventId` SHALL be a
 high-entropy **canonical UUID**; possession of it is the upload capability (the edge endpoint authorizes
 by event id alone). `autoJoin` SHALL default to `false` when absent; it is a **dev/test** hint that
 requests the join gate auto-confirm (see capability `join-event`). `minPhotoDate` SHALL be absent by
@@ -28,73 +42,150 @@ headless launch can exercise album placement without an interactive tap. None of
 QRs carry `eventId` only. The upload **host** SHALL NOT appear in the payload: it is fixed at compile time
 by the extension's `BackgroundUploadURLBase` (capability `ios-photokit-upload`). The payload carries **no
 storage credential** and **no event name** — the name is not carried in the QR; a joined device fetches
-it by `eventId` (see *Event name is fetched, not carried in the deeplink*). `v` SHALL be the integer
+it by `eventId` (see *Event name is fetched, not carried in the event link*). `v` SHALL be the integer
 format version, `3` (the optional `autoJoin`, `minPhotoDate`, `direction`, and `saveToAlbum` keys are
-additive within `v=3` and do not bump the version). The payload is carried entirely in the deeplink;
-there is no server, token, or Universal Link.
+additive within `v=3` and do not bump the version; the migration from the retired `snapsync://config?…`
+form did not bump it either, because the payload is unchanged and the URL prefix already distinguishes
+the forms).
 
-#### Scenario: Canonical config URL shape
-- **WHEN** a config deeplink is constructed for an `EventLinkPayload` with no optional keys
-- **THEN** it is `snapsync://config?v=3&d=<base64url(json)>` and the decoded JSON has the string key
-  `eventId` and no other keys (no `autoJoin`, no `minPhotoDate`, no `direction`, no `saveToAlbum`, no
-  `name`, no host, no credential)
+The payload SHALL be carried entirely in the link's **fragment** — never the query string. Because a
+browser never transmits the fragment component to a server, the `eventId`, which is the upload
+capability, never reaches the backend, its CDN, or their access logs, even when the link is opened on a
+device that does not have the app. Under the retired `snapsync://` scheme this property was incidental —
+no server could observe a custom-scheme URL at all — but under a Universal Link it is **deliberate and
+purchased**, and moving the payload to the query string would silently forfeit it. There is no server
+round-trip and no token: the link remains self-contained.
+
+#### Scenario: Canonical event URL shape
+- **WHEN** an event link is constructed for an `EventLinkPayload` with no optional keys
+- **THEN** it is `https://snapsync.stho.net/join#v=3&d=<base64url(json)>` and the decoded JSON has the
+  string key `eventId` and no other keys (no `autoJoin`, no `minPhotoDate`, no `direction`, no
+  `saveToAlbum`, no `name`, no host, no credential)
+
+#### Scenario: The payload rides in the fragment, not the query
+- **WHEN** an event link is constructed for any `EventLinkPayload`
+- **THEN** everything after `/join` is carried after `#`, and the URL's query component is empty — so a
+  request for the link's path carries no payload
 
 #### Scenario: A dev link carries the autoJoin flag
-- **WHEN** a config deeplink is decoded whose payload JSON is `{ "eventId": <uuid>, "autoJoin": true }`
+- **WHEN** an event link is decoded whose payload JSON is `{ "eventId": <uuid>, "autoJoin": true }`
 - **THEN** the decode succeeds carrying that `eventId` and `autoJoin == true`
 
 #### Scenario: A dev link carries an explicit cutoff
-- **WHEN** a config deeplink is decoded whose payload JSON is `{ "eventId": <uuid>, "autoJoin": true, "minPhotoDate": "2026-07-06T14:32:11Z" }`
+- **WHEN** an event link is decoded whose payload JSON is `{ "eventId": <uuid>, "autoJoin": true, "minPhotoDate": "2026-07-06T14:32:11Z" }`
 - **THEN** the decode succeeds carrying that `eventId`, `autoJoin == true`, and the `minPhotoDate` cutoff string
 
 #### Scenario: A dev link carries an explicit direction override
-- **WHEN** a config deeplink is decoded whose payload JSON is `{ "eventId": <uuid>, "autoJoin": true, "direction": "download" }`
+- **WHEN** an event link is decoded whose payload JSON is `{ "eventId": <uuid>, "autoJoin": true, "direction": "download" }`
 - **THEN** the decode succeeds carrying that `eventId`, `autoJoin == true`, and the `direction` override `download`
 
 #### Scenario: A dev link carries an explicit saveToAlbum override
-- **WHEN** a config deeplink is decoded whose payload JSON is `{ "eventId": <uuid>, "autoJoin": true, "saveToAlbum": true }`
+- **WHEN** an event link is decoded whose payload JSON is `{ "eventId": <uuid>, "autoJoin": true, "saveToAlbum": true }`
 - **THEN** the decode succeeds carrying that `eventId`, `autoJoin == true`, and the `saveToAlbum` override `true`
 
 ### Requirement: Pure structural decoder
 
 The capability SHALL provide a pure, platform-agnostic (`commonMain`) function that decodes a
-raw `snapsync://` URL string into either a valid `EventLinkPayload` or a typed failure, performing
-**structural-only** validation and **no** network I/O. Validation SHALL require: the scheme is
-`snapsync` and host/path is `config`; `v == 3`; `d` is valid base64url; the decoded bytes are
+raw event-link URL string into either a valid `EventLinkPayload` or a typed failure, performing
+**structural-only** validation and **no** network I/O. Validation SHALL require: the URL begins with the
+canonical origin and path (`https://snapsync.stho.net/join#`, matched against the single-sourced
+`LINK_ORIGIN` constant); `v == 3`; `d` is valid base64url; the decoded bytes are
 valid UTF-8 JSON with the key `eventId` present, **non-empty**, and a **canonical UUID**
 (`8-4-4-4-12` hex, case-insensitive), and **at most** the additional optional keys `autoJoin` (a boolean),
 `minPhotoDate` (a non-empty string), `direction` (one of the strings `both`, `upload`, `download`), and
-`saveToAlbum` (a boolean). Any deviation — including a version other than `3` (so the v1/v2 S3 payloads
-are rejected), a missing/empty `eventId`, a **genuinely unknown** key (anything other than
-`eventId`/`autoJoin`/`minPhotoDate`/`direction`/`saveToAlbum`), a `direction` outside the allowed set, or
-an `eventId` that is not a canonical UUID — SHALL produce a typed failure result, never a
-partially-populated payload and never a thrown exception that escapes the decoder. On success the result
-SHALL carry the `eventId`, the resolved `autoJoin` value (defaulting to `false`), the `minPhotoDate`
-cutoff when present (else absent), the `direction` override when present (else absent), and the
-`saveToAlbum` override when present (else absent).
+`saveToAlbum` (a boolean). Any deviation — including a retired `snapsync://` URL, a foreign origin, a
+version other than `3` (so the v1/v2 S3 payloads are rejected), a missing/empty `eventId`, a **genuinely
+unknown** key (anything other than `eventId`/`autoJoin`/`minPhotoDate`/`direction`/`saveToAlbum`), a
+`direction` outside the allowed set, or an `eventId` that is not a canonical UUID — SHALL produce a typed
+failure result, never a partially-populated payload and never a thrown exception that escapes the
+decoder. On success the result SHALL carry the `eventId`, the resolved `autoJoin` value (defaulting to
+`false`), the `minPhotoDate` cutoff when present (else absent), the `direction` override when present
+(else absent), and the `saveToAlbum` override when present (else absent).
+
+The decoder SHALL match the origin **strictly**, as a single prefix, and SHALL NOT parse the URL with a
+structured URL type. A foreign origin cannot reach the decoder in production — `.onOpenURL` fires for a
+Universal Link only when the app's own entitlement names the domain, and the dev launch-environment
+trigger requires a developer launch — so strict matching is chosen for being *less* code than searching
+for the path inside an arbitrary string, not as a security control.
 
 #### Scenario: Well-formed payload decodes
-- **WHEN** a `snapsync://config?v=3&d=…` URL whose payload carries a single non-empty canonical-UUID
-  `eventId` is decoded
+- **WHEN** a `https://snapsync.stho.net/join#v=3&d=…` URL whose payload carries a single non-empty
+  canonical-UUID `eventId` is decoded
 - **THEN** the result is a success carrying the `EventLinkPayload` with that exact `eventId`, `autoJoin == false`, no `minPhotoDate`, no `direction`, and no `saveToAlbum`
 
 #### Scenario: Malformed payload fails cleanly
-- **WHEN** the URL has a wrong scheme/host, a version other than `3` (including a legacy `v=2` S3
-  payload), undecodable base64url, non-JSON bytes, a missing/empty `eventId`, a genuinely unknown key
+- **WHEN** the URL has a foreign origin, a wrong path, a version other than `3` (including a legacy `v=2`
+  S3 payload), undecodable base64url, non-JSON bytes, a missing/empty `eventId`, a genuinely unknown key
   (other than `eventId`/`autoJoin`/`minPhotoDate`/`direction`/`saveToAlbum`), a `direction` outside
   `both`/`upload`/`download`, or an `eventId` that is not a canonical UUID
 - **THEN** the decoder returns a typed failure and no `EventLinkPayload`, without throwing
 
+#### Scenario: A retired snapsync:// link is rejected
+- **WHEN** a `snapsync://config?v=3&d=…` URL is decoded
+- **THEN** the decoder returns a typed failure, so a link shared before the migration fails closed and
+  visibly rather than provisioning
+
 #### Scenario: Legacy S3 config is rejected
-- **WHEN** a `v=2` S3 deeplink (`bucket`/`region`/`accessKeyId`/`secretAccessKey`) is decoded
+- **WHEN** a `v=2` S3 payload (`bucket`/`region`/`accessKeyId`/`secretAccessKey`) is decoded
 - **THEN** the decoder returns a typed failure (unsupported version), so an upgraded device falls
   through to the "not joined" create layer and the user rescans the new event QR
+
+### Requirement: Apple App Site Association is served for the link domain
+
+The backend SHALL serve an Apple App Site Association (AASA) document at
+`GET|HEAD /.well-known/apple-app-site-association` for the link domain, with `Content-Type:
+application/json` and **no redirect**, and it SHALL be reachable without a device-attestation token
+(capability `device-attestation`). The document SHALL declare exactly the app's `appID`
+(`<TEAM_ID>.app.snapsync`) and SHALL match the path `/join` using the `components` form, matching on the
+**path only** — not on the query and not on the fragment. The background upload extension SHALL NOT
+appear in the document: it never handles URLs.
+
+Matching on the path alone is deliberate. A malformed or truncated event link then opens the app and
+surfaces the invalid-link error (capability `join-event`) rather than dead-ending silently in a browser —
+a visible failure is preferred to an invisible one. The narrow path also SHALL NOT match `/`, the API
+routes, or `/attest/*`, so the marketing page and the API continue to open in a browser.
+
+The document SHALL be **source-owned** (embedded in the deployed bundle, no runtime file read), and its
+domain SHALL agree with the app's `applinks:` entitlement and the app's `LINK_ORIGIN` (capability
+`architecture-guards`, *The event-link domain agrees across the app and the backend*).
+
+#### Scenario: The AASA is served unauthenticated as JSON
+- **WHEN** `GET /.well-known/apple-app-site-association` is requested without an attestation token
+- **THEN** it is answered `200` with `Content-Type: application/json` and no redirect
+
+#### Scenario: The AASA declares the app and the /join path only
+- **WHEN** the served AASA document is parsed
+- **THEN** its `appIDs` contain exactly the app's `<TEAM_ID>.app.snapsync` (and not the extension), and
+  its `components` match the path `/join` with no query or fragment constraint
+
+### Requirement: An event link without the app installed reaches the App Store
+
+The backend SHALL answer `GET|HEAD /join` — the path a browser requests when an event link is opened on a
+device that has no app to claim it — with a redirect to the SnapSync App Store listing, reachable without
+a device-attestation token (capability `device-attestation`). The route SHALL read no storage, hold no
+per-event state, and carry no side effect.
+
+The route SHALL NOT attempt to read the payload: the payload is carried in the fragment, which a browser
+never transmits, so the backend receives `/join` and nothing more. It therefore SHALL NOT render an event
+name and SHALL be identical for every event link.
+
+iOS performs **no deferred deep linking**: a link tapped before install is not delivered after install.
+A user who installs from this redirect SHALL reach their event by opening the original link again.
+
+#### Scenario: /join redirects without a token
+- **WHEN** `GET /join` is requested without an attestation token
+- **THEN** it responds with a redirect to the App Store listing, not `401`
+
+#### Scenario: The redirect carries no event data
+- **WHEN** `GET /join` is requested for any event link
+- **THEN** the response is identical regardless of the link's payload, and the backend reads no event
+  state
 
 ### Requirement: Config source and store seams
 
 The capability SHALL define a persisted, joined-event state type **`EventConfig { eventId: String,
 name: String, minPhotoDate: String?, direction: Direction, saveToAlbum: Boolean }`** (distinct from the
-deeplink wire type `EventLinkPayload`): `eventId` is the joined event; `name` is the human-readable event
+event-link wire type `EventLinkPayload`): `eventId` is the joined event; `name` is the human-readable event
 name — a **required, non-null** value (the join gate only provisions from a loaded phase that carries a
 name, capability `join-event`; a legacy item persisted without a name decodes to an empty string and is
 refreshed on foreground, so the type is never null); `minPhotoDate` is this device's chosen capture-date
@@ -249,22 +340,22 @@ library re-enumeration) — repeatedly, without the marker ever settling.
 ### Requirement: Authoritative QR generator
 
 The repository SHALL provide a Gradle task that is the single authoritative encoder of the
-config deeplink: given an `eventId`, it SHALL emit the
-`snapsync://config?v=3&d=<base64url(json)>` URL and render a scannable QR-code PNG. The task SHALL
-read the `eventId` value from an environment variable and/or a gitignored `local.properties`. The
+event link: given an `eventId`, it SHALL emit the
+`https://snapsync.stho.net/join#v=3&d=<base64url(json)>` URL and render a scannable QR-code PNG. The task
+SHALL read the `eventId` value from an environment variable and/or a gitignored `local.properties`. The
 URL it emits SHALL be byte-compatible with what the pure decoder accepts. The generator SHALL NOT
 take or emit an upload host/`endpoint` or any storage credential.
 
 #### Scenario: Task emits a decodable URL and a QR image
 - **WHEN** the generator task runs with an `eventId` supplied via env/local.properties
-- **THEN** it writes a QR PNG and prints a `snapsync://config?v=3&d=…` URL that the pure decoder
-  decodes back to the same `eventId`
+- **THEN** it writes a QR PNG and prints a `https://snapsync.stho.net/join#v=3&d=…` URL that the pure
+  decoder decodes back to the same `eventId`
 
 #### Scenario: Generator emits no host or credential
 - **WHEN** the generator runs
 - **THEN** the emitted URL carries only `eventId` — no upload host/`endpoint` and no storage credential
 
-### Requirement: Event name is fetched, not carried in the deeplink
+### Requirement: Event name is fetched, not carried in the event link
 
 The event `name` SHALL be obtained by `eventId`, never from the QR. On **scan-provision** (a decoded
 `EventLinkPayload`), the join gate (capability `join-event`) SHALL fetch `GET /events/:id` for the
@@ -294,28 +385,27 @@ last-known name unchanged and SHALL NOT affect syncing.
 ### Requirement: Switching events leaves the previous event first
 
 The provisioning flow SHALL fire a best-effort backend leave of the previous event before persisting a
-new event's config, whenever a valid config deeplink provisions an event whose `eventId` **differs**
+new event's config, whenever a valid event link provisions an event whose `eventId` **differs**
 from the currently provisioned one (a switch). That leave issues
 `DELETE /events/<previousEventId>/devices/<deviceId>` via the same `LeaveNotifier` the explicit Leave
 uses. The previous `eventId` SHALL be
-read before it is replaced. Provisioning a deeplink for the **same** event that is already configured
+read before it is replaced. Provisioning an event link for the **same** event that is already configured
 SHALL remain an idempotent no-op and SHALL NOT fire a leave. The backend leave SHALL be best-effort — a
-failure SHALL NOT prevent the switch — so the device always ends up provisioned to the new event. In
-this change the switch fires the leave **without** a confirmation dialog (the leave-confirm-on-switch
-dialog is a separate change).
+failure SHALL NOT prevent the switch — so the device always ends up provisioned to the new event. The
+switch fires the leave **without** a confirmation dialog (the leave-confirm-on-switch dialog is a
+separate change).
 
 #### Scenario: Provisioning a different event leaves the previous one
 
-- **WHEN** a config deeplink provisions an `eventId` different from the currently configured event
+- **WHEN** an event link provisions an `eventId` different from the currently configured event
 - **THEN** the flow issues `DELETE /events/<previousEventId>/devices/<deviceId>` best-effort, then persists the new event's config
 
 #### Scenario: Re-provisioning the same event fires no leave
 
-- **WHEN** a config deeplink provisions the `eventId` already configured
+- **WHEN** an event link provisions the `eventId` already configured
 - **THEN** provisioning is an idempotent no-op and no backend leave is issued
 
 #### Scenario: A failed switch-leave still switches
 
 - **WHEN** the previous-event `DELETE` fails during a switch
 - **THEN** the failure is logged and the new event's config is still persisted (the device is provisioned to the new event)
-

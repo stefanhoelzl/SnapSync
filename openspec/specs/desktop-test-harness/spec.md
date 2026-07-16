@@ -17,14 +17,13 @@ The forge harness SHALL be a Compose desktop **application** in the `:app:deskto
 - **THEN** the phone frame retains its fixed ~390×844 content size
 
 ### Requirement: Config presence toggle
-
 The control panel SHALL provide a single config toggle, mutating harness state exclusively through
 `PanelController`, which holds a stand-in config cell (`MutableStateFlow<EventConfigPayload?>`) and
 implements the stand-in `ConfigSource`. Toggling on SHALL set a canned config; toggling off SHALL set
-`null`. This lets the harness reach both config states (present / absent) without a real deeplink.
+`null`. This lets the harness reach both config states (present / absent) without a real event link.
 With config absent the screen shows the create-event layer (`event-creation-ui`); with config present
 it shows the downstream permission/join/sync states. The decode/validate and invalid-link error paths
-are out of scope for the harness — they are covered by `commonTest` against the pure `deeplink-config`
+are out of scope for the harness — they are covered by `commonTest` against the pure `event-link`
 decoder.
 
 #### Scenario: Toggling config off shows the create screen
@@ -223,7 +222,7 @@ chrome unthemed by it.
 ### Requirement: Join-gate presets
 
 The control panel SHALL let the operator forge the full-screen join gate (`UiState.JoiningEvent`,
-capability `join-event`) without a scanned deeplink or a real details fetch, by writing a chosen
+capability `join-event`) without a scanned event link or a real details fetch, by writing a chosen
 `JoinPhase` into a stand-in **pending-join cell** — an injected `MutablePendingJoinSource` held by
 `PanelController` that the container reduces to `JoiningEvent` while config is absent. Forging the
 *input* cell (never fabricating a `UiState`) is what keeps the harness honest: the real reduction
@@ -254,7 +253,7 @@ seven phases SHALL be reachable: `Loading`, `ExplainAccess`, `Ready`, `NotFound`
 
 The control panel SHALL let the operator forge the switch-confirmation overlay
 (`Joined.pendingSwitch`, capability `join-event`) — the leave-style dialog shown over the joined layer
-when a deeplink for a **different** event is scanned while already joined. Each switch preset SHALL
+when an event link for a **different** event is scanned while already joined. Each switch preset SHALL
 force config **present**, permission **granted**, and a settled sync mood (so the underlying joined
 layer is coherent), then write the chosen phase into the same pending-join cell; the reducer maps a
 non-null pending-join cell with config present to `pendingSwitch`.

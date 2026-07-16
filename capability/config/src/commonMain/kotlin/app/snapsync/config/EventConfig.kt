@@ -3,7 +3,7 @@ package app.snapsync.config
 import kotlinx.serialization.Serializable
 
 /**
- * The **deeplink wire payload** carried by the `snapsync://` QR: just the **event id**. Possession of
+ * The **event-link wire payload** carried by the invite QR: just the **event id**. Possession of
  * this high-entropy UUID is the upload capability — the edge endpoint authorizes by event id alone,
  * and the device holds no storage credential. The upload **host** and the event **name** are
  * deliberately NOT here: the host is fixed at compile time by the extension's
@@ -20,11 +20,11 @@ import kotlinx.serialization.Serializable
  * that, on an auto-confirmed join, forces whether the membership gathers its synced photos into an event
  * album (capability `event-album`) so a headless launch can exercise album placement without a tap.
  * Because `encodeDefaults` is off, a `false`/absent value is not serialized, so the canonical
- * [encodeConfigUrl] QR stays `eventId`-only; the strict decoder accepts
+ * [encodeEventUrl] QR stays `eventId`-only; the strict decoder accepts
  * `autoJoin`/`minPhotoDate`/`direction`/`saveToAlbum` as known optional keys but still rejects any
  * *other* extra key (and a `direction` outside the known tokens).
  *
- * This class is the wire DTO: its property name is the exact JSON key of the deeplink payload.
+ * This class is the wire DTO: its property name is the exact JSON key of the event-link payload.
  */
 @Serializable
 class EventLinkPayload(

@@ -30,6 +30,8 @@ const CONFIG = {
   appAttestRootCa: "",
   attestTokenTtlSeconds: 30 * 24 * 60 * 60,
   attestAppId: "E9Z8BADH58.app.snapsync",
+  linkDomain: "snapsync.stho.net",
+  appStoreUrl: "https://apps.apple.com/app/id6781692480",
 };
 
 const TOKEN = await mintToken(CONFIG, "11111111-0000-4000-8000-000000000002", NOW);
