@@ -17,11 +17,11 @@ import app.snapsync.downloadstore.iosSuppressionSource
 import app.snapsync.ios.discovery.IosDiscovery
 import app.snapsync.ios.discovery.IosDiscoveryStore
 import app.snapsync.upload.CycleGate
+import app.snapsync.upload.JoinedMembership
 import app.snapsync.upload.CycleResult
 import app.snapsync.upload.cycleGate
 import app.snapsync.upload.UPLOAD_LIVENESS_DARWIN_NAME
 import app.snapsync.upload.UploadCycle
-import app.snapsync.upload.buildUploadConfig
 import app.snapsync.engine.LedgerBackend
 import app.snapsync.engine.LedgerWriter
 import app.snapsync.engine.SyncEngine
@@ -44,25 +44,11 @@ import co.touchlab.kermit.Logger
 import kotlinx.cinterop.ExperimentalForeignApi
 import kotlinx.coroutines.runBlocking
 import platform.Foundation.NSBundle
-import kotlinx.coroutines.withTimeout
 import platform.CoreFoundation.CFNotificationCenterGetDarwinNotifyCenter
 import platform.CoreFoundation.CFNotificationCenterPostNotification
 import platform.CoreFoundation.CFStringCreateWithCString
 import platform.CoreFoundation.CFStringRef
 import platform.CoreFoundation.kCFStringEncodingUTF8
-
-/**
- * Upper bound on the synchronous in-cycle device.json PUT (capability `device-manifest`). The
- * background-upload extension runner has a hard ~3-minute OS runtime cap; a network call under
- * `runBlocking` that hangs past it gets the worker force-killed (error 50001) before uploads are
- * handed off. The byte-upload jobs are created BEFORE this, so they are safe; this bound keeps a
- * slow/hung manifest PUT from ever blowing the budget.
- */
-private const val DEVICE_MANIFEST_TIMEOUT_MS = 12_000L
-
-// Upper bound on the synchronous in-cycle notify POST (capability `upload-completion-notify`) — bounded
-// like the manifest PUT so a slow/hung host can never stall the cycle to the OS's force-kill.
-private const val NOTIFY_TIMEOUT_MS = 8_000L
 
 /**
  * The extension process's composition root — the single site that assembles the App-Group ledger
@@ -223,142 +209,95 @@ object UploadExtensionRoot {
     }
 
     /**
-     * Run one adjudicate→discover cycle and return its [CycleResult] — `COMPLETED` (drained, cursor
-     * advanced), `PROCESSING` (the in-flight cap was hit; call me again, cursor un-advanced), or
-     * `FAILED`. The Swift shell maps it to the system's terminal/processing result. Blocks the
-     * extension's worker until done — appropriate for the synchronous `process()` contract. The
-     * engine is the sole ledger writer; the cycle reads the same ledger to reconstruct lifecycle jobs.
+     * The membership read, translated into the shared vocabulary — **this root's only contribution to
+     * the decision**, and it is a translation, not a decision: the Keychain and the bundle are this
+     * platform's, the skip-or-leave-or-run answer is [cycleGate]'s (capability `upload-lifecycle`).
+     *
+     * Re-read every cycle: the extension process outlives a single invocation, and a new event joined
+     * by the app (another process) does not notify a StateFlow here — without the refresh the extension
+     * would keep serving the event it read at construction.
      */
-    fun process(): CycleResult = log.invocation("process", result = { "$it" }) { runBlocking {
-        // Re-read the Keychain each cycle: the extension process outlives a single invocation, and a
-        // new event joined by the app (another process) does not notify this StateFlow — without the
-        // refresh the extension keeps serving the event it read at construction (a stale, previously
-        // joined event). This is what makes "config is sourced fresh each cycle" true.
-        //
-        // THREE states, not two (capability `event-link`). The OS invokes this extension when the
-        // device is idle — which usually means LOCKED — and a locked device could not read the Keychain
-        // at all before this was fixed. That read failure arrived here as `null` = "no event configured"
-        // = a LEAVE, so the reconciler below cleared the join marker on essentially every invocation,
-        // and the next readable cycle paid for a full re-join (device LIST + ledger clear-and-seed +
-        // discovery-cursor reset → a complete PhotoKit re-enumeration). The marker never settled.
+    private fun readGate(): CycleGate {
         val read = configSource.read()
         // Resolving the device id can fail the same way the config read can (both are Keychain items),
-        // and every branch below needs it — the reconciler and the manifest producer each close over it,
-        // so even the leave-side branch touches it. An unresolvable id is "I could not look", never
-        // "no id": treat it exactly like an unreadable config rather than letting it out of `process()`.
+        // and every outcome needs it — the reconciler and the manifest producer each close over it, so
+        // even the leave-side branch touches it. An unresolvable id is "I could not look", never "no id":
+        // it belongs on the unreadable side of the roll-up, not in a fourth state.
         // Resolving here is free (the lazy caches success; a failure is simply retried next cycle).
         val idReadable = runCatching { deviceId }
             .onFailure { if (it !is KeychainUnavailable) throw it }
             .isSuccess
-
-        // The decision itself is tested in :capability:upload — this root is glue (it is wiring-only and
-        // untested by the project's hard rule, which is exactly how a "config is null → clear the join
-        // marker" decision came to live in an untested file in the first place).
-        val readable = read !is ConfigRead.Unavailable && idReadable
         val payload = (read as? ConfigRead.Joined)?.config
-        val host = uploadHostFromBundle()
+        return cycleGate(
+            configReadable = read !is ConfigRead.Unavailable && idReadable,
+            membership = payload?.let {
+                JoinedMembership(
+                    eventId = it.eventId,
+                    contribution = Contribution.of(it.direction.includesUpload, it.minPhotoDate),
+                    saveToAlbum = it.saveToAlbum,
+                )
+            },
+            host = uploadHostFromBundle(),
+            // The forensics for a skip. The decision is made in shared code that cannot see WHY the read
+            // failed, and an unreadable config is invisible on a device except through this string.
+            skipDetail = "protected data unavailable (config status=" +
+                "${(read as? ConfigRead.Unavailable)?.status}, deviceId readable=$idReadable)",
+        )
+    }
 
-        val gate = cycleGate(readable, payload?.eventId, host)
-        if (gate is CycleGate.Skip) {
-            // Unreadable ≠ left. Touch NOTHING: no reconcile, no marker clear, no cursor reset, no jobs.
-            // A clean completion; the next cycle — or the next unlock — retries.
-            log.w {
-                val status = (read as? ConfigRead.Unavailable)?.status
-                "skipping cycle — protected data unavailable (config status=$status, deviceId " +
-                    "readable=$idReadable). NOT treating this as a leave; nothing minted, nothing " +
-                    "reconciled, marker untouched."
-            }
-            return@runBlocking CycleResult.COMPLETED
-        }
-        val config = (gate as? CycleGate.Run)?.config
-        if (payload == null || config == null) {
-            // Definitively not joined: no item at all, a legacy item that cannot decode (capability
-            // `photo-selection-policy`, where reading as no-config is the deliberate safe outcome), a missing
-            // baked host, or a leave. Nothing to upload, so no cycle is built — a clean no-op completion,
-            // never a failure.
-            //
-            // The reconciler still runs here, because this is where a leave clears the `joinedEventId`
-            // marker (capability `event-rejoin-reconciliation`) — it keeps the ledger, cursor, and
-            // accumulator intact so a later provision of any event dedups against them. No cycle exists
-            // to carry this, so it stays here; the JOINED case reconciles inside the cycle.
-            // Reaching this branch now means the config really IS absent, never merely unread.
-            runCatching { reconciler.reconcile(null) }
-                .onFailure { log.w(it) { "leave-side marker clear failed" } }
-            log.i {
-                "skipping cycle — eventId present=${payload != null}, host present=${!host.isNullOrEmpty()}"
-            }
-            return@runBlocking CycleResult.COMPLETED
-        }
-        log.i { "process: config present — running cycle (reconcile runs inside it)" }
-        val engine = SyncEngine(
-            // Bytes go to the device's event-independent partition (/files/devices/<deviceId>/…); the eventId
-            // in `config` drives only the producer's event scope + the device-manifest write, not the
-            // byte URL.
-            EdgeUploadRequestProvider(config.host, deviceId) { attestToken() },
-            ledger,
-        )
-        // Device manifest (capability `device-manifest`) is produced from the cycle's OWN discovery —
-        // no second PhotoKit enumeration (that pass hung the lean extension). The hook runs once per
-        // fully-drained cycle, AFTER the byte-upload jobs are created, and the PUT is strictly bounded
-        // by `withTimeout` so it can never stall the cycle to the OS's force-kill; it is best-effort
-        // and write-only in v1, so any failure/timeout just retries next cycle (skip-if-unchanged
-        // makes that cheap).
-        // Capture-date cutoff (capability `photo-selection-policy`): this device's per-membership
-        // `EventConfig.minPhotoDate` (v1: the single joined event) — always present. It scopes the
-        // discovery walk, the byte-upload filter (below), and the device-manifest projection
-        // (`startDate`), so the bytes uploaded equal the assets shared into the event union.
-        val cutoff = payload.minPhotoDate
-        // What this membership contributes (capability `photo-selection-policy`): direction AND cutoff.
-        // This tier is already protected by a real invoker removal — `stop()` calls
-        // `setUploadJobExtensionEnabled(false)`, so the OS stops invoking the extension for a download-only
-        // membership — but the gate is stated here too because it belongs to the CYCLE, not to a tier
-        // (capability `upload-lifecycle`). The registration record is system-side and survives; a cycle that
-        // runs anyway must still decline.
-        val contribution = Contribution.of(payload.direction.includesUpload, cutoff)
-        val cycle = UploadCycle(
-            engine, ledger, platform, discoveryStore, log,
-            // Re-join reconciliation (capability `event-rejoin-reconciliation`) now runs INSIDE the shared
-            // cycle, before any upload job is created — the same gate, moved from this root into
-            // `:capability:upload` so BOTH tiers get it (the app-driven tier shipped without one). The
-            // cycle stays event-agnostic; this lambda closes over the eventId, like the notify hook.
-            reconcile = { reconciler.reconcile(config.eventId) },
-            onDiscovery = { discovery ->
-                runCatching {
-                    withTimeout(DEVICE_MANIFEST_TIMEOUT_MS) {
-                        deviceManifestProducer.produce(
-                            eventId = config.eventId,
-                            startDate = cutoff, // per-device capture-date cutoff (photo-selection-policy)
-                            discovered = deviceManifestAssetsFromResources(discovery.resources),
-                            removedAssetIds = discovery.removedAssetIds.toSet(),
-                            fullEnumeration = discovery.fullEnumeration,
-                        )
-                    }
-                }.onFailure { log.w(it) { "device.json production failed/timed out this cycle" } }
+    /**
+     * The cycle. Long-lived (one per process): it re-reads the membership itself via [readGate] on each
+     * `run()`, so nothing here is per-invocation.
+     */
+    private val cycle: UploadCycle by lazy {
+        UploadCycle(
+            readGate = ::readGate,
+            // Bytes go to the device's event-independent partition (/files/devices/<deviceId>/…); the
+            // eventId in `config` drives only the producer's event scope + the device-manifest write, not
+            // the byte URL.
+            engineFor = { config ->
+                SyncEngine(EdgeUploadRequestProvider(config.host, deviceId) { attestToken() }, ledger)
             },
-            // Notify the event's members AFTER the manifest PUT (capability `upload-completion-notify`):
-            // that is the only point the union reflects the just-completed assets, so a woken recipient
-            // finds them. Fires only on a fully-drained cycle with >= 1 completion (gated in UploadCycle),
-            // bounded + best-effort so a hung host can never stall the cycle.
-            onBatchUploaded = {
-                runCatching { withTimeout(NOTIFY_TIMEOUT_MS) { notifier.notify(config.eventId) } }
-                    .onFailure { log.w(it) { "event notify failed/timed out this cycle" } }
+            ledger = ledger,
+            platform = platform,
+            store = discoveryStore,
+            log = log,
+            reconcile = { eventId -> reconciler.reconcile(eventId) },
+            // Device manifest (capability `device-manifest`) from the cycle's OWN discovery — no second
+            // PhotoKit enumeration. Bounding is the cycle's, not this root's.
+            onDiscovery = { eventId, cutoff, discovery ->
+                deviceManifestProducer.produce(
+                    eventId = eventId,
+                    startDate = cutoff, // per-device capture-date cutoff (photo-selection-policy)
+                    discovered = deviceManifestAssetsFromResources(discovery.resources),
+                    removedAssetIds = discovery.removedAssetIds.toSet(),
+                    fullEnumeration = discovery.fullEnumeration,
+                )
             },
-            // Echo-suppression: never re-upload an asset this device downloaded + imported.
             suppressedAssetIds = { suppression.suppressedLocalIds() },
-            // Denylisted-album membership (capability `photo-selection-policy`): photos a messaging app
-            // saved into its own album were received, not taken. The POLICY (which titles) is the
-            // `commonMain` constant; this only performs the lookup. Cost is O(albums), not O(assets).
-            albumExcludedAssetIds = { albumManager.assetIdsInAlbums(DENYLISTED_ALBUM_TITLES, cutoff) },
-            contribution = contribution,
-            // Event album (capability `event-album`): add this cycle's completed own photos to the event
-            // album (extension tier, ≥26.1 — verified on device). Recover each raw `localIdentifier` from
-            // the normalized `assetId` (reverse `_`→`/`) to fetch the PHAsset. Gated on the opt-in.
-            placeInAlbum = { assetIds ->
-                if (payload.saveToAlbum) {
-                    albumCoordinator.place(config.eventId, assetIds.map(::denormalizeAssetId))
-                }
+            albumExcludedAssetIds = { cutoff -> albumManager.assetIdsInAlbums(DENYLISTED_ALBUM_TITLES, cutoff) },
+            onBatchUploaded = { eventId -> notifier.notify(eventId) },
+            // The event album (capability `event-album`): the cycle applies the membership's opt-in, which
+            // arrived with the gate — this lambda only reverses the normalized `assetId` (`_`→`/`).
+            placeInAlbum = { eventId, assetIds ->
+                albumCoordinator.place(eventId, assetIds.map(::denormalizeAssetId))
             },
         )
+    }
+
+    /**
+     * Run one cycle and return its [CycleResult] — `COMPLETED` (drained, cursor advanced), `PROCESSING`
+     * (call me again, cursor un-advanced), `SKIPPED`, or `FAILED`. The Swift shell maps it to the
+     * system's terminal/processing result.
+     *
+     * What is left here is exactly what cannot be shared with the other upload tier: the synchronous
+     * `runBlocking` contract (the OS invokes this and the process does not outlive it), the cross-process
+     * liveness ding (this tier writes the ledger in a *different* process from the UI), and the
+     * pending→`PROCESSING` requeue (this tier alone cannot observe a completion while not running).
+     * Everything else the body used to do now lives in [UploadCycle], where both tiers reach it and a
+     * test can too.
+     */
+    fun process(): CycleResult = log.invocation("process", result = { "$it" }) { runBlocking {
         val result = runCatching { cycle.run() }
             .onSuccess { log.i { "process: cycle finished — $it" } }
             .getOrElse {

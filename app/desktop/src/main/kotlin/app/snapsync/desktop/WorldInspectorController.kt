@@ -277,6 +277,17 @@ class WorldInspectorController(private val scope: CoroutineScope) {
 
     fun setBackendOffline(offline: Boolean) = launchMutation { world.backendOffline = offline }
 
+    /**
+     * Force the membership to read as **unreadable** (capability `upload-lifecycle`) — the state a real
+     * device is in before its first unlock after a boot.
+     *
+     * It is a lever here because it is otherwise unreachable by a reviewer: the config cell can express
+     * only *joined* and *absent*, and the one dev device available reports `PasswordProtected: false`, so
+     * it has no data protection and cannot enter the state at all. Without this switch the outcome three
+     * shipped bugs turned on is the one nobody can look at.
+     */
+    fun setMembershipUnreadable(unreadable: Boolean) = launchMutation { world.membershipUnreadable = unreadable }
+
     fun armImportFailure() = launchMutation {
         world.failNextImport()
         appendConsole("armed: next foreign import will fail (non-terminal)")
@@ -389,6 +400,7 @@ class WorldInspectorController(private val scope: CoroutineScope) {
             downloads = downloads,
             jobLimit = world.jobLimit,
             backendOffline = world.backendOffline,
+            membershipUnreadable = world.membershipUnreadable,
         )
     }
 
@@ -407,9 +419,11 @@ data class InspectorSnapshot(
     val downloads: List<DownloadRow>,
     val jobLimit: Int,
     val backendOffline: Boolean,
+    val membershipUnreadable: Boolean,
 ) {
     companion object {
-        val EMPTY = InspectorSnapshot(null, emptyList(), emptyList(), emptyList(), emptyList(), Int.MAX_VALUE, false)
+        val EMPTY =
+            InspectorSnapshot(null, emptyList(), emptyList(), emptyList(), emptyList(), Int.MAX_VALUE, false, false)
     }
 }
 
