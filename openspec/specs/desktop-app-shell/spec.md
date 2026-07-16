@@ -2,21 +2,37 @@
 
 ## Purpose
 
-The launchable JVM/Compose Desktop application shell — the build target and entry point that opens the application window, future host of the SnapSync UI.
+The launchable JVM/Compose Desktop shells — the build targets and entry points that open a harness
+window. The desktop app is **test equipment, not a product**: there are two shells, one per harness, and
+this capability owns only the windows. What each window contains belongs to the harness that owns it
+(`desktop-test-harness` for the forge, `full-stack-harness` for the world).
 
 ## Requirements
 
-### Requirement: Desktop application window
+### Requirement: Two desktop shells, one per harness
 
-The system SHALL provide a JVM desktop application built with Compose Desktop that, when launched, opens a single top-level application window titled "SnapSync".
+The system SHALL provide two JVM Compose Desktop entry points, each opening a single top-level window:
 
-#### Scenario: Launching the app opens the window
-- **WHEN** the desktop application is launched via `./gradlew :app:desktop:run`
-- **THEN** a single application window opens with the title "SnapSync"
+- `./gradlew :app:desktop:ui:run` — the **forge** harness, titled `SnapSync`, hosting the dual-pane forge
+  (phone-framed status screen + control panel; capability `desktop-test-harness`).
+- `./gradlew :app:desktop:run` — the **full-stack world** harness, titled `SnapSync — full-stack world`,
+  hosting the phone-framed status screen whose counts emerge from the real world + the world inspector
+  (capability `full-stack-harness`).
 
-#### Scenario: Window hosts the test harness
-- **WHEN** the application window is open
-- **THEN** the window presents the dual-pane desktop test harness (phone-framed status screen + control panel) as its content
+The titles SHALL differ, because both windows show the same phone frame and only the title distinguishes
+a forged pane from one whose counts are real — mistaking them is mistaking a drawing for a measurement.
+
+`:app:desktop` SHALL also be the shared harness library (`PhoneFrame`, `StatusPane`, the
+`StatusContainerHost` wiring), which `:app:desktop:ui` depends on — so the two shells cannot drift in how
+they mount the real screen.
+
+#### Scenario: The world shell opens
+- **WHEN** launched via `./gradlew :app:desktop:run`
+- **THEN** a single window opens titled `SnapSync — full-stack world`, presenting the status screen and the world inspector
+
+#### Scenario: The forge shell opens
+- **WHEN** launched via `./gradlew :app:desktop:ui:run`
+- **THEN** a single window opens titled `SnapSync`, presenting the status screen and the forge control panel
 
 ### Requirement: Application lifecycle
 

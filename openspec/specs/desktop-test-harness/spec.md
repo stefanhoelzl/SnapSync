@@ -53,9 +53,16 @@ renders no relative time).
   missing grant, or an unattested cell is up). The reachable joined-layer sync moods (capability
   `sync-status-screen`) SHALL include: the neutral first frame (`SyncHealth.Loading`), nothing-to-sync
   (`SyncHealth.InSync` at N=0), in-progress (`SyncHealth.Syncing`, carrying a real in-flight count
-  distinct from `total − synced` so the "uploading now" caption is exercised), complete
-  (`SyncHealth.InSync`), and an overshoot preset (`completed > total`) that the joined layer clamps to
-  N. The panel SHALL additionally expose live nudges for the gallery size (N) and the in-flight count,
+  distinct from `total − synced`), complete (`SyncHealth.InSync`), and an overshoot preset
+  (`completed > total`) exercising the projection's `n = min(completed, total)` clamp.
+
+  The counts these presets forge are **not** rendered by the joined layer — `UiState.Joined` carries only
+  a `SyncHealth`, and the status line shows arrows and a mood, never a number (capability
+  `sync-status-screen`). They are forged because the real reduction derives the mood *from* them, so they
+  are what makes a preset a preset rather than a forged answer. What each one proves is which `SyncHealth`
+  the projection reaches, not what the screen prints.
+
+  The panel SHALL additionally expose live nudges for the gallery size (N) and the in-flight count,
   and download-line presets (hidden `0/0`, downloading, all-downloaded) that drive the joined-layer
   download arrow (capability `photo-download`). No preset forges a `SyncHealth` value directly — each
   forges the underlying `SyncStatus`/counts and lets the real reduction derive the mood.
@@ -67,7 +74,7 @@ The panel MUST NOT display a "current permission" readout — the phone frame al
 
 #### Scenario: Forcing the in-progress state
 - **WHEN** the operator activates the in-progress preset (a real in-flight count distinct from `total − synced`)
-- **THEN** the joined layer shows the `Syncing` status with a shown, pulsing upload arrow and the "uploading now" caption
+- **THEN** the joined layer shows the `Syncing` status with a shown, pulsing upload arrow — and no count, because the joined layer renders none
 
 #### Scenario: Forcing the complete state
 - **WHEN** the operator activates the complete preset (`completed == total`)
@@ -79,7 +86,7 @@ The panel MUST NOT display a "current permission" readout — the phone frame al
 
 #### Scenario: Forcing the overshoot clamp
 - **WHEN** the operator activates the overshoot preset (`completed = 6`, `total = 5`)
-- **THEN** the joined layer clamps the total to N (5)
+- **THEN** the projection clamps `n` to N (5) and the joined layer reads `InSync` rather than treating the overshoot as unfinished work
 
 #### Scenario: Sync presets force their precondition
 - **WHEN** permission is `DENIED`, config is absent, the attestation cell is unattested, and the operator activates any sync preset
@@ -180,12 +187,19 @@ harness's clock — not by fabricating the health value directly. Forging the *i
 regression in either shows up here.
 
 The preset SHALL be composable with the existing permission presets, so the reviewer can confirm that
-`NeedsAccess` outranks `NotStarted` (capability `sync-status-screen`).
+`NeedsAccess` outranks `NotStarted` (capability `sync-status-screen`). It therefore SHALL NOT force
+permission itself — unlike the presets whose precondition is not the thing under review — because a
+preset that granted access could not demonstrate the precedence it exists to demonstrate. Permission is
+the operator's to set first.
 
 #### Scenario: The not-started preset shows the clock line
-- **WHEN** the operator selects the not-started preset
+- **WHEN** permission is `GRANTED` and the operator selects the not-started preset
 - **THEN** the phone frame's joined layer renders the clock status line naming the event's start, beneath
   the invite QR
+
+#### Scenario: NeedsAccess outranks the not-started preset
+- **WHEN** permission is not `GRANTED` and the operator selects the not-started preset
+- **THEN** the joined layer renders `NeedsAccess`, not the clock line — the precedence this preset is composable in order to show
 
 #### Scenario: Permission outranks the forged not-started state
 - **WHEN** the operator selects the not-started preset together with a not-granted permission preset
