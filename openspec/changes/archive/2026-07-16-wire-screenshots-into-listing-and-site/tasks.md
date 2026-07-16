@@ -24,12 +24,14 @@
 - [x] 4.2 Add the composite script: raw → rounded corners → brand canvas → baked headline via `caption:` (which wraps by construction, so no length gate is needed) → 1320×2868 for `APP_IPHONE_69`, light set only.
 - [x] 4.3 Add `appstore-screenshots-upload` in its OWN workflow (`appstore-screenshots.yml`, not appstore.yml — see design D4: a paths trigger is only safe where no required check lives, and `--replace` must not be cancellable): ubuntu, main-only, reusing the existing editable-version resolution, then `asc screenshots upload --replace` — **not** `apply` (experimental; drives a browser review flow). `--replace` and `--skip-existing` are mutually exclusive.
 - [x] 4.4 Gate the job on `metadata/**` or `screenshots/**` having changed (the workflow `paths:` trigger IS the gate). Do **not** gate `appstore-metadata-validate` (required check → skipped check → frozen merges) and do **not** gate the text apply (weakens its declarative overwrite).
-- [ ] 4.5 Dry-run first (`--dry-run`) against the editable version and confirm the planned set before any live replace.
 
 ## 5. Verify end to end
 
 - [x] 5.1 `./gradlew build` and `./gradlew compileIosMainKotlinMetadata` green.
 - [x] 5.2 Backend: `deno fmt --check`, `deno lint`, `deno check src/*.ts`, `deno test` green from a clean clone with only Deno installed.
 - [x] 5.3 Confirm a re-dispatch with an unchanged UI produces byte-identical raws for `joining`/`in_sync`. `create` will still differ every run — it renders the wall clock (design D3); that is the accepted, deferred limitation, not a regression.
-- [ ] 5.4 Confirm the live listing shows the committed set and `snapsync.stho.net` serves the screenshots in both themes.
-- [x] 5.5 `npx --yes @fission-ai/openspec@1.5.0 validate --specs --strict`.
+- [x] 5.4 `npx --yes @fission-ai/openspec@1.5.0 validate --specs --strict`.
+
+<!-- The first `main` run's acceptance check — the ASC dry-run and both surfaces actually
+     serving — is in design.md under "Verify on the first `main` run". It is not implementation
+     work and cannot be observed before the merge that enables it. -->

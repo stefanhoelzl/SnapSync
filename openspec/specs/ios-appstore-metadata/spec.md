@@ -2,24 +2,36 @@
 
 ## Purpose
 
-Makes the **repo the source of truth for the App Store *text* listing** of app `6781692480` — description,
-keywords, promotional text, support URL, marketing URL (and, later, "what's new") — so the listing is
-version-controlled, reviewable in a PR, and reproducible, instead of hand-typed into the App Store Connect
-(ASC) web console and living only there. Two jobs carry it, mirroring `ios-ci` / `ios-testflight-delivery`.
+Makes the **repo the source of truth for the App Store listing** of app `6781692480` — its **text**
+(description, keywords, promotional text, support URL, marketing URL, and later "what's new") **and its
+screenshots** — so the listing is version-controlled, reviewable in a PR, and reproducible, instead of
+hand-typed and hand-uploaded into the App Store Connect (ASC) web console and living only there.
+
 A credential-free **`appstore-metadata-validate`** gate runs on **every** ref (a required status check —
 capability `branch-protection`) and fails the merge on any character-limit, URL-format, or unknown-key
 violation *before* it can reach Apple. **`appstore-metadata-apply`** runs on **`main` only**, resolves the
 app's currently **editable** App Store version at run time, and applies the committed per-locale files to
 that version's localizations **declaratively** — the file wins; drift entered in the console is overwritten.
 
-The sync is **text only**: screenshots and app previews are binaries with no CLI path and are out of scope.
-The apply owns the one safety guarantee the tooling does not — it edits **only** a version in an editable
-state, **never** one in review, and **never** creates a version. It reuses the **existing Admin ASC key**,
-runs on `ubuntu` with no Apple toolchain, introduces no new secret, and — like `ios-deliver`/`ios-promote` —
-posts no required check, so a failed apply is **red but blocks nothing**. The metadata tool (`asc`) is a
-pinned, checksum-verified binary; **no fastlane, no Ruby**.
+The **screenshots** are the same story told about binaries. They were once out of scope for a reason that
+expired: the metadata tool grew a stable upload command, so the only thing keeping them in the console was
+inertia. Their source of truth is the **committed raw captures** (produced by the dispatch-only capture
+workflow), from which the listing images are composited with committed per-locale headline copy and uploaded
+to **replace** the live set — so a screenshot added by hand in the console does not survive. The upload is
+gated on those inputs actually changing, because a replace is destructive and re-running it on every
+unrelated merge is churn against a public storefront. Headline copy lives **outside** the metadata tool's
+schema, which is closed and rejects unknown keys — a key it does not know would fail a required check and
+freeze merges. App **previews** (video) remain out of scope and manual.
 
-Decision record: `changes/archive/2026-07-15-sync-appstore-metadata-from-repo`
+The applies own the one safety guarantee the tooling does not — they touch **only** a version in an editable
+state, **never** one in review, and **never** create a version; the tool's behaviour on an in-review version
+is undefined, and replacing a screenshot set is destructive. They reuse the **existing Admin ASC key**, run
+on `ubuntu` with no Apple toolchain, introduce no new secret, and — like `ios-deliver`/`ios-promote` — post
+no required check, so a failed apply is **red but blocks nothing**. The metadata tool (`asc`) is a pinned,
+checksum-verified binary; **no fastlane, no Ruby**.
+
+Decision record: `changes/archive/2026-07-15-sync-appstore-metadata-from-repo` (the text sync),
+`changes/archive/2026-07-16-wire-screenshots-into-listing-and-site` (the screenshots)
 
 ## Requirements
 ### Requirement: The repo is the declarative source of truth for the listing text
@@ -105,15 +117,105 @@ credentials. A violation SHALL fail the job. This job is a required status check
 - **WHEN** `appstore-metadata-validate` runs on any ref
 - **THEN** it validates the files offline and requires no App Store Connect API key
 
-### Requirement: Text fields only — screenshots and previews are out of scope
+### Requirement: The repo is the source of truth for the listing's screenshots
 
-The jobs SHALL manage only text metadata (version-localization and app-info text fields) and SHALL NOT
-upload, replace, or delete screenshots or app previews. Those binaries have no `app-store-connect` CLI path
-and remain managed manually.
+The committed raw captures under `screenshots/` SHALL be the source of truth for the App Store listing's
+screenshots, and the committed per-locale headline file SHALL be the source of truth for the copy composited
+onto them. `appstore-screenshots-upload` SHALL build each listing image from those committed inputs and
+upload the resulting set to App Store Connect, replacing the target set so that the committed inputs — and
+only they — determine the live screenshots. It SHALL run on `refs/heads/main` only, and SHALL NOT upload,
+replace, or delete app previews.
 
-#### Scenario: Screenshots are untouched by a sync
-- **WHEN** an apply runs against a version that already has uploaded screenshots
-- **THEN** the screenshots are left unchanged
+#### Scenario: The committed inputs determine the live screenshot set
+
+- **WHEN** `appstore-screenshots-upload` runs on `main` with an editable version present
+- **THEN** it composites the listing images from the committed raw captures and headline file and replaces
+  the target version-localization's screenshot set with exactly that set
+
+#### Scenario: A screenshot added in the console is removed
+
+- **WHEN** a screenshot was uploaded through the ASC web console after the last upload, and the job runs
+- **THEN** that screenshot is not present in the resulting set, because the committed inputs define it
+
+#### Scenario: A non-main push uploads nothing
+
+- **WHEN** a commit is pushed to any ref other than `refs/heads/main`
+- **THEN** `appstore-screenshots-upload` does not run and no screenshot is modified
+
+#### Scenario: App previews are untouched
+
+- **WHEN** the job runs against a version that has app previews
+- **THEN** the app previews are left unchanged
+
+### Requirement: Screenshots are uploaded only to an editable version, never one in review
+
+`appstore-screenshots-upload` SHALL resolve the app's currently **editable** App Store version (state
+`PREPARE_FOR_SUBMISSION` or `DEVELOPER_REJECTED`) and upload only to that version's localizations, using the
+same resolve-then-refuse gate as the metadata apply. If **no** version is in an editable state it SHALL make
+**no change** and conclude **successfully**. It SHALL NOT modify a version in `WAITING_FOR_REVIEW`,
+`IN_REVIEW`, or `PENDING_DEVELOPER_RELEASE`, and SHALL NOT create a version. The gate is ours, not the
+tool's: replacing a screenshot set is destructive, and the tool's behaviour on an in-review version is
+undefined.
+
+#### Scenario: An editable version receives the set
+
+- **WHEN** the app has a version in `PREPARE_FOR_SUBMISSION`
+- **THEN** the job uploads the composited set to that version's localizations
+
+#### Scenario: No editable version is a green no-op
+
+- **WHEN** the app has no version in an editable state
+- **THEN** the job uploads nothing and concludes successfully
+
+#### Scenario: A version under review is never touched
+
+- **WHEN** no editable version exists but a version is `WAITING_FOR_REVIEW`
+- **THEN** the job does not modify that version's screenshots and does not create a new version
+
+### Requirement: The screenshot upload runs only when its inputs change
+
+`appstore-screenshots-upload` SHALL run only when a push to `main` changes the composite's inputs — the
+committed raw captures or the committed listing metadata. On a push that changes neither, it SHALL NOT run
+and SHALL NOT modify the live set. This gate SHALL NOT be applied to `appstore-metadata-validate` (a
+required status check, which must post on every ref or merges freeze) nor to the listing-text apply (whose
+declarative overwrite of console edits must not weaken to "eventually").
+
+#### Scenario: A capture refresh reaches the listing
+
+- **WHEN** a push to `main` changes a file under `screenshots/`
+- **THEN** `appstore-screenshots-upload` runs
+
+#### Scenario: A headline change reaches the listing
+
+- **WHEN** a push to `main` changes the committed listing metadata and no capture
+- **THEN** `appstore-screenshots-upload` runs, re-compositing from the unchanged captures
+
+#### Scenario: An unrelated merge does not touch the listing
+
+- **WHEN** a push to `main` changes neither the captures nor the listing metadata
+- **THEN** `appstore-screenshots-upload` does not run and the live screenshot set is not modified
+
+#### Scenario: Validation still posts on every ref
+
+- **WHEN** a push touches neither the captures nor the listing metadata, on any ref
+- **THEN** `appstore-metadata-validate` still runs and posts its status check
+
+### Requirement: Screenshot headlines live outside the metadata tool's schema
+
+The per-locale screenshot headline copy SHALL be committed in a file the metadata tool does not decode, so
+that it can be version-controlled alongside the listing without breaking validation. It SHALL NOT be added
+as a key to the tool's canonical per-locale metadata files, whose schema is closed and rejects unknown
+fields — an unknown key there fails `appstore-metadata-validate`, a required check, and freezes merges.
+
+#### Scenario: Headlines do not break validation
+
+- **WHEN** the headline file is committed and `appstore-metadata-validate` runs
+- **THEN** validation succeeds and the headline file is not decoded as canonical metadata
+
+#### Scenario: Headline copy is version-controlled per locale
+
+- **WHEN** the headline for a locale is changed and pushed to `main`
+- **THEN** the composited listing images for that locale carry the new copy
 
 ### Requirement: Apply never blocks a merge and never fails silently
 
