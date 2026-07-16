@@ -565,6 +565,7 @@ agent use and inject that one instead.
 :capability:upload-url local edge-URL builder (no network/crypto) — the UploadRequestProvider
 :capability:config     event-link provisioning: the HTTPS Universal Link codec + eventId config (event-link)
 :capability:device-id  stable per-install device identity (shared Keychain)
+:capability:attest     App Attest device token: the tested DeviceAttestation policy (attest → token → renew, 401 → clear-and-retry) over an AttestKey seam; the token is the ONLY way past the backend, which gates every route on it. The extension cannot attest (`isSupported` is false in an app extension, true in the app — measured, not assumed), so it is strictly a READER of the token the app leaves in the shared Keychain (device-attestation)
 :capability:download   foreign-photo download → stage → import controller (photo-download)
 :capability:join       join use-case + DeviceEnroller (writes the per-event device manifest = the physical fact of membership) + EventDetailsSource (join-event)
 :capability:album      tested commonMain album orchestration: resolve-or-create the per-event album, dispatch-or-skip an add; PhotoKit behind seams (event-album). Also the album DENYLIST (DENYLISTED_ALBUM_TITLES — WhatsApp, Telegram, …) + the decision-free AlbumManager.assetIdsInAlbums membership lookup it feeds (capability photo-selection-policy)
