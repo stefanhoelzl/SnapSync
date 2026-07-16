@@ -97,9 +97,11 @@ our team can produce one.
 
 ### Requirement: Renewal is a local assertion, never a re-attestation
 
-The backend SHALL expose `POST /attest/renew`, which accepts a `deviceId`, a `keyId`, and an App Attest
-**assertion** over a server-issued challenge, SHALL verify that assertion against the public key stored
-at `devices/<deviceId>.attest.json`, and SHALL mint a fresh token on success.
+The backend SHALL expose `POST /attest/renew`, which accepts a `deviceId`, an App Attest **assertion**,
+and the server-issued `challenge` the assertion is over; SHALL verify that assertion against the public
+key stored at `devices/<deviceId>.attest.json`; and SHALL mint a fresh token on success. It SHALL NOT
+accept a `keyId` — the stored key is found by `deviceId`, so renewal cannot be pointed at another key
+(unlike `/attest/token`, which takes a `keyId` because it is establishing which key to store).
 
 Renewal SHALL NOT require a new attestation and SHALL NOT call Apple. (Apple's model attests a key
 **once**; repeatedly re-attesting — or minting a fresh key per renewal — is the throttled path. Making
@@ -217,7 +219,7 @@ including the byte `PUT` that the **operating system** performs on the app's beh
 
 This is sound because it was measured, not assumed: the OS-performed upload carries the extension's
 custom request headers to the wire, and the bunny pull zone forwards `Authorization` to the origin
-unmodified. Decision record: `changes/archive/<id>` (see design, constraints 1–2).
+unmodified. Decision record: `changes/archive/2026-07-14-add-device-attestation` (see design, constraints 1–2).
 
 #### Scenario: The OS-performed upload carries the token
 
@@ -306,7 +308,7 @@ The failure SHALL be reduced into the **existing** visible error state (a sealed
 never thrown to the UI and never silent. This is the only signal a stalled device gives: an expired token
 prevents the successful upload whose completion notification is what would otherwise wake the app to renew,
 so recovery depends on the next app wake from another source (the user opening the app, or another member's
-upload). Decision record: `changes/archive/<id>`.
+upload). Decision record: `changes/archive/2026-07-14-add-device-attestation`.
 
 #### Scenario: A stale token stalls rather than strands
 
