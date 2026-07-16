@@ -177,7 +177,7 @@ exist at all.
   FileLogWriter())` — the writers now live in `:domain:logging` (capability `diagnostic-logging`).
   `FileLogWriter` (verbatim `Documents/debug.log`, 10 MB roll) is the reliable channel; the os_log
   `PublicNSLogWriter` is redacted `<private>` on current iOS. Each root emits a boot banner and wraps
-  its entry points with `logInvocation`, so every line carries a `[<entryPoint>]` prefix. Keep new
+  its entry points with `Logger.invocation`, so every line carries a `[<entryPoint>]` prefix. Keep new
   entry points wrapped, or their downstream lines lose the trigger prefix.
 - **`-lsqlite3`:** required in each target's `OTHER_LDFLAGS` (above). A new linked target needs it.
 - **In-memory SQLite on Native:** `NativeSqliteDriver` shares an in-memory DB across connections via
