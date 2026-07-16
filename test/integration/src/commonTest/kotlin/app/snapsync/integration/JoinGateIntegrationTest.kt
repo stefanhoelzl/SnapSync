@@ -57,7 +57,7 @@ class JoinGateIntegrationTest {
         // confirming must persist precisely what the surface displayed.
         val scope = CoroutineScope(coroutineContext + Job())
         try {
-            val w = World()
+            val w = World(this)
             w.store.registerEvent(EVENT_E, "Anna's Wedding")
             val host = joinHost(w, scope)
 
@@ -91,7 +91,7 @@ class JoinGateIntegrationTest {
     fun first_join_loads_details_then_enrolls_and_joins() = worldTest {
         val scope = CoroutineScope(coroutineContext + Job())
         try {
-            val w = World()
+            val w = World(this)
             w.store.registerEvent(EVENT_E, "Anna's Wedding") // exists, but not yet joined
             val host = joinHost(w, scope)
 
@@ -117,7 +117,7 @@ class JoinGateIntegrationTest {
     fun a_missing_event_blocks_the_join() = worldTest {
         val scope = CoroutineScope(coroutineContext + Job())
         try {
-            val w = World() // EVENT_E is NOT registered
+            val w = World(this) // EVENT_E is NOT registered
             val host = joinHost(w, scope)
 
             host.onOpenUrl(deeplink(EVENT_E))
@@ -134,7 +134,7 @@ class JoinGateIntegrationTest {
     fun a_load_failure_is_retryable() = worldTest {
         val scope = CoroutineScope(coroutineContext + Job())
         try {
-            val w = World()
+            val w = World(this)
             w.store.registerEvent(EVENT_E, "Anna's Wedding")
             val host = joinHost(w, scope)
 
@@ -154,7 +154,7 @@ class JoinGateIntegrationTest {
     fun a_failed_enrollment_does_not_join() = worldTest {
         val scope = CoroutineScope(coroutineContext + Job())
         try {
-            val w = World()
+            val w = World(this)
             w.store.registerEvent(EVENT_E, "Anna's Wedding")
             val host = joinHost(w, scope)
 
@@ -175,7 +175,7 @@ class JoinGateIntegrationTest {
     fun a_switch_leaves_the_current_event_then_joins_the_new_one() = worldTest {
         val scope = CoroutineScope(coroutineContext + Job())
         try {
-            val w = World()
+            val w = World(this)
             w.provision(EVENT_E, "Summer Trip")          // already joined to E
             w.store.registerEvent(EVENT_F, "Anna's Wedding") // F exists to switch to
             val host = joinHost(w, scope)
@@ -197,7 +197,7 @@ class JoinGateIntegrationTest {
     fun a_switch_does_not_block_on_the_departed_events_delete() = worldTest {
         val scope = CoroutineScope(coroutineContext + Job())
         try {
-            val w = World()
+            val w = World(this)
             w.provision(EVENT_E, "Summer Trip")              // already joined to E
             w.store.registerEvent(EVENT_F, "Anna's Wedding") // F exists to switch to
 
@@ -232,7 +232,7 @@ class JoinGateIntegrationTest {
     fun re_scanning_the_joined_event_does_not_clobber_the_manifest() = worldTest {
         val scope = CoroutineScope(coroutineContext + Job())
         try {
-            val w = World()
+            val w = World(this)
             w.provision(EVENT_E, "Anna's Wedding")
             // A real (non-empty) manifest already written by a prior upload cycle.
             w.store.putManifest(EVENT_E, w.ownDeviceId, foreignManifest(w.ownDeviceId, listOf(World.foreignAsset("A"))))
@@ -254,7 +254,7 @@ class JoinGateIntegrationTest {
     fun autoJoin_auto_confirms_without_a_confirmation() = worldTest {
         val scope = CoroutineScope(coroutineContext + Job())
         try {
-            val w = World()
+            val w = World(this)
             w.store.registerEvent(EVENT_E, "Anna's Wedding")
             val host = joinHost(w, scope)
 
@@ -277,7 +277,7 @@ class JoinGateIntegrationTest {
         // The cutoff here is ABOVE the event's start, so the floor binds nothing and it lands verbatim.
         val scope = CoroutineScope(coroutineContext + Job())
         try {
-            val w = World()
+            val w = World(this)
             w.store.registerEvent(EVENT_E, "Anna's Wedding", startsAt = "2026-01-01T00:00:00Z")
             val host = joinHost(w, scope)
 
@@ -304,7 +304,7 @@ class JoinGateIntegrationTest {
         // one, which has no surface on which a user could notice anything was wrong.
         val scope = CoroutineScope(coroutineContext + Job())
         try {
-            val w = World()
+            val w = World(this)
             val startsAt = "2026-01-01T00:00:00Z"
             w.store.registerEvent(EVENT_E, "Anna's Wedding", startsAt = startsAt)
             val host = joinHost(w, scope)

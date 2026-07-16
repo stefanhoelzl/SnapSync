@@ -31,7 +31,7 @@ class CycleEntryGateIntegrationTest {
 
     @Test
     fun an_unreadable_membership_does_not_clear_the_join_marker() = worldTest {
-        val w = World()
+        val w = World(this)
         val eventId = "E"
         w.provision(eventId)
         w.addOwnAsset("A")
@@ -59,7 +59,7 @@ class CycleEntryGateIntegrationTest {
 
     @Test
     fun an_unreadable_membership_uploads_nothing_and_touches_no_storage() = worldTest {
-        val w = World()
+        val w = World(this)
         w.provision("E")
         w.addOwnAsset("A")
         w.membershipUnreadable = true
@@ -76,7 +76,7 @@ class CycleEntryGateIntegrationTest {
     // clearing the marker would leave the device claiming a membership it no longer has.
     @Test
     fun a_cleared_membership_still_drives_the_leave_path() = worldTest {
-        val w = World()
+        val w = World(this)
         val eventId = "E"
         w.provision(eventId)
         w.addOwnAsset("A")
@@ -95,7 +95,7 @@ class CycleEntryGateIntegrationTest {
         // The control. A gate that declines every cycle is indistinguishable from a gate that works
         // unless the happy path is asserted alongside it — and a silently-skipped upload is this
         // project's defining failure mode.
-        val w = World()
+        val w = World(this)
         w.provision("E")
         w.addOwnAsset("A")
 
@@ -108,7 +108,7 @@ class CycleEntryGateIntegrationTest {
     fun the_membership_is_re_read_each_cycle_so_the_skip_is_not_sticky() = worldTest {
         // The cycle is long-lived now. An unreadable read must not latch: the next cycle, once the device
         // is unlocked, has to resume normally.
-        val w = World()
+        val w = World(this)
         w.provision("E")
         w.addOwnAsset("A")
         w.membershipUnreadable = true

@@ -173,6 +173,8 @@ fun WorldInspector(
             },
             right = {
                 Button(enabled = snap.downloads.isNotEmpty(), onClick = { controller.stageAllDownloads() }) { Text("Stage all pending") }
+                Button(enabled = snap.downloads.isNotEmpty(), onClick = { controller.stageAllDownloadsAs502() }) { Text("Stage as 502") }
+                Button(enabled = snap.downloads.isNotEmpty(), onClick = { controller.stageAllDownloadsShortRead() }) { Text("Stage short read") }
                 if (snap.downloads.isEmpty()) Faint("(no pending downloads)")
                 snap.downloads.forEach { dl ->
                     Faint("${dl.deviceId}/${dl.assetId} · ${dl.resourceKey}")

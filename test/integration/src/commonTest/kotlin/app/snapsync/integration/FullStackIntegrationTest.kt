@@ -47,7 +47,7 @@ class FullStackIntegrationTest {
         // is a consequence, not a feature.
         val scope = CoroutineScope(coroutineContext + Job())
         try {
-            val w = World()
+            val w = World(this)
             val future = "2099-12-31T23:59:59Z"
             // Pre-start, the clamp yields `minPhotoDate == startsAt` whatever the member chose.
             w.provision("E", minPhotoDate = future, startsAt = future)
@@ -82,7 +82,7 @@ class FullStackIntegrationTest {
         // stack uploads exactly as it did before start dates existed.
         val scope = CoroutineScope(coroutineContext + Job())
         try {
-            val w = World()
+            val w = World(this)
             w.provision("E", minPhotoDate = World.DEFAULT_CUTOFF, startsAt = World.DEFAULT_STARTS_AT)
             w.addOwnAsset("A")
             w.ownGallery.refresh(w.contribution()); w.ledgerCounts.refresh()
@@ -106,7 +106,7 @@ class FullStackIntegrationTest {
     fun upload_completion_advances_uistate_and_world_outcomes() = worldTest {
         val scope = CoroutineScope(coroutineContext + Job())
         try {
-            val w = World()
+            val w = World(this)
             w.provision("E")
             w.addOwnAsset("A")
             w.ownGallery.refresh(w.contribution()); w.ledgerCounts.refresh()
@@ -141,7 +141,7 @@ class FullStackIntegrationTest {
     fun create_event_lifts_the_setup_gate() = worldTest {
         val scope = CoroutineScope(coroutineContext + Job())
         try {
-            val w = World() // no config → the create layer
+            val w = World(this) // no config → the create layer
             val host = StatusContainerHost(
                 syncSource = w.syncStatusSource(scope),
                 permissionSource = w.permission,
@@ -173,7 +173,7 @@ class FullStackIntegrationTest {
     fun foreign_download_imports_and_own_status_excludes_it() = worldTest {
         val scope = CoroutineScope(coroutineContext + Job())
         try {
-            val w = World()
+            val w = World(this)
             w.provision("E")
             w.addForeignDevice("DEV-F", "E", listOf(World.foreignAsset("FQ")))
 
@@ -194,7 +194,7 @@ class FullStackIntegrationTest {
     fun upload_completeness_is_ledger_local_and_backend_independent() = worldTest {
         val scope = CoroutineScope(coroutineContext + Job())
         try {
-            val w = World()
+            val w = World(this)
             w.provision("E")
             w.addOwnAsset("A")
             w.runUploadCycle()
@@ -219,7 +219,7 @@ class FullStackIntegrationTest {
     fun leaving_as_the_last_member_returns_to_the_setup_gate_and_reaps_the_event() = worldTest {
         val scope = CoroutineScope(coroutineContext + Job())
         try {
-            val w = World()
+            val w = World(this)
             w.provision("E")
             w.addOwnAsset("A")
             w.runUploadCycle()
@@ -259,7 +259,7 @@ class FullStackIntegrationTest {
     fun upload_only_uploads_own_but_imports_no_foreign() = worldTest {
         val scope = CoroutineScope(coroutineContext + Job())
         try {
-            val w = World()
+            val w = World(this)
             w.provision("E", direction = Direction.UploadOnly)
             w.addOwnAsset("A")
             w.addForeignDevice("DEV-F", "E", listOf(World.foreignAsset("FQ")))
@@ -290,7 +290,7 @@ class FullStackIntegrationTest {
     fun download_only_imports_foreign_and_reads_in_sync_through_a_zero_total() = worldTest {
         val scope = CoroutineScope(coroutineContext + Job())
         try {
-            val w = World()
+            val w = World(this)
             w.provision("E", direction = Direction.DownloadOnly)
             w.addOwnAsset("A") // an un-uploaded own photo remains in the gallery
             w.addForeignDevice("DEV-F", "E", listOf(World.foreignAsset("FQ")))
@@ -330,7 +330,7 @@ class FullStackIntegrationTest {
         // (`changes/archive/2026-07-07-add-join-direction-mode`) restated as a test, and it holds only where
         // the OS is the sole invoker. On the app-driven tier (iOS 18–26.0) the APP invokes the cycle —
         // foreground entry, the heartbeat, a silent push — and every one of those reaches exactly this call.
-        val w = World()
+        val w = World(this)
         w.provision("E", direction = Direction.DownloadOnly)
         w.addOwnAsset("A")
 
@@ -359,7 +359,7 @@ class FullStackIntegrationTest {
     fun leaving_flips_the_screen_before_the_backend_delete_completes() = worldTest {
         val scope = CoroutineScope(coroutineContext + Job())
         try {
-            val w = World()
+            val w = World(this)
             w.provision("E")
 
             // The REAL leave use-case, with the backend DELETE gated so it never completes — the flip

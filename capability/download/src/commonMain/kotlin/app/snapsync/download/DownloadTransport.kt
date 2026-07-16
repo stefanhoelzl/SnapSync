@@ -9,6 +9,22 @@ interface DownloadTask {
 }
 
 /**
+ * What a finished transfer turned out to be — the facts [DownloadTransportHost.accepts] judges it on
+ * (capability `photo-download`). Data only: the platform edge reads these off its response object, and
+ * nothing platform-shaped crosses the seam.
+ *
+ * @param statusCode the HTTP status, or `null` if the response carried none (should be unreachable —
+ *   transfers are restricted to `http`/`https` — and is treated as unknown, not bad).
+ * @param expectedBytes the response's declared length, or a negative value if it declared none.
+ * @param receivedBytes the length actually delivered.
+ */
+data class TransferOutcome(
+    val statusCode: Int?,
+    val expectedBytes: Long,
+    val receivedBytes: Long,
+)
+
+/**
  * The owner a [DownloadTransport] reports back to. Every call carries the opaque `description` the owner
  * tagged the transfer with at [DownloadTransport.start] — which is how a completion delivered in a *later
  * process* (a background relaunch) is re-attributed to its asset with no in-memory state to consult.
@@ -18,6 +34,18 @@ interface DownloadTask {
  * from the description alone.
  */
 interface DownloadTransportHost {
+    /**
+     * May [description]'s bytes be staged, given how the transfer turned out? Asked **before** the bytes
+     * are moved, because staging is what makes them the store's truth: a rejected body that reached
+     * staging would be imported, fail, and be retried forever against the same file — the download is
+     * never re-run once a resource is recorded as staged (capability `photo-download`).
+     *
+     * The judgement lives on this side of the seam so it is covered by `commonTest`; the transport only
+     * reports the facts. Answering `false` leaves the transfer's bytes untouched, so the resource stays
+     * un-staged and the next reconcile re-downloads it.
+     */
+    fun accepts(description: String, outcome: TransferOutcome): Boolean
+
     /** Where [description]'s finished bytes must be moved; `null` if the description is unattributable. */
     fun destinationFor(description: String): String?
 

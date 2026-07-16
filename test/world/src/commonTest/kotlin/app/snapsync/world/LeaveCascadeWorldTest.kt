@@ -25,7 +25,7 @@ class LeaveCascadeWorldTest {
 
     @Test
     fun leave_with_another_member_departs_the_device_but_keeps_the_event_and_union() = worldTest {
-        val w = World()
+        val w = World(this)
         val e = "E"
         w.provision(e)
         w.ownUpload(e, "A")
@@ -46,7 +46,7 @@ class LeaveCascadeWorldTest {
 
     @Test
     fun last_active_member_leaving_reaps_the_event_and_gcs_its_orphaned_bytes() = worldTest {
-        val w = World()
+        val w = World(this)
         val e = "E"
         w.provision(e)
         w.ownUpload(e, "A")
@@ -61,7 +61,7 @@ class LeaveCascadeWorldTest {
 
     @Test
     fun a_device_still_in_another_event_keeps_its_bytes_after_a_reap() = worldTest {
-        val w = World()
+        val w = World(this)
         val e = "E"
         val f = "F"
         val x = "DEV-X"
@@ -80,7 +80,7 @@ class LeaveCascadeWorldTest {
 
     @Test
     fun rejoin_after_a_non_reap_leave_reconciles_without_re_uploading() = worldTest {
-        val w = World()
+        val w = World(this)
         val e = "E"
         w.provision(e)
         w.ownUpload(e, "A")

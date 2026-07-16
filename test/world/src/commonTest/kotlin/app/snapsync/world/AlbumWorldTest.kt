@@ -13,7 +13,7 @@ class AlbumWorldTest {
 
     @Test
     fun completed_uploads_are_added_to_the_album_when_opted_in() = worldTest {
-        val w = World()
+        val w = World(this)
         w.provision("E", name = "Party", saveToAlbum = true)
         // The app is the sole creator; the world stands in for that by ensuring the album up front.
         val albumId = w.albumCoordinator.ensureAlbum("E", "Party")!!
@@ -31,7 +31,7 @@ class AlbumWorldTest {
 
     @Test
     fun no_album_placement_when_opted_out() = worldTest {
-        val w = World()
+        val w = World(this)
         w.provision("E", name = "Party", saveToAlbum = false)
         w.albumCoordinator.ensureAlbum("E", "Party") // even if an album existed, opt-out places nothing
         w.addOwnAsset("A")
@@ -45,7 +45,7 @@ class AlbumWorldTest {
 
     @Test
     fun reprovisioning_reuses_the_same_album() = worldTest {
-        val w = World()
+        val w = World(this)
         w.provision("E", name = "Party", saveToAlbum = true)
         val first = w.albumCoordinator.ensureAlbum("E", "Party")!!
         // A second ensure (e.g. a re-join with the box checked) reuses the stored album, no duplicate.

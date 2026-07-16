@@ -14,7 +14,7 @@ class UploadCycleWorldTest {
 
     @Test
     fun complete_deposits_object_and_ledger_records_completed() = worldTest {
-        val w = World()
+        val w = World(this)
         w.provision("E")
         w.addOwnAsset("A") // key A-primary.jpg
         assertEquals(CycleResult.COMPLETED, w.runUploadCycle())
@@ -29,7 +29,7 @@ class UploadCycleWorldTest {
 
     @Test
     fun fail_drives_real_retry_with_incremented_attempt() = worldTest {
-        val w = World()
+        val w = World(this)
         w.provision("E")
         w.addOwnAsset("A")
         w.runUploadCycle() // REQUESTED, attempt 0
@@ -43,7 +43,7 @@ class UploadCycleWorldTest {
 
     @Test
     fun job_limit_defers_the_cycle_without_advancing() = worldTest {
-        val w = World()
+        val w = World(this)
         w.provision("E")
         w.addOwnAsset("A")
         w.addOwnAsset("B")
@@ -54,7 +54,7 @@ class UploadCycleWorldTest {
 
     @Test
     fun full_enumeration_reconciles_removed_asset() = worldTest {
-        val w = World()
+        val w = World(this)
         w.provision("E")
         w.addOwnAsset("A")
         w.runUploadCycle()

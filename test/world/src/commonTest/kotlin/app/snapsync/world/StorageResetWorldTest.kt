@@ -21,7 +21,7 @@ class StorageResetWorldTest {
 
     @Test
     fun storage_reset_then_new_event_re_uploads_everything() = worldTest {
-        val w = World()
+        val w = World(this)
         w.provision("E1")
         w.addOwnAsset("A") // key A-primary.jpg
         w.backUpAndAck("A-primary.jpg")

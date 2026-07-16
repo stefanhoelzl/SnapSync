@@ -16,7 +16,7 @@ class LeaveWorldTest {
 
     @Test
     fun leave_keeps_imported_photo_and_clears_the_join() = worldTest {
-        val w = World()
+        val w = World(this)
         val eventId = "E"
         w.provision(eventId)
         w.addForeignDevice("DEV-FOREIGN", eventId, listOf(World.foreignAsset("FQ")))
@@ -38,7 +38,7 @@ class LeaveWorldTest {
 
     @Test
     fun reprovision_after_leave_still_suppresses_the_import() = worldTest {
-        val w = World()
+        val w = World(this)
         val eventId = "E"
         w.provision(eventId)
         w.addForeignDevice("DEV-FOREIGN", eventId, listOf(World.foreignAsset("FQ")))
