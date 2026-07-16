@@ -6,7 +6,7 @@ import kotlin.test.assertEquals
 import kotlin.test.assertIs
 
 /**
- * *Unreadable is not absent* (capability `deeplink-config`). The extension takes "no config" to mean
+ * *Unreadable is not absent* (capability `event-link`). The extension takes "no config" to mean
  * **this device left the event** and clears its `joinedEventId` marker — so conflating the two turned
  * every locked-device wake into a false leave.
  */

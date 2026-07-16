@@ -14,12 +14,24 @@ MARKETING_VERSION = 0.1.0
 // Apple Team ID — drives DEVELOPMENT_TEAM for signed device/TestFlight builds.
 // Not a secret (visible in any shipped IPA); the simulator gate ignores it (CODE_SIGNING_ALLOWED=NO).
 TEAM_ID = E9Z8BADH58
-// Entitlements (path relative to SRCROOT = iosApp/): keychain-sharing (deeplink-config) AND the App
-// Group group.app.snapsync (the background-upload extension's shared ledger container). Keychain
-// groups need no portal registration; the App Group DOES — it must be registered in the Developer
-// portal and enabled on the app.snapsync App ID, or signed device/TestFlight builds fail to
-// provision (see the ios-background-upload change, task 2.x). The simulator gate ignores signing.
+// Entitlements (path relative to SRCROOT = iosApp/): keychain-sharing (event-link), the App
+// Group group.app.snapsync (the background-upload extension's shared ledger container), and the
+// associated domain for the event link (below). Keychain groups need no portal registration; the App
+// Group and Associated Domains DO — each must be registered in the Developer portal and enabled on the
+// app.snapsync App ID, or signed device/TestFlight builds fail to provision (see the
+// ios-background-upload change, task 2.x). The simulator gate ignores signing.
 CODE_SIGN_ENTITLEMENTS = iosApp/iosApp.entitlements
+// The event link's associated domain (capability `event-link`), consumed by the app's
+// com.apple.developer.associated-domains entitlement. The host MUST match `snapsync.domain` in
+// gradle.properties (which generates the app's LINK_ORIGIN) and the AASA the backend serves from its
+// own constant — nothing in the build can reach `backend/`, so a :test:architecture guard asserts all
+// of them agree. Drift is SILENT: iOS simply declines to match the link and every invite opens Safari,
+// which looks exactly like a recipient who never installed the app.
+// Plain `applinks:` deliberately — no `?mode=developer` dev/prod split (unlike APS_ENVIRONMENT below):
+// Apple's cached copy is directly readable at
+// https://app-site-association.cdn-apple.com/a/v1/<domain>, so CDN staleness is one curl away from
+// being diagnosed rather than an invisible multi-hour wait.
+ASSOCIATED_DOMAIN = applinks:snapsync.stho.net
 // The compile-time upload host (PhotoKit forces BackgroundUploadURLBase to be baked, not runtime).
 // This is the SINGLE SOURCE of the deployed device-facing host: `snapsync.stho.net`, a custom domain
 // WE control via Bunny DNS, CNAME'd to the bunny pull zone fronting the Edge Script. Because we own the

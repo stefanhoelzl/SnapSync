@@ -20,10 +20,9 @@ Decision record: `changes/archive/2026-07-08-add-event-album`.
 
 ## Requirements
 ### Requirement: Opt-in album mirroring per membership
-
 The system SHALL mirror an event's synced photos into a single PhotoKit album on the device — titled
 after the event's (non-null) `name` — when that membership's persisted `EventConfig.saveToAlbum` is
-`true` (capability `deeplink-config`). The set placed into the album SHALL be **every** photo the membership
+`true` (capability `event-link`). The set placed into the album SHALL be **every** photo the membership
 syncs in its participation direction: the **foreign photos it downloads** and/or the **own photos it
 uploads** (capability `join-event` direction). When `saveToAlbum` is `false` (the default) the system
 SHALL create no album and place no photos. The choice is **fixed for the membership** — there is no
@@ -141,4 +140,3 @@ app or extension shells.
 #### Scenario: Placement is asserted without PhotoKit
 - **WHEN** an integration test runs the real download and upload flows over `:test:world` with a fake `AlbumManager`
 - **THEN** it can assert the exact set of asset identifiers added to the event album and that a rejoin reused the same album identifier
-

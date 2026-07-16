@@ -6,8 +6,8 @@ import app.snapsync.config.ConfigStore
 import app.snapsync.config.Direction
 import app.snapsync.config.EventConfig
 import app.snapsync.config.EventLinkPayload
-import app.snapsync.config.decodeConfigUrl
-import app.snapsync.config.encodeConfigUrl
+import app.snapsync.config.decodeEventUrl
+import app.snapsync.config.encodeEventUrl
 import app.snapsync.eventcreation.CreateEvent
 import app.snapsync.eventcreation.CreateOutcome
 import app.snapsync.eventcreation.CreationFailureReason
@@ -630,7 +630,7 @@ class StatusContainerHostTest {
             loadJoinDetails = { JoinLoad.Found("Anna's Birthday", "2026-07-06T14:32:11Z") },
         ).test(this) {
             runOnCreate()
-            containerHost.onOpenUrl(encodeConfigUrl(EventLinkPayload(EVENT_ID)))
+            containerHost.onOpenUrl(encodeEventUrl(EventLinkPayload(EVENT_ID)))
             expectState(UiState.JoiningEvent(EVENT_ID, JoinPhase.Ready("Anna's Birthday", "2026-07-06T14:32:11Z")))
             cancelAndIgnoreRemainingItems()
         }
@@ -648,7 +648,7 @@ class StatusContainerHostTest {
             loadJoinDetails = { JoinLoad.Found("Anna's Birthday", "2026-07-04T18:00:00Z") },
         ).test(this) {
             runOnCreate()
-            containerHost.onOpenUrl(encodeConfigUrl(EventLinkPayload(EVENT_ID)))
+            containerHost.onOpenUrl(encodeEventUrl(EventLinkPayload(EVENT_ID)))
             // Note it is NOT NOW_CUTOFF (2026-07-09): the event's own start wins.
             expectState(
                 UiState.JoiningEvent(EVENT_ID, JoinPhase.Ready("Anna's Birthday", "2026-07-04T18:00:00Z")),
@@ -672,7 +672,7 @@ class StatusContainerHostTest {
             },
         ).test(this) {
             runOnCreate()
-            containerHost.onOpenUrl(encodeConfigUrl(EventLinkPayload(EVENT_ID, autoJoin = true)))
+            containerHost.onOpenUrl(encodeEventUrl(EventLinkPayload(EVENT_ID, autoJoin = true)))
             expectState(joinedLoading)
             cancelAndIgnoreRemainingItems()
         }
@@ -681,7 +681,7 @@ class StatusContainerHostTest {
 
     @Test
     fun `a hostile autoJoin deeplink cutoff reaches commitJoin raw so the use-case can clamp it`() = runTest {
-        // `minPhotoDate` is decoded from ANY `snapsync://` URL, so a QR carrying `autoJoin=true` + a
+        // `minPhotoDate` is decoded from ANY event link, so a QR carrying `autoJoin=true` + a
         // distant-past cutoff would auto-confirm a join at near-whole-library scope WITHOUT A TAP. The
         // container must NOT clamp it here and must NOT drop it: it passes the raw value across the seam,
         // together with the event's `startsAt`, and `JoinEvent` applies `max(chosen, startsAt)` — the one
@@ -702,7 +702,7 @@ class StatusContainerHostTest {
         ).test(this) {
             runOnCreate()
             containerHost.onOpenUrl(
-                encodeConfigUrl(
+                encodeEventUrl(
                     EventLinkPayload(EVENT_ID, autoJoin = true, minPhotoDate = "2001-01-01T00:00:00Z"),
                 ),
             )
@@ -727,7 +727,7 @@ class StatusContainerHostTest {
         ).test(this) {
             runOnCreate()
             containerHost.onOpenUrl(
-                encodeConfigUrl(EventLinkPayload(EVENT_ID, autoJoin = true, minPhotoDate = "2026-05-05T05:05:05Z")),
+                encodeEventUrl(EventLinkPayload(EVENT_ID, autoJoin = true, minPhotoDate = "2026-05-05T05:05:05Z")),
             )
             expectState(joinedLoading)
             cancelAndIgnoreRemainingItems()
@@ -746,7 +746,7 @@ class StatusContainerHostTest {
             commitJoin = { id, name, _, _, _, _ -> enrolled += id; configFake.save(EventConfig(id, name, CUTOFF)); true },
         ).test(this) {
             runOnCreate()
-            containerHost.onOpenUrl(encodeConfigUrl(EventLinkPayload(EVENT_ID)))
+            containerHost.onOpenUrl(encodeEventUrl(EventLinkPayload(EVENT_ID)))
             expectState(UiState.JoiningEvent(EVENT_ID, JoinPhase.Ready("Anna's Birthday", CUTOFF)))
             containerHost.onConfirmJoin(CUTOFF, Direction.Both, false)
             expectState(joinedLoading) // commit saved config -> present + granted + Loading snapshot
@@ -765,7 +765,7 @@ class StatusContainerHostTest {
             commitJoin = { _, _, _, _, _, _ -> commits++; true },
         ).test(this) {
             runOnCreate()
-            containerHost.onOpenUrl(encodeConfigUrl(EventLinkPayload(EVENT_ID)))
+            containerHost.onOpenUrl(encodeEventUrl(EventLinkPayload(EVENT_ID)))
             expectState(UiState.JoiningEvent(EVENT_ID, JoinPhase.NotFound))
             containerHost.onConfirmJoin(CUTOFF, Direction.Both, false) // inert when not Ready
             containerHost.onCancelJoin()
@@ -784,7 +784,7 @@ class StatusContainerHostTest {
             loadJoinDetails = { if (attempt++ == 0) JoinLoad.Failed else JoinLoad.Found("Anna's Birthday", CUTOFF) },
         ).test(this) {
             runOnCreate()
-            containerHost.onOpenUrl(encodeConfigUrl(EventLinkPayload(EVENT_ID)))
+            containerHost.onOpenUrl(encodeEventUrl(EventLinkPayload(EVENT_ID)))
             expectState(UiState.JoiningEvent(EVENT_ID, JoinPhase.LoadFailed))
             containerHost.onRetryLoad()
             expectState(UiState.JoiningEvent(EVENT_ID, JoinPhase.Ready("Anna's Birthday", CUTOFF)))
@@ -801,7 +801,7 @@ class StatusContainerHostTest {
             commitJoin = { _, _, _, _, _, _ -> false },
         ).test(this) {
             runOnCreate()
-            containerHost.onOpenUrl(encodeConfigUrl(EventLinkPayload(EVENT_ID)))
+            containerHost.onOpenUrl(encodeEventUrl(EventLinkPayload(EVENT_ID)))
             expectState(UiState.JoiningEvent(EVENT_ID, JoinPhase.Ready("Anna's Birthday", CUTOFF)))
             containerHost.onConfirmJoin(CUTOFF, Direction.Both, false)
             expectState(UiState.JoiningEvent(EVENT_ID, JoinPhase.CommitFailed("Anna's Birthday", CUTOFF)))
@@ -818,7 +818,7 @@ class StatusContainerHostTest {
             loadJoinDetails = { loads++; JoinLoad.Found("x", CUTOFF) },
         ).test(this) {
             runOnCreate()
-            containerHost.onOpenUrl(encodeConfigUrl(EventLinkPayload(EVENT_ID)))
+            containerHost.onOpenUrl(encodeEventUrl(EventLinkPayload(EVENT_ID)))
             expectNoItems()
             cancelAndIgnoreRemainingItems()
         }
@@ -838,7 +838,7 @@ class StatusContainerHostTest {
             leave = { order += "leave"; configFake.clear() },
         ).test(this) {
             runOnCreate()
-            containerHost.onOpenUrl(encodeConfigUrl(EventLinkPayload(other)))
+            containerHost.onOpenUrl(encodeEventUrl(EventLinkPayload(other)))
             expectState(UiState.Joined(SyncHealth.Loading, PendingSwitch(other, JoinPhase.Ready("New Event", CUTOFF))))
             containerHost.onConfirmSwitch(CUTOFF, Direction.Both)
             // leave clears config + join saves the new one; conflated to the settled joined layer.
@@ -860,7 +860,7 @@ class StatusContainerHostTest {
             commitJoin = { id, name, _, _, _, _ -> committed = id; configFake.save(EventConfig(id, name, CUTOFF)); true },
         ).test(this) {
             runOnCreate()
-            containerHost.onOpenUrl(encodeConfigUrl(EventLinkPayload(EVENT_ID, autoJoin = true)))
+            containerHost.onOpenUrl(encodeEventUrl(EventLinkPayload(EVENT_ID, autoJoin = true)))
             // No JoiningEvent frame — auto-confirm goes straight from create to joined.
             expectState(joinedLoading)
             cancelAndIgnoreRemainingItems()
@@ -881,7 +881,7 @@ class StatusContainerHostTest {
             },
         ).test(this) {
             runOnCreate()
-            containerHost.onOpenUrl(encodeConfigUrl(EventLinkPayload(EVENT_ID)))
+            containerHost.onOpenUrl(encodeEventUrl(EventLinkPayload(EVENT_ID)))
             expectState(UiState.JoiningEvent(EVENT_ID, JoinPhase.Ready("Anna's Birthday", CUTOFF)))
             containerHost.onConfirmJoin(CUTOFF, Direction.DownloadOnly, false)
             expectState(joinedLoading)
@@ -902,7 +902,7 @@ class StatusContainerHostTest {
             commitJoin = { _, _, _, _, direction, _ -> committedDirection = direction; configFake.save(EventConfig(EVENT_ID, minPhotoDate = CUTOFF)); true },
         ).test(this) {
             runOnCreate()
-            containerHost.onOpenUrl(encodeConfigUrl(EventLinkPayload(EVENT_ID, autoJoin = true)))
+            containerHost.onOpenUrl(encodeEventUrl(EventLinkPayload(EVENT_ID, autoJoin = true)))
             expectState(joinedLoading)
             cancelAndIgnoreRemainingItems()
         }
@@ -921,7 +921,7 @@ class StatusContainerHostTest {
         ).test(this) {
             runOnCreate()
             containerHost.onOpenUrl(
-                encodeConfigUrl(EventLinkPayload(EVENT_ID, autoJoin = true, direction = "download")),
+                encodeEventUrl(EventLinkPayload(EVENT_ID, autoJoin = true, direction = "download")),
             )
             expectState(joinedLoading)
             cancelAndIgnoreRemainingItems()
@@ -987,8 +987,8 @@ class StatusContainerHostTest {
             FakeSyncStatusSource(), FakePermissionSource(), SpyRequester(), configFake, configFake,
             backgroundScope,
         )
-        assertEquals(encodeConfigUrl(EventLinkPayload(EVENT_ID)), host.inviteUrl.value)
-        val decoded = decodeConfigUrl(host.inviteUrl.value!!)
+        assertEquals(encodeEventUrl(EventLinkPayload(EVENT_ID)), host.inviteUrl.value)
+        val decoded = decodeEventUrl(host.inviteUrl.value!!)
         assertTrue(decoded is ConfigDecodeResult.Success)
         assertEquals(EVENT_ID, decoded.payload.eventId)
     }
@@ -1026,7 +1026,7 @@ class StatusContainerHostTest {
         }
         advanceUntilIdle()
 
-        assertEquals(listOf(encodeConfigUrl(EventLinkPayload(EVENT_ID))), shared)
+        assertEquals(listOf(encodeEventUrl(EventLinkPayload(EVENT_ID))), shared)
     }
 
     @Test
@@ -1090,7 +1090,7 @@ class StatusContainerHostTest {
         val requester = SpyRequester()
         firstJoinGate(PermissionStatus.NOT_DETERMINED, requester).test(this) {
             runOnCreate()
-            containerHost.onOpenUrl(encodeConfigUrl(EventLinkPayload(EVENT_ID)))
+            containerHost.onOpenUrl(encodeEventUrl(EventLinkPayload(EVENT_ID)))
             expectState(
                 UiState.JoiningEvent(EVENT_ID, JoinPhase.ExplainAccess("My Party", "2026-07-06T00:00:00Z")),
             )
@@ -1105,7 +1105,7 @@ class StatusContainerHostTest {
         val requester = SpyRequester()
         firstJoinGate(PermissionStatus.NOT_DETERMINED, requester).test(this) {
             runOnCreate()
-            containerHost.onOpenUrl(encodeConfigUrl(EventLinkPayload(EVENT_ID)))
+            containerHost.onOpenUrl(encodeEventUrl(EventLinkPayload(EVENT_ID)))
             expectState(
                 UiState.JoiningEvent(EVENT_ID, JoinPhase.ExplainAccess("My Party", "2026-07-06T00:00:00Z")),
             )
@@ -1124,7 +1124,7 @@ class StatusContainerHostTest {
         val requester = SpyRequester()
         firstJoinGate(PermissionStatus.GRANTED, requester).test(this) {
             runOnCreate()
-            containerHost.onOpenUrl(encodeConfigUrl(EventLinkPayload(EVENT_ID)))
+            containerHost.onOpenUrl(encodeEventUrl(EventLinkPayload(EVENT_ID)))
             expectState(UiState.JoiningEvent(EVENT_ID, JoinPhase.Ready("My Party", "2026-07-06T00:00:00Z")))
             cancelAndIgnoreRemainingItems()
         }
@@ -1141,7 +1141,7 @@ class StatusContainerHostTest {
         val requester = SpyRequester()
         firstJoinGate(PermissionStatus.DENIED, requester).test(this) {
             runOnCreate()
-            containerHost.onOpenUrl(encodeConfigUrl(EventLinkPayload(EVENT_ID)))
+            containerHost.onOpenUrl(encodeEventUrl(EventLinkPayload(EVENT_ID)))
             expectState(UiState.JoiningEvent(EVENT_ID, JoinPhase.Ready("My Party", "2026-07-06T00:00:00Z")))
             cancelAndIgnoreRemainingItems()
         }
@@ -1162,7 +1162,7 @@ class StatusContainerHostTest {
             configFake = FakeConfig(SAMPLE_CONFIG), // already in an event → a switch, not a first join
         ).test(this) {
             runOnCreate()
-            containerHost.onOpenUrl(encodeConfigUrl(EventLinkPayload(other)))
+            containerHost.onOpenUrl(encodeEventUrl(EventLinkPayload(other)))
             expectState(
                 UiState.Joined(
                     SyncHealth.NeedsAccess(PermissionStatus.NOT_DETERMINED),
@@ -1184,7 +1184,7 @@ class StatusContainerHostTest {
             commitJoin = { _, _, _, _, _, _ -> commits++; true },
         ).test(this) {
             runOnCreate()
-            containerHost.onOpenUrl(encodeConfigUrl(EventLinkPayload(EVENT_ID)))
+            containerHost.onOpenUrl(encodeEventUrl(EventLinkPayload(EVENT_ID)))
             expectState(
                 UiState.JoiningEvent(EVENT_ID, JoinPhase.ExplainAccess("My Party", "2026-07-06T00:00:00Z")),
             )

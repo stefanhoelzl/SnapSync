@@ -6,8 +6,8 @@ import app.snapsync.config.ConfigStore
 import app.snapsync.config.Direction
 import app.snapsync.config.EventConfig
 import app.snapsync.config.EventLinkPayload
-import app.snapsync.config.decodeConfigUrl
-import app.snapsync.config.encodeConfigUrl
+import app.snapsync.config.decodeEventUrl
+import app.snapsync.config.encodeEventUrl
 import app.snapsync.eventcreation.CreationFailureReason
 import app.snapsync.eventcreation.CreationStatus
 import app.snapsync.eventcreation.CreationStatusSource
@@ -126,7 +126,7 @@ class StatusContainerHost(
     // `DeviceAttestation.ensureFresh()`.
     attestedSource: AttestedSource = AlwaysAttested,
     // Event-driven overlay for an in-progress join/switch confirmation (capability `join-event`). Not
-    // derived from the level-triggered sources — the gate sets it on a decoded interactive deeplink and
+    // derived from the level-triggered sources — the gate sets it on a decoded interactive event link and
     // clears it on commit/cancel, folded into the reduction as a sixth flow. Injected (defaulting to a
     // fresh internal instance) so the forge harness can forge any `JoinPhase` by writing this cell
     // directly; production and the full-stack harness accept the default and let the gate drive it.
@@ -213,8 +213,8 @@ class StatusContainerHost(
         }
 
     /**
-     * The event's invite deeplink, derived from the persisted config's `eventId` via
-     * `encodeConfigUrl(EventLinkPayload(eventId))` — the inverse of the decode run on a scanned QR.
+     * The event's invite link, derived from the persisted config's `eventId` via
+     * `encodeEventUrl(EventLinkPayload(eventId))` — the inverse of the decode run on a scanned QR.
      * One source feeding both the rendered QR and the share action so the two can never drift; `null`
      * whenever no event is configured. Deterministic — the same URL a scanner of the event's QR would
      * receive.
@@ -262,7 +262,7 @@ class StatusContainerHost(
     fun onLeaveEvent() = intent { leave() }
 
     /**
-     * Share the event's invite deeplink (the joined-layer share action). Hands the current invite URL
+     * Share the event's invite link (the joined-layer share action). Hands the current invite URL
      * to the injected platform share; fire-and-forget — no result is observed, and `UiState` is
      * unaffected (the system share UI is presented over the screen, not part of it). Inert when no
      * event is configured (no URL) or no real share is bound (the no-op default).
@@ -270,14 +270,14 @@ class StatusContainerHost(
     fun onShareInvite() = intent { inviteUrl.value?.let { share(it) } }
 
     /**
-     * A deeplink arrived (forwarded raw from the platform). Decode it with the shared codec; an
+     * An event link arrived (forwarded raw from the platform). Decode it with the shared codec; an
      * invalid link flashes the transient error without touching state. A valid link opens the **join
      * gate** (capability `join-event`): `autoJoin` auto-confirms headlessly, otherwise a first join
      * opens the full-screen confirmation and a different event while joined opens a switch
      * confirmation. Re-scanning the already-joined event is a no-op (never re-enrolls).
      */
     fun onOpenUrl(raw: String) = intent {
-        when (val result = decodeConfigUrl(raw)) {
+        when (val result = decodeEventUrl(raw)) {
             is ConfigDecodeResult.Failure -> postSideEffect(SetupEffect.InvalidConfigLink)
             is ConfigDecodeResult.Success -> {
                 val eventId = result.payload.eventId
@@ -463,21 +463,21 @@ class StatusContainerHost(
         }
         val current = configSource.config.value
         if (current != null && current.eventId != eventId) leave()
-        // The auto-fired confirm uses the event's `startsAt` as the cutoff, unless the deeplink supplied
+        // The auto-fired confirm uses the event's `startsAt` as the cutoff, unless the event link supplied
         // an explicit dev/test one (capability `photo-selection-policy`). Never an absent cutoff — the headless
         // path has no surface to notice one.
         //
         // An explicit cutoff is passed through RAW and clamped on the far side of `commitJoin`, inside
         // `JoinEvent` — it gets no exemption from the floor, and that is the whole point. `minPhotoDate`
-        // is decoded from ANY `snapsync://` URL, so an unclamped override would let a hostile QR carrying
+        // is decoded from ANY event link, so an unclamped override would let a hostile QR carrying
         // `autoJoin=true` + a distant-past cutoff auto-confirm a join at near-whole-library scope WITHOUT
         // A TAP. (Cost, accepted: the dev loop can no longer force a cutoff below the event's start — it
         // creates the event with an early `startsAt` instead, which the unbounded picker permits.)
         val cutoff = explicitCutoff ?: load.startsAt
-        // The direction defaults to Both, unless the deeplink supplied an explicit dev/test override
+        // The direction defaults to Both, unless the event link supplied an explicit dev/test override
         // (`both`/`upload`/`download`); an unrecognized token was already rejected by the decoder.
         val direction = explicitDirection?.let(Direction::fromWire) ?: Direction.Both
-        // The album choice defaults to off, unless the deeplink supplied an explicit dev/test override
+        // The album choice defaults to off, unless the event link supplied an explicit dev/test override
         // (capability `event-album`).
         val saveToAlbum = explicitSaveToAlbum ?: false
         if (!commitJoin(eventId, load.name, load.startsAt, cutoff, direction, saveToAlbum)) {
@@ -583,8 +583,8 @@ private fun syncHealth(progress: SyncProgress, download: DownloadProgress, direc
 private fun arrowOf(shown: Boolean, pulsing: Boolean): Arrow =
     if (!shown) Arrow.HIDDEN else if (pulsing) Arrow.PULSING else Arrow.STATIC
 
-// Derive the invite deeplink from the persisted config's eventId (the wire payload is eventId-only).
-private fun EventConfig.inviteUrl(): String = encodeConfigUrl(EventLinkPayload(eventId))
+// Derive the invite link from the persisted config's eventId (the wire payload is eventId-only).
+private fun EventConfig.inviteUrl(): String = encodeEventUrl(EventLinkPayload(eventId))
 
 // The inline create-error copy, formatted in presentation (UiState carries final display strings).
 private fun CreationFailureReason.message(): String = when (this) {

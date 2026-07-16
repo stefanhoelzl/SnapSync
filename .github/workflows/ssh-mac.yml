@@ -35,10 +35,17 @@
 # just the app id, team, device UDIDs, and public certs, so it is safe as a secret). We install them and
 # import the dev cert; in-session `xcodebuild -exportArchive` (automatic signing, no
 # -allowProvisioningUpdates) reuses them. The Admin ASC key that ios.yml uses is never materialized here.
-# REFRESH the secret when the profiles expire (~1yr; baked ones valid to 2027-07-01) or when you register
-# a new device: dev-export any build (minting fresh profiles with -allowProvisioningUpdates), then tar
-# BOTH the app's Payload/*.app/embedded.mobileprovision and the extension's
-# PlugIns|Extensions/*.appex/embedded.mobileprovision, and `gh secret set DEV_PROVISIONING_PROFILE_BASE64`.
+# REFRESH the secret when the profiles expire (~1yr; baked ones valid to 2027-07-16 app / 2027-07-05 ext),
+# when you register a new device, OR when you enable a bundle-id capability — that last one silently
+# INVALIDATES the affected profile (2026-07-16: enabling Associated Domains flipped the app's profile to
+# INVALID; the extension's, whose bundle id gained nothing, stayed ACTIVE). A stale profile does not fail
+# loudly: the re-sign resolves entitlements out of the profile, so the IPA installs and launches and just
+# lacks the capability.
+# Refreshing needs NO Mac and NO build — mint/download both over the ASC API from Linux (`profiles
+# delete` the invalid one, `profiles create --save`, `profiles get --save`), then tar them FLAT (the step
+# below globs $WORK/*.mobileprovision and installs by embedded UUID, so filenames are free but nesting
+# breaks it) and `gh secret set DEV_PROVISIONING_PROFILE_BASE64`. Full runbook + the `@env:` credential
+# bridge: CLAUDE.md, *Headless macOS build loop* and *App Store Connect via API*.
 #
 # Lifecycle: the interactive step BLOCKS on a stop sentinel (`/tmp/ssh-mac-stop`, `ssh ... touch` it to
 # end) OR `stop_after` minutes, whichever first; `timeout-minutes` on the job is the hard backstop.

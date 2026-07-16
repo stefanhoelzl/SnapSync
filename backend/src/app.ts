@@ -664,13 +664,19 @@ export function createApp({ fetch: fetchImpl, config, now = Date.now }: Deps): H
   app.use("*", async (c, next) => {
     const path = new URL(c.req.url).pathname;
     const method = c.req.method;
-    // Ungated (closed list): OPTIONS, the `/attest/*` token issuers, and the public marketing page at
-    // EXACTLY `/` (capability `marketing-site`). The marketing exception is exact-path and GET/HEAD-only —
-    // never a prefix, never a mutating method — so no gated route can be reached through it.
+    // Ungated (closed list): OPTIONS, the `/attest/*` token issuers, the public marketing page at
+    // EXACTLY `/` (capability `marketing-site`), and the event link's two public routes (capability
+    // `event-link`) — the AASA, which Apple's CDN and the device fetch with no Authorization header and
+    // cannot be made to send one, and `/join`, whose entire audience is people who have no app and so no
+    // attestation. Every exception is exact-path and GET/HEAD-only — never a prefix, never a mutating
+    // method — so no gated route can be reached through one. All three read no storage and carry no side
+    // effect, so serving them unauthenticated grows neither the bill nor the storage this gate protects.
+    const publicGet = path === "/" || path === "/join" ||
+      path === "/.well-known/apple-app-site-association";
     if (
       method === "OPTIONS" ||
       path.startsWith("/attest/") ||
-      ((method === "GET" || method === "HEAD") && path === "/")
+      ((method === "GET" || method === "HEAD") && publicGet)
     ) {
       return await next();
     }
@@ -692,6 +698,41 @@ export function createApp({ fetch: fetchImpl, config, now = Date.now }: Deps): H
     c.header("Content-Type", "text/html; charset=utf-8");
     return c.req.method === "HEAD" ? c.body(null) : c.body(LANDING_HTML);
   });
+
+  // The Apple App Site Association document (capability `event-link`): what makes the event link a
+  // Universal Link instead of a web page. Apple's CDN and the device fetch it unauthenticated, so the
+  // gate above admits it; it MUST be served as application/json with NO redirect.
+  //
+  // `appIDs` is `config.attestAppId` — the same `<teamId>.<bundleId>` the attestation gate gnaws on —
+  // derived, never restated, so the AASA cannot drift from the app it names. The extension is absent
+  // deliberately: it never handles URLs.
+  //
+  // The path is matched with `components` on `/join` ALONE — no query, no fragment constraint. That is
+  // deliberate on two counts. A malformed link then still opens the app and surfaces the invalid-link
+  // error rather than dead-ending invisibly in a browser (a visible failure beats a silent one). And it
+  // sidesteps the documented iOS bug where a `?` nested inside a `#` cannot be matched — we ask for
+  // neither. Narrow matching also keeps `/`, `/events/:id`, and `/attest/*` opening in a browser; a
+  // broad `/*` would hijack our own marketing page into the app.
+  const aasa = JSON.stringify({
+    applinks: { details: [{ appIDs: [config.attestAppId], components: [{ "/": "/join" }] }] },
+  });
+  app.on(["GET", "HEAD"], "/.well-known/apple-app-site-association", (c) => {
+    c.header("Cache-Control", PUBLIC_CACHE);
+    c.header("Content-Type", "application/json");
+    return c.req.method === "HEAD" ? c.body(null) : c.body(aasa);
+  });
+
+  // The App Store fallback (capability `event-link`): the path a browser requests when an event link is
+  // opened on a device with no app to claim it. Identical for every link and reads nothing.
+  //
+  // It does not — cannot — read the payload: that rides in the URL fragment, which a browser never
+  // transmits, so this handler sees `/join` and nothing more. That is the point, not a limitation: the
+  // eventId IS the upload capability, and keeping it out of the fragment-blind server path keeps it out
+  // of the edge's logs and cache keys too. It is also why there is no per-event landing page to render.
+  //
+  // iOS does NO deferred deep linking: someone who installs from here reaches their event by opening the
+  // original link again.
+  app.on(["GET", "HEAD"], "/join", (c) => c.redirect(config.appStoreUrl, 302));
 
   // Issue a challenge. Stateless and self-authenticating (an HMAC over its own expiry), so this writes
   // NOTHING — the one route a stranger can call cannot grow the bill this gate exists to protect.

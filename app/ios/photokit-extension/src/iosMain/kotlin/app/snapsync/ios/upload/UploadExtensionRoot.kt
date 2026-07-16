@@ -234,7 +234,7 @@ object UploadExtensionRoot {
         // refresh the extension keeps serving the event it read at construction (a stale, previously
         // joined event). This is what makes "config is sourced fresh each cycle" true.
         //
-        // THREE states, not two (capability `deeplink-config`). The OS invokes this extension when the
+        // THREE states, not two (capability `event-link`). The OS invokes this extension when the
         // device is idle — which usually means LOCKED — and a locked device could not read the Keychain
         // at all before this was fixed. That read failure arrived here as `null` = "no event configured"
         // = a LEAVE, so the reconciler below cleared the join marker on essentially every invocation,

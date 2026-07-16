@@ -172,7 +172,7 @@ fun `loadDetails surfaces found not-found and failed distinctly`() = runTest {
 
     @Test
     fun `a hostile deeplink cutoff cannot lower the membership below the event start`() = runTest {
-        // The attack this closes: `minPhotoDate` is decoded from ANY `snapsync://` URL, so a QR carrying
+        // The attack this closes: `minPhotoDate` is decoded from ANY event link, so a QR carrying
         // `autoJoin=true` + a distant-past cutoff would auto-confirm a join at near-whole-library scope
         // WITHOUT A TAP. The clamp lives in the use-case precisely so the autoJoin path cannot skip it.
         val provisioned = mutableListOf<EventConfig>()

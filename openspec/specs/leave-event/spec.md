@@ -119,14 +119,13 @@ SHALL construct unchanged, and a confirmed leave in those contexts SHALL be iner
   suspend lambda
 
 ### Requirement: Leave notifies the backend
-
 The `LeaveEvent` use-case SHALL notify the backend that this device is leaving through an injected
 `LeaveNotifier` seam that issues `DELETE /events/<eventId>/devices/<deviceId>` (implemented over the
 device's HTTP client in the main app, mirroring the `DeviceFilesSource` listing seam). The notify SHALL
 be **dispatched fire-and-forget** on the injected app-lifetime `CoroutineScope` **after** the local
 teardown — its result SHALL NOT gate, delay, or roll back the local teardown — and SHALL be invoked by
 **both** the explicit Leave action and the switch path (provisioning a different event while joined; see
-`deeplink-config`). The notifier SHALL return a `Result` and never throw into the use-case.
+`event-link`). The notifier SHALL return a `Result` and never throw into the use-case.
 
 #### Scenario: Explicit leave issues the backend DELETE
 
@@ -157,4 +156,3 @@ event (the "Joining …" surface no longer waits on it).
 
 - **WHEN** the user confirms switching to a different event while joined
 - **THEN** the departed event's `DELETE` is dispatched fire-and-forget and the new event's enroll/provision proceeds without blocking on it
-

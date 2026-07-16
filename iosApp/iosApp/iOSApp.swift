@@ -97,9 +97,11 @@ struct iOSApp: App {
     var body: some Scene {
         WindowGroup {
             ContentView()
-                // A snapsync:// config deeplink (scanned by the Camera app) opens here, cold or
-                // warm. Stay a thin pass-through: hand the raw URL string to Kotlin, which decodes,
-                // validates, and persists it. No parsing in Swift.
+                // An HTTPS event link opens here, cold or warm — matched to us by the
+                // associated-domains entitlement (capability `event-link`). Stay a thin pass-through:
+                // hand the raw URL string to Kotlin, which decodes, validates, and persists it. No
+                // parsing in Swift — and pass `absoluteString`, never a trimmed URL: the entire
+                // payload rides in the FRAGMENT, so dropping it would drop the event id.
                 .onOpenURL { url in
                     SnapSyncRoot.shared.onOpenUrl(url: url.absoluteString)
                 }

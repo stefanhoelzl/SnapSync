@@ -10,8 +10,9 @@ registration and silent-push forwarding, and the enable toggle for the backgroun
 This capability is the **platform shell only**. `:app:ios` is wiring, not logic: nothing testable lives
 here, so these requirements pin the app's structure, entry points, and OS integrations rather than any
 behavior — every decision they reach for belongs to a tested `domain`/`capability` module. It also carries the two
-developer launch-environment triggers: `SNAPSYNC_DEEPLINK`, which forwards a `snapsync://config?…` URL
-through the same path as a scanned QR to (re)provision an event; and `SNAPSYNC_FORGE_STATE`, which mounts
+developer launch-environment triggers: `SNAPSYNC_EVENT_LINK`, which forwards a
+`https://<link domain>/join#…` event link through the same path as a scanned QR to (re)provision an event;
+and `SNAPSYNC_FORGE_STATE`, which mounts
 the shared `StatusScreen` over a `StatusContainerHost` assembled from **forged sources** — rendering a live
 container, never a static `UiState` — so a marketing/App-Store screenshot of any named state can be captured
 without a backend, an attestation, or photo access. Both are dev/test affordances that are inert in
@@ -21,16 +22,20 @@ Decision record: `changes/archive/2026-06-17-ios-first-target`.
 
 ## Requirements
 ### Requirement: iOS application shell
-
 The system SHALL provide an iOS application built with Compose Multiplatform whose entry point is a
 `ComposeUIViewController` (in the `:app:ios` module) that hosts the shared `StatusScreen`. The screen
 SHALL render **live** `UiState` observed from an assembled real stack —
 `StatusContainerHost.container.stateFlow` — not a static `UiState`. The Swift entry point (`iosApp/`)
 SHALL remain a trivial pass-through that obtains the root view controller from `MainViewController()`.
-The app SHALL register the custom `snapsync` URL scheme in `Info.plist` (`CFBundleURLTypes`), and the
-Swift entry SHALL forward an incoming `snapsync://` URL — via SwiftUI `onOpenURL`, handling both
-cold-launch and warm delivery — as a **raw string** to `SnapSyncRoot.onOpenUrl(_:)`, performing no
-parsing in Swift.
+The app SHALL declare the **associated domain** `applinks:<link domain>` in `iosApp.entitlements`
+(capability `event-link`), registering it as the handler for the event link's Universal Link, and SHALL
+register **no** custom URL scheme (`CFBundleURLTypes` SHALL be absent — the `snapsync` scheme is
+retired). The Swift entry SHALL forward an incoming event-link URL — via SwiftUI `onOpenURL`, handling
+both cold-launch and warm delivery — as a **raw string** to `SnapSyncRoot.onOpenUrl(_:)`, performing no
+parsing in Swift. The forwarded string SHALL be the **complete** URL including its fragment, which
+carries the entire payload (capability `event-link`).
+
+The extension target SHALL NOT declare an associated domain: it never handles URLs.
 
 #### Scenario: Launching the app shows live status
 - **WHEN** the iOS app is launched
@@ -48,9 +53,13 @@ parsing in Swift.
   later corrects (subject to the setup gate: if config is absent the first frame is `UiState.Setup`)
 
 #### Scenario: A scanned QR opens the app and forwards the raw URL
-- **WHEN** the stock Camera app opens a `snapsync://config?…` URL (cold or warm)
-- **THEN** Swift `onOpenURL` forwards the raw URL string to `SnapSyncRoot.onOpenUrl(_:)` without
-  parsing it
+- **WHEN** the stock Camera app opens a `https://<link domain>/join#…` event link (cold or warm)
+- **THEN** iOS matches the app's associated domain, opens the app, and Swift `onOpenURL` forwards the
+  raw URL string — fragment included — to `SnapSyncRoot.onOpenUrl(_:)` without parsing it
+
+#### Scenario: The app registers no custom URL scheme
+- **WHEN** the app's `Info.plist` is inspected
+- **THEN** it declares no `CFBundleURLTypes`, so a retired `snapsync://` URL reaches nothing
 
 ### Requirement: Portrait-only orientation
 
@@ -77,7 +86,6 @@ The `:app:ios` module and its full module dependency closure SHALL compile for t
 - **THEN** the build completes without code-signing assets (no Apple Developer certificate or provisioning profile)
 
 ### Requirement: iOS live composition root
-
 The `:app:ios` module SHALL provide a composition-root singleton (`SnapSyncRoot`, `iosMain`) that
 owns an app-lifetime `CoroutineScope` (a `SupervisorJob` on the main dispatcher) and assembles the
 live stack: the **ledger-backed** `SyncStatusSource` (built from a `LedgerCountsSource`, the permission
@@ -98,7 +106,7 @@ the extension, which also owns reconciliation — see `event-rejoin-reconciliati
 the `LeaveEvent` use-case — injecting the `ConfigStore` and, as a suspend lambda, the producer disable
 (`setUploadJobExtensionEnabled(false)`) — and inject it into the `StatusContainerHost`. It SHALL bind
 the **share action** as a `share: (String) -> Unit` lambda that presents a `UIActivityViewController`
-carrying the given invite deeplink string (from the current top view controller) and inject it into the
+carrying the given invite link string (from the current top view controller) and inject it into the
 `StatusContainerHost`. The scope SHALL outlive Compose recomposition so the source collector and
 container are not torn down with the view. `MainViewController` SHALL render `host.container.stateFlow`
 and route the gate intents to `host.onRequestPermission` / `host.onOpenSettings`, the leave action to
@@ -135,9 +143,9 @@ drive the foreground signal and the liveness-observer lifecycle.
 - **THEN** `MainViewController` invokes the container intent, which calls the injected
   `PermissionRequester` — the UI never calls PhotoKit directly
 
-#### Scenario: A deeplink flows through the container
+#### Scenario: An event link flows through the container
 
-- **WHEN** `SnapSyncRoot.onOpenUrl` is called with a `snapsync://` URL
+- **WHEN** `SnapSyncRoot.onOpenUrl` is called with a `https://<link domain>/join#…` event link
 - **THEN** it forwards to the container's `onOpenUrl` intent, which decodes and (on success) saves via
   the Keychain `ConfigStore`, updating the `ConfigSource`
 
@@ -152,8 +160,8 @@ drive the foreground signal and the liveness-observer lifecycle.
 
 - **WHEN** the user activates the share action in the joined layer
 - **THEN** `MainViewController` invokes `host.onShareInvite`, which calls the injected `share` lambda
-  with the invite deeplink, and `SnapSyncRoot` presents a `UIActivityViewController` carrying that
-  deeplink — the UI never constructs UIKit directly and observes no result
+  with the invite link, and `SnapSyncRoot` presents a `UIActivityViewController` carrying that
+  link — the UI never constructs UIKit directly and observes no result
 
 ### Requirement: On-disk native ledger on iOS
 
@@ -192,21 +200,23 @@ constructs no ledger type. The enable call SHALL be idempotent-safe to repeat on
 - **THEN** it creates no upload jobs, performs no library enumeration for a seed, and constructs no ledger type
 
 ### Requirement: Developer launch-environment config trigger
-
-The iOS app SHALL read a `SNAPSYNC_DEEPLINK` variable from the process environment **once per
-process launch** and, when it is present and holds a valid `snapsync://config?…` URL, forward the raw
-URL string to `SnapSyncRoot.onOpenUrl(_:)`, which performs the authoritative decode/validate and drives
-the join gate (capability `join-event`). Because a scanned/opened deeplink now shows a confirmation
+The iOS app SHALL read a `SNAPSYNC_EVENT_LINK` variable from the process environment **once per
+process launch** and, when it is present and holds a valid `https://<link domain>/join#…` URL, forward
+the raw URL string to `SnapSyncRoot.onOpenUrl(_:)`, which performs the authoritative decode/validate and
+drives the join gate (capability `join-event`). Because an opened event link shows a confirmation
 gate rather than provisioning silently, the developer trigger's URL SHALL carry **`autoJoin = true`**
 so the gate **auto-confirms** headlessly (the headless launch path cannot tap a confirm control): the
 app fetches the event details and, on success, enrolls and provisions with no user interaction — a
 **different** eventId leaves any current event first and runs the join reconciliation; the **same**
 eventId is a no-op that neither re-enrolls nor re-resets (see `event-rejoin-reconciliation` and
 `join-event`). Provisioning SHALL NOT force a fresh whole-library upload — re-provision reconciles
-against storage (seeding already-stored photos) rather than re-uploading. A `SNAPSYNC_DEEPLINK` URL
+against storage (seeding already-stored photos) rather than re-uploading. A `SNAPSYNC_EVENT_LINK` URL
 **without** `autoJoin` SHALL open the interactive join gate (which then awaits a tap). The read SHALL
-reuse the existing `deeplink-config` decoder and the `onOpenUrl` path verbatim; it SHALL NOT introduce
+reuse the existing `event-link` decoder and the `onOpenUrl` path verbatim; it SHALL NOT introduce
 a second decoder or config-construction path, and SHALL perform no parsing in Swift.
+
+The trigger reaches the decoder **directly**, bypassing iOS's Universal Link resolution entirely — it is
+therefore a test of the decode-and-join path, not of the associated-domain wiring.
 
 The trigger SHALL be applied **at most once per process**: it SHALL NOT re-apply on Compose view or
 view-controller recreation within the same process. A subsequent **cold launch** with the variable
@@ -216,18 +226,19 @@ When the variable is **absent**, the app SHALL behave exactly as without this fe
 provisioning side effect). The trigger SHALL rely on the fact that a process-environment variable is
 only injectable via a developer launch (e.g. `pymobiledevice3 developer dvt launch --env`); launches
 from SpringBoard or TestFlight carry no such variable, so the trigger is inert in production **with
-no compile-time guard**. When the variable is present but holds an invalid or non-`snapsync://`
-value, the app SHALL produce no provisioning side effect (the existing decoder rejects it).
+no compile-time guard**. When the variable is present but holds an invalid URL, a foreign origin, or a
+retired `snapsync://` value, the app SHALL produce no provisioning side effect (the existing decoder
+rejects it).
 
 #### Scenario: Cold launch with an autoJoin variable provisions once
-- **WHEN** the app is cold-launched with `SNAPSYNC_DEEPLINK` set to a valid `snapsync://config?v=3&d=…`
-  URL carrying `autoJoin = true` for an event not currently configured
+- **WHEN** the app is cold-launched with `SNAPSYNC_EVENT_LINK` set to a valid
+  `https://<link domain>/join#v=3&d=…` URL carrying `autoJoin = true` for an event not currently configured
 - **THEN** the gate auto-confirms — the app fetches details, enrolls, and provisions that event exactly
   as a confirmed scan would, and forcing a view/view-controller recreation within that same process
   does not re-apply the trigger
 
 #### Scenario: A subsequent cold launch re-runs and reconciles
-- **WHEN** the app is launched again in a fresh process with `SNAPSYNC_DEEPLINK` still set
+- **WHEN** the app is launched again in a fresh process with `SNAPSYNC_EVENT_LINK` still set
 - **THEN** the app re-runs the gate and reconciles against storage; it does **not** force a fresh
   whole-library re-upload
 
@@ -237,14 +248,14 @@ value, the app SHALL produce no provisioning side effect (the existing decoder r
   empty-manifest enrollment is re-issued (per `join-event`)
 
 #### Scenario: Production launch is inert
-- **WHEN** the app is launched from SpringBoard or via TestFlight, with no `SNAPSYNC_DEEPLINK` in its
+- **WHEN** the app is launched from SpringBoard or via TestFlight, with no `SNAPSYNC_EVENT_LINK` in its
   environment
 - **THEN** no provisioning side effect occurs and behavior is identical to the app without this
   feature, with no compile-time flag distinguishing the build
 
 #### Scenario: Invalid environment value is rejected
-- **WHEN** the app is cold-launched with `SNAPSYNC_DEEPLINK` set to a malformed or non-`snapsync://`
-  value
+- **WHEN** the app is cold-launched with `SNAPSYNC_EVENT_LINK` set to a malformed URL, a foreign origin,
+  or a retired `snapsync://` value
 - **THEN** the existing decoder rejects it and no provisioning side effect occurs
 
 ### Requirement: Developer launch-environment forge-state trigger
@@ -398,7 +409,6 @@ silent push is observable without any use-case behavior.
   handler, with no parsing or decision in Swift
 
 ### Requirement: Background work defers while protected data is unavailable
-
 The app process SHALL consult `UIApplication.isProtectedDataAvailable` before performing background
 work that reads protected state (the Keychain-backed device id and event config). When protected data
 is **unavailable** — the device has not been unlocked since boot — the app SHALL **defer** that work
@@ -410,7 +420,7 @@ any persisted state.
 
 The upload extension has no `UIApplication` (the API is unavailable to app extensions). In the
 extension process an unavailable protected-data read SHALL instead surface as an unavailability error
-and the cycle SHALL be skipped cleanly, per capability `deeplink-config` (*An unreadable config is not
+and the cycle SHALL be skipped cleanly, per capability `event-link` (*An unreadable config is not
 an absent config*).
 
 #### Scenario: A background wake before first unlock defers rather than failing
@@ -455,4 +465,3 @@ reached its protected state — and of diagnosing it when it does not.
 - **WHEN** a Keychain read fails during background work
 - **THEN** the logged line carries the entry-point prefix of the trigger that started it, so the failure
   is traceable to the backstop, the silent push, the URL-session handler, or the extension cycle
-

@@ -4,7 +4,7 @@ import app.snapsync.config.ConfigSource
 import app.snapsync.config.ConfigStore
 import app.snapsync.config.EventConfig
 import app.snapsync.config.EventLinkPayload
-import app.snapsync.config.encodeConfigUrl
+import app.snapsync.config.encodeEventUrl
 import app.snapsync.permission.PermissionRequester
 import app.snapsync.permission.PermissionStatus
 import app.snapsync.permission.PermissionStatusSource
@@ -54,10 +54,10 @@ fun forgeStatusHost(state: String, scope: CoroutineScope): StatusContainerHost? 
         loadJoinDetails = { JoinLoad.Found(EVENT_NAME, EVENT_START) },
     )
     // Drive the real join gate by feeding it the very input a scanned QR delivers: the event's own
-    // INTERACTIVE invite deeplink (no `autoJoin`, so it opens the confirmation instead of provisioning
+    // INTERACTIVE invite link (no `autoJoin`, so it opens the confirmation instead of provisioning
     // silently). With config absent and permission granted, `readyOrExplain` lands on `JoinPhase.Ready`
     // — the gate reduces itself; the state is never fabricated.
-    if (preset.openInvite) host.onOpenUrl(encodeConfigUrl(EventLinkPayload(EVENT_ID)))
+    if (preset.openInvite) host.onOpenUrl(encodeEventUrl(EventLinkPayload(EVENT_ID)))
     return host
 }
 
@@ -71,7 +71,7 @@ private enum class ForgePreset(
     val config: EventConfig?,
     val sync: SyncStatus,
     /**
-     * Open the event's own interactive invite deeplink after construction, driving the real join gate
+     * Open the event's own interactive invite link after construction, driving the real join gate
      * to its confirmation surface (the screen a scanned QR opens).
      */
     val openInvite: Boolean = false,

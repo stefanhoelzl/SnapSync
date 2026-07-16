@@ -86,7 +86,7 @@ private const val SEED_CHUNK_ABOVE_FLOOR = 10
  *
  * Read from the process environment, which is **only injectable via a developer launch**
  * (`pymobiledevice3 developer dvt launch --env …`) — SpringBoard and TestFlight launches carry a clean
- * environment, so this is inert in production with no compile-time guard, exactly as `SNAPSYNC_DEEPLINK`
+ * environment, so this is inert in production with no compile-time guard, exactly as `SNAPSYNC_EVENT_LINK`
  * is (capability `ios-app-shell`).
  *
  * Assets are dated from [SEED_EPOCH_SECONDS] forward. Deleting them again needs a tap — `deleteAssets`

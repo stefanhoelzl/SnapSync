@@ -393,8 +393,7 @@ stored token re-enumerates the whole library, which the ledger makes harmless.
 - **THEN** the extension enumerates the whole library and the ledger skips already-recorded keys
 
 ### Requirement: Re-provision resets sync state
-
-On a **valid `snapsync://` config (re)scan**, the host app SHALL re-provision the (possibly new) event
+On a **valid event-link (re)scan**, the host app SHALL re-provision the (possibly new) event
 by persisting the config and driving the upload arm through the tier-neutral lifecycle
 (`upload-lifecycle`). The mechanism below is **this tier's** (iOS ≥26.1) and SHALL NOT be applied on
 the app-driven tier, which has no OS registration record to re-create (see `ios-url-session-upload`,
@@ -408,7 +407,7 @@ full re-enumeration). The device-global listing re-seeds the same files as alrea
 **nothing already stored re-uploads**, while the clear drops stale/phantom rows and the cursor clear
 re-enumerates to find genuinely-unstored work. The device-global accumulator is **kept** and the
 extension **re-projects** it to the **new** event's `device.json` path, then sets the joined-event
-marker. The app decodes the deeplink only to gate this on a valid payload; the authoritative
+marker. The app decodes the event link only to gate this on a valid payload; the authoritative
 decode/validate/persist still happens in the shared container intent.
 
 The re-provision itself SHALL NOT clear the ledger or the discovery cursor
@@ -416,7 +415,7 @@ The re-provision itself SHALL NOT clear the ledger or the discovery cursor
 per-device listing.
 
 #### Scenario: Valid re-scan reconciles and re-projects to the new event
-- **WHEN** a valid `snapsync://` config URL is opened for a different event on iOS ≥26.1
+- **WHEN** a valid `https://<link domain>/join#…` event link is opened for a different event on iOS ≥26.1
 - **THEN** the extension is re-registered (disable→enable), and the next cycle `resetTo`s the ledger
   from the per-device file listing, clears the discovery cursor, keeps the accumulator, and
   re-projects `device.json` to the new event path with the joined-event marker set
@@ -427,7 +426,7 @@ per-device listing.
 - **THEN** the clear-and-seed reconcile re-seeds them as already-uploaded and the extension creates no
   new upload jobs for them
 
-#### Scenario: Invalid deeplink does not re-provision
+#### Scenario: Invalid event link does not re-provision
 - **WHEN** an opened URL fails config decoding
 - **THEN** no re-provision occurs (the ledger, cursor, accumulator, and joined-event marker are untouched)
 
@@ -622,4 +621,3 @@ response is specified in `sync-status`.
 - **WHEN** the extension writes the ledger during the cycle
 - **THEN** `LedgerBackend` posts no cross-process notification; the only cross-process post is the
   composition-root liveness notification after the cycle
-

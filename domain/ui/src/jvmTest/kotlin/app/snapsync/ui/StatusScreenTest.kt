@@ -23,8 +23,8 @@ import kotlinx.datetime.LocalDateTime
 import kotlinx.datetime.TimeZone
 import org.junit.Rule
 
-// A representative invite deeplink — any string renders a QR; the encoding is pinned in capability:config.
-private const val SAMPLE_INVITE = "snapsync://config?v=3&d=eyJldmVudElkIjoiMSJ9"
+// A representative invite link — any string renders a QR; the encoding is pinned in capability:config.
+private const val SAMPLE_INVITE = "https://snapsync.stho.net/join#v=3&d=eyJldmVudElkIjoiMSJ9"
 
 private fun joined(health: SyncHealth) = UiState.Joined(health)
 private val inSync = joined(SyncHealth.InSync)
@@ -54,7 +54,7 @@ class StatusScreenTest {
         rule.setContent {
             StatusScreen(
                 joined(SyncHealth.NotStarted("2026-07-04T18:00:00Z")),
-                inviteUrl = "snapsync://config?v=3&d=abc",
+                inviteUrl = "https://snapsync.stho.net/join#v=3&d=abc",
                 cutoff = fixedCutoff(),
             )
         }

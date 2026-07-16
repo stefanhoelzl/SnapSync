@@ -26,5 +26,19 @@
 	     ID in the Developer portal, or signed builds fail to provision. -->
 	<key>aps-environment</key>
 	<string>$(APS_ENVIRONMENT)</string>
+	<!-- Associated domain for the event link's Universal Link (capability `event-link`). Driven by the
+	     ASSOCIATED_DOMAIN build setting (Config.xcconfig), which carries the same host as the app's
+	     generated LINK_ORIGIN and the AASA the backend serves — a :test:architecture guard asserts all
+	     of them agree, because drift here is SILENT: iOS just declines to match and every invite opens
+	     Safari instead of the app. Like App Groups and Push (and unlike keychain groups), Associated
+	     Domains MUST be enabled on the app.snapsync App ID in the Developer portal, or signed builds
+	     fail to provision. Enabling it invalidates existing profiles: CI re-generates them
+	     (-allowProvisioningUpdates), but the ssh-mac loop's baked DEV_PROVISIONING_PROFILE_BASE64 does
+	     not — a stale one yields an IPA whose links silently open Safari.
+	     The extension declares NO associated domain: it never handles URLs. -->
+	<key>com.apple.developer.associated-domains</key>
+	<array>
+		<string>$(ASSOCIATED_DOMAIN)</string>
+	</array>
 </dict>
 </plist>

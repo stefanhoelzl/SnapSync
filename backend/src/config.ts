@@ -45,6 +45,27 @@ const APNS_TEAM_ID = "E9Z8BADH58";
 const APNS_TOPIC = "app.snapsync";
 
 /**
+ * The event link's domain (capability `event-link`) — the host this script serves the AASA for.
+ *
+ * This is the ONE place the backend knows it, and it MUST equal `snapsync.domain` in the repo's
+ * `gradle.properties` (which generates the app's `LINK_ORIGIN` and feeds `Config.xcconfig`'s
+ * `applinks:` entitlement). Nothing in the Gradle build can reach this file — `backend/` is deployed by
+ * a separate, path-scoped workflow that ships code only — so a `:test:architecture` guard asserts the
+ * two agree instead. Drift is SILENT: iOS simply declines to match the link and every invite opens a
+ * browser, which is indistinguishable from a recipient who never installed the app.
+ */
+const LINK_DOMAIN = "snapsync.stho.net";
+
+/**
+ * Where `GET /join` sends someone who opened an event link without the app (capability `event-link`).
+ *
+ * NOTE: until the App Store listing is published this URL 404s (`itunes.apple.com/lookup` reports no
+ * such app) — a known, accepted, temporary gap, not a regression. See the migrate-to-universal-links
+ * decision record.
+ */
+const APP_STORE_URL = "https://apps.apple.com/app/id6781692480";
+
+/**
  * Apple's App Attest **root CA** — the trust anchor every attestation's certificate chain is verified
  * against (capability `device-attestation`).
  *
@@ -122,6 +143,14 @@ export type Config = {
    * `rpIdHash`. Derived from the existing team/bundle constants so the two can never drift apart.
    */
   attestAppId: string;
+  /**
+   * The event link's domain — the host this script serves the AASA for (capability `event-link`).
+   * Must match the app's `LINK_ORIGIN` and `applinks:` entitlement; a `:test:architecture` guard
+   * asserts it, because nothing in the Gradle build can reach this file.
+   */
+  linkDomain: string;
+  /** Where `GET /join` redirects someone who opened an event link without the app. */
+  appStoreUrl: string;
 };
 
 /** The storage-zone password (the native `AccessKey`; also the S3 secret). The zone's password. */
@@ -176,5 +205,7 @@ export function readConfig(env: Record<string, string | undefined>): Config {
     // The gate's app id and the push topic are the SAME bundle id, and the attest chain's team is the
     // SAME team that signs the APNs JWT — derive, never restate, so they cannot drift.
     attestAppId: `${APNS_TEAM_ID}.${APNS_TOPIC}`,
+    linkDomain: LINK_DOMAIN,
+    appStoreUrl: APP_STORE_URL,
   };
 }

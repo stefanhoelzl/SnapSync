@@ -24,11 +24,11 @@ class ForgeStatusHostTest {
     }
 
     @Test
-    fun `joining forges the real join confirmation gate from an interactive invite deeplink`() = runTest {
+    fun `joining forges the real join confirmation gate from an interactive invite link`() = runTest {
         val host = assertNotNull(forgeStatusHost("joining", backgroundScope))
-        // The factory dispatched the invite deeplink as an Orbit intent, which runs on Orbit's own
+        // The factory dispatched the invite link as an Orbit intent, which runs on Orbit's own
         // (real) dispatcher rather than the test scheduler — so AWAIT the gate instead of advancing
-        // virtual time. The gate reduced ITSELF from the forged inputs: an interactive deeplink + a
+        // virtual time. The gate reduced ITSELF from the forged inputs: an interactive event link + a
         // Found details load, with config absent (a first join, not a switch) and permission granted
         // (so readyOrExplain picks Ready rather than the access explainer).
         val state = host.container.stateFlow.first { it is UiState.JoiningEvent }

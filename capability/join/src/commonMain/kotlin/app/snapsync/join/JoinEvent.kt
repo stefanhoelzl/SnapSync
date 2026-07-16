@@ -49,9 +49,9 @@ class JoinEvent(
      * **The floor is applied here** (capability `photo-selection-policy`): the persisted cutoff is
      * `max(chosen, startsAt)`, never the raw [minPhotoDate]. Doing it in the use-case rather than in the
      * UI is what makes it total — **every** entry path funnels through this one call (the interactive
-     * confirm, the switch confirm, the retry, and the `autoJoin` path carrying a deeplink-supplied
+     * confirm, the switch confirm, the retry, and the `autoJoin` path carrying an event-link-supplied
      * cutoff), so none of them can forget it. That last one is the reason it matters: `minPhotoDate` is
-     * decoded from **any** `snapsync://` URL, so without the clamp a hostile QR carrying
+     * decoded from **any** event link, so without the clamp a hostile QR carrying
      * `autoJoin=true` + a distant-past cutoff would auto-confirm a join at near-whole-library scope
      * *without a tap*.
      *

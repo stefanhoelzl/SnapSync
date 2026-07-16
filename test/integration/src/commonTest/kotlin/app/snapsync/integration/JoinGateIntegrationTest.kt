@@ -4,7 +4,7 @@ import app.snapsync.config.ConfigStore
 import app.snapsync.config.EventConfig
 import app.snapsync.config.Direction
 import app.snapsync.config.EventLinkPayload
-import app.snapsync.config.encodeConfigUrl
+import app.snapsync.config.encodeEventUrl
 import app.snapsync.deviceid.DeviceIdentity
 import app.snapsync.gallery.DeviceManifest
 import app.snapsync.join.EventDetails
@@ -258,7 +258,7 @@ class JoinGateIntegrationTest {
             w.store.registerEvent(EVENT_E, "Anna's Wedding")
             val host = joinHost(w, scope)
 
-            host.onOpenUrl(encodeConfigUrl(EventLinkPayload(EVENT_E, autoJoin = true)))
+            host.onOpenUrl(encodeEventUrl(EventLinkPayload(EVENT_E, autoJoin = true)))
             host.await { it is UiState.Joined } // straight to joined, no confirm tap
 
             assertEquals(EVENT_E, w.configSource.config.value?.eventId)
@@ -282,7 +282,7 @@ class JoinGateIntegrationTest {
             val host = joinHost(w, scope)
 
             val cutoff = "2026-06-15T00:00:00Z"
-            host.onOpenUrl(encodeConfigUrl(EventLinkPayload(EVENT_E, autoJoin = true, minPhotoDate = cutoff)))
+            host.onOpenUrl(encodeEventUrl(EventLinkPayload(EVENT_E, autoJoin = true, minPhotoDate = cutoff)))
             host.await { it is UiState.Joined }
 
             assertEquals(cutoff, w.configSource.config.value?.minPhotoDate, "the cutoff must be persisted in config")
@@ -295,7 +295,7 @@ class JoinGateIntegrationTest {
     fun a_hostile_autoJoin_deeplink_cannot_widen_the_membership_below_the_event_start() = worldTest {
         // THE attack the floor closes, proven end-to-end through the real stack.
         //
-        // `minPhotoDate` is decoded from ANY `snapsync://` URL — it is documented as a dev/test key, but
+        // `minPhotoDate` is decoded from ANY event link — it is documented as a dev/test key, but
         // nothing stops an attacker putting it in a QR. Before the floor, a QR carrying `autoJoin=true`
         // plus a distant-past cutoff auto-confirmed a join at near-whole-library scope WITHOUT A TAP:
         // every photo the guest had ever taken would upload into a stranger's event.
@@ -310,7 +310,7 @@ class JoinGateIntegrationTest {
             val host = joinHost(w, scope)
 
             host.onOpenUrl(
-                encodeConfigUrl(
+                encodeEventUrl(
                     EventLinkPayload(EVENT_E, autoJoin = true, minPhotoDate = "2001-01-01T00:00:00Z"),
                 ),
             )
@@ -330,7 +330,7 @@ class JoinGateIntegrationTest {
 
     // ---- helpers --------------------------------------------------------------------------------
 
-    private fun deeplink(eventId: String) = encodeConfigUrl(EventLinkPayload(eventId))
+    private fun deeplink(eventId: String) = encodeEventUrl(EventLinkPayload(eventId))
 
     private fun joinHost(
         w: World,

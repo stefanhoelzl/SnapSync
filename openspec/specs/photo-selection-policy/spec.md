@@ -180,7 +180,6 @@ create screen's default (see capability `event-creation-ui`) and the not-started
 - **THEN** it runs in `commonTest` against an injected clock on both JVM and the iOS simulator, with no `expect`/`actual`
 
 ### Requirement: The event's start date is a floor on every membership's cutoff
-
 An event SHALL carry a **start date** (`startsAt`, capability `event-creation`), set once by the host at
 creation and immutable thereafter. It SHALL act as a **floor** on every membership's capture-date
 cutoff: a membership's **effective cutoff** SHALL be `max(chosen, startsAt)`.
@@ -193,9 +192,9 @@ filter, no new branch in the one code path where an error means uploading a memb
 
 The clamp SHALL apply to **every** cutoff that enters a membership, with **no exemption** — the
 interactive pick, the "Now" preset, the "Event start" preset, and the dev/test `minPhotoDate` override
-carried on a decoded deeplink (capability `deeplink-config`) alike. The deeplink override is not exempt
+carried on a decoded event link (capability `event-link`) alike. The event-link override is not exempt
 precisely *because* it is the dangerous one: a `minPhotoDate` in the link payload is decoded from any
-`snapsync://` URL, so an unclamped override would let a hostile QR carrying `autoJoin=true` and a
+event link, so an unclamped override would let a hostile QR carrying `autoJoin=true` and a
 distant-past cutoff auto-confirm a join at near-whole-library scope **without a tap**. Under the clamp
 that value is raised to the event's own start.
 
@@ -219,8 +218,8 @@ member's own choice.
 - **WHEN** the upload cycle runs for a joined membership
 - **THEN** it filters on the single persisted cutoff, and `startsAt` appears nowhere in the upload path
 
-#### Scenario: A deeplink's dev/test cutoff override is clamped too
-- **WHEN** a deeplink carrying `autoJoin = true` and an explicit `minPhotoDate` earlier than the event's
+#### Scenario: An event link's dev/test cutoff override is clamped too
+- **WHEN** an event link carrying `autoJoin = true` and an explicit `minPhotoDate` earlier than the event's
   `startsAt` is decoded
 - **THEN** the auto-fired confirm persists `max(minPhotoDate, startsAt)` — the override cannot lower the
   membership below the event's start
@@ -501,4 +500,3 @@ library: it SHALL NOT be implemented as a per-asset membership test.
 - **WHEN** the album-membership seam is invoked for a membership whose cutoff is `C`
 - **THEN** it returns only member assets whose capture date is at or after `C` — the seam never enumerates the
   whole album
-
