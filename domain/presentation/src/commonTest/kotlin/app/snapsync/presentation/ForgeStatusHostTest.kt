@@ -23,7 +23,7 @@ class ForgeStatusHostTest {
     }
 
     @Test
-    fun `joining forges the joined layer with a static (non-pulsing) upload arrow and the invite QR`() =
+    fun `joining forges the joined layer with a static non-pulsing upload arrow and the invite QR`() =
         runTest {
             val host = assertNotNull(forgeStatusHost("joining", backgroundScope))
             // synced (12) < total (47), nothing in flight → STATIC, deterministic (no animation to
