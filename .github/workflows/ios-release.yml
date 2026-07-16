@@ -1,79 +1,131 @@
-# Tag-driven App Store release (capability ios-appstore-release). Pushing a `vX.Y` tag builds an
-# `X.Y`-versioned signed archive, uploads it to App Store Connect, finds-or-creates the matching App
-# Store version record, and ATTACHES the build to it — stopping BEFORE submit-for-review (the listing /
-# screenshots / privacy that App Review needs are owned elsewhere; a human clicks Submit later).
+# Dispatch-driven App Store release (capability ios-appstore-release). `gh workflow run ios-release.yml
+# -f version=X.Y` builds an `X.Y`-versioned signed archive, uploads it, attaches it to the App Store
+# version record, applies the App Review details from the repo, OPTIONALLY submits for review, and — last
+# — CREATES the `vX.Y` tag as the record of what shipped.
 #
-# The store version is DERIVED FROM THE TAG and injected as MARKETING_VERSION at build time (same
-# mechanism ios.yml uses for CURRENT_PROJECT_VERSION). Committed source is never bumped, so `main`/alpha
-# keeps its pinned 0.1.0 fallback and NEVER triggers a first-of-version Beta App Review.
+# WHY DISPATCH, NOT A TAG PUSH: re-runnability. A flaked release used to need
+# `git tag -d && git push --delete && git tag && git push`; a dispatch is a button. There is NO
+# per-submission data to pass — `version` and `submit` are control inputs, not content. (The original
+# pipeline's decision record never weighed dispatch; the tag was assumed, not chosen.)
 #
-# A tag is only a pointer, so a release is guarded: the tag must match ^v\d+\.\d+$, its commit must be
-# an ancestor of origin/main, and EVERY check-run on that commit must be green (excluding this
-# workflow's own in-progress runs). A commit whose full pipeline — including promotion to alpha — is not
-# green does not jump to the App Store. A cancelled/red ios-promote on the target commit is remedied by
-# re-running that idempotent job (capability ios-testflight-delivery) and re-pushing the tag.
+# TAG ORDERING IS LOAD-BEARING. The tag's existence is checked FIRST (so a doomed release fails in
+# seconds, not after a ~30 min build) and the tag is created LAST (after submit). Were it created before
+# submit, a failed submit would leave the tag behind and every retry would then die on the existence
+# guard — the submission could never be retried. An existing tag is never moved: it records what shipped.
 #
-# Tags fire ONLY this workflow: build.yml and ios.yml exclude tags from their push triggers, so the only
-# in-progress check-runs on the tag SHA at guard time are this job's own.
+# TWO JOBS, AND WHY: `build` needs macOS (Xcode); `finish` needs `asc`, which asc_fetch.sh fetches as a
+# LINUX binary verified with sha256sum (which does not exist on macOS). Splitting keeps asc_fetch.sh —
+# depended on by the REQUIRED appstore-metadata-validate check — untouched, moves the REST work off macOS
+# minutes, and confines `contents: write` (for the tag push) to the job that holds NO signing certs.
 #
-# This workflow posts NO branch-protection status check and is NOT in .github/rulesets/main.json: it
-# never runs on a PR branch, so requiring it would freeze merges. A failed release is RED but blocks
-# nothing. It reuses the EXISTING Admin App Store Connect key — no new secret.
+# The store version is the `version` INPUT, injected as MARKETING_VERSION at build time (same mechanism
+# ios.yml uses for CURRENT_PROJECT_VERSION). Committed source is never bumped, so `main`/alpha keeps its
+# pinned 0.1.0 fallback and NEVER triggers a first-of-version Beta App Review.
+#
+# A release is guarded: version must match ^\d+\.\d+$, the tag must not already exist, the released
+# commit must be an ancestor of origin/main (LOAD-BEARING — a dispatch can run from ANY ref), and EVERY
+# check-run on that commit must be green (excluding this run's own). A commit whose full pipeline —
+# including promotion to alpha — is not green does not jump to the App Store. A cancelled/red ios-promote
+# on the target commit is remedied by re-running that idempotent job (capability ios-testflight-delivery)
+# and re-dispatching.
+#
+# SUBMIT is opt-in (`-f submit=true`) AND gated: `asc review doctor` must report zero blocking checks or
+# the run refuses. The gate is OURS — a submission is outward-facing and effectively irreversible.
+#
+# This workflow posts NO branch-protection status check and is NOT in .github/rulesets/main.json: it runs
+# only when dispatched and never as part of a PR's checks, so requiring it would freeze merges. A failed
+# release is RED but blocks nothing. It introduces no new App Store Connect credential (the review
+# CONTACT secrets grant no ASC access; they are secrets only because this repo is public and they are
+# personal data).
 name: ios-release
 
 on:
-  push:
-    tags:
-      - "v*"
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Store version, two-part, no leading v (e.g. 1.0). The tag vX.Y is created on success."
+        required: true
+        type: string
+      submit:
+        description: "Submit for App Store Review after attaching. Refused if `asc review doctor` reports a blocker."
+        required: false
+        default: false
+        type: boolean
 
 permissions:
   contents: read
   checks: read
 
-# Per-tag group: a re-pushed SAME tag cancels its own in-flight run, but distinct versions (v1.0 vs
-# v1.1) have distinct refs and never cancel each other.
+# Per-VERSION group. Under the old tag trigger this keyed on github.ref, which was safe because distinct
+# versions had distinct refs. Dispatched from `main` every release would share one ref — and so cancel its
+# predecessor mid-flight. Key on the input instead.
 concurrency:
-  group: ios-release-${{ github.ref }}
+  group: ios-release-${{ inputs.version }}
   cancel-in-progress: true
 
 jobs:
-  release:
+  build:
     name: ios-release
     runs-on: macos-26
     env:
       ASC_APP_ID: "6781692480"
     steps:
       # fetch-depth: 0 so the ancestor check below can see origin/main's history.
+      # fetch-tags so the tag-existence guard sees remote tags.
       - uses: actions/checkout@v7.0.0
         with:
           fetch-depth: 0
+          fetch-tags: true
 
-      # Guard 1: the tag must be two-part vX.Y. Derive the store version (tag minus the leading v).
-      - name: Validate the tag and derive the store version
+      # Guard 1: the version input must be two-part X.Y. Derive the tag from it.
+      - name: Validate the version and derive the tag
         run: |
-          TAG="$GITHUB_REF_NAME"
-          if [[ ! "$TAG" =~ ^v[0-9]+\.[0-9]+$ ]]; then
-            echo "::error::tag '$TAG' must match ^v[0-9]+\.[0-9]+$ (two-part, e.g. v1.0)"
+          V="${{ inputs.version }}"
+          if [[ ! "$V" =~ ^[0-9]+\.[0-9]+$ ]]; then
+            echo "::error::version '$V' must match ^[0-9]+\.[0-9]+$ (two-part, no leading v, e.g. 1.0)"
             exit 1
           fi
-          echo "STORE_VERSION=${TAG#v}" >> "$GITHUB_ENV"
-          echo "releasing store version ${TAG#v} from tag $TAG"
+          echo "STORE_VERSION=$V" >> "$GITHUB_ENV"
+          echo "RELEASE_TAG=v$V" >> "$GITHUB_ENV"
+          echo "releasing store version $V; tag v$V will be created on success"
 
-      # Guard 2: the tagged commit must already be on main (gated + on the alpha channel).
-      - name: Require the tag commit to be an ancestor of origin/main
+      # Guard 2: the tag must NOT already exist. FIRST, so a doomed release fails in seconds rather than
+      # after a ~30 min build. Always fatal — a released tag records what shipped and is never moved.
+      # (The tag is created at the very END of `finish`, so a failed run leaves none and retries cleanly.)
+      - name: Require the release tag to be absent
+        run: |
+          if git rev-parse -q --verify "refs/tags/$RELEASE_TAG" >/dev/null; then
+            echo "::error::tag $RELEASE_TAG already exists (points at $(git rev-parse "refs/tags/$RELEASE_TAG"))."
+            echo "::error::A released tag is never moved. Release a new version, or delete the tag if it was never released."
+            exit 1
+          fi
+          echo "tag $RELEASE_TAG is free"
+
+      # Guard 3: the released commit must already be on main (gated + on the alpha channel). LOAD-BEARING:
+      # a dispatch can run from ANY ref, so this is what confines a release to merged code.
+      - name: Require the released commit to be an ancestor of origin/main
         run: |
           git fetch --no-tags origin main
           if ! git merge-base --is-ancestor "$GITHUB_SHA" FETCH_HEAD; then
-            echo "::error::tag commit $GITHUB_SHA is not an ancestor of origin/main — refusing to release"
+            echo "::error::released commit $GITHUB_SHA is not an ancestor of origin/main — refusing to release"
             exit 1
           fi
           echo "commit $GITHUB_SHA is on main"
 
-      # Guard 3: every check-run on the tagged commit must be green. In-progress/queued runs are this
-      # workflow's own (tags fire only ios-release), so they are ignored; every COMPLETED check-run must
-      # have concluded success. A commit with no completed check-runs (impossible for a main commit) is
+      # Guard 4: every FOREIGN check-run on the released commit must be green.
+      #
+      # SELF-EXCLUSION IS BY CHECK-SUITE, NOT BY STATUS. GitHub creates one check_suite per workflow RUN,
+      # and every job of that run posts its check-run under that suite — so listing this workflow file's
+      # runs for the SHA and excluding their suites removes ALL of our own check-runs: this run's, and
+      # any EARLIER release attempt's. Excluding merely "in-progress" would be a trap: a release that
+      # failed at submit leaves a COMPLETED failure check-run on the commit, which would then refuse every
+      # retry forever — poisoning the commit and defeating the whole point of a re-runnable dispatch.
+      # Keying on the workflow FILE also survives a job rename, which name-matching would not.
+      #
+      # Every remaining (foreign) COMPLETED check-run must have concluded success; in-progress foreign
+      # runs are ignored. A commit with no completed foreign check-runs (impossible for a main commit) is
       # refused rather than passing vacuously.
-      - name: Require every check-run on the tag commit to be green
+      - name: Require every check-run on the released commit to be green
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
@@ -81,17 +133,26 @@ jobs:
           import json, os, subprocess, sys
           sha = sys.argv[1]
           repo = os.environ["GITHUB_REPOSITORY"]
+
+          own_suites = set(subprocess.check_output([
+              "gh", "api", "--paginate",
+              f"/repos/{repo}/actions/workflows/ios-release.yml/runs?head_sha={sha}",
+              "--jq", ".workflow_runs[].check_suite_id",
+          ]).decode().split())
+          print(f"excluding {len(own_suites)} check-suite(s) produced by ios-release.yml on {sha}")
+
           out = subprocess.check_output([
               "gh", "api", "--paginate",
               f"/repos/{repo}/commits/{sha}/check-runs",
-              "--jq", ".check_runs[] | {name, status, conclusion}",
+              "--jq", ".check_runs[] | {name, status, conclusion, suite: .check_suite.id}",
           ]).decode()
           runs = [json.loads(line) for line in out.splitlines() if line.strip()]
-          completed = [r for r in runs if r["status"] == "completed"]
-          skipped = [r for r in runs if r["status"] != "completed"]
+          foreign = [r for r in runs if str(r["suite"]) not in own_suites]
+          completed = [r for r in foreign if r["status"] == "completed"]
           bad = [r for r in completed if r["conclusion"] != "success"]
-          for r in skipped:
-              print(f"ignoring in-progress check-run '{r['name']}' (this release workflow's own)")
+          for r in foreign:
+              if r["status"] != "completed":
+                  print(f"ignoring in-progress check-run '{r['name']}'")
           if bad:
               for r in bad:
                   print(f"::error::check-run '{r['name']}' concluded {r['conclusion']} on {sha}")
@@ -147,14 +208,84 @@ jobs:
           api-key-id: ${{ secrets.ASC_KEY_ID }}
           api-private-key: ${{ secrets.ASC_API_PRIVATE_KEY }}
 
+  # Everything that talks to App Store Connect records, on ubuntu with no Apple toolchain: `asc` is a
+  # linux binary (asc_fetch.sh) and this job needs no Xcode. It also keeps `contents: write` — required to
+  # push the tag — away from the job holding the signing certificates.
+  finish:
+    name: ios-release-finish
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write # push the release tag (this job holds no signing certs)
+    env:
+      ASC_APP_ID: "6781692480"
+      STORE_VERSION: ${{ inputs.version }}
+      RELEASE_TAG: v${{ inputs.version }}
+      # asc reads its OWN var names; the same Admin key the rest of the pipeline uses. No new ASC credential.
+      ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+      ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+      ASC_PRIVATE_KEY: ${{ secrets.ASC_API_PRIVATE_KEY }}
+      ASC_BYPASS_KEYCHAIN: "1"
+      DO_NOT_TRACK: "1"
+    steps:
+      - uses: actions/checkout@v7.0.0
+
+      - name: Fetch pinned asc
+        run: bash .github/scripts/asc_fetch.sh "$RUNNER_TEMP/asc"
+
       # Find-or-create the X.Y App Store version record and attach this build. Waits for the build to be
-      # VALID, is idempotent, and STOPS before submit. A human submits once the listing is complete.
+      # VALID and is idempotent. Resolves the build by NUMBER, so the split needs no job outputs.
+      # appstore_release.py uses the ASC_API_PRIVATE_KEY name (asc uses ASC_PRIVATE_KEY) — both are set.
       - name: Attach the build to its App Store version record
         env:
-          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
-          ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
           ASC_API_PRIVATE_KEY: ${{ secrets.ASC_API_PRIVATE_KEY }}
         run: |
           pip install --quiet 'pyjwt[crypto]' requests
           python .github/scripts/appstore_release.py release \
             "$ASC_APP_ID" "${{ github.run_number }}" "$STORE_VERSION"
+
+      # App Review details, applied on EVERY release (not just when submitting), so a build-only run leaves
+      # the version submit-ready rather than one manual step short. Declarative: the committed notes win.
+      # The notes live OUTSIDE the metadata tool's canonical schema (metadata/review/) — an unknown key in
+      # version/<v>/<locale>.json or app-info/<locale>.json would fail the REQUIRED appstore-metadata-validate
+      # check and freeze merges. An appStoreReviewDetail is version-scoped and NOT localized: one per version.
+      - name: Apply the App Review details
+        env:
+          ASC: ${{ runner.temp }}/asc
+          CONTACT_FIRST_NAME: ${{ secrets.ASC_REVIEW_CONTACT_FIRST_NAME }}
+          CONTACT_LAST_NAME: ${{ secrets.ASC_REVIEW_CONTACT_LAST_NAME }}
+          CONTACT_EMAIL: ${{ secrets.ASC_REVIEW_CONTACT_EMAIL }}
+          CONTACT_PHONE: ${{ secrets.ASC_REVIEW_CONTACT_PHONE }}
+        run: bash .github/scripts/asc_review_details_apply.sh
+
+      # The submit gate is OURS, not the tool's: a submission is outward-facing and effectively
+      # irreversible, so an unready version must not reach App Review even when submission was requested.
+      - name: Refuse to submit an unready version
+        if: ${{ inputs.submit }}
+        env:
+          ASC: ${{ runner.temp }}/asc
+        run: |
+          "$ASC" review doctor --app "$ASC_APP_ID" --output json > doctor.json
+          blocking="$(jq -r '.summary.blocking // 0' doctor.json)"
+          if [ "$blocking" -ne 0 ]; then
+            echo "::error::refusing to submit: $blocking blocking check(s) on version $STORE_VERSION"
+            jq -r '.blockingChecks[] | "::error::  \(.id): \(.message) — \(.remediation)"' doctor.json
+            exit 1
+          fi
+          echo "review doctor: no blocking checks — safe to submit"
+
+      - name: Submit for App Store Review
+        if: ${{ inputs.submit }}
+        env:
+          ASC: ${{ runner.temp }}/asc
+        run: |
+          "$ASC" review submit --app "$ASC_APP_ID" --version "$STORE_VERSION" --confirm
+          echo "::notice::version $STORE_VERSION submitted for App Store Review"
+
+      # LAST, deliberately. The tag records what SHIPPED, so it is only written once everything else has
+      # succeeded: a failed submit then leaves no tag and a retry is not blocked by the existence guard.
+      - name: Create the release tag
+        run: |
+          git tag "$RELEASE_TAG" "$GITHUB_SHA"
+          git push origin "refs/tags/$RELEASE_TAG"
+          echo "::notice::tagged $GITHUB_SHA as $RELEASE_TAG"
