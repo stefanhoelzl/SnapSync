@@ -9,7 +9,7 @@ class ManifestWorldTest {
 
     @Test
     fun cycle_manifest_makes_union_report_own_asset_complete() = worldTest {
-        val w = World()
+        val w = World(this)
         val eventId = "E"
         w.provision(eventId)
         w.addOwnAsset("A")

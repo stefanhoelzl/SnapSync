@@ -50,7 +50,7 @@ class CreatedEventDto(
  * From these it computes the edge's read-models **faithfully in behavior** — [deviceListing], [union],
  * and (the same as the per-device listing) the reconcile-seed listing. Byte-level fidelity to the real
  * Deno `backend/` edge is NOT a goal: drift is accepted, there is no golden fixture, and each `url` is a
- * synthetic in-memory handle (`world://<deviceId>/<filename>`) the fake download seams resolve
+ * synthetic presigned-link stand-in (`https://world.store/<deviceId>/<filename>`) the fake download transport resolves
  * store-direct — never a real presigned S3 URL. [offline] flips the two GET read-models to failure so
  * the mini-edge answers `502`.
  */
@@ -221,7 +221,18 @@ class BackendStore {
 
     companion object {
         /** The synthetic in-memory download handle — resolved store-direct by the fake download seams. */
-        fun syntheticUrl(deviceId: String, filename: String): String = "world://$deviceId/$filename"
+        /**
+         * A synthetic stand-in for the backend's presigned S3 link. **It must be `https`**: the real
+         * `QueuedPhotoDownloadJobs` guards every url with `isFetchableUrl` and skips anything that is not
+         * `http`/`https` — handing a background `URLSession` a hostless or non-HTTP url raises an
+         * uncatchable Obj-C exception, so the guard is load-bearing, not cosmetic.
+         *
+         * This was `world://…` while the world faked `PhotoDownloadJobs` and no guard ever ran, so the
+         * harness proved downloads worked over a scheme production would have refused. Composing the real
+         * jobs surfaced it immediately (capability `harness-world-model`).
+         */
+        fun syntheticUrl(deviceId: String, filename: String): String =
+            "https://world.store/$deviceId/$filename"
     }
 }
 

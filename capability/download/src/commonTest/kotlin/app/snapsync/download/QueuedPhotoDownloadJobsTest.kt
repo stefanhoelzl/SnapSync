@@ -23,6 +23,11 @@ import kotlinx.coroutines.test.runTest
 @OptIn(ExperimentalCoroutinesApi::class)
 class QueuedPhotoDownloadJobsTest {
 
+    /** An ordinary healthy transfer: `200`, no declared length — what most of this suite assumes. */
+    private companion object {
+        val OK = TransferOutcome(statusCode = 200, expectedBytes = -1L, receivedBytes = 1_024L)
+    }
+
     /**
      * A [DownloadTransport] that behaves like the real background `URLSession` **including its fatal
      * edge**: once the session is gone, creating a task raises — on iOS that is an uncatchable
@@ -57,9 +62,19 @@ class QueuedPhotoDownloadJobsTest {
             host.onInvalidated()
         }
 
-        /** Exactly what the real delegate does on finish: ask where the bytes go, move them, report. */
-        fun finish(description: String) {
-            host.destinationFor(description)?.let { host.onStaged(description, it) }
+        /**
+         * Exactly what the real delegate does on finish: ask whether the bytes may be staged, and only
+         * then ask where they go, move them, and report. The completion fires either way — a download's
+         * completion callback follows its finish callback whether or not anything went wrong, which is
+         * what frees the window slot.
+         *
+         * The default outcome is a plain `200` with no declared length: the shape of an ordinary healthy
+         * transfer, so existing tests describe what they always did.
+         */
+        fun finish(description: String, outcome: TransferOutcome = OK) {
+            if (host.accepts(description, outcome)) {
+                host.destinationFor(description)?.let { host.onStaged(description, it) }
+            }
             host.onCompleted(description, null)
         }
     }
@@ -85,6 +100,96 @@ class QueuedPhotoDownloadJobsTest {
             ref = AssetRef("DEVICE-A", assetId),
             resource = PlannedResource(key, url, "primary", "image/heic", "IMG.HEIC"),
         )
+
+    // ---- transfer integrity: a finished transfer is not a good transfer ----------------------------
+
+    /**
+     * The defect this guards: `URLSession` hands an HTTP error to the *finish* callback as a successful
+     * transfer of the error body, with no completion error. Staged, that body is the store's truth — the
+     * import fails against it forever and the download never re-runs, because the resource is recorded as
+     * staged. The photo never arrives, and nothing says so.
+     */
+    @Test
+    fun a_non_2xx_response_is_never_staged() = runTest {
+        val h = Harness(this)
+        h.jobs.enqueue(listOf(pending("A", "a-primary.heic")))
+        advanceUntilIdle()
+
+        h.transport.finish(h.transport.started.single().description, TransferOutcome(502, -1L, 137L))
+        advanceUntilIdle()
+
+        assertTrue(h.staged.isEmpty(), "a 502 error body must never reach staging")
+    }
+
+    @Test
+    fun a_short_read_is_never_staged() = runTest {
+        val h = Harness(this)
+        h.jobs.enqueue(listOf(pending("A", "a-primary.heic")))
+        advanceUntilIdle()
+
+        h.transport.finish(h.transport.started.single().description, TransferOutcome(200, 5_000L, 1_200L))
+        advanceUntilIdle()
+
+        assertTrue(h.staged.isEmpty(), "a body shorter than its Content-Length must never reach staging")
+    }
+
+    /**
+     * The rejection must free the window slot, or one bad transfer stalls every download behind it — a
+     * second way to lose photos silently. The completion callback fires after the finish callback whether
+     * or not the bytes were accepted, which is what makes this hold.
+     */
+    @Test
+    fun a_rejected_transfer_frees_its_slot_so_the_queue_refills() = runTest {
+        val h = Harness(this)
+        h.jobs.enqueue((1..MAX_IN_FLIGHT + 1).map { pending("A", "key-$it") })
+        advanceUntilIdle()
+        assertEquals(MAX_IN_FLIGHT, h.transport.started.size, "the window starts full")
+
+        h.transport.finish(h.transport.started.first().description, TransferOutcome(502, -1L, 90L))
+        advanceUntilIdle()
+
+        assertEquals(MAX_IN_FLIGHT + 1, h.transport.started.size, "the queued transfer must take the freed slot")
+        assertTrue(h.staged.isEmpty(), "and the rejected body is still not staged")
+    }
+
+    /**
+     * The other half of the contract, and the one where getting it wrong is worse than the defect: reject
+     * only on positive evidence. A server that omits `Content-Length` omits it on every retry, so
+     * rejecting an unknown length would loop forever and the photo would never arrive.
+     */
+    @Test
+    fun a_healthy_transfer_is_staged_whatever_the_length_evidence() = runTest {
+        val cases = listOf(
+            "unknown length" to TransferOutcome(200, -1L, 4_096L),
+            "exact length" to TransferOutcome(200, 4_096L, 4_096L),
+            "over-long body" to TransferOutcome(200, 4_096L, 5_000L),
+            "unknown status" to TransferOutcome(null, 4_096L, 4_096L),
+            "204 no content" to TransferOutcome(204, -1L, 0L),
+        )
+        for ((label, outcome) in cases) {
+            val h = Harness(this)
+            h.jobs.enqueue(listOf(pending("A", "a-primary.heic")))
+            advanceUntilIdle()
+
+            h.transport.finish(h.transport.started.single().description, outcome)
+            advanceUntilIdle()
+
+            assertEquals(1, h.staged.size, "$label must be staged — rejecting it would never resolve on retry")
+        }
+    }
+
+    /** The predicate itself, stated as the contract reads it. */
+    @Test
+    fun may_be_staged_rejects_only_on_positive_evidence() {
+        assertFalse(TransferOutcome(502, -1L, 10L).mayBeStaged(), "non-2xx")
+        assertFalse(TransferOutcome(404, -1L, 10L).mayBeStaged(), "non-2xx")
+        assertFalse(TransferOutcome(200, 100L, 99L).mayBeStaged(), "known length, short by one")
+        assertTrue(TransferOutcome(200, 100L, 100L).mayBeStaged(), "known length, exact")
+        assertTrue(TransferOutcome(200, 100L, 101L).mayBeStaged(), "over-long is not a truncation")
+        assertTrue(TransferOutcome(200, -1L, 0L).mayBeStaged(), "unknown length is not a short read")
+        assertTrue(TransferOutcome(null, -1L, 10L).mayBeStaged(), "unknown status is not a failure")
+        assertTrue(TransferOutcome(299, -1L, 10L).mayBeStaged(), "2xx boundary")
+    }
 
     // ---- the regression: cancellation must not destroy the transport -------------------------------
 

@@ -23,7 +23,7 @@ class SelectionPolicyIntegrationTest {
 
     @Test
     fun a_screenshot_is_neither_uploaded_nor_shared() = worldTest {
-        val w = World()
+        val w = World(this)
         val eventId = "E"
         w.provision(eventId)
         w.addOwnAsset("CAM")        // an ordinary camera photo
@@ -43,7 +43,7 @@ class SelectionPolicyIntegrationTest {
 
     @Test
     fun a_whatsapp_album_photo_is_neither_uploaded_nor_shared() = worldTest {
-        val w = World()
+        val w = World(this)
         val eventId = "E"
         w.provision(eventId)
         w.addOwnAsset("CAM")
@@ -60,7 +60,7 @@ class SelectionPolicyIntegrationTest {
     fun a_compressed_received_image_is_excluded_but_a_1080p_recording_is_not() = worldTest {
         // The single most dangerous line in this policy: 1080p video is 2.07 MP, BELOW the 3 MP image floor.
         // If the floors were shared, every video anyone recorded at the event would silently disappear.
-        val w = World()
+        val w = World(this)
         w.provision("E")
         w.addLowResPhoto("WA")  // 1600x1200 = 1.9 MP → excluded
         w.addHdVideo("CLIP")    // 1920x1080 = 2.07 MP → ADMITTED
@@ -75,7 +75,7 @@ class SelectionPolicyIntegrationTest {
     fun the_status_total_excludes_what_the_cycle_refuses_so_the_screen_reaches_in_sync() = worldTest {
         // The two components enumerate INDEPENDENTLY. If the total counted the screenshot the cycle will
         // never upload, completeness would peg below 100% and the joined screen would say "pending" forever.
-        val w = World()
+        val w = World(this)
         val eventId = "E"
         w.provision(eventId)
         w.addOwnAsset("CAM")

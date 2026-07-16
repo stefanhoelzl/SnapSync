@@ -8,6 +8,7 @@ import app.snapsync.config.ConfigStore
 import app.snapsync.config.Direction
 import app.snapsync.config.EventConfig
 import app.snapsync.deviceid.DeviceIdentity
+import app.snapsync.download.TransferOutcome
 import app.snapsync.download.StoreDownloadStatusSource
 import app.snapsync.engine.UploadError
 import app.snapsync.eventcreation.CreationStatusSource
@@ -47,7 +48,7 @@ class WorldInspectorController(private val scope: CoroutineScope) {
 
     // ---- current world + per-world derived sources (rebuilt on preset) --------------------------
 
-    var world: World = World()
+    var world: World = World(scope)
         private set
 
     /** Bumped only when [world] is replaced (presets); the left pane is keyed on this. */
@@ -273,6 +274,21 @@ class WorldInspectorController(private val scope: CoroutineScope) {
 
     fun stageAllDownloads() = launchMutation { world.stageAllDownloads() }
 
+    /**
+     * Failure lever: the operator plays a bad network. Every in-flight transfer finishes with a `502` and
+     * an error body — which `URLSession` reports as a *successful* transfer, so this is what the shipped
+     * bug looked like (capability `photo-download`). The bytes are rejected, nothing stages, and the
+     * downloads stay pending: staging them would have made the error body the store's truth forever.
+     */
+    fun stageAllDownloadsAs502() = launchMutation {
+        world.stageAllDownloads(TransferOutcome(statusCode = 502, expectedBytes = -1L, receivedBytes = 137L))
+    }
+
+    /** Failure lever: every in-flight transfer finishes truncated — a body short of its `Content-Length`. */
+    fun stageAllDownloadsShortRead() = launchMutation {
+        world.stageAllDownloads(TransferOutcome(statusCode = 200, expectedBytes = 5_000L, receivedBytes = 1_200L))
+    }
+
     // ---- failure levers --------------------------------------------------------------------------
 
     fun setBackendOffline(offline: Boolean) = launchMutation { world.backendOffline = offline }
@@ -325,7 +341,7 @@ class WorldInspectorController(private val scope: CoroutineScope) {
 
     private fun installFreshWorld(label: String, setup: suspend World.() -> Unit) {
         scope.launch {
-            world = World()
+            world = World(scope)
             rebuildSources()
             ownAssetSeq = 0
             foreignDeviceSeq = 0
@@ -390,7 +406,9 @@ class WorldInspectorController(private val scope: CoroutineScope) {
         }
         val jobKeys = world.platform.liveJobKeys()
         val jobs = jobKeys.map { key -> JobRow(key, attempts = world.platform.created.count { it.filename == key }) }
-        val downloads = world.downloadJobs.pending()
+        // The real jobs expose no inspection seam and their description codec is internal to
+        // :capability:download, so the world records what the controller requested (see downloadRequests).
+        val downloads = world.downloadRequests.distinctBy { it.ref to it.resource.resourceKey }
             .map { DownloadRow(it.ref.sourceDeviceId, it.ref.sourceAssetId, it.resource.resourceKey) }
         return InspectorSnapshot(
             joinedEventId = world.configSource.config.value?.eventId,

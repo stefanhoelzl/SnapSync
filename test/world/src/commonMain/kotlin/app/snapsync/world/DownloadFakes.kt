@@ -1,10 +1,12 @@
 package app.snapsync.world
 
+import app.snapsync.download.DownloadTask
+import app.snapsync.download.DownloadTransport
+import app.snapsync.download.DownloadTransportHost
 import app.snapsync.download.ImportResult
-import app.snapsync.download.PhotoDownloadJobs
 import app.snapsync.download.PhotoLibraryImporter
+import app.snapsync.download.TransferOutcome
 import app.snapsync.downloadstore.AssetRef
-import app.snapsync.downloadstore.PendingDownload
 import app.snapsync.downloadstore.StagedResource
 import app.snapsync.gallery.DeviceManifestAsset
 import app.snapsync.gallery.DeviceManifestStore
@@ -15,29 +17,58 @@ import app.snapsync.gallery.ResourceRole
 import app.snapsync.gallery.normalizeAssetId
 
 /**
- * An operator-driven, inspectable [PhotoDownloadJobs] (capability `harness-world-model`). `enqueue`
- * records the pending downloads; the world's `stageAllDownloads()` operator action resolves each
- * pending resource against the store and drives the controller's staging callback. A download that is
- * never staged simply stays PENDING for retry — there is **no** terminal transfer-failure (matching the
- * shipped no-`DownloadError` posture).
+ * The operator-driven download **execution edge** (capability `harness-world-model`): a fake
+ * [DownloadTransport] the world composes the **real** [app.snapsync.download.QueuedPhotoDownloadJobs] over.
+ *
+ * Faking here rather than at `PhotoDownloadJobs` is the point. The layer above is the orchestration — the
+ * bounded in-flight window, the transfer-description codec, the URL guard, and the transfer-integrity
+ * check — and the world exists so the *real* stack runs against it, faking only the edge. Faking the jobs
+ * instead left every one of those untested by the world and by `:test:integration`.
+ *
+ * [finish] mirrors the real `URLSession` delegate exactly, including the ordering the integrity check
+ * depends on: ask whether the bytes may be staged, only then stage them, and report completion either way
+ * (a download's completion callback follows its finish callback whether or not anything went wrong, which
+ * is what frees the window slot).
  */
-class FakePhotoDownloadJobs : PhotoDownloadJobs {
-    /** Inspection: every resource ever enqueued (idempotent re-enqueues append; dedup by key at read). */
-    val enqueued = mutableListOf<PendingDownload>()
-    var cancelled: Boolean = false
+class FakeDownloadTransport(private val host: DownloadTransportHost) : DownloadTransport {
 
-    override suspend fun enqueue(downloads: List<PendingDownload>) {
-        enqueued += downloads
+    /** Inspection: a transfer the real jobs started through this transport. */
+    class Started(val url: String, val description: String) {
+        var cancelled: Boolean = false
     }
 
-    override suspend fun cancelAll() {
-        cancelled = true
-        enqueued.clear()
+    val started = mutableListOf<Started>()
+
+    override fun start(url: String, description: String): DownloadTask? {
+        val s = Started(url, description)
+        started += s
+        return object : DownloadTask {
+            override fun cancel() {
+                s.cancelled = true
+                host.onCompleted(description, "cancelled")
+            }
+        }
     }
 
-    /** The currently-pending downloads, de-duplicated by (ref, resourceKey) for staging. */
-    fun pending(): List<PendingDownload> =
-        enqueued.distinctBy { it.ref to it.resource.resourceKey }
+    /** The transfers still awaiting a finish, de-duplicated by description. */
+    fun inFlight(): List<Started> = started.filterNot { it.cancelled }.distinctBy { it.description }
+
+    /**
+     * Deliver a finish for [description], exactly as the real delegate does. A rejected [outcome] leaves
+     * the resource un-staged — which *is* the world's pending-for-retry state, not a new terminal one.
+     */
+    fun finish(description: String, outcome: TransferOutcome = HEALTHY) {
+        if (host.accepts(description, outcome)) {
+            host.destinationFor(description)?.let { host.onStaged(description, it) }
+        }
+        host.onCompleted(description, null)
+    }
+
+    companion object {
+        /** An ordinary healthy transfer: `200`, no declared length — what staging assumes by default. */
+        val HEALTHY: TransferOutcome =
+            TransferOutcome(statusCode = 200, expectedBytes = -1L, receivedBytes = 1_024L)
+    }
 }
 
 /**

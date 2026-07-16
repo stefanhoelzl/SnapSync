@@ -13,7 +13,7 @@ class CutoffWorldTest {
 
     @Test
     fun cutoff_excludes_pre_cutoff_photos_from_upload_and_the_union() = worldTest {
-        val w = World()
+        val w = World(this)
         val eventId = "E"
         w.provision(eventId, minPhotoDate = "2026-07-06T00:00:00Z")
         w.addOwnAsset("OLD", creationDate = "2026-07-01T00:00:00Z") // before the cutoff

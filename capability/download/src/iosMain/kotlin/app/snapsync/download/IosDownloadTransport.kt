@@ -4,6 +4,9 @@ import co.touchlab.kermit.Logger
 import kotlinx.cinterop.ExperimentalForeignApi
 import platform.Foundation.NSError
 import platform.Foundation.NSFileManager
+import platform.Foundation.NSFileSize
+import platform.Foundation.NSHTTPURLResponse
+import platform.Foundation.NSNumber
 import platform.Foundation.NSOperationQueue
 import platform.Foundation.NSURL
 import platform.Foundation.NSURLSession
@@ -67,10 +70,35 @@ class IosDownloadTransport(
 
     private fun onFinished(downloadTask: NSURLSessionDownloadTask, location: NSURL) {
         val description = downloadTask.taskDescription ?: return
+        // A finished transfer is not a good transfer: URLSession delivers an HTTP error here as a
+        // *successful* transfer of the error body, with a nil completion error. Ask before staging —
+        // staging is what makes these bytes the store's truth, and `moveToStaging` deletes whatever is
+        // already at the destination, so staging a rejected body would also destroy an earlier good file.
+        if (!host.accepts(description, outcomeOf(downloadTask, location))) return
         // Asked of the owner, not remembered here: after a relaunch this process never started the
         // transfer, so the destination must be derivable from the description alone.
         val destination = host.destinationFor(description) ?: return
         if (moveToStaging(location, destination)) host.onStaged(description, destination)
+    }
+
+    /**
+     * Read the transfer's facts off the response and the file on disk. This is the whole of the edge's
+     * involvement in integrity — the judgement lives in `commonMain` where `commonTest` covers it.
+     *
+     * `expectedContentLength` is `NSURLResponseUnknownLength` (-1) when the server sent no
+     * `Content-Length`; that negative value is passed through verbatim rather than normalized, because
+     * "unknown" is a distinct answer from "zero" to the code that judges it.
+     */
+    private fun outcomeOf(task: NSURLSessionDownloadTask, location: NSURL): TransferOutcome {
+        val http = task.response as? NSHTTPURLResponse
+        val received = location.path
+            ?.let { NSFileManager.defaultManager.attributesOfItemAtPath(it, error = null) }
+            ?.get(NSFileSize) as? NSNumber
+        return TransferOutcome(
+            statusCode = http?.statusCode?.toInt(),
+            expectedBytes = task.response?.expectedContentLength ?: -1L,
+            receivedBytes = received?.longLongValue ?: 0L,
+        )
     }
 
     private fun onComplete(task: NSURLSessionTask, error: NSError?) {

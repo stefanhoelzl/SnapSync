@@ -29,6 +29,27 @@ internal fun stagingPath(root: String, ref: AssetRef, resourceKey: String): Stri
     "$root/${ref.sourceDeviceId.replace('/', '_')}/${resourceKey.replace('/', '_')}"
 
 /**
+ * Whether a finished transfer's bytes may be staged (capability `photo-download`).
+ *
+ * A background `URLSession` reports an HTTP error as a *successful transfer of an error body*: the
+ * finish callback fires with the `502` document in hand and the completion error is `nil`. So this is the
+ * only thing that sees a non-2xx, and without it the error body is staged, fails to import, and is retried
+ * forever — the transfer is never re-run once its resource is recorded as staged.
+ *
+ * Rejects only on **positive evidence**: a known non-2xx status, or a known length the body falls short of.
+ * Never on absence of evidence. That asymmetry is not caution — a rejected transfer is retried, and a retry
+ * only helps if the condition can change. A server that omits `Content-Length` omits it every time, so
+ * rejecting an unknown length would loop unboundedly and the photo would never arrive: the same permanent,
+ * invisible loss as accepting bad bytes, reached from the other side. Hence unknown length, over-length and
+ * unknown status all pass.
+ */
+internal fun TransferOutcome.mayBeStaged(): Boolean {
+    if (statusCode != null && statusCode !in 200..299) return false
+    if (expectedBytes >= 0 && receivedBytes < expectedBytes) return false
+    return true
+}
+
+/**
  * A presigned S3 link the background session can actually fetch. `NSURL` happily parses a hostless or
  * non-HTTP string, and handing one to a background session raises an uncatchable Objective-C exception —
  * so the guard lives here, where it is testable, not at the edge.
@@ -72,6 +93,25 @@ class QueuedPhotoDownloadJobs(
     private var transport: DownloadTransport? = null
 
     private val host = object : DownloadTransportHost {
+        override fun accepts(description: String, outcome: TransferOutcome): Boolean {
+            val staged = outcome.mayBeStaged()
+            // Logged for EVERY finished transfer, not only rejections (capability `diagnostic-logging`).
+            // The accept path is the one that matters most in the field: `expectedBytes = -1` here means the
+            // server sent no `Content-Length`, so the length check is inert and this transfer is admitted on
+            // status alone. If that is what bunny's S3 GETs actually look like, then admitting an unknown
+            // length is the live path for every photo rather than an edge case — and a stricter rule would
+            // have rejected them all. That is not knowable from a unit test; it is knowable from this line.
+            log.i {
+                "transfer finished: status=${outcome.statusCode} expected=${outcome.expectedBytes} " +
+                    "received=${outcome.receivedBytes} → ${if (staged) "stage" else "REJECT (will re-download)"}"
+            }
+            // A rejection is not an error path for the window: the transport still reports `onCompleted`
+            // for this task (a download's completion callback fires after its finish callback, error or
+            // not), which frees the slot. Leaving the bytes un-staged is the whole point — the resource
+            // stays un-staged, so the next reconcile re-downloads it instead of re-importing garbage.
+            return staged
+        }
+
         /**
          * Derived purely from the description, so a completion delivered after a background **relaunch** —
          * for a transfer this process never started, and which is therefore in no in-memory map — still

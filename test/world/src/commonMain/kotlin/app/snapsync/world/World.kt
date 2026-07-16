@@ -8,7 +8,11 @@ import app.snapsync.config.EventConfig
 import app.snapsync.download.DownloadController
 import app.snapsync.download.EventUnionSource
 import app.snapsync.download.HttpEventUnionSource
+import app.snapsync.download.PhotoDownloadJobs
+import app.snapsync.download.QueuedPhotoDownloadJobs
+import app.snapsync.download.TransferOutcome
 import app.snapsync.downloadstore.InMemoryDownloadStore
+import app.snapsync.downloadstore.PendingDownload
 import app.snapsync.engine.LedgerWriter
 import app.snapsync.engine.SyncEngine
 import app.snapsync.eventcreation.CreateEvent
@@ -50,6 +54,9 @@ import app.snapsync.upload.JoinedMembership
 import app.snapsync.upload.cycleGate
 import app.snapsync.uploadurl.EdgeUploadRequestProvider
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.joinAll
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -66,6 +73,13 @@ import kotlinx.coroutines.flow.asStateFlow
  * ([addForeignDevice]) whose complete assets appear in the event-wide union for download/echo.
  */
 class World(
+    /**
+     * The caller's scope — **not** one the world owns. The real [QueuedPhotoDownloadJobs] needs a scope at
+     * construction, and it must belong to whoever drives the world: inside [worldTest] that is the
+     * `runBlocking` scope (`this`), and in the desktop harness the inspector's. A world-owned scope would
+     * outlive the caller and leak staging work between tests, and the operator could not join it.
+     */
+    val scope: CoroutineScope,
     val ownDeviceId: String = "00000000-0000-4000-9000-0000000000a1",
     val host: String = "https://world.edge",
 ) {
@@ -80,7 +94,46 @@ class World(
     val discoveryStore: InMemoryDiscoveryStore = InMemoryDiscoveryStore()
     val downloadStore: InMemoryDownloadStore = InMemoryDownloadStore()
     val platform: FakeUploadJobPlatform = FakeUploadJobPlatform(store, ownDeviceId, enumerator)
-    val downloadJobs: FakePhotoDownloadJobs = FakePhotoDownloadJobs()
+    /**
+     * The fake execution edge, captured when the real jobs first realize a transport (lazily, on the first
+     * transfer — exactly as production does). `null` until then.
+     */
+    var downloadTransport: FakeDownloadTransport? = null
+        private set
+
+    /**
+     * The **real** download orchestration (capability `harness-world-model`): the bounded window, the
+     * description codec, the URL guard and the transfer-integrity check all run here, over a fake
+     * transport. Faking `PhotoDownloadJobs` instead would replace precisely the code the world exists to
+     * exercise.
+     */
+    val downloadJobs: QueuedPhotoDownloadJobs =
+        QueuedPhotoDownloadJobs(
+            scope = scope,
+            stagingRoot = "staged:/",
+            newTransport = { host -> FakeDownloadTransport(host).also { downloadTransport = it } },
+        )
+
+    /**
+     * Inspection: what the controller asked the real jobs to fetch. The real jobs expose no inspection
+     * seam, and their transfer-description codec is `internal` to `:capability:download` — so the world
+     * cannot decode a started transfer back to its `(device, asset, resource)` and must not duplicate the
+     * codec to try. [downloadRequests] records the request; the real jobs still do all the work.
+     */
+    val downloadRequests: MutableList<PendingDownload> = mutableListOf()
+
+    /** The seam the controller gets: records for inspection, then delegates to the real jobs. */
+    private val recordingJobs: PhotoDownloadJobs = object : PhotoDownloadJobs {
+        override suspend fun enqueue(downloads: List<PendingDownload>) {
+            downloadRequests += downloads
+            downloadJobs.enqueue(downloads)
+        }
+
+        override suspend fun cancelAll() {
+            downloadRequests.clear()
+            downloadJobs.cancelAll()
+        }
+    }
     val importer: FakePhotoLibraryImporter = FakePhotoLibraryImporter(gallery)
     val marker: InMemoryJoinedEventMarker = InMemoryJoinedEventMarker()
     val manifestStore: InMemoryDeviceManifestStore = InMemoryDeviceManifestStore()
@@ -133,11 +186,27 @@ class World(
     // Single-instance real download controller (its Mutex must be shared across reconcile + staging).
     val downloadController: DownloadController =
         DownloadController(
-            unionSource, downloadStore, downloadJobs, importer, myDeviceId = ownDeviceId,
+            unionSource, downloadStore, recordingJobs, importer, myDeviceId = ownDeviceId,
             // Mirror SnapSyncRoot: the download arm runs only when the joined direction includes download
             // (capability `join-event`), so a reconcile on an upload-only membership is a no-op.
             downloadEnabled = { configCell.value?.direction?.includesDownload },
         )
+
+    /**
+     * Staging work the real jobs launched. `QueuedPhotoDownloadJobs.onStaged` is not a suspend seam — it is
+     * called from the ObjC delegate thread in production, so it must hop into a coroutine — which means the
+     * operator's [stageAllDownloads] would otherwise return before the controller had imported anything.
+     * The world keeps the handles and joins them, so an operator action is finished when it returns.
+     */
+    private val stagingWork = mutableListOf<Job>()
+
+    init {
+        // Mirror SnapSyncRoot: the real jobs report each staged resource to the controller. Wired after
+        // both exist — the controller takes the jobs, so the back-edge cannot be a constructor argument.
+        downloadJobs.onStaged = { ref, key, path ->
+            stagingWork += scope.launch { downloadController.onResourceStaged(ref, key, path) }
+        }
+    }
 
     // ---- failure levers -------------------------------------------------------------------------
 
@@ -450,11 +519,23 @@ class World(
 
     // ---- download operator action ---------------------------------------------------------------
 
-    /** Stage every currently-pending download (resolving its synthetic url store-direct). */
-    suspend fun stageAllDownloads() {
-        downloadJobs.pending().forEach { pd ->
-            downloadController.onResourceStaged(pd.ref, pd.resource.resourceKey, "staged://${pd.resource.resourceKey}")
-        }
+    /**
+     * Deliver a finish for every in-flight transfer, through the **real** jobs (capability
+     * `harness-world-model`). The operator plays the network: [outcome] is what the transfer turned out to
+     * be, defaulting to an ordinary healthy one.
+     *
+     * A rejected outcome stages nothing and leaves the resource PENDING for retry — that is the world's
+     * existing no-terminal-failure posture, not a new state. This is the only way to reproduce the shape of
+     * the bug end-to-end: a `502` arrives here as a *successful* transfer of an error body, and staging it
+     * would make it the store's truth forever (capability `photo-download`).
+     */
+    suspend fun stageAllDownloads(outcome: TransferOutcome = FakeDownloadTransport.HEALTHY) {
+        val transport = downloadTransport ?: return
+        transport.inFlight().forEach { transport.finish(it.description, outcome) }
+        // Await the staging the jobs launched (see [stagingWork]) so this action is complete on return —
+        // the operator drives the world synchronously, and a racy stage would make every download
+        // assertion flaky.
+        stagingWork.toList().also { stagingWork.clear() }.joinAll()
     }
 
     companion object {
