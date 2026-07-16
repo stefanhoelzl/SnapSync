@@ -46,6 +46,22 @@ private val DarkColors = darkColorScheme(
 val LocalDarkThemeOverride = staticCompositionLocalOf<Boolean?> { null }
 
 /**
+ * Whether the platform's **reduce-motion** accessibility preference is on. Ambient rather than an `App*`
+ * parameter for the same reason as [LocalDarkThemeOverride]: it is environment, not appearance, so no
+ * design-system signature grows a styling knob.
+ *
+ * It defaults to `false` and the composition root supplies the truth (iOS reads
+ * `UIAccessibility.isReduceMotionEnabled`), because Compose Multiplatform exposes no cross-platform
+ * reduce-motion API — `LocalAccessibilityManager` is about announcements. A platform that cannot answer
+ * simply does not provide it, and animation behaves as it always has.
+ *
+ * What honouring it costs is nothing, and that is the point: a `Pulsing` arrow is already **primary**-tinted
+ * where a `Static` one is muted gray (see [AppStatusLine]), so the colour alone carries "in flight". The
+ * motion is redundant emphasis. Dropping it removes the animation, not the meaning.
+ */
+val LocalReduceMotion = staticCompositionLocalOf { false }
+
+/**
  * The Material 3 skin. Follows the platform light/dark setting by default, unless
  * [LocalDarkThemeOverride] forces a theme (test harness only). The QR component always renders
  * dark-on-light on a light card (see [AppQrCode]) so it stays scannable in both themes — the skin
