@@ -65,6 +65,49 @@ real status screen on the left — but its counts **emerge** from `:test:world`'
 upload-job queue and downloads, failure levers, and an engine-console footer. The operator plays the OS
 (nothing auto-runs). See the `full-stack-harness` spec.
 
+### Driving either harness headlessly (agent runbook)
+
+Both `run` tasks open a real window and need a display — useless to an agent, which can neither see nor
+click one. `:test:harness-driver` serves **either harness over HTTP with no window at all**: it composes
+the shipped root (`ForgeHarnessRoot()` / `WorldHarnessRoot()`) into an **offscreen** Compose scene — a
+CPU raster Skia surface, no AWT peer, no `Robot` — so it needs **no X server** and never raises the
+desktop's screen-capture consent prompt. **Never use `java.awt.Robot` or capture the real screen `:0`
+instead**: it prompts the user for portal consent on every run, and blocks until they answer.
+
+It is **dev infrastructure, non-gating, no spec** (same posture as `ssh-mac.yml`; rationale in
+`Driver.kt`). Clicks go through the **real** buttons of the real panel, so there is no second
+way-to-drive that can rot or lie.
+
+```
+./gradlew :test:harness-driver:driveForge   # forge harness (:app:desktop:ui), 800x950
+./gradlew :test:harness-driver:driveWorld   # full-stack world (:app:desktop), 1240x950
+# Run it backgrounded; it blocks serving until /quit or 30 min idle.
+# `B=...` must be its OWN statement, and use -sS (not -s). `B=... curl "$B/x"` expands $B BEFORE the
+# assignment applies, so curl gets a hostless URL — and plain `-s` silences the error, so it looks
+# like the driver is dead when the command is simply wrong. Capital S keeps errors visible.
+B="http://127.0.0.1:$(cat test/harness-driver/build/harness-driver.port)"
+curl -sS "$B/health"                                    # harness=world scene=1240x950
+curl -sS "$B/tree"                                      # phone-pane semantics (~700 tokens)
+curl -sS "$B/tree?scope=all"                            # whole window (~9.7k tokens — mostly chrome)
+curl -sS --get --data-urlencode "text=▶ Invoke extension" "$B/click"
+curl -sS "$B/click?text=%E2%9C%93&index=0"              # per-row controls NEED index=
+curl -sS -o shot.png "$B/phone.png"                     # the 390x844 pane; /shot.png = whole window
+curl -sS "$B/quit"
+```
+
+- **The port is OS-assigned and written to `test/harness-driver/build/harness-driver.port`** — inside
+  this worktree. That is deliberate: every CodeHydra workspace is its own worktree, so a fixed port
+  would let two agents silently drive each other's world. Read the file; never hardcode a port.
+- **Select a node** with `text=` (button label), `tag=`, or `desc=` (content description), plus
+  `index=` and `substring=true`. `index=` is **required** for the world inspector's per-job `✓` `✕`
+  `Net` `Http` `Cxl` `Unk` — one row per job, so those labels are ambiguous by construction.
+- **`/click` settles before answering** (`waitForIdle()`), so a `200` means the state is stable. It also
+  `performScrollTo()`s first, since both panels scroll and off-viewport controls are otherwise unclickable.
+- **The operator plays the OS — including acknowledgement.** `✓` on a job does *not* complete it: it
+  deposits the object store-direct and stages an ack that **the next `▶ Invoke extension` records as
+  `COMPLETED`**. Completing every job and expecting "In sync" without a second invoke will look like a
+  bug and isn't. A completed-but-unacked job stays listed, so `index=0` twice hits the *same* row.
+
 ## On-device iOS (agent-driveable over USB)
 
 The iOS PhotoKit upload extension is **physical-device-only** (no simulator support; spec
@@ -413,6 +456,7 @@ agent use and inject that one instead.
 :test:world            test-only shared infra: a controllable in-memory "world" (backend object store + read-models, MockEngine mini-edge, operator-driven UploadJobPlatform/download fakes) the REAL stack runs against + composition helpers mirroring the extension root; jvm()+iosSimulatorArm64. Consumed by :app:desktop AND :test:integration (capability harness-world-model)
 :test:architecture     test-only JVM guards for invariants the compiler cannot express (capability architecture-guards): Konsist — no SecItem* outside :domain:keychain (catches fully-qualified calls, which no linter can see on iosMain); plus the entitlements never raise default-data-protection to NSFileProtectionComplete (which would make every App-Group file unreadable while locked, killing the background tier)
 :test:integration      test-only: seam → UI-state integration over :test:world — asserts UiState AND world outcomes (objects landed, ledger COMPLETED, foreign photos imported)
+:test:harness-driver   test-only dev infra (non-gating, no spec): serves EITHER desktop harness over HTTP with no window — composes the shipped ForgeHarnessRoot/WorldHarnessRoot into an offscreen Compose scene (CPU raster Skia; no X server, no screen-capture portal) so an agent can click the real buttons and read back the real pixels + semantics tree. Runbook above; rationale in Driver.kt
 iosApp/                Xcode project (app + upload-extension targets) — not Gradle
 ```
 
