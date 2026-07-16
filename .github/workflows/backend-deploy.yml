@@ -37,6 +37,21 @@ jobs:
         with:
           deno-version: v2.x
 
+      # The landing page's screenshots are DERIVED from the committed raws in screenshots/ (capability
+      # `marketing-site`) and are NOT committed — they are build output. Every step below that reads src/
+      # therefore needs this first: `deno check`, `deno test` and `deno bundle` all resolve
+      # `src/shots.generated.ts`, and without it the type-check fails on an unresolved import.
+      #
+      # It is a step here rather than folded into the deno.json tasks because THIS workflow invokes deno
+      # directly (`deno check src/*.ts`, not `deno task check`) — deliberately, so what CI runs is legible
+      # here rather than indirected through a task alias.
+      #
+      # Pure WASM (@jsquash), so it needs no system dependency — the same property that keeps a fresh clone
+      # checkable with only Deno installed.
+      - name: Derive the landing page's screenshots
+        working-directory: backend
+        run: deno task shots
+
       # --- Test gate: deploy runs only if these pass ---
       - name: Format check
         working-directory: backend

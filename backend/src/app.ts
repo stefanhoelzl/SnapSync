@@ -112,8 +112,10 @@ import {
 // The marketing/landing page (capability `marketing-site`), embedded at build time. `deno bundle` inlines
 // this text import, so the page ships inside the single bundle — served from memory, no runtime file read.
 import LANDING_HTML from "./landing.html" with { type: "text" };
-// The page's screenshots, derived from the committed raws in `screenshots/` by `deno task shots` (which
-// every deno task runs first). Generated, not committed — see scripts/shots.ts.
+// The page's screenshots (capability `marketing-site`): SHOTS is the committed contract, SHOT_DATA_URIS the
+// images `deno task shots` derives from the committed raws in `screenshots/`. The generated module is not
+// committed — see src/shots.ts for why the split is what makes the set type-checked.
+import { SHOTS } from "./shots.ts";
 import { SHOT_DATA_URIS } from "./shots.generated.ts";
 
 /**
@@ -122,14 +124,19 @@ import { SHOT_DATA_URIS } from "./shots.generated.ts";
  * substitution, not a file read: `marketing-site` requires serving the page to touch neither the disk nor
  * an upstream.
  *
- * The leftover check is the point: a renamed state or a stale placeholder would otherwise ship `{{SHOT_…}}`
- * as literal text on the public page, and nothing else would notice. Fail at boot instead.
+ * Driven by [SHOTS] and indexed by placeholder, so the type system carries the pairing: `SHOT_DATA_URIS` is
+ * `Record<ShotPlaceholder, string>`, hence every lookup here is a `string` — no cast, no `undefined`, and a
+ * capture the derive failed to emit cannot reach this code at all.
+ *
+ * The leftover scan catches what types cannot: a placeholder typo'd *in the HTML* matches no key, so it
+ * would otherwise ship `{{SHOT_…}}` as literal text on the public page with nothing to notice. Fail at boot
+ * instead.
  */
 const LANDING_PAGE: string = (() => {
-  const page = Object.entries(SHOT_DATA_URIS).reduce(
-    (html, [key, uri]) => html.replaceAll(`{{${key}}}`, uri),
-    LANDING_HTML,
-  );
+  let page = LANDING_HTML;
+  for (const { placeholder } of SHOTS) {
+    page = page.replaceAll(`{{${placeholder}}}`, SHOT_DATA_URIS[placeholder]);
+  }
   const leftover = page.match(/\{\{SHOT_[A-Z_]+\}\}/g);
   if (leftover) {
     throw new Error(
