@@ -3,10 +3,10 @@
 ## Purpose
 
 A controllable in-memory "world" (`:test:world`) that the REAL platform-agnostic stack — `SyncEngine`
-+ `UploadCycle`, `ExtensionReconciler`, `DeviceManifestProducer`, `DownloadController`,
-`OwnDeviceCompletedAssetsSource` + `ListingSyncStatusSource`, `CreateEvent` — runs against, so the
-whole system (upload AND download) is observable and testable on JVM + `iosSimulatorArm64` without a
-device. It provides a backend object store computing the edge's read-models faithfully (drift
++ `UploadCycle`, `ExtensionReconciler`, `DeviceManifestProducer`, `DownloadController` +
+`QueuedPhotoDownloadJobs`, `OwnDeviceGalleryStatusSource` + `LedgerBackedSyncStatusSource`,
+`CreateEvent` — runs against, so the whole system (upload AND download) is observable and testable on
+JVM + `iosSimulatorArm64` without a device. It provides a backend object store computing the edge's read-models faithfully (drift
 accepted, no golden fixture), a Ktor `MockEngine` mini-edge over the four common-Ktor seams,
 operator-driven upload/download job fakes, a one-own-plus-injectable-foreign device model, controllable
 failure levers, and composition helpers mirroring the extension composition root. Consumed by BOTH the
@@ -25,8 +25,9 @@ Decision record: `changes/archive/2026-07-03-add-harness-world-model`.
 
 The system SHALL provide a test-infra Kotlin Multiplatform module `:test:world` that assembles the
 **real** platform-agnostic stack (`SyncEngine` + `UploadCycle`, `ExtensionReconciler`,
-`DeviceManifestProducer`, `DownloadController`, `OwnDeviceCompletedAssetsSource` +
-`ListingSyncStatusSource`, `CreateEvent`) against controllable in-memory infrastructure. The module
+`DeviceManifestProducer`, `DownloadController` + `QueuedPhotoDownloadJobs`,
+`OwnDeviceGalleryStatusSource` + `LedgerBackedSyncStatusSource`, `CreateEvent`) against controllable
+in-memory infrastructure. The module
 SHALL declare targets `jvm()` and `iosSimulatorArm64` **only** (no `iosArm64` — it never links into a
 shipped framework), so its logic and self-tests execute on **both** JVM and the iOS simulator per
 testing rule 1. Its fakes and composition helpers SHALL live in `commonMain` (reusable infrastructure,
@@ -79,10 +80,10 @@ absent, not empty).
 - **THEN** the read-model reports the event absent (a 404-equivalent that surfaces as a failed
   `union` `Result`), distinct from a registered event with no complete assets (an empty array)
 
-#### Scenario: Reconcile-seed listing is the per-device listing
+#### Scenario: The reconcile seed reads the per-device listing
 
-- **WHEN** the rejoin reconciler and own-device status completeness each read a device's stored files
-- **THEN** both consume the same per-device listing read-model (the world exposes it once)
+- **WHEN** the rejoin reconciler seeds already-stored photos for a device
+- **THEN** it consumes the world's per-device listing read-model — the same one the backend serves, exposed once
 
 ### Requirement: MockEngine mini-edge over the four common-Ktor seams
 
@@ -255,14 +256,15 @@ flow through download → import → suppression while the own device's uploads 
 
 The world SHALL expose controllable failure levers that drive the real stack's failure paths: a
 **backend-offline** switch flipping the per-device listing and event-union routes to `502` (driving the
-status keep-last-good path and the download union-failure path), the **job-limit** (`LIMIT_EXCEEDED`),
+reconcile-seed failure path and the download union-failure path), the **job-limit** (`LIMIT_EXCEEDED`),
 a **per-job `UploadError`** on the upload retry chain, and an **import failure** (`ImportResult.Failed`).
 
-#### Scenario: Backend-offline keeps last-good status and fails the union
+#### Scenario: Backend-offline leaves upload status untouched and fails the union
 
 - **WHEN** the backend-offline switch is set and the status source refreshes and the download
   controller reconciles
-- **THEN** the listing-backed status keeps its last-good completed set and the download union read
+- **THEN** own-device upload status is unaffected — it is ledger-backed and issues no storage read, so
+  there is no last-good set to keep and nothing to go stale — and the download union read
   returns a failed `Result` (no partial import)
 
 #### Scenario: Each lever drives its real path
@@ -280,9 +282,10 @@ upload-cycle path (real `SyncEngine` + `EdgeUploadRequestProvider` + `UploadCycl
 `process()`-shaped runner: reload config → reconcile → build config → run cycle), the reconcile +
 manifest path (real `ExtensionReconciler` over `HttpDeviceFilesSource` + real `DeviceManifestProducer`
 over the common `HttpDeviceManifestUploader`), the download path (real `DownloadController` over
-`HttpEventUnionSource`), the listing-backed status path (real `OwnDeviceCompletedAssetsSource` +
-`ListingSyncStatusSource`), and the create-event path (real `CreateEvent` over `HttpEventCreationClient`).
-Only the platform edges (`UploadJobPlatform`, `PhotoDownloadJobs`, `PhotoLibraryImporter`), the storage
+`HttpEventUnionSource`, and the real `QueuedPhotoDownloadJobs` over a fake `DownloadTransport`), the
+ledger-backed status path (real `OwnDeviceGalleryStatusSource` + `LedgerBackedSyncStatusSource` over the
+world's real ledger), and the create-event path (real `CreateEvent` over `HttpEventCreationClient`).
+Only the platform edges (`UploadJobPlatform`, `DownloadTransport`, `PhotoLibraryImporter`), the storage
 seams, and the HTTP client SHALL be fakes; everything above them SHALL be the shipped production code.
 
 #### Scenario: The composed upload path exercises the real cycle
@@ -309,8 +312,8 @@ rather than injected `SyncEvent`s alone, and it SHALL run on JVM and `iosSimulat
 #### Scenario: A completed upload advances both UiState and the store
 
 - **WHEN** an asset is added, its job created and completed, and the cycle plus a status refresh run
-- **THEN** the projected `UiState` advances toward `Completed` **and** the object is present in the
-  per-device listing with a `COMPLETED` ledger row
+- **THEN** the projected `UiState` reaches `Joined(SyncHealth.InSync)` **and** the object is present in
+  the per-device listing with a `COMPLETED` ledger row
 
 #### Scenario: A foreign download imports and is observable
 
@@ -330,7 +333,7 @@ world's object store through the same mini-edge cascade a real backend runs (ren
 last-active-member reap, reference-checked GC), so integration tests can assert **both** the device
 outcome (join cleared, imports retained) and the **world** outcome (the device's manifest renamed
 departed; the event tree and freed byte partition removed when it was the last active member). Because
-clearing the config cell is reactive, the listing-backed status projection SHALL leave the joined layer
+clearing the config cell is reactive, the status projection SHALL leave the joined layer
 without any world rebuild, and re-provisioning the same event afterwards SHALL still find the previously
 imported foreign assets suppressed (real cross-event dedup).
 
