@@ -33,6 +33,12 @@ API = "https://api.appstoreconnect.apple.com/v1"
 FIND_TIMEOUT_S = 20 * 60
 FIND_POLL_S = 20
 
+# Applied only when this script CREATES the version record (below) — an existing record is reused
+# untouched, so a copyright set by hand in the console survives. It cannot ride the declarative
+# `metadata` push instead: copyright is a version ATTRIBUTE, which that tool's closed schema rejects.
+# `YYYY Name`, where YYYY is the year of FIRST PUBLICATION — it does NOT roll with the calendar year.
+COPYRIGHT = "2026 Stefan Hoelzl"
+
 
 def _token() -> str:
     return jwt.encode(
@@ -99,7 +105,11 @@ def _find_or_create_version(s: requests.Session, app_id: str, version_string: st
         json={
             "data": {
                 "type": "appStoreVersions",
-                "attributes": {"platform": "IOS", "versionString": version_string},
+                "attributes": {
+                    "platform": "IOS",
+                    "versionString": version_string,
+                    "copyright": COPYRIGHT,
+                },
                 "relationships": {"app": {"data": {"type": "apps", "id": app_id}}},
             }
         },
