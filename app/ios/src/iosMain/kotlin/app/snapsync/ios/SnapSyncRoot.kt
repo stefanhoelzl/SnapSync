@@ -721,6 +721,14 @@ object SnapSyncRoot {
      * invalid-link error. The app no longer provisions directly on scan — the gate owns that.
      */
     fun onOpenUrl(url: String) = log.invocation("onOpenUrl", params = "url=$url") {
+        // Forge mode: unreachable today only by accident — a screenshot run sets no `SNAPSYNC_EVENT_LINK`
+        // and taps no link — but the rule is "while forging, the app assembles no live stack", not "the
+        // three hooks we happened to think of". Setting both env vars would otherwise provision a real
+        // event from a process rendering a forged frame, which is incoherent before it is a crash.
+        if (isForging) {
+            log.i { "forge mode: ignoring event link" }
+            return@invocation
+        }
         host.onOpenUrl(url)
     }
 
@@ -731,6 +739,14 @@ object SnapSyncRoot {
      * rotations. Touch [host] so the collector is running to observe it. No decision in Swift.
      */
     fun onPushToken(hex: String) = log.invocation("onPushToken", params = "hex=${hex.take(12)}…") {
+        // Forge mode: `registerForRemoteNotifications()` is called unconditionally at launch, so this
+        // arrives on a screenshot run too — and touching [host] below would assemble the live stack on an
+        // unsigned simulator with no App-Group container, no App Attest, and no photo grant. Registering a
+        // token for a process that exists only to render one frame buys nothing, so drop it.
+        if (isForging) {
+            log.i { "forge mode: ignoring push token" }
+            return@invocation
+        }
         host
         pushTokenSource.deliver(hex)
     }
@@ -744,6 +760,15 @@ object SnapSyncRoot {
      * download stack is assembled on a background launch. Non-throwing: a failure still calls [completion].
      */
     fun onSilentPush(eventId: String, completion: () -> Unit) {
+        // Forge mode: same reason as [onPushToken] — touching [host] would boot the live stack on an
+        // unsigned simulator. [completion] is still invoked, and that is not optional: it is the OS's
+        // handler, and an unanswered `content-available` push costs the app its future background wakes.
+        // Returning without calling it would trade a crash for a slower, invisible penalty.
+        if (isForging) {
+            log.i { "forge mode: ignoring silent push for $eventId" }
+            completion()
+            return
+        }
         host
         scope.launch {
             // Wrap INSIDE the launch so `[onSilentPush]` spans the async reconcile (and the download
