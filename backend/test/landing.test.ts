@@ -101,6 +101,52 @@ Deno.test("landing: screenshot headlines are document text, not baked pixels", a
   assertStringIncludes(body, 'aria-label="Screenshots of SnapSync, scrollable"');
 });
 
+Deno.test("landing: the app icon is the favicon, inlined", async () => {
+  const body = await (await app().request("/")).text();
+  const m = body.match(/<link[^>]+rel="icon"[^>]+href="(data:image\/png;base64,[^"]+)"/);
+  assert(m, "no inlined favicon link");
+  // Sized for a tab, not reused from the full-resolution app icon: a favicon renders at 16-32px, and the
+  // page already inlines a ~98KB 1024px blob for the brandmark. Guard against that creeping back.
+  assert(
+    m[1].length < 20_000,
+    `favicon is ${(m[1].length / 1024).toFixed(0)}KB — too big for a tab icon`,
+  );
+});
+
+// The ETag does NOT invalidate anything — `max-age` already caps staleness, since a cache serves its stored
+// copy for that long without asking. It makes the revalidation AFTER that cheap: the page is ~290KB (mostly
+// inlined screenshots), so re-checking it costs an empty 304 instead of re-sending the whole thing.
+Deno.test("landing: GET / carries an ETag", async () => {
+  const res = await app().request("/");
+  const etag = res.headers.get("ETag");
+  assert(etag && /^"[a-z0-9]+-[a-z0-9]+"$/.test(etag), `implausible ETag: ${etag}`);
+  await res.text();
+});
+
+Deno.test("landing: a matching If-None-Match is answered 304 with no body", async () => {
+  const etag = (await app().request("/")).headers.get("ETag")!;
+  const res = await app().request("/", { headers: { "If-None-Match": etag } });
+  assertEquals(res.status, 304);
+  assertEquals(await res.text(), "");
+  // A 304 must still carry the caching headers, or the cache learns nothing from it.
+  assertEquals(res.headers.get("Cache-Control"), "public, max-age=300");
+  assertEquals(res.headers.get("ETag"), etag);
+});
+
+Deno.test("landing: a stale If-None-Match gets the page, not a 304", async () => {
+  const res = await app().request("/", { headers: { "If-None-Match": '"stale-etag"' } });
+  assertEquals(res.status, 200);
+  assert((await res.text()).length > 0);
+});
+
+Deno.test("landing: the ETag tracks the content", async () => {
+  // Pins the property that makes it maintenance-free: it is derived from the built page, so it moves with
+  // the page and cannot be forgotten on a deploy. Same content => same tag.
+  const a = (await app().request("/")).headers.get("ETag");
+  const b = (await app().request("/")).headers.get("ETag");
+  assertEquals(a, b);
+});
+
 Deno.test("landing: HEAD / returns the headers with no body", async () => {
   const res = await app().request("/", { method: "HEAD" });
   assertEquals(res.status, 200);
