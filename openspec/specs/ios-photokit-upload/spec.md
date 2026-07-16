@@ -410,9 +410,12 @@ extension **re-projects** it to the **new** event's `device.json` path, then set
 marker. The app decodes the event link only to gate this on a valid payload; the authoritative
 decode/validate/persist still happens in the shared container intent.
 
-The re-provision itself SHALL NOT clear the ledger or the discovery cursor
-(`upload-lifecycle`): only the reconciliation's `resetTo` re-baselines them, from the authoritative
-per-device listing.
+The re-provision itself SHALL NOT clear the **ledger** (`upload-lifecycle`): only the reconciliation's
+`resetTo` re-baselines it, from the authoritative per-device listing. The **discovery cursor** is cleared
+twice over on this path, both deliberately and neither by the provisioning logic: by the re-register's
+disable half (see "Disabling the extension clears orphaned REQUESTED rows", which requires it on **every**
+disable) and by the reconciliation itself. Both are repairs, and both cost only a re-enumeration — the
+ledger they leave intact is what knows the work is already done.
 
 #### Scenario: Valid re-scan reconciles and re-projects to the new event
 - **WHEN** a valid `https://<link domain>/join#…` event link is opened for a different event on iOS ≥26.1
