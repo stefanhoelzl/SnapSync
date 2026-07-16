@@ -207,7 +207,11 @@ private fun Arrow(
     val pulsing = level == ArrowLevel.PULSING
     // Pulsing (in-flight) arrows use the brand primary and fade; static arrows are a muted gray, no motion.
     val tint = if (pulsing) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
-    val alpha = if (pulsing) {
+    // Reduce-motion drops the fade, never the meaning: the primary tint above already says "in flight",
+    // so a non-animating pulsing arrow is still unmistakably not a static one. It renders at full alpha —
+    // the fade's own bright end — so the only thing lost is the motion.
+    val animate = pulsing && !LocalReduceMotion.current
+    val alpha = if (animate) {
         val transition = rememberInfiniteTransition(label = "pulse")
         val a by transition.animateFloat(
             initialValue = StaticAlpha,

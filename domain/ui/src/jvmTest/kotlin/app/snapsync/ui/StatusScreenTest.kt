@@ -1,7 +1,12 @@
 package app.snapsync.ui
 
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.semantics.SemanticsProperties
+import androidx.compose.ui.graphics.PixelMap
+import androidx.compose.ui.graphics.toPixelMap
 import androidx.compose.ui.test.SemanticsMatcher
+import androidx.compose.ui.test.captureToImage
+import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.hasSetTextAction
@@ -11,9 +16,12 @@ import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTextInput
 import app.snapsync.permission.PermissionStatus
+import app.snapsync.ui.components.LocalReduceMotion
 import app.snapsync.presentation.Arrow
 import app.snapsync.presentation.SystemCutoffFormatter
 import app.snapsync.presentation.SyncHealth
+import kotlin.test.assertFalse
+import kotlin.test.assertTrue
 import app.snapsync.presentation.UiState
 import kotlin.time.Clock
 import kotlin.time.Instant
@@ -252,6 +260,55 @@ class StatusScreenTest {
         rule.onNodeWithText("Synchronization ongoing…").assertDoesNotExist()
     }
 
+    // ---- reduce motion (capability `design-system`) ----
+
+    /**
+     * The requirement is an **absence** — "SHALL respect reduced-motion preferences" — so the test asserts
+     * one: render two frames a third of a pulse apart and prove the pixels are identical. That is the
+     * property itself, not a proxy for it. The control below is what makes it mean anything.
+     */
+    @Test
+    fun `reduce motion leaves the pulsing arrow un-animated`() {
+        rule.mainClock.autoAdvance = false
+        rule.setContent {
+            CompositionLocalProvider(LocalReduceMotion provides true) { StatusScreen(syncing) }
+        }
+        rule.onNodeWithText("Synchronization ongoing…").assertExists()
+
+        val first = rule.onRoot().captureToImage().toPixelMap()
+        rule.mainClock.advanceTimeBy(350)
+        val second = rule.onRoot().captureToImage().toPixelMap()
+
+        assertTrue(samePixels(first, second), "reduce motion must leave the frame unchanged over time")
+    }
+
+    /** The control: without the preference the same state DOES move — or the test above proves nothing. */
+    @Test
+    fun `without reduce motion the pulsing arrow animates`() {
+        rule.mainClock.autoAdvance = false
+        rule.setContent {
+            CompositionLocalProvider(LocalReduceMotion provides false) { StatusScreen(syncing) }
+        }
+        rule.onNodeWithText("Synchronization ongoing…").assertExists()
+
+        val first = rule.onRoot().captureToImage().toPixelMap()
+        rule.mainClock.advanceTimeBy(350) // half the 700ms fade — the alpha cannot be back where it started
+        val second = rule.onRoot().captureToImage().toPixelMap()
+
+        assertFalse(samePixels(first, second), "a pulsing arrow animates when motion is allowed")
+    }
+
+    /** Reduce motion changes no meaning: the label still distinguishes in-flight from merely pending. */
+    @Test
+    fun `reduce motion keeps the ongoing-vs-pending distinction`() {
+        rule.setContent {
+            CompositionLocalProvider(LocalReduceMotion provides true) { StatusScreen(syncPending) }
+        }
+
+        rule.onNodeWithText("Synchronization pending…").assertExists()
+        rule.onNodeWithText("Synchronization ongoing…").assertDoesNotExist()
+    }
+
     @Test
     fun `needs-access not-determined shows the allow copy and taps request permission`() {
         var requests = 0
@@ -363,4 +420,10 @@ class StatusScreenTest {
 
     private fun hasAnyProgressIndication(): SemanticsMatcher =
         SemanticsMatcher.keyIsDefined(SemanticsProperties.ProgressBarRangeInfo)
+}
+
+private fun samePixels(a: PixelMap, b: PixelMap): Boolean {
+    if (a.width != b.width || a.height != b.height) return false
+    for (y in 0 until a.height) for (x in 0 until a.width) if (a[x, y] != b[x, y]) return false
+    return true
 }

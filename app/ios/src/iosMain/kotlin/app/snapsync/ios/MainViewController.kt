@@ -1,5 +1,6 @@
 package app.snapsync.ios
 
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -9,7 +10,9 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.window.ComposeUIViewController
 import app.snapsync.presentation.SetupEffect
 import app.snapsync.ui.StatusScreen
+import app.snapsync.ui.components.LocalReduceMotion
 import kotlin.time.Duration.Companion.seconds
+import platform.UIKit.UIAccessibilityIsReduceMotionEnabled
 import kotlinx.coroutines.delay
 
 /**
@@ -56,22 +59,28 @@ fun MainViewController() = ComposeUIViewController {
         }
     }
 
-    StatusScreen(
-        state,
-        host::onRequestPermission,
-        host::onOpenSettings,
-        onLeaveEvent = host::onLeaveEvent,
-        onShareInvite = host::onShareInvite,
-        inviteUrl = inviteUrl,
-        eventName = eventName,
-        onCreateEvent = host::onCreateEvent,
-        transientError = transientError,
-        onConfirmJoin = host::onConfirmJoin,
-        onAcknowledgeAccess = host::onAcknowledgeAccess,
-        onCancelJoin = host::onCancelJoin,
-        onRetryLoad = host::onRetryLoad,
-        onRetryJoin = host::onRetryJoin,
-        onConfirmSwitch = host::onConfirmSwitch,
-        onCancelSwitch = host::onCancelSwitch,
-    )
+    // The platform's reduce-motion preference (capability `design-system`). Compose Multiplatform has no
+    // cross-platform accessor for it, so the composition root supplies it — this is the only place that
+    // knows. Read on each composition rather than `remember`ed: it is a cheap property read, and caching it
+    // for the process would ignore a user who turns it on while the app is open.
+    CompositionLocalProvider(LocalReduceMotion provides UIAccessibilityIsReduceMotionEnabled()) {
+        StatusScreen(
+            state,
+            host::onRequestPermission,
+            host::onOpenSettings,
+            onLeaveEvent = host::onLeaveEvent,
+            onShareInvite = host::onShareInvite,
+            inviteUrl = inviteUrl,
+            eventName = eventName,
+            onCreateEvent = host::onCreateEvent,
+            transientError = transientError,
+            onConfirmJoin = host::onConfirmJoin,
+            onAcknowledgeAccess = host::onAcknowledgeAccess,
+            onCancelJoin = host::onCancelJoin,
+            onRetryLoad = host::onRetryLoad,
+            onRetryJoin = host::onRetryJoin,
+            onConfirmSwitch = host::onConfirmSwitch,
+            onCancelSwitch = host::onCancelSwitch,
+        )
+    }
 }
