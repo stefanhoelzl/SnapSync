@@ -85,12 +85,23 @@ jobs:
           if [ -z "$APP" ]; then echo "::error::no simulator .app produced"; exit 1; fi
           echo "APP_PATH=$APP" >> "$GITHUB_ENV"
 
-      # Create + boot a 6.9" iPhone on the runner's newest iOS runtime, then install the app.
+      # Boot a 6.9" iPhone and install. REUSE the runner image's pre-created device rather than
+      # `simctl create`: a brand-new device pays a first-boot data-container migration that measured
+      # 209-224s — longer than capturing all six screenshots. A device the image already booted skips it.
+      # (It is also the fresh-device onboarding that fires the "Ready for Apple Intelligence" banner which
+      # contaminated a capture, so reusing one should make that rarer too.)
+      # Falls back to creating one if the image ever ships without it.
       - name: Boot the 6.9" simulator and install
         run: |
-          DEVICE="$(xcrun simctl create screenshots-6.9 'iPhone 16 Pro Max')"
+          DEVICE="$(xcrun simctl list devices available | grep -m1 'iPhone 16 Pro Max' | grep -oE '[0-9A-F-]{36}' || true)"
+          if [ -n "$DEVICE" ]; then
+            echo "reusing pre-created device $DEVICE"
+          else
+            echo "no pre-created iPhone 16 Pro Max — creating one"
+            DEVICE="$(xcrun simctl create screenshots-6.9 'iPhone 16 Pro Max')"
+          fi
           echo "DEVICE=$DEVICE" >> "$GITHUB_ENV"
-          xcrun simctl boot "$DEVICE"
+          xcrun simctl boot "$DEVICE" 2>/dev/null || true   # already-booted is fine
           xcrun simctl bootstatus "$DEVICE" -b
           xcrun simctl install "$DEVICE" "$APP_PATH"
 
@@ -114,24 +125,63 @@ jobs:
       # `AppTheme` LightColors/DarkColors constants.
       - name: Capture each forged state, light and dark
         run: |
-          mkdir -p shots
-          for MODE in light dark; do
-            xcrun simctl ui "$DEVICE" appearance "$MODE"
-            echo "appearance now: $(xcrun simctl ui "$DEVICE" appearance)"
-            for STATE in create joining in_sync; do
-              # Hard reset between shots: SnapSync ignores SIGTERM (Skiko runloop), so a relaunch that
-              # LAYERS over a still-alive instance breaks the frame. Terminate, wait, then launch fresh —
-              # no --terminate-running-process (which layers). A longer settle covers cold Compose init.
-              xcrun simctl terminate "$DEVICE" app.snapsync 2>/dev/null || true
-              sleep 2
-              SIMCTL_CHILD_SNAPSYNC_FORGE_STATE="$STATE" \
-                xcrun simctl launch "$DEVICE" app.snapsync
-              sleep 8
-              echo "running after $MODE/$STATE launch: $(xcrun simctl spawn "$DEVICE" launchctl list 2>/dev/null | grep -c app.snapsync)"
-              xcrun simctl io "$DEVICE" screenshot "shots/$STATE-$MODE.png"
+          mkdir -p shots tmp
+
+          # Wait until the app is GONE. SnapSync ignores SIGTERM (Skiko runloop), so a relaunch that
+          # LAYERS over a still-alive instance yields a black launch screen. Polling beats a blind sleep:
+          # it is both faster in the common case and actually correct in the slow one.
+          wait_gone() {
+            for _ in $(seq 1 40); do
+              xcrun simctl spawn "$DEVICE" launchctl list 2>/dev/null | grep -q app.snapsync || return 0
+              sleep 0.5
             done
+            echo "::warning::app still running after terminate"
+          }
+
+          # Wait until the screen STOPS CHANGING, then leave the settled frame at $1.
+          #
+          # This is a real readiness signal rather than `sleep 8`'s guess: `simctl io screenshot` writes no
+          # timestamp (its only metadata is an eXIf of dimensions + colour space), so two byte-identical
+          # consecutive captures mean the pixels are genuinely static — Compose has finished its cold init
+          # and any launch animation is over. Safe because every forged state is static; the animated
+          # `Syncing` state is deliberately not in the marketing set (its pulsing arrow would never settle).
+          wait_stable() {
+            local out="$1" prev=tmp/prev.png cur=tmp/cur.png
+            xcrun simctl io "$DEVICE" screenshot "$prev" >/dev/null 2>&1
+            for _ in $(seq 1 25); do
+              sleep 1
+              xcrun simctl io "$DEVICE" screenshot "$cur" >/dev/null 2>&1
+              if cmp -s "$prev" "$cur"; then cp "$cur" "$out"; return 0; fi
+              mv "$cur" "$prev"
+            done
+            echo "::error::screen never settled for $out"; exit 1
+          }
+
+          # ONE launch per STATE, not per (state, appearance): SNAPSYNC_FORGE_STATE is read once per
+          # process so each state needs its own launch, but the appearance does not — `AppTheme` selects on
+          # `isSystemInDarkTheme()`, which Compose/iOS resolves from the UIKit trait collection, and the
+          # framework observes `traitCollectionDidChange`. So a running app re-themes when `simctl ui
+          # appearance` flips. Halves the launches, and wait_stable proves the re-theme actually landed.
+          for STATE in create joining in_sync; do
+            xcrun simctl terminate "$DEVICE" app.snapsync 2>/dev/null || true
+            wait_gone
+            xcrun simctl ui "$DEVICE" appearance light
+            SIMCTL_CHILD_SNAPSYNC_FORGE_STATE="$STATE" \
+              xcrun simctl launch "$DEVICE" app.snapsync
+            wait_stable "shots/$STATE-light.png"
+
+            xcrun simctl ui "$DEVICE" appearance dark
+            wait_stable "shots/$STATE-dark.png"
+
+            # The flip must actually have changed the frame. If the two are identical the app did not
+            # re-theme, and we would silently ship six light screenshots — half of them mislabelled.
+            if cmp -s "shots/$STATE-light.png" "shots/$STATE-dark.png"; then
+              echo "::error::$STATE did not re-theme on the appearance flip (light == dark)"; exit 1
+            fi
+            echo "captured $STATE (light + dark)"
           done
           xcrun simctl terminate "$DEVICE" app.snapsync 2>/dev/null || true
+          rm -rf tmp
           # Diagnostics: dump any crash reports so a launch-into-Joined crash is attributable, not guessed.
           echo "=== crash reports ==="
           CR="$HOME/Library/Developer/CoreSimulator/Devices/$DEVICE/data/Library/Logs/DiagnosticReports"
