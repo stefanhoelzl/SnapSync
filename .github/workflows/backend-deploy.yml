@@ -20,6 +20,11 @@ on:
   push:
     paths:
       - "backend/**"
+      # The served page embeds images DERIVED from these raws at build time (`deno task shots`), so a
+      # capture refresh must redeploy — otherwise the live page keeps serving the previous screenshots
+      # until some unrelated backend change happens to ship. The widening is exact, not a guess at a
+      # dependency graph: this path IS the derive's input. Capability `marketing-site`.
+      - "screenshots/**"
       - ".github/workflows/backend-deploy.yml"
 
 jobs:
