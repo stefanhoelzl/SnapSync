@@ -24,6 +24,11 @@ name: screenshots
 
 on:
   workflow_dispatch:
+  # TEMPORARY (revert before merge): a new workflow_dispatch workflow is not dispatchable until it
+  # exists on the default branch, so this branch-scoped push trigger validates the pipeline on
+  # ci-screenshot. Remove this `push:` block — leaving only workflow_dispatch — before shipping.
+  push:
+    branches: [ci-screenshot]
 
 permissions:
   contents: read
@@ -132,11 +137,15 @@ jobs:
             [ -f "$f" ] && { FONT="$f"; break; }
           done
           echo "using font: $FONT"
+          # `caption:` word-WRAPS inside a fixed 1140px box at a fixed pointsize, so a long headline
+          # becomes two lines instead of bleeding off the 1320px canvas (which `-annotate` did — it
+          # neither wraps nor clips-safely). Any future copy length fits by construction.
           compose() { # <raw> <headline> <out>
             magick -size 1320x2868 "xc:#0E9D6B" \
               \( "$1" -resize 1120x \) -gravity south -geometry +0+100 -composite \
-              -gravity north -fill white -font "$FONT" -pointsize 68 \
-              -annotate +0+240 "$2" \
+              \( -background none -fill white -font "$FONT" -pointsize 72 \
+                 -size 1140x -gravity center caption:"$2" \) \
+              -gravity north -geometry +0+170 -composite \
               "$3"
           }
           compose shots/create.png   "Start an event in seconds"        "out/en-US/6.9/01-create.png"

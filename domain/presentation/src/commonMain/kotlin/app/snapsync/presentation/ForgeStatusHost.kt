@@ -3,6 +3,8 @@ package app.snapsync.presentation
 import app.snapsync.config.ConfigSource
 import app.snapsync.config.ConfigStore
 import app.snapsync.config.EventConfig
+import app.snapsync.config.EventLinkPayload
+import app.snapsync.config.encodeConfigUrl
 import app.snapsync.permission.PermissionRequester
 import app.snapsync.permission.PermissionStatus
 import app.snapsync.permission.PermissionStatusSource
@@ -39,14 +41,24 @@ fun isForgeState(state: String): Boolean = ForgePreset.byId(state) != null
 
 fun forgeStatusHost(state: String, scope: CoroutineScope): StatusContainerHost? {
     val preset = ForgePreset.byId(state) ?: return null
-    return StatusContainerHost(
+    val host = StatusContainerHost(
         syncSource = ConstSyncStatusSource(preset.sync),
         permissionSource = ConstPermissionStatusSource(preset.permission),
         requester = NoOpPermissionRequester,
         configSource = ConstConfigSource(preset.config),
         store = NoOpConfigStore,
         scope = scope,
+        // The join gate's details fetch (capability `join-event`), forged to a `Found` so the gate can
+        // reach its confirmation surface with no backend. `commitJoin` stays inert by default — a
+        // screenshot never confirms a join.
+        loadJoinDetails = { JoinLoad.Found(EVENT_NAME, EVENT_START) },
     )
+    // Drive the real join gate by feeding it the very input a scanned QR delivers: the event's own
+    // INTERACTIVE invite deeplink (no `autoJoin`, so it opens the confirmation instead of provisioning
+    // silently). With config absent and permission granted, `readyOrExplain` lands on `JoinPhase.Ready`
+    // — the gate reduces itself; the state is never fabricated.
+    if (preset.openInvite) host.onOpenUrl(encodeConfigUrl(EventLinkPayload(EVENT_ID)))
+    return host
 }
 
 /**
@@ -58,15 +70,20 @@ private enum class ForgePreset(
     val permission: PermissionStatus,
     val config: EventConfig?,
     val sync: SyncStatus,
+    /**
+     * Open the event's own interactive invite deeplink after construction, driving the real join gate
+     * to its confirmation surface (the screen a scanned QR opens).
+     */
+    val openInvite: Boolean = false,
 ) {
     /** The create/landing screen. Config absent is the create layer's only precondition; permission
      *  and sync are irrelevant behind it. */
     CREATE("create", PermissionStatus.GRANTED, null, ready(completed = 0, total = 0)),
 
-    /** Joined with the invite QR up and photos queued to share — a **STATIC** (deliberately
-     *  non-pulsing, so capture is deterministic) upload arrow: `synced < total` with nothing in
-     *  flight → "Synchronization pending…". */
-    JOINING("joining", PermissionStatus.GRANTED, EVENT, ready(completed = 12, total = 47)),
+    /** The full-screen "Join event" confirmation a scanned QR opens (capability `join-event`). Config
+     *  absent makes it a first join (not a switch), and a granted permission makes `readyOrExplain`
+     *  pick `JoinPhase.Ready` — the loaded gate showing the event and its confirm affordance. */
+    JOINING("joining", PermissionStatus.GRANTED, null, ready(completed = 0, total = 0), openInvite = true),
 
     /** Joined and settled — everything shared and received, so both arrows collapse to `InSync`. */
     IN_SYNC("in_sync", PermissionStatus.GRANTED, EVENT, ready(completed = 34, total = 34)),
@@ -77,14 +94,20 @@ private enum class ForgePreset(
     }
 }
 
+internal const val EVENT_ID = "00000000-0000-4000-8000-000000000000"
+internal const val EVENT_NAME = "Anna's Birthday"
+
+/** The event's start, as the join gate's details fetch reports it. */
+internal const val EVENT_START = "2026-07-20T18:00:00Z"
+
 /**
  * The canned joined event. Its `startsAt` defaults to `minPhotoDate` (both in the past), so the event
  * has begun (no `NotStarted` clock line) and the membership carries a cutoff exactly as production
  * requires — a config that could arise in production, never one the real reduction never sees.
  */
 private val EVENT = EventConfig(
-    eventId = "00000000-0000-4000-8000-000000000000",
-    name = "Anna's Birthday",
+    eventId = EVENT_ID,
+    name = EVENT_NAME,
     minPhotoDate = "2026-01-01T00:00:00Z",
 )
 
