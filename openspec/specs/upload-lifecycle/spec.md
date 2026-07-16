@@ -34,31 +34,59 @@ The system SHALL express the upload arm as a platform-free `UploadProducer` seam
 `:capability:upload` with exactly **two** verbs:
 
 - `start()` — begin or resume uploading for the currently-configured membership.
-- `stop()` — cease uploading. It SHALL NOT destroy durable state: it SHALL NOT clear the ledger, SHALL
-  NOT clear the discovery cursor, and SHALL NOT delete stored bytes.
+- `stop()` — cease uploading. It SHALL NOT destroy **dedup state**: it SHALL NOT clear the ledger and
+  SHALL NOT delete stored bytes.
 
 There SHALL be **no** destructive verb on the seam. No lifecycle transition — provision, re-provision,
-event switch, permission change, direction change, or leave — SHALL clear the ledger or the discovery
-cursor. Durable dedup state is device-global (`sync-ledger`), and divergence from storage is repaired
-by reconciliation (`event-rejoin-reconciliation`), never by a lifecycle wipe.
+event switch, permission change, direction change, or leave — SHALL clear the ledger. Durable dedup state
+is device-global (`sync-ledger`), and divergence from storage is repaired by reconciliation
+(`event-rejoin-reconciliation`), never by a lifecycle wipe.
+
+The property being defended is **dedup**: the proof that a photo is already in the event. Destroying it
+re-uploads a member's whole post-cutoff library — the failure this project exists to prevent. The ledger's
+`COMPLETED` rows and the stored bytes are that proof; the **discovery cursor is not**. A cleared cursor
+costs one full re-enumeration, which finds nothing new, because dedup lives in the ledger it did not touch.
+
+A tier's `stop()` MAY therefore clear its **discovery cursor**, but **only** as a repair for damage its own
+mechanism causes, and **only** where `COMPLETED` rows survive so nothing already stored re-uploads. The
+condition is the rule, not the tier: clearing a cursor for tidiness, or where dedup state would not survive
+it, remains forbidden. (The PhotoKit tier is the standing instance — the OS's extension-disable wipes every
+in-flight job, and `clearRequested()` alone leaves the cleared photos un-rediscoverable behind a settled
+cursor. That repair is required by `ios-photokit-upload`, which owns it.)
 
 Each tier SHALL supply one `UploadProducer` implementation binding these verbs to its own mechanism.
 
 #### Scenario: The seam exposes no way to destroy dedup state
 
 - **WHEN** the `UploadProducer` seam is inspected
-- **THEN** it exposes only `start()` and `stop()`, and no lifecycle caller can clear the ledger or the discovery cursor through it
+- **THEN** it exposes only `start()` and `stop()`, and no lifecycle caller can clear the ledger through it
 
-#### Scenario: Stopping preserves durable state
+#### Scenario: Stopping preserves dedup state
 
 - **WHEN** `stop()` is called on either tier
-- **THEN** in-flight uploads cease, but every ledger row and the discovery cursor are left intact
+- **THEN** in-flight uploads cease, but every ledger row and every stored object is left intact
+
+#### Scenario: A tier may clear its own cursor to repair its own mechanism
+
+- **WHEN** a tier's `stop()` clears its discovery cursor as a repair for jobs its own mechanism wiped, and its `COMPLETED` ledger rows survive
+- **THEN** that is permitted: the next cycle re-enumerates fully and creates no upload job for anything already stored
+
+#### Scenario: Clearing a cursor that dedup depends on is still forbidden
+
+- **WHEN** a tier's `stop()` would clear a cursor without its `COMPLETED` rows surviving, or for any reason other than repairing its own mechanism
+- **THEN** that is forbidden — the carve-out is conditioned on dedup surviving, not on which tier is asking
 
 ### Requirement: Lifecycle orchestration is tier-neutral and tested
 
 The decision of **which verb fires on which transition** SHALL live in a tier-neutral orchestrator in
 `:capability:upload`, not in the app composition root, and SHALL be tested in `commonTest` (running on
-both JVM and `iosSimulatorArm64`) against a fake `UploadProducer`. The orchestrator SHALL bind the
+both JVM and `iosSimulatorArm64`) against a fake `UploadProducer`, so it is exercised on JVM **and**
+`iosSimulatorArm64` rather than only inside an iOS process. The orchestrator SHALL translate membership
+transitions into `start()`/`stop()` and nothing else: it holds no ledger, no cursor, and no storage
+handle, so a lifecycle transition **cannot** destroy dedup state — the seam gives it no verb that could.
+
+A producer SHALL be started only when an event is configured **and** photo access is `GRANTED` **and** the
+membership's direction includes upload. The orchestrator SHALL bind the
 transitions as follows, where the upload arm is enabled exactly when photo access is `GRANTED` **and**
 the configured membership's direction includes upload (`join-event`):
 
@@ -92,12 +120,12 @@ cycles then skip on the absent config, so the work is inert but the wake is not.
 #### Scenario: Provisioning with access already granted starts the producer
 
 - **WHEN** an event is provisioned while photo access is `GRANTED` and the direction includes upload
-- **THEN** the orchestrator calls `start()`, and calls no verb that destroys durable state
+- **THEN** the orchestrator calls `start()`, and calls no verb that destroys dedup state
 
 #### Scenario: A download-only membership stops the producer
 
 - **WHEN** an event is provisioned while photo access is `GRANTED` and the direction is download-only
-- **THEN** the orchestrator calls `stop()`, and the ledger and discovery cursor are left intact
+- **THEN** the orchestrator calls `stop()`, and the ledger is left intact
 
 #### Scenario: Provisioning without access defers to the grant
 
@@ -117,7 +145,7 @@ cycles then skip on the absent config, so the work is inert but the wake is not.
 #### Scenario: Leaving stops without wiping
 
 - **WHEN** the user leaves the event
-- **THEN** the orchestrator calls `stop()` and the configured event is cleared, while the ledger and discovery cursor remain intact so a later join re-uploads nothing already stored
+- **THEN** the orchestrator calls `stop()` and the configured event is cleared, while the ledger remains intact so a later join re-uploads nothing already stored
 
 ### Requirement: The arm's direction gate lives at the choke point, never at the invoker
 

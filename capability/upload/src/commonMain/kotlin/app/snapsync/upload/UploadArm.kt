@@ -19,9 +19,16 @@ import co.touchlab.kermit.Logger
  * no-op below iOS 26.1. Joining an event therefore tore the upload arm down and started nothing.
  *
  * With no destructive verb on the seam there is no edge from *provision* to *destruction* to get wrong.
- * `stop()` never clears the ledger or the cursor: that state is device-global dedup (`sync-ledger`,
+ * `stop()` never clears the **ledger**: that state is device-global dedup (`sync-ledger`,
  * "Event-independent key"), it stays true across a leave / switch / re-join, and only a triggered
  * reconciliation's `resetTo` ever re-baselines it (`event-rejoin-reconciliation`).
+ *
+ * The **cursor** is not dedup state, which is why the PhotoKit column above may clear it: the OS's
+ * extension-disable wipes every in-flight job, and `clearRequested()` alone leaves those photos behind a
+ * settled cursor that would never re-surface them (`ios-photokit-upload`). Clearing it costs one full
+ * re-enumeration, which creates no job for anything already `COMPLETED` — the ledger it did not touch
+ * still knows. A tier may clear its own cursor only to repair its own mechanism, and only while dedup
+ * survives (`upload-lifecycle`).
  */
 interface UploadProducer {
     /** Begin or resume uploading for the currently-configured membership. Idempotent. */
@@ -104,9 +111,13 @@ class UploadArm(
 
     /**
      * The user left the event. Stops the producer and nothing more — the caller clears the configured
-     * event. The ledger, the discovery cursor, and the device-global accumulator are **kept**: they are
-     * valid across events, so a later join re-uploads nothing already in this device's byte partition. The
-     * reconciler clears the `joinedEventId` marker on the next cycle.
+     * event. The ledger and the device-global accumulator are **kept**: they are valid across events, so a
+     * later join re-uploads nothing already in this device's byte partition. The reconciler clears the
+     * `joinedEventId` marker on the next cycle.
+     *
+     * The producer's own `stop()` may clear its discovery cursor here (PhotoKit does, to repair the jobs
+     * the OS wiped). That costs a re-enumeration, not a re-upload — and a rejoin would have cleared it
+     * anyway, since a mismatched marker forces the reconciler to re-baseline.
      */
     suspend fun onLeave() = log.invocation("arm.onLeave") {
         producer.stop()
