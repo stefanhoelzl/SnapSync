@@ -304,11 +304,23 @@ retried, never abandoned — the engine's retry policy is error-agnostic and the
 from the provider on each attempt, so a refreshed token is picked up on the next cycle without any
 special-casing.
 
-The failure SHALL be reduced into the **existing** visible error state (a sealed domain error → `UiState`),
-never thrown to the UI and never silent. This is the only signal a stalled device gives: an expired token
-prevents the successful upload whose completion notification is what would otherwise wake the app to renew,
-so recovery depends on the next app wake from another source (the user opening the app, or another member's
-upload). Decision record: `changes/archive/2026-07-14-add-device-attestation`.
+The failure SHALL be **visible and never silent**, reduced into `UiState` rather than thrown to the UI.
+This is the only signal a stalled device gives: an expired token prevents the successful upload whose
+completion notification is what would otherwise wake the app to renew, so recovery depends on the next app
+wake from another source (the user opening the app, or another member's upload).
+
+**Which** state renders it is not this capability's to say. An unusable token surfaces as the joined layer's
+`Unattested` health, specified by `sync-status-screen`, which owns the health precedence and ranks it. What
+this capability requires is only that the stall reach the screen at all: an attestation failure that showed
+nothing would leave a device reporting "Syncing" while every upload `401`s — invisible, and unfixable by a
+member who cannot know it is happening.
+
+Interactive failures need no new surface: a gated create or join that `401`s already reduces into
+`UiState.CreateEvent(error)` and `JoinPhase.LoadFailed`/`CommitFailed`. It is the **background** stall that
+had none.
+
+Decision record: `changes/archive/2026-07-14-add-device-attestation` — see its `tasks.md` 4.5, which records
+why the background half needed a state of its own after this change's D11 had promised it would not.
 
 #### Scenario: A stale token stalls rather than strands
 
@@ -318,8 +330,13 @@ upload). Decision record: `changes/archive/2026-07-14-add-device-attestation`.
 
 #### Scenario: The stall is visible
 
-- **WHEN** attestation fails, or uploads are failing because the token is expired or absent
-- **THEN** the error is reduced into the existing visible error state rather than failing silently
+- **WHEN** no usable token can be obtained and uploads are failing because of it
+- **THEN** it is surfaced on the joined layer as the `Unattested` health (capability `sync-status-screen`) rather than failing silently behind a screen that reads "Syncing"
+
+#### Scenario: A merely stale token is not an error
+
+- **WHEN** the token is stale but the next wake renews it successfully
+- **THEN** nothing is surfaced — a renewal that works is a non-event, and flashing an error for it would be noise
 
 ### Requirement: Non-goals
 

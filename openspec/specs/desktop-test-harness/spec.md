@@ -291,7 +291,7 @@ unreachable on a switch by design (a switch never explains), so they need no swi
 ### Requirement: Unattested preset
 
 The control panel SHALL provide a preset that forges the joined layer's **unattested** health
-(`SyncHealth.Unattested`, capability `device-attestation`) via an injected `MutableAttestedSource`, by
+(`SyncHealth.Unattested`, capability `sync-status-screen`) via an injected `MutableAttestedSource`, by
 forcing config present + permission granted and setting the attestation cell to **unattested** — not
 by fabricating the health value, so the real reduction and its precedence are exercised.
 

@@ -119,12 +119,21 @@ component. The component SHALL enforce `maxLength` by refusing input beyond it.
 
 The design system SHALL provide a semantic status-line component that renders the joined-layer sync
 health from a single sealed semantic value (e.g. `InSync` / `Syncing(uploadArrow, downloadArrow)` /
-`NeedsAccess` / **`NotStarted(startsAt)`**), where each arrow state is one of `Hidden` / `Static` /
-`Pulsing`. Per the semantic-only rule it SHALL expose **no** appearance parameters (no `Modifier`, color,
+`NeedsAccess` / **`NotStarted(startsAt)`** / **`CannotVerifyDevice`**), where each arrow state is one of
+`Hidden` / `Static` / `Pulsing`. Per the semantic-only rule it SHALL expose **no** appearance parameters (no `Modifier`, color,
 shape, or text style) — callers pass only the health value and, for the attention state, an `onClick`. The
 component SHALL animate a `Pulsing` arrow and render a `Static` arrow without motion, SHALL render the
-attention (`NeedsAccess`) state as the **only** variant carrying a background, and SHALL respect
-reduced-motion preferences. It SHALL surface **no numeric counts**.
+two **attention** states (`NeedsAccess` and `CannotVerifyDevice`) as the **only** variants carrying a
+background, and SHALL respect reduced-motion preferences. It SHALL surface **no numeric counts**.
+
+The two attention states are not peers, and the component SHALL distinguish them: `NeedsAccess` is
+**tappable** and carries a chevron, because the member can fix it; `CannotVerifyDevice` is **not** tappable
+and carries **no** chevron, because they cannot (capability `sync-status-screen`). Background means "look at
+this"; a chevron means "do something about it", and only one of them earns the second.
+
+For the **`CannotVerifyDevice`** value the component SHALL render an attention indicator and a label
+stating that this device cannot be verified. It takes **no** `onClick` — the absence of the parameter is
+what makes the un-tappability structural rather than a call-site convention.
 
 For the **`NotStarted`** value the component SHALL render a **clock** indicator and a label naming the
 event's start — of the form **"Starts &lt;date&gt;, &lt;time&gt;"** — formatted in the device's **local**
@@ -154,10 +163,15 @@ mappings are skin-local and SHALL NOT appear on any `App*` signature.
 - **THEN** it shows the upload arrow static in a muted gray (no motion), no download arrow, and the
   "Synchronization pending…" label
 
-#### Scenario: Only the attention state has a background
+#### Scenario: Only the attention states have a background
 - **WHEN** the status line renders `InSync`, `Syncing`, or `NotStarted`
-- **THEN** it is flat (no background); **WHEN** it renders `NeedsAccess`, it carries a background and
-  invokes `onClick` on tap
+- **THEN** it is flat (no background)
+
+#### Scenario: The two attention states differ by what they ask of the user
+- **WHEN** the status line renders `NeedsAccess`
+- **THEN** it carries a background and a chevron, and invokes `onClick` on tap
+- **WHEN** it renders `CannotVerifyDevice`
+- **THEN** it carries a background and **no** chevron, and there is no tap to invoke — the member has nothing to do
 
 ### Requirement: Flat icon action buttons
 

@@ -1,30 +1,5 @@
-# sync status screen Specification
+## MODIFIED Requirements
 
-## Purpose
-
-The app's **only** screen, and the reduction that feeds it: config presence, photo permission, and the
-observed `SyncStatus` snapshots collapse into a small, display-ready `UiState` — the create layer
-(`CreateEvent` / `CreatingEvent`), the pre-commit `JoiningEvent` gate, and a single `Joined` state — so
-the screens branch on meaning, never on raw sources. The snapshot contract and its classification belong
-to `sync-status`; this capability reduces and renders them.
-
-Its answer to the joined user is deliberately **one line, no numbers**. Counts were the original design
-("n of N images synced") and they were a lie in every direction that mattered: N is the *device's*
-post-cutoff library, so it moves with a new photo, says nothing about the photos arriving from everyone
-else, and leaves the user reading arithmetic when the only question they have is *is my stuff getting
-there?* The joined layer therefore renders the durable, shareable facts — the event **name**, its invite
-**QR**, **share**, **leave** — under a single `SyncHealth` status line: `NeedsAccess` / `Loading` /
-`InSync` / `Syncing` with direction arrows whose shown-ness tracks completeness and whose pulse tracks
-live activity. A user who wants "is it healthy?" gets it at a glance; a user who wants a photo looks in
-their library, where it belongs.
-
-The same move dissolved permission as a *state*: a missing grant no longer replaces the screen with a
-gate — it is one value of the health line, an inline affordance on a joined layer that renders in full
-regardless (capability `permission-gate`).
-
-Decision record: `changes/archive/2026-06-27-permission-on-status-screen`.
-
-## Requirements
 ### Requirement: Sync status snapshots reduce to UI state
 
 The presentation layer SHALL reduce config presence, permission, each observed `SyncStatus`, and any
@@ -244,34 +219,3 @@ membership) shows a **static** upload arrow under the "Synchronization pending�
 - **WHEN** the health is `NeedsAccess(NOT_DETERMINED)` and the status line is tapped
 - **THEN** `onRequestPermission()` is invoked; **WHEN** the health is `NeedsAccess(DENIED)` and it is
   tapped, `onOpenSettings()` is invoked
-
-### Requirement: The not-started health advances on a foreground tick
-
-The presentation container SHALL re-evaluate `startsAt > now` on a **one-minute tick**, which SHALL run
-**only** while the app is foregrounded **and only** while the event has not yet started — it SHALL stop
-itself once the start passes, and SHALL NOT run for the entire life of a joined event. The tick is
-necessary because the `NotStarted` health depends on **wall-clock time**, not on any ledger event, so no
-snapshot emission would ever retire it when the start passes.
-
-The tick SHALL live in the **presentation** layer (which already owns a coroutine scope and the injected
-time source), **not** in `:domain:status`. The status projection SHALL remain a clock-free, read-only
-ledger→`SyncStatus` projection: it has no notion of wall-clock time today, and giving it one to render a
-label would be the wrong seam.
-
-A staleness of up to one minute is accepted: nothing of the member's can upload before the start in any
-case, so a briefly-late transition costs nothing but the label.
-
-#### Scenario: The clock line retires itself when the start passes
-- **WHEN** the app is foregrounded showing `NotStarted` and the event's `startsAt` passes
-- **THEN** within one minute the health re-derives to the snapshot-driven value (`InSync` / `Syncing`)
-  without any ledger event having occurred
-
-#### Scenario: The tick does not run after the start
-- **WHEN** the event has already started
-- **THEN** no tick is scheduled, the health deriving from the snapshot alone
-
-#### Scenario: The status projection stays clock-free
-- **WHEN** the `:domain:status` projection is inspected
-- **THEN** it reads only the ledger and holds no clock, the not-started derivation living entirely in the
-  presentation reduction
-
