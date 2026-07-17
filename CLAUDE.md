@@ -671,7 +671,9 @@ migration completes**, non-required, blocks nothing (`ios-appstore-promote.yml`'
 `architecture/` blocks the PR — run `./gradlew architectureDiagrams` and commit. During the
 migration **nothing gates new violations** (decision on record in
 `changes/archive/2026-07-17-establish-target-architecture/design.md` D8): the laws digest below is what you code
-against.
+against. The step sequence, per-step protocols (freeze · soak · device sessions), and status live
+in **`test/architecture/migration/PLAN.md`** — adversarially reviewed, updated by each step's PR,
+and deleted with the beacon at completion.
 
 ## The laws (digest)
 
