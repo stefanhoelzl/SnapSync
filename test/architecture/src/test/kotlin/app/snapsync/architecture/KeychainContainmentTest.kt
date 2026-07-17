@@ -26,8 +26,12 @@ import kotlin.test.assertTrue as kotlinAssertTrue
  */
 class KeychainContainmentTest {
 
-    /** The module allowed to touch the Keychain. Everything else must borrow it. */
-    private val owningModule = "/domain/keychain/"
+    /**
+     * The module allowed to touch the Keychain. Everything else must borrow it. Migration step 4
+     * moved the impls (`IosKeychain`, `KeychainDeviceIdentity`) from `:domain:keychain` into the
+     * extension-safe adapter module — the containment property is unchanged, only its address.
+     */
+    private val owningModule = "/adapter/ios/ext-safe/"
 
     private val forbidden = listOf(
         "platform.Security", // the import, and any fully-qualified reference

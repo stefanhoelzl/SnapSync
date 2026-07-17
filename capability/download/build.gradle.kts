@@ -1,8 +1,10 @@
 plugins {
     alias(libs.plugins.kotlin.multiplatform)
-    alias(libs.plugins.kotlin.serialization)
 }
 
+// MIGRATION STEP 4: the Ktor client (HttpEventUnionSource) moved to `:adapter:generic`; the iOS
+// adapters (IosDownloadTransport, IosPhotoLibraryImporter) to `:adapter:ios:app-only`. What
+// remains is the platform-free download controller + queue + status projection.
 kotlin {
     jvmToolchain(libs.versions.jdk.get().toInt())
     jvm()
@@ -16,16 +18,10 @@ kotlin {
             api(project(":domain:status")) // the DownloadStatusSource seam this provides the store-backed impl of
             implementation(project(":domain:logging"))
             implementation(libs.kermit)
-            implementation(libs.ktor.client.core)
-            implementation(libs.kotlinx.serialization.json)
         }
         commonTest.dependencies {
             implementation(kotlin("test"))
             implementation(libs.coroutines.test)
-            implementation(libs.ktor.client.mock)
-        }
-        iosMain.dependencies {
-            implementation(libs.ktor.client.darwin)
         }
     }
 }

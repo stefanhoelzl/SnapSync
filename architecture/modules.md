@@ -6,12 +6,13 @@ Do not edit — the `:tools:diagrams` freshness test fails on drift; regenerate 
 
 ```mermaid
 flowchart LR
+  adapter_generic[":adapter:generic"]
+  adapter_ios_app_only[":adapter:ios:app-only"]
+  adapter_ios_ext_safe[":adapter:ios:ext-safe"]
   app_desktop[":app:desktop"]
   app_desktop_ui[":app:desktop:ui"]
   app_ios[":app:ios"]
-  app_ios_photokit_discovery[":app:ios:photokit-discovery"]
   app_ios_photokit_extension[":app:ios:photokit-extension"]
-  app_ios_url_session_upload[":app:ios:url-session-upload"]
   capability_album[":capability:album"]
   capability_attest[":capability:attest"]
   capability_config[":capability:config"]
@@ -39,12 +40,20 @@ flowchart LR
   test_integration[":test:integration"]
   test_world[":test:world"]
   tools_diagrams[":tools:diagrams"]
-  app_desktop --> capability_config
+  adapter_generic --> domain
+  adapter_ios_app_only --> adapter_ios_ext_safe
+  adapter_ios_app_only --> domain
+  adapter_ios_app_only --> domain_logging
+  adapter_ios_ext_safe --> adapter_generic
+  adapter_ios_ext_safe --> capability_album
+  adapter_ios_ext_safe --> domain
+  adapter_ios_ext_safe --> domain_gallery
+  adapter_ios_ext_safe --> domain_logging
+  app_desktop --> adapter_generic
   app_desktop --> capability_download
   app_desktop --> capability_event_creation_ui
   app_desktop --> capability_join
   app_desktop --> domain
-  app_desktop --> domain_permission
   app_desktop --> domain_presentation
   app_desktop --> domain_status
   app_desktop --> domain_ui
@@ -57,79 +66,55 @@ flowchart LR
   app_desktop_ui --> domain_permission
   app_desktop_ui --> domain_presentation
   app_desktop_ui --> domain_status
-  app_ios --> app_ios_photokit_discovery
-  app_ios --> app_ios_url_session_upload
+  app_ios --> adapter_generic
+  app_ios --> adapter_ios_app_only
+  app_ios --> adapter_ios_ext_safe
   app_ios --> capability_album
   app_ios --> capability_attest
-  app_ios --> capability_config
   app_ios --> capability_download
   app_ios --> capability_event_creation_ui
   app_ios --> capability_join
   app_ios --> capability_membership
   app_ios --> capability_push
   app_ios --> capability_upload
-  app_ios --> capability_upload_url
   app_ios --> domain
-  app_ios --> domain_engine
   app_ios --> domain_gallery
+  app_ios --> domain_keychain
   app_ios --> domain_logging
-  app_ios --> domain_permission
   app_ios --> domain_presentation
   app_ios --> domain_status
   app_ios --> domain_ui
-  app_ios_photokit_discovery --> capability_upload
-  app_ios_photokit_discovery --> domain
-  app_ios_photokit_discovery --> domain_engine
-  app_ios_photokit_discovery --> domain_gallery
-  app_ios_photokit_extension --> app_ios_photokit_discovery
+  app_ios_photokit_extension --> adapter_generic
+  app_ios_photokit_extension --> adapter_ios_ext_safe
   app_ios_photokit_extension --> capability_album
-  app_ios_photokit_extension --> capability_attest
-  app_ios_photokit_extension --> capability_config
   app_ios_photokit_extension --> capability_membership
   app_ios_photokit_extension --> capability_push
   app_ios_photokit_extension --> capability_upload
-  app_ios_photokit_extension --> capability_upload_url
   app_ios_photokit_extension --> domain
-  app_ios_photokit_extension --> domain_download_store
-  app_ios_photokit_extension --> domain_engine
   app_ios_photokit_extension --> domain_gallery
   app_ios_photokit_extension --> domain_logging
-  app_ios_url_session_upload --> app_ios_photokit_discovery
-  app_ios_url_session_upload --> capability_upload
-  app_ios_url_session_upload --> domain
-  app_ios_url_session_upload --> domain_engine
-  app_ios_url_session_upload --> domain_logging
   capability_album --> domain
-  capability_album --> domain_engine
-  capability_album --> domain_gallery
-  capability_album --> domain_keychain
   capability_attest --> domain
-  capability_attest --> domain_keychain
-  capability_config --> domain
-  capability_config --> domain_keychain
   capability_download --> domain
   capability_download --> domain_download_store
   capability_download --> domain_logging
   capability_download --> domain_status
   capability_event_creation_ui --> domain
   capability_join --> domain
-  capability_join --> domain_gallery
   capability_membership --> domain
-  capability_membership --> domain_engine
-  capability_membership --> domain_gallery
+  capability_push --> adapter_generic
   capability_push --> domain
   capability_upload --> domain
   capability_upload --> domain_engine
   capability_upload --> domain_gallery
   capability_upload --> domain_logging
   capability_upload_url --> domain_engine
+  domain_download_store --> adapter_generic
   domain_download_store --> domain
-  domain_download_store --> domain_engine
+  domain_engine --> adapter_generic
   domain_engine --> domain
   domain_gallery --> domain
-  domain_gallery --> domain_engine
   domain_keychain --> domain
-  domain_permission --> domain
   domain_presentation --> capability_event_creation_ui
   domain_presentation --> domain
   domain_presentation --> domain_permission
@@ -142,27 +127,23 @@ flowchart LR
   domain_ui --> domain_ui_components
   test_harness_driver --> app_desktop
   test_harness_driver --> app_desktop_ui
-  test_integration --> capability_config
+  test_integration --> adapter_generic
   test_integration --> capability_event_creation_ui
   test_integration --> capability_join
   test_integration --> capability_membership
   test_integration --> capability_push
   test_integration --> domain
-  test_integration --> domain_permission
   test_integration --> domain_presentation
   test_integration --> domain_status
   test_integration --> test_world
+  test_world --> adapter_generic
   test_world --> capability_album
-  test_world --> capability_config
   test_world --> capability_download
   test_world --> capability_event_creation_ui
   test_world --> capability_membership
   test_world --> capability_upload
-  test_world --> capability_upload_url
   test_world --> domain
   test_world --> domain_download_store
-  test_world --> domain_engine
   test_world --> domain_gallery
-  test_world --> domain_permission
   test_world --> domain_status
 ```

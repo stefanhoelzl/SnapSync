@@ -7,17 +7,17 @@ on drift; regenerate instead.
 
 ## `:capability:album`
 
-- depends on: `:domain`, `:domain:engine`, `:domain:gallery`, `:domain:keychain`
+- depends on: `:domain`
 - interfaces declared (commonMain): `AlbumManager`, `AlbumMapSource`, `AlbumMapStore`
 
 ## `:capability:attest`
 
-- depends on: `:domain`, `:domain:keychain`
+- depends on: `:domain`
 - interfaces declared (commonMain): —
 
 ## `:capability:config`
 
-- depends on: `:domain`, `:domain:keychain`
+- depends on: —
 - interfaces declared (commonMain): —
 
 ## `:capability:download`
@@ -32,17 +32,17 @@ on drift; regenerate instead.
 
 ## `:capability:join`
 
-- depends on: `:domain`, `:domain:gallery`
+- depends on: `:domain`
 - interfaces declared (commonMain): `DeviceEnroller`
 
 ## `:capability:membership`
 
-- depends on: `:domain`, `:domain:engine`, `:domain:gallery`
+- depends on: `:domain`
 - interfaces declared (commonMain): —
 
 ## `:capability:push`
 
-- depends on: `:domain`
+- depends on: `:adapter:generic`, `:domain`
 - interfaces declared (commonMain): —
 
 ## `:capability:upload`
@@ -62,17 +62,17 @@ on drift; regenerate instead.
 
 ## `:domain:download-store`
 
-- depends on: `:domain`, `:domain:engine`
+- depends on: `:adapter:generic`, `:domain`
 - interfaces declared (commonMain): —
 
 ## `:domain:engine`
 
-- depends on: `:domain`
+- depends on: `:adapter:generic`, `:domain`
 - interfaces declared (commonMain): —
 
 ## `:domain:gallery`
 
-- depends on: `:domain`, `:domain:engine`
+- depends on: `:domain`
 - interfaces declared (commonMain): —
 
 ## `:domain:keychain`
@@ -87,7 +87,7 @@ on drift; regenerate instead.
 
 ## `:domain:permission`
 
-- depends on: `:domain`
+- depends on: —
 - interfaces declared (commonMain): —
 
 ## `:domain:presentation`

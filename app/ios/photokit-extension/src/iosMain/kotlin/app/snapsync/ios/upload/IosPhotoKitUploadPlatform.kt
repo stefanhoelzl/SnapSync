@@ -39,7 +39,7 @@ import platform.Photos.PHPhotosErrorLimitExceeded
  * The PhotoKit (iOS ≥26.1) implementation of [BackgroundTransfer] — the OS-owned upload-job queue:
  * fetch/retry/acknowledge system jobs and create jobs. Discovery, request-building, and change-token
  * archiving are identical across both upload tiers and delegated to the shared [IosDiscovery]
- * (`:app:ios:photokit-discovery`); only the job lifecycle differs and stays here. All decisions live
+ * (`:adapter:ios:ext-safe`); only the job lifecycle differs and stays here. All decisions live
  * in `UploadCycle`. A returned job's ledger key is read from its **destination URL** (the last path
  * segment) — the only field reliably present for every job state (`resource` is nil for succeeded
  * jobs); the `resource`, when still available, is reused to re-create a retry-spent job. Decision-free

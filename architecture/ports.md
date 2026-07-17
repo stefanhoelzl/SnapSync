@@ -8,9 +8,9 @@ the `:tools:diagrams` freshness test fails on drift; regenerate instead.
 
 | Port | Declared in | Implementations (by module) | Fake exists |
 |---|---|---|---|
-| `AlbumManager` | `:capability:album` | `:capability:album` FakeAlbumManager, IosAlbumManager; `:test:world` FakeAlbumManager | yes |
+| `AlbumManager` | `:capability:album` | `:adapter:ios:ext-safe` IosAlbumManager; `:capability:album` FakeAlbumManager; `:test:world` FakeAlbumManager | yes |
 | `AlbumMapSource` | `:capability:album` | `:capability:album` Current, Migrate, Retry | no |
-| `AlbumMapStore` | `:capability:album` | `:capability:album` InMemoryAlbumMapStore, IosAlbumMapStore; `:test:world` InMemoryAlbumMapStore | yes |
+| `AlbumMapStore` | `:capability:album` | `:adapter:ios:ext-safe` IosAlbumMapStore; `:capability:album` InMemoryAlbumMapStore; `:test:world` InMemoryAlbumMapStore | yes |
 | `AppSyncStatus` | `:domain:ui:components` | `:domain:ui:components` CannotVerifyDevice, InSync, Loading, NeedsAccess, NotStarted, Syncing | no |
 | `AttestedSource` | `:domain:presentation` | `:domain:presentation` AlwaysAttested, MutableAttestedSource | no |
 | `CreationStatus` | `:capability:event-creation-ui` | `:capability:event-creation-ui` Failed, Idle, InFlight | no |

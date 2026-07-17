@@ -12,9 +12,6 @@ kotlin {
         commonMain.dependencies {
             api(project(":domain"))
             api(libs.coroutines.core)
-            // The resource-enumeration seam returns engine `Resource`s (the shared upload-key/version
-            // derivation), so engine types appear in this module's public API.
-            api(project(":domain:engine"))
             // The per-asset manifest model (capability `asset-manifest`) is JSON-serialized here.
             implementation(libs.kotlinx.serialization.json)
         }
