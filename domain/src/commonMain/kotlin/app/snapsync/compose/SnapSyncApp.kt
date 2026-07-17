@@ -37,6 +37,7 @@ import app.snapsync.ports.EventDirectory
 import app.snapsync.ports.EventUnionSource
 import app.snapsync.ports.Enrollment
 import app.snapsync.ports.LedgerStore
+import app.snapsync.ports.LogScope
 import app.snapsync.ports.PhotoAccessStatusSource
 import app.snapsync.ports.PhotoLibrary
 import app.snapsync.ports.PhotoLibraryImporter
@@ -91,6 +92,10 @@ class AppPorts(
     val provision: suspend (EventConfig) -> Unit,
     val onEventMinted: suspend (eventId: String) -> Unit,
     val log: Logger,
+    /** The ambient-context seam the tier-neutral features drive so their device-log lines carry the
+     *  triggering entry point's `[<name>]` prefix (capability `diagnostic-logging`). The app shell
+     *  injects `IosLogScope`; world / tests default to `LogScope.NoOp`. */
+    val logScope: LogScope = LogScope.NoOp,
 )
 
 /**
@@ -167,6 +172,7 @@ class AppCore internal constructor(
             myDeviceId = ports.deviceId(),
             // Three-valued, no fallback (capability `photo-download`): no membership → `null` → no arm.
             downloadEnabled = { ports.configSource.config.value?.direction?.includesDownload },
+            logScope = ports.logScope,
         )
         // Deliver each staged resource back to the controller off the transport delegate thread —
         // an adapter outbound callback satisfied by a compose-built lambda (law: "Commands cross one
@@ -200,6 +206,7 @@ class AppCore internal constructor(
             isGranted = { ports.photoAccess.permission.value == PermissionStatus.GRANTED },
             membershipIncludesUpload = { ports.configSource.config.value?.direction?.includesUpload },
             log = ports.log,
+            logScope = ports.logScope,
         )
     }
 

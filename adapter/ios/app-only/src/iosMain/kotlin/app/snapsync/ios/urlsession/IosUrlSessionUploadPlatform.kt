@@ -9,7 +9,7 @@ import app.snapsync.ports.Discovery
 import app.snapsync.ports.PlatformJobState
 import app.snapsync.ports.PlatformUploadJob
 import app.snapsync.ports.BackgroundTransfer
-import app.snapsync.model.invocation
+import app.snapsync.logging.invocation
 import co.touchlab.kermit.Logger
 import kotlinx.cinterop.ExperimentalForeignApi
 import kotlinx.coroutines.suspendCancellableCoroutine

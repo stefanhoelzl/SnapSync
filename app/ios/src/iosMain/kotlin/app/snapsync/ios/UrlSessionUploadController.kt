@@ -24,7 +24,8 @@ import app.snapsync.feature.upload.UploadCycle
 import app.snapsync.ports.SuppressionSource
 import app.snapsync.upload.UploadPushReceiver
 import app.snapsync.feature.upload.UploadProducer
-import app.snapsync.model.invocation
+import app.snapsync.logging.IosLogScope
+import app.snapsync.logging.invocation
 import co.touchlab.kermit.Logger
 import io.ktor.client.HttpClient
 import kotlinx.coroutines.CoroutineScope
@@ -132,6 +133,7 @@ class UrlSessionUploadController(
         runCycle = { runCycle() },
         scheduler = scheduler,
         log = log,
+        logScope = IosLogScope,
         onCycleComplete = onCycleComplete,
     )
 

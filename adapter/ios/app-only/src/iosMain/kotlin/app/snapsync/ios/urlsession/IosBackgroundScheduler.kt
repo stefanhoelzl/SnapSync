@@ -1,7 +1,7 @@
 package app.snapsync.ios.urlsession
 
 import app.snapsync.ports.BackgroundScheduler
-import app.snapsync.model.invocation
+import app.snapsync.logging.invocation
 import co.touchlab.kermit.Logger
 import kotlinx.cinterop.ExperimentalForeignApi
 import kotlinx.cinterop.ObjCObjectVar
