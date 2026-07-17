@@ -15,7 +15,6 @@ flowchart LR
   app_ios_photokit_extension[":app:ios:photokit-extension"]
   capability_attest[":capability:attest"]
   capability_push[":capability:push"]
-  capability_upload[":capability:upload"]
   domain[":domain"]
   domain_download_store[":domain:download-store"]
   domain_engine[":domain:engine"]
@@ -49,7 +48,6 @@ flowchart LR
   app_ios --> adapter_ios_ext_safe
   app_ios --> capability_attest
   app_ios --> capability_push
-  app_ios --> capability_upload
   app_ios --> domain
   app_ios --> domain_keychain
   app_ios --> domain_presentation
@@ -57,12 +55,10 @@ flowchart LR
   app_ios_photokit_extension --> adapter_generic
   app_ios_photokit_extension --> adapter_ios_ext_safe
   app_ios_photokit_extension --> capability_push
-  app_ios_photokit_extension --> capability_upload
   app_ios_photokit_extension --> domain
   capability_attest --> domain
   capability_push --> adapter_generic
   capability_push --> domain
-  capability_upload --> domain
   domain_download_store --> adapter_generic
   domain_download_store --> domain
   domain_engine --> adapter_generic
@@ -81,7 +77,6 @@ flowchart LR
   test_integration --> domain_presentation
   test_integration --> test_world
   test_world --> adapter_generic
-  test_world --> capability_upload
   test_world --> domain
   test_world --> domain_download_store
   test_world --> domain_gallery

@@ -22,8 +22,8 @@ Kotlin/Native links whole modules) and the **appex footprint** (Compose/Skiko ha
 memory-capped extension). Both images DO embed the shared domain code, each privately — that is
 fine; no Kotlin type ever crosses the process boundary. The app framework carries Compose/UI + the
 full `domain` stack; the extension framework is lean (`:domain`'s feature/upload UploadCycle
-orchestration over the extension-safe adapters `:adapter:ios:ext-safe` + `:adapter:generic`,
-plus the receive seam left in `:capability:upload`). Both are
+orchestration over the extension-safe adapters `:adapter:ios:ext-safe` + `:adapter:generic`; the
+receive seam now lives in `:domain`'s feature/upload too — `:capability:upload` was deleted at step 8). Both are
 `isStatic = true` — the Compose-iOS norm (avoids dynamic-linking issues with the bundled
 Skiko/Compose native libs).
 
@@ -89,7 +89,7 @@ uploaded the camera roll of a member who had been promised "you won't share your
 **The upload lifecycle is NOT decided here** either (same capability). `SnapSyncRoot` selects
 **exactly one** `UploadProducer` for the process — `PhotoKitUploadProducer` (≥26.1) or
 `UrlSessionUploadController` (18–26.0) — and forwards membership transitions to the tested, tier-neutral
-`UploadArm` in `:capability:upload`. The seam has **two** verbs, `start()` and `stop()`, and **no
+`UploadArm` in `:domain`'s feature/upload. The seam has **two** verbs, `start()` and `stop()`, and **no
 destructive one**: no lifecycle transition (provision, switch, grant, direction change, leave) may clear
 the **ledger**. That is device-global dedup — it stays valid across events, and only a triggered
 reconciliation's `resetTo` re-baselines it. The **discovery cursor** is not dedup state and is not covered:
@@ -150,7 +150,7 @@ App deploys **min iOS 18**. Upload runs on one of two tiers, selected at
 - **iOS 18–26.0 — app-driven `URLSession` (`ios-url-session-upload`).** No appex exists; the **main
   app process** performs uploads over a background `URLSession` + `BGProcessingTask`, via
   `IosUrlSessionUploadPlatform` / `IosBackgroundScheduler` (`:adapter:ios:app-only`) driving the
-  same `:capability:upload` `UploadCycle` through the `BackgroundUploadPump`. On this tier the **app**
+  same `:domain` feature/upload `UploadCycle` through the `BackgroundUploadPump`. On this tier the **app**
   is the single `LedgerWriter` (no extension process exists).
 
 **Forcing the app-driven tier on a device** (`SNAPSYNC_FORCE_URLSESSION_UPLOAD=1` as a launch env var, as

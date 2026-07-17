@@ -13,16 +13,13 @@ failure. `log.*` statements are diagnostics, not flow, and are omitted from both
 sequenceDiagram
   participant OS
   participant SnapSyncRoot
+  participant app_foregroundFlow as app.foregroundFlow
   OS->>SnapSyncRoot: onForeground()
   SnapSyncRoot->>SnapSyncRoot: registerLivenessObserver()
-  SnapSyncRoot->>SnapSyncRoot: refreshAttestation()
+  SnapSyncRoot->>app_foregroundFlow: run()
 ```
 
 ## Not transcribable (burn-down)
 
-- line 452 — `if` conditional: `if (isForging) {`
-- line 456 — bare property read (lazy-init touch): `host`
-- line 463 — `if` conditional: `if (useAppDrivenUpload) urlSessionUpload.onForeground()`
-- line 466 — `scope.launch` body: `scope.launch { refreshStatusSources() }`
-- line 469 — `scope.launch` body: `scope.launch { config.config.value?.eventId?.let { app.downloadController.reconcile(it) } }`
-- line 471 — `scope.launch` body: `scope.launch { config.config.value?.eventId?.let { fetchAndStoreName(it) } }`
+- line 453 — `if` conditional: `if (isForging) {`
+- line 457 — bare property read (lazy-init touch): `host`

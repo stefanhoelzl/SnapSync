@@ -25,7 +25,6 @@ kotlin {
             // The real Ktor clients the mini-edge serves (HttpDeviceFilesSource, HttpEventUnionSource,
             // HttpEventCreation, HttpLeaveNotifier) moved to the adapter layer at migration step 4.
             api(project(":adapter:generic"))
-            api(project(":capability:upload"))
             implementation(libs.coroutines.core)
             implementation(libs.kermit)
             implementation(libs.ktor.client.core)

@@ -1,21 +1,18 @@
-package app.snapsync.upload
+package app.snapsync.feature.upload
 
 import app.snapsync.ports.BackgroundScheduler
-import app.snapsync.feature.upload.BackgroundUploadPump
 import app.snapsync.ports.CycleResult
-
-import app.snapsync.ports.PushReceiver
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
-import kotlin.test.assertTrue
 
 /**
  * [UploadPushReceiver] — the active-event guard for the upload arm, mirroring `DownloadPushReceiver`.
  *
  * The guard answers "is this push for my current event". It is **orthogonal** to the direction gate in
  * `UploadCycle` ("should this device ever upload here"), and the last test here pins that split: a push to a
- * download-only membership passes this guard and still uploads nothing.
+ * download-only membership passes this guard and still uploads nothing. The cross-arm fan-out is tested with
+ * the silent-push flow that now owns it (`flow/SilentPushTest`).
  */
 class UploadPushReceiverTest {
 
@@ -81,34 +78,5 @@ class UploadPushReceiverTest {
 
         assertEquals(1, f.cycles, "the guard passes — the push IS for our event")
         assertEquals(0, f.scheduler.scheduled, "but nothing is armed: this device will never upload here")
-    }
-
-    // ---- fan-out -------------------------------------------------------------------------------------
-
-    private class RecordingReceiver(val name: String, val seen: MutableList<String>) : PushReceiver {
-        override suspend fun onSilentPush(eventId: String) { seen += "$name:$eventId" }
-    }
-
-    @Test
-    fun the_fan_out_wakes_every_arm() = runTest {
-        val seen = mutableListOf<String>()
-        FanOutPushReceiver(listOf(RecordingReceiver("up", seen), RecordingReceiver("down", seen)))
-            .onSilentPush("E")
-
-        assertEquals(listOf("up:E", "down:E"), seen)
-    }
-
-    @Test
-    fun one_failing_arm_never_robs_the_others_of_the_wake() = runTest {
-        // A push is a scarce, short-budgeted wake. If the upload arm throws, the DOWNLOAD arm must still
-        // reconcile — losing the whole wake to one arm's bad day is how a member stops receiving photos.
-        val seen = mutableListOf<String>()
-        val throwing = object : PushReceiver {
-            override suspend fun onSilentPush(eventId: String) = error("this arm blew up")
-        }
-        FanOutPushReceiver(listOf(throwing, RecordingReceiver("down", seen)))
-            .onSilentPush("E") // must not throw
-
-        assertTrue("down:E" in seen, "the surviving arm still got its wake")
     }
 }

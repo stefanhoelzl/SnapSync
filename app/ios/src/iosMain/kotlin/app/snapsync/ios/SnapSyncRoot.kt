@@ -23,7 +23,6 @@ import app.snapsync.presentation.StatusContainerHost
 import app.snapsync.presentation.forgeStatusHost
 import app.snapsync.presentation.isForgeState
 import app.snapsync.push.KtorPushHttpClient
-import app.snapsync.ports.PushReceiver
 import app.snapsync.push.PushRegistration
 import app.snapsync.ports.PushTokenSource
 import app.snapsync.membership.HttpLeaveNotifier
@@ -41,7 +40,6 @@ import app.snapsync.engine.LEDGER_APP_GROUP
 import app.snapsync.ports.LedgerStore
 import app.snapsync.engine.iosLedgerStore
 import app.snapsync.model.UPLOAD_LIVENESS_DARWIN_NAME
-import app.snapsync.upload.FanOutPushReceiver
 import app.snapsync.feature.upload.UploadProducer
 import app.snapsync.logging.FileLogWriter
 import app.snapsync.logging.IosLogScope
@@ -242,9 +240,23 @@ object SnapSyncRoot {
                 albumMapStore = albumMapStore,
                 albumExcludedAssetIds = { cutoff -> albumExcludedAssetIds(cutoff) },
                 notifyLeave = { eventId -> leaveNotifier.leave(eventId, deviceId) },
-                // Coordination stays shell-side until `flow/` exists (step 8).
+                // Coordination is the `flow/` zone's (step 8); this root supplies the provision flow's
+                // entry (a thin log-wrapped delegator) and the shell/platform effect lambdas the flows
+                // coordinate over — each a port/platform touch a flow may not make directly.
                 provision = ::provisionEvent,
                 onEventMinted = { eventId -> host.onEventCreated(eventId) },
+                refreshAttestation = ::refreshAttestation,
+                protectedDataGate = { tag, work -> protectedData.runWhenAvailable(tag, work) },
+                pumpForeground = { if (useAppDrivenUpload) urlSessionUpload.onForeground() },
+                unregisterLiveness = ::unregisterLivenessObserver,
+                scheduleBackstop = ::scheduleDownloadBackstop,
+                fetchName = ::fetchAndStoreName,
+                ensureAlbumIfOptedIn = ::ensureAlbumIfOptedIn,
+                // The upload arm's push receiver on the app-driven tier (a thunk — the tier controller
+                // depends on this graph, so it must resolve lazily); null on iOS ≥26.1.
+                uploadSilentPush = {
+                    if (useAppDrivenUpload) urlSessionUpload.pushReceiver::onSilentPush else null
+                },
                 log = log,
                 // Drive the shared iOS ambient log context (the process-global the device-log writers
                 // read) so the tier-neutral features' lines carry the triggering entry point's prefix.
@@ -341,30 +353,19 @@ object SnapSyncRoot {
         PushRegistration(KtorPushHttpClient(http), backendHost, deviceId)
     }
 
-    // The silent-push receivers, fanned out to BOTH arms. A push means "the event changed", which is news
-    // to each of them: foreign photos to pull (capability `photo-download`), and — since the event is
-    // demonstrably live — a good moment to contribute our own (capability `ios-url-session-upload`).
-    //
-    // Each arm keeps its OWN active-event guard, in its own tested capability; this root only composes them.
-    // Both guards answer "is this push for my current event", so a push for any other event (e.g. a
-    // locally-left event whose backend membership persists and keeps pushing us) is a no-op in both.
-    //
-    // The upload arm is added only on the app-driven tier, where a pump exists to drive. On iOS ≥26.1 the OS
-    // owns upload scheduling and we have no lever — the extension is invoked on its own cadence.
-    private val pushReceiver: PushReceiver by lazy {
-        // The download arm's receiver is composed in the app graph; the fan-out stays here until the
-        // receiver pair re-homes out of `:capability:upload` (migration step 8).
-        if (!useAppDrivenUpload) return@lazy app.downloadPushReceiver
-        FanOutPushReceiver(listOf(app.downloadPushReceiver, urlSessionUpload.pushReceiver))
-    }
+    // The silent-push cross-arm fan-out (a push means "the event changed": foreign photos to pull, and —
+    // since the event is live — a good moment to contribute our own) is now the `flow/SilentPush` trigger.
+    // This root supplies its arms: the download arm's receiver is composed in the app graph, and the upload
+    // arm's rides the `uploadSilentPush` thunk in [AppPorts] (app-driven tier only; null on iOS ≥26.1).
 
     val host: StatusContainerHost by lazy {
         // The own-device source: ledger completeness + in-flight (one aggregates() read) × permission ×
         // the live own-device gallery total, minted into snapshots — composed in the app graph.
         // Ledger-sourced, no storage LIST for upload status (spec: sync-status).
+        // Touching `app` above (its status source) constructs the composed graph, whose `init` installs
+        // the permission-grant subscriptions (upload-arm start + album ensure) that used to live here as
+        // `startUploadsOnGrant` / `ensureAlbumOnGrant` — moved into `compose/` at migration step 8.
         val syncSource = app.syncStatusSource
-        startUploadsOnGrant()
-        ensureAlbumOnGrant()
         // Start registering the APNs token: the collector reacts to each token the AppDelegate delivers
         // (StateFlow-retained, so a token delivered before this launches is still registered).
         //
@@ -456,22 +457,11 @@ object SnapSyncRoot {
         host
         // Listen for the extension's cross-process liveness ding while foreground, so upload status moves
         // live as the extension records completions/new jobs (spec: sync-status). Foreground-only: a
-        // suspended app cannot act on the post, and this foreground entry already re-reads below.
+        // suspended app cannot act on the post. The `CFNotificationCenter` registration is platform, so it
+        // stays shell-local; the rest of the foreground coordination (pump / refresh / reconcile / name /
+        // attestation, ordered, its launches escaping this entry's synchronous span) is the flow's.
         registerLivenessObserver()
-        // App-driven upload tier (iOS 18–26.0): foreground entry pumps an upload cycle (completions then
-        // keep it draining while the app is open). No-op on ≥26.1 (the OS drives the extension).
-        if (useAppDrivenUpload) urlSessionUpload.onForeground()
-        // These launches escape this entry point's synchronous span, so each labels itself via its own
-        // wrapped seam (reconcile/refresh); onForeground's own context covers only the dispatch here.
-        scope.launch { refreshStatusSources() }
-        // Foreground-only discovery (capability `photo-download`): pick up foreign photos others added
-        // since the last read, and import anything already staged. No background poll.
-        scope.launch { config.config.value?.eventId?.let { app.downloadController.reconcile(it) } }
-        // Keep the event title current (fills a name a scan couldn't fetch while offline).
-        scope.launch { config.config.value?.eventId?.let { fetchAndStoreName(it) } }
-        // Wake point (capability `device-attestation`): renew the token if it is stale. This one also
-        // covers LAUNCH, which is the first foreground.
-        refreshAttestation()
+        app.foregroundFlow.run()
     }
 
     /**
@@ -481,8 +471,8 @@ object SnapSyncRoot {
      */
     fun onBackground() = log.invocation("onBackground") {
         if (isForging) return@invocation
-        unregisterLivenessObserver()
-        scheduleDownloadBackstop()
+        // Stop the liveness observer + arm the backstop — the `flow/Background` trigger's coordination.
+        app.backgroundFlow.run()
         log.i { "=== app entering background ===" }
     }
 
@@ -532,22 +522,6 @@ object SnapSyncRoot {
     }
 
     /**
-     * Re-read the own-device gallery total (enumeration, downloads suppressed) and the ledger counts
-     * (completed + in-flight), plus the foreign download line. Full foreground refresh.
-     */
-    private suspend fun refreshStatusSources() {
-        // No membership → nothing to count; `N` stays 0 and the screen is at the setup gate anyway
-        // (capability `photo-selection-policy`). A membership that contributes nothing (download-only)
-        // counts 0 too — but that is the source's decision, from the Contribution, not this shell's: the
-        // roots pass facts, never branches.
-        config.config.value?.let { cfg ->
-            app.gallery.refresh(Contribution.of(cfg.direction.includesUpload, cfg.minPhotoDate))
-        }
-        app.ledgerCounts.refresh()
-        app.downloadStatusSource.refresh() // the "downloaded X of Y" line (capability `photo-download`)
-    }
-
-    /**
      * The system relaunched the app to finish background `URLSession` events. There is **no** app-owned
      * background session any more (the device manifest is PUT synchronously by the extension; bytes are
      * the OS upload-job system's), so this just invokes the OS [completionHandler] immediately. Kept so
@@ -565,22 +539,10 @@ object SnapSyncRoot {
             // Wrap INSIDE the launch so `[runDownloadBackstop]` spans the async import. The
             // protected-data state rides the entry-point line (capability `ios-app-shell`): a background
             // wake on a locked device is otherwise invisible, and it is the only place this class of bug
-            // shows up — no test can reach it.
+            // shows up — no test can reach it. The gate/attestation/import coordination is the
+            // `flow/DownloadBackstop` trigger's; only the entry-point wrap and re-arm stay shell-local.
             log.invocation("runDownloadBackstop", params = "protectedData=${protectedData.isAvailable()}") {
-                // The import reads the download store and PhotoKit, and its album placement reads the
-                // album map. If protected data is unavailable (before the first unlock since boot), defer
-                // the whole thing to the unlock rather than letting it fail — and, critically, without
-                // touching the Keychain, which is what minted a device id and aborted the process.
-                protectedData.runWhenAvailable("runDownloadBackstop") {
-                    // Wake point (capability `device-attestation`). This BGTask is the one recurring wake
-                    // the app gets that does NOT depend on an upload having succeeded — which matters,
-                    // because an expired token is exactly what stops uploads succeeding.
-                    refreshAttestation()
-                    scope.launch {
-                        runCatching { app.downloadController.importReady() }
-                            .onFailure { log.w(it) { "download backstop import failed" } }
-                    }
-                }
+                app.downloadBackstopFlow.run()
             }
             // Re-arm for the next idle window and release the OS's task assertion immediately — even when
             // the work above was deferred, since holding the BGTask open until an unlock is not an option.
@@ -673,22 +635,14 @@ object SnapSyncRoot {
         host
         scope.launch {
             // Wrap INSIDE the launch so `[onSilentPush]` spans the async reconcile (and the download
-            // HTTP + import lines it drives trace back to this push).
+            // HTTP + import lines it drives trace back to this push). The gate → attestation → cross-arm
+            // fan-out coordination is the `flow/SilentPush` trigger's (it absorbed FanOutPushReceiver);
+            // only the entry-point wrap and the OS completion handler stay shell-local.
             log.invocation(
                 "onSilentPush",
                 params = "eventId=$eventId protectedData=${protectedData.isAvailable()}",
             ) {
-                // A silent push is delivered to a locked device as readily as an unlocked one, and the
-                // reconcile reads the config (Keychain) and the download store. Defer rather than fail.
-                protectedData.runWhenAvailable("onSilentPush") {
-                    // Wake point (capability `device-attestation`). Inside the protected-data gate: the
-                    // Keychain holding the token is unreadable before the first unlock since boot.
-                    refreshAttestation()
-                    scope.launch {
-                        runCatching { pushReceiver.onSilentPush(eventId) }
-                            .onFailure { log.w(it) { "silent push handling failed for $eventId" } }
-                    }
-                }
+                app.silentPushFlow.run(eventId)
             }
             // Always release the OS handler promptly — iOS gives a silent push a short budget and holding
             // it open until an unlock would simply get us killed.
@@ -721,39 +675,12 @@ object SnapSyncRoot {
         "provisionEvent",
         params = "eventId=${cfg.eventId} named=${cfg.name.isNotEmpty()} cutoff=${cfg.minPhotoDate}",
     ) {
-        // Switch: provisioning a DIFFERENT event while joined leaves the previous one on the backend
-        // first (best-effort — a failure never prevents the switch; see `event-link`). Re-scanning
-        // the same event is not a switch and fires no leave. The confirm dialog for this is a later change.
-        config.config.value?.eventId?.let { previous ->
-            if (previous != cfg.eventId) leaveNotifier.leave(previous, deviceId)
-        }
-        // Persist the full config as-is (join never blocks on the cosmetic name); the container's
-        // ConfigSource is this instance. The per-device capture-date cutoff rides along untouched, so the
-        // extension reads it (capability `photo-selection-policy`).
-        config.save(cfg)
-        refreshStatusSources() // (re)joined event → re-enumerate own total + re-LIST completeness
-        // Drive the upload arm through the tested, tier-neutral lifecycle (capability `upload-lifecycle`):
-        // with access granted it STARTS the producer (or stops it for a download-only membership), and with
-        // no access it defers to the grant collector. It cannot reach a destructive verb — the seam has
-        // none.
-        //
-        // Nothing is cancelled or reset here, and that is deliberate. In-flight transfers target the
-        // device's event-independent byte partition (`/files/devices/<deviceId>/<filename>` — the eventId
-        // never appears in the URL), so an upload in flight stays valid across a switch; cancelling it would
-        // re-upload identical bytes to an identical URL. The ledger and cursor are device-global dedup and
-        // are likewise left alone — the cycle's marker-gated reconciliation seeds already-stored resources
-        // as COMPLETED and clears the cursor before any job is created (`event-rejoin-reconciliation`).
-        app.uploadArm.onProvision()
-        if (permission.permission.value == PermissionStatus.GRANTED) {
-            // Create the event album now if opted in and permission is already granted (the grant
-            // collector covers the grant-after-join case). Capability `event-album`.
-            ensureAlbumIfOptedIn()
-        }
-        // Auto-download the other contributors' photos for this event (capability `photo-download`).
-        // The reconcile is a no-op under an upload-only direction — gated inside the controller.
-        scope.launch { app.downloadController.reconcile(cfg.eventId) }
-        // Scan path: fill the title by id, best-effort, off the join (a failure leaves name empty).
-        if (cfg.name.isEmpty()) scope.launch { fetchAndStoreName(cfg.eventId) }
+        // The switch-leave → save → refresh → arm → album → reconcile → name coordination is the
+        // `flow/Provision` trigger's; this thin wrapper keeps only the entry-point log context (over
+        // IosLogScope) so the flow's synchronous steps carry `[provisionEvent]` and its escaping launches
+        // (reconcile / name) self-label, exactly as before. Nothing here destructures the config (a
+        // newly-added field must not be dropped before the save the extension reads).
+        app.provisionFlow.run(cfg)
     }
 
     /**
@@ -893,38 +820,10 @@ object SnapSyncRoot {
         }
     }
 
-    // Create the event album on the photo-permission grant (capability `event-album`): the app is the
-    // sole creator, and sync needs the same grant, so the album exists before the first synced photo —
-    // both processes then only ADD. Idempotent; a no-op when the membership opted out.
-    private fun ensureAlbumOnGrant() {
-        scope.launch {
-            permission.permission.collect { status ->
-                if (status == PermissionStatus.GRANTED) ensureAlbumIfOptedIn()
-            }
-        }
-    }
-
-    /**
-     * Once photo access is full (`GRANTED`), start the upload producer through the tier-neutral arm
-     * (capability `upload-lifecycle`) — which, on the OS-driven tier, means registering the extension so
-     * the system can invoke its `process()`. The app itself performs no upload, fetch, enumeration, or
-     * seed; the cycle self-reconciles, gated by the `joinedEventId` marker.
-     *
-     * This fires only on a **transition** to GRANTED (`permission` is a `StateFlow`, which conflates an
-     * unchanged value — a foreground re-read of GRANTED→GRANTED does not re-emit). It therefore cannot
-     * rescue a membership provisioned while access was *already* granted: [provisionEvent] owns that case.
-     */
-    private fun startUploadsOnGrant() {
-        scope.launch {
-            permission.permission.collect { status ->
-                // Note this fires on the TRANSITION to granted (a StateFlow conflates an unchanged value),
-                // so it can never rescue a membership provisioned while access was ALREADY granted —
-                // `provisionEvent` owns that case. Assuming otherwise is what let the destructive provision
-                // path look survivable.
-                if (status == PermissionStatus.GRANTED) app.uploadArm.onPermissionGranted()
-            }
-        }
-    }
+    // The permission-grant subscriptions (upload-arm start + event-album ensure) moved into the composed
+    // graph's `init` at migration step 8 (they collect the `PhotoAccessStatusSource` port StateFlow, which
+    // `compose/` holds). Both still fire only on a *transition* to GRANTED, so neither can rescue a
+    // membership provisioned while access was already granted — the provision flow owns that case.
 
     // The tier's upload mechanism, chosen ONCE (capability `upload-lifecycle`, "Exactly one producer per
     // process"). Both candidates are `by lazy`, so only the selected one is ever constructed — the

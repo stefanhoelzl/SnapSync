@@ -13,17 +13,11 @@ failure. `log.*` statements are diagnostics, not flow, and are omitted from both
 sequenceDiagram
   participant OS
   participant SnapSyncRoot
-  participant config
-  participant app_uploadArm as app.uploadArm
+  participant app_provisionFlow as app.provisionFlow
   OS->>SnapSyncRoot: provisionEvent()
-  SnapSyncRoot->>config: save(…)
-  SnapSyncRoot->>SnapSyncRoot: refreshStatusSources()
-  SnapSyncRoot->>app_uploadArm: onProvision()
+  SnapSyncRoot->>app_provisionFlow: run(…)
 ```
 
 ## Not transcribable (burn-down)
 
-- line 727 — `?.let` chain: `config.config.value?.eventId?.let { previous ->`
-- line 747 — `if` conditional: `if (permission.permission.value == PermissionStatus.GRANTED) {`
-- line 754 — `scope.launch` body: `scope.launch { app.downloadController.reconcile(cfg.eventId) }`
-- line 756 — `if` conditional: `if (cfg.name.isEmpty()) scope.launch { fetchAndStoreName(cfg.eventId) }`
+- none

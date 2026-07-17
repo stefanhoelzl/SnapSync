@@ -19,6 +19,6 @@ sequenceDiagram
 
 ## Not transcribable (burn-down)
 
-- line 668 — `if` conditional: `if (isForging) {`
-- line 673 — bare property read (lazy-init touch): `host`
-- line 674 — `scope.launch` body: `scope.launch {`
+- line 630 — `if` conditional: `if (isForging) {`
+- line 635 — bare property read (lazy-init touch): `host`
+- line 636 — `scope.launch` body: `scope.launch {`

@@ -32,7 +32,6 @@ Roots found:
 | `FakeBackgroundTransfer` | | | | x |
 | `FakeDownloadTransport` | | | | x |
 | `FakePhotoLibraryImporter` | | | | x |
-| `FanOutPushReceiver` | x | | | |
 | `FileLogWriter` | x | x | | |
 | `HttpAttestClient` | x | | | |
 | `HttpDeviceFilesSource` | | x | x | x |

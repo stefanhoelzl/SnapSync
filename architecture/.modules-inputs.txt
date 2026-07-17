@@ -10,7 +10,6 @@ module :app:ios
 module :app:ios:photokit-extension
 module :capability:attest
 module :capability:push
-module :capability:upload
 module :domain
 module :domain:download-store
 module :domain:engine
@@ -44,7 +43,6 @@ edge :app:ios :adapter:ios:app-only
 edge :app:ios :adapter:ios:ext-safe
 edge :app:ios :capability:attest
 edge :app:ios :capability:push
-edge :app:ios :capability:upload
 edge :app:ios :domain
 edge :app:ios :domain:keychain
 edge :app:ios :domain:presentation
@@ -52,12 +50,10 @@ edge :app:ios :domain:ui
 edge :app:ios:photokit-extension :adapter:generic
 edge :app:ios:photokit-extension :adapter:ios:ext-safe
 edge :app:ios:photokit-extension :capability:push
-edge :app:ios:photokit-extension :capability:upload
 edge :app:ios:photokit-extension :domain
 edge :capability:attest :domain
 edge :capability:push :adapter:generic
 edge :capability:push :domain
-edge :capability:upload :domain
 edge :domain:download-store :adapter:generic
 edge :domain:download-store :domain
 edge :domain:engine :adapter:generic
@@ -76,7 +72,6 @@ edge :test:integration :domain
 edge :test:integration :domain:presentation
 edge :test:integration :test:world
 edge :test:world :adapter:generic
-edge :test:world :capability:upload
 edge :test:world :domain
 edge :test:world :domain:download-store
 edge :test:world :domain:gallery
