@@ -8,7 +8,7 @@ package app.snapsync.ports
  * so there is no scheduler. On <26.1 the app is the scheduler: after a cycle leaves work outstanding
  * (or on every `BGProcessingTask` handler, as the new-photo heartbeat), the pump asks this seam to
  * ensure the next background wake exists. The iOS implementation (`IosBackgroundScheduler`, in
- * `:app:ios:url-session-upload`) backs it with `BGTaskScheduler`; the genuinely OS-bound wiring
+ * `:adapter:ios:app-only`) backs it with `BGTaskScheduler`; the genuinely OS-bound wiring
  * (registration, the `URLSession` delegate, `handleEventsForBackgroundURLSession`) stays in the thin
  * Swift shell.
  */

@@ -109,7 +109,7 @@ class BurnDownTest {
 
         // ── Law: Ports are the I/O boundary (files mixing a port interface with a technology impl) ─
         rows += runCatching {
-            val mixed = sources("domain", "capability").filter { f ->
+            val mixed = sources("adapter", "domain", "capability").filter { f ->
                 val t = f.readText()
                 Regex("""^\s*interface\s""", RegexOption.MULTILINE).containsMatchIn(t) &&
                     (t.contains("import io.ktor") || t.contains("import app.cash.sqldelight"))
@@ -122,7 +122,10 @@ class BurnDownTest {
             val toml = File(repoRoot, "gradle/libs.versions.toml").readText()
             // The beacon's own source quotes every pattern below, so it must not scan itself — the
             // same self-exclusion targetModules already applies.
-            val allSrc = sources("domain", "capability", "app", "test")
+            // `adapter` joined the scanned roots at migration step 4 (the Enrollment copies must keep
+            // counting after HttpEnrollment moved into :adapter:generic — a loud-stale list, updated
+            // in-PR per the plan's rule).
+            val allSrc = sources("adapter", "domain", "capability", "app", "test")
                 .filterNot { "test/architecture/migration/" in it.path.replace('\\', '/') }
             fun declared(pattern: String) = allSrc.count { Regex(pattern).containsMatchIn(it.readText()) }
             val items = buildList {

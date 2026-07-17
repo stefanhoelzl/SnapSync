@@ -19,30 +19,21 @@ kotlin {
         commonMain.dependencies {
             api(project(":domain"))
             implementation(project(":domain:logging"))
-            implementation(project(":domain:engine"))
             // The relocated, JVM-covered upload orchestration (UploadCycle + the BackgroundTransfer seam
-            // + DiscoveryStore + UploadConfig). The iOS adapters below (IosBackgroundTransfer,
-            // IosDiscoveryStore) implement its seams and UploadExtensionRoot composes its UploadCycle.
+            // + UploadConfig). The extension-safe iOS adapters implement its seams and
+            // UploadExtensionRoot composes its UploadCycle.
             implementation(project(":capability:upload"))
-            // Shared iOS PhotoKit discovery + request/token support (IosDiscovery, IosDiscoveryStore),
-            // also consumed by the app-driven URLSession tier. Keeps the change-token walk out of the
-            // platform-free :capability:upload while sharing it across both adapters.
-            implementation(project(":app:ios:photokit-discovery"))
-            // The app-written download store, opened READ-ONLY here for the suppression projection
-            // (capability `download-store`): discovery drops assets this device downloaded + imported
-            // so they are never re-uploaded (the echo). The extension never writes this store.
-            implementation(project(":domain:download-store"))
+            // The extension framework's contents are decided by linkage (migration step 4): the
+            // extension-safe iOS adapters (:adapter:ios:ext-safe — the discovery walk + cursor store,
+            // the ledger/download-store native drivers, the Keychain config/attest/device-id/album
+            // stores, the Darwin client, the joined-event marker, the device-log writers) over the
+            // platform-free technology impls (:adapter:generic — the SQLDelight stores + Ktor clients).
+            implementation(project(":adapter:generic"))
+            implementation(project(":adapter:ios:ext-safe"))
             // The shared library resource-enumeration seam (one upload-key/version derivation for both
             // the producer and the re-join seed); the producer delegates its enumeration to it.
             implementation(project(":domain:gallery"))
-            // The real upload provider + the runtime config seam: the extension assembles the edge
-            // URL from the Keychain event id (:capability:config), the compile-time host, and the
-            // App-Group device id, building the request with EdgeUploadRequestProvider
-            // (:capability:upload-url) — no signing, no credential.
-            implementation(project(":capability:upload-url"))
             implementation(project(":capability:album"))
-            implementation(project(":capability:config"))
-            implementation(project(":capability:attest"))
             // The re-join reconciliation now runs in the extension (capability
             // `event-rejoin-reconciliation`): the ExtensionReconciler seeds already-stored photos as
             // COMPLETED before the producer runs, fetching the event's complete-asset listing via the

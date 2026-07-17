@@ -64,7 +64,7 @@ Swift shells are pass-throughs; all logic is Kotlin. Do not add parsing or decis
   `PhotoLibraryPermission` × `KeychainConfigStore` → `StatusContainerHost`.
 - **Extension**: `app/ios/photokit-extension/src/iosMain/.../UploadExtensionRoot.kt` — assembles the
   App-Group `LedgerWriter`, the `SyncEngine`, the upload provider, the `IosPhotoKitUploadPlatform`
-  (composing the shared `IosDiscovery` from `:app:ios:photokit-discovery`), and the `UploadCycle`;
+  (composing the shared `IosDiscovery` from `:adapter:ios:ext-safe`), and the `UploadCycle`;
   `process()` runs one blocking discover→engine→job→drain cycle.
 
 **Neither is the direction gate** (capability `upload-lifecycle`). Whether a membership uploads **at all** is
@@ -141,7 +141,7 @@ App deploys **min iOS 18**. Upload runs on one of two tiers, selected at
   target — and, on the Kotlin side, to a third `UploadProducer`.
 - **iOS 18–26.0 — app-driven `URLSession` (`ios-url-session-upload`).** No appex exists; the **main
   app process** performs uploads over a background `URLSession` + `BGProcessingTask`, via
-  `IosUrlSessionUploadPlatform` / `IosBackgroundScheduler` (`:app:ios:url-session-upload`) driving the
+  `IosUrlSessionUploadPlatform` / `IosBackgroundScheduler` (`:adapter:ios:app-only`) driving the
   same `:capability:upload` `UploadCycle` through the `BackgroundUploadPump`. On this tier the **app**
   is the single `LedgerWriter` (no extension process exists).
 

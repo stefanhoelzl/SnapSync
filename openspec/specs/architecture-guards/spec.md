@@ -51,9 +51,11 @@ pass by inspecting nothing.
 
 ### Requirement: Keychain access is confined to one module
 
-All Keychain access SHALL be confined to a single module (`:domain:keychain`). No other module SHALL
-reference the Keychain API (`SecItem*`, `kSecClass*`, `kSecAttr*`), whether by import **or** by
-fully-qualified reference.
+All Keychain access SHALL be confined to a single module (`:adapter:ios:ext-safe` — the
+extension-safe adapter module, where the migration seated the Keychain impls; before migration
+step 4 the owning module was `:domain:keychain`, which retains only the platform-free
+`ProtectedData` seam). No other module SHALL reference the Keychain API (`SecItem*`, `kSecClass*`,
+`kSecAttr*`), whether by import **or** by fully-qualified reference.
 
 This containment is what makes the *"every Keychain item is readable by background work on a locked
 device"* invariant provable rather than merely intended: it is the containment plus that module's own
@@ -64,7 +66,7 @@ Kotlin/Native platform libraries are ambient in every `iosMain` source set and t
 withhold.
 
 #### Scenario: A Keychain call outside the owning module fails the build
-- **WHEN** any module other than `:domain:keychain` references `SecItemAdd`, `SecItemCopyMatching`,
+- **WHEN** any module other than `:adapter:ios:ext-safe` references `SecItemAdd`, `SecItemCopyMatching`,
   `SecItemUpdate`, `SecItemDelete`, or a `kSecClass`/`kSecAttr` constant
 - **THEN** the guard fails the build
 
@@ -73,7 +75,7 @@ withhold.
 - **THEN** the guard still fails the build
 
 #### Scenario: The owning module is exempt
-- **WHEN** `:domain:keychain` itself uses the Keychain API
+- **WHEN** `:adapter:ios:ext-safe` itself uses the Keychain API
 - **THEN** the guard passes
 
 ### Requirement: The data-protection entitlement never raises the default protection class

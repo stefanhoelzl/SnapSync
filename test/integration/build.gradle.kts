@@ -17,8 +17,9 @@ kotlin {
             implementation(project(":test:world"))
             implementation(project(":domain:presentation"))
             implementation(project(":domain:status"))
-            implementation(project(":domain:permission"))
-            implementation(project(":capability:config"))
+            // The real Ktor clients some tests drive (HttpEventDirectory, KtorPushHttpClient) moved
+            // to the adapter layer at migration step 4.
+            implementation(project(":adapter:generic"))
             implementation(project(":capability:join"))
             implementation(project(":capability:membership"))
             implementation(project(":capability:event-creation-ui"))

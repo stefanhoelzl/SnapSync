@@ -17,9 +17,8 @@ import kotlin.test.fail
  * runtime abort in the field. Expiry trigger: Kotlin/Native gaining extension-availability checking.
  *
  * Scope is DERIVED: every Kotlin source under the modules the extension framework links today
- * (`:app:ios:photokit-extension`, `:app:ios:photokit-discovery`) plus, when they exist, the target's
- * `adapter/ios/ext-safe` sources. New files are born in scope; the non-vacuity twin catches a rename
- * emptying the scan.
+ * (`:app:ios:photokit-extension`, `:adapter:ios:ext-safe`). New files are born in scope; the
+ * non-vacuity twin catches a rename emptying the scan.
  */
 class ExtensionSafetyTest {
 
@@ -27,10 +26,13 @@ class ExtensionSafetyTest {
         .firstOrNull { File(it, "settings.gradle.kts").isFile }
         ?: fail("could not locate the repository root")
 
-    /** Roots the extension binary links. Grows (never shrinks) as the migration creates adapters. */
+    /**
+     * Roots the extension binary links. Grows as the migration creates adapters; the
+     * `photokit-discovery` root left the list when migration step 4 moved its two files into
+     * `adapter/ios/ext-safe` and deleted the module (coverage moved, it did not shrink).
+     */
     private val extensionLinkedRoots = listOf(
         "app/ios/photokit-extension",
-        "app/ios/photokit-discovery",
         "adapter/ios/ext-safe",
     )
 

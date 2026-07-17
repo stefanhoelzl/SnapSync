@@ -3,7 +3,6 @@ import org.jetbrains.kotlin.gradle.targets.native.tasks.KotlinNativeSimulatorTes
 
 plugins {
     alias(libs.plugins.kotlin.multiplatform)
-    alias(libs.plugins.sqldelight)
 }
 
 // Full failure messages in CI: the Kotlin/Native simulator runner otherwise prints a terse
@@ -16,6 +15,11 @@ tasks.withType<KotlinNativeSimulatorTest>().configureEach {
     }
 }
 
+// MIGRATION STEP 4 left this module tests-only: the SQLDelight store + schema moved to
+// `:adapter:generic`, the native driver factory to `:adapter:ios:ext-safe`. What remains is the
+// `LedgerStoreContract` (+ its InMemory backend) and `SyncEngineTest`; the driver-backed tests
+// extend the contract, so they stay here too (a test source set cannot be referenced across
+// modules) and follow their subjects when the features move (steps 5/6).
 kotlin {
     jvmToolchain(libs.versions.jdk.get().toInt())
     jvm()
@@ -25,31 +29,20 @@ kotlin {
         commonMain.dependencies {
             api(project(":domain"))
             api(libs.coroutines.core)
-            implementation(libs.sqldelight.runtime)
-            implementation(libs.kermit)
         }
         commonTest.dependencies {
             implementation(kotlin("test"))
             implementation(libs.coroutines.test)
         }
-        iosMain.dependencies {
+        iosTest.dependencies {
+            // NativeLedgerStoreTest runs the contract against the moved store over the native driver.
+            implementation(project(":adapter:generic"))
             implementation(libs.sqldelight.driver.native)
         }
         jvmTest.dependencies {
+            // SqlDelightLedgerStoreTest runs the contract against the moved store over the JVM driver.
+            implementation(project(":adapter:generic"))
             implementation(libs.sqldelight.driver.sqlite)
-        }
-    }
-}
-
-sqldelight {
-    databases {
-        create("LedgerDatabase") {
-            packageName.set("app.snapsync.engine.db")
-            // The default non-Android dialect is SQLite 3.18, whose grammar rejects
-            // `ALTER TABLE … DROP COLUMN` (a 3.35 feature) used by the version-drop migration
-            // (2.sqm). Both drivers run SQLite ≫ 3.35 at runtime; this only raises the compile-time
-            // parser floor.
-            dialect(libs.sqldelight.dialect.sqlite)
         }
     }
 }

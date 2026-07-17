@@ -23,19 +23,22 @@ kotlin {
             implementation(project(":domain:presentation"))
             implementation(project(":domain:status"))
             implementation(project(":domain:logging"))
-            implementation(project(":domain:engine"))
-            implementation(project(":domain:permission"))
+            // ProtectedDataGate/ProtectedDataAvailability (the ProtectedData seam keeps its old home
+            // until migration step 12; the SecItem impls moved to :adapter:ios:ext-safe at step 4).
+            implementation(project(":domain:keychain"))
             implementation(project(":domain:gallery"))
-            implementation(project(":capability:config"))
-            // The app-driven (iOS 18–26.0) upload tier: the shared UploadCycle/pump/scheduler seam
-            // (:capability:upload), the edge request provider (:capability:upload-url), the shared
-            // PhotoKit discovery (:app:ios:photokit-discovery), and the URLSession adapters
-            // (:app:ios:url-session-upload). Composed in the main app process on <26.1.
+            // The technology adapters, placed by linkage (migration step 4): the Ktor/SQLDelight
+            // impls (:adapter:generic), the extension-safe iOS adapters (:adapter:ios:ext-safe —
+            // Keychain stores, ledger/download drivers, discovery walk, log writers), and the
+            // app-only iOS adapters (:adapter:ios:app-only — URLSession upload/download transports,
+            // BGTaskScheduler, PhotoKit importer, permission).
+            implementation(project(":adapter:generic"))
+            implementation(project(":adapter:ios:ext-safe"))
+            implementation(project(":adapter:ios:app-only"))
+            // The app-driven (iOS 18–26.0) upload tier's shared UploadCycle/pump/scheduler seam,
+            // composed in the main app process on <26.1.
             implementation(project(":capability:upload"))
-            implementation(project(":capability:upload-url"))
             implementation(project(":capability:album"))
-            implementation(project(":app:ios:photokit-discovery"))
-            implementation(project(":app:ios:url-session-upload"))
             implementation(project(":capability:attest"))
             implementation(project(":capability:join"))
             // The re-join reconciliation: the list fetch + JoinEvent gate, and the join status seam

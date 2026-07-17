@@ -1,8 +1,10 @@
 plugins {
     alias(libs.plugins.kotlin.multiplatform)
-    alias(libs.plugins.kotlin.serialization)
 }
 
+// MIGRATION STEP 4: the Ktor client (HttpAttestClient) moved to `:adapter:generic`; the iOS
+// adapters (IosAttestKey, KeychainAttestStore) to `:adapter:ios:ext-safe`. What remains is the
+// platform-free DeviceAttestation policy + the in-memory store.
 kotlin {
     jvmToolchain(libs.versions.jdk.get().toInt())
     jvm()
@@ -12,22 +14,11 @@ kotlin {
         commonMain.dependencies {
             api(project(":domain"))
             api(libs.coroutines.core)
-            // The HTTP client is injected (Darwin on iOS, MockEngine in tests) — core + JSON only,
-            // mirroring :capability:join.
-            implementation(libs.ktor.client.core)
-            implementation(libs.kotlinx.serialization.json)
             implementation(libs.kermit)
         }
         commonTest.dependencies {
             implementation(kotlin("test"))
             implementation(libs.coroutines.test)
-            implementation(libs.ktor.client.mock)
-        }
-        // The Keychain-backed token store and the DCAppAttestService adapter. Capability
-        // `architecture-guards`: `SecItem*` may appear ONLY in :domain:keychain, so this module borrows
-        // that seam rather than carrying its own copy.
-        iosMain.dependencies {
-            api(project(":domain:keychain"))
         }
     }
 }

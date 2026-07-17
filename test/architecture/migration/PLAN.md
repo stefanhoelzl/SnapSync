@@ -64,7 +64,7 @@ inlined and marked ⟨R⟩ where they changed the original order or claims.
 | 2 | split mixed files | mixed −6 ⟨R: 2 of 8 die in step 1⟩ (measured exact) | ● |
 | 3a | `:domain` skeleton: `model/` + `ports/` (moves + package renames only) | edges −5 (→1) · modules Δ (measured exact; Δ-note: `LedgerBackend` seated in `model/` — SyncEngine→LedgerWriter chain vs the armed model-purity gate; ports/ seat at 3b/5. D3 of `domain-skeleton-model-ports`. 3 mixed files step 2 missed split here) | ● |
 | 3b | port need-renames (`LedgerStore`, `PhotoLibrary`, `PhotoAccess`, …) | — (Δ-note: `LedgerStore` keeps its `model/` seat — a ports/ seat trial turned the model-purity gate red while `LedgerWriter` lives in `model/`; the seat moves at step 5, per 3a's D3. `TransferNotify` unassigned: `PushHttpClient` carries two needs (registration PUT + notify POST) and a rename-only step cannot split it) | ● |
-| 4 | adapters (ext-safe / app-only / generic) + delete the two emptied `:app:ios:*` modules | modules Δ · shells Δ | ○ |
+| 4 | adapters (ext-safe / app-only / generic) + delete the two emptied `:app:ios:*` modules | modules Δ · shells Δ (measured: modules −5 · shells −14, beacon 85→66; zero body edits — all 44 moves R100) | ● |
 | 5 | features I: upload · membership · status · trust (+ retire `StatusEngineBoundaryTest`) | modules Δ | ○ |
 | 6 | features II: download · album · creation; delete emptied modules | edges −1 (→0) · modules Δ | ○ |
 | 7 | `compose/`: `uploadCore`, then `snapSyncApp` (kills `readGate`×3, roots' uploader copies) | shells Δ | ○ |
@@ -196,8 +196,9 @@ flow-no-ports gates arm (created pending in step 0).
 ## Step 6 — features II: download · album · creation
 
 Move the rest; `presentation→event-creation-ui` edge dies here (edges → 0); delete every emptied
-`capability/*` and `domain/gallery|status|permission|download-store|logging` module (keychain
-died into the adapter at step 4). Beacon `targetModules` untouched (they were never in it);
+`capability/*` and `domain/gallery|status|permission|download-store|logging` module (keychain's
+impls died into the adapter at step 4, but `:domain:keychain` survives as the `ProtectedData`
+skeleton until step 12 — it is NOT in this step's deletion list). Beacon `targetModules` untouched (they were never in it);
 module-set delta shrinks by each deletion.
 
 ## Step 7 — `compose/`: `uploadCore`, then `snapSyncApp`

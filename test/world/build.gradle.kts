@@ -20,15 +20,14 @@ kotlin {
             // `api` (not `implementation`): the world's whole purpose is to hand the REAL stack's types
             // to its consumers (`:app:desktop`, `:test:integration`) — they appear across the world's
             // public API (composition helpers, inspectable fakes), so they must leak transitively.
-            api(project(":domain:engine"))
             api(project(":domain:gallery"))
             api(project(":domain:status"))
-            api(project(":domain:permission"))
             api(project(":domain:download-store"))
+            // The real Ktor clients the mini-edge serves (HttpDeviceFilesSource, HttpEventUnionSource,
+            // HttpEventCreation, HttpLeaveNotifier) moved to the adapter layer at migration step 4.
+            api(project(":adapter:generic"))
             api(project(":capability:upload"))
-            api(project(":capability:upload-url"))
             api(project(":capability:album"))
-            api(project(":capability:config"))
             api(project(":capability:membership"))
             api(project(":capability:download"))
             api(project(":capability:event-creation-ui"))
