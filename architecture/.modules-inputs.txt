@@ -113,6 +113,7 @@ edge :capability:upload :domain:engine
 edge :capability:upload :domain:gallery
 edge :capability:upload :domain:logging
 edge :capability:upload-url :domain:engine
+edge :domain:download-store :domain:engine
 edge :domain:gallery :domain:engine
 edge :domain:presentation :capability:config
 edge :domain:presentation :capability:event-creation-ui

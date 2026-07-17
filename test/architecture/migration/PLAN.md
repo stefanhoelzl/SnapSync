@@ -59,7 +59,7 @@ inlined and marked ⟨R⟩ where they changed the original order or claims.
 
 | # | step | expected Δ (law: delta) | status |
 |---|------|------------------------|--------|
-| 0 | ⟨R⟩ pin the runtime identity + create the pending zone gates | — (guards only) | ○ |
+| 0 | ⟨R⟩ pin the runtime identity + create the pending zone gates | — (guards + consolidation) | ● |
 | 1 | delete dead weight | ledger −8 · edges −3 · modules −1 | ○ |
 | 2 | split mixed files | mixed −6 ⟨R: 2 of 8 die in step 1⟩ | ○ |
 | 3a | `:domain` skeleton: `model/` + `ports/` (moves + package renames only) | edges −5 (→1) · modules Δ | ○ |
@@ -84,20 +84,33 @@ note in its row.
 
 ## Step 0 — ⟨R⟩ pin the runtime identity; create the pending zone gates
 
-The single highest-leverage hour of the migration. Steps 1–6 move every string the installed
-base depends on, none asserted by any test today (all `iosMain` defaults, invisible to the JVM
-loop): the App-Group id `group.app.snapsync`; the Keychain service/account pairs
+**As built** (change `pin-runtime-identity-and-zone-gates`; scope settled by interview, two
+amendments to the original row: "guards only" became consolidate-then-guard, and the inventory
+grew after a sweep). The single highest-leverage hour of the migration. Steps 1–6 move every
+string the installed base depends on, none asserted by any test before this step (all `iosMain`
+defaults, invisible to the JVM loop). `RuntimeIdentityTest` (`:test:architecture`, gating) pins:
+the App-Group id `group.app.snapsync` (Kotlin + both entitlements); the Keychain
+service/account **pairs** — the pair is the unit, so a cross-swap fails
 (`app.snapsync.deviceid/deviceid` — drift here mints a new device identity and corrupts the
 event union for every member, remotely unfixably — plus config, attest ×2, album); the
-`NSUserDefaults` keys `discovery.changeToken` and `rejoin.joinedEventId`; `ledger.db`; the
-framework `baseName`s. A `:test:architecture` text guard asserts each literal appears **exactly
-once** in production source with its exact value — converting the migration's worst
-silent-device-corruption class into a compile-loop failure for all following steps.
+`NSUserDefaults` keys `discovery.changeToken`, `rejoin.joinedEventId`, `app.snapsync.album.map`;
+`ledger.db` and `downloads.db`; the device-manifest layout (`device-manifest/`,
+`accumulator.json`, `last-uploaded.json`); the BGTask ids (Kotlin ↔ `Info.plist` agreement) and
+background-URLSession ids; the framework `baseName`s (build files). Each literal appears
+**exactly once** in production Kotlin with its exact value — made true first by consolidating
+the two duplicates (download-store now imports `LEDGER_APP_GROUP` from `:domain:engine`, an
+interim iosMain edge that dies at step 4; `ledger.db` got one in-file const) — converting the
+migration's worst silent-device-corruption class into a compile-loop failure for all following
+steps. Inventory contract of record: the `architecture-guards` spec; adding a pin is a spec
+delta.
 
-Same PR: create the zone gates the later steps arm — they do not exist yet (review finding):
-model-purity, ports→model, feature blindness, flow-no-ports, presentation-imports — each
+Same PR: the zone gates the later steps arm — model-purity, ports→model, feature blindness,
+flow-no-ports, presentation-imports (import-level approximation: never `ports/`/`flow/`) — each
 self-arming with a scope-empty-is-pending twin (the `FakeHonestyTest` pattern), so steps 3a/5/6/9
-arm them by creating code, not by writing gates mid-move.
+arm them by creating code, not by writing gates mid-move. Scopes pinned as named assumptions
+(design D6): `domain/src/*/kotlin/` zone dirs, `ui/presentation/src`. Verified: all five print
+PENDING today; a scratch model file with an engine reference flipped the model gate red with
+zero gate edits.
 
 ## Step 1 — delete dead weight
 

@@ -25,6 +25,9 @@ const val DISCOVERY_TOKEN_KEY: String = "discovery.changeToken"
  */
 const val JOINED_EVENT_KEY: String = "rejoin.joinedEventId"
 
+/** The extension-written ledger's DB filename inside the [LEDGER_APP_GROUP] container. */
+private const val LEDGER_DB_NAME: String = "ledger.db"
+
 /**
  * The iOS [LedgerBackend]: the shared [SqlDelightLedgerBackend] over a native SQLite driver,
  * persisting **on disk in the [LEDGER_APP_GROUP] container** so the ledger is shared between the
@@ -41,7 +44,7 @@ fun iosLedgerBackend(): LedgerBackend {
     val basePath = appGroupContainerPath(LEDGER_APP_GROUP)
     val driver = NativeSqliteDriver(
         schema = LedgerDatabase.Schema,
-        name = "ledger.db",
+        name = LEDGER_DB_NAME,
         onConfiguration = { configuration ->
             configuration.copy(
                 extendedConfig = configuration.extendedConfig.copy(basePath = basePath),
@@ -68,7 +71,7 @@ private fun protectLedgerFiles(basePath: String) {
         NSFileProtectionKey to NSFileProtectionCompleteUntilFirstUserAuthentication,
     )
     for (suffix in listOf("", "-wal", "-shm")) {
-        NSFileManager.defaultManager.setAttributes(attributes, "$basePath/ledger.db$suffix", error = null)
+        NSFileManager.defaultManager.setAttributes(attributes, "$basePath/$LEDGER_DB_NAME$suffix", error = null)
     }
 }
 

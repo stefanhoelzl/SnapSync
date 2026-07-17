@@ -54,6 +54,7 @@ flowchart LR
   capability_upload --> domain_gallery
   capability_upload --> domain_logging
   capability_upload_url --> domain_engine
+  domain_download_store --> domain_engine
   domain_gallery --> domain_engine
   domain_presentation --> capability_config
   domain_presentation --> capability_event_creation_ui

@@ -31,6 +31,10 @@ kotlin {
             implementation(libs.coroutines.test)
         }
         iosMain.dependencies {
+            // Interim edge for the App-Group id const (migration step 0, design D2): the six other
+            // App-Group users already import engine's LEDGER_APP_GROUP; this dep dies at step 4
+            // when all iosMain moves into the adapter modules together.
+            implementation(project(":domain:engine"))
             implementation(libs.sqldelight.driver.native)
         }
         jvmTest.dependencies {
