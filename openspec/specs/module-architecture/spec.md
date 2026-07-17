@@ -15,7 +15,7 @@ The laws also serve the tooling built on them: flows are transcribable into sequ
 compositions into wiring matrices precisely because the laws forbid the constructs that would make
 derivation unfaithful.
 
-Decision record: `establish-target-architecture` (interview + four adversarial reviews + a
+Decision record: `changes/archive/2026-07-17-establish-target-architecture` (interview + four adversarial reviews + a
 40-claim necessity audit; user decisions D4/D8/D10/D11 recorded with their evidence).
 
 ## Requirements

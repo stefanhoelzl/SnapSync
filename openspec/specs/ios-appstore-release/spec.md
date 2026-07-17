@@ -46,9 +46,11 @@ while App Store Connect's "Private" is a one-way door to org-only distribution)
 ### Requirement: A release only builds a merged, fully-green commit
 
 Before building or uploading, the workflow SHALL verify that the released commit is an **ancestor of
-`origin/main`** and that **every check-run on the released commit's SHA concluded `success`**, excluding
-check-runs produced by the release workflow itself; if either check fails, the workflow SHALL fail before
-building or uploading. Because a release may be dispatched from any ref, the ancestor check is what confines a
+`origin/main`** and that **every REQUIRED check-run on the released commit's SHA concluded `success`** — the
+required set derived at run time from the default branch's protection rules, never a hand-kept list —
+excluding check-runs produced by the release workflow itself; if either check fails, the workflow SHALL
+fail before building or uploading. If the required set cannot be resolved, the guard SHALL degrade in
+the strict direction and treat every check-run as required. Because a release may be dispatched from any ref, the ancestor check is what confines a
 release to merged code, and it SHALL NOT be skipped.
 
 The self-exclusion SHALL identify the workflow's own check-runs by the **check-suites its runs produced for
@@ -57,22 +59,27 @@ state — not merely those still in progress. A release that failed leaves a com
 the commit; were that treated as foreign, it would refuse every subsequent attempt and render the commit
 permanently unreleasable.
 
-The green check SHALL include the "allowed-red" delivery plumbing
-(`ios-deliver`, `ios-promote`): a commit whose full pipeline — including promotion to alpha — is not green
-SHALL NOT reach the App Store. Because `ios-promote` is idempotent (capability `ios-testflight-delivery`), a
-cancelled or red `ios-promote` on the target commit is remedied by re-running that job until green and
-re-dispatching.
+Non-required checks SHALL NOT block a release (changed 2026-07-17, with the introduction of the
+red-by-design migration beacon `verify`): `ios-deliver` and `ios-promote` are not required checks, so a
+red promote no longer refuses a release dispatch. Releasing a commit whose alpha promotion failed is
+therefore possible; when alpha delivery of the released commit matters, the operator SHALL check
+`ios-promote` (idempotent, re-runnable — capability `ios-testflight-delivery`) rather than rely on this
+guard.
 
 #### Scenario: A release off main is rejected
 - **WHEN** a release is dispatched from a ref whose commit is not an ancestor of `origin/main`
 - **THEN** the workflow fails before building or uploading
 
-#### Scenario: A release on a red commit is rejected
-- **WHEN** a release is dispatched for a commit on `main` that has any non-`success` check-run (other than the release workflow's own runs), such as a cancelled `ios-promote`
-- **THEN** the workflow fails before building or uploading, and the remedy is to re-run the idempotent `ios-promote` to green and re-dispatch
+#### Scenario: A release on a commit with a red required check is rejected
+- **WHEN** a release is dispatched for a commit on `main` with any non-`success` REQUIRED check-run (e.g. a failed `ios-test`)
+- **THEN** the workflow fails before building or uploading
+
+#### Scenario: A red non-required check does not block a release
+- **WHEN** a release is dispatched for a commit whose required check-runs are all green while a non-required check-run (the red-by-design `verify` beacon, or a red `ios-promote`) is not
+- **THEN** the workflow logs the ignored check-runs and proceeds
 
 #### Scenario: A release on a fully-green main commit proceeds
-- **WHEN** a release is dispatched for a commit that is an ancestor of `origin/main` and whose every check-run (excluding the release workflow's own) concluded `success`
+- **WHEN** a release is dispatched for a commit that is an ancestor of `origin/main` and whose every required check-run (excluding the release workflow's own) concluded `success`
 - **THEN** the workflow proceeds to build, upload and attach
 
 #### Scenario: A previously failed release does not block its own retry

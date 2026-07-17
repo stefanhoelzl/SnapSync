@@ -30,14 +30,15 @@ keep it reviewable. Migration sequencing is deliberately out of scope (follow-up
 - **New executable guards + a migration beacon** (delta to `architecture-guards`): text-pattern
   zone gates with derived scopes and non-vacuity twins, per-zone library allowlists, an
   extension-safety text gate, a detekt complexity gate on `:app:*` Kotlin, a Swift
-  decision-keyword pin guard, a fake-honesty gate on `:adapter:fake`, and a **non-required,
-  exit-0 beacon job** whose burn-down reports migration distance (accepted risk, on record:
-  during migration nothing gates new violations — neither review, which is measured absent, nor
-  CI).
+  decision-keyword pin guard, a fake-honesty gate on `:adapter:fake`, and a **non-required
+  `verify` beacon job, red by design until the migration completes** (D8 revised), whose
+  burn-down reports migration distance (accepted risk, on record: during migration nothing GATES
+  new violations — review is measured absent and the beacon is visible, not blocking).
 - **A derived-diagrams system** (`architecture-diagrams`): module graph, zone graph, per-trigger
   flow sequence diagrams, port × adapter matrix, feature cards, DI wiring + binary × port matrix
-  — generated from source (never drawn), committed, freshness-gated by an ordinary test, healed
-  by a self-repair job on main.
+  — generated from source (never drawn), committed, freshness-gated by an ordinary test under
+  `./gradlew build` AND by the required `diagrams` CI check (no self-healing on main — a stale
+  merge goes red and is fixed by a regeneration PR).
 - **Decision records for the audit-driven follow-ups** (behavior changes shipped by their own
   changes during migration, recorded here): reinstall = left the event (config moves from
   Keychain to an App-Group file); status liveness re-derives from "event-driven, not polled" to
@@ -56,11 +57,18 @@ keep it reviewable. Migration sequencing is deliberately out of scope (follow-up
   requirements, the freshness gate, and the self-healing job on main.
 
 ### Modified Capabilities
+- `ios-appstore-release`: the green guard judges REQUIRED check-runs only (derived from branch
+  protection); a red non-required check — the `verify` beacon, `ios-deliver`/`ios-promote` — no
+  longer blocks a release.
+- `ship-command`: the merge queue and the CI watch judge required checks only.
+- `branch-protection`: the `diagrams` freshness check becomes a required status check.
+- `ios-photokit-upload`: the Swift result mapping is exhaustive per `CycleResult` case, with the
+  compiler-mandated `default:` arm mapping to failure instead of success.
 - `architecture-guards`: gains the new gate families (text-pattern zone gates with derived
   scopes, per-zone allowlists, extension-safety text gate, Kotlin shell complexity gate, Swift
   pin guard, fake-honesty gate, diagram drift gate), the fail-closed-on-novelty authoring rule,
-  and the exit-0 migration-beacon posture (a red check would freeze `ios-release.yml` Guard 4
-  and break `/ship`'s watcher — repo-internal contract).
+  and the red-until-done migration-beacon posture — safe because the release guard and `/ship`'s
+  watcher judge required checks only, derived from branch protection (no name list).
 
 ## Impact
 
@@ -70,8 +78,9 @@ keep it reviewable. Migration sequencing is deliberately out of scope (follow-up
   also carry the audit-decided behavior deltas to `sync-status` (liveness latency bound),
   `event-rejoin-reconciliation` (reinstall = left; re-scan reconciles), `device-identity`
   (evidence annotation), and the config-store re-backing (Keychain → App-Group file).
-- **CI**: one new non-required job (beacon + burn-down + diagram health); existing required
-  checks untouched; `ios-release.yml` and `/ship` unaffected by design (exit-0).
+- **CI**: one new `architecture` workflow — `verify` (non-required, red by design, burn-down in
+  the summary) and `diagrams` (required, blocks stale diagrams). `ios-release.yml` and `/ship`
+  now filter to required checks; a red `ios-promote` no longer blocks a release (deliberate).
 - **Docs**: CLAUDE.md module section gains a pointer to the new contract of record; two factual
   corrections ride along (the APNs re-delivery comment, the two-frameworks rationale).
 - **Dependencies**: detekt (shell gate; measured in the abandoned v1 attempt),
