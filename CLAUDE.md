@@ -117,7 +117,7 @@ the async `PHBackgroundResourceUploadJobExtension` exists in the 27 SDK) — and
 its *upload trigger* (`process()`) is OS-scheduled — it cannot be forced.
 
 **Pending platform checks (next mac/device session** — each settles a forcing proof recorded in
-`changes/…/establish-target-architecture/design.md`): ① is `PHBackgroundResourceUploadProcessingResult`
+`changes/archive/2026-07-17-establish-target-architecture/design.md`): ① is `PHBackgroundResourceUploadProcessingResult`
 ObjC-visible in the Xcode 26 SDK (if yes, the last Swift decision moves to Kotlin)? ② the exact
 deprecation annotation on the 26.1 extension protocol; ③ `BackgroundUploadURLBase` runtime-destination
 rules; ④ count `deferring` vs `running deferred` lines in `debug.log` (expected: zero resumes —
@@ -673,7 +673,7 @@ migration completes**, non-required, blocks nothing (`ios-release.yml`'s release
 `/ship`'s watcher judge required checks only, derived from branch protection). Its sibling **`diagrams`** check IS required: stale
 `architecture/` blocks the PR — run `./gradlew architectureDiagrams` and commit. During the
 migration **nothing gates new violations** (decision on record in
-`changes/…/establish-target-architecture/design.md` D8): the laws digest below is what you code
+`changes/archive/2026-07-17-establish-target-architecture/design.md` D8): the laws digest below is what you code
 against.
 
 ## The laws (digest)

@@ -12,7 +12,7 @@ a wiring difference between binaries — the class of defect behind the per-tier
 regression and the harness-mirror drift — renders as a visible anomalous cell in the PR diff that
 introduces it.
 
-Decision record: `establish-target-architecture` (D9).
+Decision record: `changes/archive/2026-07-17-establish-target-architecture` (D9).
 
 ## Requirements
 

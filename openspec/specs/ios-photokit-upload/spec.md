@@ -348,11 +348,16 @@ request another invocation so those completions are recorded promptly; it report
 once the ledger has no pending rows (everything backed up), letting the system rest. (The OS
 throttles re-invocation, so this polls at its cadence rather than looping.)
 
-The Kotlin `process()` SHALL return a tri-state result (`completed` / `processing` / `failure`) that
-the Swift principal class maps to `PHBackgroundResourceUploadProcessingResult` (`.completed` /
-`.processing` / `.failure`); if the iOS 26.1 SDK lacks a `.processing` case the Swift shell SHALL
-fall back to `.completed` (correctness is unaffected — the un-advanced token / pending rows are
-drained on the next system-scheduled wake; only promptness is lost).
+The Kotlin `process()` SHALL return its `CycleResult` (`completed` / `processing` / `skipped` /
+`failed`), and the Swift principal class SHALL map **every case explicitly** to
+`PHBackgroundResourceUploadProcessingResult`: `completed` and `skipped` (nothing to do) map to
+`.completed`, `processing` to `.processing`, `failed` to `.failure`. A Kotlin enum reaches Swift as an
+ObjC class, so the compiler cannot check exhaustiveness and mandates a `default:` arm; that arm SHALL
+map to `.failure`, so a future Kotlin case nobody taught the shell surfaces as a retried, visible
+failure — never a silently "successful" upload cycle (changed 2026-07-17; the arm previously returned
+`.completed`). If the iOS 26.1 SDK lacks a `.processing` case the Swift shell SHALL fall back to
+`.completed` (correctness is unaffected — the un-advanced token / pending rows are drained on the
+next system-scheduled wake; only promptness is lost).
 
 #### Scenario: Cap during discovery yields a processing result
 - **WHEN** job creation hits `limitExceeded` partway through a cycle
@@ -372,6 +377,10 @@ drained on the next system-scheduled wake; only promptness is lost).
 - **WHEN** a cap-truncated cycle is followed by another `process()` invocation
 - **THEN** the same change set is re-derived, the already-created jobs are skipped (`REQUESTED`), and
   only the previously un-created resources get new jobs
+
+#### Scenario: An unknown cycle result surfaces as failure
+- **WHEN** `process()` returns a case the Swift shell's switch does not name
+- **THEN** the shell reports `.failure`, so the system retries and the defect stays visible, rather than reporting a successful cycle that cannot be trusted
 
 ### Requirement: Persisted change-token cursor
 
