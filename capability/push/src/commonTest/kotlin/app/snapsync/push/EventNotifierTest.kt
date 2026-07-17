@@ -1,5 +1,7 @@
 package app.snapsync.push
 
+import app.snapsync.ports.PushHttpClient
+
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals

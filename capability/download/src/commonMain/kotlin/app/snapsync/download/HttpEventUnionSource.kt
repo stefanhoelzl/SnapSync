@@ -1,5 +1,9 @@
 package app.snapsync.download
 
+import app.snapsync.ports.EventUnionSource
+import app.snapsync.ports.UnionAsset
+import app.snapsync.ports.UnionResource
+
 import io.ktor.client.HttpClient
 import io.ktor.client.request.get
 import io.ktor.client.statement.bodyAsText

@@ -1,12 +1,12 @@
 package app.snapsync.integration
 
-import app.snapsync.config.ConfigStore
-import app.snapsync.config.Direction
-import app.snapsync.config.EventConfig
-import app.snapsync.gallery.Contribution
-import app.snapsync.engine.LedgerState
+import app.snapsync.ports.ConfigStore
+import app.snapsync.model.Direction
+import app.snapsync.model.EventConfig
+import app.snapsync.model.Contribution
+import app.snapsync.model.LedgerState
 import app.snapsync.membership.LeaveEvent
-import app.snapsync.permission.PermissionRequester
+import app.snapsync.ports.PermissionRequester
 import app.snapsync.presentation.Arrow
 import app.snapsync.presentation.StatusContainerHost
 import app.snapsync.status.LedgerCounts

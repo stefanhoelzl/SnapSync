@@ -1,7 +1,7 @@
 package app.snapsync.world
 
-import app.snapsync.download.TransferOutcome
-import app.snapsync.gallery.normalizeAssetId
+import app.snapsync.ports.TransferOutcome
+import app.snapsync.model.normalizeAssetId
 
 import kotlin.test.Test
 import kotlin.test.assertTrue

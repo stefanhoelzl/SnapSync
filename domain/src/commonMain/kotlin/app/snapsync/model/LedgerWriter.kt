@@ -1,4 +1,4 @@
-package app.snapsync.engine
+package app.snapsync.model
 
 /**
  * The ledger's single writer (one per platform, hosted with the engine), carrying the engine's

@@ -1,4 +1,4 @@
-import app.snapsync.engine.LedgerState;
+import app.snapsync.model.LedgerState;
 
 CREATE TABLE ledgerRow (
     key TEXT NOT NULL PRIMARY KEY,

@@ -14,6 +14,7 @@ kotlin {
 
     sourceSets {
         commonMain.dependencies {
+            api(project(":domain"))
             implementation(project(":domain:logging"))
             implementation(project(":domain:engine"))
             implementation(project(":capability:upload"))

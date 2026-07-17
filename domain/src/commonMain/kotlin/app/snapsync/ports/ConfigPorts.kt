@@ -1,6 +1,7 @@
-package app.snapsync.config
+package app.snapsync.ports
 
-import app.snapsync.keychain.KeychainRead
+import app.snapsync.model.EventConfig
+
 import kotlinx.coroutines.flow.StateFlow
 
 /**

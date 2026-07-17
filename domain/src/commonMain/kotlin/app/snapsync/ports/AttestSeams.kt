@@ -1,4 +1,4 @@
-package app.snapsync.attest
+package app.snapsync.ports
 
 /**
  * The App Attest key seam (capability `device-attestation`) — the platform half of attestation, kept
@@ -81,24 +81,4 @@ interface AttestStore {
      * never renew, and the device would 401 forever behind a screen that said "Syncing".
      */
     fun clearToken()
-}
-
-/** An in-memory store for tests and the desktop harness (no platform Keychain). */
-class InMemoryAttestStore(
-    private var token: String? = null,
-    private var keyId: String? = null,
-) : AttestStore {
-    override fun token(): String? = token
-    override fun setToken(token: String) {
-        this.token = token
-    }
-
-    override fun keyId(): String? = keyId
-    override fun setKeyId(keyId: String) {
-        this.keyId = keyId
-    }
-
-    override fun clearToken() {
-        token = null
-    }
 }

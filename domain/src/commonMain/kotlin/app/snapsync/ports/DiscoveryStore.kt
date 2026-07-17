@@ -1,4 +1,4 @@
-package app.snapsync.upload
+package app.snapsync.ports
 
 /**
  * The persisted discovery cursor — opaque archived change-token bytes. A `commonMain` port so the

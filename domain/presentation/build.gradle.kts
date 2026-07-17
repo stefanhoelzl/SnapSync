@@ -9,11 +9,11 @@ kotlin {
     iosSimulatorArm64()
     sourceSets {
         commonMain.dependencies {
+            api(project(":domain"))
             api(project(":domain:permission"))
             api(project(":domain:status"))
             // The container consumes the config seam + decoder (onOpenUrl), and ConfigSource/
             // ConfigStore appear in its constructor — so they surface in this module's API.
-            api(project(":capability:config"))
             // The create-event seams (CreationStatusSource/EventCreator) folded into the reduction and
             // the container's constructor — so they surface in this module's API.
             api(project(":capability:event-creation-ui"))

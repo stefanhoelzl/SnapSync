@@ -1,4 +1,4 @@
-package app.snapsync.push
+package app.snapsync.ports
 
 /**
  * The seam invoked when the app receives a silent (`content-available`) push (capability

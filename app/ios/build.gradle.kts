@@ -18,6 +18,7 @@ kotlin {
 
     sourceSets {
         iosMain.dependencies {
+            api(project(":domain"))
             implementation(project(":domain:ui"))
             implementation(project(":domain:presentation"))
             implementation(project(":domain:status"))

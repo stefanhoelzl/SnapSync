@@ -22,6 +22,7 @@ kotlin {
     iosSimulatorArm64()
     sourceSets {
         commonMain.dependencies {
+            api(project(":domain"))
             implementation(libs.kermit)
         }
         commonTest.dependencies {

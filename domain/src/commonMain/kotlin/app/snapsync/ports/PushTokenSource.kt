@@ -1,4 +1,4 @@
-package app.snapsync.push
+package app.snapsync.ports
 
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow

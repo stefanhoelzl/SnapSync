@@ -1,4 +1,4 @@
-package app.snapsync.permission
+package app.snapsync.ports
 
 /**
  * The command port for permission: fire-and-forget, no return values, no suspension.

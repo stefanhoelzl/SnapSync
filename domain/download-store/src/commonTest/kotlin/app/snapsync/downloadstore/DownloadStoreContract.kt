@@ -1,5 +1,9 @@
 package app.snapsync.downloadstore
 
+import app.snapsync.ports.AssetRef
+import app.snapsync.ports.DownloadStore
+import app.snapsync.ports.PlannedResource
+
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse

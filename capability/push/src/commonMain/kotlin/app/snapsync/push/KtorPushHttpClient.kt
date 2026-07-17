@@ -1,5 +1,7 @@
 package app.snapsync.push
 
+import app.snapsync.ports.PushHttpClient
+
 import io.ktor.client.HttpClient
 import io.ktor.client.request.post
 import io.ktor.client.request.put

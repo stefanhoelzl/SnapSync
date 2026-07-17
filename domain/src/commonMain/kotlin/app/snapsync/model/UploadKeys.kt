@@ -1,4 +1,4 @@
-package app.snapsync.gallery
+package app.snapsync.model
 
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable

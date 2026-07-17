@@ -1,6 +1,5 @@
-package app.snapsync.gallery
+package app.snapsync.model
 
-import app.snapsync.engine.Resource
 
 /**
  * The **origin exclusions** of the selection policy (capability `photo-selection-policy`): which of the

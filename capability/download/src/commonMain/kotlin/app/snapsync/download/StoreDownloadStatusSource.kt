@@ -1,6 +1,6 @@
 package app.snapsync.download
 
-import app.snapsync.downloadstore.DownloadStore
+import app.snapsync.ports.DownloadStore
 import app.snapsync.status.DownloadProgress
 import app.snapsync.status.DownloadStatusSource
 import kotlinx.coroutines.flow.MutableStateFlow

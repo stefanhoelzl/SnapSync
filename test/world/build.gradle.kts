@@ -16,6 +16,7 @@ kotlin {
     iosSimulatorArm64()
     sourceSets {
         commonMain.dependencies {
+            api(project(":domain"))
             // `api` (not `implementation`): the world's whole purpose is to hand the REAL stack's types
             // to its consumers (`:app:desktop`, `:test:integration`) — they appear across the world's
             // public API (composition helpers, inspectable fakes), so they must leak transitively.

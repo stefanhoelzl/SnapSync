@@ -7,73 +7,78 @@ on drift; regenerate instead.
 
 ## `:capability:album`
 
-- depends on: `:domain:engine`, `:domain:gallery`, `:domain:keychain`
+- depends on: `:domain`, `:domain:engine`, `:domain:gallery`, `:domain:keychain`
 - interfaces declared (commonMain): `AlbumManager`, `AlbumMapSource`, `AlbumMapStore`
 
 ## `:capability:attest`
 
-- depends on: `:domain:keychain`
-- interfaces declared (commonMain): `AttestClient`, `AttestKey`, `AttestStore`
+- depends on: `:domain`, `:domain:keychain`
+- interfaces declared (commonMain): —
 
 ## `:capability:config`
 
-- depends on: `:domain:keychain`
-- interfaces declared (commonMain): `ConfigDecodeResult`, `ConfigRead`, `ConfigReader`, `ConfigSource`, `ConfigStore`
+- depends on: `:domain`, `:domain:keychain`
+- interfaces declared (commonMain): —
 
 ## `:capability:download`
 
-- depends on: `:capability:push`, `:domain:download-store`, `:domain:logging`, `:domain:status`
-- interfaces declared (commonMain): `DownloadTask`, `DownloadTransport`, `DownloadTransportHost`, `EventUnionSource`, `ImportResult`, `PhotoDownloadJobs`, `PhotoLibraryImporter`
+- depends on: `:domain`, `:domain:download-store`, `:domain:logging`, `:domain:status`
+- interfaces declared (commonMain): —
 
 ## `:capability:event-creation-ui`
 
-- depends on: —
-- interfaces declared (commonMain): `CreateOutcome`, `CreationStatus`, `CreationStatusSource`, `EventCreationClient`, `EventCreator`
+- depends on: `:domain`
+- interfaces declared (commonMain): `CreationStatus`, `CreationStatusSource`, `EventCreator`
 
 ## `:capability:join`
 
-- depends on: `:capability:config`, `:domain:gallery`
-- interfaces declared (commonMain): `DeviceEnroller`, `EventDetails`, `EventDetailsSource`
+- depends on: `:domain`, `:domain:gallery`
+- interfaces declared (commonMain): `DeviceEnroller`
 
 ## `:capability:membership`
 
-- depends on: `:capability:config`, `:domain:engine`, `:domain:gallery`
-- interfaces declared (commonMain): `DeviceFilesSource`, `JoinedEventMarker`
+- depends on: `:domain`, `:domain:engine`, `:domain:gallery`
+- interfaces declared (commonMain): —
 
 ## `:capability:push`
 
-- depends on: —
-- interfaces declared (commonMain): `PushHttpClient`, `PushReceiver`
+- depends on: `:domain`
+- interfaces declared (commonMain): —
 
 ## `:capability:upload`
 
-- depends on: `:capability:push`, `:domain:engine`, `:domain:gallery`, `:domain:logging`
-- interfaces declared (commonMain): `BackgroundScheduler`, `CycleGate`, `DiscoveryStore`, `UploadJobPlatform`, `UploadProducer`
+- depends on: `:domain`, `:domain:engine`, `:domain:gallery`, `:domain:logging`
+- interfaces declared (commonMain): `CycleGate`, `UploadProducer`
 
 ## `:capability:upload-url`
 
 - depends on: `:domain:engine`
 - interfaces declared (commonMain): —
 
+## `:domain`
+
+- depends on: —
+- interfaces declared (commonMain): `AttestClient`, `AttestKey`, `AttestStore`, `BackgroundScheduler`, `ConfigDecodeResult`, `ConfigRead`, `ConfigReader`, `ConfigSource`, `ConfigStore`, `Contribution`, `CreateOutcome`, `DeviceFilesSource`, `DeviceManifestStore`, `DeviceManifestUploader`, `DiscoveryStore`, `DownloadStore`, `DownloadTask`, `DownloadTransport`, `DownloadTransportHost`, `EventCreationClient`, `EventDetails`, `EventDetailsSource`, `EventUnionSource`, `GalleryResourceEnumerator`, `GalleryStatusSource`, `ImportResult`, `JoinedEventMarker`, `Keychain`, `KeychainRead`, `LedgerBackend`, `PermissionRequester`, `PermissionStatusSource`, `PhotoDownloadJobs`, `PhotoLibraryImporter`, `PushHttpClient`, `PushReceiver`, `RawAssetSource`, `SuppressionSource`, `SyncDecision`, `SyncEvent`, `SyncStatus`, `UploadError`, `UploadJobPlatform`, `UploadRequestProvider`
+
 ## `:domain:download-store`
 
-- depends on: `:domain:engine`
-- interfaces declared (commonMain): `DownloadStore`, `SuppressionSource`
+- depends on: `:domain`, `:domain:engine`
+- interfaces declared (commonMain): —
 
 ## `:domain:engine`
 
-- depends on: —
-- interfaces declared (commonMain): `LedgerBackend`, `SyncDecision`, `SyncEvent`, `UploadError`, `UploadRequestProvider`
+- depends on: `:domain`
+- interfaces declared (commonMain): —
 
 ## `:domain:gallery`
 
-- depends on: `:domain:engine`
-- interfaces declared (commonMain): `Contribution`, `DeviceManifestStore`, `DeviceManifestUploader`, `GalleryResourceEnumerator`, `GalleryStatusSource`, `RawAssetSource`
+- depends on: `:domain`, `:domain:engine`
+- interfaces declared (commonMain): —
 
 ## `:domain:keychain`
 
-- depends on: —
-- interfaces declared (commonMain): `Keychain`, `KeychainRead`, `ProtectedDataAvailability`
+- depends on: `:domain`
+- interfaces declared (commonMain): `ProtectedDataAvailability`
 
 ## `:domain:logging`
 
@@ -82,22 +87,22 @@ on drift; regenerate instead.
 
 ## `:domain:permission`
 
-- depends on: —
-- interfaces declared (commonMain): `PermissionRequester`, `PermissionStatusSource`
+- depends on: `:domain`
+- interfaces declared (commonMain): —
 
 ## `:domain:presentation`
 
-- depends on: `:capability:config`, `:capability:event-creation-ui`, `:domain:permission`, `:domain:status`
+- depends on: `:capability:event-creation-ui`, `:domain`, `:domain:permission`, `:domain:status`
 - interfaces declared (commonMain): `AttestedSource`, `CutoffFormatter`, `JoinLoad`, `JoinPhase`, `SetupEffect`, `SyncHealth`, `UiState`
 
 ## `:domain:status`
 
-- depends on: `:domain:gallery`, `:domain:permission`
-- interfaces declared (commonMain): `DownloadStatusSource`, `LedgerCountsSource`, `SyncStatus`, `SyncStatusSource`
+- depends on: `:domain`, `:domain:gallery`, `:domain:permission`
+- interfaces declared (commonMain): `DownloadStatusSource`, `LedgerCountsSource`, `SyncStatusSource`
 
 ## `:domain:ui`
 
-- depends on: `:domain:presentation`, `:domain:ui:components`
+- depends on: `:domain`, `:domain:presentation`, `:domain:ui:components`
 - interfaces declared (commonMain): —
 
 ## `:domain:ui:components`

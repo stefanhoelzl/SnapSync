@@ -1,8 +1,5 @@
-package app.snapsync.download
+package app.snapsync.ports
 
-import app.snapsync.downloadstore.AssetRef
-import app.snapsync.downloadstore.PendingDownload
-import app.snapsync.downloadstore.StagedResource
 
 /**
  * Submits background byte transfers for foreign resources (capability `photo-download`). On iOS this

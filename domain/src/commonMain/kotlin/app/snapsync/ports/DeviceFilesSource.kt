@@ -1,4 +1,4 @@
-package app.snapsync.membership
+package app.snapsync.ports
 
 /**
  * The seam that fetches a **device's** already-stored object filenames (`GET /files/devices/<deviceId>`,

@@ -1,6 +1,20 @@
 package app.snapsync.gallery
 
-import app.snapsync.engine.Resource
+import app.snapsync.model.DeviceManifest
+import app.snapsync.model.DeviceManifestAsset
+import app.snapsync.model.encodeToJson
+import app.snapsync.model.ManifestResource
+import app.snapsync.model.RESOURCE_META_CREATION_DATE
+import app.snapsync.model.RESOURCE_META_MIME
+import app.snapsync.model.RESOURCE_META_ORIGINAL_FILENAME
+import app.snapsync.model.ResourceRole
+import app.snapsync.model.deviceManifestAssetsFromResources
+import app.snapsync.model.deviceManifestFromJson
+import app.snapsync.model.projectDeviceManifest
+import app.snapsync.ports.DeviceManifestStore
+import app.snapsync.ports.DeviceManifestUploader
+
+import app.snapsync.model.Resource
 import kotlinx.coroutines.test.runTest
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.jsonArray

@@ -1,5 +1,9 @@
 package app.snapsync.attest
 
+import app.snapsync.ports.AttestClient
+import app.snapsync.ports.AttestKey
+import app.snapsync.ports.AttestStore
+
 import co.touchlab.kermit.Logger
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableSharedFlow

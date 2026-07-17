@@ -1,5 +1,7 @@
 package app.snapsync.push
 
+import app.snapsync.ports.PushHttpClient
+
 import co.touchlab.kermit.Logger
 
 /**

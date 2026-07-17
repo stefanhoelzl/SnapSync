@@ -1,8 +1,11 @@
 package app.snapsync.join
 
-import app.snapsync.config.ConfigSource
-import app.snapsync.config.Direction
-import app.snapsync.config.EventConfig
+import app.snapsync.ports.EventDetails
+import app.snapsync.ports.EventDetailsSource
+
+import app.snapsync.ports.ConfigSource
+import app.snapsync.model.Direction
+import app.snapsync.model.EventConfig
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.test.runTest

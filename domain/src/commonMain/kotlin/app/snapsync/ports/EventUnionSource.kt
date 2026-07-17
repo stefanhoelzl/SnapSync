@@ -1,4 +1,4 @@
-package app.snapsync.download
+package app.snapsync.ports
 
 /** One resource of a foreign asset in the event-wide union (capability `bunny-list-endpoint`). */
 class UnionResource(

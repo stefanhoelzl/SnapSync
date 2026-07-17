@@ -1,4 +1,4 @@
-package app.snapsync.engine
+package app.snapsync.model
 
 /**
  * One key's durable upload memory. The ledger is the engine's only state: per-resource entries

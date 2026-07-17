@@ -1,6 +1,6 @@
 package app.snapsync.integration
 
-import app.snapsync.upload.CycleResult
+import app.snapsync.ports.CycleResult
 import app.snapsync.world.World
 import app.snapsync.world.worldTest
 import kotlin.test.Test

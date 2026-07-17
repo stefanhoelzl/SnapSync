@@ -1,8 +1,5 @@
-package app.snapsync.uploadurl
+package app.snapsync.model
 
-import app.snapsync.engine.Resource
-import app.snapsync.engine.UploadRequest
-import app.snapsync.engine.UploadRequestProvider
 
 /**
  * The production [UploadRequestProvider] (specs: sync-engine, bunny-upload-endpoint, device-attestation):

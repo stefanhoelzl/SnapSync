@@ -1,5 +1,9 @@
 package app.snapsync.attest
 
+import app.snapsync.ports.AttestClient
+import app.snapsync.ports.AttestKey
+import app.snapsync.ports.AttestStore
+
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse

@@ -1,6 +1,6 @@
 package app.snapsync.presentation
 
-import app.snapsync.permission.PermissionStatus
+import app.snapsync.model.PermissionStatus
 
 /**
  * Display-ready projection of config presence, permission, and the latest sync snapshot. Once an

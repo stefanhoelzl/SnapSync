@@ -23,6 +23,7 @@ kotlin {
     iosSimulatorArm64()
     sourceSets {
         commonMain.dependencies {
+            api(project(":domain"))
             api(libs.coroutines.core)
             implementation(libs.sqldelight.runtime)
             implementation(libs.kermit)

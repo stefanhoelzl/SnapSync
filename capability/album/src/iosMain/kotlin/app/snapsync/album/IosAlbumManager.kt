@@ -2,7 +2,7 @@
 
 package app.snapsync.album
 
-import app.snapsync.gallery.normalizeAssetId
+import app.snapsync.model.normalizeAssetId
 import co.touchlab.kermit.Logger
 import kotlinx.cinterop.BetaInteropApi
 import kotlinx.cinterop.ExperimentalForeignApi

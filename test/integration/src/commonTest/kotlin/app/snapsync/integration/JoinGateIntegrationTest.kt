@@ -1,18 +1,18 @@
 package app.snapsync.integration
 
-import app.snapsync.config.ConfigStore
-import app.snapsync.config.EventConfig
-import app.snapsync.config.Direction
-import app.snapsync.config.EventLinkPayload
-import app.snapsync.config.encodeEventUrl
-import app.snapsync.gallery.DeviceManifest
-import app.snapsync.join.EventDetails
+import app.snapsync.ports.ConfigStore
+import app.snapsync.model.EventConfig
+import app.snapsync.model.Direction
+import app.snapsync.model.EventLinkPayload
+import app.snapsync.model.encodeEventUrl
+import app.snapsync.model.DeviceManifest
+import app.snapsync.ports.EventDetails
 import app.snapsync.join.HttpEventDetailsSource
 import app.snapsync.join.JoinEvent
 import app.snapsync.join.JoinOutcome
 import app.snapsync.join.ManifestDeviceEnroller
 import app.snapsync.membership.LeaveEvent
-import app.snapsync.permission.PermissionRequester
+import app.snapsync.ports.PermissionRequester
 import app.snapsync.presentation.JoinLoad
 import app.snapsync.presentation.JoinPhase
 import app.snapsync.presentation.StatusContainerHost

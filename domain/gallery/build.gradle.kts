@@ -10,6 +10,7 @@ kotlin {
     iosSimulatorArm64()
     sourceSets {
         commonMain.dependencies {
+            api(project(":domain"))
             api(libs.coroutines.core)
             // The resource-enumeration seam returns engine `Resource`s (the shared upload-key/version
             // derivation), so engine types appear in this module's public API.

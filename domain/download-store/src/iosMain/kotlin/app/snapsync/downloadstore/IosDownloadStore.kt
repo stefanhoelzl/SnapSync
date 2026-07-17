@@ -1,5 +1,7 @@
 package app.snapsync.downloadstore
 
+import app.snapsync.ports.SuppressionSource
+
 import app.cash.sqldelight.driver.native.NativeSqliteDriver
 import app.snapsync.downloadstore.db.DownloadDatabase
 import app.snapsync.engine.LEDGER_APP_GROUP

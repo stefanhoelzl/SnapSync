@@ -1,5 +1,13 @@
 package app.snapsync.downloadstore
 
+import app.snapsync.ports.AssetRef
+import app.snapsync.ports.DownloadState
+import app.snapsync.ports.DownloadStore
+import app.snapsync.ports.ImportableAsset
+import app.snapsync.ports.PendingDownload
+import app.snapsync.ports.PlannedResource
+import app.snapsync.ports.StagedResource
+
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 

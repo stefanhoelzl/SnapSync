@@ -1,6 +1,6 @@
 package app.snapsync.world
 
-import app.snapsync.engine.LedgerState
+import app.snapsync.model.LedgerState
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue

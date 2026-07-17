@@ -1,4 +1,4 @@
-package app.snapsync.keychain
+package app.snapsync.ports
 
 /**
  * The Keychain seam (capability `architecture-guards`: this module is the **only** place in the repo

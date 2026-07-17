@@ -10,10 +10,10 @@ kotlin {
     iosSimulatorArm64()
     sourceSets {
         commonMain.dependencies {
+            api(project(":domain"))
             api(libs.coroutines.core)
             // Seams the join use-case orchestrates: the persisted config and the device-manifest
             // type+uploader (an empty manifest is the register-only enrollment).
-            implementation(project(":capability:config"))
             implementation(project(":domain:gallery"))
             // The HTTP client is injected (Darwin on iOS, MockEngine in tests) — only the core client
             // + JSON are needed here, mirroring :capability:event-creation-ui.

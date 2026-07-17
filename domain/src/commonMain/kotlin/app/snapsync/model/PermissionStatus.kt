@@ -1,4 +1,4 @@
-package app.snapsync.permission
+package app.snapsync.model
 
 /**
  * Photo-library permission as the app understands it. v1 requires a FULL library grant:

@@ -1,4 +1,4 @@
-package app.snapsync.album
+package app.snapsync.model
 
 import kotlin.test.Test
 import kotlin.test.assertFalse

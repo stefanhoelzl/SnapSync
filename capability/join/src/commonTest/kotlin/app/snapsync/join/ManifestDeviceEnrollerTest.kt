@@ -1,7 +1,7 @@
 package app.snapsync.join
 
-import app.snapsync.gallery.DeviceManifestUploader
-import app.snapsync.gallery.deviceManifestFromJson
+import app.snapsync.ports.DeviceManifestUploader
+import app.snapsync.model.deviceManifestFromJson
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals

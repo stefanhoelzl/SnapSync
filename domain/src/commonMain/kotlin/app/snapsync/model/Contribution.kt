@@ -1,4 +1,4 @@
-package app.snapsync.gallery
+package app.snapsync.model
 
 /**
  * **What this membership contributes** (capability `photo-selection-policy`) — the per-membership inputs to

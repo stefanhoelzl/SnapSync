@@ -10,6 +10,7 @@ kotlin {
     iosSimulatorArm64()
     sourceSets {
         commonMain.dependencies {
+            api(project(":domain"))
             api(libs.coroutines.core)
             // The HTTP client is injected (the engine — Darwin on iOS — is supplied by the
             // composition root), so only the core client + JSON are needed here.

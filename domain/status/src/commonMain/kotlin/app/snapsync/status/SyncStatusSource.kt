@@ -1,5 +1,7 @@
 package app.snapsync.status
 
+import app.snapsync.model.SyncStatus
+
 import kotlinx.coroutines.flow.StateFlow
 
 /**

@@ -1,4 +1,4 @@
-package app.snapsync.uploadurl
+package app.snapsync.model
 
 private const val UPPER_HEX = "0123456789ABCDEF"
 

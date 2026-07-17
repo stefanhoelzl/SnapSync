@@ -1,4 +1,4 @@
-package app.snapsync.keychain
+package app.snapsync.ports
 
 import kotlin.test.Test
 import kotlin.test.assertEquals

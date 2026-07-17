@@ -1,8 +1,8 @@
 package app.snapsync.world
 
-import app.snapsync.gallery.DeviceManifest
-import app.snapsync.gallery.DeviceManifestAsset
-import app.snapsync.gallery.deviceManifestFromJson
+import app.snapsync.model.DeviceManifest
+import app.snapsync.model.DeviceManifestAsset
+import app.snapsync.model.deviceManifestFromJson
 import kotlinx.serialization.Serializable
 
 /** One entry of the per-device file listing (`GET /files/devices/<id>`) — `{filename, size, url}`. */

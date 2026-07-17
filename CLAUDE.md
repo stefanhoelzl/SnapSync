@@ -625,23 +625,24 @@ agent use and inject that one instead.
 ## Modules
 
 ```
-:domain:engine         sync core + SQL ledger (the only state); no platform deps
-:domain:keychain       cross-cutting Keychain access: the ONLY module that may touch SecItem* (a :test:architecture guard enforces it) — three-state read (found/absent/UNREADABLE), mint-only-on-absent, AfterFirstUnlock + in-place migration, ProtectedDataGate, KeychainDeviceIdentity (the per-install device id, capability device-identity; use sites take it as a plain `() -> String`) (capability architecture-guards; decision record: fix-locked-device-keychain-access)
+:domain                the platform-free core (spec module-architecture), born in migration step 3a: zone packages app.snapsync.model (vocabulary + domain services + pure codecs — the config surface incl. the EventLink codec + generated LINK_ORIGIN, sync vocabulary + SyncEngine + LedgerWriter + LedgerBackend, selection policy + denylist + upload keys + device manifest + RawAsset mapping, edge-URL builder, SyncStatus/SyncProgress, PermissionStatus) and app.snapsync.ports (every moved port seam: config, keychain, gallery enumeration/status/manifest, permission, download + download-store, backend-need clients, upload platform/scheduler/discovery, push, attest, join marker). Zero project() deps; jvm+iosArm64+iosSimulatorArm64; no iosMain source dir; model-purity + ports→model gates armed in :test:architecture
+:domain:engine         SQL ledger backend (SqlDelight impls + drivers + db schema; step 3a moved the sync core + ledger vocabulary to :domain)
+:domain:keychain       cross-cutting Keychain access: the ONLY module that may touch SecItem* (a :test:architecture guard enforces it) — the SecItem adapters, AfterFirstUnlock + in-place migration, ProtectedDataGate, KeychainDeviceIdentity (the per-install device id, capability device-identity; use sites take it as a plain `() -> String`) (capability architecture-guards; decision record: fix-locked-device-keychain-access). The three-state read seam (found/absent/UNREADABLE) + mint-only-on-absent core moved to :domain (step 3a)
 :domain:logging        cross-cutting diagnostics: Logger.invocation helper + LogContext ambient prefix + consolidated iOS device-log writers (Kermit-only leaf) (capability diagnostic-logging)
 :domain:status         ledger → SyncStatus projection (read-only)
 :domain:permission     permission seam (3-state)
-:domain:gallery        library resource-enumeration seam + upload-key/role layout (uploadKey, resourceRole, assetIdFromUploadKey, normalizeAssetId) + device manifest + the origin-exclusion rules of the selection policy (SelectionPolicy.excludedAssetIds — screenshots/screen-recordings by mediaSubtype, GIFs by MIME, resolution floors; capability photo-selection-policy). The policy lives HERE because :capability:upload and :domain:status must apply the identical rules and it is the only module both can see
+:domain:gallery        the iOS PhotoKit adapters + producer/enumerator impls + in-memory fakes (step 3a moved the enumeration/status/manifest port seams to :domain ports and the upload-key/role layout, device manifest mapping, and the selection policy's origin-exclusion rules to :domain model — the shared-rules argument now holds trivially: everything sees :domain)
 :domain:download-store  app-written download store + read-only SuppressionSource projection (echo-suppression)
 :domain:presentation   Orbit MVI container + UiState (Compose-free, no engine dep)
 :domain:ui             Compose screens (written against App* only)
 :domain:ui:components   App* design system + the Material 3 skin
-:capability:upload     upload orchestration: UploadCycle + the UploadJobPlatform seam + DiscoveryStore + UploadConfig + the app-driven BackgroundUploadPump/BackgroundScheduler (jvm()+ios, JVM/harness-covered; deps :domain:engine + :domain:gallery)
-:capability:upload-url local edge-URL builder (no network/crypto) — the UploadRequestProvider
-:capability:config     event-link provisioning: the HTTPS Universal Link codec + eventId config (event-link)
+:capability:upload     upload orchestration: UploadCycle + UploadConfig + the app-driven BackgroundUploadPump (jvm()+ios, JVM/harness-covered; the UploadJobPlatform/BackgroundScheduler/DiscoveryStore seams moved to :domain ports, step 3a)
+:capability:upload-url EMPTIED by step 3a (EdgeUploadRequestProvider + encoding moved to :domain model); module dies at a later step
+:capability:config     the iosMain KeychainConfigStore adapter only (the HTTPS Universal Link codec + eventId config surface moved to :domain, step 3a; capability event-link)
 :capability:attest     App Attest device token: the tested DeviceAttestation policy (attest → token → renew, 401 → clear-and-retry) over an AttestKey seam; the token is the ONLY way past the backend, which gates every route on it. The extension cannot attest (`isSupported` is false in an app extension, true in the app — measured, not assumed), so it is strictly a READER of the token the app leaves in the shared Keychain (device-attestation)
 :capability:download   foreign-photo download → stage → import controller (photo-download)
 :capability:join       join use-case + DeviceEnroller (writes the per-event device manifest = the physical fact of membership) + EventDetailsSource (join-event)
-:capability:album      tested commonMain album orchestration: resolve-or-create the per-event album, dispatch-or-skip an add; PhotoKit behind seams (event-album). Also the album DENYLIST (DENYLISTED_ALBUM_TITLES — WhatsApp, Telegram, …) + the decision-free AlbumManager.assetIdsInAlbums membership lookup it feeds (capability photo-selection-policy)
+:capability:album      tested commonMain album orchestration: resolve-or-create the per-event album, dispatch-or-skip an add; PhotoKit behind seams (event-album; the AlbumManager/AlbumMapStore seams and the DENYLIST — DENYLISTED_ALBUM_TITLES, WhatsApp, Telegram, … — moved to :domain, step 3a; capability photo-selection-policy)
 :capability:push       APNs token registration + PushReceiver seam + EventNotifier (POST /events/<id>/notify) (push-registration, upload-completion-notify)
 :capability:membership event-membership lifecycle: extension-side re-join reconciliation + leave use-case + HttpLeaveNotifier (DELETE /events/<id>/devices/<id>) + device-file listing seam
 :capability:event-creation-ui  create-event screen seams: EventCreator/CreationStatusSource + HTTP creator
@@ -749,7 +750,7 @@ Three standing rules:
    module (`commonTest` → runs on JVM and simulator), which exists so the test may cross the
    `engine → presentation` boundary production forbids.
 
-The edge-URL builder (`:capability:upload-url`) is pinned by `commonMain` tests on URL composition,
+The edge-URL builder (in `:domain` model since step 3a) is pinned by `commonMain` tests on URL composition,
 filename percent-encoding (deterministic + injective), and the Content-Type-only header set — pure
 string-building, no network or crypto.
 

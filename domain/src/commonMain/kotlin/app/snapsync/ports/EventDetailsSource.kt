@@ -1,4 +1,4 @@
-package app.snapsync.join
+package app.snapsync.ports
 
 /**
  * The outcome of fetching an event's details (capability `join-event`) — the app's ONE

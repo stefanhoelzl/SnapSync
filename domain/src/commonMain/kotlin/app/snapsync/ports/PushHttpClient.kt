@@ -1,4 +1,4 @@
-package app.snapsync.push
+package app.snapsync.ports
 
 /**
  * The minimal HTTP seam the push capability uses: `PUT` a JSON body (registration) and a bodyless

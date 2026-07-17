@@ -1,4 +1,4 @@
-package app.snapsync.config
+package app.snapsync.model
 
 import kotlin.time.Clock
 import kotlin.time.Instant

@@ -1,5 +1,10 @@
 package app.snapsync.download
 
+import app.snapsync.ports.DownloadTask
+import app.snapsync.ports.DownloadTransport
+import app.snapsync.ports.DownloadTransportHost
+import app.snapsync.ports.TransferOutcome
+
 import co.touchlab.kermit.Logger
 import kotlinx.cinterop.ExperimentalForeignApi
 import platform.Foundation.NSError

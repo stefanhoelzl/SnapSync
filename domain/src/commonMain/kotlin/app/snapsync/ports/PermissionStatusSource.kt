@@ -1,4 +1,6 @@
-package app.snapsync.permission
+package app.snapsync.ports
+
+import app.snapsync.model.PermissionStatus
 
 import kotlinx.coroutines.flow.StateFlow
 

@@ -9,6 +9,7 @@ kotlin {
     iosSimulatorArm64()
     sourceSets {
         commonMain.dependencies {
+            api(project(":domain"))
             api(libs.coroutines.core)
         }
         commonTest.dependencies {

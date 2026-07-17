@@ -1,6 +1,9 @@
 package app.snapsync.join
 
-import app.snapsync.config.instantToCutoff
+import app.snapsync.ports.EventDetails
+import app.snapsync.ports.EventDetailsSource
+
+import app.snapsync.model.instantToCutoff
 import io.ktor.client.HttpClient
 import io.ktor.client.request.get
 import io.ktor.client.statement.bodyAsText

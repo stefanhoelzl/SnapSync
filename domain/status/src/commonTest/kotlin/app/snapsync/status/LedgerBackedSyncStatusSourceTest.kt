@@ -1,8 +1,11 @@
 package app.snapsync.status
 
+import app.snapsync.model.SyncProgress
+import app.snapsync.model.SyncStatus
+
 import app.snapsync.gallery.InMemoryGalleryStatusSource
-import app.snapsync.permission.PermissionStatus
-import app.snapsync.permission.PermissionStatusSource
+import app.snapsync.model.PermissionStatus
+import app.snapsync.ports.PermissionStatusSource
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertIs

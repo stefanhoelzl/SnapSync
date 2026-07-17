@@ -1,4 +1,4 @@
-package app.snapsync.gallery
+package app.snapsync.ports
 
 import kotlinx.coroutines.flow.StateFlow
 

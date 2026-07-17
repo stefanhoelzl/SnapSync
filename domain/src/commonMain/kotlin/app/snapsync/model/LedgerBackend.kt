@@ -1,4 +1,4 @@
-package app.snapsync.engine
+package app.snapsync.model
 
 import kotlinx.coroutines.flow.Flow
 

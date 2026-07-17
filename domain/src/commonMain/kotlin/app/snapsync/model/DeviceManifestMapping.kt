@@ -1,6 +1,5 @@
-package app.snapsync.gallery
+package app.snapsync.model
 
-import app.snapsync.engine.Resource
 
 /**
  * Build [DeviceManifestAsset]s from the cycle's discovered [resources] — grouping by `assetId`, parsing

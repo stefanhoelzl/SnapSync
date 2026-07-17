@@ -1,4 +1,4 @@
-package app.snapsync.gallery
+package app.snapsync.ports
 
 /**
  * The synchronous, in-cycle upload seam for the device manifest. Returns `true` only when the edge

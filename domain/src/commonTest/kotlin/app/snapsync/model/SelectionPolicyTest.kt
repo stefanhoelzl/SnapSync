@@ -1,4 +1,4 @@
-package app.snapsync.gallery
+package app.snapsync.model
 
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -21,7 +21,7 @@ class SelectionPolicyTest {
         adjusted: Boolean = false,
         mime: String = "image/heic",
     ) = listOf(
-        app.snapsync.engine.Resource(
+        Resource(
             filename = "$id-primary.heic",
             assetId = id,
             contentType = "public.heic",
@@ -38,7 +38,7 @@ class SelectionPolicyTest {
         ),
     )
 
-    private fun excluded(resources: List<app.snapsync.engine.Resource>) = excludedAssetIds(resources)
+    private fun excluded(resources: List<Resource>) = excludedAssetIds(resources)
 
     // ── Subtypes ──────────────────────────────────────────────────────────────────────────────────────
 
@@ -109,7 +109,7 @@ class SelectionPolicyTest {
     @Test
     fun an_asset_with_no_origin_metadata_at_all_is_admitted() {
         val bare = listOf(
-            app.snapsync.engine.Resource(
+            Resource(
                 filename = "A-primary.heic",
                 assetId = "A",
                 contentType = "public.heic",
@@ -133,8 +133,8 @@ class SelectionPolicyTest {
             RESOURCE_META_PIXEL_HEIGHT to "3024",
         )
         val both = listOf(
-            app.snapsync.engine.Resource("A-primary.heic", "A", "public.heic", meta, Unit),
-            app.snapsync.engine.Resource("A-live.mov", "A", "com.apple.quicktime-movie", meta, Unit),
+            Resource("A-primary.heic", "A", "public.heic", meta, Unit),
+            Resource("A-live.mov", "A", "com.apple.quicktime-movie", meta, Unit),
         )
         assertEquals(setOf("A"), excluded(both), "the asset is excluded, so both of its resources go")
     }

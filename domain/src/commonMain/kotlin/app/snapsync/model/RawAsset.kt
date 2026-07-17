@@ -1,4 +1,4 @@
-package app.snapsync.gallery
+package app.snapsync.model
 
 /**
  * A single platform resource as **raw facts**, before any sync/fan-out decision (capability

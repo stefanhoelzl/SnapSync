@@ -1,4 +1,4 @@
-package app.snapsync.status
+package app.snapsync.model
 
 /**
  * The vocabulary of the [SyncStatusSource] seam (not the ledger's). A source backed by persisted

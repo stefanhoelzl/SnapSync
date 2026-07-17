@@ -1,5 +1,7 @@
 package app.snapsync.downloadstore
 
+import app.snapsync.ports.AssetRef
+
 import app.cash.sqldelight.driver.jdbc.sqlite.JdbcSqliteDriver
 import app.snapsync.downloadstore.db.DownloadDatabase
 import kotlin.test.Test

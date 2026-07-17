@@ -1,4 +1,4 @@
-package app.snapsync.upload
+package app.snapsync.ports
 
 /**
  * Re-arm scheduling for the app-driven (iOS 18–26.0) upload tier — a platform-free seam so the

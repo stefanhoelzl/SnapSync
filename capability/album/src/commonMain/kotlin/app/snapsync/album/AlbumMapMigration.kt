@@ -1,6 +1,6 @@
 package app.snapsync.album
 
-import app.snapsync.keychain.KeychainRead
+import app.snapsync.ports.KeychainRead
 
 /**
  * Where the `eventId → albumLocalId` map should be read from, and whether the legacy Keychain item

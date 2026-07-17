@@ -1,4 +1,4 @@
-package app.snapsync.config
+package app.snapsync.model
 
 /**
  * This device's chosen **participation direction** for a joined event (capability

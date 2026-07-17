@@ -2,7 +2,7 @@ package app.snapsync.ios
 
 import app.snapsync.engine.DISCOVERY_TOKEN_KEY
 import app.snapsync.engine.LEDGER_APP_GROUP
-import app.snapsync.engine.LedgerBackend
+import app.snapsync.model.LedgerBackend
 import app.snapsync.membership.clearRequestedOffMain
 import app.snapsync.upload.UploadProducer
 import app.snapsync.logging.invocation

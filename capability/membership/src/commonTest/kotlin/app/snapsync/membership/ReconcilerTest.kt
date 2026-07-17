@@ -1,14 +1,17 @@
 package app.snapsync.membership
 
-import app.snapsync.engine.LedgerEntry
-import app.snapsync.engine.LedgerState
-import app.snapsync.engine.LedgerWriter
-import app.snapsync.engine.Resource
-import app.snapsync.engine.SyncDecision
-import app.snapsync.engine.SyncEngine
-import app.snapsync.engine.SyncEvent
-import app.snapsync.engine.UploadRequest
-import app.snapsync.engine.UploadRequestProvider
+import app.snapsync.ports.DeviceFilesSource
+import app.snapsync.ports.JoinedEventMarker
+
+import app.snapsync.model.LedgerEntry
+import app.snapsync.model.LedgerState
+import app.snapsync.model.LedgerWriter
+import app.snapsync.model.Resource
+import app.snapsync.model.SyncDecision
+import app.snapsync.model.SyncEngine
+import app.snapsync.model.SyncEvent
+import app.snapsync.model.UploadRequest
+import app.snapsync.model.UploadRequestProvider
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse

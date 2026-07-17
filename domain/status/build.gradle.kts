@@ -9,6 +9,7 @@ kotlin {
     iosSimulatorArm64()
     sourceSets {
         commonMain.dependencies {
+            api(project(":domain"))
             // Implementation scope on purpose: status consumes permission and the gallery total, but
             // neither may leak to status's own consumers. Status does not depend on :domain:engine —
             // it projects counts through injected read seams, never a ledger type.
