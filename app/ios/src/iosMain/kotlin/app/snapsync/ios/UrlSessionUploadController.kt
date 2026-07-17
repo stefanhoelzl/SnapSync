@@ -2,9 +2,9 @@ package app.snapsync.ios
 
 import app.snapsync.config.KeychainConfigStore
 import app.snapsync.engine.LEDGER_APP_GROUP
-import app.snapsync.model.LedgerStore
-import app.snapsync.model.LedgerWriter
-import app.snapsync.model.SyncEngine
+import app.snapsync.ports.LedgerStore
+import app.snapsync.feature.upload.LedgerWriter
+import app.snapsync.feature.upload.SyncEngine
 import app.snapsync.model.Contribution
 import app.snapsync.gallery.DeviceManifestProducer
 import app.snapsync.gallery.IosDeviceManifestStore
@@ -14,24 +14,24 @@ import app.snapsync.ios.discovery.IosDiscovery
 import app.snapsync.ios.discovery.IosDiscoveryStore
 import app.snapsync.ios.urlsession.IosBackgroundScheduler
 import app.snapsync.ios.urlsession.IosUrlSessionUploadPlatform
-import app.snapsync.membership.ExtensionReconciler
+import app.snapsync.feature.upload.ExtensionReconciler
 import app.snapsync.membership.HttpDeviceFilesSource
 import app.snapsync.membership.IosJoinedEventMarker
 import app.snapsync.push.EventNotifier
 import app.snapsync.push.KtorPushHttpClient
 import app.snapsync.ports.PushReceiver
-import app.snapsync.upload.BackgroundUploadPump
+import app.snapsync.feature.upload.BackgroundUploadPump
 import app.snapsync.ports.CycleResult
-import app.snapsync.upload.UploadCycle
+import app.snapsync.feature.upload.UploadCycle
 import app.snapsync.ports.ConfigRead
 import app.snapsync.ports.KeychainUnavailable
-import app.snapsync.upload.CycleGate
-import app.snapsync.upload.JoinedMembership
-import app.snapsync.upload.cycleGate
+import app.snapsync.feature.upload.CycleGate
+import app.snapsync.feature.upload.JoinedMembership
+import app.snapsync.feature.upload.cycleGate
 import app.snapsync.upload.UploadPushReceiver
-import app.snapsync.upload.UploadProducer
+import app.snapsync.feature.upload.UploadProducer
 import app.snapsync.model.EdgeUploadRequestProvider
-import app.snapsync.logging.invocation
+import app.snapsync.model.invocation
 import co.touchlab.kermit.Logger
 import io.ktor.client.HttpClient
 import kotlinx.coroutines.CoroutineScope
@@ -53,7 +53,7 @@ import kotlinx.coroutines.launch
  */
 class UrlSessionUploadController(
     private val scope: CoroutineScope,
-    private val ledgerBackend: LedgerStore,
+    private val ledgerStore: LedgerStore,
     private val configSource: KeychainConfigStore,
     // Resolved PER CYCLE, not held as a `String`. A held id cannot express "unreadable this cycle": an
     // unresolvable Keychain read then throws out of whatever first touches it instead of skipping
@@ -97,7 +97,7 @@ class UrlSessionUploadController(
         const val HEARTBEAT_TASK_IDENTIFIER = "app.snapsync.upload.heartbeat"
     }
 
-    private val ledger = LedgerWriter(ledgerBackend)
+    private val ledger = LedgerWriter(ledgerStore)
     private val discovery = IosDiscovery(log, PhotoLibraryResourceEnumerator())
     private val discoveryStore = IosDiscoveryStore()
     private val scheduler = IosBackgroundScheduler(log, HEARTBEAT_TASK_IDENTIFIER)
@@ -128,7 +128,7 @@ class UrlSessionUploadController(
     private val reconciler: ExtensionReconciler by lazy {
         ExtensionReconciler(
         files = HttpDeviceFilesSource(httpClient, host),
-        ledger = ledgerBackend,
+        ledger = ledgerStore,
         marker = IosJoinedEventMarker(),
         deviceId = resolveDeviceId(),
         // Force a full re-enumeration on a re-join: the App-Group cursor survives an app upgrade, so a
@@ -146,7 +146,7 @@ class UrlSessionUploadController(
         sessionIdentifier = SESSION_IDENTIFIER,
         useBackgroundSession = useBackgroundSession,
         // Precise stranded-row reconciliation: the ledger's current REQUESTED keys.
-        pendingKeys = { ledgerBackend.pendingResources().map { it.key }.toSet() },
+        pendingKeys = { ledgerStore.pendingResources().map { it.key }.toSet() },
         // A slot just freed → top up (single-flight in the pump serialises it).
         onTerminal = { scope.launch { pump.onUploadCompleted() } },
     )

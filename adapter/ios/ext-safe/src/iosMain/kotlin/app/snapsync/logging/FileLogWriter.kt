@@ -1,5 +1,7 @@
 package app.snapsync.logging
 
+import app.snapsync.model.LogContext
+
 import co.touchlab.kermit.LogWriter
 import co.touchlab.kermit.Severity
 import kotlinx.cinterop.ExperimentalForeignApi

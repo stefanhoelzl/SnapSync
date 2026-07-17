@@ -2,10 +2,10 @@ package app.snapsync.ios
 
 import app.snapsync.engine.DISCOVERY_TOKEN_KEY
 import app.snapsync.engine.LEDGER_APP_GROUP
-import app.snapsync.model.LedgerStore
-import app.snapsync.membership.clearRequestedOffMain
-import app.snapsync.upload.UploadProducer
-import app.snapsync.logging.invocation
+import app.snapsync.ports.LedgerStore
+import app.snapsync.feature.upload.clearRequestedOffMain
+import app.snapsync.feature.upload.UploadProducer
+import app.snapsync.model.invocation
 import co.touchlab.kermit.Logger
 import kotlinx.cinterop.ExperimentalForeignApi
 import platform.Foundation.NSUserDefaults
@@ -23,7 +23,7 @@ import platform.Photos.PHPhotoLibrary
  * its next cycle, gated by its `joinedEventId` marker (`event-rejoin-reconciliation`).
  */
 class PhotoKitUploadProducer(
-    private val ledgerBackend: LedgerStore,
+    private val ledgerStore: LedgerStore,
     private val log: Logger,
 ) : UploadProducer {
 
@@ -70,7 +70,7 @@ class PhotoKitUploadProducer(
     override suspend fun stop() = log.invocation("photokit.stop") {
         setEnabled(false)
         NSUserDefaults(suiteName = LEDGER_APP_GROUP).removeObjectForKey(DISCOVERY_TOKEN_KEY)
-        clearRequestedOffMain({ ledgerBackend.clearRequested() }, log = log) // Boolean; the seam returns Unit
+        clearRequestedOffMain({ ledgerStore.clearRequested() }, log = log) // Boolean; the seam returns Unit
         Unit
     }
 

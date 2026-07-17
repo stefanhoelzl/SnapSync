@@ -19,7 +19,7 @@ import app.snapsync.status.DownloadProgress
 import app.snapsync.status.InMemoryDownloadStatusSource
 import app.snapsync.model.SyncStatus
 import app.snapsync.model.SyncProgress
-import app.snapsync.status.SyncStatusSource
+import app.snapsync.feature.status.SyncStatusSource
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 

@@ -6,16 +6,16 @@ import app.snapsync.eventcreation.CreateEvent
 import app.snapsync.eventcreation.EventCreator
 import app.snapsync.eventcreation.HttpEventCreation
 import app.snapsync.eventcreation.MutableCreationStatusSource
-import app.snapsync.attest.DeviceAttestation
+import app.snapsync.feature.trust.DeviceAttestation
 import app.snapsync.attest.HttpAttestClient
 import app.snapsync.attest.IosAttestKey
 import app.snapsync.attest.KeychainAttestStore
 import app.snapsync.ports.EventDetails
 import app.snapsync.join.HttpEnrollment
 import app.snapsync.join.HttpEventDirectory
-import app.snapsync.join.JoinEvent
-import app.snapsync.join.JoinOutcome
-import app.snapsync.join.ManifestDeviceEnroller
+import app.snapsync.feature.membership.JoinEvent
+import app.snapsync.feature.membership.JoinOutcome
+import app.snapsync.feature.membership.ManifestDeviceEnroller
 import app.snapsync.presentation.JoinLoad
 import app.snapsync.model.Contribution
 import app.snapsync.gallery.PhotoLibraryResourceEnumerator
@@ -31,7 +31,7 @@ import app.snapsync.ports.PushReceiver
 import app.snapsync.push.PushRegistration
 import app.snapsync.ports.PushTokenSource
 import app.snapsync.membership.HttpLeaveNotifier
-import app.snapsync.membership.LeaveEvent
+import app.snapsync.feature.membership.LeaveEvent
 import app.snapsync.membership.darwinHttpClient
 import app.snapsync.download.DownloadController
 import app.snapsync.download.HttpEventUnionSource
@@ -48,21 +48,21 @@ import app.snapsync.downloadstore.SqlDelightDownloadStore
 import app.snapsync.downloadstore.iosDownloadStore
 import platform.Foundation.NSFileManager
 import app.snapsync.engine.LEDGER_APP_GROUP
-import app.snapsync.model.LedgerStore
+import app.snapsync.ports.LedgerStore
 import app.snapsync.engine.iosLedgerStore
-import app.snapsync.status.LedgerBackedSyncStatusSource
-import app.snapsync.status.LedgerCounts
-import app.snapsync.status.OwnDeviceGalleryStatusSource
-import app.snapsync.status.ReadingLedgerCountsSource
+import app.snapsync.feature.status.LedgerBackedSyncStatusSource
+import app.snapsync.feature.status.LedgerCounts
+import app.snapsync.feature.status.OwnDeviceGalleryStatusSource
+import app.snapsync.feature.status.ReadingLedgerCountsSource
 import app.snapsync.model.UPLOAD_LIVENESS_DARWIN_NAME
 import app.snapsync.upload.FanOutPushReceiver
-import app.snapsync.upload.UploadArm
-import app.snapsync.upload.UploadProducer
+import app.snapsync.feature.upload.UploadArm
+import app.snapsync.feature.upload.UploadProducer
 import app.snapsync.logging.FileLogWriter
 import app.snapsync.logging.PublicNSLogWriter
 import app.snapsync.keychain.KeychainDeviceIdentity
 import app.snapsync.keychain.ProtectedDataGate
-import app.snapsync.logging.invocation
+import app.snapsync.model.invocation
 import co.touchlab.kermit.Logger
 import io.ktor.client.HttpClient
 import kotlinx.cinterop.COpaquePointer
@@ -293,7 +293,7 @@ object SnapSyncRoot {
     // on extension disable (recover jobs the disable wiped, capability `ios-background-upload`). No
     // per-key record writes and no `LedgerWriter` — the extension stays the sole record writer. WAL
     // permits the concurrent cross-process read.
-    private val ledgerBackend: LedgerStore by lazy { iosLedgerStore() }
+    private val ledgerStore: LedgerStore by lazy { iosLedgerStore() }
 
     // Own-device completeness AND in-flight, both from one consistent ledger `aggregates()` read
     // (capability `sync-status`). Read-only; on any failure the last good counts are retained (never
@@ -301,7 +301,7 @@ object SnapSyncRoot {
     // notification (below).
     private val ledgerCounts: ReadingLedgerCountsSource by lazy {
         ReadingLedgerCountsSource {
-            ledgerBackend.aggregates().let { LedgerCounts(completed = it.completed, pending = it.pending) }
+            ledgerStore.aggregates().let { LedgerCounts(completed = it.completed, pending = it.pending) }
         }
     }
 
@@ -1052,7 +1052,7 @@ object SnapSyncRoot {
 
     // The OS-driven (≥26.1) mechanism. Never constructed on the app-driven tier.
     private val photoKitProducer: PhotoKitUploadProducer by lazy {
-        PhotoKitUploadProducer(ledgerBackend, log)
+        PhotoKitUploadProducer(ledgerStore, log)
     }
 
     // Dev/test force flag (like SNAPSYNC_EVENT_LINK): forces the app-driven URLSession upload tier even on
@@ -1080,7 +1080,7 @@ object SnapSyncRoot {
     // [useAppDrivenUpload]; on iOS ≥26.1 without the force flag it is never touched (the extension runs).
     private val urlSessionUpload: UrlSessionUploadController by lazy {
         UrlSessionUploadController(
-            scope, ledgerBackend, config,
+            scope, ledgerStore, config,
             // A supplier, not the resolved id: the cycle's gate probes it each run, so an unreadable
             // Keychain skips the cycle cleanly instead of throwing out of it. The lazy caches the first
             // success, so this is one read per process, as before.

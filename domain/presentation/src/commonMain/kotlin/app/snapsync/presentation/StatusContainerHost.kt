@@ -22,7 +22,7 @@ import app.snapsync.status.DownloadStatusSource
 import app.snapsync.status.InMemoryDownloadStatusSource
 import app.snapsync.model.SyncStatus
 import app.snapsync.model.SyncProgress
-import app.snapsync.status.SyncStatusSource
+import app.snapsync.feature.status.SyncStatusSource
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.delay

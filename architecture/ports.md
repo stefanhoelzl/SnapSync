@@ -16,17 +16,12 @@ the `:tools:diagrams` freshness test fails on drift; regenerate instead.
 | `CreationStatus` | `:capability:event-creation-ui` | `:capability:event-creation-ui` Failed, Idle, InFlight | no |
 | `CreationStatusSource` | `:capability:event-creation-ui` | `:capability:event-creation-ui` MutableCreationStatusSource | no |
 | `CutoffFormatter` | `:domain:presentation` | `:domain:presentation` SystemCutoffFormatter | no |
-| `CycleGate` | `:capability:upload` | `:capability:upload` NotJoined, Run, Skip | no |
-| `DeviceEnroller` | `:capability:join` | `:capability:join` FakeEnroller, ManifestDeviceEnroller | yes |
 | `DownloadStatusSource` | `:domain:status` | `:capability:download` StoreDownloadStatusSource; `:domain:status` InMemoryDownloadStatusSource | yes |
 | `EventCreator` | `:capability:event-creation-ui` | `:capability:event-creation-ui` CreateEvent, NoOpEventCreator; `:domain:presentation` SpyCreator | no |
 | `JoinLoad` | `:domain:presentation` | `:domain:presentation` Failed, Found, NotFound | no |
 | `JoinPhase` | `:domain:presentation` | `:domain:presentation` CommitFailed, Committing, ExplainAccess, LoadFailed, Loading, NotFound, Ready | no |
-| `LedgerCountsSource` | `:domain:status` | `:domain:status` MutableLedgerCountsSource, ReadingLedgerCountsSource | no |
 | `ProtectedDataAvailability` | `:domain:keychain` | `:app:ios` IosProtectedData; `:domain:keychain` FakeAvailability | yes |
 | `SetupEffect` | `:domain:presentation` | `:domain:presentation` InvalidConfigLink | no |
 | `StatusIndicator` | `:domain:ui:components` | `:domain:ui:components` Complete, Error, InProgress, Loading, Photos, Success, Waiting | no |
 | `SyncHealth` | `:domain:presentation` | `:domain:presentation` InSync, Loading, NeedsAccess, NotStarted, Syncing, Unattested | no |
-| `SyncStatusSource` | `:domain:status` | `:domain:presentation` ConstSyncStatusSource, FakeSyncStatusSource | yes |
 | `UiState` | `:domain:presentation` | `:domain:presentation` CreateEvent, CreatingEvent, Joined, JoiningEvent | no |
-| `UploadProducer` | `:capability:upload` | `:app:ios` PhotoKitUploadProducer, UrlSessionUploadController; `:capability:upload` FakeProducer | yes |

@@ -22,7 +22,7 @@ on drift; regenerate instead.
 
 ## `:capability:download`
 
-- depends on: `:domain`, `:domain:download-store`, `:domain:logging`, `:domain:status`
+- depends on: `:domain`, `:domain:download-store`, `:domain:status`
 - interfaces declared (commonMain): —
 
 ## `:capability:event-creation-ui`
@@ -33,7 +33,7 @@ on drift; regenerate instead.
 ## `:capability:join`
 
 - depends on: `:domain`
-- interfaces declared (commonMain): `DeviceEnroller`
+- interfaces declared (commonMain): —
 
 ## `:capability:membership`
 
@@ -47,8 +47,8 @@ on drift; regenerate instead.
 
 ## `:capability:upload`
 
-- depends on: `:domain`, `:domain:engine`, `:domain:gallery`, `:domain:logging`
-- interfaces declared (commonMain): `CycleGate`, `UploadProducer`
+- depends on: `:domain`
+- interfaces declared (commonMain): —
 
 ## `:capability:upload-url`
 
@@ -58,7 +58,7 @@ on drift; regenerate instead.
 ## `:domain`
 
 - depends on: —
-- interfaces declared (commonMain): `AttestClient`, `AttestKey`, `AttestStore`, `BackgroundScheduler`, `BackgroundTransfer`, `ConfigDecodeResult`, `ConfigRead`, `ConfigReader`, `ConfigSource`, `ConfigStore`, `Contribution`, `CreateOutcome`, `DeviceFilesSource`, `DeviceManifestStore`, `DiscoveryStore`, `DownloadStore`, `DownloadTask`, `DownloadTransport`, `DownloadTransportHost`, `Enrollment`, `EventCreation`, `EventDetails`, `EventDirectory`, `EventUnionSource`, `GalleryStatusSource`, `ImportResult`, `JoinedEventMarker`, `Keychain`, `KeychainRead`, `LedgerStore`, `PhotoAccessRequester`, `PhotoAccessStatusSource`, `PhotoDownloadJobs`, `PhotoLibrary`, `PhotoLibraryImporter`, `PushHttpClient`, `PushReceiver`, `RawAssetSource`, `SuppressionSource`, `SyncDecision`, `SyncEvent`, `SyncStatus`, `UploadError`, `UploadRequestProvider`
+- interfaces declared (commonMain): `AttestClient`, `AttestKey`, `AttestStore`, `BackgroundScheduler`, `BackgroundTransfer`, `ConfigDecodeResult`, `ConfigRead`, `ConfigReader`, `ConfigSource`, `ConfigStore`, `Contribution`, `CreateOutcome`, `CycleGate`, `DeviceEnroller`, `DeviceFilesSource`, `DeviceManifestStore`, `DiscoveryStore`, `DownloadStore`, `DownloadTask`, `DownloadTransport`, `DownloadTransportHost`, `Enrollment`, `EventCreation`, `EventDetails`, `EventDirectory`, `EventUnionSource`, `GalleryStatusSource`, `ImportResult`, `JoinedEventMarker`, `Keychain`, `KeychainRead`, `LedgerCountsSource`, `LedgerStore`, `PhotoAccessRequester`, `PhotoAccessStatusSource`, `PhotoDownloadJobs`, `PhotoLibrary`, `PhotoLibraryImporter`, `PushHttpClient`, `PushReceiver`, `RawAssetSource`, `SuppressionSource`, `SyncDecision`, `SyncEvent`, `SyncStatus`, `SyncStatusSource`, `UploadError`, `UploadProducer`, `UploadRequestProvider`
 
 ## `:domain:download-store`
 
@@ -98,7 +98,7 @@ on drift; regenerate instead.
 ## `:domain:status`
 
 - depends on: `:domain`, `:domain:gallery`, `:domain:permission`
-- interfaces declared (commonMain): `DownloadStatusSource`, `LedgerCountsSource`, `SyncStatusSource`
+- interfaces declared (commonMain): `DownloadStatusSource`
 
 ## `:domain:ui`
 

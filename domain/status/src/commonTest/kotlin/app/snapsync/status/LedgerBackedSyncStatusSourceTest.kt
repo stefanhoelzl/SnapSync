@@ -3,6 +3,8 @@ package app.snapsync.status
 import app.snapsync.model.SyncProgress
 import app.snapsync.model.SyncStatus
 
+import app.snapsync.feature.status.LedgerBackedSyncStatusSource
+import app.snapsync.feature.status.MutableLedgerCountsSource
 import app.snapsync.gallery.InMemoryGalleryStatusSource
 import app.snapsync.model.PermissionStatus
 import app.snapsync.ports.PhotoAccessStatusSource

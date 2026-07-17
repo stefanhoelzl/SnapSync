@@ -3,13 +3,9 @@ plugins {
 }
 
 kotlin {
-    // The platform-agnostic upload orchestration (UploadCycle + the BackgroundTransfer seam +
-    // DiscoveryStore + UploadConfig), relocated out of :app:ios:photokit-extension so its jvm() target
-    // runs the orchestration tests on JVM (testing rule 1) and the desktop harness can reach it. Depends
-    // only on :domain:engine and :domain:gallery (the shared assetIdFromUploadKey parser reconstruct
-    // uses) — no Compose/UI, no download-store/rejoin/ktor edges (those stay in the extension's
-    // composition root). The iOS adapters (IosBackgroundTransfer, IosDiscoveryStore) stay in the
-    // extension module, which composes this into its static framework.
+    // MIGRATION STEP 5: the upload orchestration (UploadCycle, UploadArm, BackgroundUploadPump,
+    // the cycle gate) moved to :domain's feature/upload zone. What remains is UploadPushReceiver —
+    // the OS-callback receive seam, flow material for step 8.
     jvmToolchain(libs.versions.jdk.get().toInt())
     jvm()
     iosArm64()
@@ -17,9 +13,6 @@ kotlin {
     sourceSets {
         commonMain.dependencies {
             api(project(":domain"))
-            implementation(project(":domain:logging"))
-            implementation(project(":domain:engine"))
-            implementation(project(":domain:gallery"))
             implementation(libs.coroutines.core)
             implementation(libs.kermit)
         }

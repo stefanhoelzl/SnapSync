@@ -10,7 +10,7 @@ import app.snapsync.model.PermissionStatus
 import app.snapsync.ports.PhotoAccessStatusSource
 import app.snapsync.model.SyncProgress
 import app.snapsync.model.SyncStatus
-import app.snapsync.status.SyncStatusSource
+import app.snapsync.feature.status.SyncStatusSource
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
 

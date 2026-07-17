@@ -14,9 +14,9 @@ import app.snapsync.eventcreation.CreationStatusSource
 import app.snapsync.eventcreation.EventCreator
 import app.snapsync.ports.EventDetails
 import app.snapsync.join.HttpEventDirectory
-import app.snapsync.join.JoinEvent
-import app.snapsync.join.JoinOutcome
-import app.snapsync.join.ManifestDeviceEnroller
+import app.snapsync.feature.membership.JoinEvent
+import app.snapsync.feature.membership.JoinOutcome
+import app.snapsync.feature.membership.ManifestDeviceEnroller
 import app.snapsync.ports.PhotoAccessRequester
 import app.snapsync.model.PermissionStatus
 import app.snapsync.ports.PhotoAccessStatusSource
@@ -25,7 +25,7 @@ import app.snapsync.presentation.StatusContainerHost
 import app.snapsync.model.DENYLISTED_ALBUM_TITLES
 import app.snapsync.model.excludedAssetIds
 import app.snapsync.status.DownloadStatusSource
-import app.snapsync.status.SyncStatusSource
+import app.snapsync.feature.status.SyncStatusSource
 import app.snapsync.world.World
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch

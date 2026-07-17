@@ -16,15 +16,15 @@ import app.snapsync.ports.SuppressionSource
 import app.snapsync.downloadstore.iosSuppressionSource
 import app.snapsync.ios.discovery.IosDiscovery
 import app.snapsync.ios.discovery.IosDiscoveryStore
-import app.snapsync.upload.CycleGate
-import app.snapsync.upload.JoinedMembership
+import app.snapsync.feature.upload.CycleGate
+import app.snapsync.feature.upload.JoinedMembership
 import app.snapsync.ports.CycleResult
-import app.snapsync.upload.cycleGate
+import app.snapsync.feature.upload.cycleGate
 import app.snapsync.model.UPLOAD_LIVENESS_DARWIN_NAME
-import app.snapsync.upload.UploadCycle
-import app.snapsync.model.LedgerStore
-import app.snapsync.model.LedgerWriter
-import app.snapsync.model.SyncEngine
+import app.snapsync.feature.upload.UploadCycle
+import app.snapsync.ports.LedgerStore
+import app.snapsync.feature.upload.LedgerWriter
+import app.snapsync.feature.upload.SyncEngine
 import app.snapsync.engine.iosLedgerStore
 import app.snapsync.model.EdgeUploadRequestProvider
 import app.snapsync.gallery.DeviceManifestProducer
@@ -33,13 +33,13 @@ import app.snapsync.gallery.PhotoLibraryResourceEnumerator
 import app.snapsync.model.deviceManifestAssetsFromResources
 import app.snapsync.push.EventNotifier
 import app.snapsync.push.KtorPushHttpClient
-import app.snapsync.membership.ExtensionReconciler
+import app.snapsync.feature.upload.ExtensionReconciler
 import app.snapsync.membership.HttpDeviceFilesSource
 import app.snapsync.membership.IosJoinedEventMarker
 import app.snapsync.membership.darwinHttpClient
 import app.snapsync.logging.FileLogWriter
 import app.snapsync.logging.PublicNSLogWriter
-import app.snapsync.logging.invocation
+import app.snapsync.model.invocation
 import co.touchlab.kermit.Logger
 import kotlinx.cinterop.ExperimentalForeignApi
 import kotlinx.coroutines.runBlocking
@@ -106,8 +106,8 @@ object UploadExtensionRoot {
         )
     }
 
-    private val ledgerBackend: LedgerStore by lazy { iosLedgerStore() }
-    private val ledger: LedgerWriter by lazy { LedgerWriter(ledgerBackend) }
+    private val ledgerStore: LedgerStore by lazy { iosLedgerStore() }
+    private val ledger: LedgerWriter by lazy { LedgerWriter(ledgerStore) }
     private val discovery: IosDiscovery by lazy {
         IosDiscovery(log, PhotoLibraryResourceEnumerator())
     }
@@ -180,7 +180,7 @@ object UploadExtensionRoot {
             // event-independent). The reconciler `resetTo`s the ledger to exactly those files
             // (clear-and-seed, dropping stale/phantom rows) and clears the cursor — see ExtensionReconciler.
             files = HttpDeviceFilesSource(httpClient, uploadHostFromBundle() ?: ""),
-            ledger = ledgerBackend,
+            ledger = ledgerStore,
             marker = IosJoinedEventMarker(),
             deviceId = deviceId,
             // Clear the discovery cursor on a re-join so the producer re-enumerates the whole library
@@ -316,7 +316,7 @@ object UploadExtensionRoot {
         // promptly; report COMPLETED only once everything is uploaded (pending == 0), so the system
         // then rests. (The OS throttles re-invocation, so this polls at its cadence, not in a loop.)
         if (result == CycleResult.COMPLETED) {
-            val pending = ledgerBackend.aggregates().pending
+            val pending = ledgerStore.aggregates().pending
             if (pending > 0) {
                 log.i { "process: $pending pending — requesting re-invocation" }
                 return@runBlocking CycleResult.PROCESSING

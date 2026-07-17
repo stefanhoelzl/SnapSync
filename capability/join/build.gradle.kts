@@ -3,7 +3,8 @@ plugins {
 }
 
 // MIGRATION STEP 4: the Ktor clients (HttpEnrollment, HttpEventDirectory) moved to
-// `:adapter:generic`. What remains is the platform-free join use-case + enroller.
+// `:adapter:generic`. STEP 5: the join use-case + enroller moved to :domain
+// feature/membership — this module is sourceless; the skeleton dies at step 6.
 kotlin {
     jvmToolchain(libs.versions.jdk.get().toInt())
     jvm()
