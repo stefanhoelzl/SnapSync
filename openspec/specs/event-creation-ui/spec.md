@@ -17,7 +17,7 @@ Decision record: `changes/archive/2026-06-27-add-event-creation-ui`.
 ## Requirements
 ### Requirement: Create-event seams and status model
 
-The app-side create capability (`:capability:event-creation-ui`) SHALL define a command port and a
+The create feature (`:domain`'s `feature/creation` zone, package `app.snapsync.feature.creation`) SHALL define a command port and a
 state port, consumed separately by the presentation container (mirroring the
 `PhotoAccessRequester` / `PhotoAccessStatusSource` split):
 
@@ -263,7 +263,7 @@ this requirement pins the framing, not the wording.)
 
 ### Requirement: Create performs no event fetch of its own
 
-The capability's only HTTP surface SHALL be the `POST /events` create client. It SHALL NOT carry a
+The create feature's only HTTP surface SHALL be the `POST /events` create client. It SHALL NOT carry a
 `GET /events/:id` client of any kind: the create response already returns the event's name and
 `startsAt`, and every details/name fetch — including the scan-path name fill the deleted
 `EventMetadataSource` used to serve — goes through capability `join-event`'s single
@@ -273,5 +273,5 @@ The capability's only HTTP surface SHALL be the `POST /events` create client. It
 
 - **WHEN** the capability's HTTP clients are inspected
 - **THEN** the only route it calls is `POST /events`, and event details are obtained through
-  `:capability:join`'s `EventDirectory`
+  the `EventDirectory` port (implemented by `:adapter:generic`'s `HttpEventDirectory`)
 

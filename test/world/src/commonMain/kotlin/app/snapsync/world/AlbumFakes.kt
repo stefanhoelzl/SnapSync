@@ -1,7 +1,7 @@
 package app.snapsync.world
 
-import app.snapsync.album.AlbumManager
-import app.snapsync.album.AlbumMapStore
+import app.snapsync.ports.AlbumManager
+import app.snapsync.ports.AlbumMapStore
 
 /**
  * A recording [AlbumManager] for the world (capability `event-album`): tracks created albums and every

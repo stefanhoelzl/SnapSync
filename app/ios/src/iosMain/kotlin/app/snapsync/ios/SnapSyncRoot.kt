@@ -2,10 +2,10 @@ package app.snapsync.ios
 
 import app.snapsync.model.EventConfig
 import app.snapsync.config.KeychainConfigStore
-import app.snapsync.eventcreation.CreateEvent
-import app.snapsync.eventcreation.EventCreator
+import app.snapsync.feature.creation.CreateEvent
+import app.snapsync.feature.creation.EventCreator
 import app.snapsync.eventcreation.HttpEventCreation
-import app.snapsync.eventcreation.MutableCreationStatusSource
+import app.snapsync.feature.creation.MutableCreationStatusSource
 import app.snapsync.feature.trust.DeviceAttestation
 import app.snapsync.attest.HttpAttestClient
 import app.snapsync.attest.IosAttestKey
@@ -25,7 +25,7 @@ import app.snapsync.presentation.MutableAttestedSource
 import app.snapsync.presentation.StatusContainerHost
 import app.snapsync.presentation.forgeStatusHost
 import app.snapsync.presentation.isForgeState
-import app.snapsync.download.DownloadPushReceiver
+import app.snapsync.feature.download.DownloadPushReceiver
 import app.snapsync.push.KtorPushHttpClient
 import app.snapsync.ports.PushReceiver
 import app.snapsync.push.PushRegistration
@@ -33,17 +33,17 @@ import app.snapsync.ports.PushTokenSource
 import app.snapsync.membership.HttpLeaveNotifier
 import app.snapsync.feature.membership.LeaveEvent
 import app.snapsync.membership.darwinHttpClient
-import app.snapsync.download.DownloadController
+import app.snapsync.feature.download.DownloadController
 import app.snapsync.download.HttpEventUnionSource
 import app.snapsync.download.IosDownloadTransport
-import app.snapsync.download.QueuedPhotoDownloadJobs
-import app.snapsync.album.AlbumCoordinator
+import app.snapsync.feature.download.QueuedPhotoDownloadJobs
+import app.snapsync.feature.album.AlbumCoordinator
 import app.snapsync.model.DENYLISTED_ALBUM_TITLES
 import app.snapsync.album.IosAlbumManager
 import app.snapsync.album.IosAlbumMapStore
 import app.snapsync.download.IosPhotoLibraryImporter
 import app.snapsync.model.denormalizeAssetId
-import app.snapsync.download.StoreDownloadStatusSource
+import app.snapsync.feature.download.StoreDownloadStatusSource
 import app.snapsync.downloadstore.SqlDelightDownloadStore
 import app.snapsync.downloadstore.iosDownloadStore
 import platform.Foundation.NSFileManager

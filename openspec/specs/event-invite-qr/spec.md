@@ -113,7 +113,7 @@ presented).
 with a no-op default, mirroring the leave action. The composition root binds it to the platform share;
 hosts and tests that do not exercise sharing (the desktop harness's real-share path, presentation
 tests) SHALL construct unchanged, and a share in those contexts SHALL be inert. The presentation layer
-SHALL gain no module dependency beyond the `:capability:config` dependency it already has.
+SHALL gain no module dependency: the invite-link codec lives in `:domain`'s `model/` zone, reached through the `:domain` dependency presentation already has.
 
 #### Scenario: A host without a real share action constructs and is inert
 - **WHEN** `StatusContainerHost` is constructed without injecting a real share action
@@ -122,7 +122,7 @@ SHALL gain no module dependency beyond the `:capability:config` dependency it al
 #### Scenario: Presentation gains no new module dependency
 - **WHEN** the presentation module's dependencies are inspected after this change
 - **THEN** it depends on no new module — the invite URL is derived via the already-present
-  `:capability:config` encoder and the share enters as a plain lambda
+  `model/` `EventLink` encoder and the share enters as a plain lambda
 
 ### Requirement: The displayed QR carries the full join capability
 
@@ -141,3 +141,4 @@ uploads nothing already present. There SHALL be no access control on who may sca
 - **WHEN** a member already joined to the event re-scans the displayed QR
 - **THEN** the join reconciles against storage, seeding already-stored photos as `COMPLETED`, and
   nothing already present is re-uploaded
+

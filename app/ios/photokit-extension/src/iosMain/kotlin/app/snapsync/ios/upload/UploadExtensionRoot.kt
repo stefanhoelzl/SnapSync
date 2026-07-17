@@ -2,7 +2,7 @@ package app.snapsync.ios.upload
 
 import app.snapsync.ports.AttestStore
 import app.snapsync.attest.KeychainAttestStore
-import app.snapsync.album.AlbumCoordinator
+import app.snapsync.feature.album.AlbumCoordinator
 import app.snapsync.model.DENYLISTED_ALBUM_TITLES
 import app.snapsync.album.IosAlbumManager
 import app.snapsync.album.IosAlbumMapStore
@@ -27,7 +27,7 @@ import app.snapsync.feature.upload.LedgerWriter
 import app.snapsync.feature.upload.SyncEngine
 import app.snapsync.engine.iosLedgerStore
 import app.snapsync.model.EdgeUploadRequestProvider
-import app.snapsync.gallery.DeviceManifestProducer
+import app.snapsync.feature.membership.DeviceManifestProducer
 import app.snapsync.gallery.IosDeviceManifestStore
 import app.snapsync.gallery.PhotoLibraryResourceEnumerator
 import app.snapsync.model.deviceManifestAssetsFromResources

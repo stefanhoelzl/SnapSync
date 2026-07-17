@@ -7,7 +7,8 @@ The on-device, network-free `UploadRequestProvider` that builds the bunny edge u
 no network I/O. It sets `Content-Type` and, when one is available, the device token's
 `Authorization: Bearer` header (capability `device-attestation`) — reading that token is the provider's
 only side effect, and it still mints nothing. It carries the deterministic, injective
-filename→destination mapping that anchors upload idempotency. Lives in `:capability:upload-url`.
+filename→destination mapping that anchors upload idempotency. Lives in `:domain`'s `model/` zone
+(seated by migration step 3a).
 ## Requirements
 ### Requirement: Pure URL-building provider
 

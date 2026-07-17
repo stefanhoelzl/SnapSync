@@ -6,7 +6,7 @@ import app.snapsync.ports.LedgerStore
 import app.snapsync.feature.upload.LedgerWriter
 import app.snapsync.feature.upload.SyncEngine
 import app.snapsync.model.Contribution
-import app.snapsync.gallery.DeviceManifestProducer
+import app.snapsync.feature.membership.DeviceManifestProducer
 import app.snapsync.gallery.IosDeviceManifestStore
 import app.snapsync.gallery.PhotoLibraryResourceEnumerator
 import app.snapsync.model.deviceManifestAssetsFromResources

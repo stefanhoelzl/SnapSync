@@ -8,10 +8,10 @@ import app.snapsync.ports.ConfigStore
 import app.snapsync.model.Direction
 import app.snapsync.model.EventConfig
 import app.snapsync.ports.TransferOutcome
-import app.snapsync.download.StoreDownloadStatusSource
+import app.snapsync.feature.download.StoreDownloadStatusSource
 import app.snapsync.model.UploadError
-import app.snapsync.eventcreation.CreationStatusSource
-import app.snapsync.eventcreation.EventCreator
+import app.snapsync.feature.creation.CreationStatusSource
+import app.snapsync.feature.creation.EventCreator
 import app.snapsync.ports.EventDetails
 import app.snapsync.join.HttpEventDirectory
 import app.snapsync.feature.membership.JoinEvent
@@ -24,7 +24,7 @@ import app.snapsync.presentation.JoinLoad
 import app.snapsync.presentation.StatusContainerHost
 import app.snapsync.model.DENYLISTED_ALBUM_TITLES
 import app.snapsync.model.excludedAssetIds
-import app.snapsync.status.DownloadStatusSource
+import app.snapsync.feature.download.DownloadStatusSource
 import app.snapsync.feature.status.SyncStatusSource
 import app.snapsync.world.World
 import kotlinx.coroutines.CoroutineScope

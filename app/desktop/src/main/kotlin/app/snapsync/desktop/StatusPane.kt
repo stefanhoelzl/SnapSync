@@ -8,8 +8,8 @@ import androidx.compose.runtime.remember
 import app.snapsync.ports.ConfigSource
 import app.snapsync.ports.ConfigStore
 import app.snapsync.model.Direction
-import app.snapsync.eventcreation.CreationStatusSource
-import app.snapsync.eventcreation.EventCreator
+import app.snapsync.feature.creation.CreationStatusSource
+import app.snapsync.feature.creation.EventCreator
 import app.snapsync.ports.PhotoAccessRequester
 import app.snapsync.ports.PhotoAccessStatusSource
 import app.snapsync.presentation.AlwaysAttested
@@ -17,7 +17,7 @@ import app.snapsync.presentation.AttestedSource
 import app.snapsync.presentation.JoinLoad
 import app.snapsync.presentation.MutablePendingJoinSource
 import app.snapsync.presentation.StatusContainerHost
-import app.snapsync.status.DownloadStatusSource
+import app.snapsync.feature.download.DownloadStatusSource
 import app.snapsync.feature.status.SyncStatusSource
 import app.snapsync.ui.StatusScreen
 import app.snapsync.ui.components.LocalDarkThemeOverride

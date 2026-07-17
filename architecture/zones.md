@@ -14,16 +14,9 @@ flowchart LR
     adapter_ios_ext_safe[":adapter:ios:ext-safe"]
   end
   subgraph capability
-    capability_album[":capability:album"]
     capability_attest[":capability:attest"]
-    capability_config[":capability:config"]
-    capability_download[":capability:download"]
-    capability_event_creation_ui[":capability:event-creation-ui"]
-    capability_join[":capability:join"]
-    capability_membership[":capability:membership"]
     capability_push[":capability:push"]
     capability_upload[":capability:upload"]
-    capability_upload_url[":capability:upload-url"]
   end
   subgraph domain
     domain[":domain"]
@@ -31,10 +24,7 @@ flowchart LR
     domain_engine[":domain:engine"]
     domain_gallery[":domain:gallery"]
     domain_keychain[":domain:keychain"]
-    domain_logging[":domain:logging"]
-    domain_permission[":domain:permission"]
     domain_presentation[":domain:presentation"]
-    domain_status[":domain:status"]
     domain_ui[":domain:ui"]
     domain_ui_components[":domain:ui:components"]
   end
@@ -42,34 +32,18 @@ flowchart LR
   adapter_ios_app_only --> adapter_ios_ext_safe
   adapter_ios_app_only --> domain
   adapter_ios_ext_safe --> adapter_generic
-  adapter_ios_ext_safe --> capability_album
   adapter_ios_ext_safe --> domain
-  adapter_ios_ext_safe --> domain_gallery
-  capability_album --> domain
   capability_attest --> domain
-  capability_download --> domain
-  capability_download --> domain_download_store
-  capability_download --> domain_status
-  capability_event_creation_ui --> domain
-  capability_join --> domain
-  capability_membership --> domain
   capability_push --> adapter_generic
   capability_push --> domain
   capability_upload --> domain
-  capability_upload_url --> domain_engine
   domain_download_store --> adapter_generic
   domain_download_store --> domain
   domain_engine --> adapter_generic
   domain_engine --> domain
   domain_gallery --> domain
   domain_keychain --> domain
-  domain_presentation --> capability_event_creation_ui
   domain_presentation --> domain
-  domain_presentation --> domain_permission
-  domain_presentation --> domain_status
-  domain_status --> domain
-  domain_status --> domain_gallery
-  domain_status --> domain_permission
   domain_ui --> domain
   domain_ui --> domain_presentation
   domain_ui --> domain_ui_components

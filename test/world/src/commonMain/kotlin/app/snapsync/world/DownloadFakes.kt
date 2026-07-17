@@ -18,7 +18,7 @@ import app.snapsync.model.normalizeAssetId
 
 /**
  * The operator-driven download **execution edge** (capability `harness-world-model`): a fake
- * [DownloadTransport] the world composes the **real** [app.snapsync.download.QueuedPhotoDownloadJobs] over.
+ * [DownloadTransport] the world composes the **real** [app.snapsync.feature.download.QueuedPhotoDownloadJobs] over.
  *
  * Faking here rather than at `PhotoDownloadJobs` is the point. The layer above is the orchestration — the
  * bounded in-flight window, the transfer-description codec, the URL guard, and the transfer-integrity

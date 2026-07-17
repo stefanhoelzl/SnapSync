@@ -222,8 +222,8 @@ drain (see "Completion and retry adjudication"), so `COMPLETED` and `FAILED` are
 ### Requirement: Extension assembles config from the Keychain payload and compile-time host
 
 The extension SHALL assemble the inputs it hands to `EdgeUploadRequestProvider` from three sources:
-the runtime `EventConfigPayload` (`eventId`) read from the **shared Keychain** via the
-`:capability:config` Keychain store; the stable per-install `deviceId` read from the **shared
+the runtime `EventConfigPayload` (`eventId`) read from the **shared Keychain** via
+`:adapter:ios:ext-safe`'s `KeychainConfigStore` (seated there by migration step 4); the stable per-install `deviceId` read from the **shared
 Keychain** (per `device-identity`); and the compile-time edge **host** read from the extension
 bundle's `BackgroundUploadURLBase` (`NSBundle` info dictionary). The `deviceId` SHALL be used to build
 the event-independent byte URLs (capability `edge-upload-provider`) and as the `device.json`

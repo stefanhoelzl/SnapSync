@@ -23,7 +23,6 @@ gate — it is one value of the health line, an inline affordance on a joined la
 regardless (capability `permission-gate`).
 
 Decision record: `changes/archive/2026-06-27-permission-on-status-screen`.
-
 ## Requirements
 ### Requirement: Sync status snapshots reduce to UI state
 
@@ -254,7 +253,7 @@ necessary because the `NotStarted` health depends on **wall-clock time**, not on
 snapshot emission would ever retire it when the start passes.
 
 The tick SHALL live in the **presentation** layer (which already owns a coroutine scope and the injected
-time source), **not** in `:domain:status`. The status projection SHALL remain a clock-free, read-only
+time source), **not** in the `feature/status` projection. The status projection SHALL remain a clock-free, read-only
 ledger→`SyncStatus` projection: it has no notion of wall-clock time today, and giving it one to render a
 label would be the wrong seam.
 
@@ -271,7 +270,7 @@ case, so a briefly-late transition costs nothing but the label.
 - **THEN** no tick is scheduled, the health deriving from the snapshot alone
 
 #### Scenario: The status projection stays clock-free
-- **WHEN** the `:domain:status` projection is inspected
+- **WHEN** the `feature/status` projection is inspected
 - **THEN** it reads only the ledger and holds no clock, the not-started derivation living entirely in the
   presentation reduction
 
