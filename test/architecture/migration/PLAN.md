@@ -65,7 +65,7 @@ inlined and marked ⟨R⟩ where they changed the original order or claims.
 | 3a | `:domain` skeleton: `model/` + `ports/` (moves + package renames only) | edges −5 (→1) · modules Δ (measured exact; Δ-note: `LedgerBackend` seated in `model/` — SyncEngine→LedgerWriter chain vs the armed model-purity gate; ports/ seat at 3b/5. D3 of `domain-skeleton-model-ports`. 3 mixed files step 2 missed split here) | ● |
 | 3b | port need-renames (`LedgerStore`, `PhotoLibrary`, `PhotoAccess`, …) | — (Δ-note: `LedgerStore` keeps its `model/` seat — a ports/ seat trial turned the model-purity gate red while `LedgerWriter` lives in `model/`; the seat moves at step 5, per 3a's D3. `TransferNotify` unassigned: `PushHttpClient` carries two needs (registration PUT + notify POST) and a rename-only step cannot split it) | ● |
 | 4 | adapters (ext-safe / app-only / generic) + delete the two emptied `:app:ios:*` modules | modules Δ · shells Δ (measured: modules −5 · shells −14, beacon 85→66; zero body edits — all 44 moves R100) | ● |
-| 5 | features I: upload · membership · status · trust (+ retire `StatusEngineBoundaryTest`) | modules Δ (measured: beacon 66 unchanged — moves only, no module create/delete. Δ-note ①: `LogContext` + `Logger.invocation` seated in `model/` — a global-mutable-state violation-in-transit, forced by bodies-byte-identical + `:domain`'s zero project deps (D2 of `move-features-…`); dissolves at step 8 into the compose/ log decorators (establish-target D4); no gate sees it before 13b. Δ-note ②: only feature-blindness armed here — flow-no-ports stays PENDING until step 8 creates `flow/`, per the gate's own arming contract; this row's original "both arm" wording was imprecise) | ● |
+| 5 | features I: upload · membership · status · trust (+ retire `StatusEngineBoundaryTest`) | modules Δ (measured: beacon 66 unchanged — moves only, no module create/delete. Δ-note ①: `LogContext` + `Logger.invocation` seated in `model/` — a global-mutable-state violation-in-transit, forced by bodies-byte-identical + `:domain`'s zero project deps (D2 of `move-features-…`); dissolves at step 8 into the compose/ log decorators (establish-target D4); no gate sees it before 13b — resolved at step-8 C1 as the `ports/LogScope` seam + `:adapter:ios:ext-safe` global, not compose/ decorators; see the C1 checkpoint note. Δ-note ②: only feature-blindness armed here — flow-no-ports stays PENDING until step 8 creates `flow/`, per the gate's own arming contract; this row's original "both arm" wording was imprecise) | ● |
 | 6 | features II: download · album · creation; delete emptied modules | edges −1 (→0) · modules Δ (measured: beacon 66→55 — edges 1→0 · modules 27→17. Δ-note ①: deletion set is D1's verified-sourceless ten, not the full candidate list — `:domain:gallery`/`:domain:download-store` survive as honest-double + stay-behind-test hosts until step 10; `:capability:upload` keeps the receiver pair for steps 7–8. Δ-note ②: `DeviceManifestProducer` seated in feature/membership (one-writer behind `Enrollment`, D5); `ResourceEnumerator` interim in feature/upload → compose/ at step 7 (D4). Ext-safe interim edges repaid) | ● |
 | 7 | `compose/`: `uploadCore`, then `snapSyncApp` (kills `readGate`×3, roots' uploader copies) | shells Δ (measured: beacon 55→53 — shells 36→34, the two deleted root `readGate` copies each carried a decision; deletion-ledger Enrollment row ×4→×2, distance unchanged — the row dies with the world's copy at step 10. Δ-note ①: the readGate divergence resolved on the extension's port-pure semantics — the controller's per-cycle `ConfigSource`-StateFlow `reload()` dropped, gate outcome provably identical, unlock-hook owns the StateFlow repair; D1 of `establish-shared-composition` — the human-eyes item. Δ-note ②: step-6 D4 repaid — `ResourceEnumerator` seated in `compose/`. Δ-note ③: coordination lambdas, tier selection, and the push fan-out stay shell-supplied by design until step 8; world adopts `uploadCore` additively, full collapse at step 10) | ● |
 | 8 | `flow/` + shell drain + `LaunchDirectives`/`resolveComposition` | shells → ~5 | ○ |
@@ -218,6 +218,37 @@ sealed `resolveComposition` in `model/` (the forge×link bug becomes a unit test
 port-state-transition subscriptions install in `compose/`; flow instances built/decorated there,
 injected into presentation as the command bundle. detekt count 50 → ~5. Flow sequence diagrams go
 live. **Session B before merge; soak after.**
+
+**Split into checkpoints C1/C2/C3 (each its own commit; step 8 is not done until C3 lands):**
+
+- **C1 (landed, b7a22ae):** `LogContext` repaid to `:adapter:ios:ext-safe` behind `:domain`'s
+  `ports/LogScope`; `Logger.invocation(scope, …)` drives an injected `LogScope`; feature ctors take
+  `logScope: LogScope = NoOp`; the `LaunchDirectives` + `CompositionMode`/`resolveComposition`
+  resolver committed to `model/` (not yet consumed by the shell — the switch is C3).
+- **C2 (this checkpoint):** created the `flow/` zone — `Foreground · Background · SilentPush ·
+  DownloadBackstop · Provision`, each importing `model/`+`feature/` only, **ZoneFlowTest armed**
+  (deliberate-red proven: a planted `ports/` import fails it). Flows built in `compose/` (`AppCore`);
+  the five shell entry points are thin log-wrapped delegators (`app.<flow>.run(…)`), forge guards +
+  entry-point wraps + platform observers kept shell-local. `UploadPushReceiver` → `feature/upload`;
+  `FanOutPushReceiver` **dissolved** into `SilentPush`'s fan-out (over `List<suspend (String)->Unit>`,
+  since a flow may not name the `PushReceiver` port). **`:capability:upload` deleted** (module-set
+  distance 17→16; no `targetModules` edit — it was never listed). Permission-grant subscriptions moved
+  to `AppCore.init`. debug.log byte-preserved (no feature-body `log.invocation` stripped; all shell
+  entry-point wraps retained over `IosLogScope`). Beacon: 53→48; no law increased; shells 34→30 —
+  the four drained shell methods (`provisionEvent`/`refreshStatusSources`/`startUploadsOnGrant`/
+  `ensureAlbumOnGrant`) left the detekt-flagged set; the retained forge guards and two
+  tier-selection lambdas (dissolving in C3) stay counted. ⚠️ NB: run `detektAppShell` fresh before
+  measuring — the beacon silently reuses a stale `build/reports/detekt/detekt.xml` (this exact trap
+  produced a wrong 52/34 first record of this checkpoint; caught in adversarial review). Flow diagrams regenerated against the (now-thin)
+  `SnapSyncRoot` — the `Flows.kt` generator is still shell-reading (re-pointing it at `flow/` is a
+  transcriber rewrite deferred; hard-gate arming is 13b regardless).
+- **C3 (remaining):** the user-tap command **bundle** (`leave`/`create`/`commitJoin`/`share` + the 6
+  `StatusContainerHost` sites + `EventCreator` interim collapse); the two micro-rule feature sinks
+  (`storeEventNameIfChanged` in `feature/membership`; the album opt-in guard in `AlbumCoordinator`) —
+  C2 left `fetchName` and `ensureAlbumIfOptedIn` as `compose/`-supplied shell-helper lambdas on the
+  `Foreground`/`Provision` flows and the permission subscription; the `resolveComposition` switch
+  (dissolving the tier-selection shell lambdas → the final shell drain to ~5); step-8 OpenSpec ceremony
+  + archive.
 
 ## Step 9 — `:ui` re-homing
 

@@ -15,11 +15,6 @@ on drift; regenerate instead.
 - depends on: `:adapter:generic`, `:domain`
 - interfaces declared (commonMain): —
 
-## `:capability:upload`
-
-- depends on: `:domain`
-- interfaces declared (commonMain): —
-
 ## `:domain`
 
 - depends on: —

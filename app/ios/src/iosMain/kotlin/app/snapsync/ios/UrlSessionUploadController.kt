@@ -22,7 +22,7 @@ import app.snapsync.feature.upload.BackgroundUploadPump
 import app.snapsync.ports.CycleResult
 import app.snapsync.feature.upload.UploadCycle
 import app.snapsync.ports.SuppressionSource
-import app.snapsync.upload.UploadPushReceiver
+import app.snapsync.feature.upload.UploadPushReceiver
 import app.snapsync.feature.upload.UploadProducer
 import app.snapsync.logging.IosLogScope
 import app.snapsync.logging.invocation
@@ -33,7 +33,7 @@ import kotlinx.coroutines.launch
 
 /**
  * The app-driven (iOS 18–26.0) upload tier's composition root — the app-process analogue of
- * `UploadExtensionRoot`, but driving the shared `:capability:upload` `UploadCycle` over a background
+ * `UploadExtensionRoot`, but driving the shared `:domain` `feature/upload` `UploadCycle` over a background
  * `URLSession` instead of the PhotoKit OS-job queue. Assembled by [SnapSyncRoot] when
  * `backgroundUploadSupported()` is false (or the dev force flag is set). On this tier the **app is the
  * single `LedgerWriter`** — there is no extension process, so the cross-process single-writer concern
@@ -208,7 +208,7 @@ class UrlSessionUploadController(
 
     // ---- the UploadProducer seam (capability `upload-lifecycle`) ----
     // The lifecycle DECISION — which verb on which transition — lives in the tested `UploadArm`
-    // (`:capability:upload`). This class supplies only this tier's MECHANISM.
+    // (`:domain` `feature/upload`). This class supplies only this tier's MECHANISM.
 
     /**
      * Begin/resume uploading: sweep staging temp files orphaned by a prior killed process, **arm the

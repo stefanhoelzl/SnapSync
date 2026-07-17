@@ -21,7 +21,6 @@ kotlin {
             // The relocated, JVM-covered upload orchestration (UploadCycle + the BackgroundTransfer seam
             // + UploadConfig). The extension-safe iOS adapters implement its seams and
             // UploadExtensionRoot composes its UploadCycle.
-            implementation(project(":capability:upload"))
             // The extension framework's contents are decided by linkage (migration step 4): the
             // extension-safe iOS adapters (:adapter:ios:ext-safe — the discovery walk + cursor store,
             // the ledger/download-store native drivers, the Keychain config/attest/device-id/album

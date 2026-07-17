@@ -20,6 +20,12 @@ import app.snapsync.feature.status.SyncStatusSource
 import app.snapsync.feature.trust.DeviceAttestation
 import app.snapsync.feature.upload.UploadArm
 import app.snapsync.feature.upload.UploadProducer
+import app.snapsync.flow.Background
+import app.snapsync.flow.DownloadBackstop
+import app.snapsync.flow.Foreground
+import app.snapsync.flow.Provision
+import app.snapsync.flow.SilentPush
+import app.snapsync.model.Contribution
 import app.snapsync.model.EventConfig
 import app.snapsync.model.PermissionStatus
 import app.snapsync.ports.AlbumManager
@@ -91,6 +97,28 @@ class AppPorts(
     val notifyLeave: suspend (eventId: String) -> Unit,
     val provision: suspend (EventConfig) -> Unit,
     val onEventMinted: suspend (eventId: String) -> Unit,
+    // ── Shell/platform effect lambdas the `flow/` triggers coordinate over (migration step 8) ──
+    // Each is a port/platform touch a flow may not make directly (law "flow/ never references ports/"):
+    // the shell supplies it here and `compose/` passes it to the flow. All default to inert for the
+    // world harness / tests, which drive the features directly and never mount a flow.
+    /** Renew the attestation token if stale — a wake point (`device-attestation`). */
+    val refreshAttestation: () -> Unit = {},
+    /** Run [work] now if protected data is readable, else defer under the tag until unlock
+     *  (`ios-app-shell`). The default runs immediately (no locked-container concept off-device). */
+    val protectedDataGate: (tag: String, work: () -> Unit) -> Unit = { _, work -> work() },
+    /** Pump the app-driven upload tier on foreground; a no-op on iOS ≥26.1 (`ios-url-session-upload`). */
+    val pumpForeground: () -> Unit = {},
+    /** Stop listening for the cross-process liveness ding (a `CFNotificationCenter` deregistration). */
+    val unregisterLiveness: () -> Unit = {},
+    /** Queue the download import-tail backstop `BGProcessingTask` (`photo-download` 5.4). */
+    val scheduleBackstop: () -> Unit = {},
+    /** Best-effort event-name fetch by id — a shell helper until the rule sinks into a feature (C3). */
+    val fetchName: suspend (eventId: String) -> Unit = {},
+    /** Create the event album if the current membership opted in — a shell helper until C3. */
+    val ensureAlbumIfOptedIn: suspend () -> Unit = {},
+    /** The upload arm's silent-push receiver on the app-driven tier, or `null` on iOS ≥26.1. A thunk so
+     *  the tier controller (which depends on this graph) resolves lazily, never at composition time. */
+    val uploadSilentPush: () -> (suspend (eventId: String) -> Unit)? = { null },
     val log: Logger,
     /** The ambient-context seam the tier-neutral features drive so their device-log lines carry the
      *  triggering entry point's `[<name>]` prefix (capability `diagnostic-logging`). The app shell
@@ -246,6 +274,98 @@ class AppCore internal constructor(
             onMinted = ports.onEventMinted,
             scope = scope,
         )
+    }
+
+    // Re-read the own-device gallery total (enumeration, downloads suppressed), the ledger counts
+    // (completed + in-flight), and the foreign download line (capability `sync-status`). No membership
+    // → nothing to count; a download-only membership counts 0 too — the source's decision from the
+    // Contribution, not a branch here (the roots pass facts, never branches).
+    suspend fun refreshStatusSources() {
+        ports.configSource.config.value?.let { cfg ->
+            gallery.refresh(Contribution.of(cfg.direction.includesUpload, cfg.minPhotoDate))
+        }
+        ledgerCounts.refresh()
+        downloadStatusSource.refresh() // the "downloaded X of Y" line (capability `photo-download`)
+    }
+
+    // ── The OS-callback trigger flows (spec `module-architecture`, "Rules in features, order in
+    // flows"; migration step 8). Each is built here — features referenced directly, port/platform
+    // touches injected from [ports] — and the shell entry points delegate to them. ────────────────
+
+    val foregroundFlow: Foreground by lazy {
+        Foreground(
+            scope = scope,
+            downloadController = downloadController,
+            pumpForeground = ports.pumpForeground,
+            refreshStatus = { refreshStatusSources() },
+            activeEventId = { ports.configSource.config.value?.eventId },
+            fetchName = ports.fetchName,
+            refreshAttestation = ports.refreshAttestation,
+        )
+    }
+
+    val backgroundFlow: Background by lazy {
+        Background(unregisterLiveness = ports.unregisterLiveness, scheduleBackstop = ports.scheduleBackstop)
+    }
+
+    val silentPushFlow: SilentPush by lazy {
+        SilentPush(
+            scope = scope,
+            protectedDataGate = ports.protectedDataGate,
+            refreshAttestation = ports.refreshAttestation,
+            // Download arm first, then the upload arm on the app-driven tier (order preserved from the
+            // former FanOutPushReceiver). The upload receiver is a thunk so the tier controller resolves
+            // lazily; on iOS ≥26.1 it is null and only the download arm is woken.
+            receivers = buildList {
+                add(downloadPushReceiver::onSilentPush)
+                ports.uploadSilentPush()?.let { add(it) }
+            },
+        )
+    }
+
+    val downloadBackstopFlow: DownloadBackstop by lazy {
+        DownloadBackstop(
+            scope = scope,
+            downloadController = downloadController,
+            protectedDataGate = ports.protectedDataGate,
+            refreshAttestation = ports.refreshAttestation,
+        )
+    }
+
+    val provisionFlow: Provision by lazy {
+        Provision(
+            scope = scope,
+            uploadArm = uploadArm,
+            downloadController = downloadController,
+            activeEventId = { ports.configSource.config.value?.eventId },
+            notifyLeave = ports.notifyLeave,
+            saveConfig = { cfg -> ports.configStore.save(cfg) },
+            refreshStatus = { refreshStatusSources() },
+            isGranted = { ports.photoAccess.permission.value == PermissionStatus.GRANTED },
+            ensureAlbumIfOptedIn = ports.ensureAlbumIfOptedIn,
+            fetchName = ports.fetchName,
+        )
+    }
+
+    init {
+        // ── Port-state-transition subscriptions (migration step 8): installed here in `compose/`, over
+        // the compose scope. Forge-safe: the forged path never constructs [AppCore], so no live
+        // collector starts. Two independent collectors on the permission StateFlow, matching the shell's
+        // former `startUploadsOnGrant` + `ensureAlbumOnGrant`. Both fire only on a *transition* to
+        // GRANTED (a StateFlow conflates an unchanged value), so neither can rescue a membership
+        // provisioned while access was already granted — the provision flow owns that case.
+        scope.launch {
+            ports.photoAccess.permission.collect { status ->
+                if (status == PermissionStatus.GRANTED) uploadArm.onPermissionGranted()
+            }
+        }
+        scope.launch {
+            ports.photoAccess.permission.collect { status ->
+                // The app is the sole album creator, and sync needs the same grant, so the album exists
+                // before the first synced photo — both processes then only ADD (capability `event-album`).
+                if (status == PermissionStatus.GRANTED) ports.ensureAlbumIfOptedIn()
+            }
+        }
     }
 }
 

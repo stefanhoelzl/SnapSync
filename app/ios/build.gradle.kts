@@ -34,7 +34,6 @@ kotlin {
             implementation(project(":adapter:ios:app-only"))
             // The app-driven (iOS 18–26.0) upload tier's shared UploadCycle/pump/scheduler seam,
             // composed in the main app process on <26.1.
-            implementation(project(":capability:upload"))
             implementation(project(":capability:attest"))
             // Push-notification registration + receive seams (capability `push-registration`): the
             // AppDelegate feeds the OS-delivered APNs token in, the collector PUTs devices/<id>/config.

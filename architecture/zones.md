@@ -16,7 +16,6 @@ flowchart LR
   subgraph capability
     capability_attest[":capability:attest"]
     capability_push[":capability:push"]
-    capability_upload[":capability:upload"]
   end
   subgraph domain
     domain[":domain"]
@@ -36,7 +35,6 @@ flowchart LR
   capability_attest --> domain
   capability_push --> adapter_generic
   capability_push --> domain
-  capability_upload --> domain
   domain_download_store --> adapter_generic
   domain_download_store --> domain
   domain_engine --> adapter_generic

@@ -1,6 +1,5 @@
-package app.snapsync.upload
+package app.snapsync.feature.upload
 
-import app.snapsync.feature.upload.BackgroundUploadPump
 import app.snapsync.ports.PushReceiver
 import co.touchlab.kermit.Logger
 
@@ -30,10 +29,12 @@ import co.touchlab.kermit.Logger
  * (leave is local-only, capability `leave-event`) and which therefore keeps pushing this device. A push
  * arriving with **no** event configured is likewise a no-op.
  *
- * The decision lives here, in a tested capability, rather than in the composition root — which the project's
+ * The decision lives here, in a tested feature, rather than in the composition root — which the project's
  * hard rule declares wiring-only and untested, and which is exactly where the upload arm's *previous*
  * direction gate lived when it let a download-only membership upload a member's whole camera roll
- * (capability `upload-lifecycle`).
+ * (capability `upload-lifecycle`). The cross-arm fan-out that used to sit beside this class
+ * (`FanOutPushReceiver`) is now the `flow/SilentPush` flow (migration step 8): a push fanned to each arm's
+ * receiver is the silent-push trigger's coordination, not a receiver's own job.
  */
 class UploadPushReceiver(
     private val activeEventId: () -> String?,
@@ -48,29 +49,5 @@ class UploadPushReceiver(
         }
         log.i { "silent push for active event $eventId — pumping an upload cycle" }
         pump.onSilentPush()
-    }
-}
-
-/**
- * Fans one silent push out to every arm's receiver (capability `push-registration`).
- *
- * A push means "the event changed" — which is news to **both** arms: foreign photos to pull, and (since the
- * event is demonstrably live) a good moment to contribute our own. The composition root composes the arms
- * rather than either receiver knowing about the other, so `:capability:upload` and `:capability:download`
- * stay unaware of each other and each keeps its own guard.
- *
- * Each receiver is **isolated**: one failing or throwing must not rob the others of the wake. They run in
- * sequence, not concurrently — the push budget is short and the arms both touch the ledger/store, so
- * serialising is both cheaper and safer than racing them.
- */
-class FanOutPushReceiver(
-    private val receivers: List<PushReceiver>,
-    private val log: Logger = Logger.withTag("FanOutPushReceiver"),
-) : PushReceiver {
-    override suspend fun onSilentPush(eventId: String) {
-        for (receiver in receivers) {
-            runCatching { receiver.onSilentPush(eventId) }
-                .onFailure { log.w(it) { "a push receiver failed for $eventId; the others still run" } }
-        }
     }
 }
