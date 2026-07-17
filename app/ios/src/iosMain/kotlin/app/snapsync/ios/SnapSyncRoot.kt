@@ -4,15 +4,15 @@ import app.snapsync.model.EventConfig
 import app.snapsync.config.KeychainConfigStore
 import app.snapsync.eventcreation.CreateEvent
 import app.snapsync.eventcreation.EventCreator
-import app.snapsync.eventcreation.HttpEventCreationClient
+import app.snapsync.eventcreation.HttpEventCreation
 import app.snapsync.eventcreation.MutableCreationStatusSource
 import app.snapsync.attest.DeviceAttestation
 import app.snapsync.attest.HttpAttestClient
 import app.snapsync.attest.IosAttestKey
 import app.snapsync.attest.KeychainAttestStore
 import app.snapsync.ports.EventDetails
-import app.snapsync.join.HttpDeviceManifestUploader
-import app.snapsync.join.HttpEventDetailsSource
+import app.snapsync.join.HttpEnrollment
+import app.snapsync.join.HttpEventDirectory
 import app.snapsync.join.JoinEvent
 import app.snapsync.join.JoinOutcome
 import app.snapsync.join.ManifestDeviceEnroller
@@ -48,8 +48,8 @@ import app.snapsync.downloadstore.SqlDelightDownloadStore
 import app.snapsync.downloadstore.iosDownloadStore
 import platform.Foundation.NSFileManager
 import app.snapsync.engine.LEDGER_APP_GROUP
-import app.snapsync.model.LedgerBackend
-import app.snapsync.engine.iosLedgerBackend
+import app.snapsync.model.LedgerStore
+import app.snapsync.engine.iosLedgerStore
 import app.snapsync.status.LedgerBackedSyncStatusSource
 import app.snapsync.status.LedgerCounts
 import app.snapsync.status.OwnDeviceGalleryStatusSource
@@ -293,7 +293,7 @@ object SnapSyncRoot {
     // on extension disable (recover jobs the disable wiped, capability `ios-background-upload`). No
     // per-key record writes and no `LedgerWriter` — the extension stays the sole record writer. WAL
     // permits the concurrent cross-process read.
-    private val ledgerBackend: LedgerBackend by lazy { iosLedgerBackend() }
+    private val ledgerBackend: LedgerStore by lazy { iosLedgerStore() }
 
     // Own-device completeness AND in-flight, both from one consistent ledger `aggregates()` read
     // (capability `sync-status`). Read-only; on any failure the last good counts are retained (never
@@ -392,8 +392,8 @@ object SnapSyncRoot {
 
     // The ONE GET /events/:id client (capability `join-event`): the join gate's details fetch and the
     // best-effort scan-path/foreground name refresh both read through it.
-    private val detailsSource: HttpEventDetailsSource by lazy {
-        HttpEventDetailsSource(http, backendHost)
+    private val detailsSource: HttpEventDirectory by lazy {
+        HttpEventDirectory(http, backendHost)
     }
 
     // --- Push notifications (capability `push-registration`) ---
@@ -433,7 +433,7 @@ object SnapSyncRoot {
 
     private val eventCreator: EventCreator by lazy {
         CreateEvent(
-            client = HttpEventCreationClient(http, backendHost),
+            client = HttpEventCreation(http, backendHost),
             status = creationStatus,
             // Route the minted event into the SAME join gate a scan uses (capability `photo-selection-policy`):
             // the creator loads the event, picks a capture-date cutoff, and confirms like any joiner.
@@ -451,7 +451,7 @@ object SnapSyncRoot {
             configSource = config,
             deviceId = { deviceId },
             details = detailsSource,
-            enroller = ManifestDeviceEnroller(HttpDeviceManifestUploader(http, backendHost)),
+            enroller = ManifestDeviceEnroller(HttpEnrollment(http, backendHost)),
             provision = ::provisionEvent,
         )
     }

@@ -8,7 +8,7 @@ import app.snapsync.ports.CreateResult
 import app.snapsync.ports.Discovery
 import app.snapsync.ports.PlatformJobState
 import app.snapsync.ports.PlatformUploadJob
-import app.snapsync.ports.UploadJobPlatform
+import app.snapsync.ports.BackgroundTransfer
 import app.snapsync.logging.invocation
 import co.touchlab.kermit.Logger
 import kotlinx.cinterop.ExperimentalForeignApi
@@ -29,7 +29,7 @@ import platform.darwin.NSObject
 import kotlin.coroutines.resume
 
 /**
- * The app-driven (iOS 18–26.0) implementation of the `:capability:upload` [UploadJobPlatform] seam,
+ * The app-driven (iOS 18–26.0) implementation of the `:capability:upload` [BackgroundTransfer] seam,
  * backed by a **background `URLSession`** — the OS-owned durable queue the PhotoKit tier gets for free,
  * reimplemented in the app process. `UploadCycle` runs unchanged over it; only the job lifecycle
  * differs, mapped to `URLSession` semantics (see the change `add-url-session-upload`):
@@ -69,7 +69,7 @@ class IosUrlSessionUploadPlatform(
     // Fired after each task reaches a terminal state — the composition root wires this to the pump's
     // `onUploadCompleted` (a slot just freed → top up).
     private val onTerminal: () -> Unit,
-) : UploadJobPlatform {
+) : BackgroundTransfer {
 
     /** Set by the composition root: invoked from the background-session relaunch delegate callback. */
     var onBackgroundEventsFinished: (() -> Unit)? = null

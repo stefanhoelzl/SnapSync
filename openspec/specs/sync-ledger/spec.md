@@ -20,7 +20,7 @@ The **Lifecycle transitions never clear the ledger** requirement was added in
 `changes/archive/2026-07-12-fix-app-driven-upload-lifecycle`.
 ## Requirements
 ### Requirement: Storage seam — dumb row store
-The ledger SHALL access storage exclusively through a `LedgerBackend` interface with the row
+The ledger SHALL access storage exclusively through a `LedgerStore` interface with the row
 operations `get(key): LedgerEntry?` and `put(entry)` (a single-row upsert), the aggregate read
 `aggregates(): LedgerAggregates`, a change signal `changes: Flow<Unit>`, `clear()` — a
 delete-all reset, `resetTo(entries)` — an **atomic** delete-all-then-insert-all replacement, and two
@@ -75,7 +75,7 @@ valid, set by the caller), so the ledger remains a dumb, platform-neutral row st
 - **THEN** every subsequent `get` returns null and a `changes` signal is emitted
 
 ### Requirement: Aggregate reads
-`LedgerBackend.aggregates()` SHALL answer `LedgerAggregates(pending, completed)` computed in one
+`LedgerStore.aggregates()` SHALL answer `LedgerAggregates(pending, completed)` computed in one
 snapshot-consistent read, grouped by `assetId` (a photo): `completed` = count of assets whose rows
 are ALL `COMPLETED`, `pending` = count of assets with at least one non-`COMPLETED` row. The counts
 are PHOTOS (assets), not resource rows. The aggregate carries no timestamp. `LedgerAggregates` SHALL
@@ -95,7 +95,7 @@ have value equality.
 
 ### Requirement: Change signal
 
-`LedgerBackend.changes` SHALL emit `Unit` after every successful `put`. A ding carries no payload and
+`LedgerStore.changes` SHALL emit `Unit` after every successful `put`. A ding carries no payload and
 promises nothing beyond "re-read the truth" — consumers MUST treat it as a level trigger (conflation,
 duplicate dings, and signals missed while busy are all safe because every re-read queries current state).
 The signal is **in-process only**: the ledger is the extension's private upload memory and has no
@@ -116,10 +116,10 @@ no app-process observer to merge. The seam itself does not change.
 
 The ledger SHALL expose a concrete shared `LedgerWriter` carrying both the record operations and the
 per-key query (`entry(key): LedgerEntry?`). Record and query semantics SHALL be implemented once in
-this shared class, delegating storage to the injected `LedgerBackend`. There SHALL be no separate
+this shared class, delegating storage to the injected `LedgerStore`. There SHALL be no separate
 reader type: the writer is constructed only by the composition root that owns the engine (one per
 platform), and components that must not record are simply never handed a writer — app-side read
-access goes through `LedgerBackend`'s read operations (`aggregates()`, per `sync-status`), never
+access goes through `LedgerStore`'s read operations (`aggregates()`, per `sync-status`), never
 through a writer instance.
 
 #### Scenario: Writer reads what it wrote
@@ -131,7 +131,7 @@ through a writer instance.
 
 - **WHEN** a component is composed without receiving the root's `LedgerWriter`
 - **THEN** it has no record operation available — it can read the ledger only through
-  `LedgerBackend`'s read operations
+  `LedgerStore`'s read operations
 
 ### Requirement: Record operations
 `LedgerWriter` SHALL provide `recordRequested`, `recordCompleted`, and `recordFailed`. Each SHALL
@@ -159,7 +159,7 @@ identical arguments SHALL converge on assetId, state, and attempt.
 - **THEN** `entry(key)` has the same assetId, state, and attempt as after one application
 
 ### Requirement: SQLDelight backend
-A SQLDelight-backed `LedgerBackend` SHALL be provided in `:domain:engine` commonMain (SQLDelight
+A SQLDelight-backed `LedgerStore` SHALL be provided in `:domain:engine` commonMain (SQLDelight
 package `app.snapsync.engine.db`) with the schema
 `key TEXT PRIMARY KEY, assetId TEXT NOT NULL, state TEXT NOT NULL, attempt INTEGER NOT NULL`
 plus an index on `assetId` (backing `deleteByAssetId` and the `assetId`-grouped aggregate). `state`
@@ -219,12 +219,12 @@ preserving the single-writer invariant.
 
 #### Scenario: Prune is absent from the non-writer surface
 
-- **WHEN** a component holds the ledger only as a `LedgerBackend` reader (no writer)
+- **WHEN** a component holds the ledger only as a `LedgerStore` reader (no writer)
 - **THEN** neither `deleteByAssetId` nor `retainAssets` is part of its sanctioned surface — prune
   reaches the backend only through the root-constructed `LedgerWriter`
 
 ### Requirement: Prune operations hold on the SQLDelight backend
-The SQLDelight-backed `LedgerBackend` SHALL implement `deleteByAssetId` and `retainAssets`.
+The SQLDelight-backed `LedgerStore` SHALL implement `deleteByAssetId` and `retainAssets`.
 `deleteByAssetId` SHALL be an indexed `DELETE … WHERE assetId = ?`. `retainAssets` SHALL delete
 the complement of the supplied set without relying on an unbounded SQL `IN`/`NOT IN` parameter
 list (so a multi-thousand-asset library does not exceed the driver's bind-variable limit) — e.g.
@@ -244,7 +244,7 @@ sqlite driver via the shared backend contract.
 
 ### Requirement: Pending-resource read
 
-`LedgerBackend` SHALL expose a read of the non-`COMPLETED` rows as `(assetId, key)` pairs (the
+`LedgerStore` SHALL expose a read of the non-`COMPLETED` rows as `(assetId, key)` pairs (the
 backlog), so a status projection can group outstanding resources by photo without materializing the
 whole table. The read SHALL return exactly the rows whose `state` is not `COMPLETED` and SHALL
 interpret nothing else (the backend remains a dumb row store). On the SQLDelight backend it SHALL be
@@ -264,7 +264,7 @@ a single query (`SELECT assetId, key FROM ledgerRow WHERE state != 'COMPLETED'`)
 
 ### Requirement: Atomic baseline reset
 
-`LedgerBackend.resetTo(entries)` SHALL replace the entire store with `entries` in a single atomic
+`LedgerStore.resetTo(entries)` SHALL replace the entire store with `entries` in a single atomic
 transaction: either all prior rows are removed and all `entries` inserted, or — on failure or
 interruption — the store is left unchanged (no partial replacement is ever observable). It SHALL emit
 exactly one `changes` signal on success. Entries are stored verbatim (the caller supplies `state`);
@@ -314,14 +314,14 @@ device-global per-device listing) without any ledger key change.
 
 ### Requirement: Requested-state reset
 
-`LedgerBackend` SHALL provide `clearRequested()`: a bulk delete of **every row whose state is
+`LedgerStore` SHALL provide `clearRequested()`: a bulk delete of **every row whose state is
 `REQUESTED`**, leaving `COMPLETED` and `FAILED` rows untouched. It SHALL emit exactly one `changes`
 signal on success (like `clear`/`resetTo`). On the SQLDelight backend it SHALL be a single indexed-by
 -state `DELETE … WHERE state = 'REQUESTED'`.
 
 `clearRequested` is an **app-side reset-family** operation — in the same family as `clear()` and
 `resetTo()`, **not** one of the writer-only prunes (`deleteByAssetId`/`retainAssets`). It SHALL be
-callable on the `LedgerBackend` **without** a `LedgerWriter`, so a non-writer holder of the backend may
+callable on the `LedgerStore` **without** a `LedgerWriter`, so a non-writer holder of the backend may
 invoke it without breaching the **single-record-writer invariant** (exactly one holder records per-key
 upload facts; *which process* holds that writer is a platform binding, not a ledger concern).
 
@@ -375,7 +375,7 @@ reconciliation against the authoritative per-device listing (`event-rejoin-recon
 storage may diverge only at a (re)join, and reconciliation — not a lifecycle wipe — is what closes that
 divergence.
 
-`clear()` SHALL remain on the `LedgerBackend` seam (it is the semantic basis of `resetTo` and is used
+`clear()` SHALL remain on the `LedgerStore` seam (it is the semantic basis of `resetTo` and is used
 by test and harness backends), but it SHALL have no membership-lifecycle caller.
 
 #### Scenario: Leaving an event preserves every ledger row

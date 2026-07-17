@@ -2,8 +2,8 @@ package app.snapsync.status
 
 import app.snapsync.model.Resource
 import app.snapsync.model.Contribution
-import app.snapsync.ports.GalleryResourceEnumerator
-import app.snapsync.gallery.InMemoryGalleryResourceEnumerator
+import app.snapsync.ports.PhotoLibrary
+import app.snapsync.gallery.InMemoryPhotoLibrary
 import app.snapsync.model.MEDIA_TYPE_IMAGE
 import app.snapsync.model.RESOURCE_META_CREATION_DATE
 import app.snapsync.model.RESOURCE_META_MEDIA_SUBTYPES
@@ -26,8 +26,8 @@ class OwnDeviceGalleryStatusSourceTest {
 
     /** Records whether the walk happened at all — "counted 0" and "never looked" are different claims. */
     private class RecordingEnumerator(
-        private val delegate: GalleryResourceEnumerator,
-    ) : GalleryResourceEnumerator {
+        private val delegate: PhotoLibrary,
+    ) : PhotoLibrary {
         var walks = 0
         override suspend fun enumerate(since: String): List<Resource> {
             walks++
@@ -46,7 +46,7 @@ class OwnDeviceGalleryStatusSourceTest {
     @Test
     fun `a non-contributing membership totals zero without walking the library`() = runTest {
         val enumerator = RecordingEnumerator(
-            InMemoryGalleryResourceEnumerator(
+            InMemoryPhotoLibrary(
                 listOf(resource("A-primary.jpg", "A"), resource("B-primary.jpg", "B")),
             ),
         )
@@ -65,7 +65,7 @@ class OwnDeviceGalleryStatusSourceTest {
         // The control: None is not a blanket off-switch, it is one branch. Since must behave exactly as the
         // bare cutoff did before, or this change quietly broke every normal member's progress.
         val enumerator = RecordingEnumerator(
-            InMemoryGalleryResourceEnumerator(
+            InMemoryPhotoLibrary(
                 listOf(resource("A-primary.jpg", "A"), resource("B-primary.jpg", "B")),
             ),
         )
@@ -112,7 +112,7 @@ class OwnDeviceGalleryStatusSourceTest {
         // policy. If it counted the screenshot the cycle refuses to upload, N would be 3 while only 2 could
         // ever complete — and the joined screen would sit at "pending" forever. That is the whole reason
         // this rule is a requirement rather than an implementation detail.
-        val enumerator = InMemoryGalleryResourceEnumerator(
+        val enumerator = InMemoryPhotoLibrary(
             listOf(
                 originResource("cam-primary.heic", "CAM"),
                 originResource("shot-primary.png", "SHOT", subtypes = SUBTYPE_SCREENSHOT),
@@ -128,7 +128,7 @@ class OwnDeviceGalleryStatusSourceTest {
 
     @Test
     fun `a denylisted album member does not inflate the total`() = runTest {
-        val enumerator = InMemoryGalleryResourceEnumerator(
+        val enumerator = InMemoryPhotoLibrary(
             listOf(originResource("cam.heic", "CAM"), originResource("wa.heic", "WA")),
         )
         val source = OwnDeviceGalleryStatusSource(enumerator, albumExcludedAssetIds = { setOf("WA") })
@@ -140,7 +140,7 @@ class OwnDeviceGalleryStatusSourceTest {
 
     @Test
     fun `size counts own qualifying assets by photo`() = runTest {
-        val enumerator = InMemoryGalleryResourceEnumerator(
+        val enumerator = InMemoryPhotoLibrary(
             listOf(
                 resource("A-primary.jpg", "A"),
                 resource("A-live.mov", "A"), // A is a Live Photo: two resources, one photo
@@ -158,7 +158,7 @@ class OwnDeviceGalleryStatusSourceTest {
     fun `downloaded suppressed assets are excluded from the upload total`() = runTest {
         // B is a foreign photo this device downloaded + imported (suppressed). It is in the library
         // (enumerated) but must NOT count toward the upload universe — else progress pegs below 100%.
-        val enumerator = InMemoryGalleryResourceEnumerator(
+        val enumerator = InMemoryPhotoLibrary(
             listOf(
                 resource("A-primary.jpg", "A"), // own
                 resource("B-primary.jpg", "B"), // downloaded foreign (suppressed)
@@ -173,7 +173,7 @@ class OwnDeviceGalleryStatusSourceTest {
 
     @Test
     fun `refresh recomputes after the library changes`() = runTest {
-        val enumerator = InMemoryGalleryResourceEnumerator(listOf(resource("A-primary.jpg", "A")))
+        val enumerator = InMemoryPhotoLibrary(listOf(resource("A-primary.jpg", "A")))
         val source = OwnDeviceGalleryStatusSource(enumerator)
         source.refresh(Contribution.Since(CUTOFF))
         assertEquals(1, source.size.value)
@@ -187,7 +187,7 @@ class OwnDeviceGalleryStatusSourceTest {
     fun `pre-cutoff assets are excluded from the total so progress can reach 100 percent`() = runTest {
         // OLD precedes the cutoff → never uploads → must not inflate N (else the screen shows "pending"
         // forever). NEW is at/after the cutoff → counted (capability photo-selection-policy).
-        val enumerator = InMemoryGalleryResourceEnumerator(
+        val enumerator = InMemoryPhotoLibrary(
             listOf(
                 datedResource("OLD-primary.jpg", "OLD", "2026-07-01T00:00:00Z"),
                 datedResource("NEW-primary.jpg", "NEW", "2026-07-10T00:00:00Z"),
@@ -202,7 +202,7 @@ class OwnDeviceGalleryStatusSourceTest {
 
     @Test
     fun `an undated asset is excluded under a cutoff`() = runTest {
-        val enumerator = InMemoryGalleryResourceEnumerator(listOf(undatedResource("U-primary.jpg", "U")))
+        val enumerator = InMemoryPhotoLibrary(listOf(undatedResource("U-primary.jpg", "U")))
         val source = OwnDeviceGalleryStatusSource(enumerator)
 
         source.refresh(Contribution.Since(CUTOFF))

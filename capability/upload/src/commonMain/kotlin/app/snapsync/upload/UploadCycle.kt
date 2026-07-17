@@ -6,7 +6,7 @@ import app.snapsync.ports.Discovery
 import app.snapsync.ports.DiscoveryStore
 import app.snapsync.ports.PlatformJobState
 import app.snapsync.ports.PlatformUploadJob
-import app.snapsync.ports.UploadJobPlatform
+import app.snapsync.ports.BackgroundTransfer
 
 import app.snapsync.model.LedgerState
 import app.snapsync.model.LedgerWriter
@@ -28,7 +28,7 @@ import kotlinx.coroutines.withTimeout
  * One background-upload cycle, platform-free: adjudicate the system's returned jobs (completion +
  * retry), then discover new/changed resources and create jobs — all gated by the [engine]. This is
  * the testable core: it depends only on the [engine], the [ledger] (to reconstruct lifecycle jobs
- * and to prune rows for deleted assets), the [UploadJobPlatform] port, and the [DiscoveryStore]
+ * and to prune rows for deleted assets), the [BackgroundTransfer] port, and the [DiscoveryStore]
  * cursor, so a fake platform + a real engine exercise the whole flow on the simulator without
  * touching PhotoKit.
  *
@@ -64,7 +64,7 @@ class UploadCycle(
     // host arrives with the gate, not at construction. Called once, after the gate says Run.
     private val engineFor: (UploadConfig) -> SyncEngine,
     private val ledger: LedgerWriter,
-    private val platform: UploadJobPlatform,
+    private val platform: BackgroundTransfer,
     private val store: DiscoveryStore,
     // Re-join reconciliation (capability `event-rejoin-reconciliation`): the marker-gated seed that makes
     // already-stored resources `COMPLETED` before the producer runs, so a re-joined / switched /

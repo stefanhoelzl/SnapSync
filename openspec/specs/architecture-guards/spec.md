@@ -29,9 +29,7 @@ property true of the whole app.
 
 Decision record: `changes/archive/2026-07-14-fix-locked-device-keychain-access`. Runtime-identity
 pins and the pending zone gates: `changes/archive/2026-07-17-pin-runtime-identity-and-zone-gates`.
-
 ## Requirements
-
 ### Requirement: Architecture guards are executable and gate the build
 
 The project SHALL enforce, mechanically, structural invariants that the compiler cannot express. The
@@ -98,8 +96,6 @@ while presenting as a security improvement.
 #### Scenario: The current entitlements pass
 - **WHEN** neither entitlements file sets the key at all, so both containers inherit the iOS default
 - **THEN** the guard passes
-
-
 
 ### Requirement: The event-link domain agrees across the app and the backend
 
@@ -205,7 +201,7 @@ next reader and re-introducing the bug.
 
 The invariant it holds is `sync-status`'s: status was freed from the ledger by `ledger-free-status`, and
 nothing structural keeps it free. Engine **is** on status's compile classpath — `:domain:gallery`
-`api`-exports it, because `GalleryResourceEnumerator.enumerate()` returns `List<Resource>` — so a status
+`api`-exports it, because `PhotoLibrary.enumerate()` returns `List<Resource>` — so a status
 file importing `LedgerWriter` compiles today. Verified by probe, not assumed. The dependency graph cannot
 express this rule while gallery's public API returns an engine type, which is exactly the case
 `architecture-guards` exists for.
@@ -224,7 +220,7 @@ for the ledger looks like.
 - **THEN** the guard fails and names the file
 
 #### Scenario: A fully-qualified engine reference is caught too
-- **WHEN** a file under `:domain:status` writes `app.snapsync.engine.LedgerBackend` without importing it
+- **WHEN** a file under `:domain:status` writes `app.snapsync.engine.LedgerStore` without importing it
 - **THEN** the guard fails — it reads source text, not the import list
 
 #### Scenario: Consuming the enumeration seam is not a violation
@@ -432,3 +428,4 @@ the text gates, not by `buildHealth` (no upstream iOS-target support).
 #### Scenario: A declared-and-never-imported edge
 - **WHEN** a jvm/common module declares a project dependency no source references
 - **THEN** `buildHealth` reports it in the job summary
+

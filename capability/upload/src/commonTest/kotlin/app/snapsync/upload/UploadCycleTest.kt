@@ -6,7 +6,7 @@ import app.snapsync.ports.Discovery
 import app.snapsync.ports.DiscoveryStore
 import app.snapsync.ports.PlatformJobState
 import app.snapsync.ports.PlatformUploadJob
-import app.snapsync.ports.UploadJobPlatform
+import app.snapsync.ports.BackgroundTransfer
 
 import app.snapsync.model.LedgerEntry
 import app.snapsync.model.LedgerState
@@ -68,7 +68,7 @@ class UploadCycleTest {
         private val failCreate: Boolean = false,
         private val removedAssetIds: List<String> = emptyList(),
         private val fullEnumeration: Boolean = false,
-    ) : UploadJobPlatform {
+    ) : BackgroundTransfer {
         val created = mutableListOf<Resource>()
         val retried = mutableListOf<PlatformUploadJob>()
         val acknowledged = mutableListOf<PlatformUploadJob>()
@@ -127,7 +127,7 @@ class UploadCycleTest {
      * the entry-gate tests below.
      */
     private fun cycle(
-        backend: InMemoryLedgerBackend,
+        backend: InMemoryLedgerStore,
         platform: FakePlatform,
         store: DiscoveryStore = FakeStore(),
         contribution: Contribution = Contribution.Since(TEST_CUTOFF),
@@ -162,7 +162,7 @@ class UploadCycleTest {
     }
 
     private fun cycleOver(
-        backend: InMemoryLedgerBackend,
+        backend: InMemoryLedgerStore,
         platform: FakePlatform,
         store: DiscoveryStore = FakeStore(),
     ): UploadCycle = cycle(backend, platform, store)
@@ -175,7 +175,7 @@ class UploadCycleTest {
 
     @Test
     fun an_unreadable_membership_touches_nothing() = runTest {
-        val backend = InMemoryLedgerBackend()
+        val backend = InMemoryLedgerStore()
         // A cursor that must not advance, and a library full of admissible work: the ONLY reason nothing
         // happens is that the membership could not be read.
         val store = FakeStore(token = "cursor-before".encodeToByteArray())
@@ -203,7 +203,7 @@ class UploadCycleTest {
     // the persisted joinedEventId marker, and an unreadable config must never reach it.
     @Test
     fun an_unreadable_membership_never_reaches_the_leave_side_reconcile() = runTest {
-        val backend = InMemoryLedgerBackend()
+        val backend = InMemoryLedgerStore()
         var reconciledWith: List<String?> = emptyList()
 
         cycle(
@@ -217,7 +217,7 @@ class UploadCycleTest {
 
     @Test
     fun a_definitively_absent_membership_reconciles_the_leave_side_and_uploads_nothing() = runTest {
-        val backend = InMemoryLedgerBackend()
+        val backend = InMemoryLedgerStore()
         val platform = FakePlatform(discovered = listOf(resource("A-primary.heic")))
         var reconciledWith: List<String?> = listOf("unset")
 
@@ -235,7 +235,7 @@ class UploadCycleTest {
     @Test
     fun a_failing_leave_side_reconcile_still_completes_cleanly() = runTest {
         val result = cycle(
-            InMemoryLedgerBackend(), FakePlatform(), FakeStore(),
+            InMemoryLedgerStore(), FakePlatform(), FakeStore(),
             readGate = { CycleGate.NotJoined },
             reconcile = { error("marker clear boom") },
         ).run()
@@ -247,7 +247,7 @@ class UploadCycleTest {
     fun the_gate_is_re_read_every_cycle_so_a_leave_takes_effect_without_a_relaunch() = runTest {
         // The cycle is long-lived: a tier whose process survives across cycles must see a membership
         // change on the next run, not on the next launch.
-        val backend = InMemoryLedgerBackend()
+        val backend = InMemoryLedgerStore()
         val platform = FakePlatform(discovered = listOf(resource("A-primary.heic")))
         var joined = true
 
@@ -283,7 +283,7 @@ class UploadCycleTest {
 
     /** Builds a cycle for a membership that contributes nothing, recording anything it dares to do. */
     private fun decliningCycle(
-        backend: InMemoryLedgerBackend,
+        backend: InMemoryLedgerStore,
         platform: FakePlatform,
         store: DiscoveryStore,
         order: MutableList<String> = mutableListOf(),
@@ -306,7 +306,7 @@ class UploadCycleTest {
         )
         val order = mutableListOf<String>()
 
-        val result = decliningCycle(InMemoryLedgerBackend(), platform, store, order).run()
+        val result = decliningCycle(InMemoryLedgerStore(), platform, store, order).run()
 
         assertEquals(CycleResult.SKIPPED, result, "declined, and distinguishable from a drained cycle")
         assertTrue(platform.created.isEmpty(), "no upload job for a membership that contributes nothing")
@@ -327,7 +327,7 @@ class UploadCycleTest {
         val platform = FakePlatform(discovered = listOf(resource("a")))
         val order = mutableListOf<String>()
 
-        decliningCycle(InMemoryLedgerBackend(), platform, store, order).run()
+        decliningCycle(InMemoryLedgerStore(), platform, store, order).run()
 
         assertEquals(emptyList(), order, "nothing runs — not even the reconcile")
         assertNull(platform.discoverSinceArg, "the library is never enumerated")
@@ -339,7 +339,7 @@ class UploadCycleTest {
         val store = FakeStore()
         val platform = FakePlatform(discovered = listOf(resource("a")))
 
-        decliningCycle(InMemoryLedgerBackend(), platform, store).run()
+        decliningCycle(InMemoryLedgerStore(), platform, store).run()
 
         assertNull(store.saved, "the cursor must not advance")
         assertTrue(!store.cleared, "nor be cleared — this membership's state is untouched, not reset")
@@ -352,7 +352,7 @@ class UploadCycleTest {
 
     /** Builds a cycle whose reconcile gate is [gate], recording call order into [order]. */
     private fun gatedCycle(
-        backend: InMemoryLedgerBackend,
+        backend: InMemoryLedgerStore,
         platform: FakePlatform,
         store: DiscoveryStore = FakeStore(),
         order: MutableList<String> = mutableListOf(),
@@ -367,7 +367,7 @@ class UploadCycleTest {
     fun reconcile_runs_before_any_upload_job_is_created() = runTest {
         val order = mutableListOf<String>()
         val platform = FakePlatform(discovered = listOf(resource("a")))
-        val cycle = gatedCycle(InMemoryLedgerBackend(), platform, order = order) { true }
+        val cycle = gatedCycle(InMemoryLedgerStore(), platform, order = order) { true }
 
         assertEquals(CycleResult.COMPLETED, cycle.run())
 
@@ -383,7 +383,7 @@ class UploadCycleTest {
             ackJobs = listOf(platformJob("b-primary.heic", PlatformJobState.SUCCEEDED)),
         )
         // A failed/timed-out device listing: the reconciler returns false rather than seeding.
-        val cycle = gatedCycle(InMemoryLedgerBackend(), platform, store) { false }
+        val cycle = gatedCycle(InMemoryLedgerStore(), platform, store) { false }
 
         // COMPLETED, never FAILED: a deferral is a clean no-op so the tier's scheduler simply retries.
         assertEquals(CycleResult.COMPLETED, cycle.run())
@@ -398,7 +398,7 @@ class UploadCycleTest {
     @Test
     fun a_throwing_reconcile_defers_rather_than_failing_the_cycle() = runTest {
         val platform = FakePlatform(discovered = listOf(resource("a")))
-        val cycle = gatedCycle(InMemoryLedgerBackend(), platform) { error("listing boom") }
+        val cycle = gatedCycle(InMemoryLedgerStore(), platform) { error("listing boom") }
 
         // The roots previously wrapped reconcile in their own runCatching; moving the gate into the cycle
         // must not turn a throwing reconcile into a FAILED cycle.
@@ -408,7 +408,7 @@ class UploadCycleTest {
 
     @Test
     fun discovery_creates_a_job_per_new_resource_and_records_requested_after_create() = runTest {
-        val backend = InMemoryLedgerBackend()
+        val backend = InMemoryLedgerStore()
         val platform = FakePlatform(discovered = listOf(resource("a"), resource("b")))
         val store = FakeStore()
 
@@ -423,7 +423,7 @@ class UploadCycleTest {
 
     @Test
     fun discovery_skips_in_flight_and_completed_resources() = runTest {
-        val backend = InMemoryLedgerBackend()
+        val backend = InMemoryLedgerStore()
         LedgerWriter(backend).recordRequested("a", assetId = "a", attempt = 0) // in flight
         LedgerWriter(backend).recordCompleted("b", assetId = "b", attempt = 0) // done
         val platform = FakePlatform(discovered = listOf(resource("a"), resource("b")))
@@ -437,7 +437,7 @@ class UploadCycleTest {
     fun discovery_does_not_re_upload_a_completed_key() = runTest {
         // Uploaded resources are immutable: a COMPLETED key is never re-uploaded, even when the same
         // asset is re-discovered (e.g. after a metadata-only change).
-        val backend = InMemoryLedgerBackend()
+        val backend = InMemoryLedgerStore()
         LedgerWriter(backend).recordCompleted("a", assetId = "a", attempt = 0)
         val platform = FakePlatform(discovered = listOf(resource("a")))
 
@@ -450,7 +450,7 @@ class UploadCycleTest {
     fun suppressed_downloaded_assets_create_no_job_and_are_pruned_from_retain() = runTest {
         // FOREIGN is an asset this device downloaded + imported (in the suppression set). A stale
         // COMPLETED row stands in for a pre-suppression echo; it must be pruned and never re-uploaded.
-        val backend = InMemoryLedgerBackend()
+        val backend = InMemoryLedgerStore()
         LedgerWriter(backend).recordCompleted("FOREIGN-primary.heic", assetId = "FOREIGN", attempt = 0)
         val platform = FakePlatform(
             discovered = listOf(resource("FOREIGN-primary.heic", "FOREIGN"), resource("MINE-primary.heic", "MINE")),
@@ -469,7 +469,7 @@ class UploadCycleTest {
         // Both sides normalize the raw PHAsset localIdentifier '/'→'_': discovery via the gallery
         // enumerator's `normalizeAssetId`, the download importer before storing `createdLocalId`. A raw
         // id "ABC/L0/001" must therefore suppress as "ABC_L0_001" — the §7.6 load-bearing contract.
-        val backend = InMemoryLedgerBackend()
+        val backend = InMemoryLedgerStore()
         val normalized = normalizeAssetId("ABC/L0/001") // "ABC_L0_001" — the discovery-side transform
         val platform = FakePlatform(discovered = listOf(resource("$normalized-primary.heic", normalized)))
         val cycle = cycle(
@@ -485,7 +485,7 @@ class UploadCycleTest {
 
     @Test
     fun discovery_passes_the_loaded_cursor_to_the_platform() = runTest {
-        val backend = InMemoryLedgerBackend()
+        val backend = InMemoryLedgerStore()
         val platform = FakePlatform()
         val store = FakeStore(token = byteArrayOf(7))
 
@@ -496,7 +496,7 @@ class UploadCycleTest {
 
     @Test
     fun succeeded_job_records_completed_and_is_acknowledged() = runTest {
-        val backend = InMemoryLedgerBackend()
+        val backend = InMemoryLedgerStore()
         LedgerWriter(backend).recordRequested("a", assetId = "a", attempt = 0)
         val job = platformJob("a", PlatformJobState.SUCCEEDED)
         val platform = FakePlatform(ackJobs = listOf(job))
@@ -513,7 +513,7 @@ class UploadCycleTest {
         // The ledger row was pruned (a mid-upload deletion, or a full-enumeration retain) before the OS
         // handed back the succeeded job — so there is no entry. reconstruct must derive the assetId from
         // the key, not write a phantom assetId="" COMPLETED row (the §7.2 bug).
-        val backend = InMemoryLedgerBackend()
+        val backend = InMemoryLedgerStore()
         val job = platformJob("L-primary.jpg", PlatformJobState.SUCCEEDED)
         val platform = FakePlatform(ackJobs = listOf(job))
 
@@ -529,7 +529,7 @@ class UploadCycleTest {
     fun a_blank_key_succeeded_job_is_acknowledged_but_records_no_row() = runTest {
         // An unrecoverable key (e.g. a malformed destination URL) must never produce a phantom row, but
         // the job is still acknowledged (an un-acknowledged presented job errors the system 50008).
-        val backend = InMemoryLedgerBackend()
+        val backend = InMemoryLedgerStore()
         val job = platformJob("", PlatformJobState.SUCCEEDED)
         val platform = FakePlatform(ackJobs = listOf(job))
 
@@ -541,7 +541,7 @@ class UploadCycleTest {
 
     @Test
     fun first_failure_retries_with_a_fresh_url_and_records_requested() = runTest {
-        val backend = InMemoryLedgerBackend()
+        val backend = InMemoryLedgerStore()
         LedgerWriter(backend).recordRequested("a", assetId = "a", attempt = 0)
         val job = platformJob("a", PlatformJobState.FAILED, UploadError.Network)
         val platform = FakePlatform(retryJobs = listOf(job))
@@ -557,7 +557,7 @@ class UploadCycleTest {
 
     @Test
     fun retry_spent_failure_re_creates_from_the_job_resource_and_is_acknowledged() = runTest {
-        val backend = InMemoryLedgerBackend()
+        val backend = InMemoryLedgerStore()
         LedgerWriter(backend).recordRequested("a", assetId = "a", attempt = 0)
         val job = platformJob("a", PlatformJobState.FAILED, UploadError.Network)
         val platform = FakePlatform(ackJobs = listOf(job))
@@ -573,7 +573,7 @@ class UploadCycleTest {
 
     @Test
     fun create_failure_records_no_requested_and_does_not_cap() = runTest {
-        val backend = InMemoryLedgerBackend()
+        val backend = InMemoryLedgerStore()
         val platform = FakePlatform(discovered = listOf(resource("a")), failCreate = true)
         val store = FakeStore()
 
@@ -586,7 +586,7 @@ class UploadCycleTest {
 
     @Test
     fun already_completed_re_handed_job_is_a_noop_acknowledge() = runTest {
-        val backend = InMemoryLedgerBackend()
+        val backend = InMemoryLedgerStore()
         LedgerWriter(backend).recordCompleted("a", assetId = "a", attempt = 0)
         val job = platformJob("a", PlatformJobState.FAILED, UploadError.Network)
         val platform = FakePlatform(ackJobs = listOf(job))
@@ -600,7 +600,7 @@ class UploadCycleTest {
 
     @Test
     fun cap_during_discovery_does_not_advance_the_cursor_and_returns_processing() = runTest {
-        val backend = InMemoryLedgerBackend()
+        val backend = InMemoryLedgerStore()
         val platform = FakePlatform(
             discovered = listOf(resource("a"), resource("b"), resource("c")),
             limitAfter = 2,
@@ -616,7 +616,7 @@ class UploadCycleTest {
 
     @Test
     fun removed_asset_rows_are_pruned_incrementally_by_assetId() = runTest {
-        val backend = InMemoryLedgerBackend()
+        val backend = InMemoryLedgerStore()
         LedgerWriter(backend).recordCompleted("A_1-photo.jpg", assetId = "A_1", attempt = 0)
         LedgerWriter(backend).recordRequested("A_1-video.mov", assetId = "A_1", attempt = 0)
         LedgerWriter(backend).recordCompleted("B-photo.jpg", assetId = "B", attempt = 0)
@@ -631,7 +631,7 @@ class UploadCycleTest {
 
     @Test
     fun mid_upload_deletion_clears_the_stuck_pending_row() = runTest {
-        val backend = InMemoryLedgerBackend()
+        val backend = InMemoryLedgerStore()
         // A photo deleted before its upload finished: a REQUESTED row discovery never revisits.
         LedgerWriter(backend).recordRequested("gone-photo.jpg", assetId = "gone", attempt = 0)
         assertEquals(1, backend.aggregates().pending)
@@ -646,7 +646,7 @@ class UploadCycleTest {
 
     @Test
     fun full_enumeration_reconciles_the_ledger_against_the_live_library() = runTest {
-        val backend = InMemoryLedgerBackend()
+        val backend = InMemoryLedgerStore()
         LedgerWriter(backend).recordCompleted("old-photo.jpg", assetId = "old", attempt = 0) // absent now
         val platform = FakePlatform(discovered = listOf(resource("a-photo.jpg")), fullEnumeration = true)
         val store = FakeStore()
@@ -660,7 +660,7 @@ class UploadCycleTest {
 
     @Test
     fun reconcile_is_skipped_on_a_cap_truncated_full_enumeration() = runTest {
-        val backend = InMemoryLedgerBackend()
+        val backend = InMemoryLedgerStore()
         LedgerWriter(backend).recordCompleted("old-photo.jpg", assetId = "old", attempt = 0)
         val platform = FakePlatform(
             discovered = listOf(resource("a-photo.jpg"), resource("b-photo.jpg")),
@@ -678,7 +678,7 @@ class UploadCycleTest {
 
     @Test
     fun reconcile_does_not_run_on_an_incremental_cycle() = runTest {
-        val backend = InMemoryLedgerBackend()
+        val backend = InMemoryLedgerStore()
         LedgerWriter(backend).recordCompleted("untouched-photo.jpg", assetId = "untouched", attempt = 0)
         // Incremental (fullEnumeration = false): `discovered` is only the changed subset, never the
         // live asset set, so retainAssets must NOT run or it would wipe everything not just-changed.
@@ -691,7 +691,7 @@ class UploadCycleTest {
 
     @Test
     fun pruned_then_rediscovered_asset_is_uploaded_fresh() = runTest {
-        val backend = InMemoryLedgerBackend()
+        val backend = InMemoryLedgerStore()
         // Was uploaded, then deleted (pruned), then recovered from "Recently Deleted" (re-appears).
         LedgerWriter(backend).recordCompleted("x-photo.jpg", assetId = "x", attempt = 0)
         val platform = FakePlatform(
@@ -708,7 +708,7 @@ class UploadCycleTest {
 
     @Test
     fun cap_during_re_create_still_acknowledges_and_returns_processing() = runTest {
-        val backend = InMemoryLedgerBackend()
+        val backend = InMemoryLedgerStore()
         LedgerWriter(backend).recordRequested("a", assetId = "a", attempt = 0)
         val job = platformJob("a", PlatformJobState.FAILED, UploadError.Network)
         val platform = FakePlatform(ackJobs = listOf(job), limitAfter = 0)
@@ -726,7 +726,7 @@ class UploadCycleTest {
 
     /** Build a cycle recording the order its best-effort hooks fire, so the manifest→notify order is asserted. */
     private fun cycleWithHooks(
-        backend: InMemoryLedgerBackend,
+        backend: InMemoryLedgerStore,
         platform: FakePlatform,
         order: MutableList<String>,
         store: DiscoveryStore = FakeStore(),
@@ -742,7 +742,7 @@ class UploadCycleTest {
 
     @Test
     fun drained_cycle_with_a_completion_notifies_once_after_the_manifest_write() = runTest {
-        val backend = InMemoryLedgerBackend()
+        val backend = InMemoryLedgerStore()
         // A succeeded job (a real completion) and nothing new to discover → drains COMPLETED.
         val platform = FakePlatform(ackJobs = listOf(platformJob("a-primary.jpg", PlatformJobState.SUCCEEDED)))
         val order = mutableListOf<String>()
@@ -755,7 +755,7 @@ class UploadCycleTest {
 
     @Test
     fun cap_truncated_cycle_does_not_notify_even_with_a_completion() = runTest {
-        val backend = InMemoryLedgerBackend()
+        val backend = InMemoryLedgerStore()
         // A completion in Phase 2, but Phase 3 discovery hits the cap → PROCESSING before the notify point.
         val platform = FakePlatform(
             ackJobs = listOf(platformJob("done-primary.jpg", PlatformJobState.SUCCEEDED)),
@@ -772,7 +772,7 @@ class UploadCycleTest {
 
     @Test
     fun drained_cycle_with_no_completion_does_not_notify() = runTest {
-        val backend = InMemoryLedgerBackend()
+        val backend = InMemoryLedgerStore()
         // New work discovered and created, but nothing COMPLETED this cycle.
         val platform = FakePlatform(discovered = listOf(resource("a")))
         val order = mutableListOf<String>()
@@ -785,7 +785,7 @@ class UploadCycleTest {
 
     @Test
     fun a_throwing_notify_does_not_fail_the_cycle() = runTest {
-        val backend = InMemoryLedgerBackend()
+        val backend = InMemoryLedgerStore()
         val platform = FakePlatform(ackJobs = listOf(platformJob("a-primary.jpg", PlatformJobState.SUCCEEDED)))
         val store = FakeStore()
         val order = mutableListOf<String>()
@@ -799,7 +799,7 @@ class UploadCycleTest {
 
     @Test
     fun a_duplicate_succeeded_on_an_already_completed_key_does_not_notify() = runTest {
-        val backend = InMemoryLedgerBackend()
+        val backend = InMemoryLedgerStore()
         // The key is already COMPLETED; the OS re-hands a SUCCEEDED job (at-least-once delivery). This
         // duplicate is not new work — it must not fire a spurious notify.
         LedgerWriter(backend).recordCompleted("a-primary.jpg", assetId = "a", attempt = 0)
@@ -814,7 +814,7 @@ class UploadCycleTest {
 
     @Test
     fun a_pure_re_ack_failed_job_on_a_completed_key_does_not_notify() = runTest {
-        val backend = InMemoryLedgerBackend()
+        val backend = InMemoryLedgerStore()
         LedgerWriter(backend).recordCompleted("a-primary.jpg", assetId = "a", attempt = 0)
         // A FAILED job whose key is already COMPLETED → the re-ack arm (no UploadCompleted, no count).
         val platform = FakePlatform(
@@ -837,14 +837,14 @@ class UploadCycleTest {
         )
 
     private fun cycleWithCutoff(
-        backend: InMemoryLedgerBackend,
+        backend: InMemoryLedgerStore,
         platform: FakePlatform,
         cutoff: String,
     ): UploadCycle = cycle(backend, platform, contribution = Contribution.Since(cutoff))
 
     @Test
     fun cutoff_excludes_pre_cutoff_resources_from_upload() = runTest {
-        val backend = InMemoryLedgerBackend()
+        val backend = InMemoryLedgerStore()
         val platform = FakePlatform(
             discovered = listOf(
                 datedResource("old-primary.jpg", "2026-07-01T00:00:00Z", "old"),
@@ -860,7 +860,7 @@ class UploadCycleTest {
 
     @Test
     fun cutoff_applies_on_the_incremental_walk_too() = runTest {
-        val backend = InMemoryLedgerBackend()
+        val backend = InMemoryLedgerStore()
         val platform = FakePlatform(
             discovered = listOf(datedResource("old-primary.jpg", "2026-07-01T00:00:00Z", "old")),
             fullEnumeration = false,
@@ -875,7 +875,7 @@ class UploadCycleTest {
     fun the_cutoff_is_passed_to_the_platform_as_a_walk_bound() = runTest {
         // The cutoff scopes the platform's own fetch, so a full enumeration does not walk the whole
         // library (capability `photo-selection-policy`). The cycle's filter below stays authoritative.
-        val backend = InMemoryLedgerBackend()
+        val backend = InMemoryLedgerStore()
         val platform = FakePlatform(discovered = emptyList())
 
         cycleWithCutoff(backend, platform, "2026-07-06T14:32:11Z").run()
@@ -887,7 +887,7 @@ class UploadCycleTest {
     fun a_pre_cutoff_resource_is_dropped_even_when_the_platform_over_returns_it() = runTest {
         // The platform's date predicate is deliberately widened, so it MAY hand back assets before the
         // cutoff. The cycle's filter is what makes that safe — the admitted set must be unchanged.
-        val backend = InMemoryLedgerBackend()
+        val backend = InMemoryLedgerStore()
         val platform = FakePlatform(
             discovered = listOf(datedResource("old-primary.jpg", "2000-01-01T00:00:00Z", "old")),
         )
@@ -899,7 +899,7 @@ class UploadCycleTest {
 
     @Test
     fun an_undated_asset_is_excluded_under_a_cutoff() = runTest {
-        val backend = InMemoryLedgerBackend()
+        val backend = InMemoryLedgerStore()
         // No creationDate metadata → empty string, which sorts before any non-empty cutoff.
         val platform = FakePlatform(discovered = listOf(resource("undated-primary.jpg", "undated")))
 
@@ -938,7 +938,7 @@ class UploadCycleTest {
 
     /** A cycle with an album-exclusion port, and a manifest hook recording what the manifest actually saw. */
     private fun originCycle(
-        backend: InMemoryLedgerBackend,
+        backend: InMemoryLedgerStore,
         platform: FakePlatform,
         albumExcluded: Set<String> = emptySet(),
         manifestSaw: MutableList<String> = mutableListOf(),
@@ -950,7 +950,7 @@ class UploadCycleTest {
 
     @Test
     fun a_screenshot_never_reaches_the_engine() = runTest {
-        val backend = InMemoryLedgerBackend()
+        val backend = InMemoryLedgerStore()
         val platform = FakePlatform(
             discovered = listOf(
                 originResource("shot-primary.png", "shot", subtypes = SUBTYPE_SCREENSHOT),
@@ -974,7 +974,7 @@ class UploadCycleTest {
             ),
         )
 
-        originCycle(InMemoryLedgerBackend(), platform).run()
+        originCycle(InMemoryLedgerStore(), platform).run()
 
         assertEquals(listOf("cam.heic"), platform.created.map { it.filename })
     }
@@ -990,7 +990,7 @@ class UploadCycleTest {
             ),
         )
 
-        originCycle(InMemoryLedgerBackend(), platform).run()
+        originCycle(InMemoryLedgerStore(), platform).run()
 
         assertEquals(listOf("clip.mov"), platform.created.map { it.filename }, "the 1080p recording survives")
     }
@@ -1002,7 +1002,7 @@ class UploadCycleTest {
             discovered = listOf(originResource("crop.heic", "crop", width = 1000, height = 800, adjusted = true)),
         )
 
-        originCycle(InMemoryLedgerBackend(), platform).run()
+        originCycle(InMemoryLedgerStore(), platform).run()
 
         assertEquals(listOf("crop.heic"), platform.created.map { it.filename })
     }
@@ -1013,7 +1013,7 @@ class UploadCycleTest {
             discovered = listOf(originResource("wa.heic", "wa"), originResource("cam.heic", "cam")),
         )
 
-        originCycle(InMemoryLedgerBackend(), platform, albumExcluded = setOf("wa")).run()
+        originCycle(InMemoryLedgerStore(), platform, albumExcluded = setOf("wa")).run()
 
         assertEquals(listOf("cam.heic"), platform.created.map { it.filename })
     }
@@ -1025,7 +1025,7 @@ class UploadCycleTest {
             fullEnumeration = false,
         )
 
-        originCycle(InMemoryLedgerBackend(), platform).run()
+        originCycle(InMemoryLedgerStore(), platform).run()
 
         assertTrue(platform.created.isEmpty(), "excluded on the incremental walk exactly as on a full one")
     }
@@ -1045,7 +1045,7 @@ class UploadCycleTest {
             fullEnumeration = true,
         )
 
-        originCycle(InMemoryLedgerBackend(), platform, albumExcluded = setOf("wa"), manifestSaw = manifestSaw).run()
+        originCycle(InMemoryLedgerStore(), platform, albumExcluded = setOf("wa"), manifestSaw = manifestSaw).run()
 
         assertEquals(listOf("cam.heic"), manifestSaw, "the manifest sees only the admitted set")
     }
@@ -1065,7 +1065,7 @@ class UploadCycleTest {
             fullEnumeration = true,
         )
 
-        originCycle(InMemoryLedgerBackend(), platform, manifestSaw = manifestSaw).run()
+        originCycle(InMemoryLedgerStore(), platform, manifestSaw = manifestSaw).run()
 
         assertEquals(listOf("old.heic"), manifestSaw, "pre-cutoff stays in the accumulator; the screenshot does not")
         assertTrue(platform.created.isEmpty(), "…and neither is uploaded")
@@ -1076,7 +1076,7 @@ class UploadCycleTest {
         // The free retroactive cleanup: a previously-uploaded screenshot loses its ledger row the next time
         // a full enumeration runs (token expiry, re-join, reinstall), so it drops out of device.json and
         // leaves the event union. Its bytes stay in storage — no object is ever deleted.
-        val backend = InMemoryLedgerBackend()
+        val backend = InMemoryLedgerStore()
         backend.put(LedgerEntry(key = "shot.png", assetId = "shot", state = LedgerState.COMPLETED, attempt = 0))
         val platform = FakePlatform(
             discovered = listOf(

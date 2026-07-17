@@ -39,7 +39,7 @@ decoder.
 The control panel SHALL provide display-override presets in labeled groups plus behavior controls,
 all mutating harness state exclusively through a single `PanelController` (which holds the stand-in
 permission, config, sync, creation, download, attestation, and pending-join cells and implements the
-stand-in sources, the fake `PermissionRequester`, and the no-op `EventCreator`); composables MUST NOT
+stand-in sources, the fake `PhotoAccessRequester`, and the no-op `EventCreator`); composables MUST NOT
 mutate harness state inline. Display overrides remain outside any scenario/command system. The
 `PanelController` reads no clock — no sync or permission preset forges a timestamp (the joined layer
 renders no relative time).
@@ -67,7 +67,7 @@ renders no relative time).
   download arrow (capability `photo-download`). No preset forges a `SyncHealth` value directly — each
   forges the underlying `SyncStatus`/counts and lets the real reduction derive the mood.
 - **Armed request outcome** — a control choosing whether the next `request()` resolves to `GRANTED`
-  or `DENIED`; the fake `PermissionRequester.request()` writes the armed outcome into the permission
+  or `DENIED`; the fake `PhotoAccessRequester.request()` writes the armed outcome into the permission
   cell, and its `openSettings()` only logs.
 
 The panel MUST NOT display a "current permission" readout — the phone frame already shows the truth.

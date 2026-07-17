@@ -16,8 +16,8 @@ import kotlinx.serialization.json.jsonPrimitive
 /**
  * The Ktor `MockEngine` mini-edge (capability `harness-world-model`): a routing `HttpClient` that
  * answers the app-side metadata calls off the [store], so the REAL common-Ktor seams
- * (`HttpDeviceFilesSource`, `HttpEventUnionSource`, `HttpEventCreationClient`, and the world's
- * `HttpDeviceManifestUploader`) run unmodified against it. It generalizes the repo's existing
+ * (`HttpDeviceFilesSource`, `HttpEventUnionSource`, `HttpEventCreation`, and the world's
+ * `HttpEnrollment`) run unmodified against it. It generalizes the repo's existing
  * single-response `MockEngine` test pattern (`HttpEventUnionSourceTest`) into a **route table**
  * dispatching on method + path:
  *

@@ -3,7 +3,7 @@ package app.snapsync.membership
 import app.snapsync.ports.DeviceFilesSource
 import app.snapsync.ports.JoinedEventMarker
 
-import app.snapsync.model.LedgerBackend
+import app.snapsync.model.LedgerStore
 import app.snapsync.model.LedgerEntry
 import app.snapsync.model.LedgerState
 import app.snapsync.model.assetIdFromUploadKey
@@ -54,7 +54,7 @@ private const val DEVICE_LIST_TIMEOUT_MS = 30_000L
  */
 class ExtensionReconciler(
     private val files: DeviceFilesSource,
-    private val ledger: LedgerBackend,
+    private val ledger: LedgerStore,
     private val marker: JoinedEventMarker,
     private val deviceId: String,
     private val clearDiscoveryCursor: suspend () -> Unit,

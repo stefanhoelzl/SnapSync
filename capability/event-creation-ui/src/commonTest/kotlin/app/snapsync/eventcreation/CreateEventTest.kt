@@ -1,7 +1,7 @@
 package app.snapsync.eventcreation
 
 import app.snapsync.ports.CreateOutcome
-import app.snapsync.ports.EventCreationClient
+import app.snapsync.ports.EventCreation
 
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -19,7 +19,7 @@ class CreateEventTest {
     /** The event's start date, already canonical — the caller converts the local pick, not this layer. */
     private val startsAt = "2026-07-14T18:00:00Z"
 
-    private class FakeClient(private val outcome: CreateOutcome) : EventCreationClient {
+    private class FakeClient(private val outcome: CreateOutcome) : EventCreation {
         var lastName: String? = null
         var lastStartsAt: String? = null
         override suspend fun create(name: String, startsAt: String): CreateOutcome {

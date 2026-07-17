@@ -1,13 +1,13 @@
 package app.snapsync.join
 
-import app.snapsync.ports.DeviceManifestUploader
+import app.snapsync.ports.Enrollment
 import app.snapsync.model.deviceManifestFromJson
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 
-private class CapturingUploader(private val result: Boolean = true) : DeviceManifestUploader {
+private class CapturingUploader(private val result: Boolean = true) : Enrollment {
     var lastEventId: String? = null
     var lastDeviceId: String? = null
     var lastJson: String? = null

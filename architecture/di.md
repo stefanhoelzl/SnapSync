@@ -33,16 +33,16 @@ Roots found:
 | `EventNotifier` | | x | x | |
 | `ExtensionReconciler` | | x | x | x |
 | `FakeAlbumManager` | | | | x |
+| `FakeBackgroundTransfer` | | | | x |
 | `FakeDownloadTransport` | | | | x |
 | `FakePhotoLibraryImporter` | | | | x |
-| `FakeUploadJobPlatform` | | | | x |
 | `FanOutPushReceiver` | x | | | |
 | `FileLogWriter` | x | x | | |
 | `HttpAttestClient` | x | | | |
 | `HttpDeviceFilesSource` | | x | x | x |
-| `HttpDeviceManifestUploader` | x | | | x |
-| `HttpEventCreationClient` | x | | | x |
-| `HttpEventDetailsSource` | x | | | |
+| `HttpEnrollment` | x | | | x |
+| `HttpEventCreation` | x | | | x |
+| `HttpEventDirectory` | x | | | |
 | `HttpEventUnionSource` | x | | | x |
 | `HttpLeaveNotifier` | x | | | x |
 | `InMemoryAlbumMapStore` | | | | x |
@@ -56,10 +56,10 @@ Roots found:
 | `IosAttestKey` | x | | | |
 | `IosBackgroundScheduler` | | | x | |
 | `IosDeviceManifestStore` | | x | x | |
-| `IosDeviceManifestUploader` | | x | x | |
 | `IosDiscovery` | | x | x | |
 | `IosDiscoveryStore` | | x | x | |
 | `IosDownloadTransport` | x | | | |
+| `IosEnrollment` | | x | x | |
 | `IosJoinedEventMarker` | | x | x | |
 | `IosPhotoKitUploadPlatform` | | x | | |
 | `IosPhotoLibraryImporter` | x | | | |
@@ -78,7 +78,7 @@ Roots found:
 | `ManifestResource` | | | | x |
 | `MutableAttestedSource` | x | | | |
 | `MutableCreationStatusSource` | x | | | x |
-| `MutablePermissionStatusSource` | | | | x |
+| `MutablePhotoAccessStatusSource` | | | | x |
 | `OwnDeviceGalleryStatusSource` | x | | | x |
 | `PhotoKitUploadProducer` | x | | | |
 | `PhotoLibraryPermission` | x | | | |
@@ -98,4 +98,4 @@ Roots found:
 | `UploadCycle` | | x | x | x |
 | `UploadPushReceiver` | | | x | |
 | `UrlSessionUploadController` | x | | | |
-| `WorldLedgerBackend` | | | | x |
+| `WorldLedgerStore` | | | | x |

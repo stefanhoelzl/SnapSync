@@ -19,7 +19,6 @@ which is what makes testing rule 1 (every unit test also runs on the iOS simulat
 orchestration and not just for pure functions.
 
 Decision record: `changes/archive/2026-07-03-add-harness-world-model`.
-
 ## Requirements
 ### Requirement: Controllable in-memory world module
 
@@ -94,19 +93,19 @@ so the **real** common-Ktor seams run unmodified against it. The mini-edge SHALL
 event marker is absent), `POST /events` (a `201` `{ eventId, name, createdAt }` that registers the
 marker), and `PUT /events/<id>/devices/<id>` (a `200` that deposits the manifest into the store), and
 SHALL answer any unmatched request `404`. The same `HttpClient` SHALL be injected into the real
-`HttpDeviceFilesSource`, `HttpEventUnionSource`, `HttpEventCreationClient`, and the module's common
-`HttpDeviceManifestUploader`, mirroring the extension composition root's single shared client.
+`HttpDeviceFilesSource`, `HttpEventUnionSource`, `HttpEventCreation`, and the module's common
+`HttpEnrollment`, mirroring the extension composition root's single shared client.
 
 #### Scenario: Real seams round-trip against the mini-edge
 
-- **WHEN** the real `HttpDeviceFilesSource`, `HttpEventUnionSource`, and `HttpEventCreationClient` are
+- **WHEN** the real `HttpDeviceFilesSource`, `HttpEventUnionSource`, and `HttpEventCreation` are
   each given the mini-edge client and invoked
 - **THEN** each parses a well-formed response computed from the backend object store (the listing, the
   union, and a minted event id respectively)
 
 #### Scenario: A manifest PUT lands in the store
 
-- **WHEN** the common `HttpDeviceManifestUploader` PUTs a manifest to `/events/<id>/devices/<id>` via the
+- **WHEN** the common `HttpEnrollment` PUTs a manifest to `/events/<id>/devices/<id>` via the
   mini-edge
 - **THEN** the manifest is deposited into the store and subsequently participates in the union
   completeness computation
@@ -119,7 +118,7 @@ SHALL answer any unmatched request `404`. The same `HttpClient` SHALL be injecte
 
 ### Requirement: Operator-driven, inspectable upload-job lifecycle
 
-The world SHALL provide a fake `UploadJobPlatform` that models the OS upload-job lifecycle as an
+The world SHALL provide a fake `BackgroundTransfer` that models the OS upload-job lifecycle as an
 operator-driven, **inspectable** queue implementing all six seam methods (`fetchRetryJobs`,
 `fetchAckJobs`, `retryJob`, `acknowledge`, `discoverResources`, `createJob`). `createJob` SHALL enqueue
 a PENDING job and return `CREATED`, unless a **settable job-limit** is reached (returning
@@ -149,7 +148,7 @@ inspectable so tests assert the lifecycle, not only the final outcome.
 
 ### Requirement: Token-delta discovery feed driven by the in-memory gallery
 
-The world's fake `UploadJobPlatform.discoverResources(sinceToken)` SHALL derive its change feed from the
+The world's fake `BackgroundTransfer.discoverResources(sinceToken)` SHALL derive its change feed from the
 in-memory gallery (`InMemoryRawAssetSource` mapped through the real resource fan-out). Adding an asset
 SHALL surface it as a new `Resource` in `Discovery.resources`; removing an asset SHALL surface its id in
 `Discovery.removedAssetIds`; and an operator **expire-token** action SHALL return
@@ -281,11 +280,11 @@ given world state, mirroring the extension composition root (`UploadExtensionRoo
 upload-cycle path (real `SyncEngine` + `EdgeUploadRequestProvider` + `UploadCycle`, driven by a
 `process()`-shaped runner: reload config → reconcile → build config → run cycle), the reconcile +
 manifest path (real `ExtensionReconciler` over `HttpDeviceFilesSource` + real `DeviceManifestProducer`
-over the common `HttpDeviceManifestUploader`), the download path (real `DownloadController` over
+over the common `HttpEnrollment`), the download path (real `DownloadController` over
 `HttpEventUnionSource`, and the real `QueuedPhotoDownloadJobs` over a fake `DownloadTransport`), the
 ledger-backed status path (real `OwnDeviceGalleryStatusSource` + `LedgerBackedSyncStatusSource` over the
-world's real ledger), and the create-event path (real `CreateEvent` over `HttpEventCreationClient`).
-Only the platform edges (`UploadJobPlatform`, `DownloadTransport`, `PhotoLibraryImporter`), the storage
+world's real ledger), and the create-event path (real `CreateEvent` over `HttpEventCreation`).
+Only the platform edges (`BackgroundTransfer`, `DownloadTransport`, `PhotoLibraryImporter`), the storage
 seams, and the HTTP client SHALL be fakes; everything above them SHALL be the shipped production code.
 
 #### Scenario: The composed upload path exercises the real cycle
@@ -297,8 +296,8 @@ seams, and the HTTP client SHALL be fakes; everything above them SHALL be the sh
 #### Scenario: Production seams are not modified
 
 - **WHEN** the world composes the manifest path
-- **THEN** it uses a common `HttpDeviceManifestUploader` living in `:test:world`, leaving production's
-  `IosDeviceManifestUploader` and the `device-manifest` seam home unchanged
+- **THEN** it uses a common `HttpEnrollment` living in `:test:world`, leaving production's
+  `IosEnrollment` and the `device-manifest` seam home unchanged
 
 ### Requirement: Integration tests assert UiState and world outcomes
 
@@ -373,7 +372,6 @@ in the union but are excluded from notify fan-out. The cascade SHALL be idempote
 
 - **WHEN** a device is departed (its winning sibling is `<deviceId>.left.json`) while the event has other members
 - **THEN** the mini-edge union includes that device's assets and the mini-edge notify fan-out excludes it
-
 
 ### Requirement: The world's event marker carries a start date
 
@@ -452,3 +450,4 @@ omits the state that breaks.
 #### Scenario: An absent membership still drives the leave path
 - **WHEN** the world's membership is cleared and a cycle runs
 - **THEN** the leave-side reconciliation runs and the joined-event marker is cleared
+

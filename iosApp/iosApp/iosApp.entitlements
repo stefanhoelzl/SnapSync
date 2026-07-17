@@ -12,7 +12,7 @@
 		<string>$(AppIdentifierPrefix)app.snapsync.shared</string>
 	</array>
 	<!-- App Group: the shared on-disk container for the ledger DB the background-upload extension
-	     writes and the app reads (iosLedgerBackend). Unlike keychain groups, an App Group MUST be
+	     writes and the app reads (iosLedgerStore). Unlike keychain groups, an App Group MUST be
 	     registered in the Developer portal and enabled on the app.snapsync App ID, or signed builds
 	     fail to provision (see the ios-background-upload change, task 2.x). -->
 	<key>com.apple.security.application-groups</key>

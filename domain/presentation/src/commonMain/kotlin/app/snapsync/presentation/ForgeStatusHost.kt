@@ -5,9 +5,9 @@ import app.snapsync.ports.ConfigStore
 import app.snapsync.model.EventConfig
 import app.snapsync.model.EventLinkPayload
 import app.snapsync.model.encodeEventUrl
-import app.snapsync.ports.PermissionRequester
+import app.snapsync.ports.PhotoAccessRequester
 import app.snapsync.model.PermissionStatus
-import app.snapsync.ports.PermissionStatusSource
+import app.snapsync.ports.PhotoAccessStatusSource
 import app.snapsync.model.SyncProgress
 import app.snapsync.model.SyncStatus
 import app.snapsync.status.SyncStatusSource
@@ -43,8 +43,8 @@ fun forgeStatusHost(state: String, scope: CoroutineScope): StatusContainerHost? 
     val preset = ForgePreset.byId(state) ?: return null
     val host = StatusContainerHost(
         syncSource = ConstSyncStatusSource(preset.sync),
-        permissionSource = ConstPermissionStatusSource(preset.permission),
-        requester = NoOpPermissionRequester,
+        permissionSource = ConstPhotoAccessStatusSource(preset.permission),
+        requester = NoOpPhotoAccessRequester,
         configSource = ConstConfigSource(preset.config),
         store = NoOpConfigStore,
         scope = scope,
@@ -123,7 +123,7 @@ private class ConstSyncStatusSource(status: SyncStatus) : SyncStatusSource {
     override val status = MutableStateFlow(status)
 }
 
-private class ConstPermissionStatusSource(permission: PermissionStatus) : PermissionStatusSource {
+private class ConstPhotoAccessStatusSource(permission: PermissionStatus) : PhotoAccessStatusSource {
     override val permission = MutableStateFlow(permission)
 }
 
@@ -131,7 +131,7 @@ private class ConstConfigSource(config: EventConfig?) : ConfigSource {
     override val config = MutableStateFlow(config)
 }
 
-private object NoOpPermissionRequester : PermissionRequester {
+private object NoOpPhotoAccessRequester : PhotoAccessRequester {
     override fun request() {}
     override fun openSettings() {}
 }

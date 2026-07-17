@@ -19,7 +19,7 @@ Decision record: `changes/archive/2026-06-27-add-event-creation-ui`.
 
 The app-side create capability (`:capability:event-creation-ui`) SHALL define a command port and a
 state port, consumed separately by the presentation container (mirroring the
-`PermissionRequester` / `PermissionStatusSource` split):
+`PhotoAccessRequester` / `PhotoAccessStatusSource` split):
 
 - `EventCreator` (command port): `fun create(name: String, startsAt: String)` — fire-and-forget. It MUST
   NOT return a value and MUST NOT suspend; the outcome arrives exclusively via `CreationStatusSource`.
@@ -267,11 +267,11 @@ The capability's only HTTP surface SHALL be the `POST /events` create client. It
 `GET /events/:id` client of any kind: the create response already returns the event's name and
 `startsAt`, and every details/name fetch — including the scan-path name fill the deleted
 `EventMetadataSource` used to serve — goes through capability `join-event`'s single
-`EventDetailsSource` client (see its "One details client" requirement).
+`EventDirectory` client (see its "One details client" requirement).
 
 #### Scenario: The capability exposes only the create call
 
 - **WHEN** the capability's HTTP clients are inspected
 - **THEN** the only route it calls is `POST /events`, and event details are obtained through
-  `:capability:join`'s `EventDetailsSource`
+  `:capability:join`'s `EventDirectory`
 

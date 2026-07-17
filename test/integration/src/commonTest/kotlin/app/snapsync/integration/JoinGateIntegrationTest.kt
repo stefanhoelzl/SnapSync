@@ -7,12 +7,12 @@ import app.snapsync.model.EventLinkPayload
 import app.snapsync.model.encodeEventUrl
 import app.snapsync.model.DeviceManifest
 import app.snapsync.ports.EventDetails
-import app.snapsync.join.HttpEventDetailsSource
+import app.snapsync.join.HttpEventDirectory
 import app.snapsync.join.JoinEvent
 import app.snapsync.join.JoinOutcome
 import app.snapsync.join.ManifestDeviceEnroller
 import app.snapsync.membership.LeaveEvent
-import app.snapsync.ports.PermissionRequester
+import app.snapsync.ports.PhotoAccessRequester
 import app.snapsync.presentation.JoinLoad
 import app.snapsync.presentation.JoinPhase
 import app.snapsync.presentation.StatusContainerHost
@@ -339,7 +339,7 @@ class JoinGateIntegrationTest {
         val joinEvent = JoinEvent(
             configSource = w.configSource,
             deviceId = { w.ownDeviceId },
-            details = HttpEventDetailsSource(w.client, w.host),
+            details = HttpEventDirectory(w.client, w.host),
             enroller = ManifestDeviceEnroller(w.manifestUploader),
             provision = { cfg -> w.provision(cfg.eventId, cfg.name, cfg.minPhotoDate, cfg.startsAt) },
         )
@@ -368,7 +368,7 @@ class JoinGateIntegrationTest {
         withTimeout(5_000) { container.stateFlow.first(predicate) }
 }
 
-private object NoOpJoinRequester : PermissionRequester {
+private object NoOpJoinRequester : PhotoAccessRequester {
     override fun request() = Unit
     override fun openSettings() = Unit
 }

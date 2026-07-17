@@ -75,7 +75,7 @@ sealed interface JoinPhase {
      * non-null — a details response without a name is a transient failure, not a loaded phase).
      *
      * [startsAt] is the event's **start date** — required, non-null, already a canonical UTC `…Z` string
-     * (`HttpEventDetailsSource` normalizes it and fails the load rather than invent one). It is both the
+     * (`HttpEventDirectory` normalizes it and fails the load rather than invent one). It is both the
      * cutoff row's **default** and its **floor** (capability `photo-selection-policy`): the row cannot be
      * empty, and the confirm cannot join below it, so joining at whole-library scope is unrepresentable.
      *

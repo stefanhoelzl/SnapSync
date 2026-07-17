@@ -1,7 +1,7 @@
 package app.snapsync.join
 
 import app.snapsync.ports.EventDetails
-import app.snapsync.ports.EventDetailsSource
+import app.snapsync.ports.EventDirectory
 
 import app.snapsync.ports.ConfigSource
 import app.snapsync.model.Direction
@@ -26,7 +26,7 @@ enum class JoinOutcome { Committed, AlreadyJoined, EnrollFailed }
 class JoinEvent(
     private val configSource: ConfigSource,
     private val deviceId: () -> String,
-    private val details: EventDetailsSource,
+    private val details: EventDirectory,
     private val enroller: DeviceEnroller,
     private val provision: suspend (EventConfig) -> Unit,
 ) {

@@ -12,7 +12,7 @@ import app.snapsync.model.deviceManifestAssetsFromResources
 import app.snapsync.model.deviceManifestFromJson
 import app.snapsync.model.projectDeviceManifest
 import app.snapsync.ports.DeviceManifestStore
-import app.snapsync.ports.DeviceManifestUploader
+import app.snapsync.ports.Enrollment
 
 import app.snapsync.model.Resource
 import kotlinx.coroutines.test.runTest
@@ -47,7 +47,7 @@ class DeviceManifestProducerTest {
         }
     }
 
-    private class FakeUploader(var ok: Boolean = true) : DeviceManifestUploader {
+    private class FakeUploader(var ok: Boolean = true) : Enrollment {
         val puts = mutableListOf<Triple<String, String, String>>()
         override suspend fun put(eventId: String, deviceId: String, json: String): Boolean {
             puts += Triple(eventId, deviceId, json)

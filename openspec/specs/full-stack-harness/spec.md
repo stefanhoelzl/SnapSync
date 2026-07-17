@@ -109,7 +109,7 @@ because those gallery, ledger-count, and download sources update their `StateFlo
 The inspector SHALL drive `:test:world`'s public control surface through a **single** controller,
 with one named method per control and **no** inline world mutation in composables (mirroring the forge
 harness's `PanelController`). It SHALL cover: **Enrollment** — a 3-state permission segment, an armed
-next-request outcome (the fake `PermissionRequester` resolves `request()` to the armed grant/deny), a
+next-request outcome (the fake `PhotoAccessRequester` resolves `request()` to the armed grant/deny), a
 joined-event-id readout, and Re-provision / Create event / Leave; **Gallery ▏ Backend** side by side —
 editable own-asset rows (add/remove; imported rows badged upload-suppressed via the download store's
 suppressed-id set) and stored objects grouped by device (own plus "+ Inject device" for a foreign
@@ -234,7 +234,7 @@ world can show the empty object store behind it.
 
 #### Scenario: Creating an event supplies a start date through the real client
 - **WHEN** the operator activates Create event
-- **THEN** the real `HttpEventCreationClient` posts a canonical `startsAt` with the name, and the
+- **THEN** the real `HttpEventCreation` posts a canonical `startsAt` with the name, and the
   mini-edge registers a marker carrying it
 
 #### Scenario: A future-start event uploads nothing through the real stack

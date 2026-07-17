@@ -3,17 +3,17 @@ package app.snapsync.world
 import app.snapsync.model.Resource
 import app.snapsync.model.UploadError
 import app.snapsync.model.UploadRequest
-import app.snapsync.ports.GalleryResourceEnumerator
+import app.snapsync.ports.PhotoLibrary
 import app.snapsync.ports.CreateResult
 import app.snapsync.ports.Discovery
 import app.snapsync.ports.DiscoveryStore
 import app.snapsync.ports.PlatformJobState
 import app.snapsync.ports.PlatformUploadJob
-import app.snapsync.ports.UploadJobPlatform
+import app.snapsync.ports.BackgroundTransfer
 
 /**
- * An operator-driven, **inspectable** [UploadJobPlatform] (capability `harness-world-model`): the
- * world's stand-in for the iOS `IosUploadJobPlatform`. It models the OS upload-job lifecycle as a
+ * An operator-driven, **inspectable** [BackgroundTransfer] (capability `harness-world-model`): the
+ * world's stand-in for the iOS `IosBackgroundTransfer`. It models the OS upload-job lifecycle as a
  * queue an operator drives between cycles:
  *
  * - `createJob` enqueues a PENDING job and returns `CREATED`, unless the settable [jobLimit] in-flight
@@ -30,11 +30,11 @@ import app.snapsync.ports.UploadJobPlatform
  * [enumerator]: additions ride in `Discovery.resources`, removals in `removedAssetIds`, and an operator
  * [expireToken] returns `fullEnumeration = true` with the whole current key-set.
  */
-class FakeUploadJobPlatform(
+class FakeBackgroundTransfer(
     private val store: BackendStore,
     private val ownDeviceId: String,
-    private val enumerator: GalleryResourceEnumerator,
-) : UploadJobPlatform {
+    private val enumerator: PhotoLibrary,
+) : BackgroundTransfer {
 
     /** Failure lever: the OS in-flight job cap. `createJob` returns `LIMIT_EXCEEDED` at/above it. */
     var jobLimit: Int = Int.MAX_VALUE

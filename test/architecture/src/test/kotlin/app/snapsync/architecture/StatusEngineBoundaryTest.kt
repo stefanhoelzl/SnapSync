@@ -11,7 +11,7 @@ import kotlin.test.assertTrue as kotlinAssertTrue
  *
  * `ledger-free-status` freed status from the ledger and nothing structural keeps it free. Engine **is** on
  * status's compile classpath and unavoidably so: `:domain:gallery` declares `api(project(":domain:engine"))`
- * — it must, because `GalleryResourceEnumerator.enumerate()` returns `List<Resource>` — and status depends
+ * — it must, because `PhotoLibrary.enumerate()` returns `List<Resource>` — and status depends
  * on gallery, so `api` propagates. A file under `:domain:status` importing `LedgerWriter` compiles today.
  * That is measured, not feared: a probe importing it compiled clean, which is how the spec's old claim
  * ("`:domain:engine` is not on its compile classpath") was found to be false after weeks in the contract.
@@ -21,7 +21,7 @@ import kotlin.test.assertTrue as kotlinAssertTrue
  * such lever for status itself while gallery's public API returns an engine type. Withholding the
  * dependency is not available; reading the source is.
  *
- * Why source text and not imports alone: a fully-qualified `app.snapsync.engine.LedgerBackend` imports
+ * Why source text and not imports alone: a fully-qualified `app.snapsync.engine.LedgerStore` imports
  * nothing. Konsist parses source (PSI), so it sees both forms — the same reason
  * [KeychainContainmentTest] uses it.
  *
@@ -36,7 +36,7 @@ class StatusEngineBoundaryTest {
     /** The module that must stay engine-free in its source, whatever its classpath carries. */
     private val guardedModule = "/domain/status/"
 
-    /** The package no status file may name. `LedgerWriter`, `LedgerBackend`, `Resource` all live under it. */
+    /** The package no status file may name. `LedgerWriter`, `LedgerStore`, `Resource` all live under it. */
     private val forbidden = "app.snapsync.engine"
 
     private fun statusProductionFiles() = Konsist

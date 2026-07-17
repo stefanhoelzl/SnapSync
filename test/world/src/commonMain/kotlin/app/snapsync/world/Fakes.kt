@@ -1,20 +1,20 @@
 package app.snapsync.world
 
 import app.snapsync.model.PermissionStatus
-import app.snapsync.ports.PermissionStatusSource
+import app.snapsync.ports.PhotoAccessStatusSource
 import app.snapsync.ports.JoinedEventMarker
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 
 /**
- * A settable in-memory [PermissionStatusSource] — the world's stand-in for the iOS PhotoKit permission
+ * A settable in-memory [PhotoAccessStatusSource] — the world's stand-in for the iOS PhotoKit permission
  * adapter (there is no shared in-memory permission fake in `commonMain`). Drives the status projection's
  * `active` flag.
  */
-class MutablePermissionStatusSource(
+class MutablePhotoAccessStatusSource(
     initial: PermissionStatus = PermissionStatus.GRANTED,
-) : PermissionStatusSource {
+) : PhotoAccessStatusSource {
     private val _permission = MutableStateFlow(initial)
     override val permission: StateFlow<PermissionStatus> = _permission.asStateFlow()
 

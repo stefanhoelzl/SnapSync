@@ -3,7 +3,7 @@ package app.snapsync.gallery
 import app.snapsync.model.EXCLUDED_SUBTYPE_MASK
 import app.snapsync.model.RawAsset
 import app.snapsync.model.RawResource
-import app.snapsync.ports.GalleryResourceEnumerator
+import app.snapsync.ports.PhotoLibrary
 import app.snapsync.ports.RawAssetSource
 
 import kotlinx.cinterop.ExperimentalForeignApi
@@ -180,11 +180,11 @@ class PhotoLibraryRawAssetSource : RawAssetSource {
 private const val PREDICATE_WIDEN_SECONDS = 24.0 * 60.0 * 60.0
 
 /**
- * The iOS [GalleryResourceEnumerator]: the PhotoKit [PhotoLibraryRawAssetSource] walk composed with the
+ * The iOS [PhotoLibrary]: the PhotoKit [PhotoLibraryRawAssetSource] walk composed with the
  * shared [resourcesFrom] mapping (via [ResourceEnumerator]). No-arg so the app and extension composition
  * roots keep constructing `PhotoLibraryResourceEnumerator()` unchanged. This is the **single** PhotoKit
  * resource-enumeration site — the upload producer and the re-join seed both go through it, so their keys
  * never diverge.
  */
 class PhotoLibraryResourceEnumerator :
-    GalleryResourceEnumerator by ResourceEnumerator(PhotoLibraryRawAssetSource())
+    PhotoLibrary by ResourceEnumerator(PhotoLibraryRawAssetSource())

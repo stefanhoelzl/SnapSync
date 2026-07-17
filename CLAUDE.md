@@ -625,7 +625,7 @@ agent use and inject that one instead.
 ## Modules
 
 ```
-:domain                the platform-free core (spec module-architecture), born in migration step 3a: zone packages app.snapsync.model (vocabulary + domain services + pure codecs — the config surface incl. the EventLink codec + generated LINK_ORIGIN, sync vocabulary + SyncEngine + LedgerWriter + LedgerBackend, selection policy + denylist + upload keys + device manifest + RawAsset mapping, edge-URL builder, SyncStatus/SyncProgress, PermissionStatus) and app.snapsync.ports (every moved port seam: config, keychain, gallery enumeration/status/manifest, permission, download + download-store, backend-need clients, upload platform/scheduler/discovery, push, attest, join marker). Zero project() deps; jvm+iosArm64+iosSimulatorArm64; no iosMain source dir; model-purity + ports→model gates armed in :test:architecture
+:domain                the platform-free core (spec module-architecture), born in migration step 3a: zone packages app.snapsync.model (vocabulary + domain services + pure codecs — the config surface incl. the EventLink codec + generated LINK_ORIGIN, sync vocabulary + SyncEngine + LedgerWriter + LedgerStore, selection policy + denylist + upload keys + device manifest + RawAsset mapping, edge-URL builder, SyncStatus/SyncProgress, PermissionStatus) and app.snapsync.ports (every moved port seam: config, keychain, gallery enumeration/status/manifest, permission, download + download-store, backend-need clients, upload platform/scheduler/discovery, push, attest, join marker). Zero project() deps; jvm+iosArm64+iosSimulatorArm64; no iosMain source dir; model-purity + ports→model gates armed in :test:architecture
 :domain:engine         SQL ledger backend (SqlDelight impls + drivers + db schema; step 3a moved the sync core + ledger vocabulary to :domain)
 :domain:keychain       cross-cutting Keychain access: the ONLY module that may touch SecItem* (a :test:architecture guard enforces it) — the SecItem adapters, AfterFirstUnlock + in-place migration, ProtectedDataGate, KeychainDeviceIdentity (the per-install device id, capability device-identity; use sites take it as a plain `() -> String`) (capability architecture-guards; decision record: fix-locked-device-keychain-access). The three-state read seam (found/absent/UNREADABLE) + mint-only-on-absent core moved to :domain (step 3a)
 :domain:logging        cross-cutting diagnostics: Logger.invocation helper + LogContext ambient prefix + consolidated iOS device-log writers (Kermit-only leaf) (capability diagnostic-logging)
@@ -636,12 +636,12 @@ agent use and inject that one instead.
 :domain:presentation   Orbit MVI container + UiState (Compose-free, no engine dep)
 :domain:ui             Compose screens (written against App* only)
 :domain:ui:components   App* design system + the Material 3 skin
-:capability:upload     upload orchestration: UploadCycle + UploadConfig + the app-driven BackgroundUploadPump (jvm()+ios, JVM/harness-covered; the UploadJobPlatform/BackgroundScheduler/DiscoveryStore seams moved to :domain ports, step 3a)
+:capability:upload     upload orchestration: UploadCycle + UploadConfig + the app-driven BackgroundUploadPump (jvm()+ios, JVM/harness-covered; the BackgroundTransfer/BackgroundScheduler/DiscoveryStore seams moved to :domain ports, step 3a)
 :capability:upload-url EMPTIED by step 3a (EdgeUploadRequestProvider + encoding moved to :domain model); module dies at a later step
 :capability:config     the iosMain KeychainConfigStore adapter only (the HTTPS Universal Link codec + eventId config surface moved to :domain, step 3a; capability event-link)
 :capability:attest     App Attest device token: the tested DeviceAttestation policy (attest → token → renew, 401 → clear-and-retry) over an AttestKey seam; the token is the ONLY way past the backend, which gates every route on it. The extension cannot attest (`isSupported` is false in an app extension, true in the app — measured, not assumed), so it is strictly a READER of the token the app leaves in the shared Keychain (device-attestation)
 :capability:download   foreign-photo download → stage → import controller (photo-download)
-:capability:join       join use-case + DeviceEnroller (writes the per-event device manifest = the physical fact of membership) + EventDetailsSource (join-event)
+:capability:join       join use-case + DeviceEnroller (writes the per-event device manifest = the physical fact of membership) + EventDirectory (join-event)
 :capability:album      tested commonMain album orchestration: resolve-or-create the per-event album, dispatch-or-skip an add; PhotoKit behind seams (event-album; the AlbumManager/AlbumMapStore seams and the DENYLIST — DENYLISTED_ALBUM_TITLES, WhatsApp, Telegram, … — moved to :domain, step 3a; capability photo-selection-policy)
 :capability:push       APNs token registration + PushReceiver seam + EventNotifier (POST /events/<id>/notify) (push-registration, upload-completion-notify)
 :capability:membership event-membership lifecycle: extension-side re-join reconciliation + leave use-case + HttpLeaveNotifier (DELETE /events/<id>/devices/<id>) + device-file listing seam
@@ -651,8 +651,8 @@ agent use and inject that one instead.
 :app:ios               iOS app wiring + framework export (thin, untested)
 :app:ios:photokit-extension  iOS ≥26.1 background-upload extension: PhotoKit adapter (IosPhotoKitUploadPlatform) + composition root, composing :capability:upload + :app:ios:photokit-discovery — thin, untested (orchestration + tests live in :capability:upload)
 :app:ios:photokit-discovery  shared iOS PhotoKit discovery (IosDiscovery: change-token walk + PUT request builder + token archive; IosDiscoveryStore) — consumed by BOTH upload tiers; iosMain-only, no jvm/framework (keeps PhotoKit out of the platform-free :capability:upload)
-:app:ios:url-session-upload  app-driven iOS 18–26.0 upload adapters: IosUrlSessionUploadPlatform (background URLSession impl of UploadJobPlatform) + IosBackgroundScheduler (BGTaskScheduler) — runs in the MAIN APP process, composed into SnapSyncKit (no separate target); thin, untested
-:test:world            test-only shared infra: a controllable in-memory "world" (backend object store + read-models, MockEngine mini-edge, operator-driven UploadJobPlatform/download fakes) the REAL stack runs against + composition helpers mirroring the extension root; jvm()+iosSimulatorArm64. Consumed by :app:desktop AND :test:integration (capability harness-world-model)
+:app:ios:url-session-upload  app-driven iOS 18–26.0 upload adapters: IosUrlSessionUploadPlatform (background URLSession impl of BackgroundTransfer) + IosBackgroundScheduler (BGTaskScheduler) — runs in the MAIN APP process, composed into SnapSyncKit (no separate target); thin, untested
+:test:world            test-only shared infra: a controllable in-memory "world" (backend object store + read-models, MockEngine mini-edge, operator-driven BackgroundTransfer/download fakes) the REAL stack runs against + composition helpers mirroring the extension root; jvm()+iosSimulatorArm64. Consumed by :app:desktop AND :test:integration (capability harness-world-model)
 :test:architecture     test-only JVM guards for invariants the compiler cannot express (capability architecture-guards): Konsist — no SecItem* outside :domain:keychain (catches fully-qualified calls, which no linter can see on iosMain); plus the entitlements never raise default-data-protection to NSFileProtectionComplete (which would make every App-Group file unreadable while locked, killing the background tier)
 :test:integration      test-only: seam → UI-state integration over :test:world — asserts UiState AND world outcomes (objects landed, ledger COMPLETED, foreign photos imported)
 :test:harness-driver   test-only dev infra (non-gating, no spec): serves EITHER desktop harness over HTTP with no window — composes the shipped ForgeHarnessRoot/WorldHarnessRoot into an offscreen Compose scene (CPU raster Skia; no X server, no screen-capture portal) so an agent can click the real buttons and read back the real pixels + semantics tree. Runbook above; rationale in Driver.kt
@@ -741,12 +741,12 @@ Three standing rules:
 1. **Every unit test runs on the iOS simulator too.** Put logic tests in `commonTest` so they run
    on **both** JVM and `iosSimulatorArm64` — JVM is the fast loop, not the only coverage.
    `jvmTest`/`iosTest` hold only driver/cinterop wiring behind a shared contract (e.g.
-   `LedgerBackendContract` over the JVM-sqlite vs native driver).
+   `LedgerStoreContract` over the JVM-sqlite vs native driver).
 2. **`:app:ios` is wiring-only and untested** (see Hard rules). All logic, shared or iOS-specific,
    lives in tested `domain`/`capability` modules.
 3. **Seam ↔ UI-state integration tests** assemble the real `engine → status → presentation` stack
    and assert `UiState` from injected `SyncEvent`s, faking only the execution edge (in-memory
-   `LedgerBackend`, fake `UploadRequestProvider`). They live in the test-only **`:test:integration`**
+   `LedgerStore`, fake `UploadRequestProvider`). They live in the test-only **`:test:integration`**
    module (`commonTest` → runs on JVM and simulator), which exists so the test may cross the
    `engine → presentation` boundary production forbids.
 

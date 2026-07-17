@@ -19,7 +19,6 @@ emission, and none of them leak into the contract.
 
 Decision record: `changes/archive/2026-06-12-status-core` (the snapshot seam),
 `changes/archive/2026-07-05-notify-driven-status` (the ledger-sourced, notify-driven source).
-
 ## Requirements
 ### Requirement: SyncStatusSource seam
 The status domain SHALL define `SyncStatusSource` whose `status` is a `StateFlow<SyncStatus>` —
@@ -51,7 +50,7 @@ mechanically guarded (`architecture-guards`): the compiler is content for status
 which is precisely the problem.
 
 Engine is nonetheless **on** status's compile classpath, transitively and unavoidably: `:domain:gallery`
-`api`-exports `:domain:engine` because `GalleryResourceEnumerator.enumerate()` returns `List<Resource>`, and
+`api`-exports `:domain:engine` because `PhotoLibrary.enumerate()` returns `List<Resource>`, and
 status consumes that seam. Status therefore *uses* an engine type by inference — legitimately; that is what
 the seam is for — while *naming* none. The claim made here is the one that is true and can be held: a
 stricter sentence sat in this spec for weeks while a probe importing `LedgerWriter` into `:domain:status`
@@ -195,7 +194,7 @@ the indicator SHALL reflect that honestly. `inFlight` SHALL be sourced from the 
 ### Requirement: Ledger-backed source
 
 The status domain SHALL provide a **ledger-backed** `SyncStatusSource` constructed via a
-**non-suspending** factory taking a `LedgerCountsSource`, a `PermissionStatusSource`, a
+**non-suspending** factory taking a `LedgerCountsSource`, a `PhotoAccessStatusSource`, a
 `GalleryStatusSource`, and a `CoroutineScope`. Status is **own-device progress** derived from (a) the
 ledger's asset-counted `completed` and `pending` (via `LedgerCountsSource`); (b) permission; and (c) the
 gallery total. The source SHALL read completeness and in-flight **only** through the `LedgerCountsSource`
@@ -262,7 +261,7 @@ The seam and its general implementation SHALL live in `:domain:status` and take 
 **injected `suspend () -> LedgerCounts` read**, so `:domain:status` keeps **no** `:domain:engine`
 dependency (the engine-leak rule holds) and the read-failure behavior is testable platform-free. The iOS
 composition root SHALL supply a read that reads the shared App-Group ledger **read-only** — calling only
-the backend's aggregate read (`iosLedgerBackend().aggregates()`), never `put`/`clear`/`resetTo` — so the
+the backend's aggregate read (`iosLedgerStore().aggregates()`), never `put`/`clear`/`resetTo` — so the
 **extension remains the sole writer** and **no `LedgerWriter` is constructed in `:app:ios`**. The
 cross-process read is safe under the ledger driver's WAL mode (one writer plus concurrent readers).
 `refresh()` SHALL be invoked on **foreground entry**, on the **extension liveness notification**, and,

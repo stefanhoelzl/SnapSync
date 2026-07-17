@@ -11,7 +11,7 @@ private const val DEFAULT_CLEAR_ATTEMPTS = 3
 /**
  * Clear the ledger's orphaned `REQUESTED` rows **off the main thread**, **awaited to completion**, with
  * a small bounded retry. Disabling the upload extension wipes every in-flight OS upload job; the
- * `REQUESTED` rows those jobs left must be dropped by [clear] (`LedgerBackend.clearRequested`) **before**
+ * `REQUESTED` rows those jobs left must be dropped by [clear] (`LedgerStore.clearRequested`) **before**
  * the extension is re-enabled — otherwise the re-enabled extension's fresh `REQUESTED` rows race a
  * still-running clear and get deleted (the §7.1 bug, whose root cause was a fire-and-forget
  * `scope.launch { clearRequested() }` on the main scope).

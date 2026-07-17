@@ -2,7 +2,7 @@ package app.snapsync.world
 
 import app.snapsync.download.HttpEventUnionSource
 import app.snapsync.ports.CreateOutcome
-import app.snapsync.eventcreation.HttpEventCreationClient
+import app.snapsync.eventcreation.HttpEventCreation
 import app.snapsync.model.DeviceManifest
 import app.snapsync.model.encodeToJson
 import app.snapsync.membership.HttpDeviceFilesSource
@@ -58,7 +58,7 @@ class MiniEdgeTest {
     @Test
     fun event_creation_mints_and_registers_marker() = runTest {
         val store = BackendStore()
-        val outcome = HttpEventCreationClient(miniEdgeClient(store), host)
+        val outcome = HttpEventCreation(miniEdgeClient(store), host)
             .create("Party", "2026-07-14T18:00:00Z")
         assertTrue(outcome is CreateOutcome.Created)
         val eventId = (outcome as CreateOutcome.Created).eventId
@@ -68,7 +68,7 @@ class MiniEdgeTest {
 
     @Test
     fun event_creation_rejects_blank_name() = runTest {
-        val outcome = HttpEventCreationClient(miniEdgeClient(BackendStore()), host)
+        val outcome = HttpEventCreation(miniEdgeClient(BackendStore()), host)
             .create("   ", "2026-07-14T18:00:00Z")
         assertEquals(CreateOutcome.InvalidName, outcome)
     }
@@ -80,7 +80,7 @@ class MiniEdgeTest {
         // fails in the fast loop instead.
         val store = BackendStore()
         for (bad in listOf("2026-07-14T18:00:00.000Z", "2026-07-14T18:00:00+02:00", "", "yesterday")) {
-            val outcome = HttpEventCreationClient(miniEdgeClient(store), host).create("Party", bad)
+            val outcome = HttpEventCreation(miniEdgeClient(store), host).create("Party", bad)
             assertEquals(CreateOutcome.InvalidName, outcome, "startsAt=$bad must be rejected (400)")
         }
     }
@@ -89,7 +89,7 @@ class MiniEdgeTest {
     fun manifest_put_lands_in_store() = runTest {
         val store = BackendStore()
         val json = DeviceManifest("D", listOf(World.foreignAsset("Q"))).encodeToJson()
-        assertTrue(HttpDeviceManifestUploader(miniEdgeClient(store), host).put("E", "D", json))
+        assertTrue(HttpEnrollment(miniEdgeClient(store), host).put("E", "D", json))
         assertNotNull(store.manifestOf("E", "D"))
     }
 }

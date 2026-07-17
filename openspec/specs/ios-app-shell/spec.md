@@ -119,10 +119,10 @@ The `:app:ios` module SHALL provide a composition-root singleton (`SnapSyncRoot`
 owns an app-lifetime `CoroutineScope` (a `SupervisorJob` on the main dispatcher) and assembles the
 live stack: the **ledger-backed** `SyncStatusSource` (built from a `LedgerCountsSource`, the permission
 source, and the gallery source — see `sync-status`), the PhotoKit permission adapter (as both the
-`PermissionStatusSource` and `PermissionRequester`), and the iOS Keychain config store (as both the
+`PhotoAccessStatusSource` and `PhotoAccessRequester`), and the iOS Keychain config store (as both the
 `ConfigSource` and `ConfigStore`), composed into a `StatusContainerHost`. It SHALL construct the iOS
 `LedgerCountsSource` as a **read-only** reader of the shared App-Group ledger — supplying a
-`suspend () -> LedgerCounts` that calls only `iosLedgerBackend().aggregates()` (never a write) — and
+`suspend () -> LedgerCounts` that calls only `iosLedgerStore().aggregates()` (never a write) — and
 SHALL issue **no** storage LIST for upload status. It SHALL own a foreground signal (a `Flow<Boolean>`)
 injected into the `StatusContainerHost` and SHALL register, **while foregrounded**, an observer for the
 extension's cross-process liveness notification (the Darwin notification posted after each PhotoKit
@@ -170,7 +170,7 @@ drive the foreground signal and the liveness-observer lifecycle.
 
 - **WHEN** the user activates the gate's "Allow access" or "Open Settings"
 - **THEN** `MainViewController` invokes the container intent, which calls the injected
-  `PermissionRequester` — the UI never calls PhotoKit directly
+  `PhotoAccessRequester` — the UI never calls PhotoKit directly
 
 #### Scenario: An event link flows through the container
 
@@ -194,18 +194,18 @@ drive the foreground signal and the liveness-observer lifecycle.
 
 ### Requirement: On-disk native ledger on iOS
 
-The `:domain:engine` module SHALL provide an `iosLedgerBackend()` factory (`iosMain`) that constructs the shared `SqlDelightLedgerBackend` over a `NativeSqliteDriver`, persisting the ledger database **on disk in the `group.app.snapsync` App-Group container** so its contents survive process death and are shared between the app and the background-upload extension. This factory SHALL be the single site that names the database location, SHALL open the database in WAL mode (one cross-process writer plus concurrent readers), and SHALL wire the backend's cross-process change notification (post-on-`put` / observe-in-`changes`, per `sync-ledger`). The same factory SHALL serve both processes; on the OS-driven tier the app process constructs no `LedgerWriter` — it holds the ledger only as a `LedgerBackend` for its read-only aggregates read and the reset-family operations (per `sync-ledger`).
+The `:domain:engine` module SHALL provide an `iosLedgerStore()` factory (`iosMain`) that constructs the shared `SqlDelightLedgerStore` over a `NativeSqliteDriver`, persisting the ledger database **on disk in the `group.app.snapsync` App-Group container** so its contents survive process death and are shared between the app and the background-upload extension. This factory SHALL be the single site that names the database location, SHALL open the database in WAL mode (one cross-process writer plus concurrent readers), and SHALL wire the backend's cross-process change notification (post-on-`put` / observe-in-`changes`, per `sync-ledger`). The same factory SHALL serve both processes; on the OS-driven tier the app process constructs no `LedgerWriter` — it holds the ledger only as a `LedgerStore` for its read-only aggregates read and the reset-family operations (per `sync-ledger`).
 
 #### Scenario: The ledger persists across launches
 - **WHEN** the app writes ledger state, terminates, and relaunches
-- **THEN** `iosLedgerBackend()` opens the same on-disk database and the prior state is present
+- **THEN** `iosLedgerStore()` opens the same on-disk database and the prior state is present
 
 #### Scenario: The ledger lives in the App-Group container
 - **WHEN** the extension writes the ledger and the app later reads it
 - **THEN** both open the same database file in the `group.app.snapsync` container, and the app's read reflects the extension's write
 
 #### Scenario: Native backend honors the ledger contract
-- **WHEN** the native-driver-backed `SqlDelightLedgerBackend` is exercised against the ledger backend contract
+- **WHEN** the native-driver-backed `SqlDelightLedgerStore` is exercised against the ledger backend contract
 - **THEN** `get`/`put`/`aggregates` and change signals behave identically to the JVM-driver backend
 
 ### Requirement: Enable the background-upload extension on grant

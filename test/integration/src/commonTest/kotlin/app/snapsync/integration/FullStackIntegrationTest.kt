@@ -6,7 +6,7 @@ import app.snapsync.model.EventConfig
 import app.snapsync.model.Contribution
 import app.snapsync.model.LedgerState
 import app.snapsync.membership.LeaveEvent
-import app.snapsync.ports.PermissionRequester
+import app.snapsync.ports.PhotoAccessRequester
 import app.snapsync.presentation.Arrow
 import app.snapsync.presentation.StatusContainerHost
 import app.snapsync.status.LedgerCounts
@@ -416,7 +416,7 @@ class FullStackIntegrationTest {
         withTimeout(5_000) { container.stateFlow.first(predicate) }
 }
 
-private object NoOpRequester : PermissionRequester {
+private object NoOpRequester : PhotoAccessRequester {
     override fun request() = Unit
     override fun openSettings() = Unit
 }

@@ -1,8 +1,8 @@
 package app.snapsync.permission
 
 import app.snapsync.model.PermissionStatus
-import app.snapsync.ports.PermissionRequester
-import app.snapsync.ports.PermissionStatusSource
+import app.snapsync.ports.PhotoAccessRequester
+import app.snapsync.ports.PhotoAccessStatusSource
 
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -36,7 +36,7 @@ import platform.darwin.NSObjectProtocol
  *
  * Requires `NSPhotoLibraryUsageDescription` in the app's Info.plist, or `request()` traps.
  */
-class PhotoLibraryPermission : PermissionStatusSource, PermissionRequester {
+class PhotoLibraryPermission : PhotoAccessStatusSource, PhotoAccessRequester {
 
     private val state = MutableStateFlow(read())
 

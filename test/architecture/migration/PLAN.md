@@ -63,7 +63,7 @@ inlined and marked ⟨R⟩ where they changed the original order or claims.
 | 1 | delete dead weight | ledger −8 · edges −3 · modules −1 (measured exact; + beacon ledger-scan self-match fix, D3 of `delete-dead-weight`) | ● |
 | 2 | split mixed files | mixed −6 ⟨R: 2 of 8 die in step 1⟩ (measured exact) | ● |
 | 3a | `:domain` skeleton: `model/` + `ports/` (moves + package renames only) | edges −5 (→1) · modules Δ (measured exact; Δ-note: `LedgerBackend` seated in `model/` — SyncEngine→LedgerWriter chain vs the armed model-purity gate; ports/ seat at 3b/5. D3 of `domain-skeleton-model-ports`. 3 mixed files step 2 missed split here) | ● |
-| 3b | port need-renames (`LedgerStore`, `PhotoLibrary`, `PhotoAccess`, …) | — | ○ |
+| 3b | port need-renames (`LedgerStore`, `PhotoLibrary`, `PhotoAccess`, …) | — (Δ-note: `LedgerStore` keeps its `model/` seat — a ports/ seat trial turned the model-purity gate red while `LedgerWriter` lives in `model/`; the seat moves at step 5, per 3a's D3. `TransferNotify` unassigned: `PushHttpClient` carries two needs (registration PUT + notify POST) and a rename-only step cannot split it) | ● |
 | 4 | adapters (ext-safe / app-only / generic) + delete the two emptied `:app:ios:*` modules | modules Δ · shells Δ | ○ |
 | 5 | features I: upload · membership · status · trust (+ retire `StatusEngineBoundaryTest`) | modules Δ | ○ |
 | 6 | features II: download · album · creation; delete emptied modules | edges −1 (→0) · modules Δ | ○ |
@@ -114,7 +114,8 @@ zero gate edits.
 
 ## Step 1 — delete dead weight
 
-Deletion ledger minus two deferred items (Arrow → step 9; `DeviceManifestUploader` ×4 → steps
+Deletion ledger minus two deferred items (Arrow → step 9; `DeviceManifestUploader` — now
+`Enrollment`, step 3b — ×4 → steps
 7/10, since deduping needs shared composition): QR tool + config `jvmMain` + zxing + application
 plugin; kotlincrypto ×4; `:capability:device-id` (interface dies — `() -> String` wins;
 `KeychainDeviceIdentity` moves to `:domain:keychain` under the step-0 literal pins, then rides
@@ -202,7 +203,7 @@ module-set delta shrinks by each deletion.
 ## Step 7 — `compose/`: `uploadCore`, then `snapSyncApp`
 
 `uploadCore(scope, UploadPorts)` first — kills `readGate` ×3 and the cycle assembly ×3, and ⟨R⟩
-the two root-side `IosDeviceManifestUploader` copies die here (the join/generic adapter serves
+the two root-side `IosEnrollment` copies die here (the join/generic adapter serves
 all); world adopts `uploadCore` additively (verified compatible — full collapse is step 10).
 Then `snapSyncApp(scope, AppPorts)`. Human eyes on which `readGate` copy's semantics win (they
 differ: the controller reloads config first, the extension does not — the difference is
@@ -227,8 +228,8 @@ verification = one `screenshots.yml` dispatch (the only exerciser of `forgeStatu
 
 ## Step 10 — harness collapse
 
-Honest doubles → `:adapter:fake` (FakeHonestyTest arms); `WorldLedgerBackend` dies; ⟨R⟩ world's
-`HttpDeviceManifestUploader` dies — deletion-ledger uploader row reaches "keep 1" here (ledger
+Honest doubles → `:adapter:fake` (FakeHonestyTest arms); `WorldLedgerStore` dies; ⟨R⟩ world's
+`HttpEnrollment` dies — deletion-ledger uploader row reaches "keep 1" here (ledger
 → 0). `:test:world` = BackendStore + MiniEdge + levers wrapping fakes; `World` +
 `rebuildSources()` replaced by `snapSyncApp(fakeParts)`; integration tests drive flows;
 `:app:desktop:ui` folds into `:app:desktop` (⟨R⟩ CLAUDE.md forge-harness runbook command updates

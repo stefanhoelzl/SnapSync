@@ -2,9 +2,9 @@ package app.snapsync.desktop
 
 import app.snapsync.ports.ConfigSource
 import app.snapsync.ports.ConfigStore
-import app.snapsync.ports.PermissionRequester
+import app.snapsync.ports.PhotoAccessRequester
 import app.snapsync.model.PermissionStatus
-import app.snapsync.ports.PermissionStatusSource
+import app.snapsync.ports.PhotoAccessStatusSource
 import app.snapsync.presentation.JoinPhase
 import app.snapsync.presentation.MutableAttestedSource
 import app.snapsync.presentation.MutablePendingJoinSource
@@ -27,7 +27,7 @@ import kotlinx.coroutines.flow.asStateFlow
  * The single mutation path for the harness's stand-in state: every display-override
  * button goes through a named method here, never an inline mutation in a composable.
  * Holds three cells (permission, config, sync) plus the armed request outcome, and implements
- * the stand-in sources and the fake [PermissionRequester].
+ * the stand-in sources and the fake [PhotoAccessRequester].
  */
 class PanelController {
     // The harness knows its truth synchronously, so it seeds Ready and never shows Loading.
@@ -65,7 +65,7 @@ class PanelController {
     fun setDownload(downloaded: Int, total: Int, inFlight: Int = 0) =
         downloadStatusSource.set(DownloadProgress(downloaded, total, inFlight))
 
-    val permissionSource: PermissionStatusSource = object : PermissionStatusSource {
+    val permissionSource: PhotoAccessStatusSource = object : PhotoAccessStatusSource {
         override val permission = permissionState
     }
 
@@ -99,7 +99,7 @@ class PanelController {
         configState.value = if (present) CANNED_CONFIG else null
     }
 
-    val requester: PermissionRequester = object : PermissionRequester {
+    val requester: PhotoAccessRequester = object : PhotoAccessRequester {
         override fun request() {
             permissionState.value =
                 if (armedGrants.value) PermissionStatus.GRANTED else PermissionStatus.DENIED

@@ -2,7 +2,7 @@ package app.snapsync.ios
 
 import app.snapsync.engine.DISCOVERY_TOKEN_KEY
 import app.snapsync.engine.LEDGER_APP_GROUP
-import app.snapsync.model.LedgerBackend
+import app.snapsync.model.LedgerStore
 import app.snapsync.membership.clearRequestedOffMain
 import app.snapsync.upload.UploadProducer
 import app.snapsync.logging.invocation
@@ -23,7 +23,7 @@ import platform.Photos.PHPhotoLibrary
  * its next cycle, gated by its `joinedEventId` marker (`event-rejoin-reconciliation`).
  */
 class PhotoKitUploadProducer(
-    private val ledgerBackend: LedgerBackend,
+    private val ledgerBackend: LedgerStore,
     private val log: Logger,
 ) : UploadProducer {
 

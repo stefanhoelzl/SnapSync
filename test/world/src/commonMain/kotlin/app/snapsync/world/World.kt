@@ -16,13 +16,13 @@ import app.snapsync.ports.PendingDownload
 import app.snapsync.model.LedgerWriter
 import app.snapsync.model.SyncEngine
 import app.snapsync.eventcreation.CreateEvent
-import app.snapsync.eventcreation.HttpEventCreationClient
+import app.snapsync.eventcreation.HttpEventCreation
 import app.snapsync.eventcreation.MutableCreationStatusSource
 import app.snapsync.model.Contribution
 import app.snapsync.model.DeviceManifestAsset
 import app.snapsync.model.denormalizeAssetId
 import app.snapsync.gallery.DeviceManifestProducer
-import app.snapsync.ports.GalleryResourceEnumerator
+import app.snapsync.ports.PhotoLibrary
 import app.snapsync.model.DENYLISTED_ALBUM_TITLES
 import app.snapsync.gallery.InMemoryRawAssetSource
 import app.snapsync.model.MEDIA_TYPE_IMAGE
@@ -88,12 +88,12 @@ class World(
 
     val store: BackendStore = BackendStore()
     val gallery: InMemoryRawAssetSource = InMemoryRawAssetSource()
-    val enumerator: GalleryResourceEnumerator = ResourceEnumerator(gallery)
-    val ledgerBackend: WorldLedgerBackend = WorldLedgerBackend()
+    val enumerator: PhotoLibrary = ResourceEnumerator(gallery)
+    val ledgerBackend: WorldLedgerStore = WorldLedgerStore()
     val ledger: LedgerWriter = LedgerWriter(ledgerBackend)
     val discoveryStore: InMemoryDiscoveryStore = InMemoryDiscoveryStore()
     val downloadStore: InMemoryDownloadStore = InMemoryDownloadStore()
-    val platform: FakeUploadJobPlatform = FakeUploadJobPlatform(store, ownDeviceId, enumerator)
+    val platform: FakeBackgroundTransfer = FakeBackgroundTransfer(store, ownDeviceId, enumerator)
     /**
      * The fake execution edge, captured when the real jobs first realize a transport (lazily, on the first
      * transfer — exactly as production does). `null` until then.
@@ -137,7 +137,7 @@ class World(
     val importer: FakePhotoLibraryImporter = FakePhotoLibraryImporter(gallery)
     val marker: InMemoryJoinedEventMarker = InMemoryJoinedEventMarker()
     val manifestStore: InMemoryDeviceManifestStore = InMemoryDeviceManifestStore()
-    val permission: MutablePermissionStatusSource = MutablePermissionStatusSource()
+    val permission: MutablePhotoAccessStatusSource = MutablePhotoAccessStatusSource()
     val creationStatus: MutableCreationStatusSource = MutableCreationStatusSource()
 
     // Event album (capability `event-album`): the recording manager + leave-surviving map + coordinator,
@@ -148,7 +148,7 @@ class World(
 
     /** The one shared mini-edge client injected into every real common-Ktor seam. */
     val client = miniEdgeClient(store)
-    val manifestUploader: HttpDeviceManifestUploader = HttpDeviceManifestUploader(client, host)
+    val manifestUploader: HttpEnrollment = HttpEnrollment(client, host)
 
     private val configCell = MutableStateFlow<EventConfig?>(null)
     val configSource: ConfigSource = object : ConfigSource {
@@ -511,7 +511,7 @@ class World(
         onMinted: suspend (eventId: String) -> Unit = { provision(it) },
     ): CreateEvent =
         CreateEvent(
-            client = HttpEventCreationClient(client, host),
+            client = HttpEventCreation(client, host),
             status = creationStatus,
             onMinted = onMinted,
             scope = scope,
