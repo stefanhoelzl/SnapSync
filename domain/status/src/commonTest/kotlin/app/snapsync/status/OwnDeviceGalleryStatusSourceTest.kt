@@ -3,6 +3,7 @@ package app.snapsync.status
 import app.snapsync.model.Resource
 import app.snapsync.model.Contribution
 import app.snapsync.ports.PhotoLibrary
+import app.snapsync.feature.status.OwnDeviceGalleryStatusSource
 import app.snapsync.gallery.InMemoryPhotoLibrary
 import app.snapsync.model.MEDIA_TYPE_IMAGE
 import app.snapsync.model.RESOURCE_META_CREATION_DATE

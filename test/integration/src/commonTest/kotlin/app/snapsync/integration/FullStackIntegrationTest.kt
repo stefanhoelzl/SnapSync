@@ -5,11 +5,11 @@ import app.snapsync.model.Direction
 import app.snapsync.model.EventConfig
 import app.snapsync.model.Contribution
 import app.snapsync.model.LedgerState
-import app.snapsync.membership.LeaveEvent
+import app.snapsync.feature.membership.LeaveEvent
 import app.snapsync.ports.PhotoAccessRequester
 import app.snapsync.presentation.Arrow
 import app.snapsync.presentation.StatusContainerHost
-import app.snapsync.status.LedgerCounts
+import app.snapsync.feature.status.LedgerCounts
 import app.snapsync.presentation.SyncHealth
 import app.snapsync.presentation.UiState
 import app.snapsync.world.World

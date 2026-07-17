@@ -1,6 +1,6 @@
 package app.snapsync.engine
 
-import app.snapsync.model.LedgerStore
+import app.snapsync.ports.LedgerStore
 import app.snapsync.model.LedgerEntry
 import app.snapsync.model.LedgerState
 

@@ -43,12 +43,10 @@ flowchart LR
   adapter_generic --> domain
   adapter_ios_app_only --> adapter_ios_ext_safe
   adapter_ios_app_only --> domain
-  adapter_ios_app_only --> domain_logging
   adapter_ios_ext_safe --> adapter_generic
   adapter_ios_ext_safe --> capability_album
   adapter_ios_ext_safe --> domain
   adapter_ios_ext_safe --> domain_gallery
-  adapter_ios_ext_safe --> domain_logging
   app_desktop --> adapter_generic
   app_desktop --> capability_download
   app_desktop --> capability_event_creation_ui
@@ -80,7 +78,6 @@ flowchart LR
   app_ios --> domain
   app_ios --> domain_gallery
   app_ios --> domain_keychain
-  app_ios --> domain_logging
   app_ios --> domain_presentation
   app_ios --> domain_status
   app_ios --> domain_ui
@@ -92,12 +89,10 @@ flowchart LR
   app_ios_photokit_extension --> capability_upload
   app_ios_photokit_extension --> domain
   app_ios_photokit_extension --> domain_gallery
-  app_ios_photokit_extension --> domain_logging
   capability_album --> domain
   capability_attest --> domain
   capability_download --> domain
   capability_download --> domain_download_store
-  capability_download --> domain_logging
   capability_download --> domain_status
   capability_event_creation_ui --> domain
   capability_join --> domain
@@ -105,9 +100,6 @@ flowchart LR
   capability_push --> adapter_generic
   capability_push --> domain
   capability_upload --> domain
-  capability_upload --> domain_engine
-  capability_upload --> domain_gallery
-  capability_upload --> domain_logging
   capability_upload_url --> domain_engine
   domain_download_store --> adapter_generic
   domain_download_store --> domain

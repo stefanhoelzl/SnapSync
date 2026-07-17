@@ -1,7 +1,7 @@
 package app.snapsync.world
 
 import app.snapsync.model.LedgerAggregates
-import app.snapsync.model.LedgerStore
+import app.snapsync.ports.LedgerStore
 import app.snapsync.model.LedgerEntry
 import app.snapsync.model.LedgerState
 import app.snapsync.model.PendingResource

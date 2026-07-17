@@ -8,7 +8,7 @@ import app.snapsync.ports.PhotoLibraryImporter
 import app.snapsync.ports.AssetRef
 import app.snapsync.ports.DownloadStore
 import app.snapsync.ports.PlannedResource
-import app.snapsync.logging.invocation
+import app.snapsync.model.invocation
 import co.touchlab.kermit.Logger
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock

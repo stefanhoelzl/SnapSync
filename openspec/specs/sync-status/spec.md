@@ -41,32 +41,42 @@ is `Loading`.
 - **THEN** its `status.value` is `Ready(snapshot)` immediately, never `Loading`
 
 ### Requirement: Module placement plugs the engine leak
-`SyncStatus`, `SyncState`, `SyncStatusSource`, and the ledger-backed source SHALL live in
-`:domain:status`, which depends on `:domain:permission` and `:domain:gallery` (and the event file-list
-seam) with **implementation** scope only and SHALL **declare no dependency on `:domain:engine`**. No
-status source file SHALL reference an engine type — no import, and no fully-qualified
-`app.snapsync.engine.…` — so the ledger status was freed from cannot be reached back for. This SHALL be
-mechanically guarded (`architecture-guards`): the compiler is content for status to import `LedgerWriter`,
-which is precisely the problem.
 
-Engine is nonetheless **on** status's compile classpath, transitively and unavoidably: `:domain:gallery`
-`api`-exports `:domain:engine` because `PhotoLibrary.enumerate()` returns `List<Resource>`, and
-status consumes that seam. Status therefore *uses* an engine type by inference — legitimately; that is what
-the seam is for — while *naming* none. The claim made here is the one that is true and can be held: a
-stricter sentence sat in this spec for weeks while a probe importing `LedgerWriter` into `:domain:status`
-compiled. Cleaning the classpath itself would mean moving `Resource` out of engine; see the decision record.
+The status projections SHALL live in `:domain`'s `feature/status` zone (package
+`app.snapsync.feature.status`) — `SyncStatusSource`, the ledger-backed source,
+`LedgerCountsSource`, and the own-device gallery source; the `SyncStatus`/`SyncProgress` vocabulary lives in `model/`
+(package `app.snapsync.model`, seated there by migration step 3a). No status source SHALL reach
+back for the ledger it was freed from (`ledger-free-status`): completeness and in-flight counts
+enter **only** through the injected `suspend () -> LedgerCounts` read, and no status source
+SHALL take, construct, or reference the ledger port (`LedgerStore`), the ledger writer, or the
+sync engine.
 
-`:domain:presentation` SHALL depend on `:domain:status` (and
-`:domain:permission`) and SHALL NOT depend on `:domain:engine` or `:domain:gallery` — engine and gallery
-types stay off presentation's compile classpath.
+The boundary is mechanically held by the feature-blindness zone gate (`architecture-guards`): a
+`feature/status` file may reference only `model/`, `ports/`, and itself — so the ledger writer
+and engine (seated in `feature/upload`, migration step 5) and every legacy module are violations
+by source-text match, fully-qualified references included. One clause the gate cannot see —
+`LedgerStore` is a legal `ports/` reference for other features — is carried by this requirement:
+for status it remains forbidden, so the counts seam stays the only ledger surface status can
+read (the presentation-imports gate arming at migration step 9 adds the presentation-side
+containment; until then the requirement holds it).
 
-#### Scenario: Status names no engine type
-- **WHEN** `:domain:status`'s source is inspected
-- **THEN** it declares no `:domain:engine` dependency and no file references `app.snapsync.engine` — by import or fully qualified — so no ledger type is named in status code
+`:domain:presentation` SHALL consume status only through the `SyncStatusSource` seam and the
+feature's read-model types — never a ledger type, a port, or the engine.
 
-#### Scenario: Presentation compiles without the engine or gallery
-- **WHEN** `:domain:presentation` is compiled
-- **THEN** neither `:domain:engine` nor `:domain:gallery` is on its compile classpath, and no engine or gallery type is reachable from presentation code
+#### Scenario: Status names no ledger type
+- **WHEN** the `feature/status` sources are inspected
+- **THEN** no file references the sync engine, the ledger writer, or `LedgerStore` — counts
+  arrive only through the injected `LedgerCounts` read
+
+#### Scenario: A status source reaching for a sibling feature fails the build
+- **WHEN** a file under `feature/status` references a declaration under `feature/upload` (the
+  ledger writer's and engine's seat) or any legacy module
+- **THEN** the feature-blindness gate fails, naming both packages
+
+#### Scenario: Presentation consumes the seam only
+- **WHEN** presentation's status consumption is inspected
+- **THEN** it observes `SyncStatusSource` and the feature's read-model types, and no ledger
+  type, port, or engine type is named in presentation code
 
 ### Requirement: SyncStatus — loading vs ready
 
@@ -250,24 +260,27 @@ sync").
 
 ### Requirement: LedgerCountsSource seam
 
-The status domain SHALL define `LedgerCountsSource` in `:domain:status` (`commonMain`) exposing
-`counts: StateFlow<LedgerCounts>` and a `suspend fun refresh()`, where `LedgerCounts(completed, pending)`
-is a `:domain:status` type (both **asset-counted**): `completed` = the number of the device's photos with
-**all** ledger rows `COMPLETED`; `pending` = the number of the device's photos with **any** non-`COMPLETED`
-ledger row. Both SHALL come from a **single** ledger `aggregates()` read so they are mutually consistent.
-The seam exposes **counts only**; it SHALL NOT expose the ledger nor any write capability.
+The status feature SHALL define `LedgerCountsSource` in `:domain`'s `feature/status` zone
+(package `app.snapsync.feature.status`, `commonMain`) exposing `counts: StateFlow<LedgerCounts>`
+and a `suspend fun refresh()`, where `LedgerCounts(completed, pending)` is a `feature/status`
+type (both **asset-counted**): `completed` = the number of the device's photos with **all**
+ledger rows `COMPLETED`; `pending` = the number of the device's photos with **any**
+non-`COMPLETED` ledger row. Both SHALL come from a **single** ledger `aggregates()` read so they
+are mutually consistent. The seam exposes **counts only**; it SHALL NOT expose the ledger nor
+any write capability.
 
-The seam and its general implementation SHALL live in `:domain:status` and take the counts as an
-**injected `suspend () -> LedgerCounts` read**, so `:domain:status` keeps **no** `:domain:engine`
-dependency (the engine-leak rule holds) and the read-failure behavior is testable platform-free. The iOS
-composition root SHALL supply a read that reads the shared App-Group ledger **read-only** — calling only
-the backend's aggregate read (`iosLedgerStore().aggregates()`), never `put`/`clear`/`resetTo` — so the
-**extension remains the sole writer** and **no `LedgerWriter` is constructed in `:app:ios`**. The
-cross-process read is safe under the ledger driver's WAL mode (one writer plus concurrent readers).
-`refresh()` SHALL be invoked on **foreground entry**, on the **extension liveness notification**, and,
-on the app-driven tier, after **each pump cycle**. On any read failure the value SHALL retain its last
-good `LedgerCounts` (seeded `LedgerCounts(0, 0)` before the first successful read). A settable fake SHALL
-exist for tests and the desktop harness.
+The seam and its general implementation SHALL live in `feature/status` and take the counts as an
+**injected `suspend () -> LedgerCounts` read**, so the status feature names **no** ledger type
+(the ledger-independence rule of "Module placement plugs the engine leak" holds) and the
+read-failure behavior is testable platform-free. The iOS composition root SHALL supply a read
+that reads the shared App-Group ledger **read-only** — calling only the backend's aggregate read
+(`iosLedgerStore().aggregates()`), never `put`/`clear`/`resetTo` — so the **extension remains
+the sole writer** and **no `LedgerWriter` is constructed in `:app:ios`**. The cross-process read
+is safe under the ledger driver's WAL mode (one writer plus concurrent readers). `refresh()`
+SHALL be invoked on **foreground entry**, on the **extension liveness notification**, and, on
+the app-driven tier, after **each pump cycle**. On any read failure the value SHALL retain its
+last good `LedgerCounts` (seeded `LedgerCounts(0, 0)` before the first successful read). A
+settable fake SHALL exist for tests and the desktop harness.
 
 #### Scenario: Value is the asset-counted ledger completed and pending
 - **WHEN** the ledger has photos `{A, B}` fully `COMPLETED`, photo `C` with a non-`COMPLETED` row, and

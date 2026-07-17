@@ -18,7 +18,7 @@ import app.snapsync.presentation.JoinLoad
 import app.snapsync.presentation.MutablePendingJoinSource
 import app.snapsync.presentation.StatusContainerHost
 import app.snapsync.status.DownloadStatusSource
-import app.snapsync.status.SyncStatusSource
+import app.snapsync.feature.status.SyncStatusSource
 import app.snapsync.ui.StatusScreen
 import app.snapsync.ui.components.LocalDarkThemeOverride
 import kotlinx.coroutines.CoroutineScope

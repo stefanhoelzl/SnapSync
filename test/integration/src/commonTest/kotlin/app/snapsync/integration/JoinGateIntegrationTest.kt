@@ -8,10 +8,10 @@ import app.snapsync.model.encodeEventUrl
 import app.snapsync.model.DeviceManifest
 import app.snapsync.ports.EventDetails
 import app.snapsync.join.HttpEventDirectory
-import app.snapsync.join.JoinEvent
-import app.snapsync.join.JoinOutcome
-import app.snapsync.join.ManifestDeviceEnroller
-import app.snapsync.membership.LeaveEvent
+import app.snapsync.feature.membership.JoinEvent
+import app.snapsync.feature.membership.JoinOutcome
+import app.snapsync.feature.membership.ManifestDeviceEnroller
+import app.snapsync.feature.membership.LeaveEvent
 import app.snapsync.ports.PhotoAccessRequester
 import app.snapsync.presentation.JoinLoad
 import app.snapsync.presentation.JoinPhase

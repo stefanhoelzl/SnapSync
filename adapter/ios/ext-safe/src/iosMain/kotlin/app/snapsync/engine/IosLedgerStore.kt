@@ -1,6 +1,6 @@
 package app.snapsync.engine
 
-import app.snapsync.model.LedgerStore
+import app.snapsync.ports.LedgerStore
 
 import app.cash.sqldelight.driver.native.NativeSqliteDriver
 import app.snapsync.engine.db.LedgerDatabase

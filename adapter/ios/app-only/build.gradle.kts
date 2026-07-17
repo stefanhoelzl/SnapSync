@@ -20,7 +20,6 @@ kotlin {
             api(project(":domain"))
             // The shared PhotoKit discovery walk (IosDiscovery) the URLSession tier reuses.
             api(project(":adapter:ios:ext-safe"))
-            implementation(project(":domain:logging"))
             implementation(libs.coroutines.core)
             implementation(libs.kermit)
         }

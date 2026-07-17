@@ -26,12 +26,11 @@ mutual exclusion structural — the non-selected tier's mechanism is never const
 cannot become a second `LedgerWriter`.
 
 Decision record: `changes/archive/2026-07-12-fix-app-driven-upload-lifecycle`.
-
 ## Requirements
 ### Requirement: Upload producer seam has no destructive verb
 
-The system SHALL express the upload arm as a platform-free `UploadProducer` seam in
-`:capability:upload` with exactly **two** verbs:
+The system SHALL express the upload arm as a platform-free `UploadProducer` seam in `:domain`'s
+`feature/upload` zone (package `app.snapsync.feature.upload`) with exactly **two** verbs:
 
 - `start()` — begin or resume uploading for the currently-configured membership.
 - `stop()` — cease uploading. It SHALL NOT destroy **dedup state**: it SHALL NOT clear the ledger and
@@ -79,11 +78,12 @@ Each tier SHALL supply one `UploadProducer` implementation binding these verbs t
 ### Requirement: Lifecycle orchestration is tier-neutral and tested
 
 The decision of **which verb fires on which transition** SHALL live in a tier-neutral orchestrator in
-`:capability:upload`, not in the app composition root, and SHALL be tested in `commonTest` (running on
-both JVM and `iosSimulatorArm64`) against a fake `UploadProducer`, so it is exercised on JVM **and**
-`iosSimulatorArm64` rather than only inside an iOS process. The orchestrator SHALL translate membership
-transitions into `start()`/`stop()` and nothing else: it holds no ledger, no cursor, and no storage
-handle, so a lifecycle transition **cannot** destroy dedup state — the seam gives it no verb that could.
+`:domain`'s `feature/upload` zone, not in the app composition root, and SHALL be tested in `commonTest`
+(running on both JVM and `iosSimulatorArm64`) against a fake `UploadProducer`, so it is exercised on JVM
+**and** `iosSimulatorArm64` rather than only inside an iOS process. The orchestrator SHALL translate
+membership transitions into `start()`/`stop()` and nothing else: it holds no ledger, no cursor, and no
+storage handle, so a lifecycle transition **cannot** destroy dedup state — the seam gives it no verb that
+could.
 
 A producer SHALL be started only when an event is configured **and** photo access is `GRANTED` **and** the
 membership's direction includes upload. The orchestrator SHALL bind the
@@ -168,9 +168,9 @@ Placing the gate at the choke point is what makes the cheap mistake impossible. 
 in the untested composition root and looks obviously correct; bypassing the choke point means building a
 parallel upload path, which nobody does by accident.
 
-The gate SHALL be reachable by the tier-neutral tests: it lives in `:capability:upload`, not in a composition
-root, which the project's hard rule declares wiring-only and untested. Root-placed enforcement is how this
-capability's own history records the lifecycle shipping with no owner and no test.
+The gate SHALL be reachable by the tier-neutral tests: it lives in `:domain`'s `feature/upload` zone, not
+in a composition root, which the project's hard rule declares wiring-only and untested. Root-placed
+enforcement is how this capability's own history records the lifecycle shipping with no owner and no test.
 
 #### Scenario: A download-only membership creates no upload job at any trigger
 - **WHEN** a cycle is driven for a membership whose direction excludes upload — by foreground entry, a
@@ -209,7 +209,6 @@ one App-Group ledger).
 
 - **WHEN** the app-driven tier is forced on a device whose OS supports the OS-driven tier
 - **THEN** the PhotoKit upload extension is not registered, and only the app-driven producer is live
-
 
 ### Requirement: The upload cycle owns its entry decision
 
@@ -282,3 +281,4 @@ diff rather than inherited in silence.
 #### Scenario: An empty answer is legal when stated
 - **WHEN** a tier has no denylisted-album source and supplies an empty one explicitly
 - **THEN** the cycle runs, admitting all albums, and the choice is visible at the call site
+

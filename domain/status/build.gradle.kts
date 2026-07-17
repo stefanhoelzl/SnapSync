@@ -10,9 +10,10 @@ kotlin {
     sourceSets {
         commonMain.dependencies {
             api(project(":domain"))
-            // Implementation scope on purpose: status consumes permission and the gallery total, but
-            // neither may leak to status's own consumers. Status does not depend on :domain:engine —
-            // it projects counts through injected read seams, never a ledger type.
+            // MIGRATION STEP 5: the ledger→SyncStatus projections moved to :domain feature/status.
+            // What remains is DownloadStatusSource (the download arm's read-model — it moves with the
+            // download feature at step 6) plus the two stay-behind tests that drive the moved
+            // projections through :domain:gallery's in-memory fakes (which :domain cannot reach).
             implementation(project(":domain:permission"))
             implementation(project(":domain:gallery"))
             api(libs.coroutines.core)
