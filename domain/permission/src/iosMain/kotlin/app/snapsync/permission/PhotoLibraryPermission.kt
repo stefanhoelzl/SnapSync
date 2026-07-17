@@ -1,5 +1,9 @@
 package app.snapsync.permission
 
+import app.snapsync.model.PermissionStatus
+import app.snapsync.ports.PermissionRequester
+import app.snapsync.ports.PermissionStatusSource
+
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import platform.Foundation.NSNotification

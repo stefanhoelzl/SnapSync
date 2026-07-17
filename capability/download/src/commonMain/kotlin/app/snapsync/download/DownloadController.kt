@@ -1,8 +1,13 @@
 package app.snapsync.download
 
-import app.snapsync.downloadstore.AssetRef
-import app.snapsync.downloadstore.DownloadStore
-import app.snapsync.downloadstore.PlannedResource
+import app.snapsync.ports.EventUnionSource
+import app.snapsync.ports.ImportResult
+import app.snapsync.ports.PhotoDownloadJobs
+import app.snapsync.ports.PhotoLibraryImporter
+
+import app.snapsync.ports.AssetRef
+import app.snapsync.ports.DownloadStore
+import app.snapsync.ports.PlannedResource
 import app.snapsync.logging.invocation
 import co.touchlab.kermit.Logger
 import kotlinx.coroutines.sync.Mutex

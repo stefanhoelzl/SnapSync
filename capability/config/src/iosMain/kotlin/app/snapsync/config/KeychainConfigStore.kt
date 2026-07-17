@@ -1,10 +1,17 @@
 package app.snapsync.config
 
+import app.snapsync.model.EventConfig
+import app.snapsync.ports.ConfigRead
+import app.snapsync.ports.ConfigReader
+import app.snapsync.ports.ConfigSource
+import app.snapsync.ports.ConfigStore
+import app.snapsync.ports.configReadFrom
+
 import app.snapsync.keychain.ACCESSIBLE_AFTER_FIRST_UNLOCK
 import app.snapsync.keychain.IosKeychain
-import app.snapsync.keychain.Keychain
-import app.snapsync.keychain.KeychainRead
-import app.snapsync.keychain.needsMigration
+import app.snapsync.ports.Keychain
+import app.snapsync.ports.KeychainRead
+import app.snapsync.ports.needsMigration
 import co.touchlab.kermit.Logger
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow

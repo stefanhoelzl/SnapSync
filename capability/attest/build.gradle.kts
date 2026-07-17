@@ -10,6 +10,7 @@ kotlin {
     iosSimulatorArm64()
     sourceSets {
         commonMain.dependencies {
+            api(project(":domain"))
             api(libs.coroutines.core)
             // The HTTP client is injected (Darwin on iOS, MockEngine in tests) — core + JSON only,
             // mirroring :capability:join.

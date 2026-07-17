@@ -1,8 +1,8 @@
 package app.snapsync.join
 
-import app.snapsync.gallery.DeviceManifest
-import app.snapsync.gallery.DeviceManifestUploader
-import app.snapsync.gallery.encodeToJson
+import app.snapsync.model.DeviceManifest
+import app.snapsync.ports.DeviceManifestUploader
+import app.snapsync.model.encodeToJson
 
 /**
  * Enrolls this device into an event (capability `join-event`) by making its manifest object exist

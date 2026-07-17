@@ -1,8 +1,8 @@
 package app.snapsync.ios.discovery
 
-import app.snapsync.engine.UploadRequest
-import app.snapsync.gallery.GalleryResourceEnumerator
-import app.snapsync.upload.Discovery
+import app.snapsync.model.UploadRequest
+import app.snapsync.ports.GalleryResourceEnumerator
+import app.snapsync.ports.Discovery
 import co.touchlab.kermit.Logger
 import kotlinx.cinterop.BetaInteropApi
 import kotlinx.cinterop.ExperimentalForeignApi

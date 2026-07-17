@@ -1,4 +1,6 @@
-package app.snapsync.gallery
+package app.snapsync.ports
+
+import app.snapsync.model.RawAsset
 
 /**
  * The **decision-free** library walk seam: exposes PhotoKit as [RawAsset]s carrying only raw facts. The

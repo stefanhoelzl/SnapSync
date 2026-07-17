@@ -1,4 +1,4 @@
-package app.snapsync.engine
+package app.snapsync.model
 
 /**
  * The engine's request-minting seam (spec: sync-engine): mints the executable request for a

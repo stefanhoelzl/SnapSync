@@ -27,8 +27,8 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import app.snapsync.engine.UploadError
-import app.snapsync.permission.PermissionStatus
+import app.snapsync.model.UploadError
+import app.snapsync.model.PermissionStatus
 
 /**
  * The world-inspector control panel (capability `full-stack-harness`): raw Material 3, **never** App*

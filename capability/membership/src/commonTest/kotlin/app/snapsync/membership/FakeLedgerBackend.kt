@@ -1,10 +1,10 @@
 package app.snapsync.membership
 
-import app.snapsync.engine.LedgerAggregates
-import app.snapsync.engine.LedgerBackend
-import app.snapsync.engine.LedgerEntry
-import app.snapsync.engine.LedgerState
-import app.snapsync.engine.PendingResource
+import app.snapsync.model.LedgerAggregates
+import app.snapsync.model.LedgerBackend
+import app.snapsync.model.LedgerEntry
+import app.snapsync.model.LedgerState
+import app.snapsync.model.PendingResource
 import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableSharedFlow

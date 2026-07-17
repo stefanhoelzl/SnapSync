@@ -1,6 +1,8 @@
-package app.snapsync.config
+package app.snapsync.ports
 
-import app.snapsync.keychain.KeychainRead
+import app.snapsync.model.Direction
+import app.snapsync.model.EventConfig
+
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertIs

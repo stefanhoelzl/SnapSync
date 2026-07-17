@@ -9,6 +9,7 @@ kotlin {
 }
 
 dependencies {
+    api(project(":domain"))
     // The shared harness library: `PhoneFrame` + the `StatusPane` composition glue.
     implementation(project(":app:desktop"))
     // The stand-in seams the forge `PanelController` constructs its cells from.

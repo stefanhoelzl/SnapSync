@@ -1,8 +1,8 @@
 package app.snapsync.world
 
-import app.snapsync.engine.LedgerState
-import app.snapsync.engine.UploadError
-import app.snapsync.upload.CycleResult
+import app.snapsync.model.LedgerState
+import app.snapsync.model.UploadError
+import app.snapsync.ports.CycleResult
 
 import kotlin.test.Test
 import kotlin.test.assertEquals

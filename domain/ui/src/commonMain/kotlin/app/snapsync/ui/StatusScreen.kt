@@ -13,8 +13,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
-import app.snapsync.config.Direction
-import app.snapsync.permission.PermissionStatus
+import app.snapsync.model.Direction
+import app.snapsync.model.PermissionStatus
 import app.snapsync.presentation.Arrow
 import app.snapsync.presentation.CutoffFormatter
 import app.snapsync.presentation.JoinPhase

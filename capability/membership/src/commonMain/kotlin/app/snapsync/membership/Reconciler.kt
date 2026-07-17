@@ -1,9 +1,12 @@
 package app.snapsync.membership
 
-import app.snapsync.engine.LedgerBackend
-import app.snapsync.engine.LedgerEntry
-import app.snapsync.engine.LedgerState
-import app.snapsync.gallery.assetIdFromUploadKey
+import app.snapsync.ports.DeviceFilesSource
+import app.snapsync.ports.JoinedEventMarker
+
+import app.snapsync.model.LedgerBackend
+import app.snapsync.model.LedgerEntry
+import app.snapsync.model.LedgerState
+import app.snapsync.model.assetIdFromUploadKey
 import co.touchlab.kermit.Logger
 import kotlinx.coroutines.withTimeoutOrNull
 
@@ -15,19 +18,6 @@ import kotlinx.coroutines.withTimeoutOrNull
  * network call is bounded; the subsequent `resetTo` stays a single atomic, un-timed transaction.
  */
 private const val DEVICE_LIST_TIMEOUT_MS = 30_000L
-
-/**
- * The persisted join marker: the last `eventId` the extension reconciled, surviving the extension's
- * short-lived per-cycle process. It — **not** ledger-emptiness — is the join signal: a fresh join
- * that seeds zero rows still sets it (so there is no re-seed loop on an empty/large library), an
- * event switch is a marker mismatch, and a reinstall is an absent marker. Backed by the App-Group
- * `NSUserDefaults` on iOS, exactly as the discovery cursor is.
- */
-interface JoinedEventMarker {
-    fun read(): String?
-    fun set(eventId: String)
-    fun clear()
-}
 
 /**
  * Extension-side re-join reconciliation (capability `event-rejoin-reconciliation`). Runs on the

@@ -10,6 +10,7 @@ kotlin {
     iosSimulatorArm64()
     sourceSets {
         commonMain.dependencies {
+            api(project(":domain"))
             api(libs.coroutines.core)
             // Implementation seams the reconciliation orchestrates — kept `implementation` so engine
             // types never leak transitively to consumers that only want the leave use-case / file seam.
@@ -18,7 +19,6 @@ kotlin {
             // with — one implementation, next to `uploadKey`, so the seed key parses identically to the
             // producer's (capability `gallery-status`).
             implementation(project(":domain:gallery"))
-            implementation(project(":capability:config"))
             implementation(libs.kermit)
             implementation(libs.ktor.client.core)
             implementation(libs.kotlinx.serialization.json)

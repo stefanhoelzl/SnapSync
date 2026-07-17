@@ -1,6 +1,6 @@
 package app.snapsync.upload
 
-import app.snapsync.gallery.Contribution
+import app.snapsync.model.Contribution
 
 /** The assembled inputs for the edge upload provider: the compile-time host and the joined event. */
 class UploadConfig(

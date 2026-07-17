@@ -1,15 +1,15 @@
 package app.snapsync.presentation
 
-import app.snapsync.config.ConfigSource
-import app.snapsync.config.ConfigStore
-import app.snapsync.config.EventConfig
-import app.snapsync.config.EventLinkPayload
-import app.snapsync.config.encodeEventUrl
-import app.snapsync.permission.PermissionRequester
-import app.snapsync.permission.PermissionStatus
-import app.snapsync.permission.PermissionStatusSource
-import app.snapsync.status.SyncProgress
-import app.snapsync.status.SyncStatus
+import app.snapsync.ports.ConfigSource
+import app.snapsync.ports.ConfigStore
+import app.snapsync.model.EventConfig
+import app.snapsync.model.EventLinkPayload
+import app.snapsync.model.encodeEventUrl
+import app.snapsync.ports.PermissionRequester
+import app.snapsync.model.PermissionStatus
+import app.snapsync.ports.PermissionStatusSource
+import app.snapsync.model.SyncProgress
+import app.snapsync.model.SyncStatus
 import app.snapsync.status.SyncStatusSource
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow

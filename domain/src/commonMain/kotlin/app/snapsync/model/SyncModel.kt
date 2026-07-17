@@ -1,4 +1,4 @@
-package app.snapsync.engine
+package app.snapsync.model
 
 /**
  * The unit the sync domain transports (spec: sync-engine). Constructed by the platform, never by

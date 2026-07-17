@@ -1,10 +1,10 @@
 package app.snapsync.world
 
 import app.snapsync.download.HttpEventUnionSource
-import app.snapsync.eventcreation.CreateOutcome
+import app.snapsync.ports.CreateOutcome
 import app.snapsync.eventcreation.HttpEventCreationClient
-import app.snapsync.gallery.DeviceManifest
-import app.snapsync.gallery.encodeToJson
+import app.snapsync.model.DeviceManifest
+import app.snapsync.model.encodeToJson
 import app.snapsync.membership.HttpDeviceFilesSource
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test

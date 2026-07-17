@@ -1,8 +1,8 @@
 package app.snapsync.world
 
-import app.snapsync.permission.PermissionStatus
-import app.snapsync.permission.PermissionStatusSource
-import app.snapsync.membership.JoinedEventMarker
+import app.snapsync.model.PermissionStatus
+import app.snapsync.ports.PermissionStatusSource
+import app.snapsync.ports.JoinedEventMarker
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow

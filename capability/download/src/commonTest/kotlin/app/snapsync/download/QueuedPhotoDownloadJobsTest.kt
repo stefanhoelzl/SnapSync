@@ -1,8 +1,13 @@
 package app.snapsync.download
 
-import app.snapsync.downloadstore.AssetRef
-import app.snapsync.downloadstore.PendingDownload
-import app.snapsync.downloadstore.PlannedResource
+import app.snapsync.ports.DownloadTask
+import app.snapsync.ports.DownloadTransport
+import app.snapsync.ports.DownloadTransportHost
+import app.snapsync.ports.TransferOutcome
+
+import app.snapsync.ports.AssetRef
+import app.snapsync.ports.PendingDownload
+import app.snapsync.ports.PlannedResource
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse

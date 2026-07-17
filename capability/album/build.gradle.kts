@@ -16,6 +16,7 @@ kotlin {
     iosSimulatorArm64()
     sourceSets {
         commonMain.dependencies {
+            api(project(":domain"))
             implementation(libs.coroutines.core)
             implementation(libs.kermit)
             implementation(libs.kotlinx.serialization.json)

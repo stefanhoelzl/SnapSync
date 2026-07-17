@@ -1,9 +1,15 @@
 package app.snapsync.download
 
-import app.snapsync.downloadstore.AssetRef
+import app.snapsync.ports.EventUnionSource
+import app.snapsync.ports.ImportResult
+import app.snapsync.ports.PhotoDownloadJobs
+import app.snapsync.ports.PhotoLibraryImporter
+import app.snapsync.ports.UnionAsset
+
+import app.snapsync.ports.AssetRef
 import app.snapsync.downloadstore.InMemoryDownloadStore
-import app.snapsync.downloadstore.PendingDownload
-import app.snapsync.downloadstore.StagedResource
+import app.snapsync.ports.PendingDownload
+import app.snapsync.ports.StagedResource
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals

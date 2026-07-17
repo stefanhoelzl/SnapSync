@@ -1,6 +1,6 @@
 package app.snapsync.upload
 
-import app.snapsync.gallery.Contribution
+import app.snapsync.model.Contribution
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertIs

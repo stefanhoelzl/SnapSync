@@ -2,7 +2,7 @@ package app.snapsync.album
 
 import app.snapsync.engine.LEDGER_APP_GROUP
 import app.snapsync.keychain.IosKeychain
-import app.snapsync.keychain.Keychain
+import app.snapsync.ports.Keychain
 import co.touchlab.kermit.Logger
 import kotlinx.serialization.builtins.MapSerializer
 import kotlinx.serialization.builtins.serializer

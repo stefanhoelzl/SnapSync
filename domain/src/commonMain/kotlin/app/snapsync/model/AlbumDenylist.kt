@@ -1,4 +1,4 @@
-package app.snapsync.album
+package app.snapsync.model
 
 /**
  * The album denylist (capability `photo-selection-policy`): albums whose contents are, by construction,

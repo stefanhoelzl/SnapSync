@@ -1,4 +1,6 @@
-package app.snapsync.gallery
+package app.snapsync.ports
+
+import app.snapsync.model.DeviceManifestAsset
 
 /**
  * The App-Group persistence seam for the device manifest (capability `device-manifest`). Holds the

@@ -1,5 +1,9 @@
 package app.snapsync.engine
 
+import app.snapsync.model.Resource
+import app.snapsync.model.UploadRequest
+import app.snapsync.model.UploadRequestProvider
+
 /**
  * Test seam double: records every [provide] invocation and its returned request, and can be
  * scripted to throw. Minting is deterministic from the resource (url derives from the

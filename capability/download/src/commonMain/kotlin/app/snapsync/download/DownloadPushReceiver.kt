@@ -1,6 +1,6 @@
 package app.snapsync.download
 
-import app.snapsync.push.PushReceiver
+import app.snapsync.ports.PushReceiver
 import co.touchlab.kermit.Logger
 
 /**

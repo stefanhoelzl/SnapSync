@@ -1,14 +1,14 @@
 package app.snapsync.ios.upload
 
-import app.snapsync.engine.Resource
-import app.snapsync.engine.UploadError
-import app.snapsync.engine.UploadRequest
+import app.snapsync.model.Resource
+import app.snapsync.model.UploadError
+import app.snapsync.model.UploadRequest
 import app.snapsync.ios.discovery.IosDiscovery
-import app.snapsync.upload.CreateResult
-import app.snapsync.upload.Discovery
-import app.snapsync.upload.PlatformJobState
-import app.snapsync.upload.PlatformUploadJob
-import app.snapsync.upload.UploadJobPlatform
+import app.snapsync.ports.CreateResult
+import app.snapsync.ports.Discovery
+import app.snapsync.ports.PlatformJobState
+import app.snapsync.ports.PlatformUploadJob
+import app.snapsync.ports.UploadJobPlatform
 import app.snapsync.logging.invocation
 import co.touchlab.kermit.Logger
 import kotlinx.cinterop.BetaInteropApi

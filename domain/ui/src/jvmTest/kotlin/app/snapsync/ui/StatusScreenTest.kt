@@ -15,7 +15,7 @@ import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTextInput
-import app.snapsync.permission.PermissionStatus
+import app.snapsync.model.PermissionStatus
 import app.snapsync.ui.components.LocalReduceMotion
 import app.snapsync.presentation.Arrow
 import app.snapsync.presentation.SystemCutoffFormatter

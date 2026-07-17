@@ -1,5 +1,8 @@
 package app.snapsync.eventcreation
 
+import app.snapsync.ports.CreateOutcome
+import app.snapsync.ports.EventCreationClient
+
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlin.test.Test

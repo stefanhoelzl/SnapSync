@@ -1,9 +1,11 @@
 package app.snapsync.attest
 
+import app.snapsync.ports.AttestStore
+
 import app.snapsync.keychain.ACCESSIBLE_AFTER_FIRST_UNLOCK
 import app.snapsync.keychain.IosKeychain
-import app.snapsync.keychain.Keychain
-import app.snapsync.keychain.readExisting
+import app.snapsync.ports.Keychain
+import app.snapsync.ports.readExisting
 
 /**
  * The iOS [AttestStore]: the device token and its `keyId`, each a Keychain generic-password item in the

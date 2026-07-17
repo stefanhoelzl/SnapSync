@@ -1,4 +1,4 @@
-import app.snapsync.downloadstore.DownloadState;
+import app.snapsync.ports.DownloadState;
 
 -- One row per foreign asset this device is downloading / has imported (capability `download-store`).
 -- Keyed by the SOURCE identity (the owning device + that device's assetId), which is stable across

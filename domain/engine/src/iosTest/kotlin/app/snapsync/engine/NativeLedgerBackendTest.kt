@@ -1,5 +1,7 @@
 package app.snapsync.engine
 
+import app.snapsync.model.LedgerBackend
+
 import app.cash.sqldelight.driver.native.NativeSqliteDriver
 import app.snapsync.engine.db.LedgerDatabase
 

@@ -20,6 +20,7 @@ flowchart LR
     capability_upload_url[":capability:upload-url"]
   end
   subgraph domain
+    domain[":domain"]
     domain_download_store[":domain:download-store"]
     domain_engine[":domain:engine"]
     domain_gallery[":domain:gallery"]
@@ -31,33 +32,45 @@ flowchart LR
     domain_ui[":domain:ui"]
     domain_ui_components[":domain:ui:components"]
   end
+  capability_album --> domain
   capability_album --> domain_engine
   capability_album --> domain_gallery
   capability_album --> domain_keychain
+  capability_attest --> domain
   capability_attest --> domain_keychain
+  capability_config --> domain
   capability_config --> domain_keychain
-  capability_download --> capability_push
+  capability_download --> domain
   capability_download --> domain_download_store
   capability_download --> domain_logging
   capability_download --> domain_status
-  capability_join --> capability_config
+  capability_event_creation_ui --> domain
+  capability_join --> domain
   capability_join --> domain_gallery
-  capability_membership --> capability_config
+  capability_membership --> domain
   capability_membership --> domain_engine
   capability_membership --> domain_gallery
-  capability_upload --> capability_push
+  capability_push --> domain
+  capability_upload --> domain
   capability_upload --> domain_engine
   capability_upload --> domain_gallery
   capability_upload --> domain_logging
   capability_upload_url --> domain_engine
+  domain_download_store --> domain
   domain_download_store --> domain_engine
+  domain_engine --> domain
+  domain_gallery --> domain
   domain_gallery --> domain_engine
-  domain_presentation --> capability_config
+  domain_keychain --> domain
+  domain_permission --> domain
   domain_presentation --> capability_event_creation_ui
+  domain_presentation --> domain
   domain_presentation --> domain_permission
   domain_presentation --> domain_status
+  domain_status --> domain
   domain_status --> domain_gallery
   domain_status --> domain_permission
+  domain_ui --> domain
   domain_ui --> domain_presentation
   domain_ui --> domain_ui_components
 ```

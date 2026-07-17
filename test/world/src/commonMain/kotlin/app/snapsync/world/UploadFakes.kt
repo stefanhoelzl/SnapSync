@@ -1,15 +1,15 @@
 package app.snapsync.world
 
-import app.snapsync.engine.Resource
-import app.snapsync.engine.UploadError
-import app.snapsync.engine.UploadRequest
-import app.snapsync.gallery.GalleryResourceEnumerator
-import app.snapsync.upload.CreateResult
-import app.snapsync.upload.Discovery
-import app.snapsync.upload.DiscoveryStore
-import app.snapsync.upload.PlatformJobState
-import app.snapsync.upload.PlatformUploadJob
-import app.snapsync.upload.UploadJobPlatform
+import app.snapsync.model.Resource
+import app.snapsync.model.UploadError
+import app.snapsync.model.UploadRequest
+import app.snapsync.ports.GalleryResourceEnumerator
+import app.snapsync.ports.CreateResult
+import app.snapsync.ports.Discovery
+import app.snapsync.ports.DiscoveryStore
+import app.snapsync.ports.PlatformJobState
+import app.snapsync.ports.PlatformUploadJob
+import app.snapsync.ports.UploadJobPlatform
 
 /**
  * An operator-driven, **inspectable** [UploadJobPlatform] (capability `harness-world-model`): the

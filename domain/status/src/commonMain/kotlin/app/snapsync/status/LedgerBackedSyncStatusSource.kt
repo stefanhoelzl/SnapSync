@@ -1,8 +1,11 @@
 package app.snapsync.status
 
-import app.snapsync.gallery.GalleryStatusSource
-import app.snapsync.permission.PermissionStatus
-import app.snapsync.permission.PermissionStatusSource
+import app.snapsync.model.SyncProgress
+import app.snapsync.model.SyncStatus
+
+import app.snapsync.ports.GalleryStatusSource
+import app.snapsync.model.PermissionStatus
+import app.snapsync.ports.PermissionStatusSource
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow

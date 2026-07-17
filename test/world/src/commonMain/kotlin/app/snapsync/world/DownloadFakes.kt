@@ -1,20 +1,20 @@
 package app.snapsync.world
 
-import app.snapsync.download.DownloadTask
-import app.snapsync.download.DownloadTransport
-import app.snapsync.download.DownloadTransportHost
-import app.snapsync.download.ImportResult
-import app.snapsync.download.PhotoLibraryImporter
-import app.snapsync.download.TransferOutcome
-import app.snapsync.downloadstore.AssetRef
-import app.snapsync.downloadstore.StagedResource
-import app.snapsync.gallery.DeviceManifestAsset
-import app.snapsync.gallery.DeviceManifestStore
+import app.snapsync.ports.DownloadTask
+import app.snapsync.ports.DownloadTransport
+import app.snapsync.ports.DownloadTransportHost
+import app.snapsync.ports.ImportResult
+import app.snapsync.ports.PhotoLibraryImporter
+import app.snapsync.ports.TransferOutcome
+import app.snapsync.ports.AssetRef
+import app.snapsync.ports.StagedResource
+import app.snapsync.model.DeviceManifestAsset
+import app.snapsync.ports.DeviceManifestStore
 import app.snapsync.gallery.InMemoryRawAssetSource
-import app.snapsync.gallery.RawAsset
-import app.snapsync.gallery.RawResource
-import app.snapsync.gallery.ResourceRole
-import app.snapsync.gallery.normalizeAssetId
+import app.snapsync.model.RawAsset
+import app.snapsync.model.RawResource
+import app.snapsync.model.ResourceRole
+import app.snapsync.model.normalizeAssetId
 
 /**
  * The operator-driven download **execution edge** (capability `harness-world-model`): a fake

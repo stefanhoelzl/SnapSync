@@ -1,8 +1,8 @@
-package app.snapsync.upload
+package app.snapsync.ports
 
-import app.snapsync.engine.Resource
-import app.snapsync.engine.UploadError
-import app.snapsync.engine.UploadRequest
+import app.snapsync.model.Resource
+import app.snapsync.model.UploadError
+import app.snapsync.model.UploadRequest
 
 /**
  * The platform seam for one background-upload cycle — everything PhotoKit-specific lives behind it.

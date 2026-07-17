@@ -17,6 +17,7 @@ kotlin {
 
     sourceSets {
         commonMain.dependencies {
+            api(project(":domain"))
             implementation(project(":domain:logging"))
             implementation(project(":domain:engine"))
             // The relocated, JVM-covered upload orchestration (UploadCycle + the UploadJobPlatform seam

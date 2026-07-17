@@ -12,65 +12,21 @@ the `:tools:diagrams` freshness test fails on drift; regenerate instead.
 | `AlbumMapSource` | `:capability:album` | `:capability:album` Current, Migrate, Retry | no |
 | `AlbumMapStore` | `:capability:album` | `:capability:album` InMemoryAlbumMapStore, IosAlbumMapStore; `:test:world` InMemoryAlbumMapStore | yes |
 | `AppSyncStatus` | `:domain:ui:components` | `:domain:ui:components` CannotVerifyDevice, InSync, Loading, NeedsAccess, NotStarted, Syncing | no |
-| `AttestClient` | `:capability:attest` | `:capability:attest` FakeClient, HttpAttestClient | yes |
-| `AttestKey` | `:capability:attest` | `:capability:attest` FakeKey, IosAttestKey | yes |
-| `AttestStore` | `:capability:attest` | `:capability:attest` InMemoryAttestStore, KeychainAttestStore | yes |
 | `AttestedSource` | `:domain:presentation` | `:domain:presentation` AlwaysAttested, MutableAttestedSource | no |
-| `BackgroundScheduler` | `:capability:upload` | `:app:ios:url-session-upload` IosBackgroundScheduler; `:capability:upload` FakeScheduler | yes |
-| `ConfigDecodeResult` | `:capability:config` | `:capability:config` Failure, Success | no |
-| `ConfigRead` | `:capability:config` | `:capability:config` Joined, None, Unavailable | no |
-| `ConfigReader` | `:capability:config` | `:capability:config` KeychainConfigStore | no |
-| `ConfigSource` | `:capability:config` | `:capability:config` KeychainConfigStore; `:capability:join` FakeConfigSource; `:capability:membership` FakeConfigSource; `:domain:presentation` ConstConfigSource, FakeConfig | yes |
-| `ConfigStore` | `:capability:config` | `:capability:config` KeychainConfigStore; `:capability:membership` FakeConfigStore; `:domain:presentation` FakeConfig, NoOpConfigStore; `:test:integration` NoOpConfigStore, NoOpJoinConfigStore | yes |
-| `Contribution` | `:domain:gallery` | `:domain:gallery` None, Since | no |
-| `CreateOutcome` | `:capability:event-creation-ui` | `:capability:event-creation-ui` Created, InvalidName, Transient | no |
 | `CreationStatus` | `:capability:event-creation-ui` | `:capability:event-creation-ui` Failed, Idle, InFlight | no |
 | `CreationStatusSource` | `:capability:event-creation-ui` | `:capability:event-creation-ui` MutableCreationStatusSource | no |
 | `CutoffFormatter` | `:domain:presentation` | `:domain:presentation` SystemCutoffFormatter | no |
 | `CycleGate` | `:capability:upload` | `:capability:upload` NotJoined, Run, Skip | no |
 | `DeviceEnroller` | `:capability:join` | `:capability:join` FakeEnroller, ManifestDeviceEnroller | yes |
-| `DeviceFilesSource` | `:capability:membership` | `:capability:membership` FakeFiles, HttpDeviceFilesSource | yes |
-| `DeviceManifestStore` | `:domain:gallery` | `:domain:gallery` FakeStore, IosDeviceManifestStore; `:test:world` InMemoryDeviceManifestStore | yes |
-| `DeviceManifestUploader` | `:domain:gallery` | `:app:ios` IosDeviceManifestUploader; `:app:ios:photokit-extension` IosDeviceManifestUploader; `:capability:join` CapturingUploader, HttpDeviceManifestUploader; `:domain:gallery` FakeUploader; `:test:world` HttpDeviceManifestUploader | yes |
-| `DiscoveryStore` | `:capability:upload` | `:app:ios:photokit-discovery` IosDiscoveryStore; `:capability:upload` FakeStore; `:test:world` InMemoryDiscoveryStore | yes |
 | `DownloadStatusSource` | `:domain:status` | `:capability:download` StoreDownloadStatusSource; `:domain:status` InMemoryDownloadStatusSource | yes |
-| `DownloadStore` | `:domain:download-store` | `:domain:download-store` InMemoryDownloadStore, SqlDelightDownloadStore | yes |
-| `DownloadTask` | `:capability:download` | `:capability:download` IosDownloadTask | no |
-| `DownloadTransport` | `:capability:download` | `:capability:download` FakeDownloadTransport, IosDownloadTransport; `:test:world` FakeDownloadTransport | yes |
-| `DownloadTransportHost` | `:capability:download` | — | no |
-| `EventCreationClient` | `:capability:event-creation-ui` | `:capability:event-creation-ui` FakeClient, HttpEventCreationClient; `:domain:presentation` StubClient | yes |
 | `EventCreator` | `:capability:event-creation-ui` | `:capability:event-creation-ui` CreateEvent, NoOpEventCreator; `:domain:presentation` SpyCreator | no |
-| `EventDetails` | `:capability:join` | `:capability:join` Failed, Found, NotFound | no |
-| `EventDetailsSource` | `:capability:join` | `:capability:join` FakeDetails, HttpEventDetailsSource | yes |
-| `EventUnionSource` | `:capability:download` | `:capability:download` FakeUnion, HttpEventUnionSource, RecordingUnion | yes |
-| `GalleryResourceEnumerator` | `:domain:gallery` | `:domain:gallery` InMemoryGalleryResourceEnumerator, PhotoLibraryResourceEnumerator, ResourceEnumerator; `:domain:status` RecordingEnumerator | yes |
-| `GalleryStatusSource` | `:domain:gallery` | `:domain:gallery` InMemoryGalleryStatusSource; `:domain:status` OwnDeviceGalleryStatusSource | yes |
-| `ImportResult` | `:capability:download` | `:capability:download` Failed, Imported | no |
 | `JoinLoad` | `:domain:presentation` | `:domain:presentation` Failed, Found, NotFound | no |
 | `JoinPhase` | `:domain:presentation` | `:domain:presentation` CommitFailed, Committing, ExplainAccess, LoadFailed, Loading, NotFound, Ready | no |
-| `JoinedEventMarker` | `:capability:membership` | `:capability:membership` FakeMarker, IosJoinedEventMarker; `:test:world` InMemoryJoinedEventMarker | yes |
-| `Keychain` | `:domain:keychain` | `:domain:keychain` FakeKeychain, IosKeychain | yes |
-| `KeychainRead` | `:domain:keychain` | `:domain:keychain` Absent, Found, Unavailable | no |
-| `LedgerBackend` | `:domain:engine` | `:capability:membership` FakeLedgerBackend; `:capability:upload` InMemoryLedgerBackend; `:domain:engine` InMemoryLedgerBackend, SqlDelightLedgerBackend; `:test:world` WorldLedgerBackend | yes |
 | `LedgerCountsSource` | `:domain:status` | `:domain:status` MutableLedgerCountsSource, ReadingLedgerCountsSource | no |
-| `PermissionRequester` | `:domain:permission` | `:domain:permission` PhotoLibraryPermission; `:domain:presentation` NoOpPermissionRequester, SpyRequester; `:test:integration` NoOpJoinRequester, NoOpRequester | yes |
-| `PermissionStatusSource` | `:domain:permission` | `:domain:permission` PhotoLibraryPermission; `:domain:presentation` ConstPermissionStatusSource, FakePermissionSource; `:domain:status` FakePermissionSource; `:test:world` MutablePermissionStatusSource | yes |
-| `PhotoDownloadJobs` | `:capability:download` | `:capability:download` NoopJobs, QueuedPhotoDownloadJobs, RecordingJobs | no |
-| `PhotoLibraryImporter` | `:capability:download` | `:capability:download` FakeImporter, IosPhotoLibraryImporter, NoopImporter; `:test:world` FakePhotoLibraryImporter | yes |
 | `ProtectedDataAvailability` | `:domain:keychain` | `:app:ios` IosProtectedData; `:domain:keychain` FakeAvailability | yes |
-| `PushHttpClient` | `:capability:push` | `:capability:push` FakePushHttpClient, KtorPushHttpClient, RecordingClient | yes |
-| `PushReceiver` | `:capability:push` | `:capability:download` DownloadPushReceiver; `:capability:upload` FanOutPushReceiver, RecordingReceiver, UploadPushReceiver | no |
-| `RawAssetSource` | `:domain:gallery` | `:domain:gallery` InMemoryRawAssetSource, PhotoLibraryRawAssetSource | yes |
 | `SetupEffect` | `:domain:presentation` | `:domain:presentation` InvalidConfigLink | no |
 | `StatusIndicator` | `:domain:ui:components` | `:domain:ui:components` Complete, Error, InProgress, Loading, Photos, Success, Waiting | no |
-| `SyncDecision` | `:domain:engine` | `:domain:engine` AlreadyUploaded | no |
-| `SyncEvent` | `:domain:engine` | `:domain:engine` ResourceChanged, UploadCompleted, UploadFailed, UploadStarted | no |
 | `SyncHealth` | `:domain:presentation` | `:domain:presentation` InSync, Loading, NeedsAccess, NotStarted, Syncing, Unattested | no |
-| `SyncStatus` | `:domain:status` | `:domain:status` Loading, Ready | no |
 | `SyncStatusSource` | `:domain:status` | `:domain:presentation` ConstSyncStatusSource, FakeSyncStatusSource | yes |
 | `UiState` | `:domain:presentation` | `:domain:presentation` CreateEvent, CreatingEvent, Joined, JoiningEvent | no |
-| `UploadError` | `:domain:engine` | `:domain:engine` Cancelled, Http, Network, Unknown | no |
-| `UploadJobPlatform` | `:capability:upload` | `:app:ios:photokit-extension` IosPhotoKitUploadPlatform; `:app:ios:url-session-upload` IosUrlSessionUploadPlatform; `:capability:upload` FakePlatform; `:test:world` FakeUploadJobPlatform | yes |
 | `UploadProducer` | `:capability:upload` | `:app:ios` PhotoKitUploadProducer, UrlSessionUploadController; `:capability:upload` FakeProducer | yes |
-| `UploadRequestProvider` | `:domain:engine` | `:capability:membership` FakeProvider; `:capability:upload` StubUploadRequestProvider; `:capability:upload-url` EdgeUploadRequestProvider; `:domain:engine` RecordingUploadRequestProvider | yes |
-| `Work` | `:domain:engine` | `:domain:engine` Retry, Upload | no |

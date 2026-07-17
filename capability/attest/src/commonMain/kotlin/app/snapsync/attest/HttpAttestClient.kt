@@ -1,5 +1,7 @@
 package app.snapsync.attest
 
+import app.snapsync.ports.AttestClient
+
 import io.ktor.client.HttpClient
 import io.ktor.client.request.get
 import io.ktor.client.request.post

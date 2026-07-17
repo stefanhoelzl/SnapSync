@@ -19,6 +19,7 @@ kotlin {
     iosSimulatorArm64()
     sourceSets {
         commonMain.dependencies {
+            api(project(":domain"))
             api(project(":domain:presentation"))
             implementation(project(":domain:ui:components"))
             implementation(compose.runtime)

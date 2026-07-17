@@ -2,6 +2,10 @@
 
 package app.snapsync.keychain
 
+import app.snapsync.ports.Keychain
+import app.snapsync.ports.KeychainRead
+import app.snapsync.ports.KeychainUnavailable
+
 import kotlinx.cinterop.BetaInteropApi
 import kotlinx.cinterop.ExperimentalForeignApi
 import kotlinx.cinterop.addressOf

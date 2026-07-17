@@ -19,6 +19,8 @@ kotlin {
 // `app.snapsync.desktop.MainKt` (which leaks transitively onto `:app:desktop:ui`'s classpath) — so the
 // two entry points never collide.
 dependencies {
+    implementation(libs.ktor.client.core)
+    api(project(":domain"))
     implementation(project(":domain:permission"))
     implementation(project(":domain:status"))
     implementation(project(":domain:presentation"))

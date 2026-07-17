@@ -1,5 +1,7 @@
 package app.snapsync.attest
 
+import app.snapsync.ports.AttestKey
+
 import kotlinx.cinterop.ExperimentalForeignApi
 import kotlinx.cinterop.addressOf
 import kotlinx.cinterop.allocArrayOf

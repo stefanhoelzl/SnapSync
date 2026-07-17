@@ -1,4 +1,4 @@
-package app.snapsync.upload
+package app.snapsync.model
 
 /**
  * The name of the cross-process **Darwin** notification the PhotoKit upload extension posts after each

@@ -1,5 +1,8 @@
 package app.snapsync.keychain
 
+import app.snapsync.ports.Keychain
+import app.snapsync.ports.resolveOrMint
+
 import platform.Foundation.NSUUID
 
 /**

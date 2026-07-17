@@ -1,6 +1,5 @@
-package app.snapsync.uploadurl
+package app.snapsync.model
 
-import app.snapsync.engine.Resource
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals

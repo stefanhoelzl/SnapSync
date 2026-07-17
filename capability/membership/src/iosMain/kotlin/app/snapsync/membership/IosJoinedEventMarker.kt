@@ -1,5 +1,7 @@
 package app.snapsync.membership
 
+import app.snapsync.ports.JoinedEventMarker
+
 import app.snapsync.engine.JOINED_EVENT_KEY
 import app.snapsync.engine.LEDGER_APP_GROUP
 import platform.Foundation.NSUserDefaults

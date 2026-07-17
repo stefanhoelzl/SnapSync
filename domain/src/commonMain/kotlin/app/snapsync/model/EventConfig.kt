@@ -1,4 +1,4 @@
-package app.snapsync.config
+package app.snapsync.model
 
 import kotlinx.serialization.Serializable
 

@@ -1,4 +1,4 @@
-package app.snapsync.download
+package app.snapsync.ports
 
 /**
  * A submitted byte transfer. [cancel] is the **only** way to stop it — see [DownloadTransport].

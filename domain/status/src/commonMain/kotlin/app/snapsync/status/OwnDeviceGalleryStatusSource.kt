@@ -1,10 +1,10 @@
 package app.snapsync.status
 
-import app.snapsync.gallery.Contribution
-import app.snapsync.gallery.GalleryResourceEnumerator
-import app.snapsync.gallery.GalleryStatusSource
-import app.snapsync.gallery.RESOURCE_META_CREATION_DATE
-import app.snapsync.gallery.excludedAssetIds
+import app.snapsync.model.Contribution
+import app.snapsync.ports.GalleryResourceEnumerator
+import app.snapsync.ports.GalleryStatusSource
+import app.snapsync.model.RESOURCE_META_CREATION_DATE
+import app.snapsync.model.excludedAssetIds
 import co.touchlab.kermit.Logger
 import kotlin.time.TimeSource
 import kotlinx.coroutines.flow.MutableStateFlow

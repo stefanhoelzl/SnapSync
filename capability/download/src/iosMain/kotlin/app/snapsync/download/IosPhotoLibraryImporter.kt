@@ -1,7 +1,10 @@
 package app.snapsync.download
 
-import app.snapsync.downloadstore.AssetRef
-import app.snapsync.downloadstore.StagedResource
+import app.snapsync.ports.ImportResult
+import app.snapsync.ports.PhotoLibraryImporter
+
+import app.snapsync.ports.AssetRef
+import app.snapsync.ports.StagedResource
 import co.touchlab.kermit.Logger
 import kotlinx.cinterop.BetaInteropApi
 import kotlinx.cinterop.ExperimentalForeignApi

@@ -1,15 +1,15 @@
 package app.snapsync.desktop
 
-import app.snapsync.config.ConfigSource
-import app.snapsync.config.ConfigStore
-import app.snapsync.permission.PermissionRequester
-import app.snapsync.permission.PermissionStatus
-import app.snapsync.permission.PermissionStatusSource
+import app.snapsync.ports.ConfigSource
+import app.snapsync.ports.ConfigStore
+import app.snapsync.ports.PermissionRequester
+import app.snapsync.model.PermissionStatus
+import app.snapsync.ports.PermissionStatusSource
 import app.snapsync.presentation.JoinPhase
 import app.snapsync.presentation.MutableAttestedSource
 import app.snapsync.presentation.MutablePendingJoinSource
 import app.snapsync.presentation.PendingJoin
-import app.snapsync.config.EventConfig
+import app.snapsync.model.EventConfig
 import app.snapsync.eventcreation.CreationFailureReason
 import app.snapsync.eventcreation.CreationStatus
 import app.snapsync.eventcreation.CreationStatusSource
@@ -17,8 +17,8 @@ import app.snapsync.eventcreation.EventCreator
 import app.snapsync.eventcreation.NoOpEventCreator
 import app.snapsync.status.DownloadProgress
 import app.snapsync.status.InMemoryDownloadStatusSource
-import app.snapsync.status.SyncStatus
-import app.snapsync.status.SyncProgress
+import app.snapsync.model.SyncStatus
+import app.snapsync.model.SyncProgress
 import app.snapsync.status.SyncStatusSource
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow

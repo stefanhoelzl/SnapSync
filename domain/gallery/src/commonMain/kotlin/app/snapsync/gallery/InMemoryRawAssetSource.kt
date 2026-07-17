@@ -1,5 +1,8 @@
 package app.snapsync.gallery
 
+import app.snapsync.model.RawAsset
+import app.snapsync.ports.RawAssetSource
+
 /**
  * A settable in-memory [RawAssetSource] for the JVM harness and tests: holds a fixed [RawAsset] list,
  * re-settable via [set]. [walk] filters by **raw** `localIdentifier` membership (the mapping normalizes

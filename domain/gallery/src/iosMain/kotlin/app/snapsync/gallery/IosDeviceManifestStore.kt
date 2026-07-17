@@ -2,6 +2,13 @@
 
 package app.snapsync.gallery
 
+import app.snapsync.model.encodeToJson
+
+import app.snapsync.model.DeviceManifest
+import app.snapsync.model.DeviceManifestAsset
+import app.snapsync.model.deviceManifestFromJson
+import app.snapsync.ports.DeviceManifestStore
+
 import app.snapsync.engine.LEDGER_APP_GROUP
 import kotlinx.cinterop.BetaInteropApi
 import kotlinx.cinterop.ExperimentalForeignApi

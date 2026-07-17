@@ -10,6 +10,7 @@ kotlin {
     iosSimulatorArm64()
     sourceSets {
         commonMain.dependencies {
+            api(project(":domain"))
             api(libs.coroutines.core)
             implementation(libs.kermit)
             // Ktor client (engine injected by the composition root — the shared Darwin client on iOS),

@@ -1,6 +1,6 @@
 package app.snapsync.presentation
 
-import app.snapsync.config.localToCutoff
+import app.snapsync.model.localToCutoff
 import kotlin.time.Clock
 import kotlin.time.Instant
 import kotlinx.datetime.LocalDateTime

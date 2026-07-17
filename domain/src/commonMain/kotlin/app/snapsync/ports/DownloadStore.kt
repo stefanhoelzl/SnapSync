@@ -1,4 +1,4 @@
-package app.snapsync.downloadstore
+package app.snapsync.ports
 
 /** Lifecycle of a foreign asset in the download store. No terminal failure state — see the no-FAILED posture. */
 enum class DownloadState { PENDING, IMPORTED }

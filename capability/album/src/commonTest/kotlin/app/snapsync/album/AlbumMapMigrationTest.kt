@@ -1,6 +1,6 @@
 package app.snapsync.album
 
-import app.snapsync.keychain.KeychainRead
+import app.snapsync.ports.KeychainRead
 import kotlin.test.Test
 import kotlin.test.assertEquals
 

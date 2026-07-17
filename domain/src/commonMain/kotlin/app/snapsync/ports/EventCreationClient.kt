@@ -1,4 +1,4 @@
-package app.snapsync.eventcreation
+package app.snapsync.ports
 
 /** The outcome of a `POST /events` create call — a closed set the use-case maps to [CreationStatus]. */
 sealed interface CreateOutcome {

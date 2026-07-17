@@ -1,18 +1,26 @@
 package app.snapsync.upload
 
-import app.snapsync.engine.LedgerState
-import app.snapsync.engine.LedgerWriter
-import app.snapsync.engine.Resource
-import app.snapsync.engine.SyncDecision
-import app.snapsync.engine.SyncEngine
-import app.snapsync.engine.SyncEvent
-import app.snapsync.engine.UploadError
-import app.snapsync.engine.UploadJob
-import app.snapsync.engine.UploadRequest
-import app.snapsync.gallery.Contribution
-import app.snapsync.gallery.RESOURCE_META_CREATION_DATE
-import app.snapsync.gallery.assetIdFromUploadKey
-import app.snapsync.gallery.excludedAssetIds
+import app.snapsync.ports.CreateResult
+import app.snapsync.ports.CycleResult
+import app.snapsync.ports.Discovery
+import app.snapsync.ports.DiscoveryStore
+import app.snapsync.ports.PlatformJobState
+import app.snapsync.ports.PlatformUploadJob
+import app.snapsync.ports.UploadJobPlatform
+
+import app.snapsync.model.LedgerState
+import app.snapsync.model.LedgerWriter
+import app.snapsync.model.Resource
+import app.snapsync.model.SyncDecision
+import app.snapsync.model.SyncEngine
+import app.snapsync.model.SyncEvent
+import app.snapsync.model.UploadError
+import app.snapsync.model.UploadJob
+import app.snapsync.model.UploadRequest
+import app.snapsync.model.Contribution
+import app.snapsync.model.RESOURCE_META_CREATION_DATE
+import app.snapsync.model.assetIdFromUploadKey
+import app.snapsync.model.excludedAssetIds
 import co.touchlab.kermit.Logger
 import kotlinx.coroutines.withTimeout
 

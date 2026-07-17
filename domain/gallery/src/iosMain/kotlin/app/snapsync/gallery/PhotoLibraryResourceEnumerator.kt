@@ -1,5 +1,11 @@
 package app.snapsync.gallery
 
+import app.snapsync.model.EXCLUDED_SUBTYPE_MASK
+import app.snapsync.model.RawAsset
+import app.snapsync.model.RawResource
+import app.snapsync.ports.GalleryResourceEnumerator
+import app.snapsync.ports.RawAssetSource
+
 import kotlinx.cinterop.ExperimentalForeignApi
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext

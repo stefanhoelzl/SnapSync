@@ -13,6 +13,7 @@ kotlin {
     iosSimulatorArm64()
     sourceSets {
         commonTest.dependencies {
+            implementation(project(":domain"))
             implementation(project(":test:world"))
             implementation(project(":domain:presentation"))
             implementation(project(":domain:status"))

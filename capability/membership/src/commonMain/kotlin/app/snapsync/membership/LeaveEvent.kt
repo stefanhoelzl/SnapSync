@@ -1,7 +1,7 @@
 package app.snapsync.membership
 
-import app.snapsync.config.ConfigSource
-import app.snapsync.config.ConfigStore
+import app.snapsync.ports.ConfigSource
+import app.snapsync.ports.ConfigStore
 import co.touchlab.kermit.Logger
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
