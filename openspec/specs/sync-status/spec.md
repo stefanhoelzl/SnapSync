@@ -6,7 +6,8 @@ The status projection: the user-facing truth about what this device has shared, 
 ledger. Defines the `SyncStatus` snapshot contract (lifetime counts × the live gallery total, three-state
 classification), the `SyncStatusSource` seam presentation consumes, and the ledger-backed source that
 combines the ledger's aggregate stream with permission-derived operational state and the live gallery
-size. Lives in `:domain:status`, which plugs the engine-type leak toward presentation.
+size. Lives in `:domain` — the `SyncStatus`/`SyncProgress` vocabulary in `model/`, the projections in
+`feature/status` — where the feature-blindness zone gate plugs the engine-type leak toward presentation.
 
 **Why snapshots, not an event stream.** On iOS the uploads run in a separate process while the app is
 suspended or dead, so the app can only ever learn what happened by reading persisted state — the UI is
@@ -80,7 +81,7 @@ feature's read-model types — never a ledger type, a port, or the engine.
 
 ### Requirement: SyncStatus — loading vs ready
 
-The status domain SHALL define a sealed `SyncStatus` in `:domain:status` (package `app.snapsync.status`) with exactly two cases:
+The status domain SHALL define a sealed `SyncStatus` in `:domain`'s `model/` zone (package `app.snapsync.model`, seated there by migration step 3a) with exactly two cases:
 
 - `Loading` — the source has not yet read persisted state; the honest "I am reading the ledger and do not yet know the result." It is a real, source-derived value, **not** a placeholder guess.
 - `Ready(progress: SyncProgress)` — the source holds the whole truth as a minted `SyncProgress`.
@@ -99,7 +100,7 @@ The status domain SHALL define a sealed `SyncStatus` in `:domain:status` (packag
 
 The status domain SHALL define
 `SyncProgress(pending, completed, total, failed, active, estimatedRemaining: Duration?)`
-in `:domain:status` (package `app.snapsync.status`). `completed` is the count of the device's
+in `:domain`'s `model/` zone (package `app.snapsync.model`, seated there by migration step 3a). `completed` is the count of the device's
 **complete assets** — assets **all of whose ledger rows are `COMPLETED`** (asset-counted, from the
 extension's ledger via `aggregates().completed`). `total` is the live photo-library count (the gallery
 size, `N`) — **not** a storage or ledger-discovered count, so it reflects photos not yet discovered or

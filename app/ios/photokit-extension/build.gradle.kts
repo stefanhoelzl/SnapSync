@@ -3,7 +3,7 @@ plugins {
 }
 
 kotlin {
-    // Lean background-upload extension core: :domain:engine + the upload-url/config capabilities, no
+    // Lean background-upload extension core: :domain + the extension-safe adapters, no
     // Compose/UI, so the extension binary stays small. Each target exposes a static framework
     // "SnapSyncUploadKit" that
     // the Xcode app-extension target links — separate from the app's "SnapSyncKit", so the two
@@ -29,15 +29,6 @@ kotlin {
             // platform-free technology impls (:adapter:generic — the SQLDelight stores + Ktor clients).
             implementation(project(":adapter:generic"))
             implementation(project(":adapter:ios:ext-safe"))
-            // The shared library resource-enumeration seam (one upload-key/version derivation for both
-            // the producer and the re-join seed); the producer delegates its enumeration to it.
-            implementation(project(":domain:gallery"))
-            implementation(project(":capability:album"))
-            // The re-join reconciliation now runs in the extension (capability
-            // `event-rejoin-reconciliation`): the ExtensionReconciler seeds already-stored photos as
-            // COMPLETED before the producer runs, fetching the event's complete-asset listing via the
-            // EventFilesSource / HttpEventFilesSource (Darwin client supplied by the rejoin iosMain).
-            implementation(project(":capability:membership"))
             // The event-notify sender (capability `upload-completion-notify`): a bodyless POST to
             // /event/<id>/notify fired after a drained cycle that completed uploads, so co-contributors
             // are woken to download. Reuses the same Darwin client as the manifest PUT.

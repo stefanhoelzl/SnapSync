@@ -268,8 +268,8 @@ capture-date cutoff and the origin exclusions. The policy answers *what does thi
 cutoff bounds **when** a photo was taken, the origin exclusions bound **what it is**, and the direction bounds
 **whether at all**. A `DownloadOnly` membership contributes the **empty set**.
 
-The three inputs SHALL be carried to both policy consumers as a single value, `Contribution`, defined in
-`:domain:gallery` (the only module both `:capability:upload` and `:domain:status` can see):
+The three inputs SHALL be carried to both policy consumers as a single value, `Contribution`, defined in `:domain`'s `model/` zone (package `app.snapsync.model`, seated there by migration step 3a —
+visible to both policy consumers, `feature/upload` and `feature/status`):
 
 - `Contribution.None` — the membership contributes nothing (`DownloadOnly`). It carries **no** cutoff,
   because a non-contributor has no cutoff to speak of.
@@ -561,3 +561,4 @@ library: it SHALL NOT be implemented as a per-asset membership test.
 - **WHEN** the album-membership seam is invoked for a membership whose cutoff is `C`
 - **THEN** it returns only member assets whose capture date is at or after `C` — the seam never enumerates the
   whole album
+

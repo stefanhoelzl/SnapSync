@@ -8,16 +8,9 @@ the `:tools:diagrams` freshness test fails on drift; regenerate instead.
 
 | Port | Declared in | Implementations (by module) | Fake exists |
 |---|---|---|---|
-| `AlbumManager` | `:capability:album` | `:adapter:ios:ext-safe` IosAlbumManager; `:capability:album` FakeAlbumManager; `:test:world` FakeAlbumManager | yes |
-| `AlbumMapSource` | `:capability:album` | `:capability:album` Current, Migrate, Retry | no |
-| `AlbumMapStore` | `:capability:album` | `:adapter:ios:ext-safe` IosAlbumMapStore; `:capability:album` InMemoryAlbumMapStore; `:test:world` InMemoryAlbumMapStore | yes |
 | `AppSyncStatus` | `:domain:ui:components` | `:domain:ui:components` CannotVerifyDevice, InSync, Loading, NeedsAccess, NotStarted, Syncing | no |
 | `AttestedSource` | `:domain:presentation` | `:domain:presentation` AlwaysAttested, MutableAttestedSource | no |
-| `CreationStatus` | `:capability:event-creation-ui` | `:capability:event-creation-ui` Failed, Idle, InFlight | no |
-| `CreationStatusSource` | `:capability:event-creation-ui` | `:capability:event-creation-ui` MutableCreationStatusSource | no |
 | `CutoffFormatter` | `:domain:presentation` | `:domain:presentation` SystemCutoffFormatter | no |
-| `DownloadStatusSource` | `:domain:status` | `:capability:download` StoreDownloadStatusSource; `:domain:status` InMemoryDownloadStatusSource | yes |
-| `EventCreator` | `:capability:event-creation-ui` | `:capability:event-creation-ui` CreateEvent, NoOpEventCreator; `:domain:presentation` SpyCreator | no |
 | `JoinLoad` | `:domain:presentation` | `:domain:presentation` Failed, Found, NotFound | no |
 | `JoinPhase` | `:domain:presentation` | `:domain:presentation` CommitFailed, Committing, ExplainAccess, LoadFailed, Loading, NotFound, Ready | no |
 | `ProtectedDataAvailability` | `:domain:keychain` | `:app:ios` IosProtectedData; `:domain:keychain` FakeAvailability | yes |

@@ -38,7 +38,7 @@ Decision record: `changes/archive/2026-06-27-permission-on-status-screen`.
 ## Requirements
 ### Requirement: Permission domain contracts
 
-The permission domain (`:domain:permission`) SHALL define `PermissionStatus` with exactly three values — `NOT_DETERMINED`, `DENIED`, `GRANTED` — and two ports:
+The permission domain SHALL define `PermissionStatus` with exactly three values — `NOT_DETERMINED`, `DENIED`, `GRANTED` — in `:domain`'s `model/` zone, and two ports in its `ports/` zone (both seated by migration step 3a):
 
 - `PhotoAccessStatusSource` (state port): exposes `permission: StateFlow<PermissionStatus>`, a level-triggered state holder whose current value is always available synchronously. Every emission is the whole truth; consumers depend only on the latest value.
 - `PhotoAccessRequester` (command port): `fun request()` and `fun openSettings()`. Both are fire-and-forget — they MUST NOT return values and MUST NOT suspend. Status changes resulting from a command arrive exclusively via `PhotoAccessStatusSource`.
@@ -64,7 +64,7 @@ v1 SHALL treat only a full library grant as `GRANTED`. Any platform adapter MUST
 
 ### Requirement: iOS PhotoKit permission adapter
 
-The permission domain SHALL provide an iOS platform adapter (in `:domain:permission` `iosMain`) — a single object implementing **both** `PhotoAccessStatusSource` and `PhotoAccessRequester` against PhotoKit. It SHALL seed its `permission` `StateFlow` synchronously from `PHPhotoLibrary.authorizationStatus(for: .readWrite)` at construction (the platform exposes the current status synchronously, so the permission seam keeps its synchronous-real guarantee). It SHALL request the `.readWrite` (full-library) access level. The status mapping is the one already required by *Full library access is required* (`.authorized → GRANTED`, `.notDetermined → NOT_DETERMINED`, `.limited/.denied/.restricted → DENIED`).
+The permission domain SHALL provide an iOS platform adapter (`PhotoLibraryPermission` in `:adapter:ios:app-only`, seated there by migration step 4 — the permission dialog is app-process-only surface) — a single object implementing **both** `PhotoAccessStatusSource` and `PhotoAccessRequester` against PhotoKit. It SHALL seed its `permission` `StateFlow` synchronously from `PHPhotoLibrary.authorizationStatus(for: .readWrite)` at construction (the platform exposes the current status synchronously, so the permission seam keeps its synchronous-real guarantee). It SHALL request the `.readWrite` (full-library) access level. The status mapping is the one already required by *Full library access is required* (`.authorized → GRANTED`, `.notDetermined → NOT_DETERMINED`, `.limited/.denied/.restricted → DENIED`).
 
 `request()` SHALL invoke `PHPhotoLibrary.requestAuthorization(for: .readWrite)` and update the source from its completion callback; `openSettings()` SHALL open the app's system settings surface (`UIApplication.openSettingsURLString`). Both are fire-and-forget per the port contract.
 

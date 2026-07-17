@@ -13,11 +13,7 @@ dependencies {
     // The shared harness library: `PhoneFrame` + the `StatusPane` composition glue.
     implementation(project(":app:desktop"))
     // The stand-in seams the forge `PanelController` constructs its cells from.
-    implementation(project(":domain:permission"))
-    implementation(project(":domain:status"))
     implementation(project(":domain:presentation"))
-    implementation(project(":capability:config"))
-    implementation(project(":capability:event-creation-ui"))
     // The control panel is deliberately raw Material 3, not App* (spec: desktop-test-harness).
     implementation(compose.material3)
     implementation(compose.desktop.currentOs)

@@ -3,6 +3,7 @@
 package app.snapsync.album
 
 import app.snapsync.model.normalizeAssetId
+import app.snapsync.ports.AlbumManager
 import co.touchlab.kermit.Logger
 import kotlinx.cinterop.BetaInteropApi
 import kotlinx.cinterop.ExperimentalForeignApi

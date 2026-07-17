@@ -1,5 +1,6 @@
 package app.snapsync.gallery
 
+import app.snapsync.feature.upload.ResourceEnumerator
 import app.snapsync.model.MEDIA_TYPE_IMAGE
 import app.snapsync.model.RESOURCE_META_CREATION_DATE
 import app.snapsync.model.RESOURCE_META_HAS_ADJUSTMENTS

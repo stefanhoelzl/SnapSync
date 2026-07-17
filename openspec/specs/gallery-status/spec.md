@@ -4,9 +4,10 @@
 
 The live photo-library size seam: the count of photos currently in the device library, used by the
 status projection as the sync total `N`. A platform-backed `StateFlow` (the `GalleryStatusSource`
-seam) that `:domain:status` combines with the ledger and permission — so the total reflects photos
-the instant they are added, before the background extension records anything. Lives in
-`:domain:gallery`; PhotoKit-backed on iOS, a settable in-memory implementation on JVM.
+seam) that the `feature/status` projection combines with the ledger and permission — so the total
+reflects photos the instant they are added, before the background extension records anything. The
+seam lives in `:domain`'s `ports/` zone; PhotoKit-backed on iOS (`:adapter:ios:ext-safe`), with the
+settable in-memory implementation in `:domain:gallery` until the fakes re-home (migration step 10).
 
 The total is **enumeration-only — no storage LIST** — and it is an *own-device* count: photos downloaded from
 other contributors are excluded, because a member's progress is about what they have to share, not about
@@ -99,19 +100,21 @@ less than the ledger's completed count) — without a device.
 
 ### Requirement: Module placement keeps the seam off presentation
 
-`GalleryStatusSource` and its in-memory implementation SHALL live in `:domain:gallery`.
-`:domain:status` SHALL depend on `:domain:gallery` with **implementation** scope only, so gallery types
-never reach `:domain:presentation`'s compile classpath.
+`GalleryStatusSource` SHALL live in `:domain`'s `ports/` zone (seated by migration step 3a) and its
+settable in-memory implementation in `:domain:gallery` — the fakes' interim home until they re-home
+to `:adapter:fake` (migration step 10). `:domain:presentation` SHALL NOT depend on `:domain:gallery`,
+so no fake gallery type is reachable from presentation code; presentation consumes gallery-derived
+counts only through the `feature/status` read-models.
 
-#### Scenario: Presentation compiles without the gallery seam
+#### Scenario: Presentation compiles without the gallery fakes
 
 - **WHEN** `:domain:presentation` is compiled
-- **THEN** `:domain:gallery` is not on its compile classpath, and no gallery type is reachable from
-  presentation code
+- **THEN** `:domain:gallery` is not on its compile classpath, and no in-memory gallery type is
+  reachable from presentation code
 
 ### Requirement: Library resource enumeration seam
 
-The gallery domain SHALL define, in `:domain:gallery`, a resource-enumeration seam that returns the
+The gallery domain SHALL define, in `:domain`'s `ports/` zone (`PhotoLibrary`, seated by migration step 3a), a resource-enumeration seam that returns the
 library's **in-scope** resources as a list, each carrying `(filename, assetId, contentType, metadata)` —
 where `filename` is the upload key (the reinstall-stable identity, `<assetId>-<kind>.<ext>`) and
 `assetId` groups a photo's resources. There is **no** `version`: existence under the upload key is the
@@ -126,9 +129,9 @@ expected-filename set and SHALL NOT read the per-device listing: own-device comp
 and the status path issues no storage LIST. What the shared seam guarantees is that the total counts
 exactly the assets the cycle would upload — so the screen can reach 100% — not that two derivations of
 "complete" agree. The iOS implementation SHALL be
-PhotoKit-backed; `:domain:gallery` SHALL also provide a settable in-memory implementation for the JVM
-harness and tests. The seam SHALL remain in `:domain:gallery` so its types never reach
-`:domain:presentation`'s compile classpath (per "Module placement keeps the seam off presentation").
+PhotoKit-backed (`:adapter:ios:ext-safe`'s decision-free walk composed through `feature/upload`'s `ResourceEnumerator`, the shared walk-plus-mapping composition — migration step 6); `:domain:gallery` SHALL keep providing a settable in-memory implementation for the JVM
+harness and tests until the fakes re-home to `:adapter:fake` (migration step 10). Presentation SHALL keep consuming counts only through the `feature/status` read-models, never
+the enumeration seam directly (per "Module placement keeps the seam off presentation").
 
 The enumeration seam SHALL be realized as the composition of the **decision-free raw-asset walk seam**
 (above) with a **pure `commonMain` mapping** `RawAsset` → resources. The mapping SHALL be the single
@@ -179,15 +182,15 @@ role filter, key derivation, or normalization of its own.
 
 ### Requirement: Upload-key to assetId round-trip parser
 
-`:domain:gallery` SHALL own a **single** `assetIdFromUploadKey` parser — the exact inverse of its
+`:domain`'s `model/` zone (seated by migration step 3a) SHALL own a **single** `assetIdFromUploadKey` parser — the exact inverse of its
 `uploadKey` derivation — that recovers a resource's `assetId` from a bare upload key
 (`<assetId>-<role>.<ext>`). It SHALL be the **only** implementation of that parse: both the
 extension-side upload-job reconstruction (`ios-photokit-upload`, "Completion and retry adjudication")
 and the re-join reconciler (`event-rejoin-reconciliation`) SHALL call this one function, replacing any
 private per-module copy. Because the parse is now load-bearing at the record path (a mis-parse writes a
 wrong or empty `assetId`), the round-trip SHALL be pinned by a test: for every key `uploadKey` produces,
-`assetIdFromUploadKey` SHALL recover the original `assetId`. The parser SHALL remain in `:domain:gallery`
-so its types never reach `:domain:presentation`'s compile classpath (per "Module placement keeps the
+`assetIdFromUploadKey` SHALL recover the original `assetId`. The parser SHALL remain in `model/`,
+the one shared derivation both consumers import (per "Module placement keeps the
 seam off presentation").
 
 #### Scenario: assetId round-trips through the upload key
@@ -199,8 +202,8 @@ seam off presentation").
 #### Scenario: Both consumers use the one parser
 
 - **WHEN** the upload-job reconstruction and the re-join reconciler each recover an `assetId` from a key
-- **THEN** both call `:domain:gallery`'s `assetIdFromUploadKey`, with no private duplicate remaining in
-  `:capability:membership` or the upload cycle
+- **THEN** both call `model/`'s `assetIdFromUploadKey`, with no private duplicate remaining in
+  the reconciler or the upload cycle
 
 ### Requirement: Decision-free raw-asset walk seam
 

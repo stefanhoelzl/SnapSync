@@ -9,8 +9,10 @@ un-redacted `Documents/debug.log`. This capability defines that log's guarantees
 redaction), size-bounded (10 MB roll), and self-explaining — every platform invocation and app entry
 point logs enter/exit with parameters, result, and duration; every line carries a `[<entryPoint>]`
 ambient prefix tracing it to what triggered it; every HTTP request logs one line; and full-library
-enumeration is accountable via a per-cycle summary. Cross-cutting infra (the `Logger.invocation` helper,
-the `LogContext` ambient prefix, the consolidated device-log writers) lives in `:domain:logging`.
+enumeration is accountable via a per-cycle summary. Cross-cutting infra lives in `:domain`'s `model/`
+zone (the `Logger.invocation` helper and the `LogContext` ambient prefix — an interim seat that
+dissolves into the `compose/` flow decorators, migration step 8) and in `:adapter:ios:ext-safe`
+(the consolidated device-log writers).
 
 ## Requirements
 

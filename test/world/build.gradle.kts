@@ -21,16 +21,11 @@ kotlin {
             // to its consumers (`:app:desktop`, `:test:integration`) — they appear across the world's
             // public API (composition helpers, inspectable fakes), so they must leak transitively.
             api(project(":domain:gallery"))
-            api(project(":domain:status"))
             api(project(":domain:download-store"))
             // The real Ktor clients the mini-edge serves (HttpDeviceFilesSource, HttpEventUnionSource,
             // HttpEventCreation, HttpLeaveNotifier) moved to the adapter layer at migration step 4.
             api(project(":adapter:generic"))
             api(project(":capability:upload"))
-            api(project(":capability:album"))
-            api(project(":capability:membership"))
-            api(project(":capability:download"))
-            api(project(":capability:event-creation-ui"))
             implementation(libs.coroutines.core)
             implementation(libs.kermit)
             implementation(libs.ktor.client.core)

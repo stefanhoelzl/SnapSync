@@ -19,13 +19,9 @@ kotlin {
             // The SQLDelight stores these drivers open (SqlDelightLedgerStore/SqlDelightDownloadStore)
             // and the Ktor core types darwinHttpClient() returns.
             api(project(":adapter:generic"))
-            // Interim edges until migration step 6 seats these seams in `:domain`:
-            // the album seams (AlbumManager/AlbumMapStore/albumMapSource) still live in
-            // :capability:album, and the ResourceEnumerator composition in :domain:gallery.
-            // (The :domain:logging edge died at step 5 — LogContext/invocation now live in
-            // :domain model/, reached via the api(":domain") above.)
-            api(project(":capability:album"))
-            api(project(":domain:gallery"))
+            // (The interim :capability:album and :domain:gallery edges died at migration step 6:
+            // the album seams now live in :domain ports/, albumMapSource in feature/album, and the
+            // ResourceEnumerator composition in feature/upload — all reached via api(":domain").)
             implementation(libs.sqldelight.driver.native)
             implementation(libs.ktor.client.darwin)
             implementation(libs.kotlinx.serialization.json)

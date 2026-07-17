@@ -21,7 +21,6 @@ kotlin {
 dependencies {
     implementation(libs.ktor.client.core)
     api(project(":domain"))
-    implementation(project(":domain:status"))
     implementation(project(":domain:presentation"))
     implementation(project(":domain:ui"))
     // `StatusPane` provides the design-system's test-only `LocalDarkThemeOverride` around the phone
@@ -31,15 +30,10 @@ dependencies {
     // to the adapter layer at migration step 4.
     implementation(project(":adapter:generic"))
     // `StatusPane` names the create-event seams (`CreationStatusSource`/`EventCreator`) in its
-    // signature, so the edge is explicit here rather than transitive.
-    implementation(project(":capability:event-creation-ui"))
+    // signature — since migration step 6 they live in :domain's feature/creation zone (via api above).
     // The full-stack harness: the controllable world + fakes (brings :domain:engine/:gallery/:capability
     // upload transitively for the types the inspector names) and the real store-backed download status.
     implementation(project(":test:world"))
-    implementation(project(":capability:download"))
-    // The full-stack harness routes create + scan through the REAL join gate over the world, so it
-    // names the `JoinEvent` use-case (details load + enroll/provision) to reach the JoiningEvent surface.
-    implementation(project(":capability:join"))
     // The engine-console footer taps Kermit directly (transitive only via impl deps, so name it here).
     implementation(libs.kermit)
     implementation(compose.runtime)

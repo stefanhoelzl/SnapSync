@@ -21,9 +21,9 @@ UIKit/BGTask/URLSession adapters — must be structurally un-linkable from the a
 Kotlin/Native links whole modules) and the **appex footprint** (Compose/Skiko has no business in a
 memory-capped extension). Both images DO embed the shared domain code, each privately — that is
 fine; no Kotlin type ever crosses the process boundary. The app framework carries Compose/UI + the
-full `domain` stack; the extension framework is lean (`:capability:upload` — the UploadCycle
-orchestration — over `:domain:engine` + `:domain:gallery`, plus `:capability:upload-url` +
-`:capability:config`). Both are
+full `domain` stack; the extension framework is lean (`:domain`'s feature/upload UploadCycle
+orchestration over the extension-safe adapters `:adapter:ios:ext-safe` + `:adapter:generic`,
+plus the receive seam left in `:capability:upload`). Both are
 `isStatic = true` — the Compose-iOS norm (avoids dynamic-linking issues with the bundled
 Skiko/Compose native libs).
 
@@ -182,7 +182,7 @@ exist at all.
 ## Gotchas
 
 - **Device logs:** both composition roots set `Logger.setLogWriters(PublicNSLogWriter(),
-  FileLogWriter())` — the writers now live in `:domain:logging` (capability `diagnostic-logging`).
+  FileLogWriter())` — the writers live in `:adapter:ios:ext-safe` (capability `diagnostic-logging`).
   `FileLogWriter` (verbatim `Documents/debug.log`, 10 MB roll) is the reliable channel; the os_log
   `PublicNSLogWriter` is redacted `<private>` on current iOS. Each root emits a boot banner and wraps
   its entry points with `Logger.invocation`, so every line carries a `[<entryPoint>]` prefix. Keep new

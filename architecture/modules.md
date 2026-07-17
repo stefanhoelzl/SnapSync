@@ -13,25 +13,15 @@ flowchart LR
   app_desktop_ui[":app:desktop:ui"]
   app_ios[":app:ios"]
   app_ios_photokit_extension[":app:ios:photokit-extension"]
-  capability_album[":capability:album"]
   capability_attest[":capability:attest"]
-  capability_config[":capability:config"]
-  capability_download[":capability:download"]
-  capability_event_creation_ui[":capability:event-creation-ui"]
-  capability_join[":capability:join"]
-  capability_membership[":capability:membership"]
   capability_push[":capability:push"]
   capability_upload[":capability:upload"]
-  capability_upload_url[":capability:upload-url"]
   domain[":domain"]
   domain_download_store[":domain:download-store"]
   domain_engine[":domain:engine"]
   domain_gallery[":domain:gallery"]
   domain_keychain[":domain:keychain"]
-  domain_logging[":domain:logging"]
-  domain_permission[":domain:permission"]
   domain_presentation[":domain:presentation"]
-  domain_status[":domain:status"]
   domain_ui[":domain:ui"]
   domain_ui_components[":domain:ui:components"]
   test_architecture[":test:architecture"]
@@ -44,98 +34,55 @@ flowchart LR
   adapter_ios_app_only --> adapter_ios_ext_safe
   adapter_ios_app_only --> domain
   adapter_ios_ext_safe --> adapter_generic
-  adapter_ios_ext_safe --> capability_album
   adapter_ios_ext_safe --> domain
-  adapter_ios_ext_safe --> domain_gallery
   app_desktop --> adapter_generic
-  app_desktop --> capability_download
-  app_desktop --> capability_event_creation_ui
-  app_desktop --> capability_join
   app_desktop --> domain
   app_desktop --> domain_presentation
-  app_desktop --> domain_status
   app_desktop --> domain_ui
   app_desktop --> domain_ui_components
   app_desktop --> test_world
   app_desktop_ui --> app_desktop
-  app_desktop_ui --> capability_config
-  app_desktop_ui --> capability_event_creation_ui
   app_desktop_ui --> domain
-  app_desktop_ui --> domain_permission
   app_desktop_ui --> domain_presentation
-  app_desktop_ui --> domain_status
   app_ios --> adapter_generic
   app_ios --> adapter_ios_app_only
   app_ios --> adapter_ios_ext_safe
-  app_ios --> capability_album
   app_ios --> capability_attest
-  app_ios --> capability_download
-  app_ios --> capability_event_creation_ui
-  app_ios --> capability_join
-  app_ios --> capability_membership
   app_ios --> capability_push
   app_ios --> capability_upload
   app_ios --> domain
-  app_ios --> domain_gallery
   app_ios --> domain_keychain
   app_ios --> domain_presentation
-  app_ios --> domain_status
   app_ios --> domain_ui
   app_ios_photokit_extension --> adapter_generic
   app_ios_photokit_extension --> adapter_ios_ext_safe
-  app_ios_photokit_extension --> capability_album
-  app_ios_photokit_extension --> capability_membership
   app_ios_photokit_extension --> capability_push
   app_ios_photokit_extension --> capability_upload
   app_ios_photokit_extension --> domain
-  app_ios_photokit_extension --> domain_gallery
-  capability_album --> domain
   capability_attest --> domain
-  capability_download --> domain
-  capability_download --> domain_download_store
-  capability_download --> domain_status
-  capability_event_creation_ui --> domain
-  capability_join --> domain
-  capability_membership --> domain
   capability_push --> adapter_generic
   capability_push --> domain
   capability_upload --> domain
-  capability_upload_url --> domain_engine
   domain_download_store --> adapter_generic
   domain_download_store --> domain
   domain_engine --> adapter_generic
   domain_engine --> domain
   domain_gallery --> domain
   domain_keychain --> domain
-  domain_presentation --> capability_event_creation_ui
   domain_presentation --> domain
-  domain_presentation --> domain_permission
-  domain_presentation --> domain_status
-  domain_status --> domain
-  domain_status --> domain_gallery
-  domain_status --> domain_permission
   domain_ui --> domain
   domain_ui --> domain_presentation
   domain_ui --> domain_ui_components
   test_harness_driver --> app_desktop
   test_harness_driver --> app_desktop_ui
   test_integration --> adapter_generic
-  test_integration --> capability_event_creation_ui
-  test_integration --> capability_join
-  test_integration --> capability_membership
   test_integration --> capability_push
   test_integration --> domain
   test_integration --> domain_presentation
-  test_integration --> domain_status
   test_integration --> test_world
   test_world --> adapter_generic
-  test_world --> capability_album
-  test_world --> capability_download
-  test_world --> capability_event_creation_ui
-  test_world --> capability_membership
   test_world --> capability_upload
   test_world --> domain
   test_world --> domain_download_store
   test_world --> domain_gallery
-  test_world --> domain_status
 ```
