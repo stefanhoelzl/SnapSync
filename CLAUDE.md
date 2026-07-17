@@ -112,8 +112,17 @@ curl -sS "$B/quit"
 
 The iOS PhotoKit upload extension is **physical-device-only** (no simulator support; spec
 `ios-photokit-upload`). It ships against the **deprecated iOS 26.1** `PHBackgroundResourceUploadExtension`
-— the only protocol runnable on current GM devices — and
-its *upload trigger* (`process()`) is OS-scheduled — it cannot be forced. But everything around
+— the only protocol runnable on current GM devices (⏰ **re-evaluate at iOS 27 GM, ~Sept 2026**:
+the async `PHBackgroundResourceUploadJobExtension` exists in the 27 SDK) — and
+its *upload trigger* (`process()`) is OS-scheduled — it cannot be forced.
+
+**Pending platform checks (next mac/device session** — each settles a forcing proof recorded in
+`changes/…/establish-target-architecture/design.md`): ① is `PHBackgroundResourceUploadProcessingResult`
+ObjC-visible in the Xcode 26 SDK (if yes, the last Swift decision moves to Kotlin)? ② the exact
+deprecation annotation on the 26.1 extension protocol; ③ `BackgroundUploadURLBase` runtime-destination
+rules; ④ count `deferring` vs `running deferred` lines in `debug.log` (expected: zero resumes —
+confirms the ProtectedData-port deletion); ⑤ try `backup2` App-Group extraction; ⑥ (optional) the
+error shape of a CUFUA-file read before first unlock. But everything around
 it — install, **launch**, **screenshot**, event-subscribe, logs — is **scriptable headless over
 USB, no root and no Mac**. Reach a connected iPhone through the host's usbmuxd — **this is specific
 to the codehydra sandbox** (the host socket is bridged at `/run/host/run/usbmuxd`).
@@ -327,10 +336,11 @@ yourself makes that version permanently un-releasable (the guard below refuses a
   bump (no `X.Y.Z`). A malformed version fails the run.
 - **Guards**, in order: version matches `^\d+\.\d+$`; **the tag must not already exist** (checked first,
   so a doomed release fails in seconds rather than after a ~30 min build); the commit is an ancestor of
-  `origin/main` (**load-bearing** — a dispatch can run from any ref); and every check-run on that commit
-  is green (including the allowed-red `ios-deliver`/`ios-promote`). **Escape hatch:** a cancelled/red
-  `ios-promote` on your target commit blocks the release — re-run that idempotent job to green, then
-  re-dispatch.
+  `origin/main` (**load-bearing** — a dispatch can run from any ref); and every **required** check-run on
+  that commit is green (the required set is derived from branch protection at run time). ⚠️ Changed
+  2026-07-17: non-required checks — `ios-deliver`, `ios-promote`, the red-by-design `verify` beacon — no
+  longer block a release. Releasing a commit whose TestFlight promote failed is now POSSIBLE; check
+  `ios-promote` yourself if alpha delivery of the released commit matters.
 - **The tag is created LAST, on success only** — so a failed run leaves no tag and retries cleanly. The
   green guard excludes this workflow's own check-suites (any run, any state), so a *failed* release does
   not poison its own retry.
@@ -652,23 +662,55 @@ agent use and inject that one instead.
 iosApp/                Xcode project (app + upload-extension targets) — not Gradle
 ```
 
-Dependency flow: `engine ← status ← presentation ← ui`. Boundaries are compiler-enforced; the
-platform backend is selected structurally in the app modules.
+**The list above is the CURRENT state, and it is being replaced.** The spine it used to claim —
+`engine ← status ← presentation ← ui` — was never true: `:domain:presentation` reaches sideways
+into `:capability:config`, and `:domain:status → :capability:membership` sat
+declared-and-never-imported for months. The **target** module graph and its laws are the
+**`module-architecture`** spec — the contract of record; read it (and `architecture-guards` /
+`architecture-diagrams`) before moving any code. Migration distance is the **`verify`** check
+(workflow `architecture`, module `:test:architecture:migration`) — **red by design until the
+migration completes**, non-required, blocks nothing (`ios-release.yml`'s release guard and
+`/ship`'s watcher judge required checks only, derived from branch protection). Its sibling **`diagrams`** check IS required: stale
+`architecture/` blocks the PR — run `./gradlew architectureDiagrams` and commit. During the
+migration **nothing gates new violations** (decision on record in
+`changes/…/establish-target-architecture/design.md` D8): the laws digest below is what you code
+against.
 
-## Hard rules
+## The laws (digest)
 
-- **Design-system containment.** Only `:domain:ui:components` may import Material 3. **No M3 type
-  may appear in any `App*` signature.** `App*` components are semantic, not customizable — params
-  carry data/meaning, never appearance; **no `Modifier`/color/shape/textStyle params**. Screens
-  use `App*` exclusively (spec `design-system`).
-- **DI, not `expect`/`actual`.** Implementations are chosen by manual dependency injection in the
-  app modules (composition root). The JVM target needs multiple impls per seam (in-memory fake +
-  the controllable harness fake), which `expect`/`actual` cannot express.
-- **iOS constrains `commonMain`.** Because iOS targets are present, `commonMain` is limited to the
-  common stdlib — JVM-only APIs there break the iOS compile (verify with the proxy task above).
-- **`:app:ios` is wiring-only.** `:app:ios` and the `iosApp/` Swift host are a thin, **untestable**
-  platform layer. All logic — shared *or* iOS-specific — must live in a `domain`/`capability`
-  module under test; nothing testable is parked in the app shell.
+Authority: `openspec/specs/module-architecture/spec.md` — this digest is the in-context copy, one
+line per law; a `:test:architecture` guard keeps the two in sync. These are the **target**
+contract: new code follows them; existing violations are beacon burn-down items, not precedent.
+
+- **The module set withholds; packages organize** — a module exists only to withhold a
+  third-party/platform dep by compile error (platform-free `:domain`, M3 in `:ui:components`,
+  extension-safety adapter split); everything finer is a package with a derived text gate.
+- **Zones inside the core** — `:domain` is `model/` ← `ports/` ← `feature/` ← `flow/` ←
+  `compose/`; features never reference a sibling feature; `flow/` never references `ports/`.
+- **Ports are the I/O boundary named for the need** — anything touching an external system (time,
+  files, network, env included) goes through a port interface in `ports/`, named for the need
+  (must survive a second platform); adapters implement, named for technology, placed by linkage.
+- **State and authority** — no global mutable state in `:domain`, ever; instance state only as
+  derived caches or coordination primitives; authority behind ports (kill-test: after
+  kill+relaunch, every fact recoverable via ports, keyed by identifiers the external system
+  persisted); sync-I/O port impls own their dispatcher hop.
+- **Rules in features, order in flows** — flows coordinate, never decide; features are mutually
+  blind and coordinate via one-writer durable state behind shared ports, written whole; no field
+  encodes a request to another feature.
+- **Commands cross one door** — user taps, OS callbacks, and port-state transitions all enter
+  through `flow/` commands (built/decorated only in `compose/`, injected into presentation);
+  reads do NOT cross flow — presentation observes feature read-model StateFlows directly.
+- **One shared composition** — every live-core binary and the world harness call
+  `snapSyncApp`/`uploadCore`; selection is a pure, tested sealed `CompositionMode` resolver; the
+  wiring graph itself is smoke-tested, never unit-tested; DI is manual (decision D6).
+- **Shells are wiring only** — zero conditionals in `:app:*` Kotlin (detekt-gated); Swift is a
+  transcriber (forwards raw ObjC-visible inputs whole, decides nothing; pinned exceptions only).
+- **Necessity claims carry forcing proofs** — "the platform forces X" cites an API contract, a
+  measurement, or a vendor doc — never the current code — and names its expiry trigger.
+
+Still true and not a law: because iOS targets are present, `commonMain` is limited to the common
+stdlib + each zone's allowlisted libraries — JVM-only APIs there break the iOS compile (verify
+with the proxy task above).
 
 ## Logging & errors
 

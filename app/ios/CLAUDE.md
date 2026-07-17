@@ -16,10 +16,14 @@ module exporting its own **static** framework that the Xcode project links:
 :app:ios:photokit-extension  → framework "SnapSyncUploadKit"  ← extension process (discover→upload)
 ```
 
-Two frameworks, not one, so the two binaries never both statically pull `:domain:engine` into a
-single image. The app framework carries Compose/UI + the full `domain` stack; the extension
-framework is lean (`:capability:upload` — the UploadCycle orchestration — over `:domain:engine` +
-`:domain:gallery`, plus `:capability:upload-url` + `:capability:config`). Both are
+Two frameworks, not one, for two real reasons: the **extension-safety line** (app-only API —
+UIKit/BGTask/URLSession adapters — must be structurally un-linkable from the appex, and
+Kotlin/Native links whole modules) and the **appex footprint** (Compose/Skiko has no business in a
+memory-capped extension). Both images DO embed the shared domain code, each privately — that is
+fine; no Kotlin type ever crosses the process boundary. The app framework carries Compose/UI + the
+full `domain` stack; the extension framework is lean (`:capability:upload` — the UploadCycle
+orchestration — over `:domain:engine` + `:domain:gallery`, plus `:capability:upload-url` +
+`:capability:config`). Both are
 `isStatic = true` — the Compose-iOS norm (avoids dynamic-linking issues with the bundled
 Skiko/Compose native libs).
 

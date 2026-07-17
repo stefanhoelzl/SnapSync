@@ -79,7 +79,10 @@ function formatSkipReason(reason: SkipReason): string {
 	return `check '${reason.checkName}' ${reason.conclusion}`;
 }
 
-function classifyAhead(pr: PullRequest): SkipReason | null {
+function classifyAhead(
+	pr: PullRequest,
+	requiredChecks: ReadonlySet<string>,
+): SkipReason | null {
 	if (pr.state === "CLOSED") {
 		return { kind: "closed" };
 	}
@@ -90,6 +93,14 @@ function classifyAhead(pr: PullRequest): SkipReason | null {
 		return null;
 	}
 	for (const check of pr.statusCheckRollup ?? []) {
+		// Only REQUIRED checks can disqualify a queued PR — auto-merge itself waits on required
+		// checks only, so a red non-required check (the migration beacon is red by design) never
+		// stops that PR from merging, and skipping it here would desync the queue from GitHub's
+		// own behavior. Empty set = the required-checks fetch failed → strict fallback: every
+		// check counts.
+		if (requiredChecks.size > 0 && check.name && !requiredChecks.has(check.name)) {
+			continue;
+		}
 		const conclusion = check.conclusion;
 		if (conclusion && FAILING_CONCLUSIONS.has(conclusion)) {
 			return {
@@ -165,6 +176,31 @@ async function execNoThrow(
 	}
 }
 
+async function fetchRequiredChecks(repo: string): Promise<Set<string>> {
+	// Branch protection is the source of truth for which checks gate a merge (the rulesets
+	// endpoint — this repo manages them via .github/rulesets/main.json). Auto-merge itself waits
+	// on required checks only, so any check outside this set may be red without stopping a merge —
+	// the migration beacon (`verify`) is red BY DESIGN for the whole module-architecture migration.
+	// Deriving the filter here instead of naming that check keeps this list-free: any future
+	// informational check is tolerated automatically. Degrades in the strict direction: an empty
+	// set (fetch failure) makes callers treat every check as required.
+	const result = await execNoThrow(
+		`gh api repos/${repo}/rules/branches/main --jq '[.[] | select(.type == "required_status_checks") | .parameters.required_status_checks[].context] | unique | .[]'`,
+	);
+	if (!result.success) {
+		log(
+			`Could not fetch required checks (${result.stderr.split("\n")[0]}); treating every check as required`,
+		);
+		return new Set();
+	}
+	return new Set(
+		result.stdout
+			.split("\n")
+			.map((line) => line.trim())
+			.filter((line) => line.length > 0),
+	);
+}
+
 async function getOpenPrsWithAutoMerge(repo: string): Promise<PullRequest[]> {
 	const json = await exec(
 		`gh pr list --repo ${repo} --state open --json number,createdAt,autoMergeRequest,state,headRefName,mergeStateStatus,statusCheckRollup`,
@@ -205,6 +241,7 @@ type QueueOutcome =
 function partitionAhead(
 	prsAhead: PullRequest[],
 	skipped: Set<number>,
+	requiredChecks: ReadonlySet<string>,
 ): { waiting: string[]; skippedNow: string[] } {
 	const waiting: string[] = [];
 	const skippedNow: string[] = [];
@@ -214,7 +251,7 @@ function partitionAhead(
 			skippedNow.push(`#${pr.number} (skipped)`);
 			continue;
 		}
-		const reason = classifyAhead(pr);
+		const reason = classifyAhead(pr, requiredChecks);
 		if (reason) {
 			skipped.add(pr.number);
 			skippedNow.push(`#${pr.number} (${formatSkipReason(reason)})`);
@@ -248,6 +285,9 @@ async function waitForPrsAhead(
 	startTime: number,
 ): Promise<QueueOutcome> {
 	const skipped = new Set<number>();
+	// Fetched once per queue wait: required contexts change only when someone edits the ruleset,
+	// and a mid-wait change is picked up on the next /ship invocation.
+	const requiredChecks = await fetchRequiredChecks(repo);
 
 	while (true) {
 		if (Date.now() - startTime > TIMEOUT_MS) {
@@ -261,7 +301,7 @@ async function waitForPrsAhead(
 
 		const allPrs = await getOpenPrsWithAutoMerge(repo);
 		const prsAhead = getPrsAhead(ours, allPrs);
-		const { waiting, skippedNow } = partitionAhead(prsAhead, skipped);
+		const { waiting, skippedNow } = partitionAhead(prsAhead, skipped, requiredChecks);
 
 		if (waiting.length === 0) {
 			if (skippedNow.length > 0) {
@@ -362,7 +402,9 @@ async function waitForChecksToAppear(
 
 	for (let i = 0; i < CHECKS_APPEAR_MAX_ATTEMPTS; i++) {
 		const result = await execNoThrow(
-			`gh pr checks --repo ${repo} ${prNumber} --json name`,
+			// --required: the migration beacon (`verify`) is red by design and non-required; the
+			// watcher's verdict must come from required checks only (auto-merge's own criterion).
+			`gh pr checks --repo ${repo} ${prNumber} --required --json name`,
 		);
 		if (result.success) {
 			const checks: unknown[] = JSON.parse(result.stdout);
@@ -393,6 +435,10 @@ function watchChecks(repo: string, prNumber: number): Promise<boolean> {
 				String(prNumber),
 				"--watch",
 				"--fail-fast",
+				// Required checks only — the non-required migration beacon (`verify`) is red by
+				// design until the migration completes and must not fail the watch. Auto-merge
+				// itself only waits on required checks, so this keeps the report honest.
+				"--required",
 			],
 			{
 				stdio: "inherit",

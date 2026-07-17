@@ -472,10 +472,11 @@ object SnapSyncRoot {
         // token can arrive before this device has any attestation token — which is exactly what happened
         // on the SE2: the PUT took a 401. Awaiting `ensureFresh` first removes that race.
         //
-        // `tokenChanged` is the backstop, and it is the part that actually makes this SAFE: the OS
-        // delivers an APNs token ONCE and never re-delivers it, so a registration refused for any reason
-        // would otherwise never be retried, leaving the device permanently unregistered — no silent
-        // pushes, no download wakes, and none of the wake-driven renewals. Any new credential re-runs it.
+        // `tokenChanged` is the backstop that retries a refused registration WITHIN this process
+        // lifetime. (Not because the token arrives only once — Apple documents an up-to-date token on
+        // EVERY successful registration, and AppDelegate registers every launch — but a PUT refused
+        // now would otherwise wait for the next launch to be retried: no silent pushes, no download
+        // wakes, none of the wake-driven renewals until then.) Any new credential re-runs it.
         scope.launch {
             runCatching { attestation.ensureFresh() }
             pushRegistration.run(pushTokenSource, attestation.tokenChanged)

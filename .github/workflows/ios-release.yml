@@ -149,7 +149,27 @@ jobs:
           runs = [json.loads(line) for line in out.splitlines() if line.strip()]
           foreign = [r for r in runs if str(r["suite"]) not in own_suites]
           completed = [r for r in foreign if r["status"] == "completed"]
-          bad = [r for r in completed if r["conclusion"] != "success"]
+          # Only checks REQUIRED by branch protection can refuse a release — derived from the
+          # rules endpoint (source: .github/rulesets/main.json), never a name list. Non-required
+          # checks may be red by design (the migration beacon `verify` is, for the whole
+          # module-architecture migration) and auto-merge ignores them too. NOTE the deliberate
+          # behavior change (2026-07-17): ios-deliver/ios-promote are not required checks, so a
+          # red promote no longer blocks a release dispatch. Degrades in the strict direction: if
+          # the required set cannot be resolved, every check-run counts.
+          req = subprocess.check_output([
+              "gh", "api", f"/repos/{repo}/rules/branches/main",
+              "--jq", '[.[] | select(.type == "required_status_checks") | .parameters.required_status_checks[].context] | unique | .[]',
+          ]).decode().split()
+          required = set(req)
+          if required:
+              for r in completed:
+                  if r["name"] not in required and r["conclusion"] != "success":
+                      print(f"ignoring non-required check-run '{r['name']}' ({r['conclusion']})")
+              relevant = [r for r in completed if r["name"] in required]
+          else:
+              print("::warning::could not resolve required checks — treating every check-run as required")
+              relevant = completed
+          bad = [r for r in relevant if r["conclusion"] != "success"]
           for r in foreign:
               if r["status"] != "completed":
                   print(f"ignoring in-progress check-run '{r['name']}'")
@@ -157,10 +177,10 @@ jobs:
               for r in bad:
                   print(f"::error::check-run '{r['name']}' concluded {r['conclusion']} on {sha}")
               sys.exit(1)
-          if not completed:
-              print(f"::error::no completed check-runs on {sha} — refusing to release")
+          if not relevant:
+              print(f"::error::no completed required check-runs on {sha} — refusing to release")
               sys.exit(1)
-          print(f"all {len(completed)} completed check-run(s) green")
+          print(f"all {len(relevant)} completed required check-run(s) green")
           PY
 
       # Build the X.Y-versioned signed archive via the shared composite action: MARKETING_VERSION from

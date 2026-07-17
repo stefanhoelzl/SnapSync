@@ -1,0 +1,57 @@
+# The app shell holds no decisions (capability `architecture-guards`).
+#
+# ONE rule. `:app:*` is wiring — it constructs adapters, bundles them as ports, and forwards OS
+# callbacks. Constructing is not a decision; branching, ordering, and error-mapping are, and they belong
+# in `:domain`, which is tested. This config is the executable half of that rule.
+#
+# Why detekt and not Konsist, which every other guard uses: Konsist exposes no AST — only raw `.text` —
+# and `text.contains("if")` also matches `verify`, `modifier`, `specific`, and `lifecycle`. Counting
+# decisions needs a real syntax tree.
+#
+# Why this is not blocked by the type-resolution problem recorded in KeychainContainmentTest: that
+# objection is rule-SPECIFIC. `ForbiddenMethodCall` needs a resolved classpath and therefore cannot work
+# on Kotlin/Native source sets; `CyclomaticComplexMethod` is purely syntactic and needs none.
+#
+# `buildUponDefaultConfig` is false and every other ruleset is off, so this file is the whole rule set.
+# Adding a rule here is a deliberate act, not a side effect of a detekt upgrade.
+
+build:
+  maxIssues: 0
+
+config:
+  validation: true
+  warningsAsErrors: false
+
+complexity:
+  active: true
+  CyclomaticComplexMethod:
+    active: true
+    # 1 = a straight-line function. A single decision takes it to 2. The threshold is the first value
+    # that FAILS, so 2 forbids the first branch.
+    threshold: 2
+    ignoreSingleWhenExpression: false
+    ignoreSimpleWhenEntries: false
+    ignoreNestingFunctions: false
+    nestingFunctions:
+      - 'also'
+      - 'apply'
+      - 'let'
+      - 'run'
+      - 'with'
+
+comments:
+  active: false
+coroutines:
+  active: false
+empty-blocks:
+  active: false
+exceptions:
+  active: false
+naming:
+  active: false
+performance:
+  active: false
+potential-bugs:
+  active: false
+style:
+  active: false

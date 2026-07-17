@@ -1,0 +1,81 @@
+# The architecture workflow (capability `architecture-guards` + `architecture-diagrams`;
+# decision record `establish-target-architecture` D8, revised 2026-07-17).
+#
+# TWO jobs, two postures:
+#
+#   verify   — the migration beacon. RED BY DESIGN until the module-architecture migration
+#              completes: it fails while any burn-down count is nonzero, with the per-law table in
+#              the job summary. It is NOT a required check (never added to main.json) and MUST
+#              never become one while red — and it never blocks anything: ios-release.yml Guard 4
+#              and /ship's watcher both judge REQUIRED checks only, derived from branch protection
+#              (no name list — any informational check is tolerated automatically).
+#              Completion = burn-down at zero → gates move into
+#              :test:architecture under `./gradlew build`, and the beacon module and this job are
+#              deleted.
+#
+#   diagrams — the freshness gate. Fails when the committed architecture/ diagrams are stale, and
+#              BLOCKS PRs (required check, in main.json). CI checkouts are clean, so
+#              regenerate-then-porcelain is sound here and also catches the sidecar's
+#              self-staleness gap and untracked new files; the local half of the same gate is
+#              `:tools:diagrams:test` under `./gradlew build`. There is NO self-healing job — a
+#              semantically-stale merge shows up as this check red on main, fixed by a regen PR.
+name: architecture
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: architecture-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21 # launcher only; the build's toolchain auto-provisions via foojay
+      - uses: gradle/actions/setup-gradle@v4
+      # detektAppShell first: it writes the XML report the beacon's shell measurement prefers over
+      # its regex fallback. It never fails itself (ignoreFailures — it is a data producer).
+      - name: Measure migration distance
+        run: ./gradlew detektAppShell :test:architecture:migration:test
+      - name: Publish burn-down
+        if: always()
+        run: |
+          REPORT=test/architecture/migration/build/burn-down/report.md
+          if [ -f "$REPORT" ]; then
+            cat "$REPORT" >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "## Architecture migration burn-down" >> "$GITHUB_STEP_SUMMARY"
+            echo "" >> "$GITHUB_STEP_SUMMARY"
+            echo "MEASUREMENT BROKEN: the beacon produced no report (compile failure?)." >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+  diagrams:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+      - uses: gradle/actions/setup-gradle@v4
+      - name: Regenerate diagrams
+        run: ./gradlew architectureDiagrams
+      - name: Fail if committed diagrams are stale
+        run: |
+          if [ -n "$(git status --porcelain architecture/)" ]; then
+            echo "::error::architecture/ is stale — run ./gradlew architectureDiagrams and commit the result"
+            git status --porcelain architecture/
+            git diff architecture/
+            exit 1
+          fi
+          echo "architecture/ is fresh"
