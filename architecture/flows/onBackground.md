@@ -20,4 +20,4 @@ sequenceDiagram
 
 ## Not transcribable (burn-down)
 
-- line 581 — `if` conditional: `if (isForging) return@invocation`
+- line 479 — `if` conditional: `if (isForging) return@invocation`

@@ -14,14 +14,11 @@ import app.snapsync.ports.TransferOutcome
 import app.snapsync.downloadstore.InMemoryDownloadStore
 import app.snapsync.ports.PendingDownload
 import app.snapsync.feature.upload.LedgerWriter
-import app.snapsync.feature.upload.SyncEngine
 import app.snapsync.feature.creation.CreateEvent
 import app.snapsync.eventcreation.HttpEventCreation
 import app.snapsync.feature.creation.MutableCreationStatusSource
 import app.snapsync.model.Contribution
 import app.snapsync.model.DeviceManifestAsset
-import app.snapsync.model.denormalizeAssetId
-import app.snapsync.feature.membership.DeviceManifestProducer
 import app.snapsync.ports.PhotoLibrary
 import app.snapsync.model.DENYLISTED_ALBUM_TITLES
 import app.snapsync.gallery.InMemoryRawAssetSource
@@ -34,12 +31,14 @@ import app.snapsync.model.SUBTYPE_SCREEN_RECORDING
 import app.snapsync.model.ManifestResource
 import app.snapsync.model.RawAsset
 import app.snapsync.model.RawResource
-import app.snapsync.feature.upload.ResourceEnumerator
+import app.snapsync.compose.ResourceEnumerator
+import app.snapsync.compose.UploadPorts
+import app.snapsync.compose.uploadCore
+import app.snapsync.ports.ConfigRead
+import app.snapsync.ports.ConfigReader
 import app.snapsync.model.ResourceRole
-import app.snapsync.model.deviceManifestAssetsFromResources
 import app.snapsync.model.uploadKey
 import app.snapsync.ports.DeviceFilesSource
-import app.snapsync.feature.upload.ExtensionReconciler
 import app.snapsync.membership.HttpDeviceFilesSource
 import app.snapsync.membership.HttpLeaveNotifier
 import app.snapsync.feature.status.LedgerBackedSyncStatusSource
@@ -49,10 +48,6 @@ import app.snapsync.feature.status.ReadingLedgerCountsSource
 import app.snapsync.feature.status.SyncStatusSource
 import app.snapsync.ports.CycleResult
 import app.snapsync.feature.upload.UploadCycle
-import app.snapsync.feature.upload.CycleGate
-import app.snapsync.feature.upload.JoinedMembership
-import app.snapsync.feature.upload.cycleGate
-import app.snapsync.model.EdgeUploadRequestProvider
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.joinAll
@@ -384,33 +379,17 @@ class World(
     var membershipUnreadable: Boolean = false
 
     /**
-     * The world's membership read, translated into the shared vocabulary — the world's equivalent of a
-     * root's `readGate()`, and like a root's, a translation rather than a decision: `cycleGate` decides.
+     * The world's membership read as the shared `ConfigReader` port — the [membershipUnreadable]
+     * lever surfaces as [ConfigRead.Unavailable] with the real locked-device OSStatus
+     * (`errSecInteractionNotAllowed`), so the shared entry gate's skip forensics read like a
+     * device's. The gate itself is `uploadCore`'s — the world carries no translation of its own.
      */
-    fun readGate(): CycleGate = cycleGate(
-        configReadable = !membershipUnreadable,
-        membership = configCell.value?.let {
-            JoinedMembership(
-                eventId = it.eventId,
-                contribution = Contribution.of(it.direction.includesUpload, it.minPhotoDate),
-                saveToAlbum = it.saveToAlbum,
-            )
-        },
-        host = host,
-        skipDetail = "world: membership forced unreadable",
-    )
-
-    fun reconciler(): ExtensionReconciler =
-        ExtensionReconciler(
-            files = deviceFiles,
-            ledger = ledgerBackend,
-            marker = marker,
-            deviceId = ownDeviceId,
-            clearDiscoveryCursor = { discoveryStore.clearToken() },
-        )
-
-    fun manifestProducer(): DeviceManifestProducer =
-        DeviceManifestProducer(manifestStore, manifestUploader, ownDeviceId)
+    private val configReader: ConfigReader = object : ConfigReader {
+        override fun read(): ConfigRead = when {
+            membershipUnreadable -> ConfigRead.Unavailable(status = -25308)
+            else -> configCell.value?.let { ConfigRead.Joined(it) } ?: ConfigRead.None
+        }
+    }
 
     /**
      * What the joined membership contributes (capability `photo-selection-policy`) — its participation
@@ -443,37 +422,36 @@ class World(
     val notified: MutableList<String> = mutableListOf()
 
     /**
-     * The real cycle — long-lived, as on both tiers: it re-reads the membership itself through [readGate]
-     * on every `run()`, so a provision, leave, or switch takes effect on the next cycle.
+     * The real cycle — assembled by the SAME shared composition the device tiers call (`uploadCore`,
+     * spec `module-architecture` "One shared composition"), over the world's fakes. Long-lived, as on
+     * both tiers: the shared entry gate re-reads the membership on every `run()`, so a provision,
+     * leave, or switch takes effect on the next cycle. The world carries no gate, reconciler, or
+     * manifest-producer wiring of its own — a wiring difference from production is impossible.
      */
     val cycle: UploadCycle by lazy {
-        UploadCycle(
-            readGate = ::readGate,
-            engineFor = { config -> SyncEngine(EdgeUploadRequestProvider(config.host, ownDeviceId), ledger) },
-            ledger = ledger,
-            platform = platform,
-            store = discoveryStore,
-            reconcile = { eventId -> reconciler().reconcile(eventId) },
-            onDiscovery = { eventId, cutoff, discovery ->
-                manifestProducer().produce(
-                    eventId = eventId,
-                    startDate = cutoff,
-                    discovered = deviceManifestAssetsFromResources(discovery.resources),
-                    removedAssetIds = discovery.removedAssetIds.toSet(),
-                    fullEnumeration = discovery.fullEnumeration,
-                )
-            },
-            suppressedAssetIds = { downloadStore.suppressedLocalIds() },
-            // Denylisted-album membership (capability `photo-selection-policy`) — the REAL policy constant
-            // over the world's forgeable album membership, exactly as both composition roots wire it. The
-            // world runs the real rules; only the PhotoKit lookup is faked.
-            albumExcludedAssetIds = { cutoff -> albumManager.assetIdsInAlbums(DENYLISTED_ALBUM_TITLES, cutoff) },
-            onBatchUploaded = { eventId -> notified += eventId },
-            // Event album (capability `event-album`): the cycle applies the membership's opt-in, which it
-            // read at its gate; raw localId recovered by reversing `_`→`/` (as the real roots do).
-            placeInAlbum = { eventId, assetIds ->
-                albumCoordinator.place(eventId, assetIds.map(::denormalizeAssetId))
-            },
+        uploadCore(
+            scope,
+            UploadPorts(
+                config = configReader,
+                deviceId = { ownDeviceId },
+                host = { host },
+                ledger = ledgerBackend,
+                transfer = platform,
+                discoveryStore = discoveryStore,
+                deviceFiles = deviceFiles,
+                joinedMarker = marker,
+                manifestStore = manifestStore,
+                enrollment = manifestUploader,
+                suppression = downloadStore,
+                // Denylisted-album membership (capability `photo-selection-policy`) — the REAL policy
+                // constant over the world's forgeable album membership, exactly as both composition
+                // roots wire it. The world runs the real rules; only the PhotoKit lookup is faked.
+                albumExcludedAssetIds = { cutoff -> albumManager.assetIdsInAlbums(DENYLISTED_ALBUM_TITLES, cutoff) },
+                albumCoordinator = albumCoordinator,
+                // The mini-edge is unauthenticated; the world states its empty answer explicitly.
+                token = { null },
+                onBatchUploaded = { eventId -> notified += eventId },
+            ),
         )
     }
 

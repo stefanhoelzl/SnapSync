@@ -20,9 +20,9 @@ sequenceDiagram
 
 ## Not transcribable (burn-down)
 
-- line 550 — `if` conditional: `if (isForging) {`
-- line 554 — bare property read (lazy-init touch): `host`
-- line 561 — `if` conditional: `if (useAppDrivenUpload) urlSessionUpload.onForeground()`
-- line 564 — `scope.launch` body: `scope.launch { refreshStatusSources() }`
-- line 567 — `scope.launch` body: `scope.launch { config.config.value?.eventId?.let { downloadController.reconcile(it) } }`
-- line 569 — `scope.launch` body: `scope.launch { config.config.value?.eventId?.let { fetchAndStoreName(it) } }`
+- line 448 — `if` conditional: `if (isForging) {`
+- line 452 — bare property read (lazy-init touch): `host`
+- line 459 — `if` conditional: `if (useAppDrivenUpload) urlSessionUpload.onForeground()`
+- line 462 — `scope.launch` body: `scope.launch { refreshStatusSources() }`
+- line 465 — `scope.launch` body: `scope.launch { config.config.value?.eventId?.let { app.downloadController.reconcile(it) } }`
+- line 467 — `scope.launch` body: `scope.launch { config.config.value?.eventId?.let { fetchAndStoreName(it) } }`

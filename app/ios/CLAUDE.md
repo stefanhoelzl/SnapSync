@@ -56,16 +56,24 @@ Swift shells are pass-throughs; all logic is Kotlin. Do not add parsing or decis
   `@main` class conforming to the iOS 26.1 `PHBackgroundResourceUploadExtension`; its `process()`
   just calls `UploadExtensionRoot.shared.process()` and maps the `Bool` to the system result.
 
-## Composition roots (manual DI — no expect/actual)
+## Composition roots (manual DI — no expect/actual; the SHARED composition since migration step 7)
+
+Both roots are wiring only: each constructs its process's platform adapters and hands them to the
+shared composition functions in `:domain`'s `compose/` zone (law "One shared composition") — there
+is no per-root cycle or feature assembly any more.
 
 - **App**: `app/ios/src/iosMain/.../SnapSyncRoot.kt` — app-lifetime singleton owning a
-  `SupervisorJob` scope on `Dispatchers.Main` (outlives Compose recomposition). Assembles the real
-  live stack lazily: `iosLedgerStore` → `LedgerWatcher` → `LedgerSyncStatusSource` ×
-  `PhotoLibraryPermission` × `KeychainConfigStore` → `StatusContainerHost`.
-- **Extension**: `app/ios/photokit-extension/src/iosMain/.../UploadExtensionRoot.kt` — assembles the
-  App-Group `LedgerWriter`, the `SyncEngine`, the upload provider, the `IosPhotoKitUploadPlatform`
-  (composing the shared `IosDiscovery` from `:adapter:ios:ext-safe`), and the `UploadCycle`;
-  `process()` runs one blocking discover→engine→job→drain cycle.
+  `SupervisorJob` scope on `Dispatchers.Main` (outlives Compose recomposition). Builds `AppPorts`
+  (Keychain config store, PhotoKit permission, ledger/download stores, generic HTTP adapters,
+  coordination lambdas) and calls `snapSyncApp(scope, ports)`; the returned `AppCore`'s lazily
+  composed graph (status sources, attestation, join/leave/create, downloads, upload arm) is wired
+  into `StatusContainerHost`.
+- **Extension**: `app/ios/photokit-extension/src/iosMain/.../UploadExtensionRoot.kt` — builds
+  `UploadPorts` (Keychain `ConfigReader`, `IosPhotoKitUploadPlatform` over the shared `IosDiscovery`
+  from `:adapter:ios:ext-safe`, App-Group stores, `:adapter:generic` HTTP adapters) and calls
+  `uploadCore(scope, ports)`; `process()` runs one blocking cycle of the composed `UploadCycle`.
+- The app-driven tier's `UrlSessionUploadController` calls the same `uploadCore` over its own ports
+  (background-`URLSession` platform, pump, scheduler stay tier-local mechanism).
 
 **Neither is the direction gate** (capability `upload-lifecycle`). Whether a membership uploads **at all** is
 decided inside `UploadCycle`, from a required `Contribution` (`:domain:gallery`) carrying the membership's

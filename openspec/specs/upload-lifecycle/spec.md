@@ -229,6 +229,15 @@ tested decision function SHALL combine them. This is the same containment `recon
 already have, and for the same reason: an upload tier's root is wiring-only and untested by project rule,
 so a decision placed there reaches whichever tiers its author happened to enumerate.
 
+The **translation** of those reads into the decision's inputs SHALL itself exist exactly once, in the
+shared composition (`uploadCore`, `:domain` `compose/`) — not once per root. It SHALL be **port-pure**:
+one fresh three-state `ConfigReader.read()` per cycle, the identity probe, and the host read, and
+nothing else. In particular it SHALL NOT refresh any adapter-held read-model state (such as the
+UI-facing `ConfigSource` `StateFlow`) as a side effect of gating a cycle: repairing a `StateFlow`
+seeded while protected data was unavailable is the app process's unlock-hook concern, not the entry
+gate's. (Decision record: `changes/archive/establish-shared-composition` D1 — the previously-shipped
+per-root translations diverged on exactly this side effect, with the gate outcome provably identical.)
+
 The decision SHALL be reachable per cycle, not resolved once at construction: a tier whose process
 outlives a cycle SHALL re-read the membership on each run so a join, leave, or switch takes effect without
 a relaunch.
@@ -259,6 +268,12 @@ mints).
 #### Scenario: A long-lived tier re-reads the membership each cycle
 - **WHEN** a tier whose process survives across cycles runs a cycle after the membership changed
 - **THEN** the cycle acts on the current membership, without a relaunch
+
+#### Scenario: The entry-gate translation is one implementation
+- **WHEN** any tier (or the world harness) assembles an upload cycle
+- **THEN** its entry gate is the shared `uploadCore` translation over that tier's ports — a fresh
+  three-state read per cycle with no adapter read-model refresh — so no tier can carry gate semantics
+  another tier lacks
 
 ### Requirement: Every selection and side-effect port is answered at the call site
 
