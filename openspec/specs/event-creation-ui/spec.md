@@ -14,7 +14,6 @@ invited into — and it is where the product's framing is pinned: the copy descr
 event**, never personal backup.
 
 Decision record: `changes/archive/2026-06-27-add-event-creation-ui`.
-
 ## Requirements
 ### Requirement: Create-event seams and status model
 
@@ -261,3 +260,18 @@ this requirement pins the framing, not the wording.)
 - **WHEN** the create screen or the joined status line renders its descriptive copy
 - **THEN** the copy frames the action as sharing/syncing event photos and does not describe it as
   backing up the user's photo library
+
+### Requirement: Create performs no event fetch of its own
+
+The capability's only HTTP surface SHALL be the `POST /events` create client. It SHALL NOT carry a
+`GET /events/:id` client of any kind: the create response already returns the event's name and
+`startsAt`, and every details/name fetch — including the scan-path name fill the deleted
+`EventMetadataSource` used to serve — goes through capability `join-event`'s single
+`EventDetailsSource` client (see its "One details client" requirement).
+
+#### Scenario: The capability exposes only the create call
+
+- **WHEN** the capability's HTTP clients are inspected
+- **THEN** the only route it calls is `POST /events`, and event details are obtained through
+  `:capability:join`'s `EventDetailsSource`
+

@@ -21,7 +21,6 @@ Decision record: `changes/archive/2026-06-19-ios-background-upload`.
 The **Re-provision resets sync state** requirement was scoped explicitly to this tier in
 `changes/archive/2026-07-12-fix-app-driven-upload-lifecycle` (the disable→enable toggle is this tier's producer
 `start()`, not universal host-app behavior).
-
 ## Requirements
 ### Requirement: Background upload extension target
 
@@ -180,7 +179,7 @@ reads no manifest state.
 
 #### Scenario: Only the extension writes on ≥26.1
 - **WHEN** the app and extension are both assembled on iOS ≥26.1
-- **THEN** the extension constructs the `LedgerWriter` and the app constructs only `LedgerReader`/`LedgerWatcher`
+- **THEN** the extension constructs the `LedgerWriter` and the app constructs none — it reads the ledger only through `LedgerBackend`'s read and reset-family operations
 
 ### Requirement: iOS 26.1 deployment deviation
 
@@ -276,7 +275,8 @@ new work (so completed/failed slots are freed first), and reduce each outcome in
 SHALL recover a returned `PHAssetResourceUploadJob`'s ledger key from the job's **destination URL**
 (the last path segment) — the only field reliably present for every job state, since `resource` is
 **nil for succeeded jobs** (the system releases it after upload). Version/attempt come from the
-ledger (`LedgerReader`); the `resource`, when still present, is reused only to re-create a
+ledger (the `LedgerWriter`'s per-key `entry` read); the `resource`, when still present, is reused
+only to re-create a
 retry-spent job. **Every presented job SHALL be acknowledged** — including one whose key is
 unrecoverable — or the system reports `appex failed to acknowledge jobs for processing state`
 (error 50008). The two phases:
@@ -685,3 +685,4 @@ it, and one line in one file is the readable form.
 - **WHEN** a cycle is skipped because protected data is unavailable
 - **THEN** one log line records the membership read's status, whether the device identity resolved, and
   that this was not treated as a leave
+

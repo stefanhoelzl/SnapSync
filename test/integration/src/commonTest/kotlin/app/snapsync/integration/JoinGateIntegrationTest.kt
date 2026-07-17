@@ -5,7 +5,6 @@ import app.snapsync.config.EventConfig
 import app.snapsync.config.Direction
 import app.snapsync.config.EventLinkPayload
 import app.snapsync.config.encodeEventUrl
-import app.snapsync.deviceid.DeviceIdentity
 import app.snapsync.gallery.DeviceManifest
 import app.snapsync.join.EventDetails
 import app.snapsync.join.HttpEventDetailsSource
@@ -339,7 +338,7 @@ class JoinGateIntegrationTest {
     ): StatusContainerHost {
         val joinEvent = JoinEvent(
             configSource = w.configSource,
-            deviceIdentity = object : DeviceIdentity { override fun deviceId() = w.ownDeviceId },
+            deviceId = { w.ownDeviceId },
             details = HttpEventDetailsSource(w.client, w.host),
             enroller = ManifestDeviceEnroller(w.manifestUploader),
             provision = { cfg -> w.provision(cfg.eventId, cfg.name, cfg.minPhotoDate, cfg.startsAt) },

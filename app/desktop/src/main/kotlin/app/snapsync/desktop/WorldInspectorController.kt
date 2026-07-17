@@ -7,7 +7,6 @@ import app.snapsync.config.ConfigSource
 import app.snapsync.config.ConfigStore
 import app.snapsync.config.Direction
 import app.snapsync.config.EventConfig
-import app.snapsync.deviceid.DeviceIdentity
 import app.snapsync.download.TransferOutcome
 import app.snapsync.download.StoreDownloadStatusSource
 import app.snapsync.engine.UploadError
@@ -136,7 +135,7 @@ class WorldInspectorController(private val scope: CoroutineScope) {
         // GET /events/:id details, enroll via an empty manifest PUT, then provision the world config.
         joinEvent = JoinEvent(
             configSource = world.configSource,
-            deviceIdentity = object : DeviceIdentity { override fun deviceId() = world.ownDeviceId },
+            deviceId = { world.ownDeviceId },
             details = HttpEventDetailsSource(world.client, world.host),
             enroller = ManifestDeviceEnroller(world.manifestUploader),
             provision = { cfg ->

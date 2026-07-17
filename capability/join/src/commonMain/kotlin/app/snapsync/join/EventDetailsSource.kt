@@ -10,8 +10,9 @@ import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 
 /**
- * The outcome of fetching an event's details for the join gate (capability `join-event`). Unlike the
- * cosmetic `EventMetadataSource.name()` (which collapses every non-200 to `null`), the gate MUST tell
+ * The outcome of fetching an event's details (capability `join-event`) — the app's ONE
+ * `GET /events/:id` client, serving both the join gate and the best-effort name refresh (which reads
+ * [Found.name] and treats every other outcome as "no name this time"). The gate MUST tell
  * a **missing** event (404 → block the join, an invalid/expired invite) apart from a **transient**
  * failure (network/5xx → offer Retry). [Found.name] is **required and non-null**: an event always has a
  * name (the backend enforces name-required on create, capability `event-creation`), so a `200` lacking a

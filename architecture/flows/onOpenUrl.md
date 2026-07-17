@@ -20,4 +20,4 @@ sequenceDiagram
 
 ## Not transcribable (burn-down)
 
-- line 729 — `if` conditional: `if (isForging) {`
+- line 727 — `if` conditional: `if (isForging) {`

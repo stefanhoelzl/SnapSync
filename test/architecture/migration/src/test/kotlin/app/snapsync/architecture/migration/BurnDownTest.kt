@@ -120,7 +120,10 @@ class BurnDownTest {
         // ── The deletion ledger (proposal; each present item = 1) ─────────────────────────────────
         rows += runCatching {
             val toml = File(repoRoot, "gradle/libs.versions.toml").readText()
+            // The beacon's own source quotes every pattern below, so it must not scan itself — the
+            // same self-exclusion targetModules already applies.
             val allSrc = sources("domain", "capability", "app", "test")
+                .filterNot { "test/architecture/migration/" in it.path.replace('\\', '/') }
             fun declared(pattern: String) = allSrc.count { Regex(pattern).containsMatchIn(it.readText()) }
             val items = buildList {
                 if (File(repoRoot, "capability/config/src/jvmMain").exists()) add("QrGeneratorMain (config jvmMain)")

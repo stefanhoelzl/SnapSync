@@ -43,7 +43,6 @@ Roots found:
 | `HttpDeviceManifestUploader` | x | | | x |
 | `HttpEventCreationClient` | x | | | x |
 | `HttpEventDetailsSource` | x | | | |
-| `HttpEventMetadataSource` | x | | | |
 | `HttpEventUnionSource` | x | | | x |
 | `HttpLeaveNotifier` | x | | | x |
 | `InMemoryAlbumMapStore` | | | | x |

@@ -61,23 +61,5 @@ kotlin {
             // a cutoff-less item reads as no config, and that must be diagnosable, not mysterious.
             implementation(libs.kermit)
         }
-        jvmMain.dependencies {
-            // JVM-only: the authoritative QR generator (Gradle `generateConfigQr` task). ZXing is
-            // not on the app's runtime path.
-            implementation(libs.zxing.core)
-        }
     }
-}
-
-// The authoritative QR generator: runs the jvmMain main() so the encoder stays in lockstep with
-// the app's decoder. Reads the event id from env / gitignored local.properties.
-val generateConfigQr by tasks.registering(JavaExec::class) {
-    group = "snapsync"
-    description = "Encode an event id into an https:// event link and render a QR PNG."
-    val jvmMain = kotlin.targets.getByName("jvm").compilations.getByName("main")
-    dependsOn(jvmMain.compileTaskProvider)
-    classpath(jvmMain.output.allOutputs, jvmMain.runtimeDependencyFiles)
-    mainClass.set("app.snapsync.config.QrGeneratorMainKt")
-    // Read local.properties / write build output relative to the repo root.
-    workingDir = rootDir
 }

@@ -15,7 +15,6 @@ flowchart LR
   capability_album[":capability:album"]
   capability_attest[":capability:attest"]
   capability_config[":capability:config"]
-  capability_device_id[":capability:device-id"]
   capability_download[":capability:download"]
   capability_event_creation_ui[":capability:event-creation-ui"]
   capability_join[":capability:join"]
@@ -40,7 +39,6 @@ flowchart LR
   test_world[":test:world"]
   tools_diagrams[":tools:diagrams"]
   app_desktop --> capability_config
-  app_desktop --> capability_device_id
   app_desktop --> capability_download
   app_desktop --> capability_event_creation_ui
   app_desktop --> capability_join
@@ -61,7 +59,6 @@ flowchart LR
   app_ios --> capability_album
   app_ios --> capability_attest
   app_ios --> capability_config
-  app_ios --> capability_device_id
   app_ios --> capability_download
   app_ios --> capability_event_creation_ui
   app_ios --> capability_join
@@ -83,7 +80,6 @@ flowchart LR
   app_ios_photokit_extension --> capability_album
   app_ios_photokit_extension --> capability_attest
   app_ios_photokit_extension --> capability_config
-  app_ios_photokit_extension --> capability_device_id
   app_ios_photokit_extension --> capability_membership
   app_ios_photokit_extension --> capability_push
   app_ios_photokit_extension --> capability_upload
@@ -99,16 +95,13 @@ flowchart LR
   capability_album --> domain_engine
   capability_album --> domain_gallery
   capability_album --> domain_keychain
-  capability_attest --> capability_device_id
   capability_attest --> domain_keychain
   capability_config --> domain_keychain
-  capability_device_id --> domain_keychain
   capability_download --> capability_push
   capability_download --> domain_download_store
   capability_download --> domain_logging
   capability_download --> domain_status
   capability_join --> capability_config
-  capability_join --> capability_device_id
   capability_join --> domain_gallery
   capability_membership --> capability_config
   capability_membership --> domain_engine
@@ -124,7 +117,6 @@ flowchart LR
   domain_presentation --> capability_event_creation_ui
   domain_presentation --> domain_permission
   domain_presentation --> domain_status
-  domain_status --> capability_membership
   domain_status --> domain_gallery
   domain_status --> domain_permission
   domain_ui --> domain_presentation
@@ -132,7 +124,6 @@ flowchart LR
   test_harness_driver --> app_desktop
   test_harness_driver --> app_desktop_ui
   test_integration --> capability_config
-  test_integration --> capability_device_id
   test_integration --> capability_event_creation_ui
   test_integration --> capability_join
   test_integration --> capability_membership

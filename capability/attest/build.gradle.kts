@@ -11,8 +11,6 @@ kotlin {
     sourceSets {
         commonMain.dependencies {
             api(libs.coroutines.core)
-            // The device id the token is minted for (and the partition it authorizes writes to).
-            implementation(project(":capability:device-id"))
             // The HTTP client is injected (Darwin on iOS, MockEngine in tests) — core + JSON only,
             // mirroring :capability:join.
             implementation(libs.ktor.client.core)

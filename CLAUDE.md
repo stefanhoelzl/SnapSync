@@ -626,7 +626,7 @@ agent use and inject that one instead.
 
 ```
 :domain:engine         sync core + SQL ledger (the only state); no platform deps
-:domain:keychain       cross-cutting Keychain access: the ONLY module that may touch SecItem* (a :test:architecture guard enforces it) — three-state read (found/absent/UNREADABLE), mint-only-on-absent, AfterFirstUnlock + in-place migration, ProtectedDataGate (capability architecture-guards; decision record: fix-locked-device-keychain-access)
+:domain:keychain       cross-cutting Keychain access: the ONLY module that may touch SecItem* (a :test:architecture guard enforces it) — three-state read (found/absent/UNREADABLE), mint-only-on-absent, AfterFirstUnlock + in-place migration, ProtectedDataGate, KeychainDeviceIdentity (the per-install device id, capability device-identity; use sites take it as a plain `() -> String`) (capability architecture-guards; decision record: fix-locked-device-keychain-access)
 :domain:logging        cross-cutting diagnostics: Logger.invocation helper + LogContext ambient prefix + consolidated iOS device-log writers (Kermit-only leaf) (capability diagnostic-logging)
 :domain:status         ledger → SyncStatus projection (read-only)
 :domain:permission     permission seam (3-state)
@@ -638,13 +638,12 @@ agent use and inject that one instead.
 :capability:upload     upload orchestration: UploadCycle + the UploadJobPlatform seam + DiscoveryStore + UploadConfig + the app-driven BackgroundUploadPump/BackgroundScheduler (jvm()+ios, JVM/harness-covered; deps :domain:engine + :domain:gallery)
 :capability:upload-url local edge-URL builder (no network/crypto) — the UploadRequestProvider
 :capability:config     event-link provisioning: the HTTPS Universal Link codec + eventId config (event-link)
-:capability:device-id  stable per-install device identity (shared Keychain)
 :capability:attest     App Attest device token: the tested DeviceAttestation policy (attest → token → renew, 401 → clear-and-retry) over an AttestKey seam; the token is the ONLY way past the backend, which gates every route on it. The extension cannot attest (`isSupported` is false in an app extension, true in the app — measured, not assumed), so it is strictly a READER of the token the app leaves in the shared Keychain (device-attestation)
 :capability:download   foreign-photo download → stage → import controller (photo-download)
 :capability:join       join use-case + DeviceEnroller (writes the per-event device manifest = the physical fact of membership) + EventDetailsSource (join-event)
 :capability:album      tested commonMain album orchestration: resolve-or-create the per-event album, dispatch-or-skip an add; PhotoKit behind seams (event-album). Also the album DENYLIST (DENYLISTED_ALBUM_TITLES — WhatsApp, Telegram, …) + the decision-free AlbumManager.assetIdsInAlbums membership lookup it feeds (capability photo-selection-policy)
 :capability:push       APNs token registration + PushReceiver seam + EventNotifier (POST /events/<id>/notify) (push-registration, upload-completion-notify)
-:capability:membership event-membership lifecycle: extension-side re-join reconciliation + leave use-case + LeaveNotifier (DELETE /events/<id>/devices/<id>) + device-file listing seam
+:capability:membership event-membership lifecycle: extension-side re-join reconciliation + leave use-case + HttpLeaveNotifier (DELETE /events/<id>/devices/<id>) + device-file listing seam
 :capability:event-creation-ui  create-event screen seams: EventCreator/CreationStatusSource + HTTP creator
 :app:desktop           shared harness library (PhoneFrame + StatusPane, StatusContainerHost wiring both desktop harnesses reuse) AND the full-stack world harness app (:app:desktop:run): real StatusScreen whose counts EMERGE from :test:world's real LedgerBackedSyncStatusSource + a right-pane world inspector driving the world (capability full-stack-harness)
 :app:desktop:ui        forge harness (:app:desktop:ui:run): phone frame + control panel that forges any UI state; depends on :app:desktop

@@ -17,7 +17,6 @@ one. `autoJoin` auto-confirms the gate for the device that just created the even
 expressed intent.
 
 Decision record: `changes/archive/2026-07-06-add-event-join-confirmation`.
-
 ## Requirements
 ### Requirement: Joining is gated by an explicit confirmation
 The system SHALL NOT provision an event directly from a decoded interactive event link. When the
@@ -425,6 +424,7 @@ re-join fixes) whereas the opposite error cannot be undone.
 #### Scenario: A surface with no start date falls back to now
 - **WHEN** the join surface renders a phase that carries no `startsAt`, and none was ever loaded
 - **THEN** the capture-date is the current time, never absent and never whole-library
+
 ### Requirement: The persisted membership carries the event's start date
 
 The persisted membership state (`EventConfig`) SHALL carry the event's **`startsAt`** alongside the
@@ -462,3 +462,27 @@ and the not-started state never appears for them.
 #### Scenario: Every consumer reads a non-null startsAt
 - **WHEN** the persisted membership is read, by the app process or the upload extension process
 - **THEN** `startsAt` is a non-null canonical cutoff string, with no nullable branch at any consumer
+
+### Requirement: One details client
+
+The app SHALL have exactly one `GET /events/:eventId` client: the `EventDetailsSource` seam and its
+`HttpEventDetailsSource` implementation in `:capability:join`. Every consumer of an event's details
+SHALL read through it — the join gate's details fetch AND the best-effort name refresh (the
+scan-path fill and the foreground re-fetch, capability `event-link`). The name refresh SHALL read
+the name from a `Found` outcome and treat every other outcome (`NotFound`, `Failed` — including a
+`200` lacking a name or a canonical `startsAt`) as "no name this time", leaving the last-known name
+unchanged. There SHALL be no second, looser event-fetch client: a duplicate client is how producer
+and consumer semantics drift (the deleted `EventMetadataSource` accepted responses the gate
+rejects).
+
+#### Scenario: The name refresh reads through the details client
+
+- **WHEN** the foreground name refresh (or the scan-path fill) fetches the configured event
+- **THEN** it calls the same `EventDetailsSource` the join gate uses, and updates the stored name
+  only from a `Found` outcome
+
+#### Scenario: A non-Found outcome leaves the name unchanged
+
+- **WHEN** the details fetch resolves to `NotFound` or `Failed` during a name refresh
+- **THEN** the persisted config's name keeps its last-known value and syncing is unaffected
+

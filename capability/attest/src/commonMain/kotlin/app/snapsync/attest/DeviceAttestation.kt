@@ -1,6 +1,5 @@
 package app.snapsync.attest
 
-import app.snapsync.deviceid.DeviceIdentity
 import co.touchlab.kermit.Logger
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableSharedFlow
@@ -51,7 +50,7 @@ class DeviceAttestation(
     private val key: AttestKey,
     private val client: AttestClient,
     private val store: AttestStore,
-    private val identity: DeviceIdentity,
+    private val deviceId: () -> String,
     private val now: () -> Long,
     private val log: Logger = Logger.withTag("DeviceAttestation"),
 ) {
@@ -139,7 +138,7 @@ class DeviceAttestation(
         val existingKeyId = store.keyId()
         if (existingKeyId != null) {
             val renewed = runCatching {
-                client.renewToken(identity.deviceId(), key.assert(existingKeyId, challenge), challenge)
+                client.renewToken(deviceId(), key.assert(existingKeyId, challenge), challenge)
             }.getOrNull()
             if (renewed != null) {
                 store.setToken(renewed)
@@ -155,7 +154,7 @@ class DeviceAttestation(
         return runCatching {
             val keyId = key.generateKey()
             val attestation = key.attest(keyId, challenge)
-            val minted = client.mintToken(identity.deviceId(), keyId, attestation, challenge)
+            val minted = client.mintToken(deviceId(), keyId, attestation, challenge)
             if (minted == null) {
                 log.w { "the backend refused the attestation" }
                 false

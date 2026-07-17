@@ -1,18 +1,20 @@
-package app.snapsync.deviceid
+package app.snapsync.keychain
 
-import app.snapsync.keychain.ACCESSIBLE_AFTER_FIRST_UNLOCK
-import app.snapsync.keychain.IosKeychain
-import app.snapsync.keychain.Keychain
-import app.snapsync.keychain.resolveOrMint
 import platform.Foundation.NSUUID
 
 /**
- * The iOS [DeviceIdentity]: persists the device id as a single Keychain generic-password item
- * (encrypted at rest, survives app updates, process death, **and reinstall**). On first resolution it
- * mints an `NSUUID` and writes it; thereafter it reads the same value back.
+ * The stable per-install device identity (capability `device-identity`): persists the device id as a
+ * single Keychain generic-password item (encrypted at rest, survives app updates, process death,
+ * **and reinstall**). [deviceId] is a UUID minted **once** and persisted, identical across the app and
+ * the upload extension (one shared Keychain item). It is the `/files/devices/<deviceId>/` byte-store
+ * partition and the per-event device-manifest key (`/events/<eventId>/devices/<deviceId>.json`) — the
+ * "which manifest is mine" handle a future restore needs to tell this device's own (possibly-deleted)
+ * photos from another contributor's. On first resolution it mints an `NSUUID` and writes it;
+ * thereafter it reads the same value back. Use sites take the id as a plain `() -> String` supplier —
+ * there is no interface to implement, and tests inject a lambda.
  *
- * All Keychain access goes through `:domain:keychain` — the only module permitted to touch `SecItem*`
- * (capability `architecture-guards`) — which is what buys the three properties this file used to get
+ * All Keychain access goes through this module — the only one permitted to touch `SecItem*`
+ * (capability `architecture-guards`) — which is what buys the three properties this logic used to get
  * wrong:
  *
  * - **Background-readable.** The item is stored `kSecAttrAccessibleAfterFirstUnlock`, so the id
@@ -40,11 +42,11 @@ import platform.Foundation.NSUUID
  */
 class KeychainDeviceIdentity(
     private val keychain: Keychain = IosKeychain(service = "app.snapsync.deviceid", account = "deviceid"),
-) : DeviceIdentity {
+) {
 
     private val cached: String by lazy {
         resolveOrMint(keychain, ACCESSIBLE_AFTER_FIRST_UNLOCK) { NSUUID().UUIDString() }
     }
 
-    override fun deviceId(): String = cached
+    fun deviceId(): String = cached
 }

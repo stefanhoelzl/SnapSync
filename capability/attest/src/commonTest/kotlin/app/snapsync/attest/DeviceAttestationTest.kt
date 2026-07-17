@@ -1,6 +1,5 @@
 package app.snapsync.attest
 
-import app.snapsync.deviceid.FixedDeviceIdentity
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -72,7 +71,7 @@ private fun attestation(
     client: FakeClient = FakeClient(),
     store: AttestStore = InMemoryAttestStore(),
 ) = Triple(
-    DeviceAttestation(key, client, store, FixedDeviceIdentity(DEVICE), now = { NOW_SECONDS * 1000 }),
+    DeviceAttestation(key, client, store, { DEVICE }, now = { NOW_SECONDS * 1000 }),
     client,
     store,
 )

@@ -4,7 +4,6 @@ import app.snapsync.config.ConfigSource
 import app.snapsync.config.Direction
 import app.snapsync.config.EventConfig
 import app.snapsync.config.clampToFloor
-import app.snapsync.deviceid.DeviceIdentity
 
 /**
  * The outcome of a confirmed join (capability `join-event`).
@@ -23,7 +22,7 @@ enum class JoinOutcome { Committed, AlreadyJoined, EnrollFailed }
  */
 class JoinEvent(
     private val configSource: ConfigSource,
-    private val deviceIdentity: DeviceIdentity,
+    private val deviceId: () -> String,
     private val details: EventDetailsSource,
     private val enroller: DeviceEnroller,
     private val provision: suspend (EventConfig) -> Unit,
@@ -68,7 +67,7 @@ class JoinEvent(
         saveToAlbum: Boolean,
     ): JoinOutcome {
         if (configSource.config.value?.eventId == eventId) return JoinOutcome.AlreadyJoined
-        if (!enroller.enroll(eventId, deviceIdentity.deviceId())) return JoinOutcome.EnrollFailed
+        if (!enroller.enroll(eventId, deviceId())) return JoinOutcome.EnrollFailed
         provision(
             EventConfig(
                 eventId = eventId,

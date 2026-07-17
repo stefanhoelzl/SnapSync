@@ -90,7 +90,7 @@ sealed interface CycleGate {
  * [configReadable] covers **every** protected read the cycle needs, not just the config: resolving the
  * device identity fails the same way (both are Keychain items) and every outcome below needs it — the
  * reconciler and the manifest producer each close over it, so even the leave-side branch touches it. An
- * unresolvable identity is "I could not look", never "no identity" (`:capability:device-id` never
+ * unresolvable identity is "I could not look", never "no identity" (the Keychain-backed identity never
  * reports absence — an absent item mints), so it belongs on this side of the roll-up rather than in a
  * fourth state.
  *

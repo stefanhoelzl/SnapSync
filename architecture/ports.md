@@ -30,7 +30,6 @@ the `:tools:diagrams` freshness test fails on drift; regenerate instead.
 | `CycleGate` | `:capability:upload` | `:capability:upload` NotJoined, Run, Skip | no |
 | `DeviceEnroller` | `:capability:join` | `:capability:join` FakeEnroller, ManifestDeviceEnroller | yes |
 | `DeviceFilesSource` | `:capability:membership` | `:capability:membership` FakeFiles, HttpDeviceFilesSource | yes |
-| `DeviceIdentity` | `:capability:device-id` | `:capability:device-id` FixedDeviceIdentity, KeychainDeviceIdentity | no |
 | `DeviceManifestStore` | `:domain:gallery` | `:domain:gallery` FakeStore, IosDeviceManifestStore; `:test:world` InMemoryDeviceManifestStore | yes |
 | `DeviceManifestUploader` | `:domain:gallery` | `:app:ios` IosDeviceManifestUploader; `:app:ios:photokit-extension` IosDeviceManifestUploader; `:capability:join` CapturingUploader, HttpDeviceManifestUploader; `:domain:gallery` FakeUploader; `:test:world` HttpDeviceManifestUploader | yes |
 | `DiscoveryStore` | `:capability:upload` | `:app:ios:photokit-discovery` IosDiscoveryStore; `:capability:upload` FakeStore; `:test:world` InMemoryDiscoveryStore | yes |
@@ -43,7 +42,6 @@ the `:tools:diagrams` freshness test fails on drift; regenerate instead.
 | `EventCreator` | `:capability:event-creation-ui` | `:capability:event-creation-ui` CreateEvent, NoOpEventCreator; `:domain:presentation` SpyCreator | no |
 | `EventDetails` | `:capability:join` | `:capability:join` Failed, Found, NotFound | no |
 | `EventDetailsSource` | `:capability:join` | `:capability:join` FakeDetails, HttpEventDetailsSource | yes |
-| `EventMetadataSource` | `:capability:event-creation-ui` | `:capability:event-creation-ui` HttpEventMetadataSource | no |
 | `EventUnionSource` | `:capability:download` | `:capability:download` FakeUnion, HttpEventUnionSource, RecordingUnion | yes |
 | `GalleryResourceEnumerator` | `:domain:gallery` | `:domain:gallery` InMemoryGalleryResourceEnumerator, PhotoLibraryResourceEnumerator, ResourceEnumerator; `:domain:status` RecordingEnumerator | yes |
 | `GalleryStatusSource` | `:domain:gallery` | `:domain:gallery` InMemoryGalleryStatusSource; `:domain:status` OwnDeviceGalleryStatusSource | yes |
@@ -53,7 +51,6 @@ the `:tools:diagrams` freshness test fails on drift; regenerate instead.
 | `JoinedEventMarker` | `:capability:membership` | `:capability:membership` FakeMarker, IosJoinedEventMarker; `:test:world` InMemoryJoinedEventMarker | yes |
 | `Keychain` | `:domain:keychain` | `:domain:keychain` FakeKeychain, IosKeychain | yes |
 | `KeychainRead` | `:domain:keychain` | `:domain:keychain` Absent, Found, Unavailable | no |
-| `LeaveNotifier` | `:capability:membership` | `:capability:membership` HttpLeaveNotifier | no |
 | `LedgerBackend` | `:domain:engine` | `:capability:membership` FakeLedgerBackend; `:capability:upload` InMemoryLedgerBackend; `:domain:engine` InMemoryLedgerBackend, SqlDelightLedgerBackend; `:test:world` WorldLedgerBackend | yes |
 | `LedgerCountsSource` | `:domain:status` | `:domain:status` MutableLedgerCountsSource, ReadingLedgerCountsSource | no |
 | `PermissionRequester` | `:domain:permission` | `:domain:permission` PhotoLibraryPermission; `:domain:presentation` NoOpPermissionRequester, SpyRequester; `:test:integration` NoOpJoinRequester, NoOpRequester | yes |
@@ -62,7 +59,7 @@ the `:tools:diagrams` freshness test fails on drift; regenerate instead.
 | `PhotoLibraryImporter` | `:capability:download` | `:capability:download` FakeImporter, IosPhotoLibraryImporter, NoopImporter; `:test:world` FakePhotoLibraryImporter | yes |
 | `ProtectedDataAvailability` | `:domain:keychain` | `:app:ios` IosProtectedData; `:domain:keychain` FakeAvailability | yes |
 | `PushHttpClient` | `:capability:push` | `:capability:push` FakePushHttpClient, KtorPushHttpClient, RecordingClient | yes |
-| `PushReceiver` | `:capability:push` | `:capability:download` DownloadPushReceiver; `:capability:push` LoggingPushReceiver; `:capability:upload` FanOutPushReceiver, RecordingReceiver, UploadPushReceiver | no |
+| `PushReceiver` | `:capability:push` | `:capability:download` DownloadPushReceiver; `:capability:upload` FanOutPushReceiver, RecordingReceiver, UploadPushReceiver | no |
 | `RawAssetSource` | `:domain:gallery` | `:domain:gallery` InMemoryRawAssetSource, PhotoLibraryRawAssetSource | yes |
 | `SetupEffect` | `:domain:presentation` | `:domain:presentation` InvalidConfigLink | no |
 | `StatusIndicator` | `:domain:ui:components` | `:domain:ui:components` Complete, Error, InProgress, Loading, Photos, Success, Waiting | no |
