@@ -61,7 +61,7 @@ inlined and marked ⟨R⟩ where they changed the original order or claims.
 |---|------|------------------------|--------|
 | 0 | ⟨R⟩ pin the runtime identity + create the pending zone gates | — (guards + consolidation) | ● |
 | 1 | delete dead weight | ledger −8 · edges −3 · modules −1 (measured exact; + beacon ledger-scan self-match fix, D3 of `delete-dead-weight`) | ● |
-| 2 | split mixed files | mixed −6 ⟨R: 2 of 8 die in step 1⟩ | ○ |
+| 2 | split mixed files | mixed −6 ⟨R: 2 of 8 die in step 1⟩ (measured exact) | ● |
 | 3a | `:domain` skeleton: `model/` + `ports/` (moves + package renames only) | edges −5 (→1) · modules Δ | ○ |
 | 3b | port need-renames (`LedgerStore`, `PhotoLibrary`, `PhotoAccess`, …) | — | ○ |
 | 4 | adapters (ext-safe / app-only / generic) + delete the two emptied `:app:ios:*` modules | modules Δ · shells Δ | ○ |
