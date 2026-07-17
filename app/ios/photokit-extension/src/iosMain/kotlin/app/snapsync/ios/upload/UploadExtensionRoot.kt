@@ -2,38 +2,28 @@ package app.snapsync.ios.upload
 
 import app.snapsync.ports.AttestStore
 import app.snapsync.attest.KeychainAttestStore
+import app.snapsync.compose.UploadPorts
+import app.snapsync.compose.uploadCore
 import app.snapsync.feature.album.AlbumCoordinator
 import app.snapsync.model.DENYLISTED_ALBUM_TITLES
 import app.snapsync.album.IosAlbumManager
 import app.snapsync.album.IosAlbumMapStore
-import app.snapsync.ports.ConfigRead
 import app.snapsync.config.KeychainConfigStore
 import app.snapsync.keychain.KeychainDeviceIdentity
-import app.snapsync.ports.KeychainUnavailable
-import app.snapsync.model.Contribution
-import app.snapsync.model.denormalizeAssetId
 import app.snapsync.ports.SuppressionSource
 import app.snapsync.downloadstore.iosSuppressionSource
 import app.snapsync.ios.discovery.IosDiscovery
 import app.snapsync.ios.discovery.IosDiscoveryStore
-import app.snapsync.feature.upload.CycleGate
-import app.snapsync.feature.upload.JoinedMembership
+import app.snapsync.join.HttpEnrollment
 import app.snapsync.ports.CycleResult
-import app.snapsync.feature.upload.cycleGate
 import app.snapsync.model.UPLOAD_LIVENESS_DARWIN_NAME
 import app.snapsync.feature.upload.UploadCycle
 import app.snapsync.ports.LedgerStore
-import app.snapsync.feature.upload.LedgerWriter
-import app.snapsync.feature.upload.SyncEngine
 import app.snapsync.engine.iosLedgerStore
-import app.snapsync.model.EdgeUploadRequestProvider
-import app.snapsync.feature.membership.DeviceManifestProducer
 import app.snapsync.gallery.IosDeviceManifestStore
 import app.snapsync.gallery.PhotoLibraryResourceEnumerator
-import app.snapsync.model.deviceManifestAssetsFromResources
 import app.snapsync.push.EventNotifier
 import app.snapsync.push.KtorPushHttpClient
-import app.snapsync.feature.upload.ExtensionReconciler
 import app.snapsync.membership.HttpDeviceFilesSource
 import app.snapsync.membership.IosJoinedEventMarker
 import app.snapsync.membership.darwinHttpClient
@@ -42,6 +32,9 @@ import app.snapsync.logging.PublicNSLogWriter
 import app.snapsync.model.invocation
 import co.touchlab.kermit.Logger
 import kotlinx.cinterop.ExperimentalForeignApi
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.runBlocking
 import platform.Foundation.NSBundle
 import platform.CoreFoundation.CFNotificationCenterGetDarwinNotifyCenter
@@ -51,18 +44,21 @@ import platform.CoreFoundation.CFStringRef
 import platform.CoreFoundation.kCFStringEncodingUTF8
 
 /**
- * The extension process's composition root — the single site that assembles the App-Group ledger
- * writer, the engine, the real S3 upload provider, the PhotoKit platform adapter, and the
- * [UploadCycle]. The Swift `@main` principal class calls [process] from its `process()` callback.
+ * The extension process's composition root — WIRING ONLY: it constructs this process's adapters
+ * (the App-Group ledger store, the PhotoKit platform + discovery, the Keychain config/attest
+ * readers, the generic HTTP clients) and hands them as [UploadPorts] to the SHARED composition
+ * [uploadCore] (`:domain` `compose/`), which assembles the [UploadCycle]. The Swift `@main`
+ * principal class calls [process] from its `process()` callback.
  *
- * Config is sourced fresh each cycle: the runtime event id from the shared Keychain
- * ([KeychainConfigStore]) combined with the compile-time upload host ([uploadHostFromBundle],
- * `BackgroundUploadURLBase`) into the edge upload provider. When no event has been joined yet (the
+ * Config is sourced fresh each cycle by the shared entry gate: the runtime event id from the shared
+ * Keychain ([KeychainConfigStore]) combined with the compile-time upload host
+ * ([uploadHostFromBundle], `BackgroundUploadURLBase`). When no event has been joined yet (the
  * extension woke before setup), the cycle is skipped as a clean success — no job, no ledger write,
  * no crash.
  *
- * The ledger writer and platform are process-lifetime singletons (the extension is the single
- * `LedgerWriter`); only the engine, which depends on config, is built per cycle.
+ * The composed cycle and platform are process-lifetime singletons (the extension is the single
+ * ledger record-writer on its tier); the engine, which depends on config, is built per cycle
+ * inside `uploadCore`.
  */
 object UploadExtensionRoot {
 
@@ -107,7 +103,6 @@ object UploadExtensionRoot {
     }
 
     private val ledgerStore: LedgerStore by lazy { iosLedgerStore() }
-    private val ledger: LedgerWriter by lazy { LedgerWriter(ledgerStore) }
     private val discovery: IosDiscovery by lazy {
         IosDiscovery(log, PhotoLibraryResourceEnumerator())
     }
@@ -169,119 +164,63 @@ object UploadExtensionRoot {
         )
     }
 
-    // Re-join reconciliation (capability `event-rejoin-reconciliation`), now extension-owned. Seeds
-    // already-stored photos as COMPLETED before the producer runs so they are not re-uploaded; gated by
-    // a persisted `joinedEventId` marker so a settled join performs no fetch. Fetches the event's
-    // complete-asset listing over the Darwin HTTPS client; the host is the same compile-time
-    // `BackgroundUploadURLBase` baked into the extension bundle.
-    private val reconciler: ExtensionReconciler by lazy {
-        ExtensionReconciler(
-            // Seed dedup from the DEVICE's stored filenames (bytes are device-partitioned and
-            // event-independent). The reconciler `resetTo`s the ledger to exactly those files
-            // (clear-and-seed, dropping stale/phantom rows) and clears the cursor — see ExtensionReconciler.
-            files = HttpDeviceFilesSource(httpClient, uploadHostFromBundle() ?: ""),
-            ledger = ledgerStore,
-            marker = IosJoinedEventMarker(),
-            deviceId = deviceId,
-            // Clear the discovery cursor on a re-join so the producer re-enumerates the whole library
-            // (the cursor survives an app upgrade); the ledger dedups, so nothing already stored re-uploads.
-            clearDiscoveryCursor = { discoveryStore.clearToken() },
-            log = log,
-        )
-    }
-
-    // The per-event device manifest (capability `device-manifest`): the extension is its SOLE writer
-    // and PUTs it SYNCHRONOUSLY in-cycle (no background URLSession, no app involvement). Replaces the
-    // retired per-asset manifest side channel. The uploader's host is the same compile-time
-    // `BackgroundUploadURLBase`; the store persists the accumulator + last-uploaded JSON in the App Group.
     // Event-notify sender (capability `upload-completion-notify`): fired after a drained cycle that
-    // completed uploads, so co-contributors are woken to download. Same compile-time host as the manifest.
+    // completed uploads, so co-contributors are woken to download. Same compile-time host as the
+    // manifest. Stays root-constructed: the sender lives in `:capability:push`, unreachable from
+    // `:domain`'s compose zone — `uploadCore` takes the notify as a stated lambda (step 8 re-homes it).
     private val notifier: EventNotifier by lazy {
         EventNotifier(KtorPushHttpClient(httpClient), uploadHostFromBundle() ?: "")
     }
 
-    private val deviceManifestProducer: DeviceManifestProducer by lazy {
-        DeviceManifestProducer(
-            store = IosDeviceManifestStore(),
-            uploader = IosEnrollment(httpClient, uploadHostFromBundle() ?: ""),
-            deviceId = deviceId,
-        )
-    }
+    // The extension's process scope, handed to the shared composition per its contract (`module-
+    // architecture`, "the composition functions SHALL receive a CoroutineScope"). The upload subset
+    // consumes no scope until step 8 installs the port-state-transition subscriptions in compose/;
+    // this extension's own execution model stays the synchronous per-`process()` `runBlocking` below.
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
 
     /**
-     * The membership read, translated into the shared vocabulary — **this root's only contribution to
-     * the decision**, and it is a translation, not a decision: the Keychain and the bundle are this
-     * platform's, the skip-or-leave-or-run answer is [cycleGate]'s (capability `upload-lifecycle`).
-     *
-     * Re-read every cycle: the extension process outlives a single invocation, and a new event joined
-     * by the app (another process) does not notify a StateFlow here — without the refresh the extension
-     * would keep serving the event it read at construction.
-     */
-    private fun readGate(): CycleGate {
-        val read = configSource.read()
-        // Resolving the device id can fail the same way the config read can (both are Keychain items),
-        // and every outcome needs it — the reconciler and the manifest producer each close over it, so
-        // even the leave-side branch touches it. An unresolvable id is "I could not look", never "no id":
-        // it belongs on the unreadable side of the roll-up, not in a fourth state.
-        // Resolving here is free (the lazy caches success; a failure is simply retried next cycle).
-        val idReadable = runCatching { deviceId }
-            .onFailure { if (it !is KeychainUnavailable) throw it }
-            .isSuccess
-        val payload = (read as? ConfigRead.Joined)?.config
-        return cycleGate(
-            configReadable = read !is ConfigRead.Unavailable && idReadable,
-            membership = payload?.let {
-                JoinedMembership(
-                    eventId = it.eventId,
-                    contribution = Contribution.of(it.direction.includesUpload, it.minPhotoDate),
-                    saveToAlbum = it.saveToAlbum,
-                )
-            },
-            host = uploadHostFromBundle(),
-            // The forensics for a skip. The decision is made in shared code that cannot see WHY the read
-            // failed, and an unreadable config is invisible on a device except through this string.
-            skipDetail = "protected data unavailable (config status=" +
-                "${(read as? ConfigRead.Unavailable)?.status}, deviceId readable=$idReadable)",
-        )
-    }
-
-    /**
-     * The cycle. Long-lived (one per process): it re-reads the membership itself via [readGate] on each
-     * `run()`, so nothing here is per-invocation.
+     * The cycle — assembled by the SHARED composition `uploadCore` (spec `module-architecture`, "One
+     * shared composition"): this root supplies only its ports and platform reads (the Keychain
+     * three-state `ConfigReader`, the identity resolve, the compile-time bundle host, the PhotoKit
+     * platform, the App-Group stores, and the generic HTTP adapters). The entry-gate translation,
+     * the reconciler, the device-manifest producer, and the engine wiring live in `uploadCore` —
+     * identical for the app-driven tier and the world harness, so this tier cannot carry cycle
+     * wiring another tier lacks. Long-lived (one per process): the cycle re-reads the membership
+     * per `run()`, so nothing here is per-invocation.
      */
     private val cycle: UploadCycle by lazy {
-        UploadCycle(
-            readGate = ::readGate,
-            // Bytes go to the device's event-independent partition (/files/devices/<deviceId>/…); the
-            // eventId in `config` drives only the producer's event scope + the device-manifest write, not
-            // the byte URL.
-            engineFor = { config ->
-                SyncEngine(EdgeUploadRequestProvider(config.host, deviceId) { attestToken() }, ledger)
-            },
-            ledger = ledger,
-            platform = platform,
-            store = discoveryStore,
-            log = log,
-            reconcile = { eventId -> reconciler.reconcile(eventId) },
-            // Device manifest (capability `device-manifest`) from the cycle's OWN discovery — no second
-            // PhotoKit enumeration. Bounding is the cycle's, not this root's.
-            onDiscovery = { eventId, cutoff, discovery ->
-                deviceManifestProducer.produce(
-                    eventId = eventId,
-                    startDate = cutoff, // per-device capture-date cutoff (photo-selection-policy)
-                    discovered = deviceManifestAssetsFromResources(discovery.resources),
-                    removedAssetIds = discovery.removedAssetIds.toSet(),
-                    fullEnumeration = discovery.fullEnumeration,
-                )
-            },
-            suppressedAssetIds = { suppression.suppressedLocalIds() },
-            albumExcludedAssetIds = { cutoff -> albumManager.assetIdsInAlbums(DENYLISTED_ALBUM_TITLES, cutoff) },
-            onBatchUploaded = { eventId -> notifier.notify(eventId) },
-            // The event album (capability `event-album`): the cycle applies the membership's opt-in, which
-            // arrived with the gate — this lambda only reverses the normalized `assetId` (`_`→`/`).
-            placeInAlbum = { eventId, assetIds ->
-                albumCoordinator.place(eventId, assetIds.map(::denormalizeAssetId))
-            },
+        uploadCore(
+            scope,
+            UploadPorts(
+                config = configSource,
+                // The lazy caches the first success; a failure throws `KeychainUnavailable` and is
+                // retried next cycle — the gate's probe puts it on the unreadable side of the roll-up.
+                deviceId = { deviceId },
+                // Read per gate call, as this root always has: the compile-time
+                // `BackgroundUploadURLBase` baked into the extension bundle.
+                host = { uploadHostFromBundle() },
+                ledger = ledgerStore,
+                transfer = platform,
+                discoveryStore = discoveryStore,
+                // Re-join reconciliation seed (capability `event-rejoin-reconciliation`): the
+                // device's stored-file listing over the Darwin HTTPS client, same compile-time host.
+                deviceFiles = HttpDeviceFilesSource(httpClient, uploadHostFromBundle() ?: ""),
+                joinedMarker = IosJoinedEventMarker(),
+                // The per-event device manifest (capability `device-manifest`): the extension is its
+                // SOLE writer and PUTs it SYNCHRONOUSLY in-cycle via the generic `HttpEnrollment`
+                // (the former extension-local `IosEnrollment` copy is dead — one uploader serves all).
+                manifestStore = IosDeviceManifestStore(),
+                enrollment = HttpEnrollment(httpClient, uploadHostFromBundle() ?: ""),
+                suppression = suppression,
+                // Denylisted-album membership (capability `photo-selection-policy`): this tier's
+                // stated failure posture is unchanged — a thrown lookup fails the cycle (retried on
+                // the OS's next invocation).
+                albumExcludedAssetIds = { cutoff -> albumManager.assetIdsInAlbums(DENYLISTED_ALBUM_TITLES, cutoff) },
+                albumCoordinator = albumCoordinator,
+                token = { attestToken() },
+                onBatchUploaded = { eventId -> notifier.notify(eventId) },
+                log = log,
+            ),
         )
     }
 

@@ -129,7 +129,7 @@ expected-filename set and SHALL NOT read the per-device listing: own-device comp
 and the status path issues no storage LIST. What the shared seam guarantees is that the total counts
 exactly the assets the cycle would upload — so the screen can reach 100% — not that two derivations of
 "complete" agree. The iOS implementation SHALL be
-PhotoKit-backed (`:adapter:ios:ext-safe`'s decision-free walk composed through `feature/upload`'s `ResourceEnumerator`, the shared walk-plus-mapping composition — migration step 6); `:domain:gallery` SHALL keep providing a settable in-memory implementation for the JVM
+PhotoKit-backed (`:adapter:ios:ext-safe`'s decision-free walk composed through `compose/`'s `ResourceEnumerator`, the shared walk-plus-mapping composition — seated in `compose/` by migration step 7, repaying step 6's interim `feature/upload` seat); `:domain:gallery` SHALL keep providing a settable in-memory implementation for the JVM
 harness and tests until the fakes re-home to `:adapter:fake` (migration step 10). Presentation SHALL keep consuming counts only through the `feature/status` read-models, never
 the enumeration seam directly (per "Module placement keeps the seam off presentation").
 

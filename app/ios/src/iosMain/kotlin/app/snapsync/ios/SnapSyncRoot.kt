@@ -1,21 +1,18 @@
 package app.snapsync.ios
 
 import app.snapsync.model.EventConfig
+import app.snapsync.compose.AppCore
+import app.snapsync.compose.AppPorts
+import app.snapsync.compose.snapSyncApp
 import app.snapsync.config.KeychainConfigStore
-import app.snapsync.feature.creation.CreateEvent
-import app.snapsync.feature.creation.EventCreator
 import app.snapsync.eventcreation.HttpEventCreation
-import app.snapsync.feature.creation.MutableCreationStatusSource
-import app.snapsync.feature.trust.DeviceAttestation
 import app.snapsync.attest.HttpAttestClient
 import app.snapsync.attest.IosAttestKey
 import app.snapsync.attest.KeychainAttestStore
 import app.snapsync.ports.EventDetails
 import app.snapsync.join.HttpEnrollment
 import app.snapsync.join.HttpEventDirectory
-import app.snapsync.feature.membership.JoinEvent
 import app.snapsync.feature.membership.JoinOutcome
-import app.snapsync.feature.membership.ManifestDeviceEnroller
 import app.snapsync.presentation.JoinLoad
 import app.snapsync.model.Contribution
 import app.snapsync.gallery.PhotoLibraryResourceEnumerator
@@ -25,38 +22,26 @@ import app.snapsync.presentation.MutableAttestedSource
 import app.snapsync.presentation.StatusContainerHost
 import app.snapsync.presentation.forgeStatusHost
 import app.snapsync.presentation.isForgeState
-import app.snapsync.feature.download.DownloadPushReceiver
 import app.snapsync.push.KtorPushHttpClient
 import app.snapsync.ports.PushReceiver
 import app.snapsync.push.PushRegistration
 import app.snapsync.ports.PushTokenSource
 import app.snapsync.membership.HttpLeaveNotifier
-import app.snapsync.feature.membership.LeaveEvent
 import app.snapsync.membership.darwinHttpClient
-import app.snapsync.feature.download.DownloadController
 import app.snapsync.download.HttpEventUnionSource
 import app.snapsync.download.IosDownloadTransport
-import app.snapsync.feature.download.QueuedPhotoDownloadJobs
-import app.snapsync.feature.album.AlbumCoordinator
 import app.snapsync.model.DENYLISTED_ALBUM_TITLES
 import app.snapsync.album.IosAlbumManager
 import app.snapsync.album.IosAlbumMapStore
 import app.snapsync.download.IosPhotoLibraryImporter
-import app.snapsync.model.denormalizeAssetId
-import app.snapsync.feature.download.StoreDownloadStatusSource
 import app.snapsync.downloadstore.SqlDelightDownloadStore
 import app.snapsync.downloadstore.iosDownloadStore
 import platform.Foundation.NSFileManager
 import app.snapsync.engine.LEDGER_APP_GROUP
 import app.snapsync.ports.LedgerStore
 import app.snapsync.engine.iosLedgerStore
-import app.snapsync.feature.status.LedgerBackedSyncStatusSource
-import app.snapsync.feature.status.LedgerCounts
-import app.snapsync.feature.status.OwnDeviceGalleryStatusSource
-import app.snapsync.feature.status.ReadingLedgerCountsSource
 import app.snapsync.model.UPLOAD_LIVENESS_DARWIN_NAME
 import app.snapsync.upload.FanOutPushReceiver
-import app.snapsync.feature.upload.UploadArm
 import app.snapsync.feature.upload.UploadProducer
 import app.snapsync.logging.FileLogWriter
 import app.snapsync.logging.PublicNSLogWriter
@@ -107,14 +92,16 @@ import platform.darwin.dispatch_get_main_queue
  * Swift entry point stays untouched. Move ownership to Swift only if scene-aware lifecycle or
  * scope recreation (multi-window, reset/logout) is ever needed.
  *
- * Assembly is lazy so it runs once on first view creation: the storage-truth status sources
- * (completeness listing + on-disk manifests) × the gallery total × PhotoKit permission → the
- * listing-backed source → container. `permission` and `config` are each passed as both their ports
- * (one adapter implements both).
+ * Assembly is lazy so it runs once on first view creation, and it goes through the SHARED
+ * composition (`snapSyncApp`, spec `module-architecture` "One shared composition"): this root
+ * constructs the platform adapters and hands them as [AppPorts]; the feature graph — status
+ * sources, attestation, join/leave/create, downloads, the upload arm — is composed in `:domain`'s
+ * `compose/` zone as [app]. `permission` and `config` are each passed as both their ports (one
+ * adapter implements both).
  *
  * **Upload lifecycle lives elsewhere.** This root selects exactly one [UploadProducer] for the process
  * (the PhotoKit extension registration on iOS ≥26.1, the in-app URLSession pump on 18–26.0) and forwards
- * membership transitions to the tested, tier-neutral [UploadArm] in `:capability:upload`. The *decision* —
+ * membership transitions to the composed, tier-neutral `UploadArm` (`app.uploadArm`). The *decision* —
  * which verb fires on provision / grant / leave — is not made here, because this module is wiring-only and
  * untested by the project's hard rule, and parking that decision here is precisely how the app-driven tier
  * shipped a provision path that destroyed its ledger and started nothing (capability `upload-lifecycle`).
@@ -164,14 +151,11 @@ object SnapSyncRoot {
     }
 
     // Event album (capability `event-album`): the shared leave-surviving `eventId → albumLocalId` map and
-    // the coordinator. The APP is the SOLE creator (on the permission grant); both processes only add.
+    // the PhotoKit manager — the two adapters the composed coordinator (`app.albumCoordinator`) sits on.
+    // Hoisted: the selection policy also reads the manager directly (denylisted-album membership), and
+    // the atomic import-time album lookup reads the map (capability `photo-selection-policy`).
     private val albumMapStore: IosAlbumMapStore by lazy { IosAlbumMapStore() }
-    // Hoisted: the selection policy also reads the manager (denylisted-album membership), not just the
-    // coordinator (capability `photo-selection-policy`).
     private val albumManager: IosAlbumManager by lazy { IosAlbumManager() }
-    private val albumCoordinator: AlbumCoordinator by lazy {
-        AlbumCoordinator(albumManager, albumMapStore)
-    }
 
     /**
      * The normalized `assetId`s sitting in an album a messaging/social app made (capability
@@ -196,7 +180,7 @@ object SnapSyncRoot {
     // permission grant and on provision (when already granted), so the album exists before the first sync.
     private suspend fun ensureAlbumIfOptedIn() {
         val cfg = config.config.value ?: return
-        if (cfg.saveToAlbum && cfg.name.isNotEmpty()) albumCoordinator.ensureAlbum(cfg.eventId, cfg.name)
+        if (cfg.saveToAlbum && cfg.name.isNotEmpty()) app.albumCoordinator.ensureAlbum(cfg.eventId, cfg.name)
     }
 
     // The photo-library permission adapter, hoisted so the grant collector and a (re)provision share one
@@ -209,22 +193,59 @@ object SnapSyncRoot {
     private val deviceId: String by lazy { KeychainDeviceIdentity().deviceId() }
 
     /**
-     * Device attestation (capability `device-attestation`) — the bearer token EVERY backend call carries.
+     * The composed app graph (spec `module-architecture`, "One shared composition"): this root
+     * constructs the platform adapters and coordination lambdas as [AppPorts]; `snapSyncApp`
+     * composes the features. Every [AppCore] property is `by lazy`, so first-touch construction
+     * timing matches the lazy web that used to live here — nothing resolves the device identity or
+     * opens a protected store earlier than before (the locked-background-launch property).
      *
-     * Lives in the app root because only the app CAN attest: `DCAppAttestService.isSupported` is `false`
-     * inside the upload extension and `true` here (measured on device). The extension is a pure reader of
-     * the token this writes into the shared Keychain.
-     *
-     * Its own HTTP client is deliberately UNauthenticated: the three `/attest/…` routes are the ones that
-     * issue the token, so authenticating them would be a cycle — and this lazy would deadlock on itself.
+     * The attest client's own HTTP client is deliberately UNauthenticated: the three `/attest/…`
+     * routes are the ones that issue the token, so authenticating them would be a cycle.
      */
-    private val attestation: DeviceAttestation by lazy {
-        DeviceAttestation(
-            key = IosAttestKey(),
-            client = HttpAttestClient(darwinHttpClient(), backendHost),
-            store = KeychainAttestStore(),
-            deviceId = KeychainDeviceIdentity()::deviceId,
-            now = { (NSDate().timeIntervalSince1970 * 1000).toLong() },
+    private val app: AppCore by lazy {
+        snapSyncApp(
+            scope,
+            AppPorts(
+                configSource = config,
+                configStore = config,
+                photoAccess = permission,
+                photoLibrary = PhotoLibraryResourceEnumerator(),
+                ledger = ledgerStore,
+                downloadStore = downloadStore,
+                // The importer writes createdLocalId synchronously from inside a PhotoKit change
+                // block (concrete store, not the port) and borrows the atomic album-add lookup.
+                importer = IosPhotoLibraryImporter(
+                    recordCreatedLocalId = { ref, id -> downloadStore.recordCreatedLocalId(ref, id) },
+                    albumId = { currentAlbumId() },
+                ),
+                downloadStagingRoot = {
+                    val container = NSFileManager.defaultManager
+                        .containerURLForSecurityApplicationGroupIdentifier(LEDGER_APP_GROUP)?.path
+                        ?: error("App Group container '$LEDGER_APP_GROUP' unavailable")
+                    "$container/download-staging"
+                },
+                newDownloadTransport = { host -> IosDownloadTransport(host) },
+                union = HttpEventUnionSource(http, backendHost),
+                directory = detailsSource,
+                enrollment = HttpEnrollment(http, backendHost),
+                eventCreation = HttpEventCreation(http, backendHost),
+                attestKey = IosAttestKey(),
+                attestClient = HttpAttestClient(darwinHttpClient(), backendHost),
+                attestStore = KeychainAttestStore(),
+                deviceId = { deviceId },
+                now = { (NSDate().timeIntervalSince1970 * 1000).toLong() },
+                // The tier's mechanism, selected ONCE per process (capability `upload-lifecycle`);
+                // the selection stays a shell thunk until step 8's `resolveComposition`.
+                uploadProducer = { uploadProducer },
+                albumManager = albumManager,
+                albumMapStore = albumMapStore,
+                albumExcludedAssetIds = { cutoff -> albumExcludedAssetIds(cutoff) },
+                notifyLeave = { eventId -> leaveNotifier.leave(eventId, deviceId) },
+                // Coordination stays shell-side until `flow/` exists (step 8).
+                provision = ::provisionEvent,
+                onEventMinted = { eventId -> host.onEventCreated(eventId) },
+                log = log,
+            ),
         )
     }
 
@@ -236,11 +257,11 @@ object SnapSyncRoot {
      */
     private val http: HttpClient by lazy {
         darwinHttpClient(
-            token = { attestation.token() },
+            token = { app.attestation.token() },
             // Rejected (not merely expired) → drop it and go get a new one right now. We are demonstrably
             // online (the backend just answered), so this is the best possible moment to recover.
             onRejected = {
-                attestation.onRejected()
+                app.attestation.onRejected()
                 refreshAttestation()
             },
         )
@@ -257,53 +278,24 @@ object SnapSyncRoot {
      */
     private fun refreshAttestation() {
         scope.launch {
-            val ok = runCatching { attestation.ensureFresh() }.getOrDefault(false)
+            val ok = runCatching { app.attestation.ensureFresh() }.getOrDefault(false)
             // Surface it ONLY when we both lack a usable token and could not get one. A stale token that
             // renews is a non-event; raising it would be noise. And because opening the app IS a wake, this
             // normally clears before it can be seen — what survives is a device that is offline or being
             // refused, which is a real problem that no amount of waiting fixes.
-            attested.set(ok || !attestation.isStale(attestation.token()))
+            attested.set(ok || !app.attestation.isStale(app.attestation.token()))
         }
     }
 
     /** Drives `SyncHealth.Unattested` (capability `device-attestation`). See [refreshAttestation]. */
     private val attested = MutableAttestedSource()
 
-    // The own-device upload TOTAL N (capability `sync-status`): gallery enumeration minus downloaded
-    // foreign photos (suppressed from upload — they live in the library but must not peg progress below
-    // 100%, capability `photo-download`). Enumeration-only — no storage LIST (completeness now comes
-    // from the ledger, below). Refreshes on foreground entry.
-    // The total is cutoff-scoped so the joined screen reaches "in sync" (capability `photo-selection-policy`):
-    // pre-cutoff assets never upload, so they must not inflate `N`. The cutoff is supplied per refresh,
-    // from the joined membership — an unjoined device has no scope and is never refreshed.
-    // The origin exclusions scope the total too (capability `photo-selection-policy`): a screenshot is never
-    // uploaded, so counting it would peg the screen below 100% exactly as a pre-cutoff asset would. The
-    // resource-fact rules are applied inside the source; album membership comes through this lookup — the
-    // SAME one the upload cycle gets, because the two enumerate independently.
-    private val gallery: OwnDeviceGalleryStatusSource by lazy {
-        OwnDeviceGalleryStatusSource(
-            PhotoLibraryResourceEnumerator(),
-            suppressedLocalIds = { downloadStore.suppressedLocalIds() },
-            albumExcludedAssetIds = { cutoff -> albumExcludedAssetIds(cutoff) },
-        )
-    }
-
     // The app-side handle on the extension's shared App-Group ledger, used for two narrow things only:
-    // a READ-ONLY aggregates read (`completed`/`pending`, below) and a reset-family `clearRequested()`
-    // on extension disable (recover jobs the disable wiped, capability `ios-background-upload`). No
-    // per-key record writes and no `LedgerWriter` — the extension stays the sole record writer. WAL
-    // permits the concurrent cross-process read.
+    // a READ-ONLY aggregates read (`completed`/`pending`, via the composed counts source) and a
+    // reset-family `clearRequested()` on extension disable (recover jobs the disable wiped, capability
+    // `ios-background-upload`). No per-key record writes here — on the OS-driven tier the extension
+    // stays the sole record writer. WAL permits the concurrent cross-process read.
     private val ledgerStore: LedgerStore by lazy { iosLedgerStore() }
-
-    // Own-device completeness AND in-flight, both from one consistent ledger `aggregates()` read
-    // (capability `sync-status`). Read-only; on any failure the last good counts are retained (never
-    // regressed to 0). Refreshed on foreground entry AND on the extension's cross-process liveness
-    // notification (below).
-    private val ledgerCounts: ReadingLedgerCountsSource by lazy {
-        ReadingLedgerCountsSource {
-            ledgerStore.aggregates().let { LedgerCounts(completed = it.completed, pending = it.pending) }
-        }
-    }
 
     // --- Photo download / import (capability `photo-download`) ---
     // The app-written download store (idempotency + per-resource staging + the createdLocalId the
@@ -311,81 +303,14 @@ object SnapSyncRoot {
     // synchronously from inside a PhotoKit change block.
     private val downloadStore: SqlDelightDownloadStore by lazy { iosDownloadStore() }
 
-    // Background-URLSession byte transfers (Wi-Fi + cellular) → durable App-Group staging. The queue,
-    // bounded window, and cancellation lifecycle live in the tested QueuedPhotoDownloadJobs; the
-    // NSURLSession edge is IosDownloadTransport, rebuilt if the system ever invalidates the session.
-    private val downloadJobs: QueuedPhotoDownloadJobs by lazy {
-        val container = NSFileManager.defaultManager
-            .containerURLForSecurityApplicationGroupIdentifier(LEDGER_APP_GROUP)?.path
-            ?: error("App Group container '$LEDGER_APP_GROUP' unavailable")
-        QueuedPhotoDownloadJobs(
-            scope,
-            "$container/download-staging",
-            newTransport = { host -> IosDownloadTransport(host) },
-        )
-    }
-
-    // The orchestrator: union → foreign selection → download → full-fidelity import → suppression.
-    private val downloadController: DownloadController by lazy {
-        val uploadHost = NSBundle.mainBundle.objectForInfoDictionaryKey("BackgroundUploadURLBase") as? String ?: ""
-        val controller = DownloadController(
-            union = HttpEventUnionSource(http, uploadHost),
-            store = downloadStore,
-            jobs = downloadJobs,
-            importer = IosPhotoLibraryImporter(
-                recordCreatedLocalId = { ref, id -> downloadStore.recordCreatedLocalId(ref, id) },
-                // Event album (capability `event-album`): add each imported foreign asset to the event
-                // album atomically, sourced from the shared map (null = opt-out or not-yet-created).
-                albumId = { currentAlbumId() },
-            ),
-            myDeviceId = deviceId,
-            // The download arm runs only when the joined membership's direction includes download
-            // (capability `join-event`) — an upload-only membership reconciles nothing. No event joined
-            // (config null) → nothing to reconcile anyway; default true is harmless there.
-            // Three-valued, no fallback: no membership → `null` → no arm. The `?: true` this replaces made
-            // "no membership" mean "download freely" (capability `photo-download`).
-            downloadEnabled = { config.config.value?.direction?.includesDownload },
-        )
-        // Deliver each staged resource back to the controller off the URLSession delegate thread.
-        downloadJobs.onStaged = { ref, key, path -> scope.launch { controller.onResourceStaged(ref, key, path) } }
-        controller
-    }
-
-    // Download progress for the joined-layer "downloaded X of Y" line (capability `photo-download`),
-    // read from the store. Refreshed on foreground entry alongside the upload status.
-    private val downloadStatusSource: StoreDownloadStatusSource by lazy { StoreDownloadStatusSource(downloadStore) }
-
     // The seam that tells the backend this device is leaving (DELETE /events/<id>/devices/<id>,
     // capability `event-leave-endpoint`) — the backend renames the manifest to its departed
     // `.left.json` sibling and reaps/GCs the event when the last member leaves. Best-effort (a failed
     // call never blocks leaving). Used by BOTH the explicit Leave and a switch (see [provisionEvent]).
     private val leaveNotifier: HttpLeaveNotifier by lazy { HttpLeaveNotifier(http, backendHost) }
 
-    // The leave use-case: stops the producer, clears the Keychain config (which flips the screen off the
-    // joined layer), then fires the backend notify fire-and-forget on the app-lifetime `scope` so a slow
-    // DELETE never freezes the screen. It constructs no ledger type and **destroys no dedup state**: the
-    // ledger, discovery cursor, and accumulator are device-global and stay valid across events, so a later
-    // join re-uploads nothing already in this device's byte partition. The reconciler clears the
-    // `joinedEventId` marker on the next cycle (`event-rejoin-reconciliation`). The eventId is snapshotted
-    // before the clear and passed into the notify.
-    private val leaveEvent: LeaveEvent by lazy {
-        LeaveEvent(
-            config = config,
-            configSource = config,
-            stopUploads = { uploadArm.onLeave() },
-            notifyLeave = { eventId -> leaveNotifier.leave(eventId, deviceId) },
-            scope = scope,
-        )
-    }
-
-    // The create-event status the use-case drives and the container reads (same instance).
-    private val creationStatus = MutableCreationStatusSource()
-
-    // The create-event use-case: mint via the deployed backend (Darwin HTTPS, host from Info.plist —
-    // the same base the rejoin client uses), then provision the returned event id through the very
-    // same path a scanned QR takes ([provisionEvent]).
-    // The device-facing backend host (baked at compile time); shared by the create client and the
-    // event-metadata (name) fetch.
+    // The device-facing backend host (baked at compile time); shared by every generic HTTP adapter
+    // handed to the composed graph and the event-metadata (name) fetch.
     private val backendHost: String by lazy {
         NSBundle.mainBundle.objectForInfoDictionaryKey("BackgroundUploadURLBase") as? String ?: ""
     }
@@ -423,44 +348,17 @@ object SnapSyncRoot {
     // The upload arm is added only on the app-driven tier, where a pump exists to drive. On iOS ≥26.1 the OS
     // owns upload scheduling and we have no lever — the extension is invoked on its own cadence.
     private val pushReceiver: PushReceiver by lazy {
-        val download = DownloadPushReceiver(
-            activeEventId = { config.config.value?.eventId },
-            controller = downloadController,
-        )
-        if (!useAppDrivenUpload) return@lazy download
-        FanOutPushReceiver(listOf(download, urlSessionUpload.pushReceiver))
-    }
-
-    private val eventCreator: EventCreator by lazy {
-        CreateEvent(
-            client = HttpEventCreation(http, backendHost),
-            status = creationStatus,
-            // Route the minted event into the SAME join gate a scan uses (capability `photo-selection-policy`):
-            // the creator loads the event, picks a capture-date cutoff, and confirms like any joiner.
-            onMinted = { eventId -> host.onEventCreated(eventId) },
-            scope = scope,
-        )
-    }
-
-    // The join use-case (capability `join-event`): fetch details (GET /event/:id, 200/404/failure),
-    // enroll by writing a register-only EMPTY device manifest (PUT /event/:id/device/:deviceId), then
-    // provision through the same path as create/scan. The switch (leave-then-join) is composed in the
-    // container, so this stays free of the leave use-case.
-    private val joinEvent: JoinEvent by lazy {
-        JoinEvent(
-            configSource = config,
-            deviceId = { deviceId },
-            details = detailsSource,
-            enroller = ManifestDeviceEnroller(HttpEnrollment(http, backendHost)),
-            provision = ::provisionEvent,
-        )
+        // The download arm's receiver is composed in the app graph; the fan-out stays here until the
+        // receiver pair re-homes out of `:capability:upload` (migration step 8).
+        if (!useAppDrivenUpload) return@lazy app.downloadPushReceiver
+        FanOutPushReceiver(listOf(app.downloadPushReceiver, urlSessionUpload.pushReceiver))
     }
 
     val host: StatusContainerHost by lazy {
         // The own-device source: ledger completeness + in-flight (one aggregates() read) × permission ×
-        // the live own-device gallery total, minted into snapshots. Ledger-sourced, no storage LIST for
-        // upload status (spec: sync-status); safe under no-deletion-during-an-active-event.
-        val syncSource = LedgerBackedSyncStatusSource(ledgerCounts, permission, gallery, scope)
+        // the live own-device gallery total, minted into snapshots — composed in the app graph.
+        // Ledger-sourced, no storage LIST for upload status (spec: sync-status).
+        val syncSource = app.syncStatusSource
         startUploadsOnGrant()
         ensureAlbumOnGrant()
         // Start registering the APNs token: the collector reacts to each token the AppDelegate delivers
@@ -476,31 +374,31 @@ object SnapSyncRoot {
         // now would otherwise wait for the next launch to be retried: no silent pushes, no download
         // wakes, none of the wake-driven renewals until then.) Any new credential re-runs it.
         scope.launch {
-            runCatching { attestation.ensureFresh() }
-            pushRegistration.run(pushTokenSource, attestation.tokenChanged)
+            runCatching { app.attestation.ensureFresh() }
+            pushRegistration.run(pushTokenSource, app.attestation.tokenChanged)
         }
         // `config` is passed as both ports (one Keychain adapter implements both), as `permission` is.
         // No EventStatus source: status is read from the listing; the extension owns reconciliation.
         StatusContainerHost(
             syncSource, permission, permission, config, config, scope,
-            creationStatusSource = creationStatus, creator = eventCreator,
+            creationStatusSource = app.creationStatus, creator = app.eventCreator,
             // Leave: cancel in-flight downloads and drop non-terminal rows (imported photos stay;
             // suppression rows are permanent), then run the leave use-case (disable producer → notify the
             // backend it is leaving → clear config/producer). Imported foreign photos are never touched.
-            leave = { downloadController.onLeaveOrSwitch(); leaveEvent.leave() },
+            leave = { app.downloadController.onLeaveOrSwitch(); app.leaveEvent.leave() },
             // Fire-and-forget share of the invite link (the host owns the URL). Wiring-only:
             // present the system share sheet over the current top view controller.
             share = { url -> presentShareSheet(url) },
             // The join gate (capability `join-event`): a scanned QR opens the confirmation; details are
             // fetched (GET), confirming enrolls (empty-manifest PUT) then provisions. `commitJoin` is
             // true unless enrollment failed (the same-event no-op is a success).
-            loadJoinDetails = { eventId -> joinEvent.loadDetails(eventId).toJoinLoad() },
+            loadJoinDetails = { eventId -> app.joinEvent.loadDetails(eventId).toJoinLoad() },
             commitJoin = { eventId, name, startsAt, cutoff, direction, saveToAlbum ->
-                joinEvent.join(eventId, name, startsAt, cutoff, direction, saveToAlbum) !=
+                app.joinEvent.join(eventId, name, startsAt, cutoff, direction, saveToAlbum) !=
                     JoinOutcome.EnrollFailed
             },
             log = { message -> log.i { message } },
-            downloadSource = downloadStatusSource,
+            downloadSource = app.downloadStatusSource,
             attestedSource = attested,
         )
     }
@@ -564,7 +462,7 @@ object SnapSyncRoot {
         scope.launch { refreshStatusSources() }
         // Foreground-only discovery (capability `photo-download`): pick up foreign photos others added
         // since the last read, and import anything already staged. No background poll.
-        scope.launch { config.config.value?.eventId?.let { downloadController.reconcile(it) } }
+        scope.launch { config.config.value?.eventId?.let { app.downloadController.reconcile(it) } }
         // Keep the event title current (fills a name a scan couldn't fetch while offline).
         scope.launch { config.config.value?.eventId?.let { fetchAndStoreName(it) } }
         // Wake point (capability `device-attestation`): renew the token if it is stale. This one also
@@ -626,7 +524,7 @@ object SnapSyncRoot {
      * by their own triggers — this ding is upload-completeness only.
      */
     fun onUploadLivenessNotified() {
-        scope.launch { ledgerCounts.refresh() }
+        scope.launch { app.ledgerCounts.refresh() }
     }
 
     /**
@@ -639,10 +537,10 @@ object SnapSyncRoot {
         // counts 0 too — but that is the source's decision, from the Contribution, not this shell's: the
         // roots pass facts, never branches.
         config.config.value?.let { cfg ->
-            gallery.refresh(Contribution.of(cfg.direction.includesUpload, cfg.minPhotoDate))
+            app.gallery.refresh(Contribution.of(cfg.direction.includesUpload, cfg.minPhotoDate))
         }
-        ledgerCounts.refresh()
-        downloadStatusSource.refresh() // the "downloaded X of Y" line (capability `photo-download`)
+        app.ledgerCounts.refresh()
+        app.downloadStatusSource.refresh() // the "downloaded X of Y" line (capability `photo-download`)
     }
 
     /**
@@ -675,7 +573,7 @@ object SnapSyncRoot {
                     // because an expired token is exactly what stops uploads succeeding.
                     refreshAttestation()
                     scope.launch {
-                        runCatching { downloadController.importReady() }
+                        runCatching { app.downloadController.importReady() }
                             .onFailure { log.w(it) { "download backstop import failed" } }
                     }
                 }
@@ -708,7 +606,7 @@ object SnapSyncRoot {
         }
         // Downloads: the OS relaunched us to deliver background download completions. Adopt the session
         // so its delegate fires (staging + import run), and invoke the OS handler once events drain.
-        downloadJobs.adoptBackgroundEvents(completionHandler)
+        app.downloadJobs.adoptBackgroundEvents(completionHandler)
     }
 
     /**
@@ -841,7 +739,7 @@ object SnapSyncRoot {
         // re-upload identical bytes to an identical URL. The ledger and cursor are device-global dedup and
         // are likewise left alone — the cycle's marker-gated reconciliation seeds already-stored resources
         // as COMPLETED and clears the cursor before any job is created (`event-rejoin-reconciliation`).
-        uploadArm.onProvision()
+        app.uploadArm.onProvision()
         if (permission.permission.value == PermissionStatus.GRANTED) {
             // Create the event album now if opted in and permission is already granted (the grant
             // collector covers the grant-after-join case). Capability `event-album`.
@@ -849,7 +747,7 @@ object SnapSyncRoot {
         }
         // Auto-download the other contributors' photos for this event (capability `photo-download`).
         // The reconcile is a no-op under an upload-only direction — gated inside the controller.
-        scope.launch { downloadController.reconcile(cfg.eventId) }
+        scope.launch { app.downloadController.reconcile(cfg.eventId) }
         // Scan path: fill the title by id, best-effort, off the join (a failure leaves name empty).
         if (cfg.name.isEmpty()) scope.launch { fetchAndStoreName(cfg.eventId) }
     }
@@ -966,8 +864,8 @@ object SnapSyncRoot {
         // the whole point — the policy is otherwise unobservable without a joined event), so there is no
         // direction to read. `None` would skip the walk and prove nothing; this probe exists to make the walk
         // happen and report what it found.
-        gallery.refresh(Contribution.Since(cutoff))
-        log.i { "policy probe: N=${gallery.size.value} (see the `gallery:` line above for the breakdown)" }
+        app.gallery.refresh(Contribution.Since(cutoff))
+        log.i { "policy probe: N=${app.gallery.size.value} (see the `gallery:` line above for the breakdown)" }
     }
 
     /**
@@ -1019,7 +917,7 @@ object SnapSyncRoot {
                 // so it can never rescue a membership provisioned while access was ALREADY granted —
                 // `provisionEvent` owns that case. Assuming otherwise is what let the destructive provision
                 // path look survivable.
-                if (status == PermissionStatus.GRANTED) uploadArm.onPermissionGranted()
+                if (status == PermissionStatus.GRANTED) app.uploadArm.onPermissionGranted()
             }
         }
     }
@@ -1034,23 +932,9 @@ object SnapSyncRoot {
         if (useAppDrivenUpload) urlSessionUpload else photoKitProducer
     }
 
-    // The tier-neutral lifecycle: which producer verb fires on which membership transition. Tested in
-    // `:capability:upload` (JVM + iosSimulatorArm64) — the decision no longer lives in this untested shell.
-    private val uploadArm: UploadArm by lazy {
-        UploadArm(
-            producer = uploadProducer,
-            isGranted = { permission.permission.value == PermissionStatus.GRANTED },
-            // A pure projection of the current membership — `null` when no event is joined. The root
-            // defaults nothing: whether an absent membership arms the producer is a lifecycle DECISION,
-            // and it lives in the tested `UploadArm`, not in this untested shell. A `?: true` here is what
-            // previously started a producer for no event (capability `upload-lifecycle`, "No membership,
-            // no arm").
-            membershipIncludesUpload = { config.config.value?.direction?.includesUpload },
-            log = log,
-        )
-    }
-
     // The OS-driven (≥26.1) mechanism. Never constructed on the app-driven tier.
+    // (The tier-neutral `UploadArm` — which verb fires on which membership transition — is composed
+    // in the app graph as `app.uploadArm`, over this root's producer thunk.)
     private val photoKitProducer: PhotoKitUploadProducer by lazy {
         PhotoKitUploadProducer(ledgerStore, log)
     }
@@ -1088,8 +972,9 @@ object SnapSyncRoot {
             host = backendHost, log = log,
             httpClient = http,
             // The app-driven tier performs its OWN uploads, so its request provider needs the token too.
-            token = { attestation.token() },
-            suppressedAssetIds = { downloadStore.suppressedLocalIds() },
+            token = { app.attestation.token() },
+            // Echo-suppression: the concrete store IS the narrowed SuppressionSource port.
+            suppression = downloadStore,
             // Denylisted-album membership (capability `photo-selection-policy`). Supplied on THIS tier too:
             // both tiers funnel through the shared UploadCycle, and a policy wired on only one of them is
             // exactly the class of bug that shipped the app-driven tier without a re-join reconciler.
@@ -1099,16 +984,11 @@ object SnapSyncRoot {
             // on actually being a simulator, not on the tier flag (`ios-url-session-upload`).
             useBackgroundSession = !isSimulator,
             // In-process liveness: after each pump cycle, re-read the ledger counts so status moves live.
-            onCycleComplete = { ledgerCounts.refresh() },
-            // Event album (capability `event-album`): add this cycle's completed own photos to the event
-            // album (app tier, 18–26.0); raw localId recovered by reversing `_`→`/`.
-            //
-            // The event and the opt-in arrive from the cycle, which read them at its gate. This used to
-            // re-read `config.config.value` here to recover both — a SECOND read, through the two-state
-            // port that cannot express "unreadable", to re-derive facts the cycle already had.
-            albumPlacement = { eventId, assetIds ->
-                albumCoordinator.place(eventId, assetIds.map(::denormalizeAssetId))
-            },
+            onCycleComplete = { app.ledgerCounts.refresh() },
+            // Event album (capability `event-album`): the composed coordinator; the cycle applies the
+            // membership's opt-in (which arrived with its gate) and `uploadCore` owns the shared
+            // `assetId` denormalization.
+            albumCoordinator = app.albumCoordinator,
         )
     }
 

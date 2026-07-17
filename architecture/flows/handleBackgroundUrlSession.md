@@ -13,11 +13,11 @@ failure. `log.*` statements are diagnostics, not flow, and are omitted from both
 sequenceDiagram
   participant OS
   participant SnapSyncRoot
-  participant downloadJobs
+  participant app_downloadJobs as app.downloadJobs
   OS->>SnapSyncRoot: handleBackgroundUrlSession()
-  SnapSyncRoot->>downloadJobs: adoptBackgroundEvents(…)
+  SnapSyncRoot->>app_downloadJobs: adoptBackgroundEvents(…)
 ```
 
 ## Not transcribable (burn-down)
 
-- line 705 — `if` conditional: `if (identifier == UrlSessionUploadController.SESSION_IDENTIFIER) {`
+- line 603 — `if` conditional: `if (identifier == UrlSessionUploadController.SESSION_IDENTIFIER) {`

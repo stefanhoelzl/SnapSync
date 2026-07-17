@@ -1,6 +1,6 @@
 package app.snapsync.gallery
 
-import app.snapsync.feature.upload.ResourceEnumerator
+import app.snapsync.compose.ResourceEnumerator
 import app.snapsync.model.EXCLUDED_SUBTYPE_MASK
 import app.snapsync.model.RawAsset
 import app.snapsync.model.RawResource

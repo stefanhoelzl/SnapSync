@@ -1,4 +1,4 @@
-package app.snapsync.feature.upload
+package app.snapsync.compose
 
 import app.snapsync.model.Resource
 import app.snapsync.model.resourcesFrom

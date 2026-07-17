@@ -14,16 +14,16 @@ sequenceDiagram
   participant OS
   participant SnapSyncRoot
   participant config
-  participant uploadArm
+  participant app_uploadArm as app.uploadArm
   OS->>SnapSyncRoot: provisionEvent()
   SnapSyncRoot->>config: save(…)
   SnapSyncRoot->>SnapSyncRoot: refreshStatusSources()
-  SnapSyncRoot->>uploadArm: onProvision()
+  SnapSyncRoot->>app_uploadArm: onProvision()
 ```
 
 ## Not transcribable (burn-down)
 
-- line 825 — `?.let` chain: `config.config.value?.eventId?.let { previous ->`
-- line 845 — `if` conditional: `if (permission.permission.value == PermissionStatus.GRANTED) {`
-- line 852 — `scope.launch` body: `scope.launch { downloadController.reconcile(cfg.eventId) }`
-- line 854 — `if` conditional: `if (cfg.name.isEmpty()) scope.launch { fetchAndStoreName(cfg.eventId) }`
+- line 723 — `?.let` chain: `config.config.value?.eventId?.let { previous ->`
+- line 743 — `if` conditional: `if (permission.permission.value == PermissionStatus.GRANTED) {`
+- line 750 — `scope.launch` body: `scope.launch { app.downloadController.reconcile(cfg.eventId) }`
+- line 752 — `if` conditional: `if (cfg.name.isEmpty()) scope.launch { fetchAndStoreName(cfg.eventId) }`

@@ -1,20 +1,18 @@
 package app.snapsync.ios
 
+import app.snapsync.compose.UploadPorts
+import app.snapsync.compose.uploadCore
 import app.snapsync.config.KeychainConfigStore
 import app.snapsync.engine.LEDGER_APP_GROUP
+import app.snapsync.feature.album.AlbumCoordinator
 import app.snapsync.ports.LedgerStore
-import app.snapsync.feature.upload.LedgerWriter
-import app.snapsync.feature.upload.SyncEngine
-import app.snapsync.model.Contribution
-import app.snapsync.feature.membership.DeviceManifestProducer
 import app.snapsync.gallery.IosDeviceManifestStore
 import app.snapsync.gallery.PhotoLibraryResourceEnumerator
-import app.snapsync.model.deviceManifestAssetsFromResources
 import app.snapsync.ios.discovery.IosDiscovery
 import app.snapsync.ios.discovery.IosDiscoveryStore
 import app.snapsync.ios.urlsession.IosBackgroundScheduler
 import app.snapsync.ios.urlsession.IosUrlSessionUploadPlatform
-import app.snapsync.feature.upload.ExtensionReconciler
+import app.snapsync.join.HttpEnrollment
 import app.snapsync.membership.HttpDeviceFilesSource
 import app.snapsync.membership.IosJoinedEventMarker
 import app.snapsync.push.EventNotifier
@@ -23,14 +21,9 @@ import app.snapsync.ports.PushReceiver
 import app.snapsync.feature.upload.BackgroundUploadPump
 import app.snapsync.ports.CycleResult
 import app.snapsync.feature.upload.UploadCycle
-import app.snapsync.ports.ConfigRead
-import app.snapsync.ports.KeychainUnavailable
-import app.snapsync.feature.upload.CycleGate
-import app.snapsync.feature.upload.JoinedMembership
-import app.snapsync.feature.upload.cycleGate
+import app.snapsync.ports.SuppressionSource
 import app.snapsync.upload.UploadPushReceiver
 import app.snapsync.feature.upload.UploadProducer
-import app.snapsync.model.EdgeUploadRequestProvider
 import app.snapsync.model.invocation
 import co.touchlab.kermit.Logger
 import io.ktor.client.HttpClient
@@ -72,7 +65,7 @@ class UrlSessionUploadController(
     // Echo-suppression (capability `photo-download`): the `assetId`s of foreign assets this device
     // downloaded + imported. Read once per cycle so an imported foreign asset is never re-uploaded (the
     // echo) — essential now that this tier writes the device manifest and so appears in the union.
-    private val suppressedAssetIds: suspend () -> Set<String>,
+    private val suppression: SuppressionSource,
     // Denylisted-album membership (capability `photo-selection-policy`) — the SAME port the PhotoKit tier
     // gets. Both tiers funnel through the shared UploadCycle, so the policy must be supplied on both or the
     // 18–26.0 tier would happily upload the WhatsApp album the ≥26.1 tier refuses. Takes the cutoff, which
@@ -87,57 +80,25 @@ class UrlSessionUploadController(
     // Fired after each in-process pump cycle so foreground upload status refreshes live (the app-driven
     // analogue of the PhotoKit extension's cross-process liveness ding — here an in-process re-read).
     private val onCycleComplete: suspend () -> Unit = {},
-    // Event-album placement (capability `event-album`): fired with this cycle's event and the `assetId`s
-    // that completed, so this app-tier (iOS 18–26.0) adds them to the event album. Bound by SnapSyncRoot to
-    // the album coordinator. The membership's opt-in is applied by the cycle, which reads it from the gate.
-    private val albumPlacement: suspend (String, Set<String>) -> Unit,
+    // Event-album placement (capability `event-album`): the shared coordinator, so this app-tier
+    // (iOS 18–26.0) adds this cycle's completed own photos to the event album. The membership's
+    // opt-in is applied by the cycle, which reads it from the gate; the `assetId` denormalization
+    // is `uploadCore`'s shared translation.
+    private val albumCoordinator: AlbumCoordinator,
 ) : UploadProducer {
     companion object {
         const val SESSION_IDENTIFIER = "app.snapsync.upload.session"
         const val HEARTBEAT_TASK_IDENTIFIER = "app.snapsync.upload.heartbeat"
     }
 
-    private val ledger = LedgerWriter(ledgerStore)
     private val discovery = IosDiscovery(log, PhotoLibraryResourceEnumerator())
     private val discoveryStore = IosDiscoveryStore()
     private val scheduler = IosBackgroundScheduler(log, HEARTBEAT_TASK_IDENTIFIER)
 
-    // The per-event device manifest (capability `device-manifest`) — on this tier the APP is its sole
-    // writer (no extension process). Produced from the cycle's OWN discovery (no second enumeration),
-    // PUT synchronously in-cycle and bounded by `withTimeout`. Without it this tier's uploads would never
-    // appear in the event union (union = manifest ∩ stored bytes), so no other device could download them.
-    // `by lazy`, because the device id is resolved per cycle now: first use is inside a cycle whose gate
-    // already probed the identity, so the resolve here cannot be the one that fails.
-    private val deviceManifestProducer: DeviceManifestProducer by lazy {
-        DeviceManifestProducer(
-            store = IosDeviceManifestStore(),
-            uploader = IosEnrollment(httpClient, host),
-            deviceId = resolveDeviceId(),
-        )
-    }
-
-    // Fires the event notify after a drained cycle that completed uploads (capability `upload-completion-notify`).
+    // Fires the event notify after a drained cycle that completed uploads (capability
+    // `upload-completion-notify`). Stays root-constructed: the sender lives in `:capability:push`,
+    // unreachable from `:domain`'s compose zone — `uploadCore` takes the notify as a stated lambda.
     private val notifier = EventNotifier(KtorPushHttpClient(httpClient), host)
-
-    // Re-join reconciliation (capability `event-rejoin-reconciliation`) — the SAME reconciler the ≥26.1
-    // extension runs, now on this tier too. It is marker-gated, so a settled join costs nothing; on a
-    // (re)join it `resetTo`s the ledger to exactly the device's stored files and clears the discovery
-    // cursor, so a switch / leave-then-rejoin / delete-and-reinstall re-uploads NOTHING already in the
-    // device's byte partition. This tier shipped without it — that is why a reinstall re-uploaded the whole
-    // post-cutoff library — and it is reached from inside `UploadCycle`, so no future tier can omit it.
-    private val reconciler: ExtensionReconciler by lazy {
-        ExtensionReconciler(
-        files = HttpDeviceFilesSource(httpClient, host),
-        ledger = ledgerStore,
-        marker = IosJoinedEventMarker(),
-        deviceId = resolveDeviceId(),
-        // Force a full re-enumeration on a re-join: the App-Group cursor survives an app upgrade, so a
-        // settled cursor would scan incrementally and find nothing. The seeded ledger dedups, so this
-        // re-uploads nothing already stored — it only re-discovers genuinely-unstored work.
-        clearDiscoveryCursor = { discoveryStore.clearToken() },
-        log = log,
-        )
-    }
 
     private val platform = IosUrlSessionUploadPlatform(
         log = log,
@@ -187,79 +148,55 @@ class UrlSessionUploadController(
     }
 
     /**
-     * The membership read, translated into the shared vocabulary — this root's only contribution to the
-     * decision, and it is a translation, not a decision (capability `upload-lifecycle`).
+     * The cycle — assembled by the SHARED composition `uploadCore` (spec `module-architecture`, "One
+     * shared composition"): this controller supplies only its ports and platform reads; the
+     * entry-gate translation, the reconciler (capability `event-rejoin-reconciliation` — reached
+     * from inside `UploadCycle`, so no future tier can omit it), the device-manifest producer
+     * (capability `device-manifest` — on this tier the APP is its sole writer, and without the PUT
+     * this tier's uploads would never appear in the event union), and the engine wiring are the
+     * same code the ≥26.1 extension and the world harness run.
      *
-     * It reads the **three-state** `ConfigReader`, never `configSource.config` — that port's own KDoc says
-     * it *"cannot express unreadable"* and is *"fatal for the reconciler"*, and this tier read it anyway:
-     * a failed Keychain read arrived as `null`, which this tier treated as a leave and used to clear the
-     * `joinedEventId` marker of a device that never left (capability `event-link`).
-     */
-    private fun readGate(): CycleGate {
-        // Re-read each cycle: a newly-joined event must take effect without a relaunch, and the Keychain is
-        // written by paths this process does not observe.
-        configSource.reload()
-        val read = configSource.read()
-        // The identity probe — an unresolvable id is "I could not look", never "no id", so it belongs on
-        // the unreadable side of the roll-up. This tier had no probe at all: an unresolvable id threw out
-        // of the cycle instead of skipping it.
-        val idReadable = runCatching { resolveDeviceId() }
-            .onFailure { if (it !is KeychainUnavailable) throw it }
-            .isSuccess
-        val payload = (read as? ConfigRead.Joined)?.config
-        return cycleGate(
-            configReadable = read !is ConfigRead.Unavailable && idReadable,
-            membership = payload?.let {
-                JoinedMembership(
-                    eventId = it.eventId,
-                    contribution = Contribution.of(it.direction.includesUpload, it.minPhotoDate),
-                    saveToAlbum = it.saveToAlbum,
-                )
-            },
-            host = host,
-            skipDetail = "protected data unavailable (config status=" +
-                "${(read as? ConfigRead.Unavailable)?.status}, deviceId readable=$idReadable)",
-        )
-    }
-
-    /**
-     * The cycle. Long-lived (one per process, like this controller): it re-reads the membership itself on
-     * each `run()` via [readGate], so a join, leave, or switch takes effect on the next cycle.
+     * The entry gate reads the **three-state** `ConfigReader`, never `configSource.config` — that
+     * port's own KDoc says it *"cannot express unreadable"*, and this tier once read it anyway: a
+     * failed Keychain read arrived as `null`, which this tier treated as a leave and used to clear
+     * the `joinedEventId` marker of a device that never left (capability `event-link`). The gate is
+     * port-pure: this tier's former per-cycle `configSource.reload()` StateFlow refresh is gone —
+     * see `uploadCore.readGate`'s decision comment (`establish-shared-composition` D1); the
+     * StateFlow's unlock repair lives in `SnapSyncRoot`'s protected-data hook.
+     *
+     * Long-lived (one per process, like this controller): the cycle re-reads the membership on each
+     * `run()`, so a join, leave, or switch takes effect on the next cycle.
      */
     private val cycle: UploadCycle by lazy {
-        UploadCycle(
-            readGate = ::readGate,
-            engineFor = { config ->
-                SyncEngine(EdgeUploadRequestProvider(config.host, resolveDeviceId(), token), ledger)
-            },
-            ledger = ledger,
-            platform = platform,
-            store = discoveryStore,
-            log = log,
-            // Re-join reconciliation (capability `event-rejoin-reconciliation`): marker-gated, runs BEFORE
-            // any upload job is created. `null` is the leave side — the cycle decides which, because
-            // deciding it here is what shipped a false leave on this tier.
-            reconcile = { eventId -> reconciler.reconcile(eventId) },
-            // Device manifest from THIS cycle's discovery, PUT after the byte jobs are created. Without it
-            // this tier's uploads never appear in the event union (union = manifest ∩ stored bytes), so no
-            // other device could download them. Bounding is the cycle's now, not this root's.
-            onDiscovery = { eventId, cutoff, discovery ->
-                deviceManifestProducer.produce(
-                    eventId = eventId,
-                    startDate = cutoff, // per-device capture-date cutoff (photo-selection-policy)
-                    discovered = deviceManifestAssetsFromResources(discovery.resources),
-                    removedAssetIds = discovery.removedAssetIds.toSet(),
-                    fullEnumeration = discovery.fullEnumeration,
-                )
-            },
-            // Echo-suppression: never re-upload an asset this device downloaded + imported.
-            suppressedAssetIds = suppressedAssetIds,
-            // Denylisted-album membership (capability `photo-selection-policy`), scoped by the cutoff.
-            albumExcludedAssetIds = { cutoff -> albumExcludedAssetIds(cutoff) },
-            onBatchUploaded = { eventId -> notifier.notify(eventId) },
-            // Event album (capability `event-album`): the cycle applies the membership's opt-in, which
-            // arrived with the gate.
-            placeInAlbum = { eventId, assetIds -> albumPlacement(eventId, assetIds) },
+        uploadCore(
+            scope,
+            UploadPorts(
+                config = configSource,
+                // Resolved per probe/use, never held: an unresolvable Keychain id must skip the
+                // cycle cleanly, not throw out of whatever first touches it (see [resolveDeviceId]).
+                deviceId = resolveDeviceId,
+                host = { host },
+                ledger = ledgerStore,
+                transfer = platform,
+                discoveryStore = discoveryStore,
+                // Re-join reconciliation seed: the device's stored-file listing over the shared
+                // Darwin client. This tier shipped without a reconciler once — that is why a
+                // reinstall re-uploaded the whole post-cutoff library.
+                deviceFiles = HttpDeviceFilesSource(httpClient, host),
+                joinedMarker = IosJoinedEventMarker(),
+                // The device manifest PUT goes through the generic `HttpEnrollment` (the former
+                // app-local `IosEnrollment` copy is dead — one uploader serves all).
+                manifestStore = IosDeviceManifestStore(),
+                enrollment = HttpEnrollment(httpClient, host),
+                suppression = suppression,
+                // Denylisted-album membership (capability `photo-selection-policy`), scoped by the
+                // cutoff — the SAME wrapper the own-device status total gets (admit-on-doubt).
+                albumExcludedAssetIds = { cutoff -> albumExcludedAssetIds(cutoff) },
+                albumCoordinator = albumCoordinator,
+                token = token,
+                onBatchUploaded = { eventId -> notifier.notify(eventId) },
+                log = log,
+            ),
         )
     }
 

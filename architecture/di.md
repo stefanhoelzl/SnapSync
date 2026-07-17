@@ -19,19 +19,15 @@ Roots found:
 
 | Constructed type | SnapSyncRoot | UploadExtensionRoot | UrlSessionUploadController | World |
 |---|---|---|---|---|
-| `AlbumCoordinator` | x | x | | x |
+| `AlbumCoordinator` | | x | | x |
+| `AppPorts` | x | | | |
 | `BackendStore` | | | | x |
 | `BackgroundUploadPump` | | | x | |
-| `CreateEvent` | x | | | x |
-| `DeviceAttestation` | x | | | |
+| `CreateEvent` | | | | x |
 | `DeviceManifestAsset` | | | | x |
-| `DeviceManifestProducer` | | x | x | x |
-| `DownloadController` | x | | | x |
-| `DownloadPushReceiver` | x | | | |
-| `EdgeUploadRequestProvider` | | x | x | x |
+| `DownloadController` | | | | x |
 | `EventConfig` | | | | x |
 | `EventNotifier` | | x | x | |
-| `ExtensionReconciler` | | x | x | x |
 | `FakeAlbumManager` | | | | x |
 | `FakeBackgroundTransfer` | | | | x |
 | `FakeDownloadTransport` | | | | x |
@@ -40,7 +36,7 @@ Roots found:
 | `FileLogWriter` | x | x | | |
 | `HttpAttestClient` | x | | | |
 | `HttpDeviceFilesSource` | | x | x | x |
-| `HttpEnrollment` | x | | | x |
+| `HttpEnrollment` | x | x | x | x |
 | `HttpEventCreation` | x | | | x |
 | `HttpEventDirectory` | x | | | |
 | `HttpEventUnionSource` | x | | | x |
@@ -59,27 +55,22 @@ Roots found:
 | `IosDiscovery` | | x | x | |
 | `IosDiscoveryStore` | | x | x | |
 | `IosDownloadTransport` | x | | | |
-| `IosEnrollment` | | x | x | |
 | `IosJoinedEventMarker` | | x | x | |
 | `IosPhotoKitUploadPlatform` | | x | | |
 | `IosPhotoLibraryImporter` | x | | | |
 | `IosProtectedData` | x | | | |
 | `IosUrlSessionUploadPlatform` | | | x | |
-| `JoinEvent` | x | | | |
-| `JoinedMembership` | | x | x | x |
 | `KeychainAttestStore` | x | x | | |
 | `KeychainConfigStore` | x | x | | |
 | `KeychainDeviceIdentity` | x | x | | |
 | `KtorPushHttpClient` | x | x | x | |
-| `LeaveEvent` | x | | | |
-| `LedgerCounts` | x | | | x |
-| `LedgerWriter` | | x | x | x |
-| `ManifestDeviceEnroller` | x | | | |
+| `LedgerCounts` | | | | x |
+| `LedgerWriter` | | | | x |
 | `ManifestResource` | | | | x |
 | `MutableAttestedSource` | x | | | |
-| `MutableCreationStatusSource` | x | | | x |
+| `MutableCreationStatusSource` | | | | x |
 | `MutablePhotoAccessStatusSource` | | | | x |
-| `OwnDeviceGalleryStatusSource` | x | | | x |
+| `OwnDeviceGalleryStatusSource` | | | | x |
 | `PhotoKitUploadProducer` | x | | | |
 | `PhotoLibraryPermission` | x | | | |
 | `PhotoLibraryResourceEnumerator` | x | x | x | |
@@ -87,15 +78,12 @@ Roots found:
 | `PublicNSLogWriter` | x | x | | |
 | `PushRegistration` | x | | | |
 | `PushTokenSource` | x | | | |
-| `QueuedPhotoDownloadJobs` | x | | | x |
+| `QueuedPhotoDownloadJobs` | | | | x |
 | `RawAsset` | | | | x |
 | `RawResource` | | | | x |
 | `ResourceEnumerator` | | | | x |
 | `StatusContainerHost` | x | | | |
-| `StoreDownloadStatusSource` | x | | | |
-| `SyncEngine` | | x | x | x |
-| `UploadArm` | x | | | |
-| `UploadCycle` | | x | x | x |
+| `UploadPorts` | | x | x | x |
 | `UploadPushReceiver` | | | x | |
 | `UrlSessionUploadController` | x | | | |
 | `WorldLedgerStore` | | | | x |
