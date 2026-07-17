@@ -42,9 +42,6 @@ kotlin {
             implementation(project(":capability:album"))
             implementation(project(":capability:config"))
             implementation(project(":capability:attest"))
-            // The stable per-install device id (shared Keychain): the `/files/<deviceId>/` byte-store
-            // partition and the per-event device-manifest key (capability `device-identity`).
-            implementation(project(":capability:device-id"))
             // The re-join reconciliation now runs in the extension (capability
             // `event-rejoin-reconciliation`): the ExtensionReconciler seeds already-stored photos as
             // COMPLETED before the producer runs, fetching the event's complete-asset listing via the

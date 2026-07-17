@@ -11,10 +11,9 @@ kotlin {
     sourceSets {
         commonMain.dependencies {
             api(libs.coroutines.core)
-            // Seams the join use-case orchestrates: the persisted config, the stable device id, and
-            // the device-manifest type+uploader (an empty manifest is the register-only enrollment).
+            // Seams the join use-case orchestrates: the persisted config and the device-manifest
+            // type+uploader (an empty manifest is the register-only enrollment).
             implementation(project(":capability:config"))
-            implementation(project(":capability:device-id"))
             implementation(project(":domain:gallery"))
             // The HTTP client is injected (Darwin on iOS, MockEngine in tests) — only the core client
             // + JSON are needed here, mirroring :capability:event-creation-ui.

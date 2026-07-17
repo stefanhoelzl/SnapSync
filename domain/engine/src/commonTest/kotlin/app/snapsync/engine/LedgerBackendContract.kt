@@ -292,10 +292,6 @@ abstract class LedgerBackendContract {
         writer.retainAssets(setOf("Y"))
         assertNull(writer.entry("Z-photo.jpg"))
         assertEquals("Y-photo.jpg", writer.entry("Y-photo.jpg")?.key)
-
-        // Compile-time guard: prune ops are absent from the read-only face.
-        @Suppress("UNUSED_VARIABLE")
-        val reader: LedgerReader = writer // narrowing compiles; `reader.deleteByAssetId(...)` would not
     }
 
     @Test

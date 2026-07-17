@@ -9,14 +9,11 @@ kotlin {
     iosSimulatorArm64()
     sourceSets {
         commonMain.dependencies {
-            // Implementation scope on purpose: status consumes permission, the gallery total, and the
-            // event file-list seam (the completeness listing), but none may leak to status's own
-            // consumers. Status no longer depends on :domain:engine — it derives from storage truth,
-            // not the ledger. :capability:membership holds the EventFilesSource (its engine dep is
-            // `implementation`, so no ledger type reaches status transitively).
+            // Implementation scope on purpose: status consumes permission and the gallery total, but
+            // neither may leak to status's own consumers. Status does not depend on :domain:engine —
+            // it projects counts through injected read seams, never a ledger type.
             implementation(project(":domain:permission"))
             implementation(project(":domain:gallery"))
-            implementation(project(":capability:membership"))
             api(libs.coroutines.core)
             // The own-device total logs its enumeration cost (capability `diagnostic-logging`): the walk
             // is one synchronous PhotoKit round-trip per in-scope asset, and that cost is the whole reason

@@ -8,8 +8,8 @@ import app.snapsync.album.IosAlbumManager
 import app.snapsync.album.IosAlbumMapStore
 import app.snapsync.config.ConfigRead
 import app.snapsync.config.KeychainConfigStore
+import app.snapsync.keychain.KeychainDeviceIdentity
 import app.snapsync.keychain.KeychainUnavailable
-import app.snapsync.deviceid.KeychainDeviceIdentity
 import app.snapsync.gallery.Contribution
 import app.snapsync.gallery.denormalizeAssetId
 import app.snapsync.downloadstore.SuppressionSource

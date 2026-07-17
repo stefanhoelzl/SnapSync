@@ -18,7 +18,6 @@ Decision record: `changes/archive/2026-06-12-sync-engine-ledger`.
 
 The **Lifecycle transitions never clear the ledger** requirement was added in
 `changes/archive/2026-07-12-fix-app-driven-upload-lifecycle`.
-
 ## Requirements
 ### Requirement: Storage seam — dumb row store
 The ledger SHALL access storage exclusively through a `LedgerBackend` interface with the row
@@ -114,19 +113,25 @@ no app-process observer to merge. The seam itself does not change.
 - **THEN** no cross-process (Darwin) notification is posted, because no other process observes the ledger
 
 ### Requirement: Reader and writer capability split
-The ledger SHALL expose a concrete shared `LedgerReader` (query: `entry(key): LedgerEntry?`) and a
-concrete shared `LedgerWriter` that subclasses `LedgerReader` (record operations). Record and
-query semantics SHALL be implemented once in these shared classes, delegating storage to the
-injected `LedgerBackend` — so a `LedgerWriter` is usable wherever a `LedgerReader` is expected,
-and read-only access is granted by handing out the writer typed as `LedgerReader`.
+
+The ledger SHALL expose a concrete shared `LedgerWriter` carrying both the record operations and the
+per-key query (`entry(key): LedgerEntry?`). Record and query semantics SHALL be implemented once in
+this shared class, delegating storage to the injected `LedgerBackend`. There SHALL be no separate
+reader type: the writer is constructed only by the composition root that owns the engine (one per
+platform), and components that must not record are simply never handed a writer — app-side read
+access goes through `LedgerBackend`'s read operations (`aggregates()`, per `sync-status`), never
+through a writer instance.
 
 #### Scenario: Writer reads what it wrote
+
 - **WHEN** a `LedgerWriter` records an entry and `entry(key)` is called on the same instance
 - **THEN** the recorded entry is returned
 
-#### Scenario: Reader-typed access cannot record
-- **WHEN** a component receives the ledger typed as `LedgerReader`
-- **THEN** no record operation is available to it at compile time
+#### Scenario: Record access exists only where the writer is constructed
+
+- **WHEN** a component is composed without receiving the root's `LedgerWriter`
+- **THEN** it has no record operation available — it can read the ledger only through
+  `LedgerBackend`'s read operations
 
 ### Requirement: Record operations
 `LedgerWriter` SHALL provide `recordRequested`, `recordCompleted`, and `recordFailed`. Each SHALL
@@ -192,26 +197,31 @@ timestamp column) directly.
 - **THEN** it has the `assetId` index, no `updatedAt` column, and needs no migration step
 
 ### Requirement: Prune operations are writer-only
+
 The two asset-keyed bulk removals (`deleteByAssetId`, `retainAssets`) SHALL be exposed on
-`LedgerWriter` (delegating to the backend), and SHALL NOT be reachable through `LedgerReader`.
-They are sync writes by the single ledger writer, not the app-side `clear()` reset, and at the
-writer layer they consult no engine state first (a backend may read its own rows to compute a
-complement — an implementation detail, not part of the seam contract).
-Granting read-only access by handing out the writer typed as `LedgerReader` SHALL therefore deny
-prune access at compile time, preserving the single-writer invariant.
+`LedgerWriter` (delegating to the backend) and SHALL NOT be exposed on any other app-facing ledger
+surface. They are sync writes by the single ledger writer, not the app-side `clear()` reset, and at
+the writer layer they consult no engine state first (a backend may read its own rows to compute a
+complement — an implementation detail, not part of the seam contract). Because only the engine's
+composition root constructs a `LedgerWriter`, prune access is confined to the single-writer process,
+preserving the single-writer invariant.
 
 #### Scenario: Writer prunes by assetId
+
 - **WHEN** a `LedgerWriter` records a row for assetId `X` (key `X-photo.jpg`) and then calls
   `deleteByAssetId("X")`
 - **THEN** `entry("X-photo.jpg")` returns null
 
 #### Scenario: Writer retains an asset set
+
 - **WHEN** a `LedgerWriter` holds rows for assetIds `X` and `Y` and calls `retainAssets({"X"})`
 - **THEN** the `Y` rows return null and the `X` rows are unchanged
 
-#### Scenario: Reader-typed access cannot prune
-- **WHEN** a component receives the ledger typed as `LedgerReader`
-- **THEN** neither `deleteByAssetId` nor `retainAssets` is available to it at compile time
+#### Scenario: Prune is absent from the non-writer surface
+
+- **WHEN** a component holds the ledger only as a `LedgerBackend` reader (no writer)
+- **THEN** neither `deleteByAssetId` nor `retainAssets` is part of its sanctioned surface — prune
+  reaches the backend only through the root-constructed `LedgerWriter`
 
 ### Requirement: Prune operations hold on the SQLDelight backend
 The SQLDelight-backed `LedgerBackend` SHALL implement `deleteByAssetId` and `retainAssets`.

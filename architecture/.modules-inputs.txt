@@ -10,7 +10,6 @@ module :app:ios:url-session-upload
 module :capability:album
 module :capability:attest
 module :capability:config
-module :capability:device-id
 module :capability:download
 module :capability:event-creation-ui
 module :capability:join
@@ -35,7 +34,6 @@ module :test:integration
 module :test:world
 module :tools:diagrams
 edge :app:desktop :capability:config
-edge :app:desktop :capability:device-id
 edge :app:desktop :capability:download
 edge :app:desktop :capability:event-creation-ui
 edge :app:desktop :capability:join
@@ -56,7 +54,6 @@ edge :app:ios :app:ios:url-session-upload
 edge :app:ios :capability:album
 edge :app:ios :capability:attest
 edge :app:ios :capability:config
-edge :app:ios :capability:device-id
 edge :app:ios :capability:download
 edge :app:ios :capability:event-creation-ui
 edge :app:ios :capability:join
@@ -78,7 +75,6 @@ edge :app:ios:photokit-extension :app:ios:photokit-discovery
 edge :app:ios:photokit-extension :capability:album
 edge :app:ios:photokit-extension :capability:attest
 edge :app:ios:photokit-extension :capability:config
-edge :app:ios:photokit-extension :capability:device-id
 edge :app:ios:photokit-extension :capability:membership
 edge :app:ios:photokit-extension :capability:push
 edge :app:ios:photokit-extension :capability:upload
@@ -94,16 +90,13 @@ edge :app:ios:url-session-upload :domain:logging
 edge :capability:album :domain:engine
 edge :capability:album :domain:gallery
 edge :capability:album :domain:keychain
-edge :capability:attest :capability:device-id
 edge :capability:attest :domain:keychain
 edge :capability:config :domain:keychain
-edge :capability:device-id :domain:keychain
 edge :capability:download :capability:push
 edge :capability:download :domain:download-store
 edge :capability:download :domain:logging
 edge :capability:download :domain:status
 edge :capability:join :capability:config
-edge :capability:join :capability:device-id
 edge :capability:join :domain:gallery
 edge :capability:membership :capability:config
 edge :capability:membership :domain:engine
@@ -119,7 +112,6 @@ edge :domain:presentation :capability:config
 edge :domain:presentation :capability:event-creation-ui
 edge :domain:presentation :domain:permission
 edge :domain:presentation :domain:status
-edge :domain:status :capability:membership
 edge :domain:status :domain:gallery
 edge :domain:status :domain:permission
 edge :domain:ui :domain:presentation
@@ -127,7 +119,6 @@ edge :domain:ui :domain:ui:components
 edge :test:harness-driver :app:desktop
 edge :test:harness-driver :app:desktop:ui
 edge :test:integration :capability:config
-edge :test:integration :capability:device-id
 edge :test:integration :capability:event-creation-ui
 edge :test:integration :capability:join
 edge :test:integration :capability:membership

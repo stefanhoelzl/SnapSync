@@ -9,17 +9,16 @@ not. Its payload rides in the URL **fragment**, which a browser never transmits,
 *is* the upload capability — never reaches a server even on that fallback path.
 
 This capability owns the URL and payload contract, the pure structural decoder, the `ConfigSource`/
-`ConfigStore` seams, the iOS Keychain-backed store, the authoritative QR generator that is the link's
-single encoder, the Apple App Site Association document the link depends on, and the `GET /join` App
+`ConfigStore` seams, the iOS Keychain-backed store, the codec (`encodeEventUrl`/`decodeEventUrl`) that
+is the link's single encoder-decoder pair (the in-app invite QR, capability `event-invite-qr`, renders
+its output), the Apple App Site Association document the link depends on, and the `GET /join` App
 Store fallback.
 
 Supersedes `deeplink-config` and its retired `snapsync://config?…` custom scheme, whose three premises —
 no domain to own, no AASA to serve, and an app that is "always installed" — had all expired.
 
 Decision record: `changes/archive/2026-07-16-migrate-to-universal-links`
-
 ## Requirements
-
 ### Requirement: Event link URL and payload contract
 
 The system SHALL define an HTTPS **Universal Link** whose event link has the form
@@ -348,24 +347,6 @@ library re-enumeration) — repeatedly, without the marker ever settling.
 - **THEN** the cycle is skipped, the `joinedEventId` marker is left intact, and the membership survives —
   the same outcome the OS-invoked tier produces
 
-### Requirement: Authoritative QR generator
-
-The repository SHALL provide a Gradle task that is the single authoritative encoder of the
-event link: given an `eventId`, it SHALL emit the
-`https://snapsync.stho.net/join#v=3&d=<base64url(json)>` URL and render a scannable QR-code PNG. The task
-SHALL read the `eventId` value from an environment variable and/or a gitignored `local.properties`. The
-URL it emits SHALL be byte-compatible with what the pure decoder accepts. The generator SHALL NOT
-take or emit an upload host/`endpoint` or any storage credential.
-
-#### Scenario: Task emits a decodable URL and a QR image
-- **WHEN** the generator task runs with an `eventId` supplied via env/local.properties
-- **THEN** it writes a QR PNG and prints a `https://snapsync.stho.net/join#v=3&d=…` URL that the pure
-  decoder decodes back to the same `eventId`
-
-#### Scenario: Generator emits no host or credential
-- **WHEN** the generator runs
-- **THEN** the emitted URL carries only `eventId` — no upload host/`endpoint` and no storage credential
-
 ### Requirement: Event name is fetched, not carried in the event link
 
 The event `name` SHALL be obtained by `eventId`, never from the QR. On **scan-provision** (a decoded
@@ -398,8 +379,8 @@ last-known name unchanged and SHALL NOT affect syncing.
 The provisioning flow SHALL fire a best-effort backend leave of the previous event before persisting a
 new event's config, whenever a valid event link provisions an event whose `eventId` **differs**
 from the currently provisioned one (a switch). That leave issues
-`DELETE /events/<previousEventId>/devices/<deviceId>` via the same `LeaveNotifier` the explicit Leave
-uses. The previous `eventId` SHALL be
+`DELETE /events/<previousEventId>/devices/<deviceId>` via the same `HttpLeaveNotifier` the explicit
+Leave uses. The previous `eventId` SHALL be
 read before it is replaced. Provisioning an event link for the **same** event that is already configured
 SHALL remain an idempotent no-op and SHALL NOT fire a leave. The backend leave SHALL be best-effort — a
 failure SHALL NOT prevent the switch — so the device always ends up provisioned to the new event. The
@@ -420,3 +401,4 @@ separate change).
 
 - **WHEN** the previous-event `DELETE` fails during a switch
 - **THEN** the failure is logged and the new event's config is still persisted (the device is provisioned to the new event)
+

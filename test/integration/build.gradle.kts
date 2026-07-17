@@ -18,7 +18,6 @@ kotlin {
             implementation(project(":domain:status"))
             implementation(project(":domain:permission"))
             implementation(project(":capability:config"))
-            implementation(project(":capability:device-id"))
             implementation(project(":capability:join"))
             implementation(project(":capability:membership"))
             implementation(project(":capability:event-creation-ui"))

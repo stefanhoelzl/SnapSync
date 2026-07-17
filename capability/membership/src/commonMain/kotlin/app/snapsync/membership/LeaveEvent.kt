@@ -12,7 +12,7 @@ import kotlinx.coroutines.launch
  * `leave-event`).
  *
  * It does three things, in order: (1) **stop** the upload producer, (2) **clear the persisted config**,
- * then (3) **notify the backend** this device is leaving (via [LeaveNotifier] — the backend renames the
+ * then (3) **notify the backend** this device is leaving (via [HttpLeaveNotifier] — the backend renames the
  * device's manifest to its departed `.left.json` sibling and reaps/GCs the event when the last member
  * leaves). The `eventId` is snapshotted **synchronously before** the clear (from [ConfigSource]) and
  * passed into the notify, so the notify still targets the correct event even though the config is

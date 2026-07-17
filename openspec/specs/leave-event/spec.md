@@ -14,7 +14,7 @@ presentation seam that triggers it.
 The capability SHALL provide a `LeaveEvent` use-case that tears down the configured event's **local**
 state and notifies the backend, best-effort, in this order: (1) **disable** the background-upload
 producer, then (2) **clear the persisted config** (`ConfigStore.clear()`), then (3) **notify the
-backend** that this device is leaving via a `LeaveNotifier` (`DELETE /events/<eventId>/devices/<deviceId>`).
+backend** that this device is leaving via `HttpLeaveNotifier` (`DELETE /events/<eventId>/devices/<deviceId>`).
 The `eventId` and `deviceId` SHALL be read **before** the config is cleared; the `eventId` is
 snapshotted synchronously (from `ConfigSource.config`) into the use-case's own frame before the clear
 and passed into the notify, so the notify targets the correct event with no race against the cleared
@@ -55,7 +55,7 @@ the extension is reset on the next join via the `joinedEventId` mismatch, not at
 
 #### Scenario: A failed backend notify still completes local teardown
 
-- **WHEN** the `LeaveNotifier` call fails (offline, timeout, or error)
+- **WHEN** the `HttpLeaveNotifier` call fails (offline, timeout, or error)
 - **THEN** the failure is logged, the config has already been cleared, and the device leaves locally; the backend membership is simply not removed
 
 #### Scenario: A failed config clear leaves the user joined, not corrupted
@@ -119,23 +119,25 @@ SHALL construct unchanged, and a confirmed leave in those contexts SHALL be iner
   suspend lambda
 
 ### Requirement: Leave notifies the backend
+
 The `LeaveEvent` use-case SHALL notify the backend that this device is leaving through an injected
-`LeaveNotifier` seam that issues `DELETE /events/<eventId>/devices/<deviceId>` (implemented over the
-device's HTTP client in the main app, mirroring the `DeviceFilesSource` listing seam). The notify SHALL
-be **dispatched fire-and-forget** on the injected app-lifetime `CoroutineScope` **after** the local
-teardown — its result SHALL NOT gate, delay, or roll back the local teardown — and SHALL be invoked by
-**both** the explicit Leave action and the switch path (provisioning a different event while joined; see
-`event-link`). The notifier SHALL return a `Result` and never throw into the use-case.
+notify lambda backed by `HttpLeaveNotifier`, which issues `DELETE /events/<eventId>/devices/<deviceId>`
+(implemented over the device's HTTP client in the main app, mirroring the `DeviceFilesSource` listing
+seam). The notify SHALL be **dispatched fire-and-forget** on the injected app-lifetime
+`CoroutineScope` **after** the local teardown — its result SHALL NOT gate, delay, or roll back the
+local teardown — and SHALL be invoked by **both** the explicit Leave action and the switch path
+(provisioning a different event while joined; see `event-link`). `HttpLeaveNotifier` SHALL return a
+`Result` and never throw into the use-case.
 
 #### Scenario: Explicit leave issues the backend DELETE
 
 - **WHEN** the user confirms leaving the joined event
-- **THEN** `LeaveEvent` clears the config, then dispatches the `LeaveNotifier` with the snapshotted `eventId` and this device's `deviceId` on the app-lifetime scope, issuing `DELETE /events/<eventId>/devices/<deviceId>`
+- **THEN** `LeaveEvent` clears the config, then dispatches the notify with the snapshotted `eventId` and this device's `deviceId` on the app-lifetime scope, issuing `DELETE /events/<eventId>/devices/<deviceId>` via `HttpLeaveNotifier`
 
 #### Scenario: The notifier failure is contained
 
 - **WHEN** the `DELETE` call errors or times out
-- **THEN** the `LeaveNotifier` returns a failed `Result`, the use-case logs it, and the already-completed local teardown is unaffected
+- **THEN** `HttpLeaveNotifier` returns a failed `Result`, the use-case logs it, and the already-completed local teardown is unaffected
 
 ### Requirement: Local teardown does not block on the backend notify
 
@@ -156,3 +158,4 @@ event (the "Joining …" surface no longer waits on it).
 
 - **WHEN** the user confirms switching to a different event while joined
 - **THEN** the departed event's `DELETE` is dispatched fire-and-forget and the new event's enroll/provision proceeds without blocking on it
+

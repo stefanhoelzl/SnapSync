@@ -12,18 +12,13 @@ on drift; regenerate instead.
 
 ## `:capability:attest`
 
-- depends on: `:capability:device-id`, `:domain:keychain`
+- depends on: `:domain:keychain`
 - interfaces declared (commonMain): `AttestClient`, `AttestKey`, `AttestStore`
 
 ## `:capability:config`
 
 - depends on: `:domain:keychain`
 - interfaces declared (commonMain): `ConfigDecodeResult`, `ConfigRead`, `ConfigReader`, `ConfigSource`, `ConfigStore`
-
-## `:capability:device-id`
-
-- depends on: `:domain:keychain`
-- interfaces declared (commonMain): `DeviceIdentity`
 
 ## `:capability:download`
 
@@ -33,17 +28,17 @@ on drift; regenerate instead.
 ## `:capability:event-creation-ui`
 
 - depends on: —
-- interfaces declared (commonMain): `CreateOutcome`, `CreationStatus`, `CreationStatusSource`, `EventCreationClient`, `EventCreator`, `EventMetadataSource`
+- interfaces declared (commonMain): `CreateOutcome`, `CreationStatus`, `CreationStatusSource`, `EventCreationClient`, `EventCreator`
 
 ## `:capability:join`
 
-- depends on: `:capability:config`, `:capability:device-id`, `:domain:gallery`
+- depends on: `:capability:config`, `:domain:gallery`
 - interfaces declared (commonMain): `DeviceEnroller`, `EventDetails`, `EventDetailsSource`
 
 ## `:capability:membership`
 
 - depends on: `:capability:config`, `:domain:engine`, `:domain:gallery`
-- interfaces declared (commonMain): `DeviceFilesSource`, `JoinedEventMarker`, `LeaveNotifier`
+- interfaces declared (commonMain): `DeviceFilesSource`, `JoinedEventMarker`
 
 ## `:capability:push`
 
@@ -97,7 +92,7 @@ on drift; regenerate instead.
 
 ## `:domain:status`
 
-- depends on: `:capability:membership`, `:domain:gallery`, `:domain:permission`
+- depends on: `:domain:gallery`, `:domain:permission`
 - interfaces declared (commonMain): `DownloadStatusSource`, `LedgerCountsSource`, `SyncStatus`, `SyncStatusSource`
 
 ## `:domain:ui`

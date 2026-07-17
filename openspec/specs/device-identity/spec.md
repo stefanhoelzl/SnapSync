@@ -5,11 +5,10 @@
 The stable per-install device id: a UUID minted once and persisted in the shared Keychain access
 group, read identically by the app process and the upload extension. It is the partition segment for
 the device-global byte store (capability `bunny-upload-endpoint`) and the key for the per-event device
-manifest (`/events/<eventId>/devices/<deviceId>.json`). Exposed through the `DeviceIdentity` seam in a tested
-module, with a settable fake for tests and a Keychain-backed implementation wired only in `:app:ios`.
-
+manifest (`/events/<eventId>/devices/<deviceId>.json`). Exposed to consumers as a plain `() -> String`
+supplier (tests inject a lambda), backed by `KeychainDeviceIdentity` in `:domain:keychain` and wired
+only in the iOS composition roots.
 ## Requirements
-
 ### Requirement: Stable per-install device id
 
 The app SHALL carry a stable per-install device id: a UUID minted exactly once and persisted in the
@@ -107,22 +106,35 @@ unreadable item indefinitely, and no reinstall or update would heal it.
 - **WHEN** the device id is read and the stored item already carries the required accessibility class
 - **THEN** no write is performed
 
-### Requirement: DeviceIdentity seam in a tested module
+### Requirement: Device-id access is a plain supplier; the Keychain implementation lives in `:domain:keychain`
 
-The device id SHALL be exposed through a `DeviceIdentity` seam defined in `commonMain` and placed in a
-tested `domain`/`capability` module, with a settable fake usable from tests. The Keychain-backed
-implementation SHALL be wired only in the `:app:ios` shell; no platform Keychain dependency SHALL leak
-into the seam's contract. The seam SHALL be the single source consumers use to obtain the `/files/`
-partition segment and the device manifest key.
+Consumers of the device id (attestation, the join enrollment, and the composition roots) SHALL take
+it as a plain `() -> String` supplier — there SHALL be no dedicated device-identity interface or
+module. Tests SHALL inject a lambda returning a known id, with no Keychain access.
 
-#### Scenario: Tests drive a settable fake
+The Keychain-backed implementation (`KeychainDeviceIdentity`) SHALL live in `:domain:keychain` —
+the only module permitted to touch `SecItem*` (capability `architecture-guards`) — and SHALL be
+constructed only in the iOS composition roots. It SHALL keep the pinned Keychain identity pair
+(`service = "app.snapsync.deviceid"`, `account = "deviceid"`) byte-identical and single-sited (the
+runtime-identity pin guard asserts the pair appears exactly once in production Kotlin), and SHALL
+resolve at most once per instance, caching the id for the process lifetime.
+
+#### Scenario: Tests drive a plain lambda
 
 - **WHEN** a test needs a known device id
-- **THEN** it sets the id on the `DeviceIdentity` fake and the code under test reads that value, with
+- **THEN** it injects `{ "<id>" }` as the supplier and the code under test reads that value, with
   no Keychain access
 
-#### Scenario: Keychain impl wired only in the app shell
+#### Scenario: Keychain impl wired only in the composition roots
 
-- **WHEN** the production app obtains the device id
-- **THEN** it reads through the `DeviceIdentity` seam whose Keychain-backed implementation is wired in
-  `:app:ios`, and no Keychain type appears in the seam's `commonMain` contract
+- **WHEN** the production app or the upload extension obtains the device id
+- **THEN** it reads through a supplier backed by `KeychainDeviceIdentity` from `:domain:keychain`,
+  constructed in the composition root, and no Keychain type appears in any consumer's constructor
+  beyond the supplier
+
+#### Scenario: The pinned pair survives the placement
+
+- **WHEN** the runtime-identity guard scans production Kotlin
+- **THEN** the pair (`app.snapsync.deviceid`, `deviceid`) is found exactly once, in
+  `:domain:keychain`'s `KeychainDeviceIdentity`
+

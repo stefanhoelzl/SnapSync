@@ -20,4 +20,4 @@ sequenceDiagram
 
 ## Not transcribable (burn-down)
 
-- line 707 — `if` conditional: `if (identifier == UrlSessionUploadController.SESSION_IDENTIFIER) {`
+- line 705 — `if` conditional: `if (identifier == UrlSessionUploadController.SESSION_IDENTIFIER) {`

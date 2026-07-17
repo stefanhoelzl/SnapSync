@@ -19,7 +19,6 @@ without a backend, an attestation, or photo access. Both are dev/test affordance
 production because a launch env var is only injectable via a developer launch.
 
 Decision record: `changes/archive/2026-06-17-ios-first-target`.
-
 ## Requirements
 ### Requirement: iOS application shell
 The system SHALL provide an iOS application built with Compose Multiplatform whose entry point is a
@@ -195,7 +194,7 @@ drive the foreground signal and the liveness-observer lifecycle.
 
 ### Requirement: On-disk native ledger on iOS
 
-The `:domain:engine` module SHALL provide an `iosLedgerBackend()` factory (`iosMain`) that constructs the shared `SqlDelightLedgerBackend` over a `NativeSqliteDriver`, persisting the ledger database **on disk in the `group.app.snapsync` App-Group container** so its contents survive process death and are shared between the app and the background-upload extension. This factory SHALL be the single site that names the database location, SHALL open the database in WAL mode (one cross-process writer plus concurrent readers), and SHALL wire the backend's cross-process change notification (post-on-`put` / observe-in-`changes`, per `sync-ledger`). The same factory SHALL serve both processes; read-only access in the app is enforced structurally by handing out the ledger as a `LedgerReader`/`LedgerWatcher` (the app never constructs a `LedgerWriter`).
+The `:domain:engine` module SHALL provide an `iosLedgerBackend()` factory (`iosMain`) that constructs the shared `SqlDelightLedgerBackend` over a `NativeSqliteDriver`, persisting the ledger database **on disk in the `group.app.snapsync` App-Group container** so its contents survive process death and are shared between the app and the background-upload extension. This factory SHALL be the single site that names the database location, SHALL open the database in WAL mode (one cross-process writer plus concurrent readers), and SHALL wire the backend's cross-process change notification (post-on-`put` / observe-in-`changes`, per `sync-ledger`). The same factory SHALL serve both processes; on the OS-driven tier the app process constructs no `LedgerWriter` — it holds the ledger only as a `LedgerBackend` for its read-only aggregates read and the reset-family operations (per `sync-ledger`).
 
 #### Scenario: The ledger persists across launches
 - **WHEN** the app writes ledger state, terminates, and relaunches
@@ -495,3 +494,4 @@ reached its protected state — and of diagnosing it when it does not.
 - **WHEN** a Keychain read fails during background work
 - **THEN** the logged line carries the entry-point prefix of the trigger that started it, so the failure
   is traceable to the backstop, the silent push, the URL-session handler, or the extension cycle
+

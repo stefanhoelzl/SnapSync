@@ -11,7 +11,6 @@ flowchart LR
     capability_album[":capability:album"]
     capability_attest[":capability:attest"]
     capability_config[":capability:config"]
-    capability_device_id[":capability:device-id"]
     capability_download[":capability:download"]
     capability_event_creation_ui[":capability:event-creation-ui"]
     capability_join[":capability:join"]
@@ -35,16 +34,13 @@ flowchart LR
   capability_album --> domain_engine
   capability_album --> domain_gallery
   capability_album --> domain_keychain
-  capability_attest --> capability_device_id
   capability_attest --> domain_keychain
   capability_config --> domain_keychain
-  capability_device_id --> domain_keychain
   capability_download --> capability_push
   capability_download --> domain_download_store
   capability_download --> domain_logging
   capability_download --> domain_status
   capability_join --> capability_config
-  capability_join --> capability_device_id
   capability_join --> domain_gallery
   capability_membership --> capability_config
   capability_membership --> domain_engine
@@ -60,7 +56,6 @@ flowchart LR
   domain_presentation --> capability_event_creation_ui
   domain_presentation --> domain_permission
   domain_presentation --> domain_status
-  domain_status --> capability_membership
   domain_status --> domain_gallery
   domain_status --> domain_permission
   domain_ui --> domain_presentation

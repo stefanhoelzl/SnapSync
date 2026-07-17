@@ -5,14 +5,11 @@ import app.snapsync.config.KeychainConfigStore
 import app.snapsync.eventcreation.CreateEvent
 import app.snapsync.eventcreation.EventCreator
 import app.snapsync.eventcreation.HttpEventCreationClient
-import app.snapsync.eventcreation.HttpEventMetadataSource
 import app.snapsync.eventcreation.MutableCreationStatusSource
 import app.snapsync.attest.DeviceAttestation
 import app.snapsync.attest.HttpAttestClient
 import app.snapsync.attest.IosAttestKey
 import app.snapsync.attest.KeychainAttestStore
-import app.snapsync.deviceid.DeviceIdentity
-import app.snapsync.deviceid.KeychainDeviceIdentity
 import app.snapsync.join.EventDetails
 import app.snapsync.join.HttpDeviceManifestUploader
 import app.snapsync.join.HttpEventDetailsSource
@@ -35,7 +32,6 @@ import app.snapsync.push.PushRegistration
 import app.snapsync.push.PushTokenSource
 import app.snapsync.membership.HttpLeaveNotifier
 import app.snapsync.membership.LeaveEvent
-import app.snapsync.membership.LeaveNotifier
 import app.snapsync.membership.darwinHttpClient
 import app.snapsync.download.DownloadController
 import app.snapsync.download.HttpEventUnionSource
@@ -64,6 +60,7 @@ import app.snapsync.upload.UploadArm
 import app.snapsync.upload.UploadProducer
 import app.snapsync.logging.FileLogWriter
 import app.snapsync.logging.PublicNSLogWriter
+import app.snapsync.keychain.KeychainDeviceIdentity
 import app.snapsync.keychain.ProtectedDataGate
 import app.snapsync.logging.invocation
 import co.touchlab.kermit.Logger
@@ -226,7 +223,7 @@ object SnapSyncRoot {
             key = IosAttestKey(),
             client = HttpAttestClient(darwinHttpClient(), backendHost),
             store = KeychainAttestStore(),
-            identity = KeychainDeviceIdentity(),
+            deviceId = KeychainDeviceIdentity()::deviceId,
             now = { (NSDate().timeIntervalSince1970 * 1000).toLong() },
         )
     }
@@ -362,7 +359,7 @@ object SnapSyncRoot {
     // capability `event-leave-endpoint`) — the backend renames the manifest to its departed
     // `.left.json` sibling and reaps/GCs the event when the last member leaves. Best-effort (a failed
     // call never blocks leaving). Used by BOTH the explicit Leave and a switch (see [provisionEvent]).
-    private val leaveNotifier: LeaveNotifier by lazy { HttpLeaveNotifier(http, backendHost) }
+    private val leaveNotifier: HttpLeaveNotifier by lazy { HttpLeaveNotifier(http, backendHost) }
 
     // The leave use-case: stops the producer, clears the Keychain config (which flips the screen off the
     // joined layer), then fires the backend notify fire-and-forget on the app-lifetime `scope` so a slow
@@ -393,9 +390,10 @@ object SnapSyncRoot {
         NSBundle.mainBundle.objectForInfoDictionaryKey("BackgroundUploadURLBase") as? String ?: ""
     }
 
-    // Fetches the event name by id for the scan path (create already has the name). Best-effort.
-    private val metadataSource: HttpEventMetadataSource by lazy {
-        HttpEventMetadataSource(http, backendHost)
+    // The ONE GET /events/:id client (capability `join-event`): the join gate's details fetch and the
+    // best-effort scan-path/foreground name refresh both read through it.
+    private val detailsSource: HttpEventDetailsSource by lazy {
+        HttpEventDetailsSource(http, backendHost)
     }
 
     // --- Push notifications (capability `push-registration`) ---
@@ -451,8 +449,8 @@ object SnapSyncRoot {
     private val joinEvent: JoinEvent by lazy {
         JoinEvent(
             configSource = config,
-            deviceIdentity = object : DeviceIdentity { override fun deviceId() = deviceId },
-            details = HttpEventDetailsSource(http, backendHost),
+            deviceId = { deviceId },
+            details = detailsSource,
             enroller = ManifestDeviceEnroller(HttpDeviceManifestUploader(http, backendHost)),
             provision = ::provisionEvent,
         )
@@ -862,7 +860,7 @@ object SnapSyncRoot {
      * 404 / parse) leaves the current name unchanged.
      */
     private suspend fun fetchAndStoreName(eventId: String) {
-        val fetched = metadataSource.name(eventId) ?: return
+        val fetched = (detailsSource.fetch(eventId) as? EventDetails.Found)?.name ?: return
         val current = config.config.value
         if (current?.eventId == eventId && current.name != fetched) {
             // Preserve the persisted cutoff — a name refresh must not clobber minPhotoDate (photo-selection-policy).

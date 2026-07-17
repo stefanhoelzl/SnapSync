@@ -37,8 +37,6 @@ dependencies {
     // The full-stack harness routes create + scan through the REAL join gate over the world, so it
     // names the `JoinEvent` use-case (details load + enroll/provision) to reach the JoiningEvent surface.
     implementation(project(":capability:join"))
-    // `JoinEvent` names `DeviceIdentity` (the enroll device id) in its constructor — non-transitive.
-    implementation(project(":capability:device-id"))
     // The engine-console footer taps Kermit directly (transitive only via impl deps, so name it here).
     implementation(libs.kermit)
     implementation(compose.runtime)

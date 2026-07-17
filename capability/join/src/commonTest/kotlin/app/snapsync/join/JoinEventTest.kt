@@ -3,7 +3,6 @@ package app.snapsync.join
 import app.snapsync.config.ConfigSource
 import app.snapsync.config.Direction
 import app.snapsync.config.EventConfig
-import app.snapsync.deviceid.DeviceIdentity
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.test.runTest
@@ -51,7 +50,7 @@ private fun joinEvent(
     enroller: FakeEnroller = FakeEnroller(enrollResult),
 ) = JoinEvent(
     configSource = FakeConfigSource(config),
-    deviceIdentity = object : DeviceIdentity { override fun deviceId() = DEVICE },
+    deviceId = { DEVICE },
     details = FakeDetails(details),
     enroller = enroller,
     provision = { provisioned += it },
