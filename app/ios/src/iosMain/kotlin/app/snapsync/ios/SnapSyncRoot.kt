@@ -1,6 +1,11 @@
 package app.snapsync.ios
 
+import app.snapsync.model.CompositionMode
 import app.snapsync.model.EventConfig
+import app.snapsync.model.LaunchDirectives
+import app.snapsync.model.OsFacts
+import app.snapsync.model.UploadTier
+import app.snapsync.model.resolveComposition
 import app.snapsync.compose.AppCore
 import app.snapsync.compose.AppPorts
 import app.snapsync.compose.snapSyncApp
@@ -9,11 +14,9 @@ import app.snapsync.eventcreation.HttpEventCreation
 import app.snapsync.attest.HttpAttestClient
 import app.snapsync.attest.IosAttestKey
 import app.snapsync.attest.KeychainAttestStore
-import app.snapsync.ports.EventDetails
 import app.snapsync.join.HttpEnrollment
 import app.snapsync.join.HttpEventDirectory
 import app.snapsync.feature.membership.JoinOutcome
-import app.snapsync.presentation.JoinLoad
 import app.snapsync.model.Contribution
 import app.snapsync.gallery.PhotoLibraryResourceEnumerator
 import app.snapsync.model.PermissionStatus
@@ -22,6 +25,7 @@ import app.snapsync.presentation.MutableAttestedSource
 import app.snapsync.presentation.StatusContainerHost
 import app.snapsync.presentation.forgeStatusHost
 import app.snapsync.presentation.isForgeState
+import app.snapsync.presentation.toJoinLoad
 import app.snapsync.push.KtorPushHttpClient
 import app.snapsync.push.PushRegistration
 import app.snapsync.ports.PushTokenSource
@@ -42,6 +46,7 @@ import app.snapsync.engine.iosLedgerStore
 import app.snapsync.model.UPLOAD_LIVENESS_DARWIN_NAME
 import app.snapsync.feature.upload.UploadProducer
 import app.snapsync.logging.FileLogWriter
+import app.snapsync.logging.appBuildVersion
 import app.snapsync.logging.IosLogScope
 import app.snapsync.logging.PublicNSLogWriter
 import app.snapsync.keychain.KeychainDeviceIdentity
@@ -111,16 +116,67 @@ object SnapSyncRoot {
         // Route kermit through a public NSLog writer AND a file writer. NSLog is redacted as
         // `<private>` on current iOS (dynamic format strings are private), so the file writer
         // (Documents/debug.log, pulled via `pymobiledevice3 apps pull`) is the reliable channel.
-        // Both are consolidated in `:domain:logging`; each line carries the ambient `[entryPoint]`.
+        // Both are consolidated in `:adapter:ios:ext-safe`; each line carries the ambient `[entryPoint]`.
         Logger.setLogWriters(PublicNSLogWriter(), FileLogWriter())
         // Boot banner (capability `diagnostic-logging`, D5) — names the process + build version so a
         // reader who concatenates the app/extension files can tell runs apart. `log` isn't assigned
         // yet in this init block, so use a fresh tagged logger.
-        Logger.withTag("SnapSyncRoot").i { "=== app process start build=${buildVersion()} ===" }
+        Logger.withTag("SnapSyncRoot").i { "=== app process start build=${appBuildVersion()} ===" }
     }
 
     private val log = Logger.withTag("SnapSyncRoot")
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
+
+    // ── Launch directives → composition mode (spec `module-architecture`, "One shared composition") ──
+
+    /** Every dev/test launch-environment trigger, parsed ONCE through the one typed surface
+     *  (capability `ios-app-shell`). A production launch yields `LaunchDirectives.NONE`. */
+    private val directives: LaunchDirectives =
+        LaunchDirectives.from { name -> NSProcessInfo.processInfo.environment[name] as? String }
+
+    /** OS facts the composition resolver reads — a simulator cannot run a background `URLSession`,
+     *  and only iOS ≥26.1 carries the OS-driven background-upload API. */
+    private val osFacts: OsFacts = OsFacts(
+        backgroundUploadSupported = backgroundUploadSupported(),
+        isSimulator = NSProcessInfo.processInfo.environment["SIMULATOR_DEVICE_NAME"] != null,
+    )
+
+    /**
+     * The composition mode, resolved **once per process** by the pure, unit-tested resolver
+     * (`model/CompositionMode.kt`). Forge excludes the live-stack boot — including an event link
+     * (the shipped forge×link bug is now a resolver precedence test, not a shell guard).
+     */
+    private val mode: CompositionMode = resolveComposition(directives, osFacts, ::isForgeState)
+
+    /**
+     * **THE one switch on the resolved mode** (spec `module-architecture`, "One shared composition":
+     * `composeRoot` switches once on the sealed type and invokes only the selected shell-supplied
+     * adapter thunks). Everything mode- or tier-dependent — the render host, every OS entry point's
+     * behavior, and the upload tier's mechanism thunks — is decided here, once; no entry point
+     * re-checks a flag. Forge inertness is **structural**: [ForgeShell] holds no reference to [app]
+     * or [host], so a forge launch cannot boot the live stack from any entry point (previously six
+     * separate `isForging` guards, one of which was added only after the forge×link bug shipped).
+     */
+    private val shell: Shell = when (val m = mode) {
+        is CompositionMode.Forge -> ForgeShell(m.state)
+        is CompositionMode.Live -> when (m.tier) {
+            // OS-driven PhotoKit tier (iOS ≥26.1): the OS owns upload scheduling — no foreground
+            // pump, no upload push receiver (only the download arm wakes), no app-driven heartbeat.
+            UploadTier.PHOTOKIT -> LiveShell(
+                uploadProducer = { photoKitProducer },
+                pumpForeground = {},
+                uploadSilentPush = { null },
+                heartbeat = { onComplete -> onComplete() },
+            )
+            // App-driven URLSession tier (iOS 18–26.0, or the dev force flag): the app process pumps.
+            UploadTier.URL_SESSION -> LiveShell(
+                uploadProducer = { urlSessionUpload },
+                pumpForeground = { urlSessionUpload.onForeground() },
+                uploadSilentPush = { urlSessionUpload.pushReceiver::onSilentPush },
+                heartbeat = { onComplete -> urlSessionUpload.onBackgroundTask(onComplete) },
+            )
+        }
+    }
 
     /** BGTaskScheduler identifier for the download import-tail backstop — MUST match the Swift host's
      * `register(forTaskWithIdentifier:)` and the Info.plist `BGTaskSchedulerPermittedIdentifiers`. */
@@ -167,21 +223,6 @@ object SnapSyncRoot {
             .onFailure { log.w(it) { "denylisted-album lookup failed — admitting on doubt this cycle" } }
             .getOrDefault(emptySet()) // admit-on-doubt: a failed lookup must never DROP a real photo
 
-    // The event album's `localIdentifier` for the CURRENT membership, or null when it opted out or the
-    // album has not been created yet — the atomic album-add lookup the download importer borrows.
-    private fun currentAlbumId(): String? {
-        val cfg = config.config.value ?: return null
-        return if (cfg.saveToAlbum) albumMapStore.get(cfg.eventId) else null
-    }
-
-    // Create the event album now if the current membership opted in and it does not exist yet — the app
-    // is the sole creator. Idempotent: reuses an existing album, recreates a deleted one. Runs on the
-    // permission grant and on provision (when already granted), so the album exists before the first sync.
-    private suspend fun ensureAlbumIfOptedIn() {
-        val cfg = config.config.value ?: return
-        if (cfg.saveToAlbum && cfg.name.isNotEmpty()) app.albumCoordinator.ensureAlbum(cfg.eventId, cfg.name)
-    }
-
     // The photo-library permission adapter, hoisted so the grant collector and a (re)provision share one
     // instance (both enable the extension; a provision must re-enable a producer a prior leave disabled).
     private val permission: PhotoLibraryPermission by lazy { PhotoLibraryPermission() }
@@ -202,6 +243,10 @@ object SnapSyncRoot {
      * routes are the ones that issue the token, so authenticating them would be a cycle.
      */
     private val app: AppCore by lazy {
+        // Only [LiveShell] entry points ever reach this graph — [ForgeShell] has no route here — so
+        // the tier thunks resolve through the one mode switch; the cast documents (and enforces,
+        // loudly) that a forge launch composes no live core.
+        val live = shell as LiveShell
         snapSyncApp(
             scope,
             AppPorts(
@@ -215,7 +260,15 @@ object SnapSyncRoot {
                 // block (concrete store, not the port) and borrows the atomic album-add lookup.
                 importer = IosPhotoLibraryImporter(
                     recordCreatedLocalId = { ref, id -> downloadStore.recordCreatedLocalId(ref, id) },
-                    albumId = { currentAlbumId() },
+                    // The atomic import-time album lookup: the membership's opt-in gate is the
+                    // coordinator's rule (capability `event-album`); this thunk only reads the
+                    // current membership's facts. Deferred — it runs inside a PhotoKit change block,
+                    // long after this graph is constructed.
+                    albumId = {
+                        config.config.value?.let { cfg ->
+                            app.albumCoordinator.albumIdFor(cfg.eventId, cfg.saveToAlbum)
+                        }
+                    },
                 ),
                 downloadStagingRoot = {
                     val container = NSFileManager.defaultManager
@@ -233,9 +286,9 @@ object SnapSyncRoot {
                 attestStore = KeychainAttestStore(),
                 deviceId = { deviceId },
                 now = { (NSDate().timeIntervalSince1970 * 1000).toLong() },
-                // The tier's mechanism, selected ONCE per process (capability `upload-lifecycle`);
-                // the selection stays a shell thunk until step 8's `resolveComposition`.
-                uploadProducer = { uploadProducer },
+                // The tier's mechanism, selected ONCE per process by the mode switch above
+                // (capability `upload-lifecycle`): exactly one producer, the other never constructed.
+                uploadProducer = live.uploadProducer,
                 albumManager = albumManager,
                 albumMapStore = albumMapStore,
                 albumExcludedAssetIds = { cutoff -> albumExcludedAssetIds(cutoff) },
@@ -247,16 +300,14 @@ object SnapSyncRoot {
                 onEventMinted = { eventId -> host.onEventCreated(eventId) },
                 refreshAttestation = ::refreshAttestation,
                 protectedDataGate = { tag, work -> protectedData.runWhenAvailable(tag, work) },
-                pumpForeground = { if (useAppDrivenUpload) urlSessionUpload.onForeground() },
+                pumpForeground = live.pumpForeground,
                 unregisterLiveness = ::unregisterLivenessObserver,
                 scheduleBackstop = ::scheduleDownloadBackstop,
-                fetchName = ::fetchAndStoreName,
-                ensureAlbumIfOptedIn = ::ensureAlbumIfOptedIn,
+                // The platform half of the share command (a system sheet over the top view controller).
+                share = ::presentShareSheet,
                 // The upload arm's push receiver on the app-driven tier (a thunk — the tier controller
                 // depends on this graph, so it must resolve lazily); null on iOS ≥26.1.
-                uploadSilentPush = {
-                    if (useAppDrivenUpload) urlSessionUpload.pushReceiver::onSilentPush else null
-                },
+                uploadSilentPush = live.uploadSilentPush,
                 log = log,
                 // Drive the shared iOS ambient log context (the process-global the device-log writers
                 // read) so the tier-neutral features' lines carry the triggering entry point's prefix.
@@ -332,7 +383,9 @@ object SnapSyncRoot {
     }
 
     // The ONE GET /events/:id client (capability `join-event`): the join gate's details fetch and the
-    // best-effort scan-path/foreground name refresh both read through it.
+    // best-effort scan-path/foreground name refresh both read through it — the latter via the
+    // `EventDirectory` port in [AppPorts] (`directory`), whose fetch effect `compose/` builds for the
+    // Foreground/Provision flows.
     private val detailsSource: HttpEventDirectory by lazy {
         HttpEventDirectory(http, backendHost)
     }
@@ -362,10 +415,13 @@ object SnapSyncRoot {
         // The own-device source: ledger completeness + in-flight (one aggregates() read) × permission ×
         // the live own-device gallery total, minted into snapshots — composed in the app graph.
         // Ledger-sourced, no storage LIST for upload status (spec: sync-status).
-        // Touching `app` above (its status source) constructs the composed graph, whose `init` installs
-        // the permission-grant subscriptions (upload-arm start + album ensure) that used to live here as
-        // `startUploadsOnGrant` / `ensureAlbumOnGrant` — moved into `compose/` at migration step 8.
         val syncSource = app.syncStatusSource
+        // Install the permission-grant subscriptions (upload-arm start + album ensure) — the collectors
+        // live in `compose/` (`AppCore.installPermissionSubscriptions`), but they install ONLY from this
+        // host-assembly path, exactly where the pre-step-8 `startUploadsOnGrant` / `ensureAlbumOnGrant`
+        // calls sat: a cold backstop/URLSession wake that merely touches [app] must not fire a
+        // producer-start off the permission StateFlow's replay.
+        app.installPermissionSubscriptions()
         // Start registering the APNs token: the collector reacts to each token the AppDelegate delivers
         // (StateFlow-retained, so a token delivered before this launches is still registered).
         //
@@ -386,95 +442,44 @@ object SnapSyncRoot {
         // No EventStatus source: status is read from the listing; the extension owns reconciliation.
         StatusContainerHost(
             syncSource, permission, permission, config, config, scope,
-            creationStatusSource = app.creationStatus, creator = app.eventCreator,
-            // Leave: cancel in-flight downloads and drop non-terminal rows (imported photos stay;
-            // suppression rows are permanent), then run the leave use-case (disable producer → notify the
-            // backend it is leaving → clear config/producer). Imported foreign photos are never touched.
-            leave = { app.downloadController.onLeaveOrSwitch(); app.leaveEvent.leave() },
-            // Fire-and-forget share of the invite link (the host owns the URL). Wiring-only:
-            // present the system share sheet over the current top view controller.
-            share = { url -> presentShareSheet(url) },
-            // The join gate (capability `join-event`): a scanned QR opens the confirmation; details are
-            // fetched (GET), confirming enrolls (empty-manifest PUT) then provisions. `commitJoin` is
-            // true unless enrollment failed (the same-event no-op is a success).
+            creationStatusSource = app.creationStatus,
+            // The user-tap command bundle (leave / create / commitJoin / share), built and decorated
+            // only in `compose/` (`AppCore.userCommands`) — presentation fires commands solely through
+            // it (spec `module-architecture`, "Commands cross one door").
+            commands = app.userCommands,
+            // The join gate's details READ (capability `join-event`): a scanned QR opens the
+            // confirmation; details are fetched (GET) and mapped by presentation's own [toJoinLoad].
             loadJoinDetails = { eventId -> app.joinEvent.loadDetails(eventId).toJoinLoad() },
-            commitJoin = { eventId, name, startsAt, cutoff, direction, saveToAlbum ->
-                app.joinEvent.join(eventId, name, startsAt, cutoff, direction, saveToAlbum) !=
-                    JoinOutcome.EnrollFailed
-            },
             log = { message -> log.i { message } },
             downloadSource = app.downloadStatusSource,
             attestedSource = attested,
         )
     }
 
-    // The dev/test `SNAPSYNC_FORGE_STATE` launch-env variable (capability `ios-app-shell`), read once
-    // per process. When it names a recognized forge state the app renders a forged screen for a
-    // marketing screenshot and MUST NOT boot the live stack: the unsigned simulator the screenshots run
-    // in has no App-Group ledger container, no App Attest, no PhotoKit grant, and no backend — touching
-    // any of them crashes the process. Inert in production (a launch env var is only injectable via a
-    // developer launch, exactly as with `SNAPSYNC_EVENT_LINK`).
-    private val forgeState: String? = NSProcessInfo.processInfo.environment["SNAPSYNC_FORGE_STATE"] as? String
-    private val isForging: Boolean = forgeState?.let { isForgeState(it) } == true
-
     /**
-     * The host [MainViewController] renders. Resolved **once per process** (`by lazy`): the forged host
-     * when [isForging], else the live [host]. When forging the live [host] is never touched, so the real
-     * stack is never assembled.
+     * The host [MainViewController] renders. Resolved **once per process** (`by lazy`) through the one
+     * mode switch: the forged host in [CompositionMode.Forge] (capability `ios-app-shell` — a marketing
+     * screenshot renders forged sources and MUST NOT boot the live stack: the unsigned simulator the
+     * screenshots run in has no App-Group ledger container, no App Attest, no PhotoKit grant, and no
+     * backend), else the live [host].
      */
-    val renderHost: StatusContainerHost by lazy {
-        if (isForging) {
-            log.i { "rendering SNAPSYNC_FORGE_STATE=$forgeState" }
-            forgeStatusHost(forgeState!!, scope)!!
-        } else {
-            host
-        }
-    }
-
-    // Adapt the join capability's [EventDetails] to the presentation-local [JoinLoad] the gate consumes.
-    private fun EventDetails.toJoinLoad(): JoinLoad = when (this) {
-        is EventDetails.Found -> JoinLoad.Found(name, startsAt)
-        EventDetails.NotFound -> JoinLoad.NotFound
-        EventDetails.Failed -> JoinLoad.Failed
-    }
+    val renderHost: StatusContainerHost by lazy { shell.renderHost() }
 
     /**
      * The SwiftUI scene's foreground transition (forwarded from the `@main` scene's scenePhase):
      * re-read the per-device file listing (completeness) and the ledger's in-flight count so status
      * reflects any uploads that progressed while backgrounded (capability `sync-status` liveness).
-     * Touching [host] ensures the stack is assembled before the first transition arrives.
+     * Delegated through the one mode switch — every OS entry point below is a thin pass-through to
+     * [shell]; the forge/live decision was made once, at resolve time.
      */
-    fun onForeground() = log.invocation(
-        "onForeground",
-        params = "useAppDrivenUpload=$useAppDrivenUpload force=$forceUrlSessionUpload osSupported=${backgroundUploadSupported()}",
-    ) {
-        // In forge mode the process exists only to render a screenshot; booting the live stack here
-        // (App-Group ledger, App Attest, PhotoKit, network) would crash the unsigned simulator app.
-        if (isForging) {
-            log.i { "forge mode: skipping live foreground work" }
-            return@invocation
-        }
-        host
-        // Listen for the extension's cross-process liveness ding while foreground, so upload status moves
-        // live as the extension records completions/new jobs (spec: sync-status). Foreground-only: a
-        // suspended app cannot act on the post. The `CFNotificationCenter` registration is platform, so it
-        // stays shell-local; the rest of the foreground coordination (pump / refresh / reconcile / name /
-        // attestation, ordered, its launches escaping this entry's synchronous span) is the flow's.
-        registerLivenessObserver()
-        app.foregroundFlow.run()
-    }
+    fun onForeground() = shell.onForeground()
 
     /**
      * On backgrounding, queue the download import-tail backstop so any staged-but-unimported foreign
      * assets get imported at the next idle/charging window even if no further download wakes the app
      * (capability `photo-download`, 5.4). Status liveness itself stays event-driven (foreground entry).
      */
-    fun onBackground() = log.invocation("onBackground") {
-        if (isForging) return@invocation
-        // Stop the liveness observer + arm the backstop — the `flow/Background` trigger's coordination.
-        app.backgroundFlow.run()
-        log.i { "=== app entering background ===" }
-    }
+    fun onBackground() = shell.onBackground()
 
     // --- Extension → app cross-process liveness ding (capability `sync-status` / `ios-app-shell`) ---
     // A stable observer token (the object itself); the callback ignores it and pokes SnapSyncRoot
@@ -522,34 +527,13 @@ object SnapSyncRoot {
     }
 
     /**
-     * The system relaunched the app to finish background `URLSession` events. There is **no** app-owned
-     * background session any more (the device manifest is PUT synchronously by the extension; bytes are
-     * the OS upload-job system's), so this just invokes the OS [completionHandler] immediately. Kept so
-     * the Swift app delegate's `handleEventsForBackgroundURLSession` seam stays a harmless pass-through.
-     */
-    /**
      * The `BGProcessingTask` import-tail backstop (capability `photo-download`, 5.4): drains any
      * staged-but-not-yet-imported foreign assets when no further download event would wake the app
      * (e.g. the last transfer overran its URLSession wake budget). OS-scheduled (idle/charging) via the
      * Swift host's `BGTaskScheduler` registration; [onComplete] maps to `task.setTaskCompleted`.
      * Discovery stays foreground-only — this imports already-downloaded work, it does not re-read the union.
      */
-    fun runDownloadBackstop(onComplete: () -> Unit) {
-        scope.launch {
-            // Wrap INSIDE the launch so `[runDownloadBackstop]` spans the async import. The
-            // protected-data state rides the entry-point line (capability `ios-app-shell`): a background
-            // wake on a locked device is otherwise invisible, and it is the only place this class of bug
-            // shows up — no test can reach it. The gate/attestation/import coordination is the
-            // `flow/DownloadBackstop` trigger's; only the entry-point wrap and re-arm stay shell-local.
-            log.invocation("runDownloadBackstop", params = "protectedData=${protectedData.isAvailable()}") {
-                app.downloadBackstopFlow.run()
-            }
-            // Re-arm for the next idle window and release the OS's task assertion immediately — even when
-            // the work above was deferred, since holding the BGTask open until an unlock is not an option.
-            scheduleDownloadBackstop()
-            onComplete()
-        }
-    }
+    fun runDownloadBackstop(onComplete: () -> Unit) = shell.runDownloadBackstop(onComplete)
 
     /** Queue a `BGProcessingTask` request so the OS runs [runDownloadBackstop] at a future idle moment. */
     @OptIn(ExperimentalForeignApi::class)
@@ -561,19 +545,13 @@ object SnapSyncRoot {
             .onFailure { log.w(it) { "could not schedule download backstop" } }
     }
 
-    fun handleBackgroundUrlSession(identifier: String, completionHandler: () -> Unit) = log.invocation(
-        "handleBackgroundUrlSession",
-        params = "identifier=$identifier protectedData=${protectedData.isAvailable()}",
-    ) {
-        // Route by session identifier: the app-driven UPLOAD session (18–26.0) vs the download session.
-        if (identifier == UrlSessionUploadController.SESSION_IDENTIFIER) {
-            urlSessionUpload.onBackgroundSessionEvents(completionHandler)
-            return@invocation
-        }
-        // Downloads: the OS relaunched us to deliver background download completions. Adopt the session
-        // so its delegate fires (staging + import run), and invoke the OS handler once events drain.
-        app.downloadJobs.adoptBackgroundEvents(completionHandler)
-    }
+    /**
+     * The system relaunched the app to finish background `URLSession` events (the Swift app delegate's
+     * `handleEventsForBackgroundURLSession` seam): the app-driven upload session (iOS 18–26.0) or the
+     * download session, routed by identifier inside the live shell.
+     */
+    fun handleBackgroundUrlSession(identifier: String, completionHandler: () -> Unit) =
+        shell.handleBackgroundUrlSession(identifier, completionHandler)
 
     /**
      * An event link arrived (forwarded raw from the Swift entry point — the complete URL, fragment
@@ -583,17 +561,7 @@ object SnapSyncRoot {
      * auto-confirms when the link carries `autoJoin=true` (the dev/headless trigger), or flashes the
      * invalid-link error. The app no longer provisions directly on scan — the gate owns that.
      */
-    fun onOpenUrl(url: String) = log.invocation("onOpenUrl", params = "url=$url") {
-        // Forge mode: unreachable today only by accident — a screenshot run sets no `SNAPSYNC_EVENT_LINK`
-        // and taps no link — but the rule is "while forging, the app assembles no live stack", not "the
-        // three hooks we happened to think of". Setting both env vars would otherwise provision a real
-        // event from a process rendering a forged frame, which is incoherent before it is a crash.
-        if (isForging) {
-            log.i { "forge mode: ignoring event link" }
-            return@invocation
-        }
-        host.onOpenUrl(url)
-    }
+    fun onOpenUrl(url: String) = shell.onOpenUrl(url)
 
     /**
      * The OS delivered an APNs device token (capability `push-registration`), forwarded raw-hex from the
@@ -601,18 +569,7 @@ object SnapSyncRoot {
      * source; the registration collector PUTs `devices/<id>/config`. Idempotent across launches and
      * rotations. Touch [host] so the collector is running to observe it. No decision in Swift.
      */
-    fun onPushToken(hex: String) = log.invocation("onPushToken", params = "hex=${hex.take(12)}…") {
-        // Forge mode: `registerForRemoteNotifications()` is called unconditionally at launch, so this
-        // arrives on a screenshot run too — and touching [host] below would assemble the live stack on an
-        // unsigned simulator with no App-Group container, no App Attest, and no photo grant. Registering a
-        // token for a process that exists only to render one frame buys nothing, so drop it.
-        if (isForging) {
-            log.i { "forge mode: ignoring push token" }
-            return@invocation
-        }
-        host
-        pushTokenSource.deliver(hex)
-    }
+    fun onPushToken(hex: String) = shell.onPushToken(hex)
 
     /**
      * A silent (`content-available`) remote notification arrived (capability `push-registration`),
@@ -622,33 +579,7 @@ object SnapSyncRoot {
      * through the enqueue (the background transfers then continue on their own). Touch [host] so the
      * download stack is assembled on a background launch. Non-throwing: a failure still calls [completion].
      */
-    fun onSilentPush(eventId: String, completion: () -> Unit) {
-        // Forge mode: same reason as [onPushToken] — touching [host] would boot the live stack on an
-        // unsigned simulator. [completion] is still invoked, and that is not optional: it is the OS's
-        // handler, and an unanswered `content-available` push costs the app its future background wakes.
-        // Returning without calling it would trade a crash for a slower, invisible penalty.
-        if (isForging) {
-            log.i { "forge mode: ignoring silent push for $eventId" }
-            completion()
-            return
-        }
-        host
-        scope.launch {
-            // Wrap INSIDE the launch so `[onSilentPush]` spans the async reconcile (and the download
-            // HTTP + import lines it drives trace back to this push). The gate → attestation → cross-arm
-            // fan-out coordination is the `flow/SilentPush` trigger's (it absorbed FanOutPushReceiver);
-            // only the entry-point wrap and the OS completion handler stay shell-local.
-            log.invocation(
-                "onSilentPush",
-                params = "eventId=$eventId protectedData=${protectedData.isAvailable()}",
-            ) {
-                app.silentPushFlow.run(eventId)
-            }
-            // Always release the OS handler promptly — iOS gives a silent push a short budget and holding
-            // it open until an unlock would simply get us killed.
-            completion()
-        }
-    }
+    fun onSilentPush(eventId: String, completion: () -> Unit) = shell.onSilentPush(eventId, completion)
 
     /**
      * Provision an event id — the shared path for both a scanned or typed event link and a freshly created
@@ -684,20 +615,6 @@ object SnapSyncRoot {
     }
 
     /**
-     * Best-effort fetch of the event name by id (`GET /events/:id`) and store it into the persisted
-     * config — the scan-path name source and the foreground refresh. Non-throwing: a null (offline /
-     * 404 / parse) leaves the current name unchanged.
-     */
-    private suspend fun fetchAndStoreName(eventId: String) {
-        val fetched = (detailsSource.fetch(eventId) as? EventDetails.Found)?.name ?: return
-        val current = config.config.value
-        if (current?.eventId == eventId && current.name != fetched) {
-            // Preserve the persisted cutoff — a name refresh must not clobber minPhotoDate (photo-selection-policy).
-            config.save(current.copy(name = fetched))
-        }
-    }
-
-    /**
      * Realize [launchEnvEventLinkApplied] once on first view creation (called from
      * [MainViewController]). Touching the `by lazy` runs the env read exactly once per process.
      */
@@ -715,8 +632,7 @@ object SnapSyncRoot {
      * intended per-build re-trigger); a mere view recreation within the same process does not.
      */
     private val launchEnvEventLinkApplied: Boolean by lazy {
-        val raw = NSProcessInfo.processInfo.environment["SNAPSYNC_EVENT_LINK"] as? String
-        if (raw != null) {
+        directives.eventLink?.let { raw ->
             log.i { "applying SNAPSYNC_EVENT_LINK launch-env event link" }
             onOpenUrl(raw)
         }
@@ -769,7 +685,7 @@ object SnapSyncRoot {
      * `SNAPSYNC_SEED_POLICY`, whose assets straddle the resolution floor by construction.
      */
     private suspend fun runLaunchEnvPolicyProbe() {
-        val cutoff = NSProcessInfo.processInfo.environment["SNAPSYNC_POLICY_PROBE"] as? String ?: return
+        val cutoff = directives.policyProbe ?: return
 
         // Subtype census, on the RAW library (no exclusion predicate) — this is the part the status refresh
         // below cannot show, because the production predicate drops screenshots and screen recordings at the
@@ -820,51 +736,27 @@ object SnapSyncRoot {
         }
     }
 
-    // The permission-grant subscriptions (upload-arm start + event-album ensure) moved into the composed
-    // graph's `init` at migration step 8 (they collect the `PhotoAccessStatusSource` port StateFlow, which
-    // `compose/` holds). Both still fire only on a *transition* to GRANTED, so neither can rescue a
-    // membership provisioned while access was already granted — the provision flow owns that case.
+    // The permission-grant subscriptions (upload-arm start + event-album ensure) live in `compose/`
+    // (`AppCore.installPermissionSubscriptions`, migration step 8) and are installed ONLY from the
+    // [host] assembly above — never on mere [AppCore] construction, so a cold background wake starts
+    // no producer off the StateFlow's replay. Both fire only on a *transition* to GRANTED, so neither
+    // can rescue a membership provisioned while access was already granted — the provision flow owns
+    // that case.
 
-    // The tier's upload mechanism, chosen ONCE (capability `upload-lifecycle`, "Exactly one producer per
-    // process"). Both candidates are `by lazy`, so only the selected one is ever constructed — the
-    // non-selected tier's mechanism cannot run. This is what makes the two tiers mutually exclusive
-    // structurally rather than by a scattered runtime guard: `PhotoKitUploadProducer` simply does not
-    // exist on the app-driven tier, so no code path (including the dev force flag, which previously walked
-    // straight past the version guard and enabled BOTH tiers) can register the PhotoKit extension.
-    private val uploadProducer: UploadProducer by lazy {
-        if (useAppDrivenUpload) urlSessionUpload else photoKitProducer
-    }
-
-    // The OS-driven (≥26.1) mechanism. Never constructed on the app-driven tier.
-    // (The tier-neutral `UploadArm` — which verb fires on which membership transition — is composed
-    // in the app graph as `app.uploadArm`, over this root's producer thunk.)
+    // The upload tier's two candidate mechanisms. Both are `by lazy`, and only the tier the mode
+    // switch selected ever *thunks* one into the composed graph — `PhotoKitUploadProducer` simply is
+    // not constructed on the app-driven tier, so no code path (including the dev force flag, which
+    // previously walked straight past the version guard and enabled BOTH tiers) can register the
+    // PhotoKit extension. (The tier-neutral `UploadArm` — which verb fires on which membership
+    // transition — is composed in the app graph as `app.uploadArm`, over the selected thunk.)
     private val photoKitProducer: PhotoKitUploadProducer by lazy {
         PhotoKitUploadProducer(ledgerStore, log)
     }
 
-    // Dev/test force flag (like SNAPSYNC_EVENT_LINK): forces the app-driven URLSession upload tier even on
-    // iOS ≥26.1 so it can be exercised on a device or simulator that would otherwise run the extension.
-    // Inert in production — a launch env var is only injectable via a developer launch.
-    //
-    // It selects the TIER and nothing else (`ios-url-session-upload`): it no longer doubles as "use a
-    // foreground session". Conflating the two made the flag an unfaithful device-testing lever — the only
-    // agent-driveable device (an SE2 on iOS 26.5) could not impersonate the app-driven tier, because
-    // forcing it also downgraded the transport AND still registered the PhotoKit extension.
-    private val forceUrlSessionUpload: Boolean =
-        NSProcessInfo.processInfo.environment["SNAPSYNC_FORCE_URLSESSION_UPLOAD"] != null
-
-    // Whether this process is a SIMULATOR — a FACT read from the environment, not inferred from a flag
-    // someone has to remember to pass. A background `URLSession` runs on a device; the simulator is the
-    // only place the transport is downgraded.
-    private val isSimulator: Boolean =
-        NSProcessInfo.processInfo.environment["SIMULATOR_DEVICE_NAME"] != null
-
-    /** True when uploads run in-process over a background URLSession (iOS 18–26.0, or the force flag). */
-    private val useAppDrivenUpload: Boolean
-        get() = !backgroundUploadSupported() || forceUrlSessionUpload
-
-    // The app-driven (iOS 18–26.0) upload tier's composition root. Built lazily and used only when
-    // [useAppDrivenUpload]; on iOS ≥26.1 without the force flag it is never touched (the extension runs).
+    // The app-driven (iOS 18–26.0) upload tier's composition root. Built lazily; reached only through
+    // the URL_SESSION branch of the mode switch — plus the background-session drain, which may adopt an
+    // old upload session on any live tier. On iOS ≥26.1 without the force flag it is otherwise never
+    // touched (the extension runs).
     private val urlSessionUpload: UrlSessionUploadController by lazy {
         UrlSessionUploadController(
             scope, ledgerStore, config,
@@ -883,9 +775,11 @@ object SnapSyncRoot {
             // exactly the class of bug that shipped the app-driven tier without a re-join reconciler.
             albumExcludedAssetIds = { cutoff -> albumExcludedAssetIds(cutoff) },
             // A background session on any DEVICE — including a force-flagged one, which must be a faithful
-            // proxy for the tier real 18–26.0 users run. Only the simulator is downgraded, and that is keyed
-            // on actually being a simulator, not on the tier flag (`ios-url-session-upload`).
-            useBackgroundSession = !isSimulator,
+            // proxy for the tier real 18–26.0 users run. Only the simulator is downgraded — the fact is
+            // resolved once on [CompositionMode.Live], never re-derived (`ios-url-session-upload`). The
+            // cast holds on both live tiers (a PhotoKit-tier process can still be relaunched to drain an
+            // old upload session); in forge mode this controller is unreachable.
+            useBackgroundSession = (mode as CompositionMode.Live).useBackgroundSession,
             // In-process liveness: after each pump cycle, re-read the ledger counts so status moves live.
             onCycleComplete = { app.ledgerCounts.refresh() },
             // Event album (capability `event-album`): the composed coordinator; the cycle applies the
@@ -896,17 +790,7 @@ object SnapSyncRoot {
     }
 
     /** The upload heartbeat BGProcessingTask handler (app-driven tier). Registered in the Swift shell. */
-    fun runUploadHeartbeat(onComplete: () -> Unit) = log.invocation("runUploadHeartbeat") {
-        if (useAppDrivenUpload) urlSessionUpload.onBackgroundTask(onComplete) else onComplete()
-    }
-
-    /** App short-version(build) for the boot banner (capability `diagnostic-logging`, D5). */
-    private fun buildVersion(): String {
-        val bundle = NSBundle.mainBundle
-        val short = bundle.objectForInfoDictionaryKey("CFBundleShortVersionString") as? String ?: "?"
-        val build = bundle.objectForInfoDictionaryKey("CFBundleVersion") as? String ?: "?"
-        return "$short($build)"
-    }
+    fun runUploadHeartbeat(onComplete: () -> Unit) = shell.runUploadHeartbeat(onComplete)
 
     /** Whether the iOS 26.1 background-upload API is present on this system. */
     @OptIn(ExperimentalForeignApi::class)
@@ -918,6 +802,196 @@ object SnapSyncRoot {
                 patchVersion = 0
             },
         )
+
+    /** The `onForeground` invocation params, byte-compatible with the pre-C3 wording; the values now
+     *  read from the resolved mode + parsed directives instead of being re-derived per call. */
+    private fun foregroundParams(): String {
+        val appDriven = (mode as? CompositionMode.Live)?.tier == UploadTier.URL_SESSION
+        return "useAppDrivenUpload=$appDriven force=${directives.forceUrlSessionUpload} " +
+            "osSupported=${osFacts.backgroundUploadSupported}"
+    }
+
+    // ── The mode-resolved shell delegate (the target of THE one switch above) ────────────────────
+
+    /** What every OS entry point delegates to; implemented once per composition mode. */
+    private interface Shell {
+        fun renderHost(): StatusContainerHost
+        fun onForeground()
+        fun onBackground()
+        fun onOpenUrl(url: String)
+        fun onPushToken(hex: String)
+        fun onSilentPush(eventId: String, completion: () -> Unit)
+        fun runUploadHeartbeat(onComplete: () -> Unit)
+        fun runDownloadBackstop(onComplete: () -> Unit)
+        fun handleBackgroundUrlSession(identifier: String, completionHandler: () -> Unit)
+    }
+
+    /**
+     * The forge composition (capability `ios-app-shell`): render the shared screen over forged sources
+     * for a marketing screenshot and assemble NO live stack — the unsigned simulator the screenshots
+     * run in has no App-Group ledger container, no App Attest, no PhotoKit grant, and no backend.
+     * This class holds no reference to [app] or [host], so forge inertness is **structural** rather
+     * than guarded. OS completion handlers are still invoked — they are the OS's, and an unanswered
+     * one costs the app its future background wakes; everything else logs and returns.
+     */
+    private class ForgeShell(private val state: String) : Shell {
+        override fun renderHost(): StatusContainerHost {
+            log.i { "rendering SNAPSYNC_FORGE_STATE=$state" }
+            // Non-null by construction: the resolver only yields Forge for a recognized state.
+            return forgeStatusHost(state, scope)!!
+        }
+
+        override fun onForeground() = log.invocation("onForeground", params = foregroundParams()) {
+            log.i { "forge mode: skipping live foreground work" }
+        }
+
+        override fun onBackground() = log.invocation("onBackground") {}
+
+        override fun onOpenUrl(url: String) = log.invocation("onOpenUrl", params = "url=$url") {
+            // A screenshot run may also carry `SNAPSYNC_EVENT_LINK`; provisioning a real event from a
+            // process rendering a forged frame is incoherent before it is a crash. The resolver's
+            // precedence already excludes it (the forge×link bug, now a unit test); the log line keeps
+            // the debug.log trail.
+            log.i { "forge mode: ignoring event link" }
+        }
+
+        override fun onPushToken(hex: String) = log.invocation("onPushToken", params = "hex=${hex.take(12)}…") {
+            // `registerForRemoteNotifications()` is called unconditionally at launch, so this arrives
+            // on a screenshot run too. Registering a token for a process that exists only to render
+            // one frame buys nothing, so drop it.
+            log.i { "forge mode: ignoring push token" }
+        }
+
+        override fun onSilentPush(eventId: String, completion: () -> Unit) {
+            // [completion] is still invoked, and that is not optional: an unanswered
+            // `content-available` push costs the app its future background wakes.
+            log.i { "forge mode: ignoring silent push for $eventId" }
+            completion()
+        }
+
+        override fun runUploadHeartbeat(onComplete: () -> Unit) = log.invocation("runUploadHeartbeat") {
+            onComplete()
+        }
+
+        override fun runDownloadBackstop(onComplete: () -> Unit) {
+            log.i { "forge mode: ignoring download backstop" }
+            onComplete()
+        }
+
+        override fun handleBackgroundUrlSession(identifier: String, completionHandler: () -> Unit) {
+            log.i { "forge mode: ignoring background URLSession events for $identifier" }
+            completionHandler()
+        }
+    }
+
+    /**
+     * The live composition: the real stack, on the tier the mode switch selected. The four
+     * constructor thunks are the ONLY tier-dependent seams — each decided once at the switch, so no
+     * method here re-checks a flag; the bodies are the former entry-point bodies, verbatim, minus
+     * their forge guards.
+     */
+    private class LiveShell(
+        /** The selected tier's upload mechanism (capability `upload-lifecycle`), thunked into [AppPorts]. */
+        val uploadProducer: () -> UploadProducer,
+        /** Foreground pump (app-driven tier); `{}` on iOS ≥26.1 where the OS owns scheduling. */
+        val pumpForeground: () -> Unit,
+        /** The upload arm's silent-push receiver (app-driven tier); `{ null }` on iOS ≥26.1. */
+        val uploadSilentPush: () -> (suspend (eventId: String) -> Unit)?,
+        /** The BGProcessingTask heartbeat handler (app-driven tier); completes immediately on ≥26.1. */
+        private val heartbeat: (onComplete: () -> Unit) -> Unit,
+    ) : Shell {
+        /** Touching [host] assembles the live stack (and installs the grant subscriptions). */
+        override fun renderHost(): StatusContainerHost = host
+
+        override fun onForeground() = log.invocation("onForeground", params = foregroundParams()) {
+            host
+            // Listen for the extension's cross-process liveness ding while foreground, so upload status
+            // moves live as the extension records completions/new jobs (spec: sync-status).
+            // Foreground-only: a suspended app cannot act on the post. The `CFNotificationCenter`
+            // registration is platform, so it stays shell-local; the rest of the foreground coordination
+            // (pump / refresh / reconcile / name / attestation, ordered, its launches escaping this
+            // entry's synchronous span) is the flow's.
+            registerLivenessObserver()
+            app.foregroundFlow.run()
+        }
+
+        override fun onBackground() = log.invocation("onBackground") {
+            // Stop the liveness observer + arm the backstop — the `flow/Background` trigger's coordination.
+            app.backgroundFlow.run()
+            log.i { "=== app entering background ===" }
+        }
+
+        override fun onOpenUrl(url: String) {
+            log.invocation("onOpenUrl", params = "url=$url") {
+                host.onOpenUrl(url)
+            }
+        }
+
+        override fun onPushToken(hex: String) = log.invocation("onPushToken", params = "hex=${hex.take(12)}…") {
+            // Touch [host] so the registration collector is running to observe it. No decision in Swift.
+            host
+            pushTokenSource.deliver(hex)
+        }
+
+        override fun onSilentPush(eventId: String, completion: () -> Unit) {
+            host
+            scope.launch {
+                // Wrap INSIDE the launch so `[onSilentPush]` spans the async reconcile (and the download
+                // HTTP + import lines it drives trace back to this push). The gate → attestation →
+                // cross-arm fan-out coordination is the `flow/SilentPush` trigger's (it absorbed
+                // FanOutPushReceiver); only the entry-point wrap and the OS completion handler stay
+                // shell-local.
+                log.invocation(
+                    "onSilentPush",
+                    params = "eventId=$eventId protectedData=${protectedData.isAvailable()}",
+                ) {
+                    app.silentPushFlow.run(eventId)
+                }
+                // Always release the OS handler promptly — iOS gives a silent push a short budget and
+                // holding it open until an unlock would simply get us killed.
+                completion()
+            }
+        }
+
+        override fun runUploadHeartbeat(onComplete: () -> Unit) = log.invocation("runUploadHeartbeat") {
+            heartbeat(onComplete)
+        }
+
+        override fun runDownloadBackstop(onComplete: () -> Unit) {
+            scope.launch {
+                // Wrap INSIDE the launch so `[runDownloadBackstop]` spans the async import. The
+                // protected-data state rides the entry-point line (capability `ios-app-shell`): a
+                // background wake on a locked device is otherwise invisible, and it is the only place
+                // this class of bug shows up — no test can reach it. The gate/attestation/import
+                // coordination is the `flow/DownloadBackstop` trigger's; only the entry-point wrap and
+                // re-arm stay shell-local.
+                log.invocation("runDownloadBackstop", params = "protectedData=${protectedData.isAvailable()}") {
+                    app.downloadBackstopFlow.run()
+                }
+                // Re-arm for the next idle window and release the OS's task assertion immediately — even
+                // when the work above was deferred, since holding the BGTask open until an unlock is not
+                // an option.
+                scheduleDownloadBackstop()
+                onComplete()
+            }
+        }
+
+        override fun handleBackgroundUrlSession(identifier: String, completionHandler: () -> Unit) = log.invocation(
+            "handleBackgroundUrlSession",
+            params = "identifier=$identifier protectedData=${protectedData.isAvailable()}",
+        ) {
+            // Route by session identifier: the app-driven UPLOAD session (18–26.0) vs the download
+            // session. A wiring-forced routing decision: one OS callback serves two distinct sessions.
+            if (identifier == UrlSessionUploadController.SESSION_IDENTIFIER) {
+                urlSessionUpload.onBackgroundSessionEvents(completionHandler)
+                return@invocation
+            }
+            // Downloads: the OS relaunched us to deliver background download completions. Adopt the
+            // session so its delegate fires (staging + import run), and invoke the OS handler once
+            // events drain.
+            app.downloadJobs.adoptBackgroundEvents(completionHandler)
+        }
+    }
 }
 
 /**

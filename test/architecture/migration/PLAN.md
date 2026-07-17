@@ -68,7 +68,7 @@ inlined and marked ⟨R⟩ where they changed the original order or claims.
 | 5 | features I: upload · membership · status · trust (+ retire `StatusEngineBoundaryTest`) | modules Δ (measured: beacon 66 unchanged — moves only, no module create/delete. Δ-note ①: `LogContext` + `Logger.invocation` seated in `model/` — a global-mutable-state violation-in-transit, forced by bodies-byte-identical + `:domain`'s zero project deps (D2 of `move-features-…`); dissolves at step 8 into the compose/ log decorators (establish-target D4); no gate sees it before 13b — resolved at step-8 C1 as the `ports/LogScope` seam + `:adapter:ios:ext-safe` global, not compose/ decorators; see the C1 checkpoint note. Δ-note ②: only feature-blindness armed here — flow-no-ports stays PENDING until step 8 creates `flow/`, per the gate's own arming contract; this row's original "both arm" wording was imprecise) | ● |
 | 6 | features II: download · album · creation; delete emptied modules | edges −1 (→0) · modules Δ (measured: beacon 66→55 — edges 1→0 · modules 27→17. Δ-note ①: deletion set is D1's verified-sourceless ten, not the full candidate list — `:domain:gallery`/`:domain:download-store` survive as honest-double + stay-behind-test hosts until step 10; `:capability:upload` keeps the receiver pair for steps 7–8. Δ-note ②: `DeviceManifestProducer` seated in feature/membership (one-writer behind `Enrollment`, D5); `ResourceEnumerator` interim in feature/upload → compose/ at step 7 (D4). Ext-safe interim edges repaid) | ● |
 | 7 | `compose/`: `uploadCore`, then `snapSyncApp` (kills `readGate`×3, roots' uploader copies) | shells Δ (measured: beacon 55→53 — shells 36→34, the two deleted root `readGate` copies each carried a decision; deletion-ledger Enrollment row ×4→×2, distance unchanged — the row dies with the world's copy at step 10. Δ-note ①: the readGate divergence resolved on the extension's port-pure semantics — the controller's per-cycle `ConfigSource`-StateFlow `reload()` dropped, gate outcome provably identical, unlock-hook owns the StateFlow repair; D1 of `establish-shared-composition` — the human-eyes item. Δ-note ②: step-6 D4 repaid — `ResourceEnumerator` seated in `compose/`. Δ-note ③: coordination lambdas, tier selection, and the push fan-out stay shell-supplied by design until step 8; world adopts `uploadCore` additively, full collapse at step 10) | ● |
-| 8 | `flow/` + shell drain + `LaunchDirectives`/`resolveComposition` | shells → ~5 | ○ |
+| 8 | `flow/` + shell drain + `LaunchDirectives`/`resolveComposition` | shells Δ (measured: beacon 53→36 across C1–C3 — shells 34→18 [14 kt + 4 swift; SnapSyncRoot 15→4]; flow-no-ports armed at C2; `:capability:upload` deleted [module distance 17→16]. Δ-note ①: the "~5" estimate meant the SnapSyncRoot drain — met at 4; the residual 10 kt are the dev seeder (3), MainViewController (1, step-9), and the extension platform adapter (6, 13a) — per-survivor justifications in the C3 note. Δ-note ②: step-5's LogContext debt repaid as `ports/LogScope` + ext-safe global, NOT compose/ decorators — archive D2. Δ-note ③: C2's `AppCore.init` subscription widening reverted at C3 (explicit install from host assembly only). Δ-note ④: transcriber-grammar debt named for 13b — archive D7) | ● |
 | 9 | `:ui` re-homing + `StatusContainerHost` split + Arrow unification | ledger −1 · modules Δ | ○ |
 | 10 | harness collapse: `:adapter:fake` + world on `snapSyncApp` (+ last uploader dupe) | ledger −1 (→0) · modules Δ | ○ |
 | 11a | behavior: config → App-Group file, **copy with Keychain write-through** | — (behavior) | ○ |
@@ -225,7 +225,7 @@ live. **Session B before merge; soak after.**
   `ports/LogScope`; `Logger.invocation(scope, …)` drives an injected `LogScope`; feature ctors take
   `logScope: LogScope = NoOp`; the `LaunchDirectives` + `CompositionMode`/`resolveComposition`
   resolver committed to `model/` (not yet consumed by the shell — the switch is C3).
-- **C2 (this checkpoint):** created the `flow/` zone — `Foreground · Background · SilentPush ·
+- **C2 (landed, 27ce632):** created the `flow/` zone — `Foreground · Background · SilentPush ·
   DownloadBackstop · Provision`, each importing `model/`+`feature/` only, **ZoneFlowTest armed**
   (deliberate-red proven: a planted `ports/` import fails it). Flows built in `compose/` (`AppCore`);
   the five shell entry points are thin log-wrapped delegators (`app.<flow>.run(…)`), forge guards +
@@ -242,13 +242,37 @@ live. **Session B before merge; soak after.**
   produced a wrong 52/34 first record of this checkpoint; caught in adversarial review). Flow diagrams regenerated against the (now-thin)
   `SnapSyncRoot` — the `Flows.kt` generator is still shell-reading (re-pointing it at `flow/` is a
   transcriber rewrite deferred; hard-gate arming is 13b regardless).
-- **C3 (remaining):** the user-tap command **bundle** (`leave`/`create`/`commitJoin`/`share` + the 6
-  `StatusContainerHost` sites + `EventCreator` interim collapse); the two micro-rule feature sinks
-  (`storeEventNameIfChanged` in `feature/membership`; the album opt-in guard in `AlbumCoordinator`) —
-  C2 left `fetchName` and `ensureAlbumIfOptedIn` as `compose/`-supplied shell-helper lambdas on the
-  `Foreground`/`Provision` flows and the permission subscription; the `resolveComposition` switch
-  (dissolving the tier-selection shell lambdas → the final shell drain to ~5); step-8 OpenSpec ceremony
-  + archive.
+- **C3 (landed, this commit):** the `flow/UserCommands` user-tap bundle (leave·create·commitJoin·share;
+  built only in `compose/`'s `AppCore.userCommands`, injected into `StatusContainerHost` — its
+  individual lambdas and the step-6 `EventCreator` interim are gone from presentation; all 6
+  construction sites converted, command bodies byte-preserved). The two micro-rule sinks:
+  `feature/membership`'s `EventName.storeEventNameIfChanged` (same-event + changed guard,
+  cutoff-preserving whole-config save; flows coordinate fetch via a compose-built `EventDirectory`
+  effect — Foreground unconditional, Provision only when the name is empty, exactly as before) and
+  `AlbumCoordinator.ensureAlbum(+saveToAlbum)`'s leading opt-in guard + `albumIdFor` (the `:175`
+  map-lookup gate folded too; callers unconditional). The **`resolveComposition` switch**:
+  `SnapSyncRoot` parses `LaunchDirectives` once, resolves `CompositionMode` once, and switches ONCE —
+  `when (mode)` selects a `ForgeShell`/`LiveShell` delegate with the tier's four mechanism thunks
+  bound per branch; the ×6 `isForging` guards and every tier re-derivation
+  (`useAppDrivenUpload`/`forceUrlSessionUpload`/`isSimulator` vals) died; forge inertness is
+  structural (`ForgeShell` holds no route to `app`/`host`; the previously-unguarded
+  heartbeat/backstop/URLSession entries now complete their OS handlers immediately in forge — a
+  deliberate strengthening, recorded in the archive's D5). **Subscription timing restored** (the C2
+  behavior-review item): the grant collectors are an explicit `AppCore.installPermissionSubscriptions()`
+  whose only caller is the shell's host-assembly path — a cold backstop/URLSession wake constructs
+  AppCore without firing producer-start off the StateFlow replay, as pre-C2. Riders: `toJoinLoad`
+  moved shell→presentation; `appBuildVersion()` consolidated in `:adapter:ios:ext-safe`; stale
+  dead-module prose swept (comment-only). Beacon (fresh `detektAppShell`): **48→36**; shells
+  **30→18** (14 kt + 4 swift; SnapSyncRoot 15→4); no law increased. The plan's "shells → ~5" was not
+  reached and is re-scoped: the 14 kt = SnapSyncRoot 4 (`refreshAttestation`'s `||`,
+  `handleBackgroundUrlSession` session routing, `runLaunchEnvPolicyProbe`, `presentShareSheet`'s
+  presenter walk) + `DevPhotoSeeder` 3 (dev equipment) + `MainViewController` 1 (transient-error
+  choreography → step 9) + `IosPhotoKitUploadPlatform` 5 + `UploadExtensionRoot.process` 1 (extension
+  platform adapter — 13a material). Transcriber-grammar debt named for 13b (archive D7): Provision's
+  switch guard, `isGranted()` album step, and `name.isEmpty()` fetch trigger sit outside the
+  straight-line+par+sealed-result+single-leading-guard grammar. Step-8 OpenSpec ceremony archived as
+  `changes/archive/2026-07-17-create-flow-zone-and-drain-shell` (11 spec deltas; C1+C2+C3 as one
+  change).
 
 ## Step 9 — `:ui` re-homing
 

@@ -11,9 +11,9 @@ package app.snapsync.model
  * total by ignoring it too (leaving the screen to force-hide an arrow over a total that would never settle).
  * `Contribution` makes it the input it always was. Decision record: `changes/archive/…-fix-upload-direction-gate`.
  *
- * It lives in `:domain:gallery` for the same reason the rest of the policy does: `:capability:upload` and
- * `:domain:status` must apply the **identical** rules, and this is the only module both can see. It carries
- * primitives — no `:capability:config` dependency follows it here; the composition root maps
+ * It lives in `model/` for the same reason the rest of the policy does: feature/upload and
+ * feature/status must apply the **identical** rules, and this is the only zone both can see. It carries
+ * primitives — no config-store dependency follows it here; the composition maps
  * `EventConfig.direction` + `minPhotoDate` onto it.
  *
  * **Two constructors, not a cutoff plus a flag.** A `(cutoff, uploadsEnabled)` pair can express *"contributes
@@ -69,8 +69,8 @@ sealed interface Contribution {
          *
          * So the roots pass **facts** — [includesUpload] read off `EventConfig.direction`, [cutoff] off
          * `EventConfig.minPhotoDate` — and this function, which is tested, makes the decision. Primitives in,
-         * so `:domain:gallery` gains no dependency on `:capability:config` (the same reason
-         * `DownloadController` takes a plain predicate).
+         * so this stays primitives-in (the same reason `DownloadController` takes a plain
+         * predicate).
          */
         fun of(includesUpload: Boolean, cutoff: String): Contribution =
             if (includesUpload) Since(cutoff) else None

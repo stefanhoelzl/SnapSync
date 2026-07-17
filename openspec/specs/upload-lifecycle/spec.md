@@ -190,8 +190,11 @@ enforcement is how this capability's own history records the lifecycle shipping 
 
 ### Requirement: Exactly one producer per process
 
-The app SHALL construct **exactly one** `UploadProducer` for the process, selected once at composition
-from the OS-version tier gate (`ios-url-session-upload`, "Per-version tier selection"). The
+The app SHALL construct **exactly one** `UploadProducer` for the process, selected **once per
+process** by the pure sealed composition resolver (`model/`'s `resolveComposition` over the parsed
+launch directives and OS facts — the OS-version tier gate of `ios-url-session-upload`, "Per-version
+tier selection", is one of its inputs; spec `module-architecture`, "One shared composition") and
+consumed at the shell's **single** mode switch — no entry point re-derives the tier. The
 non-selected tier's producer SHALL NOT be constructed, so its mechanism cannot run. This SHALL hold
 under the development tier-force flag as well: forcing the app-driven tier on a device that supports
 the OS-driven tier SHALL NOT register the PhotoKit upload extension.

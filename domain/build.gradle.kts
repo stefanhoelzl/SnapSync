@@ -24,9 +24,9 @@ tasks.withType<KotlinNativeSimulatorTest>().configureEach {
 }
 
 // The event link's origin, generated from the `snapsync.domain` property (gradle.properties) so the
-// app has exactly one source for it — moved here with the `EventLink` codec (migration step 3a);
-// `:capability:config`'s copy of this task must be deleted when that module stops compiling the
-// codec, or two modules generate the same const. Config.xcconfig reads the same property's value
+// app has exactly one source for it — moved here with the `EventLink` codec (migration step 3a; the
+// former `:capability:config` copy of this task died with that module at step 6, leaving this the
+// only generator of the const). Config.xcconfig reads the same property's value
 // for the `applinks:` entitlement; the backend's copy is unreachable from here and is held by a
 // :test:architecture guard instead (capability `event-link`).
 val linkDomain: String = providers.gradleProperty("snapsync.domain").get()

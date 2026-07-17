@@ -11,9 +11,9 @@ import app.snapsync.model.encodeEventUrl
 import app.snapsync.feature.creation.CreationFailureReason
 import app.snapsync.feature.creation.CreationStatus
 import app.snapsync.feature.creation.CreationStatusSource
-import app.snapsync.feature.creation.EventCreator
 import app.snapsync.feature.creation.MutableCreationStatusSource
-import app.snapsync.feature.creation.NoOpEventCreator
+import app.snapsync.flow.UserCommands
+import app.snapsync.ports.EventDetails
 import app.snapsync.ports.PhotoAccessRequester
 import app.snapsync.model.PermissionStatus
 import app.snapsync.ports.PhotoAccessStatusSource
@@ -42,9 +42,9 @@ import org.orbitmvi.orbit.container
 
 /**
  * The outcome of fetching an event's details for the join gate — the presentation-local mirror of
- * `join-event`'s `EventDetails`, kept here so this module gains no `:capability:join` dependency (the
- * app adapts one to the other). The gate MUST tell a **missing** event (block) from a **transient**
- * failure (retry).
+ * the `EventDirectory` port's `EventDetails` (adapted via [toJoinLoad]), kept here so the gate's
+ * phases stay presentation vocabulary. The gate MUST tell a **missing** event (block) from a
+ * **transient** failure (retry).
  */
 sealed interface JoinLoad {
     /**
@@ -61,6 +61,18 @@ sealed interface JoinLoad {
     data object Failed : JoinLoad
 }
 
+/**
+ * Adapt the `EventDirectory` port's [EventDetails] to the gate's [JoinLoad]. Lives here — not in the
+ * untested app shell — because mapping a sealed outcome is a decision, and the shell holds none
+ * (spec `module-architecture`, "Shells are wiring only"); the shell's `loadJoinDetails` lambda is a
+ * fetch composed with this mapping.
+ */
+fun EventDetails.toJoinLoad(): JoinLoad = when (this) {
+    is EventDetails.Found -> JoinLoad.Found(name, startsAt)
+    EventDetails.NotFound -> JoinLoad.NotFound
+    EventDetails.Failed -> JoinLoad.Failed
+}
+
 class StatusContainerHost(
     syncSource: SyncStatusSource,
     // A `val` (not a bare param) because the join gate reads its CURRENT value at the moment the details
@@ -71,44 +83,26 @@ class StatusContainerHost(
     private val configSource: ConfigSource,
     private val store: ConfigStore,
     private val scope: CoroutineScope,
-    // The create-event seams. Defaults make the create layer inert (always-Idle source, no-op
-    // creator) so non-iOS hosts and tests that don't exercise create construct unchanged; iOS injects
-    // the same instance the create use-case drives, and the real `EventCreator`.
+    // The create-status read-model. The default makes the create layer inert (always-Idle source) so
+    // non-iOS hosts and tests that don't exercise create construct unchanged; iOS injects the same
+    // instance the create use-case drives.
     creationStatusSource: CreationStatusSource = MutableCreationStatusSource(),
-    private val creator: EventCreator = NoOpEventCreator,
-    // The leave action, injected as a plain suspend lambda (not the `LeaveEvent` type) so this
-    // Compose-free module gains no engine/gallery dependency. Defaults to a no-op so non-iOS hosts
-    // and tests construct unchanged and a confirmed leave there is inert; iOS binds it to
-    // `LeaveEvent.leave`.
-    private val leave: suspend () -> Unit = {},
-    // The share action, injected as a plain `(String) -> Unit` lambda (not a named seam type) — the
-    // same shape as `leave`. Defaults to a no-op so non-iOS hosts and tests construct unchanged and a
-    // share there is inert; iOS binds it to a `UIActivityViewController` presentation.
-    private val share: (String) -> Unit = {},
-    // The join gate hooks (capability `join-event`), injected as plain lambdas (like `leave`) so this
-    // module gains no `:capability:join` dependency. `loadJoinDetails` = `GET /events/:id` mapped to a
-    // block/retry/ready outcome; `commitJoin` = enroll (register-only empty manifest) then provision,
-    // returning `true` when joined (incl. the already-joined no-op) and `false` on a failed enrollment.
-    // Defaults are inert (load fails, commit does nothing) so non-iOS hosts and tests that don't
-    // exercise join construct unchanged; iOS binds them to the `JoinEvent` use-case.
+    // The user-tap **command bundle** (spec `module-architecture`, "Commands cross one door"):
+    // leave / create / commitJoin / share, defined in `flow/` and built only in `compose/`
+    // (`AppCore.userCommands`) — this container fires commands solely through it and never references
+    // a feature command directly. The default is fully inert, so non-iOS hosts and tests that don't
+    // exercise a command construct unchanged.
+    //
+    // NB the CLAMP (`minPhotoDate = max(chosen, startsAt)`) is applied on the far side of the
+    // `commitJoin` command, inside `JoinEvent` — this container passes the chosen value through raw,
+    // so no entry path can reach a provision without the floor by forgetting to clamp here.
+    private val commands: UserCommands = UserCommands(),
+    // The join gate's details READ (capability `join-event`), injected as a plain lambda:
+    // `loadJoinDetails` = `GET /events/:id` mapped to a block/retry/ready outcome. A query the gate
+    // reduces on, not a command — so it stays an individual seam beside the bundle. The default is
+    // inert (load fails) so hosts and tests that don't exercise join construct unchanged; iOS binds
+    // it to the `JoinEvent` use-case's fetch composed with [toJoinLoad].
     private val loadJoinDetails: suspend (eventId: String) -> JoinLoad = { JoinLoad.Failed },
-    // `commitJoin` = enroll (register-only empty manifest) then provision with the event's `startsAt`
-    // (capability `event-creation`), the chosen capture-date cutoff (capability `photo-selection-policy`;
-    // always present), the chosen participation `direction` (capability `join-event`), and whether the
-    // join opted into an event album (`saveToAlbum`, capability `event-album`), returning `true` when
-    // joined. NB the CLAMP (`minPhotoDate = max(chosen, startsAt)`) is applied on the far side of this
-    // seam, inside `JoinEvent` — this container passes the chosen value through raw, so no entry path can
-    // reach a provision without the floor by forgetting to clamp here.
-    private val commitJoin:
-        suspend (
-            eventId: String,
-            name: String,
-            startsAt: String,
-            minPhotoDate: String,
-            direction: Direction,
-            saveToAlbum: Boolean,
-        ) -> Boolean =
-        { _, _, _, _, _, _ -> false },
     // Supplies "now" as a cutoff string and converts a local pick (capability `photo-selection-policy`).
     // Injected so the conversion and the not-started comparison are unit-tested against a fixed clock on
     // JVM and the iOS simulator; the screen receives an already-resolved, non-null default.
@@ -247,7 +241,7 @@ class StatusContainerHost(
      * local→UTC conversion, and `:domain:ui` stays free of any clock or timezone knowledge.
      */
     fun onCreateEvent(name: String, startsAt: LocalDateTime) =
-        intent { creator.create(name, cutoffFormatter.toCutoff(startsAt)) }
+        intent { commands.create(name, cutoffFormatter.toCutoff(startsAt)) }
 
     fun onRequestPermission() = intent { requester.request() }
 
@@ -259,7 +253,7 @@ class StatusContainerHost(
      * its own private ledger on its next cycle). The config going `null` makes the reduction fall back
      * to the setup gate — no new `UiState` and no reduction branch here.
      */
-    fun onLeaveEvent() = intent { leave() }
+    fun onLeaveEvent() = intent { commands.leave() }
 
     /**
      * Share the event's invite link (the joined-layer share action). Hands the current invite URL
@@ -267,7 +261,7 @@ class StatusContainerHost(
      * unaffected (the system share UI is presented over the screen, not part of it). Inert when no
      * event is configured (no URL) or no real share is bound (the no-op default).
      */
-    fun onShareInvite() = intent { inviteUrl.value?.let { share(it) } }
+    fun onShareInvite() = intent { inviteUrl.value?.let { commands.share(it) } }
 
     /**
      * An event link arrived (forwarded raw from the platform). Decode it with the shared codec; an
@@ -436,8 +430,8 @@ class StatusContainerHost(
             else -> return
         }
         pending.set(p.copy(phase = JoinPhase.Committing(name, startsAt)))
-        if (withLeave) leave()
-        if (commitJoin(p.eventId, name, startsAt, cutoff, direction, saveToAlbum)) {
+        if (withLeave) commands.leave()
+        if (commands.commitJoin(p.eventId, name, startsAt, cutoff, direction, saveToAlbum)) {
             // Success: config flips present via ConfigSource → reduces to Joined; drop the overlay.
             if (pending.state.value?.eventId == p.eventId) pending.set(null)
         } else if (pending.state.value?.eventId == p.eventId) {
@@ -462,7 +456,7 @@ class StatusContainerHost(
             return
         }
         val current = configSource.config.value
-        if (current != null && current.eventId != eventId) leave()
+        if (current != null && current.eventId != eventId) commands.leave()
         // The auto-fired confirm uses the event's `startsAt` as the cutoff, unless the event link supplied
         // an explicit dev/test one (capability `photo-selection-policy`). Never an absent cutoff — the headless
         // path has no surface to notice one.
@@ -480,7 +474,7 @@ class StatusContainerHost(
         // The album choice defaults to off, unless the event link supplied an explicit dev/test override
         // (capability `event-album`).
         val saveToAlbum = explicitSaveToAlbum ?: false
-        if (!commitJoin(eventId, load.name, load.startsAt, cutoff, direction, saveToAlbum)) {
+        if (!commands.commitJoin(eventId, load.name, load.startsAt, cutoff, direction, saveToAlbum)) {
             log("autoJoin aborted: enrollment failed for $eventId")
         }
     }

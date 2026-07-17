@@ -98,7 +98,7 @@ class RawAssetMappingTest {
     fun the_walk_stays_decision_free_a_screenshot_is_mapped_not_dropped() = runTest {
         // The walk and the mapping carry facts; they never exclude. A screenshot must cross this seam intact
         // — the authoritative filter lives downstream in the upload cycle, and putting it here instead would
-        // hide it from `:capability:upload`'s tests and from the status total.
+        // hide it from the upload cycle's tests (`:domain` feature/upload) and from the status total.
         val screenshot = RawAsset(
             assetId = "S1",
             creationDate = "2026-07-01T00:00:00Z",

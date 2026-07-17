@@ -10,7 +10,7 @@ package app.snapsync.tools.diagrams
  * loudly, by design: two renderers disagreeing is drift.
  */
 
-/** `:capability:upload-url` → `capability_upload_url` (a Mermaid-safe node id). */
+/** `:adapter:ios:ext-safe` → `adapter_ios_ext_safe` (a Mermaid-safe node id). */
 fun mermaidId(path: String): String = path.trimStart(':').replace(':', '_').replace('-', '_')
 
 fun renderModulesMarkdown(modules: List<String>, edges: List<Pair<String, String>>): String {

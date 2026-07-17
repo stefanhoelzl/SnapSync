@@ -9,7 +9,7 @@ import app.snapsync.ports.PhotoLibrary
  * A settable in-memory [PhotoLibrary] for the JVM harness and tests: holds a fixed
  * resource list, re-emittable via [set]. [resources] filters by normalised `assetId` membership.
  * Fakes at the **post-mapping** `Resource` level — appropriate for consumers that test completeness
- * logic (e.g. `:domain:status`); to exercise the walk→map fan-out itself, use [InMemoryRawAssetSource].
+ * logic (e.g. `:domain`'s feature/status); to exercise the walk→map fan-out itself, use [InMemoryRawAssetSource].
  */
 class InMemoryPhotoLibrary(initial: List<Resource> = emptyList()) : PhotoLibrary {
 

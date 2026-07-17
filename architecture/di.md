@@ -69,6 +69,7 @@ Roots found:
 | `MutableAttestedSource` | x | | | |
 | `MutableCreationStatusSource` | | | | x |
 | `MutablePhotoAccessStatusSource` | | | | x |
+| `OsFacts` | x | | | |
 | `OwnDeviceGalleryStatusSource` | | | | x |
 | `PhotoKitUploadProducer` | x | | | |
 | `PhotoLibraryPermission` | x | | | |

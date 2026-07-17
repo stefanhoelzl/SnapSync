@@ -34,7 +34,7 @@ interface LedgerCountsSource {
 /**
  * The real [LedgerCountsSource]: [refresh] calls the injected [read] (on iOS, a **read-only** read of
  * the shared App-Group ledger's `aggregates()`, mapped to [LedgerCounts]) and publishes the result. The
- * read is a `suspend () -> LedgerCounts` so the engine/ledger types never reach `:domain:status` — the
+ * read is a `suspend () -> LedgerCounts` so the engine/ledger types never reach feature/status — the
  * composition root supplies the read, keeping this logic platform-free and testable.
  *
  * On any read failure the **last good value is retained** (never regressed to zero) — a transient read

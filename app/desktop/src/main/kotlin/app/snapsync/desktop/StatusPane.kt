@@ -19,6 +19,7 @@ import app.snapsync.presentation.MutablePendingJoinSource
 import app.snapsync.presentation.StatusContainerHost
 import app.snapsync.feature.download.DownloadStatusSource
 import app.snapsync.feature.status.SyncStatusSource
+import app.snapsync.flow.UserCommands
 import app.snapsync.ui.StatusScreen
 import app.snapsync.ui.components.LocalDarkThemeOverride
 import kotlinx.coroutines.CoroutineScope
@@ -76,12 +77,17 @@ fun StatusPane(
             configSource,
             configStore,
             scope,
-            share = share,
-            leave = leave,
             creationStatusSource = creationStatusSource,
-            creator = creator,
+            // The user-tap command bundle (spec `module-architecture`, "Commands cross one door"),
+            // assembled from this pane's injected harness edges — the harness's stand-in for the
+            // `compose/`-built production bundle (the world adopts `snapSyncApp` at step 10).
+            commands = UserCommands(
+                leave = leave,
+                create = creator::create,
+                commitJoin = commitJoin,
+                share = share,
+            ),
             loadJoinDetails = loadJoinDetails,
-            commitJoin = commitJoin,
             downloadSource = downloadSource,
             attestedSource = attestedSource,
             pending = pending,

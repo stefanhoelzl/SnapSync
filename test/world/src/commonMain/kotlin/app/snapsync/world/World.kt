@@ -111,7 +111,7 @@ class World(
 
     /**
      * Inspection: what the controller asked the real jobs to fetch. The real jobs expose no inspection
-     * seam, and their transfer-description codec is `internal` to `:capability:download` — so the world
+     * seam, and their transfer-description codec is `internal` to `:domain`'s feature/download — so the world
      * cannot decode a started transfer back to its `(device, asset, resource)` and must not duplicate the
      * codec to try. [downloadRequests] records the request; the real jobs still do all the work.
      */

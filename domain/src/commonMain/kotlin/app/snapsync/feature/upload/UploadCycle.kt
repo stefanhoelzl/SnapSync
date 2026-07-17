@@ -108,7 +108,7 @@ class UploadCycle(
     //
     // An injected port rather than a rule in the pure filter, because album membership is the one origin
     // fact that is NOT already on the resource — it needs a platform lookup. The POLICY (which titles)
-    // stays in `commonMain` (`:capability:album`'s DENYLISTED_ALBUM_TITLES); this port only carries the
+    // stays in `commonMain` (`model/`'s DENYLISTED_ALBUM_TITLES); this port only carries the
     // answer. Cost is O(albums), not O(assets).
     //
     // Required, with **no default**: `{ emptySet() }` uploads the member's WhatsApp album into a stranger's

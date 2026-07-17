@@ -13,11 +13,11 @@ failure. `log.*` statements are diagnostics, not flow, and are omitted from both
 sequenceDiagram
   participant OS
   participant SnapSyncRoot
-  participant app_backgroundFlow as app.backgroundFlow
+  participant shell
   OS->>SnapSyncRoot: onBackground()
-  SnapSyncRoot->>app_backgroundFlow: run()
+  SnapSyncRoot->>shell: onBackground()
 ```
 
 ## Not transcribable (burn-down)
 
-- line 473 — `if` conditional: `if (isForging) return@invocation`
+- none

@@ -29,7 +29,7 @@ import platform.darwin.NSObject
 import kotlin.coroutines.resume
 
 /**
- * The app-driven (iOS 18–26.0) implementation of the `:capability:upload` [BackgroundTransfer] seam,
+ * The app-driven (iOS 18–26.0) implementation of `:domain`'s [BackgroundTransfer] port,
  * backed by a **background `URLSession`** — the OS-owned durable queue the PhotoKit tier gets for free,
  * reimplemented in the app process. `UploadCycle` runs unchanged over it; only the job lifecycle
  * differs, mapped to `URLSession` semantics (see the change `add-url-session-upload`):

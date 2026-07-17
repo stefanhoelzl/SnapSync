@@ -6,14 +6,14 @@ import app.snapsync.model.Direction
 import app.snapsync.model.EventLinkPayload
 import app.snapsync.model.encodeEventUrl
 import app.snapsync.model.DeviceManifest
-import app.snapsync.ports.EventDetails
 import app.snapsync.join.HttpEventDirectory
 import app.snapsync.feature.membership.JoinEvent
 import app.snapsync.feature.membership.JoinOutcome
 import app.snapsync.feature.membership.ManifestDeviceEnroller
 import app.snapsync.feature.membership.LeaveEvent
 import app.snapsync.ports.PhotoAccessRequester
-import app.snapsync.presentation.JoinLoad
+import app.snapsync.flow.UserCommands
+import app.snapsync.presentation.toJoinLoad
 import app.snapsync.presentation.JoinPhase
 import app.snapsync.presentation.StatusContainerHost
 import app.snapsync.presentation.UiState
@@ -351,17 +351,13 @@ class JoinGateIntegrationTest {
             store = NoOpJoinConfigStore,
             scope = scope,
             loadJoinDetails = { id -> joinEvent.loadDetails(id).toJoinLoad() },
-            commitJoin = { id, name, startsAt, cutoff, direction, saveToAlbum ->
-                joinEvent.join(id, name, startsAt, cutoff, direction, saveToAlbum) != JoinOutcome.EnrollFailed
-            },
-            leave = leave,
+            commands = UserCommands(
+                leave = leave,
+                commitJoin = { id, name, startsAt, cutoff, direction, saveToAlbum ->
+                    joinEvent.join(id, name, startsAt, cutoff, direction, saveToAlbum) != JoinOutcome.EnrollFailed
+                },
+            ),
         )
-    }
-
-    private fun EventDetails.toJoinLoad(): JoinLoad = when (this) {
-        is EventDetails.Found -> JoinLoad.Found(name, startsAt)
-        EventDetails.NotFound -> JoinLoad.NotFound
-        EventDetails.Failed -> JoinLoad.Failed
     }
 
     private suspend fun StatusContainerHost.await(predicate: (UiState) -> Boolean): UiState =
