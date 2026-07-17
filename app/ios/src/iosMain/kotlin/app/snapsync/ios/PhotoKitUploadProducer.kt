@@ -5,7 +5,7 @@ import app.snapsync.engine.LEDGER_APP_GROUP
 import app.snapsync.ports.LedgerStore
 import app.snapsync.feature.upload.clearRequestedOffMain
 import app.snapsync.feature.upload.UploadProducer
-import app.snapsync.model.invocation
+import app.snapsync.logging.invocation
 import co.touchlab.kermit.Logger
 import kotlinx.cinterop.ExperimentalForeignApi
 import platform.Foundation.NSUserDefaults

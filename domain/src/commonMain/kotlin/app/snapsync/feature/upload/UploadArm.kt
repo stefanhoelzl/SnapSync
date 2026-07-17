@@ -1,6 +1,7 @@
 package app.snapsync.feature.upload
 
-import app.snapsync.model.invocation
+import app.snapsync.ports.LogScope
+import app.snapsync.ports.invocation
 import co.touchlab.kermit.Logger
 
 /**
@@ -70,6 +71,7 @@ class UploadArm(
     // between "is there a membership" and "does it upload".
     private val membershipIncludesUpload: () -> Boolean?,
     private val log: Logger = Logger.withTag("UploadArm"),
+    private val logScope: LogScope = LogScope.NoOp,
 ) {
 
     /**
@@ -89,7 +91,7 @@ class UploadArm(
      *
      * Without access, neither verb fires — the transition to granted will drive it ([onPermissionGranted]).
      */
-    suspend fun onProvision() = log.invocation("arm.onProvision") {
+    suspend fun onProvision() = log.invocation(logScope, "arm.onProvision") {
         if (!isGranted()) return@invocation
         // A provision always has a membership, so `null` is unreachable here; treating it like
         // download-only (stop) is the safe reading if it ever were.
@@ -105,7 +107,7 @@ class UploadArm(
      * This fires on the *transition*, so it cannot rescue a membership provisioned while access was already
      * granted — [onProvision] owns that case.
      */
-    suspend fun onPermissionGranted() = log.invocation("arm.onPermissionGranted") {
+    suspend fun onPermissionGranted() = log.invocation(logScope, "arm.onPermissionGranted") {
         if (membershipIncludesUpload() == true) producer.start()
     }
 
@@ -119,7 +121,7 @@ class UploadArm(
      * the OS wiped). That costs a re-enumeration, not a re-upload — and a rejoin would have cleared it
      * anyway, since a mismatched marker forces the reconciler to re-baseline.
      */
-    suspend fun onLeave() = log.invocation("arm.onLeave") {
+    suspend fun onLeave() = log.invocation(logScope, "arm.onLeave") {
         producer.stop()
     }
 }

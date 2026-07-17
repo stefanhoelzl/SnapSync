@@ -1,9 +1,12 @@
-package app.snapsync.model
+package app.snapsync.logging
 
 /**
- * The ambient "what triggered this" context, read by the device-log writers to prefix every line
- * with `[<entryPoint>]` so downstream engine/HTTP/download lines trace back to the entry point that
- * drove them (capability `diagnostic-logging`).
+ * The ambient "what triggered this" holder, read by the device-log writers ([FileLogWriter] /
+ * [PublicNSLogWriter], which sit beside it) to prefix every line with `[<entryPoint>]` so downstream
+ * engine/HTTP/download lines trace back to the entry point that drove them (capability
+ * `diagnostic-logging`). Driven through the `:domain` `LogScope` port (see [IosLogScope]) so the
+ * process-global mutable lives here in the adapter — where a platform global is legitimate — and not
+ * in the core (law "State and authority").
  *
  * It is a **process-global** holder, deliberately NOT a `@ThreadLocal` and NOT a coroutine-context
  * element: the Kermit [co.touchlab.kermit.LogWriter.log] callback is a plain synchronous call with

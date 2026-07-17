@@ -44,10 +44,11 @@ import app.snapsync.model.UPLOAD_LIVENESS_DARWIN_NAME
 import app.snapsync.upload.FanOutPushReceiver
 import app.snapsync.feature.upload.UploadProducer
 import app.snapsync.logging.FileLogWriter
+import app.snapsync.logging.IosLogScope
 import app.snapsync.logging.PublicNSLogWriter
 import app.snapsync.keychain.KeychainDeviceIdentity
 import app.snapsync.keychain.ProtectedDataGate
-import app.snapsync.model.invocation
+import app.snapsync.logging.invocation
 import co.touchlab.kermit.Logger
 import io.ktor.client.HttpClient
 import kotlinx.cinterop.COpaquePointer
@@ -245,6 +246,9 @@ object SnapSyncRoot {
                 provision = ::provisionEvent,
                 onEventMinted = { eventId -> host.onEventCreated(eventId) },
                 log = log,
+                // Drive the shared iOS ambient log context (the process-global the device-log writers
+                // read) so the tier-neutral features' lines carry the triggering entry point's prefix.
+                logScope = IosLogScope,
             ),
         )
     }

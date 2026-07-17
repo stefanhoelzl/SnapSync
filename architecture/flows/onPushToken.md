@@ -20,5 +20,5 @@ sequenceDiagram
 
 ## Not transcribable (burn-down)
 
-- line 643 — `if` conditional: `if (isForging) {`
-- line 647 — bare property read (lazy-init touch): `host`
+- line 647 — `if` conditional: `if (isForging) {`
+- line 651 — bare property read (lazy-init touch): `host`

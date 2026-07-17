@@ -3,7 +3,8 @@ package app.snapsync.feature.upload
 import app.snapsync.ports.BackgroundScheduler
 import app.snapsync.ports.CycleResult
 
-import app.snapsync.model.invocation
+import app.snapsync.ports.LogScope
+import app.snapsync.ports.invocation
 import co.touchlab.kermit.Logger
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -57,6 +58,7 @@ class BackgroundUploadPump(
     private val runCycle: suspend () -> CycleResult,
     private val scheduler: BackgroundScheduler,
     private val log: Logger = Logger.withTag("BackgroundUploadPump"),
+    private val logScope: LogScope = LogScope.NoOp,
     // Fired after every cycle so foreground status refreshes live (the app-driven analogue of the
     // PhotoKit extension's cross-process liveness ding — here an in-process ledger-counts re-read).
     // Best-effort: a failure never disturbs the cycle drain or the re-arm.
@@ -71,7 +73,7 @@ class BackgroundUploadPump(
      * provision): drain, and arm the heartbeat. The re-arm is unconditional because this is the one
      * trigger that can *create* the first `BGProcessingTask`; every other re-arm path presupposes one.
      */
-    suspend fun onStart() = log.invocation("pump.onStart") {
+    suspend fun onStart() = log.invocation(logScope, "pump.onStart") {
         drive(scheduleOnProcessing = false, alwaysScheduleNext = true)
     }
 
@@ -86,7 +88,7 @@ class BackgroundUploadPump(
      * to be re-armed, and it was the one event that did not do so: new photos captured while closed then
      * waited for a membership transition that may never come.
      */
-    suspend fun onForeground() = log.invocation("pump.onForeground") {
+    suspend fun onForeground() = log.invocation(logScope, "pump.onForeground") {
         drive(scheduleOnProcessing = false, alwaysScheduleNext = true)
     }
 
@@ -104,22 +106,22 @@ class BackgroundUploadPump(
      * is orthogonal to the direction gate: a push for the active event on a download-only membership reaches
      * this method, and the cycle then declines with [CycleResult.SKIPPED], scheduling nothing.
      */
-    suspend fun onSilentPush() = log.invocation("pump.onSilentPush") {
+    suspend fun onSilentPush() = log.invocation(logScope, "pump.onSilentPush") {
         drive(scheduleOnProcessing = false, alwaysScheduleNext = true)
     }
 
     /** An upload finished while foregrounded (a slot freed): pump the next batch. */
-    suspend fun onUploadCompleted() = log.invocation("pump.onUploadCompleted") {
+    suspend fun onUploadCompleted() = log.invocation(logScope, "pump.onUploadCompleted") {
         drive(scheduleOnProcessing = false, alwaysScheduleNext = false)
     }
 
     /** Background `URLSession` completions were delivered on relaunch: record + top up, re-arm if work remains. */
-    suspend fun onSessionEvents() = log.invocation("pump.onSessionEvents") {
+    suspend fun onSessionEvents() = log.invocation(logScope, "pump.onSessionEvents") {
         drive(scheduleOnProcessing = true, alwaysScheduleNext = false)
     }
 
     /** A `BGProcessingTask` window opened: top up and re-submit the next heartbeat unconditionally. */
-    suspend fun onBackgroundTask() = log.invocation("pump.onBackgroundTask") {
+    suspend fun onBackgroundTask() = log.invocation(logScope, "pump.onBackgroundTask") {
         drive(scheduleOnProcessing = true, alwaysScheduleNext = true)
     }
 

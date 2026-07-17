@@ -23,7 +23,7 @@ sequenceDiagram
 
 ## Not transcribable (burn-down)
 
-- line 723 — `?.let` chain: `config.config.value?.eventId?.let { previous ->`
-- line 743 — `if` conditional: `if (permission.permission.value == PermissionStatus.GRANTED) {`
-- line 750 — `scope.launch` body: `scope.launch { app.downloadController.reconcile(cfg.eventId) }`
-- line 752 — `if` conditional: `if (cfg.name.isEmpty()) scope.launch { fetchAndStoreName(cfg.eventId) }`
+- line 727 — `?.let` chain: `config.config.value?.eventId?.let { previous ->`
+- line 747 — `if` conditional: `if (permission.permission.value == PermissionStatus.GRANTED) {`
+- line 754 — `scope.launch` body: `scope.launch { app.downloadController.reconcile(cfg.eventId) }`
+- line 756 — `if` conditional: `if (cfg.name.isEmpty()) scope.launch { fetchAndStoreName(cfg.eventId) }`

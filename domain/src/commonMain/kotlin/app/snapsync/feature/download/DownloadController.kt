@@ -8,7 +8,8 @@ import app.snapsync.ports.PhotoLibraryImporter
 import app.snapsync.ports.AssetRef
 import app.snapsync.ports.DownloadStore
 import app.snapsync.ports.PlannedResource
-import app.snapsync.model.invocation
+import app.snapsync.ports.LogScope
+import app.snapsync.ports.invocation
 import co.touchlab.kermit.Logger
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -43,6 +44,7 @@ class DownloadController(
     // none: a permissive default on a safety gate is how a caller ships without one.
     private val downloadEnabled: () -> Boolean?,
     private val log: Logger = Logger.withTag("DownloadController"),
+    private val logScope: LogScope = LogScope.NoOp,
 ) {
 
     // Serializes all store-mutating flows. Both join (`provisionEvent`) and foreground fire `reconcile`,
@@ -54,7 +56,7 @@ class DownloadController(
      * Discover + plan + enqueue + import, idempotently. Safe to call on join and on every foreground:
      * already-imported and already-planned assets are no-ops, and only not-yet-staged resources enqueue.
      */
-    suspend fun reconcile(eventId: String) = log.invocation("reconcile", params = "eventId=$eventId") {
+    suspend fun reconcile(eventId: String) = log.invocation(logScope, "reconcile", params = "eventId=$eventId") {
         // `!= true` covers BOTH non-answers: an upload-only membership (`false`) and no membership at all
         // (`null`). Neither enables the arm, and neither is inferred from the other.
         if (downloadEnabled() != true) {
@@ -94,7 +96,7 @@ class DownloadController(
      * imports the asset if its set is now complete.
      */
     suspend fun onResourceStaged(ref: AssetRef, resourceKey: String, stagedPath: String) =
-        log.invocation("onResourceStaged", params = "key=$resourceKey") {
+        log.invocation(logScope, "onResourceStaged", params = "key=$resourceKey") {
             mutex.withLock {
                 store.markStaged(ref, resourceKey, stagedPath)
                 importReadyLocked()
@@ -102,7 +104,7 @@ class DownloadController(
         }
 
     /** Import every asset whose resources are all staged and that is not yet imported. */
-    suspend fun importReady() = log.invocation("importReady") { mutex.withLock { importReadyLocked() } }
+    suspend fun importReady() = log.invocation(logScope, "importReady") { mutex.withLock { importReadyLocked() } }
 
     private suspend fun importReadyLocked() {
         for (importable in store.importableAssets()) {
@@ -119,7 +121,7 @@ class DownloadController(
     }
 
     /** Leave/switch: cancel in-flight transfers and drop non-terminal rows (imported rows persist). */
-    suspend fun onLeaveOrSwitch() = log.invocation("onLeaveOrSwitch") {
+    suspend fun onLeaveOrSwitch() = log.invocation(logScope, "onLeaveOrSwitch") {
         mutex.withLock {
             jobs.cancelAll()
             store.pruneNonTerminal()
