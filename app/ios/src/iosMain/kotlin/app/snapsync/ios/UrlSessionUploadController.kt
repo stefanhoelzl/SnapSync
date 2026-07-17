@@ -2,7 +2,7 @@ package app.snapsync.ios
 
 import app.snapsync.config.KeychainConfigStore
 import app.snapsync.engine.LEDGER_APP_GROUP
-import app.snapsync.model.LedgerBackend
+import app.snapsync.model.LedgerStore
 import app.snapsync.model.LedgerWriter
 import app.snapsync.model.SyncEngine
 import app.snapsync.model.Contribution
@@ -53,7 +53,7 @@ import kotlinx.coroutines.launch
  */
 class UrlSessionUploadController(
     private val scope: CoroutineScope,
-    private val ledgerBackend: LedgerBackend,
+    private val ledgerBackend: LedgerStore,
     private val configSource: KeychainConfigStore,
     // Resolved PER CYCLE, not held as a `String`. A held id cannot express "unreadable this cycle": an
     // unresolvable Keychain read then throws out of whatever first touches it instead of skipping
@@ -111,7 +111,7 @@ class UrlSessionUploadController(
     private val deviceManifestProducer: DeviceManifestProducer by lazy {
         DeviceManifestProducer(
             store = IosDeviceManifestStore(),
-            uploader = IosDeviceManifestUploader(httpClient, host),
+            uploader = IosEnrollment(httpClient, host),
             deviceId = resolveDeviceId(),
         )
     }

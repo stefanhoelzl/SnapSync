@@ -1,7 +1,7 @@
 package app.snapsync.join
 
 import app.snapsync.ports.EventDetails
-import app.snapsync.ports.EventDetailsSource
+import app.snapsync.ports.EventDirectory
 
 import app.snapsync.ports.ConfigSource
 import app.snapsync.model.Direction
@@ -41,7 +41,7 @@ private class FakeEnroller(private val result: Boolean) : DeviceEnroller {
     }
 }
 
-private class FakeDetails(private val result: EventDetails) : EventDetailsSource {
+private class FakeDetails(private val result: EventDetails) : EventDirectory {
     override suspend fun fetch(eventId: String): EventDetails = result
 }
 

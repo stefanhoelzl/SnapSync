@@ -60,7 +60,7 @@ Swift shells are pass-throughs; all logic is Kotlin. Do not add parsing or decis
 
 - **App**: `app/ios/src/iosMain/.../SnapSyncRoot.kt` — app-lifetime singleton owning a
   `SupervisorJob` scope on `Dispatchers.Main` (outlives Compose recomposition). Assembles the real
-  live stack lazily: `iosLedgerBackend` → `LedgerWatcher` → `LedgerSyncStatusSource` ×
+  live stack lazily: `iosLedgerStore` → `LedgerWatcher` → `LedgerSyncStatusSource` ×
   `PhotoLibraryPermission` × `KeychainConfigStore` → `StatusContainerHost`.
 - **Extension**: `app/ios/photokit-extension/src/iosMain/.../UploadExtensionRoot.kt` — assembles the
   App-Group `LedgerWriter`, the `SyncEngine`, the upload provider, the `IosPhotoKitUploadPlatform`
@@ -108,7 +108,7 @@ constructs no writer.
 ## Entitlements & Info.plist (the cross-process glue)
 
 - **App Group `group.app.snapsync`** (both `*.entitlements`): the shared on-disk container for the
-  ledger DB the extension writes and the app reads (`iosLedgerBackend`). **Must be registered in
+  ledger DB the extension writes and the app reads (`iosLedgerStore`). **Must be registered in
   the Developer portal** and enabled on both App IDs, or signed builds fail to provision.
 - **Keychain group `$(AppIdentifierPrefix)app.snapsync.shared`** (both `*.entitlements`): lets the
   extension read the event config (the `eventId`) the app stores (`KeychainConfigStore`, which omits

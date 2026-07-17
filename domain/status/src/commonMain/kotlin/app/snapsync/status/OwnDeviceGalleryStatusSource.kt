@@ -1,7 +1,7 @@
 package app.snapsync.status
 
 import app.snapsync.model.Contribution
-import app.snapsync.ports.GalleryResourceEnumerator
+import app.snapsync.ports.PhotoLibrary
 import app.snapsync.ports.GalleryStatusSource
 import app.snapsync.model.RESOURCE_META_CREATION_DATE
 import app.snapsync.model.excludedAssetIds
@@ -43,7 +43,7 @@ import kotlinx.coroutines.flow.asStateFlow
  * `N` stays at its seeded `0`. There is deliberately no "no cutoff" value to pass.
  */
 class OwnDeviceGalleryStatusSource(
-    private val enumerator: GalleryResourceEnumerator,
+    private val enumerator: PhotoLibrary,
     private val suppressedLocalIds: suspend () -> Set<String> = { emptySet() },
     // Denylisted-album membership (capability `photo-selection-policy`) — the SAME lookup the upload cycle
     // is given. The origin rules that read facts off the resource are applied inline below via

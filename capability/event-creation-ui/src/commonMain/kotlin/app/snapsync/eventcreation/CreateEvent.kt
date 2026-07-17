@@ -1,7 +1,7 @@
 package app.snapsync.eventcreation
 
 import app.snapsync.ports.CreateOutcome
-import app.snapsync.ports.EventCreationClient
+import app.snapsync.ports.EventCreation
 
 import co.touchlab.kermit.Logger
 import kotlinx.coroutines.CoroutineScope
@@ -27,7 +27,7 @@ import kotlinx.coroutines.launch
  * `PermissionBlocked` path once config is present.
  */
 class CreateEvent(
-    private val client: EventCreationClient,
+    private val client: EventCreation,
     private val status: MutableCreationStatusSource,
     // Route the minted event into the join gate (the composition root binds this to the container's
     // `onEventCreated`). The `POST /events` already minted the event, so the gate holds a real id and

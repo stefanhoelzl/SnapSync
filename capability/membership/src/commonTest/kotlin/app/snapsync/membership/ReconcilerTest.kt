@@ -43,7 +43,7 @@ class ReconcilerTest {
 
     private fun reconciler(
         files: DeviceFilesSource,
-        ledger: FakeLedgerBackend,
+        ledger: FakeLedgerStore,
         marker: JoinedEventMarker,
         onCursorClear: () -> Unit = {},
     ) = ExtensionReconciler(files, ledger, marker, deviceId, { onCursorClear() })
@@ -51,7 +51,7 @@ class ReconcilerTest {
     @Test
     fun `marker mismatch reset-seeds every stored file then clears the cursor and sets the marker`() = runTest {
         val files = FakeFiles(Result.success(listOf("A-primary.heic", "A-live.mov")))
-        val ledger = FakeLedgerBackend()
+        val ledger = FakeLedgerStore()
         val marker = FakeMarker(null)
         var cursorCleared = 0
 
@@ -70,7 +70,7 @@ class ReconcilerTest {
     @Test
     fun `assetId is recovered from a uuid-style key whose assetId contains hyphens`() = runTest {
         val files = FakeFiles(Result.success(listOf("E1B2C3D4-1234-5678_L0_001-primary.jpg")))
-        val ledger = FakeLedgerBackend()
+        val ledger = FakeLedgerStore()
         reconciler(files, ledger, FakeMarker(null)).reconcile("E1")
         assertEquals(
             "E1B2C3D4-1234-5678_L0_001",
@@ -81,7 +81,7 @@ class ReconcilerTest {
     @Test
     fun `marker match skips the join and uploads directly without fetching or clearing the cursor`() = runTest {
         val files = FakeFiles(Result.success(emptyList()))
-        val ledger = FakeLedgerBackend()
+        val ledger = FakeLedgerStore()
         var cursorCleared = 0
 
         assertTrue(reconciler(files, ledger, FakeMarker("E1")) { cursorCleared++ }.reconcile("E1"))
@@ -94,7 +94,7 @@ class ReconcilerTest {
     @Test
     fun `no event configured and no marker does nothing`() = runTest {
         val files = FakeFiles(Result.success(emptyList()))
-        val ledger = FakeLedgerBackend()
+        val ledger = FakeLedgerStore()
 
         assertFalse(reconciler(files, ledger, FakeMarker(null)).reconcile(null))
 
@@ -105,7 +105,7 @@ class ReconcilerTest {
     @Test
     fun `a zero-file join still sets the marker so the next cycle does not re-loop`() = runTest {
         val files = FakeFiles(Result.success(emptyList())) // nothing stored for this device yet
-        val ledger = FakeLedgerBackend()
+        val ledger = FakeLedgerStore()
         val marker = FakeMarker(null)
         val r = reconciler(files, ledger, marker)
 
@@ -120,7 +120,7 @@ class ReconcilerTest {
     @Test
     fun `a fetch failure defers uploads and leaves the marker unset to retry`() = runTest {
         val files = FakeFiles(Result.failure(RuntimeException("net")))
-        val ledger = FakeLedgerBackend()
+        val ledger = FakeLedgerStore()
         val marker = FakeMarker(null)
         val r = reconciler(files, ledger, marker)
 
@@ -145,7 +145,7 @@ class ReconcilerTest {
                 return Result.success(emptyList())
             }
         }
-        val ledger = FakeLedgerBackend()
+        val ledger = FakeLedgerStore()
         val marker = FakeMarker(null)
 
         assertFalse(reconciler(hanging, ledger, marker).reconcile("E1"))
@@ -158,7 +158,7 @@ class ReconcilerTest {
         // A confirmed-successful empty listing is AUTHORITATIVE: the objects were deleted from storage
         // (a reset), not transiently un-listed. So the ledger must be wiped to empty and the cursor
         // cleared, so the producer re-uploads everything — NOT deferred (which hung the device forever).
-        val ledger = FakeLedgerBackend().apply {
+        val ledger = FakeLedgerStore().apply {
             put(LedgerEntry("stored-primary.heic", "stored", LedgerState.COMPLETED, 0))
         }
         val files = FakeFiles(Result.success(emptyList()))
@@ -175,7 +175,7 @@ class ReconcilerTest {
     fun `a partial storage deletion re-uploads only the missing files`() = runTest {
         // Listing reports a strict SUBSET of the ledger's prior COMPLETED files (some objects deleted
         // from storage). resetTo seeds only the still-stored files; the deleted one drops out and re-uploads.
-        val ledger = FakeLedgerBackend().apply {
+        val ledger = FakeLedgerStore().apply {
             put(LedgerEntry("kept-primary.heic", "kept", LedgerState.COMPLETED, 0))
             put(LedgerEntry("gone-primary.heic", "gone", LedgerState.COMPLETED, 0)) // deleted from storage
         }
@@ -193,7 +193,7 @@ class ReconcilerTest {
     @Test
     fun `an empty listing on a fresh device with no COMPLETED rows still settles`() = runTest {
         // A genuinely fresh/empty device (empty listing, no COMPLETED rows): settles with zero seeded rows.
-        val ledger = FakeLedgerBackend()
+        val ledger = FakeLedgerStore()
         val marker = FakeMarker(null)
 
         assertTrue(reconciler(FakeFiles(Result.success(emptyList())), ledger, marker).reconcile("E1"))
@@ -205,7 +205,7 @@ class ReconcilerTest {
     fun `re-join reset-seeds from the device listing keeping stored files and clearing phantom rows`() = runTest {
         // Dedup: a file still in the device listing stays COMPLETED (no re-upload). But resetTo also
         // CLEARS a phantom row whose job never materialized — otherwise the engine skips it forever.
-        val ledger = FakeLedgerBackend().apply {
+        val ledger = FakeLedgerStore().apply {
             put(LedgerEntry("stored-primary.heic", "stored", LedgerState.COMPLETED, 0)) // really in /files
             put(LedgerEntry("phantom-primary.heic", "phantom", LedgerState.REQUESTED, 0)) // job never created
         }
@@ -222,7 +222,7 @@ class ReconcilerTest {
 
     @Test
     fun `leaving clears the marker but keeps the ledger intact`() = runTest {
-        val ledger = FakeLedgerBackend().apply { put(LedgerEntry("k-primary.heic", "k", LedgerState.COMPLETED, 0)) }
+        val ledger = FakeLedgerStore().apply { put(LedgerEntry("k-primary.heic", "k", LedgerState.COMPLETED, 0)) }
         val files = FakeFiles(Result.success(emptyList()))
         val marker = FakeMarker("E1")
 
@@ -245,7 +245,7 @@ class ReconcilerTest {
 
     @Test
     fun `a seeded resource is skipped by the engine and an unlisted one uploads`() = runTest {
-        val ledger = FakeLedgerBackend()
+        val ledger = FakeLedgerStore()
         reconciler(FakeFiles(Result.success(listOf("A-primary.heic"))), ledger, FakeMarker(null)).reconcile("E1")
 
         val engine = SyncEngine(FakeProvider, LedgerWriter(ledger))

@@ -22,10 +22,10 @@ import app.snapsync.ports.CycleResult
 import app.snapsync.upload.cycleGate
 import app.snapsync.model.UPLOAD_LIVENESS_DARWIN_NAME
 import app.snapsync.upload.UploadCycle
-import app.snapsync.model.LedgerBackend
+import app.snapsync.model.LedgerStore
 import app.snapsync.model.LedgerWriter
 import app.snapsync.model.SyncEngine
-import app.snapsync.engine.iosLedgerBackend
+import app.snapsync.engine.iosLedgerStore
 import app.snapsync.model.EdgeUploadRequestProvider
 import app.snapsync.gallery.DeviceManifestProducer
 import app.snapsync.gallery.IosDeviceManifestStore
@@ -106,7 +106,7 @@ object UploadExtensionRoot {
         )
     }
 
-    private val ledgerBackend: LedgerBackend by lazy { iosLedgerBackend() }
+    private val ledgerBackend: LedgerStore by lazy { iosLedgerStore() }
     private val ledger: LedgerWriter by lazy { LedgerWriter(ledgerBackend) }
     private val discovery: IosDiscovery by lazy {
         IosDiscovery(log, PhotoLibraryResourceEnumerator())
@@ -203,7 +203,7 @@ object UploadExtensionRoot {
     private val deviceManifestProducer: DeviceManifestProducer by lazy {
         DeviceManifestProducer(
             store = IosDeviceManifestStore(),
-            uploader = IosDeviceManifestUploader(httpClient, uploadHostFromBundle() ?: ""),
+            uploader = IosEnrollment(httpClient, uploadHostFromBundle() ?: ""),
             deviceId = deviceId,
         )
     }
@@ -307,7 +307,7 @@ object UploadExtensionRoot {
         // Tell the app (if foreground) the ledger may have changed so upload status refreshes live
         // (spec: sync-status): a payload-free cross-process Darwin ding, posted after EVERY run so both a
         // rising in-flight count and a drain are signalled. Best-effort — a post failure never affects
-        // the returned result. The `LedgerBackend` itself still posts nothing; this is composition-root.
+        // the returned result. The `LedgerStore` itself still posts nothing; this is composition-root.
         runCatching { postLivenessNotification() }.onFailure { log.w(it) { "liveness post failed" } }
         // The OS invokes the extension lazily (on library changes), not when an upload quietly
         // finishes — so a drained cycle that returns COMPLETED leaves already-succeeded jobs

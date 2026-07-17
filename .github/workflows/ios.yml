@@ -336,7 +336,7 @@ jobs:
           # backticked test name).
           #
           # Native-only source sets — no JVM equivalent, so this is their only run: :domain:engine's
-          # NativeLedgerBackendTest (the SQLDelight native driver behind the shared LedgerBackendContract),
+          # NativeLedgerStoreTest (the SQLDelight native driver behind the shared LedgerStoreContract),
           # :domain:keychain's IosKeychainTest, and :app:ios:photokit-extension's PhotoKitSmokeTest
           # (general PhotoKit is callable on the sim; the cloud-id + upload-job subsystems are
           # device-only and not exercised here).

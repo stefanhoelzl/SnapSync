@@ -4,7 +4,7 @@ plugins {
 
 kotlin {
     // The app-driven (iOS 18–26.0) upload adapters: IosUrlSessionUploadPlatform (a background-URLSession
-    // implementation of the :capability:upload UploadJobPlatform seam) and IosBackgroundScheduler (a
+    // implementation of the :capability:upload BackgroundTransfer seam) and IosBackgroundScheduler (a
     // BGTaskScheduler-backed BackgroundScheduler). Runs in the MAIN APP process (no appex), so this is a
     // plain klib the app pulls into its SnapSyncKit framework — no framework block, no separate target.
     // Composes :capability:upload (the seam + pump/scheduler) and the shared PhotoKit discovery

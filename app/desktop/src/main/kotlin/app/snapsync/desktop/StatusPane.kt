@@ -10,8 +10,8 @@ import app.snapsync.ports.ConfigStore
 import app.snapsync.model.Direction
 import app.snapsync.eventcreation.CreationStatusSource
 import app.snapsync.eventcreation.EventCreator
-import app.snapsync.ports.PermissionRequester
-import app.snapsync.ports.PermissionStatusSource
+import app.snapsync.ports.PhotoAccessRequester
+import app.snapsync.ports.PhotoAccessStatusSource
 import app.snapsync.presentation.AlwaysAttested
 import app.snapsync.presentation.AttestedSource
 import app.snapsync.presentation.JoinLoad
@@ -37,8 +37,8 @@ import kotlinx.coroutines.CoroutineScope
 @Composable
 fun StatusPane(
     syncSource: SyncStatusSource,
-    permissionSource: PermissionStatusSource,
-    requester: PermissionRequester,
+    permissionSource: PhotoAccessStatusSource,
+    requester: PhotoAccessRequester,
     configSource: ConfigSource,
     configStore: ConfigStore,
     creationStatusSource: CreationStatusSource,

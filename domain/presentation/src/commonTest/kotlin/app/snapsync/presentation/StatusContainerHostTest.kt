@@ -12,12 +12,12 @@ import app.snapsync.eventcreation.CreateEvent
 import app.snapsync.ports.CreateOutcome
 import app.snapsync.eventcreation.CreationFailureReason
 import app.snapsync.eventcreation.CreationStatus
-import app.snapsync.ports.EventCreationClient
+import app.snapsync.ports.EventCreation
 import app.snapsync.eventcreation.EventCreator
 import app.snapsync.eventcreation.MutableCreationStatusSource
-import app.snapsync.ports.PermissionRequester
+import app.snapsync.ports.PhotoAccessRequester
 import app.snapsync.model.PermissionStatus
-import app.snapsync.ports.PermissionStatusSource
+import app.snapsync.ports.PhotoAccessStatusSource
 import app.snapsync.status.DownloadProgress
 import app.snapsync.status.InMemoryDownloadStatusSource
 import app.snapsync.model.SyncStatus
@@ -65,7 +65,7 @@ private class FakeSyncStatusSource(initial: SyncStatus = SyncStatus.Ready(snapsh
 
 private class FakePermissionSource(
     initial: PermissionStatus = PermissionStatus.GRANTED,
-) : PermissionStatusSource {
+) : PhotoAccessStatusSource {
     override val permission = MutableStateFlow(initial)
 }
 
@@ -84,7 +84,7 @@ private class FakeConfig(initial: EventConfig? = SAMPLE_CONFIG) : ConfigSource, 
     }
 }
 
-private class SpyRequester : PermissionRequester {
+private class SpyRequester : PhotoAccessRequester {
     var requests = 0
     var settingsOpens = 0
 
@@ -146,7 +146,7 @@ private fun host(
     source: FakeSyncStatusSource,
     scope: CoroutineScope,
     permission: FakePermissionSource = FakePermissionSource(),
-    requester: PermissionRequester = SpyRequester(),
+    requester: PhotoAccessRequester = SpyRequester(),
     configFake: FakeConfig = FakeConfig(),
     loadJoinDetails: suspend (String) -> JoinLoad = { JoinLoad.Failed },
     commitJoin: suspend (String, String, String, String, Direction, Boolean) -> Boolean =
@@ -427,7 +427,7 @@ class StatusContainerHostTest {
         assertEquals(listOf("2026-07-14T18:00:00Z"), creator.starts)
     }
 
-    private class StubClient(private val outcome: CreateOutcome) : EventCreationClient {
+    private class StubClient(private val outcome: CreateOutcome) : EventCreation {
         override suspend fun create(name: String, startsAt: String) = outcome
     }
 
@@ -658,7 +658,7 @@ class StatusContainerHostTest {
     @Test
     fun `the gate defaults the cutoff to the event start rather than to now`() = runTest {
         // The seed-from-createdAt (and its fall-back-to-now) is GONE. `startsAt` is always present on a
-        // successful load — the backend synthesizes one for legacy markers and `HttpEventDetailsSource`
+        // successful load — the backend synthesizes one for legacy markers and `HttpEventDirectory`
         // fails the load rather than invent one — so the default is simply the event's start. Normalizing
         // a millisecond-bearing value is that source's job now, and is tested there.
         host(

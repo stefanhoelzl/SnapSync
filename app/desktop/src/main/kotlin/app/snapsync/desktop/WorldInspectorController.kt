@@ -13,13 +13,13 @@ import app.snapsync.model.UploadError
 import app.snapsync.eventcreation.CreationStatusSource
 import app.snapsync.eventcreation.EventCreator
 import app.snapsync.ports.EventDetails
-import app.snapsync.join.HttpEventDetailsSource
+import app.snapsync.join.HttpEventDirectory
 import app.snapsync.join.JoinEvent
 import app.snapsync.join.JoinOutcome
 import app.snapsync.join.ManifestDeviceEnroller
-import app.snapsync.ports.PermissionRequester
+import app.snapsync.ports.PhotoAccessRequester
 import app.snapsync.model.PermissionStatus
-import app.snapsync.ports.PermissionStatusSource
+import app.snapsync.ports.PhotoAccessStatusSource
 import app.snapsync.presentation.JoinLoad
 import app.snapsync.presentation.StatusContainerHost
 import app.snapsync.model.DENYLISTED_ALBUM_TITLES
@@ -77,7 +77,7 @@ class WorldInspectorController(private val scope: CoroutineScope) {
     var host: StatusContainerHost? = null
 
     // Stable across worlds — they read the *current* [world], so no rebuild is needed.
-    val permissionSource: PermissionStatusSource = object : PermissionStatusSource {
+    val permissionSource: PhotoAccessStatusSource = object : PhotoAccessStatusSource {
         override val permission get() = world.permission.permission
     }
     val configSource: ConfigSource = object : ConfigSource {
@@ -96,7 +96,7 @@ class WorldInspectorController(private val scope: CoroutineScope) {
     var armedGrants: Boolean by mutableStateOf(true)
         private set
 
-    val requester: PermissionRequester = object : PermissionRequester {
+    val requester: PhotoAccessRequester = object : PhotoAccessRequester {
         override fun request() = launchMutation {
             world.permission.set(if (armedGrants) PermissionStatus.GRANTED else PermissionStatus.DENIED)
         }
@@ -136,7 +136,7 @@ class WorldInspectorController(private val scope: CoroutineScope) {
         joinEvent = JoinEvent(
             configSource = world.configSource,
             deviceId = { world.ownDeviceId },
-            details = HttpEventDetailsSource(world.client, world.host),
+            details = HttpEventDirectory(world.client, world.host),
             enroller = ManifestDeviceEnroller(world.manifestUploader),
             provision = { cfg ->
                 world.provision(
@@ -202,7 +202,7 @@ class WorldInspectorController(private val scope: CoroutineScope) {
     }
 
     /**
-     * Create an event through the REAL `HttpEventCreationClient` → mini-edge → marker, with a chosen
+     * Create an event through the REAL `HttpEventCreation` → mini-edge → marker, with a chosen
      * [startsAt]. The operator picks past or future so BOTH sides of the floor are drivable through the
      * real stack — a future start is what proves the theorem the design rests on: nothing uploads, not
      * because a gate refuses, but because the clamped cutoff admits no photo. The forge harness can only

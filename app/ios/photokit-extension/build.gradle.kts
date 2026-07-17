@@ -20,8 +20,8 @@ kotlin {
             api(project(":domain"))
             implementation(project(":domain:logging"))
             implementation(project(":domain:engine"))
-            // The relocated, JVM-covered upload orchestration (UploadCycle + the UploadJobPlatform seam
-            // + DiscoveryStore + UploadConfig). The iOS adapters below (IosUploadJobPlatform,
+            // The relocated, JVM-covered upload orchestration (UploadCycle + the BackgroundTransfer seam
+            // + DiscoveryStore + UploadConfig). The iOS adapters below (IosBackgroundTransfer,
             // IosDiscoveryStore) implement its seams and UploadExtensionRoot composes its UploadCycle.
             implementation(project(":capability:upload"))
             // Shared iOS PhotoKit discovery + request/token support (IosDiscovery, IosDiscoveryStore),

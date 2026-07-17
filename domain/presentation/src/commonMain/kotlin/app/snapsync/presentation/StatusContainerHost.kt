@@ -14,9 +14,9 @@ import app.snapsync.eventcreation.CreationStatusSource
 import app.snapsync.eventcreation.EventCreator
 import app.snapsync.eventcreation.MutableCreationStatusSource
 import app.snapsync.eventcreation.NoOpEventCreator
-import app.snapsync.ports.PermissionRequester
+import app.snapsync.ports.PhotoAccessRequester
 import app.snapsync.model.PermissionStatus
-import app.snapsync.ports.PermissionStatusSource
+import app.snapsync.ports.PhotoAccessStatusSource
 import app.snapsync.status.DownloadProgress
 import app.snapsync.status.DownloadStatusSource
 import app.snapsync.status.InMemoryDownloadStatusSource
@@ -66,8 +66,8 @@ class StatusContainerHost(
     // A `val` (not a bare param) because the join gate reads its CURRENT value at the moment the details
     // load resolves, to decide whether to show the photo-access explainer (capability `join-event`). That
     // is a snapshot, not an observation — the phase advances only by user action.
-    private val permissionSource: PermissionStatusSource,
-    private val requester: PermissionRequester,
+    private val permissionSource: PhotoAccessStatusSource,
+    private val requester: PhotoAccessRequester,
     private val configSource: ConfigSource,
     private val store: ConfigStore,
     private val scope: CoroutineScope,
@@ -331,7 +331,7 @@ class StatusContainerHost(
      *
      * Requests permission and advances to the confirm phase in one action. It does **not** await the
      * outcome: `request()` returns nothing and cannot suspend (capability `permission-gate`) — the grant
-     * arrives only via `PermissionStatusSource` — so the phase advances immediately and the system dialog
+     * arrives only via `PhotoAccessStatusSource` — so the phase advances immediately and the system dialog
      * lands modally over the confirm surface, with the cutoff row already behind it. A no-op on any other
      * phase.
      */

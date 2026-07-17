@@ -24,7 +24,7 @@ The **Re-provision resets sync state** requirement was scoped explicitly to this
 ## Requirements
 ### Requirement: Background upload extension target
 
-On iOS ≥26.1 the system SHALL provide an iOS app-extension target conforming to the iOS 26.1 `PHBackgroundResourceUploadExtension` protocol (an ExtensionKit `AppExtension`, declared via a `@main` Swift principal class), embedded in the host app with `NSExtensionPointIdentifier = com.apple.photos.background-upload`. The platform-agnostic upload **orchestration** — the upload cycle (`UploadCycle`), the fine-grained OS-verb platform seam (`UploadJobPlatform`), the discovery-cursor port (`DiscoveryStore`), and the config assembly (`UploadConfig`/`buildUploadConfig`) — SHALL live in a Kotlin Multiplatform capability module `:capability:upload` that declares **`jvm()`** alongside `iosArm64`/`iosSimulatorArm64`, depending only on `:domain:engine` and `:domain:gallery` (for the shared `assetIdFromUploadKey` parser) — no Compose/UI. Because that module has a `jvm()` target, its orchestration tests run on JVM (and the iOS simulator) per testing rule 1. The **iOS platform adapters** (`IosPhotoKitUploadPlatform` — renamed from `IosUploadJobPlatform` — and `IosDiscoveryStore`), the composition root (`UploadExtensionRoot`), and the compile-time host read (`uploadHostFromBundle`) SHALL live in a lean `:app:ios:photokit-extension` module that **composes** `:capability:upload` (plus `:capability:upload-url`'s real `EdgeUploadRequestProvider` and `:capability:config`'s Keychain-backed `ConfigSource`) and the shared PhotoKit discovery module `:app:ios:photokit-discovery` (the `IosDiscovery` change-token walk + request builder + token archiver, shared with the `ios-url-session-upload` adapter), and is packaged as its own static framework. The Swift shell SHALL be a thin pass-through that forwards `process()` and `notifyTermination()` into the Kotlin core; all discovery, decision, ledger, and job-disposition logic SHALL be Kotlin/Native. The extension `Info.plist` SHALL declare `BackgroundUploadURLBase` as the build setting `$(BACKGROUND_UPLOAD_URL_BASE)` (the compile-time edge host the system permits). The extension SHALL NOT relax App Transport Security: the `Info.plist` SHALL declare no `NSAppTransportSecurity` exception (no `NSAllowsLocalNetworking`, no `NSAllowsArbitraryLoads`), so default ATS applies and the upload host MUST be a valid HTTPS endpoint. Supplying a non-HTTPS host is a build/configuration error; iOS blocks the plaintext request at the platform level.
+On iOS ≥26.1 the system SHALL provide an iOS app-extension target conforming to the iOS 26.1 `PHBackgroundResourceUploadExtension` protocol (an ExtensionKit `AppExtension`, declared via a `@main` Swift principal class), embedded in the host app with `NSExtensionPointIdentifier = com.apple.photos.background-upload`. The platform-agnostic upload **orchestration** — the upload cycle (`UploadCycle`), the fine-grained OS-verb platform seam (`BackgroundTransfer`), the discovery-cursor port (`DiscoveryStore`), and the config assembly (`UploadConfig`/`buildUploadConfig`) — SHALL live in a Kotlin Multiplatform capability module `:capability:upload` that declares **`jvm()`** alongside `iosArm64`/`iosSimulatorArm64`, depending only on `:domain:engine` and `:domain:gallery` (for the shared `assetIdFromUploadKey` parser) — no Compose/UI. Because that module has a `jvm()` target, its orchestration tests run on JVM (and the iOS simulator) per testing rule 1. The **iOS platform adapters** (`IosPhotoKitUploadPlatform` — renamed from `IosBackgroundTransfer` — and `IosDiscoveryStore`), the composition root (`UploadExtensionRoot`), and the compile-time host read (`uploadHostFromBundle`) SHALL live in a lean `:app:ios:photokit-extension` module that **composes** `:capability:upload` (plus `:capability:upload-url`'s real `EdgeUploadRequestProvider` and `:capability:config`'s Keychain-backed `ConfigSource`) and the shared PhotoKit discovery module `:app:ios:photokit-discovery` (the `IosDiscovery` change-token walk + request builder + token archiver, shared with the `ios-url-session-upload` adapter), and is packaged as its own static framework. The Swift shell SHALL be a thin pass-through that forwards `process()` and `notifyTermination()` into the Kotlin core; all discovery, decision, ledger, and job-disposition logic SHALL be Kotlin/Native. The extension `Info.plist` SHALL declare `BackgroundUploadURLBase` as the build setting `$(BACKGROUND_UPLOAD_URL_BASE)` (the compile-time edge host the system permits). The extension SHALL NOT relax App Transport Security: the `Info.plist` SHALL declare no `NSAppTransportSecurity` exception (no `NSAllowsLocalNetworking`, no `NSAllowsArbitraryLoads`), so default ATS applies and the upload host MUST be a valid HTTPS endpoint. Supplying a non-HTTPS host is a build/configuration error; iOS blocks the plaintext request at the platform level.
 
 #### Scenario: Extension declares the PhotoKit background-upload point
 - **WHEN** the extension target is built
@@ -36,7 +36,7 @@ On iOS ≥26.1 the system SHALL provide an iOS app-extension target conforming t
 
 #### Scenario: Orchestration is JVM-reachable
 - **WHEN** the upload orchestration's tests are run
-- **THEN** because `UploadCycle`/`UploadJobPlatform`/`DiscoveryStore`/`UploadConfig` live in `:capability:upload` (a `jvm()`-enabled module), the tests execute on JVM **and** `iosSimulatorArm64`, not on the iOS targets alone
+- **THEN** because `UploadCycle`/`BackgroundTransfer`/`DiscoveryStore`/`UploadConfig` live in `:capability:upload` (a `jvm()`-enabled module), the tests execute on JVM **and** `iosSimulatorArm64`, not on the iOS targets alone
 
 #### Scenario: Extension adapters compose the capability
 - **WHEN** the extension's composition root assembles a cycle
@@ -179,7 +179,7 @@ reads no manifest state.
 
 #### Scenario: Only the extension writes on ≥26.1
 - **WHEN** the app and extension are both assembled on iOS ≥26.1
-- **THEN** the extension constructs the `LedgerWriter` and the app constructs none — it reads the ledger only through `LedgerBackend`'s read and reset-family operations
+- **THEN** the extension constructs the `LedgerWriter` and the app constructs none — it reads the ledger only through `LedgerStore`'s read and reset-family operations
 
 ### Requirement: iOS 26.1 deployment deviation
 
@@ -532,7 +532,7 @@ gone, and a same-event cycle never reconciles — so the photos that were mid-up
 permanently abandoned. With both clears, the next full enumeration re-discovers the cleared keys and
 re-creates exactly the not-yet-stored jobs (stored files remain `COMPLETED` and are skipped). The app
 SHALL route both disable paths through a single helper so they cannot diverge, and SHALL use the
-`LedgerBackend` directly (constructing no `LedgerWriter`), since `clearRequested` is an app-side
+`LedgerStore` directly (constructing no `LedgerWriter`), since `clearRequested` is an app-side
 reset-family operation.
 
 #### Scenario: A re-register self-heals instead of orphaning
@@ -611,7 +611,7 @@ Darwin notify center) after every `process()` run — once `cycle.run()` returns
 tri-state result (`completed` / `processing` / `failure`) — to signal the main app that the ledger may
 have changed and status should be re-read. The post SHALL be **payload-free** (its only
 promise is "re-read the truth", so coalescing and missed signals are harmless) and SHALL be made from
-the **extension composition root** (`UploadExtensionRoot`), **not** from `LedgerBackend` — the ledger
+the **extension composition root** (`UploadExtensionRoot`), **not** from `LedgerStore` — the ledger
 backend continues to post no cross-process notification (its change flow stays in-process). The post
 SHALL be **unconditional** (fired on every run, so both a rising in-flight count and a drain are
 signalled) and best-effort (a post failure SHALL NOT affect the returned processing result).
@@ -631,7 +631,7 @@ response is specified in `sync-status`.
 
 #### Scenario: The backend still posts no cross-process ding
 - **WHEN** the extension writes the ledger during the cycle
-- **THEN** `LedgerBackend` posts no cross-process notification; the only cross-process post is the
+- **THEN** `LedgerStore` posts no cross-process notification; the only cross-process post is the
   composition-root liveness notification after the cycle
 
 ### Requirement: The extension root contains only what is tier-specific

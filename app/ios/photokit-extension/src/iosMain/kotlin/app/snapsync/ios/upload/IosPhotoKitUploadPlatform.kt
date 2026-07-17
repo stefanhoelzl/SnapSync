@@ -8,7 +8,7 @@ import app.snapsync.ports.CreateResult
 import app.snapsync.ports.Discovery
 import app.snapsync.ports.PlatformJobState
 import app.snapsync.ports.PlatformUploadJob
-import app.snapsync.ports.UploadJobPlatform
+import app.snapsync.ports.BackgroundTransfer
 import app.snapsync.logging.invocation
 import co.touchlab.kermit.Logger
 import kotlinx.cinterop.BetaInteropApi
@@ -36,7 +36,7 @@ import platform.Photos.PHPhotoLibrary
 import platform.Photos.PHPhotosErrorLimitExceeded
 
 /**
- * The PhotoKit (iOS ≥26.1) implementation of [UploadJobPlatform] — the OS-owned upload-job queue:
+ * The PhotoKit (iOS ≥26.1) implementation of [BackgroundTransfer] — the OS-owned upload-job queue:
  * fetch/retry/acknowledge system jobs and create jobs. Discovery, request-building, and change-token
  * archiving are identical across both upload tiers and delegated to the shared [IosDiscovery]
  * (`:app:ios:photokit-discovery`); only the job lifecycle differs and stays here. All decisions live
@@ -49,7 +49,7 @@ import platform.Photos.PHPhotosErrorLimitExceeded
 class IosPhotoKitUploadPlatform(
     private val log: Logger,
     private val discovery: IosDiscovery,
-) : UploadJobPlatform {
+) : BackgroundTransfer {
 
     private val library: PHPhotoLibrary get() = PHPhotoLibrary.sharedPhotoLibrary()
 

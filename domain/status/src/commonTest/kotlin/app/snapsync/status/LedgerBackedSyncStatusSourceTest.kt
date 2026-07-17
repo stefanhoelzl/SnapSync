@@ -5,7 +5,7 @@ import app.snapsync.model.SyncStatus
 
 import app.snapsync.gallery.InMemoryGalleryStatusSource
 import app.snapsync.model.PermissionStatus
-import app.snapsync.ports.PermissionStatusSource
+import app.snapsync.ports.PhotoAccessStatusSource
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertIs
@@ -155,7 +155,7 @@ class LedgerBackedSyncStatusSourceTest {
     }
 }
 
-private class FakePermissionSource(initial: PermissionStatus) : PermissionStatusSource {
+private class FakePermissionSource(initial: PermissionStatus) : PhotoAccessStatusSource {
     val state = MutableStateFlow(initial)
     override val permission: StateFlow<PermissionStatus> = state
 }

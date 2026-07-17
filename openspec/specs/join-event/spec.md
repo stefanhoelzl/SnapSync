@@ -339,7 +339,7 @@ iOS raises the photo dialog at most once: from `DENIED` a request is a silent no
 promising a dialog that cannot appear would be false. A `DENIED` joiner instead meets the joined layer's
 existing `NeedsAccess` Settings affordance (capability `sync-status-screen`).
 
-The explainer's **confirm** ("I understand") SHALL call `PermissionRequester.request()` and advance to
+The explainer's **confirm** ("I understand") SHALL call `PhotoAccessRequester.request()` and advance to
 the loaded/confirm phase in the same action. Because `request()` returns nothing and cannot suspend
 (capability `permission-gate`), the phase SHALL advance immediately rather than await an outcome; the
 system dialog lands over the confirm surface. The explainer's **cancel** SHALL discard the pending join
@@ -364,7 +364,7 @@ surface of its own.
 
 #### Scenario: The confirm requests permission and advances to the confirm surface
 - **WHEN** the user takes the explainer's confirm action
-- **THEN** `PermissionRequester.request()` is called exactly once and the gate advances to the loaded/confirm phase carrying the same event name and default cutoff
+- **THEN** `PhotoAccessRequester.request()` is called exactly once and the gate advances to the loaded/confirm phase carrying the same event name and default cutoff
 
 #### Scenario: Cancelling the explainer abandons the join
 - **WHEN** the user cancels on the explain-access phase
@@ -465,8 +465,8 @@ and the not-started state never appears for them.
 
 ### Requirement: One details client
 
-The app SHALL have exactly one `GET /events/:eventId` client: the `EventDetailsSource` seam and its
-`HttpEventDetailsSource` implementation in `:capability:join`. Every consumer of an event's details
+The app SHALL have exactly one `GET /events/:eventId` client: the `EventDirectory` seam and its
+`HttpEventDirectory` implementation in `:capability:join`. Every consumer of an event's details
 SHALL read through it — the join gate's details fetch AND the best-effort name refresh (the
 scan-path fill and the foreground re-fetch, capability `event-link`). The name refresh SHALL read
 the name from a `Found` outcome and treat every other outcome (`NotFound`, `Failed` — including a
@@ -478,7 +478,7 @@ rejects).
 #### Scenario: The name refresh reads through the details client
 
 - **WHEN** the foreground name refresh (or the scan-path fill) fetches the configured event
-- **THEN** it calls the same `EventDetailsSource` the join gate uses, and updates the stored name
+- **THEN** it calls the same `EventDirectory` the join gate uses, and updates the stored name
   only from a `Found` outcome
 
 #### Scenario: A non-Found outcome leaves the name unchanged

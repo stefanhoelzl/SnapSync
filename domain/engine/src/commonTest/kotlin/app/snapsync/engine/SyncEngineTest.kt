@@ -22,7 +22,7 @@ import kotlin.test.assertSame
 class SyncEngineTest {
 
     private val provider = RecordingUploadRequestProvider()
-    private val ledger = LedgerWriter(InMemoryLedgerBackend())
+    private val ledger = LedgerWriter(InMemoryLedgerStore())
     private val engine = SyncEngine(provider, ledger)
 
     private fun resource(

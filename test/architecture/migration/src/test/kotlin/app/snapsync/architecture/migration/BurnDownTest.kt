@@ -137,8 +137,8 @@ class BurnDownTest {
                 if (declared("""enum class ArrowLevel""") > 0 && declared("""enum class Arrow\b""") > 0) {
                     add("Arrow/ArrowLevel duplicate enum")
                 }
-                val uploaders = declared("""class \w*DeviceManifestUploader""")
-                if (uploaders > 1) add("DeviceManifestUploader ×$uploaders (keep 1)")
+                val uploaders = declared("""class \w*Enrollment""")
+                if (uploaders > 1) add("Enrollment ×$uploaders (keep 1)")
             }
             Row("deletion ledger (dead weight still present)", items.size, items.joinToString("; "))
         }.getOrElse { broken("deletion ledger", it) }

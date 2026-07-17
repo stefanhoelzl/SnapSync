@@ -39,7 +39,7 @@ enum class CreationFailureReason {
 }
 
 /**
- * The command port for creating an event: fire-and-forget, like `PermissionRequester`. It MUST NOT
+ * The command port for creating an event: fire-and-forget, like `PhotoAccessRequester`. It MUST NOT
  * return a value and MUST NOT suspend; the outcome arrives exclusively via [CreationStatusSource]
  * (in-flight then either config becoming present, or [CreationStatus.Failed]).
  *

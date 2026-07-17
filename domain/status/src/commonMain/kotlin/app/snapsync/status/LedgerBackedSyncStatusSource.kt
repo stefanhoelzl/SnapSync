@@ -5,7 +5,7 @@ import app.snapsync.model.SyncStatus
 
 import app.snapsync.ports.GalleryStatusSource
 import app.snapsync.model.PermissionStatus
-import app.snapsync.ports.PermissionStatusSource
+import app.snapsync.ports.PhotoAccessStatusSource
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -35,7 +35,7 @@ import kotlinx.coroutines.launch
  */
 fun LedgerBackedSyncStatusSource(
     ledgerCounts: LedgerCountsSource,
-    permission: PermissionStatusSource,
+    permission: PhotoAccessStatusSource,
     gallery: GalleryStatusSource,
     scope: CoroutineScope,
 ): SyncStatusSource {

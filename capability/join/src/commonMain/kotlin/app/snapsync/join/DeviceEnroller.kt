@@ -1,7 +1,7 @@
 package app.snapsync.join
 
 import app.snapsync.model.DeviceManifest
-import app.snapsync.ports.DeviceManifestUploader
+import app.snapsync.ports.Enrollment
 import app.snapsync.model.encodeToJson
 
 /**
@@ -15,12 +15,12 @@ interface DeviceEnroller {
 
 /**
  * [DeviceEnroller] that writes a **register-only empty** device manifest (`{ deviceId, assets: [] }`)
- * via the existing [DeviceManifestUploader] seam (`PUT /events/<eventId>/devices/<deviceId>`). The empty
+ * via the existing [Enrollment] seam (`PUT /events/<eventId>/devices/<deviceId>`). The empty
  * manifest contributes nothing to the complete-only union read; it exists only to register membership.
  * The device's real asset manifest is written later by the normal upload cycle (last-write-wins).
  */
 class ManifestDeviceEnroller(
-    private val uploader: DeviceManifestUploader,
+    private val uploader: Enrollment,
 ) : DeviceEnroller {
 
     override suspend fun enroll(eventId: String, deviceId: String): Boolean {

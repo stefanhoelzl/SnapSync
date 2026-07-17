@@ -1,7 +1,7 @@
 package app.snapsync.ios.discovery
 
 import app.snapsync.model.UploadRequest
-import app.snapsync.ports.GalleryResourceEnumerator
+import app.snapsync.ports.PhotoLibrary
 import app.snapsync.ports.Discovery
 import co.touchlab.kermit.Logger
 import kotlinx.cinterop.BetaInteropApi
@@ -30,7 +30,7 @@ import platform.Photos.PHPhotoLibrary
 @OptIn(ExperimentalForeignApi::class, BetaInteropApi::class)
 class IosDiscovery(
     private val log: Logger,
-    private val enumerator: GalleryResourceEnumerator,
+    private val enumerator: PhotoLibrary,
 ) {
     private val library: PHPhotoLibrary get() = PHPhotoLibrary.sharedPhotoLibrary()
 
