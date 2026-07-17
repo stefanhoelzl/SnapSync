@@ -62,7 +62,7 @@ on drift; regenerate instead.
 
 ## `:domain:download-store`
 
-- depends on: —
+- depends on: `:domain:engine`
 - interfaces declared (commonMain): `DownloadStore`, `SuppressionSource`
 
 ## `:domain:engine`

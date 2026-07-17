@@ -2,13 +2,11 @@ package app.snapsync.downloadstore
 
 import app.cash.sqldelight.driver.native.NativeSqliteDriver
 import app.snapsync.downloadstore.db.DownloadDatabase
+import app.snapsync.engine.LEDGER_APP_GROUP
 import kotlinx.cinterop.ExperimentalForeignApi
 import platform.Foundation.NSFileManager
 import platform.Foundation.NSFileProtectionCompleteUntilFirstUserAuthentication
 import platform.Foundation.NSFileProtectionKey
-
-/** The App Group shared by the host app and the background-upload extension (same as the ledger's). */
-private const val DOWNLOAD_APP_GROUP: String = "group.app.snapsync"
 
 /** The download store's own DB file — distinct from the extension-written `ledger.db`. */
 private const val DOWNLOAD_DB_NAME: String = "downloads.db"
@@ -22,7 +20,7 @@ private const val DOWNLOAD_DB_NAME: String = "downloads.db"
  */
 @OptIn(ExperimentalForeignApi::class)
 fun iosDownloadStore(): SqlDelightDownloadStore {
-    val basePath = appGroupContainerPath(DOWNLOAD_APP_GROUP)
+    val basePath = appGroupContainerPath(LEDGER_APP_GROUP)
     val driver = NativeSqliteDriver(
         schema = DownloadDatabase.Schema,
         name = DOWNLOAD_DB_NAME,
