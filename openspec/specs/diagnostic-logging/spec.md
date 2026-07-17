@@ -10,12 +10,11 @@ redaction), size-bounded (10 MB roll), and self-explaining — every platform in
 point logs enter/exit with parameters, result, and duration; every line carries a `[<entryPoint>]`
 ambient prefix tracing it to what triggered it; every HTTP request logs one line; and full-library
 enumeration is accountable via a per-cycle summary. Cross-cutting infra lives in `:domain`'s `model/`
-zone (the `Logger.invocation` helper and the `LogContext` ambient prefix — an interim seat that
-dissolves into the `compose/` flow decorators, migration step 8) and in `:adapter:ios:ext-safe`
-(the consolidated device-log writers).
-
+zone (the `Logger.invocation` helper, driving the injected `ports/LogScope` seam — migration step 8
+C1 resolved the step-5 interim seat this way, not as compose/ decorators) and in
+`:adapter:ios:ext-safe` (the consolidated device-log writers plus the process-global ambient
+context they read, `LogContext`/`IosLogScope`).
 ## Requirements
-
 ### Requirement: Per-process un-redacted device log
 
 Each process (the app and the upload extension) SHALL write its diagnostic log verbatim to its own
@@ -74,7 +73,12 @@ app-driven upload controller.
 
 Every log line SHALL carry a `[<entryPoint>]` prefix naming the outermost entry point that triggered
 the work, so downstream engine, HTTP, and download lines trace back to their trigger. The prefix
-SHALL NOT include a process token (the file identifies the process).
+SHALL NOT include a process token (the file identifies the process). The ambient mechanism SHALL sit
+behind `:domain`'s `ports/LogScope` seam: platform-free code drives the injected `LogScope`
+(defaulting to `LogScope.NoOp` off-device), and the process-global ambient context the device-log
+writers read (`LogContext`, driven via `IosLogScope`) SHALL live in `:adapter:ios:ext-safe` beside
+those writers — `:domain` holds no global mutable state for it (spec `module-architecture`, "State
+and authority"; migration step 8 C1).
 
 #### Scenario: Downstream line inherits the trigger
 - **WHEN** a silent push triggers `onSilentPush`, which drives a download reconcile
@@ -120,3 +124,4 @@ uploaded.
 #### Scenario: Skips stay silent
 - **WHEN** the engine returns `AlreadyUploaded` for a resource during enumeration
 - **THEN** no per-asset line is written for that resource (only the cycle summary reflects it)
+

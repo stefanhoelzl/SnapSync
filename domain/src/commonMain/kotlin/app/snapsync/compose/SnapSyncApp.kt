@@ -9,7 +9,9 @@ import app.snapsync.feature.download.DownloadPushReceiver
 import app.snapsync.feature.download.DownloadStatusSource
 import app.snapsync.feature.download.QueuedPhotoDownloadJobs
 import app.snapsync.feature.download.StoreDownloadStatusSource
+import app.snapsync.feature.membership.EventName
 import app.snapsync.feature.membership.JoinEvent
+import app.snapsync.feature.membership.JoinOutcome
 import app.snapsync.feature.membership.LeaveEvent
 import app.snapsync.feature.membership.ManifestDeviceEnroller
 import app.snapsync.feature.status.LedgerBackedSyncStatusSource
@@ -25,6 +27,7 @@ import app.snapsync.flow.DownloadBackstop
 import app.snapsync.flow.Foreground
 import app.snapsync.flow.Provision
 import app.snapsync.flow.SilentPush
+import app.snapsync.flow.UserCommands
 import app.snapsync.model.Contribution
 import app.snapsync.model.EventConfig
 import app.snapsync.model.PermissionStatus
@@ -39,6 +42,7 @@ import app.snapsync.ports.DownloadStore
 import app.snapsync.ports.DownloadTransport
 import app.snapsync.ports.DownloadTransportHost
 import app.snapsync.ports.EventCreation
+import app.snapsync.ports.EventDetails
 import app.snapsync.ports.EventDirectory
 import app.snapsync.ports.EventUnionSource
 import app.snapsync.ports.Enrollment
@@ -56,11 +60,11 @@ import kotlinx.coroutines.launch
  * `module-architecture`, "One shared composition"). The shell constructs its platform adapters and
  * supplies them here; [snapSyncApp] composes the feature graph.
  *
- * Three groups of inputs are deliberately **lambdas built by the shell**, each with the migration
- * step that dissolves it (PLAN steps 8–9): the coordination hooks ([provision], [onEventMinted],
- * [notifyLeave]) are flow material — `flow/` does not exist until step 8, so the shell's
- * coordination functions are injected rather than re-seated twice; [uploadProducer] is the tier
- * selection, which becomes the pure sealed `resolveComposition` at step 8; [albumExcludedAssetIds]
+ * Some inputs are deliberately **lambdas built by the shell**: the coordination hooks ([provision],
+ * [onEventMinted], [notifyLeave]) bridge into the shell's entry surfaces; [uploadProducer] is the
+ * resolved tier's *mechanism* thunk — since step 8 C3 the shell selects it via the pure sealed
+ * `resolveComposition` switch (spec `module-architecture`, "One shared composition"), so only the
+ * selected tier's mechanism is ever constructed; [albumExcludedAssetIds]
  * carries the app process's admit-on-doubt wrapper, shared verbatim with the own-device status
  * total so the two consumers of the policy can never diverge.
  */
@@ -89,7 +93,7 @@ class AppPorts(
     val deviceId: () -> String,
     val now: () -> Long,
     /** The tier's selected producer (exactly one per process); a thunk so the non-selected tier's
-     *  mechanism is never constructed. Becomes `resolveComposition` at step 8. */
+     *  mechanism is never constructed. Selected by the shell's one `resolveComposition` switch. */
     val uploadProducer: () -> UploadProducer,
     val albumManager: AlbumManager,
     val albumMapStore: AlbumMapStore,
@@ -112,10 +116,9 @@ class AppPorts(
     val unregisterLiveness: () -> Unit = {},
     /** Queue the download import-tail backstop `BGProcessingTask` (`photo-download` 5.4). */
     val scheduleBackstop: () -> Unit = {},
-    /** Best-effort event-name fetch by id — a shell helper until the rule sinks into a feature (C3). */
-    val fetchName: suspend (eventId: String) -> Unit = {},
-    /** Create the event album if the current membership opted in — a shell helper until C3. */
-    val ensureAlbumIfOptedIn: suspend () -> Unit = {},
+    /** Present the platform share surface for the invite URL (`UIActivityViewController` on iOS) —
+     *  the platform half of the [UserCommands.share] command; the default keeps it inert off-device. */
+    val share: (String) -> Unit = {},
     /** The upload arm's silent-push receiver on the app-driven tier, or `null` on iOS ≥26.1. A thunk so
      *  the tier controller (which depends on this graph) resolves lazily, never at composition time. */
     val uploadSilentPush: () -> (suspend (eventId: String) -> Unit)? = { null },
@@ -262,6 +265,20 @@ class AppCore internal constructor(
         )
     }
 
+    // The event-name refresh rule (capability `join-event`): whether a fetched name is persisted —
+    // seated in `feature/membership` because the membership config is that feature's durable state.
+    // The *fetch* it pairs with is [fetchEventName], coordinated by the Foreground/Provision flows.
+    val eventName: EventName by lazy {
+        EventName(ports.configSource, ports.configStore)
+    }
+
+    // The best-effort `GET /events/:id` name fetch (`null` on offline / 404 / parse) — the
+    // `EventDirectory` port effect the flows coordinate over, built here because a flow may not
+    // touch a port directly (law "flow/ never references ports/").
+    private val fetchEventName: suspend (eventId: String) -> String? = { eventId ->
+        (ports.directory.fetch(eventId) as? EventDetails.Found)?.name
+    }
+
     /** The create-event status the use-case drives and the container reads (same instance). */
     val creationStatus: MutableCreationStatusSource = MutableCreationStatusSource()
 
@@ -296,10 +313,11 @@ class AppCore internal constructor(
         Foreground(
             scope = scope,
             downloadController = downloadController,
+            eventName = eventName,
             pumpForeground = ports.pumpForeground,
             refreshStatus = { refreshStatusSources() },
             activeEventId = { ports.configSource.config.value?.eventId },
-            fetchName = ports.fetchName,
+            fetchEventName = fetchEventName,
             refreshAttestation = ports.refreshAttestation,
         )
     }
@@ -337,23 +355,62 @@ class AppCore internal constructor(
             scope = scope,
             uploadArm = uploadArm,
             downloadController = downloadController,
+            albumCoordinator = albumCoordinator,
+            eventName = eventName,
             activeEventId = { ports.configSource.config.value?.eventId },
             notifyLeave = ports.notifyLeave,
             saveConfig = { cfg -> ports.configStore.save(cfg) },
             refreshStatus = { refreshStatusSources() },
             isGranted = { ports.photoAccess.permission.value == PermissionStatus.GRANTED },
-            ensureAlbumIfOptedIn = ports.ensureAlbumIfOptedIn,
-            fetchName = ports.fetchName,
+            fetchEventName = fetchEventName,
         )
     }
 
-    init {
-        // ── Port-state-transition subscriptions (migration step 8): installed here in `compose/`, over
-        // the compose scope. Forge-safe: the forged path never constructs [AppCore], so no live
-        // collector starts. Two independent collectors on the permission StateFlow, matching the shell's
-        // former `startUploadsOnGrant` + `ensureAlbumOnGrant`. Both fire only on a *transition* to
-        // GRANTED (a StateFlow conflates an unchanged value), so neither can rescue a membership
-        // provisioned while access was already granted — the provision flow owns that case.
+    // ── The user-tap command bundle (spec `module-architecture`, "Commands cross one door"): built and
+    // decorated only here in `compose/`, injected into `StatusContainerHost` by constructor — so
+    // presentation never references a feature command directly. Each command's body is the exact
+    // coordination the shell's individual lambdas used to carry (migration step 8 C3). ────────────────
+
+    val userCommands: UserCommands by lazy {
+        UserCommands(
+            // Leave: cancel in-flight downloads and drop non-terminal rows (imported photos stay;
+            // suppression rows are permanent), then run the leave use-case (disable producer → notify
+            // the backend it is leaving → clear config/producer). Imported foreign photos are never
+            // touched.
+            leave = {
+                downloadController.onLeaveOrSwitch()
+                leaveEvent.leave()
+            },
+            // Create: mint via the backend; the use-case routes the minted event into the SAME join
+            // gate a scanned QR takes (fire-and-forget; outcomes ride `creationStatus`).
+            create = { name, startsAt -> eventCreator.create(name, startsAt) },
+            // The join gate's commit (capability `join-event`): enroll (register-only empty manifest)
+            // then provision. `true` unless enrollment failed (the same-event no-op is a success).
+            commitJoin = { eventId, name, startsAt, minPhotoDate, direction, saveToAlbum ->
+                joinEvent.join(eventId, name, startsAt, minPhotoDate, direction, saveToAlbum) !=
+                    JoinOutcome.EnrollFailed
+            },
+            // Share is pure platform (a system sheet over the top view controller) — the shell's lambda,
+            // passed through undecorated.
+            share = ports.share,
+        )
+    }
+
+    /**
+     * Install the two **port-state-transition subscriptions** on the permission StateFlow (spec
+     * `module-architecture`, "Commands cross one door": installed in `compose/`; the transition
+     * semantics — start-on-grant, sole-creator album ensure — are feature rules). Matching the shell's
+     * former `startUploadsOnGrant` + `ensureAlbumOnGrant`, both fire only on a *transition* to GRANTED
+     * (a StateFlow conflates an unchanged value), so neither can rescue a membership provisioned while
+     * access was already granted — the provision flow owns that case.
+     *
+     * Deliberately an **explicit step, not `init`** (step 8 C3, restoring the pre-C2 timing): the app
+     * shell invokes it from its host-assembly path — the only place the collectors ever installed — so
+     * a cold backstop/URLSession wake that merely touches [AppCore] starts **no** producer via the
+     * permission StateFlow's replay, exactly as before. Call it once; each call installs a fresh pair
+     * of collectors.
+     */
+    fun installPermissionSubscriptions() {
         scope.launch {
             ports.photoAccess.permission.collect { status ->
                 if (status == PermissionStatus.GRANTED) uploadArm.onPermissionGranted()
@@ -363,7 +420,12 @@ class AppCore internal constructor(
             ports.photoAccess.permission.collect { status ->
                 // The app is the sole album creator, and sync needs the same grant, so the album exists
                 // before the first synced photo — both processes then only ADD (capability `event-album`).
-                if (status == PermissionStatus.GRANTED) ports.ensureAlbumIfOptedIn()
+                // Unconditional call: the membership's opt-in/name gate is the coordinator's own guard.
+                if (status == PermissionStatus.GRANTED) {
+                    ports.configSource.config.value?.let { cfg ->
+                        albumCoordinator.ensureAlbum(cfg.eventId, cfg.name, cfg.saveToAlbum)
+                    }
+                }
             }
         }
     }

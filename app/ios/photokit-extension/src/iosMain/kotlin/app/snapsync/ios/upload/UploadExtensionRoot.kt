@@ -28,6 +28,7 @@ import app.snapsync.membership.HttpDeviceFilesSource
 import app.snapsync.membership.IosJoinedEventMarker
 import app.snapsync.membership.darwinHttpClient
 import app.snapsync.logging.FileLogWriter
+import app.snapsync.logging.appBuildVersion
 import app.snapsync.logging.PublicNSLogWriter
 import app.snapsync.logging.invocation
 import co.touchlab.kermit.Logger
@@ -36,7 +37,6 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.runBlocking
-import platform.Foundation.NSBundle
 import platform.CoreFoundation.CFNotificationCenterGetDarwinNotifyCenter
 import platform.CoreFoundation.CFNotificationCenterPostNotification
 import platform.CoreFoundation.CFStringCreateWithCString
@@ -70,18 +70,10 @@ object UploadExtensionRoot {
         Logger.setLogWriters(PublicNSLogWriter(), FileLogWriter())
         // Boot banner (capability `diagnostic-logging`, D5) — the extension is a separate, short-lived
         // process; name it + the build version so its file is unambiguous. `log` isn't assigned yet.
-        Logger.withTag("UploadExtension").i { "=== extension process start build=${buildVersion()} ===" }
+        Logger.withTag("UploadExtension").i { "=== extension process start build=${appBuildVersion()} ===" }
     }
 
     private val log = Logger.withTag("UploadExtension")
-
-    /** Extension short-version(build) for the boot banner (capability `diagnostic-logging`, D5). */
-    private fun buildVersion(): String {
-        val bundle = NSBundle.mainBundle
-        val short = bundle.objectForInfoDictionaryKey("CFBundleShortVersionString") as? String ?: "?"
-        val build = bundle.objectForInfoDictionaryKey("CFBundleVersion") as? String ?: "?"
-        return "$short($build)"
-    }
 
     // The cross-process liveness Darwin notification name, created once (a constant CFString for the
     // process lifetime). See the sync-status spec and the app-side observer in SnapSyncRoot.

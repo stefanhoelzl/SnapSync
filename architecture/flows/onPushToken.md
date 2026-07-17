@@ -13,12 +13,11 @@ failure. `log.*` statements are diagnostics, not flow, and are omitted from both
 sequenceDiagram
   participant OS
   participant SnapSyncRoot
-  participant pushTokenSource
+  participant shell
   OS->>SnapSyncRoot: onPushToken()
-  SnapSyncRoot->>pushTokenSource: deliver(…)
+  SnapSyncRoot->>shell: onPushToken(…)
 ```
 
 ## Not transcribable (burn-down)
 
-- line 609 — `if` conditional: `if (isForging) {`
-- line 613 — bare property read (lazy-init touch): `host`
+- none

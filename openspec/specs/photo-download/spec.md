@@ -20,7 +20,6 @@ Decision record: `changes/archive/2026-06-30-add-photo-download` (the download c
 `changes/archive/2026-07-12-fix-download-session-lifecycle` (the transfer/session lifecycle: why
 cancellation is task-level and never invalidates the background session, and the transport seam that puts
 that logic under test).
-
 ## Requirements
 ### Requirement: Foreign-asset selection by device identity
 
@@ -219,7 +218,10 @@ the app is terminated SHALL relaunch the app via `handleEventsForBackgroundURLSe
 Because no further download event wakes the app once transfers are exhausted, the client SHALL also
 drain pending imports via an OS-scheduled background task (e.g. `BGProcessingTask`) so an import that
 overran its wake window still completes without a foreground visit. Staged bytes + the store make any
-deferred import a safe retry.
+deferred import a safe retry. The backstop's coordination — defer under the protected-data gate,
+attestation wake, then the import drain — SHALL be the `flow/DownloadBackstop` trigger (`:domain`
+`flow/`, built in `compose/` with the gate and wake injected as effect lambdas); the untested app
+shell keeps only the entry-point log wrap, the re-arm, and the OS task-completion handler.
 
 That last property is **conditional, and the transfer check is its condition**. A deferred import is a safe
 retry only because staged bytes were accounted for at transfer time. Absent that check, a permanently

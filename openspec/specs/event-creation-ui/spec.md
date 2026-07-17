@@ -18,8 +18,11 @@ Decision record: `changes/archive/2026-06-27-add-event-creation-ui`.
 ### Requirement: Create-event seams and status model
 
 The create feature (`:domain`'s `feature/creation` zone, package `app.snapsync.feature.creation`) SHALL define a command port and a
-state port, consumed separately by the presentation container (mirroring the
-`PhotoAccessRequester` / `PhotoAccessStatusSource` split):
+state port. The state port is consumed by the presentation container directly (reads observe feature
+read-models); the command port is consumed by presentation **only through the injected `flow/`
+user-tap command bundle** (`UserCommands.create`, built in `compose/` over the feature's
+`EventCreator` — spec `module-architecture`, "Commands cross one door"): the container SHALL NOT
+take or reference an `EventCreator` itself.
 
 - `EventCreator` (command port): `fun create(name: String, startsAt: String)` — fire-and-forget. It MUST
   NOT return a value and MUST NOT suspend; the outcome arrives exclusively via `CreationStatusSource`.

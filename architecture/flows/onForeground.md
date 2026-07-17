@@ -13,13 +13,11 @@ failure. `log.*` statements are diagnostics, not flow, and are omitted from both
 sequenceDiagram
   participant OS
   participant SnapSyncRoot
-  participant app_foregroundFlow as app.foregroundFlow
+  participant shell
   OS->>SnapSyncRoot: onForeground()
-  SnapSyncRoot->>SnapSyncRoot: registerLivenessObserver()
-  SnapSyncRoot->>app_foregroundFlow: run()
+  SnapSyncRoot->>shell: onForeground()
 ```
 
 ## Not transcribable (burn-down)
 
-- line 453 — `if` conditional: `if (isForging) {`
-- line 457 — bare property read (lazy-init touch): `host`
+- none

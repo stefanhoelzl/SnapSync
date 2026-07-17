@@ -17,7 +17,6 @@ in whichever process ran the cycle; downloaded photos are added atomically insid
 commit, so a photo is never visible in the library but missing from the album.
 
 Decision record: `changes/archive/2026-07-08-add-event-album`.
-
 ## Requirements
 ### Requirement: Opt-in album mirroring per membership
 The system SHALL mirror an event's synced photos into a single PhotoKit album on the device — titled
@@ -46,8 +45,11 @@ underlying sync (upload or import).
 
 The **app process** SHALL be the only creator of the album. It SHALL create the album eagerly when
 photo-library permission transitions to `GRANTED` (or immediately at provision if already granted) for a
-membership whose `saveToAlbum` is `true` and whose album does not yet exist, reusing the app's existing
-grant observation. Neither the app's download path nor the upload extension SHALL ever **create** the
+membership whose `saveToAlbum` is `true` and whose album does not yet exist. The membership's opt-in
+gate SHALL be the coordinator's **own leading guard** — `AlbumCoordinator.ensureAlbum(eventId, name,
+saveToAlbum)` is a no-op returning `null` for an opted-out or nameless membership — so its callers (the
+`compose/`-installed permission-grant subscription and the `flow/Provision` trigger) call it
+unconditionally with the membership's facts and no caller can forget the rule. Neither the app's download path nor the upload extension SHALL ever **create** the
 album — they SHALL only **add** to an already-created album. Because syncing requires the same
 full-library permission, creating on the grant guarantees the album exists before the first synced photo
 is produced, so no two processes race to create it. A membership that never syncs a photo MAY therefore
@@ -129,8 +131,10 @@ best-effort skip, never a cycle failure.
 
 ### Requirement: Album orchestration is a tested commonMain coordinator over platform seams
 
-The decision logic — resolve-or-create the album, reuse-on-rejoin, dispatch-or-skip an add — SHALL live
-in a pure `commonMain` coordinator, depending on two seams: an `AlbumManager` (the iOS `PHAssetCollection`
+The decision logic SHALL live in a pure `commonMain` coordinator — the membership opt-in gate,
+resolve-or-create the album, reuse-on-rejoin, dispatch-or-skip an add, and the import-time album
+lookup (`albumIdFor(eventId, saveToAlbum)`, the opt-in-gated map read the download importer
+borrows) — depending on two seams: an `AlbumManager` (the iOS `PHAssetCollection`
 create / exists / add operations, `iosMain`, wiring-only and untested) and an `AlbumMapStore` (the shared
 leave-surviving `eventId → albumLocalId` map). The coordinator and seams SHALL be fakeable so that
 `:test:world` integration tests can assert which asset identifiers were placed into which album, and the
@@ -140,3 +144,4 @@ app or extension shells.
 #### Scenario: Placement is asserted without PhotoKit
 - **WHEN** an integration test runs the real download and upload flows over `:test:world` with a fake `AlbumManager`
 - **THEN** it can assert the exact set of asset identifiers added to the event album and that a rejoin reused the same album identifier
+

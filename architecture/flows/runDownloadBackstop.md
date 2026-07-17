@@ -13,10 +13,11 @@ failure. `log.*` statements are diagnostics, not flow, and are omitted from both
 sequenceDiagram
   participant OS
   participant SnapSyncRoot
+  participant shell
   OS->>SnapSyncRoot: runDownloadBackstop()
-  Note over SnapSyncRoot: no transcribable calls — see burn-down
+  SnapSyncRoot->>shell: runDownloadBackstop(…)
 ```
 
 ## Not transcribable (burn-down)
 
-- line 538 — `scope.launch` body: `scope.launch {`
+- none

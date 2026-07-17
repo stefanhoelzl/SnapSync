@@ -8,6 +8,7 @@ import app.snapsync.model.LedgerState
 import app.snapsync.feature.membership.LeaveEvent
 import app.snapsync.ports.PhotoAccessRequester
 import app.snapsync.presentation.Arrow
+import app.snapsync.flow.UserCommands
 import app.snapsync.presentation.StatusContainerHost
 import app.snapsync.feature.status.LedgerCounts
 import app.snapsync.presentation.SyncHealth
@@ -150,7 +151,7 @@ class FullStackIntegrationTest {
                 store = NoOpConfigStore,
                 scope = scope,
                 creationStatusSource = w.creationStatus,
-                creator = w.createEvent(scope),
+                commands = UserCommands(create = w.createEvent(scope)::create),
             )
             assertEquals(UiState.CreateEvent(), host.container.stateFlow.value)
 
@@ -237,8 +238,7 @@ class FullStackIntegrationTest {
                 store = NoOpConfigStore,
                 scope = scope,
                 creationStatusSource = w.creationStatus,
-                creator = w.createEvent(scope),
-                leave = { w.leave() },
+                commands = UserCommands(create = w.createEvent(scope)::create, leave = { w.leave() }),
             )
             host.await { it is UiState.Joined }
 
@@ -381,8 +381,7 @@ class FullStackIntegrationTest {
                 store = NoOpConfigStore,
                 scope = scope,
                 creationStatusSource = w.creationStatus,
-                creator = w.createEvent(scope),
-                leave = { leaveEvent.leave() },
+                commands = UserCommands(create = w.createEvent(scope)::create, leave = { leaveEvent.leave() }),
             )
             host.await { it is UiState.Joined }
 

@@ -13,11 +13,11 @@ failure. `log.*` statements are diagnostics, not flow, and are omitted from both
 sequenceDiagram
   participant OS
   participant SnapSyncRoot
-  participant host
+  participant shell
   OS->>SnapSyncRoot: onOpenUrl()
-  SnapSyncRoot->>host: onOpenUrl(…)
+  SnapSyncRoot->>shell: onOpenUrl(…)
 ```
 
 ## Not transcribable (burn-down)
 
-- line 591 — `if` conditional: `if (isForging) {`
+- none

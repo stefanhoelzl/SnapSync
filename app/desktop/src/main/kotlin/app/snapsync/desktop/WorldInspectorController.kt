@@ -406,7 +406,7 @@ class WorldInspectorController(private val scope: CoroutineScope) {
         val jobKeys = world.platform.liveJobKeys()
         val jobs = jobKeys.map { key -> JobRow(key, attempts = world.platform.created.count { it.filename == key }) }
         // The real jobs expose no inspection seam and their description codec is internal to
-        // :capability:download, so the world records what the controller requested (see downloadRequests).
+        // `:domain`'s feature/download, so the world records what the controller requested (see downloadRequests).
         val downloads = world.downloadRequests.distinctBy { it.ref to it.resource.resourceKey }
             .map { DownloadRow(it.ref.sourceDeviceId, it.ref.sourceAssetId, it.resource.resourceKey) }
         return InspectorSnapshot(

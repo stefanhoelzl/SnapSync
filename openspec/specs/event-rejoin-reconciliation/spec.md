@@ -21,7 +21,6 @@ Decision record: `changes/archive/2026-06-27-add-rejoin-reconciliation`.
 Generalized from **the extension** to **the upload tier** (both tiers, reconciling inside the shared
 `UploadCycle`) in `changes/archive/2026-07-12-fix-app-driven-upload-lifecycle` — it previously bound only the
 iOS ≥26.1 extension, so the app-driven tier shipped with no reconciliation at all.
-
 ## Requirements
 ### Requirement: Reconciliation gate before enabling uploads
 
@@ -33,8 +32,8 @@ signal, persisted across the tier's processes. When the configured `eventId` equ
 tier SHALL NOT fetch, enumerate, or seed, and SHALL proceed to upload. When no event is configured,
 the tier SHALL neither reconcile nor upload.
 
-The reconciliation SHALL be driven from the **shared upload cycle** (`:capability:upload`'s
-`UploadCycle`), not from each tier's composition root, and the cycle SHALL require a reconciliation to
+The reconciliation SHALL be driven from the **shared upload cycle** (`UploadCycle`, `:domain`
+`feature/upload`), not from each tier's composition root, and the cycle SHALL require a reconciliation to
 be supplied — a tier that supplies none SHALL NOT compile. Reconciliation is therefore reached on
 **every** route to a divergent ledger: a fresh join, an event switch, a leave-then-rejoin, and a
 delete-and-reinstall (which no provisioning path observes, because a cold relaunch of an

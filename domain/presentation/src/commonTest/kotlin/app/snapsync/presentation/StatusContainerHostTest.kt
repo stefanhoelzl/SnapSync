@@ -14,6 +14,7 @@ import app.snapsync.feature.creation.CreationFailureReason
 import app.snapsync.feature.creation.CreationStatus
 import app.snapsync.ports.EventCreation
 import app.snapsync.feature.creation.EventCreator
+import app.snapsync.flow.UserCommands
 import app.snapsync.feature.creation.MutableCreationStatusSource
 import app.snapsync.ports.PhotoAccessRequester
 import app.snapsync.model.PermissionStatus
@@ -155,7 +156,8 @@ private fun host(
     attested: AttestedSource = AlwaysAttested,
 ) = StatusContainerHost(
     source, permission, requester, configFake, configFake, scope,
-    loadJoinDetails = loadJoinDetails, commitJoin = commitJoin, leave = leave,
+    loadJoinDetails = loadJoinDetails,
+    commands = UserCommands(leave = leave, commitJoin = commitJoin),
     cutoffFormatter = fixedCutoffFormatter(),
     attestedSource = attested,
 )
@@ -305,7 +307,7 @@ class StatusContainerHostTest {
     // can no longer produce.
     //
     // The contract they protected is not lost; it is proved across the three layers that actually own it:
-    //  · `:domain:status`      — a non-contributing membership totals 0, without walking the library
+    //  · `:domain` feature/status — a non-contributing membership totals 0, without walking the library
     //  · here                  — a zero total hides its arrow, and a NON-zero one shows it (below)
     //  · `:test:integration`   — a real download-only join reads "In sync" through the real stack
     // Which is the point: the direction contract is now kept by the counts, so this layer need not know it.
@@ -373,7 +375,8 @@ class StatusContainerHostTest {
         val config = FakeConfig(null)
         return StatusContainerHost(
             FakeSyncStatusSource(), permission, SpyRequester(), config, config, scope,
-            creationStatusSource = MutableCreationStatusSource(creation), creator = creator,
+            creationStatusSource = MutableCreationStatusSource(creation),
+            commands = UserCommands(create = creator::create),
             cutoffFormatter = fixedCutoffFormatter(),
         )
     }
@@ -447,12 +450,15 @@ class StatusContainerHostTest {
         host = StatusContainerHost(
             FakeSyncStatusSource(), FakePermissionSource(PermissionStatus.GRANTED), SpyRequester(),
             config, config, backgroundScope,
-            creationStatusSource = creationStatus, creator = creator,
+            creationStatusSource = creationStatus,
+            commands = UserCommands(
+                create = creator::create,
+                commitJoin = { id, name, startsAt, cutoff, direction, _ ->
+                    config.save(EventConfig(id, name, cutoff, startsAt, direction))
+                    true
+                },
+            ),
             loadJoinDetails = { JoinLoad.Found("My Party", "2026-07-06T00:00:00Z") },
-            commitJoin = { id, name, startsAt, cutoff, direction, _ ->
-                config.save(EventConfig(id, name, cutoff, startsAt, direction))
-                true
-            },
         )
         host.test(this) {
             runOnCreate()
@@ -481,7 +487,8 @@ class StatusContainerHostTest {
         val host = StatusContainerHost(
             FakeSyncStatusSource(), FakePermissionSource(PermissionStatus.GRANTED), SpyRequester(),
             config, config, backgroundScope,
-            creationStatusSource = creationStatus, creator = creator,
+            creationStatusSource = creationStatus,
+            commands = UserCommands(create = creator::create),
         )
         host.test(this) {
             runOnCreate()
@@ -981,7 +988,7 @@ class StatusContainerHostTest {
         val configFake = FakeConfig()
         val containerHost = StatusContainerHost(
             FakeSyncStatusSource(), FakePermissionSource(), SpyRequester(), configFake, configFake,
-            backgroundScope, leave = { leaves++ },
+            backgroundScope, commands = UserCommands(leave = { leaves++ }),
         )
         containerHost.test(this) {
             containerHost.onLeaveEvent()
@@ -1038,7 +1045,7 @@ class StatusContainerHostTest {
         val configFake = FakeConfig(SAMPLE_CONFIG)
         val containerHost = StatusContainerHost(
             FakeSyncStatusSource(), FakePermissionSource(), SpyRequester(), configFake, configFake,
-            backgroundScope, share = { shared += it },
+            backgroundScope, commands = UserCommands(share = { shared += it }),
         )
         containerHost.test(this) {
             containerHost.onShareInvite()
@@ -1054,7 +1061,7 @@ class StatusContainerHostTest {
         val configFake = FakeConfig(null)
         val containerHost = StatusContainerHost(
             FakeSyncStatusSource(), FakePermissionSource(), SpyRequester(), configFake, configFake,
-            backgroundScope, share = { shared += it },
+            backgroundScope, commands = UserCommands(share = { shared += it }),
         )
         containerHost.test(this) {
             containerHost.onShareInvite()

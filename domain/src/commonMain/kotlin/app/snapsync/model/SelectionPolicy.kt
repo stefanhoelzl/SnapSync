@@ -20,14 +20,14 @@ package app.snapsync.model
  * the user cannot even notice it, let alone correct it. This is why there is a resolution *floor* and not a
  * resolution *allowlist*, and why the floors are skipped for edited assets.
  *
- * **Lives in `:domain:gallery` because it is the only module both consumers can see.** The upload cycle
- * (`:capability:upload`) and the status total (`:domain:status`) must apply the *identical* policy — if they
- * diverge, the status screen pegs below 100% forever — and neither depends on the other. Platform-free and
- * exercised in `commonTest` on JVM and the simulator.
+ * **Lives in `model/` because it is the only zone both consumers can see.** The upload cycle
+ * (`:domain` feature/upload) and the status total (feature/status) must apply the *identical* policy — if they
+ * diverge, the status screen pegs below 100% forever — and neither feature may reference the other.
+ * Platform-free and exercised in `commonTest` on JVM and the simulator.
  *
- * The album denylist is **not** here: album membership is a platform lookup, so it enters the cycle as an
- * injected port (its policy lives in `:capability:album`). These rules need only facts already on the
- * resource.
+ * The album denylist is **not** here as a rule: album membership is a platform lookup, so it enters the
+ * cycle as an injected port ([DENYLISTED_ALBUM_TITLES] below carries the titles; the lookup lives behind
+ * the `AlbumManager` port). These rules need only facts already on the resource.
  */
 
 /** `PHAssetMediaSubtype.photoScreenshot` — `1 shl 2`. */

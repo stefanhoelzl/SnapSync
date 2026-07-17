@@ -11,7 +11,7 @@ import platform.Foundation.NSLog
  * doubled to `%%` so nothing is interpreted as a specifier. Use only on the test device path; it
  * makes log content world-readable, which is the point here.
  *
- * Consolidated into `:domain:logging` alongside [FileLogWriter] (capability `diagnostic-logging`,
+ * Consolidated into `:adapter:ios:ext-safe` alongside [FileLogWriter] (capability `diagnostic-logging`,
  * D1); each line carries the ambient `[LogContext.current]` prefix for consistency with the file.
  */
 class PublicNSLogWriter : LogWriter() {

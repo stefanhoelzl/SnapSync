@@ -1,6 +1,8 @@
 package app.snapsync.flow
 
+import app.snapsync.feature.album.AlbumCoordinator
 import app.snapsync.feature.download.DownloadController
+import app.snapsync.feature.membership.EventName
 import app.snapsync.feature.upload.UploadArm
 import app.snapsync.model.EventConfig
 import kotlinx.coroutines.CoroutineScope
@@ -21,19 +23,26 @@ import kotlinx.coroutines.launch
  *     so its lines carry this trigger's log context, as before.
  *  4. **Arm** the tier-neutral upload lifecycle ([UploadArm.onProvision]): with access granted it starts
  *     the producer (or stops it for a download-only membership); with no access it defers to the grant.
- *  5. **Album** — create the event album now if opted in and permission is already granted (the grant
- *     subscription covers the grant-after-join case).
+ *  5. **Album** — with permission already granted, ask the coordinator for the event album (the grant
+ *     subscription covers the grant-after-join case). Called unconditionally with the membership's
+ *     facts: the opt-in gate is [AlbumCoordinator.ensureAlbum]'s own leading guard (`event-album`).
  *  6. **Reconcile** foreign downloads and **fetch the name** — each on its own escaping launch, so a
- *     slow one never blocks the join and each labels its own log lines.
+ *     slow one never blocks the join and each labels its own log lines. The name fetch fires only for
+ *     a nameless config (the scan path; a create/join carries its loaded name), and whether the result
+ *     is persisted is [EventName]'s rule.
  *
- * Port touches ([activeEventId], [notifyLeave], [saveConfig], [refreshStatus], [isGranted]) arrive as
- * `model`-typed effect lambdas built in `compose/`; [ensureAlbumIfOptedIn] and [fetchName] stay
- * `compose/`-supplied shell helpers until their rules sink into features at C3.
+ * Port touches ([activeEventId], [notifyLeave], [saveConfig], [refreshStatus], [isGranted],
+ * [fetchEventName]) arrive as `model`-typed effect lambdas built in `compose/`; the album and
+ * name rules live in their features ([AlbumCoordinator], [EventName]).
  */
 class Provision(
     private val scope: CoroutineScope,
     private val uploadArm: UploadArm,
     private val downloadController: DownloadController,
+    /** The event-album coordinator (capability `event-album`); its `ensureAlbum` owns the opt-in gate. */
+    private val albumCoordinator: AlbumCoordinator,
+    /** The name-refresh rule (capability `join-event`): stores a fetched name iff still ours + changed. */
+    private val eventName: EventName,
     /** The currently-joined event id, or `null` — the config read (a port touch). */
     private val activeEventId: () -> String?,
     /** Best-effort backend leave of a previous event on a switch. */
@@ -44,10 +53,9 @@ class Provision(
     private val refreshStatus: suspend () -> Unit,
     /** Whether photo access is fully granted (a port touch). */
     private val isGranted: () -> Boolean,
-    /** Create the event album if opted in (a `compose/`-supplied shell helper until the C3 rule sink). */
-    private val ensureAlbumIfOptedIn: suspend () -> Unit,
-    /** Best-effort event-name fetch (a `compose/`-supplied shell helper until the C3 rule sink). */
-    private val fetchName: suspend (eventId: String) -> Unit,
+    /** Best-effort event-name fetch by id, or `null` on a miss/failure — the `EventDirectory` effect
+     *  built in `compose/` (a port touch a flow may not make directly). */
+    private val fetchEventName: suspend (eventId: String) -> String?,
 ) {
     suspend fun run(cfg: EventConfig) {
         // 1. Switch: leave the previous event on the backend first (best-effort). Re-scanning the same
@@ -61,12 +69,16 @@ class Provision(
         refreshStatus()
         // 4. Drive the tier-neutral upload lifecycle; nothing is cancelled or reset (no destructive verb).
         uploadArm.onProvision()
-        // 5. Create the event album if opted in and access is already granted (grant subscription covers
-        //    the grant-after-join case). Capability `event-album`.
-        if (isGranted()) ensureAlbumIfOptedIn()
+        // 5. Event album, if access is already granted (grant subscription covers the grant-after-join
+        //    case). Unconditional call: the opt-in/name gate is the coordinator's (capability `event-album`).
+        if (isGranted()) albumCoordinator.ensureAlbum(cfg.eventId, cfg.name, cfg.saveToAlbum)
         // 6. Auto-download the other contributors' photos (no-op under an upload-only direction, gated
         //    inside the controller), and fill a scan-path title by id — each on its own escaping launch.
         scope.launch { downloadController.reconcile(cfg.eventId) }
-        if (cfg.name.isEmpty()) scope.launch { fetchName(cfg.eventId) }
+        if (cfg.name.isEmpty()) {
+            scope.launch {
+                fetchEventName(cfg.eventId)?.let { eventName.storeEventNameIfChanged(cfg.eventId, it) }
+            }
+        }
     }
 }

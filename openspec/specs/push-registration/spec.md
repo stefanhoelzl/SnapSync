@@ -14,7 +14,6 @@ foreground discovery and the `BGProcessingTask` backstop, both of which remain c
 arrives.
 
 Decision record: `changes/archive/2026-07-05-push-notification-infra`.
-
 ## Requirements
 ### Requirement: APNs token acquisition seam
 
@@ -88,7 +87,7 @@ launches with an unchanged token are harmless.
 
 ### Requirement: Silent-push receive seam
 
-The module SHALL define a `PushReceiver` seam invoked when the app receives a silent
+`:domain`'s `ports/` SHALL define the `PushReceiver` seam invoked when the app receives a silent
 (`content-available`) push, carrying the pushed **`eventId`** (delivered as the push payload's
 top-level `eventId` key, capability `apns-push-sender`). The seam SHALL be **asynchronous**
 (suspending / completion-shaped) so the app-shell can **await** the receiver's synchronous work (the
@@ -100,9 +99,13 @@ device's **active event** (from the config seam): a push whose `eventId` is not 
 **including when no event is configured** — SHALL be a **no-op** (no reconcile). The guard exists
 because leave is local-only (capability `leave-event`): a left event's backend membership persists and
 keeps pushing this device, so an unguarded reconcile would silently re-pull a left event's new photos.
-The guard + reconcile logic SHALL live in a **tested** module (exercised on JVM and
-`iosSimulatorArm64`), never parked in the untested app shell; the app-shell wiring only forwards the
-OS callback (the raw `eventId` and the completion handler) into the seam.
+The guard + reconcile logic SHALL live in a **tested** feature (`DownloadPushReceiver`, `:domain`
+`feature/download`, exercised on JVM and `iosSimulatorArm64`), never parked in the untested app shell.
+The cross-arm **fan-out** — one push is news to both arms — SHALL be the `flow/SilentPush` trigger
+(`:domain` `flow/`, built in `compose/`; it absorbed the former `FanOutPushReceiver`): the receivers run
+in order (download, then the upload arm's on the app-driven tier), isolated so one failure never robs
+the other of the scarce wake; the app-shell wiring only forwards the OS callback (the raw `eventId` and
+the completion handler) into the flow.
 
 #### Scenario: A push for the active event reconciles
 

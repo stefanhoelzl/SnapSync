@@ -138,8 +138,10 @@ constructs no writer.
 
 ## iOS-version deviation & the two upload tiers
 
-App deploys **min iOS 18**. Upload runs on one of two tiers, selected at
-`SnapSyncRoot.backgroundUploadSupported()` (`isOperatingSystemAtLeastVersion(26.1)`):
+App deploys **min iOS 18**. Upload runs on one of two tiers, selected **once per process** by the
+pure sealed resolver (`model/`'s `resolveComposition` over `LaunchDirectives` + `OsFacts`; the OS
+fact is `isOperatingSystemAtLeastVersion(26.1)`) — `SnapSyncRoot`'s one `when (mode)` switch picks
+the tier's mechanism thunks; no entry point re-checks a flag:
 
 - **iOS ≥26.1 — PhotoKit (`ios-photokit-upload`).** The OS-driven upload extension, using the
   **deprecated 26.1** `PHBackgroundResourceUploadExtension` (the only protocol runnable on current GM

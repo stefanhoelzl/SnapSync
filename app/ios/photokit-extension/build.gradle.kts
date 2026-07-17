@@ -33,7 +33,7 @@ kotlin {
             // are woken to download. Reuses the same Darwin client as the manifest PUT.
             implementation(project(":capability:push"))
             // Ktor core for the synchronous in-cycle device.json PUT (the Darwin client comes from
-            // :capability:membership's iosMain); the byte uploads are the OS's job, not Ktor's.
+            // :adapter:ios:ext-safe); the byte uploads are the OS's job, not Ktor's.
             implementation(libs.ktor.client.core)
             implementation(libs.coroutines.core)
             implementation(libs.kermit)

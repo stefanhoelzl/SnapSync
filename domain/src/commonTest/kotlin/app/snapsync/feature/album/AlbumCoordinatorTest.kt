@@ -43,7 +43,7 @@ class AlbumCoordinatorTest {
     fun `ensureAlbum creates and stores when absent`() = runTest {
         val manager = FakeAlbumManager(createResult = "album-X")
         val store = InMemoryAlbumMapStore()
-        val id = AlbumCoordinator(manager, store).ensureAlbum(event, "Birthday")
+        val id = AlbumCoordinator(manager, store).ensureAlbum(event, "Birthday", saveToAlbum = true)
         assertEquals("album-X", id)
         assertEquals("album-X", store.get(event))
         assertEquals(1, manager.createCount)
@@ -53,7 +53,7 @@ class AlbumCoordinatorTest {
     fun `ensureAlbum reuses an existing album without recreating`() = runTest {
         val manager = FakeAlbumManager(existingIds = mutableSetOf("album-X"))
         val store = InMemoryAlbumMapStore().apply { put(event, "album-X") }
-        val id = AlbumCoordinator(manager, store).ensureAlbum(event, "Birthday")
+        val id = AlbumCoordinator(manager, store).ensureAlbum(event, "Birthday", saveToAlbum = true)
         assertEquals("album-X", id)
         assertEquals(0, manager.createCount) // reused, not recreated
     }
@@ -63,7 +63,7 @@ class AlbumCoordinatorTest {
         // Stored id no longer resolves (user deleted the album).
         val manager = FakeAlbumManager(createResult = "album-NEW", existingIds = mutableSetOf())
         val store = InMemoryAlbumMapStore().apply { put(event, "album-OLD") }
-        val id = AlbumCoordinator(manager, store).ensureAlbum(event, "Birthday")
+        val id = AlbumCoordinator(manager, store).ensureAlbum(event, "Birthday", saveToAlbum = true)
         assertEquals("album-NEW", id)
         assertEquals("album-NEW", store.get(event)) // overwritten
         assertEquals(1, manager.createCount)
@@ -73,8 +73,39 @@ class AlbumCoordinatorTest {
     fun `ensureAlbum returns null on a creation failure and stores nothing`() = runTest {
         val manager = FakeAlbumManager(createResult = null)
         val store = InMemoryAlbumMapStore()
-        assertNull(AlbumCoordinator(manager, store).ensureAlbum(event, "Birthday"))
+        assertNull(AlbumCoordinator(manager, store).ensureAlbum(event, "Birthday", saveToAlbum = true))
         assertNull(store.get(event))
+    }
+
+    @Test
+    fun `ensureAlbum is a no-op for an opted-out membership`() = runTest {
+        // The opt-in gate lives HERE (migration step 8 C3, formerly the shell's `ensureAlbumIfOptedIn`):
+        // callers call unconditionally, and an opted-out membership creates and stores nothing.
+        val manager = FakeAlbumManager(createResult = "album-X")
+        val store = InMemoryAlbumMapStore()
+        assertNull(AlbumCoordinator(manager, store).ensureAlbum(event, "Birthday", saveToAlbum = false))
+        assertEquals(0, manager.createCount)
+        assertNull(store.get(event))
+    }
+
+    @Test
+    fun `ensureAlbum is a no-op for an empty name`() = runTest {
+        // A nameless membership cannot title an album (the name arrives via the later fetch); same
+        // guard the shell helper held (`cfg.name.isNotEmpty()`).
+        val manager = FakeAlbumManager(createResult = "album-X")
+        val store = InMemoryAlbumMapStore()
+        assertNull(AlbumCoordinator(manager, store).ensureAlbum(event, "", saveToAlbum = true))
+        assertEquals(0, manager.createCount)
+    }
+
+    @Test
+    fun `albumIdFor returns the stored album only for an opted-in membership`() = runTest {
+        val manager = FakeAlbumManager()
+        val store = InMemoryAlbumMapStore().apply { put(event, "album-X") }
+        val coordinator = AlbumCoordinator(manager, store)
+        assertEquals("album-X", coordinator.albumIdFor(event, saveToAlbum = true))
+        assertNull(coordinator.albumIdFor(event, saveToAlbum = false)) // opt-out: no import-time add
+        assertNull(coordinator.albumIdFor("other", saveToAlbum = true)) // no album ever created
     }
 
     @Test

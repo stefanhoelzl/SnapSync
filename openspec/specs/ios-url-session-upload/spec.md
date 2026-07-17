@@ -106,7 +106,7 @@ by a prior killed process. Extraction on a retry MAY re-materialize the file.
 
 ### Requirement: The pump reimplements the OS scheduler
 
-The app-driven tier SHALL provide a `BackgroundUploadPump` (in `:capability:upload`, platform-free)
+The app-driven tier SHALL provide a `BackgroundUploadPump` (in `:domain` `feature/upload`, platform-free)
 that drives `UploadCycle.run()` — the in-app replacement for the OS-owned `process()` scheduler. The
 pump SHALL be invoked by six triggers: (a) producer start, (b) app foreground entry, (c) a
 `BGProcessingTask` handler, (d) background-`URLSession` completion relaunch
@@ -146,9 +146,12 @@ well beyond its `earliestBeginDate`; a silent push is the reliable wake, and it 
 event is live, because it is emitted when another member's device drains a cycle that completed an upload
 (capability `upload-completion-notify`).
 
-The active-event decision SHALL live in a tested capability, in a receive seam mirroring the download arm's
-(`DownloadPushReceiver`, capability `photo-download`), and SHALL NOT be duplicated in the composition root.
-The root SHALL compose the upload and download receivers behind a fan-out so a push drives both arms.
+The active-event decision SHALL live in a tested feature, in a receive seam mirroring the download arm's
+(`UploadPushReceiver`, `:domain` `feature/upload`; the download arm's is `DownloadPushReceiver`,
+`feature/download`), and SHALL NOT be duplicated in the composition root. The cross-arm **fan-out** SHALL
+be the `flow/SilentPush` trigger (`:domain` `flow/`, built in `compose/`; it absorbed the former
+`FanOutPushReceiver`): one push fans out to each arm's receiver in order (download, then upload on this
+tier), isolated so one receiver's failure never robs the other of the scarce wake.
 
 The active-event guard SHALL be **orthogonal** to the direction gate (capability `upload-lifecycle`): the
 active-event guard answers "is this push for my current event", the direction gate answers "should this device
@@ -445,7 +448,7 @@ denylisted-album source, whose omission would let this tier upload the albums th
 
 ### Requirement: Background-URLSession BackgroundTransfer implementation
 
-The app-driven tier SHALL implement the existing `:capability:upload` `BackgroundTransfer` seam with a
+The app-driven tier SHALL implement the existing `BackgroundTransfer` port (`:domain` `ports/`) with a
 background-`URLSession`-backed adapter (`IosUrlSessionUploadPlatform`) — **not** a new seam — so
 `UploadCycle` runs unchanged. The adapter SHALL map the seam verbs to `URLSession` semantics:
 
