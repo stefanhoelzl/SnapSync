@@ -46,6 +46,11 @@ tasks.test {
             // `LINK_DOMAIN` alone left the task UP-TO-DATE until they were declared here.
             include("gradle.properties")
             include("backend/src/config.ts")
+            // The laws-digest guard's subjects (capability `module-architecture`): CLAUDE.md's digest
+            // must name exactly the spec's requirement set. Without these declared, editing either side
+            // alone leaves the task UP-TO-DATE — the precise staleness the guard exists to catch.
+            include("CLAUDE.md")
+            include("openspec/specs/module-architecture/spec.md")
             include("iosApp/Configuration/Config.xcconfig")
             include("iosApp/iosApp/Info.plist")
             // The Swift shell. It is wiring-only and UNTESTED by the project's hard rule — which is

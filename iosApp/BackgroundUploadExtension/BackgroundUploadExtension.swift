@@ -19,16 +19,25 @@ final class BackgroundUploadExtension: PHBackgroundResourceUploadExtension {
     required init() {}
 
     func process() -> PHBackgroundResourceUploadProcessingResult {
-        // Map the Kotlin tri-state cycle result to the system result. The Kotlin enum entries
-        // COMPLETED/PROCESSING/FAILED export to Swift as .completed/.processing/.failed.
+        // Map the Kotlin CycleResult to the system result — EVERY case explicit. A Kotlin enum
+        // reaches Swift as an ObjC class, so the compiler cannot check exhaustiveness and demands a
+        // `default:` — which therefore maps to FAILURE, never success: a future Kotlin case that
+        // nobody taught this switch must surface as a retried, logged failure, not silently report
+        // a successful upload cycle that never ran (that was the pre-2026-07-17 behavior, with
+        // SKIPPED riding through `default: .completed` — correct by luck, not by construction).
         switch UploadExtensionRoot.shared.process() {
+        case .completed:
+            return .completed
+        case .skipped:
+            // Nothing to do (no membership / membership contributes nothing) — the system rests.
+            return .completed
         case .processing:
             // The in-flight cap was hit, or pending jobs remain — ask the system to run us again.
             return .processing
         case .failed:
             return .failure
         default:
-            return .completed
+            return .failure
         }
     }
 
