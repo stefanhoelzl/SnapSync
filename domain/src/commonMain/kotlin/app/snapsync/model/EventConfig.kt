@@ -54,7 +54,7 @@ internal fun EventLinkPayload.sameAs(other: EventLinkPayload): Boolean =
  * uploads a guest's entire camera roll to another person's event.
  *
  * It carries **no default on purpose**, unlike [name]/[direction]/[saveToAlbum]. A legacy item lacking the
- * key therefore fails to decode and reads as *no config* (`KeychainConfigStore`), so the device returns to
+ * key therefore fails to decode and reads as *no config* (the config store adapters), so the device returns to
  * the setup gate and the user re-joins. Do **not** "fix" that by defaulting it to `""`: the cutoff compare
  * is `creationDate >= minPhotoDate`, and every string is `>= ""`, so an empty cutoff silently restores
  * whole-library scope while presenting as a present, non-null value. (The mirror case is safe and is why

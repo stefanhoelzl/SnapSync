@@ -23,6 +23,7 @@ Roots found:
 | `BackgroundUploadPump` | | | x |
 | `CutoffFormatter` | x | | |
 | `EventNotifier` | | x | x |
+| `FileBackedConfigStore` | x | x | |
 | `FileLogWriter` | x | x | |
 | `HttpAttestClient` | x | | |
 | `HttpDeviceFilesSource` | | x | x |
@@ -45,7 +46,6 @@ Roots found:
 | `IosProtectedData` | x | | |
 | `IosUrlSessionUploadPlatform` | | | x |
 | `KeychainAttestStore` | x | x | |
-| `KeychainConfigStore` | x | x | |
 | `KeychainDeviceIdentity` | x | x | |
 | `KtorPushHttpClient` | x | x | x |
 | `MutableAttestedSource` | x | | |

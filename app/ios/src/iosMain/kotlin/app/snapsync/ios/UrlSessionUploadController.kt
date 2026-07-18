@@ -2,7 +2,7 @@ package app.snapsync.ios
 
 import app.snapsync.compose.UploadPorts
 import app.snapsync.compose.uploadCore
-import app.snapsync.config.KeychainConfigStore
+import app.snapsync.config.FileBackedConfigStore
 import app.snapsync.engine.LEDGER_APP_GROUP
 import app.snapsync.feature.album.AlbumCoordinator
 import app.snapsync.ports.LedgerStore
@@ -48,7 +48,7 @@ import kotlinx.coroutines.launch
 class UrlSessionUploadController(
     private val scope: CoroutineScope,
     private val ledgerStore: LedgerStore,
-    private val configSource: KeychainConfigStore,
+    private val configSource: FileBackedConfigStore,
     // Resolved PER CYCLE, not held as a `String`. A held id cannot express "unreadable this cycle": an
     // unresolvable Keychain read then throws out of whatever first touches it instead of skipping
     // cleanly, and this tier is relaunched cold by the OS to deliver background-session events — a path

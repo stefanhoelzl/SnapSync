@@ -64,12 +64,12 @@ is no per-root cycle or feature assembly any more.
 
 - **App**: `app/ios/src/iosMain/.../SnapSyncRoot.kt` — app-lifetime singleton owning a
   `SupervisorJob` scope on `Dispatchers.Main` (outlives Compose recomposition). Builds `AppPorts`
-  (Keychain config store, PhotoKit permission, ledger/download stores, generic HTTP adapters,
+  (file-backed config store, PhotoKit permission, ledger/download stores, generic HTTP adapters,
   coordination lambdas) and calls `snapSyncApp(scope, ports)`; the returned `AppCore`'s lazily
   composed graph (status sources, attestation, join/leave/create, downloads, upload arm) is wired
   into `StatusContainerHost`.
 - **Extension**: `app/ios/photokit-extension/src/iosMain/.../UploadExtensionRoot.kt` — builds
-  `UploadPorts` (Keychain `ConfigReader`, `IosPhotoKitUploadPlatform` over the shared `IosDiscovery`
+  `UploadPorts` (the file-backed `ConfigReader`, `IosPhotoKitUploadPlatform` over the shared `IosDiscovery`
   from `:adapter:ios:ext-safe`, App-Group stores, `:adapter:generic` HTTP adapters) and calls
   `uploadCore(scope, ports)`; `process()` runs one blocking cycle of the composed `UploadCycle`.
 - The app-driven tier's `UrlSessionUploadController` calls the same `uploadCore` over its own ports
@@ -116,11 +116,13 @@ constructs no writer.
 ## Entitlements & Info.plist (the cross-process glue)
 
 - **App Group `group.app.snapsync`** (both `*.entitlements`): the shared on-disk container for the
-  ledger DB the extension writes and the app reads (`iosLedgerStore`). **Must be registered in
-  the Developer portal** and enabled on both App IDs, or signed builds fail to provision.
+  ledger DB the extension writes and the app reads (`iosLedgerStore`) — and, since migration step
+  11a, for the config file of record (`eventconfig.json`, `FileBackedConfigStore`). **Must be
+  registered in the Developer portal** and enabled on both App IDs, or signed builds fail to provision.
 - **Keychain group `$(AppIdentifierPrefix)app.snapsync.shared`** (both `*.entitlements`): lets the
-  extension read the event config (the `eventId`) the app stores (`KeychainConfigStore`, which omits
-  `kSecAttrAccessGroup` and relies on this default group). Keychain groups need **no** portal step.
+  extension read the event config's written-through Keychain copy (`KeychainConfigStore`, which omits
+  `kSecAttrAccessGroup` and relies on this default group; the copy stays written through until
+  migration step 13b so a revert build finds a live config). Keychain groups need **no** portal step.
 - **Associated domain `applinks:snapsync.stho.net`** (app entitlements only, via
   `$(ASSOCIATED_DOMAIN)`): claims the event link's Universal Link (capability `event-link`), which is
   how a Camera-scanned QR opens the app. Like App Groups (and unlike keychain groups) **it must be

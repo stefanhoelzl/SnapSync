@@ -68,6 +68,7 @@ class RuntimeIdentityTest {
         "app.snapsync.album.map",
         "ledger.db",
         "downloads.db",
+        "eventconfig.json",
         "device-manifest",
         "accumulator.json",
         "last-uploaded.json",

@@ -3,7 +3,7 @@
 ## Purpose
 
 Inviting others to the joined event from within the app. A joined device already holds the
-join capability — the `eventId` in the Keychain — so it re-encodes the same event link
+join capability — the `eventId` in the persisted config — so it re-encodes the same event link
 (`encodeEventUrl`, capability `event-link`) and displays it as a scannable QR ("Scan to join this event") with
 a share action, in the joined layer only. Covers the deterministic invite-URL derivation, the
 joined-layer visibility rule, the QR display, the fire-and-forget share over a bare

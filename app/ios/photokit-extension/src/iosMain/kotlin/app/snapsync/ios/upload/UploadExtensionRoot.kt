@@ -8,7 +8,7 @@ import app.snapsync.feature.album.AlbumCoordinator
 import app.snapsync.model.DENYLISTED_ALBUM_TITLES
 import app.snapsync.album.IosAlbumManager
 import app.snapsync.album.IosAlbumMapStore
-import app.snapsync.config.KeychainConfigStore
+import app.snapsync.config.FileBackedConfigStore
 import app.snapsync.keychain.KeychainDeviceIdentity
 import app.snapsync.ports.SuppressionSource
 import app.snapsync.downloadstore.iosSuppressionSource
@@ -51,7 +51,8 @@ import platform.CoreFoundation.kCFStringEncodingUTF8
  * principal class calls [process] from its `process()` callback.
  *
  * Config is sourced fresh each cycle by the shared entry gate: the runtime event id from the shared
- * Keychain ([KeychainConfigStore]) combined with the compile-time upload host
+ * App-Group config file ([FileBackedConfigStore] — Keychain-fallback-and-write-through during the
+ * step-11a soak window) combined with the compile-time upload host
  * ([uploadHostFromBundle], `BackgroundUploadURLBase`). When no event has been joined yet (the
  * extension woke before setup), the cycle is skipped as a clean success — no job, no ledger write,
  * no crash.
@@ -108,7 +109,7 @@ object UploadExtensionRoot {
     // so the extension is compile-prevented from writing it or reading beyond the suppression set. It
     // only reads which downloaded-then-imported assets must not be re-uploaded.
     private val suppression: SuppressionSource by lazy { iosSuppressionSource() }
-    private val configSource: KeychainConfigStore by lazy { KeychainConfigStore() }
+    private val configSource: FileBackedConfigStore by lazy { FileBackedConfigStore() }
 
     // Event album (capability `event-album`): the coordinator over the shared leave-surviving map and the
     // PhotoKit album manager. The extension only ever ADDS completed uploads (the app is the sole creator).
