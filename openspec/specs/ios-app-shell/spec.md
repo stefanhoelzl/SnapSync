@@ -131,11 +131,13 @@ seated in `model/` since migration step 9, because the armed presentation gate f
 `:ui:presentation` naming `flow/`; live instances are still built and decorated only in
 `compose/`), which the root injects into the `StatusContainerHost` — presentation fires commands
 only through the bundle and references no feature command, port, or flow callable directly. The
-root passes the PhotoKit permission adapter's **permission StateFlow** and the Keychain config
+root passes the PhotoKit permission adapter's **permission StateFlow** and the file-backed config
 adapter's **config StateFlow** into the host (since step 9 the host's read-model inputs are bare
 StateFlows — presentation names no `ports/` type), supplies the same permission adapter as
 `AppPorts.photoAccessRequester` (the port the bundle's `requestAccess`/`openSettings` commands are
-bound to in `compose/`), and passes the Keychain adapter as both the `ConfigSource` and
+bound to in `compose/`), and passes the file-backed config adapter (the App-Group config store of
+record since migration step 11a, with its written-through Keychain copy — capability `event-link`)
+as both the `ConfigSource` and
 `ConfigStore` in `AppPorts`. The root SHALL bind the `Clock`/`TimeZoneSource` ports' system
 adapters (`:adapter:generic`'s `SystemClock`/`SystemTimeZone`) into the **one shared, pure**
 `CutoffFormatter` (its now/zone arrive injected — the through-ports repayment of step 9) handed to
@@ -186,7 +188,7 @@ the Foreground/Background flows and the liveness-observer lifecycle.
 - **THEN** a single `SnapSyncRoot` resolves the composition mode once, constructs the platform
   adapters and calls `snapSyncApp`, which composes the ledger-backed `SyncStatusSource` (with the
   read-only `LedgerCountsSource`), the flows, and the user-tap command bundle over the PhotoKit
-  permission adapter and the Keychain config store; the root wires the result into one
+  permission adapter and the file-backed config store; the root wires the result into one
   `StatusContainerHost` — constructing no `LedgerWriter` on the OS-driven tier and no
   `EventStatusSource`, and issuing no storage LIST for upload status
 
@@ -213,14 +215,16 @@ the Foreground/Background flows and the liveness-observer lifecycle.
 
 - **WHEN** `SnapSyncRoot.onOpenUrl` is called with a `https://<link domain>/join#…` event link
 - **THEN** it forwards (through the live delegate) to the container's `onOpenUrl` intent, which
-  decodes and (on success) saves via the Keychain `ConfigStore`, updating the `ConfigSource`
+  decodes and (on success) saves via the `ConfigStore` (the file-backed config store, which also
+  writes through to its Keychain copy), updating the `ConfigSource`
 
 #### Scenario: The leave action flows through the command bundle into the use-case
 
 - **WHEN** the user confirms the leave action in the joined layer
 - **THEN** `MainViewController` invokes `host.onLeaveEvent`, which fires the bundle's `leave`
   command — cancelling in-flight downloads, then running the composed `LeaveEvent` (stopping the
-  producer via the tier-neutral arm and clearing the Keychain config; no ledger or `EventStatus`
+  producer via the tier-neutral arm and clearing the persisted config — the App-Group file and its
+  written-through Keychain copy; no ledger or `EventStatus`
   operation) — and the screen returns to the setup gate
 
 #### Scenario: The share action flows through the command bundle into the platform share
@@ -502,7 +506,9 @@ silent push is observable without any use-case behavior.
 
 ### Requirement: Background work defers while protected data is unavailable
 The app process SHALL consult `UIApplication.isProtectedDataAvailable` before performing background
-work that reads protected state (the Keychain-backed device id and event config). When protected data
+work that reads protected state (the Keychain-backed device id and the event config — an App-Group
+file under complete-until-first-unlock protection, with a written-through Keychain copy, since
+migration step 11a). When protected data
 is **unavailable** — the device has not been unlocked since boot — the app SHALL **defer** that work
 rather than failing it or dropping it, and SHALL resume it when the system posts
 `UIApplicationProtectedDataDidBecomeAvailable`, which fires as soon as the user unlocks.
@@ -540,7 +546,8 @@ import-tail backstop, its silent-push handler, its background-`URLSession` handl
 
 The **app** SHALL log protected-data availability directly (it can ask `UIApplication`). The
 **extension** cannot: `UIApplication` is unavailable to app extensions and the platform offers no
-equivalent, so it SHALL instead log the status returned by each Keychain read it performed — the only
+equivalent, so it SHALL instead log the status returned by each protected read it performed — every
+Keychain read and, since migration step 11a, the config-file read — the only
 observable proxy available to it, and the one that distinguishes *unreadable* from *absent*.
 
 An end-to-end background wake on a **locked** device cannot be exercised by any test: the simulator has
@@ -551,10 +558,10 @@ reached its protected state — and of diagnosing it when it does not.
 #### Scenario: A locked background wake is observable after the fact
 - **WHEN** background work runs on a locked device and the device log is subsequently pulled
 - **THEN** the log states, for that invocation, whether protected data was available (in the app) or what
-  status each Keychain read returned (in the extension)
+  status each protected read (Keychain or config file) returned (in the extension)
 
 #### Scenario: A failed protected read is attributable to its trigger
-- **WHEN** a Keychain read fails during background work
+- **WHEN** a protected read (a Keychain item or the config file) fails during background work
 - **THEN** the logged line carries the entry-point prefix of the trigger that started it, so the failure
   is traceable to the backstop, the silent push, the URL-session handler, or the extension cycle
 

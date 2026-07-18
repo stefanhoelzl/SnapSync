@@ -9,7 +9,7 @@ import app.snapsync.model.resolveComposition
 import app.snapsync.compose.AppCore
 import app.snapsync.compose.AppPorts
 import app.snapsync.compose.snapSyncApp
-import app.snapsync.config.KeychainConfigStore
+import app.snapsync.config.FileBackedConfigStore
 import app.snapsync.eventcreation.HttpEventCreation
 import app.snapsync.attest.HttpAttestClient
 import app.snapsync.attest.IosAttestKey
@@ -185,9 +185,10 @@ object SnapSyncRoot {
      * `register(forTaskWithIdentifier:)` and the Info.plist `BGTaskSchedulerPermittedIdentifiers`. */
     const val DOWNLOAD_BACKSTOP_TASK_ID: String = "app.snapsync.download.backstop"
 
-    // The event config seam/store (one Keychain adapter is both), hoisted so a (re)provision can read
-    // the current event id and the leave use-case can clear it.
-    private val config: KeychainConfigStore by lazy { KeychainConfigStore() }
+    // The event config seam/store (one file-backed adapter is both — App-Group file of record with
+    // Keychain write-through, migration step 11a), hoisted so a (re)provision can read the current
+    // event id and the leave use-case can clear it.
+    private val config: FileBackedConfigStore by lazy { FileBackedConfigStore() }
 
     /**
      * The one cutoff formatter every surface shares (capability `photo-selection-policy`; migration

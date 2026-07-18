@@ -279,6 +279,10 @@ is a spec change to this requirement, deliberately):
 - **App-Group `NSUserDefaults` keys** `discovery.changeToken`, `rejoin.joinedEventId`,
   `app.snapsync.album.map`.
 - **Database filenames** `ledger.db`, `downloads.db`.
+- **Config filename** `eventconfig.json` — the App-Group config file of record (migration step
+  11a, capability `event-link`). Re-valuing it reads every joined device's file as absent: a
+  Keychain-fallback resurrection while the write-through lasts, a **false leave on every joined
+  device** after it ends.
 - **Device-manifest App-Group layout**: directory `device-manifest`, files `accumulator.json`,
   `last-uploaded.json` — the manifest is the physical fact of membership; losing the accumulator
   shrinks the event union.

@@ -218,12 +218,17 @@ one App-Group ledger).
 The upload cycle SHALL read the membership itself and decide what the invocation does, before any library
 walk, upload job, device manifest, or notify. The decision SHALL have exactly three outcomes:
 
-- **Skip** — a required input could not be read (protected data unavailable). The cycle SHALL touch
-  nothing: no reconcile, no marker clear, no cursor reset, no jobs. It SHALL complete cleanly; the next
-  cycle retries.
-- **Not joined** — there is definitively no usable membership (no item, an item that does not decode, or
-  no baked host). The cycle SHALL run the leave-side reconciliation, which clears the `joinedEventId`
-  marker (capability `event-rejoin-reconciliation`), and SHALL create no upload job.
+- **Skip** — a required input could not be read (protected data unavailable, or — since migration
+  step 11a — config-file content this build cannot positively interpret; capability `event-link`,
+  *An unreadable config is not an absent config*). Unreadable content includes a foreign envelope
+  version and an undecodable current-version payload. The cycle SHALL touch nothing: no reconcile, no
+  marker clear, no cursor reset, no jobs. It SHALL complete cleanly; the next cycle retries.
+- **Not joined** — there is definitively no usable membership (no config file by the not-found
+  error class and — while that fallback lasts — no written-through Keychain item, or a fallback
+  Keychain item that does not decode (the legacy-item rule, Keychain-side only), or no baked
+  host). The cycle SHALL run the
+  leave-side reconciliation, which clears the `joinedEventId` marker (capability
+  `event-rejoin-reconciliation`), and SHALL create no upload job.
 - **Run** — joined and configured. The cycle SHALL proceed to its contribution gate and phases.
 
 A composition root SHALL NOT make this decision. A root SHALL supply only the platform reads the decision
@@ -246,9 +251,10 @@ outlives a cycle SHALL re-read the membership on each run so a join, leave, or s
 a relaunch.
 
 An unresolvable device identity SHALL produce **Skip**, never **Not joined**. Resolving the identity can
-fail exactly as the membership read can — both are Keychain items — and every outcome needs it. "I could
-not look" is not "no identity" (capability `device-identity`, which never reports absence: an absent item
-mints).
+fail exactly as the membership read can — the identity is a Keychain item and the membership a
+protected App-Group file (with a Keychain fallback while the step-11a write-through lasts), and both
+are unreadable in the same locked-device windows — and every outcome needs it. "I could not look" is
+not "no identity" (capability `device-identity`, which never reports absence: an absent item mints).
 
 #### Scenario: An unreadable membership skips without touching state
 - **WHEN** the cycle's membership read reports unreadable
