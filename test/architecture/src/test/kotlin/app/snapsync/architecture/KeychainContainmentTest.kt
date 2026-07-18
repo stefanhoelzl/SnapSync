@@ -14,7 +14,7 @@ import kotlin.test.assertTrue as kotlinAssertTrue
  * readable by background work on a locked device* — which neither half establishes alone.
  *
  * Why a test and not a compile error: the Material 3 containment rule is enforced by the Gradle
- * dependency graph (only `:domain:ui:components` declares the dependency, so elsewhere the import does
+ * dependency graph (only `:ui:components` declares the dependency, so elsewhere the import does
  * not resolve). There is no such lever here — `platform.Security` is a Kotlin/Native **platform
  * library**, ambient in every `iosMain` source set, with no dependency to withhold. So the invariant is
  * enforced by reading the source.

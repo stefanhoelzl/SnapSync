@@ -58,11 +58,12 @@ and engine (seated in `feature/upload`, migration step 5) and every legacy modul
 by source-text match, fully-qualified references included. One clause the gate cannot see —
 `LedgerStore` is a legal `ports/` reference for other features — is carried by this requirement:
 for status it remains forbidden, so the counts seam stays the only ledger surface status can
-read (the presentation-imports gate arming at migration step 9 adds the presentation-side
-containment; until then the requirement holds it).
+read (the presentation-imports gate, **armed at migration step 9** over `ui/presentation/src`, adds
+the presentation-side containment mechanically).
 
-`:domain:presentation` SHALL consume status only through the `SyncStatusSource` seam and the
-feature's read-model types — never a ledger type, a port, or the engine.
+`:ui:presentation` (re-homed from `:domain:presentation` at migration step 9) SHALL consume
+status only through the `SyncStatusSource` seam and the feature's read-model types — never a
+ledger type, a port, or the engine.
 
 #### Scenario: Status names no ledger type
 - **WHEN** the `feature/status` sources are inspected

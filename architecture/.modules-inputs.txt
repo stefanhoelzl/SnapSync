@@ -15,15 +15,15 @@ module :domain:download-store
 module :domain:engine
 module :domain:gallery
 module :domain:keychain
-module :domain:presentation
-module :domain:ui
-module :domain:ui:components
 module :test:architecture
 module :test:architecture:migration
 module :test:harness-driver
 module :test:integration
 module :test:world
 module :tools:diagrams
+module :ui:components
+module :ui:presentation
+module :ui:screens
 edge :adapter:generic :domain
 edge :adapter:ios:app-only :adapter:ios:ext-safe
 edge :adapter:ios:app-only :domain
@@ -31,13 +31,13 @@ edge :adapter:ios:ext-safe :adapter:generic
 edge :adapter:ios:ext-safe :domain
 edge :app:desktop :adapter:generic
 edge :app:desktop :domain
-edge :app:desktop :domain:presentation
-edge :app:desktop :domain:ui
-edge :app:desktop :domain:ui:components
 edge :app:desktop :test:world
+edge :app:desktop :ui:components
+edge :app:desktop :ui:presentation
+edge :app:desktop :ui:screens
 edge :app:desktop:ui :app:desktop
 edge :app:desktop:ui :domain
-edge :app:desktop:ui :domain:presentation
+edge :app:desktop:ui :ui:presentation
 edge :app:ios :adapter:generic
 edge :app:ios :adapter:ios:app-only
 edge :app:ios :adapter:ios:ext-safe
@@ -45,8 +45,8 @@ edge :app:ios :capability:attest
 edge :app:ios :capability:push
 edge :app:ios :domain
 edge :app:ios :domain:keychain
-edge :app:ios :domain:presentation
-edge :app:ios :domain:ui
+edge :app:ios :ui:presentation
+edge :app:ios :ui:screens
 edge :app:ios:photokit-extension :adapter:generic
 edge :app:ios:photokit-extension :adapter:ios:ext-safe
 edge :app:ios:photokit-extension :capability:push
@@ -60,18 +60,19 @@ edge :domain:engine :adapter:generic
 edge :domain:engine :domain
 edge :domain:gallery :domain
 edge :domain:keychain :domain
-edge :domain:presentation :domain
-edge :domain:ui :domain
-edge :domain:ui :domain:presentation
-edge :domain:ui :domain:ui:components
 edge :test:harness-driver :app:desktop
 edge :test:harness-driver :app:desktop:ui
 edge :test:integration :adapter:generic
 edge :test:integration :capability:push
 edge :test:integration :domain
-edge :test:integration :domain:presentation
 edge :test:integration :test:world
+edge :test:integration :ui:presentation
 edge :test:world :adapter:generic
 edge :test:world :domain
 edge :test:world :domain:download-store
 edge :test:world :domain:gallery
+edge :ui:components :domain
+edge :ui:presentation :domain
+edge :ui:screens :domain
+edge :ui:screens :ui:components
+edge :ui:screens :ui:presentation

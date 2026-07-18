@@ -123,9 +123,10 @@ class BurnDownTest {
             // The beacon's own source quotes every pattern below, so it must not scan itself — the
             // same self-exclusion targetModules already applies.
             // `adapter` joined the scanned roots at migration step 4 (the Enrollment copies must keep
-            // counting after HttpEnrollment moved into :adapter:generic — a loud-stale list, updated
-            // in-PR per the plan's rule).
-            val allSrc = sources("adapter", "domain", "capability", "app", "test")
+            // counting after HttpEnrollment moved into :adapter:generic), and `ui` at step 9 (the
+            // re-homed presentation/screens/components sources must stay visible to the ledger
+            // patterns) — a loud-stale list, updated in-PR per the plan's rule.
+            val allSrc = sources("adapter", "domain", "capability", "app", "test", "ui")
                 .filterNot { "test/architecture/migration/" in it.path.replace('\\', '/') }
             fun declared(pattern: String) = allSrc.count { Regex(pattern).containsMatchIn(it.readText()) }
             val items = buildList {

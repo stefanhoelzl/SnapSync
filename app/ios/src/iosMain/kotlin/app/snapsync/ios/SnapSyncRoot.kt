@@ -21,13 +21,16 @@ import app.snapsync.model.Contribution
 import app.snapsync.gallery.PhotoLibraryResourceEnumerator
 import app.snapsync.model.PermissionStatus
 import app.snapsync.permission.PhotoLibraryPermission
+import app.snapsync.presentation.CutoffFormatter
 import app.snapsync.presentation.MutableAttestedSource
 import app.snapsync.presentation.StatusContainerHost
 import app.snapsync.presentation.forgeStatusHost
 import app.snapsync.presentation.isForgeState
-import app.snapsync.presentation.toJoinLoad
+import app.snapsync.feature.membership.toJoinLoad
 import app.snapsync.push.KtorPushHttpClient
 import app.snapsync.push.PushRegistration
+import app.snapsync.time.SystemClock
+import app.snapsync.time.SystemTimeZone
 import app.snapsync.ports.PushTokenSource
 import app.snapsync.membership.HttpLeaveNotifier
 import app.snapsync.membership.darwinHttpClient
@@ -187,6 +190,17 @@ object SnapSyncRoot {
     private val config: KeychainConfigStore by lazy { KeychainConfigStore() }
 
     /**
+     * The one cutoff formatter every surface shares (capability `photo-selection-policy`; migration
+     * step 9): presentation's `CutoffFormatter` is pure given its inputs, so this root binds the
+     * `Clock`/`TimeZoneSource` ports' system adapters here — wiring, not a decision. Deliberately NOT
+     * seated on [AppCore]: the forge composition renders the create screen's wall clock too, and it
+     * must reach a formatter without any route to the live graph.
+     */
+    val cutoffFormatter: CutoffFormatter by lazy {
+        CutoffFormatter(now = SystemClock::now, zone = SystemTimeZone.current())
+    }
+
+    /**
      * Protected-data availability (capability `ios-app-shell`): the Keychain and the app/App-Group
      * containers are unreadable before the first unlock since boot, and a background wake can land in
      * exactly that window. Rather than attempting a read, failing, and *interpreting* the failure — which
@@ -253,6 +267,9 @@ object SnapSyncRoot {
                 configSource = config,
                 configStore = config,
                 photoAccess = permission,
+                // The same adapter serves the status source and the request/Settings surface — the
+                // bundle's requestAccess/openSettings commands bind to it in `compose/`.
+                photoAccessRequester = permission,
                 photoLibrary = PhotoLibraryResourceEnumerator(),
                 ledger = ledgerStore,
                 downloadStore = downloadStore,
@@ -438,18 +455,21 @@ object SnapSyncRoot {
             runCatching { app.attestation.ensureFresh() }
             pushRegistration.run(pushTokenSource, app.attestation.tokenChanged)
         }
-        // `config` is passed as both ports (one Keychain adapter implements both), as `permission` is.
+        // The host observes the adapters' read-model StateFlows directly (migration step 9's split:
+        // presentation names no ports — the Keychain/PhotoKit adapters stay behind their flows).
         // No EventStatus source: status is read from the listing; the extension owns reconciliation.
         StatusContainerHost(
-            syncSource, permission, permission, config, config, scope,
+            syncSource, permission.permission, config.config, scope,
             creationStatusSource = app.creationStatus,
-            // The user-tap command bundle (leave / create / commitJoin / share), built and decorated
-            // only in `compose/` (`AppCore.userCommands`) — presentation fires commands solely through
-            // it (spec `module-architecture`, "Commands cross one door").
+            // The user-tap command bundle (leave / create / commitJoin / share / requestAccess /
+            // openSettings), built and decorated only in `compose/` (`AppCore.userCommands`) —
+            // presentation fires commands solely through it (spec `module-architecture`, "Commands
+            // cross one door").
             commands = app.userCommands,
             // The join gate's details READ (capability `join-event`): a scanned QR opens the
-            // confirmation; details are fetched (GET) and mapped by presentation's own [toJoinLoad].
+            // confirmation; details are fetched (GET) and mapped by feature/membership's [toJoinLoad].
             loadJoinDetails = { eventId -> app.joinEvent.loadDetails(eventId).toJoinLoad() },
+            cutoffFormatter = cutoffFormatter,
             log = { message -> log.i { message } },
             downloadSource = app.downloadStatusSource,
             attestedSource = attested,
@@ -838,7 +858,7 @@ object SnapSyncRoot {
         override fun renderHost(): StatusContainerHost {
             log.i { "rendering SNAPSYNC_FORGE_STATE=$state" }
             // Non-null by construction: the resolver only yields Forge for a recognized state.
-            return forgeStatusHost(state, scope)!!
+            return forgeStatusHost(state, scope, cutoffFormatter)!!
         }
 
         override fun onForeground() = log.invocation("onForeground", params = foregroundParams()) {

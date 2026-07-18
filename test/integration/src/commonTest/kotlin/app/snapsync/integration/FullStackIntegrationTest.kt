@@ -1,14 +1,12 @@
 package app.snapsync.integration
 
-import app.snapsync.ports.ConfigStore
 import app.snapsync.model.Direction
-import app.snapsync.model.EventConfig
 import app.snapsync.model.Contribution
 import app.snapsync.model.LedgerState
 import app.snapsync.feature.membership.LeaveEvent
-import app.snapsync.ports.PhotoAccessRequester
-import app.snapsync.presentation.Arrow
-import app.snapsync.flow.UserCommands
+import app.snapsync.model.Arrow
+import app.snapsync.model.UserCommands
+import app.snapsync.presentation.CutoffFormatter
 import app.snapsync.presentation.StatusContainerHost
 import app.snapsync.feature.status.LedgerCounts
 import app.snapsync.presentation.SyncHealth
@@ -23,6 +21,8 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.withTimeout
 import kotlin.coroutines.coroutineContext
 import kotlin.test.Test
+import kotlin.time.Instant
+import kotlinx.datetime.TimeZone
 import kotlinx.datetime.LocalDateTime
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -145,11 +145,10 @@ class FullStackIntegrationTest {
             val w = World(this) // no config → the create layer
             val host = StatusContainerHost(
                 syncSource = w.syncStatusSource(scope),
-                permissionSource = w.permission,
-                requester = NoOpRequester,
-                configSource = w.configSource,
-                store = NoOpConfigStore,
+                permission = w.permission.permission,
+                config = w.configSource.config,
                 scope = scope,
+                cutoffFormatter = fixedCutoffFormatter(),
                 creationStatusSource = w.creationStatus,
                 commands = UserCommands(create = w.createEvent(scope)::create),
             )
@@ -232,11 +231,10 @@ class FullStackIntegrationTest {
             // The real container with leave wired to the world's faithful leave (real DELETE seam).
             val host = StatusContainerHost(
                 syncSource = w.syncStatusSource(scope),
-                permissionSource = w.permission,
-                requester = NoOpRequester,
-                configSource = w.configSource,
-                store = NoOpConfigStore,
+                permission = w.permission.permission,
+                config = w.configSource.config,
                 scope = scope,
+                cutoffFormatter = fixedCutoffFormatter(),
                 creationStatusSource = w.creationStatus,
                 commands = UserCommands(create = w.createEvent(scope)::create, leave = { w.leave() }),
             )
@@ -375,11 +373,10 @@ class FullStackIntegrationTest {
             )
             val host = StatusContainerHost(
                 syncSource = w.syncStatusSource(scope),
-                permissionSource = w.permission,
-                requester = NoOpRequester,
-                configSource = w.configSource,
-                store = NoOpConfigStore,
+                permission = w.permission.permission,
+                config = w.configSource.config,
                 scope = scope,
+                cutoffFormatter = fixedCutoffFormatter(),
                 creationStatusSource = w.creationStatus,
                 commands = UserCommands(create = w.createEvent(scope)::create, leave = { leaveEvent.leave() }),
             )
@@ -402,11 +399,10 @@ class FullStackIntegrationTest {
 
     private fun statusHost(w: World, scope: CoroutineScope) = StatusContainerHost(
         syncSource = w.syncStatusSource(scope),
-        permissionSource = w.permission,
-        requester = NoOpRequester,
-        configSource = w.configSource,
-        store = NoOpConfigStore,
+        permission = w.permission.permission,
+        config = w.configSource.config,
         scope = scope,
+        cutoffFormatter = fixedCutoffFormatter(),
     )
 
     private fun UiState.health(): SyncHealth? = (this as? UiState.Joined)?.health
@@ -415,12 +411,8 @@ class FullStackIntegrationTest {
         withTimeout(5_000) { container.stateFlow.first(predicate) }
 }
 
-private object NoOpRequester : PhotoAccessRequester {
-    override fun request() = Unit
-    override fun openSettings() = Unit
-}
-
-private object NoOpConfigStore : ConfigStore {
-    override suspend fun save(config: EventConfig) = Unit
-    override suspend fun clear() = Unit
-}
+/** A real formatter on a fixed UTC instant — the host requires one since step 9 (no system default). */
+private fun fixedCutoffFormatter() = CutoffFormatter(
+    now = { Instant.parse("2026-07-09T12:00:00Z") },
+    zone = TimeZone.UTC,
+)

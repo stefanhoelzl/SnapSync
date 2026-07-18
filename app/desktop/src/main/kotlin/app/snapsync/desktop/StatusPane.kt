@@ -6,23 +6,25 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import app.snapsync.ports.ConfigSource
-import app.snapsync.ports.ConfigStore
 import app.snapsync.model.Direction
 import app.snapsync.feature.creation.CreationStatusSource
 import app.snapsync.feature.creation.EventCreator
 import app.snapsync.ports.PhotoAccessRequester
 import app.snapsync.ports.PhotoAccessStatusSource
+import app.snapsync.model.JoinLoad
+import app.snapsync.model.UserCommands
 import app.snapsync.presentation.AlwaysAttested
 import app.snapsync.presentation.AttestedSource
-import app.snapsync.presentation.JoinLoad
+import app.snapsync.presentation.CutoffFormatter
 import app.snapsync.presentation.MutablePendingJoinSource
 import app.snapsync.presentation.StatusContainerHost
 import app.snapsync.feature.download.DownloadStatusSource
 import app.snapsync.feature.status.SyncStatusSource
-import app.snapsync.flow.UserCommands
 import app.snapsync.ui.StatusScreen
 import app.snapsync.ui.components.LocalDarkThemeOverride
+import kotlin.time.Clock
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.datetime.TimeZone
 
 /**
  * The shared left pane both desktop harnesses reuse: construct a [StatusContainerHost] from the
@@ -41,7 +43,6 @@ fun StatusPane(
     permissionSource: PhotoAccessStatusSource,
     requester: PhotoAccessRequester,
     configSource: ConfigSource,
-    configStore: ConfigStore,
     creationStatusSource: CreationStatusSource,
     creator: EventCreator,
     downloadSource: DownloadStatusSource,
@@ -68,26 +69,35 @@ fun StatusPane(
     // `true`/`false` forces dark/light so the real skin is reviewable without a device. Scoped to the
     // rendered `StatusScreen` only, so the harness's own control chrome is unaffected.
     darkThemeOverride: Boolean? = null,
+    // The cutoff formatter (migration step 9: the host/screen defaults died with the through-ports
+    // repayment). Test equipment is exempt from the ports law, so the default binds the system
+    // clock/zone directly — both harnesses review real wall-clock behavior, as before.
+    cutoffFormatter: CutoffFormatter = CutoffFormatter(
+        now = { Clock.System.now() },
+        zone = TimeZone.currentSystemDefault(),
+    ),
 ) {
     val host = remember {
         StatusContainerHost(
             syncSource,
-            permissionSource,
-            requester,
-            configSource,
-            configStore,
+            permissionSource.permission,
+            configSource.config,
             scope,
             creationStatusSource = creationStatusSource,
             // The user-tap command bundle (spec `module-architecture`, "Commands cross one door"),
             // assembled from this pane's injected harness edges — the harness's stand-in for the
-            // `compose/`-built production bundle (the world adopts `snapSyncApp` at step 10).
+            // `compose/`-built production bundle (the world adopts `snapSyncApp` at step 10). The
+            // permission taps bind the injected requester, mirroring `AppCore.userCommands`.
             commands = UserCommands(
                 leave = leave,
                 create = creator::create,
                 commitJoin = commitJoin,
                 share = share,
+                requestAccess = requester::request,
+                openSettings = requester::openSettings,
             ),
             loadJoinDetails = loadJoinDetails,
+            cutoffFormatter = cutoffFormatter,
             downloadSource = downloadSource,
             attestedSource = attestedSource,
             pending = pending,
@@ -123,6 +133,7 @@ fun StatusPane(
             onRetryJoin = host::onRetryJoin,
             onConfirmSwitch = host::onConfirmSwitch,
             onCancelSwitch = host::onCancelSwitch,
+            cutoff = cutoffFormatter,
         )
         }
     }
