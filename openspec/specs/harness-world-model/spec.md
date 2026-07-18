@@ -310,7 +310,8 @@ seams, and the HTTP client SHALL be fakes; everything above them SHALL be the sh
 
 ### Requirement: Integration tests assert UiState and world outcomes
 
-The `:test:integration` module SHALL consume `:test:world` and `:domain:presentation` to assert both the
+The `:test:integration` module SHALL consume `:test:world` and `:ui:presentation` (re-homed from
+`:domain:presentation` at migration step 9) to assert both the
 projected `UiState` **and** world outcomes from world mutations and cycle invocations — not `UiState`
 alone. World outcomes SHALL include: objects landed in the backend store (the per-device listing grows),
 ledger rows reaching `COMPLETED`, and foreign photos imported into the in-memory gallery. This is the

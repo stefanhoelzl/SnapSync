@@ -20,15 +20,15 @@ flowchart LR
   domain_engine[":domain:engine"]
   domain_gallery[":domain:gallery"]
   domain_keychain[":domain:keychain"]
-  domain_presentation[":domain:presentation"]
-  domain_ui[":domain:ui"]
-  domain_ui_components[":domain:ui:components"]
   test_architecture[":test:architecture"]
   test_architecture_migration[":test:architecture:migration"]
   test_harness_driver[":test:harness-driver"]
   test_integration[":test:integration"]
   test_world[":test:world"]
   tools_diagrams[":tools:diagrams"]
+  ui_components[":ui:components"]
+  ui_presentation[":ui:presentation"]
+  ui_screens[":ui:screens"]
   adapter_generic --> domain
   adapter_ios_app_only --> adapter_ios_ext_safe
   adapter_ios_app_only --> domain
@@ -36,13 +36,13 @@ flowchart LR
   adapter_ios_ext_safe --> domain
   app_desktop --> adapter_generic
   app_desktop --> domain
-  app_desktop --> domain_presentation
-  app_desktop --> domain_ui
-  app_desktop --> domain_ui_components
   app_desktop --> test_world
+  app_desktop --> ui_components
+  app_desktop --> ui_presentation
+  app_desktop --> ui_screens
   app_desktop_ui --> app_desktop
   app_desktop_ui --> domain
-  app_desktop_ui --> domain_presentation
+  app_desktop_ui --> ui_presentation
   app_ios --> adapter_generic
   app_ios --> adapter_ios_app_only
   app_ios --> adapter_ios_ext_safe
@@ -50,8 +50,8 @@ flowchart LR
   app_ios --> capability_push
   app_ios --> domain
   app_ios --> domain_keychain
-  app_ios --> domain_presentation
-  app_ios --> domain_ui
+  app_ios --> ui_presentation
+  app_ios --> ui_screens
   app_ios_photokit_extension --> adapter_generic
   app_ios_photokit_extension --> adapter_ios_ext_safe
   app_ios_photokit_extension --> capability_push
@@ -65,19 +65,20 @@ flowchart LR
   domain_engine --> domain
   domain_gallery --> domain
   domain_keychain --> domain
-  domain_presentation --> domain
-  domain_ui --> domain
-  domain_ui --> domain_presentation
-  domain_ui --> domain_ui_components
   test_harness_driver --> app_desktop
   test_harness_driver --> app_desktop_ui
   test_integration --> adapter_generic
   test_integration --> capability_push
   test_integration --> domain
-  test_integration --> domain_presentation
   test_integration --> test_world
+  test_integration --> ui_presentation
   test_world --> adapter_generic
   test_world --> domain
   test_world --> domain_download_store
   test_world --> domain_gallery
+  ui_components --> domain
+  ui_presentation --> domain
+  ui_screens --> domain
+  ui_screens --> ui_components
+  ui_screens --> ui_presentation
 ```

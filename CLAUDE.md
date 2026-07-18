@@ -41,8 +41,8 @@ Read the spec for the capability you are changing, then its decision record befo
 ## Build & test
 
 - `./gradlew build` — the canonical check (compiles all targets + runs JVM tests). **No display
-  needed**: the Compose Desktop UI tests (`:domain:ui:jvmTest`) render offscreen under
-  `-Djava.awt.headless=true` (set on that task in `domain/ui/build.gradle.kts`), so no X server /
+  needed**: the Compose Desktop UI tests (`:ui:screens:jvmTest`) render offscreen under
+  `-Djava.awt.headless=true` (set on that task in `ui/screens/build.gradle.kts`), so no X server /
   Xvfb is required. Only the two harness run tasks — `:app:desktop:ui:run` (forge) and
   `:app:desktop:run` (full-stack world, below) — open a real window and need a display.
 - `./gradlew compileIosMainKotlinMetadata` — the **Linux-runnable proxy** for the iOS source
@@ -53,7 +53,7 @@ Read the spec for the capability you are changing, then its decision record befo
 ## Test UI (review/exercise every UI state)
 
 `./gradlew :app:desktop:ui:run` launches the forge harness (module `:app:desktop:ui`): the real
-`:domain:ui` status screen inside a phone-sized frame on the left, and a **control panel** on the right
+`:ui:screens` status screen inside a phone-sized frame on the left, and a **control panel** on the right
 (raw Material 3 — it is test equipment, never `App*`). The panel **forges any display state** — permission presets,
 sync-state presets, and the engine console — so you can review and test all UI states without a
 device. See the `desktop-test-harness` spec.
@@ -209,7 +209,7 @@ per process** and inert in production: it mounts the real `StatusScreen` over **
 recognized state (`create` · `joining` · `in_sync`) — no backend, attestation, or photo access — so a
 marketing/App-Store screenshot can be captured of any state. The forge substitutes the container's
 *inputs*, not a static `UiState`, so it can only render a frame the real reduction can reach (the
-name→sources map is the tested `forgeStatusHost` factory in `:domain:presentation`). This is what the
+name→sources map is the tested `forgeStatusHost` factory in `:ui:presentation`). This is what the
 non-gating, dispatch-only `.github/workflows/screenshots.yml` drives on a simulator (`macos-26`) —
 `simctl launch … SNAPSYNC_FORGE_STATE=<state>` → `simctl io screenshot` → **6 raw captures**.
 
@@ -633,9 +633,9 @@ agent use and inject that one instead.
 :domain:keychain       the platform-free ProtectedData seam (ProtectedDataGate/ProtectedDataAvailability — dies at step 12). The SecItem impls, AfterFirstUnlock migration, and KeychainDeviceIdentity moved to :adapter:ios:ext-safe (step 4); the three-state read seam moved to :domain (step 3a) (capability architecture-guards; decision record: fix-locked-device-keychain-access)
 :domain:gallery        in-memory fakes only since step 6 (InMemoryPhotoLibrary/InMemoryGalleryStatusSource/InMemoryRawAssetSource — honest doubles bound for :adapter:fake at step 10) + stay-behind tests driving :domain subjects through them (RawAssetMappingTest and the two re-homed status-source tests); ResourceEnumerator moved on to :domain compose/ at step 7 (interim feature/upload seat, step 6) and DeviceManifestProducer to feature/membership at step 6 (the iOS PhotoKit adapters moved to :adapter:ios:ext-safe, step 4)
 :domain:download-store  the in-memory download store (honest double, bound for :adapter:fake at step 10) + DownloadStoreContract + the stay-behind download-feature tests re-homed at step 6 (they drive :domain feature/download through InMemoryDownloadStore; the SqlDelight store moved to :adapter:generic, the iOS driver factory to :adapter:ios:ext-safe, step 4)
-:domain:presentation   Orbit MVI container + UiState (Compose-free, no engine dep); user taps fire only through the injected flow/ UserCommands bundle since step-8 C3 (reads stay direct StateFlows)
-:domain:ui             Compose screens (written against App* only)
-:domain:ui:components   App* design system + the Material 3 skin
+:ui:presentation       Orbit MVI container + UiState (Compose-free, no engine dep) — re-homed from :domain:presentation at step 9, arming the presentation-imports gate (scope ui/presentation/src): it references only model/, feature read-model types, and its own vocabulary — never ports/ or flow/. StatusContainerHost's inputs are exactly read-models (bare StateFlows + feature sources), the model/ UserCommands bundle (user taps incl. requestAccess/openSettings; live instance built only in compose/), the loadJoinDetails query, and the pure CutoffFormatter (now/zone injected; production binds the Clock/TimeZoneSource ports via :adapter:generic's SystemClock/SystemTimeZone in the shells). Also hosts the forgeStatusHost forge factory (formatter passed in by the shell)
+:ui:screens            Compose screens (written against App* only) — re-homed from :domain:ui at step 9; the Arrow→ArrowLevel mapping died with the step-9 unification (both sides speak model/'s Arrow); CutoffFormatter is a required param (no system-reading default)
+:ui:components         App* design system + the Material 3 skin — re-homed from :domain:ui:components at step 9; gained an api(:domain) dep for the unified model/ Arrow in AppStatusLine's signature (the one enum presentation and the skin both render from)
 :capability:attest     InMemoryAttestStore (honest double, bound for :adapter:fake at step 10) + the DeviceAttestation test since step 5 — the policy itself (attest → token → renew, 401 → clear-and-retry; the extension is strictly a READER of the token the app leaves in the shared Keychain — `isSupported` is false in an app extension, measured) moved to :domain feature/trust (device-attestation). The HTTP client and the iOS adapters moved to the adapter modules (step 4)
 :capability:push       APNs token registration + PushReceiver seam + EventNotifier (POST /events/<id>/notify) (push-registration, upload-completion-notify; KtorPushHttpClient moved to :adapter:generic, step 4)
 :app:desktop           shared harness library (PhoneFrame + StatusPane, StatusContainerHost wiring both desktop harnesses reuse) AND the full-stack world harness app (:app:desktop:run): real StatusScreen whose counts EMERGE from :test:world's real LedgerBackedSyncStatusSource + a right-pane world inspector driving the world (capability full-stack-harness)
@@ -650,8 +650,8 @@ iosApp/                Xcode project (app + upload-extension targets) — not Gr
 ```
 
 **The list above is the CURRENT state, and it is being replaced.** The spine it used to claim —
-`engine ← status ← presentation ← ui` — was never true: `:domain:presentation` reaches sideways
-into `:capability:config`, and `:domain:status → :capability:membership` sat
+`engine ← status ← presentation ← ui` — was never true: the old `:domain:presentation` reached
+sideways into `:capability:config`, and `:domain:status → :capability:membership` sat
 declared-and-never-imported for months. The **target** module graph and its laws are the
 **`module-architecture`** spec — the contract of record; read it (and `architecture-guards` /
 `architecture-diagrams`) before moving any code. Migration distance is the **`verify`** check

@@ -25,6 +25,8 @@ kotlin {
             api(libs.ktor.client.core)
             implementation(libs.sqldelight.runtime)
             implementation(libs.kotlinx.serialization.json)
+            // TimeZone appears in SystemTimeZone's override of the `TimeZoneSource` port (step 9).
+            implementation(libs.kotlinx.datetime)
         }
         commonTest.dependencies {
             implementation(kotlin("test"))

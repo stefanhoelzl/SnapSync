@@ -64,7 +64,7 @@ The extension target SHALL NOT declare an associated domain: it never handles UR
 
 #### Scenario: UI is the real shared screen, not a placeholder
 - **WHEN** the status screen is displayed
-- **THEN** it is the same `StatusScreen` composable the desktop app uses (from `:domain:ui`, themed
+- **THEN** it is the same `StatusScreen` composable the desktop app uses (from `:ui:screens`, themed
   via `AppTheme`), not an iOS-specific placeholder
 
 #### Scenario: First frame is honest
@@ -125,12 +125,23 @@ tier's mechanism thunks) — and `snapSyncApp` composes the feature graph: the *
 `SyncStatusSource` (built from a `LedgerCountsSource`, the permission source, and the gallery
 source — see `sync-status`), the attestation, upload-arm, join/leave/create use-cases, the download
 controller and jobs, the album coordinator, the `flow/` trigger instances (Foreground · Background
-· SilentPush · DownloadBackstop · Provision), and the `flow/` **user-tap command bundle**
-(`UserCommands`: leave · create · commitJoin · share), which the root injects into the
-`StatusContainerHost` — presentation fires commands only through the bundle and references no
-feature command directly. The root passes the PhotoKit permission adapter (as both the
-`PhotoAccessStatusSource` and `PhotoAccessRequester`) and the iOS Keychain config store (as both
-the `ConfigSource` and `ConfigStore`). The composed graph SHALL construct the iOS
+· SilentPush · DownloadBackstop · Provision), and the **user-tap command bundle**
+(`model/`'s `UserCommands`: leave · create · commitJoin · share · requestAccess · openSettings —
+seated in `model/` since migration step 9, because the armed presentation gate forbids
+`:ui:presentation` naming `flow/`; live instances are still built and decorated only in
+`compose/`), which the root injects into the `StatusContainerHost` — presentation fires commands
+only through the bundle and references no feature command, port, or flow callable directly. The
+root passes the PhotoKit permission adapter's **permission StateFlow** and the Keychain config
+adapter's **config StateFlow** into the host (since step 9 the host's read-model inputs are bare
+StateFlows — presentation names no `ports/` type), supplies the same permission adapter as
+`AppPorts.photoAccessRequester` (the port the bundle's `requestAccess`/`openSettings` commands are
+bound to in `compose/`), and passes the Keychain adapter as both the `ConfigSource` and
+`ConfigStore` in `AppPorts`. The root SHALL bind the `Clock`/`TimeZoneSource` ports' system
+adapters (`:adapter:generic`'s `SystemClock`/`SystemTimeZone`) into the **one shared, pure**
+`CutoffFormatter` (its now/zone arrive injected — the through-ports repayment of step 9) handed to
+the host, the screen, and the forge factory; the formatter is root-owned rather than
+`AppCore`-owned deliberately, so the forge composition reaches it with no route to the live
+graph. The composed graph SHALL construct the iOS
 `LedgerCountsSource` as a **read-only** reader of the shared App-Group ledger — supplying a
 `suspend () -> LedgerCounts` that calls only `iosLedgerStore().aggregates()` (never a write) — and
 SHALL issue **no** storage LIST for upload status. On the OS-driven tier the composed graph SHALL
@@ -163,7 +174,8 @@ recomposition so the source collector and container are not torn down with the v
 `MainViewController` SHALL render `host.container.stateFlow` and route the gate intents to
 `host.onRequestPermission` / `host.onOpenSettings`, the leave action to `host.onLeaveEvent`, and
 the share action to `host.onShareInvite`; it SHALL collect the container's invite URL
-(`host.inviteUrl`) and pass it to `StatusScreen`. `SnapSyncRoot` SHALL expose `onOpenUrl(String)`
+(`host.inviteUrl`) and pass it to `StatusScreen`, together with the root's shared
+`CutoffFormatter` (the screen carries no system-reading default). `SnapSyncRoot` SHALL expose `onOpenUrl(String)`
 that reaches the container's `onOpenUrl` intent (through the live delegate), and
 foreground/background entry points the SwiftUI scene calls on its scene-phase transitions to drive
 the Foreground/Background flows and the liveness-observer lifecycle.
@@ -193,8 +205,9 @@ the Foreground/Background flows and the liveness-observer lifecycle.
 #### Scenario: Permission action flows through the container
 
 - **WHEN** the user activates the gate's "Allow access" or "Open Settings"
-- **THEN** `MainViewController` invokes the container intent, which calls the injected
-  `PhotoAccessRequester` — the UI never calls PhotoKit directly
+- **THEN** `MainViewController` invokes the container intent, which fires the bundle's
+  `requestAccess`/`openSettings` command, whose compose-built body calls the
+  `PhotoAccessRequester` port — the UI never calls PhotoKit directly and names no port
 
 #### Scenario: An event link flows through the container
 
@@ -324,7 +337,9 @@ rejects it).
 The iOS app SHALL read a `SNAPSYNC_FORGE_STATE` variable from the process environment
 **once per process launch** and, when it is present and names a **recognized** forge
 state, SHALL assemble a `StatusContainerHost` from **forged sources** for that state — via
-a shared **forge factory** (`:domain:presentation`, `commonMain`) — and render the
+a shared **forge factory** (`:ui:presentation`, `commonMain` — re-homed from
+`:domain:presentation` at migration step 9; the factory receives the shell's `CutoffFormatter`,
+constructing no system-clock-reading formatter itself) — and render the
 screen from that host's `container.stateFlow`, exactly as the production shell renders its
 live container. The forged screen SHALL therefore render **live** `UiState` from a real
 `StatusContainerHost`, **not a static `UiState`**, preserving the shell invariant; the

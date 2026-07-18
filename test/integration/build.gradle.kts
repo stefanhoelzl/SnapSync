@@ -15,7 +15,7 @@ kotlin {
         commonTest.dependencies {
             implementation(project(":domain"))
             implementation(project(":test:world"))
-            implementation(project(":domain:presentation"))
+            implementation(project(":ui:presentation"))
             // The real Ktor clients some tests drive (HttpEventDirectory, KtorPushHttpClient) moved
             // to the adapter layer at migration step 4.
             implementation(project(":adapter:generic"))

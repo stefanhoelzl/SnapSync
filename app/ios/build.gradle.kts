@@ -19,8 +19,8 @@ kotlin {
     sourceSets {
         iosMain.dependencies {
             api(project(":domain"))
-            implementation(project(":domain:ui"))
-            implementation(project(":domain:presentation"))
+            implementation(project(":ui:screens"))
+            implementation(project(":ui:presentation"))
             // ProtectedDataGate/ProtectedDataAvailability (the ProtectedData seam keeps its old home
             // until migration step 12; the SecItem impls moved to :adapter:ios:ext-safe at step 4).
             implementation(project(":domain:keychain"))

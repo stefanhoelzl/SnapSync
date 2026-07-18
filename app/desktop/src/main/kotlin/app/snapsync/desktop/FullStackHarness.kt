@@ -81,8 +81,7 @@ fun WorldHarnessRoot() {
                         permissionSource = controller.permissionSource,
                         requester = controller.requester,
                         configSource = controller.configSource,
-                        configStore = controller.configStore,
-                        creationStatusSource = controller.creationStatusSource,
+            creationStatusSource = controller.creationStatusSource,
                         creator = controller.creator,
                         downloadSource = controller.downloadSource,
                         // The REAL join gate over the world: create + scan reach the JoiningEvent

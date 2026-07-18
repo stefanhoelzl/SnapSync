@@ -8,13 +8,4 @@ the `:tools:diagrams` freshness test fails on drift; regenerate instead.
 
 | Port | Declared in | Implementations (by module) | Fake exists |
 |---|---|---|---|
-| `AppSyncStatus` | `:domain:ui:components` | `:domain:ui:components` CannotVerifyDevice, InSync, Loading, NeedsAccess, NotStarted, Syncing | no |
-| `AttestedSource` | `:domain:presentation` | `:domain:presentation` AlwaysAttested, MutableAttestedSource | no |
-| `CutoffFormatter` | `:domain:presentation` | `:domain:presentation` SystemCutoffFormatter | no |
-| `JoinLoad` | `:domain:presentation` | `:domain:presentation` Failed, Found, NotFound | no |
-| `JoinPhase` | `:domain:presentation` | `:domain:presentation` CommitFailed, Committing, ExplainAccess, LoadFailed, Loading, NotFound, Ready | no |
 | `ProtectedDataAvailability` | `:domain:keychain` | `:app:ios` IosProtectedData; `:domain:keychain` FakeAvailability | yes |
-| `SetupEffect` | `:domain:presentation` | `:domain:presentation` InvalidConfigLink | no |
-| `StatusIndicator` | `:domain:ui:components` | `:domain:ui:components` Complete, Error, InProgress, Loading, Photos, Success, Waiting | no |
-| `SyncHealth` | `:domain:presentation` | `:domain:presentation` InSync, Loading, NeedsAccess, NotStarted, Syncing, Unattested | no |
-| `UiState` | `:domain:presentation` | `:domain:presentation` CreateEvent, CreatingEvent, Joined, JoiningEvent | no |

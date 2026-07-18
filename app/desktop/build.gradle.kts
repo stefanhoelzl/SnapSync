@@ -21,11 +21,11 @@ kotlin {
 dependencies {
     implementation(libs.ktor.client.core)
     api(project(":domain"))
-    implementation(project(":domain:presentation"))
-    implementation(project(":domain:ui"))
+    implementation(project(":ui:presentation"))
+    implementation(project(":ui:screens"))
     // `StatusPane` provides the design-system's test-only `LocalDarkThemeOverride` around the phone
-    // pane, so the components module is a direct dependency rather than transitive through `:domain:ui`.
-    implementation(project(":domain:ui:components"))
+    // pane, so the components module is a direct dependency rather than transitive through `:ui:screens`.
+    implementation(project(":ui:components"))
     // The real Ktor clients the inspector constructs (HttpEventCreation, HttpEventDirectory) moved
     // to the adapter layer at migration step 4.
     implementation(project(":adapter:generic"))

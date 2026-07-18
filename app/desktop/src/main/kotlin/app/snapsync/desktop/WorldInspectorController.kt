@@ -20,7 +20,7 @@ import app.snapsync.feature.membership.ManifestDeviceEnroller
 import app.snapsync.ports.PhotoAccessRequester
 import app.snapsync.model.PermissionStatus
 import app.snapsync.ports.PhotoAccessStatusSource
-import app.snapsync.presentation.JoinLoad
+import app.snapsync.model.JoinLoad
 import app.snapsync.presentation.StatusContainerHost
 import app.snapsync.model.DENYLISTED_ALBUM_TITLES
 import app.snapsync.model.excludedAssetIds

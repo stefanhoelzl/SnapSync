@@ -24,6 +24,7 @@ Roots found:
 | `BackendStore` | | | | x |
 | `BackgroundUploadPump` | | | x | |
 | `CreateEvent` | | | | x |
+| `CutoffFormatter` | x | | | |
 | `DeviceManifestAsset` | | | | x |
 | `DownloadController` | | | | x |
 | `EventConfig` | | | | x |

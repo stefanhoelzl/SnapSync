@@ -338,7 +338,16 @@ flow-no-ports, presentation-imports — following the fake-honesty gate's self-a
 - The presentation gate SHALL enforce the import-level approximation of its law:
   `ui/presentation` sources never reference the `ports/` or `flow/` packages (imported or
   fully-qualified); the finer no-feature-command-invocation rule remains a review concern until
-  it has a mechanical form.
+  it has a mechanical form. The gate's scope is **every** `.kt` under `ui/presentation/src` —
+  test sources included, deliberately: presentation's tests are presentation sources, so a test
+  that assembles a port-typed stub reintroduces exactly the coupling the gate exists to sever
+  (honored at migration step 9, where the two tests assembling the real create use-case over a
+  stubbed `EventCreation` port were re-seated as bundle-level choreography, their feature half
+  owned by `CreateEventTest` and `:test:integration`).
+
+As of migration step 9 all five pinned scopes exist (`model/`+`ports/` at 3a, `feature/` at 5–6,
+`compose/` at 7, `flow/` at 8, `ui/presentation/src` at 9) and every zone gate is **armed** — the
+pending state is historical; the self-arming contract stands for any future scope move.
 
 #### Scenario: A gate whose zone does not exist yet
 

@@ -52,7 +52,7 @@ fun includedModules(root: File): List<String> =
         .sortedWith(compareBy { it })
         .toList()
 
-/** `:domain:ui:components` → `domain/ui/components`. */
+/** `:ui:components` → `ui/components`. */
 fun moduleDir(path: String): String = path.trimStart(':').replace(':', '/')
 
 /** The longest-prefix module owning [relPath], or null when no included module contains it. */
@@ -115,14 +115,14 @@ fun stripComments(text: String): String {
 }
 
 /**
- * Every Kotlin source under the four scanned top-level trees, module-mapped and comment-blanked.
+ * Every Kotlin source under the scanned top-level trees, module-mapped and comment-blanked.
  * `build/` output is excluded — generated sources are other tasks' outputs, not diagram subjects
  * (the same rule `:test:architecture` applies to its guard inputs).
  */
 fun kotlinSources(root: File): List<KtSource> {
     val modules = includedModules(root)
     val out = mutableListOf<KtSource>()
-    for (top in listOf("adapter", "app", "capability", "domain", "test")) {
+    for (top in listOf("adapter", "app", "capability", "domain", "test", "ui")) {
         val dir = File(root, top)
         if (!dir.isDirectory) continue
         dir.walkTopDown()

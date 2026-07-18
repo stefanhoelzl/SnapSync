@@ -120,7 +120,10 @@ component. The component SHALL enforce `maxLength` by refusing input beyond it.
 The design system SHALL provide a semantic status-line component that renders the joined-layer sync
 health from a single sealed semantic value (e.g. `InSync` / `Syncing(uploadArrow, downloadArrow)` /
 `NeedsAccess` / **`NotStarted(startsAt)`** / **`CannotVerifyDevice`**), where each arrow state is one of
-`Hidden` / `Static` / `Pulsing`. Per the semantic-only rule it SHALL expose **no** appearance parameters (no `Modifier`, color,
+`Hidden` / `Static` / `Pulsing` — carried, since migration step 9's Arrow/ArrowLevel unification, by
+the **one shared `model/` `Arrow` enum** (`:ui:components` takes an api dependency on `:domain` for
+it): the arrow is shared sync vocabulary, not a config-capability coupling, so presentation's
+reduction and this skin render from the same declaration and a mapping layer cannot drift. Per the semantic-only rule it SHALL expose **no** appearance parameters (no `Modifier`, color,
 shape, or text style) — callers pass only the health value and, for the attention state, an `onClick`. The
 component SHALL animate a `Pulsing` arrow and render a `Static` arrow without motion, SHALL render the
 two **attention** states (`NeedsAccess` and `CannotVerifyDevice`) as the **only** variants carrying a

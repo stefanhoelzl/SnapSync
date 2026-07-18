@@ -18,7 +18,7 @@ on drift; regenerate instead.
 ## `:domain`
 
 - depends on: —
-- interfaces declared (commonMain): `AlbumManager`, `AlbumMapSource`, `AlbumMapStore`, `AttestClient`, `AttestKey`, `AttestStore`, `BackgroundScheduler`, `BackgroundTransfer`, `CompositionMode`, `ConfigDecodeResult`, `ConfigRead`, `ConfigReader`, `ConfigSource`, `ConfigStore`, `Contribution`, `CreateOutcome`, `CreationStatus`, `CreationStatusSource`, `CycleGate`, `DeviceEnroller`, `DeviceFilesSource`, `DeviceManifestStore`, `DiscoveryStore`, `DownloadStatusSource`, `DownloadStore`, `DownloadTask`, `DownloadTransport`, `DownloadTransportHost`, `Enrollment`, `EventCreation`, `EventCreator`, `EventDetails`, `EventDirectory`, `EventUnionSource`, `GalleryStatusSource`, `ImportResult`, `JoinedEventMarker`, `Keychain`, `KeychainRead`, `LedgerCountsSource`, `LedgerStore`, `LogScope`, `PhotoAccessRequester`, `PhotoAccessStatusSource`, `PhotoDownloadJobs`, `PhotoLibrary`, `PhotoLibraryImporter`, `PushHttpClient`, `PushReceiver`, `RawAssetSource`, `SuppressionSource`, `SyncDecision`, `SyncEvent`, `SyncStatus`, `SyncStatusSource`, `UploadError`, `UploadProducer`, `UploadRequestProvider`
+- interfaces declared (commonMain): `AlbumManager`, `AlbumMapSource`, `AlbumMapStore`, `AttestClient`, `AttestKey`, `AttestStore`, `BackgroundScheduler`, `BackgroundTransfer`, `Clock`, `CompositionMode`, `ConfigDecodeResult`, `ConfigRead`, `ConfigReader`, `ConfigSource`, `ConfigStore`, `Contribution`, `CreateOutcome`, `CreationStatus`, `CreationStatusSource`, `CycleGate`, `DeviceEnroller`, `DeviceFilesSource`, `DeviceManifestStore`, `DiscoveryStore`, `DownloadStatusSource`, `DownloadStore`, `DownloadTask`, `DownloadTransport`, `DownloadTransportHost`, `Enrollment`, `EventCreation`, `EventCreator`, `EventDetails`, `EventDirectory`, `EventUnionSource`, `GalleryStatusSource`, `ImportResult`, `JoinLoad`, `JoinedEventMarker`, `Keychain`, `KeychainRead`, `LedgerCountsSource`, `LedgerStore`, `LogScope`, `PhotoAccessRequester`, `PhotoAccessStatusSource`, `PhotoDownloadJobs`, `PhotoLibrary`, `PhotoLibraryImporter`, `PushHttpClient`, `PushReceiver`, `RawAssetSource`, `SuppressionSource`, `SyncDecision`, `SyncEvent`, `SyncStatus`, `SyncStatusSource`, `TimeZoneSource`, `UploadError`, `UploadProducer`, `UploadRequestProvider`
 
 ## `:domain:download-store`
 
@@ -40,24 +40,9 @@ on drift; regenerate instead.
 - depends on: `:domain`
 - interfaces declared (commonMain): `ProtectedDataAvailability`
 
-## `:domain:presentation`
-
-- depends on: `:domain`
-- interfaces declared (commonMain): `AttestedSource`, `CutoffFormatter`, `JoinLoad`, `JoinPhase`, `SetupEffect`, `SyncHealth`, `UiState`
-
-## `:domain:ui`
-
-- depends on: `:domain`, `:domain:presentation`, `:domain:ui:components`
-- interfaces declared (commonMain): —
-
-## `:domain:ui:components`
-
-- depends on: —
-- interfaces declared (commonMain): `AppSyncStatus`, `StatusIndicator`
-
 ## Forge name→sources map (`SNAPSYNC_FORGE_STATE`)
 
-Declared in `domain/presentation/src/commonMain/kotlin/app/snapsync/presentation/ForgeStatusHost.kt`.
+Declared in `ui/presentation/src/commonMain/kotlin/app/snapsync/presentation/ForgeStatusHost.kt`.
 
 | State | Forged inputs |
 |---|---|

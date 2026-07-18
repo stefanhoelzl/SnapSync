@@ -27,10 +27,10 @@ import app.snapsync.flow.DownloadBackstop
 import app.snapsync.flow.Foreground
 import app.snapsync.flow.Provision
 import app.snapsync.flow.SilentPush
-import app.snapsync.flow.UserCommands
 import app.snapsync.model.Contribution
 import app.snapsync.model.EventConfig
 import app.snapsync.model.PermissionStatus
+import app.snapsync.model.UserCommands
 import app.snapsync.ports.AlbumManager
 import app.snapsync.ports.AlbumMapStore
 import app.snapsync.ports.AttestClient
@@ -48,6 +48,7 @@ import app.snapsync.ports.EventUnionSource
 import app.snapsync.ports.Enrollment
 import app.snapsync.ports.LedgerStore
 import app.snapsync.ports.LogScope
+import app.snapsync.ports.PhotoAccessRequester
 import app.snapsync.ports.PhotoAccessStatusSource
 import app.snapsync.ports.PhotoLibrary
 import app.snapsync.ports.PhotoLibraryImporter
@@ -72,6 +73,10 @@ class AppPorts(
     val configSource: ConfigSource,
     val configStore: ConfigStore,
     val photoAccess: PhotoAccessStatusSource,
+    /** The photo-access request/Settings surface — the port behind the bundle's `requestAccess` /
+     *  `openSettings` user-tap commands (migration step 9: presentation fires them through the
+     *  bundle and never names the port). */
+    val photoAccessRequester: PhotoAccessRequester,
     val photoLibrary: PhotoLibrary,
     /** Read-only in this graph: the app-side ledger handle (aggregates read; the arm never writes records). */
     val ledger: LedgerStore,
@@ -393,6 +398,11 @@ class AppCore internal constructor(
             // Share is pure platform (a system sheet over the top view controller) — the shell's lambda,
             // passed through undecorated.
             share = ports.share,
+            // The permission user-taps (capability `permission-gate`), bound to the requester port here
+            // so presentation never names it (migration step 9). `requestAccess` returns nothing and
+            // cannot suspend — the grant arrives only via the permission read-model StateFlow.
+            requestAccess = { ports.photoAccessRequester.request() },
+            openSettings = { ports.photoAccessRequester.openSettings() },
         )
     }
 

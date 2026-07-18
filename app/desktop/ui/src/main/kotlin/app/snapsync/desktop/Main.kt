@@ -55,7 +55,6 @@ fun ForgeHarnessRoot() {
                     permissionSource = controller.permissionSource,
                     requester = controller.requester,
                     configSource = controller.configSource,
-                    configStore = controller.configStore,
                     creationStatusSource = controller.creationStatusSource,
                     creator = controller.creator,
                     downloadSource = controller.downloadStatusSource,

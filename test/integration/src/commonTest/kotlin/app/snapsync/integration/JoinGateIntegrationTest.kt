@@ -1,7 +1,5 @@
 package app.snapsync.integration
 
-import app.snapsync.ports.ConfigStore
-import app.snapsync.model.EventConfig
 import app.snapsync.model.Direction
 import app.snapsync.model.EventLinkPayload
 import app.snapsync.model.encodeEventUrl
@@ -11,9 +9,9 @@ import app.snapsync.feature.membership.JoinEvent
 import app.snapsync.feature.membership.JoinOutcome
 import app.snapsync.feature.membership.ManifestDeviceEnroller
 import app.snapsync.feature.membership.LeaveEvent
-import app.snapsync.ports.PhotoAccessRequester
-import app.snapsync.flow.UserCommands
-import app.snapsync.presentation.toJoinLoad
+import app.snapsync.model.UserCommands
+import app.snapsync.feature.membership.toJoinLoad
+import app.snapsync.presentation.CutoffFormatter
 import app.snapsync.presentation.JoinPhase
 import app.snapsync.presentation.StatusContainerHost
 import app.snapsync.presentation.UiState
@@ -27,6 +25,8 @@ import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.withTimeout
 import kotlin.coroutines.coroutineContext
+import kotlin.time.Instant
+import kotlinx.datetime.TimeZone
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -345,10 +345,8 @@ class JoinGateIntegrationTest {
         )
         return StatusContainerHost(
             syncSource = w.syncStatusSource(scope),
-            permissionSource = w.permission,
-            requester = NoOpJoinRequester,
-            configSource = w.configSource,
-            store = NoOpJoinConfigStore,
+            permission = w.permission.permission,
+            config = w.configSource.config,
             scope = scope,
             loadJoinDetails = { id -> joinEvent.loadDetails(id).toJoinLoad() },
             commands = UserCommands(
@@ -357,6 +355,7 @@ class JoinGateIntegrationTest {
                     joinEvent.join(id, name, startsAt, cutoff, direction, saveToAlbum) != JoinOutcome.EnrollFailed
                 },
             ),
+            cutoffFormatter = fixedCutoffFormatter(),
         )
     }
 
@@ -364,12 +363,8 @@ class JoinGateIntegrationTest {
         withTimeout(5_000) { container.stateFlow.first(predicate) }
 }
 
-private object NoOpJoinRequester : PhotoAccessRequester {
-    override fun request() = Unit
-    override fun openSettings() = Unit
-}
-
-private object NoOpJoinConfigStore : ConfigStore {
-    override suspend fun save(config: EventConfig) = Unit
-    override suspend fun clear() = Unit
-}
+/** A real formatter on a fixed UTC instant — the host requires one since step 9 (no system default). */
+private fun fixedCutoffFormatter() = CutoffFormatter(
+    now = { Instant.parse("2026-07-09T12:00:00Z") },
+    zone = TimeZone.UTC,
+)

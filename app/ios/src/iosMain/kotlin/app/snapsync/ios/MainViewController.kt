@@ -81,6 +81,9 @@ fun MainViewController() = ComposeUIViewController {
             onRetryJoin = host::onRetryJoin,
             onConfirmSwitch = host::onConfirmSwitch,
             onCancelSwitch = host::onCancelSwitch,
+            // The root's one system-bound formatter (migration step 9: the screen's default died with
+            // the through-ports repayment; forge and live share this same instance).
+            cutoff = SnapSyncRoot.cutoffFormatter,
         )
     }
 }
