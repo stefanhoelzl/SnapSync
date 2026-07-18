@@ -19,10 +19,9 @@ kotlin {
 }
 
 dependencies {
-    // The two harness roots this drives. `:app:desktop` is also transitive via `:app:desktop:ui`, but
-    // `WorldHarnessRoot` is named directly here, so the dependency is explicit.
+    // The two harness roots this drives — ForgeHarnessRoot AND WorldHarnessRoot both live in
+    // `:app:desktop` since the migration step-10 fold.
     implementation(project(":app:desktop"))
-    implementation(project(":app:desktop:ui"))
     implementation(compose.runtime)
     // `runDesktopComposeUiTest` + `captureToImage` — an `implementation` dep (not `testImplementation`):
     // the driver is a `main()`, not a test. The offscreen Compose scene it renders into is a CPU raster
@@ -58,5 +57,5 @@ fun registerDrive(taskName: String, harness: String, blurb: String) =
         outputs.upToDateWhen { false }
     }
 
-registerDrive("driveForge", "forge", "Serve the forge harness (:app:desktop:ui) headlessly over HTTP.")
-registerDrive("driveWorld", "world", "Serve the full-stack world harness (:app:desktop) headlessly over HTTP.")
+registerDrive("driveForge", "forge", "Serve the forge harness (:app:desktop:runForge) headlessly over HTTP.")
+registerDrive("driveWorld", "world", "Serve the full-stack world harness (:app:desktop:run) headlessly over HTTP.")

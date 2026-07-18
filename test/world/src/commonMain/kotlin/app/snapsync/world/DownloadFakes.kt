@@ -8,9 +8,6 @@ import app.snapsync.ports.PhotoLibraryImporter
 import app.snapsync.ports.TransferOutcome
 import app.snapsync.ports.AssetRef
 import app.snapsync.ports.StagedResource
-import app.snapsync.model.DeviceManifestAsset
-import app.snapsync.ports.DeviceManifestStore
-import app.snapsync.gallery.InMemoryRawAssetSource
 import app.snapsync.model.RawAsset
 import app.snapsync.model.RawResource
 import app.snapsync.model.ResourceRole
@@ -79,7 +76,7 @@ class FakeDownloadTransport(private val host: DownloadTransportHost) : DownloadT
  * settable [failNextImport] yields `ImportResult.Failed` (non-terminal — the asset stays importable).
  */
 class FakePhotoLibraryImporter(
-    private val gallery: InMemoryRawAssetSource,
+    private val gallery: WorldGallery,
 ) : PhotoLibraryImporter {
 
     /** Inspection: the source refs imported. */
@@ -121,17 +118,3 @@ class FakePhotoLibraryImporter(
     }
 }
 
-/** The world's in-memory [DeviceManifestStore] for the composed `DeviceManifestProducer`. */
-class InMemoryDeviceManifestStore : DeviceManifestStore {
-    private var accumulator: List<DeviceManifestAsset> = emptyList()
-    private var lastUploaded: String? = null
-
-    override fun loadAccumulator(): List<DeviceManifestAsset> = accumulator
-    override fun saveAccumulator(assets: List<DeviceManifestAsset>) {
-        accumulator = assets
-    }
-    override fun loadLastUploaded(): String? = lastUploaded
-    override fun saveLastUploaded(json: String) {
-        lastUploaded = json
-    }
-}

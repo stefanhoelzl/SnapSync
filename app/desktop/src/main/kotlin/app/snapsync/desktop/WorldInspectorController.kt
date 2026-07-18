@@ -13,10 +13,7 @@ import app.snapsync.model.UploadError
 import app.snapsync.feature.creation.CreationStatusSource
 import app.snapsync.feature.creation.EventCreator
 import app.snapsync.ports.EventDetails
-import app.snapsync.join.HttpEventDirectory
 import app.snapsync.feature.membership.JoinEvent
-import app.snapsync.feature.membership.JoinOutcome
-import app.snapsync.feature.membership.ManifestDeviceEnroller
 import app.snapsync.ports.PhotoAccessRequester
 import app.snapsync.model.PermissionStatus
 import app.snapsync.ports.PhotoAccessStatusSource
@@ -129,30 +126,21 @@ class WorldInspectorController(private val scope: CoroutineScope) {
     }
 
     private fun rebuildSources() {
-        syncSource = world.syncStatusSource(scope)
-        downloadSource = StoreDownloadStatusSource(world.downloadStore)
-        // The real join use-case over this world (mirrors the iOS SnapSyncRoot + the integration test):
-        // GET /events/:id details, enroll via an empty manifest PUT, then provision the world config.
-        joinEvent = JoinEvent(
-            configSource = world.configSource,
-            deviceId = { world.ownDeviceId },
-            details = HttpEventDirectory(world.client, world.host),
-            enroller = ManifestDeviceEnroller(world.manifestUploader),
-            provision = { cfg ->
-                world.provision(
-                    eventId = cfg.eventId,
-                    name = cfg.name,
-                    minPhotoDate = cfg.minPhotoDate,
-                    startsAt = cfg.startsAt,
-                    direction = cfg.direction,
-                    saveToAlbum = cfg.saveToAlbum,
-                )
-                afterMutation()
-            },
-        )
+        // The composed graph's OWN read-models and use-cases (migration step 10: the world runs on
+        // `snapSyncApp`, so these are `AppCore`'s instances — never inspector-local rebuilds).
+        syncSource = world.syncStatusSource
+        downloadSource = world.downloadStatusSource
+        // The real join use-case, composed by `AppCore` over the world's ports (GET /events/:id
+        // details, enroll via an empty manifest PUT, then provision through the world's config cell).
+        joinEvent = world.joinEvent
         // Route a minted event into the SAME pending-join gate a scan opens (not the world's default
         // provide-directly), so create shows the JoiningEvent surface with the direction + cutoff rows.
-        creator = world.createEvent(scope, onMinted = { eventId -> host?.onEventCreated(eventId); Unit })
+        // This is the shell's `onEventMinted` lambda — the world IS the shell here.
+        world.onEventMinted = { eventId ->
+            host?.onEventCreated(eventId)
+            afterMutation()
+        }
+        creator = world.core.eventCreator
     }
 
     /** Details load for the join gate (GET /events/:id over the mini-edge), mapped to the gate's [JoinLoad]. */
@@ -162,7 +150,7 @@ class WorldInspectorController(private val scope: CoroutineScope) {
         EventDetails.Failed -> JoinLoad.Failed
     }
 
-    /** Confirm the join: enroll (empty-manifest PUT) then provision; `true` unless enrollment failed. */
+    /** Confirm the join through the composed command bundle (enroll then provision); refresh after. */
     suspend fun commitJoin(
         eventId: String,
         name: String,
@@ -171,7 +159,8 @@ class WorldInspectorController(private val scope: CoroutineScope) {
         direction: Direction,
         saveToAlbum: Boolean,
     ): Boolean =
-        joinEvent.join(eventId, name, startsAt, cutoff, direction, saveToAlbum) != JoinOutcome.EnrollFailed
+        world.userCommands.commitJoin(eventId, name, startsAt, cutoff, direction, saveToAlbum)
+            .also { afterMutation() }
 
     // ---- the OS invocation + token ---------------------------------------------------------------
 
@@ -374,12 +363,10 @@ class WorldInspectorController(private val scope: CoroutineScope) {
      * `LedgerBackedSyncStatusSource` projection re-emits only after we pull them.
      */
     private suspend fun refreshStatus() {
-        // What the membership contributes scopes the total — its direction AND its cutoff (capability
-        // `photo-selection-policy`). Derived by the world exactly as the composition roots derive it, so a
-        // download-only join shows the operator N=0, not a total that can never settle.
-        world.ownGallery.refresh(world.contribution())
-        world.ledgerCounts.refresh()
-        downloadSource.refresh()
+        // The composed graph's own refresh (capability `sync-status`): gallery total scoped by the
+        // membership's Contribution, ledger counts, and the download line — exactly what the iOS
+        // shell's foreground entry pulls, because it IS the same `AppCore.refreshStatusSources`.
+        world.refreshStatus()
     }
 
     private suspend fun snapshotNow(): InspectorSnapshot {
@@ -406,9 +393,10 @@ class WorldInspectorController(private val scope: CoroutineScope) {
         val jobKeys = world.platform.liveJobKeys()
         val jobs = jobKeys.map { key -> JobRow(key, attempts = world.platform.created.count { it.filename == key }) }
         // The real jobs expose no inspection seam and their description codec is internal to
-        // `:domain`'s feature/download, so the world records what the controller requested (see downloadRequests).
-        val downloads = world.downloadRequests.distinctBy { it.ref to it.resource.resourceKey }
-            .map { DownloadRow(it.ref.sourceDeviceId, it.ref.sourceAssetId, it.resource.resourceKey) }
+        // `:domain`'s feature/download, so the world's recording store wrapper records what the
+        // controller enqueued (see RecordingDownloadStore.enqueueRequests).
+        val downloads = world.downloadStore.enqueueRequests.distinct()
+            .map { (ref, resourceKey) -> DownloadRow(ref.sourceDeviceId, ref.sourceAssetId, resourceKey) }
         return InspectorSnapshot(
             joinedEventId = world.configSource.config.value?.eventId,
             galleryRows = galleryRows,

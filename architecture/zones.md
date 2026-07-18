@@ -9,39 +9,35 @@ edit — the `:tools:diagrams` freshness test fails on drift; regenerate instead
 ```mermaid
 flowchart LR
   subgraph adapter
+    adapter_fake[":adapter:fake"]
     adapter_generic[":adapter:generic"]
     adapter_ios_app_only[":adapter:ios:app-only"]
     adapter_ios_ext_safe[":adapter:ios:ext-safe"]
   end
   subgraph capability
-    capability_attest[":capability:attest"]
     capability_push[":capability:push"]
   end
   subgraph domain
     domain[":domain"]
-    domain_download_store[":domain:download-store"]
-    domain_engine[":domain:engine"]
-    domain_gallery[":domain:gallery"]
     domain_keychain[":domain:keychain"]
+  end
+  subgraph test
+    test_world[":test:world"]
   end
   subgraph ui
     ui_components[":ui:components"]
     ui_presentation[":ui:presentation"]
     ui_screens[":ui:screens"]
   end
+  adapter_fake --> domain
   adapter_generic --> domain
+  adapter_generic --> test_world
   adapter_ios_app_only --> adapter_ios_ext_safe
   adapter_ios_app_only --> domain
   adapter_ios_ext_safe --> adapter_generic
   adapter_ios_ext_safe --> domain
-  capability_attest --> domain
   capability_push --> adapter_generic
   capability_push --> domain
-  domain_download_store --> adapter_generic
-  domain_download_store --> domain
-  domain_engine --> adapter_generic
-  domain_engine --> domain
-  domain_gallery --> domain
   domain_keychain --> domain
   ui_components --> domain
   ui_presentation --> domain
