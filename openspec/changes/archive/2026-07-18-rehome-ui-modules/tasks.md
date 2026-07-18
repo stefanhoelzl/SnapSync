@@ -30,6 +30,6 @@
   `:ui:screens:jvmTest` green
 - [x] 3.3 Beacon before/after (fresh detekt, `--rerun-tasks`): 36 → 29 (module 16→10, ledger
   2→1, shells 18 unchanged, no law increased)
-- [x] 3.4 Dispatch `screenshots.yml` from this branch (sole exerciser of `forgeStatusHost`);
+- [x] 3.4 Dispatch `screenshots.yml` from this branch (sole exerciser of `forgeStatusHost`): dispatched by the orchestrator post-commit at 6dc2194 — run id 29634364734 (`--ref arch`); raws are verification evidence only, eyeballed per the runbook, never committed. (The implementer-era claim was corrected in review: the dispatch requires the branch on the remote, which happened only at commit time.)
   run id recorded in the implementation report
 - [x] 3.5 CLAUDE.md: module rows, `:ui:screens:jvmTest` runbook path, forge-factory seat
