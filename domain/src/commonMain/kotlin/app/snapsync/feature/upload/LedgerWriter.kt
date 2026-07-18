@@ -19,14 +19,14 @@ class LedgerWriter(
 
     suspend fun entry(key: String): LedgerEntry? = backend.get(key)
 
-    suspend fun recordRequested(key: String, assetId: String, attempt: Int) =
-        record(key, assetId, LedgerState.REQUESTED, attempt)
+    suspend fun recordRequested(key: String, assetId: String, attempt: Int, eventId: String) =
+        record(key, assetId, LedgerState.REQUESTED, attempt, eventId)
 
-    suspend fun recordCompleted(key: String, assetId: String, attempt: Int) =
-        record(key, assetId, LedgerState.COMPLETED, attempt)
+    suspend fun recordCompleted(key: String, assetId: String, attempt: Int, eventId: String) =
+        record(key, assetId, LedgerState.COMPLETED, attempt, eventId)
 
-    suspend fun recordFailed(key: String, assetId: String, attempt: Int) =
-        record(key, assetId, LedgerState.FAILED, attempt)
+    suspend fun recordFailed(key: String, assetId: String, attempt: Int, eventId: String) =
+        record(key, assetId, LedgerState.FAILED, attempt, eventId)
 
     /**
      * Prune every row for [assetId] — a sync write by the single writer (distinct from the app-side
@@ -38,6 +38,13 @@ class LedgerWriter(
     /** Prune every row whose assetId is not in [keep] (writer-only; see [deleteByAssetId]). */
     suspend fun retainAssets(keep: Set<String>) = backend.retainAssets(keep)
 
-    private suspend fun record(key: String, assetId: String, state: LedgerState, attempt: Int) =
-        backend.put(LedgerEntry(key, assetId, state, attempt))
+    /**
+     * Sweep every pre-provenance row (`eventId = ""` — recorded before the ledger carried the
+     * column, or by a staged-revert build) to [eventId]. A writer-family operation like the
+     * prunes: only the single-writer's cycle runs it, once per entry, idempotently.
+     */
+    suspend fun backfillEventId(eventId: String) = backend.backfillEventId(eventId)
+
+    private suspend fun record(key: String, assetId: String, state: LedgerState, attempt: Int, eventId: String) =
+        backend.put(LedgerEntry(key, assetId, state, attempt, eventId))
 }

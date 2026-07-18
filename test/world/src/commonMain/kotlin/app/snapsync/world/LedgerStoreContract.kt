@@ -25,21 +25,34 @@ abstract class LedgerStoreContract {
 
     // assetId defaults to the key, so a test that doesn't care about grouping gets one photo per
     // row (the historical per-row behaviour); multi-resource-photo tests pass an explicit assetId.
+    // eventId defaults to the pre-provenance sentinel "" so tests that are not about provenance
+    // stay readable; provenance tests pass an explicit eventId.
     private fun entry(
         key: String = "cloud-1-ios.photo.heic",
         assetId: String = key,
         state: LedgerState = LedgerState.REQUESTED,
         attempt: Int = 0,
-    ) = LedgerEntry(key, assetId, state, attempt)
+        eventId: String = "",
+    ) = LedgerEntry(key, assetId, state, attempt, eventId)
 
     @Test
     fun `put then get round-trips field for field`() = runTest {
         val backend = createBackend()
-        val entry = entry(assetId = "A", state = LedgerState.COMPLETED, attempt = 3)
+        val entry = entry(assetId = "A", state = LedgerState.COMPLETED, attempt = 3, eventId = "E1")
 
         backend.put(entry)
 
         assertEquals(entry, backend.get(entry.key))
+    }
+
+    @Test
+    fun `eventId is stored verbatim including the pre-provenance sentinel`() = runTest {
+        val backend = createBackend()
+        backend.put(entry(key = "a", eventId = "E1"))
+        backend.put(entry(key = "b", eventId = "")) // the 4.sqm migration default
+
+        assertEquals("E1", backend.get("a")?.eventId)
+        assertEquals("", backend.get("b")?.eventId)
     }
 
     @Test
@@ -134,14 +147,75 @@ abstract class LedgerStoreContract {
         val backend = createBackend()
         val writer = LedgerWriter(backend)
 
-        writer.recordRequested("k", "A", attempt = 0)
-        assertEquals(entry("k", "A", LedgerState.REQUESTED, 0), writer.entry("k"))
+        writer.recordRequested("k", "A", attempt = 0, eventId = "E1")
+        assertEquals(entry("k", "A", LedgerState.REQUESTED, 0, eventId = "E1"), writer.entry("k"))
 
-        writer.recordFailed("k", "A", attempt = 0)
-        assertEquals(entry("k", "A", LedgerState.FAILED, 0), writer.entry("k"))
+        writer.recordFailed("k", "A", attempt = 0, eventId = "E1")
+        assertEquals(entry("k", "A", LedgerState.FAILED, 0, eventId = "E1"), writer.entry("k"))
 
-        writer.recordCompleted("k", "A", attempt = 1)
-        assertEquals(entry("k", "A", LedgerState.COMPLETED, 1), writer.entry("k"))
+        writer.recordCompleted("k", "A", attempt = 1, eventId = "E1")
+        assertEquals(entry("k", "A", LedgerState.COMPLETED, 1, eventId = "E1"), writer.entry("k"))
+    }
+
+    @Test
+    fun `backfillEventId rewrites only the pre-provenance sentinel and nothing else`() = runTest {
+        val backend = createBackend()
+        // Two sentinel rows (as the 4.sqm migration leaves them) and one row another event recorded.
+        backend.put(entry(key = "A-photo.jpg", assetId = "A", state = LedgerState.COMPLETED, attempt = 2, eventId = ""))
+        backend.put(entry(key = "A-video.mov", assetId = "A", state = LedgerState.REQUESTED, attempt = 0, eventId = ""))
+        backend.put(entry(key = "B-photo.jpg", assetId = "B", state = LedgerState.COMPLETED, attempt = 1, eventId = "OLD"))
+
+        backend.backfillEventId("E1")
+
+        // Sentinel rows gain the live event id; every other field is untouched.
+        assertEquals(
+            entry("A-photo.jpg", "A", LedgerState.COMPLETED, 2, eventId = "E1"),
+            backend.get("A-photo.jpg"),
+        )
+        assertEquals(
+            entry("A-video.mov", "A", LedgerState.REQUESTED, 0, eventId = "E1"),
+            backend.get("A-video.mov"),
+        )
+        // A row already carrying provenance is never rewritten.
+        assertEquals(
+            entry("B-photo.jpg", "B", LedgerState.COMPLETED, 1, eventId = "OLD"),
+            backend.get("B-photo.jpg"),
+        )
+    }
+
+    @Test
+    fun `backfillEventId is idempotent`() = runTest {
+        val backend = createBackend()
+        backend.put(entry(key = "a", eventId = ""))
+
+        backend.backfillEventId("E1")
+        backend.backfillEventId("E2") // a later sweep finds no sentinel rows — nothing changes
+
+        assertEquals("E1", backend.get("a")?.eventId)
+    }
+
+    @Test
+    fun `backfillEventId dings an active changes collector`() = runTest {
+        val backend = createBackend()
+        backend.put(entry(key = "a", eventId = ""))
+        var dings = 0
+        backgroundScope.launch(start = CoroutineStart.UNDISPATCHED) { backend.changes.collect { dings++ } }
+
+        backend.backfillEventId("E1")
+        runCurrent()
+
+        assertEquals(1, dings)
+    }
+
+    @Test
+    fun `writer exposes the backfill sweep`() = runTest {
+        val backend = createBackend()
+        val writer = LedgerWriter(backend)
+        writer.recordCompleted("k", "A", attempt = 0, eventId = "")
+
+        writer.backfillEventId("E1")
+
+        assertEquals("E1", writer.entry("k")?.eventId)
     }
 
     @Test
@@ -286,16 +360,16 @@ abstract class LedgerStoreContract {
     fun `writer prunes by assetId and retains an asset set - reader cannot`() = runTest {
         val backend = createBackend()
         val writer = LedgerWriter(backend)
-        writer.recordRequested("X-photo.jpg", "X", attempt = 0)
-        writer.recordRequested("X-video.mov", "X", attempt = 0)
-        writer.recordRequested("Y-photo.jpg", "Y", attempt = 0)
+        writer.recordRequested("X-photo.jpg", "X", attempt = 0, eventId = "E1")
+        writer.recordRequested("X-video.mov", "X", attempt = 0, eventId = "E1")
+        writer.recordRequested("Y-photo.jpg", "Y", attempt = 0, eventId = "E1")
 
         writer.deleteByAssetId("X")
         assertNull(writer.entry("X-photo.jpg"))
         assertNull(writer.entry("X-video.mov"))
         assertEquals("Y-photo.jpg", writer.entry("Y-photo.jpg")?.key)
 
-        writer.recordRequested("Z-photo.jpg", "Z", attempt = 0)
+        writer.recordRequested("Z-photo.jpg", "Z", attempt = 0, eventId = "E1")
         writer.retainAssets(setOf("Y"))
         assertNull(writer.entry("Z-photo.jpg"))
         assertEquals("Y-photo.jpg", writer.entry("Y-photo.jpg")?.key)
@@ -306,12 +380,13 @@ abstract class LedgerStoreContract {
         val backend = createBackend()
         val writer = LedgerWriter(backend)
 
-        writer.recordCompleted("k", "A", attempt = 2)
-        writer.recordCompleted("k", "A", attempt = 2)
+        writer.recordCompleted("k", "A", attempt = 2, eventId = "E1")
+        writer.recordCompleted("k", "A", attempt = 2, eventId = "E1")
 
         val entry = writer.entry("k")!!
         assertEquals("A", entry.assetId)
         assertEquals(LedgerState.COMPLETED, entry.state)
         assertEquals(2, entry.attempt)
+        assertEquals("E1", entry.eventId)
     }
 }

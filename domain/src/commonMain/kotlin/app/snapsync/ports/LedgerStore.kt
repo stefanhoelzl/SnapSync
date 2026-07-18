@@ -67,4 +67,14 @@ interface LedgerStore {
      * bind-variable limits.
      */
     suspend fun retainAssets(keep: Set<String>)
+
+    /**
+     * Rewrite the [LedgerEntry.eventId] of every row whose value is the pre-provenance sentinel
+     * `""` to [eventId], leaving every other field — and every row already carrying a real
+     * eventId — untouched. The backend matches the sentinel by equality and interprets nothing.
+     * Idempotent (a sweep that matches no rows is a no-op) and cheap, so the writer runs it once
+     * per cycle entry. Dings [changes] once, like the other bulk operations — provenance is
+     * invisible to today's watchers, but the ding keeps the level-trigger contract uniform.
+     */
+    suspend fun backfillEventId(eventId: String)
 }

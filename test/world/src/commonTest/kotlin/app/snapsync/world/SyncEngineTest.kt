@@ -25,7 +25,10 @@ class SyncEngineTest {
 
     private val provider = RecordingUploadRequestProvider()
     private val ledger = LedgerWriter(InMemoryLedgerStore())
-    private val engine = SyncEngine(provider, ledger)
+
+    /** The joined event the engine records under — provenance on every written row (`sync-ledger`). */
+    private val eventId = "event-1"
+    private val engine = SyncEngine(provider, ledger, eventId)
 
     private fun resource(
         filename: String = "cloud-1-ios.photo.heic",
@@ -56,7 +59,7 @@ class SyncEngineTest {
 
         engine.handle(SyncEvent.UploadStarted(upload.job))
         assertEquals(
-            LedgerEntry(resource.filename, resource.assetId, LedgerState.REQUESTED, 0),
+            LedgerEntry(resource.filename, resource.assetId, LedgerState.REQUESTED, 0, eventId),
             ledger.entry(resource.filename),
         )
     }
@@ -155,13 +158,13 @@ class SyncEngineTest {
         assertSame(resource, retry.job.request.resource)
         // UploadFailed records FAILED only; the retry's REQUESTED comes via UploadStarted.
         assertEquals(
-            LedgerEntry(resource.filename, resource.assetId, LedgerState.FAILED, 0),
+            LedgerEntry(resource.filename, resource.assetId, LedgerState.FAILED, 0, eventId),
             ledger.entry(resource.filename),
         )
 
         engine.handle(SyncEvent.UploadStarted(retry.job))
         assertEquals(
-            LedgerEntry(resource.filename, resource.assetId, LedgerState.REQUESTED, 1),
+            LedgerEntry(resource.filename, resource.assetId, LedgerState.REQUESTED, 1, eventId),
             ledger.entry(resource.filename),
         )
     }
@@ -205,7 +208,7 @@ class SyncEngineTest {
 
         assertIs<SyncDecision.AlreadyUploaded>(decision)
         assertEquals(
-            LedgerEntry(resource.filename, resource.assetId, LedgerState.COMPLETED, 0),
+            LedgerEntry(resource.filename, resource.assetId, LedgerState.COMPLETED, 0, eventId),
             ledger.entry(resource.filename),
         )
     }
@@ -256,6 +259,22 @@ class SyncEngineTest {
         engine.handle(SyncEvent.UploadStarted(job))
 
         assertEquals("A", ledger.entry(resource.filename)?.assetId)
+    }
+
+    @Test
+    fun `every record operation carries the engine's eventId`() = runTest {
+        // The engine is minted per cycle from that cycle's config, so the eventId is a constructor
+        // fact — every lifecycle write (REQUESTED, FAILED, COMPLETED) records under it.
+        val resource = resource()
+        val job0 = assertIs<SyncDecision.Upload>(engine.handle(SyncEvent.ResourceChanged(resource))).job
+        engine.handle(SyncEvent.UploadStarted(job0))
+        assertEquals(eventId, ledger.entry(resource.filename)?.eventId)
+
+        val retry = assertIs<SyncDecision.Retry>(engine.handle(SyncEvent.UploadFailed(job0, UploadError.Network)))
+        assertEquals(eventId, ledger.entry(resource.filename)?.eventId)
+
+        engine.handle(SyncEvent.UploadCompleted(retry.job))
+        assertEquals(eventId, ledger.entry(resource.filename)?.eventId)
     }
 
     @Test

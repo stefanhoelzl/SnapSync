@@ -3,24 +3,32 @@ package app.snapsync.model
 /**
  * One key's durable upload memory. The ledger is the engine's only state: per-resource entries
  * keyed by [Resource.filename], holding the [assetId] the resource belongs to (an opaque grouping
- * id, several resources of one photo share it), the last recorded lifecycle [state], and the
- * [attempt] it belongs to. An uploaded resource is immutable, so a `COMPLETED` entry's mere
- * existence is the proof of upload; there is no content version, and the ledger keeps no timestamp.
+ * id, several resources of one photo share it), the last recorded lifecycle [state], the
+ * [attempt] it belongs to, and the [eventId] that was joined when the row was recorded. An
+ * uploaded resource is immutable, so a `COMPLETED` entry's mere existence is the proof of upload;
+ * there is no content version, and the ledger keeps no timestamp.
+ *
+ * [eventId] is **provenance, not dedup state**: the key stays the bare event-independent filename,
+ * no read consults [eventId], and a `COMPLETED` row stays valid across an event switch (spec
+ * `sync-ledger`, "Event-independent key"). `""` is the pre-provenance sentinel — a row recorded
+ * before the ledger carried the column (the 4.sqm migration default, or a staged-revert build's
+ * writes) — which the single writer's per-cycle backfill sweeps to the then-live event id.
  */
 class LedgerEntry(
     val key: String,
     val assetId: String,
     val state: LedgerState,
     val attempt: Int,
+    val eventId: String,
 ) {
     override fun equals(other: Any?): Boolean = other is LedgerEntry &&
         key == other.key && assetId == other.assetId && state == other.state &&
-        attempt == other.attempt
+        attempt == other.attempt && eventId == other.eventId
 
     override fun hashCode(): Int = key.hashCode()
 
     override fun toString(): String =
-        "LedgerEntry($key, assetId=$assetId, $state, attempt=$attempt)"
+        "LedgerEntry($key, assetId=$assetId, $state, attempt=$attempt, eventId=$eventId)"
 }
 
 enum class LedgerState {

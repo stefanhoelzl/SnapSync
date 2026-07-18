@@ -41,7 +41,7 @@ class ConfigFileReadTest {
     }
 
     @Test
-    fun `an unusable current-version file is Unavailable, never None — no fallback`() {
+    fun `an unusable current-version file is Unavailable never None with no fallback`() {
         // Same-version-but-undecodable is an UNEXPLAINED state (this adapter's own atomic writes
         // should make it unreachable), so it defers — the Keychain legacy-item rule (undecodable
         // reads as no config) deliberately does not transfer to the file. The Keychain is NOT
@@ -58,7 +58,7 @@ class ConfigFileReadTest {
     }
 
     @Test
-    fun `a foreign file is Unavailable with the sentinel status, never None`() {
+    fun `a foreign file is Unavailable with the sentinel status — never None`() {
         val read = configReadViaFile(
             ConfigFileRead.Content("""{"v":99}"""),
             fallback = ::noFallback,

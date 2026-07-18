@@ -10,6 +10,7 @@ import app.cash.sqldelight.EnumColumnAdapter
 import app.cash.sqldelight.db.SqlDriver
 import app.snapsync.engine.db.LedgerDatabase
 import app.snapsync.engine.db.LedgerRow
+import co.touchlab.kermit.Logger
 import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableSharedFlow
@@ -21,7 +22,12 @@ import kotlinx.coroutines.flow.MutableSharedFlow
  * decides where the database lives (JVM sqlite for tests today; native driver with an App-Group path
  * is the iOS slice's).
  */
-class SqlDelightLedgerStore(database: LedgerDatabase) : LedgerStore {
+class SqlDelightLedgerStore(
+    database: LedgerDatabase,
+    // Defaulted, unlike the required ports elsewhere: a logger has a safe default (this tag), and
+    // the parameter exists only so tests may silence or capture the store's diagnostics.
+    private val log: Logger = Logger.withTag("SqlDelightLedgerStore"),
+) : LedgerStore {
 
     private val queries = database.ledgerQueries
 
@@ -33,12 +39,12 @@ class SqlDelightLedgerStore(database: LedgerDatabase) : LedgerStore {
     override val changes: Flow<Unit> = dings
 
     override suspend fun get(key: String): LedgerEntry? =
-        queries.get(key) { _, assetId, state, attempt ->
-            LedgerEntry(key, assetId, state, attempt.toInt())
+        queries.get(key) { _, assetId, state, attempt, eventId ->
+            LedgerEntry(key, assetId, state, attempt.toInt(), eventId)
         }.executeAsOneOrNull()
 
     override suspend fun put(entry: LedgerEntry) {
-        queries.put(entry.key, entry.assetId, entry.state, entry.attempt.toLong())
+        queries.put(entry.key, entry.assetId, entry.state, entry.attempt.toLong(), entry.eventId)
         dings.tryEmit(Unit)
     }
 
@@ -67,7 +73,7 @@ class SqlDelightLedgerStore(database: LedgerDatabase) : LedgerStore {
         queries.transaction {
             queries.deleteAll()
             entries.forEach {
-                queries.put(it.key, it.assetId, it.state, it.attempt.toLong())
+                queries.put(it.key, it.assetId, it.state, it.attempt.toLong(), it.eventId)
             }
         }
         dings.tryEmit(Unit)
@@ -85,6 +91,16 @@ class SqlDelightLedgerStore(database: LedgerDatabase) : LedgerStore {
         val toDelete = queries.selectAllAssetIds().executeAsList().filterNot(keep::contains)
         if (toDelete.isEmpty()) return
         queries.transaction { toDelete.forEach { queries.deleteByAssetId(it) } }
+        dings.tryEmit(Unit)
+    }
+
+    override suspend fun backfillEventId(eventId: String) {
+        // One UPDATE matching the '' sentinel only — rows already carrying a real eventId are
+        // untouched by the WHERE clause, so the sweep is idempotent by construction. The swept
+        // count is logged when non-zero so the sweep is POSITIVELY observable on device
+        // (`debug.log` is the extension's only observability); the steady-state no-op stays silent.
+        val swept = queries.backfillEventId(eventId).value
+        if (swept > 0) log.i { "eventId backfill: swept $swept row(s)" }
         dings.tryEmit(Unit)
     }
 }

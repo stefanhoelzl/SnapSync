@@ -40,7 +40,7 @@ class ConfigFileTest {
     }
 
     @Test
-    fun `a future envelope version is Foreign, never Unusable`() {
+    fun `a future envelope version is Foreign — never Unusable`() {
         val decoded = decodeConfigFile("""{"v":2,"payload":{"something":"newer"}}""")
 
         assertIs<ConfigFileDecode.Foreign>(decoded)
@@ -52,7 +52,7 @@ class ConfigFileTest {
     }
 
     @Test
-    fun `text that is not an envelope is Foreign, never a crash`() {
+    fun `text that is not an envelope is Foreign — never a crash`() {
         assertIs<ConfigFileDecode.Foreign>(decodeConfigFile("not json at all"))
         assertIs<ConfigFileDecode.Foreign>(decodeConfigFile(""))
         // A bare EventConfig (no envelope) is also Foreign: it lacks `v`, which has no default.
