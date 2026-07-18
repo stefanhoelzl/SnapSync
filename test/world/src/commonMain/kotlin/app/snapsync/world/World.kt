@@ -1,53 +1,61 @@
 package app.snapsync.world
 
-import app.snapsync.feature.album.AlbumCoordinator
-import app.snapsync.ports.ConfigSource
-import app.snapsync.ports.ConfigStore
-import app.snapsync.model.Direction
-import app.snapsync.model.EventConfig
-import app.snapsync.feature.download.DownloadController
-import app.snapsync.ports.EventUnionSource
-import app.snapsync.download.HttpEventUnionSource
-import app.snapsync.ports.PhotoDownloadJobs
-import app.snapsync.feature.download.QueuedPhotoDownloadJobs
-import app.snapsync.ports.TransferOutcome
-import app.snapsync.downloadstore.InMemoryDownloadStore
-import app.snapsync.ports.PendingDownload
-import app.snapsync.feature.upload.LedgerWriter
-import app.snapsync.feature.creation.CreateEvent
-import app.snapsync.eventcreation.HttpEventCreation
-import app.snapsync.feature.creation.MutableCreationStatusSource
-import app.snapsync.model.Contribution
-import app.snapsync.model.DeviceManifestAsset
-import app.snapsync.ports.PhotoLibrary
-import app.snapsync.model.DENYLISTED_ALBUM_TITLES
-import app.snapsync.gallery.InMemoryRawAssetSource
-import app.snapsync.model.MEDIA_TYPE_IMAGE
-import app.snapsync.model.MEDIA_TYPE_VIDEO
-import app.snapsync.model.MIME_GIF
-import app.snapsync.model.SUBTYPE_NONE
-import app.snapsync.model.SUBTYPE_SCREENSHOT
-import app.snapsync.model.SUBTYPE_SCREEN_RECORDING
-import app.snapsync.model.ManifestResource
-import app.snapsync.model.RawAsset
-import app.snapsync.model.RawResource
+import app.snapsync.compose.AppCore
+import app.snapsync.compose.AppPorts
 import app.snapsync.compose.ResourceEnumerator
 import app.snapsync.compose.UploadPorts
+import app.snapsync.compose.snapSyncApp
 import app.snapsync.compose.uploadCore
-import app.snapsync.ports.ConfigRead
-import app.snapsync.ports.ConfigReader
-import app.snapsync.model.ResourceRole
-import app.snapsync.model.uploadKey
-import app.snapsync.ports.DeviceFilesSource
-import app.snapsync.membership.HttpDeviceFilesSource
-import app.snapsync.membership.HttpLeaveNotifier
-import app.snapsync.feature.status.LedgerBackedSyncStatusSource
-import app.snapsync.feature.status.LedgerCounts
+import app.snapsync.download.HttpEventUnionSource
+import app.snapsync.eventcreation.HttpEventCreation
+import app.snapsync.fake.InMemoryAttestStore
+import app.snapsync.fake.InMemoryDeviceManifestStore
+import app.snapsync.fake.InMemoryDiscoveryStore
+import app.snapsync.fake.InMemoryDownloadStore
+import app.snapsync.fake.InMemoryJoinedEventMarker
+import app.snapsync.fake.InMemoryLedgerStore
+import app.snapsync.feature.creation.MutableCreationStatusSource
+import app.snapsync.feature.download.DownloadController
+import app.snapsync.feature.download.StoreDownloadStatusSource
+import app.snapsync.feature.membership.JoinEvent
 import app.snapsync.feature.status.OwnDeviceGalleryStatusSource
 import app.snapsync.feature.status.ReadingLedgerCountsSource
 import app.snapsync.feature.status.SyncStatusSource
-import app.snapsync.ports.CycleResult
+import app.snapsync.feature.album.AlbumCoordinator
 import app.snapsync.feature.upload.UploadCycle
+import app.snapsync.join.HttpEnrollment
+import app.snapsync.join.HttpEventDirectory
+import app.snapsync.membership.HttpDeviceFilesSource
+import app.snapsync.membership.HttpLeaveNotifier
+import app.snapsync.model.Contribution
+import app.snapsync.model.DENYLISTED_ALBUM_TITLES
+import app.snapsync.model.DeviceManifestAsset
+import app.snapsync.model.Direction
+import app.snapsync.model.EventConfig
+import app.snapsync.model.MEDIA_TYPE_IMAGE
+import app.snapsync.model.MEDIA_TYPE_VIDEO
+import app.snapsync.model.MIME_GIF
+import app.snapsync.model.ManifestResource
+import app.snapsync.model.RawAsset
+import app.snapsync.model.RawResource
+import app.snapsync.model.ResourceRole
+import app.snapsync.model.SUBTYPE_NONE
+import app.snapsync.model.SUBTYPE_SCREENSHOT
+import app.snapsync.model.SUBTYPE_SCREEN_RECORDING
+import app.snapsync.model.UserCommands
+import app.snapsync.model.uploadKey
+import app.snapsync.ports.AttestClient
+import app.snapsync.ports.AttestKey
+import app.snapsync.ports.ConfigRead
+import app.snapsync.ports.ConfigReader
+import app.snapsync.ports.ConfigSource
+import app.snapsync.ports.ConfigStore
+import app.snapsync.ports.CycleResult
+import app.snapsync.ports.PhotoAccessRequester
+import app.snapsync.ports.PhotoLibrary
+import app.snapsync.ports.TransferOutcome
+import app.snapsync.model.PermissionStatus
+import co.touchlab.kermit.Logger
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.joinAll
@@ -58,10 +66,12 @@ import kotlinx.coroutines.flow.asStateFlow
 
 /**
  * The controllable in-memory **world** (capability `harness-world-model`): the backend object store,
- * the gallery, the ledger, and all the operator-driven fakes, plus composition helpers that assemble
- * the REAL stack against them — mirroring the extension composition root `UploadExtensionRoot.process()`
- * one seam-substitution at a time. Consumed by BOTH the desktop full-stack harness and
- * `:test:integration`.
+ * the mini-edge, and the operator levers — wrapped around `:adapter:fake`'s honest doubles — that the
+ * REAL app graph runs against. Since migration step 10 the world composes that graph through the
+ * **same** [snapSyncApp] the iOS shell calls (spec `module-architecture`, "One shared composition"),
+ * so [core] IS the production `AppCore` — features, flows, and the user-tap command bundle — over
+ * fake ports; and the upload cycle is the same [uploadCore] both device tiers call. A wiring
+ * difference between the harness and production is impossible rather than undetected.
  *
  * It models exactly **one** fixed own device ([ownDeviceId]) — the id the upload cycle, provider,
  * reconciler, and own-device status all use — and any number of **injectable** foreign devices
@@ -69,10 +79,10 @@ import kotlinx.coroutines.flow.asStateFlow
  */
 class World(
     /**
-     * The caller's scope — **not** one the world owns. The real [QueuedPhotoDownloadJobs] needs a scope at
-     * construction, and it must belong to whoever drives the world: inside [worldTest] that is the
-     * `runBlocking` scope (`this`), and in the desktop harness the inspector's. A world-owned scope would
-     * outlive the caller and leak staging work between tests, and the operator could not join it.
+     * The caller's scope — **not** one the world owns. It becomes [AppCore]'s composition scope, so
+     * the status collectors and fire-and-forget feature work launch into it; it must belong to
+     * whoever drives the world (inside [worldTest] that is the auto-cancelled test scope, in the
+     * desktop harness the inspector's) or that work would outlive the caller.
      */
     val scope: CoroutineScope,
     val ownDeviceId: String = "00000000-0000-4000-9000-0000000000a1",
@@ -82,12 +92,13 @@ class World(
     // ---- world state + fakes (all public / inspectable) -----------------------------------------
 
     val store: BackendStore = BackendStore()
-    val gallery: InMemoryRawAssetSource = InMemoryRawAssetSource()
-    val enumerator: PhotoLibrary = ResourceEnumerator(gallery)
-    val ledgerBackend: WorldLedgerStore = WorldLedgerStore()
-    val ledger: LedgerWriter = LedgerWriter(ledgerBackend)
+
+    /** The world's gallery rigging around the honest raw-asset fake (see [WorldGallery]). */
+    val gallery: WorldGallery = WorldGallery()
+    val enumerator: PhotoLibrary = ResourceEnumerator(gallery.source)
+    val ledgerBackend: InMemoryLedgerStore = InMemoryLedgerStore()
     val discoveryStore: InMemoryDiscoveryStore = InMemoryDiscoveryStore()
-    val downloadStore: InMemoryDownloadStore = InMemoryDownloadStore()
+    val downloadStore: RecordingDownloadStore = RecordingDownloadStore(InMemoryDownloadStore())
     val platform: FakeBackgroundTransfer = FakeBackgroundTransfer(store, ownDeviceId, enumerator)
     /**
      * The fake execution edge, captured when the real jobs first realize a transport (lazily, on the first
@@ -96,112 +107,36 @@ class World(
     var downloadTransport: FakeDownloadTransport? = null
         private set
 
-    /**
-     * The **real** download orchestration (capability `harness-world-model`): the bounded window, the
-     * description codec, the URL guard and the transfer-integrity check all run here, over a fake
-     * transport. Faking `PhotoDownloadJobs` instead would replace precisely the code the world exists to
-     * exercise.
-     */
-    val downloadJobs: QueuedPhotoDownloadJobs =
-        QueuedPhotoDownloadJobs(
-            scope = scope,
-            stagingRoot = "staged:/",
-            newTransport = { host -> FakeDownloadTransport(host).also { downloadTransport = it } },
-        )
-
-    /**
-     * Inspection: what the controller asked the real jobs to fetch. The real jobs expose no inspection
-     * seam, and their transfer-description codec is `internal` to `:domain`'s feature/download — so the world
-     * cannot decode a started transfer back to its `(device, asset, resource)` and must not duplicate the
-     * codec to try. [downloadRequests] records the request; the real jobs still do all the work.
-     */
-    val downloadRequests: MutableList<PendingDownload> = mutableListOf()
-
-    /** The seam the controller gets: records for inspection, then delegates to the real jobs. */
-    private val recordingJobs: PhotoDownloadJobs = object : PhotoDownloadJobs {
-        override suspend fun enqueue(downloads: List<PendingDownload>) {
-            downloadRequests += downloads
-            downloadJobs.enqueue(downloads)
-        }
-
-        override suspend fun cancelAll() {
-            downloadRequests.clear()
-            downloadJobs.cancelAll()
-        }
-    }
     val importer: FakePhotoLibraryImporter = FakePhotoLibraryImporter(gallery)
     val marker: InMemoryJoinedEventMarker = InMemoryJoinedEventMarker()
     val manifestStore: InMemoryDeviceManifestStore = InMemoryDeviceManifestStore()
     val permission: MutablePhotoAccessStatusSource = MutablePhotoAccessStatusSource()
-    val creationStatus: MutableCreationStatusSource = MutableCreationStatusSource()
-
-    // Event album (capability `event-album`): the recording manager + leave-surviving map + coordinator,
-    // so integration tests can assert which asset ids the real upload cycle placed into the album.
     val albumManager: FakeAlbumManager = FakeAlbumManager()
-    val albumMapStore: InMemoryAlbumMapStore = InMemoryAlbumMapStore()
-    val albumCoordinator: AlbumCoordinator = AlbumCoordinator(albumManager, albumMapStore)
+    val albumMapStore = app.snapsync.fake.InMemoryAlbumMapStore()
 
     /** The one shared mini-edge client injected into every real common-Ktor seam. */
     val client = miniEdgeClient(store)
+
+    /** The `:adapter:generic` enrollment PUT over the mini-edge — the ONE `Enrollment` impl (the
+     *  world's byte-identical copy died at step 10, closing the deletion ledger's last row). */
     val manifestUploader: HttpEnrollment = HttpEnrollment(client, host)
+    private val leaveNotifier = HttpLeaveNotifier(client, host)
 
     private val configCell = MutableStateFlow<EventConfig?>(null)
     val configSource: ConfigSource = object : ConfigSource {
         override val config: StateFlow<EventConfig?> = configCell.asStateFlow()
     }
 
-    // The write side of the same cell [configSource] reads — lets a real `LeaveEvent` (or provision)
-    // clear/set the config the container reduces from, so an integration test can drive the actual
-    // use-case instead of the world's hand-rolled [leave].
+    // The write side of the same cell [configSource] reads — the composed `LeaveEvent`/`JoinEvent`
+    // clear/set the config the container reduces from.
     val configStore: ConfigStore = object : ConfigStore {
         override suspend fun save(config: EventConfig) { configCell.value = config }
         override suspend fun clear() { configCell.value = null }
     }
 
     // The real common-Ktor seams over the mini-edge (single client, exactly as production shares one).
-    val deviceFiles: DeviceFilesSource = HttpDeviceFilesSource(client, host)
-    val unionSource: EventUnionSource = HttpEventUnionSource(client, host)
-
-    // Own-device upload total N (enumeration + download suppression; no storage LIST for status).
-    // Named `ownGallery` to avoid clashing with the raw-asset `gallery` above.
-    val ownGallery: OwnDeviceGalleryStatusSource =
-        OwnDeviceGalleryStatusSource(
-            enumerator = enumerator,
-            suppressedLocalIds = { downloadStore.suppressedLocalIds() },
-            // The SAME policy the cycle gets — the whole point of the requirement (capability
-            // `photo-selection-policy`): if the total counted what the cycle refuses to upload, the
-            // harness's status pane would sit below 100% forever, which is what this must prove it doesn't.
-            albumExcludedAssetIds = { cutoff -> albumManager.assetIdsInAlbums(DENYLISTED_ALBUM_TITLES, cutoff) },
-        )
-    // Completed + pending both read from the world's real ledger (one consistent aggregates() read).
-    val ledgerCounts: ReadingLedgerCountsSource = ReadingLedgerCountsSource {
-        ledgerBackend.aggregates().let { LedgerCounts(completed = it.completed, pending = it.pending) }
-    }
-
-    // Single-instance real download controller (its Mutex must be shared across reconcile + staging).
-    val downloadController: DownloadController =
-        DownloadController(
-            unionSource, downloadStore, recordingJobs, importer, myDeviceId = ownDeviceId,
-            // Mirror SnapSyncRoot: the download arm runs only when the joined direction includes download
-            // (capability `join-event`), so a reconcile on an upload-only membership is a no-op.
-            downloadEnabled = { configCell.value?.direction?.includesDownload },
-        )
-
-    /**
-     * Staging work the real jobs launched. `QueuedPhotoDownloadJobs.onStaged` is not a suspend seam — it is
-     * called from the ObjC delegate thread in production, so it must hop into a coroutine — which means the
-     * operator's [stageAllDownloads] would otherwise return before the controller had imported anything.
-     * The world keeps the handles and joins them, so an operator action is finished when it returns.
-     */
-    private val stagingWork = mutableListOf<Job>()
-
-    init {
-        // Mirror SnapSyncRoot: the real jobs report each staged resource to the controller. Wired after
-        // both exist — the controller takes the jobs, so the back-edge cannot be a constructor argument.
-        downloadJobs.onStaged = { ref, key, path ->
-            stagingWork += scope.launch { downloadController.onResourceStaged(ref, key, path) }
-        }
-    }
+    val deviceFiles = HttpDeviceFilesSource(client, host)
+    val unionSource = HttpEventUnionSource(client, host)
 
     // ---- failure levers -------------------------------------------------------------------------
 
@@ -222,6 +157,143 @@ class World(
     /** Arm the next foreign import to fail (`ImportResult.Failed`, non-terminal). */
     fun failNextImport() {
         importer.failNextImport = true
+    }
+
+    /**
+     * Force the membership to read as **unreadable** (capability `upload-lifecycle`) — the state a real
+     * device is in before its first unlock after a boot, where the Keychain cannot be read at all.
+     *
+     * It is a lever rather than a property of [configCell] because a nullable cell can express only
+     * *joined* or *absent*, which is exactly the modelling gap that mattered: the outcome three shipped
+     * bugs turned on was the one no test could reach. Set it and a cycle takes [CycleGate.Skip].
+     */
+    var membershipUnreadable: Boolean = false
+
+    /**
+     * The world's membership read as the shared `ConfigReader` port — the [membershipUnreadable]
+     * lever surfaces as [ConfigRead.Unavailable] with the real locked-device OSStatus
+     * (`errSecInteractionNotAllowed`), so the shared entry gate's skip forensics read like a
+     * device's. The gate itself is `uploadCore`'s — the world carries no translation of its own.
+     */
+    private val configReader: ConfigReader = object : ConfigReader {
+        override fun read(): ConfigRead = when {
+            membershipUnreadable -> ConfigRead.Unavailable(status = -25308)
+            else -> configCell.value?.let { ConfigRead.Joined(it) } ?: ConfigRead.None
+        }
+    }
+
+    // ---- the composed APP graph (the REAL snapSyncApp, over the fakes) --------------------------
+
+    /**
+     * Where a minted event routes (the shell's `onEventMinted` lambda, supplied here because the
+     * world IS the shell): the default provisions the minted event directly (whole-library); the
+     * desktop inspector points it at the status host's pending-join gate so create shows the real
+     * join surface, exactly like the iOS app.
+     */
+    var onEventMinted: suspend (eventId: String) -> Unit = { provision(it) }
+
+    /** The world's photo-access requester: a grant, immediately (the harness overlays its own arming). */
+    val requester: PhotoAccessRequester = object : PhotoAccessRequester {
+        override fun request() {
+            permission.set(PermissionStatus.GRANTED)
+        }
+        override fun openSettings() {}
+    }
+
+    // Attestation is composed (AppPorts requires the seams) but never exercised: the mini-edge is
+    // unauthenticated and nothing in the world wakes the DeviceAttestation lazily composed on [core].
+    private val attestKey: AttestKey = object : AttestKey {
+        override fun isSupported(): Boolean = false
+        override suspend fun generateKey(): String = error("the world does not attest")
+        override suspend fun attest(keyId: String, challenge: String): ByteArray =
+            error("the world does not attest")
+        override suspend fun assert(keyId: String, challenge: String): ByteArray =
+            error("the world does not attest")
+    }
+    private val attestClient: AttestClient = object : AttestClient {
+        override suspend fun challenge(): String? = null
+        override suspend fun mintToken(
+            deviceId: String,
+            keyId: String,
+            attestation: ByteArray,
+            challenge: String,
+        ): String? = null
+        override suspend fun renewToken(deviceId: String, assertion: ByteArray, challenge: String): String? = null
+    }
+
+    /**
+     * The REAL app graph (spec `module-architecture`, "One shared composition"): the same
+     * [snapSyncApp] the iOS shell calls, over the world's ports. Features, flows, and the user-tap
+     * command bundle all live on this — the world adds only operator levers and inspection around it.
+     */
+    val core: AppCore = snapSyncApp(
+        scope,
+        AppPorts(
+            configSource = configSource,
+            configStore = configStore,
+            photoAccess = permission,
+            photoAccessRequester = requester,
+            photoLibrary = enumerator,
+            ledger = ledgerBackend,
+            downloadStore = downloadStore,
+            importer = importer,
+            downloadStagingRoot = { "staged:/" },
+            newDownloadTransport = { transportHost ->
+                FakeDownloadTransport(transportHost).also { downloadTransport = it }
+            },
+            union = unionSource,
+            directory = HttpEventDirectory(client, host),
+            enrollment = manifestUploader,
+            eventCreation = HttpEventCreation(client, host),
+            attestKey = attestKey,
+            attestClient = attestClient,
+            attestStore = InMemoryAttestStore(),
+            deviceId = { ownDeviceId },
+            now = { 0L },
+            // The operator IS the producer: nothing auto-runs; a cycle happens when invoked by hand.
+            uploadProducer = { OperatorUploadProducer() },
+            albumManager = albumManager,
+            albumMapStore = albumMapStore,
+            // Denylisted-album membership (capability `photo-selection-policy`) — the REAL policy
+            // constant over the world's forgeable album membership, exactly as the shell wires it.
+            albumExcludedAssetIds = { cutoff -> albumManager.assetIdsInAlbums(DENYLISTED_ALBUM_TITLES, cutoff) },
+            notifyLeave = { eventId -> leaveNotifier.leave(eventId, ownDeviceId) },
+            provision = { cfg -> configCell.value = cfg },
+            onEventMinted = { eventId -> onEventMinted(eventId) },
+            log = Logger.withTag("World"),
+        ),
+    )
+
+    // Re-seated read handles: these ARE the composed graph's instances (never world-local rebuilds).
+    val downloadController: DownloadController get() = core.downloadController
+    val albumCoordinator: AlbumCoordinator get() = core.albumCoordinator
+    val ownGallery: OwnDeviceGalleryStatusSource get() = core.gallery
+    val ledgerCounts: ReadingLedgerCountsSource get() = core.ledgerCounts
+    val creationStatus: MutableCreationStatusSource get() = core.creationStatus
+    val downloadStatusSource: StoreDownloadStatusSource get() = core.downloadStatusSource
+    val syncStatusSource: SyncStatusSource get() = core.syncStatusSource
+    val userCommands: UserCommands get() = core.userCommands
+    val joinEvent: JoinEvent get() = core.joinEvent
+
+    /** The operator's foreground-refresh: pull the composed status sources (they update on `refresh()`). */
+    suspend fun refreshStatus() = core.refreshStatusSources()
+
+    /**
+     * Staging work the real jobs launched. `QueuedPhotoDownloadJobs.onStaged` is not a suspend seam — it
+     * hops into a coroutine — so [stageAllDownloads] must be able to await the launched imports or every
+     * download assertion would race. [AppCore] wires the identical hop at composition; the world re-installs
+     * it with the Job handle KEPT (same call, plus retention), which is the one seam it may touch: the
+     * operator drives the world synchronously, and production has no operator.
+     */
+    private val stagingWork = mutableListOf<Job>()
+
+    init {
+        // Touch the controller first: its lazy construction installs the production `onStaged` hook,
+        // which the retention-keeping re-install below must come after (not before, or it is overwritten).
+        core.downloadController
+        core.downloadJobs.onStaged = { ref, key, path ->
+            stagingWork += scope.launch { core.downloadController.onResourceStaged(ref, key, path) }
+        }
     }
 
     // ---- device model + operator gallery actions ------------------------------------------------
@@ -345,51 +417,26 @@ class World(
     /**
      * Leave the joined event — the **faithful** in-place clear (NOT a world rebuild): run the real
      * [DownloadController.onLeaveOrSwitch] (cancel transfers, prune non-terminal download rows), then
-     * the real backend leave ([HttpLeaveNotifier] over the mini-edge — the same `DELETE` the app fires,
-     * driving the store's rename→reap→GC cascade), then clear the config cell and the joined-event
-     * marker. The gallery, ledger, and **imported foreign photos** are retained (imported download rows
-     * are terminal / delete-proof), so re-provisioning the same event afterwards still finds them
-     * suppressed (real cross-event dedup). Clearing [configCell] is reactive, so the listing-backed
-     * status projection leaves the joined layer with no rebuild. Backend outcomes (the device departed;
-     * the event reaped + its bytes GC'd when it was the last active member) are assertable on [store].
+     * the real backend leave (the `:adapter:generic` `HttpLeaveNotifier` over the mini-edge — the same
+     * `DELETE` the app fires, driving the store's rename→reap→GC cascade), then clear the config cell
+     * and the joined-event marker. Deliberately an operator edge, not [UserCommands.leave]: the
+     * composed leave's backend notify is fire-and-forget by design, and the operator's leave must be
+     * COMPLETE on return so world assertions never race the DELETE (drive `core.userCommands.leave`
+     * to exercise the production ordering instead). The gallery, ledger, and **imported foreign
+     * photos** are retained (imported download rows are terminal / delete-proof), so re-provisioning
+     * the same event afterwards still finds them suppressed (real cross-event dedup). Clearing
+     * [configCell] is reactive, so the listing-backed status projection leaves the joined layer with
+     * no rebuild. Backend outcomes (the device departed; the event reaped + its bytes GC'd when it
+     * was the last active member) are assertable on [store].
      */
     suspend fun leave() {
-        downloadController.onLeaveOrSwitch()
-        configCell.value?.eventId?.let { HttpLeaveNotifier(client, host).leave(it, ownDeviceId) }
+        core.downloadController.onLeaveOrSwitch()
+        configCell.value?.eventId?.let { leaveNotifier.leave(it, ownDeviceId) }
         configCell.value = null
         marker.clear()
     }
 
-    // ---- composition (the REAL cycle, not a mirror of a root) -----------------------------------
-    //
-    // These build the same object graph a composition root builds and hand it to the same
-    // `UploadCycle` — they do not re-implement what a root does. The distinction is load-bearing: this
-    // file used to mirror `UploadExtensionRoot.process()` by hand, and before the app-driven tier's
-    // reconciler was fixed the MIRROR reconciled while the real tier did not. A mirror that is more
-    // correct than production is worse than one that is wrong — it stays green while the defect ships.
-
-    /**
-     * Force the membership to read as **unreadable** (capability `upload-lifecycle`) — the state a real
-     * device is in before its first unlock after a boot, where the Keychain cannot be read at all.
-     *
-     * It is a lever rather than a property of [configCell] because a nullable cell can express only
-     * *joined* or *absent*, which is exactly the modelling gap that mattered: the outcome three shipped
-     * bugs turned on was the one no test could reach. Set it and a cycle takes [CycleGate.Skip].
-     */
-    var membershipUnreadable: Boolean = false
-
-    /**
-     * The world's membership read as the shared `ConfigReader` port — the [membershipUnreadable]
-     * lever surfaces as [ConfigRead.Unavailable] with the real locked-device OSStatus
-     * (`errSecInteractionNotAllowed`), so the shared entry gate's skip forensics read like a
-     * device's. The gate itself is `uploadCore`'s — the world carries no translation of its own.
-     */
-    private val configReader: ConfigReader = object : ConfigReader {
-        override fun read(): ConfigRead = when {
-            membershipUnreadable -> ConfigRead.Unavailable(status = -25308)
-            else -> configCell.value?.let { ConfigRead.Joined(it) } ?: ConfigRead.None
-        }
-    }
+    // ---- the upload cycle (the extension tier's shared assembly) --------------------------------
 
     /**
      * What the joined membership contributes (capability `photo-selection-policy`) — its participation
@@ -397,15 +444,8 @@ class World(
      * composition roots use. Both consumers of the policy take this: the upload cycle (which declines with
      * `SKIPPED` for `None`) and the own-device total `N` (which reports 0 without walking).
      *
-     * The world therefore runs the real direction gate rather than modelling one — the point of driving the
-     * real stack here. A download-only membership uploads nothing and counts nothing *because the production
-     * code says so*, not because the harness arranged it.
-     *
-     * An **unjoined** world contributes [Contribution.None], not a default cutoff. There is no membership,
-     * so there is nothing to contribute and `N` is 0 — the same answer the cycle reaches. This used to
-     * invent `DEFAULT_CUTOFF` (and `includesUpload = true`) so the harness "stayed drivable", which made the
-     * world the one place in the system where a cutoff appears without a membership behind it — against the
-     * invariant the whole selection policy rests on.
+     * An **unjoined** world contributes [Contribution.None], not a default cutoff — there is no membership,
+     * so there is nothing to contribute and `N` is 0, the same answer the cycle reaches.
      */
     fun contribution(): Contribution = configCell.value?.let {
         Contribution.of(includesUpload = it.direction.includesUpload, cutoff = it.minPhotoDate)
@@ -413,16 +453,12 @@ class World(
 
     /**
      * Every event this world's cycles notified (capability `upload-completion-notify`), in order.
-     *
-     * The mini-edge has no notify route, so this records the call rather than serving it. It exists
-     * because the world used to omit `onBatchUploaded` entirely — silently, via the port's old default —
-     * which is why the notify had no integration coverage at all. Recording it is the minimum that makes
-     * "a drained cycle with completions notifies exactly once, after the manifest PUT" observable here.
+     * The mini-edge has no notify route, so this records the call rather than serving it.
      */
     val notified: MutableList<String> = mutableListOf()
 
     /**
-     * The real cycle — assembled by the SAME shared composition the device tiers call (`uploadCore`,
+     * The real cycle — assembled by the SAME shared composition the device tiers call ([uploadCore],
      * spec `module-architecture` "One shared composition"), over the world's fakes. Long-lived, as on
      * both tiers: the shared entry gate re-reads the membership on every `run()`, so a provision,
      * leave, or switch takes effect on the next cycle. The world carries no gate, reconciler, or
@@ -443,11 +479,10 @@ class World(
                 manifestStore = manifestStore,
                 enrollment = manifestUploader,
                 suppression = downloadStore,
-                // Denylisted-album membership (capability `photo-selection-policy`) — the REAL policy
-                // constant over the world's forgeable album membership, exactly as both composition
-                // roots wire it. The world runs the real rules; only the PhotoKit lookup is faked.
+                // The SAME policy wrapper the app graph gets (capability `photo-selection-policy`).
                 albumExcludedAssetIds = { cutoff -> albumManager.assetIdsInAlbums(DENYLISTED_ALBUM_TITLES, cutoff) },
-                albumCoordinator = albumCoordinator,
+                // Shared with the app graph, as the world's single-process stand-in for the App-Group map.
+                albumCoordinator = core.albumCoordinator,
                 // The mini-edge is unauthenticated; the world states its empty answer explicitly.
                 token = { null },
                 onBatchUploaded = { eventId -> notified += eventId },
@@ -457,7 +492,7 @@ class World(
 
     /**
      * Run one cycle. The membership read, the gate, the leave-side reconcile, and the assembly are all
-     * inside the real [cycle] now — what is left here is the extension tier's own "pending > 0 ⇒
+     * inside the real [cycle]; what is left here is the extension tier's own "pending > 0 ⇒
      * PROCESSING" re-invocation request, which [requeuePending] models. That rule is genuinely
      * tier-specific (the app-driven tier has completion callbacks and needs no such poll), so it is the
      * one thing this runner may hold.
@@ -469,31 +504,6 @@ class World(
         }
         return result
     }
-
-    /** The real ledger-backed status source over the world (own-device ledger truth + gallery total). */
-    fun syncStatusSource(scope: CoroutineScope): SyncStatusSource =
-        LedgerBackedSyncStatusSource(
-            ledgerCounts = ledgerCounts,
-            permission = permission,
-            gallery = ownGallery,
-            scope = scope,
-        )
-
-    /**
-     * The real create-event use-case over the mini-edge (`POST /events` → [onMinted]). By default the
-     * harness provisions the minted event directly (whole-library); a caller wanting the production
-     * flow (route into the join gate to pick a cutoff) passes an [onMinted] that opens the pending join.
-     */
-    fun createEvent(
-        scope: CoroutineScope,
-        onMinted: suspend (eventId: String) -> Unit = { provision(it) },
-    ): CreateEvent =
-        CreateEvent(
-            client = HttpEventCreation(client, host),
-            status = creationStatus,
-            onMinted = onMinted,
-            scope = scope,
-        )
 
     // ---- download operator action ---------------------------------------------------------------
 

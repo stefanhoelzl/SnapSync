@@ -8,44 +8,44 @@ kotlin {
     jvmToolchain(libs.versions.jdk.get().toInt())
 }
 
-// This module is BOTH the shared harness *library* and the full-stack world *application*:
-//  - Library surface (consumed by the forge harness `:app:desktop:ui`): `PhoneFrame` + the `StatusPane`
-//    composition glue (construct `StatusContainerHost` from injected seams → render the real
-//    `StatusScreen` inside the frame).
-//  - Application: the full-stack world harness `main()` (`app.snapsync.desktop.FullStackHarnessKt`) that
-//    runs the REAL platform-agnostic stack over `:test:world` behind the phone frame, driven by a
-//    right-pane world inspector. This is the run task change 1 reserved: `:app:desktop:run`.
-// The full-stack entry file compiles to `FullStackHarnessKt`, distinct from the forge's
-// `app.snapsync.desktop.MainKt` (which leaks transitively onto `:app:desktop:ui`'s classpath) — so the
-// two entry points never collide.
+// The ONE desktop module (migration step 10: `:app:desktop:ui` folded in), hosting BOTH harnesses:
+//  - Shared pane: `PhoneFrame` + the `StatusPane` composition glue (construct `StatusContainerHost`
+//    from injected seams → render the real `StatusScreen` inside the frame).
+//  - **Full-stack world harness** — `:app:desktop:run` (`app.snapsync.desktop.FullStackHarnessKt`):
+//    the REAL app graph composed by `snapSyncApp` over `:test:world`'s fakes behind the phone frame,
+//    driven by a right-pane world inspector (capability `full-stack-harness`).
+//  - **Forge harness** — `:app:desktop:runForge` (`app.snapsync.desktop.MainKt`): the same phone
+//    frame over forge cells + a control panel that forges any UI state (capability
+//    `desktop-test-harness`). Registered as a plain JavaExec below because the Compose Desktop
+//    plugin models exactly one `application {}` main class per module.
 dependencies {
     implementation(libs.ktor.client.core)
     api(project(":domain"))
+    // The forge `PanelController` constructs its stand-in cells from `:ui:presentation`'s forge
+    // seams (MutableAttestedSource, MutablePendingJoinSource); `StatusPane` names the host.
     implementation(project(":ui:presentation"))
     implementation(project(":ui:screens"))
     // `StatusPane` provides the design-system's test-only `LocalDarkThemeOverride` around the phone
     // pane, so the components module is a direct dependency rather than transitive through `:ui:screens`.
     implementation(project(":ui:components"))
-    // The real Ktor clients the inspector constructs (HttpEventCreation, HttpEventDirectory) moved
+    // The real Ktor clients the world composes (HttpEventCreation, HttpEventDirectory) moved
     // to the adapter layer at migration step 4.
     implementation(project(":adapter:generic"))
-    // `StatusPane` names the create-event seams (`CreationStatusSource`/`EventCreator`) in its
-    // signature — since migration step 6 they live in :domain's feature/creation zone (via api above).
-    // The full-stack harness: the controllable world + fakes (brings :domain:engine/:gallery/:capability
-    // upload transitively for the types the inspector names) and the real store-backed download status.
+    // The full-stack harness: the controllable world (BackendStore + mini-edge + levers wrapping
+    // `:adapter:fake`) whose `World.core` IS the shared `snapSyncApp` composition.
     implementation(project(":test:world"))
     // The engine-console footer taps Kermit directly (transitive only via impl deps, so name it here).
     implementation(libs.kermit)
     implementation(compose.runtime)
     implementation(compose.foundation)
-    // The world inspector is deliberately raw Material 3, never App* (spec: full-stack-harness); the application
-    // needs the desktop window/runtime.
+    // The panels are deliberately raw Material 3, never App* (specs: full-stack-harness,
+    // desktop-test-harness); the applications need the desktop window/runtime.
     implementation(compose.material3)
     implementation(compose.desktop.currentOs)
 }
 
 // Compose Desktop's run task does NOT inherit kotlin { jvmToolchain(...) }; without an explicit
-// javaHome it launches on the Gradle JVM -> UnsupportedClassVersionError. (Same setup as :app:desktop:ui.)
+// javaHome it launches on the Gradle JVM -> UnsupportedClassVersionError.
 val toolchainLauncher = javaToolchains.launcherFor {
     languageVersion.set(JavaLanguageVersion.of(libs.versions.jdk.get().toInt()))
 }
@@ -63,4 +63,15 @@ compose.desktop {
         jvmArgs += "--enable-native-access=ALL-UNNAMED"
         jvmArgs += "-Dsun.java2d.uiScale=$uiScale"
     }
+}
+
+// The forge harness's window entry — the fold's replacement for the deleted `:app:desktop:ui:run`.
+tasks.register<JavaExec>("runForge") {
+    group = "compose desktop"
+    description = "Run the forge harness (phone frame + control panel forging any UI state)."
+    mainClass.set("app.snapsync.desktop.MainKt")
+    classpath = sourceSets["main"].runtimeClasspath
+    javaLauncher.set(toolchainLauncher)
+    jvmArgs("--enable-native-access=ALL-UNNAMED")
+    jvmArgs("-Dsun.java2d.uiScale=$uiScale")
 }

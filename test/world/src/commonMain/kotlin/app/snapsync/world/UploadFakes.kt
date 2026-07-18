@@ -6,7 +6,6 @@ import app.snapsync.model.UploadRequest
 import app.snapsync.ports.PhotoLibrary
 import app.snapsync.ports.CreateResult
 import app.snapsync.ports.Discovery
-import app.snapsync.ports.DiscoveryStore
 import app.snapsync.ports.PlatformJobState
 import app.snapsync.ports.PlatformUploadJob
 import app.snapsync.ports.BackgroundTransfer
@@ -135,16 +134,4 @@ class FakeBackgroundTransfer(
 
     /** Inspection: the keys of every live (in-flight/terminal-unacked) job. */
     fun liveJobKeys(): List<String> = jobs.map { it.key }
-}
-
-/** The world's in-memory [DiscoveryStore] cursor — opaque bytes, cleared on re-join. */
-class InMemoryDiscoveryStore : DiscoveryStore {
-    private var token: ByteArray? = null
-    override fun loadToken(): ByteArray? = token
-    override fun saveToken(token: ByteArray) {
-        this.token = token
-    }
-    override fun clearToken() {
-        token = null
-    }
 }

@@ -33,6 +33,34 @@ kotlin {
             implementation(libs.coroutines.test)
             implementation(libs.ktor.client.mock)
         }
+        // The SQLDelight stores' contract-backed tests (re-homed from the deleted `:domain:engine` /
+        // `:domain:download-store` modules at migration step 10). The shared contracts live in
+        // `:test:world`'s commonMain — the one test-infra surface every implementor can reach — so
+        // these are per-target source sets, NOT the intermediate `iosTest`: `:test:world` has no
+        // `iosArm64`, and the device-arm test compilation must not ask for it (tests run on the
+        // simulator only, per testing rule 1).
+        val jvmTest by getting {
+            dependencies {
+                implementation(project(":test:world"))
+                implementation(libs.sqldelight.driver.sqlite)
+            }
+        }
+        val iosSimulatorArm64Test by getting {
+            dependencies {
+                implementation(project(":test:world"))
+                implementation(libs.sqldelight.driver.native)
+            }
+        }
+    }
+}
+
+// Full failure messages in CI: the Kotlin/Native simulator runner otherwise prints a terse
+// "AssertionError at null:-1" with no expected/actual (config carried over with the re-homed
+// NativeLedgerStoreTest from `:domain:engine`).
+tasks.withType<org.jetbrains.kotlin.gradle.targets.native.tasks.KotlinNativeSimulatorTest>().configureEach {
+    testLogging {
+        exceptionFormat = org.gradle.api.tasks.testing.logging.TestExceptionFormat.FULL
+        showStandardStreams = true
     }
 }
 

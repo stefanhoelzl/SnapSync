@@ -7,7 +7,7 @@ status projection as the sync total `N`. A platform-backed `StateFlow` (the `Gal
 seam) that the `feature/status` projection combines with the ledger and permission — so the total
 reflects photos the instant they are added, before the background extension records anything. The
 seam lives in `:domain`'s `ports/` zone; PhotoKit-backed on iOS (`:adapter:ios:ext-safe`), with the
-settable in-memory implementation in `:domain:gallery` until the fakes re-home (migration step 10).
+honest in-memory implementation in `:adapter:fake` (re-homed at migration step 10).
 
 The total is **enumeration-only — no storage LIST** — and it is an *own-device* count: photos downloaded from
 other contributors are excluded, because a member's progress is about what they have to share, not about
@@ -19,8 +19,8 @@ Decision record: `changes/archive/2026-06-22-gallery-counted-status`.
 ## Requirements
 ### Requirement: GalleryStatusSource seam
 
-The gallery domain SHALL define `GalleryStatusSource` in a new `:domain:gallery` module (package
-`app.snapsync.gallery`) whose `size` is a `StateFlow<Int>` — the count of photos currently in the
+The gallery domain SHALL define `GalleryStatusSource` in `:domain`'s `ports/` zone (seated by
+migration step 3a; born in the since-deleted `:domain:gallery` module) whose `size` is a `StateFlow<Int>` — the count of photos currently in the
 device photo library, used by the status projection as the sync total `N`. The current value SHALL
 always be available synchronously and SHALL always be a real, source-derived count (never a placeholder
 or negative sentinel). The seam exposes the count only; it does not expose individual assets, identity,
@@ -88,29 +88,31 @@ source MUST NOT emit a count it computed from stale library state.
 
 ### Requirement: Platform backing and a settable fake
 
-The iOS implementation SHALL back `size` with a PhotoKit count. The `:domain:gallery` module SHALL
-provide a settable in-memory implementation, so the JVM desktop harness and integration tests can drive
-any total — including discovery-lag (`N` greater than the ledger's completed count) and overshoot (`N`
-less than the ledger's completed count) — without a device.
+The iOS implementation SHALL back `size` with a PhotoKit count. `:adapter:fake` SHALL provide the
+honest in-memory implementation (`InMemoryGalleryStatusSource`, re-homed from the deleted
+`:domain:gallery` at migration step 10), whose count is a **constructor-injected state cell** —
+whoever owns the cell (a test, a `:test:world` wrapper) drives any total, including discovery-lag
+(`N` greater than the ledger's completed count) and overshoot (`N` less than the ledger's completed
+count), without a device; the fake itself exposes only the port (the fake-honesty gate,
+`architecture-guards`).
 
-#### Scenario: Fake count is settable
+#### Scenario: Fake count is driven through the owned cell
 
-- **WHEN** a test sets the in-memory gallery source's size to 47
+- **WHEN** a test constructs the in-memory gallery source over its own cell and writes 47 to it
 - **THEN** `size.value` is `47` and a collector observes the new value
 
 ### Requirement: Module placement keeps the seam off presentation
 
 `GalleryStatusSource` SHALL live in `:domain`'s `ports/` zone (seated by migration step 3a) and its
-settable in-memory implementation in `:domain:gallery` — the fakes' interim home until they re-home
-to `:adapter:fake` (migration step 10). `:ui:presentation` (re-homed from `:domain:presentation` at migration step 9) SHALL NOT depend
-on `:domain:gallery`,
-so no fake gallery type is reachable from presentation code; presentation consumes gallery-derived
-counts only through the `feature/status` read-models.
+honest in-memory implementation in `:adapter:fake` (re-homed at migration step 10).
+`:ui:presentation` (re-homed from `:domain:presentation` at migration step 9) SHALL NOT depend on
+`:adapter:fake`, so no fake gallery type is reachable from presentation code; presentation consumes
+gallery-derived counts only through the `feature/status` read-models.
 
 #### Scenario: Presentation compiles without the gallery fakes
 
 - **WHEN** `:ui:presentation` is compiled
-- **THEN** `:domain:gallery` is not on its compile classpath, and no in-memory gallery type is
+- **THEN** `:adapter:fake` is not on its compile classpath, and no in-memory gallery type is
   reachable from presentation code
 
 ### Requirement: Library resource enumeration seam
@@ -130,8 +132,8 @@ expected-filename set and SHALL NOT read the per-device listing: own-device comp
 and the status path issues no storage LIST. What the shared seam guarantees is that the total counts
 exactly the assets the cycle would upload — so the screen can reach 100% — not that two derivations of
 "complete" agree. The iOS implementation SHALL be
-PhotoKit-backed (`:adapter:ios:ext-safe`'s decision-free walk composed through `compose/`'s `ResourceEnumerator`, the shared walk-plus-mapping composition — seated in `compose/` by migration step 7, repaying step 6's interim `feature/upload` seat); `:domain:gallery` SHALL keep providing a settable in-memory implementation for the JVM
-harness and tests until the fakes re-home to `:adapter:fake` (migration step 10). Presentation SHALL keep consuming counts only through the `feature/status` read-models, never
+PhotoKit-backed (`:adapter:ios:ext-safe`'s decision-free walk composed through `compose/`'s `ResourceEnumerator`, the shared walk-plus-mapping composition — seated in `compose/` by migration step 7, repaying step 6's interim `feature/upload` seat); `:adapter:fake` SHALL provide the honest in-memory implementation for the JVM
+harness and tests (re-homed at migration step 10). Presentation SHALL keep consuming counts only through the `feature/status` read-models, never
 the enumeration seam directly (per "Module placement keeps the seam off presentation").
 
 The enumeration seam SHALL be realized as the composition of the **decision-free raw-asset walk seam**
@@ -208,7 +210,7 @@ seam off presentation").
 
 ### Requirement: Decision-free raw-asset walk seam
 
-`:domain:gallery` SHALL define a **decision-free** raw-asset walk seam that exposes the PhotoKit library
+The gallery domain SHALL define, in `:domain`'s `ports/` zone (`RawAssetSource`), a **decision-free** raw-asset walk seam that exposes the PhotoKit library
 as raw facts, carrying **no** sync or fan-out decisions. It SHALL surface a `RawAsset` per asset —
 carrying the **raw** `localIdentifier` (still containing `/`, un-normalized), the resolved
 `creationDate`, the **origin facts** below, and a list of `RawResource` — and a `RawResource` per platform
@@ -234,8 +236,8 @@ reports what *changed*, not what is in *scope*: an iCloud sync or a bulk import 
 out-of-scope assets at once. An implementation SHALL therefore reject an out-of-scope asset **before**
 reading its resources, using only the asset's own capture date — the resource read is the expensive
 operation (one synchronous platform round-trip per asset), the capture date is a plain property. The iOS implementation SHALL be
-PhotoKit-backed; `:domain:gallery` SHALL also provide a **settable in-memory** implementation so the
-mapping is driven on the JVM and the iOS simulator without PhotoKit. The opaque handle SHALL cross
+PhotoKit-backed; `:adapter:fake` SHALL also provide the honest **in-memory** implementation (state
+cell constructor-injected) so the mapping is driven on the JVM and the iOS simulator without PhotoKit. The opaque handle SHALL cross
 `commonMain` uninterpreted (a JVM stand-in is valid), exactly as `Resource.data` does.
 
 The PhotoKit implementation SHALL apply the bound to its `PHFetchOptions` predicate so that only in-scope

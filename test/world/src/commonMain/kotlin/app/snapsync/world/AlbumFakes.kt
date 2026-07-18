@@ -1,7 +1,6 @@
 package app.snapsync.world
 
 import app.snapsync.ports.AlbumManager
-import app.snapsync.ports.AlbumMapStore
 
 /**
  * A recording [AlbumManager] for the world (capability `event-album`): tracks created albums and every
@@ -50,11 +49,4 @@ class FakeAlbumManager : AlbumManager {
         membership.entries
             .filter { (title, _) -> titles.any { it.equals(title.trim(), ignoreCase = true) } }
             .flatMapTo(mutableSetOf()) { it.value }
-}
-
-/** An in-memory [AlbumMapStore] for the world — the leave-surviving `eventId → albumLocalId` map. */
-class InMemoryAlbumMapStore : AlbumMapStore {
-    val map = mutableMapOf<String, String>()
-    override fun get(eventId: String): String? = map[eventId]
-    override fun put(eventId: String, albumLocalId: String) { map[eventId] = albumLocalId }
 }

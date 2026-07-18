@@ -335,8 +335,9 @@ jobs:
           # catches Native-only breakage the JVM accepts (e.g. Kotlin/Native rejects a comma in a
           # backticked test name).
           #
-          # Native-only source sets — no JVM equivalent, so this is their only run: :domain:engine's
-          # NativeLedgerStoreTest (the SQLDelight native driver behind the shared LedgerStoreContract),
+          # Native-only source sets — no JVM equivalent, so this is their only run: :adapter:generic's
+          # NativeLedgerStoreTest (the SQLDelight native driver behind the shared LedgerStoreContract,
+          # hosted in :test:world since migration step 10),
           # :domain:keychain's IosKeychainTest, and :app:ios:photokit-extension's PhotoKitSmokeTest
           # (general PhotoKit is callable on the sim; the cloud-id + upload-job subsystems are
           # device-only and not exercised here).

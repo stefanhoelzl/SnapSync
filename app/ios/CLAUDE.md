@@ -76,7 +76,7 @@ is no per-root cycle or feature assembly any more.
   (background-`URLSession` platform, pump, scheduler stay tier-local mechanism).
 
 **Neither is the direction gate** (capability `upload-lifecycle`). Whether a membership uploads **at all** is
-decided inside `UploadCycle`, from a required `Contribution` (`:domain:gallery`) carrying the membership's
+decided inside `UploadCycle`, from a required `Contribution` (`:domain` `model/`) carrying the membership's
 direction *and* its cutoff: `None` → the cycle returns `CycleResult.SKIPPED` before any walk, job, manifest, or
 notify, and the pump then schedules no `BGProcessingTask`. The roots only pass **facts** —
 `Contribution.of(direction.includesUpload, minPhotoDate)` — and never the branch.

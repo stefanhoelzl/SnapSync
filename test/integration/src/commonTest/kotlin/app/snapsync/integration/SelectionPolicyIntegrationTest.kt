@@ -82,7 +82,7 @@ class SelectionPolicyIntegrationTest {
         w.addScreenshot("SHOT")
         w.addLowResPhoto("WA")
 
-        w.ownGallery.refresh(w.contribution())
+        w.refreshStatus()
         assertEquals(1, w.ownGallery.size.value, "N counts only the admitted camera photo")
 
         // Drive the admitted photo all the way to COMPLETED, and the world reports fully in sync.

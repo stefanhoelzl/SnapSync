@@ -4,10 +4,6 @@ import app.snapsync.model.Direction
 import app.snapsync.model.EventLinkPayload
 import app.snapsync.model.encodeEventUrl
 import app.snapsync.model.DeviceManifest
-import app.snapsync.join.HttpEventDirectory
-import app.snapsync.feature.membership.JoinEvent
-import app.snapsync.feature.membership.JoinOutcome
-import app.snapsync.feature.membership.ManifestDeviceEnroller
 import app.snapsync.feature.membership.LeaveEvent
 import app.snapsync.model.UserCommands
 import app.snapsync.feature.membership.toJoinLoad
@@ -335,29 +331,22 @@ class JoinGateIntegrationTest {
         w: World,
         scope: CoroutineScope,
         leave: suspend () -> Unit = { w.leave() },
-    ): StatusContainerHost {
-        val joinEvent = JoinEvent(
-            configSource = w.configSource,
-            deviceId = { w.ownDeviceId },
-            details = HttpEventDirectory(w.client, w.host),
-            enroller = ManifestDeviceEnroller(w.manifestUploader),
-            provision = { cfg -> w.provision(cfg.eventId, cfg.name, cfg.minPhotoDate, cfg.startsAt) },
-        )
-        return StatusContainerHost(
-            syncSource = w.syncStatusSource(scope),
+    ): StatusContainerHost =
+        // The COMPOSED join gate (migration step 10): `w.joinEvent` and `commitJoin` are
+        // `AppCore`'s — the same use-case + bundle command the iOS shell wires — over the world's
+        // mini-edge; only the leave edge stays injectable (the switch test gates it).
+        StatusContainerHost(
+            syncSource = w.syncStatusSource,
             permission = w.permission.permission,
             config = w.configSource.config,
             scope = scope,
-            loadJoinDetails = { id -> joinEvent.loadDetails(id).toJoinLoad() },
+            loadJoinDetails = { id -> w.joinEvent.loadDetails(id).toJoinLoad() },
             commands = UserCommands(
                 leave = leave,
-                commitJoin = { id, name, startsAt, cutoff, direction, saveToAlbum ->
-                    joinEvent.join(id, name, startsAt, cutoff, direction, saveToAlbum) != JoinOutcome.EnrollFailed
-                },
+                commitJoin = w.userCommands.commitJoin,
             ),
             cutoffFormatter = fixedCutoffFormatter(),
         )
-    }
 
     private suspend fun StatusContainerHost.await(predicate: (UiState) -> Boolean): UiState =
         withTimeout(5_000) { container.stateFlow.first(predicate) }

@@ -32,9 +32,9 @@ import java.awt.datatransfer.StringSelection
  * OS: nothing auto-runs; **Invoke extension** runs one `process()`-shaped cycle by hand.
  *
  * This file compiles to `app.snapsync.desktop.FullStackHarnessKt` — deliberately distinct from the
- * forge harness's `app.snapsync.desktop.MainKt`, which leaks transitively onto `:app:desktop:ui`'s
- * classpath (see `build.gradle.kts`). Thin wiring + Compose only; all testable logic lives in
- * `:test:world` and the presentation/status modules.
+ * forge harness's `app.snapsync.desktop.MainKt`, which shares this module since the migration
+ * step-10 fold (`:app:desktop:run` = world, `:app:desktop:runForge` = forge). Thin wiring + Compose
+ * only; all testable logic lives in `:test:world` and the presentation/status modules.
  */
 fun main() = application {
     Window(

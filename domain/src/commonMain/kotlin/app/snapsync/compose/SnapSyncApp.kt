@@ -212,7 +212,7 @@ class AppCore internal constructor(
         )
         // Deliver each staged resource back to the controller off the transport delegate thread —
         // an adapter outbound callback satisfied by a compose-built lambda (law: "Commands cross one
-        // door"; becomes a flow command at step 8).
+        // door" — a compose-built single-command lambda is the sanctioned adapter-callback form).
         downloadJobs.onStaged = { ref, key, path -> scope.launch { controller.onResourceStaged(ref, key, path) } }
         controller
     }

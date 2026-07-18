@@ -1,6 +1,7 @@
 package app.snapsync.world
 
 import app.snapsync.download.HttpEventUnionSource
+import app.snapsync.join.HttpEnrollment
 import app.snapsync.ports.CreateOutcome
 import app.snapsync.eventcreation.HttpEventCreation
 import app.snapsync.model.DeviceManifest
