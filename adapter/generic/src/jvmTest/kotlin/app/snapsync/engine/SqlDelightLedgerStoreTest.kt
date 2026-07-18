@@ -46,7 +46,7 @@ class SqlDelightLedgerStoreTest : LedgerStoreContract() {
         val backend = SqlDelightLedgerStore(LedgerDatabase(driver))
         assertNull(backend.get("old-key")) // 1.sqm is destructive — pre-migration rows are not preserved
         // The assetId column exists and version/updatedAt are gone: a put/get round-trips.
-        backend.put(LedgerEntry("k", "A", LedgerState.REQUESTED, 0))
+        backend.put(LedgerEntry("k", "A", LedgerState.REQUESTED, 0, eventId = "E1"))
         assertEquals("A", backend.get("k")?.assetId)
     }
 
@@ -111,8 +111,72 @@ class SqlDelightLedgerStoreTest : LedgerStoreContract() {
         assertEquals("A", survived?.assetId)
         assertEquals(0, survived?.attempt)
         // The generated schema no longer binds updatedAt — a fresh put/get round-trips.
-        backend.put(LedgerEntry("B-photo.jpg", "B", LedgerState.REQUESTED, 0))
+        backend.put(LedgerEntry("B-photo.jpg", "B", LedgerState.REQUESTED, 0, eventId = "E1"))
         assertEquals("B", backend.get("B-photo.jpg")?.assetId)
+    }
+
+    @Test
+    fun `migration v4 to v5 adds eventId as the sentinel and preserves COMPLETED rows`() = runTest {
+        val driver = JdbcSqliteDriver(JdbcSqliteDriver.IN_MEMORY)
+        // Stand up the v4 schema (key, assetId, state, attempt — no eventId) holding a COMPLETED row.
+        driver.execute(
+            null,
+            """
+            CREATE TABLE ledgerRow (
+                key TEXT NOT NULL PRIMARY KEY,
+                assetId TEXT NOT NULL,
+                state TEXT NOT NULL,
+                attempt INTEGER NOT NULL
+            )
+            """.trimIndent(),
+            0,
+        )
+        driver.execute(null, "CREATE INDEX ledgerRow_assetId ON ledgerRow(assetId)", 0)
+        driver.execute(null, "INSERT INTO ledgerRow VALUES ('A-photo.jpg', 'A', 'COMPLETED', 0)", 0)
+
+        // Run only the v4 -> v5 migration (4.sqm: ALTER TABLE … ADD COLUMN eventId, row-preserving).
+        LedgerDatabase.Schema.migrate(driver, 4L, LedgerDatabase.Schema.version).await()
+
+        // The COMPLETED row survives (the 2.sqm house invariant: a surviving COMPLETED row is what
+        // stops re-upload) and carries the pre-provenance sentinel — the true eventId lives in
+        // config, unreachable from SQL, so the migration cannot fill it.
+        val backend = SqlDelightLedgerStore(LedgerDatabase(driver))
+        val survived = backend.get("A-photo.jpg")
+        assertEquals(LedgerState.COMPLETED, survived?.state)
+        assertEquals("A", survived?.assetId)
+        assertEquals(0, survived?.attempt)
+        assertEquals("", survived?.eventId)
+
+        // The single writer's first post-migration cycle sweeps the sentinel to the live event.
+        backend.backfillEventId("E1")
+        assertEquals("E1", backend.get("A-photo.jpg")?.eventId)
+        assertEquals(LedgerState.COMPLETED, backend.get("A-photo.jpg")?.state)
+
+        // And a fresh put on the migrated schema round-trips the new column.
+        backend.put(LedgerEntry("B-photo.jpg", "B", LedgerState.REQUESTED, 0, eventId = "E1"))
+        assertEquals("E1", backend.get("B-photo.jpg")?.eventId)
+    }
+
+    @Test
+    fun `a v4-shaped column-explicit insert still works on the v5 schema`() = runTest {
+        // The staged-revert guarantee: a reverted build ships the OLD generated queries — a
+        // column-explicit 4-column INSERT OR REPLACE — against the already-migrated 5-column table.
+        // `DEFAULT ''` is what lets that insert succeed (the row lands as a sentinel row, swept by
+        // the next post-re-update cycle's backfill). This is the INSERT-level half of the downgrade
+        // stance; the driver-level half (SQLiter refuses to OPEN a newer-versioned DB) is design.md's.
+        val driver = JdbcSqliteDriver(JdbcSqliteDriver.IN_MEMORY)
+        LedgerDatabase.Schema.create(driver)
+
+        driver.execute(
+            null,
+            "INSERT OR REPLACE INTO ledgerRow (key, assetId, state, attempt) VALUES ('r', 'R', 'COMPLETED', 0)",
+            0,
+        )
+
+        val backend = SqlDelightLedgerStore(LedgerDatabase(driver))
+        val row = backend.get("r")
+        assertEquals(LedgerState.COMPLETED, row?.state)
+        assertEquals("", row?.eventId) // the DEFAULT filled the omitted column
     }
 
     @Test
@@ -122,8 +186,8 @@ class SqlDelightLedgerStoreTest : LedgerStoreContract() {
         // `WHERE assetId NOT IN (…)` would throw. retainAssets must never bind the keep-set into
         // one statement — it diffs in Kotlin and deletes the (small) complement per assetId.
         val keep = (0 until 40_000).mapTo(mutableSetOf()) { "k$it" }
-        keep.forEach { backend.put(LedgerEntry(it, it, LedgerState.REQUESTED, 0)) }
-        backend.put(LedgerEntry("straggler", "straggler", LedgerState.REQUESTED, 0))
+        keep.forEach { backend.put(LedgerEntry(it, it, LedgerState.REQUESTED, 0, eventId = "E1")) }
+        backend.put(LedgerEntry("straggler", "straggler", LedgerState.REQUESTED, 0, eventId = "E1"))
 
         backend.retainAssets(keep)
 

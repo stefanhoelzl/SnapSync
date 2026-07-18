@@ -90,15 +90,18 @@ against the compile-time device-facing host.
 
 A triggered reconciliation (in the extension) SHALL: fetch the **per-device** file listing
 (`list(deviceId)`); **`resetTo`** (atomic clear-and-seed) the ledger to exactly one `COMPLETED` row
-per stored filename, each keyed by that `filename` and carrying the `assetId` parsed from the
-filename; **clear the discovery cursor** to force a full re-enumeration; and **on success set the
-`joinedEventId` marker** to the configured `eventId`. The seed records no timestamp. The clear is
+per stored filename, each keyed by that `filename`, carrying the `assetId` parsed from the
+filename and the **configured `eventId` as provenance** (`sync-ledger`, "Event provenance and the
+backfill sweep" — the seed is this join's own write, so no seeded row is ever a pre-provenance
+sentinel row); **clear the discovery cursor** to force a full re-enumeration; and **on success set
+the `joinedEventId` marker** to the configured `eventId`. The seed records no timestamp. The clear is
 essential: it drops stale/phantom rows — e.g. a `REQUESTED` row left by a prior cycle whose upload
 job never materialized, which the engine would otherwise read as in-flight and skip re-creating
 forever — leaving the ledger as exactly the device's stored files. Because the byte store is
 device-global and event-independent, this clear-and-seed both **restores** dedup after a reinstall
 (the seed repopulates every globally-stored resource as `COMPLETED`) and **preserves** it across an
-event switch (the global listing re-seeds the same files `COMPLETED`). A resource that is not in the
+event switch (the global listing re-seeds the same files `COMPLETED`, carrying the **new** event's
+id — which is what keeps a switch's provenance truthful without any sweep). A resource that is not in the
 device's byte store is absent from the listing, is not seeded, and is uploaded idempotently by the
 producer (last-write-wins). Setting the marker on success — even when zero rows were seeded — settles
 the join so it does not re-trigger.
@@ -121,7 +124,7 @@ thus reset only ever on an authoritative listing.
 #### Scenario: A stored resource is seeded completed
 
 - **WHEN** the per-device listing reports stored files `a1-primary.jpg`, `a1-video.mov`
-- **THEN** the ledger holds a `COMPLETED` row for each, carrying the `assetId` parsed from the filename, and the marker is set
+- **THEN** the ledger holds a `COMPLETED` row for each, carrying the `assetId` parsed from the filename and the configured event's id as provenance, and the marker is set
 
 #### Scenario: The reset drops stale/phantom rows
 

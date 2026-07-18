@@ -66,4 +66,13 @@ class InMemoryLedgerStore : LedgerStore {
 
     override suspend fun pendingResources(): List<PendingResource> =
         entries.values.filter { it.state != LedgerState.COMPLETED }.map { PendingResource(it.assetId, it.key) }
+
+    override suspend fun backfillEventId(eventId: String) {
+        for ((key, entry) in entries) {
+            if (entry.eventId.isEmpty()) {
+                entries[key] = LedgerEntry(entry.key, entry.assetId, entry.state, entry.attempt, eventId)
+            }
+        }
+        dings.tryEmit(Unit)
+    }
 }

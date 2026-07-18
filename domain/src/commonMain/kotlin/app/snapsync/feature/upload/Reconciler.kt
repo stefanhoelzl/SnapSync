@@ -108,7 +108,11 @@ class ExtensionReconciler(
         // listing (global, event-independent) preserves cross-event dedup: a switch re-seeds the same
         // files COMPLETED, so nothing still stored re-uploads; a deleted or never-stored resource is
         // absent from the listing and uploads.
-        val seeds = filenames.map { LedgerEntry(it, assetIdFromUploadKey(it), LedgerState.COMPLETED, attempt = 0) }
+        // Seeds carry the reconciled event as provenance (`sync-ledger`): the seed IS this join's
+        // write, so no seeded row ever needs the pre-provenance backfill sweep.
+        val seeds = filenames.map {
+            LedgerEntry(it, assetIdFromUploadKey(it), LedgerState.COMPLETED, attempt = 0, eventId = configuredEventId)
+        }
         ledger.resetTo(seeds)
         // Force a full re-enumeration so the producer re-discovers the assets that still need
         // uploading — the cursor survives an app upgrade, so a re-join with a settled cursor would

@@ -77,4 +77,15 @@ class InMemoryLedgerStore : LedgerStore {
 
     override suspend fun pendingResources(): List<PendingResource> =
         rows.values.filter { it.state != LedgerState.COMPLETED }.map { PendingResource(it.assetId, it.key) }
+
+    override suspend fun backfillEventId(eventId: String) {
+        // Rewrite only the '' pre-provenance sentinel, verbatim otherwise — mirrors the backend's
+        // targeted UPDATE (last write wins, no interpretation).
+        for ((key, entry) in rows) {
+            if (entry.eventId.isEmpty()) {
+                rows[key] = LedgerEntry(entry.key, entry.assetId, entry.state, entry.attempt, eventId)
+            }
+        }
+        dings.tryEmit(Unit)
+    }
 }

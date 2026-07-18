@@ -36,6 +36,11 @@ import co.touchlab.kermit.Logger
 class SyncEngine(
     private val provider: UploadRequestProvider,
     private val ledger: LedgerWriter,
+    // The joined event this engine records under (provenance on every written row — spec
+    // `sync-ledger`). Available by construction: the engine is minted per cycle from that cycle's
+    // config (`engineFor`), which is where the eventId arrives. Required, with **no default**: ""
+    // is the pre-provenance sentinel, and a defaulted "" would silently mint sentinel rows forever.
+    private val eventId: String,
 ) {
 
     private val log = Logger.withTag("SyncEngine")
@@ -98,20 +103,20 @@ class SyncEngine(
         val job = UploadJob(provider.provide(resource), failed.attempt + 1)
         // Record FAILED only. The retry's REQUESTED is written when the platform reports
         // UploadStarted for the freshly created retry job (write-after-act).
-        ledger.recordFailed(resource.filename, resource.assetId, failed.attempt)
+        ledger.recordFailed(resource.filename, resource.assetId, failed.attempt, eventId)
         return SyncDecision.Retry(job)
     }
 
     private suspend fun complete(job: UploadJob): SyncDecision {
         val resource = job.request.resource
-        ledger.recordCompleted(resource.filename, resource.assetId, job.attempt)
+        ledger.recordCompleted(resource.filename, resource.assetId, job.attempt, eventId)
         return SyncDecision.AlreadyUploaded
     }
 
     /** The sole site that records REQUESTED: the platform created/retried the job (write-after-act). */
     private suspend fun started(job: UploadJob): SyncDecision {
         val resource = job.request.resource
-        ledger.recordRequested(resource.filename, resource.assetId, job.attempt)
+        ledger.recordRequested(resource.filename, resource.assetId, job.attempt, eventId)
         return SyncDecision.AlreadyUploaded
     }
 

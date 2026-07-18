@@ -1,0 +1,23 @@
+-- v4 -> v5: add the `eventId` provenance column (migration step 11b).
+--
+-- Like 2.sqm/3.sqm this migration is ROW-PRESERVING: existing rows — especially COMPLETED ones —
+-- MUST survive, because a surviving COMPLETED row is exactly what stops the next discovery cycle
+-- from re-uploading an already-stored resource. `ALTER TABLE … ADD COLUMN` is a catalog-only
+-- change (SQLite rewrites the schema record, never the rows), so no row is touched.
+--
+-- `DEFAULT ''` is load-bearing twice over:
+--  - The TRUE value is not available in SQL — the joined eventId lives in config (a Keychain/file
+--    read), which a migration script cannot reach. `''` is the explicit "recorded before the
+--    ledger carried provenance" sentinel; the single writer's next upload cycle rewrites sentinel
+--    rows to the live event id (`backfillEventId`, executed once per cycle entry, idempotent).
+--  - It keeps the old 4-column column-explicit `INSERT OR REPLACE` working against the wider
+--    table, which is what makes a staged revert (keep this migration + the column, revert the
+--    Kotlin threading) shippable. NB a FULL schema revert is impossible regardless of column
+--    shape: SQLiter's `migrateIfNeeded` throws (`Database version 5 newer than config version 4`)
+--    when a binary whose compiled Schema.version is older opens this database — the downgrade
+--    stance is recorded in the change's design.md.
+--
+-- The PRIMARY KEY stays `key` (the bare, event-independent resource filename): dedup semantics are
+-- unchanged, no query filters by eventId yet, and the composite-PK recreate is deferred to the
+-- multi-event change that would pay for it. Migration SQL is raw (no `AS LedgerState` annotations).
+ALTER TABLE ledgerRow ADD COLUMN eventId TEXT NOT NULL DEFAULT '';

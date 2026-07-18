@@ -203,6 +203,17 @@ class UploadCycle(
             return CycleResult.COMPLETED
         }
 
+        // Provenance backfill (spec `sync-ledger`, migration 4.sqm): sweep every pre-provenance row
+        // (`eventId = ''` — recorded before the ledger carried the column, or by a staged-revert
+        // build) to this cycle's live event id. Seated HERE — after the reconcile settled — because
+        // this is the one point that runs on BOTH tiers' cycles (the shared cycle is the single
+        // writer's only entry) and never in a reader, and because a settled reconcile means the
+        // membership this cycle records under is the one the marker agrees with (a switch's
+        // `resetTo` has already re-baselined, so the sweep can never label another event's rows).
+        // Idempotent and cheap: one UPDATE matching nothing on every cycle after the first.
+        runCatching { ledger.backfillEventId(eventId) }
+            .onFailure { log.w(it) { "eventId backfill failed this cycle — retried next cycle" } }
+
         // Phase 1 — first failures: re-point the system's single retry at a rebuilt edge URL
         // (stable, no expiry — the provider re-derives the identical destination locally).
         for (job in platform.fetchRetryJobs()) {
