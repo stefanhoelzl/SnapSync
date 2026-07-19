@@ -12,7 +12,7 @@ flowchart LR
   adapter_ios_ext_safe[":adapter:ios:ext-safe"]
   app_desktop[":app:desktop"]
   app_ios[":app:ios"]
-  app_ios_photokit_extension[":app:ios:photokit-extension"]
+  app_ios_extension[":app:ios:extension"]
   capability_push[":capability:push"]
   domain[":domain"]
   test_architecture[":test:architecture"]
@@ -44,10 +44,10 @@ flowchart LR
   app_ios --> domain
   app_ios --> ui_presentation
   app_ios --> ui_screens
-  app_ios_photokit_extension --> adapter_generic
-  app_ios_photokit_extension --> adapter_ios_ext_safe
-  app_ios_photokit_extension --> capability_push
-  app_ios_photokit_extension --> domain
+  app_ios_extension --> adapter_generic
+  app_ios_extension --> adapter_ios_ext_safe
+  app_ios_extension --> capability_push
+  app_ios_extension --> domain
   capability_push --> adapter_generic
   capability_push --> domain
   test_harness_driver --> app_desktop

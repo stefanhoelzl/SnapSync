@@ -60,7 +60,7 @@ fun denormalizeAssetId(assetId: String): String = assetId.replace('_', '/')
  * `"<assetId>-<role>.<ext>"` layout lives, where `assetId` is the PHAsset's `localIdentifier` (v1,
  * single-device) with `/`→`_` (via [normalizeAssetId]). Kept platform-free so the layout is unit-tested on the simulator
  * instead of trapped inside the PhotoKit adapter; the adapter (and the re-join seed) only supply the
- * raw fields. Shared by the upload producer (`:app:ios:photokit-extension`) and the manifest synthesis
+ * raw fields. Shared by the upload producer (`:app:ios:extension`) and the manifest synthesis
  * so a manifest's `filename` is byte-identical to what the producer uploads under.
  */
 fun uploadKey(assetId: String, role: ResourceRole, originalFilename: String): String =

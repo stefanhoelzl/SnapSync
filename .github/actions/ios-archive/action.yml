@@ -91,7 +91,7 @@ runs:
     # here so it stays part of the gate/archive.
     - name: Compile the background-upload extension framework
       shell: bash
-      run: ./gradlew :app:ios:photokit-extension:compileKotlinIosArm64
+      run: ./gradlew :app:ios:extension:compileKotlinIosArm64
 
     # Write the App Store Connect API key (.p8) for xcodebuild's auth flags.
     - name: Prepare App Store Connect API key
