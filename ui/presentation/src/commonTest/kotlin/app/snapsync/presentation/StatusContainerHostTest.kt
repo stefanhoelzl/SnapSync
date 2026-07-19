@@ -24,6 +24,7 @@ import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 import kotlin.time.Duration
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.channels.Channel
 import kotlin.time.Clock
 import kotlin.time.Instant
 import kotlinx.datetime.LocalDateTime
@@ -878,6 +879,54 @@ class StatusContainerHostTest {
             cancelAndIgnoreRemainingItems()
         }
         assertEquals(EVENT_ID, committed)
+    }
+
+    @Test
+    fun `autoJoin logs the details-load abort - the headless negative oracle`() = runTest {
+        // The documented on-device oracle (CLAUDE.md, spec `ios-app-shell`): a headless
+        // `SNAPSYNC_EVENT_LINK` launch against a missing/invented event id must leave a
+        // `debug.log` line naming the id and the outcome — the run's ONLY abort signal.
+        val logged = Channel<String>(Channel.UNLIMITED)
+        val containerHost = StatusContainerHost(
+            FakeSyncStatusSource(SyncStatus.Loading), FakePermissionSource(PermissionStatus.GRANTED).permission,
+            FakeConfig(null).config, backgroundScope,
+            loadJoinDetails = { JoinLoad.NotFound },
+            cutoffFormatter = fixedCutoffFormatter(),
+            log = { logged.trySend(it) },
+        )
+        containerHost.test(this) {
+            runOnCreate()
+            containerHost.onOpenUrl(encodeEventUrl(EventLinkPayload(EVENT_ID, autoJoin = true)))
+            assertEquals(
+                "autoJoin aborted: details load did not succeed for $EVENT_ID (NotFound)",
+                logged.receive(),
+            )
+            cancelAndIgnoreRemainingItems()
+        }
+    }
+
+    @Test
+    fun `the interactive gate logs a failed details load - the dialog is invisible headlessly`() = runTest {
+        // A `SNAPSYNC_EVENT_LINK` without `autoJoin=true` opens the interactive gate; a 404 there
+        // parks on the NotFound dialog, which a headless run cannot see. The log line is the run's
+        // only abort signal (found missing by device Session C: only the HTTP `→ 404` line appeared).
+        val logged = Channel<String>(Channel.UNLIMITED)
+        val containerHost = StatusContainerHost(
+            FakeSyncStatusSource(SyncStatus.Loading), FakePermissionSource(PermissionStatus.GRANTED).permission,
+            FakeConfig(null).config, backgroundScope,
+            loadJoinDetails = { JoinLoad.NotFound },
+            cutoffFormatter = fixedCutoffFormatter(),
+            log = { logged.trySend(it) },
+        )
+        containerHost.test(this) {
+            runOnCreate()
+            containerHost.onOpenUrl(encodeEventUrl(EventLinkPayload(EVENT_ID)))
+            assertEquals(
+                "join gate: details load did not succeed for $EVENT_ID (NotFound)",
+                logged.receive(),
+            )
+            cancelAndIgnoreRemainingItems()
+        }
     }
 
     @Test
