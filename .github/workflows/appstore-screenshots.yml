@@ -19,7 +19,7 @@
 #     job needs its own workflow to hold `cancel-in-progress: false`. Uploads serialise instead; the newest
 #     still lands last, because the queue is FIFO.
 #
-# Like appstore-metadata-apply / ios-deliver / ios-promote, this posts NO required status check and is free
+# Like appstore-metadata-apply / ios-deliver, this posts NO required status check and is free
 # to fail RED without blocking a merge (do NOT add it to .github/rulesets/main.json). It reuses the existing
 # Admin ASC key — no new secret.
 name: appstore-screenshots

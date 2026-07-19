@@ -60,11 +60,10 @@ the commit; were that treated as foreign, it would refuse every subsequent attem
 permanently unreleasable.
 
 Non-required checks SHALL NOT block a release (changed 2026-07-17, with the introduction of the
-red-by-design migration beacon `verify`): `ios-deliver` and `ios-promote` are not required checks, so a
-red promote no longer refuses a release dispatch. Releasing a commit whose alpha promotion failed is
-therefore possible; when alpha delivery of the released commit matters, the operator SHALL check
-`ios-promote` (idempotent, re-runnable — capability `ios-testflight-delivery`) rather than rely on this
-guard.
+red-by-design migration beacon `verify`): `ios-deliver` is not a required check, so a red TestFlight
+upload no longer refuses a release dispatch. Releasing a commit whose internal-TestFlight upload failed is
+therefore possible; when the internal-TestFlight build of the released commit matters, the operator SHALL
+check `ios-deliver` (capability `ios-testflight-delivery`) rather than rely on this guard.
 
 #### Scenario: A release off main is rejected
 - **WHEN** a release is dispatched from a ref whose commit is not an ancestor of `origin/main`
@@ -75,7 +74,7 @@ guard.
 - **THEN** the workflow fails before building or uploading
 
 #### Scenario: A red non-required check does not block a release
-- **WHEN** a release is dispatched for a commit whose required check-runs are all green while a non-required check-run (the red-by-design `verify` beacon, or a red `ios-promote`) is not
+- **WHEN** a release is dispatched for a commit whose required check-runs are all green while a non-required check-run (the red-by-design `verify` beacon, or a red `ios-deliver`) is not
 - **THEN** the workflow logs the ignored check-runs and proceeds
 
 #### Scenario: A release on a fully-green main commit proceeds

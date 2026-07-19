@@ -283,32 +283,29 @@ gated:** taps / UI gestures need a signed **WebDriverAgent** (`developer wda`), 
 **timing** is OS-owned — a re-provision reliably triggers an invocation but you cannot force *when* it
 runs.
 
-### `main` is the public alpha channel
+### `main` uploads to internal TestFlight — there is no public channel
 
-Every merge to `main` reaches **public** TestFlight testers, automatically and **silently** (capability
-`ios-testflight-delivery`). `ios.yml` runs `ios-build` + `ios-test` (the merge gates) → `ios-deliver`
-(export + upload) → **`ios-promote`**, which puts the build in the **`alpha` external group**, whose
-public link — <https://testflight.apple.com/join/pvqgV7Uz> — anyone may tap. **Uploading is not
-distributing:** without `ios-promote` a build reaches only the internal `development` group.
+Every merge to `main` uploads a signed build to TestFlight automatically (capability
+`ios-testflight-delivery`), but it reaches **no external tester**. `ios.yml` runs `ios-build` +
+`ios-test` (the merge gates) → `ios-deliver` (export + upload). The uploaded build lands in the
+**internal `development` group** (`hasAccessToAllBuilds`) only. **There is no `ios-promote` job and no
+`alpha` external group fed by CI** — the public alpha channel was **removed** (App-Store-only; decision
+record `changes/archive/2026-07-19-remove-alpha-testflight-promotion`). **Distribution to real users is
+the dispatch-driven App Store release below (`ios-release.yml`) — the only path to external users.**
 
-- **Testers are never notified.** `ios-promote` sets `autoNotifyEnabled=false` on every build; testers
-  ride `main` via TestFlight auto-update. The suppression **must** precede the group assignment (the
-  notification fires on group availability) — do not reorder those steps.
-- **Every** `main` build is promoted, unfiltered. Docs-only and backend-only merges therefore ship a
-  binary-identical build. Deliberate: any filter risks a real fix *silently* never reaching testers,
-  which is worse than noise. (And a path filter on the trigger would freeze merges — `ios-build` /
-  `ios-test` are required checks, and a skipped required check is never posted.)
-- **Beta App Review is not a gate** — a build on an already-approved `MARKETING_VERSION` auto-approves
-  instantly, and a build can join the group while still `WAITING_FOR_REVIEW`.
-- ⚠️ **The `MARKETING_VERSION` trap — avoided by design; do not re-introduce it.** The fallback is
-  pinned at `0.1.0` in **`Config.xcconfig`** (inherited by both targets; no target-level entry in
-  `project.pbxproj`), and **`main` is never bumped** — real store versions are injected per release by
-  the release channel below. *Were* you to bump the committed fallback, it would force a **real**
-  first-of-version Beta App Review taking **hours to days**, during which each merge expires its
-  predecessor's submission (`--expire-build-submitted-for-review`, newest wins), so **nothing reaches
-  testers and nothing goes red** — a green pipeline delivering nothing. Don't bump it; dispatch a release.
-- A promote cancelled by `concurrency: cancel-in-progress` (a second merge landing mid-poll) is also
-  expected — the newer run promotes the newer build; nothing is lost.
+- **Uploads are unfiltered.** Docs-only and backend-only merges upload a binary-identical build too. A
+  path filter on the trigger would freeze merges — `ios-build` / `ios-test` are required checks, and a
+  skipped required check is never posted. These internal builds accumulate unseen; that is harmless
+  because nothing external consumes them.
+- **Internal testers may be notified per build.** The `autoNotifyEnabled=false` suppression lived in the
+  removed `ios-promote` job, so nothing suppresses it now — accepted, since the internal group is
+  effectively just the developer.
+- **The `MARKETING_VERSION` fallback stays pinned** at `0.1.0` in **`Config.xcconfig`** (inherited by
+  both targets; no target-level entry in `project.pbxproj`), and **`main` is never bumped** — real store
+  versions are injected per release by the release channel below. Bumping the committed fallback no
+  longer triggers a Beta App Review stall (nothing on `main` auto-submits to review since `ios-promote`
+  is gone); it would merely change the version the internal uploads carry. Still: don't bump it —
+  dispatch a release to ship a real version.
 - **APNs is production for every TestFlight/App Store build.** CI Release archives inject
   `APS_ENVIRONMENT=production` / `APNS_ENV=production` (in the `ios-archive` composite action); only
   dev-sideload builds (the `ios.yml` `workflow_dispatch` dev-IPA path and ssh-mac) stay
@@ -322,8 +319,8 @@ gh workflow run ios-release.yml --ref main -f version=1.0 -f submit=true
 ```
 
 `.github/workflows/ios-release.yml` (capability `ios-appstore-release`) builds an `X.Y` archive (version
-injected from the **`version` input** — committed source is never bumped, so the alpha channel is
-untouched), uploads it, **finds-or-creates** the `X.Y` App Store version record, **attaches** the build,
+injected from the **`version` input** — committed source is never bumped, so the internal-TestFlight
+build stream is untouched), uploads it, **finds-or-creates** the `X.Y` App Store version record, **attaches** the build,
 applies the **App Review details** from the repo, optionally **submits**, and — last — **creates the
 `vX.Y` tag**. ⚠️ **Don't push a `vX.Y` tag by hand**: tags no longer trigger anything, and a tag you push
 yourself makes that version permanently un-releasable (the guard below refuses an existing tag).
@@ -338,9 +335,9 @@ yourself makes that version permanently un-releasable (the guard below refuses a
   so a doomed release fails in seconds rather than after a ~30 min build); the commit is an ancestor of
   `origin/main` (**load-bearing** — a dispatch can run from any ref); and every **required** check-run on
   that commit is green (the required set is derived from branch protection at run time). ⚠️ Changed
-  2026-07-17: non-required checks — `ios-deliver`, `ios-promote`, the red-by-design `verify` beacon — no
-  longer block a release. Releasing a commit whose TestFlight promote failed is now POSSIBLE; check
-  `ios-promote` yourself if alpha delivery of the released commit matters.
+  2026-07-17: non-required checks — `ios-deliver`, the red-by-design `verify` beacon — no
+  longer block a release. Releasing a commit whose TestFlight upload (`ios-deliver`) failed is now
+  POSSIBLE; check `ios-deliver` yourself if the internal-TestFlight build of the released commit matters.
 - **The tag is created LAST, on success only** — so a failed run leaves no tag and retries cleanly. The
   green guard excludes this workflow's own check-suites (any run, any state), so a *failed* release does
   not poison its own retry.
