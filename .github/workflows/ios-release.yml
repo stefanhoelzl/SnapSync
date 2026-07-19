@@ -19,15 +19,14 @@
 # minutes, and confines `contents: write` (for the tag push) to the job that holds NO signing certs.
 #
 # The store version is the `version` INPUT, injected as MARKETING_VERSION at build time (same mechanism
-# ios.yml uses for CURRENT_PROJECT_VERSION). Committed source is never bumped, so `main`/alpha keeps its
+# ios.yml uses for CURRENT_PROJECT_VERSION). Committed source is never bumped, so `main` keeps its
 # pinned 0.1.0 fallback and NEVER triggers a first-of-version Beta App Review.
 #
 # A release is guarded: version must match ^\d+\.\d+$, the tag must not already exist, the released
 # commit must be an ancestor of origin/main (LOAD-BEARING — a dispatch can run from ANY ref), and EVERY
-# check-run on that commit must be green (excluding this run's own). A commit whose full pipeline —
-# including promotion to alpha — is not green does not jump to the App Store. A cancelled/red ios-promote
-# on the target commit is remedied by re-running that idempotent job (capability ios-testflight-delivery)
-# and re-dispatching.
+# check-run on that commit must be green (excluding this run's own). A commit whose REQUIRED checks are
+# not green does not jump to the App Store. Non-required checks (ios-deliver, the migration beacon) do
+# not block a dispatch.
 #
 # SUBMIT is opt-in (`-f submit=true`) AND gated: `asc review doctor` must report zero blocking checks or
 # the run refuses. The gate is OURS — a submission is outward-facing and effectively irreversible.
@@ -101,7 +100,7 @@ jobs:
           fi
           echo "tag $RELEASE_TAG is free"
 
-      # Guard 3: the released commit must already be on main (gated + on the alpha channel). LOAD-BEARING:
+      # Guard 3: the released commit must already be on main (gated). LOAD-BEARING:
       # a dispatch can run from ANY ref, so this is what confines a release to merged code.
       - name: Require the released commit to be an ancestor of origin/main
         run: |
@@ -153,9 +152,9 @@ jobs:
           # rules endpoint (source: .github/rulesets/main.json), never a name list. Non-required
           # checks may be red by design (the migration beacon `verify` is, for the whole
           # module-architecture migration) and auto-merge ignores them too. NOTE the deliberate
-          # behavior change (2026-07-17): ios-deliver/ios-promote are not required checks, so a
-          # red promote no longer blocks a release dispatch. Degrades in the strict direction: if
-          # the required set cannot be resolved, every check-run counts.
+          # behavior change (2026-07-17): ios-deliver is not a required check, so a red delivery
+          # does not block a release dispatch. Degrades in the strict direction: if the required
+          # set cannot be resolved, every check-run counts.
           req = subprocess.check_output([
               "gh", "api", f"/repos/{repo}/rules/branches/main",
               "--jq", '[.[] | select(.type == "required_status_checks") | .parameters.required_status_checks[].context] | unique | .[]',

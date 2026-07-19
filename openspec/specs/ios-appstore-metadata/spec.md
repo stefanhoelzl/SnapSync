@@ -26,7 +26,7 @@ freeze merges. App **previews** (video) remain out of scope and manual.
 The applies own the one safety guarantee the tooling does not — they touch **only** a version in an editable
 state, **never** one in review, and **never** create a version; the tool's behaviour on an in-review version
 is undefined, and replacing a screenshot set is destructive. They reuse the **existing Admin ASC key**, run
-on `ubuntu` with no Apple toolchain, introduce no new secret, and — like `ios-deliver`/`ios-promote` — post
+on `ubuntu` with no Apple toolchain, introduce no new secret, and — like `ios-deliver` — post
 no required check, so a failed apply is **red but blocks nothing**. The metadata tool (`asc`) is a pinned,
 checksum-verified binary; **no fastlane, no Ruby**.
 

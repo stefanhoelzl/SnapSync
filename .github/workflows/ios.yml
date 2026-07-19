@@ -1,6 +1,8 @@
-# iOS CI. Four jobs. TWO are the parallel merge gates on the macos-26 hosted runner (GM Xcode, no
+# iOS CI. Three jobs. TWO are the parallel merge gates on the macos-26 hosted runner (GM Xcode, no
 # beta SDK; branch-protection requires exactly these two status checks); the THIRD delivers and gates
-# on both; the FOURTH promotes what was delivered into the PUBLIC alpha TestFlight channel:
+# on both. There is NO automatic distribution to any external tester: the uploaded build reaches only
+# the INTERNAL `development` group. Distribution to real users is the dispatch-driven App Store release
+# (ios-release.yml, capability ios-appstore-release); the public alpha promotion was removed.
 #   * ios-build — on EVERY push (any ref) produces a SIGNED archive of the iOS DEVICE (iphoneos,
 #     arm64) app, linking the iosArm64 framework (the shipping target). The archive step compiles
 #     iosArm64, so it IS the merge gate. This job is a PURE GATE: it exports nothing and uploads
@@ -15,10 +17,6 @@
 #     NOW STOPS THE RELEASE. It previously could not: export+upload lived inside ios-build, which has
 #     no dependency on ios-test, so a green build shipped to TestFlight while the tests were failing
 #     on the very same commit (run #297 / build 297 did exactly that).
-#   * ios-promote — main ONLY, `needs: ios-deliver`, on UBUNTU: puts the uploaded build into the
-#     `alpha` EXTERNAL beta group, whose public link anyone may tap. Uploading is not distributing:
-#     without this job a build reaches only the internal `development` group and no public tester ever
-#     sees it. Pure App Store Connect REST — no Xcode, no IPA, no signing material. See its own header.
 # Together ios-build and ios-test exercise BOTH Kotlin/Native targets (device via build, simulator
 # via test). The Linux-buildable work (JVM/desktop + the JVM run of all unit tests) stays in
 # build.yml; this workflow does only the irreducible Apple delta.
@@ -45,7 +43,7 @@ name: ios
 on:
   push:
     # BRANCHES only. A `vX.Y` tag is handled by ios-release.yml (App Store release); excluding tags
-    # here keeps a release from triggering a redundant alpha archive/deliver/promote. Every branch push
+    # here keeps a release from triggering a redundant archive/deliver. Every branch push
     # still runs (no path filter), so the required `ios-build` / `ios-test` checks are posted on every
     # branch and PR and no merge can freeze.
     branches: ["**"]
@@ -121,7 +119,7 @@ jobs:
       # compile, the ASC key, the ephemeral keychain, BOTH persistent certs, and the archive — lives in
       # the shared composite action so the tag release (ios-release.yml) reuses it byte-for-byte. Build
       # number = the monotonic run number. marketing-version stays EMPTY here so the archive bakes the
-      # Config.xcconfig fallback (0.1.0, alpha); only the release overrides it from the tag.
+      # Config.xcconfig fallback (0.1.0, the pre-release version); only the release overrides it from the tag.
       - name: Archive signed device app
         uses: ./.github/actions/ios-archive
         with:
@@ -255,109 +253,6 @@ jobs:
           issuer-id: ${{ secrets.ASC_ISSUER_ID }}
           api-key-id: ${{ secrets.ASC_KEY_ID }}
           api-private-key: ${{ secrets.ASC_API_PRIVATE_KEY }}
-
-  # TestFlight PROMOTION — main ONLY, and `needs: ios-deliver` (capability ios-testflight-delivery).
-  # This is what makes the public alpha channel BE main. ios-deliver uploads the build to App Store
-  # Connect and STOPS: without this job the build reaches the INTERNAL `development` group (which has
-  # hasAccessToAllBuilds) and nobody else, so builds pile up unseen — 295, 297, 300, 302, 308 and 310
-  # all sat VALID in no external group before this job existed. Here the build joins `alpha`: an
-  # EXTERNAL group whose public link (https://testflight.apple.com/join/pvqgV7Uz) anyone may tap.
-  #
-  # Why UBUNTU, not macOS: this job compiles nothing and signs nothing. It is pure App Store Connect
-  # REST against the build identified by github.run_number — no Xcode, no IPA, no keychain, no
-  # certificate, and no artifact hand-off from ios-deliver beyond the job dependency. It DOES idle for
-  # minutes waiting on Apple to finish PROCESSING the build (add-build requires processingState VALID),
-  # and that idle belongs on a free Ubuntu runner rather than a macOS one.
-  #
-  # Like ios-deliver it posts NO branch-protection status check, so it is free to fail RED while
-  # blocking nothing. Do NOT add ios-promote to .github/rulesets/main.json: it never runs on a PR
-  # branch, so as a required check it would never be posted and merges would freeze.
-  #
-  # ORDER IS LOAD-BEARING. TestFlight raises the tester notification when a build becomes AVAILABLE TO
-  # THE GROUP, so `Suppress the tester notification` MUST run BEFORE `Add the build to the alpha
-  # group`. A failed suppression aborts the job before the assignment, so no un-suppressed build can
-  # ever reach a tester. Never swap those two steps: "no alpha tester is ever notified" is a promise
-  # made to testers, and the swap looks harmless.
-  #
-  # EVERY main build is promoted — no filter on paths, commit type, or whether the binary actually
-  # changed. Docs-only and backend-only merges therefore ship a binary-identical build. That is
-  # deliberate: every filter considered (path allowlist, binary hash, conventional-commit type) fails
-  # toward "a real fix SILENTLY never reaches testers", which is the worst thing an alpha channel can
-  # do. Promoting everything fails only toward tester-visible noise. A path filter on the `push`
-  # trigger would additionally freeze merges, since ios-build and ios-test are REQUIRED checks and a
-  # skipped required check is never posted.
-  #
-  # Beta App Review is in the loop but is NOT a gate: a build carrying an already-approved
-  # MARKETING_VERSION auto-approves instantly, and add-build accepts a build that is still
-  # WAITING_FOR_REVIEW. The exception is a MARKETING_VERSION BUMP — the first build of a new version
-  # faces a REAL review (hours to days), and while it waits each merge expires its predecessor's
-  # submission (--expire-build-submitted-for-review, newest wins). During that window NOTHING reaches
-  # testers and NOTHING IS RED. Expected, not a bug.
-  #
-  # Likewise: `concurrency: ios-<ref>` with cancel-in-progress means a merge landing while an earlier
-  # ios-promote is still polling CANCELS it, and that build is never promoted. Also expected — the
-  # newer run promotes the newer build and nothing a tester should have seen is lost.
-  ios-promote:
-    name: ios-promote
-    needs: ios-deliver
-    if: github.ref == 'refs/heads/main'
-    runs-on: ubuntu-latest
-    env:
-      # The same Admin key ios-build and ios-deliver use. No new secret is introduced.
-      ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
-      ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
-      ASC_API_PRIVATE_KEY: ${{ secrets.ASC_API_PRIVATE_KEY }}
-      # codemagic-cli-tools reads the key from ITS OWN env var names; same three values.
-      APP_STORE_CONNECT_KEY_IDENTIFIER: ${{ secrets.ASC_KEY_ID }}
-      APP_STORE_CONNECT_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
-      APP_STORE_CONNECT_PRIVATE_KEY: ${{ secrets.ASC_API_PRIVATE_KEY }}
-      ASC_APP_ID: "6781692480"
-      BETA_GROUP: alpha
-    steps:
-      # Only .github/scripts/testflight_promote.py is needed — no source, no Gradle.
-      - uses: actions/checkout@v7.0.0
-
-      - name: Install the App Store Connect clients
-        run: pip install --quiet 'pyjwt[crypto]' requests codemagic-cli-tools
-
-      # Find the build ios-deliver just uploaded. Its build number IS github.run_number
-      # (CURRENT_PROJECT_VERSION is baked from it at archive time, and this job runs in the SAME run),
-      # so no artifact hand-off is needed. RETRIES, because a freshly uploaded build is not
-      # immediately discoverable. Also sets ALREADY_PROMOTED, the idempotency guard: re-running a
-      # flaked promotion must be a green no-op, never a red error.
-      - name: Resolve the uploaded build
-        run: |
-          python .github/scripts/testflight_promote.py resolve \
-            "$ASC_APP_ID" "${{ github.run_number }}" "$BETA_GROUP"
-
-      # What a tester sees next to the build in the TestFlight app. Never a push (see below) — but it
-      # is the only thing that tells them what landed, so it earns its keep.
-      - name: Set the release note
-        if: env.ALREADY_PROMOTED != 'true'
-        run: |
-          app-store-connect builds add-beta-test-info "$BUILD_ID" \
-            --whats-new "$(git log -1 --format='%s') (${GITHUB_SHA:0:7})"
-
-      # Waits for processingState VALID, then submits. --expire-build-submitted-for-review makes the
-      # NEWEST main build win a review pile-up (only reachable after a MARKETING_VERSION bump).
-      - name: Submit to TestFlight
-        if: env.ALREADY_PROMOTED != 'true'
-        run: |
-          app-store-connect builds submit-to-testflight "$BUILD_ID" \
-            --max-build-processing-wait 20 \
-            --expire-build-submitted-for-review
-
-      # MUST precede the group assignment — see the ORDER IS LOAD-BEARING note above. Alpha testers
-      # ride main silently via TestFlight auto-update; TestFlight never pushes them a notification.
-      - name: Suppress the tester notification
-        if: env.ALREADY_PROMOTED != 'true'
-        run: python .github/scripts/testflight_promote.py silence "$BUILD_ID"
-
-      # The build becomes installable to every public-link tester here — and only here, which is why
-      # the suppression above had to land first.
-      - name: Add the build to the alpha group
-        if: env.ALREADY_PROMOTED != 'true'
-        run: app-store-connect beta-groups add-build "$BUILD_ID" --beta-group "$BETA_GROUP"
 
   ios-test:
     # Display name = the status-check context required by .github/rulesets/main.json. Runs in

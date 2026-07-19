@@ -7,7 +7,7 @@ human clicks Submit later (once the listing / screenshots / privacy, owned elsew
 
 The codemagic `app-store-connect` CLI has no version-record attach subcommand, so this drops to the ASC
 REST API (same ES256 JWT + Admin key the rest of the pipeline uses — ASC_KEY_ID / ASC_ISSUER_ID /
-ASC_API_PRIVATE_KEY — so it adds no new credential), mirroring `testflight_promote.py`.
+ASC_API_PRIVATE_KEY — so it adds no new credential).
 
     release  Resolve the just-uploaded build by its build NUMBER (retried — a fresh upload is not
              immediately discoverable), FIND-OR-CREATE the App Store version record whose

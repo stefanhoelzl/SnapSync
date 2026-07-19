@@ -8,7 +8,7 @@
 #     ASC key (no new secret, no Xcode/keychain/cert): resolves the currently EDITABLE App Store
 #     version at run time and pushes the listing text to its localizations, declaratively (file wins;
 #     absent field = no-op). It never edits a version in review and never creates one. Like
-#     ios-deliver/ios-promote it posts NO required check and is free to fail RED without blocking a
+#     ios-deliver it posts NO required check and is free to fail RED without blocking a
 #     merge (do NOT add it to .github/rulesets/main.json).
 #
 # Text only: screenshots/app previews are binaries with no CLI path and are out of scope (manual).
@@ -48,7 +48,7 @@ jobs:
     if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     env:
-      # The same Admin key ios-build / ios-deliver / ios-promote use — asc reads its OWN var names.
+      # The same Admin key ios-build / ios-deliver use — asc reads its OWN var names.
       # No new secret is introduced. (Design open question: a scoped key would be safer than Admin.)
       ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
       ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
