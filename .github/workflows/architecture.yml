@@ -6,8 +6,8 @@
 #   verify   — the migration beacon. RED BY DESIGN until the module-architecture migration
 #              completes: it fails while any burn-down count is nonzero, with the per-law table in
 #              the job summary. It is NOT a required check (never added to main.json) and MUST
-#              never become one while red — and it never blocks anything: ios-release.yml Guard 4
-#              and /ship's watcher both judge REQUIRED checks only, derived from branch protection
+#              never become one while red — and it never blocks anything: ios-appstore-promote.yml's
+#              release guard and /ship's watcher both judge REQUIRED checks only, derived from branch protection
 #              (no name list — any informational check is tolerated automatically).
 #              Completion = burn-down at zero → gates move into
 #              :test:architecture under `./gradlew build`, and the beacon module and this job are

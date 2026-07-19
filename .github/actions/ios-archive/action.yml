@@ -1,5 +1,6 @@
-# Shared "archive a signed iOS device app" steps, used by BOTH the alpha merge gate
-# (ios.yml → ios-build) and the tag-driven App Store release (ios-release.yml).
+# Shared "archive a signed iOS device app" steps, used by ios.yml → ios-build (the merge gate). The
+# archive it produces is what ios-deliver uploads and what the App Store release later PROMOTES
+# (ios-appstore-promote.yml builds nothing — it promotes an existing build).
 #
 # WHY a COMPOSITE action and not a reusable (workflow_call) workflow: a reusable workflow renames the
 # caller's status-check context to "<job> / <inner-job>", which would rename `ios-build` and freeze
@@ -14,7 +15,8 @@
 # ios.yml's header and the ios-testflight-delivery spec).
 #
 # Version / APNs / host are INJECTED on the xcodebuild line (never read from a committed bump):
-#   * marketing-version  — empty = the Config.xcconfig fallback (0.1.0, alpha); the release passes the tag.
+#   * marketing-version  — empty = the Config.xcconfig floor (0.1); ios.yml passes the computed
+#     max(floor, latest tag + minor 1) for a Release build.
 #   * aps-environment / apns-env — Release archives pass `production`; Debug/dev-IPA leaves the
 #     Config.xcconfig development/sandbox default.
 #   * upload-host — empty = the baked deployed host; the dev-IPA path may point elsewhere (HTTPS-only).
@@ -26,7 +28,7 @@ inputs:
     description: Xcode configuration. Release for TestFlight/App Store distribution; Debug for the dev-IPA.
     default: Release
   marketing-version:
-    description: Override MARKETING_VERSION (CFBundleShortVersionString). Empty = Config.xcconfig fallback.
+    description: Override MARKETING_VERSION (CFBundleShortVersionString). Empty = Config.xcconfig floor.
     default: ""
   aps-environment:
     description: Override APS_ENVIRONMENT (aps-environment entitlement). Empty = Config.xcconfig default (development).

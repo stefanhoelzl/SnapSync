@@ -291,7 +291,7 @@ Every merge to `main` uploads a signed build to TestFlight automatically (capabi
 **internal `development` group** (`hasAccessToAllBuilds`) only. **There is no `ios-promote` job and no
 `alpha` external group fed by CI** — the public alpha channel was **removed** (App-Store-only; decision
 record `changes/archive/2026-07-19-remove-alpha-testflight-promotion`). **Distribution to real users is
-the dispatch-driven App Store release below (`ios-release.yml`) — the only path to external users.**
+the dispatch-driven App Store release below (`ios-appstore-promote.yml`) — the only path to external users.**
 
 - **Uploads are unfiltered.** Docs-only and backend-only merges upload a binary-identical build too. A
   path filter on the trigger would freeze merges — `ios-build` / `ios-test` are required checks, and a
@@ -300,49 +300,50 @@ the dispatch-driven App Store release below (`ios-release.yml`) — the only pat
 - **Internal testers may be notified per build.** The `autoNotifyEnabled=false` suppression lived in the
   removed `ios-promote` job, so nothing suppresses it now — accepted, since the internal group is
   effectively just the developer.
-- **The `MARKETING_VERSION` fallback stays pinned** at `0.1.0` in **`Config.xcconfig`** (inherited by
-  both targets; no target-level entry in `project.pbxproj`), and **`main` is never bumped** — real store
-  versions are injected per release by the release channel below. Bumping the committed fallback no
-  longer triggers a Beta App Review stall (nothing on `main` auto-submits to review since `ios-promote`
-  is gone); it would merely change the version the internal uploads carry. Still: don't bump it —
-  dispatch a release to ship a real version.
+- **The marketing version each build carries is COMPUTED** — `ios.yml` bakes
+  `MARKETING_VERSION = max(floor, latest vX.Y tag with its minor +1)`. The **floor** is `Config.xcconfig`'s
+  `MARKETING_VERSION` (seed `0.1`, two-part; no target-level entry in `project.pbxproj`). The minor bump is
+  **integer** (`v0.9 → 0.10`, never a decimal carry to `1.0`) and `max` compares `(major,minor)` **tuples**,
+  so after `v0.1` ships every build carries `0.2`, and so on. A **major jump** (`→ 1.0`) is a **manual floor
+  bump** in `Config.xcconfig` via a PR — the only reason to touch that value. The App Store release below
+  **promotes** one of these builds and derives its store version from it (there's no version input).
 - **APNs is production for every TestFlight/App Store build.** CI Release archives inject
   `APS_ENVIRONMENT=production` / `APNS_ENV=production` (in the `ios-archive` composite action); only
   dev-sideload builds (the `ios.yml` `workflow_dispatch` dev-IPA path and ssh-mac) stay
   `development`/`sandbox`. The `Config.xcconfig` values are the dev default, overridden for distribution.
 
-### App Store releases are dispatch-driven (the tag is the RECEIPT, not the trigger)
+### App Store releases PROMOTE a tested build (the tag is the RECEIPT, not the trigger)
 
 ```
-gh workflow run ios-release.yml --ref main -f version=1.0             # build + attach, no submit
-gh workflow run ios-release.yml --ref main -f version=1.0 -f submit=true
+gh workflow run ios-appstore-promote.yml -f build_number=512             # attach, no submit
+gh workflow run ios-appstore-promote.yml -f build_number=512 -f submit=true
 ```
 
-`.github/workflows/ios-release.yml` (capability `ios-appstore-release`) builds an `X.Y` archive (version
-injected from the **`version` input** — committed source is never bumped, so the internal-TestFlight
-build stream is untouched), uploads it, **finds-or-creates** the `X.Y` App Store version record, **attaches** the build,
-applies the **App Review details** from the repo, optionally **submits**, and — last — **creates the
-`vX.Y` tag**. ⚠️ **Don't push a `vX.Y` tag by hand**: tags no longer trigger anything, and a tag you push
-yourself makes that version permanently un-releasable (the guard below refuses an existing tag).
+`.github/workflows/ios-appstore-promote.yml` (capability `ios-appstore-release`) **promotes an existing App
+Store Connect build** — one `ios-deliver` already uploaded — instead of building a new one. Pick it by
+**`build_number`** (its `CFBundleVersion`); the store version is **derived from that build's own marketing
+version** (so the version record and the build always match — there's no `version` input). It
+**finds-or-creates** the `X.Y` App Store version record, **attaches** the build, applies the **App Review
+details** from the repo, optionally **submits**, and — last — **creates the `vX.Y` tag** on the build's
+origin commit. ⚠️ **Don't push a `vX.Y` tag by hand**: tags trigger nothing, and a tag you push yourself
+makes that version permanently un-releasable (the guard below refuses an existing tag).
 
-- **Two jobs.** `build` (macOS: guards → archive → export → upload) then `finish` (ubuntu: attach →
-  review details → submit → tag). `asc` is fetched as a **linux** binary verified with `sha256sum`, which
-  macOS lacks — hence the split, which also keeps `contents: write` (for the tag push) off the job
-  holding the signing certs.
-- **Version scheme is two-part** (`-f version=1.0` → store version "1.0", tag `v1.0`); a hotfix is a minor
-  bump (no `X.Y.Z`). A malformed version fails the run.
-- **Guards**, in order: version matches `^\d+\.\d+$`; **the tag must not already exist** (checked first,
-  so a doomed release fails in seconds rather than after a ~30 min build); the commit is an ancestor of
-  `origin/main` (**load-bearing** — a dispatch can run from any ref); and every **required** check-run on
-  that commit is green (the required set is derived from branch protection at run time). ⚠️ Changed
-  2026-07-17: non-required checks — `ios-deliver`, the red-by-design `verify` beacon — no
-  longer block a release. Releasing a commit whose TestFlight upload (`ios-deliver`) failed is now
-  POSSIBLE; check `ios-deliver` yourself if the internal-TestFlight build of the released commit matters.
-- **The tag is created LAST, on success only** — so a failed run leaves no tag and retries cleanly. The
-  green guard excludes this workflow's own check-suites (any run, any state), so a *failed* release does
-  not poison its own retry.
-- **Releasing an older commit**: dispatch picks a *ref*, not a SHA. Point a branch at the commit and
-  dispatch from that.
+- **One `ubuntu` job, no build.** It compiles and signs nothing — no Xcode, no keychain, no certs. `asc`
+  is fetched as a linux binary; the job holds `contents: write` for the tag push.
+- **To find the build number**: it's the `CFBundleVersion` = the `ios.yml` `run_number` that produced the
+  build you tested on TestFlight. Promote the exact build you validated.
+- **Version scheme is two-part** (`build → 0.2`, tag `v0.2`); a hotfix is a minor bump (no `X.Y.Z`). The
+  derived version must match `^\d+\.\d+$` or the run fails fast (a pre-change `0.1.0` build can't be
+  promoted). To ship a **new** version, merge builds until one carries it (versions auto-advance off the
+  last tag; a major is a `Config.xcconfig` floor bump — see the version section above), then promote it.
+- **Guards** (both before any ASC mutation): the derived version matches `^\d+\.\d+$`, and its `vX.Y` tag
+  must not already exist (an already-shipped version is never re-released). **No green/ancestor re-check** —
+  provenance is guaranteed at upload time (`ios-deliver` runs only on `main`, only when both gates pass), so
+  every promotable build is from a merged, gated commit.
+- **The tag points at the build's ORIGIN commit**, resolved `build_number → ios.yml run(branch=main) →
+  head_sha`. If that can't be resolved (run deleted), the run **fails loud** rather than tag a guess —
+  hand-tag `vX.Y` at the right commit. A wrong resolution would be a wrong *tag*, never wrong bits (the
+  attach identifies the build by number). Created **LAST, on success only**, so a failed run leaves none.
 - **Submit is opt-in and gated**: `-f submit=true` only submits if `asc review doctor` reports zero
   blocking checks; otherwise the run refuses and prints them.
 - **Review details are repo-owned**: prose in `metadata/review/notes.md` (deliberately outside the
@@ -350,8 +351,7 @@ yourself makes that version permanently un-releasable (the guard below refuses a
   contact from the `ASC_REVIEW_CONTACT_*` secrets (this repo is public, so they can be neither committed
   nor passed as inputs, which render publicly in the Actions UI). No demo account: the app has no sign-up.
 - It posts **no** required status check (not in `main.json`); a failed release is red but blocks nothing.
-  It introduces no new **ASC credential** (the contact secrets grant no ASC access). Build number = the
-  release run's `run_number`.
+  It introduces no new **ASC credential** (the contact secrets grant no ASC access).
 
 **Unlisted App Distribution** (if you want the app link-only, not searchable) — ⚠️ **the sequencing is the
 reverse of the intuition**, and ASC's "Private" is a trap:
@@ -666,7 +666,7 @@ declared-and-never-imported for months. The **target** module graph and its laws
 **`module-architecture`** spec — the contract of record; read it (and `architecture-guards` /
 `architecture-diagrams`) before moving any code. Migration distance is the **`verify`** check
 (workflow `architecture`, module `:test:architecture:migration`) — **red by design until the
-migration completes**, non-required, blocks nothing (`ios-release.yml`'s release guard and
+migration completes**, non-required, blocks nothing (`ios-appstore-promote.yml`'s release guard and
 `/ship`'s watcher judge required checks only, derived from branch protection). Its sibling **`diagrams`** check IS required: stale
 `architecture/` blocks the PR — run `./gradlew architectureDiagrams` and commit. During the
 migration **nothing gates new violations** (decision on record in
