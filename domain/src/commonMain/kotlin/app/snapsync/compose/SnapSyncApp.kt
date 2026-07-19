@@ -16,6 +16,7 @@ import app.snapsync.feature.membership.LeaveEvent
 import app.snapsync.feature.membership.ManifestDeviceEnroller
 import app.snapsync.feature.status.LedgerBackedSyncStatusSource
 import app.snapsync.feature.status.LedgerCounts
+import app.snapsync.feature.status.LedgerCountsPoller
 import app.snapsync.feature.status.OwnDeviceGalleryStatusSource
 import app.snapsync.feature.status.ReadingLedgerCountsSource
 import app.snapsync.feature.status.SyncStatusSource
@@ -112,13 +113,12 @@ class AppPorts(
     // world harness / tests, which drive the features directly and never mount a flow.
     /** Renew the attestation token if stale — a wake point (`device-attestation`). */
     val refreshAttestation: () -> Unit = {},
-    /** Run [work] now if protected data is readable, else defer under the tag until unlock
-     *  (`ios-app-shell`). The default runs immediately (no locked-container concept off-device). */
-    val protectedDataGate: (tag: String, work: () -> Unit) -> Unit = { _, work -> work() },
+    /** Re-read the persisted membership into the config StateFlow (migration step 12: every trigger
+     *  flow re-reads before acting — cross-process writes and a pre-first-unlock seed never notify
+     *  this process's StateFlow). The default is inert: world/tests hold their config in-process. */
+    val reloadConfig: () -> Unit = {},
     /** Pump the app-driven upload tier on foreground; a no-op on iOS ≥26.1 (`ios-url-session-upload`). */
     val pumpForeground: () -> Unit = {},
-    /** Stop listening for the cross-process liveness ding (a `CFNotificationCenter` deregistration). */
-    val unregisterLiveness: () -> Unit = {},
     /** Queue the download import-tail backstop `BGProcessingTask` (`photo-download` 5.4). */
     val scheduleBackstop: () -> Unit = {},
     /** Present the platform share surface for the invite URL (`UIActivityViewController` on iOS) —
@@ -314,11 +314,19 @@ class AppCore internal constructor(
     // flows"; migration step 8). Each is built here — features referenced directly, port/platform
     // touches injected from [ports] — and the shell entry points delegate to them. ────────────────
 
+    // The foreground-gated ledger-counts poll (capability `sync-status`; migration step 12): started
+    // by the Foreground flow, stopped by the Background flow — the cadence is the feature's rule.
+    val ledgerCountsPoller: LedgerCountsPoller by lazy {
+        LedgerCountsPoller(scope, ledgerCounts)
+    }
+
     val foregroundFlow: Foreground by lazy {
         Foreground(
             scope = scope,
             downloadController = downloadController,
             eventName = eventName,
+            statusPoller = ledgerCountsPoller,
+            reloadConfig = ports.reloadConfig,
             pumpForeground = ports.pumpForeground,
             refreshStatus = { refreshStatusSources() },
             activeEventId = { ports.configSource.config.value?.eventId },
@@ -328,13 +336,13 @@ class AppCore internal constructor(
     }
 
     val backgroundFlow: Background by lazy {
-        Background(unregisterLiveness = ports.unregisterLiveness, scheduleBackstop = ports.scheduleBackstop)
+        Background(statusPoller = ledgerCountsPoller, scheduleBackstop = ports.scheduleBackstop)
     }
 
     val silentPushFlow: SilentPush by lazy {
         SilentPush(
             scope = scope,
-            protectedDataGate = ports.protectedDataGate,
+            reloadConfig = ports.reloadConfig,
             refreshAttestation = ports.refreshAttestation,
             // Download arm first, then the upload arm on the app-driven tier (order preserved from the
             // former FanOutPushReceiver). The upload receiver is a thunk so the tier controller resolves
@@ -350,7 +358,7 @@ class AppCore internal constructor(
         DownloadBackstop(
             scope = scope,
             downloadController = downloadController,
-            protectedDataGate = ports.protectedDataGate,
+            reloadConfig = ports.reloadConfig,
             refreshAttestation = ports.refreshAttestation,
         )
     }

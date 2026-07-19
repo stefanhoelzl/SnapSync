@@ -5,8 +5,18 @@ import SnapSyncUploadKit
 ///
 /// All logic lives in Kotlin (`SnapSyncUploadKit` → `UploadExtensionRoot`); this Swift shell only
 /// conforms to the system protocol and forwards. The system calls `process()` when it is time to
-/// handle uploads; we run one discover → engine → dummy-job → drain cycle (blocking, in Kotlin) and
-/// map the tri-state result to the system's processing result.
+/// handle uploads; we run one discover → engine → drain cycle (blocking, in Kotlin) and construct
+/// the system result from the raw value Kotlin decided.
+///
+/// THE ONE REMAINING SWIFT PIN (SwiftShellGuardTest; settled forcing proof ① of migration step 12):
+/// `PHBackgroundResourceUploadProcessingResult` is **Swift-only** — declared in the SDK's
+/// swiftinterface with no ObjC header — so Kotlin cannot construct it and the construction cannot
+/// leave this file. But it is RawRepresentable over Int, so the DECISION lives in Kotlin:
+/// `processRawValue()` returns the tested `CycleResult → raw Int` mapping (exhaustive, compiler
+/// checked, pinned in commonTest), and this shell forwards it into `init?(rawValue:)` verbatim. The
+/// `?? .failure` is the nil fallback for a raw value the SDK enum does not carry — the same
+/// visible-retry posture the previous `switch`'s `default:` arm had: an untaught value surfaces as
+/// a retried, logged failure, never a silently "successful" cycle.
 ///
 /// Verified on device (real-s3-upload, build 70): the `@main` ExtensionKit conformance, the
 /// synchronous `process()`, and the `.completed` / `.failure` / `.processing` result cases all work
@@ -19,26 +29,9 @@ final class BackgroundUploadExtension: PHBackgroundResourceUploadExtension {
     required init() {}
 
     func process() -> PHBackgroundResourceUploadProcessingResult {
-        // Map the Kotlin CycleResult to the system result — EVERY case explicit. A Kotlin enum
-        // reaches Swift as an ObjC class, so the compiler cannot check exhaustiveness and demands a
-        // `default:` — which therefore maps to FAILURE, never success: a future Kotlin case that
-        // nobody taught this switch must surface as a retried, logged failure, not silently report
-        // a successful upload cycle that never ran (that was the pre-2026-07-17 behavior, with
-        // SKIPPED riding through `default: .completed` — correct by luck, not by construction).
-        switch UploadExtensionRoot.shared.process() {
-        case .completed:
-            return .completed
-        case .skipped:
-            // Nothing to do (no membership / membership contributes nothing) — the system rests.
-            return .completed
-        case .processing:
-            // The in-flight cap was hit, or pending jobs remain — ask the system to run us again.
-            return .processing
-        case .failed:
-            return .failure
-        default:
-            return .failure
-        }
+        PHBackgroundResourceUploadProcessingResult(
+            rawValue: Int(UploadExtensionRoot.shared.processRawValue())
+        ) ?? .failure
     }
 
     func notifyTermination() {

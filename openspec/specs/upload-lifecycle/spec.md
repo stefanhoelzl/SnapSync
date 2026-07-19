@@ -242,7 +242,9 @@ shared composition (`uploadCore`, `:domain` `compose/`) — not once per root. I
 one fresh three-state `ConfigReader.read()` per cycle, the identity probe, and the host read, and
 nothing else. In particular it SHALL NOT refresh any adapter-held read-model state (such as the
 UI-facing `ConfigSource` `StateFlow`) as a side effect of gating a cycle: repairing a `StateFlow`
-seeded while protected data was unavailable is the app process's unlock-hook concern, not the entry
+seeded while protected data was unavailable is the app process's trigger flows' concern — every
+OS-callback flow re-reads the membership before acting (migration step 12; see `ios-app-shell`,
+*Background triggers re-read the membership and fail cleanly before first unlock*) — not the entry
 gate's. (Decision record: `changes/archive/establish-shared-composition` D1 — the previously-shipped
 per-root translations diverged on exactly this side effect, with the gate outcome provably identical.)
 

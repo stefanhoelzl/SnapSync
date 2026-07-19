@@ -29,9 +29,10 @@ import kotlinx.coroutines.launch
  * photo can never read `pending` above the shown remainder (display-only — see [SyncProgress]) —
  * `active = (permission == GRANTED)`, `failed = 0`, and `estimatedRemaining = null`.
  *
- * Liveness is event-driven: the composition root refreshes the [LedgerCountsSource] on foreground
- * entry, on the extension's cross-process liveness notification, and (app-driven tier) after each pump
- * cycle — each a local ledger read, no network.
+ * Liveness is trigger-driven plus a foreground-gated poll: the [LedgerCountsSource] refreshes on
+ * foreground entry, on each [LedgerCountsPoller] tick while foregrounded (migration step 12 — the
+ * cross-process ding's replacement), and (app-driven tier) after each pump cycle — each a local
+ * ledger read, no network.
  */
 fun LedgerBackedSyncStatusSource(
     ledgerCounts: LedgerCountsSource,

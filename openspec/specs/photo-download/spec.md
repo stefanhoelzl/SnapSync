@@ -218,10 +218,14 @@ the app is terminated SHALL relaunch the app via `handleEventsForBackgroundURLSe
 Because no further download event wakes the app once transfers are exhausted, the client SHALL also
 drain pending imports via an OS-scheduled background task (e.g. `BGProcessingTask`) so an import that
 overran its wake window still completes without a foreground visit. Staged bytes + the store make any
-deferred import a safe retry. The backstop's coordination — defer under the protected-data gate,
-attestation wake, then the import drain — SHALL be the `flow/DownloadBackstop` trigger (`:domain`
-`flow/`, built in `compose/` with the gate and wake injected as effect lambdas); the untested app
-shell keeps only the entry-point log wrap, the re-arm, and the OS task-completion handler.
+deferred import a safe retry. The backstop's coordination — the trigger-time membership re-read
+(`reloadConfig` — see `ios-app-shell`, *Background triggers re-read the membership and fail cleanly
+before first unlock*), the attestation wake, then the import drain — SHALL be the
+`flow/DownloadBackstop` trigger (`:domain` `flow/`, built in `compose/` with the re-read and wake
+injected as effect lambdas); the untested app shell keeps only the entry-point log wrap, the
+re-arm, and the OS task-completion handler. A backstop wake landing before the first unlock since
+boot fails cleanly and converges at the next wake (the import's reads are caught; the adapters
+distinguish unreadable from absent; nothing mints, clears, or leaves).
 
 That last property is **conditional, and the transfer check is its condition**. A deferred import is a safe
 retry only because staged bytes were accounted for at transfer time. Absent that check, a permanently

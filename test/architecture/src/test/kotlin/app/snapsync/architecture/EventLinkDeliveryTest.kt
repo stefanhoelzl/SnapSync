@@ -122,14 +122,18 @@ class EventLinkDeliveryTest {
             code.contains("UIWindowSceneDelegate"),
             "$shellPath declares no UIWindowSceneDelegate.$whyItMatters",
         )
-        // The hooks must be wired to Kotlin, not merely present. Swift is a pass-through here: it hands
-        // over the RAW absoluteString, because the payload rides in the URL fragment (capability
-        // `event-link`) and a trimmed URL is an empty invite.
+        // The hooks must be wired to Kotlin, not merely present. Since migration step 12 Swift is a
+        // TRANSCRIBER here: it forwards every delivered NSUserActivity WHOLE to
+        // SnapSyncRoot.onUserActivity — the browsing-web filter and the raw-absoluteString read
+        // (fragment included; the fragment IS the payload) are Kotlin's tested `model/` codec
+        // (`eventLinkFromUserActivity`), routed on to `onOpenUrl` in Kotlin. A Swift-side field read
+        // would be an unpinned decision (SwiftShellGuardTest).
         assertTrue(
-            code.contains("SnapSyncRoot.shared.onOpenUrl") && code.contains("absoluteString"),
-            "$shellPath's scene delegate does not forward to SnapSyncRoot.shared.onOpenUrl with the raw " +
-                "`absoluteString`. Forwarding anything trimmed drops the fragment — and the fragment IS " +
-                "the payload, so the event id would vanish.$whyItMatters",
+            code.contains("SnapSyncRoot.shared.onUserActivity"),
+            "$shellPath's scene delegate does not forward the delivered NSUserActivity whole to " +
+                "SnapSyncRoot.shared.onUserActivity. Extracting fields in Swift is an untested " +
+                "decision; trimming the URL drops the fragment — and the fragment IS the payload, " +
+                "so the event id would vanish.$whyItMatters",
         )
     }
 

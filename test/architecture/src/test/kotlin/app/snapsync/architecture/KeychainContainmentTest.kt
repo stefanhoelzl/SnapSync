@@ -6,7 +6,7 @@ import kotlin.test.Test
 import kotlin.test.assertTrue as kotlinAssertTrue
 
 /**
- * **All Keychain access lives in `:domain:keychain`** (capability `architecture-guards`).
+ * **All Keychain access lives in `:adapter:ios:ext-safe`** (capability `architecture-guards`).
  *
  * This is one half of a two-part proof. Containment (here) says every `SecItem*` call is in one module;
  * that module's own tests say every query it builds carries `kSecAttrAccessibleAfterFirstUnlock`.
@@ -29,7 +29,8 @@ class KeychainContainmentTest {
     /**
      * The module allowed to touch the Keychain. Everything else must borrow it. Migration step 4
      * moved the impls (`IosKeychain`, `KeychainDeviceIdentity`) from `:domain:keychain` into the
-     * extension-safe adapter module — the containment property is unchanged, only its address.
+     * extension-safe adapter module (step 12 then deleted `:domain:keychain` entirely) — the
+     * containment property is unchanged, only its address.
      */
     private val owningModule = "/adapter/ios/ext-safe/"
 
@@ -51,7 +52,7 @@ class KeychainContainmentTest {
     fun `keychain access appears only in domain-keychain`() {
         productionFiles()
             .filterNot { it.path.contains(owningModule) }
-            .assertTrue(testName = "no SecItem access outside :domain:keychain") { file ->
+            .assertTrue(testName = "no SecItem access outside :adapter:ios:ext-safe") { file ->
                 forbidden.none { token -> file.text.contains(token) }
             }
     }
@@ -77,7 +78,7 @@ class KeychainContainmentTest {
         // nothing is, and the containment test above would pass no matter what anyone wrote.
         kotlinAssertTrue(
             files.any { it.path.contains(owningModule) && it.text.contains("SecItemAdd(") },
-            "the guard cannot see :domain:keychain's own SecItemAdd call — the scope is broken",
+            "the guard cannot see :adapter:ios:ext-safe's own SecItemAdd call — the scope is broken",
         )
     }
 }

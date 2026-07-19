@@ -358,9 +358,10 @@ class WorldInspectorController(private val scope: CoroutineScope) {
     }
 
     /**
-     * The operator plays the OS foreground-refresh (and the extension liveness ding): the real
-     * gallery/ledger-count/download sources update their `StateFlow`s only on `refresh()`, so the
-     * `LedgerBackedSyncStatusSource` projection re-emits only after we pull them.
+     * The operator plays the OS foreground-refresh (and, since migration step 12, the foreground
+     * poll's tick): the real gallery/ledger-count/download sources update their `StateFlow`s only
+     * on `refresh()`, so the `LedgerBackedSyncStatusSource` projection re-emits only after we pull
+     * them.
      */
     private suspend fun refreshStatus() {
         // The composed graph's own refresh (capability `sync-status`): gallery total scoped by the

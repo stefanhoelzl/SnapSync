@@ -19,7 +19,6 @@ flowchart LR
   end
   subgraph domain
     domain[":domain"]
-    domain_keychain[":domain:keychain"]
   end
   subgraph test
     test_world[":test:world"]
@@ -38,7 +37,6 @@ flowchart LR
   adapter_ios_ext_safe --> domain
   capability_push --> adapter_generic
   capability_push --> domain
-  domain_keychain --> domain
   ui_components --> domain
   ui_presentation --> domain
   ui_screens --> domain

@@ -10,7 +10,6 @@ module :app:ios
 module :app:ios:photokit-extension
 module :capability:push
 module :domain
-module :domain:keychain
 module :test:architecture
 module :test:architecture:migration
 module :test:harness-driver
@@ -38,7 +37,6 @@ edge :app:ios :adapter:ios:app-only
 edge :app:ios :adapter:ios:ext-safe
 edge :app:ios :capability:push
 edge :app:ios :domain
-edge :app:ios :domain:keychain
 edge :app:ios :ui:presentation
 edge :app:ios :ui:screens
 edge :app:ios:photokit-extension :adapter:generic
@@ -47,7 +45,6 @@ edge :app:ios:photokit-extension :capability:push
 edge :app:ios:photokit-extension :domain
 edge :capability:push :adapter:generic
 edge :capability:push :domain
-edge :domain:keychain :domain
 edge :test:harness-driver :app:desktop
 edge :test:integration :adapter:generic
 edge :test:integration :capability:push

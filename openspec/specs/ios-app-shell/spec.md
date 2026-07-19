@@ -119,11 +119,14 @@ The `:app:ios` module SHALL provide a composition-root singleton (`SnapSyncRoot`
 owns an app-lifetime `CoroutineScope` (a `SupervisorJob` on the main dispatcher) and assembles the
 live stack **through the shared composition** `snapSyncApp` (`:domain` `compose/`, spec
 `module-architecture` "One shared composition"): the root constructs the platform adapters and
-supplies them as `AppPorts` — platform effect lambdas included (the protected-data gate, the
-liveness deregistration, the backstop scheduling, the share-sheet presentation, and the resolved
+supplies them as `AppPorts` — platform effect lambdas included (the trigger-time membership
+re-read `reloadConfig` (bound to the config adapter's `reload()`), the backstop scheduling, the
+share-sheet presentation, and the resolved
 tier's mechanism thunks) — and `snapSyncApp` composes the feature graph: the **ledger-backed**
 `SyncStatusSource` (built from a `LedgerCountsSource`, the permission source, and the gallery
-source — see `sync-status`), the attestation, upload-arm, join/leave/create use-cases, the download
+source — see `sync-status`), the **foreground-gated ledger-counts poll** (`LedgerCountsPoller`,
+started/stopped by the Foreground/Background flows — see `sync-status`), the attestation,
+upload-arm, join/leave/create use-cases, the download
 controller and jobs, the album coordinator, the `flow/` trigger instances (Foreground · Background
 · SilentPush · DownloadBackstop · Provision), and the **user-tap command bundle**
 (`model/`'s `UserCommands`: leave · create · commitJoin · share · requestAccess · openSettings —
@@ -166,21 +169,26 @@ download backstop or a background-`URLSession` relaunch) that merely touches the
 SHALL NOT install them, so no producer start fires off the permission StateFlow's replay outside
 host assembly.
 
-The root SHALL register, **while foregrounded**, an observer for the extension's cross-process
-liveness notification (the Darwin notification posted after each PhotoKit `process()` run — see
-`ios-photokit-upload`); the observer SHALL be registered on foreground entry and unregistered on
-backgrounding (via the Background flow's injected deregistration effect — a suspended app cannot
-act on the post, and the foreground re-read is the backstop), and the notification SHALL drive
-`LedgerCountsSource.refresh()` and a fresh status emission. The scope SHALL outlive Compose
+The root SHALL observe the app's foreground/background lifecycle **from Kotlin**: a plain
+`onLaunch()` entry — called by the Swift `AppDelegate` from `didFinishLaunchingWithOptions`, a
+statement with no decision — installs process-lifetime `NSNotificationCenter` observers for
+`UIApplicationDidBecomeActiveNotification` (→ `onForeground`) and
+`UIApplicationWillResignActiveNotification` (→ `onBackground`), replacing the SwiftUI
+`scenePhase` split (a Swift decision the transcriber law forbids). The foreground entry drives the
+Foreground flow (which re-reads the membership, refreshes status, and **starts** the
+foreground-gated poll); the background entry drives the Background flow (which **stops** the poll
+and arms the backstop). A background launch installs the observers and simply never receives
+`didBecomeActive`. The scope SHALL outlive Compose
 recomposition so the source collector and container are not torn down with the view.
 `MainViewController` SHALL render `host.container.stateFlow` and route the gate intents to
 `host.onRequestPermission` / `host.onOpenSettings`, the leave action to `host.onLeaveEvent`, and
 the share action to `host.onShareInvite`; it SHALL collect the container's invite URL
 (`host.inviteUrl`) and pass it to `StatusScreen`, together with the root's shared
-`CutoffFormatter` (the screen carries no system-reading default). `SnapSyncRoot` SHALL expose `onOpenUrl(String)`
-that reaches the container's `onOpenUrl` intent (through the live delegate), and
-foreground/background entry points the SwiftUI scene calls on its scene-phase transitions to drive
-the Foreground/Background flows and the liveness-observer lifecycle.
+`CutoffFormatter` (the screen carries no system-reading default). `SnapSyncRoot` SHALL expose
+`onUserActivity(NSUserActivity)` — the scene delegate forwards every delivered activity **whole**,
+and the tested `model/` filter-and-dispatch (`forwardEventLink`) keeps only a browsing-web
+activity with a URL and routes its complete `absoluteString` to `onOpenUrl(String)`, which
+reaches the container's `onOpenUrl` intent (through the live delegate).
 
 #### Scenario: The root assembles the real stack
 
@@ -192,17 +200,24 @@ the Foreground/Background flows and the liveness-observer lifecycle.
   `StatusContainerHost` — constructing no `LedgerWriter` on the OS-driven tier and no
   `EventStatusSource`, and issuing no storage LIST for upload status
 
-#### Scenario: The liveness notification refreshes status while foreground
+#### Scenario: The foreground poll keeps status live while foreground
 
-- **WHEN** the app is foregrounded and the extension posts its cross-process liveness notification
-- **THEN** the registered observer triggers `LedgerCountsSource.refresh()` and a fresh status emission,
-  with no network read
+- **WHEN** the app is foregrounded and the extension records ledger changes in its own process
+- **THEN** the foreground-gated poll re-reads the ledger counts within its cadence and a fresh
+  status emission follows, with no network read
 
-#### Scenario: The observer is foreground-only
+#### Scenario: The poll is foreground-only
 
 - **WHEN** the app moves to the background
-- **THEN** the liveness-notification observer is unregistered, and it is re-registered on the next
-  foreground entry (which itself also refreshes status)
+- **THEN** the Background flow stops the poll, and the next foreground entry (which itself also
+  refreshes status) starts it again
+
+#### Scenario: Lifecycle transitions are observed from Kotlin
+
+- **WHEN** the app becomes active, or leaves the active state (including a transient interruption
+  such as the app switcher or an incoming call)
+- **THEN** the Kotlin-installed `NSNotificationCenter` observers drive `onForeground`,
+  respectively `onBackground`, with no scene-phase decision in Swift
 
 #### Scenario: Permission action flows through the container
 
@@ -213,10 +228,12 @@ the Foreground/Background flows and the liveness-observer lifecycle.
 
 #### Scenario: An event link flows through the container
 
-- **WHEN** `SnapSyncRoot.onOpenUrl` is called with a `https://<link domain>/join#…` event link
-- **THEN** it forwards (through the live delegate) to the container's `onOpenUrl` intent, which
-  decodes and (on success) saves via the `ConfigStore` (the file-backed config store, which also
-  writes through to its Keychain copy), updating the `ConfigSource`
+- **WHEN** `SnapSyncRoot.onUserActivity` receives a browsing-web activity carrying a
+  `https://<link domain>/join#…` event link
+- **THEN** the tested filter routes the complete URL to `onOpenUrl`, which forwards (through the
+  live delegate) to the container's `onOpenUrl` intent, which decodes and (on success) saves via
+  the `ConfigStore` (the file-backed config store, which also writes through to its Keychain
+  copy), updating the `ConfigSource`
 
 #### Scenario: The leave action flows through the command bundle into the use-case
 
@@ -491,51 +508,25 @@ consistent with the existing deeplink / background-URL-session hooks.
 
 ### Requirement: Forward an incoming silent push to the receiver seam
 
-The `AppDelegate` SHALL forward an incoming remote notification to the Kotlin `PushReceiver` seam and
-then call the OS fetch completion handler, performing no parsing or decision logic in Swift (it is a
-pass-through, like the existing deeplink and background-URL-session hooks). The OS entry point is the
-app-delegate remote-notification callback that supplies the payload and a completion handler. In this
-infrastructure phase the wired receiver logs receipt (capability `push-registration`), so an incoming
-silent push is observable without any use-case behavior.
+The `AppDelegate` SHALL forward an incoming remote notification's `userInfo` dictionary **whole**
+to `SnapSyncRoot.onSilentPush(userInfo:completion:)`, performing no field extraction, parsing, or
+decision in Swift (the transcriber law — the `eventId` extraction is the tested `model/` payload
+codec, applied inside the `flow/SilentPush` trigger), and SHALL pass a completion that signals the
+OS fetch completion handler. Kotlin SHALL always release the completion — including for a payload
+with no usable `eventId`, which fans out to no arm (an unanswered `content-available` push costs
+the app its future background wakes).
 
-#### Scenario: An incoming push is routed to Kotlin
+#### Scenario: An incoming push is routed to Kotlin whole
 
 - **WHEN** the app receives a silent remote notification
-- **THEN** the `AppDelegate` forwards it to the Kotlin `PushReceiver` and calls the OS completion
-  handler, with no parsing or decision in Swift
+- **THEN** the `AppDelegate` forwards the complete `userInfo` and a completion to Kotlin, with no
+  parsing or decision in Swift, and the OS completion handler is called after the flow's
+  synchronous portion
 
-### Requirement: Background work defers while protected data is unavailable
-The app process SHALL consult `UIApplication.isProtectedDataAvailable` before performing background
-work that reads protected state (the Keychain-backed device id and the event config — an App-Group
-file under complete-until-first-unlock protection, with a written-through Keychain copy, since
-migration step 11a). When protected data
-is **unavailable** — the device has not been unlocked since boot — the app SHALL **defer** that work
-rather than failing it or dropping it, and SHALL resume it when the system posts
-`UIApplicationProtectedDataDidBecomeAvailable`, which fires as soon as the user unlocks.
+#### Scenario: A malformed payload still releases the handler
 
-Deferring SHALL NOT mint a device id, SHALL NOT write any Keychain item, and SHALL NOT clear or reset
-any persisted state.
-
-The upload extension has no `UIApplication` (the API is unavailable to app extensions). In the
-extension process an unavailable protected-data read SHALL instead surface as an unavailability error
-and the cycle SHALL be skipped cleanly, per capability `event-link` (*An unreadable config is not
-an absent config*).
-
-#### Scenario: A background wake before first unlock defers rather than failing
-- **WHEN** the app is woken in the background (a `BGProcessingTask`, a silent push, or a background
-  `URLSession` completion) while protected data is unavailable
-- **THEN** the work is deferred, no Keychain write or mint occurs, no persisted state is cleared, and
-  the process does not terminate
-
-#### Scenario: Deferred work resumes at unlock
-- **WHEN** protected data becomes available after such a deferral
-- **THEN** the deferred background work runs, rather than waiting for the operating system's next wake
-
-#### Scenario: Work proceeds normally once protected data is available
-- **WHEN** the app is woken in the background while the device is locked but has been unlocked at least
-  once since boot
-- **THEN** protected data is available, the device id and config are read, and the work proceeds without
-  deferral
+- **WHEN** a silent push arrives whose payload carries no usable `eventId`
+- **THEN** no receiver runs, the miss is logged, and the OS completion handler is still called
 
 ### Requirement: Background entry points record protected-data state
 
@@ -564,4 +555,49 @@ reached its protected state — and of diagnosing it when it does not.
 - **WHEN** a protected read (a Keychain item or the config file) fails during background work
 - **THEN** the logged line carries the entry-point prefix of the trigger that started it, so the failure
   is traceable to the backstop, the silent push, the URL-session handler, or the extension cycle
+
+### Requirement: Background triggers re-read the membership and fail cleanly before first unlock
+
+Every OS-callback trigger flow acting on the persisted membership SHALL **re-read** it (the
+foreground, silent-push, and download-backstop flows) into the config StateFlow before acting
+(`AppPorts.reloadConfig`, bound to the config adapter's `reload()`): cross-process writes and a
+pre-first-unlock construction never notify this process's StateFlow, and the receivers' guards
+read it. The reload SHALL retain the last good value on an **unreadable** read (the pure
+`configAfterReload` rule) — at trigger cadence a transient read failure must not clear a good
+membership and flip the screen to the setup gate — and SHALL replace it on a conclusive read
+(joined or definitively absent).
+
+A background wake landing **before the first unlock since boot** SHALL run through and fail
+cleanly rather than deferring: every protected read distinguishes *unreadable* from *absent*
+(capability `event-link`, `device-identity`), so the wake SHALL NOT mint a device id, SHALL NOT
+write any Keychain item, and SHALL NOT clear or reset any persisted state; its work converges at
+the next trigger. (The prior defer-and-resume gate is deleted — settled proof ④: zero deferrals
+ever observed in production.)
+
+#### Scenario: A trigger repairs a stale config StateFlow before acting
+
+- **WHEN** another process has re-provisioned (or the process was constructed before first unlock)
+  and a silent push, backstop, or foreground entry fires
+- **THEN** the flow re-reads the persisted config first, so the receivers' active-event guards see
+  the current membership
+
+#### Scenario: A transient unreadable reload does not clear a good membership
+
+- **WHEN** a trigger-time reload's read reports unreadable while the StateFlow holds a joined
+  config
+- **THEN** the StateFlow retains the joined config and the screen does not regress to the setup
+  gate
+
+#### Scenario: A pre-first-unlock wake fails cleanly and converges
+
+- **WHEN** the app is woken in the background (a `BGProcessingTask`, a silent push, or a background
+  `URLSession` completion) while protected data is unavailable
+- **THEN** no Keychain write or mint occurs, no persisted state is cleared, the process does not
+  terminate, and the work is performed at the next trigger after unlock
+
+#### Scenario: Work proceeds normally once protected data is available
+
+- **WHEN** the app is woken in the background while the device is locked but has been unlocked at
+  least once since boot
+- **THEN** protected data is available, the device id and config are read, and the work proceeds
 

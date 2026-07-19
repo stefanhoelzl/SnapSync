@@ -43,7 +43,6 @@ Roots found:
 | `IosJoinedEventMarker` | | x | x |
 | `IosPhotoKitUploadPlatform` | | x | |
 | `IosPhotoLibraryImporter` | x | | |
-| `IosProtectedData` | x | | |
 | `IosUrlSessionUploadPlatform` | | | x |
 | `KeychainAttestStore` | x | x | |
 | `KeychainDeviceIdentity` | x | x | |
@@ -53,7 +52,6 @@ Roots found:
 | `PhotoKitUploadProducer` | x | | |
 | `PhotoLibraryPermission` | x | | |
 | `PhotoLibraryResourceEnumerator` | x | x | x |
-| `ProtectedDataGate` | x | | |
 | `PublicNSLogWriter` | x | x | |
 | `PushRegistration` | x | | |
 | `PushTokenSource` | x | | |

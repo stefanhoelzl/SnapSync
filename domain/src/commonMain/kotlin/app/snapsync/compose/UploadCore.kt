@@ -160,8 +160,9 @@ fun uploadCore(scope: CoroutineScope, ports: UploadPorts): UploadCycle {
  *    by law — and that is the spec's own shape, not a workaround;
  *  - the gate *outcome* is provably unchanged: the controller decided from a second, fresh
  *    `read()` after the reload, identical to reading once;
- *  - the StateFlow's one real staleness case (seeded `null` while locked) is repaired by the app
- *    shell's `ProtectedDataGate` unlock hook, which every locked-capable launch path registers.
+ *  - the StateFlow's one real staleness case (seeded `null` while locked) is repaired by the
+ *    trigger flows' membership re-read (`AppPorts.reloadConfig`, migration step 12 — before that,
+ *    the app shell's `ProtectedDataGate` unlock hook), which every trigger runs before acting.
  */
 private fun readGate(ports: UploadPorts): CycleGate {
     val read = ports.config.read()

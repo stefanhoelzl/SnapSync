@@ -3,14 +3,21 @@ import SnapSyncKit
 import UIKit
 import BackgroundTasks
 
-// The app delegate is a thin pass-through to Kotlin for OS lifecycle hooks:
-//   1. `handleEventsForBackgroundURLSession` — the OS relaunches the app to finish background photo
+// The app delegate is a PURE TRANSCRIBER (spec `module-architecture`, "Shells are wiring only";
+// migration step 12): every OS callback forwards its raw, ObjC-visible input WHOLE to Kotlin, which
+// holds every decision in tested code. No `if`/`guard`/`switch` lives in this file — the pin table in
+// SwiftShellGuardTest holds that at zero. The hooks:
+//   1. `didFinishLaunchingWithOptions` — registers the two BGTask handlers (Apple requires
+//      registration before launch finishes; the identifiers MUST be in Info.plist
+//      BGTaskSchedulerPermittedIdentifiers), asks for an APNs token, and calls SnapSyncRoot.onLaunch,
+//      which installs the Kotlin-side NSNotificationCenter lifecycle observers
+//      (didBecomeActive/willResignActive — the scenePhase `if` that used to live in the App body is
+//      a decision, so it moved to Kotlin with the OS notifications as its input).
+//   2. `handleEventsForBackgroundURLSession` — the OS relaunches the app to finish background photo
 //      downloads; SnapSyncRoot adopts the session, stages + imports, and invokes the handler.
-//   2. the `BGProcessingTask` import-tail backstop — registered at launch (Apple requires registration
-//      before launch finishes; the identifier MUST be in Info.plist BGTaskSchedulerPermittedIdentifiers).
-//      Its handler drains staged-but-unimported downloads.
-//   3. remote notifications — register at launch; forward the OS-delivered APNs token (as hex) and any
-//      incoming silent push to Kotlin (capability `push-registration`). No decisions in Swift.
+//   3. remote notifications — the OS-delivered APNs token is forwarded as hex (an encoding, not a
+//      decision); an incoming silent push forwards its `userInfo` dictionary WHOLE — the `eventId`
+//      extraction is Kotlin's tested payload codec (capability `push-registration`).
 final class AppDelegate: NSObject, UIApplicationDelegate {
     func application(
         _ application: UIApplication,
@@ -39,6 +46,9 @@ final class AppDelegate: NSObject, UIApplicationDelegate {
                 task.setTaskCompleted(success: true)
             }
         }
+        // Kotlin observes the foreground/background lifecycle itself (NSNotificationCenter); this
+        // call installs those observers before the scene ever becomes active.
+        SnapSyncRoot.shared.onLaunch()
         return true
     }
 
@@ -67,7 +77,7 @@ final class AppDelegate: NSObject, UIApplicationDelegate {
     }
 
     // The OS delivered the APNs device token — forward it as lowercase hex to Kotlin, which registers it
-    // with the backend. No parsing/decisions in Swift beyond the byte→hex encoding.
+    // with the backend. The byte→hex map is an encoding, not a decision; nothing branches here.
     func application(
         _ application: UIApplication,
         didRegisterForRemoteNotificationsWithDeviceToken deviceToken: Data
@@ -84,20 +94,15 @@ final class AppDelegate: NSObject, UIApplicationDelegate {
         NSLog("registerForRemoteNotifications failed: \(error.localizedDescription)")
     }
 
-    // A silent (content-available) remote notification arrived. Pull the payload's `eventId` and hand it
-    // plus the OS completion handler to Kotlin, which reconciles downloads for the active event and calls
-    // the handler only after the union read + enqueue finish (so iOS keeps us alive through it). No
-    // decision here — a missing eventId just completes with no data. (No parsing/logic in Swift.)
+    // A silent (content-available) remote notification arrived. Forward the payload WHOLE plus the OS
+    // completion handler; Kotlin's tested codec extracts the `eventId` (a push with none fans out to
+    // no arm) and the handler is always released. No parsing, no decision here.
     func application(
         _ application: UIApplication,
         didReceiveRemoteNotification userInfo: [AnyHashable: Any],
         fetchCompletionHandler completionHandler: @escaping (UIBackgroundFetchResult) -> Void
     ) {
-        guard let eventId = userInfo["eventId"] as? String else {
-            completionHandler(.noData)
-            return
-        }
-        SnapSyncRoot.shared.onSilentPush(eventId: eventId) {
+        SnapSyncRoot.shared.onSilentPush(userInfo: userInfo) {
             completionHandler(.newData)
         }
     }
@@ -130,8 +135,10 @@ final class AppDelegate: NSObject, UIApplicationDelegate {
 // No automated test can catch it: the decoder, the AASA, and the entitlement are all provably fine, and
 // this seam is the one layer the project cannot test.
 //
-// Stay a pass-through: hand Kotlin the raw `absoluteString`, never a trimmed URL — the entire payload
-// rides in the FRAGMENT, so dropping it drops the event id.
+// Stay a pass-through: hand Kotlin every delivered activity WHOLE (migration step 12 — the
+// browsing-web filter and the URL read are Kotlin's tested `model/` codec, which passes the raw
+// `absoluteString` through, fragment included — the entire payload rides in the FRAGMENT, so
+// dropping it drops the event id).
 final class SnapSyncSceneDelegate: NSObject, UIWindowSceneDelegate {
     // COLD: the link that launched us arrives in the connection options.
     func scene(
@@ -139,44 +146,31 @@ final class SnapSyncSceneDelegate: NSObject, UIWindowSceneDelegate {
         willConnectTo session: UISceneSession,
         options connectionOptions: UIScene.ConnectionOptions
     ) {
-        connectionOptions.userActivities.forEach(forwardIfEventLink)
+        connectionOptions.userActivities.forEach { SnapSyncRoot.shared.onUserActivity(activity: $0) }
     }
 
     // WARM: the app was already running or suspended.
     func scene(_ scene: UIScene, continue userActivity: NSUserActivity) {
-        forwardIfEventLink(userActivity)
-    }
-
-    private func forwardIfEventLink(_ userActivity: NSUserActivity) {
-        guard userActivity.activityType == NSUserActivityTypeBrowsingWeb,
-              let url = userActivity.webpageURL else { return }
-        SnapSyncRoot.shared.onOpenUrl(url: url.absoluteString)
+        SnapSyncRoot.shared.onUserActivity(activity: userActivity)
     }
 }
 
 // SwiftUI App lifecycle is scene-based, which satisfies the iOS 27 SDK's mandatory UIScene
-// adoption; the delegate adaptor adds only the background-URLSession relaunch hook above.
+// adoption; the delegate adaptor adds the launch/background hooks above. The scene-phase `onChange`
+// that used to live here is gone (migration step 12): Kotlin observes
+// UIApplicationDidBecomeActive/WillResignActive itself via NSNotificationCenter (installed by
+// `SnapSyncRoot.onLaunch`), so the foreground/background split is no longer a Swift decision.
 @main
 struct iOSApp: App {
     @UIApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
-    @Environment(\.scenePhase) private var scenePhase
 
     var body: some Scene {
         WindowGroup {
             ContentView()
                 // NOTE: the event link does NOT arrive here. It is delivered as an NSUserActivity to
-                // `AppDelegate.application(_:continue:restorationHandler:)` — see the long note there
-                // before reaching for `.onOpenURL`/`.onContinueUserActivity`; both were tried on device
-                // and neither is sufficient.
-        }
-        // Forward the scene's foreground transitions to Kotlin, which gates the observed-completions
-        // poll that keeps upload progress live while the screen is shown. Pass-through only.
-        .onChange(of: scenePhase) { _, newPhase in
-            if newPhase == .active {
-                SnapSyncRoot.shared.onForeground()
-            } else {
-                SnapSyncRoot.shared.onBackground()
-            }
+                // the scene delegate above — see the long note there before reaching for
+                // `.onOpenURL`/`.onContinueUserActivity`; both were tried on device and neither is
+                // sufficient.
         }
     }
 }

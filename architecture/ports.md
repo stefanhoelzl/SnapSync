@@ -8,4 +8,3 @@ the `:tools:diagrams` freshness test fails on drift; regenerate instead.
 
 | Port | Declared in | Implementations (by module) | Fake exists |
 |---|---|---|---|
-| `ProtectedDataAvailability` | `:domain:keychain` | `:app:ios` IosProtectedData; `:domain:keychain` FakeAvailability | yes |

@@ -322,39 +322,42 @@ request another invocation so those completions are recorded promptly; it report
 once the ledger has no pending rows (everything backed up), letting the system rest. (The OS
 throttles re-invocation, so this polls at its cadence rather than looping.)
 
-The Kotlin `process()` SHALL return its `CycleResult` (`completed` / `processing` / `skipped` /
-`failed`), and the Swift principal class SHALL map **every case explicitly** to
-`PHBackgroundResourceUploadProcessingResult`: `completed` and `skipped` (nothing to do) map to
-`.completed`, `processing` to `.processing`, `failed` to `.failure`. A Kotlin enum reaches Swift as an
-ObjC class, so the compiler cannot check exhaustiveness and mandates a `default:` arm; that arm SHALL
-map to `.failure`, so a future Kotlin case nobody taught the shell surfaces as a retried, visible
-failure — never a silently "successful" upload cycle (changed 2026-07-17; the arm previously returned
-`.completed`). If the iOS 26.1 SDK lacks a `.processing` case the Swift shell SHALL fall back to
-`.completed` (correctness is unaffected — the un-advanced token / pending rows are drained on the
-next system-scheduled wake; only promptness is lost).
+**Kotlin decides; Swift constructs** (migration step 12, settled forcing proof ①:
+`PHBackgroundResourceUploadProcessingResult` is Swift-only — declared in the SDK's swiftinterface
+with no ObjC header — but `RawRepresentable` over `Int`). The mapping from `CycleResult` to the
+system result SHALL be the tested, **exhaustive** Kotlin function
+`CycleResult.processingResultRawValue()` (`:domain` `ports/`, raw values pinned in `commonTest`:
+`failure` = 0, `processing` = 1, `completed` = 2; `completed` and `skipped` — nothing to do — both
+map to the completed raw value). The extension root SHALL expose it as `processRawValue()` (wiring
+only, no branch), and the Swift principal class SHALL construct the result via
+`init?(rawValue:)`, mapping a `nil` (a raw value the SDK enum does not carry) to `.failure` — so
+an untaught value surfaces as a retried, visible failure, never a silently "successful" upload
+cycle. A future Kotlin `CycleResult` case cannot slip through untaught: the exhaustive `when`
+stops compiling instead.
 
 #### Scenario: Cap during discovery yields a processing result
 - **WHEN** job creation hits `limitExceeded` partway through a cycle
-- **THEN** the extension stops creating jobs, does not advance the token, and `process()` returns a
-  processing result (mapped to `.processing`, or `.completed` if unavailable)
+- **THEN** the extension stops creating jobs, does not advance the token, and the cycle surfaces a
+  processing result (raw value 1, constructed as `.processing`)
 
 #### Scenario: Pending in-flight work requests re-invocation
 - **WHEN** a cycle drains and creates with no cap, but the ledger still has pending (in-flight) rows
-- **THEN** `process()` returns a processing result so the system re-invokes the extension to record
+- **THEN** the cycle surfaces a processing result so the system re-invokes the extension to record
   their completions, rather than resting until the next library change
 
 #### Scenario: Fully backed up reports completion
 - **WHEN** a cycle ends with no pending rows in the ledger
-- **THEN** `process()` returns `completed` and the system rests
+- **THEN** the cycle surfaces the completed raw value and the system rests
 
 #### Scenario: Re-entry resumes the remainder without duplicates
 - **WHEN** a cap-truncated cycle is followed by another `process()` invocation
 - **THEN** the same change set is re-derived, the already-created jobs are skipped (`REQUESTED`), and
   only the previously un-created resources get new jobs
 
-#### Scenario: An unknown cycle result surfaces as failure
-- **WHEN** `process()` returns a case the Swift shell's switch does not name
-- **THEN** the shell reports `.failure`, so the system retries and the defect stays visible, rather than reporting a successful cycle that cannot be trusted
+#### Scenario: An unconstructible raw value surfaces as failure
+- **WHEN** the raw value forwarded to `init?(rawValue:)` is one the SDK enum does not carry
+- **THEN** the shell reports `.failure`, so the system retries and the defect stays visible, rather
+  than reporting a successful cycle that cannot be trusted
 
 ### Requirement: Persisted change-token cursor
 
@@ -578,47 +581,17 @@ suppression port), not in untested platform wiring, so it is exercised in `commo
 - **WHEN** discovery encounters a resource whose `assetId` is not suppressed
 - **THEN** it is handed to the engine and uploaded as before
 
-### Requirement: Post a cross-process liveness notification after each cycle
-
-The extension SHALL post a **named cross-process Darwin notification** (via `CFNotificationCenter`'s
-Darwin notify center) after every `process()` run — once `cycle.run()` returns, regardless of the
-tri-state result (`completed` / `processing` / `failure`) — to signal the main app that the ledger may
-have changed and status should be re-read. The post SHALL be **payload-free** (its only
-promise is "re-read the truth", so coalescing and missed signals are harmless) and SHALL be made from
-the **extension composition root** (`UploadExtensionRoot`), **not** from `LedgerStore` — the ledger
-backend continues to post no cross-process notification (its change flow stays in-process). The post
-SHALL be **unconditional** (fired on every run, so both a rising in-flight count and a drain are
-signalled) and best-effort (a post failure SHALL NOT affect the returned processing result).
-
-This is the extension→app half of the notify-driven status refresh; the app-side observer that
-re-reads the ledger on this notification is specified in `ios-app-shell`, and the status source's
-response is specified in `sync-status`.
-
-#### Scenario: A completed cycle posts the liveness notification
-- **WHEN** `cycle.run()` returns and `process()` is about to return `completed`
-- **THEN** the extension has posted the payload-free Darwin liveness notification
-
-#### Scenario: A processing (still-draining) cycle also posts
-- **WHEN** `cycle.run()` returns and `process()` is about to return `processing` (pending rows remain)
-- **THEN** the extension has posted the Darwin liveness notification (so the app reflects the rising /
-  in-flight state), independent of the result
-
-#### Scenario: The backend still posts no cross-process ding
-- **WHEN** the extension writes the ledger during the cycle
-- **THEN** `LedgerStore` posts no cross-process notification; the only cross-process post is the
-  composition-root liveness notification after the cycle
-
 ### Requirement: The extension root contains only what is tier-specific
 
-`process()` SHALL contain only the three concerns that cannot be shared with another upload tier:
+`process()` SHALL contain only the two concerns that cannot be shared with another upload tier:
 
 - **The synchronous OS contract** — the cycle is driven to completion and its result returned, because the
   OS invokes `process()` synchronously and the process does not outlive it.
-- **The cross-process liveness notification** — posted after every run, because this tier writes the ledger
-  in a different process from the UI. A tier that writes it in-process refreshes in-process instead and
-  posts nothing (capability `ios-url-session-upload`).
 - **The pending→processing requeue** — because the OS invokes this tier lazily, on library changes rather
   than on upload completion, this tier alone must ask to be re-invoked while jobs are still in flight.
+
+(The cross-process liveness notification this list used to carry is deleted — migration step 12:
+the app's foreground-gated `aggregates()` poll replaced it; see `sync-status`.)
 
 Everything else the root does today — the membership read's decision, the leave-side reconciliation, the
 engine and cycle assembly, the manifest and notify hooks, the cutoff and contribution derivation — SHALL
@@ -635,10 +608,6 @@ gate, and the membership read each shipped on one tier and not the other.
 - **WHEN** the extension is invoked and its membership is unreadable
 - **THEN** the skip is decided by the shared cycle, and the root neither branches on the read nor
   reconciles
-
-#### Scenario: The liveness notification still fires on every invocation
-- **WHEN** the extension completes an invocation, whatever its result
-- **THEN** the cross-process liveness notification is posted
 
 #### Scenario: A drained cycle with pending jobs still asks for re-invocation
 - **WHEN** the cycle would otherwise report completed and the ledger still holds pending rows

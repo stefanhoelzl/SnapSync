@@ -413,9 +413,14 @@ instead of reading a leave.
 
 The adapter SHALL seed its `config` `StateFlow` synchronously at construction from the same read
 (mapping both *absent* and *unreadable* to `null` — acceptable for the UI, never for the
-reconciler, which uses the three-state `ConfigReader`), and SHALL expose a `reload()` the app's
-protected-data unlock hook calls: a background construction before first unlock seeds `null` (the
-protected read fails permission-class → unreadable) and is repaired at unlock. The persisted file
+reconciler, which uses the three-state `ConfigReader`), and SHALL expose a `reload()` the trigger
+flows call before acting (migration step 12 — the trigger-time membership re-read replaced the
+protected-data unlock hook; see `ios-app-shell`): a background construction before first unlock
+seeds `null` (the protected read fails permission-class → unreadable) and is repaired at the next
+trigger. `reload()` SHALL apply the pure, tested merge rule (`configAfterReload`): a conclusive
+read (joined / definitively absent) replaces the `StateFlow` value; an **unreadable** read
+**retains** the last good one — at trigger cadence a transient read failure must not clear a good
+membership and flip the screen to the setup gate. The persisted file
 SHALL survive app updates and process death. It is **not excluded from device backups** — the
 membership's backup/restore continuity is deliberate, matching the Keychain item's non-ThisDeviceOnly
 posture (decision record: `changes/archive/migrate-config-to-app-group-file`, D6).
@@ -471,6 +476,13 @@ posture (decision record: `changes/archive/migrate-config-to-app-group-file`, D6
 - **THEN** the decode fails, the failure is logged, the read reports **unreadable** (never
   no-config — no marker is cleared), no default cutoff is substituted, and no upload occurs until
   the user re-joins
+
+#### Scenario: A trigger-time reload retains the membership on a transient failure
+
+- **WHEN** a trigger flow's `reload()` runs while the file read transiently fails (unreadable, not
+  absent) and the `StateFlow` holds a joined config
+- **THEN** the `StateFlow` retains the joined config — the screen does not regress to the setup
+  gate — and a later conclusive read replaces it
 
 #### Scenario: A reinstall during the write-through window resurrects from the Keychain copy
 

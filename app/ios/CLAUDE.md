@@ -44,17 +44,25 @@ You cannot build or run any of this on Linux. Use the proxy:
   Swift toolchain locally, so they cannot be built or run on this machine. The extension shell is
   verified on device (real-s3-upload, build 70) — keep edits to it minimal and lean on CI.
 
-## The Swift ↔ Kotlin seam (keep Swift thin)
+## The Swift ↔ Kotlin seam (Swift is a pure transcriber)
 
-Swift shells are pass-throughs; all logic is Kotlin. Do not add parsing or decisions in Swift.
+Swift shells forward raw, ObjC-visible OS inputs **whole**; every decision is Kotlin (migration
+step 12; `SwiftShellGuardTest` pins the decision keywords — `if`/`guard`/`switch` at zero, one `??`).
 
-- **App entry** (`iosApp/iosApp/iOSApp.swift`): SwiftUI `@main` scene. `.onOpenURL` forwards the raw
-  event-link URL string (fragment included) to `SnapSyncRoot.shared.onOpenUrl(...)` — Kotlin decodes/validates/
-  persists. `ContentView.swift` bridges `MainViewControllerKt.MainViewController()` (Compose) into
-  SwiftUI.
+- **App entry** (`iosApp/iosApp/iOSApp.swift`): SwiftUI `@main` scene. The scene delegate forwards
+  every delivered `NSUserActivity` whole to `SnapSyncRoot.shared.onUserActivity(...)` — the
+  browsing-web filter and the raw `absoluteString` (fragment included) are Kotlin's tested `model/`
+  codec, routed on to `onOpenUrl`. A silent push forwards its `userInfo` dictionary whole
+  (`onSilentPush(userInfo:completion:)`; the `eventId` extraction is the tested payload codec).
+  Foreground/background are **not** a Swift split any more: `SnapSyncRoot.onLaunch()` (called from
+  `didFinishLaunchingWithOptions`) installs Kotlin-side `NSNotificationCenter` observers for
+  `didBecomeActive`/`willResignActive`. `ContentView.swift` bridges
+  `MainViewControllerKt.MainViewController()` (Compose) into SwiftUI.
 - **Extension principal** (`iosApp/BackgroundUploadExtension/BackgroundUploadExtension.swift`):
   `@main` class conforming to the iOS 26.1 `PHBackgroundResourceUploadExtension`; its `process()`
-  just calls `UploadExtensionRoot.shared.process()` and maps the `Bool` to the system result.
+  constructs `PHBackgroundResourceUploadProcessingResult(rawValue:)` from the raw `Int` Kotlin's
+  tested `CycleResult.processingResultRawValue()` decided (`?? .failure` — the one remaining Swift
+  pin; the system type is Swift-only, so the construction cannot leave the shell).
 
 ## Composition roots (manual DI — no expect/actual; the SHARED composition since migration step 7)
 

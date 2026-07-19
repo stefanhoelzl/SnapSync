@@ -10,6 +10,7 @@ import app.snapsync.ports.ConfigRead
 import app.snapsync.ports.ConfigReader
 import app.snapsync.ports.ConfigSource
 import app.snapsync.ports.ConfigStore
+import app.snapsync.ports.configAfterReload
 import app.snapsync.ports.configReadViaFile
 
 import app.snapsync.engine.LEDGER_APP_GROUP
@@ -68,7 +69,8 @@ private const val CONFIG_FILE_NAME: String = "eventconfig.json"
  *
  * Seeds [config] synchronously at construction, exactly like the Keychain store it replaces: a
  * background launch before first unlock seeds `null` (the CUFUA read fails permission-class →
- * unreadable, never absent) and the app shell's unlock hook calls [reload] to repair it.
+ * unreadable, never absent) and every trigger flow calls [reload] to repair it before acting
+ * (migration step 12 — the trigger-time re-read replaced the unlock hook).
  * **Readers that act on the absence of a config must use [read], not [config]** — see [ConfigRead].
  */
 class FileBackedConfigStore(
@@ -146,12 +148,15 @@ class FileBackedConfigStore(
     }
 
     /**
-     * Re-read the file into [config] — same contract as the Keychain store's reload: cross-process
-     * writers do not notify this process's [StateFlow], and a pre-first-unlock construction seeded
-     * `null`; the app calls this from the protected-data unlock hook.
+     * Re-read the file into [config]: cross-process writers do not notify this process's
+     * [StateFlow], and a pre-first-unlock construction seeded `null`. Since migration step 12 the
+     * trigger flows call this at **every** OS entry (foreground, silent push, backstop — replacing
+     * the deleted unlock-hook repair), so an **unreadable** read retains the last good value
+     * (`configAfterReload`, pure and tested): at this cadence a transient failure would otherwise
+     * clear a good membership mid-session and flip the screen to the setup gate.
      */
     fun reload() {
-        state.value = read().joinedOrNull()
+        state.value = configAfterReload(read(), state.value)
     }
 
     /** `null` for both *absent* and *unreadable* — acceptable for the UI-facing [config], never for the reconciler. */

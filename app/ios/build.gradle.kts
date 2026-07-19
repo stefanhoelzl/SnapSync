@@ -21,9 +21,6 @@ kotlin {
             api(project(":domain"))
             implementation(project(":ui:screens"))
             implementation(project(":ui:presentation"))
-            // ProtectedDataGate/ProtectedDataAvailability (the ProtectedData seam keeps its old home
-            // until migration step 12; the SecItem impls moved to :adapter:ios:ext-safe at step 4).
-            implementation(project(":domain:keychain"))
             // The technology adapters, placed by linkage (migration step 4): the Ktor/SQLDelight
             // impls (:adapter:generic), the extension-safe iOS adapters (:adapter:ios:ext-safe —
             // Keychain stores, ledger/download drivers, discovery walk, log writers), and the

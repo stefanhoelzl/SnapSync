@@ -53,8 +53,9 @@ pass by inspecting nothing.
 
 All Keychain access SHALL be confined to a single module (`:adapter:ios:ext-safe` — the
 extension-safe adapter module, where the migration seated the Keychain impls; before migration
-step 4 the owning module was `:domain:keychain`, which retains only the platform-free
-`ProtectedData` seam). No other module SHALL reference the Keychain API (`SecItem*`, `kSecClass*`,
+step 4 the owning module was `:domain:keychain`, whose residual platform-free `ProtectedData` seam
+died at step 12 with the module itself). No other module SHALL reference the Keychain API
+(`SecItem*`, `kSecClass*`,
 `kSecAttr*`), whether by import **or** by fully-qualified reference.
 
 This containment is what makes the *"every Keychain item is readable by background work on a locked
@@ -139,7 +140,7 @@ SHALL fail rather than silently scanning nothing.
 ### Requirement: The Swift shell keeps the event link's delivery seam
 
 A test-only JVM guard SHALL assert that the iOS Swift shell still installs a **scene delegate** that
-handles **both** halves of universal-link delivery and forwards to `SnapSyncRoot.onOpenUrl(_:)`
+handles **both** halves of universal-link delivery and forwards to the Kotlin entry point
 (capability `ios-app-shell`). Specifically it SHALL assert that the shell:
 
 1. installs a scene delegate via the app delegate's `application(_:configurationForConnecting:options:)`
@@ -147,7 +148,11 @@ handles **both** halves of universal-link delivery and forwards to `SnapSyncRoot
 2. implements `scene(_:willConnectTo:options:)` — the **cold** half, reading the launching link from the
    connection options;
 3. implements `scene(_:continue:)` — the **warm** half; and
-4. forwards to `SnapSyncRoot.onOpenUrl` from that delegate.
+4. forwards the delivered `NSUserActivity` **whole** to `SnapSyncRoot.onUserActivity` from that
+   delegate (migration step 12, the transcriber law: the browsing-web filter and the raw
+   `absoluteString` read — fragment included — are the tested `model/` codec's, routed on to
+   `onOpenUrl` in Kotlin; a Swift-side field extraction would be an unpinned decision under the
+   shell gates).
 
 The guard SHALL fail loudly rather than vacuously: if the file it inspects has moved or no longer
 contains the markers it expects, it SHALL fail rather than pass while scanning nothing. The guarded Swift
@@ -177,7 +182,8 @@ next reader and re-introducing the bug.
 #### Scenario: Removing the scene delegate fails the build
 
 - **WHEN** the Swift shell no longer installs a scene delegate, or no longer implements
-  `scene(_:willConnectTo:options:)` or `scene(_:continue:)`, or no longer forwards to `onOpenUrl`
+  `scene(_:willConnectTo:options:)` or `scene(_:continue:)`, or no longer forwards the activity to
+  `onUserActivity`
 - **THEN** the guard test fails, naming what is missing and why it matters
 
 #### Scenario: The guard is not vacuous
@@ -193,7 +199,8 @@ next reader and re-introducing the bug.
 
 #### Scenario: An intact shell passes
 
-- **WHEN** the shell installs the scene delegate and implements both halves, forwarding to `onOpenUrl`
+- **WHEN** the shell installs the scene delegate and implements both halves, forwarding the
+  delivered activity whole to `onUserActivity`
 - **THEN** the guard passes
 
 ### Requirement: Gates fail closed on novelty

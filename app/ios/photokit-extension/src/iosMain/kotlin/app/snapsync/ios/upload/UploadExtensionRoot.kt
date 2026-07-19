@@ -16,7 +16,7 @@ import app.snapsync.ios.discovery.IosDiscovery
 import app.snapsync.ios.discovery.IosDiscoveryStore
 import app.snapsync.join.HttpEnrollment
 import app.snapsync.ports.CycleResult
-import app.snapsync.model.UPLOAD_LIVENESS_DARWIN_NAME
+import app.snapsync.ports.processingResultRawValue
 import app.snapsync.feature.upload.UploadCycle
 import app.snapsync.ports.LedgerStore
 import app.snapsync.engine.iosLedgerStore
@@ -32,16 +32,10 @@ import app.snapsync.logging.appBuildVersion
 import app.snapsync.logging.PublicNSLogWriter
 import app.snapsync.logging.invocation
 import co.touchlab.kermit.Logger
-import kotlinx.cinterop.ExperimentalForeignApi
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.runBlocking
-import platform.CoreFoundation.CFNotificationCenterGetDarwinNotifyCenter
-import platform.CoreFoundation.CFNotificationCenterPostNotification
-import platform.CoreFoundation.CFStringCreateWithCString
-import platform.CoreFoundation.CFStringRef
-import platform.CoreFoundation.kCFStringEncodingUTF8
 
 /**
  * The extension process's composition root — WIRING ONLY: it constructs this process's adapters
@@ -75,25 +69,6 @@ object UploadExtensionRoot {
     }
 
     private val log = Logger.withTag("UploadExtension")
-
-    // The cross-process liveness Darwin notification name, created once (a constant CFString for the
-    // process lifetime). See the sync-status spec and the app-side observer in SnapSyncRoot.
-    @OptIn(ExperimentalForeignApi::class)
-    private val livenessName: CFStringRef? by lazy {
-        CFStringCreateWithCString(null, UPLOAD_LIVENESS_DARWIN_NAME, kCFStringEncodingUTF8)
-    }
-
-    /** Post the payload-free liveness ding on the Darwin notify center (delivered immediately). */
-    @OptIn(ExperimentalForeignApi::class)
-    private fun postLivenessNotification() {
-        CFNotificationCenterPostNotification(
-            CFNotificationCenterGetDarwinNotifyCenter(),
-            livenessName,
-            null,
-            null,
-            true,
-        )
-    }
 
     private val ledgerStore: LedgerStore by lazy { iosLedgerStore() }
     private val discovery: IosDiscovery by lazy {
@@ -219,15 +194,14 @@ object UploadExtensionRoot {
 
     /**
      * Run one cycle and return its [CycleResult] — `COMPLETED` (drained, cursor advanced), `PROCESSING`
-     * (call me again, cursor un-advanced), `SKIPPED`, or `FAILED`. The Swift shell maps it to the
-     * system's terminal/processing result.
+     * (call me again, cursor un-advanced), `SKIPPED`, or `FAILED`.
      *
      * What is left here is exactly what cannot be shared with the other upload tier: the synchronous
-     * `runBlocking` contract (the OS invokes this and the process does not outlive it), the cross-process
-     * liveness ding (this tier writes the ledger in a *different* process from the UI), and the
+     * `runBlocking` contract (the OS invokes this and the process does not outlive it) and the
      * pending→`PROCESSING` requeue (this tier alone cannot observe a completion while not running).
      * Everything else the body used to do now lives in [UploadCycle], where both tiers reach it and a
-     * test can too.
+     * test can too. (The cross-process liveness ding this root used to post died at migration step
+     * 12 — the app's foreground-gated `aggregates()` poll replaced it; spec `sync-status`.)
      */
     fun process(): CycleResult = log.invocation("process", result = { "$it" }) { runBlocking {
         val result = runCatching { cycle.run() }
@@ -236,11 +210,6 @@ object UploadExtensionRoot {
                 log.e(it) { "process cycle failed" }
                 CycleResult.FAILED
             }
-        // Tell the app (if foreground) the ledger may have changed so upload status refreshes live
-        // (spec: sync-status): a payload-free cross-process Darwin ding, posted after EVERY run so both a
-        // rising in-flight count and a drain are signalled. Best-effort — a post failure never affects
-        // the returned result. The `LedgerStore` itself still posts nothing; this is composition-root.
-        runCatching { postLivenessNotification() }.onFailure { log.w(it) { "liveness post failed" } }
         // The OS invokes the extension lazily (on library changes), not when an upload quietly
         // finishes — so a drained cycle that returns COMPLETED leaves already-succeeded jobs
         // un-acknowledged until the next change. While the ledger still has pending (in-flight)
@@ -256,4 +225,13 @@ object UploadExtensionRoot {
         }
         result
     } }
+
+    /**
+     * [process] as the iOS 26.1 `PHBackgroundResourceUploadProcessingResult` **raw value** — what the
+     * Swift principal class forwards into `init?(rawValue:)` (settled forcing proof ① of migration
+     * step 12: the system type is Swift-only, so the construction stays in Swift, but the decision —
+     * which case each [CycleResult] means — is the tested `processingResultRawValue` mapping in
+     * `:domain` `ports/`). Wiring only: no branch here a second tier could answer differently.
+     */
+    fun processRawValue(): Int = process().processingResultRawValue()
 }
