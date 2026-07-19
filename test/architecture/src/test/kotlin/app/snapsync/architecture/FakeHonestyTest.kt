@@ -10,7 +10,7 @@ import kotlin.test.fail
  * `architecture-guards`; law: `module-architecture` "The module set withholds"; decision record:
  * `establish-target-architecture`).
  *
- * The target splits test doubles in two: `:adapter:fake` holds HONEST in-memory implementations of
+ * The target splits test doubles in two: `:adapter:generic:fake` holds HONEST in-memory implementations of
  * port contracts (what the composition smoke test and every integration test stand on), and
  * `:test:world` holds the operator levers that rig them (failure injection, job completion,
  * backend coupling). "Honest" enforced as an adjective rots — the review named the exact path: an
@@ -18,7 +18,8 @@ import kotlin.test.fail
  * and ten edits later the fakes ARE the old world, except everything stands on them. So honesty is
  * a mechanical property here: a fake's public surface is its port contract plus a constructor.
  *
- * SELF-ARMING: `:adapter:fake` does not exist yet (it is created by a migration change). Until the
+ * SELF-ARMING: `:adapter:generic:fake` did not exist when this gate was authored (migration step 10
+ * created it, as `:adapter:fake`). Until the
  * directory exists this gate reports itself pending — visibly, not vacuously — and arms on the
  * module's first file with zero gate edits (fail-closed on novelty).
  */
@@ -28,7 +29,7 @@ class FakeHonestyTest {
         .firstOrNull { File(it, "settings.gradle.kts").isFile }
         ?: fail("could not locate the repository root")
 
-    private val fakeRoot = File(repoRoot, "adapter/fake")
+    private val fakeRoot = File(repoRoot, "adapter/generic/fake")
 
     private fun fakeSources(): List<File> = fakeRoot.walkTopDown()
         .filter { it.isFile && it.extension == "kt" && "/build/" !in it.path && "Main/" in it.path.replace('\\', '/') }
@@ -37,13 +38,13 @@ class FakeHonestyTest {
     @Test
     fun `fakes expose only port members and a constructor`() {
         if (!fakeRoot.isDirectory) {
-            println("fake-honesty gate: PENDING — adapter/fake does not exist yet; arms on its first file")
+            println("fake-honesty gate: PENDING — adapter/generic/fake does not exist yet; arms on its first file")
             return
         }
         val sources = fakeSources()
         assertTrue(
             sources.isNotEmpty(),
-            "adapter/fake exists but the gate scanned no sources — layout changed; fix the scan or " +
+            "adapter/generic/fake exists but the gate scanned no sources — layout changed; fix the scan or " +
                 "this gate fails open forever",
         )
         val violations = sources.flatMap { file ->
@@ -66,7 +67,7 @@ class FakeHonestyTest {
         }
         assertTrue(
             violations.isEmpty(),
-            "rigging in :adapter:fake — honest doubles expose port members + a constructor taking " +
+            "rigging in :adapter:generic:fake — honest doubles expose port members + a constructor taking " +
                 "initial state, nothing else:\n  ${violations.joinToString("\n  ")}",
         )
     }

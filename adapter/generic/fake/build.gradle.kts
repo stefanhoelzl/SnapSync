@@ -1,7 +1,9 @@
-// `:adapter:fake` (spec `module-architecture`): HONEST in-memory implementations of the `:domain`
+// `:adapter:generic:fake` (spec `module-architecture`): HONEST in-memory implementations of the `:domain`
 // ports — what the world harness, the composition smoke, and the integration tests stand on. An
-// adapter named for its technology ("fake", i.e. in-memory), placed by linkage: it links only into
-// test equipment, never a shipped binary. Honesty is mechanical, not an adjective: every public
+// adapter named for its technology ("fake", i.e. in-memory — platform-free, hence the `generic`
+// platform-axis prefix), placed by linkage: it links only into test equipment, never a shipped
+// binary — which is what the `fake` SHIPPABILITY leaf records (vs sibling `:adapter:generic:app`,
+// which ships in both processes). Honesty is mechanical, not an adjective: every public
 // type exposes its port contract plus a constructor taking initial state, and NOTHING else — the
 // `FakeHonestyTest` gate in `:test:architecture` enforces it. Operator rigging (failure levers,
 // inspection lists, settable cells) lives in `:test:world` wrappers around these fakes, physically

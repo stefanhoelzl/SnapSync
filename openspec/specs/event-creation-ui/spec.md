@@ -279,5 +279,5 @@ The create feature's only HTTP surface SHALL be the `POST /events` create client
 
 - **WHEN** the capability's HTTP clients are inspected
 - **THEN** the only route it calls is `POST /events`, and event details are obtained through
-  the `EventDirectory` port (implemented by `:adapter:generic`'s `HttpEventDirectory`)
+  the `EventDirectory` port (implemented by `:adapter:generic:app`'s `HttpEventDirectory`)
 

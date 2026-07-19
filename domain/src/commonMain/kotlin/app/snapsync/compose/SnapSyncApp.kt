@@ -88,7 +88,7 @@ class AppPorts(
     val newDownloadTransport: (DownloadTransportHost) -> DownloadTransport,
     val union: EventUnionSource,
     val directory: EventDirectory,
-    /** The enrollment PUT — production passes `:adapter:generic`'s `HttpEnrollment`. */
+    /** The enrollment PUT — production passes `:adapter:generic:app`'s `HttpEnrollment`. */
     val enrollment: Enrollment,
     val eventCreation: EventCreation,
     val attestKey: AttestKey,

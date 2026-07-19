@@ -6,8 +6,8 @@ Do not edit — the `:tools:diagrams` freshness test fails on drift; regenerate 
 
 ```mermaid
 flowchart LR
-  adapter_fake[":adapter:fake"]
-  adapter_generic[":adapter:generic"]
+  adapter_generic_app[":adapter:generic:app"]
+  adapter_generic_fake[":adapter:generic:fake"]
   adapter_ios_app_only[":adapter:ios:app-only"]
   adapter_ios_ext_safe[":adapter:ios:ext-safe"]
   app_desktop[":app:desktop"]
@@ -22,35 +22,35 @@ flowchart LR
   ui_components[":ui:components"]
   ui_presentation[":ui:presentation"]
   ui_screens[":ui:screens"]
-  adapter_fake --> domain
-  adapter_generic --> domain
-  adapter_generic --> test_world
+  adapter_generic_app --> domain
+  adapter_generic_app --> test_world
+  adapter_generic_fake --> domain
   adapter_ios_app_only --> adapter_ios_ext_safe
   adapter_ios_app_only --> domain
-  adapter_ios_ext_safe --> adapter_generic
+  adapter_ios_ext_safe --> adapter_generic_app
   adapter_ios_ext_safe --> domain
-  app_desktop --> adapter_generic
+  app_desktop --> adapter_generic_app
   app_desktop --> domain
   app_desktop --> test_world
   app_desktop --> ui_components
   app_desktop --> ui_presentation
   app_desktop --> ui_screens
-  app_ios --> adapter_generic
+  app_ios --> adapter_generic_app
   app_ios --> adapter_ios_app_only
   app_ios --> adapter_ios_ext_safe
   app_ios --> domain
   app_ios --> ui_presentation
   app_ios --> ui_screens
-  app_ios_extension --> adapter_generic
+  app_ios_extension --> adapter_generic_app
   app_ios_extension --> adapter_ios_ext_safe
   app_ios_extension --> domain
   test_harness_driver --> app_desktop
-  test_integration --> adapter_generic
+  test_integration --> adapter_generic_app
   test_integration --> domain
   test_integration --> test_world
   test_integration --> ui_presentation
-  test_world --> adapter_fake
-  test_world --> adapter_generic
+  test_world --> adapter_generic_app
+  test_world --> adapter_generic_fake
   test_world --> domain
   ui_components --> domain
   ui_presentation --> domain

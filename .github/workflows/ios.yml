@@ -335,7 +335,7 @@ jobs:
           # catches Native-only breakage the JVM accepts (e.g. Kotlin/Native rejects a comma in a
           # backticked test name).
           #
-          # Native-only source sets — no JVM equivalent, so this is their only run: :adapter:generic's
+          # Native-only source sets — no JVM equivalent, so this is their only run: :adapter:generic:app's
           # NativeLedgerStoreTest (the SQLDelight native driver behind the shared LedgerStoreContract,
           # hosted in :test:world since migration step 10),
           # :domain:keychain's IosKeychainTest, and :app:ios:extension's PhotoKitSmokeTest

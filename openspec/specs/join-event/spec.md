@@ -466,7 +466,7 @@ and the not-started state never appears for them.
 ### Requirement: One details client
 
 The app SHALL have exactly one `GET /events/:eventId` client: the `EventDirectory` port (`:domain` `ports/`) and its
-`HttpEventDirectory` implementation in `:adapter:generic` (seated there by migration step 4). Every consumer of an event's details
+`HttpEventDirectory` implementation in `:adapter:generic:app` (seated there by migration step 4). Every consumer of an event's details
 SHALL read through it — the join gate's details fetch AND the best-effort name refresh (the
 scan-path fill and the foreground re-fetch, capability `event-link`). The name refresh SHALL read
 the name from a `Found` outcome and treat every other outcome (`NotFound`, `Failed` — including a

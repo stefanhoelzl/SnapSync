@@ -22,7 +22,7 @@ Kotlin/Native links whole modules) and the **appex footprint** (Compose/Skiko ha
 memory-capped extension). Both images DO embed the shared domain code, each privately — that is
 fine; no Kotlin type ever crosses the process boundary. The app framework carries Compose/UI + the
 full `domain` stack; the extension framework is lean (`:domain`'s feature/upload UploadCycle
-orchestration over the extension-safe adapters `:adapter:ios:ext-safe` + `:adapter:generic`). Both are
+orchestration over the extension-safe adapters `:adapter:ios:ext-safe` + `:adapter:generic:app`). Both are
 `isStatic = true` — the Compose-iOS norm (avoids dynamic-linking issues with the bundled
 Skiko/Compose native libs).
 
@@ -78,7 +78,7 @@ is no per-root cycle or feature assembly any more.
 - **Extension**: `app/ios/extension/src/iosMain/.../UploadExtensionRoot.kt` — builds
   `UploadPorts` (the file-backed `ConfigReader`, the PhotoKit `IosPhotoKitUploadPlatform` +
   `IosDiscovery` — both from `:adapter:ios:ext-safe`, where the platform adapter lives — App-Group
-  stores, `:adapter:generic` HTTP adapters) and calls `uploadCore(scope, ports)`; `process()` runs
+  stores, `:adapter:generic:app` HTTP adapters) and calls `uploadCore(scope, ports)`; `process()` runs
   one blocking cycle of the composed `UploadCycle`, then maps the pending→`PROCESSING` requeue and
   the raw-value handoff through the tested `ports/` rules.
 - The app-driven tier's `UrlSessionUploadController` calls the same `uploadCore` over its own ports

@@ -53,7 +53,7 @@ class UploadPorts(
     val deviceFiles: DeviceFilesSource,
     val joinedMarker: JoinedEventMarker,
     val manifestStore: DeviceManifestStore,
-    /** The device-manifest uploader — production passes `:adapter:generic`'s `HttpEnrollment`. */
+    /** The device-manifest uploader — production passes `:adapter:generic:app`'s `HttpEnrollment`. */
     val enrollment: Enrollment,
     /** Echo-suppression (capability `photo-download`): required, no default (`upload-lifecycle`). */
     val suppression: SuppressionSource,

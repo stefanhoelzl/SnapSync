@@ -24,7 +24,7 @@ Decision record: `changes/archive/2026-07-03-add-harness-world-model`.
 
 The system SHALL provide a test-infra Kotlin Multiplatform module `:test:world` that runs the
 **real** platform-agnostic stack against controllable in-memory infrastructure: the honest
-in-memory port implementations SHALL live in `:adapter:fake` (package `app.snapsync.fake`; spec
+in-memory port implementations SHALL live in `:adapter:generic:fake` (package `app.snapsync.fake`; spec
 `module-architecture`), and `:test:world` SHALL hold the **operator rigging** around them — the
 backend store, the mini-edge, the levered fakes (`FakeBackgroundTransfer`,
 `FakeDownloadTransport`, `FakePhotoLibraryImporter`, `FakeAlbumManager`,
@@ -35,7 +35,7 @@ never links into a shipped framework), so its logic and self-tests execute on **
 iOS simulator per testing rule 1. Its `commonMain` SHALL also host the shared storage-seam
 contracts (`LedgerStoreContract`, `DownloadStoreContract`) — a test source set cannot be depended
 on across modules, and this is the one test-infra `commonMain` every implementor's test source set
-(`:test:world` commonTest for the fakes, `:adapter:generic` `jvmTest`/`iosSimulatorArm64Test` for
+(`:test:world` commonTest for the fakes, `:adapter:generic:app` `jvmTest`/`iosSimulatorArm64Test` for
 the SQLDelight stores) can reach. It SHALL be consumed by **both** the desktop full-stack harness
 (`:app:desktop`) and the `:test:integration` module. Nothing in a production `domain`/`adapter`
 module's **main** source sets SHALL depend on `:test:world` (the adapter test source sets extending
@@ -49,13 +49,13 @@ the contracts are test compilations, so no production edge is introduced).
 #### Scenario: Consumed by both the harness and integration tests
 
 - **WHEN** the desktop harness and `:test:integration` each assemble a world
-- **THEN** both reach the same world class over the same `:adapter:fake` doubles, and no production
+- **THEN** both reach the same world class over the same `:adapter:generic:fake` doubles, and no production
   main source set gains a dependency back into `:test:world`
 
 #### Scenario: Rigging cannot live in a fake
 
 - **WHEN** an operator lever (a settable cell, a failure switch, an inspection list) is needed on an
-  honest `:adapter:fake` double
+  honest `:adapter:generic:fake` double
 - **THEN** it is expressed in a `:test:world` wrapper owning the fake's constructor-injected state,
   never as a public member of the fake (the fake-honesty gate fails otherwise)
 
@@ -292,7 +292,7 @@ The world SHALL assemble its upload cycle through the **same shared composition 
 call** — `uploadCore` (`:domain` `compose/`, spec `module-architecture` "One shared composition") over
 the world's fakes — not through a world-local mirror of a composition root: the world supplies its
 in-memory ports (`ConfigReader` over the config cell and the `membershipUnreadable` lever, the fake
-`BackgroundTransfer`, the `:adapter:fake` ledger/discovery/manifest/marker stores, the mini-edge HTTP
+`BackgroundTransfer`, the `:adapter:generic:fake` ledger/discovery/manifest/marker stores, the mini-edge HTTP
 seams) and `uploadCore` builds the real `SyncEngine` + `EdgeUploadRequestProvider` + `UploadCycle` +
 `ExtensionReconciler` + `DeviceManifestProducer` graph, exactly as it does for the device roots. The
 app-side graph — download, status, membership, creation, the command bundle — SHALL come from the
@@ -315,7 +315,7 @@ HTTP client SHALL be fakes; everything above them SHALL be the shipped productio
 #### Scenario: Production seams are not duplicated
 
 - **WHEN** the world composes the manifest path
-- **THEN** its `Enrollment` port is `:adapter:generic`'s `HttpEnrollment` over the injected mini-edge
+- **THEN** its `Enrollment` port is `:adapter:generic:app`'s `HttpEnrollment` over the injected mini-edge
   client — the world carries no copy of any production adapter (the step-10 death of the world's
   byte-identical `HttpEnrollment` closed the deletion ledger's last row)
 
