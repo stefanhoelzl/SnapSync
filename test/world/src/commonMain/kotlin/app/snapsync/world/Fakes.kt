@@ -13,7 +13,7 @@ import kotlinx.coroutines.flow.asStateFlow
 
 /**
  * A settable in-memory [PhotoAccessStatusSource] — the world's stand-in for the iOS PhotoKit permission
- * adapter. A **rigged world wrapper**, not an `:adapter:fake` resident: [set] is an operator lever, and
+ * adapter. A **rigged world wrapper**, not an `:adapter:generic:fake` resident: [set] is an operator lever, and
  * levers live here by law (spec `architecture-guards`, "The fake-honesty gate"). Drives the status
  * projection's `active` flag.
  */
@@ -29,7 +29,7 @@ class MutablePhotoAccessStatusSource(
 }
 
 /**
- * The world's gallery: the operator rigging around the honest `:adapter:fake` [InMemoryRawAssetSource]
+ * The world's gallery: the operator rigging around the honest `:adapter:generic:fake` [InMemoryRawAssetSource]
  * (spec `architecture-guards`, "The fake-honesty gate": the fake exposes only its port; the settable
  * state cell and the unscoped [current] read live HERE, in the world wrapper). [source] is what the
  * compositions consume; [set]/[current] are what the operator (and [FakePhotoLibraryImporter]) drive.
@@ -49,7 +49,7 @@ class WorldGallery {
 }
 
 /**
- * The world's download store: the recording wrapper around the honest `:adapter:fake`
+ * The world's download store: the recording wrapper around the honest `:adapter:generic:fake`
  * [app.snapsync.fake.InMemoryDownloadStore]. [enqueueRequests] records what the real
  * `DownloadController` sent to the OS (it marks each enqueued resource through this port), replacing
  * the pre-step-10 `recordingJobs` interception — the real jobs still do all the work, and the

@@ -25,8 +25,8 @@ kotlin {
             // extension-safe iOS adapters (:adapter:ios:ext-safe — the discovery walk + cursor store,
             // the ledger/download-store native drivers, the Keychain config/attest/device-id/album
             // stores, the Darwin client, the joined-event marker, the device-log writers) over the
-            // platform-free technology impls (:adapter:generic — the SQLDelight stores + Ktor clients).
-            implementation(project(":adapter:generic"))
+            // platform-free technology impls (:adapter:generic:app — the SQLDelight stores + Ktor clients).
+            implementation(project(":adapter:generic:app"))
             implementation(project(":adapter:ios:ext-safe"))
             // The event-notify sender (capability `upload-completion-notify`): a bodyless POST to
             // Ktor core for the synchronous in-cycle device.json PUT (the Darwin client comes from

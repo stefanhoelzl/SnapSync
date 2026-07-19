@@ -30,9 +30,9 @@ dependencies {
     implementation(project(":ui:components"))
     // The real Ktor clients the world composes (HttpEventCreation, HttpEventDirectory) moved
     // to the adapter layer at migration step 4.
-    implementation(project(":adapter:generic"))
+    implementation(project(":adapter:generic:app"))
     // The full-stack harness: the controllable world (BackendStore + mini-edge + levers wrapping
-    // `:adapter:fake`) whose `World.core` IS the shared `snapSyncApp` composition.
+    // `:adapter:generic:fake`) whose `World.core` IS the shared `snapSyncApp` composition.
     implementation(project(":test:world"))
     // The engine-console footer taps Kermit directly (transitive only via impl deps, so name it here).
     implementation(libs.kermit)

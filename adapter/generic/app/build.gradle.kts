@@ -1,7 +1,10 @@
-// `:adapter:generic` (spec `module-architecture`): platform-free technology implementations of the
+// `:adapter:generic:app` (spec `module-architecture`): platform-free technology implementations of the
 // `:domain` ports — the Ktor HTTP clients and the SQLDelight stores. Named for the technology,
 // placed by linkage: generic code links everywhere (JVM harness, app, extension), so this module
-// carries no platform source set. Packages keep their pre-migration names deliberately (decision
+// carries no platform source set. The `generic` prefix is the platform axis (a pure path grouping,
+// no build file — same as `adapter/ios/`); the `app` leaf is SHIPPABILITY — this module links into
+// the shipped app AND extension binaries (both processes, unlike `:adapter:ios:app-only`, whose
+// leaf encodes PROCESS linkage). Packages keep their pre-migration names deliberately (decision
 // D2 of `extract-adapter-modules`): every gate and diagram scopes by directory, and the pure-move
 // diff is the review artifact; package normalization rides the feature-move steps.
 

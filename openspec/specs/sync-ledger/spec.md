@@ -174,7 +174,7 @@ identical arguments SHALL converge on assetId, state, attempt, and eventId.
 
 ### Requirement: SQLDelight backend
 
-A SQLDelight-backed `LedgerStore` SHALL be provided in `:adapter:generic` commonMain (SQLDelight
+A SQLDelight-backed `LedgerStore` SHALL be provided in `:adapter:generic:app` commonMain (SQLDelight
 package `app.snapsync.engine.db`; moved from `:domain:engine` at migration step 4, whose module
 died at step 10) with the schema
 `key TEXT PRIMARY KEY, assetId TEXT NOT NULL, state TEXT NOT NULL, attempt INTEGER NOT NULL,
@@ -189,8 +189,8 @@ and the backfill sweep", staged revert). `put` SHALL be a single SQL upsert stat
 `aggregates()` SHALL be a single
 SQL round-trip (an `assetId`-grouped query). Every `LedgerStore` implementation SHALL satisfy the
 shared `LedgerStoreContract` (hosted in `:test:world` commonMain since step 10): the JVM/sqlite and
-native (simulator) driver tests extend it from `:adapter:generic`'s test source sets, and
-`:adapter:fake`'s honest `InMemoryLedgerStore` — the store the world harness runs on — extends it
+native (simulator) driver tests extend it from `:adapter:generic:app`'s test source sets, and
+`:adapter:generic:fake`'s honest `InMemoryLedgerStore` — the store the world harness runs on — extends it
 from `:test:world`'s own tests. The native (iOS) driver is wired by `:adapter:ios:ext-safe`'s
 factory over the App-Group container.
 
@@ -202,7 +202,7 @@ factory over the App-Group container.
 #### Scenario: Every backend satisfies one contract
 - **WHEN** the shared `LedgerStoreContract` scenarios run
 - **THEN** they pass unchanged against the SQLDelight store (JVM and native drivers) and against
-  `:adapter:fake`'s in-memory store
+  `:adapter:generic:fake`'s in-memory store
 
 #### Scenario: A pre-provenance column-explicit insert still works
 - **WHEN** a 4-column column-explicit `INSERT OR REPLACE INTO ledgerRow (key, assetId, state,

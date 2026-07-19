@@ -11,7 +11,7 @@ import kotlinx.datetime.toLocalDateTime
  * (capability `photo-selection-policy`). Injected into the screen so `:ui:screens` needs no clock or
  * timezone knowledge: it holds only a `LocalDateTime` and calls these methods. **Pure given its
  * inputs** (migration step 9): [now] and [zone] arrive injected — production binds the `Clock` /
- * `TimeZoneSource` ports (`:adapter:generic`'s `SystemClock`/`SystemTimeZone`, wired in the shells
+ * `TimeZoneSource` ports (`:adapter:generic:app`'s `SystemClock`/`SystemTimeZone`, wired in the shells
  * as plain function/value inputs, since the armed presentation gate forbids this module naming
  * `ports/`); tests pass a fixed instant and zone for determinism. Reuses the config cutoff codec
  * ([localToCutoff]) so the string it produces is byte-identical to the enumerator's `creationDate`

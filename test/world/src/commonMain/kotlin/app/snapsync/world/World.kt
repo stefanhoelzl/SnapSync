@@ -66,7 +66,7 @@ import kotlinx.coroutines.flow.asStateFlow
 
 /**
  * The controllable in-memory **world** (capability `harness-world-model`): the backend object store,
- * the mini-edge, and the operator levers — wrapped around `:adapter:fake`'s honest doubles — that the
+ * the mini-edge, and the operator levers — wrapped around `:adapter:generic:fake`'s honest doubles — that the
  * REAL app graph runs against. Since migration step 10 the world composes that graph through the
  * **same** [snapSyncApp] the iOS shell calls (spec `module-architecture`, "One shared composition"),
  * so [core] IS the production `AppCore` — features, flows, and the user-tap command bundle — over
@@ -117,7 +117,7 @@ class World(
     /** The one shared mini-edge client injected into every real common-Ktor seam. */
     val client = miniEdgeClient(store)
 
-    /** The `:adapter:generic` enrollment PUT over the mini-edge — the ONE `Enrollment` impl (the
+    /** The `:adapter:generic:app` enrollment PUT over the mini-edge — the ONE `Enrollment` impl (the
      *  world's byte-identical copy died at step 10, closing the deletion ledger's last row). */
     val manifestUploader: HttpEnrollment = HttpEnrollment(client, host)
     private val leaveNotifier = HttpLeaveNotifier(client, host)
@@ -417,7 +417,7 @@ class World(
     /**
      * Leave the joined event — the **faithful** in-place clear (NOT a world rebuild): run the real
      * [DownloadController.onLeaveOrSwitch] (cancel transfers, prune non-terminal download rows), then
-     * the real backend leave (the `:adapter:generic` `HttpLeaveNotifier` over the mini-edge — the same
+     * the real backend leave (the `:adapter:generic:app` `HttpLeaveNotifier` over the mini-edge — the same
      * `DELETE` the app fires, driving the store's rename→reap→GC cascade), then clear the config cell
      * and the joined-event marker. Deliberately an operator edge, not [UserCommands.leave]: the
      * composed leave's backend notify is fire-and-forget by design, and the operator's leave must be

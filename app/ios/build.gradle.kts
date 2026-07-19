@@ -22,11 +22,11 @@ kotlin {
             implementation(project(":ui:screens"))
             implementation(project(":ui:presentation"))
             // The technology adapters, placed by linkage (migration step 4): the Ktor/SQLDelight
-            // impls (:adapter:generic), the extension-safe iOS adapters (:adapter:ios:ext-safe —
+            // impls (:adapter:generic:app), the extension-safe iOS adapters (:adapter:ios:ext-safe —
             // Keychain stores, ledger/download drivers, discovery walk, log writers), and the
             // app-only iOS adapters (:adapter:ios:app-only — URLSession upload/download transports,
             // BGTaskScheduler, PhotoKit importer, permission).
-            implementation(project(":adapter:generic"))
+            implementation(project(":adapter:generic:app"))
             implementation(project(":adapter:ios:ext-safe"))
             implementation(project(":adapter:ios:app-only"))
             implementation(libs.coroutines.core)

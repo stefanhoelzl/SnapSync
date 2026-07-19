@@ -18,7 +18,7 @@ kotlin {
             api(project(":domain"))
             // The SQLDelight stores these drivers open (SqlDelightLedgerStore/SqlDelightDownloadStore)
             // and the Ktor core types darwinHttpClient() returns.
-            api(project(":adapter:generic"))
+            api(project(":adapter:generic:app"))
             // (The interim :capability:album and :domain:gallery edges died at migration step 6:
             // the album seams now live in :domain ports/, albumMapSource in feature/album, and the
             // ResourceEnumerator composition in feature/upload — all reached via api(":domain").)

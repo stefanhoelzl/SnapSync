@@ -434,7 +434,7 @@ its process dies each cycle.
 #### Scenario: The tier's cycle is the shared composition
 - **WHEN** `UrlSessionUploadController` assembles its upload cycle
 - **THEN** it calls `uploadCore` over its ports — it constructs no gate, cycle, reconciler, or
-  device-manifest producer of its own, and its device-manifest uploader is `:adapter:generic`'s
+  device-manifest producer of its own, and its device-manifest uploader is `:adapter:generic:app`'s
   `HttpEnrollment`
 
 ### Requirement: The app-driven root states its selection policy explicitly
