@@ -12,8 +12,8 @@ The app and the background-upload extension are **separate iOS processes**, each
 module exporting its own **static** framework that the Xcode project links:
 
 ```
-:app:ios                     → framework "SnapSyncKit"        ← app process (UI + ledger reader)
-:app:ios:photokit-extension  → framework "SnapSyncUploadKit"  ← extension process (discover→upload)
+:app:ios            → framework "SnapSyncKit"        ← app process (UI + ledger reader)
+:app:ios:extension  → framework "SnapSyncUploadKit"  ← extension process (discover→upload)
 ```
 
 Two frameworks, not one, for two real reasons: the **extension-safety line** (app-only API —
@@ -31,7 +31,7 @@ Skiko/Compose native libs).
 
 `iosApp/` (repo root, **not** under this module, **not** a Gradle project) is the Xcode host: app
 target + `BackgroundUploadExtension` target. Each target has a run-script phase that calls
-`./gradlew :app:ios[:photokit-extension]:embedAndSignAppleFrameworkForXcode` to build + embed the
+`./gradlew :app:ios[:extension]:embedAndSignAppleFrameworkForXcode` to build + embed the
 Kotlin framework, and each links `-lsqlite3` in `OTHER_LDFLAGS` (SQLDelight's native driver needs
 the system SQLite — without it the device app fails to link). Shared build settings live in
 `iosApp/Configuration/Config.xcconfig`; export configs in `iosApp/ExportOptions*.plist`.
@@ -76,7 +76,7 @@ is no per-root cycle or feature assembly any more.
   coordination lambdas) and calls `snapSyncApp(scope, ports)`; the returned `AppCore`'s lazily
   composed graph (status sources, attestation, join/leave/create, downloads, upload arm) is wired
   into `StatusContainerHost`.
-- **Extension**: `app/ios/photokit-extension/src/iosMain/.../UploadExtensionRoot.kt` — builds
+- **Extension**: `app/ios/extension/src/iosMain/.../UploadExtensionRoot.kt` — builds
   `UploadPorts` (the file-backed `ConfigReader`, `IosPhotoKitUploadPlatform` over the shared `IosDiscovery`
   from `:adapter:ios:ext-safe`, App-Group stores, `:adapter:generic` HTTP adapters) and calls
   `uploadCore(scope, ports)`; `process()` runs one blocking cycle of the composed `UploadCycle`.

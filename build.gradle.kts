@@ -61,7 +61,7 @@ dependencyAnalysis {
 
 val appShellSources = files(
     "app/ios/src",
-    "app/ios/photokit-extension/src",
+    "app/ios/extension/src",
 )
 
 // The detekt plugin registers its own `detekt` task against the ROOT project's Kotlin source set —

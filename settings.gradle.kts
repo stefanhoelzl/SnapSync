@@ -22,7 +22,7 @@ rootProject.name = "snapsync"
 
 include(":app:desktop")
 include(":app:ios")
-include(":app:ios:photokit-extension")
+include(":app:ios:extension")
 include(":adapter:fake")
 include(":adapter:generic")
 include(":adapter:ios:ext-safe")

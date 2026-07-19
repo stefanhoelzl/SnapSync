@@ -13,7 +13,7 @@ migration's shared `compose/` functions exist.
 Roots found:
 
 - `SnapSyncRoot` — `app/ios/src/iosMain/kotlin/app/snapsync/ios/SnapSyncRoot.kt`
-- `UploadExtensionRoot` — `app/ios/photokit-extension/src/iosMain/kotlin/app/snapsync/ios/upload/UploadExtensionRoot.kt`
+- `UploadExtensionRoot` — `app/ios/extension/src/iosMain/kotlin/app/snapsync/ios/upload/UploadExtensionRoot.kt`
 - `UrlSessionUploadController` — `app/ios/src/iosMain/kotlin/app/snapsync/ios/UrlSessionUploadController.kt`
 
 | Constructed type | SnapSyncRoot | UploadExtensionRoot | UrlSessionUploadController |

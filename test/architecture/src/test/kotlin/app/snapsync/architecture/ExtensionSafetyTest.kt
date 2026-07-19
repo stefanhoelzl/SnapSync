@@ -17,7 +17,7 @@ import kotlin.test.fail
  * runtime abort in the field. Expiry trigger: Kotlin/Native gaining extension-availability checking.
  *
  * Scope is DERIVED: every Kotlin source under the modules the extension framework links today
- * (`:app:ios:photokit-extension`, `:adapter:ios:ext-safe`). New files are born in scope; the
+ * (`:app:ios:extension`, `:adapter:ios:ext-safe`). New files are born in scope; the
  * non-vacuity twin catches a rename emptying the scan.
  */
 class ExtensionSafetyTest {
@@ -32,7 +32,7 @@ class ExtensionSafetyTest {
      * `adapter/ios/ext-safe` and deleted the module (coverage moved, it did not shrink).
      */
     private val extensionLinkedRoots = listOf(
-        "app/ios/photokit-extension",
+        "app/ios/extension",
         "adapter/ios/ext-safe",
     )
 
