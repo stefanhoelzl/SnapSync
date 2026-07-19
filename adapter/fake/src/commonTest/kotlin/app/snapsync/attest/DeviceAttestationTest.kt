@@ -85,6 +85,30 @@ private fun attestation(
 
 class DeviceAttestationTest {
 
+    // ---- refreshOutcome: the SyncHealth.Unattested rule (drained from the shell at the finale) ----
+
+    @Test
+    fun `refreshOutcome is true when the refresh obtains a token`() = runTest {
+        val (attestation, _, _) = attestation()
+        assertTrue(attestation.refreshOutcome())
+    }
+
+    @Test
+    fun `refreshOutcome is true for a fresh token even if a concurrent path reported no refresh`() = runTest {
+        // A fresh token short-circuits ensureFresh to true anyway; the second clause additionally
+        // covers any path where the refresh reports false while the stored token is still usable.
+        val (attestation, client, _) = attestation(store = InMemoryAttestStore(token(20), "k"))
+        client.challenge = null // even with no network, a fresh token is a non-event
+        assertTrue(attestation.refreshOutcome())
+    }
+
+    @Test
+    fun `refreshOutcome is false only when the device lacks a usable token AND could not get one`() = runTest {
+        val (attestation, client, _) = attestation()
+        client.challenge = null // offline: no challenge, nothing stored
+        assertFalse(attestation.refreshOutcome())
+    }
+
     @Test
     fun `a device that has never attested attests and persists both the key and the token`() = runTest {
         val key = FakeKey()

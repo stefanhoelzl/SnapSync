@@ -4,23 +4,18 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.window.ComposeUIViewController
-import app.snapsync.presentation.SetupEffect
 import app.snapsync.ui.StatusScreen
 import app.snapsync.ui.components.LocalReduceMotion
-import kotlin.time.Duration.Companion.seconds
 import platform.UIKit.UIAccessibilityIsReduceMotionEnabled
-import kotlinx.coroutines.delay
 
 /**
  * The iOS entry point. The Swift app (iosApp/) calls [MainViewController] to obtain the root
  * UIViewController. The screen renders **live** state from the real stack assembled in
  * [SnapSyncRoot]: the Orbit container's `stateFlow`, with the gate intents routed back to the host.
- * It also collects the container's side effects to surface the transient invalid-link error on the
- * setup screen (self-clearing after a few seconds). `StatusScreen` wraps itself in `AppTheme`.
+ * The transient invalid-link error is the host's own self-clearing `transientError` StateFlow
+ * (presentation-owned choreography — the set-then-clear decision left this untested shell at the
+ * migration finale, step-12 D6). `StatusScreen` wraps itself in `AppTheme`.
  *
  * The host is [SnapSyncRoot.renderHost] — the live stack in production, or a forged-source host when
  * the dev/test `SNAPSYNC_FORGE_STATE` launch-env variable is set (capability `ios-app-shell`). Either
@@ -43,21 +38,8 @@ fun MainViewController() = ComposeUIViewController {
     // Dev/test: fill the library with `SNAPSYNC_SEED_PHOTOS` synthetic assets (no-op in production).
     LaunchedEffect(Unit) { SnapSyncRoot.applyLaunchEnvSeed() }
 
-    var transientError by remember { mutableStateOf<String?>(null) }
-    LaunchedEffect(host) {
-        host.container.sideEffectFlow.collect { effect ->
-            when (effect) {
-                SetupEffect.InvalidConfigLink -> transientError = "That QR code wasn't valid."
-            }
-        }
-    }
-    // Self-clear the transient error a few seconds after it last appeared.
-    LaunchedEffect(transientError) {
-        if (transientError != null) {
-            delay(4.seconds)
-            transientError = null
-        }
-    }
+    // The transient invalid-link error — presentation-owned, self-clearing (see the host).
+    val transientError by host.transientError.collectAsState()
 
     // The platform's reduce-motion preference (capability `design-system`). Compose Multiplatform has no
     // cross-platform accessor for it, so the composition root supplies it — this is the only place that

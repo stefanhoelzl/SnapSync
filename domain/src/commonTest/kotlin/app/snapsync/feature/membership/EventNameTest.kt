@@ -63,4 +63,20 @@ class EventNameTest {
         EventName(config, config).storeEventNameIfChanged("E", "Anna's Birthday")
         assertNull(config.saved)
     }
+
+    @Test
+    fun `a fetch that resolved nothing stores nothing`() = runTest {
+        // The best-effort fetch's sealed no-result (offline / 404 / parse) is part of this rule
+        // since the migration finale, so the flows' fetch-then-store is one straight-line step.
+        val config = FakeConfig(joined)
+        EventName(config, config).storeEventNameIfChanged("E", null)
+        assertNull(config.saved)
+    }
+
+    @Test
+    fun `fetchNeed is MISSING only for a nameless membership`() {
+        val eventName = EventName(FakeConfig(null), FakeConfig(null))
+        kotlin.test.assertEquals(TitleNeed.MISSING, eventName.fetchNeed(""))
+        kotlin.test.assertEquals(TitleNeed.PRESENT, eventName.fetchNeed("Anna's Birthday"))
+    }
 }

@@ -24,6 +24,10 @@ buildscript {
 // Apple targets' global build services (e.g. SwiftPMLockTaskAggregationBuildService) then fail
 // to cast across classloaders — a configuration error that only surfaces once iOS targets exist.
 plugins {
+    // `base` gives the ROOT project the lifecycle tasks (`check`, `build`) that `detektAppShell`
+    // gates through — `./gradlew build` includes the root `check`, so the shell gate runs in the
+    // canonical build (capability `architecture-guards`, "The shell gates").
+    base
     alias(libs.plugins.kotlin.multiplatform) apply false
     alias(libs.plugins.kotlin.jvm) apply false
     alias(libs.plugins.kotlin.serialization) apply false
@@ -83,11 +87,12 @@ tasks.register<io.gitlab.arturbosch.detekt.Detekt>("detektAppShell") {
     config.setFrom(files("config/detekt/app-shell.yml"))
     buildUponDefaultConfig = false
 
-    // MIGRATION POSTURE — the beacon (`:test:architecture:migration`) reads the XML report this task
-    // writes and renders the count in the burn-down; failing here would abort the task graph before
-    // the other measurements ran. When the shells are drained: flip to `false`, wire into `check`,
-    // and delete the beacon's shell row — the measurement becomes the gate (decision D8).
-    ignoreFailures = true
+    // GATING (since the migration finale drained the shells to zero unpinned decisions): a new
+    // conditional in `:app:*` Kotlin fails the canonical build. The only tolerated forms are the
+    // explicitly pinned `@Suppress("CyclomaticComplexMethod")` sites, whose inventory — each with
+    // its forcing proof — is itself gated by `KotlinShellGuardTest` (`:test:architecture`), so a
+    // new suppression is as loud as a new branch.
+    ignoreFailures = false
     reports {
         xml.required.set(true)
         html.required.set(false)
@@ -96,6 +101,8 @@ tasks.register<io.gitlab.arturbosch.detekt.Detekt>("detektAppShell") {
         md.required.set(false)
     }
 }
+
+tasks.named("check") { dependsOn("detektAppShell") }
 
 // ---- Derived architecture diagrams (capability `architecture-diagrams`) ------------------------
 //

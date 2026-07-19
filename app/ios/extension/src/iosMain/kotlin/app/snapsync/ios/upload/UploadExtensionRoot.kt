@@ -17,12 +17,13 @@ import app.snapsync.ios.discovery.IosDiscoveryStore
 import app.snapsync.join.HttpEnrollment
 import app.snapsync.ports.CycleResult
 import app.snapsync.ports.processingResultRawValue
+import app.snapsync.ports.requeueWhilePending
 import app.snapsync.feature.upload.UploadCycle
 import app.snapsync.ports.LedgerStore
 import app.snapsync.engine.iosLedgerStore
 import app.snapsync.gallery.IosDeviceManifestStore
 import app.snapsync.gallery.PhotoLibraryResourceEnumerator
-import app.snapsync.push.EventNotifier
+import app.snapsync.feature.push.EventNotifier
 import app.snapsync.push.KtorPushHttpClient
 import app.snapsync.membership.HttpDeviceFilesSource
 import app.snapsync.membership.IosJoinedEventMarker
@@ -39,14 +40,16 @@ import kotlinx.coroutines.runBlocking
 
 /**
  * The extension process's composition root — WIRING ONLY: it constructs this process's adapters
- * (the App-Group ledger store, the PhotoKit platform + discovery, the Keychain config/attest
- * readers, the generic HTTP clients) and hands them as [UploadPorts] to the SHARED composition
+ * (the App-Group ledger store, the PhotoKit platform + discovery, the file-backed config reader,
+ * the Keychain attest reader, the generic HTTP clients) and hands them as [UploadPorts] to the SHARED composition
  * [uploadCore] (`:domain` `compose/`), which assembles the [UploadCycle]. The Swift `@main`
  * principal class calls [process] from its `process()` callback.
  *
  * Config is sourced fresh each cycle by the shared entry gate: the runtime event id from the shared
- * App-Group config file ([FileBackedConfigStore] — Keychain-fallback-and-write-through during the
- * step-11a soak window) combined with the compile-time upload host
+ * App-Group config file ([FileBackedConfigStore] — writes are file-only since the migration
+ * finale ended the 11a Keychain write-through; the read keeps the legacy-Keychain migration
+ * fallback until the post-ship Stage-2 change, so this extension can be the process that migrates
+ * a pre-file device on the OS's first post-update invocation) combined with the compile-time upload host
  * ([uploadHostFromBundle], `BackgroundUploadURLBase`). When no event has been joined yet (the
  * extension woke before setup), the cycle is skipped as a clean success — no job, no ledger write,
  * no crash.
@@ -132,10 +135,10 @@ object UploadExtensionRoot {
         )
     }
 
-    // Event-notify sender (capability `upload-completion-notify`): fired after a drained cycle that
-    // completed uploads, so co-contributors are woken to download. Same compile-time host as the
-    // manifest. Stays root-constructed: the sender lives in `:capability:push`, unreachable from
-    // `:domain`'s compose zone — `uploadCore` takes the notify as a stated lambda (step 8 re-homes it).
+    // Event-notify sender (capability `upload-completion-notify`; `:domain` feature/push since the
+    // migration finale re-homed it): fired after a drained cycle that completed uploads, so
+    // co-contributors are woken to download. Same compile-time host as the manifest. Root-constructed
+    // over this process's shared HTTP client; `uploadCore` takes the notify as a stated lambda.
     private val notifier: EventNotifier by lazy {
         EventNotifier(KtorPushHttpClient(httpClient), uploadHostFromBundle() ?: "")
     }
@@ -210,20 +213,13 @@ object UploadExtensionRoot {
                 log.e(it) { "process cycle failed" }
                 CycleResult.FAILED
             }
-        // The OS invokes the extension lazily (on library changes), not when an upload quietly
-        // finishes — so a drained cycle that returns COMPLETED leaves already-succeeded jobs
-        // un-acknowledged until the next change. While the ledger still has pending (in-flight)
-        // rows, return PROCESSING to request another invocation so their completions are recorded
-        // promptly; report COMPLETED only once everything is uploaded (pending == 0), so the system
-        // then rests. (The OS throttles re-invocation, so this polls at its cadence, not in a loop.)
-        if (result == CycleResult.COMPLETED) {
-            val pending = ledgerStore.aggregates().pending
-            if (pending > 0) {
-                log.i { "process: $pending pending — requesting re-invocation" }
-                return@runBlocking CycleResult.PROCESSING
-            }
-        }
-        result
+        // The pending→PROCESSING requeue rule is `requeueWhilePending` (`:domain` ports/, beside
+        // the raw-value mapping — drained there at the migration finale so it is tested); this
+        // wiring supplies only the ledger read and the debug.log line.
+        result.requeueWhilePending(
+            pending = { ledgerStore.aggregates().pending },
+            onRequeue = { open -> log.i { "process: $open pending — requesting re-invocation" } },
+        )
     } }
 
     /**

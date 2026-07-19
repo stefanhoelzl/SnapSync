@@ -59,10 +59,10 @@ already-joined app performs no provision).
 - **WHEN** a (re)join occurs on iOS 18–26.0 (the app-driven tier) or on iOS ≥26.1 (the OS-driven tier)
 - **THEN** the same marker-gated reconciliation runs on that tier's cycle before any upload job is created
 
-#### Scenario: A reinstall reconciles without any provision
+#### Scenario: A cycle reconciles without any provision having run in its process
 
-- **WHEN** the app is deleted and reinstalled (wiping the App Group ledger) and relaunched into an already-joined event, so no provisioning path runs
-- **THEN** the next upload cycle finds no `joinedEventId` marker, reconciles against the per-device listing, and seeds already-stored resources as `COMPLETED` so none re-upload
+- **WHEN** a membership exists (e.g. re-joined after a reinstall, or saved by the other process) and a cycle runs in a process where no provisioning path ever executed, with no `joinedEventId` marker and an empty ledger
+- **THEN** that cycle reconciles against the per-device listing and seeds already-stored resources as `COMPLETED` so none re-upload — the reconciliation is cycle-resident, never provision-gated
 
 ### Requirement: Event file list seam
 
@@ -271,58 +271,64 @@ marker stays unset, and the next cycle retries. Only the network `LIST` is bound
 - **WHEN** the device-listing fetch does not return within its bounded timeout
 - **THEN** it is treated exactly as a failed fetch — no seed, the ledger and cursor untouched, the marker unset — and the next cycle retries
 
-### Requirement: Reinstall semantics under the config-file migration are staged
+### Requirement: Reinstall semantics stay staged until a post-ship change deletes the read fallback
 
-The reinstall semantics of the config-file migration SHALL land in **two stages**, and this
-requirement records the staging as contract. Migration step 11a moves the config's storage of
-record from the shared Keychain to an App-Group file (capability `event-link`), toward the decided
-end state **reinstall = left the event** — an App-Group file dies with the install, so a
-deleted-and-reinstalled app finds no membership.
+The reinstall semantics of the config-file migration SHALL remain **staged**, and this requirement
+records the staging as contract. The decided end state is **reinstall = left the event** — an
+App-Group file dies with the install — but the flip is gated on the read fallback's deletion,
+which SHALL be a **designated post-ship change**, not part of the migration branch's ship.
 
-**Stage 1 (this change, the write-through window).** The config read SHALL consult the file first
-and, on a definitively-missing file, SHALL fall back to the written-through Keychain copy —
-resurrecting a found membership into the file. Consequently a reinstall (file wiped with the App
-Group; Keychain item surviving uninstall) SHALL still resurrect the membership, exactly as before
-this change: **the missing-file state cannot distinguish a reinstall from an update-in-place**,
-and the fallback must resurrect the update-in-place case or the rollout itself would read a false
-leave on every joined device whose OS-scheduled extension cycle runs before the user first opens
-the updated app (the migration is adapter-resident for the same reason). The pre-existing
-reinstall behavior of this capability — no marker, empty ledger, config present → clear-and-seed
-reconciliation, nothing re-uploads — SHALL continue to hold unchanged over the resurrected config.
+**Stage 1 (in force at ship).** The migration finale ended the 11a Keychain **write-through**
+(saves and clears are file-only; the revert direction is sacrificed, consistent with fix-forward),
+but the config READ keeps the read-only legacy-Keychain fallback (capability `event-link`): a
+definitively-missing file consults the legacy item, resurrects a found membership into the file,
+and only file-missing **and** item-absent reads as a leave. **The ship model forces this**: the
+migration branch reaches `main` — and therefore every production device — as ONE merge, so at
+update time the entire joined installed base consists of pre-11a devices whose config file has
+never existed. The per-step TestFlight soak the original 11a→13b staging assumed never happened
+on this branch; shipping the fallback's deletion in the same merge that introduces the file would
+read every joined device as left on update — a silent, fleet-wide logout. Consequently a
+reinstall during Stage 1 (file wiped with the App Group; Keychain item surviving uninstall) still
+resurrects the membership — indistinguishable from an update-in-place, by design — and the
+pre-existing reinstall behavior (no marker, empty ledger, config present → clear-and-seed
+reconciliation, nothing re-uploads) holds unchanged over the resurrected config.
 
-**Stage 2 (a later change, migration step 13b or after).** When the Keychain copy is deleted and
-the write-through ends, a missing file SHALL have no fallback to consult and SHALL read as
-**definitively not joined**: the reinstalled device's first cycle runs the leave-side
-reconciliation (clearing the `joinedEventId` marker), no upload occurs, and rejoining requires
-re-scanning the invite. That change SHALL carry its own delta to this requirement, collapsing the
-staging; until it lands, Stage 1 is the behavior in force.
+**Stage 2 (a designated post-ship change).** After a production soak — every active joined device
+has executed at least one read on a ≥13b build, so its membership has been migrated into the file
+— a follow-up change SHALL delete the read-only fallback (`KeychainConfigReader`) and retire the
+config pair's runtime-identity pin. Only then does a missing file read as **definitively not
+joined** with nothing else consulted: the reinstalled device's first cycle runs the leave-side
+reconciliation, uploads nothing, and rejoining requires re-scanning the invite. That change SHALL
+carry its own delta to this requirement, collapsing the staging; until it lands, Stage 1 is the
+behavior in force.
 
 No stronger reinstall detector (e.g. an install-scoped marker distinguishing reinstall from
-update) SHALL be introduced meanwhile: it would flip the semantics early for this build while a
-**revert build** — which reads only the Keychain — still resurrects the membership, so the early
-flip would buy build-dependent divergence, not the end-state truth (decision record:
-`changes/archive/migrate-config-to-app-group-file`, D5).
+update) SHALL be introduced meanwhile: it would flip the semantics for fresh state while the
+fallback still resurrects migrated state, buying divergence rather than the end-state truth
+(decision record: `changes/archive/migrate-config-to-app-group-file` D5;
+`changes/archive/2026-07-19-complete-architecture-migration` D4 records the ship-at-once
+reasoning).
 
-#### Scenario: An update-in-place is never read as a leave, whichever process reads first
+#### Scenario: A pre-11a device updates straight to this build and stays joined
 
-- **WHEN** a device joined under the Keychain-era build updates in place and the OS schedules the
-  upload extension before the user opens the updated app
-- **THEN** the extension's first cycle reads the membership through the Keychain fallback,
-  migrates it into the file, runs no leave-side reconciliation, and leaves the `joinedEventId`
-  marker intact
+- **WHEN** a device joined under a pre-11a (Keychain-only) build updates directly to this build —
+  the whole installed base's update path — and the OS schedules the upload extension before the
+  user opens the updated app
+- **THEN** the first cycle reads the membership through the read-only fallback, migrates it into
+  the file, runs no leave-side reconciliation, and leaves the `joinedEventId` marker intact
 
-#### Scenario: A reinstall during the write-through window still resurrects and reconciles
+#### Scenario: A reinstall during Stage 1 still resurrects and reconciles
 
 - **WHEN** the app is deleted and reinstalled (App-Group ledger and config file wiped; Keychain
-  item surviving) during the write-through window and relaunched
-- **THEN** the first read resurrects the membership from the Keychain copy, and the next upload
+  item surviving) while the read fallback is in force, and relaunched
+- **THEN** the first read resurrects the membership from the legacy item, and the next upload
   cycle finds no `joinedEventId` marker and runs the pre-existing clear-and-seed reconciliation,
-  so nothing already stored re-uploads — reinstall behaves exactly as it did before this change
+  so nothing already stored re-uploads
 
-#### Scenario: The end state is reached only by deleting the Keychain copy
+#### Scenario: The end state arrives only with the post-ship fallback deletion
 
-- **WHEN** a later change ends the write-through and deletes the Keychain entry, and the app is
-  thereafter deleted and reinstalled
+- **WHEN** the designated post-ship change deletes the read-only fallback after the production
+  soak, and the app is thereafter deleted and reinstalled
 - **THEN** the first cycle reads definitively-not-joined (no file, no fallback), runs the
   leave-side reconciliation, uploads nothing, and the device rejoins only by scanning the invite
   again

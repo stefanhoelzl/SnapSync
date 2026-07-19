@@ -19,7 +19,6 @@ kotlin {
             // The real Ktor clients some tests drive (HttpEventDirectory, KtorPushHttpClient) moved
             // to the adapter layer at migration step 4.
             implementation(project(":adapter:generic"))
-            implementation(project(":capability:push"))
             implementation(kotlin("test"))
             implementation(libs.coroutines.test)
             implementation(libs.orbit.test)

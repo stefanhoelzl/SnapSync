@@ -19,18 +19,34 @@ class EventName(
 ) {
 
     /**
-     * Store [fetched] as the joined event's name — iff [eventId] is still the configured event (a
-     * fetch that resolves after a switch/leave must not resurrect the old membership) and the name
-     * actually changed (an unchanged name saves nothing).
+     * Store [fetched] as the joined event's name — iff it resolved at all (`null` is the sealed
+     * no-result of a best-effort fetch — offline / 404 / parse — and stores nothing; part of this
+     * rule since the migration finale, so the flows' fetch-then-store is a single straight-line
+     * step), [eventId] is still the configured event (a fetch that resolves after a switch/leave
+     * must not resurrect the old membership), and the name actually changed (an unchanged name
+     * saves nothing).
      *
      * The save is the **whole** current config with only `name` replaced (`copy(name = fetched)`) —
      * a name refresh must never clobber the persisted cutoff (capability `photo-selection-policy`)
      * or any other membership field.
      */
-    suspend fun storeEventNameIfChanged(eventId: String, fetched: String) {
+    suspend fun storeEventNameIfChanged(eventId: String, fetched: String?) {
+        if (fetched == null) return
         val current = configSource.config.value
         if (current?.eventId == eventId && current.name != fetched) {
             store.save(current.copy(name = fetched))
         }
     }
+
+    /**
+     * Whether the membership's title still needs a directory fetch (capability `join-event`): a
+     * scan-path config arrives **nameless** (the QR payload carries only the event id; a
+     * create/interactive-join carries its loaded name), and only then is the network fetch worth
+     * firing. The rule moved here from the Provision flow's `if` at the migration finale — the
+     * flow now switches on this sealed answer (the transcriber grammar's sealed-result form).
+     */
+    fun fetchNeed(name: String): TitleNeed = if (name.isEmpty()) TitleNeed.MISSING else TitleNeed.PRESENT
 }
+
+/** The sealed answer of [EventName.fetchNeed]: does this membership's title need a fetch? */
+enum class TitleNeed { MISSING, PRESENT }

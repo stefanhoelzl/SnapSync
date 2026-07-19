@@ -84,6 +84,11 @@ class RuntimeIdentityTest {
      */
     private val keychainPairs = listOf(
         "app.snapsync.deviceid" to "deviceid",
+        // The config pair survives as a READ-ONLY seat (KeychainConfigReader): the finale ended
+        // the 11a write-through — save/clear are file-only — but the read fallback is the entire
+        // installed base's update path (the branch ships as one merge, so at ship time every
+        // joined device is pre-11a). The pair dies with the post-ship Stage-2 change that deletes
+        // the fallback (capability event-rejoin-reconciliation).
         "app.snapsync.config" to "eventconfig",
         "app.snapsync.attest" to "token",
         "app.snapsync.attest" to "keyid",

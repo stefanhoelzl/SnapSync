@@ -35,6 +35,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.advanceUntilIdle
+import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import org.orbitmvi.orbit.test.test
 
@@ -991,15 +992,21 @@ class StatusContainerHostTest {
     }
 
     @Test
-    fun `an invalid deeplink emits the transient error and changes nothing`() = runTest {
+    fun `an invalid deeplink flashes the self-clearing transient error and changes nothing`() = runTest {
+        // The set-then-clear choreography is presentation-owned (migration finale, step-12 D6): the
+        // shell renders `transientError` verbatim and decides nothing.
         val source = FakeSyncStatusSource(SyncStatus.Loading)
         val permission = FakePermissionSource(PermissionStatus.GRANTED)
-        host(source, backgroundScope, permission = permission, configFake = FakeConfig(null)).test(this) {
-            runOnCreate()
-            containerHost.onOpenUrl("not a config link")
-            expectSideEffect(SetupEffect.InvalidConfigLink)
-            cancelAndIgnoreRemainingItems()
-        }
+        val h = host(source, backgroundScope, permission = permission, configFake = FakeConfig(null))
+        // `intent` returns its Job — joining it is what makes the assertion deterministic (the
+        // container's event loop runs off the virtual scheduler); the self-clear delay then runs
+        // on THIS test's virtual clock (the host scope is backgroundScope).
+        h.onOpenUrl("not a config link").join()
+        assertEquals("That QR code wasn't valid.", h.transientError.value)
+        // …and it self-clears a few seconds after it last appeared.
+        advanceTimeBy(5_000)
+        runCurrent()
+        assertEquals(null, h.transientError.value)
     }
 
     @Test

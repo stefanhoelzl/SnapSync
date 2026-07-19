@@ -119,6 +119,21 @@ class DeviceAttestation(
      */
     suspend fun ensureFresh(): Boolean = refreshing.withLock { refreshLocked() }
 
+    /**
+     * [ensureFresh], reduced to the one fact the status screen surfaces (`SyncHealth.Unattested`):
+     * `true` unless this device both lacks a fresh token and could not get one. A stale token that
+     * renews is a non-event; raising it would be noise — and because opening the app IS a wake,
+     * this normally clears before it can be seen. What survives is a device that is offline or
+     * being refused, which is a real problem that no amount of waiting fixes. Non-throwing, like
+     * [ensureFresh]: a background wake must not die because attestation failed. (Drained verbatim
+     * from the untested app shell at the migration finale — the rule is the trust feature's, not
+     * wiring.)
+     */
+    suspend fun refreshOutcome(): Boolean {
+        val ok = runCatching { ensureFresh() }.getOrDefault(false)
+        return ok || !isStale(token())
+    }
+
     private suspend fun refreshLocked(): Boolean {
         if (!key.isSupported()) {
             // The extension. It must never reach here — but if it ever does, do nothing rather than

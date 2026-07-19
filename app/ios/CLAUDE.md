@@ -22,8 +22,7 @@ Kotlin/Native links whole modules) and the **appex footprint** (Compose/Skiko ha
 memory-capped extension). Both images DO embed the shared domain code, each privately — that is
 fine; no Kotlin type ever crosses the process boundary. The app framework carries Compose/UI + the
 full `domain` stack; the extension framework is lean (`:domain`'s feature/upload UploadCycle
-orchestration over the extension-safe adapters `:adapter:ios:ext-safe` + `:adapter:generic`; the
-receive seam now lives in `:domain`'s feature/upload too — `:capability:upload` was deleted at step 8). Both are
+orchestration over the extension-safe adapters `:adapter:ios:ext-safe` + `:adapter:generic`). Both are
 `isStatic = true` — the Compose-iOS norm (avoids dynamic-linking issues with the bundled
 Skiko/Compose native libs).
 
@@ -64,7 +63,7 @@ step 12; `SwiftShellGuardTest` pins the decision keywords — `if`/`guard`/`swit
   tested `CycleResult.processingResultRawValue()` decided (`?? .failure` — the one remaining Swift
   pin; the system type is Swift-only, so the construction cannot leave the shell).
 
-## Composition roots (manual DI — no expect/actual; the SHARED composition since migration step 7)
+## Composition roots (manual DI — no expect/actual; both call the SHARED composition)
 
 Both roots are wiring only: each constructs its process's platform adapters and hands them to the
 shared composition functions in `:domain`'s `compose/` zone (law "One shared composition") — there
@@ -77,9 +76,11 @@ is no per-root cycle or feature assembly any more.
   composed graph (status sources, attestation, join/leave/create, downloads, upload arm) is wired
   into `StatusContainerHost`.
 - **Extension**: `app/ios/extension/src/iosMain/.../UploadExtensionRoot.kt` — builds
-  `UploadPorts` (the file-backed `ConfigReader`, `IosPhotoKitUploadPlatform` over the shared `IosDiscovery`
-  from `:adapter:ios:ext-safe`, App-Group stores, `:adapter:generic` HTTP adapters) and calls
-  `uploadCore(scope, ports)`; `process()` runs one blocking cycle of the composed `UploadCycle`.
+  `UploadPorts` (the file-backed `ConfigReader`, the PhotoKit `IosPhotoKitUploadPlatform` +
+  `IosDiscovery` — both from `:adapter:ios:ext-safe`, where the platform adapter lives — App-Group
+  stores, `:adapter:generic` HTTP adapters) and calls `uploadCore(scope, ports)`; `process()` runs
+  one blocking cycle of the composed `UploadCycle`, then maps the pending→`PROCESSING` requeue and
+  the raw-value handoff through the tested `ports/` rules.
 - The app-driven tier's `UrlSessionUploadController` calls the same `uploadCore` over its own ports
   (background-`URLSession` platform, pump, scheduler stay tier-local mechanism).
 
@@ -124,13 +125,19 @@ constructs no writer.
 ## Entitlements & Info.plist (the cross-process glue)
 
 - **App Group `group.app.snapsync`** (both `*.entitlements`): the shared on-disk container for the
-  ledger DB the extension writes and the app reads (`iosLedgerStore`) — and, since migration step
-  11a, for the config file of record (`eventconfig.json`, `FileBackedConfigStore`). **Must be
-  registered in the Developer portal** and enabled on both App IDs, or signed builds fail to provision.
+  ledger DB the extension writes and the app reads (`iosLedgerStore`) — and for the config file of
+  record (`eventconfig.json`, `FileBackedConfigStore`; saves are file-only — the legacy Keychain
+  write-through ended with the migration — while the READ keeps the legacy-item fallback
+  (`KeychainConfigReader`) that migrates a pre-file membership into the file: the whole installed
+  base is pre-file at update time, so the fallback IS the update path; a leave deletes the legacy
+  item first so the fallback cannot resurrect it; the fallback's deletion — the true
+  reinstall=left flip — is a designated post-ship change). **Must be registered in the
+  Developer portal** and enabled on both App IDs, or signed builds fail to provision.
 - **Keychain group `$(AppIdentifierPrefix)app.snapsync.shared`** (both `*.entitlements`): lets the
-  extension read the event config's written-through Keychain copy (`KeychainConfigStore`, which omits
-  `kSecAttrAccessGroup` and relies on this default group; the copy stays written through until
-  migration step 13b so a revert build finds a live config). Keychain groups need **no** portal step.
+  extension read the shared Keychain items the app writes — the device id
+  (`KeychainDeviceIdentity`), the attestation token (`KeychainAttestStore`), and the legacy config
+  item (read + leave-delete only, via `KeychainConfigReader`, until the post-ship Stage-2 change) — all of which
+  omit `kSecAttrAccessGroup` and rely on this default group. Keychain groups need **no** portal step.
 - **Associated domain `applinks:snapsync.stho.net`** (app entitlements only, via
   `$(ASSOCIATED_DOMAIN)`): claims the event link's Universal Link (capability `event-link`), which is
   how a Camera-scanned QR opens the app. Like App Groups (and unlike keychain groups) **it must be

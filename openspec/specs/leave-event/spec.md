@@ -42,8 +42,8 @@ app shell stays wiring-only. The use-case SHALL construct **no** ledger type.
 ### Requirement: Leave is best-effort with no rollback
 
 A failing step SHALL be logged and SHALL NOT roll back earlier steps; there is no transaction across the
-producer registration, the config store (the App-Group config file and its written-through Keychain
-copy — capability `event-link`, migration step 11a), and the backend notify. The step order — disable
+producer registration, the config store (the App-Group config file — capability `event-link`),
+and the backend notify. The step order — disable
 producer, clear
 config, then notify backend — SHALL be chosen so the worst partial outcome self-heals: a failed backend
 notify SHALL NOT abort or reverse the local teardown (the device still leaves locally; the un-removed

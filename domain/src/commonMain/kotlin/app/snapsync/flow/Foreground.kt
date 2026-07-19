@@ -74,11 +74,9 @@ class Foreground(
         // Foreground-only discovery (capability `photo-download`): pick up foreign photos and import staged.
         scope.launch { activeEventId()?.let { downloadController.reconcile(it) } }
         // Keep the event title current (fills a name a scan couldn't fetch while offline): fetch, then
-        // let the membership rule decide whether the result is persisted.
+        // let the membership rule decide whether the result is persisted (a no-result stores nothing).
         scope.launch {
-            activeEventId()?.let { id ->
-                fetchEventName(id)?.let { fetched -> eventName.storeEventNameIfChanged(id, fetched) }
-            }
+            activeEventId()?.let { id -> eventName.storeEventNameIfChanged(id, fetchEventName(id)) }
         }
         // Wake point (capability `device-attestation`): renew the token if stale. Also covers launch.
         refreshAttestation()

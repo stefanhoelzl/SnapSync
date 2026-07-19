@@ -50,7 +50,9 @@ interface ConfigReader {
  * Map a raw Keychain read to a [ConfigRead]. Pure, so the branch that matters — *unreadable is not
  * absent* — is tested on JVM **and** the iOS simulator. [decode] returns `null` for an item that does
  * not decode, which is a [ConfigRead.None] (an undecodable item is genuinely unusable), never an
- * [ConfigRead.Unavailable] (which would mean "try again later").
+ * [ConfigRead.Unavailable] (which would mean "try again later"). Since the migration finale this
+ * serves only the READ-ONLY legacy-Keychain fallback ([configReadViaFile]'s `fallback`); the
+ * write-through is ended.
  */
 fun configReadFrom(read: KeychainRead, decode: (String) -> EventConfig?): ConfigRead = when (read) {
     is KeychainRead.Found -> decode(read.value)?.let(ConfigRead::Joined) ?: ConfigRead.None
@@ -60,10 +62,12 @@ fun configReadFrom(read: KeychainRead, decode: (String) -> EventConfig?): Config
 
 /**
  * The three answers a raw config-**file** read can give (migration step 11a: the config's storage of
- * record is an App-Group file; the Keychain copy is kept written-through for revert safety until the
- * migration finale deletes it). The platform adapter maps its file-IO errors onto these — using the
- * pure absence classifier (`isConfigFileAbsence`, `model/`) so "genuinely missing" admits **only**
- * the not-found error class and every other failure stays on the unreadable side.
+ * record is an App-Group file; since the migration finale, saves and clears touch the file ALONE —
+ * the Keychain write-through is ended — while the READ keeps a read-only legacy-Keychain fallback
+ * until the post-ship Stage-2 change, capability `event-rejoin-reconciliation`). The platform
+ * adapter maps its file-IO errors onto these — using the pure absence classifier
+ * (`isConfigFileAbsence`, `model/`) so "genuinely missing" admits **only** the not-found error
+ * class and every other failure stays on the unreadable side.
  */
 sealed interface ConfigFileRead {
 
@@ -72,8 +76,10 @@ sealed interface ConfigFileRead {
 
     /**
      * The file genuinely does not exist (not-found error class **only**) — the only outcome that
-     * may consult the fallback copy, and — with the fallback also definitively empty — the only
-     * road to "this device left the event".
+     * may consult the read-only legacy-Keychain fallback, and — with the fallback also definitively
+     * empty — the only road to "this device left the event". (The Stage-2 flip — reinstall = left,
+     * the fallback deleted — is a designated POST-SHIP change gated on production soak; capability
+     * `event-rejoin-reconciliation` records the staging.)
      */
     data object Missing : ConfigFileRead
 
@@ -108,22 +114,24 @@ const val CONFIG_FILE_UNUSABLE_STATUS: Int = -2
  *   [CONFIG_FILE_UNUSABLE_STATUS] (the Keychain-side legacy rule does NOT transfer — see the
  *   sentinel's doc); foreign → [ConfigRead.Unavailable] with [CONFIG_FILE_FOREIGN_STATUS] (a
  *   future build's file must never read as a leave).
- * - [ConfigFileRead.Missing] → consult [fallback] (the Keychain copy, for as long as it is written
- *   through): a `Joined` answer is **migrated** into the file via [migrate] — best-effort, the
- *   answer is returned regardless so a failed write retries on the next read — which is what closes
- *   the update-in-place false-leave window (the OS can run the extension before the user ever opens
- *   the updated app; both processes carry this same adapter, so whichever reads first migrates).
- *   After the migrate, [fallback] is consulted **again** (compare-and-repair): if the Keychain no
- *   longer holds the value just migrated — a concurrent save/clear in the other process landed
- *   between the read and the write — the file now holds a stale clobber, so [repair] is invoked
- *   with the fresh state (overwrite on `Joined`, delete otherwise) and the **fresh** state is
- *   returned. This shrinks the stale-migrate window from the whole read-to-write span to the
- *   instruction width between the re-read and the return.
- *   `None` stays `None` (definitively not joined — no file **and** no Keychain item) and
- *   `Unavailable` stays `Unavailable` (a locked-device Keychain probe proves nothing).
+ * - [ConfigFileRead.Missing] → consult [fallback] (the READ-ONLY legacy-Keychain reader — the
+ *   write-through is ended, but this branch ships to the installed base as ONE merge, so at ship
+ *   time every joined production device is a pre-11a device whose file never existed; without the
+ *   fallback the flip would silently log out the entire installed base on update): a `Joined`
+ *   answer is **migrated** into the file via [migrate] — best-effort, the answer is returned
+ *   regardless so a failed write retries on the next read. After the migrate, [fallback] is
+ *   consulted **again** (compare-and-repair): if the Keychain no longer holds the value just
+ *   migrated — a concurrent save/clear in the other process landed between the read and the write,
+ *   observable because a save/clear that runs while a legacy item still exists leaves the file
+ *   newer than the item this read is holding — the file now holds a stale clobber, so [repair] is
+ *   invoked with the fresh state and the **fresh** state is returned.
+ *   `None` stays `None` (definitively not joined — no file **and** no legacy item) and
+ *   `Unavailable` stays `Unavailable` (a locked-device Keychain probe proves nothing). The
+ *   fallback's deletion — the true **reinstall = left** flip — is a designated post-ship change
+ *   gated on production soak (capability `event-rejoin-reconciliation`).
  * - [ConfigFileRead.Failed] → [ConfigRead.Unavailable] with the platform's status. The fallback is
  *   deliberately NOT consulted: the file exists-or-unknowable, so answering from the Keychain could
- *   contradict it (e.g. a stale copy after a partial save).
+ *   contradict it (e.g. a stale legacy copy after the file superseded it).
  */
 fun configReadViaFile(
     file: ConfigFileRead,

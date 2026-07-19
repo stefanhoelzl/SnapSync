@@ -1,8 +1,8 @@
 package app.snapsync.integration
 
-import app.snapsync.push.ApnsPushToken
+import app.snapsync.feature.push.ApnsPushToken
+import app.snapsync.feature.push.PushRegistration
 import app.snapsync.push.KtorPushHttpClient
-import app.snapsync.push.PushRegistration
 import app.snapsync.world.BackendStore
 import app.snapsync.world.miniEdgeClient
 import app.snapsync.world.worldTest
