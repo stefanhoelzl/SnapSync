@@ -2,7 +2,7 @@
 # beta SDK; branch-protection requires exactly these two status checks); the THIRD delivers and gates
 # on both. There is NO automatic distribution to any external tester: the uploaded build reaches only
 # the INTERNAL `development` group. Distribution to real users is the dispatch-driven App Store release
-# (ios-release.yml, capability ios-appstore-release); the public alpha promotion was removed.
+# (ios-appstore-promote.yml, capability ios-appstore-release); the public alpha promotion was removed.
 #   * ios-build — on EVERY push (any ref) produces a SIGNED archive of the iOS DEVICE (iphoneos,
 #     arm64) app, linking the iosArm64 framework (the shipping target). The archive step compiles
 #     iosArm64, so it IS the merge gate. This job is a PURE GATE: it exports nothing and uploads
@@ -42,8 +42,8 @@ name: ios
 
 on:
   push:
-    # BRANCHES only. A `vX.Y` tag is handled by ios-release.yml (App Store release); excluding tags
-    # here keeps a release from triggering a redundant archive/deliver. Every branch push
+    # BRANCHES only. A `vX.Y` tag is a release RECEIPT created by ios-appstore-promote.yml (it triggers
+    # nothing); excluding tags here keeps that tag from firing a redundant archive/deliver. Every branch push
     # still runs (no path filter), so the required `ios-build` / `ios-test` checks are posted on every
     # branch and PR and no merge can freeze.
     branches: ["**"]
@@ -79,7 +79,10 @@ jobs:
     name: ios-build
     runs-on: macos-26
     steps:
+      # fetch-tags so the marketing-version computation below can see the release tags (vX.Y).
       - uses: actions/checkout@v7.0.0
+        with:
+          fetch-tags: true
       # Reject a non-HTTPS upload_host before archiving: default ATS (HTTPS-only) forbids plaintext,
       # so a baked http:// host would silently fail every upload on device. Empty input = no override
       # (the archive uses the Config.xcconfig default), so this is a no-op for ordinary pushes.
@@ -114,17 +117,64 @@ jobs:
             echo "APNS_ENV_OUT=production" >> "$GITHUB_ENV"
           fi
 
+      # Compute the marketing version this build carries (capability ios-testflight-delivery):
+      #   MARKETING_VERSION = max(floor, latest vX.Y tag with its minor incremented by 1)
+      # The floor is Config.xcconfig's MARKETING_VERSION (seed 0.1); the tag-derived value wins after the
+      # first release. The minor bump is INTEGER (v0.9 → 0.10, never a decimal carry to 1.0 — a major jump
+      # is only reachable by bumping the committed floor), and max() compares (major, minor) TUPLES so a
+      # floor of 1.0 correctly beats a derived 0.10. A promoted build's App Store version is DERIVED from
+      # this value later (ios-appstore-promote), so this is the single source of the store version.
+      # The dev-IPA path leaves it EMPTY (the archive bakes the Config.xcconfig floor) — a sideload build's
+      # version is immaterial and it never reaches App Store Connect.
+      - name: Compute marketing version
+        run: |
+          if [ "$BUILD_CONFIG" != "Release" ]; then
+            echo "MARKETING_VERSION_OUT=" >> "$GITHUB_ENV"
+            echo "dev/Debug build — marketing version left to the Config.xcconfig floor"
+            exit 0
+          fi
+          python3 - <<'PY' >> "$GITHUB_ENV"
+          import re, subprocess
+
+          def parse(v):
+              m = re.fullmatch(r"(\d+)\.(\d+)", v.strip())
+              return (int(m.group(1)), int(m.group(2))) if m else None
+
+          # Floor from Config.xcconfig (two-part X.Y).
+          floor = None
+          with open("iosApp/Configuration/Config.xcconfig") as f:
+              for line in f:
+                  if line.startswith("MARKETING_VERSION"):
+                      floor = parse(line.split("=", 1)[1])
+                      break
+          assert floor is not None, "MARKETING_VERSION floor not found or not two-part in Config.xcconfig"
+
+          # Latest vX.Y release tag, minor incremented by one (integer bump: 0.9 -> 0.10, never 1.0).
+          tags = subprocess.run(
+              ["git", "tag", "-l", "v[0-9]*.[0-9]*"], capture_output=True, text=True
+          ).stdout.split()
+          versions = [p for p in (parse(t[1:]) for t in tags) if p is not None]
+          derived = None
+          if versions:
+              major, minor = max(versions)
+              derived = (major, minor + 1)
+
+          major, minor = max([floor] + ([derived] if derived else []))
+          print(f"MARKETING_VERSION_OUT={major}.{minor}")
+          PY
+          echo "computed marketing version: $(grep '^MARKETING_VERSION_OUT=' "$GITHUB_ENV" | tail -1)"
+
       # The signed archive doubles as the merge gate (it compiles the shipping iosArm64 framework) and
       # the delivery source. All the archive+sign scaffolding — Java/Gradle/Konan setup, the extension
       # compile, the ASC key, the ephemeral keychain, BOTH persistent certs, and the archive — lives in
-      # the shared composite action so the tag release (ios-release.yml) reuses it byte-for-byte. Build
-      # number = the monotonic run number. marketing-version stays EMPTY here so the archive bakes the
-      # Config.xcconfig fallback (0.1.0, the pre-release version); only the release overrides it from the tag.
+      # the shared composite action. Build number = the monotonic run number. marketing-version is the
+      # value computed above — max(floor, latest tag + minor 1) for a Release build, empty (Config.xcconfig
+      # floor) for a dev-IPA build. A promoted App Store build derives its store version FROM this value.
       - name: Archive signed device app
         uses: ./.github/actions/ios-archive
         with:
           build-config: ${{ env.BUILD_CONFIG }}
-          marketing-version: ""
+          marketing-version: ${{ env.MARKETING_VERSION_OUT }}
           aps-environment: ${{ env.APS_ENV_OUT }}
           apns-env: ${{ env.APNS_ENV_OUT }}
           upload-host: ${{ env.UPLOAD_HOST_OUT }}

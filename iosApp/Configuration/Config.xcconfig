@@ -1,16 +1,21 @@
 // Shared build configuration consumed by iosApp.xcodeproj.
 APP_NAME = SnapSync
 BUNDLE_ID = app.snapsync
-// Public version (CFBundleShortVersionString) DEFAULT/FALLBACK, inherited by BOTH the app and the
-// background-upload extension targets (this is the project-level base config; neither target pins a
-// target-level MARKETING_VERSION any more). This is the fixed pre-release value every plain/local and
-// main/alpha TestFlight build carries — main is NEVER bumped, so it never triggers a first-of-version
-// Beta App Review (the "MARKETING_VERSION trap"). The tag-driven App Store release channel
-// (ios-appstore-release / .github/workflows/ios-release.yml) OVERRIDES this on the xcodebuild line
-// per release (MARKETING_VERSION=<tag minus v>), without editing this file.
+// Public version (CFBundleShortVersionString), inherited by BOTH the app and the background-upload
+// extension targets (this is the project-level base config; neither target pins a target-level
+// MARKETING_VERSION any more). This value is the version FLOOR, two-part `X.Y`, seeded at 0.1. It is
+// what a plain/local build carries, and the seed a main/internal build carries before any release tag
+// exists. ios.yml COMPUTES the version each main build actually carries as
+//   MARKETING_VERSION = max(this floor, latest vX.Y tag with its minor incremented by 1)
+// (integer minor bump — 0.9→0.10, never a decimal carry to 1.0 — compared as (major,minor) tuples),
+// so builds auto-advance off the last release tag. The floor is normally left alone; bump it here (via
+// a PR) ONLY to force a MAJOR jump, e.g. 0.1 → 1.0. There is no longer an App Store "trap": main builds
+// reach only the internal TestFlight group (no Beta App Review at any version), and the App Store release
+// channel (ios-appstore-release / .github/workflows/ios-appstore-promote.yml) PROMOTES an existing build
+// and derives the store version FROM it — it never overrides MARKETING_VERSION and never builds.
 // ⚠️ Do NOT set the Version field in Xcode's target → General tab: Xcode would write a target-level
 // MARKETING_VERSION back into project.pbxproj, shadowing this value again.
-MARKETING_VERSION = 0.1.0
+MARKETING_VERSION = 0.1
 // Apple Team ID — drives DEVELOPMENT_TEAM for signed device/TestFlight builds.
 // Not a secret (visible in any shipped IPA); the simulator gate ignores it (CODE_SIGNING_ALLOWED=NO).
 TEAM_ID = E9Z8BADH58

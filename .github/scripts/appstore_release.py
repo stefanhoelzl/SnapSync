@@ -1,24 +1,28 @@
 #!/usr/bin/env python3
-"""Attach a tag-built iOS build to its App Store version record.
+"""Promote an existing App Store Connect build to its App Store version record.
 
-`ios-release.yml` uploads an `X.Y` build to App Store Connect and then runs this to make the "1.0"-style
-version record actually reference that build — the last step of "version + build submission-ready". A
-human clicks Submit later (once the listing / screenshots / privacy, owned elsewhere, are complete).
+`ios-appstore-promote.yml` PROMOTES a build that `ios-deliver` already uploaded (it builds nothing). The
+build is chosen by its build NUMBER (CFBundleVersion); the store version is DERIVED from the build's own
+marketing version (`preReleaseVersion.version`), so the version record and the build always match — there
+is no `version` input and no mismatch to guard.
 
 The codemagic `app-store-connect` CLI has no version-record attach subcommand, so this drops to the ASC
 REST API (same ES256 JWT + Admin key the rest of the pipeline uses — ASC_KEY_ID / ASC_ISSUER_ID /
 ASC_API_PRIVATE_KEY — so it adds no new credential).
 
-    release  Resolve the just-uploaded build by its build NUMBER (retried — a fresh upload is not
-             immediately discoverable), FIND-OR-CREATE the App Store version record whose
-             versionString == the store version (platform IOS), and ATTACH the build to it. It STOPS
-             before submit-for-review. Idempotent: a record that already references this build is a
-             green no-op, so re-running a flaked release is safe.
+    resolve  Resolve the build by its build NUMBER, read its marketing version, validate it is two-part
+             `X.Y`, and emit it (to $GITHUB_OUTPUT as `version=X.Y` if set, else stdout). Makes NO
+             mutation — the workflow calls this FIRST so the tag-absent guard runs before any attach.
+    release  Resolve the build (retried — waits until it is VALID), FIND-OR-CREATE the App Store version
+             record whose versionString == the DERIVED store version (platform IOS), and ATTACH the build
+             to it. Stops before submit-for-review. Idempotent: a record already referencing this build
+             is a green no-op, so re-running a flaked release is safe.
 """
 
 from __future__ import annotations
 
 import os
+import re
 import sys
 import time
 
@@ -59,22 +63,47 @@ def _session() -> requests.Session:
     return s
 
 
-def _resolve_build(s: requests.Session, app_id: str, build_number: str) -> str:
-    """Wait for the uploaded build (identified by its CFBundleVersion) to be discoverable AND VALID."""
+def _build_version(build: dict, included: list) -> str:
+    """The build's own marketing version (preReleaseVersion.version) = the DERIVED store version."""
+    rel = build.get("relationships", {}).get("preReleaseVersion", {}).get("data")
+    if not rel:
+        raise SystemExit("::error::build has no preReleaseVersion — cannot derive the store version")
+    for inc in included:
+        if inc.get("type") == "preReleaseVersions" and inc.get("id") == rel["id"]:
+            v = inc.get("attributes", {}).get("version")
+            if not v:
+                raise SystemExit("::error::preReleaseVersion carries no version string")
+            return v
+    raise SystemExit("::error::preReleaseVersion was not included in the builds response")
+
+
+def _resolve_build(s: requests.Session, app_id: str, build_number: str, wait: bool) -> tuple[str, str]:
+    """Resolve the build by its CFBundleVersion → (build id, derived store version).
+
+    When `wait`, poll until it is discoverable AND `processingState` VALID (needed before an attach). An
+    already-uploaded build being promoted is normally VALID immediately, so `resolve` passes wait=False.
+    """
     deadline = time.time() + FIND_TIMEOUT_S
     while True:
         r = s.get(
             f"{API}/builds",
-            params={"filter[app]": app_id, "filter[version]": build_number, "limit": 1},
+            params={
+                "filter[app]": app_id,
+                "filter[version]": build_number,
+                "include": "preReleaseVersion",
+                "limit": 1,
+            },
         )
         r.raise_for_status()
-        found = r.json()["data"]
+        body = r.json()
+        found = body["data"]
         if found:
             build = found[0]
+            version = _build_version(build, body.get("included", []))
             state = build["attributes"].get("processingState")
-            if state == "VALID":
-                print(f"build {build_number} = {build['id']} (VALID)")
-                return build["id"]
+            if not wait or state == "VALID":
+                print(f"build {build_number} = {build['id']} (version {version}, processingState {state})")
+                return build["id"], version
             print(f"build {build_number} found but processingState={state}; waiting {FIND_POLL_S}s")
         else:
             print(f"build {build_number} not discoverable yet; retrying in {FIND_POLL_S}s")
@@ -135,9 +164,32 @@ def _attached_build_id(s: requests.Session, version_id: str) -> str | None:
     return data["id"] if data else None
 
 
-def release(app_id: str, build_number: str, version_string: str) -> None:
+def _validate_store_version(version: str) -> str:
+    """The derived store version must be two-part `X.Y` (capability ios-appstore-release)."""
+    if not re.fullmatch(r"\d+\.\d+", version):
+        raise SystemExit(
+            f"::error::build's marketing version '{version}' is not two-part X.Y — refusing to release "
+            f"(a pre-change 0.1.0 or malformed build cannot be promoted)"
+        )
+    return version
+
+
+def resolve(app_id: str, build_number: str) -> None:
+    """Emit the DERIVED store version (no mutation), so the workflow can guard before attaching."""
     s = _session()
-    build_id = _resolve_build(s, app_id, build_number)
+    _, version = _resolve_build(s, app_id, build_number, wait=False)
+    _validate_store_version(version)
+    out = os.environ.get("GITHUB_OUTPUT")
+    if out:
+        with open(out, "a") as f:
+            f.write(f"version={version}\n")
+    print(version)
+
+
+def release(app_id: str, build_number: str) -> None:
+    s = _session()
+    build_id, version_string = _resolve_build(s, app_id, build_number, wait=True)
+    _validate_store_version(version_string)
     version_id = _find_or_create_version(s, app_id, version_string)
 
     # Idempotency: already attached => nothing to do.
@@ -156,9 +208,11 @@ def release(app_id: str, build_number: str, version_string: str) -> None:
 
 if __name__ == "__main__":
     match sys.argv[1:]:
-        case ["release", app_id, build_number, version_string]:
-            release(app_id, build_number, version_string)
+        case ["resolve", app_id, build_number]:
+            resolve(app_id, build_number)
+        case ["release", app_id, build_number]:
+            release(app_id, build_number)
         case _:
             raise SystemExit(
-                "usage: appstore_release.py release <app-id> <build-number> <version-string>"
+                "usage: appstore_release.py (resolve|release) <app-id> <build-number>"
             )
