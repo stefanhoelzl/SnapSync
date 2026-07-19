@@ -139,7 +139,7 @@ adapter's **config StateFlow** into the host (since step 9 the host's read-model
 StateFlows — presentation names no `ports/` type), supplies the same permission adapter as
 `AppPorts.photoAccessRequester` (the port the bundle's `requestAccess`/`openSettings` commands are
 bound to in `compose/`), and passes the file-backed config adapter (the App-Group config store of
-record since migration step 11a, with its written-through Keychain copy — capability `event-link`)
+record — capability `event-link`)
 as both the `ConfigSource` and
 `ConfigStore` in `AppPorts`. The root SHALL bind the `Clock`/`TimeZoneSource` ports' system
 adapters (`:adapter:generic`'s `SystemClock`/`SystemTimeZone`) into the **one shared, pure**
@@ -240,16 +240,18 @@ reaches the container's `onOpenUrl` intent (through the live delegate).
 - **WHEN** the user confirms the leave action in the joined layer
 - **THEN** `MainViewController` invokes `host.onLeaveEvent`, which fires the bundle's `leave`
   command — cancelling in-flight downloads, then running the composed `LeaveEvent` (stopping the
-  producer via the tier-neutral arm and clearing the persisted config — the App-Group file and its
-  written-through Keychain copy; no ledger or `EventStatus`
+  producer via the tier-neutral arm and clearing the persisted config — the App-Group file; no
+  ledger or `EventStatus`
   operation) — and the screen returns to the setup gate
 
 #### Scenario: The share action flows through the command bundle into the platform share
 
 - **WHEN** the user activates the share action in the joined layer
 - **THEN** `MainViewController` invokes `host.onShareInvite`, which fires the bundle's `share`
-  command with the invite link, and the shell-supplied lambda presents a `UIActivityViewController`
-  carrying that link — the UI never constructs UIKit directly and observes no result
+  command with the invite link, and the shell-supplied lambda — `:adapter:ios:app-only`'s
+  `presentShareSheet`, whose presenter walk is adapter technology mechanics — presents a
+  `UIActivityViewController` carrying that link; the UI never constructs UIKit directly and
+  observes no result
 
 #### Scenario: A cold background wake installs no grant subscription
 
@@ -490,7 +492,7 @@ compile-time value baked from the build configuration (`Config.xcconfig`), consi
 On launch the app SHALL register for remote notifications (`UIApplication.registerForRemoteNotifications`)
 and, when the OS delivers the APNs device token (`didRegisterForRemoteNotificationsWithDeviceToken`),
 forward the token — as the encoded token string plus the compile-time `env` — into the Kotlin push
-seam (`:capability:push`) for registration with the backend. A registration failure
+seam (`:domain` `feature/push` over the `ports/` token source) for registration with the backend. A registration failure
 (`didFailToRegisterForRemoteNotificationsWithError`) SHALL be logged and SHALL NOT crash or block the
 app. The Swift `AppDelegate` SHALL perform **no** decision logic — it is a pass-through to Kotlin,
 consistent with the existing deeplink / background-URL-session hooks.

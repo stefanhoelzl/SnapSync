@@ -29,9 +29,6 @@ kotlin {
             implementation(project(":adapter:generic"))
             implementation(project(":adapter:ios:ext-safe"))
             // The event-notify sender (capability `upload-completion-notify`): a bodyless POST to
-            // /event/<id>/notify fired after a drained cycle that completed uploads, so co-contributors
-            // are woken to download. Reuses the same Darwin client as the manifest PUT.
-            implementation(project(":capability:push"))
             // Ktor core for the synchronous in-cycle device.json PUT (the Darwin client comes from
             // :adapter:ios:ext-safe); the byte uploads are the OS's job, not Ktor's.
             implementation(libs.ktor.client.core)

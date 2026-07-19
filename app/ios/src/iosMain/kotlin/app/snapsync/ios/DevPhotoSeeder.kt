@@ -95,6 +95,16 @@ private const val SEED_CHUNK_ABOVE_FLOOR = 10
  *
  * Blocking (`performChangesAndWait`), so this must not run on the main thread.
  */
+// PINNED shell decisions (spec `module-architecture`, "Shells are wiring only" — pinned forms;
+// inventory gated by KotlinShellGuardTest), one pin per function below. Forcing proof: dev
+// equipment that can only live in the app process — `PHAssetCreationRequest` writes the REAL photo
+// library of the attached device from a launch-env trigger (injectable only via a developer
+// launch, so inert in production), which no tested module can reach; the branches are operator-
+// input validation and the chunking the platform forces (`PHAssetCreationRequest` retains each
+// `UIImage` until the transaction commits — measured ~12.6 MB per above-floor image, so one
+// transaction for thousands of requests stalls or is killed on an SE2). Expiry: dies with the
+// seeder if on-device seeding is ever replaced by a simulator-only rig.
+@Suppress("CyclomaticComplexMethod")
 @OptIn(ExperimentalForeignApi::class)
 fun seedPhotoLibraryFromLaunchEnv(log: Logger) {
     val env = NSProcessInfo.processInfo.environment
@@ -128,6 +138,7 @@ fun seedPhotoLibraryFromLaunchEnv(log: Logger) {
  *
  * Blocking (`performChangesAndWait`) — never call on the main thread.
  */
+@Suppress("CyclomaticComplexMethod") // pinned — see the file's pin block above
 @OptIn(ExperimentalForeignApi::class)
 fun seedPhotos(log: Logger, count: Int, policyProbe: Boolean = false) {
     val chunkSize = if (policyProbe) SEED_CHUNK_ABOVE_FLOOR else SEED_CHUNK
@@ -179,6 +190,7 @@ fun seedPhotos(log: Logger, count: Int, policyProbe: Boolean = false) {
  * than deduplicating. [aboveFloor] sizes it over the policy's 3 MP image floor; a flat colour encodes to a
  * small JPEG regardless of dimensions, so the on-disk cost stays modest either way.
  */
+@Suppress("CyclomaticComplexMethod") // pinned — see the file's pin block above
 @OptIn(ExperimentalForeignApi::class)
 private fun solidColorImage(index: Int, aboveFloor: Boolean): UIImage? {
     val w = if (aboveFloor) SEED_ABOVE_FLOOR_WIDTH else SEED_IMAGE_SIDE

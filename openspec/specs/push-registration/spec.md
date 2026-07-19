@@ -17,7 +17,7 @@ Decision record: `changes/archive/2026-07-05-push-notification-infra`.
 ## Requirements
 ### Requirement: APNs token acquisition seam
 
-The `:capability:push` module SHALL define a `PushTokenSource` in `commonMain` that yields the device's
+The system SHALL define a `PushTokenSource` (`:domain` `ports/`, `commonMain`) that yields the device's
 current APNs push token together with its APNs environment (`sandbox` | `production`), and notifies on
 rotation (a `StateFlow` of the latest token). Because the token is **OS-push-delivered, not pulled**,
 the source is a settable holder — it exposes a `deliver(hexToken)` method that both the app-shell wiring
@@ -27,7 +27,7 @@ compile-time** value (sourced from the build's `aps-environment`, e.g. a `Config
 `APNS_ENV`), not detected at runtime — mirroring how the upload host base is injected. The real APNs
 acquisition (calling `registerForRemoteNotifications` and receiving the token) is **app-shell wiring**
 (the Swift `AppDelegate` → `SnapSyncRoot.onPushToken(hex)` → `deliver`) in `:app:ios`, not a
-`:capability:push` type.
+core type.
 
 #### Scenario: The seam yields a token and its environment
 
@@ -41,7 +41,8 @@ acquisition (calling `registerForRemoteNotifications` and receiving the token) i
 
 ### Requirement: Token registration writes the device config
 
-The module SHALL provide a `PushRegistration` use-case (in `commonMain`, tested) that, given the
+The system SHALL provide a `PushRegistration` use-case (`:domain` `feature/push`, `commonMain`,
+tested — re-homed from the deleted `:capability:push` at the migration finale) that, given the
 `deviceId` (from the `device-identity` seam), the backend host (injected compile-time base), and a
 `pushToken` (`token` + `env` from `PushTokenSource`), performs a `PUT <host>/devices/<deviceId>`
 with the JSON body `{ "pushToken": { "kind": "apns", "token": <token>, "env": <env> } }` via an

@@ -23,8 +23,10 @@ The device id SHALL **remain** a Keychain item as the event config migrates to a
 reinstall contracts are opposite. Identity must survive uninstall — a forked id orphans the
 device's byte-store partition and corrupts the event union for every member, remotely unfixably —
 while the membership's decided end state is reinstall = **left** (capability
-`event-rejoin-reconciliation`). Nothing in the config migration, including the eventual deletion
-of the config's written-through Keychain copy, applies to this item.
+`event-rejoin-reconciliation` — staged: the read-only fallback lasts until a post-ship change).
+Nothing in the config migration — the write-through's end, the read-only fallback, or its
+eventual deletion — applies to this item: the device id stays a Keychain item precisely so it
+survives reinstall.
 
 "No persisted value" SHALL mean **exactly** that the Keychain reports the item as not found. A read
 that fails for any other reason — notably because protected data is unavailable on a locked device —

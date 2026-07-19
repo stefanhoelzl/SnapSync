@@ -47,9 +47,11 @@ The **app process** SHALL be the only creator of the album. It SHALL create the 
 photo-library permission transitions to `GRANTED` (or immediately at provision if already granted) for a
 membership whose `saveToAlbum` is `true` and whose album does not yet exist. The membership's opt-in
 gate SHALL be the coordinator's **own leading guard** — `AlbumCoordinator.ensureAlbum(eventId, name,
-saveToAlbum)` is a no-op returning `null` for an opted-out or nameless membership — so its callers (the
-`compose/`-installed permission-grant subscription and the `flow/Provision` trigger) call it
-unconditionally with the membership's facts and no caller can forget the rule. Neither the app's download path nor the upload extension SHALL ever **create** the
+saveToAlbum, granted)` is a no-op returning `null` for an ungranted, opted-out, or nameless
+membership (`granted` defaults `true` for callers that run *because* access was granted) — so its
+callers (the `compose/`-installed permission-grant subscription and the `flow/Provision` trigger,
+which passes the access fact) call it unconditionally with the membership's facts and no caller
+can forget the rule. Neither the app's download path nor the upload extension SHALL ever **create** the
 album — they SHALL only **add** to an already-created album. Because syncing requires the same
 full-library permission, creating on the grant guarantees the album exists before the first synced photo
 is produced, so no two processes race to create it. A membership that never syncs a photo MAY therefore

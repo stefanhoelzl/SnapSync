@@ -99,6 +99,20 @@ class AlbumCoordinatorTest {
     }
 
     @Test
+    fun `ensureAlbum without granted access is a no-op — the access fact is the coordinator's guard`() = runTest {
+        // The Provision flow passes the fact; the rule (no album without full photo access) is
+        // this feature's leading guard since the migration finale, so no caller can forget it.
+        val manager = FakeAlbumManager(createResult = "album-X")
+        val store = InMemoryAlbumMapStore()
+        assertNull(
+            AlbumCoordinator(manager, store)
+                .ensureAlbum("E", "Birthday", saveToAlbum = true, granted = false),
+        )
+        assertEquals(0, manager.createCount)
+        assertNull(store.get("E"))
+    }
+
+    @Test
     fun `albumIdFor returns the stored album only for an opted-in membership`() = runTest {
         val manager = FakeAlbumManager()
         val store = InMemoryAlbumMapStore().apply { put(event, "album-X") }

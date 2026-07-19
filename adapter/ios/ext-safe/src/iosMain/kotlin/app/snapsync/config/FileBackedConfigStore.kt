@@ -47,18 +47,16 @@ private const val CONFIG_FILE_NAME: String = "eventconfig.json"
 /**
  * The iOS [ConfigSource]/[ConfigStore]/[ConfigReader] since migration step 11a: persists the
  * serialized [EventConfig] in a **versioned-envelope file in the App-Group container**
- * ([CONFIG_FILE_NAME]), with the legacy Keychain item ([KeychainConfigStore]) kept as a
- * **written-through copy** — every save/clear still updates it — so a revert build (which only
- * reads the Keychain) finds a live config for the whole soak window. Deleting the Keychain copy is
- * a separate, later migration step (13b+); **only then** does "reinstall = left the event" become
- * true, because until then a reinstall's surviving Keychain item is indistinguishable from an
- * update-in-place and is deliberately resurrected (see [read]).
- *
- * **The migration lives here, inside the adapter** — not in app startup — because it must run in
- * *whichever process reads first*: the OS can schedule the upload extension before the user ever
- * opens the updated app, and an absent config reads as a definitive not-joined, which clears the
- * joined-marker (a false leave on every joined device). App and extension update atomically, so
- * both carry this adapter; the first read migrates (capability `event-rejoin-reconciliation`).
+ * ([CONFIG_FILE_NAME]). Since the migration finale the file is the only storage a WRITE ever
+ * touches — the 11a Keychain **write-through is ended** (save/clear are file-only; the revert
+ * direction is sacrificed, consistent with fix-forward) — while the READ keeps the
+ * adapter-resident migration fallback through the read-only [KeychainConfigReader]: this branch
+ * ships to the installed base as ONE merge, so at ship time every joined production device is a
+ * pre-11a device whose file never existed, and a fallback-less missing-file read would silently
+ * log the entire installed base out on update. The fallback's deletion — the true
+ * **reinstall = left the event** flip — is a designated post-ship change gated on production soak
+ * (capability `event-rejoin-reconciliation` records the staging; decision record: the
+ * migration-finale change's design.md, D4).
  *
  * All decode/decision intelligence is pure and `commonTest`-covered (`configReadViaFile` in
  * `ports/`, the envelope codec + absence classifier in `model/`); this class only performs the
@@ -67,14 +65,14 @@ private const val CONFIG_FILE_NAME: String = "eventconfig.json"
  * the same protection class as the ledger and download DBs, readable while locked after first
  * unlock, which the OS-scheduled (usually-locked) extension cycle requires.
  *
- * Seeds [config] synchronously at construction, exactly like the Keychain store it replaces: a
+ * Seeds [config] synchronously at construction, exactly like the Keychain store it replaced: a
  * background launch before first unlock seeds `null` (the CUFUA read fails permission-class →
  * unreadable, never absent) and every trigger flow calls [reload] to repair it before acting
  * (migration step 12 — the trigger-time re-read replaced the unlock hook).
  * **Readers that act on the absence of a config must use [read], not [config]** — see [ConfigRead].
  */
 class FileBackedConfigStore(
-    private val keychainStore: KeychainConfigStore = KeychainConfigStore(),
+    private val keychainReader: KeychainConfigReader = KeychainConfigReader(),
     private val log: Logger = Logger.withTag("fileConfig"),
 ) : ConfigSource, ConfigStore, ConfigReader {
 
@@ -82,53 +80,47 @@ class FileBackedConfigStore(
     override val config: StateFlow<EventConfig?> = state
 
     override suspend fun save(config: EventConfig) {
-        // Deliberately NO equal-config early return here: a torn save (file written, Keychain
-        // crash) followed by a relaunch seeds [state] from the file, and an outer guard would then
-        // skip exactly the re-save that repairs the stale Keychain copy. The inner
-        // [KeychainConfigStore.save] carries its own idempotence (its state seeds from the
-        // Keychain, so a genuinely-stale copy is rewritten and an equal one is a no-op), and the
-        // [StateFlow] conflates equal values, so the port's no-redundant-emission contract holds.
-        //
-        // File first — the storage of record this build reads — then the Keychain write-through
-        // (the revert build's copy). A crash between the two leaves the file authoritative and the
-        // Keychain copy stale until the next save (equal or not) rewrites it; the file's presence
-        // means the stale copy is never consulted by this build (fallback runs only on MISSING).
+        // Deliberately NO equal-config early return: [state] can lag a cross-process writer, so an
+        // outer guard could skip a write the file actually needs. The atomic rewrite of an equal
+        // value is harmless, and the [StateFlow] conflates equal values, so the port's
+        // no-redundant-emission contract holds.
         writeFile(encodeConfigFile(config))
-        keychainStore.save(config)
         state.value = config
     }
 
     override suspend fun clear() {
-        // Keychain FIRST, file second — the reverse of save, deliberately: were the file deleted
-        // first, a crash before the Keychain delete would leave exactly the state [read]'s
-        // migration fallback resurrects (file missing + Keychain item present), silently undoing
-        // the leave. Cleared this way, a crash between leaves the file present: THIS build stays
-        // joined and the leave simply retries — while a REVERT build (which reads only the
-        // Keychain) already reads left. That divergence is the accepted cost of the ordering; the
-        // resurrected-leave alternative is worse because nothing would ever surface it. Both
-        // halves are idempotent.
-        keychainStore.clear()
+        // Legacy item FIRST, file second — the 11a clear ordering's surviving half: while the
+        // read fallback lasts, a file-only clear would leave exactly the missing-file +
+        // item-present state the fallback resurrects, silently undoing the leave on every
+        // migrated device. Cleared this way, a crash between the two leaves the file present —
+        // this build stays joined and the leave simply retries. Both halves are idempotent; no
+        // config VALUE is ever written to the Keychain (the write-through stays ended).
+        // A throw here propagates (the 11a posture): the file stays, this build stays joined, and
+        // the leave retries visibly — swallowing it would proceed to the file delete and mint the
+        // resurrection state. (IosKeychain.delete already swallows SecItemDelete statuses; only an
+        // allocation failure can throw.)
+        keychainReader.deleteLegacyItem()
         deleteFile()
         state.value = null
     }
 
     /**
      * The three-state read (capability `event-link`): the pure `configReadViaFile` over this
-     * process's file IO, falling back to the written-through Keychain copy **only** on a
-     * definitively missing file — and migrating a found copy into the file so the next read
-     * answers from the file alone. See the class doc for why a reinstall (file lost, Keychain
-     * surviving) is resurrected rather than read as a leave while the write-through lasts.
+     * process's file IO, consulting the READ-ONLY legacy-Keychain fallback **only** on a
+     * definitively missing file — and migrating a found membership into the file (with the 11a
+     * compare-and-repair) so the next read answers from the file alone. See the class doc for why
+     * the read fallback outlives the write-through until the post-ship Stage-2 change.
      */
     override fun read(): ConfigRead {
         val read = configReadViaFile(
             file = readFileRaw(),
-            fallback = { keychainStore.read() },
+            fallback = { keychainReader.read() },
             migrate = { cfg ->
                 runCatching { writeFile(encodeConfigFile(cfg)) }
-                    .onSuccess { log.i { "config migrated: Keychain → App-Group file" } }
+                    .onSuccess { log.i { "config migrated: legacy Keychain → App-Group file" } }
                     .onFailure { log.w(it) { "config migration write failed — the next read retries" } }
             },
-            // Compare-and-repair (the pure algorithm re-reads the Keychain after the migrate): a
+            // Compare-and-repair (the pure algorithm re-reads the fallback after the migrate): a
             // concurrent save/clear in the other process superseded what was just migrated, so the
             // file holds a stale clobber. Best-effort, like the migrate itself.
             repair = { fresh ->

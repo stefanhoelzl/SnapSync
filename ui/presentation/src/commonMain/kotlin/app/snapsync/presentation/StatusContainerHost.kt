@@ -22,8 +22,11 @@ import app.snapsync.model.SyncProgress
 import app.snapsync.feature.status.SyncStatusSource
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
@@ -97,7 +100,7 @@ class StatusContainerHost(
     // fresh internal instance) so the forge harness can forge any `JoinPhase` by writing this cell
     // directly; production and the full-stack harness accept the default and let the gate drive it.
     private val pending: MutablePendingJoinSource = MutablePendingJoinSource(),
-) : ContainerHost<UiState, SetupEffect> {
+) : ContainerHost<UiState, Nothing> {
 
     /**
      * "Now", re-emitted every minute **only** while the joined event has not begun (capability
@@ -132,7 +135,7 @@ class StatusContainerHost(
                 }
             }
 
-    override val container: Container<UiState, SetupEffect> =
+    override val container: Container<UiState, Nothing> =
         scope.container(
             // All seams hold their current truth synchronously, so the first state the screen can ever
             // render derives from real values — never a guess or a placeholder.
@@ -191,6 +194,35 @@ class StatusContainerHost(
             .stateIn(scope, SharingStarted.Eagerly, config.value?.inviteUrl())
 
     /**
+     * The transient invalid-link error (capability `event-link`): an event link arrived that the
+     * decoder rejected, so the create screen flashes a self-clearing message on its inline error
+     * line without changing persisted state. A screen-level `StateFlow` like [inviteUrl] — it never
+     * enters `UiState`, and the self-clear choreography lives HERE, in presentation (spec
+     * `module-architecture`, "Commands cross one door": multi-step interactions are
+     * presentation-owned choreography, and interaction state dies with the UI). It replaced the
+     * former one-shot side-effect channel at the migration finale: the channel had exactly one
+     * consumer — the untested iOS shell, which carried the set-then-clear choreography as the last
+     * decision in `MainViewController` (step-12 D6 assigned its drain here).
+     *
+     * A rejected link while the message is already showing re-arms the full window (the timer
+     * restarts) — the deliberate reading of "self-clearing a few seconds after it LAST appeared".
+     */
+    val transientError: StateFlow<String?>
+        get() = transientErrorState
+
+    private val transientErrorState = MutableStateFlow<String?>(null)
+    private var transientErrorClear: Job? = null
+
+    private fun showTransientError() {
+        transientErrorState.value = INVALID_LINK_MESSAGE
+        transientErrorClear?.cancel()
+        transientErrorClear = scope.launch {
+            delay(TRANSIENT_ERROR_MILLIS)
+            transientErrorState.value = null
+        }
+    }
+
+    /**
      * The joined event's human-readable name for the screen title (fetched by id after joining, so it
      * may be `null` until a foreground refresh fills it). A screen-level param like [inviteUrl] — it
      * does not enter `UiState`, so the reduction gains no branch for it.
@@ -244,7 +276,7 @@ class StatusContainerHost(
      */
     fun onOpenUrl(raw: String) = intent {
         when (val result = decodeEventUrl(raw)) {
-            is ConfigDecodeResult.Failure -> postSideEffect(SetupEffect.InvalidConfigLink)
+            is ConfigDecodeResult.Failure -> showTransientError()
             is ConfigDecodeResult.Success -> {
                 val eventId = result.payload.eventId
                 val current = config.value
@@ -464,6 +496,12 @@ class StatusContainerHost(
  * nothing of the member's can upload before the start regardless.
  */
 private const val NOT_STARTED_TICK_MILLIS = 60_000L
+
+/** How long the transient invalid-link error stays on screen after it last appeared. */
+private const val TRANSIENT_ERROR_MILLIS = 4_000L
+
+/** The transient invalid-link copy (the screen renders [StatusContainerHost.transientError] verbatim). */
+private const val INVALID_LINK_MESSAGE = "That QR code wasn't valid."
 
 /** The loaded/committing name carried by a phase, if any (for re-issuing the commit on confirm/retry). */
 private fun JoinPhase.name(): String? = when (this) {

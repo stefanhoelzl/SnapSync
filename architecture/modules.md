@@ -13,10 +13,8 @@ flowchart LR
   app_desktop[":app:desktop"]
   app_ios[":app:ios"]
   app_ios_extension[":app:ios:extension"]
-  capability_push[":capability:push"]
   domain[":domain"]
   test_architecture[":test:architecture"]
-  test_architecture_migration[":test:architecture:migration"]
   test_harness_driver[":test:harness-driver"]
   test_integration[":test:integration"]
   test_world[":test:world"]
@@ -40,19 +38,14 @@ flowchart LR
   app_ios --> adapter_generic
   app_ios --> adapter_ios_app_only
   app_ios --> adapter_ios_ext_safe
-  app_ios --> capability_push
   app_ios --> domain
   app_ios --> ui_presentation
   app_ios --> ui_screens
   app_ios_extension --> adapter_generic
   app_ios_extension --> adapter_ios_ext_safe
-  app_ios_extension --> capability_push
   app_ios_extension --> domain
-  capability_push --> adapter_generic
-  capability_push --> domain
   test_harness_driver --> app_desktop
   test_integration --> adapter_generic
-  test_integration --> capability_push
   test_integration --> domain
   test_integration --> test_world
   test_integration --> ui_presentation

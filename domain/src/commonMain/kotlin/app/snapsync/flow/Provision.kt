@@ -3,6 +3,9 @@ package app.snapsync.flow
 import app.snapsync.feature.album.AlbumCoordinator
 import app.snapsync.feature.download.DownloadController
 import app.snapsync.feature.membership.EventName
+import app.snapsync.feature.membership.SwitchDecision
+import app.snapsync.feature.membership.TitleNeed
+import app.snapsync.feature.membership.switchDecision
 import app.snapsync.feature.upload.UploadArm
 import app.snapsync.model.EventConfig
 import kotlinx.coroutines.CoroutineScope
@@ -15,21 +18,21 @@ import kotlinx.coroutines.launch
  * reach simply do not exist in the seams it calls (`upload-lifecycle`).
  *
  * Order (each preserved from the shell's former `provisionEvent`):
- *  1. **Switch** — provisioning a *different* event while joined leaves the previous one on the backend
- *     first (best-effort via [notifyLeave]); re-provisioning the same event is not a switch.
+ *  1. **Switch** — whether a leave is due is `feature/membership`'s sealed [switchDecision] rule;
+ *     on a switch the previous event is left on the backend first (best-effort via [notifyLeave]).
  *  2. **Save** the whole [EventConfig] as-is (never destructured — a newly-added field like the cutoff
  *     must not be dropped before the persist the extension reads).
  *  3. **Refresh** the status sources (re-enumerate the own total, re-read completeness) — synchronous,
  *     so its lines carry this trigger's log context, as before.
  *  4. **Arm** the tier-neutral upload lifecycle ([UploadArm.onProvision]): with access granted it starts
  *     the producer (or stops it for a download-only membership); with no access it defers to the grant.
- *  5. **Album** — with permission already granted, ask the coordinator for the event album (the grant
- *     subscription covers the grant-after-join case). Called unconditionally with the membership's
- *     facts: the opt-in gate is [AlbumCoordinator.ensureAlbum]'s own leading guard (`event-album`).
+ *  5. **Album** — ask the coordinator for the event album, unconditionally, passing the access fact
+ *     along with the membership's: the granted/opt-in gate is [AlbumCoordinator.ensureAlbum]'s own
+ *     leading guard (`event-album`; the grant subscription covers the grant-after-join case).
  *  6. **Reconcile** foreign downloads and **fetch the name** — each on its own escaping launch, so a
- *     slow one never blocks the join and each labels its own log lines. The name fetch fires only for
- *     a nameless config (the scan path; a create/join carries its loaded name), and whether the result
- *     is persisted is [EventName]'s rule.
+ *     slow one never blocks the join and each labels its own log lines. Whether the fetch is due is
+ *     [EventName.fetchNeed]'s sealed rule (only a nameless, scan-path config needs one), and whether
+ *     the result is persisted is [EventName]'s store rule.
  *
  * Port touches ([activeEventId], [notifyLeave], [saveConfig], [refreshStatus], [isGranted],
  * [fetchEventName]) arrive as `model`-typed effect lambdas built in `compose/`; the album and
@@ -58,10 +61,11 @@ class Provision(
     private val fetchEventName: suspend (eventId: String) -> String?,
 ) {
     suspend fun run(cfg: EventConfig) {
-        // 1. Switch: leave the previous event on the backend first (best-effort). Re-scanning the same
-        //    event is not a switch and fires no leave.
-        activeEventId()?.let { previous ->
-            if (previous != cfg.eventId) notifyLeave(previous)
+        // 1. Switch: whether a leave is due is membership's sealed rule; on LeavePrevious the flow
+        //    fires the best-effort backend leave first. Re-scanning the same event is a Stay.
+        when (val decision = switchDecision(activeEventId(), cfg.eventId)) {
+            is SwitchDecision.LeavePrevious -> notifyLeave(decision.previousEventId)
+            SwitchDecision.Stay -> Unit
         }
         // 2. Persist the full config as-is (the per-device cutoff rides along untouched).
         saveConfig(cfg)
@@ -69,16 +73,20 @@ class Provision(
         refreshStatus()
         // 4. Drive the tier-neutral upload lifecycle; nothing is cancelled or reset (no destructive verb).
         uploadArm.onProvision()
-        // 5. Event album, if access is already granted (grant subscription covers the grant-after-join
-        //    case). Unconditional call: the opt-in/name gate is the coordinator's (capability `event-album`).
-        if (isGranted()) albumCoordinator.ensureAlbum(cfg.eventId, cfg.name, cfg.saveToAlbum)
+        // 5. Event album — an unconditional call carrying the access FACT: the granted/opt-in/name
+        //    gate is the coordinator's own leading guard (capability `event-album`), so no caller can
+        //    forget it. (The grant subscription covers the grant-after-join case.)
+        albumCoordinator.ensureAlbum(cfg.eventId, cfg.name, cfg.saveToAlbum, granted = isGranted())
         // 6. Auto-download the other contributors' photos (no-op under an upload-only direction, gated
-        //    inside the controller), and fill a scan-path title by id — each on its own escaping launch.
+        //    inside the controller), and fill a scan-path title by id — each on its own escaping
+        //    launch. Whether a fetch is due is membership's sealed rule (a scan-path config arrives
+        //    nameless); whether the result is persisted is [EventName]'s.
         scope.launch { downloadController.reconcile(cfg.eventId) }
-        if (cfg.name.isEmpty()) {
-            scope.launch {
-                fetchEventName(cfg.eventId)?.let { eventName.storeEventNameIfChanged(cfg.eventId, it) }
+        when (eventName.fetchNeed(cfg.name)) {
+            TitleNeed.MISSING -> scope.launch {
+                eventName.storeEventNameIfChanged(cfg.eventId, fetchEventName(cfg.eventId))
             }
+            TitleNeed.PRESENT -> Unit
         }
     }
 }

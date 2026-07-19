@@ -9,8 +9,9 @@ not. Its payload rides in the URL **fragment**, which a browser never transmits,
 *is* the upload capability — never reaches a server even on that fallback path.
 
 This capability owns the URL and payload contract, the pure structural decoder, the `ConfigSource`/
-`ConfigStore` seams, the iOS file-backed store (the App-Group config file with its written-through
-Keychain copy, migration step 11a), the codec (`encodeEventUrl`/`decodeEventUrl`) that
+`ConfigStore` seams, the iOS file-backed store (the App-Group config file of record; writes are
+file-only since the migration finale ended 11a's Keychain write-through, with a read-only
+legacy-Keychain fallback until the post-ship Stage-2 change), the codec (`encodeEventUrl`/`decodeEventUrl`) that
 is the link's single encoder-decoder pair (the in-app invite QR, capability `event-invite-qr`, renders
 its output), the Apple App Site Association document the link depends on, and the `GET /join` App
 Store fallback.
@@ -241,14 +242,16 @@ The config seam SHALL distinguish three outcomes: a **readable** config, a **def
 config, and an **unreadable** config. An unreadable config SHALL NOT be reported as an absent
 config.
 
-Since migration step 11a the distinction is grounded on the App-Group config file: **definitely
-absent** SHALL mean exactly that the file read failed with the **not-found error class**
+The distinction is grounded on the App-Group config file: **definitely absent** SHALL mean
+exactly that the file read failed with the **not-found error class**
 (`NSFileReadNoSuchFileError` 260 / `NSFileNoSuchFileError` 4 / POSIX `ENOENT`) **and** the
-written-through Keychain fallback reported item-not-found (while the write-through lasts —
-capability `event-rejoin-reconciliation` records the staging). A read that fails for **any other
-reason** — notably the permission-class failure of a protected-file read before first unlock, an
-unreadable Keychain fallback, a missing App-Group container, or file content this build cannot
-positively interpret (a foreign envelope version or an undecodable current-version payload) — SHALL be **unreadable**. The absence class is
+read-only legacy-Keychain fallback reported item-not-found (while the fallback lasts — it is the
+installed base's update path, and its deletion is a designated post-ship change; capability
+`event-rejoin-reconciliation` records the staging). A read that fails for **any other reason** —
+notably the permission-class failure of a protected-file read before first unlock, an unreadable
+legacy-Keychain fallback, a missing App-Group container, or file content this build cannot
+positively interpret (a foreign envelope version or an undecodable current-version payload) —
+SHALL be **unreadable**. The absence class is
 a closed whitelist, deliberately: an unrecognized error shape lands on the unreadable side, where
 the cost is a deferred cycle, not a false leave.
 
@@ -280,15 +283,15 @@ that forces a complete library re-enumeration) — repeatedly, without the marke
 #### Scenario: A definitely-absent config still drives the leave path
 
 - **WHEN** an upload cycle reads the config, the file is missing by the not-found error class, and
-  the written-through Keychain copy reports no such item
+  the read-only legacy-Keychain fallback reports no such item
 - **THEN** the reconciliation runs for the no-config case and clears the `joinedEventId` marker,
   exactly as a leave requires
 
-#### Scenario: A missing file with an unreadable Keychain fallback stays unreadable
+#### Scenario: A missing file with an unreadable legacy Keychain stays unreadable
 
-- **WHEN** an upload cycle reads the config, the file is definitively missing, and the Keychain
-  fallback read fails (protected data unavailable)
-- **THEN** the read reports unreadable — a pre-migration joined install on a locked device is
+- **WHEN** an upload cycle reads the config, the file is definitively missing, and the fallback
+  read fails (protected data unavailable)
+- **THEN** the read reports unreadable — a pre-11a joined install on a locked device is
   indistinguishable from a left device here, so absence is unproven — and the cycle skips
 
 #### Scenario: A joined device stays settled across locked wakes
@@ -359,7 +362,7 @@ separate change).
 - **WHEN** the previous-event `DELETE` fails during a switch
 - **THEN** the failure is logged and the new event's config is still persisted (the device is provisioned to the new event)
 
-### Requirement: iOS file-backed config store with Keychain write-through
+### Requirement: iOS file-backed config store
 
 The capability SHALL provide an iOS adapter (`iosMain`, `:adapter:ios:ext-safe` — both processes
 link it) implementing `ConfigSource`, `ConfigStore`, and the three-state `ConfigReader` against a
@@ -377,25 +380,38 @@ Writes SHALL be **atomic** (temp file + rename) under
 it has been unlocked since boot, because the OS invokes the upload extension while the device is
 idle and therefore usually locked (the same class as the sibling App-Group stores).
 
-**Write-through (copy, don't move).** `save` SHALL write the file and then write the identical
-config through to the legacy Keychain item (the pre-11a store, unchanged accessibility contract);
-`clear` SHALL delete the Keychain item **first** and the file second. The orderings are
-load-bearing: a torn save leaves the file (which this build reads) authoritative; a torn clear
-must never produce the missing-file + present-Keychain state, which the migration fallback below
-would resurrect — silently undoing the leave. The write-through SHALL persist until a later change
-deletes the Keychain entry (migration step 13b or after), so a **revert build** — which reads only
-the Keychain — finds a live config for the whole soak window.
+**No config value is ever written to the Keychain again; the read keeps the legacy fallback.**
+The migration finale ended the 11a Keychain **write-through**: `save` SHALL write the file alone,
+so the revert direction is sacrificed, consistent with fix-forward. `clear` SHALL delete the
+legacy Keychain item **first** and the file second (both idempotent) — the 11a clear contract's
+surviving half, load-bearing while the fallback lasts: a file-only clear would leave exactly the
+missing-file + item-present state the fallback resurrects, silently undoing the leave on every
+migrated device; a crash between the two leaves the file present, so this build stays joined and
+the leave retries. The READ SHALL keep the adapter-resident migration fallback through the
+legacy-Keychain seat (`KeychainConfigReader` — read + the leave-path delete only, no save; it may
+repair a legacy item's accessibility class in place, value untouched): a
+read whose file is **definitively missing** (the not-found error class only) SHALL consult it,
+and a found config is returned **and atomically written into the file** (best-effort: a failed
+migration write returns the fallback's answer and retries on the next read; after the write the
+fallback is re-checked — compare-and-repair — and a value a concurrent save/clear superseded is
+repaired to, and answered with, the fresh state); a definitively-absent item reads as no config;
+an unreadable item reads as unreadable. The fallback SHALL live in the adapter — not in app
+startup — so it runs in **whichever process reads first** (the OS can schedule the upload
+extension before the user ever opens the updated app; app + extension update atomically).
 
-**Adapter-resident migration.** A read whose file is **definitively missing** (per capability
-`event-link`, *An unreadable config is not an absent config* — the not-found error class only)
-SHALL fall back to the Keychain copy: a found config is returned **and atomically written into the
-file** (best-effort: a failed migration write returns the Keychain's answer and retries on the
-next read; after the write the fallback is re-checked, and a value a concurrent save/clear
-superseded is repaired to — and answered with — the fresh state); a definitively-absent Keychain
-reads as no config; an unreadable Keychain reads as
-unreadable. The migration SHALL live in the adapter — not in app startup — so it runs in
-**whichever process reads first**: the OS can schedule the upload extension before the user ever
-opens the updated app, and app + extension update atomically, so both carry the adapter.
+The fallback outlives the write-through **because of the ship model**: this branch reaches the
+installed base as one merge, so at ship (update) time every joined production device is a
+pre-11a device whose file has never existed — without the fallback, the update itself would read
+every joined device as left. Deleting the fallback (and only then retiring the pair's
+runtime-identity pin) is the designated post-ship Stage-2 change, gated on production soak
+(capability `event-rejoin-reconciliation`).
+
+One accepted Stage-1 divergence, on record: because `save` no longer maintains the legacy item, a
+migrated device that **switches** events leaves a stale legacy item behind (holding the previous
+membership), and a reinstall before Stage 2 then resurrects that *previous* membership rather
+than the current one — bounded (the device was genuinely a member of it; the switch already
+issued its best-effort backend leave; re-scanning converges) and it dies with the Stage-2
+fallback deletion. Maintaining the item on save would be the write-through this change ends.
 
 **Version handling.** Decoding SHALL ignore unknown keys on both the envelope and the payload (a
 same-version additive change needs no version bump, and the `EventConfig` legacy-field defaults
@@ -406,7 +422,7 @@ upload until the user re-scans (a save overwrites the file). The Keychain legacy
 undecodable item reads as no config — deliberately does NOT transfer to the file: the adapter's
 own atomic writes make an unusable current-version file unreachable, so one is an unexplained
 state, and an unexplained state defers rather than driving a leave; the rule stays in force on
-the Keychain fallback side only. A file whose envelope
+the read-only fallback side. A file whose envelope
 version is **not** this build's, or whose content is not an envelope at all, SHALL read as
 **unreadable** — never as absent, never a crash — so a build that opens a successor's file defers
 instead of reading a leave.
@@ -437,31 +453,31 @@ posture (decision record: `changes/archive/migrate-config-to-app-group-file`, D6
   unlocked at least once since boot
 - **THEN** the file is read successfully and the cycle proceeds with the persisted config
 
-#### Scenario: An update-in-place migrates on first read, in whichever process runs first
+#### Scenario: Save writes the file alone
 
-- **WHEN** a device joined under the Keychain-era build updates in place (Keychain item present,
+- **WHEN** `save` persists a config
+- **THEN** only the App-Group file is written — no Keychain item is touched (the write-through is
+  ended) — and `config` emits the new value
+
+#### Scenario: Clear removes the legacy item first, then the file
+
+- **WHEN** `clear()` is invoked while a config is persisted
+- **THEN** the legacy Keychain item is (best-effort, idempotently) deleted before the file,
+  `config` emits `null`, and at no crash point does the store rest in the missing-file +
+  present-item state the read fallback would resurrect
+
+#### Scenario: A pre-file joined device migrates on first read, in whichever process runs first
+
+- **WHEN** a device joined under a Keychain-era build updates to this build (legacy item present,
   no file) and either process — the app **or** the OS-scheduled upload extension — performs the
   first read
-- **THEN** the read returns the Keychain config (never a false not-joined), writes it atomically
+- **THEN** the read returns the legacy config (never a false not-joined), writes it atomically
   into the App-Group file, and subsequent reads answer from the file alone
 
 #### Scenario: A failed migration write does not fail the read
 
-- **WHEN** the fallback finds a Keychain config but the file write fails
+- **WHEN** the fallback finds a legacy config but the file write fails
 - **THEN** the read still returns that config, and the next read retries the migration
-
-#### Scenario: Save writes through to the Keychain copy
-
-- **WHEN** `save` persists a config
-- **THEN** the App-Group file holds the new envelope **and** the legacy Keychain item holds the
-  identical serialized config, so a reverted (pre-file) build reads the same membership
-
-#### Scenario: Clear removes both copies, Keychain first
-
-- **WHEN** `clear()` is invoked while a config is persisted
-- **THEN** the Keychain item is deleted before the file, `config` emits `null`, and at no
-  intermediate point does the store hold the missing-file + present-Keychain state that the
-  migration fallback would resurrect
 
 #### Scenario: A future-version file reads as unreadable, never a leave
 
@@ -484,17 +500,17 @@ posture (decision record: `changes/archive/migrate-config-to-app-group-file`, D6
 - **THEN** the `StateFlow` retains the joined config — the screen does not regress to the setup
   gate — and a later conclusive read replaces it
 
-#### Scenario: A reinstall during the write-through window resurrects from the Keychain copy
+#### Scenario: A reinstall while the read fallback lasts resurrects from the legacy item
 
-- **WHEN** the app is deleted and reinstalled (the App-Group file is wiped; the Keychain item
-  survives uninstall) while the write-through is still in force
-- **THEN** the first read falls back to the surviving Keychain config, migrates it into the file,
+- **WHEN** the app is deleted and reinstalled (the App-Group file is wiped; the legacy Keychain
+  item survives uninstall) while the read-only fallback is still in force
+- **THEN** the first read falls back to the surviving legacy config, migrates it into the file,
   and the device remains joined — indistinguishable from an update-in-place, by design; the
-  "reinstall = left the event" end state takes effect only when the Keychain copy is deleted
-  (capability `event-rejoin-reconciliation`)
+  "reinstall = left the event" end state takes effect only when the post-ship Stage-2 change
+  deletes the fallback (capability `event-rejoin-reconciliation`)
 
 #### Scenario: No config anywhere reads as null
 
-- **WHEN** the adapter is constructed with no file and no Keychain item present
+- **WHEN** the adapter is constructed with no file and no legacy Keychain item present
 - **THEN** `config.value` is `null`
 

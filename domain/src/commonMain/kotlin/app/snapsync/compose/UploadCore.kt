@@ -152,7 +152,8 @@ fun uploadCore(scope: CoroutineScope, ports: UploadPorts): UploadCycle {
  *
  * ⚖️ UNIFICATION DECISION (design D1 of `establish-shared-composition` — the one sanctioned
  * semantic change of migration step 7): the app-driven tier's copy additionally called
- * `KeychainConfigStore.reload()` before the read, refreshing the UI-facing `ConfigSource`
+ * the config store's `reload()` (then Keychain-backed; today `FileBackedConfigStore.reload()`)
+ * before the read, refreshing the UI-facing `ConfigSource`
  * StateFlow each cycle; the extension's copy did not. The extension's semantics win:
  *  - the spec names the gate's inputs exhaustively (membership read, identity probe, host) — a
  *    StateFlow refresh is a read-model side effect riding in the gate, not gate logic;

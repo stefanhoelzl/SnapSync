@@ -207,8 +207,8 @@ next reader and re-introducing the bug.
 Every architecture gate SHALL derive its scope from the repository's structure at test runtime —
 directory listings for feature enumeration, package patterns for zones, "everything not
 allowlisted" for purity — never from a hand-maintained inclusion list. The only permitted lists
-are loud-when-stale: the end-state module list (compared against the module-graph generator's
-output) and the per-zone library allowlists. Every gate SHALL keep a non-vacuity twin proving it
+are loud-when-stale: the end-state module list (compared against the build's own include set)
+and the per-zone library allowlists. Every gate SHALL keep a non-vacuity twin proving it
 scanned a non-empty scope. Zone gates SHALL match source text (fully-qualified references import
 nothing), not import lists.
 
@@ -245,15 +245,26 @@ in-module ones.
 
 ### Requirement: The shell gates
 The build SHALL enforce zero conditionals in `:app:*` Kotlin via a detekt complexity gate
-(threshold: no function above cyclomatic complexity 1 beyond pinned wiring forms), asserted by a
-test with a non-vacuity floor, over all `:app:*` source sets including `iosMain`. The Swift
-shells SHALL be guarded by a pinned-structure text check: decision keywords (`if`, `guard`,
+(threshold: no function above cyclomatic complexity 1 beyond pinned wiring forms), **gating**
+(`ignoreFailures = false`, wired into `check`) over all production `:app:*` source sets including
+`iosMain`, asserted by a test with a non-vacuity floor (`KotlinShellGuardTest`: the scanned source
+roots exist and are non-empty — a stale source list after a module rename must fail, never pass
+vacuously). Because detekt honors `@Suppress`, the suppression IS the Kotlin pin mechanism, and
+the same guard SHALL pin the suppression inventory exactly, in both directions (per file, by
+count): a new `@Suppress("CyclomaticComplexMethod")` fails until it is argued into the table with
+a forcing proof at the suppression site, and a removed one fails until the table shrinks. The
+Swift shells SHALL be guarded by a pinned-structure text check: decision keywords (`if`, `guard`,
 `switch`, `??`) may appear only at the explicitly pinned occurrences, each pin carrying its
 forcing proof in the failure message.
 
 #### Scenario: A decision creeps into a shell
 - **WHEN** a branch is added to `:app:*` Kotlin or an unpinned decision keyword to a Swift shell
-- **THEN** the respective gate fails and the message names the tested zone the decision belongs in
+- **THEN** the canonical build fails (the detekt gate or the Swift pin check) and the message
+  names the tested zone the decision belongs in
+
+#### Scenario: A suppression sidesteps the Kotlin gate
+- **WHEN** a new `@Suppress("CyclomaticComplexMethod")` appears in the shells without a pin row
+- **THEN** the pin-inventory guard fails — a suppression is exactly as loud as a branch
 
 ### Requirement: The fake-honesty gate
 Every public type in `:adapter:fake` SHALL expose only members of the port interfaces it
@@ -283,13 +294,17 @@ is a spec change to this requirement, deliberately):
   string survives: (`app.snapsync.deviceid`, `deviceid`), (`app.snapsync.config`, `eventconfig`),
   (`app.snapsync.attest`, `token`), (`app.snapsync.attest`, `keyid`),
   (`app.snapsync.album`, `albummap`). Each pair SHALL match exactly once in production Kotlin.
+  The config pair's one seat is the legacy fallback seat (`KeychainConfigReader` — read + the
+  leave-path delete only; the migration finale ended the 11a write-through, so no config value is
+  ever written to the Keychain again): the fallback is the installed base's update path under the
+  ship-at-once model, and the pair's pin dies with the designated post-ship Stage-2 change that
+  deletes the fallback (capability `event-rejoin-reconciliation`).
 - **App-Group `NSUserDefaults` keys** `discovery.changeToken`, `rejoin.joinedEventId`,
   `app.snapsync.album.map`.
 - **Database filenames** `ledger.db`, `downloads.db`.
-- **Config filename** `eventconfig.json` — the App-Group config file of record (migration step
-  11a, capability `event-link`). Re-valuing it reads every joined device's file as absent: a
-  Keychain-fallback resurrection while the write-through lasts, a **false leave on every joined
-  device** after it ends.
+- **Config filename** `eventconfig.json` — the App-Group config file of record (capability
+  `event-link`; the only config storage). Re-valuing it reads every joined device's file as
+  absent: a **false leave on every joined device**.
 - **Device-manifest App-Group layout**: directory `device-manifest`, files `accumulator.json`,
   `last-uploaded.json` — the manifest is the physical fact of membership; losing the accumulator
   shrinks the event union.
@@ -377,33 +392,42 @@ pending state is historical; the self-arming contract stands for any future scop
 - **THEN** the gate fails — a layout drift must surface as red, not as a gate that passes
   forever
 
-### Requirement: The migration beacon is red until the migration completes
-Migration distance SHALL be measured by a dedicated module detached from `check` and reported by
-the NON-required `verify` job of the `architecture` workflow: the job SHALL fail while any per-law
-burn-down count is nonzero (writing the per-law table to the job summary before failing) and SHALL
-pass exactly when every count is zero. The check SHALL NOT be required and SHALL NOT gate any
-merge; the release guard in `ios-appstore-promote.yml` and `/ship`'s watcher SHALL judge REQUIRED checks
-only, with the required set derived from branch protection at run time — never a name list — so
-this and any future informational check is tolerated automatically, and the filter degrades in
-the strict direction (unresolvable required set ⇒ every check counts). At completion each gate
-moves into the gating module and the beacon module is deleted.
-Accepted risk unchanged, on record: during the migration nothing GATES new violations — the
-beacon makes them visible (red, with numbers), not blocked.
+### Requirement: The migration's laws are permanent gates
+Every law the migration beacon measured SHALL be enforced permanently in `:test:architecture`
+under `./gradlew build`. (The module-architecture migration is complete; its beacon — the
+detached burn-down module and the non-required `verify` job — measured zero on every law at the
+finale and was deleted, per its own contract.) The promoted gates:
 
-#### Scenario: A release during the migration
-- **WHEN** `ios-appstore-promote.yml` is dispatched while the beacon is red
-- **THEN** the release guard evaluates required check-runs only, ignoring the red beacon and
-  any other non-required check
+- **Module-set equality**: the `settings.gradle.kts` include set SHALL equal the
+  `module-architecture` target module list exactly (a loud-when-stale list — the one the "Gates
+  fail closed on novelty" requirement permits); adding or deleting a module fails until the list
+  is consciously amended with the withholding argument in a `module-architecture` spec delta.
+- **Mixed port/impl files**: no file under `adapter/`, `domain/`, or `ui/` SHALL declare an
+  `interface` beside a Ktor or SQLDelight import — a port and its technology impl cohabiting is
+  the seed of the pre-migration shape.
+- **Deletion ledger**: the migration's retired dead weight SHALL stay dead — the zxing and
+  kotlincrypto catalog entries, the `capability/` tree, `LedgerReader`, `LoggingPushReceiver`,
+  `EventMetadataSource`, the `LeaveNotifier` interface ceremony, the Arrow/ArrowLevel duplicate
+  enum, and any second `*Enrollment` uploader. Resurrection is not forbidden forever; it is
+  forbidden **silently** — bringing an item back means deleting its guard row in the same commit,
+  with the argument in the PR. The guard SHALL assemble its patterns so its own source never
+  matches them (the beacon's self-match lesson).
+- **Shells** and **zones** are gated by their own standing requirements (the shell gates; the zone
+  gates), now all armed and gating.
 
-#### Scenario: A ship during the migration
-- **WHEN** `/ship` watches a PR carrying the red beacon
-- **THEN** the watcher's verdict comes from required checks only, and the queued-PR classifier
-  does not skip PRs for it
+The flow-transcriber generation failure (capability `architecture-diagrams`) SHALL likewise be a
+hard gate: an untranscribable flow fails `architectureDiagrams` and the freshness test under the
+canonical build.
 
-#### Scenario: The migration completes
-- **WHEN** every per-law burn-down count reaches zero
-- **THEN** the `verify` job goes green, the gates move under `./gradlew build`, and the beacon
-  module and the job are deleted
+#### Scenario: A module is added without amending the target list
+- **WHEN** a new `include(...)` lands in `settings.gradle.kts` with no matching edit to the
+  module-set gate's target list
+- **THEN** the gate fails, naming the drift and the withholding bar a new module must clear
+
+#### Scenario: Retired dead weight grows back
+- **WHEN** a retired declaration (or catalog entry, or the `capability/` tree) reappears anywhere
+  in the scanned roots
+- **THEN** the deletion-ledger gate fails, naming the resurrected item and its rationale
 
 ### Requirement: Dead-edge analysis is scoped honestly
 The build SHALL run dependency-analysis `buildHealth` warn-only for jvm/common declared-unused

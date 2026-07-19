@@ -26,13 +26,17 @@ class AlbumCoordinator(
      * — or when the membership never asked for one). Callers call **unconditionally**: the membership's
      * opt-in gate is the leading guard here, so no caller can forget it — [saveToAlbum] off (or an
      * empty [name], which cannot title an album) is a silent no-op, exactly the rule the app shell's
-     * `ensureAlbumIfOptedIn` helper used to hold (migration step 8 C3).
+     * `ensureAlbumIfOptedIn` helper used to hold (migration step 8 C3). [granted] joined that guard at
+     * the migration finale: an album can only be ensured with photo access fully granted, so the
+     * Provision flow passes the access fact instead of branching on it (the flow coordinates, the
+     * feature decides); it defaults to `true` for the paths that run *because* access was granted
+     * (the compose-installed grant subscription).
      * Reuses the stored album if it still resolves (so a re-join keeps the prior membership's photos);
      * recreates and overwrites the map if the stored id is dangling (the user deleted the album).
      * **App-only** — the sole-creator invariant that removes the cross-process create race (design D3).
      */
-    suspend fun ensureAlbum(eventId: String, name: String, saveToAlbum: Boolean): String? {
-        if (!saveToAlbum || name.isEmpty()) return null
+    suspend fun ensureAlbum(eventId: String, name: String, saveToAlbum: Boolean, granted: Boolean = true): String? {
+        if (!granted || !saveToAlbum || name.isEmpty()) return null
         store.get(eventId)?.let { existing ->
             if (manager.exists(existing)) {
                 log.i { "ensureAlbum: reused album=$existing for event=$eventId" }

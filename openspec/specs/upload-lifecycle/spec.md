@@ -224,8 +224,8 @@ walk, upload job, device manifest, or notify. The decision SHALL have exactly th
   version and an undecodable current-version payload. The cycle SHALL touch nothing: no reconcile, no
   marker clear, no cursor reset, no jobs. It SHALL complete cleanly; the next cycle retries.
 - **Not joined** — there is definitively no usable membership (no config file by the not-found
-  error class and — while that fallback lasts — no written-through Keychain item, or a fallback
-  Keychain item that does not decode (the legacy-item rule, Keychain-side only), or no baked
+  error class and — while the read-only fallback lasts — no legacy Keychain item, or a legacy
+  item that does not decode (the legacy-item rule, Keychain-side only), or no baked
   host). The cycle SHALL run the
   leave-side reconciliation, which clears the `joinedEventId` marker (capability
   `event-rejoin-reconciliation`), and SHALL create no upload job.
@@ -254,7 +254,7 @@ a relaunch.
 
 An unresolvable device identity SHALL produce **Skip**, never **Not joined**. Resolving the identity can
 fail exactly as the membership read can — the identity is a Keychain item and the membership a
-protected App-Group file (with a Keychain fallback while the step-11a write-through lasts), and both
+protected App-Group file, and both
 are unreadable in the same locked-device windows — and every outcome needs it. "I could not look" is
 not "no identity" (capability `device-identity`, which never reports absence: an absent item mints).
 

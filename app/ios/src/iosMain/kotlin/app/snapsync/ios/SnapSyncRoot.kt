@@ -28,7 +28,7 @@ import app.snapsync.presentation.forgeStatusHost
 import app.snapsync.presentation.isForgeState
 import app.snapsync.feature.membership.toJoinLoad
 import app.snapsync.push.KtorPushHttpClient
-import app.snapsync.push.PushRegistration
+import app.snapsync.feature.push.PushRegistration
 import app.snapsync.time.SystemClock
 import app.snapsync.time.SystemTimeZone
 import app.snapsync.ports.PushTokenSource
@@ -40,6 +40,7 @@ import app.snapsync.model.DENYLISTED_ALBUM_TITLES
 import app.snapsync.album.IosAlbumManager
 import app.snapsync.album.IosAlbumMapStore
 import app.snapsync.download.IosPhotoLibraryImporter
+import app.snapsync.share.presentShareSheet
 import app.snapsync.downloadstore.SqlDelightDownloadStore
 import app.snapsync.downloadstore.iosDownloadStore
 import platform.Foundation.NSFileManager
@@ -75,12 +76,9 @@ import platform.Foundation.NSPredicate
 import platform.Foundation.NSProcessInfo
 import platform.Photos.PHAsset
 import platform.Photos.PHFetchOptions
-import platform.UIKit.UIActivityViewController
 import platform.UIKit.UIApplication
 import platform.UIKit.UIApplicationDidBecomeActiveNotification
 import platform.UIKit.UIApplicationWillResignActiveNotification
-import platform.darwin.dispatch_async
-import platform.darwin.dispatch_get_main_queue
 
 /**
  * The iOS composition root (D7): a single app-lifetime singleton that assembles the real live
@@ -176,9 +174,9 @@ object SnapSyncRoot {
      * `register(forTaskWithIdentifier:)` and the Info.plist `BGTaskSchedulerPermittedIdentifiers`. */
     const val DOWNLOAD_BACKSTOP_TASK_ID: String = "app.snapsync.download.backstop"
 
-    // The event config seam/store (one file-backed adapter is both — App-Group file of record with
-    // Keychain write-through, migration step 11a), hoisted so a (re)provision can read the current
-    // event id and the leave use-case can clear it.
+    // The event config seam/store (one file-backed adapter is both — the App-Group file of record,
+    // migration step 11a; the Keychain write-through ended at the finale), hoisted so a
+    // (re)provision can read the current event id and the leave use-case can clear it.
     private val config: FileBackedConfigStore by lazy { FileBackedConfigStore() }
 
     /**
@@ -310,7 +308,8 @@ object SnapSyncRoot {
                 reloadConfig = { config.reload() },
                 pumpForeground = live.pumpForeground,
                 scheduleBackstop = ::scheduleDownloadBackstop,
-                // The platform half of the share command (a system sheet over the top view controller).
+                // The platform half of the share command (a system sheet over the top view
+                // controller) — the UIKit adapter `presentShareSheet` (:adapter:ios:app-only).
                 share = ::presentShareSheet,
                 // The upload arm's push receiver on the app-driven tier (a thunk — the tier controller
                 // depends on this graph, so it must resolve lazily); null on iOS ≥26.1.
@@ -352,12 +351,9 @@ object SnapSyncRoot {
      */
     private fun refreshAttestation() {
         scope.launch {
-            val ok = runCatching { app.attestation.ensureFresh() }.getOrDefault(false)
-            // Surface it ONLY when we both lack a usable token and could not get one. A stale token that
-            // renews is a non-event; raising it would be noise. And because opening the app IS a wake, this
-            // normally clears before it can be seen — what survives is a device that is offline or being
-            // refused, which is a real problem that no amount of waiting fixes.
-            attested.set(ok || !app.attestation.isStale(app.attestation.token()))
+            // The whole surface-it-or-not rule (only when we both lack a usable token and could not
+            // get one) is the trust feature's `refreshOutcome` — this wiring just feeds the flag.
+            attested.set(app.attestation.refreshOutcome())
         }
     }
 
@@ -687,6 +683,15 @@ object SnapSyncRoot {
      * the library), how many the origin rules excluded, and the resulting `N`. Pair with
      * `SNAPSYNC_SEED_POLICY`, whose assets straddle the resolution floor by construction.
      */
+    // PINNED shell decision (spec `module-architecture`, "Shells are wiring only" — pinned forms;
+    // inventory gated by KotlinShellGuardTest). Forcing proof: dev equipment that must live in the
+    // app process — the probe exists because the selection policy is unobservable on a device
+    // without a joined event (the status total only refreshes for a membership, and event creation
+    // is attest-gated, so there is no headless route to one), and it drives the REAL PhotoKit fetch
+    // predicate + the live composed graph, which no tested module can reach from a launch-env
+    // trigger. Inert in production (a launch env var is only injectable via a developer launch).
+    // Expiry: dies with the probe itself if a headless event-creation route ever exists.
+    @Suppress("CyclomaticComplexMethod")
     private suspend fun runLaunchEnvPolicyProbe() {
         val cutoff = directives.policyProbe ?: return
 
@@ -716,27 +721,6 @@ object SnapSyncRoot {
         // happen and report what it found.
         app.gallery.refresh(Contribution.Since(cutoff))
         log.i { "policy probe: N=${app.gallery.size.value} (see the `gallery:` line above for the breakdown)" }
-    }
-
-    /**
-     * Present the system share sheet (`UIActivityViewController`) carrying the invite link, from
-     * the current top-most view controller. Wiring-only and fire-and-forget — no completion handler;
-     * the host already holds the URL and `UiState` is unaffected. iPhone-only/portrait, so no popover
-     * source is needed.
-     *
-     * Marshalled onto the **main queue**: the container invokes `share` from an Orbit intent, which
-     * runs on `Dispatchers.Default` (a background thread), and `UIActivityViewController` presentation
-     * asserts the main queue (`dispatch_assert_queue`) — presenting off-main traps (SIGTRAP).
-     */
-    private fun presentShareSheet(text: String) {
-        dispatch_async(dispatch_get_main_queue()) {
-            val activity = UIActivityViewController(activityItems = listOf(text), applicationActivities = null)
-            var presenter = UIApplication.sharedApplication.keyWindow?.rootViewController
-            while (presenter?.presentedViewController != null) {
-                presenter = presenter.presentedViewController
-            }
-            presenter?.presentViewController(activity, animated = true, completion = null)
-        }
     }
 
     // The permission-grant subscriptions (upload-arm start + event-album ensure) live in `compose/`
@@ -982,6 +966,16 @@ object SnapSyncRoot {
             }
         }
 
+        // PINNED shell decision (spec `module-architecture`, "Shells are wiring only" — pinned
+        // forms; inventory gated by KotlinShellGuardTest). Forcing proof: UIKit delivers ONE app
+        // delegate callback — `application(_:handleEventsForBackgroundURLSession:completionHandler:)`
+        // — for EVERY background URLSession identifier (API contract; there is no per-session
+        // registration surface), and this app owns two OS-reattached sessions (the 18–26.0 upload
+        // tier's and the download session). Mapping the OS-supplied identifier to its session owner
+        // is transcription of the callback's own discriminator, inexpressible anywhere but where
+        // both session objects live. Expiry: dies with the 18–26.0 app-driven tier (re-evaluate at
+        // iOS 27 GM, ~Sept 2026, with the async extension protocol).
+        @Suppress("CyclomaticComplexMethod")
         override fun handleBackgroundUrlSession(identifier: String, completionHandler: () -> Unit) = log.invocation(
             "handleBackgroundUrlSession",
             params = "identifier=$identifier protectedData=${protectedDataAvailable()}",

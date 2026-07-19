@@ -229,9 +229,12 @@ origin of "now" and one local→UTC conversion in the app) and calls `EventCreat
 SHALL retain the `onOpenUrl(raw: String)` intent that decodes an incoming event link via the
 `event-link` decoder and, on success, provisions it (the QR-join path is unchanged). The create
 screen SHALL render a single inline error region serving two causes: a `Failed(reason)` create error
-(sticky until the next create attempt) and a transient, self-clearing invalid-link error emitted
-when `onOpenUrl` receives a URL the decoder rejects. An invalid link MUST NOT change persisted
-config.
+(sticky until the next create attempt) and a transient, self-clearing invalid-link error surfaced
+when `onOpenUrl` receives a URL the decoder rejects — exposed as the container host's own
+presentation-owned `transientError` read-model `StateFlow` (the set-then-clear choreography lives
+in presentation; the untested shell renders the value verbatim and decides nothing — spec
+`module-architecture`, "Commands cross one door": interaction state is presentation-owned). An
+invalid link MUST NOT change persisted config.
 
 #### Scenario: The container converts the local pick to the canonical shape
 - **WHEN** `onCreateEvent` receives a local date-time from the screen

@@ -8,10 +8,8 @@ module :adapter:ios:ext-safe
 module :app:desktop
 module :app:ios
 module :app:ios:extension
-module :capability:push
 module :domain
 module :test:architecture
-module :test:architecture:migration
 module :test:harness-driver
 module :test:integration
 module :test:world
@@ -35,19 +33,14 @@ edge :app:desktop :ui:screens
 edge :app:ios :adapter:generic
 edge :app:ios :adapter:ios:app-only
 edge :app:ios :adapter:ios:ext-safe
-edge :app:ios :capability:push
 edge :app:ios :domain
 edge :app:ios :ui:presentation
 edge :app:ios :ui:screens
 edge :app:ios:extension :adapter:generic
 edge :app:ios:extension :adapter:ios:ext-safe
-edge :app:ios:extension :capability:push
 edge :app:ios:extension :domain
-edge :capability:push :adapter:generic
-edge :capability:push :domain
 edge :test:harness-driver :app:desktop
 edge :test:integration :adapter:generic
-edge :test:integration :capability:push
 edge :test:integration :domain
 edge :test:integration :test:world
 edge :test:integration :ui:presentation

@@ -15,7 +15,7 @@ import app.snapsync.ios.urlsession.IosUrlSessionUploadPlatform
 import app.snapsync.join.HttpEnrollment
 import app.snapsync.membership.HttpDeviceFilesSource
 import app.snapsync.membership.IosJoinedEventMarker
-import app.snapsync.push.EventNotifier
+import app.snapsync.feature.push.EventNotifier
 import app.snapsync.push.KtorPushHttpClient
 import app.snapsync.ports.PushReceiver
 import app.snapsync.feature.upload.BackgroundUploadPump
@@ -97,8 +97,8 @@ class UrlSessionUploadController(
     private val scheduler = IosBackgroundScheduler(log, HEARTBEAT_TASK_IDENTIFIER)
 
     // Fires the event notify after a drained cycle that completed uploads (capability
-    // `upload-completion-notify`). Stays root-constructed: the sender lives in `:capability:push`,
-    // unreachable from `:domain`'s compose zone — `uploadCore` takes the notify as a stated lambda.
+    // `upload-completion-notify`; `:domain` feature/push since the migration finale re-homed it).
+    // Root-constructed over this tier's HTTP client; `uploadCore` takes the notify as a stated lambda.
     private val notifier = EventNotifier(KtorPushHttpClient(httpClient), host)
 
     private val platform = IosUrlSessionUploadPlatform(

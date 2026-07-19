@@ -29,9 +29,6 @@ kotlin {
             implementation(project(":adapter:generic"))
             implementation(project(":adapter:ios:ext-safe"))
             implementation(project(":adapter:ios:app-only"))
-            // Push-notification registration + receive seams (capability `push-registration`): the
-            // AppDelegate feeds the OS-delivered APNs token in, the collector PUTs devices/<id>/config.
-            implementation(project(":capability:push"))
             implementation(libs.coroutines.core)
             implementation(libs.kermit)
             implementation(compose.runtime)
