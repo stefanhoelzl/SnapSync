@@ -17,17 +17,21 @@ import kotlin.test.fail
  * or argue a Swift-only API into a pin), and a removed one fails too (the pin table must shrink in
  * the same commit, so the table never overstates the debt).
  *
- * Current pins and their dispositions (the first three are BURN-DOWN items — they move to Kotlin
- * under the transcriber law by forwarding the raw input whole; the last is the one candidate
- * irreducible, pending the SDK check):
- *  - iOSApp.swift `guard` ×2 — push-payload field extraction (forward `userInfo` whole) and the
- *    NSUserActivity type filter (forward the activity whole).
- *  - iOSApp.swift `if` ×1 — the scenePhase split (forward the raw phase, or replace with UIKit
- *    lifecycle notifications observed from Kotlin).
- *  - BackgroundUploadExtension.swift `switch` ×1 — constructs the system result type. Kotlin enums
- *    reach Swift as ObjC classes, so `default:` is compiler-mandated; it maps to FAILURE by design.
- *    Settle on next mac session: if `PHBackgroundResourceUploadProcessingResult` is ObjC-visible,
- *    even this moves into Kotlin and the pin table empties.
+ * Since migration step 12 the shells are transcribers: every OS callback forwards its raw,
+ * ObjC-visible input whole (`userInfo` dictionaries, the `NSUserActivity`, the scene lifecycle via
+ * `NSNotificationCenter` observed from Kotlin), so `if`/`guard`/`switch` are all pinned at ZERO.
+ *
+ * ONE pin remains, and it is irreducible (settled forcing proof ① of migration step 12):
+ *  - BackgroundUploadExtension.swift `??` ×1 — `PHBackgroundResourceUploadProcessingResult` is
+ *    **Swift-only** (declared in the SDK's swiftinterface, no ObjC header), so Kotlin cannot
+ *    construct it; the shell builds it via `init?(rawValue:)` from the raw Int the tested Kotlin
+ *    mapping decided, and the `?? .failure` nil fallback keeps an untaught raw value a visible,
+ *    retried failure (the posture the previous `switch`'s compiler-mandated `default:` carried).
+ *    Re-evaluate at iOS 27 GM (~Sept 2026) with the async extension protocol.
+ *
+ * `??` joined the counted keywords with that pin (the `architecture-guards` spec always named it):
+ * a nil-coalesce is a decision by another name, and counting only `if`/`guard`/`switch` would let
+ * the table read zero while fallbacks accumulate.
  */
 class SwiftShellGuardTest {
 
@@ -35,12 +39,14 @@ class SwiftShellGuardTest {
         .firstOrNull { File(it, "settings.gradle.kts").isFile }
         ?: fail("could not locate the repository root")
 
+    private val keywords = listOf("if", "guard", "switch", "??")
+
     /** file (relative) → keyword → pinned count. Exact match, both directions. */
     private val pins: Map<String, Map<String, Int>> = mapOf(
-        "iosApp/iosApp/iOSApp.swift" to mapOf("if" to 1, "guard" to 2, "switch" to 0),
-        "iosApp/iosApp/ContentView.swift" to mapOf("if" to 0, "guard" to 0, "switch" to 0),
+        "iosApp/iosApp/iOSApp.swift" to mapOf("if" to 0, "guard" to 0, "switch" to 0, "??" to 0),
+        "iosApp/iosApp/ContentView.swift" to mapOf("if" to 0, "guard" to 0, "switch" to 0, "??" to 0),
         "iosApp/BackgroundUploadExtension/BackgroundUploadExtension.swift" to
-            mapOf("if" to 0, "guard" to 0, "switch" to 1),
+            mapOf("if" to 0, "guard" to 0, "switch" to 0, "??" to 1),
     )
 
     private fun swiftFiles(): List<File> = File(repoRoot, "iosApp").walkTopDown()
@@ -51,8 +57,9 @@ class SwiftShellGuardTest {
         val code = file.readText().lineSequence()
             .filterNot { it.trimStart().startsWith("//") || it.trimStart().startsWith("*") }
             .joinToString("\n")
-        return listOf("if", "guard", "switch").associateWith { kw ->
-            Regex("""\b$kw\b""").findAll(code).count()
+        return keywords.associateWith { kw ->
+            val pattern = if (kw == "??") Regex("""\?\?""") else Regex("""\b$kw\b""")
+            pattern.findAll(code).count()
         }
     }
 

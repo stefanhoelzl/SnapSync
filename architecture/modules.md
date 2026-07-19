@@ -15,7 +15,6 @@ flowchart LR
   app_ios_photokit_extension[":app:ios:photokit-extension"]
   capability_push[":capability:push"]
   domain[":domain"]
-  domain_keychain[":domain:keychain"]
   test_architecture[":test:architecture"]
   test_architecture_migration[":test:architecture:migration"]
   test_harness_driver[":test:harness-driver"]
@@ -43,7 +42,6 @@ flowchart LR
   app_ios --> adapter_ios_ext_safe
   app_ios --> capability_push
   app_ios --> domain
-  app_ios --> domain_keychain
   app_ios --> ui_presentation
   app_ios --> ui_screens
   app_ios_photokit_extension --> adapter_generic
@@ -52,7 +50,6 @@ flowchart LR
   app_ios_photokit_extension --> domain
   capability_push --> adapter_generic
   capability_push --> domain
-  domain_keychain --> domain
   test_harness_driver --> app_desktop
   test_integration --> adapter_generic
   test_integration --> capability_push

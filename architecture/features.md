@@ -15,11 +15,6 @@ on drift; regenerate instead.
 - depends on: —
 - interfaces declared (commonMain): `AlbumManager`, `AlbumMapSource`, `AlbumMapStore`, `AttestClient`, `AttestKey`, `AttestStore`, `BackgroundScheduler`, `BackgroundTransfer`, `Clock`, `CompositionMode`, `ConfigDecodeResult`, `ConfigFileDecode`, `ConfigFileRead`, `ConfigRead`, `ConfigReader`, `ConfigSource`, `ConfigStore`, `Contribution`, `CreateOutcome`, `CreationStatus`, `CreationStatusSource`, `CycleGate`, `DeviceEnroller`, `DeviceFilesSource`, `DeviceManifestStore`, `DiscoveryStore`, `DownloadStatusSource`, `DownloadStore`, `DownloadTask`, `DownloadTransport`, `DownloadTransportHost`, `Enrollment`, `EventCreation`, `EventCreator`, `EventDetails`, `EventDirectory`, `EventUnionSource`, `GalleryStatusSource`, `ImportResult`, `JoinLoad`, `JoinedEventMarker`, `Keychain`, `KeychainRead`, `LedgerCountsSource`, `LedgerStore`, `LogScope`, `PhotoAccessRequester`, `PhotoAccessStatusSource`, `PhotoDownloadJobs`, `PhotoLibrary`, `PhotoLibraryImporter`, `PushHttpClient`, `PushReceiver`, `RawAssetSource`, `SuppressionSource`, `SyncDecision`, `SyncEvent`, `SyncStatus`, `SyncStatusSource`, `TimeZoneSource`, `UploadError`, `UploadProducer`, `UploadRequestProvider`
 
-## `:domain:keychain`
-
-- depends on: `:domain`
-- interfaces declared (commonMain): `ProtectedDataAvailability`
-
 ## Forge name→sources map (`SNAPSYNC_FORGE_STATE`)
 
 Declared in `ui/presentation/src/commonMain/kotlin/app/snapsync/presentation/ForgeStatusHost.kt`.

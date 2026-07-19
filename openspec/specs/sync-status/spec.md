@@ -14,8 +14,8 @@ suspended or dead, so the app can only ever learn what happened by reading persi
 inherently a projection, not a fold over events it witnessed. An event seam would duplicate the engine's fold
 into presentation with drift risk. Snapshots are self-healing: every emission is the whole truth, so there is
 no late-subscriber problem, no missed-event corruption, conflation is safe, and first render is the same code
-path as any update. Platform signals (library change, foreground entry, the extension's cross-process liveness
-ding, a join) are **invalidation dings** handled inside the source — they trigger a re-read and a fresh
+path as any update. Platform signals (library change, foreground entry, a foreground-gated poll tick, a
+join) are **invalidation triggers** handled inside the source — they trigger a re-read and a fresh
 emission, and none of them leak into the contract.
 
 Decision record: `changes/archive/2026-06-12-status-core` (the snapshot seam),
@@ -221,12 +221,12 @@ produced a first value, re-emitting a new `Ready` per input change. Each minted 
 gallery size, `active = (permission == GRANTED)`, `failed = 0`, and `estimatedRemaining = null`, and
 SHALL carry no completion timestamp.
 
-**Liveness is event-driven, not polled.** The ledger counts SHALL be re-read on **foreground entry**,
-on the **extension liveness notification** (the cross-process Darwin ding posted after each PhotoKit
-`process()` run — see `ios-photokit-upload`), and, on the app-driven tier, after **each in-process pump
-cycle** (see `ios-url-session-upload`). A failed ledger read SHALL retain the last good counts rather
-than regress (so a transient read error never drops `completed` to zero and flips the screen out of "In
-sync").
+**Liveness is trigger-driven, plus a foreground-gated poll.** The ledger counts SHALL be re-read on
+**foreground entry**, on each tick of the **foreground-gated poll** (see "Foreground-gated
+ledger-counts poll" — the replacement for the deleted extension liveness notification), and, on the
+app-driven tier, after **each in-process pump cycle** (see `ios-url-session-upload`). A failed ledger
+read SHALL retain the last good counts rather than regress (so a transient read error never drops
+`completed` to zero and flips the screen out of "In sync").
 
 #### Scenario: Initial value is Loading
 - **WHEN** the source is constructed
@@ -251,9 +251,9 @@ sync").
 - **THEN** the source emits a new `Ready` with the updated `progress.total`, respectively
   `progress.active`, and otherwise unchanged counts
 
-#### Scenario: The extension notification re-reads the ledger with no network
-- **WHEN** the extension liveness notification is delivered while the app is foreground
-- **THEN** the source re-reads the ledger counts and re-emits — issuing no storage LIST
+#### Scenario: A poll tick re-reads the ledger with no network
+- **WHEN** the foreground-gated poll ticks while the app is foreground
+- **THEN** the source re-reads the ledger counts and re-emits on change — issuing no storage LIST
 
 #### Scenario: A failed ledger read keeps the last value
 - **WHEN** a ledger count read fails (absent file, open error)
@@ -279,7 +279,7 @@ that reads the shared App-Group ledger **read-only** — calling only the backen
 (`iosLedgerStore().aggregates()`), never `put`/`clear`/`resetTo` — so the **extension remains
 the sole writer** and **no `LedgerWriter` is constructed in `:app:ios`**. The cross-process read
 is safe under the ledger driver's WAL mode (one writer plus concurrent readers). `refresh()`
-SHALL be invoked on **foreground entry**, on the **extension liveness notification**, and, on
+SHALL be invoked on **foreground entry**, on each **foreground-gated poll tick**, and, on
 the app-driven tier, after **each pump cycle**. On any read failure the value SHALL retain its
 last good `LedgerCounts` (seeded `LedgerCounts(0, 0)` before the first successful read). A
 settable fake SHALL exist for tests and the desktop harness.
@@ -304,8 +304,54 @@ settable fake SHALL exist for tests and the desktop harness.
 - **THEN** the value retains its last good `LedgerCounts` (or `LedgerCounts(0, 0)` if never read) and no
   exception propagates to the status projection
 
-#### Scenario: Foreground, notification, and pump each trigger a refresh
-- **WHEN** the app enters the foreground, **or** the extension liveness notification arrives while
-  foreground, **or** an app-driven pump cycle completes
+#### Scenario: Foreground, poll tick, and pump each trigger a refresh
+- **WHEN** the app enters the foreground, **or** the foreground-gated poll ticks, **or** an
+  app-driven pump cycle completes
 - **THEN** `LedgerCountsSource.refresh()` is invoked
+
+### Requirement: Foreground-gated ledger-counts poll
+
+The status feature SHALL provide a foreground-gated poll (`LedgerCountsPoller`, `:domain`
+`feature/status`) that, while the app is foregrounded — and only then — invokes
+`LedgerCountsSource.refresh()` on a fixed cadence of **2 seconds**, bounding the staleness of the
+displayed upload counts: while foregrounded, a ledger change (e.g. the extension recording a
+completion in its own process) SHALL reach the status projection within **one cadence plus one
+read**. Each tick is one local, read-only `aggregates()` read — no network, no storage LIST — and
+a failed tick retains the last good counts (the `LedgerCountsSource` posture).
+
+The **cadence is the feature's rule** (this staleness bound), tested in `commonTest`; the
+**lifecycle is the flows' order**: the Foreground trigger flow starts the poll and the Background
+trigger flow stops it (a suspended app cannot act on fresher counts; the next foreground entry's
+refresh is the backstop). `start()` SHALL be idempotent while a poll is live — repeated foreground
+entries never stack pollers — and the first tick SHALL wait one full cadence, because foreground
+entry already refreshes the status sources.
+
+The poll is **tier-neutral**: on the app-driven tier it is redundant beside the pump's in-process
+refresh and harmless; a tier conditional here would re-introduce the enumerated-invokers failure
+class. This poll replaces the extension's cross-process Darwin liveness notification (deleted —
+see `ios-photokit-upload`): the poll needs no cross-process channel and cannot miss a signal,
+because the read is the truth.
+
+#### Scenario: A completion recorded mid-foreground reaches the screen within the bound
+
+- **WHEN** the app is foregrounded and the extension's cycle records new `COMPLETED` rows in the
+  shared ledger
+- **THEN** a poll tick re-reads `aggregates()` within 2 seconds and the status projection re-emits
+  with the updated counts, with no network read
+
+#### Scenario: The poll runs only while foregrounded
+
+- **WHEN** the app moves to the background
+- **THEN** the poll is stopped, and it is started again on the next foreground entry (which itself
+  also refreshes status immediately)
+
+#### Scenario: Repeated foreground entries do not stack pollers
+
+- **WHEN** the foreground trigger fires while a poll from a previous entry is still live
+- **THEN** exactly one poll loop runs at the declared cadence
+
+#### Scenario: A failed tick keeps the last good counts
+
+- **WHEN** a poll tick's ledger read fails
+- **THEN** the counts retain their last good value and the poll continues
 

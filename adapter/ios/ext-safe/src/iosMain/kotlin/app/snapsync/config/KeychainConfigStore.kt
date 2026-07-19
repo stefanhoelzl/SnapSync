@@ -21,8 +21,9 @@ import kotlinx.serialization.json.Json
  * The iOS [ConfigSource]/[ConfigStore]/[ConfigReader]: persists the serialized [EventConfig] as a
  * single Keychain generic-password item (encrypted at rest, survives app updates and process death).
  *
- * All Keychain access goes through `:domain:keychain` (capability `architecture-guards`: `SecItem*`
- * lives in exactly one module), which is what makes the item **background-readable**: it is stored
+ * All Keychain access lives in this module, `:adapter:ios:ext-safe` (capability
+ * `architecture-guards`: `SecItem*` lives in exactly one module), which is what makes the item
+ * **background-readable**: it is stored
  * `kSecAttrAccessibleAfterFirstUnlock`, so the upload extension — which the OS invokes when the device
  * is *idle*, and therefore usually *locked* — can actually read it. Under the old iOS default
  * (`WhenUnlocked`) it could not, and the read failure was indistinguishable from "no event joined".

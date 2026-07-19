@@ -150,6 +150,24 @@ fun configReadViaFile(
 }
 
 /**
+ * The next `ConfigSource` StateFlow value after a trigger-time re-read (migration step 12: every
+ * OS-callback flow re-reads the membership before acting on it, replacing the deleted unlock-hook
+ * repair). Pure so the one branch that matters is tested on JVM and the simulator:
+ *
+ * - a **conclusive** read ([ConfigRead.Joined] / [ConfigRead.None]) replaces the value;
+ * - an **unreadable** read ([ConfigRead.Unavailable]) **retains** [current] — the same
+ *   keep-the-last-good posture as the status counts. Under the old cadence (reload only at the
+ *   unlock notification) an unreadable reload was unreachable; at trigger cadence a transient read
+ *   failure on a foreground entry would otherwise clear a good membership and flip the screen to
+ *   the setup gate.
+ */
+fun configAfterReload(read: ConfigRead, current: EventConfig?): EventConfig? = when (read) {
+    is ConfigRead.Joined -> read.config
+    ConfigRead.None -> null
+    is ConfigRead.Unavailable -> current
+}
+
+/**
  * The state port for the active config: a level-triggered holder whose current value is always
  * available synchronously — the persisted [EventConfig] (the joined `eventId` plus an optional
  * fetched `name`), or `null` when none has been provisioned yet. The setup gate observes this to

@@ -104,8 +104,13 @@ The guard + reconcile logic SHALL live in a **tested** feature (`DownloadPushRec
 The cross-arm **fan-out** — one push is news to both arms — SHALL be the `flow/SilentPush` trigger
 (`:domain` `flow/`, built in `compose/`; it absorbed the former `FanOutPushReceiver`): the receivers run
 in order (download, then the upload arm's on the app-driven tier), isolated so one failure never robs
-the other of the scarce wake; the app-shell wiring only forwards the OS callback (the raw `eventId` and
-the completion handler) into the flow.
+the other of the scarce wake. The flow SHALL take the OS payload **whole** (migration step 12, the
+transcriber law): the app-shell wiring forwards the raw `userInfo` dictionary and the completion
+handler; the `eventId` extraction is the tested `model/` payload codec (`pushEventId`), applied
+inside the flow — a payload with no usable `eventId` fans out to no arm, and the completion handler
+is released either way. Before fanning out, the flow SHALL re-read the persisted membership into
+the config StateFlow (the trigger-time `reloadConfig` re-read — see `ios-app-shell`), so the
+receivers' active-event guards read current state.
 
 #### Scenario: A push for the active event reconciles
 
@@ -120,12 +125,19 @@ the completion handler) into the flow.
 - **THEN** the receiver performs no reconcile (a left event's persisting membership cannot re-pull
   photos)
 
+#### Scenario: A payload without an eventId wakes no arm
+
+- **WHEN** a silent push arrives whose `userInfo` carries no usable top-level `eventId` string
+- **THEN** the flow fans out to no receiver, logs the miss, and the OS completion handler is still
+  released
+
 #### Scenario: The receive path awaits before the OS handler
 
 - **WHEN** a silent push for the active event is handled
-- **THEN** the app-shell signals the OS background-fetch completion handler only after the receiver's
-  synchronous portion (union read + enqueue) has completed, so the enqueue is not cut short by
-  suspension
+- **THEN** the app-shell signals the OS background-fetch completion handler only after the flow's
+  synchronous portion (payload decode, membership re-read, attestation wake) has completed — the
+  fan-out's reconcile escapes on the app scope, and the enqueued background transfers then continue
+  on their own
 
 #### Scenario: The receiver is replaceable
 

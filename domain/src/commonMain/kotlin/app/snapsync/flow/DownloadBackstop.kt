@@ -11,28 +11,32 @@ import kotlinx.coroutines.launch
  * app (e.g. the last transfer overran its URLSession wake budget). It imports already-downloaded work;
  * it does not re-read the union (discovery stays foreground-only).
  *
- * [protectedDataGate] defers the import to the next unlock when protected data is unreadable (the
- * import reads the download store + PhotoKit + the album map) — deferring rather than failing, and
- * without touching the Keychain, which is what once minted a device id and aborted the process.
+ * [reloadConfig] re-reads the persisted membership into the config StateFlow first (migration step
+ * 12, replacing the deleted protected-data defer ceremony — settled proof ④: zero deferrals across
+ * all production logs, so the defer-queue was dead code): the import's own guards read that
+ * StateFlow, and a wake landing before the first unlock — never observed in production — now runs
+ * through and fails cleanly (the import's reads are caught below; the adapters distinguish
+ * unreadable from absent, so nothing mints, clears, or leaves), converging at the next wake.
  * [refreshAttestation] is the wake-point token renewal — this BGTask is the one recurring wake that
- * does NOT depend on an upload having succeeded, which matters because an expired token is exactly what
- * stops uploads succeeding. Both are the shell's, injected as `compose/`-built effect lambdas; the
- * re-arm, the OS task-completion handler, and the entry-point log wrap stay in the shell.
+ * does NOT depend on an upload having succeeded, which matters because an expired token is exactly
+ * what stops uploads succeeding. Both are port/shell touches injected as `compose/`-built effect
+ * lambdas; the re-arm, the OS task-completion handler, and the entry-point log wrap stay in the
+ * shell.
  */
 class DownloadBackstop(
     private val scope: CoroutineScope,
     private val downloadController: DownloadController,
-    private val protectedDataGate: (tag: String, work: () -> Unit) -> Unit,
+    /** Re-read the persisted membership into the config StateFlow — the port touch, injected. */
+    private val reloadConfig: () -> Unit,
     private val refreshAttestation: () -> Unit,
     private val log: Logger = Logger.withTag("DownloadBackstop"),
 ) {
     fun run() {
-        protectedDataGate("runDownloadBackstop") {
-            refreshAttestation()
-            scope.launch {
-                runCatching { downloadController.importReady() }
-                    .onFailure { log.w(it) { "download backstop import failed" } }
-            }
+        reloadConfig()
+        refreshAttestation()
+        scope.launch {
+            runCatching { downloadController.importReady() }
+                .onFailure { log.w(it) { "download backstop import failed" } }
         }
     }
 }

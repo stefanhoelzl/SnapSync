@@ -22,9 +22,10 @@ data class LedgerCounts(val completed: Int, val pending: Int) {
 /**
  * The seam the status projection reads for own-device completeness **and** in-flight activity. It
  * exposes **counts only** — never the ledger nor any write capability — so the status domain keeps no
- * `:domain:engine` dependency and the extension stays the sole ledger writer. [counts] is a
- * level-triggered value; [refresh] re-reads it. It refreshes on **foreground entry**, on the
- * extension's cross-process liveness notification, and (app-driven tier) after each pump cycle.
+ * engine dependency and the extension stays the sole ledger writer. [counts] is a
+ * level-triggered value; [refresh] re-reads it. It refreshes on **foreground entry**, on each
+ * [LedgerCountsPoller] tick while foregrounded (migration step 12 — the cross-process ding's
+ * replacement), and (app-driven tier) after each pump cycle.
  */
 interface LedgerCountsSource {
     val counts: StateFlow<LedgerCounts>

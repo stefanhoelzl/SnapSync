@@ -46,32 +46,18 @@ import platform.Foundation.NSFileManager
 import app.snapsync.engine.LEDGER_APP_GROUP
 import app.snapsync.ports.LedgerStore
 import app.snapsync.engine.iosLedgerStore
-import app.snapsync.model.UPLOAD_LIVENESS_DARWIN_NAME
+import app.snapsync.model.forwardEventLink
 import app.snapsync.feature.upload.UploadProducer
 import app.snapsync.logging.FileLogWriter
 import app.snapsync.logging.appBuildVersion
 import app.snapsync.logging.IosLogScope
 import app.snapsync.logging.PublicNSLogWriter
 import app.snapsync.keychain.KeychainDeviceIdentity
-import app.snapsync.keychain.ProtectedDataGate
 import app.snapsync.logging.invocation
 import co.touchlab.kermit.Logger
 import io.ktor.client.HttpClient
-import kotlinx.cinterop.COpaquePointer
 import kotlinx.cinterop.ExperimentalForeignApi
-import kotlinx.cinterop.StableRef
 import kotlinx.cinterop.cValue
-import kotlinx.cinterop.staticCFunction
-import platform.CoreFoundation.CFDictionaryRef
-import platform.CoreFoundation.CFNotificationCenterAddObserver
-import platform.CoreFoundation.CFNotificationCenterGetDarwinNotifyCenter
-import platform.CoreFoundation.CFNotificationCenterRef
-import platform.CoreFoundation.CFNotificationCenterRemoveEveryObserver
-import platform.CoreFoundation.CFNotificationName
-import platform.CoreFoundation.CFNotificationSuspensionBehaviorDeliverImmediately
-import platform.CoreFoundation.CFStringCreateWithCString
-import platform.CoreFoundation.CFStringRef
-import platform.CoreFoundation.kCFStringEncodingUTF8
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -80,6 +66,9 @@ import platform.BackgroundTasks.BGProcessingTaskRequest
 import platform.BackgroundTasks.BGTaskScheduler
 import platform.Foundation.NSBundle
 import platform.Foundation.NSDate
+import platform.Foundation.NSNotificationCenter
+import platform.Foundation.NSOperationQueue
+import platform.Foundation.NSUserActivity
 import platform.Foundation.timeIntervalSince1970
 import platform.Foundation.NSOperatingSystemVersion
 import platform.Foundation.NSPredicate
@@ -88,6 +77,8 @@ import platform.Photos.PHAsset
 import platform.Photos.PHFetchOptions
 import platform.UIKit.UIActivityViewController
 import platform.UIKit.UIApplication
+import platform.UIKit.UIApplicationDidBecomeActiveNotification
+import platform.UIKit.UIApplicationWillResignActiveNotification
 import platform.darwin.dispatch_async
 import platform.darwin.dispatch_get_main_queue
 
@@ -202,23 +193,18 @@ object SnapSyncRoot {
     }
 
     /**
-     * Protected-data availability (capability `ios-app-shell`): the Keychain and the app/App-Group
-     * containers are unreadable before the first unlock since boot, and a background wake can land in
-     * exactly that window. Rather than attempting a read, failing, and *interpreting* the failure — which
-     * is how a locked device came to mint a new device id (aborting the process) and how the extension
-     * came to read "no config" as a leave — the app asks iOS, and **defers** the work to the unlock.
-     *
-     * The gate's decision logic is tested in `:domain:keychain`; [IosProtectedData] is the thin
-     * `UIApplication` adapter, which lives here because that API is unavailable to app extensions.
+     * Protected-data availability (capability `ios-app-shell`), read **directly** for the background
+     * entry points' diagnostics: the Keychain and the app/App-Group containers are unreadable before
+     * the first unlock since boot, and a background wake can land in exactly that window — this line
+     * in `debug.log` is the only way to see it after the fact. The defer-and-resume gate that used
+     * to sit here (`ProtectedDataGate`, `:domain:keychain`) is deleted (migration step 12, settled
+     * proof ④: zero deferrals across all production logs — dead code): the adapters distinguish
+     * unreadable from absent at every protected read, so a pre-first-unlock wake fails cleanly
+     * (nothing mints, clears, or leaves) and converges at the next trigger, whose flow re-reads the
+     * membership first (`AppPorts.reloadConfig`).
      */
-    private val protectedData: ProtectedDataGate by lazy {
-        ProtectedDataGate(IosProtectedData(), log).also { gate ->
-            // A background launch before the first unlock seeds an unreadable — therefore empty — config
-            // StateFlow. Re-read it the moment protected data arrives, or the screen would sit at the
-            // setup gate (and the upload arm stay idle) despite a perfectly good persisted membership.
-            gate.runWhenAvailable("reloadConfigOnUnlock") { config.reload() }
-        }
-    }
+    private fun protectedDataAvailable(): Boolean =
+        UIApplication.sharedApplication.isProtectedDataAvailable()
 
     // Event album (capability `event-album`): the shared leave-surviving `eventId → albumLocalId` map and
     // the PhotoKit manager — the two adapters the composed coordinator (`app.albumCoordinator`) sits on.
@@ -317,9 +303,12 @@ object SnapSyncRoot {
                 provision = ::provisionEvent,
                 onEventMinted = { eventId -> host.onEventCreated(eventId) },
                 refreshAttestation = ::refreshAttestation,
-                protectedDataGate = { tag, work -> protectedData.runWhenAvailable(tag, work) },
+                // The trigger-time membership re-read (migration step 12): every flow re-reads the
+                // persisted config before acting — cross-process writes and a pre-first-unlock seed
+                // never notify this process's StateFlow, and the reload retains the last good value
+                // on an unreadable read (the pure `configAfterReload` rule).
+                reloadConfig = { config.reload() },
                 pumpForeground = live.pumpForeground,
-                unregisterLiveness = ::unregisterLivenessObserver,
                 scheduleBackstop = ::scheduleDownloadBackstop,
                 // The platform half of the share command (a system sheet over the top view controller).
                 share = ::presentShareSheet,
@@ -487,64 +476,57 @@ object SnapSyncRoot {
     val renderHost: StatusContainerHost by lazy { shell.renderHost() }
 
     /**
-     * The SwiftUI scene's foreground transition (forwarded from the `@main` scene's scenePhase):
-     * re-read the per-device file listing (completeness) and the ledger's in-flight count so status
-     * reflects any uploads that progressed while backgrounded (capability `sync-status` liveness).
-     * Delegated through the one mode switch — every OS entry point below is a thin pass-through to
-     * [shell]; the forge/live decision was made once, at resolve time.
+     * The app became active (observed from Kotlin via `UIApplicationDidBecomeActive` — see
+     * [onLaunch]): refresh the status sources and start the foreground-gated ledger-counts poll so
+     * upload status moves live while the screen is shown (capability `sync-status`). Delegated
+     * through the one mode switch — every OS entry point below is a thin pass-through to [shell];
+     * the forge/live decision was made once, at resolve time.
      */
     fun onForeground() = shell.onForeground()
 
     /**
-     * On backgrounding, queue the download import-tail backstop so any staged-but-unimported foreign
-     * assets get imported at the next idle/charging window even if no further download wakes the app
-     * (capability `photo-download`, 5.4). Status liveness itself stays event-driven (foreground entry).
+     * The app is leaving the active state (`UIApplicationWillResignActive` — see [onLaunch]): stop
+     * the status poll (a suspended app cannot act on fresher counts) and queue the download
+     * import-tail backstop so any staged-but-unimported foreign assets get imported at the next
+     * idle/charging window even if no further download wakes the app (capability `photo-download`, 5.4).
      */
     fun onBackground() = shell.onBackground()
 
-    // --- Extension → app cross-process liveness ding (capability `sync-status` / `ios-app-shell`) ---
-    // A stable observer token (the object itself); the callback ignores it and pokes SnapSyncRoot
-    // directly (it is a singleton object). Never disposed — process-lifetime.
-    @OptIn(ExperimentalForeignApi::class)
-    private val livenessObserverToken: COpaquePointer by lazy { StableRef.create(this).asCPointer() }
-
-    // The Darwin notification name, created once (a single process-lifetime CFString for a constant).
-    @OptIn(ExperimentalForeignApi::class)
-    private val livenessName: CFStringRef? by lazy {
-        CFStringCreateWithCString(null, UPLOAD_LIVENESS_DARWIN_NAME, kCFStringEncodingUTF8)
-    }
-
-    @OptIn(ExperimentalForeignApi::class)
-    private fun registerLivenessObserver() {
-        val center = CFNotificationCenterGetDarwinNotifyCenter()
-        // Defensive: drop any prior registration for this token before (re)adding, so repeated
-        // foregrounds never stack observers.
-        CFNotificationCenterRemoveEveryObserver(center, livenessObserverToken)
-        CFNotificationCenterAddObserver(
-            center,
-            livenessObserverToken,
-            staticCFunction(::uploadLivenessCallback),
-            livenessName,
-            null,
-            CFNotificationSuspensionBehaviorDeliverImmediately,
+    /**
+     * Install the UIKit lifecycle observers and realize this object — called by the Swift
+     * `AppDelegate` from `didFinishLaunchingWithOptions` (a plain statement, no decision). The
+     * foreground/background transitions are observed from **Kotlin** via `NSNotificationCenter`
+     * (migration step 12: the SwiftUI `scenePhase` split was a Swift `if`, a decision the
+     * transcriber law forbids): `didBecomeActive` ↔ the scene reaching `.active`,
+     * `willResignActive` ↔ leaving it (including the transient `.inactive` cases — app switcher,
+     * incoming call — which the old split also routed to background). Process-lifetime observers,
+     * never removed; a background launch installs them too and simply never sees `didBecomeActive`.
+     */
+    fun onLaunch() = log.invocation("onLaunch") {
+        val center = NSNotificationCenter.defaultCenter
+        center.addObserverForName(
+            name = UIApplicationDidBecomeActiveNotification,
+            `object` = null,
+            queue = NSOperationQueue.mainQueue,
+            usingBlock = { onForeground() },
         )
-    }
-
-    @OptIn(ExperimentalForeignApi::class)
-    private fun unregisterLivenessObserver() {
-        CFNotificationCenterRemoveEveryObserver(
-            CFNotificationCenterGetDarwinNotifyCenter(),
-            livenessObserverToken,
+        center.addObserverForName(
+            name = UIApplicationWillResignActiveNotification,
+            `object` = null,
+            queue = NSOperationQueue.mainQueue,
+            usingBlock = { onBackground() },
         )
     }
 
     /**
-     * The extension finished a `process()` run: re-read the ledger counts (local, no network) so upload
-     * status moves live while foreground. The gallery total and the foreign download line are refreshed
-     * by their own triggers — this ding is upload-completeness only.
+     * A restored/continued `NSUserActivity` arrived (both halves of Universal-Link delivery —
+     * forwarded **whole** from the Swift scene delegate, which decides nothing; capability
+     * `event-link`). The tested `model/` filter-and-dispatch keeps only a browsing-web activity
+     * with a URL and forwards the **complete** `absoluteString` — the fragment carries the whole
+     * payload; this wiring transcribes the activity's fields and branches on nothing.
      */
-    fun onUploadLivenessNotified() {
-        scope.launch { app.ledgerCounts.refresh() }
+    fun onUserActivity(activity: NSUserActivity) {
+        forwardEventLink(activity.activityType, activity.webpageURL?.absoluteString, ::onOpenUrl)
     }
 
     /**
@@ -594,13 +576,13 @@ object SnapSyncRoot {
 
     /**
      * A silent (`content-available`) remote notification arrived (capability `push-registration`),
-     * forwarded from the Swift AppDelegate with the push payload's `eventId`. Route it to the receiver,
-     * which — if [eventId] is the active event — reconciles downloads (union read + enqueue). We hold the
-     * OS [completion] handler until the receiver's synchronous work finishes, so iOS keeps the app alive
-     * through the enqueue (the background transfers then continue on their own). Touch [host] so the
-     * download stack is assembled on a background launch. Non-throwing: a failure still calls [completion].
+     * its [userInfo] forwarded **whole** from the Swift AppDelegate (migration step 12 — the
+     * `eventId` extraction was a Swift `guard`; the tested `model/` codec owns it now, inside the
+     * SilentPush flow). The flow fans the push out to the arms' receivers, which — if it names the
+     * active event — reconcile downloads (union read + enqueue). Touch [host] so the download stack
+     * is assembled on a background launch. Non-throwing: a failure still calls [completion].
      */
-    fun onSilentPush(eventId: String, completion: () -> Unit) = shell.onSilentPush(eventId, completion)
+    fun onSilentPush(userInfo: Map<Any?, *>, completion: () -> Unit) = shell.onSilentPush(userInfo, completion)
 
     /**
      * Provision an event id — the shared path for both a scanned or typed event link and a freshly created
@@ -841,7 +823,7 @@ object SnapSyncRoot {
         fun onBackground()
         fun onOpenUrl(url: String)
         fun onPushToken(hex: String)
-        fun onSilentPush(eventId: String, completion: () -> Unit)
+        fun onSilentPush(userInfo: Map<Any?, *>, completion: () -> Unit)
         fun runUploadHeartbeat(onComplete: () -> Unit)
         fun runDownloadBackstop(onComplete: () -> Unit)
         fun handleBackgroundUrlSession(identifier: String, completionHandler: () -> Unit)
@@ -883,10 +865,10 @@ object SnapSyncRoot {
             log.i { "forge mode: ignoring push token" }
         }
 
-        override fun onSilentPush(eventId: String, completion: () -> Unit) {
+        override fun onSilentPush(userInfo: Map<Any?, *>, completion: () -> Unit) {
             // [completion] is still invoked, and that is not optional: an unanswered
             // `content-available` push costs the app its future background wakes.
-            log.i { "forge mode: ignoring silent push for $eventId" }
+            log.i { "forge mode: ignoring silent push" }
             completion()
         }
 
@@ -926,18 +908,14 @@ object SnapSyncRoot {
 
         override fun onForeground() = log.invocation("onForeground", params = foregroundParams()) {
             host
-            // Listen for the extension's cross-process liveness ding while foreground, so upload status
-            // moves live as the extension records completions/new jobs (spec: sync-status).
-            // Foreground-only: a suspended app cannot act on the post. The `CFNotificationCenter`
-            // registration is platform, so it stays shell-local; the rest of the foreground coordination
-            // (pump / refresh / reconcile / name / attestation, ordered, its launches escaping this
-            // entry's synchronous span) is the flow's.
-            registerLivenessObserver()
+            // The whole foreground coordination — membership re-read, pump, the foreground-gated
+            // status poll's start (the ding's replacement, spec `sync-status`), refresh / reconcile /
+            // name / attestation, its launches escaping this entry's synchronous span — is the flow's.
             app.foregroundFlow.run()
         }
 
         override fun onBackground() = log.invocation("onBackground") {
-            // Stop the liveness observer + arm the backstop — the `flow/Background` trigger's coordination.
+            // Stop the status poll + arm the backstop — the `flow/Background` trigger's coordination.
             app.backgroundFlow.run()
             log.i { "=== app entering background ===" }
         }
@@ -954,23 +932,27 @@ object SnapSyncRoot {
             pushTokenSource.deliver(hex)
         }
 
-        override fun onSilentPush(eventId: String, completion: () -> Unit) {
+        override fun onSilentPush(userInfo: Map<Any?, *>, completion: () -> Unit) {
             host
             scope.launch {
                 // Wrap INSIDE the launch so `[onSilentPush]` spans the async reconcile (and the download
-                // HTTP + import lines it drives trace back to this push). The gate → attestation →
-                // cross-arm fan-out coordination is the `flow/SilentPush` trigger's (it absorbed
-                // FanOutPushReceiver); only the entry-point wrap and the OS completion handler stay
-                // shell-local.
-                log.invocation(
-                    "onSilentPush",
-                    params = "eventId=$eventId protectedData=${protectedData.isAvailable()}",
-                ) {
-                    app.silentPushFlow.run(eventId)
+                // HTTP + import lines it drives trace back to this push). The payload decode →
+                // membership re-read → attestation → cross-arm fan-out coordination is the
+                // `flow/SilentPush` trigger's (it absorbed FanOutPushReceiver); only the entry-point
+                // wrap and the OS completion handler stay shell-local.
+                try {
+                    log.invocation(
+                        "onSilentPush",
+                        params = "protectedData=${protectedDataAvailable()}",
+                    ) {
+                        app.silentPushFlow.run(userInfo)
+                    }
+                } finally {
+                    // Always release the OS handler — structurally, on EVERY path including a throw
+                    // out of the wrap: iOS gives a silent push a short budget, and an unanswered
+                    // `content-available` push costs the app its future background wakes.
+                    completion()
                 }
-                // Always release the OS handler promptly — iOS gives a silent push a short budget and
-                // holding it open until an unlock would simply get us killed.
-                completion()
             }
         }
 
@@ -983,23 +965,26 @@ object SnapSyncRoot {
                 // Wrap INSIDE the launch so `[runDownloadBackstop]` spans the async import. The
                 // protected-data state rides the entry-point line (capability `ios-app-shell`): a
                 // background wake on a locked device is otherwise invisible, and it is the only place
-                // this class of bug shows up — no test can reach it. The gate/attestation/import
-                // coordination is the `flow/DownloadBackstop` trigger's; only the entry-point wrap and
-                // re-arm stay shell-local.
-                log.invocation("runDownloadBackstop", params = "protectedData=${protectedData.isAvailable()}") {
-                    app.downloadBackstopFlow.run()
+                // this class of bug shows up — no test can reach it. The membership re-read /
+                // attestation / import coordination is the `flow/DownloadBackstop` trigger's; only
+                // the entry-point wrap and re-arm stay shell-local.
+                try {
+                    log.invocation("runDownloadBackstop", params = "protectedData=${protectedDataAvailable()}") {
+                        app.downloadBackstopFlow.run()
+                    }
+                } finally {
+                    // Re-arm for the next idle window and release the OS's task assertion —
+                    // structurally, on EVERY path including a throw out of the wrap: an unreleased
+                    // BGTask burns the budget, and a lost re-arm silently ends the backstop chain.
+                    scheduleDownloadBackstop()
+                    onComplete()
                 }
-                // Re-arm for the next idle window and release the OS's task assertion immediately — even
-                // when the work above was deferred, since holding the BGTask open until an unlock is not
-                // an option.
-                scheduleDownloadBackstop()
-                onComplete()
             }
         }
 
         override fun handleBackgroundUrlSession(identifier: String, completionHandler: () -> Unit) = log.invocation(
             "handleBackgroundUrlSession",
-            params = "identifier=$identifier protectedData=${protectedData.isAvailable()}",
+            params = "identifier=$identifier protectedData=${protectedDataAvailable()}",
         ) {
             // Route by session identifier: the app-driven UPLOAD session (18–26.0) vs the download
             // session. A wiring-forced routing decision: one OS callback serves two distinct sessions.
@@ -1013,20 +998,4 @@ object SnapSyncRoot {
             app.downloadJobs.adoptBackgroundEvents(completionHandler)
         }
     }
-}
-
-/**
- * The `CFNotificationCenter` Darwin callback (must be a top-level, non-capturing function to be a C
- * function pointer). It ignores its arguments and pokes the [SnapSyncRoot] singleton, which re-reads the
- * ledger counts on the app scope.
- */
-@OptIn(ExperimentalForeignApi::class)
-private fun uploadLivenessCallback(
-    center: CFNotificationCenterRef?,
-    observer: COpaquePointer?,
-    name: CFNotificationName?,
-    obj: COpaquePointer?,
-    userInfo: CFDictionaryRef?,
-) {
-    SnapSyncRoot.onUploadLivenessNotified()
 }
