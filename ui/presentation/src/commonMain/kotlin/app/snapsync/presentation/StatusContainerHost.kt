@@ -77,7 +77,9 @@ class StatusContainerHost(
     // here, which is exactly the through-ports law violation this parameter repays. Production wires
     // the `Clock`/`TimeZoneSource` ports; tests pass a fixed instant and zone.
     private val cutoffFormatter: CutoffFormatter,
-    // Dev-path abort logging (autoJoin has no UI to show a load/commit failure). No-op by default.
+    // Dev-path abort logging: the headless negative oracle for a `SNAPSYNC_EVENT_LINK` run (autoJoin
+    // has no UI to show a load/commit failure, and a gate parked on a failed details load has no one
+    // watching its dialog). No-op by default; iOS wires it into `debug.log`.
     private val log: (String) -> Unit = {},
     // Download progress for the joined-layer "downloaded X of Y" line (capability `photo-download`).
     // Exposed as a screen-level StateFlow (like `inviteUrl`), NOT folded into `UiState` — it's an
@@ -347,7 +349,13 @@ class StatusContainerHost(
      * date; erring toward whole-library cannot be undone.
      */
     private suspend fun loadInto(eventId: String) {
-        val phase = when (val load = loadJoinDetails(eventId)) {
+        val load = loadJoinDetails(eventId)
+        // The headless negative oracle (mirrors autoConfirm's abort line): a gate parked on a failed
+        // details load shows a dialog, but a `SNAPSYNC_EVENT_LINK` launch has no one watching the
+        // screen — without this line, `debug.log` shows only the HTTP `404` and the run reads as if
+        // the link applied (the documented invented-UUID trap).
+        if (load !is JoinLoad.Found) log("join gate: details load did not succeed for $eventId ($load)")
+        val phase = when (load) {
             // No seed-from-createdAt and no fallback-to-now any more: `startsAt` is ALWAYS present on a
             // successful load (the backend synthesizes one for legacy markers, and the details source
             // fails the load rather than invent one), so the default is simply the event's start. The

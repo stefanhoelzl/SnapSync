@@ -156,7 +156,9 @@ P="uvx --python 3.14 pymobiledevice3"
 $P developer dvt launch app.snapsync --userspace                 # launch (prints the pid)
 $P developer dvt screenshot shot.png --userspace                 # real screen capture (auto-mounts the DDI)
 $P developer dvt launch app.snapsync \                           # subscribe to an event headlessly:
-  --env SNAPSYNC_EVENT_LINK="https://snapsync.stho.net/join#v=3&d=<base64url({\"eventId\":\"<uuid>\"})>" --userspace
+  --env SNAPSYNC_EVENT_LINK="https://snapsync.stho.net/join#v=3&d=<base64url({\"eventId\":\"<uuid>\",\"autoJoin\":true})>" --userspace
+# ⚠️ `"autoJoin":true` is REQUIRED for a headless join: without it the link opens the interactive
+# join gate — a confirmation dialog awaiting a tap no headless run can give (spec `ios-app-shell`).
 uvx pymobiledevice3 apps pull app.snapsync Documents/debug.log   # pull the file logger (re-provision line, etc.)
 ```
 
@@ -251,12 +253,24 @@ git add screenshots/ && git commit
 - The App Store upload fires only on `main` and only when `screenshots/**` or `metadata/**` changes; it
   replaces the live set, behind the editable-version gate (never a version in review).
 
-⚠️ **A "fresh event id" must be a real event you created — not an invented UUID.** `autoJoin` loads the
-event's details first and **aborts on a miss**, leaving the *previous* membership untouched:
+⚠️ **A "fresh event id" must be a real event you created — not an invented UUID.** The join gate loads
+the event's details first and **aborts on a miss**, leaving the *previous* membership untouched. The
+abort's only headless signal is one `debug.log` line — with `autoJoin=true` (the headless path):
 
 ```
 autoJoin aborted: details load did not succeed for <id> (NotFound)
 ```
+
+and on a link **without** `autoJoin` (which parks on the gate's dialog instead — see the launch
+example above), the same oracle reads:
+
+```
+join gate: details load did not succeed for <id> (NotFound)
+```
+
+(`(Failed)` in either shape means a transient load failure, not a missing event.) Both are emitted by
+the gate itself, **after** the HTTP `GET … → 404` line — a `404` alone is the raw fetch, not the
+abort decision.
 
 The launch still succeeds and the app runs on happily — **with the old config** — so a run that assumes its
 link applied is measuring the previous membership. (Observed: a `direction=download` link with an invented id
