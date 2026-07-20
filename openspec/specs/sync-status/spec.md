@@ -218,7 +218,9 @@ permission, and the gallery size to emit `SyncStatus.Ready(SyncProgress)` once *
 produced a first value, re-emitting a new `Ready` per input change. Each minted `SyncProgress` SHALL set
 `completed` = the ledger complete-asset count, `pending` = the ledger in-flight count **clamped to
 `total − completed`**, `total` = the
-gallery size, `active = (permission == GRANTED)`, `failed = 0`, and `estimatedRemaining = null`, and
+gallery size, `active = (permission == GRANTED || permission == LIMITED)` — syncing is operational under
+both full and limited grants (under `LIMITED` the total is the selection-scoped count per
+`limited-photo-access`) — `failed = 0`, and `estimatedRemaining = null`, and
 SHALL carry no completion timestamp.
 
 **Liveness is trigger-driven, plus a foreground-gated poll.** The ledger counts SHALL be re-read on
@@ -240,6 +242,10 @@ read SHALL retain the last good counts rather than regress (so a transient read 
 #### Scenario: Completed and pending derive from the ledger
 - **WHEN** the ledger reports `4` complete assets and `2` in-flight assets and the gallery total is `7`
 - **THEN** the minted snapshot has `completed = 4`, `pending = 2`, `total = 7`
+
+#### Scenario: A limited grant is active
+- **WHEN** permission is `LIMITED` and the counts have produced values
+- **THEN** the minted snapshot has `active = true` — a limited membership is syncing, not blocked
 
 #### Scenario: A ledger count change re-mints a Ready snapshot
 - **WHEN** the `LedgerCountsSource` value changes after the first `Ready`

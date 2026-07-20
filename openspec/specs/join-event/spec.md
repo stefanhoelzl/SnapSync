@@ -334,10 +334,12 @@ entered from the details fetch: when the fetch resolves to a loaded event, the g
 Permission SHALL be read as a **snapshot at the moment the phase is chosen**, not observed — the phase
 advances only by user action, so a permission change while the explainer is on screen SHALL NOT move it.
 
-`GRANTED` and `DENIED` SHALL both go straight to the loaded/confirm phase. `DENIED` is excluded because
-iOS raises the photo dialog at most once: from `DENIED` a request is a silent no-op, so an explainer
-promising a dialog that cannot appear would be false. A `DENIED` joiner instead meets the joined layer's
-existing `NeedsAccess` Settings affordance (capability `sync-status-screen`).
+`GRANTED`, `LIMITED`, and `DENIED` SHALL all go straight to the loaded/confirm phase. `LIMITED` is a
+usable grant (capability `limited-photo-access`) — an explainer over it would explain a dialog that has
+already been answered. `DENIED` is excluded because iOS raises the photo dialog at most once: from
+`DENIED` a request is a silent no-op, so an explainer promising a dialog that cannot appear would be
+false. A `DENIED` joiner instead meets the joined layer's existing `NeedsAccess` Settings affordance
+(capability `sync-status-screen`).
 
 The explainer's **confirm** ("I understand") SHALL call `PhotoAccessRequester.request()` and advance to
 the loaded/confirm phase in the same action. Because `request()` returns nothing and cannot suspend
@@ -350,7 +352,10 @@ priming). No other join-gate phase SHALL raise it.
 
 The copy SHALL state that photos the user takes are shared automatically with everyone in the event,
 SHALL state that the permission is also what saves other members' photos into the user's library, and
-SHALL state that only photos taken after the capture-date the user chooses next are shared. It MUST NOT
+SHALL state that only photos taken after the capture-date the user chooses next are shared. It SHALL
+present the system dialog's outcomes as a real choice: allowing **all** photos shares automatically,
+while choosing **specific photos** shares only what the user picks (and they can add more anytime) —
+limited access is presented as a first-class option, not a degraded one. It MUST NOT
 describe the app's function as "backing up" the user's library (consistent with `event-creation-ui`),
 and MUST NOT claim a scope wider than the membership can produce.
 
@@ -374,21 +379,10 @@ surface of its own.
 - **WHEN** the details fetch resolves to a loaded event and photo permission is `GRANTED`
 - **THEN** the gate enters the loaded/confirm phase directly and no explainer is shown
 
-#### Scenario: Previously-denied access skips the explainer
-- **WHEN** the details fetch resolves to a loaded event and photo permission is `DENIED`
-- **THEN** the gate enters the loaded/confirm phase directly, no explainer is shown, and no permission request is made
-
-#### Scenario: A switch never explains
-- **WHEN** a deeplink for a different event is decoded while an event is already configured, and photo permission is `NOT_DETERMINED`
-- **THEN** the switch confirmation is presented in its existing form and the explain-access phase is never entered
-
-#### Scenario: A created event's first join explains too
-- **WHEN** a freshly created event is routed into the pending-join gate, no event is configured, and photo permission is `NOT_DETERMINED`
-- **THEN** the same explain-access phase is entered, with no create-specific surface
-
-#### Scenario: The explainer never auto-requests
-- **WHEN** the explain-access phase is rendered
-- **THEN** no permission request is made until the user takes the confirm action
+#### Scenario: A limited grant skips the explainer
+- **WHEN** the details fetch resolves to a loaded event and photo permission is `LIMITED`
+- **THEN** the gate enters the loaded/confirm phase directly — the grant exists; there is no dialog to
+  explain
 
 ### Requirement: The cutoff row derives from the phase; it is never seeded at mount
 

@@ -47,8 +47,11 @@ The reduction SHALL be: a **pending interactive join with config absent** → `J
 `pendingSwitch` when a switch confirmation is in progress. The `Joined` health descriptor SHALL be
 derived from permission, the membership's **`startsAt`**, and the latest snapshot, in this precedence:
 
-- permission ≠ `GRANTED` → `NeedsAccess(permission)` (the sole **actionable** attention state; there is no
-  separate "not syncing" state — the status projection's only operational signal is permission);
+- permission is `NOT_DETERMINED` or `DENIED` → `NeedsAccess(permission)` (the sole **actionable**
+  attention state; there is no separate "not syncing" state — the status projection's only operational
+  signal is permission). **`LIMITED` SHALL NOT reduce to `NeedsAccess`**: a limited grant is a working
+  state (capability `limited-photo-access`), rendered as the ordinary health line plus the
+  "Choose more photos" affordance (see the added requirement below);
 - else the membership's **`startsAt` is in the future** → **`NotStarted(startsAt)`**;
 - else **no usable device token could be obtained** → **`Unattested`** (capability `device-attestation`);
 - else `SyncStatus.Loading` → a joined loading first-frame;
@@ -106,6 +109,11 @@ provisioning the screen simply shows the current `Joined` health (typically `Syn
 - **WHEN** config is present, permission is `GRANTED`, and the membership's `startsAt` is at or before now
 - **THEN** the health derives from the snapshot exactly as it did before this change (`Loading` /
   `InSync` / `Syncing`)
+
+#### Scenario: A limited grant reduces from the snapshot, not to NeedsAccess
+- **WHEN** config is present, permission is `LIMITED`, and the event has started
+- **THEN** the health derives from the snapshot (`Loading` / `InSync` / `Syncing`) exactly as under
+  `GRANTED`, and `NeedsAccess` is not shown
 
 #### Scenario: Settled snapshot reduces to In sync
 - **WHEN** config is present, permission is `GRANTED`, the event has started, and a `Ready` snapshot with
@@ -274,3 +282,27 @@ case, so a briefly-late transition costs nothing but the label.
 - **THEN** it reads only the ledger and holds no clock, the not-started derivation living entirely in the
   presentation reduction
 
+### Requirement: The joined layer offers a choose-more-photos affordance under a limited grant
+
+While permission is `LIMITED` and config is present, the joined layer SHALL render a persistent
+**"Choose more photos"** affordance that invokes the limited-library picker (capability
+`limited-photo-access`, "The app owns the limited-library picker"). It SHALL be a calm resting
+affordance, present regardless of the current health value, rendered **outside the status-line slot**
+(the status line stays single and unchanged — this is an affordance, not a health state, so the
+status-line contract that the joined layer never grows a second *status* line is preserved). It SHALL
+NOT be an attention state: a limited membership at rest is "In sync" over its selection, not a problem
+to fix. Under any other permission value the affordance SHALL be absent.
+
+#### Scenario: The affordance shows under limited in every health state
+- **WHEN** permission is `LIMITED` with config present, while the health is `InSync`, `Syncing`, or
+  `NotStarted`
+- **THEN** the "Choose more photos" affordance renders beneath the status area in each case, and the
+  status line above it is unchanged
+
+#### Scenario: Tapping it presents the picker
+- **WHEN** the member taps "Choose more photos"
+- **THEN** the system limited-library picker is presented, and no permission dialog is raised
+
+#### Scenario: The affordance is absent under full access
+- **WHEN** permission is `GRANTED`
+- **THEN** no "Choose more photos" affordance renders

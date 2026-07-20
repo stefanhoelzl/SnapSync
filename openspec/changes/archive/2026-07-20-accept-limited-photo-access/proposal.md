@@ -86,6 +86,9 @@ denylist is a **silent no-op** under `.limited`.
   snapshot skips the explainer like `GRANTED` (the grant exists; there is no dialog to explain).
 - `architecture-guards`: a new guard — no code path starts both upload producers; the switch stops the
   outgoing producer before starting the incoming one.
+- `desktop-test-harness`: the permission preset group gains `LIMITED` (the partial-grant joined layer
+  is reviewable offscreen).
+- `full-stack-harness`: the inspector's permission segment becomes 4-state.
 
 ## Impact
 

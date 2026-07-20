@@ -7,11 +7,14 @@ joined, sharing runs on its own — no upload button, no per-photo consent. This
 switch's contract so the rest of the app never touches a platform authorization API and never has to
 reason about a half-grant.
 
-It reduces the platform's authorization vocabulary to **three** values — `NOT_DETERMINED`, `DENIED`,
-`GRANTED` — where `GRANTED` means a **full** library grant and nothing less. iOS's `.limited` (the user
-hand-picks a few photos) collapses to `DENIED` on purpose: a partial library cannot answer "is
-everything shared?", so a screen built on it would report "In sync" over a library it cannot see. One
-coarse, honest signal is worth more here than a faithful mirror of the OS.
+It reduces the platform's authorization vocabulary to **four** values — `NOT_DETERMINED`, `DENIED`,
+`LIMITED`, `GRANTED` — where `GRANTED` means a **full** library grant and `LIMITED` a **partial** one
+(iOS's `.limited`: the user hand-picks the photos the app may see). A partial grant is a first-class
+working state, not a refusal: the selection **defines** the membership's own-photo scope (capability
+`limited-photo-access`), so "is everything shared?" is answerable — the selection *is* "everything",
+and "In sync" over the chosen set is true. (v1 collapsed `.limited` to `DENIED` on the argument that a
+partial library cannot answer that question; the selection-defines-scope reframe dissolved it —
+decision record `changes/archive/2026-07-20-accept-limited-photo-access`.)
 
 It exposes exactly two ports, split by kind: `PhotoAccessStatusSource` (state — a level-triggered
 `StateFlow` whose latest value is the whole truth, readable synchronously) and `PhotoAccessRequester`
@@ -34,14 +37,17 @@ Both are **CTA-only priming**: the system dialog fires from a deliberate user ac
 observing `NOT_DETERMINED` — iOS raises it at most once, and a prompt spent before the user understands
 it is spent for good.
 
-Decision record: `changes/archive/2026-06-27-permission-on-status-screen`.
+Decision record: `changes/archive/2026-06-27-permission-on-status-screen`;
+the `LIMITED` state: `changes/archive/2026-07-20-accept-limited-photo-access`.
 ## Requirements
 ### Requirement: Permission domain contracts
 
-The permission domain SHALL define `PermissionStatus` with exactly three values — `NOT_DETERMINED`, `DENIED`, `GRANTED` — in `:domain`'s `model/` zone, and two ports in its `ports/` zone (both seated by migration step 3a):
+The permission domain SHALL define `PermissionStatus` with exactly four values — `NOT_DETERMINED`, `DENIED`, `LIMITED`, `GRANTED` — in `:domain`'s `model/` zone, and two ports in its `ports/` zone (both seated by migration step 3a):
 
 - `PhotoAccessStatusSource` (state port): exposes `permission: StateFlow<PermissionStatus>`, a level-triggered state holder whose current value is always available synchronously. Every emission is the whole truth; consumers depend only on the latest value.
 - `PhotoAccessRequester` (command port): `fun request()` and `fun openSettings()`. Both are fire-and-forget — they MUST NOT return values and MUST NOT suspend. Status changes resulting from a command arrive exclusively via `PhotoAccessStatusSource`.
+
+`LIMITED` means a **partial** library grant: the platform scopes reads to a user-picked selection, which the `limited-photo-access` capability treats as the membership's own-photo scope. `GRANTED` continues to mean a **full** library grant and nothing less. Consumers that gate behavior on "the app can read photos" SHALL treat `GRANTED` and `LIMITED` as the granted side; consumers that gate on "the app can read the **whole** library" (the autonomous walk paths) SHALL require `GRANTED` exactly. Boolean comparisons of the form `permission != GRANTED` are therefore no longer self-evidently correct and every such site SHALL state which reading it intends.
 
 Implementations MAY be a single object implementing both ports, but consumers SHALL depend on each port separately. These contracts are consumed by the **status screen's joined-layer status line** (capability `sync-status-screen`), which renders the missing-permission state **inline** (the `NeedsAccess` health) and routes its intents — permission is no longer a hero-replacing gate; the joined layer (name, QR, share, leave) renders regardless of permission.
 
@@ -53,18 +59,13 @@ Implementations MAY be a single object implementing both ports, but consumers SH
 - **WHEN** `request()` is invoked twice before the first resolves
 - **THEN** no error occurs and the source ends up holding the single resolved status
 
-### Requirement: Full library access is required
-
-v1 SHALL treat only a full library grant as `GRANTED`. Any platform adapter MUST map partial or unchangeable grants to `DENIED` (on iOS: `.denied`, `.restricted`, and `.limited` → `DENIED`; `.authorized` → `GRANTED`; `.notDetermined` → `NOT_DETERMINED`). This prevents the screen from ever reporting "In sync" over a partially-synced library. When permission is not `GRANTED` while an event is configured, the joined-layer status line SHALL show the inline `NeedsAccess` affordance (per `sync-status-screen`) rather than a hero-replacing gate. ⚠️ Accepted risk: on managed/restricted devices the inline affordance's Settings path is a dead end; revisit only if such a report appears.
-
-#### Scenario: Limited grant keeps the inline affordance up
-- **WHEN** a platform reports a limited (partial) library grant while an event is configured
-- **THEN** the permission status is `DENIED` and the joined-layer status line shows the inline
-  "Turn on photo access" affordance with the Settings path
+#### Scenario: Limited is on the granted side for can-read gates
+- **WHEN** a consumer asks whether the app may read photos at all (e.g. whether syncing is operational)
+- **THEN** both `GRANTED` and `LIMITED` answer yes, and only the whole-library walk paths distinguish them
 
 ### Requirement: iOS PhotoKit permission adapter
 
-The permission domain SHALL provide an iOS platform adapter (`PhotoLibraryPermission` in `:adapter:ios:app-only`, seated there by migration step 4 — the permission dialog is app-process-only surface) — a single object implementing **both** `PhotoAccessStatusSource` and `PhotoAccessRequester` against PhotoKit. It SHALL seed its `permission` `StateFlow` synchronously from `PHPhotoLibrary.authorizationStatus(for: .readWrite)` at construction (the platform exposes the current status synchronously, so the permission seam keeps its synchronous-real guarantee). It SHALL request the `.readWrite` (full-library) access level. The status mapping is the one already required by *Full library access is required* (`.authorized → GRANTED`, `.notDetermined → NOT_DETERMINED`, `.limited/.denied/.restricted → DENIED`).
+The permission domain SHALL provide an iOS platform adapter (`PhotoLibraryPermission` in `:adapter:ios:app-only`, seated there by migration step 4 — the permission dialog is app-process-only surface) — a single object implementing **both** `PhotoAccessStatusSource` and `PhotoAccessRequester` against PhotoKit. It SHALL seed its `permission` `StateFlow` synchronously from `PHPhotoLibrary.authorizationStatus(for: .readWrite)` at construction (the platform exposes the current status synchronously, so the permission seam keeps its synchronous-real guarantee). It SHALL request the `.readWrite` (full-library) access level. The status mapping SHALL be: `.authorized → GRANTED`, `.limited → LIMITED`, `.notDetermined → NOT_DETERMINED`, `.denied/.restricted → DENIED`.
 
 `request()` SHALL invoke `PHPhotoLibrary.requestAuthorization(for: .readWrite)` and update the source from its completion callback; `openSettings()` SHALL open the app's system settings surface (`UIApplication.openSettingsURLString`). Both are fire-and-forget per the port contract.
 
@@ -76,9 +77,9 @@ The permission domain SHALL provide an iOS platform adapter (`PhotoLibraryPermis
 - **WHEN** `request()` is invoked and the user grants full access in the system dialog
 - **THEN** `permission` emits `GRANTED`, and `request()` itself returns nothing
 
-#### Scenario: Limited grant maps to denied
-- **WHEN** the user grants *limited* (partial) library access
-- **THEN** `permission` holds `DENIED`
+#### Scenario: Limited grant maps to LIMITED
+- **WHEN** the user grants *limited* (partial) library access — from the system dialog's "Limit Access…" or a later Settings change
+- **THEN** `permission` holds `LIMITED`
 
 ### Requirement: Permission liveness across the system Settings round-trip
 
