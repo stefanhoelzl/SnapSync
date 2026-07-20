@@ -78,15 +78,16 @@ scaffolding out of the way first.
 
 ## 5. Selection-driven upload under LIMITED
 
-- [ ] 5.1 `UploadCycle`/pump: continuation triggers (`onUploadCompleted`, session events, heartbeat)
-      drain without a fresh library read under `LIMITED`; the discovery pass runs only from 4.4's two
-      moments (`cycle.run(discover:)` or equivalent seam — implementer's choice, default preserves
-      existing tiers byte-for-byte)
-- [ ] 5.2 Status total under `LIMITED` derives from the same discovery pass (design D6) — no separate
+- [x] 5.1 Satisfied **by construction** — no discover flag needed: `SelectionScopedTransfer` means NO
+      cycle under `LIMITED` ever touches the library (discovery reads the in-memory snapshot cell), so
+      continuation triggers are read-free automatically and the ledger dedups re-seen snapshot
+      entries. The one read per change is the adapter's (one enumeration per emission). Existing
+      tiers byte-identical via the `Unrestricted` default
+- [x] 5.2 Status total under `LIMITED` derives from the same discovery pass (design D6) — no separate
       gallery walk; `GRANTED` path unchanged
-- [ ] 5.3 `:test:integration`: selection-change emission → N rises and the enqueued uploads complete
+- [x] 5.3 `:test:integration`: selection-change emission → N rises and the enqueued uploads complete
       through the world's app-driven tier; the app's own import (echo-suppressed) enqueues nothing
-- [ ] 5.4 `:test:integration`: pre-cutoff and origin-excluded selected photos are excluded — the policy
+- [x] 5.4 `:test:integration`: pre-cutoff and origin-excluded selected photos are excluded — the policy
       applies unchanged to the selection
 
 ## 6. Compose-both and the arm (the law move, guarded)
