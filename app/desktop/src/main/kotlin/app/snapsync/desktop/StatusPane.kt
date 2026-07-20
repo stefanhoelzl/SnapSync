@@ -128,6 +128,7 @@ fun StatusPane(
             onCreateEvent = host::onCreateEvent,
             onConfirmJoin = host::onConfirmJoin,
             onAcknowledgeAccess = host::onAcknowledgeAccess,
+            onChoosePhotos = host::onChoosePhotos,
             onCancelJoin = host::onCancelJoin,
             onRetryLoad = host::onRetryLoad,
             onRetryJoin = host::onRetryJoin,

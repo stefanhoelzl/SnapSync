@@ -22,6 +22,7 @@ import app.snapsync.gallery.PhotoLibraryResourceEnumerator
 import app.snapsync.model.PermissionStatus
 import app.snapsync.permission.PhotoLibraryPermission
 import app.snapsync.permission.PhotoSelectionSnapshotSource
+import app.snapsync.permission.presentLimitedLibraryPicker
 import app.snapsync.presentation.CutoffFormatter
 import app.snapsync.presentation.MutableAttestedSource
 import app.snapsync.presentation.StatusContainerHost
@@ -335,6 +336,9 @@ object SnapSyncRoot {
                 // The platform half of the share command (a system sheet over the top view
                 // controller) — the UIKit adapter `presentShareSheet` (:adapter:ios:app-only).
                 share = ::presentShareSheet,
+                // The platform half of the choose-photos command (capability `limited-photo-access`):
+                // the PhotosUI limited-library picker over the top view controller.
+                presentPhotoPicker = ::presentLimitedLibraryPicker,
                 // The upload arm's push receiver on the app-driven tier (a thunk — the tier controller
                 // depends on this graph, so it must resolve lazily); null on iOS ≥26.1.
                 uploadSilentPush = live.uploadSilentPush,

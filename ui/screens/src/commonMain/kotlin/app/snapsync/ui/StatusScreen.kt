@@ -42,6 +42,7 @@ import app.snapsync.ui.components.ScreenLayout
 import app.snapsync.ui.components.SecondaryButton
 import app.snapsync.ui.components.ShareButton
 import app.snapsync.ui.components.StatusHero
+import app.snapsync.ui.components.SecondaryButton
 import app.snapsync.ui.components.StatusHint
 import app.snapsync.ui.components.StatusIndicator
 import app.snapsync.ui.components.SyncDirectionChoice
@@ -66,6 +67,9 @@ fun StatusScreen(
     // The photo-access explainer's confirm: requests permission, then advances to the confirm surface.
     // The only route from the join gate to the system dialog (capability `join-event`).
     onAcknowledgeAccess: () -> Unit = {},
+    // The joined layer's "Choose more photos" tap under a partial grant (capability
+    // `limited-photo-access`): presents the system limited-library picker.
+    onChoosePhotos: () -> Unit = {},
     onCancelJoin: () -> Unit = {},
     onRetryLoad: () -> Unit = {},
     onRetryJoin: (String, Direction, Boolean) -> Unit = { _, _, _ -> },
@@ -111,7 +115,10 @@ fun StatusScreen(
                         onCancelJoin, onRetryLoad, onRetryJoin,
                     )
                 is UiState.Joined ->
-                    JoinedLayer(state.health, inviteUrl, onRequestPermission, onOpenSettings, cutoff)
+                    JoinedLayer(
+                        state.health, inviteUrl, onRequestPermission, onOpenSettings,
+                        state.canChoosePhotos, onChoosePhotos, cutoff,
+                    )
             }
         }
 
@@ -239,10 +246,16 @@ private fun JoiningEventScreen(
                 is JoinPhase.ExplainAccess ->
                     AppExplainer(
                         headline = "Photo access",
+                        // The system dialog's outcomes are a real choice (capability `join-event`):
+                        // allowing all photos shares automatically; picking specific photos is a
+                        // first-class alternative (capability `limited-photo-access`), not a
+                        // degraded one.
                         paragraphs = listOf(
                             "Photos you take will be shared automatically with everyone in the event.",
                             "SnapSync needs access to your photo library to do this — and to save the " +
                                 "photos other members share with you.",
+                            "You can allow all photos, or pick exactly which ones to share — and add " +
+                                "more anytime.",
                             "Only photos taken after the date you pick next are shared.",
                         ),
                     )
@@ -486,6 +499,8 @@ private fun JoinedLayer(
     inviteUrl: String?,
     onRequestPermission: () -> Unit,
     onOpenSettings: () -> Unit,
+    canChoosePhotos: Boolean,
+    onChoosePhotos: () -> Unit,
     cutoff: CutoffFormatter,
 ) {
     Column(
@@ -508,6 +523,12 @@ private fun JoinedLayer(
                 }
             },
         )
+        // The partial-grant resting affordance (capability `limited-photo-access`): present in every
+        // health, OUTSIDE the status-line slot — the selection is the membership's scope, and widening
+        // it is an ordinary action, not a problem to fix.
+        if (canChoosePhotos) {
+            SecondaryButton(label = "Choose more photos", onClick = onChoosePhotos)
+        }
     }
 }
 

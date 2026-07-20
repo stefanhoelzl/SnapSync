@@ -58,6 +58,7 @@ fun MainViewController() = ComposeUIViewController {
             transientError = transientError,
             onConfirmJoin = host::onConfirmJoin,
             onAcknowledgeAccess = host::onAcknowledgeAccess,
+            onChoosePhotos = host::onChoosePhotos,
             onCancelJoin = host::onCancelJoin,
             onRetryLoad = host::onRetryLoad,
             onRetryJoin = host::onRetryJoin,

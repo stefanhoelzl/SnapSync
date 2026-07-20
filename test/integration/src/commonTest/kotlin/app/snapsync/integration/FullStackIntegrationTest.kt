@@ -262,7 +262,11 @@ class FullStackIntegrationTest {
             assertEquals(null, w.ledgerBackend.get("UNSELECTED-primary.jpg"))
 
             val host = statusHost(w, scope)
-            assertEquals(UiState.Joined(SyncHealth.InSync), host.await { it.health() is SyncHealth.InSync })
+            // The joined layer under LIMITED carries the choose-more-photos resting affordance.
+            assertEquals(
+                UiState.Joined(SyncHealth.InSync, canChoosePhotos = true),
+                host.await { it.health() is SyncHealth.InSync },
+            )
         } finally {
             scope.cancel()
         }
@@ -399,7 +403,11 @@ class FullStackIntegrationTest {
             assertEquals(null, w.configSource.config.value)
             // ...and the backend outcomes land when the fire-and-forget DELETE does (awaited, not
             // assumed synchronous — the flip deliberately never waits on the network).
-            withTimeout(5_000) { while (w.store.isRegistered("E")) delay(10) }
+            // The GC of the departed device's bytes is the cascade's TAIL — await it like the
+            // deregistration, not assert it synchronously (the flip deliberately never waits).
+            withTimeout(5_000) {
+                while (w.store.isRegistered("E") || w.store.objectsOf(w.ownDeviceId).isNotEmpty()) delay(10)
+            }
             assertFalse(w.store.isRegistered("E"))
             assertTrue(w.store.objectsOf(w.ownDeviceId).isEmpty())
         } finally {

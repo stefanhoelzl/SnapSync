@@ -134,6 +134,9 @@ class AppPorts(
     /** Present the platform share surface for the invite URL (`UIActivityViewController` on iOS) —
      *  the platform half of the [UserCommands.share] command; the default keeps it inert off-device. */
     val share: (String) -> Unit = {},
+    /** Present the platform's limited-library picker — the platform half of the
+     *  [UserCommands.choosePhotos] command (capability `limited-photo-access`); inert off-device. */
+    val presentPhotoPicker: () -> Unit = {},
     /** The upload arm's silent-push receiver on the app-driven tier, or `null` on iOS ≥26.1. A thunk so
      *  the tier controller (which depends on this graph) resolves lazily, never at composition time. */
     val uploadSilentPush: () -> (suspend (eventId: String) -> Unit)? = { null },
@@ -481,6 +484,9 @@ class AppCore internal constructor(
             // cannot suspend — the grant arrives only via the permission read-model StateFlow.
             requestAccess = { ports.photoAccessRequester.request() },
             openSettings = { ports.photoAccessRequester.openSettings() },
+            // The picker presentation is platform surface; the selection outcome arrives only via
+            // the selection-change seam (fire-and-forget, like every command here).
+            choosePhotos = { ports.presentPhotoPicker() },
         )
     }
 

@@ -575,12 +575,25 @@ class StatusContainerHostTest {
     @Test
     fun `a limited grant reduces from the snapshot and never to NeedsAccess`() = runTest {
         // A partial grant is a working state (capability `limited-photo-access`): the selection defines
-        // the scope, so the settled snapshot reads In sync — not the permission-attention line.
+        // the scope, so the settled snapshot reads In sync — not the permission-attention line — and the
+        // joined layer carries the choose-more-photos resting affordance.
         val source = FakeSyncStatusSource(snapshot(completed = 34, total = 34))
         val permission = FakePermissionSource(PermissionStatus.LIMITED)
         val container = host(source, backgroundScope, permission = permission).container
 
-        assertEquals(inSync, container.stateFlow.value)
+        assertEquals(
+            UiState.Joined(SyncHealth.InSync, canChoosePhotos = true),
+            container.stateFlow.value,
+        )
+    }
+
+    @Test
+    fun `a full grant offers no choose-photos affordance`() = runTest {
+        val source = FakeSyncStatusSource(snapshot(completed = 34, total = 34))
+        val permission = FakePermissionSource(PermissionStatus.GRANTED)
+        val container = host(source, backgroundScope, permission = permission).container
+
+        assertEquals(false, (container.stateFlow.value as UiState.Joined).canChoosePhotos)
     }
 
     @Test
