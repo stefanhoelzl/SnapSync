@@ -498,6 +498,15 @@ sshmac 'cd snapsync && xcodebuild -project iosApp/iosApp.xcodeproj -scheme iosAp
 #                                        its OWN `application-identifier` group. The app and the upload
 #                                        extension then hold DIFFERENT device ids, both reads succeed,
 #                                        and the app re-imports every photo it uploaded (2026-07-20).
+#                                        SINCE device-identity started naming the group EXPLICITLY
+#                                        (`kSecAttrAccessGroup = <TEAM>.app.snapsync.shared`), the wildcard
+#                                        is WORSE than silent: an explicit-group query is not satisfied by a
+#                                        `<TEAM>.*` entitlement, so the read throws `errSecMissingEntitlement`
+#                                        (-34018) and the launch coroutine — see the app-scope error boundary
+#                                        in app/ios/CLAUDE.md — logs it rather than aborting, but the app is
+#                                        dead in the water (no device id). A hand-narrowed re-sign that kept
+#                                        the keychain wildcard did exactly this on 2026-07-21. USE `build_ent`
+#                                        BELOW; never re-sign by narrowing the profile grant key-by-key.
 #     The keychain one is the worse of the two: it writes a real item to a real group, and the device id
 #     is written once and never rewritten — so the mistake is frozen permanently, on a value whose loss
 #     is unrecoverable. This is why we now GENERATE the claim instead of narrowing the grant key by key:
