@@ -311,7 +311,12 @@ class AppCore internal constructor(
     // Contribution, not a branch here (the roots pass facts, never branches).
     suspend fun refreshStatusSources() {
         ports.configSource.config.value?.let { cfg ->
-            gallery.refresh(Contribution.of(cfg.direction.includesUpload, cfg.minPhotoDate))
+            // The own-device walk enumerates the library — GRANTED exactly, per the read discipline
+            // (`limited-photo-access`): under LIMITED the total derives from the selection-driven
+            // discovery instead of an autonomous enumeration.
+            if (ports.photoAccess.permission.value == PermissionStatus.GRANTED) {
+                gallery.refresh(Contribution.of(cfg.direction.includesUpload, cfg.minPhotoDate))
+            }
         }
         ledgerCounts.refresh()
         downloadStatusSource.refresh() // the "downloaded X of Y" line (capability `photo-download`)
@@ -334,7 +339,13 @@ class AppCore internal constructor(
             eventName = eventName,
             statusPoller = ledgerCountsPoller,
             reloadConfig = ports.reloadConfig,
-            pumpForeground = ports.pumpForeground,
+            // GRANTED exactly (never `grantsPhotoAccess`): the pump's cycle walks the library, and the
+            // read discipline forbids autonomous walks under LIMITED (capability `limited-photo-access`,
+            // "No autonomous library reads") — reads there are selection-driven. Everything else this
+            // flow coordinates (reconcile, poller, attestation) runs under any permission.
+            pumpForeground = {
+                if (ports.photoAccess.permission.value == PermissionStatus.GRANTED) ports.pumpForeground()
+            },
             refreshStatus = { refreshStatusSources() },
             activeEventId = { ports.configSource.config.value?.eventId },
             fetchEventName = fetchEventName,
@@ -356,7 +367,13 @@ class AppCore internal constructor(
             // lazily; on iOS ≥26.1 it is null and only the download arm is woken.
             receivers = buildList {
                 add(downloadPushReceiver::onSilentPush)
-                ports.uploadSilentPush()?.let { add(it) }
+                // The upload receiver drives a cycle (a library walk) — GRANTED exactly, per the read
+                // discipline (`limited-photo-access`): under LIMITED only the download arm is woken.
+                ports.uploadSilentPush()?.let { receiver ->
+                    add { eventId ->
+                        if (ports.photoAccess.permission.value == PermissionStatus.GRANTED) receiver(eventId)
+                    }
+                }
             },
         )
     }
@@ -441,6 +458,10 @@ class AppCore internal constructor(
     fun installPermissionSubscriptions() {
         scope.launch {
             ports.photoAccess.permission.collect { status ->
+                // GRANTED exactly, matching the arm's own gate: arming under LIMITED would start a
+                // producer whose start() walks the library (see the arm's isGranted comment). The
+                // permission-aware arm that uploads under LIMITED arrives with the selection-driven
+                // read path (upload-lifecycle, "Exactly one producer started per process").
                 if (status == PermissionStatus.GRANTED) uploadArm.onPermissionGranted()
             }
         }
@@ -449,7 +470,10 @@ class AppCore internal constructor(
                 // The app is the sole album creator, and sync needs the same grant, so the album exists
                 // before the first synced photo — both processes then only ADD (capability `event-album`).
                 // Unconditional call: the membership's opt-in/name gate is the coordinator's own guard.
-                if (status == PermissionStatus.GRANTED) {
+                // Usable access (`grantsPhotoAccess`): album creation works under a LIMITED grant
+                // (measured — capability `limited-photo-access`), so a limited member's opted-in album
+                // exists before their first import lands.
+                if (status.grantsPhotoAccess) {
                     ports.configSource.config.value?.let { cfg ->
                         albumCoordinator.ensureAlbum(cfg.eventId, cfg.name, cfg.saveToAlbum)
                     }

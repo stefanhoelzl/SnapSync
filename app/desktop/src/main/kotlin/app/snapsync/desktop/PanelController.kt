@@ -131,6 +131,10 @@ class PanelController {
         permissionState.value = PermissionStatus.DENIED
     }
 
+    fun showPermissionLimited() {
+        permissionState.value = PermissionStatus.LIMITED
+    }
+
     fun showPermissionGranted() {
         permissionState.value = PermissionStatus.GRANTED
     }

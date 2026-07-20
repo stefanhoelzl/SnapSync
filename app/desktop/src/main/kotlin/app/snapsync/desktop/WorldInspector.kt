@@ -76,6 +76,7 @@ fun WorldInspector(
         FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             OutlinedButton(onClick = { controller.setPermission(PermissionStatus.NOT_DETERMINED) }) { Text("Not determined") }
             OutlinedButton(onClick = { controller.setPermission(PermissionStatus.DENIED) }) { Text("Denied") }
+            OutlinedButton(onClick = { controller.setPermission(PermissionStatus.LIMITED) }) { Text("Limited") }
             OutlinedButton(onClick = { controller.setPermission(PermissionStatus.GRANTED) }) { Text("Granted") }
         }
         Row(verticalAlignment = Alignment.CenterVertically) {

@@ -42,16 +42,16 @@ scaffolding out of the way first.
 
 ## 3. Receive-only limited works (device-validated checkpoint)
 
-- [ ] 3.1 Gate the autonomous `PHAsset` paths on `GRANTED` exactly: `pumpForeground()` invocation,
+- [x] 3.1 Gate the autonomous `PHAsset` paths on `GRANTED` exactly: `pumpForeground()` invocation,
       the upload half of the silent-push fan-out, and `OwnDeviceGalleryStatusSource.refresh` /
       `refreshStatusSources()`'s gallery walk — each a no-op under `LIMITED`; everything non-`PHAsset`
       (reconcile, downloads, ledger poll, attestation) untouched
-- [ ] 3.2 `installPermissionSubscriptions`: fire the arm + `ensureAlbum` on any usable-access
+- [x] 3.2 `installPermissionSubscriptions`: fire the arm + `ensureAlbum` on any usable-access
       transition (`GRANTED` or `LIMITED`), not `GRANTED` only (album creation works under limited —
       measured, finding 4)
-- [ ] 3.3 `:test:integration` seam→UI test: a `LIMITED` `DownloadOnly`/`Both` membership imports
+- [x] 3.3 `:test:integration` seam→UI test: a `LIMITED` `DownloadOnly`/`Both` membership imports
       foreign photos, populates the album, creates no upload work, shows no `NeedsAccess`
-- [ ] 3.4 Forge harness: permission preset gains `LIMITED`; verify the joined layer renders the normal
+- [x] 3.4 Forge harness: permission preset gains `LIMITED`; verify the joined layer renders the normal
       health line (headless via `:test:harness-driver`)
 - [ ] 3.5 **Device checkpoint (SE2):** sideload, grant limited, join a fresh event with
       direction=download — verify imports land, no alert storm across several foregrounds, status
