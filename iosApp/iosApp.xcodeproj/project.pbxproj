@@ -349,6 +349,8 @@
 					"$(inherited)",
 					"-lsqlite3",
 					"-framework",
+					PhotosUI,
+					"-framework",
 					SnapSyncKit,
 				);
 				PRODUCT_BUNDLE_IDENTIFIER = "$(BUNDLE_ID)";
@@ -383,6 +385,8 @@
 				OTHER_LDFLAGS = (
 					"$(inherited)",
 					"-lsqlite3",
+					"-framework",
+					PhotosUI,
 					"-framework",
 					SnapSyncKit,
 				);

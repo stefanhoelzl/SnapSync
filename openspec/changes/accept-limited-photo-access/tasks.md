@@ -126,6 +126,16 @@ scaffolding out of the way first.
 
 ## 9. Device validation (the full feature, on the SE2)
 
+**9.2 first-run finding (2026-07-20): `-[PHPhotoLibrary presentLimitedLibraryPickerFromViewController:]:
+unrecognized selector` — SIGABRT on tapping the row.** PhotosUI.framework was never linked into the app
+binary (the picker is a PhotosUI *category* on PHPhotoLibrary; the K/N platform import alone does not
+link the framework). Every probe run masked it: dev-launches never foreground, so the presenter walk
+found no root VC and `presenter?.let { }` skipped the call — the earlier "picker verified on device"
+claim was WRONG (only the plumbing around it was exercised). Fix: `-framework PhotosUI` in the APP
+target's `OTHER_LDFLAGS` (both configs), beside `-lsqlite3`; the extension deliberately does not get it
+(app-only surface). This is forum thread 737847's documented crash + fix.
+
+
 - [ ] 9.1 Full-access regression: existing behavior unchanged (join, upload, download on the PhotoKit
       tier)
 - [ ] 9.2 Limited upload end-to-end: grant limited, select photos, verify upload via the app-driven
