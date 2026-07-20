@@ -156,18 +156,24 @@ object SnapSyncRoot {
         is CompositionMode.Live -> when (m.tier) {
             // OS-driven PhotoKit tier (iOS ≥26.1): the OS owns upload scheduling — no foreground
             // pump, no upload push receiver (only the download arm wakes), no app-driven heartbeat.
+            // OS-driven tier (iOS ≥26.1): BOTH producers are composed — the OS owns upload
+            // scheduling under a full grant, and the app-driven mechanism serves a partial one (the
+            // OS never invokes the extension there — measured; `ios-photokit-upload`). Which producer
+            // RUNS is the tested arm's permission decision, never this switch's.
             UploadTier.PHOTOKIT -> LiveShell(
-                uploadProducer = { photoKitProducer },
+                uploadProducer = { urlSessionUpload },
+                osUploadProducer = { photoKitProducer },
                 pumpForeground = {},
                 uploadSilentPush = { null },
-                // Inert until the permission-aware arm composes both producers on this tier
-                // (upload-lifecycle, "Exactly one producer started per process").
-                pumpSelectionChanged = {},
+                pumpSelectionChanged = { urlSessionUpload.onSelectionChanged() },
                 heartbeat = { onComplete -> onComplete() },
             )
             // App-driven URLSession tier (iOS 18–26.0, or the dev force flag): the app process pumps.
             UploadTier.URL_SESSION -> LiveShell(
                 uploadProducer = { urlSessionUpload },
+                // The OS-driven mechanism stays entirely unconstructed on this tier — the tier-force
+                // flag can therefore never register the PhotoKit extension (`upload-lifecycle`).
+                osUploadProducer = { null },
                 pumpForeground = { urlSessionUpload.onForeground() },
                 uploadSilentPush = { urlSessionUpload.pushReceiver::onSilentPush },
                 pumpSelectionChanged = { urlSessionUpload.onSelectionChanged() },
@@ -308,6 +314,7 @@ object SnapSyncRoot {
                 // The tier's mechanism, selected ONCE per process by the mode switch above
                 // (capability `upload-lifecycle`): exactly one producer, the other never constructed.
                 uploadProducer = live.uploadProducer,
+                osUploadProducer = live.osUploadProducer,
                 albumManager = albumManager,
                 albumMapStore = albumMapStore,
                 albumExcludedAssetIds = { cutoff -> albumExcludedAssetIds(cutoff) },
@@ -908,8 +915,10 @@ object SnapSyncRoot {
      * their forge guards.
      */
     private class LiveShell(
-        /** The selected tier's upload mechanism (capability `upload-lifecycle`), thunked into [AppPorts]. */
+        /** The app-driven upload mechanism — composed on both tiers (capability `upload-lifecycle`). */
         val uploadProducer: () -> UploadProducer,
+        /** The OS-driven mechanism where it exists (iOS ≥26.1; never under the tier-force flag). */
+        val osUploadProducer: () -> UploadProducer?,
         /** Foreground pump (app-driven tier); `{}` on iOS ≥26.1 where the OS owns scheduling. */
         val pumpForeground: () -> Unit,
         /** The upload arm's silent-push receiver (app-driven tier); `{ null }` on iOS ≥26.1. */

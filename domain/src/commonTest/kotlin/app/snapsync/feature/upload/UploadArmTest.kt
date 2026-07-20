@@ -1,5 +1,6 @@
 package app.snapsync.feature.upload
 
+import app.snapsync.model.PermissionStatus
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -11,23 +12,49 @@ import kotlin.test.assertTrue
  * hard rule. Grep found **zero** tests touching it, which is how the app-driven tier shipped a provision
  * path that tore the upload arm down and started nothing.
  *
- * These run on JVM **and** `iosSimulatorArm64` (`commonTest`), against a fake producer.
+ * Since `accept-limited-photo-access` the arm is **permission-aware** over the composed producers: the
+ * OS-driven mechanism runs under `GRANTED` (where composed), the app-driven one under `LIMITED` (the OS
+ * never invokes the extension there — measured), and a flip between them is a stop-then-start switch.
+ *
+ * These run on JVM **and** `iosSimulatorArm64` (`commonTest`), against fake producers.
  */
 class UploadArmTest {
 
     /** Records the verb sequence. There is no destructive verb to record — that is the point. */
-    private class FakeProducer : UploadProducer {
+    private class FakeProducer(private val name: String = "") : UploadProducer {
         val verbs = mutableListOf<String>()
-        override suspend fun start() { verbs += "start" }
-        override suspend fun stop() { verbs += "stop" }
+        var shared: MutableList<String>? = null
+        override suspend fun start() { verbs += "start"; shared?.add("$name.start") }
+        override suspend fun stop() { verbs += "stop"; shared?.add("$name.stop") }
     }
 
-    /** [membershipIncludesUpload] is three-valued: `null` = **no event joined**. */
+    /** The single-producer shape (iOS 18–26.0, the world): only the app-driven mechanism exists. */
     private fun arm(
         producer: FakeProducer,
         granted: Boolean,
         membershipIncludesUpload: Boolean? = true,
-    ) = UploadArm(producer, isGranted = { granted }, membershipIncludesUpload = { membershipIncludesUpload })
+    ) = UploadArm(
+        ComposedProducers(osDriven = null, appDriven = producer),
+        permission = { if (granted) PermissionStatus.GRANTED else PermissionStatus.NOT_DETERMINED },
+        membershipIncludesUpload = { membershipIncludesUpload },
+    )
+
+    /** The compose-both shape (iOS ≥26.1): both mechanisms exist; permission selects. */
+    private class BothProducers {
+        val log = mutableListOf<String>()
+        val osDriven = FakeProducer("os").also { it.shared = log }
+        val appDriven = FakeProducer("app").also { it.shared = log }
+    }
+
+    private fun armBoth(
+        both: BothProducers,
+        permission: () -> PermissionStatus,
+        membershipIncludesUpload: () -> Boolean? = { true },
+    ) = UploadArm(
+        ComposedProducers(osDriven = both.osDriven, appDriven = both.appDriven),
+        permission = permission,
+        membershipIncludesUpload = membershipIncludesUpload,
+    )
 
     // ---- provision -----------------------------------------------------------------------------------
 
@@ -63,13 +90,13 @@ class UploadArmTest {
         assertTrue(producer.verbs.isEmpty(), "the grant transition drives this case, not the provision")
     }
 
-    // ---- permission grant ----------------------------------------------------------------------------
+    // ---- permission change ---------------------------------------------------------------------------
 
     @Test
     fun a_grant_starts_the_producer() = runTest {
         val producer = FakeProducer()
 
-        arm(producer, granted = true, membershipIncludesUpload = true).onPermissionGranted()
+        arm(producer, granted = true, membershipIncludesUpload = true).onPermissionChanged()
 
         assertEquals(listOf("start"), producer.verbs)
     }
@@ -78,9 +105,92 @@ class UploadArmTest {
     fun a_grant_on_a_download_only_membership_starts_nothing() = runTest {
         val producer = FakeProducer()
 
-        arm(producer, granted = true, membershipIncludesUpload = false).onPermissionGranted()
+        arm(producer, granted = true, membershipIncludesUpload = false).onPermissionChanged()
 
         assertTrue(producer.verbs.isEmpty(), "photo access is needed for import, but upload stays off")
+    }
+
+    // ---- the permission-selected producer (capability `limited-photo-access`) -------------------------
+
+    @Test
+    fun granted_runs_the_os_driven_producer_where_composed() = runTest {
+        val both = BothProducers()
+
+        armBoth(both, permission = { PermissionStatus.GRANTED }).onProvision()
+
+        assertEquals(listOf("start"), both.osDriven.verbs)
+        assertEquals(listOf("stop"), both.appDriven.verbs, "the non-selected mechanism is stopped, never started")
+    }
+
+    @Test
+    fun limited_runs_the_app_driven_producer_never_the_extension() = runTest {
+        val both = BothProducers()
+
+        // The OS never invokes the extension under a partial grant (measured, `ios-photokit-upload`) —
+        // starting it would be a silent no-op forever ("Synchronization pending…" with no mechanism).
+        armBoth(both, permission = { PermissionStatus.LIMITED }).onProvision()
+
+        assertEquals(listOf("start"), both.appDriven.verbs)
+        assertEquals(listOf("stop"), both.osDriven.verbs, "the extension is stopped (deregistered), never started")
+    }
+
+    @Test
+    fun a_full_to_limited_flip_switches_stop_then_start() = runTest {
+        val both = BothProducers()
+        var permission = PermissionStatus.GRANTED
+        val a = armBoth(both, permission = { permission })
+
+        a.onProvision() // GRANTED → the OS-driven mechanism runs
+        permission = PermissionStatus.LIMITED
+        a.onPermissionChanged()
+
+        // The outgoing producer's stop() (which deregisters the extension) completes BEFORE the
+        // incoming one starts — the exactly-one-started invariant's switch rule (`upload-lifecycle`).
+        assertEquals(listOf("app.stop", "os.start", "os.stop", "app.start"), both.log)
+    }
+
+    @Test
+    fun a_limited_to_full_flip_switches_back_stop_then_start() = runTest {
+        val both = BothProducers()
+        var permission = PermissionStatus.LIMITED
+        val a = armBoth(both, permission = { permission })
+
+        a.onProvision() // LIMITED → the app-driven mechanism runs
+        permission = PermissionStatus.GRANTED
+        a.onPermissionChanged()
+
+        assertEquals(listOf("os.stop", "app.start", "app.stop", "os.start"), both.log)
+    }
+
+    @Test
+    fun at_most_one_producer_is_ever_started_across_every_transition() = runTest {
+        val both = BothProducers()
+        var permission = PermissionStatus.NOT_DETERMINED
+        var membership: Boolean? = null
+        val a = armBoth(both, permission = { permission }, membershipIncludesUpload = { membership })
+
+        // Walk the lifecycle table with permission flips interleaved.
+        a.onPermissionChanged()                     // NOT_DETERMINED, no membership → nothing
+        membership = true
+        permission = PermissionStatus.GRANTED
+        a.onProvision()                             // os runs
+        permission = PermissionStatus.LIMITED
+        a.onPermissionChanged()                     // switch → app runs
+        a.onProvision()                             // re-provision under limited → app (idempotent)
+        permission = PermissionStatus.GRANTED
+        a.onPermissionChanged()                     // switch back → os runs
+        membership = false
+        a.onProvision()                             // download-only → all stopped
+        a.onLeave()
+
+        // Replay the log: after every event, the number of started-but-not-stopped producers is ≤ 1.
+        val started = mutableSetOf<String>()
+        for (event in both.log) {
+            val (who, verb) = event.split(".")
+            if (verb == "start") started += who else started -= who
+            assertTrue(started.size <= 1, "both producers started at once: ${both.log}")
+        }
+        assertTrue(started.isEmpty(), "leave must stop everything: ${both.log}")
     }
 
     // ---- no membership, no arm -----------------------------------------------------------------------
@@ -97,7 +207,7 @@ class UploadArmTest {
     fun a_grant_with_no_membership_fires_neither_verb() = runTest {
         val producer = FakeProducer()
 
-        arm(producer, granted = true, membershipIncludesUpload = null).onPermissionGranted()
+        arm(producer, granted = true, membershipIncludesUpload = null).onPermissionChanged()
 
         assertTrue(
             producer.verbs.isEmpty(),
@@ -113,9 +223,13 @@ class UploadArmTest {
     fun the_join_after_a_membership_less_grant_is_what_arms_the_producer() = runTest {
         val producer = FakeProducer()
         var membership: Boolean? = null // no event joined — the user is on the explainer
-        val a = UploadArm(producer, isGranted = { true }, membershipIncludesUpload = { membership })
+        val a = UploadArm(
+            ComposedProducers(osDriven = null, appDriven = producer),
+            permission = { PermissionStatus.GRANTED },
+            membershipIncludesUpload = { membership },
+        )
 
-        a.onPermissionGranted() // "I understand" → the system dialog → GRANTED, still no config
+        a.onPermissionChanged() // "I understand" → the system dialog → GRANTED, still no config
         assertTrue(producer.verbs.isEmpty(), "nothing may be armed before the user confirms the join")
 
         membership = true // the user confirms; config is provisioned
@@ -130,11 +244,15 @@ class UploadArmTest {
     fun joining_before_the_grant_still_starts_once_access_arrives() = runTest {
         val producer = FakeProducer()
         var granted = false
-        val a = UploadArm(producer, isGranted = { granted }, membershipIncludesUpload = { true })
+        val a = UploadArm(
+            ComposedProducers(osDriven = null, appDriven = producer),
+            permission = { if (granted) PermissionStatus.GRANTED else PermissionStatus.NOT_DETERMINED },
+            membershipIncludesUpload = { true },
+        )
 
         a.onProvision() // no access yet → nothing
         granted = true
-        a.onPermissionGranted()
+        a.onPermissionChanged()
 
         assertEquals(listOf("start"), producer.verbs)
     }
@@ -152,22 +270,36 @@ class UploadArmTest {
         assertEquals(listOf("stop"), producer.verbs)
     }
 
+    @Test
+    fun leaving_stops_every_composed_producer() = runTest {
+        val both = BothProducers()
+        val a = armBoth(both, permission = { PermissionStatus.GRANTED })
+
+        a.onProvision()
+        a.onLeave()
+
+        assertEquals("stop", both.osDriven.verbs.last())
+        assertEquals("stop", both.appDriven.verbs.last())
+    }
+
     // ---- the shape of the seam itself ----------------------------------------------------------------
 
     @Test
     fun no_transition_can_reach_a_destructive_verb() = runTest {
-        val producer = FakeProducer()
-        var granted = true
+        val both = BothProducers()
+        var permission = PermissionStatus.GRANTED
         var membershipIncludesUpload: Boolean? = true
-        val a = UploadArm(producer, isGranted = { granted }, membershipIncludesUpload = { membershipIncludesUpload })
+        val a = armBoth(both, permission = { permission }, membershipIncludesUpload = { membershipIncludesUpload })
 
-        // Drive every transition the arm has, in every membership shape.
+        // Drive every transition the arm has, in every membership shape, across permission flips.
         a.onProvision()
-        a.onPermissionGranted()
+        a.onPermissionChanged()
+        permission = PermissionStatus.LIMITED
+        a.onPermissionChanged()
         membershipIncludesUpload = false
         a.onProvision()
-        a.onPermissionGranted()
-        granted = false
+        a.onPermissionChanged()
+        permission = PermissionStatus.NOT_DETERMINED
         a.onProvision()
         a.onLeave()
 
@@ -175,8 +307,8 @@ class UploadArmTest {
         // so no lifecycle transition — provision, switch, grant, direction change, leave — can wipe durable
         // dedup state. The bug is unrepresentable, not merely absent.
         assertTrue(
-            producer.verbs.all { it == "start" || it == "stop" },
-            "the arm emitted something other than start/stop: ${producer.verbs}",
+            both.log.all { it.endsWith(".start") || it.endsWith(".stop") },
+            "the arm emitted something other than start/stop: ${both.log}",
         )
     }
 }

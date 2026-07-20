@@ -92,14 +92,14 @@ scaffolding out of the way first.
 
 ## 6. Compose-both and the arm (the law move, guarded)
 
-- [ ] 6.1 `UploadArm`: permission-aware producer selection per the upload-lifecycle delta table —
+- [x] 6.1 `UploadArm`: permission-aware producer selection per the upload-lifecycle delta table —
       usable-access arming, permission-selected producer, `GRANTED`↔`LIMITED` switch stop-then-start;
       `commonTest` over fake producers covering every table row
-- [ ] 6.2 `SnapSyncRoot` (≥26.1): compose both producers; the arm receives both + a current-permission
+- [x] 6.2 `SnapSyncRoot` (≥26.1): compose both producers; the arm receives both + a current-permission
       read; 18–26.0 and the tier-force flag unchanged (force still never registers the extension)
-- [ ] 6.3 `:test:architecture` guard per the architecture-guards delta: drives the orchestrator through
+- [x] 6.3 `:test:architecture` guard per the architecture-guards delta: drives the orchestrator through
       every transition row + permission flips, asserts at-most-one-started and stop-before-start
-- [ ] 6.4 Confirm `PhotoKitUploadProducer.stop()` deregisters the extension on the `GRANTED → LIMITED`
+- [x] 6.4 Confirm `PhotoKitUploadProducer.stop()` deregisters the extension on the `GRANTED → LIMITED`
       switch (existing disable→enable toggle semantics; assert in the arm tests via the fake)
 
 ## 7. UX

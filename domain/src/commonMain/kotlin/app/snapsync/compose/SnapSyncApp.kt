@@ -21,6 +21,7 @@ import app.snapsync.feature.status.OwnDeviceGalleryStatusSource
 import app.snapsync.feature.status.ReadingLedgerCountsSource
 import app.snapsync.feature.status.SyncStatusSource
 import app.snapsync.feature.trust.DeviceAttestation
+import app.snapsync.feature.upload.ComposedProducers
 import app.snapsync.feature.upload.UploadArm
 import app.snapsync.feature.upload.UploadProducer
 import app.snapsync.flow.Background
@@ -103,9 +104,13 @@ class AppPorts(
      *  composition-time resolve can abort a locked background launch. */
     val deviceId: () -> String,
     val now: () -> Long,
-    /** The tier's selected producer (exactly one per process); a thunk so the non-selected tier's
-     *  mechanism is never constructed. Selected by the shell's one `resolveComposition` switch. */
+    /** The **app-driven** upload mechanism — always composed (it serves iOS 18–26.0 fully and every
+     *  OS under a partial grant); a thunk so it resolves lazily. Which composed producer RUNS is the
+     *  tested arm's decision, by current permission (`upload-lifecycle`). */
     val uploadProducer: () -> UploadProducer,
+    /** The **OS-driven** upload mechanism where this process composed one (iOS ≥26.1; never under the
+     *  tier-force flag) — `null` elsewhere, keeping that mechanism entirely unconstructed there. */
+    val osUploadProducer: () -> UploadProducer? = { null },
     val albumManager: AlbumManager,
     val albumMapStore: AlbumMapStore,
     val albumExcludedAssetIds: suspend (cutoff: String) -> Set<String>,
@@ -249,14 +254,16 @@ class AppCore internal constructor(
     // the decision lives in the tested arm.
     val uploadArm: UploadArm by lazy {
         UploadArm(
-            producer = ports.uploadProducer(),
-            // GRANTED exactly, NOT `grantsPhotoAccess`: starting a producer under LIMITED would drive
-            // an autonomous library walk (the app-driven tier's start() runs a cycle), which
-            // `limited-photo-access` forbids. The permission-aware producer selection that arms
-            // uploads under LIMITED lands with the selection-driven read path (upload-lifecycle,
-            // "Exactly one producer started per process"); until then a LIMITED membership uploads
-            // nothing — receive-only, by design.
-            isGranted = { ports.photoAccess.permission.value == PermissionStatus.GRANTED },
+            // Every composed producer; which one RUNS is the arm's permission decision — the OS-driven
+            // mechanism under GRANTED (where composed), the app-driven one under LIMITED (the OS never
+            // invokes the extension there — measured; `ios-photokit-upload`). A cycle started under
+            // LIMITED is read-free by construction: its discovery consumes the selection snapshot
+            // (`SelectionScopedTransfer`), never a library walk.
+            producers = ComposedProducers(
+                osDriven = ports.osUploadProducer(),
+                appDriven = ports.uploadProducer(),
+            ),
+            permission = { ports.photoAccess.permission.value },
             membershipIncludesUpload = { ports.configSource.config.value?.direction?.includesUpload },
             log = ports.log,
             logScope = ports.logScope,
@@ -368,12 +375,19 @@ class AppCore internal constructor(
             eventName = eventName,
             statusPoller = ledgerCountsPoller,
             reloadConfig = ports.reloadConfig,
-            // GRANTED exactly (never `grantsPhotoAccess`): the pump's cycle walks the library, and the
-            // read discipline forbids autonomous walks under LIMITED (capability `limited-photo-access`,
-            // "No autonomous library reads") — reads there are selection-driven. Everything else this
-            // flow coordinates (reconcile, poller, attestation) runs under any permission.
+            // Permission routes the foreground pump: under GRANTED the tier's own thunk (which walks —
+            // and is `{}` on iOS ≥26.1, where the OS owns upload scheduling); under LIMITED the
+            // app-driven selection drain, which is read-free by construction (its discovery consumes
+            // the snapshot — `SelectionScopedTransfer`), so the read discipline holds
+            // (`limited-photo-access`, "No autonomous library reads") while a reopened app still
+            // catches up on pending uploads. Everything else this flow coordinates (reconcile, poller,
+            // attestation) runs under any permission.
             pumpForeground = {
-                if (ports.photoAccess.permission.value == PermissionStatus.GRANTED) ports.pumpForeground()
+                when (ports.photoAccess.permission.value) {
+                    PermissionStatus.GRANTED -> ports.pumpForeground()
+                    PermissionStatus.LIMITED -> ports.pumpSelectionChanged()
+                    PermissionStatus.NOT_DETERMINED, PermissionStatus.DENIED -> Unit
+                }
             },
             refreshStatus = { refreshStatusSources() },
             activeEventId = { ports.configSource.config.value?.eventId },
@@ -486,13 +500,10 @@ class AppCore internal constructor(
      */
     fun installPermissionSubscriptions() {
         scope.launch {
-            ports.photoAccess.permission.collect { status ->
-                // GRANTED exactly, matching the arm's own gate: arming under LIMITED would start a
-                // producer whose start() walks the library (see the arm's isGranted comment). The
-                // permission-aware arm that uploads under LIMITED arrives with the selection-driven
-                // read path (upload-lifecycle, "Exactly one producer started per process").
-                if (status == PermissionStatus.GRANTED) uploadArm.onPermissionGranted()
-            }
+            // Every permission emission reaches the arm; the ARM decides (usable-access + the
+            // membership posture + the permission-selected producer live in the tested orchestrator,
+            // `upload-lifecycle`). A GRANTED ↔ LIMITED flip is a stop-then-start mechanism switch.
+            ports.photoAccess.permission.collect { uploadArm.onPermissionChanged() }
         }
         scope.launch {
             // One selection-change emission → ONE read serving both consumers (capability
