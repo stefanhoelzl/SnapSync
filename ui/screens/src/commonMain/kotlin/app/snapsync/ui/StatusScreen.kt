@@ -2,8 +2,12 @@ package app.snapsync.ui
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ColumnScope
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -20,18 +24,41 @@ import app.snapsync.presentation.JoinPhase
 import app.snapsync.presentation.PendingSwitch
 import app.snapsync.presentation.SyncHealth
 import app.snapsync.presentation.UiState
+import app.snapsync.ui.components.AppAccessPoint
 import app.snapsync.ui.components.AppConfirmDialog
 import app.snapsync.ui.components.AppDestructiveConfirmDialog
+import app.snapsync.ui.components.AppErrorBanner
+import app.snapsync.ui.components.AppEventHeaderHost
 import app.snapsync.ui.components.AppEventHero
-import app.snapsync.ui.components.AppExplainer
+import app.snapsync.ui.components.AppEventStartSection
+import app.snapsync.ui.components.AppEyebrow
+import app.snapsync.ui.components.AppInvitationHeaderLoading
+import app.snapsync.ui.components.AppJoinProgress
+import app.snapsync.ui.components.AppNoticeCard
+import app.snapsync.ui.components.AppSummaryCard
+import app.snapsync.ui.components.EyebrowTone
+import app.snapsync.ui.components.JOIN_HERO_SUBTITLE
+import app.snapsync.ui.components.JoinAccessChoose
+import app.snapsync.ui.components.JoinAccessCutoff
+import app.snapsync.ui.components.JoinAccessLibrary
+import app.snapsync.ui.components.JoinAccessShare
+import app.snapsync.ui.components.JoinNoticeFailed
+import app.snapsync.ui.components.JoinNoticeInvalid
+import app.snapsync.ui.components.JoinNoticeOffline
 import kotlinx.datetime.LocalDateTime
 import app.snapsync.ui.components.AppQrCode
 import app.snapsync.ui.components.AccessPrompt
-import app.snapsync.ui.components.AppCheckboxRow
-import app.snapsync.ui.components.AppCutoffSelector
-import app.snapsync.ui.components.AppEventStartRow
+import app.snapsync.ui.components.AppCutoffChoices
 import app.snapsync.ui.components.CutoffChoice
-import app.snapsync.ui.components.AppDirectionSelector
+import app.snapsync.ui.components.AppEventHeaderCompact
+import app.snapsync.ui.components.AppQuestionHeading
+import app.snapsync.ui.components.AppSectionNote
+import app.snapsync.ui.components.AppMinorSection
+import app.snapsync.ui.components.AppSubSection
+import app.snapsync.ui.components.AppSectionValue
+import app.snapsync.ui.components.AppSummaryToggle
+import app.snapsync.ui.components.AppToggleSection
+import app.snapsync.ui.components.appDateTimeLabel
 import app.snapsync.ui.components.AppStatusLine
 import app.snapsync.ui.components.AppSyncStatus
 import app.snapsync.ui.components.AppTextField
@@ -42,10 +69,8 @@ import app.snapsync.ui.components.ScreenLayout
 import app.snapsync.ui.components.SecondaryButton
 import app.snapsync.ui.components.ShareButton
 import app.snapsync.ui.components.StatusHero
-import app.snapsync.ui.components.SecondaryButton
 import app.snapsync.ui.components.StatusHint
 import app.snapsync.ui.components.StatusIndicator
-import app.snapsync.ui.components.SyncDirectionChoice
 
 @Composable
 fun StatusScreen(
@@ -108,7 +133,7 @@ fun StatusScreen(
                 is UiState.CreateEvent ->
                     CreateEventScreen(state, onCreateEvent, transientError, cutoff)
                 UiState.CreatingEvent ->
-                    StatusHero(StatusIndicator.Loading, "Creating your event …")
+                    CreatingEventScreen()
                 is UiState.JoiningEvent ->
                     JoiningEventScreen(
                         state.phase, cutoff, onConfirmJoin, onAcknowledgeAccess,
@@ -125,6 +150,8 @@ fun StatusScreen(
         if (confirmingLeave) {
             AppDestructiveConfirmDialog(
                 title = "Leave this event?",
+                body = "You'll stop sharing and receiving photos. Photos already in your " +
+                    "library stay.",
                 confirmLabel = "Leave",
                 cancelLabel = "Stay",
                 onConfirm = {
@@ -196,17 +223,23 @@ private fun JoiningEventScreen(
     onRetryLoad: () -> Unit,
     onRetryJoin: (String, Direction, Boolean) -> Unit,
 ) {
-    // The cutoff is one of exactly two presets (capability `photo-selection-policy`), defaulting to the event's
-    // start. A join with no cutoff is unrepresentable rather than merely guarded — it would upload the
-    // whole library.
-    //
+    // The two participation switches, both default ON. Direction is DERIVED from them, never chosen:
+    // share+receive → Both, share only → UploadOnly, receive only → DownloadOnly. There is deliberately no
+    // "no photos" option in either — "not sharing" IS the share switch off, "not receiving" the receive
+    // switch off. Both off is representable and does nothing; Join is disabled with a stated reason rather
+    // than one switch silently flipping the other.
+    var shareOn by remember { mutableStateOf(true) }
+    var receiveOn by remember { mutableStateOf(true) }
+
+    // The cutoff is a preset (capability `photo-selection-policy`), defaulting to the event's start — so a
+    // share with no cutoff is unrepresentable, not merely guarded (it would upload the whole library).
     // What is REMEMBERED is the preset, not an instant — the instant is derived fresh from the phase on
-    // every composition. That sidesteps by construction the seeding bug a `remember`-ed instant had: this
-    // screen mounts at `Loading` (what `startPending` sets before the details fetch), so anything seeded on
-    // first composition captured `now` and never re-ran when the loaded phase arrived. There is nothing to
-    // seed here, so there is nothing to go stale.
+    // every composition, sidestepping the seeding bug a `remember`-ed instant had (this screen mounts at
+    // `Loading`, before the details fetch, so a first-composition seed captured `now` and never re-ran).
     var chosenPreset by remember { mutableStateOf(CutoffChoice.EVENT_START) }
-    var chosenDirection by remember { mutableStateOf(Direction.Both) }
+    // The custom cutoff's local wall-clock value; null until the guest opens the picker (it then defaults
+    // to the floor). Coerced up to the floor before it is ever displayed or committed.
+    var customValue by remember { mutableStateOf<LocalDateTime?>(null) }
     var chosenSaveToAlbum by remember { mutableStateOf(false) }
 
     // The event's start, as a local wall-clock value. Non-null on Ready (the host guarantees `startsAt`);
@@ -220,70 +253,150 @@ private fun JoiningEventScreen(
     // startsAt`), so it is offered disabled rather than as a button that visibly does nothing.
     val eventHasStarted: Boolean = cutoff.toCutoff(eventStart) <= cutoff.nowCutoff()
 
-    // What the member is actually committing to — rendered as the selector's label, so the value is never
-    // hidden. `JoinEvent` clamps this to `max(chosen, startsAt)` on the far side; picking EVENT_START (or
-    // NOW while the event has not started) simply lands on the floor already.
+    // The custom value coerced up to the floor. The backend silently raises anything earlier than the
+    // event start to it (`max(chosen, startsAt)`), so we apply the same `max` before this value is ever
+    // shown or sent — the screen never displays a cutoff the backend would overrule.
+    val customResolved: LocalDateTime =
+        (customValue ?: eventStart).let { if (it < eventStart) eventStart else it }
+
+    // What the member is actually committing to. `JoinEvent` clamps this to `max(chosen, startsAt)` on the
+    // far side; EVENT_START (and NOW before the event has started, and any coerced CUSTOM) already land on
+    // or above the floor.
     val resulting: LocalDateTime = when {
+        chosenPreset == CutoffChoice.CUSTOM -> customResolved
         chosenPreset == CutoffChoice.EVENT_START || !eventHasStarted -> eventStart
         else -> nowLocal
     }
     val chosenCutoff: String = cutoff.toCutoff(resulting)
 
+    // Direction is derived from the switches. The dead (both-off) case never reaches a commit — Join is
+    // disabled there — so its value is inert; DownloadOnly is an arbitrary safe placeholder.
+    val chosenDirection: Direction = when {
+        shareOn && receiveOn -> Direction.Both
+        shareOn -> Direction.UploadOnly
+        else -> Direction.DownloadOnly
+    }
+    val joinEnabled: Boolean = shareOn || receiveOn
+
+    // Ready is the one phase that is a *decision surface* rather than a status-plus-actions surface, so
+    // it owns its own layout (see `ReadyLayout`) instead of being squeezed into the centered-hero shape
+    // every other phase shares.
+    if (phase is JoinPhase.Ready) {
+        ReadyLayout(
+            eventName = phase.name,
+            shareOn = shareOn,
+            onShareOn = { shareOn = it },
+            receiveOn = receiveOn,
+            onReceiveOn = { receiveOn = it },
+            preset = chosenPreset,
+            onPreset = { chosenPreset = it },
+            resulting = resulting,
+            nowAvailable = eventHasStarted,
+            // The DISPLAYED custom value is the resolved one (floored, defaulting to the event start), so
+            // the inline field agrees with the bold instant above and never shows a date below the floor.
+            customValue = customResolved,
+            onCustomChange = { customValue = it },
+            floor = eventStart,
+            saveToAlbum = chosenSaveToAlbum,
+            onSaveToAlbum = { chosenSaveToAlbum = it },
+            joinEnabled = joinEnabled,
+            onJoin = { onConfirm(chosenCutoff, chosenDirection, chosenSaveToAlbum) },
+            onCancel = onCancel,
+        )
+        return
+    }
+
     Column(modifier = Modifier.fillMaxSize()) {
-        Column(
-            modifier = Modifier.weight(1f).fillMaxWidth(),
-            verticalArrangement = Arrangement.Center,
-            horizontalAlignment = Alignment.CenterHorizontally,
-        ) {
+        // The body. Four of these phases carry the event's identity (ExplainAccess, Committing,
+        // CommitFailed — and Loading optimistically), so they lead with the same top-anchored invitation
+        // hero the Ready surface does: the badge and eyebrow never move across Loading → ExplainAccess →
+        // Ready → Committing, only the name resolves and the body beneath it changes. The two pre-details
+        // errors (NotFound, LoadFailed) carry no event — there is nothing to be invited to — so they show a
+        // neutral notice centered on its own, never a false invitation.
+        Column(modifier = Modifier.weight(1f).fillMaxWidth()) {
             when (phase) {
-                JoinPhase.Loading ->
-                    StatusHero(StatusIndicator.Loading, "Loading event details …")
+                // Optimistic loading: the invitation hero with the name still a placeholder, and a calm
+                // spinner filling the space below. Resolves into ExplainAccess/Ready with no header jump.
+                JoinPhase.Loading -> {
+                    AppInvitationHeaderLoading(subtitle = JOIN_HERO_SUBTITLE)
+                    CenteredBody { AppJoinProgress("Loading event details …") }
+                }
                 // The photo-access explainer, ahead of the confirm and ahead of the system dialog
-                // (capability `join-event`). Share-first: the automatic sharing is the half that deserves
-                // informed consent, so it leads. Direction-neutral, because the direction row comes next —
-                // and full access is genuinely needed for both halves. The event is deliberately not named:
-                // this is a statement about what the app does. No "cutoff", no "upload", no "backup".
-                is JoinPhase.ExplainAccess ->
-                    AppExplainer(
-                        headline = "Photo access",
-                        // The system dialog's outcomes are a real choice (capability `join-event`):
-                        // allowing all photos shares automatically; picking specific photos is a
-                        // first-class alternative (capability `limited-photo-access`), not a
-                        // degraded one.
-                        paragraphs = listOf(
-                            "Photos you take will be shared automatically with everyone in the event.",
-                            "SnapSync needs access to your photo library to do this — and to save the " +
-                                "photos other members share with you.",
-                            "You can allow all photos, or pick exactly which ones to share — and add " +
-                                "more anytime.",
-                            "Only photos taken after the date you pick next are shared.",
-                        ),
+                // (capability `join-event`). It names the event it is inviting you to (the hero) and
+                // states the consent facts as a scannable card, top-anchored beneath the hero:
+                // share-first (the automatic sharing is the half that deserves informed consent, so it
+                // leads), then that full access is genuinely needed for BOTH halves, then that limited
+                // ("pick which photos") is a first-class choice (capability `limited-photo-access`, not
+                // a degraded one), then the cutoff.
+                is JoinPhase.ExplainAccess -> {
+                    Column(
+                        modifier = Modifier
+                            .weight(1f)
+                            .fillMaxWidth()
+                            .verticalScroll(rememberScrollState()),
+                        verticalArrangement = Arrangement.spacedBy(16.dp),
+                    ) {
+                        AppEventHeaderCompact(title = phase.name, subtitle = JOIN_HERO_SUBTITLE)
+                        AppSummaryCard(title = "What joining does") {
+                            AppAccessPoint(
+                                icon = JoinAccessShare,
+                                title = "Your photos are shared automatically",
+                                body = "The photos you take show up for everyone in the event.",
+                                divider = false,
+                            )
+                            AppAccessPoint(
+                                icon = JoinAccessLibrary,
+                                title = "SnapSync needs your photo library",
+                                body = "To share yours, and to save the photos other members send you.",
+                            )
+                            AppAccessPoint(
+                                icon = JoinAccessChoose,
+                                title = "Allow all photos, or pick which to share",
+                                body = "Choosing specific photos works too — and you can add more anytime.",
+                            )
+                            AppAccessPoint(
+                                icon = JoinAccessCutoff,
+                                title = "Only photos after the date you choose",
+                                body = "You pick that date on the next screen — nothing older is shared.",
+                            )
+                        }
+                    }
+                }
+                // Ready renders through `ReadyLayout` above — it is not a hero-plus-actions phase.
+                is JoinPhase.Ready -> Unit
+                // A dead end — the event does not exist, so no invitation hero, just an honest notice.
+                JoinPhase.NotFound -> CenteredBody {
+                    AppNoticeCard(
+                        icon = JoinNoticeInvalid,
+                        title = "Invalid invite",
+                        body = "This invite is invalid or the event no longer exists.",
                     )
-                is JoinPhase.Ready ->
-                    AppEventHero(
-                        title = phase.name,
-                        subtitle = "You've been invited to share your photos to this event.",
+                }
+                // Transient — the event may well exist; the fetch just failed. Retryable.
+                JoinPhase.LoadFailed -> CenteredBody {
+                    AppNoticeCard(
+                        icon = JoinNoticeOffline,
+                        title = "Couldn't load the event",
+                        body = "Check your connection and try again.",
                     )
-                JoinPhase.NotFound ->
-                    StatusHero(
-                        StatusIndicator.Error,
-                        "Invalid invite",
-                        "This invite is invalid or the event no longer exists.",
-                    )
-                JoinPhase.LoadFailed ->
-                    StatusHero(
-                        StatusIndicator.Error,
-                        "Couldn't load the event",
-                        "Check your connection and try again.",
-                    )
-                is JoinPhase.Committing ->
-                    StatusHero(StatusIndicator.Loading, "Joining …")
-                is JoinPhase.CommitFailed ->
-                    StatusHero(
-                        StatusIndicator.Error,
-                        "Couldn't join",
-                        "Something went wrong. Try again.",
-                    )
+                }
+                // We know the event (name carried), so keep the hero pinned and show calm progress.
+                is JoinPhase.Committing -> {
+                    AppEventHeaderCompact(title = phase.name, subtitle = JOIN_HERO_SUBTITLE)
+                    CenteredBody { AppJoinProgress("Joining …") }
+                }
+                // The join failed after we loaded the event, so the invitation stays honest above a
+                // neutral retryable notice — no teleport back from Committing.
+                is JoinPhase.CommitFailed -> {
+                    AppEventHeaderCompact(title = phase.name, subtitle = JOIN_HERO_SUBTITLE)
+                    CenteredBody {
+                        AppNoticeCard(
+                            icon = JoinNoticeFailed,
+                            title = "Couldn't join",
+                            body = "Something went wrong. Try again.",
+                        )
+                    }
+                }
             }
         }
         // Actions pinned to the bottom; which ones depend on the phase.
@@ -298,30 +411,8 @@ private fun JoiningEventScreen(
                     PrimaryButton(label = "I understand", onClick = onAcknowledgeAccess)
                     SecondaryButton(label = "Cancel", onClick = onCancel)
                 }
-                is JoinPhase.Ready -> {
-                    DirectionRow(selected = chosenDirection, onSelect = { chosenDirection = it })
-                    CutoffRow(
-                        selected = chosenPreset,
-                        onSelect = { chosenPreset = it },
-                        resulting = resulting,
-                        // Pre-start, "Now" clamps to the same instant as "Event start" — offered disabled.
-                        nowAvailable = eventHasStarted,
-                        // The cutoff scopes uploads only — inert when the user opted out of uploading.
-                        enabled = chosenDirection != Direction.DownloadOnly,
-                    )
-                    // The event-album opt-in (capability `event-album`), default off, offered in every
-                    // direction.
-                    AppCheckboxRow(
-                        label = "Save event photos to an album",
-                        checked = chosenSaveToAlbum,
-                        onCheckedChange = { chosenSaveToAlbum = it },
-                    )
-                    PrimaryButton(
-                        label = "Join",
-                        onClick = { onConfirm(chosenCutoff, chosenDirection, chosenSaveToAlbum) },
-                    )
-                    SecondaryButton(label = "Cancel", onClick = onCancel)
-                }
+                // Ready is laid out by `ReadyLayout`, above.
+                is JoinPhase.Ready -> Unit
                 JoinPhase.LoadFailed -> {
                     PrimaryButton(label = "Retry", onClick = onRetryLoad)
                     SecondaryButton(label = "Cancel", onClick = onCancel)
@@ -343,79 +434,197 @@ private fun JoiningEventScreen(
 }
 
 /**
- * The participation-direction row on the join surface (capability `join-event`): an **arrows-only**
- * three-way selector (share ↑ / receive ↓ / both ⇅) with a caption above it that **adapts to the
- * selection** (the glyphs alone carry no words). Defaults to [Direction.Both]; the choice is fixed for
- * the membership (a change is a leave-then-rejoin). The screen maps [Direction] to/from the design
- * system's [SyncDirectionChoice] so the components module stays decoupled from the config capability.
+ * The remaining vertical space of a phase body, with its content centered. Used by the phases whose body
+ * is a single calm block — a spinner or a notice card — beneath (or instead of) the invitation hero.
  */
 @Composable
-private fun DirectionRow(selected: Direction, onSelect: (Direction) -> Unit) {
+private fun ColumnScope.CenteredBody(content: @Composable () -> Unit) {
     Column(
-        modifier = Modifier.fillMaxWidth(),
-        verticalArrangement = Arrangement.spacedBy(8.dp),
+        modifier = Modifier.weight(1f).fillMaxWidth(),
+        verticalArrangement = Arrangement.Center,
+        horizontalAlignment = Alignment.CenterHorizontally,
     ) {
-        StatusHint(directionCaption(selected))
-        AppDirectionSelector(
-            selected = selected.toChoice(),
-            onSelect = { onSelect(it.toDirection()) },
-        )
+        content()
     }
 }
 
-/** The caption above the direction selector, adapting to the current choice (the arrows show no words). */
-private fun directionCaption(direction: Direction): String = when (direction) {
-    Direction.Both -> "Share your photos and receive the event's photos."
-    Direction.UploadOnly -> "Only share your photos — you won't receive the event's."
-    Direction.DownloadOnly -> "Only receive the event's photos — you won't share yours."
-}
-
-private fun Direction.toChoice(): SyncDirectionChoice = when (this) {
-    Direction.Both -> SyncDirectionChoice.BOTH
-    Direction.UploadOnly -> SyncDirectionChoice.UPLOAD
-    Direction.DownloadOnly -> SyncDirectionChoice.DOWNLOAD
-}
-
-private fun SyncDirectionChoice.toDirection(): Direction = when (this) {
-    SyncDirectionChoice.BOTH -> Direction.Both
-    SyncDirectionChoice.UPLOAD -> Direction.UploadOnly
-    SyncDirectionChoice.DOWNLOAD -> Direction.DownloadOnly
-}
-
 /**
- * The capture-date cutoff row on the join surface (capability `photo-selection-policy`): a caption and a
- * two-preset selector — **Now** or **Event start** — with the resulting instant shown as a label, so the
- * member always sees the value they are committing to. Only photos taken at or after it are uploaded and
- * shared into the event.
+ * The **Ready** join surface: identity, then two stacked sections that each state, in words, one
+ * consequence of joining — and Join / Cancel pinned at the bottom.
  *
- * The free date+time picker that used to live here is gone. With the event's `startsAt` supplying both the
- * default *and* a floor, an arbitrary picker could only offer values the clamp would reject (anything
- * below the floor) — so the row collapses to a one-tap decision.
+ * The surface no longer asks "how do you want to take part?" and no longer offers a direction selector.
+ * The two things a guest actually decides are stated as plain on/off switches — **Share my photos** and
+ * **Receive everyone's photos** — and the participation *direction* is DERIVED from them
+ * (share+receive → Both, share only → upload-only, receive only → download-only). There is deliberately no
+ * "no photos" option: not sharing is the share switch off, not receiving is the receive switch off.
  *
- * [nowAvailable] is false before the event starts ("Now" would clamp to the same instant as "Event
- * start"). [enabled] is false under a download-only membership (the cutoff scopes uploads only): the row
- * stays visible but its inputs are inert.
+ * The two sections, top to bottom:
+ *  1. **Share** ([AppToggleSection]) — the switch, the origin-exclusions note (what the app already
+ *     filters out of a camera roll — new information no other state of this screen carries), the resulting
+ *     cutoff instant in the heaviest type on the surface, and the cutoff choice rows ([AppCutoffChoices]:
+ *     Now / Event start / Custom) — one card, because "do I share" and "from when" are one decision.
+ *     Custom opens the floored date+time picker dialog directly; only its OK commits the choice, and the
+ *     chosen instant appears solely in the bold "Shared from …" line (never repeated in the row). When
+ *     off, the card states that nothing of theirs leaves the phone and the rows are not shown.
+ *  2. **Receive** ([AppToggleSection]) — the switch and where arriving photos land.
+ *  3. **Album** ([AppMinorSection] + [AppSummaryToggle]) — a standalone second-level checkmark row: per
+ *     capability `event-album` the album mirrors what the membership syncs in its direction — foreign
+ *     downloads and/or the member's OWN uploads — so it belongs to neither switch, but it ranks below
+ *     both (a preference, not a consent decision). Its note names exactly the feeds the current
+ *     switches produce.
+ *
+ * Reading order is causal: who invited me → what I share (and from when) → what I receive (and where).
+ *
+ * Both switches off is a membership that does nothing. Rather than silently flip one switch the guest did
+ * not touch, Join is **disabled** with the reason stated right above it.
+ *
+ * The body scrolls beneath the pinned actions: its height is not fixed (the cutoff section appears and
+ * disappears, and Custom unfolds a picker), and clipping the primary action is never an acceptable way to
+ * absorb that.
  */
 @Composable
-private fun CutoffRow(
-    selected: CutoffChoice,
-    onSelect: (CutoffChoice) -> Unit,
+private fun ReadyLayout(
+    eventName: String,
+    shareOn: Boolean,
+    onShareOn: (Boolean) -> Unit,
+    receiveOn: Boolean,
+    onReceiveOn: (Boolean) -> Unit,
+    preset: CutoffChoice,
+    onPreset: (CutoffChoice) -> Unit,
     resulting: LocalDateTime,
-    nowAvailable: Boolean = true,
-    enabled: Boolean = true,
+    nowAvailable: Boolean,
+    customValue: LocalDateTime?,
+    onCustomChange: (LocalDateTime) -> Unit,
+    floor: LocalDateTime,
+    saveToAlbum: Boolean,
+    onSaveToAlbum: (Boolean) -> Unit,
+    joinEnabled: Boolean,
+    onJoin: () -> Unit,
+    onCancel: () -> Unit,
 ) {
-    Column(
-        modifier = Modifier.fillMaxWidth(),
-        verticalArrangement = Arrangement.spacedBy(8.dp),
-    ) {
-        StatusHint("Only photos taken after this date are shared to the event.")
-        AppCutoffSelector(
-            selected = selected,
-            onSelect = onSelect,
-            resulting = resulting,
-            nowAvailable = nowAvailable,
-            enabled = enabled,
-        )
+    Column(modifier = Modifier.fillMaxSize()) {
+        Column(
+            modifier = Modifier
+                .weight(1f)
+                .fillMaxWidth()
+                .verticalScroll(rememberScrollState()),
+            verticalArrangement = Arrangement.spacedBy(14.dp),
+        ) {
+            AppEventHeaderCompact(
+                title = eventName,
+                // The one warm line the surface allows itself — the eyebrow above already says
+                // "you're invited", so this states what the invitation IS.
+                subtitle = "Everyone's photos, one shared place.",
+            )
+
+            // SECTION 1 — Share: the switch header, the origin-exclusions note (kept verbatim), the
+            // resulting cutoff instant in bold, and the cutoff choice rows — ONE card. The cutoff was
+            // briefly its own titled section; that implied a third question where there are only two
+            // ("do I share" and "do I receive"), so the rows folded back into the section whose switch
+            // they refine.
+            AppToggleSection(
+                title = "Share my photos",
+                checked = shareOn,
+                onCheckedChange = onShareOn,
+            ) {
+                if (shareOn) {
+                    // The origin exclusions (capability `photo-selection-policy`), stated as what is
+                    // SUBTRACTED, never as a guarantee of what gets through: the policy cannot infer
+                    // capture-origin (PhotoKit exposes no camera flag), so it removes only what is
+                    // certainly not a capture and ADMITS ON DOUBT. "Screenshots … are never shared" is
+                    // exactly true; "only photos you took are shared" would not be.
+                    AppSectionNote(
+                        "Screenshots, screen recordings, GIFs and pictures saved from chat apps are " +
+                            "never shared.",
+                    )
+                    // The ONE statement of the instant that decides which photos leave the phone, in the
+                    // heaviest type the surface renders. The Custom row below deliberately never repeats
+                    // it — its picker feeds this line.
+                    AppSectionValue("Shared from ${appDateTimeLabel(resulting)}")
+                    // Level 2: the cutoff choices, in the section's recessed well. Switch = does this
+                    // section happen; checkmarks = how.
+                    AppSubSection {
+                        AppCutoffChoices(
+                            selected = preset,
+                            onSelect = onPreset,
+                            // Pre-start, "Now" clamps to the same instant as "Event start" — offered
+                            // disabled.
+                            nowAvailable = nowAvailable,
+                            customValue = customValue,
+                            // Only the picker's OK selects CUSTOM — a cancelled dialog leaves the
+                            // previous choice (and its instant) exactly as it was.
+                            onCustomPicked = {
+                                onCustomChange(it)
+                                onPreset(CutoffChoice.CUSTOM)
+                            },
+                            // The floor: the backend silently raises anything earlier to the event
+                            // start, so the picker enforces it and the Custom row's note states it.
+                            minimum = floor,
+                            floorNote = "Can't be earlier than the event started, " +
+                                "${appDateTimeLabel(floor)}.",
+                        )
+                    }
+                } else {
+                    AppSectionNote("Nothing of yours leaves this phone.")
+                }
+            }
+
+            // SECTION 3 — Receive. The switch header, where photos land, and the album opt-in nested under
+            // it (only while receiving). Titled to name the SOURCE ("everyone's photos"), not "save … to
+            // your library" — the latter reads as backing up YOUR photos, the exact mental model this app
+            // must avoid, and breaks pronoun parity with "Share my photos".
+            AppToggleSection(
+                title = "Receive everyone's photos",
+                checked = receiveOn,
+                onCheckedChange = onReceiveOn,
+            ) {
+                if (receiveOn) {
+                    AppSectionNote("Photos others share arrive in your library automatically.")
+                } else {
+                    AppSectionNote("You won't receive the event's photos.")
+                }
+            }
+
+            // The album (capability `event-album`) — a MINOR section: second-level checkmark idiom,
+            // standalone. It can nest under neither switch (the spec feeds the album from BOTH the
+            // member's own uploads and foreign downloads, so under Receive it was a false statement),
+            // but a switch section of its own gave a minor preference the same weight as a consent
+            // decision. The note names exactly which feeds apply to the current switches, so it can
+            // never claim a feed the membership doesn't have.
+            AppMinorSection {
+                AppSummaryToggle(
+                    label = "Create an album",
+                    checked = saveToAlbum,
+                    onCheckedChange = onSaveToAlbum,
+                    note = when {
+                        !saveToAlbum -> "No album is created."
+                        shareOn && receiveOn ->
+                            "Photos you share and photos you receive are collected in an album " +
+                                "named after the event."
+                        shareOn -> "Photos you share are collected in an album named after the event."
+                        receiveOn -> "Photos you receive are collected in an album named after the event."
+                        // Both switches off: nothing syncs, so nothing feeds the album. Join is already
+                        // disabled with its own reason; this line keeps the row honest meanwhile.
+                        else -> "Nothing is shared or received, so nothing is collected."
+                    },
+                    divider = false,
+                )
+            }
+        }
+        Column(
+            modifier = Modifier.fillMaxWidth(),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            // Both switches off is a membership that does nothing. Say why Join is unavailable rather than
+            // moving a switch the guest didn't touch.
+            if (!joinEnabled) {
+                StatusHint(
+                    "Turn on sharing or receiving — a membership that does neither does nothing.",
+                )
+            }
+            PrimaryButton(label = "Join", onClick = onJoin, enabled = joinEnabled)
+            SecondaryButton(label = "Cancel", onClick = onCancel)
+        }
     }
 }
 
@@ -450,7 +659,13 @@ private fun SwitchDialog(
         is JoinPhase.Ready -> {
             cutoff = phase.startsAt
             AppDestructiveConfirmDialog(
-                title = "Leave $current and join ${phase.name}?",
+                title = "Switch events?",
+                // The names carry the whole weight of the decision, so they lead the body line; the
+                // title is the crisp question. Destructive, because leaving is irreversible. The second
+                // sentence states the participation the switch silently resets to (spec-pinned: a switch
+                // joins with direction Both, cutoff = event start, album off) so it is not a surprise.
+                body = "You'll leave \"$current\" and join \"${phase.name}\". " +
+                    "You'll share photos you take and receive everyone's.",
                 confirmLabel = "Switch",
                 cancelLabel = "Cancel",
                 onConfirm = { onConfirmSwitch(phase.startsAt, Direction.Both) },
@@ -459,7 +674,8 @@ private fun SwitchDialog(
         }
         JoinPhase.NotFound ->
             AppConfirmDialog(
-                title = "This invite is invalid or the event no longer exists.",
+                title = "Invite not found",
+                body = "This invite is invalid or the event no longer exists.",
                 confirmLabel = "OK",
                 cancelLabel = "Cancel",
                 onConfirm = onCancelSwitch,
@@ -467,7 +683,8 @@ private fun SwitchDialog(
             )
         JoinPhase.LoadFailed ->
             AppConfirmDialog(
-                title = "Couldn't load the event. Try again?",
+                title = "Couldn't load the event",
+                body = "Check your connection and try again.",
                 confirmLabel = "Retry",
                 cancelLabel = "Cancel",
                 onConfirm = onRetryLoad,
@@ -475,7 +692,8 @@ private fun SwitchDialog(
             )
         is JoinPhase.CommitFailed ->
             AppConfirmDialog(
-                title = "Couldn't switch events. Try again?",
+                title = "Couldn't switch events",
+                body = "Something went wrong. Try again.",
                 confirmLabel = "Retry",
                 cancelLabel = "Cancel",
                 // The remembered cutoff was set by the Ready phase this commit came from; a retry without
@@ -506,11 +724,24 @@ private fun JoinedLayer(
     Column(
         modifier = Modifier.fillMaxWidth(),
         horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.spacedBy(20.dp),
+        verticalArrangement = Arrangement.spacedBy(22.dp),
     ) {
+        // The invite hero: sharing the event IS the point, so the QR is the tallest object on the screen.
+        // A tracked accent eyebrow names what the code is FOR to the current member (share it to add
+        // guests), while the card's own caption instructs the person scanning it — two audiences, one
+        // statement each, so neither line repeats the other.
         if (inviteUrl != null) {
-            AppQrCode(content = inviteUrl, caption = "Scan to join this event")
+            Column(
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
+                AppEyebrow("Share this event", EyebrowTone.Accent)
+                AppQrCode(content = inviteUrl, caption = "Scan to join this event")
+            }
         }
+        // The one sync-health line — bare, no card. It briefly wore a surface-filled panel, but a white
+        // card under a white QR card read as a second competing surface; the screen's second fixation
+        // needs no frame, just position (centered, beneath the code).
         AppStatusLine(
             status = health.toAppSyncStatus(cutoff),
             onAttentionClick = {
@@ -550,10 +781,21 @@ private fun SyncHealth.toAppSyncStatus(cutoff: CutoffFormatter): AppSyncStatus =
 }
 
 /**
- * The create-event landing layer (event-creation-ui): the hero sits centered while the name field + start
- * row + Create button + scan hint are pinned to the bottom. Framed as sharing (not backup). The name and
- * the start live in local Compose state (only the submitted values cross the container); Create is
- * disabled until the trimmed name is non-empty, and the field caps at 100 characters.
+ * The create-event landing layer (event-creation-ui) — the app's front door for a HOST, brought to the
+ * same design language as the join gate. It reads as an invitation being *authored*: the compact host
+ * header (the real app mark + "HOST AN EVENT" eyebrow + title + one warm line) leads, then the one
+ * question the surface asks — what is it called — with the name field answering it, then the event start
+ * as a stated-consequence card. Create + the scan hint stay pinned to the bottom.
+ *
+ * The header is the compact (left-aligned) form so identity costs one line-pair: the short form below —
+ * and the transient "creating …" state that replaces it ([CreatingEventScreen]) — stay anchored in the
+ * same place, so the surface never jumps between the two.
+ *
+ * The name and the start live in local Compose state (only the submitted values cross the container);
+ * Create is disabled until the trimmed name is non-empty, and the field caps at 100 characters — so a
+ * returned failure is a *submission* failure (the server was unreachable or rejected it), not the current
+ * name being malformed. It is therefore stated in an [AppErrorBanner] above the action, never as a red
+ * field, which would falsely blame the host's typing.
  *
  * The start defaults to **now, frozen at first composition** (`remember { … }`, not re-derived at submit).
  * The label is the screen's whole statement about what will be sent, so a value that silently drifted
@@ -569,37 +811,82 @@ private fun CreateEventScreen(
 ) {
     var name by remember { mutableStateOf("") }
     var startsAt by remember { mutableStateOf(cutoff.nowLocal()) }
+    // A returned failure — a scanned-invalid-link (transient) or a creation failure reduced into
+    // `state.error` — is a submission-level condition, not a live field error, so it is banished to a
+    // banner above the action rather than reddening the name field.
+    val bannerError: String? = transientError ?: state.error
     Column(modifier = Modifier.fillMaxSize()) {
-        // Hero centered in the space above the inputs.
+        // Identity, pinned to the top so it holds its place across the form / creating swap.
+        AppEventHeaderHost(
+            title = "Start an event",
+            subtitle = "Everyone's photos, one shared place.",
+        )
+        // The form flows directly beneath the header that introduces it (the join gate's top-aligned
+        // grammar), scrolling under the pinned action. Grouping the header with its form reads more
+        // coherently than floating the form in the middle would.
         Column(
-            modifier = Modifier.weight(1f).fillMaxWidth(),
-            verticalArrangement = Arrangement.Center,
-            horizontalAlignment = Alignment.CenterHorizontally,
+            modifier = Modifier
+                .weight(1f)
+                .fillMaxWidth()
+                .verticalScroll(rememberScrollState()),
+            verticalArrangement = Arrangement.spacedBy(14.dp),
         ) {
-            AppEventHero(
-                title = "Start an event",
-                subtitle = "Name it and share the code — everyone's photos land in one place.",
+            Column(
+                modifier = Modifier.fillMaxWidth().padding(top = 18.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                AppQuestionHeading("What's it called?")
+                AppTextField(
+                    value = name,
+                    onValueChange = { name = it },
+                    placeholder = "Event name",
+                    maxLength = EVENT_NAME_MAX_LENGTH,
+                )
+            }
+            AppEventStartSection(
+                value = startsAt,
+                onValueChange = { startsAt = it },
+                // The truthfulness line: this start is the floor of every guest's capture-date cutoff
+                // (capability `photo-selection-policy`) — stated once, where it is set.
+                note = "Only photos taken after this time are shared — the earliest cutoff any guest can pick.",
             )
         }
-        // Inputs pinned to the bottom.
+        // Action pinned to the bottom.
         Column(
             modifier = Modifier.fillMaxWidth(),
-            verticalArrangement = Arrangement.spacedBy(12.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp),
         ) {
-            AppTextField(
-                value = name,
-                onValueChange = { name = it },
-                placeholder = "Event name",
-                maxLength = EVENT_NAME_MAX_LENGTH,
-                errorText = transientError ?: state.error,
-            )
-            AppEventStartRow(value = startsAt, onValueChange = { startsAt = it })
+            if (bannerError != null) {
+                AppErrorBanner(bannerError)
+            }
             PrimaryButton(
                 label = "Create event",
                 onClick = { onCreateEvent(name, startsAt) },
                 enabled = name.isNotBlank(),
             )
             StatusHint("Or scan a QR code in the Camera app to join one.")
+        }
+    }
+}
+
+/**
+ * The in-flight create state (event-creation-ui): the SAME host header as the form, held in the SAME
+ * top-anchored place, with a calm centered spinner where the form was. Keeping the header put is what
+ * makes this read as the form *settling* rather than a new screen — no layout jump.
+ */
+@Composable
+private fun CreatingEventScreen() {
+    Column(modifier = Modifier.fillMaxSize()) {
+        AppEventHeaderHost(
+            title = "Start an event",
+            subtitle = "Everyone's photos, one shared place.",
+        )
+        Column(
+            modifier = Modifier.weight(1f).fillMaxWidth(),
+            verticalArrangement = Arrangement.Center,
+            horizontalAlignment = Alignment.CenterHorizontally,
+        ) {
+            StatusHero(StatusIndicator.Loading, "Creating your event …")
         }
     }
 }

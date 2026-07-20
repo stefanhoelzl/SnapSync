@@ -1,13 +1,18 @@
 package app.snapsync.ui.components
 
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -16,6 +21,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.unit.dp
 import kotlinx.datetime.LocalDateTime
 
 /**
@@ -63,6 +69,51 @@ fun AppEventStartRow(value: LocalDateTime, onValueChange: (LocalDateTime) -> Uni
         )
     }
 }
+
+/**
+ * The event's start as a **stated-consequence card** (capability `event-creation-ui`): the same bordered
+ * card frame the join gate's sections carry, holding the [AppEventStartRow] and one [note] line beneath it.
+ *
+ * The start is not a bare form field here — it is the floor of every guest's capture-date cutoff, so it
+ * earns the same card idiom (16dp radius, `outlineVariant` border, `surface` fill) and a plain sentence
+ * saying what it does. The row inside keeps its `Starts …` label and `Edit start date` affordance; the
+ * card and the [note] are what this adds.
+ *
+ * Appearance-free: the current [value], a change callback, and the consequence [note] string — no colors,
+ * shapes, or `Modifier` cross the signature.
+ */
+@Composable
+fun AppEventStartSection(value: LocalDateTime, onValueChange: (LocalDateTime) -> Unit, note: String) {
+    val scheme = MaterialTheme.colorScheme
+    Surface(
+        color = scheme.surface,
+        shape = RoundedCornerShape(16.dp),
+        border = BorderStroke(1.dp, scheme.outlineVariant),
+        modifier = Modifier.fillMaxWidth(),
+    ) {
+        Column(modifier = Modifier.fillMaxWidth()) {
+            Column(modifier = Modifier.padding(start = 14.dp, end = 6.dp, top = 4.dp)) {
+                AppEventStartRow(value = value, onValueChange = onValueChange)
+            }
+            Text(
+                text = note,
+                style = MaterialTheme.typography.bodySmall,
+                color = scheme.onSurfaceVariant,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(start = 14.dp, end = 14.dp, top = 0.dp, bottom = 12.dp),
+            )
+        }
+    }
+}
+
+/**
+ * The design system's human rendering of a wall-clock instant — `14 Jul 2026, 18:00`.
+ *
+ * Public because a screen sometimes needs to state a date as the **value** of an [AppSummaryFact]
+ * (the join surface's cutoff), and a screen must never re-derive the app's date format to do it.
+ */
+fun appDateTimeLabel(value: LocalDateTime): String = formatStart(value)
 
 /** `14 Jul 2026, 18:00` — a human rendering of the start, in the device's local wall-clock terms. */
 internal fun formatStart(value: LocalDateTime): String {
