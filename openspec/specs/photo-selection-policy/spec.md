@@ -180,6 +180,7 @@ create screen's default (see capability `event-creation-ui`) and the not-started
 - **THEN** it runs in `commonTest` against an injected clock on both JVM and the iOS simulator, with no `expect`/`actual`
 
 ### Requirement: The event's start date is a floor on every membership's cutoff
+
 An event SHALL carry a **start date** (`startsAt`, capability `event-creation`), set once by the host at
 creation and immutable thereafter. It SHALL act as a **floor** on every membership's capture-date
 cutoff: a membership's **effective cutoff** SHALL be `max(chosen, startsAt)`.
@@ -191,12 +192,19 @@ stable for the life of the membership. The upload cycle SHALL therefore continue
 filter, no new branch in the one code path where an error means uploading a member's whole library.
 
 The clamp SHALL apply to **every** cutoff that enters a membership, with **no exemption** — the
-interactive pick, the "Now" preset, the "Event start" preset, and the dev/test `minPhotoDate` override
-carried on a decoded event link (capability `event-link`) alike. The event-link override is not exempt
-precisely *because* it is the dangerous one: a `minPhotoDate` in the link payload is decoded from any
-event link, so an unclamped override would let a hostile QR carrying `autoJoin=true` and a
-distant-past cutoff auto-confirm a join at near-whole-library scope **without a tap**. Under the clamp
-that value is raised to the event's own start.
+**Custom** interactive pick, the **Now** option, the **Event start** option (capability `join-event`),
+and the dev/test `minPhotoDate` override carried on a decoded event link (capability `event-link`) alike.
+The event-link override is not exempt precisely *because* it is the dangerous one: a `minPhotoDate` in
+the link payload is decoded from any event link, so an unclamped override would let a hostile QR carrying
+`autoJoin=true` and a distant-past cutoff auto-confirm a join at near-whole-library scope **without a
+tap**. Under the clamp that value is raised to the event's own start.
+
+The persisted `max(chosen, startsAt)` clamp is the **authoritative** floor. The join surface's **Custom**
+picker SHALL additionally enforce the floor **at pick time** — rendering pre-floor days unselectable and
+coercing a confirmed value up to the floor (a day-grain calendar cannot forbid an earlier *hour* on the
+floor's own day) — so the surface never displays or sends a cutoff the persisted clamp would overrule.
+This UI enforcement mirrors the clamp; it does not replace it (the clamp still runs for every entry path,
+including the ones that never touch the picker).
 
 The floor can only ever **narrow** a membership's scope, never widen it. This is what makes a
 host-supplied date safe: a host who sets a distant-past start lowers the *default* a joiner sees, but the
@@ -213,6 +221,12 @@ member's own choice.
 #### Scenario: A chosen cutoff above the floor is honored unchanged
 - **WHEN** a member joins the same event and chooses a cutoff of `2026-07-14T21:00:00Z`
 - **THEN** the persisted cutoff is `2026-07-14T21:00:00Z`, the member freely choosing above the floor
+
+#### Scenario: A Custom pick below the floor is coerced up in the UI and clamped at join
+- **WHEN** a member selects **Custom** and the picker would otherwise allow an hour earlier than the
+  event's `startsAt` on the floor's own day
+- **THEN** the surface coerces the displayed and sent value up to `startsAt`, and `JoinEvent` clamps it to
+  `max(chosen, startsAt)` regardless — so no pre-floor cutoff is ever persisted
 
 #### Scenario: The floor is applied once, at join, not in the upload cycle
 - **WHEN** the upload cycle runs for a joined membership
