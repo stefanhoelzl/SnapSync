@@ -5,6 +5,7 @@ import app.snapsync.compose.uploadCore
 import app.snapsync.config.FileBackedConfigStore
 import app.snapsync.engine.LEDGER_APP_GROUP
 import app.snapsync.feature.album.AlbumCoordinator
+import app.snapsync.model.SelectionScope
 import app.snapsync.ports.LedgerStore
 import app.snapsync.gallery.IosDeviceManifestStore
 import app.snapsync.gallery.PhotoLibraryResourceEnumerator
@@ -76,6 +77,11 @@ class UrlSessionUploadController(
     // the signature permitting exactly what the prose forbade. `SnapSyncRoot` did pass it, so the property
     // held by diligence rather than by the compiler, which is what the same comment says failed last time.
     private val albumExcludedAssetIds: suspend (String) -> Set<String>,
+    // What upload discovery may read (capability `limited-photo-access`): the app graph's derived
+    // walk-vs-snapshot decision. **No default** for the same reason as the album lookup above — this
+    // tier serves LIMITED memberships, and a composition that forgot the scope would walk the library
+    // under a partial grant (the alert-storm bug, measured).
+    private val selectionScope: () -> SelectionScope,
     // False on the dev/test-forced (simulator) path — the sim can't run a background NSURLSession.
     private val useBackgroundSession: Boolean = true,
     // Fired after each in-process pump cycle so foreground upload status refreshes live (the app-driven
@@ -180,6 +186,7 @@ class UrlSessionUploadController(
                 host = { host },
                 ledger = ledgerStore,
                 transfer = platform,
+                selectionScope = selectionScope,
                 discoveryStore = discoveryStore,
                 // Re-join reconciliation seed: the device's stored-file listing over the shared
                 // Darwin client. This tier shipped without a reconciler once — that is why a
@@ -228,6 +235,11 @@ class UrlSessionUploadController(
     /** Foreground entry — pump a cycle (completions drive the rest while open). */
     fun onForeground() {
         scope.launch { log.invocation("url-session.onForeground") { pump.onForeground() } }
+    }
+
+    /** The photo selection changed under a partial grant — pump a cycle over the new snapshot. */
+    fun onSelectionChanged() {
+        scope.launch { log.invocation("url-session.onSelectionChanged") { pump.onSelectionChanged() } }
     }
 
     /** The `BGProcessingTask` heartbeat handler fired — top up and re-arm. Call [done] when finished. */

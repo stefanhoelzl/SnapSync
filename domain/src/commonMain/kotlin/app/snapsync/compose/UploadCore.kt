@@ -7,8 +7,10 @@ import app.snapsync.feature.upload.ExtensionReconciler
 import app.snapsync.feature.upload.JoinedMembership
 import app.snapsync.feature.upload.LedgerWriter
 import app.snapsync.feature.upload.SyncEngine
+import app.snapsync.feature.upload.SelectionScopedTransfer
 import app.snapsync.feature.upload.UploadCycle
 import app.snapsync.feature.upload.cycleGate
+import app.snapsync.model.SelectionScope
 import app.snapsync.model.Contribution
 import app.snapsync.model.EdgeUploadRequestProvider
 import app.snapsync.model.denormalizeAssetId
@@ -49,6 +51,14 @@ class UploadPorts(
     val host: () -> String?,
     val ledger: LedgerStore,
     val transfer: BackgroundTransfer,
+    /**
+     * What upload discovery may read (capability `limited-photo-access`): [SelectionScope.Unrestricted]
+     * walks as ever; [SelectionScope.Scoped] makes discovery consume the selection snapshot with no
+     * platform read. The default keeps every full-grant composition byte-identical — the extension
+     * root never sees a partial grant (the OS does not invoke it there), and the world opts in per
+     * test. Derived by the app composition from current permission + the latest snapshot.
+     */
+    val selectionScope: () -> SelectionScope = { SelectionScope.Unrestricted },
     val discoveryStore: DiscoveryStore,
     /** The per-device stored-file listing the re-join reconciliation seeds from. */
     val deviceFiles: DeviceFilesSource,
@@ -118,7 +128,9 @@ fun uploadCore(scope: CoroutineScope, ports: UploadPorts): UploadCycle {
             SyncEngine(EdgeUploadRequestProvider(config.host, ports.deviceId(), ports.token), ledger, config.eventId)
         },
         ledger = ledger,
-        platform = ports.transfer,
+        // The read-discipline gate (capability `limited-photo-access`): the ONE shared assembly wraps
+        // the platform, so every tier and the world get the same walk-vs-snapshot decision.
+        platform = SelectionScopedTransfer(ports.transfer, ports.selectionScope),
         store = ports.discoveryStore,
         log = ports.log,
         reconcile = { eventId -> reconciler.reconcile(eventId) },

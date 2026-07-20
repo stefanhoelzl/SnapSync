@@ -1,6 +1,7 @@
 package app.snapsync.feature.status
 
 import app.snapsync.model.Contribution
+import app.snapsync.model.Resource
 import app.snapsync.ports.PhotoLibrary
 import app.snapsync.ports.GalleryStatusSource
 import app.snapsync.model.RESOURCE_META_CREATION_DATE
@@ -92,7 +93,6 @@ class OwnDeviceGalleryStatusSource(
             is Contribution.Since -> contribution.cutoff
         }
         val started = timeSource.markNow()
-        val suppressed = suppressedLocalIds()
         // Own universe = enumerated assets minus downloads (echo) minus pre-cutoff minus origin-excluded
         // (capability `photo-selection-policy`) — exactly the set the upload cycle admits, so completeness
         // can reach 100%.
@@ -102,9 +102,51 @@ class OwnDeviceGalleryStatusSource(
         // applied there but not here would count an asset that is never uploaded — pegging the joined screen
         // below 100% forever, which is the exact failure the cutoff scoping already exists to prevent.
         val enumerated = enumerator.enumerate(cutoff)
-        val preCutoff = enumerated.count { (it.metadata[RESOURCE_META_CREATION_DATE] ?: "") < cutoff }
-        val originExcluded = excludedAssetIds(enumerated) + albumExcludedAssetIds(cutoff)
-        val size = enumerated
+        val counted = compute(enumerated, cutoff)
+        val elapsed = started.elapsedNow()
+        log.i {
+            "gallery: enumerated ${enumerated.size} resource(s) since $cutoff " +
+                "(${counted.preCutoff} over-returned pre-cutoff, ${counted.suppressed} suppressed, " +
+                "${counted.originExcluded} origin-excluded) " +
+                "→ N=${counted.size} own in-scope asset(s) in ${elapsed.inWholeMilliseconds}ms"
+        }
+    }
+
+    /**
+     * Recompute `N` from a **provided** resource list instead of enumerating (capability
+     * `limited-photo-access`, "One discovery serves both the status total and the enqueue"): under a
+     * partial grant, the selection snapshot the upload discovery consumes is also what the total counts
+     * — one read, and `N` and the upload set are provably the same universe. The subtraction is the
+     * SAME [compute] the enumerating [refresh] uses, so the policy identity holds by construction.
+     *
+     * [Contribution.None] reports `0` exactly as [refresh] does — a non-contributing membership counts
+     * nothing regardless of what was selected.
+     */
+    suspend fun refreshFrom(resources: List<Resource>, contribution: Contribution) {
+        val cutoff = when (contribution) {
+            Contribution.None -> {
+                _size.value = 0
+                log.i { "gallery: this membership contributes nothing → N=0 (snapshot ignored)" }
+                return
+            }
+            is Contribution.Since -> contribution.cutoff
+        }
+        val counted = compute(resources, cutoff)
+        log.i {
+            "gallery: selection snapshot of ${resources.size} resource(s) " +
+                "(${counted.preCutoff} pre-cutoff, ${counted.suppressed} suppressed, " +
+                "${counted.originExcluded} origin-excluded) → N=${counted.size} own in-scope asset(s)"
+        }
+    }
+
+    private class Counted(val size: Int, val preCutoff: Int, val suppressed: Int, val originExcluded: Int)
+
+    /** The three-way subtraction (echo, cutoff, origin) shared by [refresh] and [refreshFrom]. */
+    private suspend fun compute(resources: List<Resource>, cutoff: String): Counted {
+        val suppressed = suppressedLocalIds()
+        val preCutoff = resources.count { (it.metadata[RESOURCE_META_CREATION_DATE] ?: "") < cutoff }
+        val originExcluded = excludedAssetIds(resources) + albumExcludedAssetIds(cutoff)
+        val size = resources
             .asSequence()
             .filter { (it.metadata[RESOURCE_META_CREATION_DATE] ?: "") >= cutoff }
             .map { it.assetId }
@@ -113,12 +155,6 @@ class OwnDeviceGalleryStatusSource(
             .distinct()
             .count()
         _size.value = size
-        val elapsed = started.elapsedNow()
-        log.i {
-            "gallery: enumerated ${enumerated.size} resource(s) since $cutoff " +
-                "($preCutoff over-returned pre-cutoff, ${suppressed.size} suppressed, " +
-                "${originExcluded.size} origin-excluded) " +
-                "→ N=$size own in-scope asset(s) in ${elapsed.inWholeMilliseconds}ms"
-        }
+        return Counted(size, preCutoff, suppressed.size, originExcluded.size)
     }
 }

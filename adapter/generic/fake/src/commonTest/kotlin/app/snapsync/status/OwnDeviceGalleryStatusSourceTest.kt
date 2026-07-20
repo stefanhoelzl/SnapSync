@@ -80,6 +80,36 @@ class OwnDeviceGalleryStatusSourceTest {
     }
 
     /** Dated in scope by default: an asset with no `creationDate` is out of scope under any cutoff. */
+    // ---- refreshFrom: the selection snapshot serves the total (capability `limited-photo-access`) ----
+
+    @Test
+    fun `refreshFrom counts the provided snapshot without walking`() = runTest {
+        val enumerator = RecordingEnumerator(InMemoryPhotoLibrary(emptyList()))
+        val source = OwnDeviceGalleryStatusSource(enumerator)
+
+        source.refreshFrom(
+            listOf(
+                resource("A-primary.jpg", "A"),
+                datedResource("B-primary.jpg", "B", "2026-07-01T00:00:00Z"), // pre-cutoff → excluded
+            ),
+            Contribution.Since(CUTOFF),
+        )
+
+        assertEquals(1, source.size.value, "the snapshot is counted through the same three-way subtraction")
+        assertEquals(0, enumerator.walks, "a snapshot refresh never enumerates the library")
+    }
+
+    @Test
+    fun `refreshFrom for a non-contributing membership totals zero`() = runTest {
+        val enumerator = RecordingEnumerator(InMemoryPhotoLibrary(emptyList()))
+        val source = OwnDeviceGalleryStatusSource(enumerator)
+
+        source.refreshFrom(listOf(resource("A-primary.jpg", "A")), Contribution.None)
+
+        assertEquals(0, source.size.value)
+        assertEquals(0, enumerator.walks)
+    }
+
     private fun resource(filename: String, assetId: String) =
         Resource(filename, assetId, "image/jpeg", mapOf(RESOURCE_META_CREATION_DATE to IN_SCOPE), Unit)
 

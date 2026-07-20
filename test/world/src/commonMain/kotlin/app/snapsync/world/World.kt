@@ -9,6 +9,7 @@ import app.snapsync.compose.uploadCore
 import app.snapsync.download.HttpEventUnionSource
 import app.snapsync.eventcreation.HttpEventCreation
 import app.snapsync.fake.InMemoryAttestStore
+import app.snapsync.fake.InMemoryPhotoSelectionChangeSource
 import app.snapsync.fake.InMemoryDeviceManifestStore
 import app.snapsync.fake.InMemoryDiscoveryStore
 import app.snapsync.fake.InMemoryDownloadStore
@@ -27,6 +28,7 @@ import app.snapsync.join.HttpEnrollment
 import app.snapsync.join.HttpEventDirectory
 import app.snapsync.membership.HttpDeviceFilesSource
 import app.snapsync.membership.HttpLeaveNotifier
+import app.snapsync.model.Resource
 import app.snapsync.model.Contribution
 import app.snapsync.model.DENYLISTED_ALBUM_TITLES
 import app.snapsync.model.DeviceManifestAsset
@@ -60,6 +62,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.joinAll
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -111,6 +114,11 @@ class World(
     val marker: InMemoryJoinedEventMarker = InMemoryJoinedEventMarker()
     val manifestStore: InMemoryDeviceManifestStore = InMemoryDeviceManifestStore()
     val permission: MutablePhotoAccessStatusSource = MutablePhotoAccessStatusSource()
+
+    // Selection snapshots under a partial grant (capability `limited-photo-access`): the honest fake
+    // over an operator-held cell. Emitting IS the operator lever (see [changeSelection]); replay 0 —
+    // a snapshot is a change notification, not a state the composition may re-collect.
+    private val selectionChangesCell = MutableSharedFlow<List<Resource>>()
     val albumManager: FakeAlbumManager = FakeAlbumManager()
     val albumMapStore = app.snapsync.fake.InMemoryAlbumMapStore()
 
@@ -233,6 +241,10 @@ class World(
             configStore = configStore,
             photoAccess = permission,
             photoAccessRequester = requester,
+            selectionChanges = InMemoryPhotoSelectionChangeSource(selectionChangesCell),
+            // The operator plays the OS: nothing auto-runs. A selection change updates the cell + N;
+            // the operator then invokes the cycle by hand, exactly like every other world trigger.
+            pumpSelectionChanged = {},
             photoLibrary = enumerator,
             ledger = ledgerBackend,
             downloadStore = downloadStore,
@@ -277,6 +289,17 @@ class World(
 
     /** The operator's foreground-refresh: pull the composed status sources (they update on `refresh()`). */
     suspend fun refreshStatus() = core.refreshStatusSources()
+
+    /**
+     * Operator lever (capability `limited-photo-access`): the user changed the photo selection under a
+     * partial grant. Emits the full current selection snapshot through the honest fake — the same
+     * one-emission-per-change contract the iOS observer adapter keeps. Suspends until the composition's
+     * collector has processed it (SharedFlow emit suspends for slow collectors), so assertions never
+     * race the N recount.
+     */
+    suspend fun changeSelection(resources: List<Resource>) {
+        selectionChangesCell.emit(resources)
+    }
 
     /**
      * Staging work the real jobs launched. `QueuedPhotoDownloadJobs.onStaged` is not a suspend seam — it
@@ -473,6 +496,7 @@ class World(
                 host = { host },
                 ledger = ledgerBackend,
                 transfer = platform,
+                selectionScope = { core.selectionScope() },
                 discoveryStore = discoveryStore,
                 deviceFiles = deviceFiles,
                 joinedMarker = marker,
