@@ -73,6 +73,7 @@ fun ControlPanel(controller: PanelController, dark: Boolean, onDarkChange: (Bool
         ButtonRow {
             Button(onClick = { controller.showPermissionNotDetermined() }) { Text("Not determined") }
             Button(onClick = { controller.showPermissionDenied() }) { Text("Denied") }
+            Button(onClick = { controller.showPermissionLimited() }) { Text("Limited") }
             Button(onClick = { controller.showPermissionGranted() }) { Text("Granted") }
         }
 

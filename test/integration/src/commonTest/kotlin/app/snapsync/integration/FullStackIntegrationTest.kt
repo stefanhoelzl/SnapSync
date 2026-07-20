@@ -8,6 +8,7 @@ import app.snapsync.model.UserCommands
 import app.snapsync.presentation.CutoffFormatter
 import app.snapsync.presentation.StatusContainerHost
 import app.snapsync.feature.status.LedgerCounts
+import app.snapsync.model.PermissionStatus
 import app.snapsync.presentation.SyncHealth
 import app.snapsync.presentation.UiState
 import app.snapsync.world.World
@@ -186,6 +187,37 @@ class FullStackIntegrationTest {
             w.refreshStatus()
             val host = statusHost(w, scope)
             // The imported foreign asset is suppressed from the OWN upload universe → own status settled.
+            assertEquals(SyncHealth.InSync, host.await { it.health() is SyncHealth.InSync }.health())
+        } finally {
+            scope.cancel()
+        }
+    }
+
+    @Test
+    fun a_limited_grant_receives_foreign_photos_and_never_reads_needs_access() = worldTest {
+        // Receive-only under a LIMITED grant is a valid resting state (capability
+        // `limited-photo-access`): imports work, no upload work is created (the read discipline keeps
+        // every autonomous walk off), and the screen shows the ordinary health line — never NeedsAccess.
+        val scope = CoroutineScope(coroutineContext + Job())
+        try {
+            val w = World(this)
+            w.permission.set(PermissionStatus.LIMITED)
+            w.provision("E")
+            w.addOwnAsset("A") // present in the library — must NOT be enumerated or uploaded
+            w.addForeignDevice("DEV-F", "E", listOf(World.foreignAsset("FQ")))
+
+            w.downloadController.reconcile("E")
+            w.stageAllDownloads()
+            assertTrue(w.importer.imported.isNotEmpty()) // world outcome: foreign photo imported under LIMITED
+
+            // The autonomous own-device walk is gated off under LIMITED: refreshing the status
+            // enumerates nothing, and no upload job or ledger row ever appears for the own asset.
+            w.refreshStatus()
+            w.ledgerCounts.refresh()
+            assertEquals(LedgerCounts(completed = 0, pending = 0), w.ledgerCounts.counts.value)
+
+            val host = statusHost(w, scope)
+            // UI outcome: the settled zero-total health — not the permission-attention line.
             assertEquals(SyncHealth.InSync, host.await { it.health() is SyncHealth.InSync }.health())
         } finally {
             scope.cancel()
