@@ -62,6 +62,7 @@ import co.touchlab.kermit.Logger
 import io.ktor.client.HttpClient
 import kotlinx.cinterop.ExperimentalForeignApi
 import kotlinx.cinterop.cValue
+import kotlinx.coroutines.CoroutineExceptionHandler
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -120,7 +121,20 @@ object SnapSyncRoot {
     }
 
     private val log = Logger.withTag("SnapSyncRoot")
-    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
+
+    // The app-scope error boundary. Without a handler, an uncaught throwable from any `scope.launch`
+    // hits Kotlin/Native's default terminate → SIGABRT — a background failure (a platform-API call, an
+    // App-Group read, a deprecated PhotoKit selector on a newer iOS) takes the whole app down at launch.
+    // The `SupervisorJob` already isolates SIBLING coroutines from each other's failures; this makes an
+    // otherwise-unhandled failure land in `debug.log` (the un-redacted channel) instead of aborting the
+    // process, honouring the rule that errors reduce into state and never crash the shell. Every feature
+    // reduces its own domain errors into `UiState`; this catches only what nothing else did.
+    private val scope = CoroutineScope(
+        SupervisorJob() + Dispatchers.Main +
+            CoroutineExceptionHandler { _, t ->
+                log.e(t) { "uncaught in app scope — logged, not fatal" }
+            },
+    )
 
     // ── Launch directives → composition mode (spec `module-architecture`, "One shared composition") ──
 
