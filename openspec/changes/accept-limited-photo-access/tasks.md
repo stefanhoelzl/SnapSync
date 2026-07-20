@@ -113,13 +113,15 @@ scaffolding out of the way first.
 
 ## 8. Specs, diagrams, docs
 
-- [ ] 8.1 Sync the delta specs into `openspec/specs/` (including the permission-gate Purpose rewrite —
-      the "selection defines scope" framing replaces the "full or nothing" rationale prose)
-- [ ] 8.2 `./gradlew architectureDiagrams` + commit (the new port changes the ports inventory);
+- [x] 8.1 **Deferred to the archive step by tooling**: openspec 1.5.0 has no standalone sync — the
+      main-spec merge happens at `archive`. ⚠️ The archive's MANUAL half: the permission-gate
+      **Purpose rewrite** (the "selection defines scope" framing replacing "full or nothing") — the
+      delta carries requirements only, so the archiver must hand-apply the Purpose prose
+- [x] 8.2 `./gradlew architectureDiagrams` + commit (the new port changes the ports inventory);
       LawsDigestTest/laws digest untouched unless the guard list line needs the new guard named
-- [ ] 8.3 Update root `CLAUDE.md`: the `.limited → DENIED` prose is stale after this change; note the
+- [x] 8.3 Update root `CLAUDE.md`: the `.limited → DENIED` prose is stale after this change; note the
       LIMITED state, the observer seam, and the alert-storm rule (no autonomous reads under limited)
-- [ ] 8.4 `npx --yes @fission-ai/openspec@1.5.0 validate --specs --strict` green + `./gradlew build`
+- [x] 8.4 `npx --yes @fission-ai/openspec@1.5.0 validate --specs --strict` green + `./gradlew build`
       green
 
 ## 9. Device validation (the full feature, on the SE2)
