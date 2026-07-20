@@ -46,12 +46,12 @@ what the PoC already carries; unchecked are the finishing work.
 
 ## 4. Tests
 
-- [ ] 4.1 `ui/screens` `JoinScreenTest` / `StatusScreenTest` assert the new surfaces (switches, 3-option
+- [x] 4.1 `ui/screens` `JoinScreenTest` / `StatusScreenTest` assert the new surfaces (switches, 3-option
       cutoff, no `Both`/`Upload only`/`Download only` text, banner-not-red create error)
-- [ ] 4.2 Extend `ui/components` / `ui/screens` `commonTest` for the new components (switch-section role,
+- [x] 4.2 Extend `ui/components` / `ui/screens` `commonTest` for the new components (switch-section role,
       checkmark-row `Role.Checkbox` incl. dimmed-but-present, cutoff `Custom` floor coercion, adaptive
       album note per switch combination, both-off Join-disabled reason)
-- [ ] 4.3 `./gradlew build` green (JVM + headless Compose UI tests); `compileIosMainKotlinMetadata` clean
+- [x] 4.3 `./gradlew build` green (JVM + headless Compose UI tests); `compileIosMainKotlinMetadata` clean
 
 ## 5. On-device verification (per CLAUDE.md runbooks)
 
