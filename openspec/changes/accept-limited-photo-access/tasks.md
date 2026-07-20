@@ -20,24 +20,24 @@ scaffolding out of the way first.
 
 ## 2. The LIMITED state (foundational — reviewed before anything stacks on it)
 
-- [ ] 2.1 Add `LIMITED` to `PermissionStatus` in `:domain` `model/` with KDoc stating the
+- [x] 2.1 Add `LIMITED` to `PermissionStatus` in `:domain` `model/` with KDoc stating the
       selection-defines-scope semantics; fix every non-exhaustive `when` the compiler surfaces
-- [ ] 2.2 Map `.limited → LIMITED` in `PhotoLibraryPermission` (import `PHAuthorizationStatusLimited`
+- [x] 2.2 Map `.limited → LIMITED` in `PhotoLibraryPermission` (import `PHAuthorizationStatusLimited`
       explicitly); update the adapter KDoc
-- [ ] 2.3 Audit gate 1 of 4 — `SnapSyncApp.kt` `isGranted` lambda (arm path, ~line 242): decide the
-      reading per the permission-gate delta (usable-access vs whole-library) and implement; the arm's
-      usable-access read becomes `GRANTED || LIMITED` while the autonomous-walk gating stays
-      `GRANTED`-only (groups 4–5 wire the difference)
-- [ ] 2.4 Audit gate 2 of 4 — `SnapSyncApp.kt` Provision-flow `isGranted` (~line 377): same decision,
+- [x] 2.3 Audit gate 1 of 4 — `SnapSyncApp.kt` `isGranted` lambda (arm path, ~line 242): decided
+      GRANTED-only FOR NOW, with a pointer comment — flipping it to usable-access before groups 4–6
+      exist would start a producer whose start() walks the library under LIMITED (the app-driven
+      tier), i.e. the alert storm. The usable-access flip is group 6's permission-aware arm
+- [x] 2.4 Audit gate 2 of 4 — `SnapSyncApp.kt` Provision-flow `isGranted` (~line 377): same decision,
       same split
-- [ ] 2.5 Audit gate 3 of 4 — `LedgerBackedSyncStatusSource` `active` (~line 58): `GRANTED || LIMITED`
+- [x] 2.5 Audit gate 3 of 4 — `LedgerBackedSyncStatusSource` `active` (~line 58): `GRANTED || LIMITED`
       per the sync-status delta
-- [ ] 2.6 Audit gate 4 of 4 — `StatusContainerHost` health reduction (~line 545): `NeedsAccess` only
+- [x] 2.6 Audit gate 4 of 4 — `StatusContainerHost` health reduction (~line 545): `NeedsAccess` only
       for `NOT_DETERMINED`/`DENIED`; `LIMITED` falls through to the snapshot-derived health per the
       sync-status-screen delta
-- [ ] 2.7 Join gate: `LIMITED` snapshot skips the explainer like `GRANTED` (`neverAsked` read,
+- [x] 2.7 Join gate: `LIMITED` snapshot skips the explainer like `GRANTED` (`neverAsked` read,
       `StatusContainerHost` ~line 419) per the join-event delta
-- [ ] 2.8 `commonTest` coverage for the four gates + the explainer skip under `LIMITED` (presentation
+- [x] 2.8 `commonTest` coverage for the four gates + the explainer skip under `LIMITED` (presentation
       + status-source tests over forged permission values)
 
 ## 3. Receive-only limited works (device-validated checkpoint)

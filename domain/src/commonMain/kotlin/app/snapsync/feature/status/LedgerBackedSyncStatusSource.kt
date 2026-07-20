@@ -4,7 +4,7 @@ import app.snapsync.model.SyncProgress
 import app.snapsync.model.SyncStatus
 
 import app.snapsync.ports.GalleryStatusSource
-import app.snapsync.model.PermissionStatus
+import app.snapsync.model.grantsPhotoAccess
 import app.snapsync.ports.PhotoAccessStatusSource
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -55,7 +55,9 @@ fun LedgerBackedSyncStatusSource(
                 completed = completedCount,
                 total = total,
                 failed = 0,
-                active = perm == PermissionStatus.GRANTED,
+                // Usable access: syncing is operational under both a full and a limited grant
+                // (capability `limited-photo-access` — under LIMITED the total is selection-scoped).
+                active = perm.grantsPhotoAccess,
                 estimatedRemaining = null,
             )
         }.collect { status.value = SyncStatus.Ready(it) }

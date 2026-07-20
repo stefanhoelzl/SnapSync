@@ -14,6 +14,7 @@ import app.snapsync.feature.creation.CreationStatus
 import app.snapsync.feature.creation.CreationStatusSource
 import app.snapsync.feature.creation.MutableCreationStatusSource
 import app.snapsync.model.PermissionStatus
+import app.snapsync.model.grantsPhotoAccess
 import app.snapsync.feature.download.DownloadProgress
 import app.snapsync.feature.download.DownloadStatusSource
 import app.snapsync.feature.download.InMemoryDownloadStatusSource
@@ -541,8 +542,10 @@ private fun reduceFrom(
         // Missing permission is the sole attention state — the only reason contribution cannot run. It
         // outranks NotStarted because it is the only ACTIONABLE state, and the member must resolve it
         // BEFORE the event begins or they miss the start; hiding it behind the clock line would ambush
-        // them with a permission prompt at the very moment the party starts.
-        permission != PermissionStatus.GRANTED -> SyncHealth.NeedsAccess(permission)
+        // them with a permission prompt at the very moment the party starts. LIMITED is NOT here: a
+        // partial grant is a working state (capability `limited-photo-access`) — it falls through to
+        // the snapshot-derived health exactly like GRANTED.
+        !permission.grantsPhotoAccess -> SyncHealth.NeedsAccess(permission)
         // The event has not begun. Outranks every snapshot-derived value because nothing of this member's
         // CAN be syncing yet — the cutoff floor guarantees it (`minPhotoDate >= startsAt > now`, and a
         // photo cannot be captured in the future) — so a snapshot line would say nothing true that this
