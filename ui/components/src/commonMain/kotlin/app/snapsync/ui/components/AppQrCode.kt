@@ -40,7 +40,9 @@ fun AppQrCode(content: String, caption: String? = null) {
         ) {
             Image(
                 painter = rememberQrCodePainter(content),
-                contentDescription = caption,
+                // The visible [caption] below is already an announced Text; describing the image with the
+                // same words would make assistive tech read the caption twice, so the image is silent.
+                contentDescription = null,
                 modifier = Modifier.size(196.dp),
             )
             if (caption != null) {

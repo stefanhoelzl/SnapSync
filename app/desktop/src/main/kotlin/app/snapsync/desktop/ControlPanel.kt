@@ -18,6 +18,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
 
 /**
@@ -39,14 +40,24 @@ fun ControlPanel(controller: PanelController, dark: Boolean, onDarkChange: (Bool
         // Test-only view control: forces the phone pane's theme (this panel's own chrome is unaffected).
         Text("Theme (phone pane)")
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Switch(checked = dark, onCheckedChange = onDarkChange)
+            Switch(
+                checked = dark,
+                onCheckedChange = onDarkChange,
+                modifier = Modifier.testTag("theme-switch"),
+            )
             Text(if (dark) "Dark" else "Light")
         }
 
         Text("Config")
         val config by controller.currentConfig.collectAsState()
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Switch(checked = config != null, onCheckedChange = { controller.setConfigPresent(it) })
+            // Tagged for the same reason as the theme switch: a Switch carries no text, so without a
+            // tag the driver cannot flip config and every joined-layer state is headlessly unreachable.
+            Switch(
+                checked = config != null,
+                onCheckedChange = { controller.setConfigPresent(it) },
+                modifier = Modifier.testTag("config-switch"),
+            )
             Text(if (config != null) "Config set" else "No config")
         }
 

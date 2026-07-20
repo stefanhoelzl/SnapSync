@@ -6,7 +6,15 @@ plugins {
 
 kotlin {
     jvmToolchain(libs.versions.jdk.get().toInt())
-    jvm()
+    jvm {
+        testRuns["test"].executionTask.configure {
+            // Skiko loads native libs via a restricted method; future JDKs block it by default.
+            jvmArgs("--enable-native-access=ALL-UNNAMED")
+            // Compose's test renderer draws offscreen; headless skips AWT's display probe so the
+            // tests need no X server on Linux (no Xvfb, no stale-lock hang).
+            jvmArgs("-Djava.awt.headless=true")
+        }
+    }
     iosArm64()
     iosSimulatorArm64()
     sourceSets {
@@ -27,6 +35,14 @@ kotlin {
             // Plain multiplatform date-time value for AppDateTimeField's semantic signature
             // (LocalDateTime is a data/meaning type, not a Material 3 type — the containment rule is intact).
             implementation(libs.kotlinx.datetime)
+        }
+        // jvmTest only: the offscreen Compose renderer for asserting a component's assistive-tech
+        // semantics (roles, labels, disabled state) — the design-system components are otherwise
+        // exercised through :ui:screens, but the picker dialog's internals warrant a direct probe.
+        jvmTest.dependencies {
+            implementation(kotlin("test"))
+            implementation(compose.desktop.uiTestJUnit4)
+            implementation(compose.desktop.currentOs)
         }
     }
 }

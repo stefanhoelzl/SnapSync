@@ -612,6 +612,9 @@ private fun EventConfig.inviteUrl(): String = encodeEventUrl(EventLinkPayload(ev
 
 // The inline create-error copy, formatted in presentation (UiState carries final display strings).
 private fun CreationFailureReason.message(): String = when (this) {
-    CreationFailureReason.INVALID_NAME -> "That name isn't valid."
+    // The client already blocks the two knowable rules — empty (Create is disabled until the trimmed name
+    // is non-empty) and over-length (the field caps at 100). So a returned 400 is a rule this client can't
+    // name; the copy says what to try rather than asserting a constraint it doesn't know.
+    CreationFailureReason.INVALID_NAME -> "That name wasn't accepted. Try a different one."
     CreationFailureReason.SERVER -> "Couldn't reach the server."
 }

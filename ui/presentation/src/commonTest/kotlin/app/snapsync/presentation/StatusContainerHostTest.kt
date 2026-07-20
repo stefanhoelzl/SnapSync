@@ -398,7 +398,10 @@ class StatusContainerHostTest {
     @Test
     fun `config absent with an invalid-name failure shows the input with the name error`() = runTest {
         val host = createHost(CreationStatus.Failed(CreationFailureReason.INVALID_NAME), scope = backgroundScope)
-        assertEquals(UiState.CreateEvent(error = "That name isn't valid."), host.container.stateFlow.value)
+        assertEquals(
+            UiState.CreateEvent(error = "That name wasn't accepted. Try a different one."),
+            host.container.stateFlow.value,
+        )
     }
 
     @Test

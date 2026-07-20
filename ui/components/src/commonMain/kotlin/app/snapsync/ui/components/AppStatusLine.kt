@@ -6,7 +6,9 @@ import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -27,6 +29,9 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.role
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import app.snapsync.model.Arrow
 import kotlinx.datetime.LocalDateTime
@@ -80,9 +85,24 @@ sealed interface AppSyncStatus {
 /** Which permission action the attention line offers: request the initial grant, or open Settings. */
 enum class AccessPrompt { ALLOW, SETTINGS }
 
-// Skin-local semantic colors for the status line (never seen by screens).
-private val Amber = Color(0xFFE8820C)
-private val AmberContainer = Color(0x22E8820C)
+// Skin-local semantic colors for the attention line (never seen by screens). Amber is not an M3
+// colorScheme token, so its light/dark split is picked by hand via [appIsDark] — the same rule the scheme
+// itself is chosen by.
+//
+// Light was failing WCAG: #E8820C text on a 0x22 amber pill measured ~2.24:1 (needs 4.5:1 at 16sp), and
+// the pill barely separated from the page (1.13:1). Light now uses a dark amber for text/icons (5.0:1 on
+// the pill) over a stronger 0x3D fill (pill/page ~1.25:1). Dark already passed (5.2–6.0:1) and is kept.
+private val AmberTextLight = Color(0xFF8A4B00)
+private val AmberTextDark = Color(0xFFE8820C)
+private val AmberContainerLight = Color(0x3DE8820C)
+private val AmberContainerDark = Color(0x22E8820C)
+
+@Composable
+private fun amberText(): Color = if (appIsDark()) AmberTextDark else AmberTextLight
+
+@Composable
+private fun amberContainer(): Color = if (appIsDark()) AmberContainerDark else AmberContainerLight
+
 private val IconSize = 20.dp
 private val StaticAlpha = 0.38f
 
@@ -146,12 +166,17 @@ fun AppStatusLine(status: AppSyncStatus, onAttentionClick: () -> Unit = {}) {
         is AppSyncStatus.NeedsAccess ->
             Surface(
                 onClick = onAttentionClick,
-                color = AmberContainer,
-                contentColor = Amber,
+                color = amberContainer(),
+                contentColor = amberText(),
                 shape = RoundedCornerShape(999.dp),
+                // The tappable attention line is a button: give assistive tech the role it lacked, and
+                // guarantee the ≥44dp iOS touch target the 9dp padding alone did not reach.
+                modifier = Modifier.semantics { role = Role.Button },
             ) {
                 Row(
-                    modifier = Modifier.padding(horizontal = 15.dp, vertical = 9.dp),
+                    modifier = Modifier
+                        .heightIn(min = 44.dp)
+                        .padding(horizontal = 15.dp, vertical = 9.dp),
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(6.dp),
                 ) {
@@ -171,8 +196,8 @@ fun AppStatusLine(status: AppSyncStatus, onAttentionClick: () -> Unit = {}) {
             // The same attention treatment as NeedsAccess — but NOT tappable, and with no chevron: there
             // is no action the user can take. It clears itself as soon as the device can reach the backend.
             Surface(
-                color = AmberContainer,
-                contentColor = Amber,
+                color = amberContainer(),
+                contentColor = amberText(),
                 shape = RoundedCornerShape(999.dp),
             ) {
                 Row(
@@ -181,10 +206,20 @@ fun AppStatusLine(status: AppSyncStatus, onAttentionClick: () -> Unit = {}) {
                     horizontalArrangement = Arrangement.spacedBy(6.dp),
                 ) {
                     Icon(Icons.Filled.Warning, contentDescription = null, modifier = Modifier.size(IconSize))
-                    Text(
-                        text = "Can't verify this device — sharing is paused",
-                        style = MaterialTheme.typography.titleMedium,
-                    )
+                    // Headline plus a recovery hint: this is the one attention state with no tap action,
+                    // so the detail line names what actually clears it — opening the app is a re-verify
+                    // wake, and the failure is otherwise being offline. (Colour is inherited contentColor;
+                    // no scheme line is touched here.)
+                    Column(verticalArrangement = Arrangement.spacedBy(1.dp)) {
+                        Text(
+                            text = "Can't verify this device — sharing is paused",
+                            style = MaterialTheme.typography.titleMedium,
+                        )
+                        Text(
+                            text = "Reopen the app or check your connection.",
+                            style = MaterialTheme.typography.bodySmall,
+                        )
+                    }
                 }
             }
     }
