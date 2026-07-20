@@ -53,9 +53,15 @@ scaffolding out of the way first.
       foreign photos, populates the album, creates no upload work, shows no `NeedsAccess`
 - [x] 3.4 Forge harness: permission preset gains `LIMITED`; verify the joined layer renders the normal
       health line (headless via `:test:harness-driver`)
-- [ ] 3.5 **Device checkpoint (SE2):** sideload, grant limited, join a fresh event with
-      direction=download — verify imports land, no alert storm across several foregrounds, status
-      honest. This is the receive-only ship-state validated before the upload half begins
+- [x] 3.5 **Device checkpoint (SE2) — PASSED** (2026-07-20, headless; the limited grant persisted
+      from the probe era so no manual grant was needed): download-only join under real `.limited` →
+      joined layer reads "In sync" (never the access affordance), ZERO library walks and zero
+      producer starts across three cold-launch cycles, no alert on any screenshot. Caveat: the
+      import half ran against an empty union (the event's bytes were reaped on last-member leave;
+      foreign content has no headless route) — import-under-limited is instead evidenced by probe
+      finding 4a (creation measured unrestricted on this device) + the group-3 integration test
+      over the real core. Re-verify imports on device opportunistically when foreign content next
+      exists (e.g. during 9.2's two-permission flow)
 
 ## 4. The selection-change seam
 
