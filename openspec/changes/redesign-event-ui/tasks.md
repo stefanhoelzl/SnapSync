@@ -30,23 +30,23 @@ what the PoC already carries; unchecked are the finishing work.
 
 ## 3. Sweep dead components (verify none are re-referenced, then delete)
 
-- [ ] 3.1 `AppExplainer` (`AppExplainer.kt`) — join gate now uses `AppSummaryCard` + `AppAccessPoint`
-- [ ] 3.2 `AppCheckboxRow` (`AppCheckboxRow.kt`) — superseded by `AppSummaryToggle`
-- [ ] 3.3 `AppSummaryFact` / `AppSummaryLine` (in `AppSummaryCard.kt`) — unreferenced remnants
-- [ ] 3.4 `AppEventStartRow` public composable (in `AppEventStartRow.kt`) — create screen uses
+- [x] 3.1 `AppExplainer` (`AppExplainer.kt`) — join gate now uses `AppSummaryCard` + `AppAccessPoint`
+- [x] 3.2 `AppCheckboxRow` (`AppCheckboxRow.kt`) — superseded by `AppSummaryToggle`
+- [x] 3.3 `AppSummaryFact` / `AppSummaryLine` (in `AppSummaryCard.kt`) — unreferenced remnants
+- [x] 3.4 `AppEventStartRow` public composable (in `AppEventStartRow.kt`) — create screen uses
       `AppEventStartSection`; keep the shared `DateTimePickerDialog` / `appDateTimeLabel` / `formatStart*`
-- [ ] 3.5 `AppDateTimeField` public composable (in `AppDateTimeField.kt`) — unused; keep the internal
+- [x] 3.5 `AppDateTimeField` public composable (in `AppDateTimeField.kt`) — unused; keep the internal
       `DateTimePickerDialog` + `TimeWheels`/`WheelColumn` it hosts (that is the live picker)
-- [ ] 3.6 `AppEventHero` public composable (in `AppEventHero.kt`) — headers use the Compact/Host/Loading
+- [x] 3.6 `AppEventHero` public composable (in `AppEventHero.kt`) — headers use the Compact/Host/Loading
       variants + `AppMarkBadge`; keep those
-- [ ] 3.7 Confirm the removed `AppDirectionSelector` / `AppCutoffSelector` (deleted in the PoC) have no
+- [x] 3.7 Confirm the removed `AppDirectionSelector` / `AppCutoffSelector` (deleted in the PoC) have no
       dangling imports or spec references
-- [ ] 3.8 Grep the tree for each deleted symbol (`ui/`, `app/`, `:test:*`) before removal; run the dead-type
+- [x] 3.8 Grep the tree for each deleted symbol (`ui/`, `app/`, `:test:*`) before removal; run the dead-type
       archive gate against the diff
 
 ## 4. Tests
 
-- [x] 4.1 `ui/screens` `JoinScreenTest` / `StatusScreenTest` assert the new surfaces (switches, 3-option
+- [ ] 4.1 `ui/screens` `JoinScreenTest` / `StatusScreenTest` assert the new surfaces (switches, 3-option
       cutoff, no `Both`/`Upload only`/`Download only` text, banner-not-red create error)
 - [ ] 4.2 Extend `ui/components` / `ui/screens` `commonTest` for the new components (switch-section role,
       checkmark-row `Role.Checkbox` incl. dimmed-but-present, cutoff `Custom` floor coercion, adaptive

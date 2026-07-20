@@ -33,7 +33,6 @@ import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -78,80 +77,6 @@ import kotlinx.datetime.plus
 import kotlinx.datetime.todayIn
 
 /**
- * A semantic date+time input — the app's temporal picker. Appearance-free: it carries the current
- * [value] (a plain [LocalDateTime], the picked **local** wall-clock instant, or `null` when unset), a
- * change callback, and an [enabled] flag; no colors, shapes, text styles, or `Modifier`, and no Material
- * 3 type in the signature. The hand-drawn calendar + time stepper (and the dialog frame) live inside the
- * component (design-system containment rule).
- *
- * Tapping the field opens **one** dialog carrying both the month calendar and an inline `HH:MM` time
- * stepper — both always visible, no mode swap. One OK commits both. There is deliberately **no keyboard
- * entry**: the calendar is the date editor and the steppers are the time editor.
- *
- * [minimum] is an optional **floor**: when set, the picker greys out every day before the floor's day
- * AND the dialog coerces the committed value up to the floor (a day-grain calendar cannot forbid an
- * earlier *hour* on the floor's own day), so this field never surfaces a value below it. The create
- * screen passes `null` (an event may start arbitrarily far in the past); the join surface's custom cutoff
- * passes the event start (the backend silently raises anything earlier, capability
- * `photo-selection-policy`). A disabled field opens no picker and never invokes [onValueChange].
- */
-@Composable
-fun AppDateTimeField(
-    value: LocalDateTime?,
-    onValueChange: (LocalDateTime) -> Unit,
-    enabled: Boolean = true,
-    minimum: LocalDateTime? = null,
-) {
-    var showPicker by remember { mutableStateOf(false) }
-
-    // A read-only OutlinedTextField swallows taps aimed at its own `.clickable`, and its
-    // interactionSource does not fire on Compose/iOS — so the field can't open the picker itself. A
-    // transparent overlay Box drawn ON TOP (last child ⇒ hit-tested first) captures the tap reliably on
-    // every platform; the ripple confirms the press registered.
-    Box(modifier = Modifier.fillMaxWidth()) {
-        OutlinedTextField(
-            value = value?.let(::formatLocal) ?: "",
-            onValueChange = {},
-            readOnly = true,
-            enabled = enabled,
-            singleLine = true,
-            shape = RoundedCornerShape(14.dp),
-            modifier = Modifier.fillMaxWidth(),
-        )
-        // The whole field reads as one button that opens the picker (the read-only text field alone would
-        // announce as an inert text field). contentDescription carries the current value, or a prompt when
-        // unset, so VoiceOver states what tapping edits.
-        Box(
-            Modifier
-                .matchParentSize()
-                .clickable(
-                    enabled = enabled,
-                    role = Role.Button,
-                    onClick = { showPicker = true },
-                )
-                .semantics {
-                    contentDescription = value?.let { "Date and time, ${formatLocal(it)}" }
-                        ?: "Date and time, not set"
-                },
-        )
-    }
-
-    if (showPicker) {
-        DateTimePickerDialog(
-            initial = value,
-            minimum = minimum,
-            onDismiss = { showPicker = false },
-            onConfirm = {
-                showPicker = false
-                // Coerce up to the floor: the calendar greys earlier *days*, but the floor may fall
-                // mid-day, and the stepper can still land on an earlier hour of the floor's own day.
-                onValueChange(if (minimum != null && it < minimum) minimum else it)
-            },
-        )
-    }
-}
-
-/**
  * The one-dialog date+time picker: a **hand-drawn** month calendar on top, an inline `HH:MM` time stepper
  * beneath. Both are visible at once — changing the time never hides the calendar, and vice versa — so the
  * value being edited is never behind a mode swap.
@@ -168,8 +93,8 @@ fun AppDateTimeField(
  * positioned centered **within the pane** — the enclosing full-width anchor gives [PaneCenteredProvider]
  * the pane's own bounds — so the full picker is visible at 390pt on device and in the harness alike.
  *
- * Shared by [AppDateTimeField], [AppEventStartRow], and [AppCutoffChoices] so the surfaces present the
- * *same* picker; the dialog stays private to this module.
+ * Shared by [AppEventStartSection]'s row and [AppCutoffChoices] so both surfaces present the *same*
+ * picker; the dialog stays internal to this module.
  */
 @Composable
 internal fun DateTimePickerDialog(
@@ -659,10 +584,3 @@ private fun monthName(monthNumber: Int): String = listOf(
     "January", "February", "March", "April", "May", "June",
     "July", "August", "September", "October", "November", "December",
 )[monthNumber - 1]
-
-/** A readable `yyyy-MM-dd HH:mm` rendering of the picked local value (display only, not the cutoff). */
-private fun formatLocal(value: LocalDateTime): String {
-    fun p(n: Int, width: Int) = n.toString().padStart(width, '0')
-    return "${p(value.year, 4)}-${p(value.month.ordinal.plus(1), 2)}-${p(value.day, 2)} " +
-        "${p(value.hour, 2)}:${p(value.minute, 2)}"
-}

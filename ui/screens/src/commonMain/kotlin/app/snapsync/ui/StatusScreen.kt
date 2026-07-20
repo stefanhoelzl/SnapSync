@@ -29,7 +29,6 @@ import app.snapsync.ui.components.AppConfirmDialog
 import app.snapsync.ui.components.AppDestructiveConfirmDialog
 import app.snapsync.ui.components.AppErrorBanner
 import app.snapsync.ui.components.AppEventHeaderHost
-import app.snapsync.ui.components.AppEventHero
 import app.snapsync.ui.components.AppEventStartSection
 import app.snapsync.ui.components.AppEyebrow
 import app.snapsync.ui.components.AppInvitationHeaderLoading

@@ -40,7 +40,7 @@ import kotlinx.datetime.LocalDateTime
  * not a layout each screen re-derives.
  */
 @Composable
-fun AppEventStartRow(value: LocalDateTime, onValueChange: (LocalDateTime) -> Unit) {
+private fun AppEventStartRow(value: LocalDateTime, onValueChange: (LocalDateTime) -> Unit) {
     var showPicker by remember { mutableStateOf(false) }
 
     Row(
@@ -110,8 +110,8 @@ fun AppEventStartSection(value: LocalDateTime, onValueChange: (LocalDateTime) ->
 /**
  * The design system's human rendering of a wall-clock instant — `14 Jul 2026, 18:00`.
  *
- * Public because a screen sometimes needs to state a date as the **value** of an [AppSummaryFact]
- * (the join surface's cutoff), and a screen must never re-derive the app's date format to do it.
+ * Public because a screen sometimes needs to state a date in prose
+ * (the Share section's "Shared from …" value), and a screen must never re-derive the app's date format.
  */
 fun appDateTimeLabel(value: LocalDateTime): String = formatStart(value)
 

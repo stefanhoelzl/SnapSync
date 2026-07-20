@@ -5,7 +5,6 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
-import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.Box
@@ -22,7 +21,6 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -31,24 +29,13 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 
 /**
- * The **consent layer**: one bordered card stating, in plain sentences, everything that will happen to this
- * phone when the guest taps Join.
+ * A **titled statement card**: an eyebrow-cased title over a content slot of rows. The join gate's
+ * photo-access explainer is its live use — the "WHAT JOINING DOES" card of [AppAccessPoint] consent
+ * rows — and [AppSummaryToggle] rides in it wherever a single checkmark row needs the card frame.
  *
- * It is deliberately **not** a restatement of the choice above it. The choice cards are a *menu* — three
- * options a guest compares, each needing just enough words to be told apart. This card is the *receipt* for
- * the one they picked: it carries only what a comparative menu structurally cannot carry — the actual cutoff
- * instant, what the app already filters out of a camera roll, where incoming photos land, and whether an
- * album is made. Every row's subject may echo the chosen direction; every row's **predicate** is new.
- *
- * It therefore sits **below** the decision, not above it. An outcome stated before the choice that produces
- * it can only be either abstract (and so a duplicate of the menu) or true of the default alone (and so a lie
- * the moment the guest picks something else). Below, it re-renders live against the current direction and
- * cutoff, and a guest reads down the screen in causal order: who is asking → what am I choosing → what that
- * does to my phone.
- *
- * Rows are ranked by consequence, not laid out as peers: [AppSummaryFact] carries the heaviest type on the
- * screen because a cutoff instant decides which photos leave the phone; [AppSummaryLine] is a plain sentence;
- * [AppSummaryToggle] is the lightest, because an album changes nothing about what leaves.
+ * It once carried the Ready surface's full "receipt" (fact/line rows stating the membership's
+ * consequences); that surface now states consequences inside its switch sections, and the unused row
+ * kinds were swept. What remains is the frame and the two rows that are still alive.
  *
  * Appearance-free: a title string and a content slot — no colors, text styles, shapes, or `Modifier`.
  */
@@ -81,121 +68,12 @@ fun AppSummaryCard(title: String, content: @Composable ColumnScope.() -> Unit) {
     }
 }
 
-/**
- * The shared style for a row's label. Medium weight, not regular: a row's label and its explanatory note
- * are both small and muted, and at identical weight the eye reads the whole row as one run of prose. The
- * half-step up is enough to make the label scan as the row's header.
- */
-@Composable
-private fun rowLabelStyle() =
-    MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.Medium)
-
 /** The hairline every summary row draws above itself, so the card reads as a list of separate facts. */
 @Composable
 private fun RowRule() {
     HorizontalDivider(thickness = 1.dp, color = MaterialTheme.colorScheme.outlineVariant)
 }
 
-/**
- * The card's **consequential** row: a quiet [label], the [value] in the heaviest type on the screen, an
- * explanatory [note], an optional edit affordance, and an editor that unfolds in place ([content]).
- *
- * Demotion in this design is about rank among *questions*, never about making an answer hard to read — so
- * the cutoff instant, which decides which photos leave the phone, is the boldest text the surface renders.
- *
- * [dimmed] renders the row inert (value muted, action withdrawn) when the current direction makes it moot.
- * It stays **visible and explained** by [note] rather than vanishing, so nothing silently disappears.
- */
-@Composable
-fun AppSummaryFact(
-    label: String,
-    value: String,
-    note: String? = null,
-    actionLabel: String? = null,
-    onAction: (() -> Unit)? = null,
-    dimmed: Boolean = false,
-    content: @Composable ColumnScope.() -> Unit = {},
-) {
-    val scheme = MaterialTheme.colorScheme
-    RowRule()
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(start = 14.dp, end = 14.dp, top = 10.dp, bottom = 11.dp),
-        verticalArrangement = Arrangement.spacedBy(6.dp),
-    ) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Column(
-                modifier = Modifier.weight(1f),
-                verticalArrangement = Arrangement.spacedBy(1.dp),
-            ) {
-                Text(
-                    text = label,
-                    style = rowLabelStyle(),
-                    color = scheme.onSurfaceVariant,
-                )
-                Text(
-                    text = value,
-                    style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
-                    color = if (dimmed) scheme.onSurfaceVariant else scheme.onSurface,
-                )
-            }
-            if (actionLabel != null && onAction != null && !dimmed) {
-                TextButton(
-                    onClick = onAction,
-                    contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
-                ) {
-                    Text(
-                        text = actionLabel,
-                        style = MaterialTheme.typography.labelLarge.copy(
-                            fontWeight = FontWeight.Bold,
-                        ),
-                        color = scheme.primary,
-                    )
-                }
-            }
-        }
-        if (note != null) {
-            Text(
-                text = note,
-                style = MaterialTheme.typography.bodySmall,
-                color = scheme.onSurfaceVariant,
-            )
-        }
-        content()
-    }
-}
-
-/**
- * A plain outcome sentence: a quiet [label] and the [body] that states what happens. Lighter than
- * [AppSummaryFact] because it carries no value the guest chose — only a consequence of the one they did.
- */
-@Composable
-fun AppSummaryLine(label: String, body: String, dimmed: Boolean = false) {
-    val scheme = MaterialTheme.colorScheme
-    RowRule()
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(start = 14.dp, end = 14.dp, top = 10.dp, bottom = 11.dp),
-        verticalArrangement = Arrangement.spacedBy(1.dp),
-    ) {
-        Text(
-            text = label,
-            style = rowLabelStyle(),
-            color = scheme.onSurfaceVariant,
-        )
-        Text(
-            text = body,
-            style = MaterialTheme.typography.bodyMedium,
-            color = if (dimmed) scheme.onSurfaceVariant else scheme.onSurface,
-        )
-    }
-}
 
 /**
  * The card's opt-in row — the lightest thing on the surface, because it changes nothing about what leaves

@@ -91,34 +91,3 @@ fun AppEventHeaderHost(title: String, subtitle: String) {
         }
     }
 }
-
-/**
- * The **centered** event hero: the SnapSync mark as its app-icon badge stacked above the [title] and a
- * muted [subtitle]. The camera glyph this once carried is gone — the surface now leads with the real
- * app mark (the same geometry as the icon, see [AppMarkBadge]), so the front door wears the product's
- * own face rather than a generic camera. Semantic — the call site passes only the two strings.
- *
- * Retained as the centered variant of [AppEventHeaderHost]; the create surface itself uses the compact
- * header so its short form stays anchored.
- */
-@Composable
-fun AppEventHero(title: String, subtitle: String) {
-    Column(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.spacedBy(14.dp),
-    ) {
-        AppMarkBadge(size = 76.dp)
-        Text(
-            text = title,
-            style = MaterialTheme.typography.headlineMedium.copy(fontWeight = FontWeight.Bold),
-            textAlign = TextAlign.Center,
-        )
-        Text(
-            text = subtitle,
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            textAlign = TextAlign.Center,
-        )
-    }
-}
