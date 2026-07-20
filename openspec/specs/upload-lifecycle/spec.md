@@ -79,37 +79,43 @@ Each tier SHALL supply one `UploadProducer` implementation binding these verbs t
 
 The decision of **which verb fires on which transition** SHALL live in a tier-neutral orchestrator in
 `:domain`'s `feature/upload` zone, not in the app composition root, and SHALL be tested in `commonTest`
-(running on both JVM and `iosSimulatorArm64`) against a fake `UploadProducer`, so it is exercised on JVM
+(running on both JVM and `iosSimulatorArm64`) against fake `UploadProducer`s, so it is exercised on JVM
 **and** `iosSimulatorArm64` rather than only inside an iOS process. The orchestrator SHALL translate
-membership transitions into `start()`/`stop()` and nothing else: it holds no ledger, no cursor, and no
-storage handle, so a lifecycle transition **cannot** destroy dedup state — the seam gives it no verb that
-could.
+membership and permission transitions into `start()`/`stop()` and nothing else: it holds no ledger, no
+cursor, and no storage handle, so a lifecycle transition **cannot** destroy dedup state — the seam gives
+it no verb that could.
 
-A producer SHALL be started only when an event is configured **and** photo access is `GRANTED` **and** the
-membership's direction includes upload. The orchestrator SHALL bind the
-transitions as follows, where the upload arm is enabled exactly when photo access is `GRANTED` **and**
-the configured membership's direction includes upload (`join-event`):
+Photo access is **usable** when it is `GRANTED` or `LIMITED`. A producer SHALL be started only when an
+event is configured **and** photo access is usable **and** the membership's direction includes upload.
+Where more than one producer is composed (capability `ios-url-session-upload`, "Per-version tier
+selection"), the orchestrator SHALL start the producer **selected by the current permission** — the
+OS-driven producer under `GRANTED`, the app-driven producer under `LIMITED` (the OS never invokes the
+extension under a partial grant; capability `ios-photokit-upload`) — and SHALL hold the
+exactly-one-started invariant (see "Exactly one producer started per process"). The orchestrator SHALL
+bind the transitions as follows, where the upload arm is enabled exactly when photo access is usable
+**and** the configured membership's direction includes upload (`join-event`):
 
 | Transition | Action |
 | --- | --- |
-| provision / re-provision, arm enabled | `start()` |
-| provision / re-provision, access granted but direction is download-only | `stop()` |
-| provision / re-provision, access not granted | neither (the grant transition will drive it) |
-| transition to `GRANTED`, arm enabled | `start()` |
-| transition to `GRANTED`, **no event configured** | neither |
+| provision / re-provision, arm enabled | `start()` on the permission-selected producer |
+| provision / re-provision, access usable but direction is download-only | `stop()` |
+| provision / re-provision, access not usable | neither (the grant transition will drive it) |
+| transition to usable access (`GRANTED` or `LIMITED`), arm enabled | `start()` on the permission-selected producer |
+| transition between usable states (`GRANTED` ↔ `LIMITED`), arm enabled | switch: `stop()` the outgoing producer, then `start()` the incoming one |
+| transition to usable access, **no event configured** | neither |
 | leave | `stop()` |
 
 Leave SHALL be `stop()` plus clearing the configured event, and nothing more.
 
 **No membership, no arm.** "The *configured membership's* direction includes upload" is false when there
-is no configured membership, so a transition to `GRANTED` with no event configured SHALL fire **neither**
+is no configured membership, so a transition to usable access with no event configured SHALL fire **neither**
 verb. The orchestrator SHALL therefore read the membership's upload posture as a **three-valued** seam —
 includes-upload / excludes-upload / **no membership** — collapsing it to a two-valued "enabled" flag in
 the composition root is what previously answered *enabled* for an absent membership. That decision is
 behavior and SHALL live in the tested orchestrator, like every other row of this table; the root SHALL
 contribute only a projection of the current config, with no defaulting of its own.
 
-This is not a nicety. Photo access can be `GRANTED` while no event is configured — the join gate's
+This is not a nicety. Photo access can be usable while no event is configured — the join gate's
 photo-access explainer raises the system dialog **before** the join is confirmed (`join-event`), and a
 grant arriving there must not start a producer, because `join-event` requires that "no config is saved
 and **no upload producer is enabled** until the user confirms". The membership-less start is also
@@ -120,26 +126,36 @@ cycles then skip on the absent config, so the work is inert but the wake is not.
 #### Scenario: Provisioning with access already granted starts the producer
 
 - **WHEN** an event is provisioned while photo access is `GRANTED` and the direction includes upload
-- **THEN** the orchestrator calls `start()`, and calls no verb that destroys dedup state
+- **THEN** the orchestrator calls `start()` on the OS-driven producer where composed (else the app-driven one), and calls no verb that destroys dedup state
+
+#### Scenario: Provisioning under a limited grant starts the app-driven producer
+
+- **WHEN** an event is provisioned while photo access is `LIMITED` and the direction includes upload
+- **THEN** the orchestrator calls `start()` on the app-driven producer, and the OS-driven producer is not started
 
 #### Scenario: A download-only membership stops the producer
 
-- **WHEN** an event is provisioned while photo access is `GRANTED` and the direction is download-only
+- **WHEN** an event is provisioned while photo access is usable and the direction is download-only
 - **THEN** the orchestrator calls `stop()`, and the ledger is left intact
 
 #### Scenario: Provisioning without access defers to the grant
 
-- **WHEN** an event is provisioned while photo access is not `GRANTED`
-- **THEN** the orchestrator calls neither verb, and a later transition to `GRANTED` calls `start()`
+- **WHEN** an event is provisioned while photo access is neither `GRANTED` nor `LIMITED`
+- **THEN** the orchestrator calls neither verb, and a later transition to usable access calls `start()` on the permission-selected producer
+
+#### Scenario: A permission flip switches producers stop-first
+
+- **WHEN** photo access transitions from `GRANTED` to `LIMITED` (or back) while an upload-inclusive membership is configured
+- **THEN** the orchestrator stops the outgoing producer before starting the incoming one, and at no point are both started
 
 #### Scenario: A grant with no event configured arms nothing
 
-- **WHEN** photo access transitions to `GRANTED` while no event is configured
+- **WHEN** photo access transitions to usable access while no event is configured
 - **THEN** the orchestrator calls neither `start()` nor `stop()`, and no background wake is armed
 
 #### Scenario: The join that follows such a grant is what arms the producer
 
-- **WHEN** photo access transitions to `GRANTED` with no event configured, and the user then confirms a join whose direction includes upload
+- **WHEN** photo access transitions to usable access with no event configured, and the user then confirms a join whose direction includes upload
 - **THEN** the provision transition calls `start()` — the producer is armed at the join, not at the grant
 
 #### Scenario: Leaving stops without wiping
@@ -187,31 +203,6 @@ enforcement is how this capability's own history records the lifecycle shipping 
   cycle
 - **THEN** no upload job is created, because the gate is read at the choke point rather than inferred from
   the producer having been stopped
-
-### Requirement: Exactly one producer per process
-
-The app SHALL construct **exactly one** `UploadProducer` for the process, selected **once per
-process** by the pure sealed composition resolver (`model/`'s `resolveComposition` over the parsed
-launch directives and OS facts — the OS-version tier gate of `ios-url-session-upload`, "Per-version
-tier selection", is one of its inputs; spec `module-architecture`, "One shared composition") and
-consumed at the shell's **single** mode switch — no entry point re-derives the tier. The
-non-selected tier's producer SHALL NOT be constructed, so its mechanism cannot run. This SHALL hold
-under the development tier-force flag as well: forcing the app-driven tier on a device that supports
-the OS-driven tier SHALL NOT register the PhotoKit upload extension.
-
-This makes the two tiers' mutual exclusion structural rather than a runtime guard, and preserves the
-`sync-ledger` single-record-writer invariant (two live producers would mean two `LedgerWriter`s over
-one App-Group ledger).
-
-#### Scenario: Only the selected tier's producer exists
-
-- **WHEN** the composition root assembles the upload arm
-- **THEN** exactly one `UploadProducer` is constructed, and the other tier's mechanism is never invoked
-
-#### Scenario: Forcing the app-driven tier does not enable the extension
-
-- **WHEN** the app-driven tier is forced on a device whose OS supports the OS-driven tier
-- **THEN** the PhotoKit upload extension is not registered, and only the app-driven producer is live
 
 ### Requirement: The upload cycle owns its entry decision
 
@@ -308,3 +299,33 @@ diff rather than inherited in silence.
 - **WHEN** a tier has no denylisted-album source and supplies an empty one explicitly
 - **THEN** the cycle runs, admitting all albums, and the choice is visible at the call site
 
+### Requirement: Exactly one producer started per process
+
+At most one `UploadProducer` SHALL be started at any time where the composition constructs more than
+one (iOS ≥26.1 constructs both the OS-driven and the app-driven producer; below 26.1 only the
+app-driven one exists), and the tier-neutral orchestrator SHALL be the only component
+that starts or stops either. A mechanism switch SHALL be **stop-then-start**: the outgoing producer's
+`stop()` completes before the incoming producer's `start()` — the OS-driven producer's `stop()` is what
+deregisters the extension, which is what actually prevents a second `LedgerWriter` over the App-Group
+ledger (`sync-ledger`).
+
+This replaces the prior structural exclusion (only one producer constructed) because the mechanism
+choice is now an input of **runtime** permission, which no once-per-process construction decision can
+express. The invariant's essence — one writer at a time — is unchanged; its enforcement moves from the
+compiler to a `:test:architecture` guard (capability `architecture-guards`). The development
+tier-force flag retains its meaning: forcing the app-driven tier SHALL NOT register the PhotoKit
+extension.
+
+#### Scenario: Only the permission-selected producer runs
+- **WHEN** the app runs on iOS ≥26.1 with both producers composed
+- **THEN** at most one producer is started at any time, selected by current permission, and the other's
+  mechanism is not invoked
+
+#### Scenario: The switch is stop-then-start
+- **WHEN** the orchestrator switches producers on a permission flip
+- **THEN** the outgoing producer is stopped (the OS-driven one deregistering its extension) before the
+  incoming producer starts
+
+#### Scenario: Forcing the app-driven tier does not enable the extension
+- **WHEN** the app-driven tier is forced on a device whose OS supports the OS-driven tier
+- **THEN** the PhotoKit upload extension is not registered, and only the app-driven producer is started

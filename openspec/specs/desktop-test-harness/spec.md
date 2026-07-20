@@ -53,9 +53,11 @@ mutate harness state inline. Display overrides remain outside any scenario/comma
 `PanelController` reads no clock — no sync or permission preset forges a timestamp (the joined layer
 renders no relative time).
 
-- **Permission group** — presets for `NOT_DETERMINED`, `DENIED`, and `GRANTED` that write the
-  permission cell **only**, leaving the sync and config cells untouched (so a forged sync state
-  survives a revoke-and-restore walk).
+- **Permission group** — presets for `NOT_DETERMINED`, `DENIED`, `LIMITED`, and `GRANTED` that write
+  the permission cell **only**, leaving the sync and config cells untouched (so a forged sync state
+  survives a revoke-and-restore walk). `LIMITED` exists so the joined layer's partial-grant rendering
+  — the ordinary health line plus the "Choose more photos" affordance (capability
+  `limited-photo-access`) — is reviewable offscreen like every other permission state.
 - **Sync group** — presets that set a `SyncStatus` into the stand-in `SyncStatusSource` **and
   additionally force permission to `GRANTED`, config to present, and the attestation cell to
   attested** (a preset's intent is "show me this screen", which is impossible while the setup gate, a
@@ -104,6 +106,11 @@ The panel MUST NOT display a "current permission" readout — the phone frame al
 #### Scenario: Permission presets show the gate
 - **WHEN** the operator activates the `DENIED` permission preset
 - **THEN** the joined layer's status line shows the needs-access affordance, regardless of the forged sync state
+
+#### Scenario: The limited preset shows the partial-grant joined layer
+- **WHEN** the operator forges a joined sync state, then activates the `LIMITED` permission preset
+- **THEN** the joined layer shows the ordinary health line (never the needs-access affordance) with the
+  "Choose more photos" affordance beneath it, and activating `GRANTED` removes the affordance again
 
 #### Scenario: Walking the revoked-and-restored journey
 - **WHEN** the operator forges the complete state, then activates the `DENIED` permission preset (status line shows needs-access), then activates the `GRANTED` preset (playing "the user in Settings")

@@ -108,7 +108,9 @@ because those gallery, ledger-count, and download sources update their `StateFlo
 
 The inspector SHALL drive `:test:world`'s public control surface through a **single** controller,
 with one named method per control and **no** inline world mutation in composables (mirroring the forge
-harness's `PanelController`). It SHALL cover: **Enrollment** — a 3-state permission segment, an armed
+harness's `PanelController`). It SHALL cover: **Enrollment** — a 4-state permission segment
+(`NOT_DETERMINED`, `DENIED`, `LIMITED`, `GRANTED` — the partial grant is a first-class state,
+capability `limited-photo-access`), an armed
 next-request outcome (the fake `PhotoAccessRequester` resolves `request()` to the armed grant/deny), a
 joined-event-id readout, and Re-provision / Create event / Leave; **Gallery ▏ Backend** side by side —
 editable own-asset rows (add/remove; imported rows badged upload-suppressed via the download store's
