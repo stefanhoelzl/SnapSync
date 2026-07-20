@@ -136,14 +136,24 @@ target's `OTHER_LDFLAGS` (both configs), beside `-lsqlite3`; the extension delib
 (app-only surface). This is forum thread 737847's documented crash + fix.
 
 
-- [ ] 9.1 Full-access regression: existing behavior unchanged (join, upload, download on the PhotoKit
-      tier)
-- [ ] 9.2 Limited upload end-to-end: grant limited, select photos, verify upload via the app-driven
-      tier (bunny zone check), N honest, no alert storm across foregrounds and selection changes
-- [ ] 9.3 Permission flips both directions on ≥26.1: `GRANTED → LIMITED` (extension deregisters,
-      app-driven takes over) and back; no double-writer symptoms in either log
-- [ ] 9.4 Implementation-phase check from the design's open questions: observer emission during a
-      background wake — measure whether any background read path exists and, if one is ever added,
-      that it does not queue alerts (design says none exists; verify)
+- [x] 9.1 Full-access regression **PASSED** (device): leave ran stopAll (photokit deregister +
+      url-session stop), rejoin provisioned, the extension fired in <1s, walked (discovered 22),
+      uploaded, notify→push→reconcile healthy. Bonus: the WhatsApp album exercised the denylist
+      under GRANTED on device ("denylisted album 'WhatsApp': 1 member(s) in scope")
+- [x] 9.2 Limited upload end-to-end **PASSED** (device, after the PhotosUI linkage fix): tap →
+      picker presented → pick 2 → ONE observer emission served N ("selection snapshot of 4
+      resource(s) → N=2") and the enqueue (4 new) → manifest PUT 201 → 4 completions through the
+      app-driven tier → notify 202; continuations snapshot-fed and ledger-deduped (0 new), zero
+      library reads; screen: "In sync" + the Choose-more-photos row
+- [x] 9.3 Permission flips **PASSED** both directions (device): GRANTED→LIMITED switched
+      photokit.stop-then-url-session.start (cycle ran snapshot-fed); LIMITED→GRANTED switched
+      url-session.stop (+scheduler.cancel) THEN photokit.start, walk resumed, extension uploaded —
+      stop-then-start observed in the logs both ways, no double-writer symptom
+- [x] 9.4 Recorded: NO background read path exists under LIMITED by construction (silent-push
+      upload receiver is GRANTED-gated; the ≥26.1 heartbeat completes immediately; cycle discovery is
+      snapshot-fed). Residual documented risk stays in the design's open questions: the observer
+      could theoretically fire during a background URLSession relaunch if the library changes in
+      that window — narrow, unmeasured, and flagged for whenever a background read path is ever
+      proposed
 - [ ] 9.5 Device cleanup: delete probe albums ("SnapSync limited probe" ×N, WhatsApp test album) and
       the ~18 synthetic seed assets; reinstall a clean build
