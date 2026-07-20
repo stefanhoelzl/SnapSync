@@ -9,6 +9,7 @@ import app.snapsync.presentation.CutoffFormatter
 import app.snapsync.presentation.StatusContainerHost
 import app.snapsync.feature.status.LedgerCounts
 import app.snapsync.model.PermissionStatus
+import app.snapsync.model.normalizeAssetId
 import app.snapsync.presentation.SyncHealth
 import app.snapsync.presentation.UiState
 import app.snapsync.world.World
@@ -219,6 +220,121 @@ class FullStackIntegrationTest {
             val host = statusHost(w, scope)
             // UI outcome: the settled zero-total health — not the permission-attention line.
             assertEquals(SyncHealth.InSync, host.await { it.health() is SyncHealth.InSync }.health())
+        } finally {
+            scope.cancel()
+        }
+    }
+
+    @Test
+    fun a_selection_change_under_limited_raises_n_and_uploads_the_selected_photos() = worldTest {
+        // The selection-driven upload path (capability `limited-photo-access`): one selection-change
+        // emission serves N and the cycle's discovery; the cycle under LIMITED reads the snapshot cell
+        // (never the library) and uploads through the ordinary engine/ledger.
+        val scope = CoroutineScope(coroutineContext + Job())
+        try {
+            val w = World(this)
+            // The test plays the HOST: the selection subscription is host-assembly wiring
+            // (installed by the iOS root at assembly; never on mere core construction).
+            w.core.installPermissionSubscriptions()
+            w.permission.set(PermissionStatus.LIMITED)
+            w.provision("E")
+            w.addOwnAsset("A")
+            w.addOwnAsset("B")
+            w.addOwnAsset("UNSELECTED") // in the library, never selected — must not upload
+
+            w.changeSelection("A", "B")
+            // One emission serves the total: N counts the selection, not the library. Awaiting it also
+            // sequences the cycle below — the collector sets the discovery cell before recounting.
+            withTimeout(5_000) { w.ownGallery.size.first { it == 2 } }
+
+            // The operator plays the OS: run the cycle — discovery is the snapshot (no walk).
+            w.runUploadCycle()
+            w.platform.completeJob("A-primary.jpg")
+            w.platform.completeJob("B-primary.jpg")
+            w.runUploadCycle()
+            w.ledgerCounts.refresh() // the operator's liveness re-read (the pump's onCycleComplete analogue)
+
+            assertTrue("A-primary.jpg" in w.store.objectsOf(w.ownDeviceId))
+            assertTrue("B-primary.jpg" in w.store.objectsOf(w.ownDeviceId))
+            assertEquals(LedgerState.COMPLETED, w.ledgerBackend.get("A-primary.jpg")?.state)
+            // The unselected asset never entered the pipeline.
+            assertTrue("UNSELECTED-primary.jpg" !in w.store.objectsOf(w.ownDeviceId))
+            assertEquals(null, w.ledgerBackend.get("UNSELECTED-primary.jpg"))
+
+            val host = statusHost(w, scope)
+            assertEquals(UiState.Joined(SyncHealth.InSync), host.await { it.health() is SyncHealth.InSync })
+        } finally {
+            scope.cancel()
+        }
+    }
+
+    @Test
+    fun the_policy_applies_unchanged_to_a_limited_selection() = worldTest {
+        // Cutoff and origin exclusions filter hand-picked photos exactly as a full-library walk
+        // (capability `photo-selection-policy` over `limited-photo-access`): picking a pre-cutoff
+        // photo or a screenshot does not smuggle it past the policy.
+        val scope = CoroutineScope(coroutineContext + Job())
+        try {
+            val w = World(this)
+            // The test plays the HOST: the selection subscription is host-assembly wiring
+            // (installed by the iOS root at assembly; never on mere core construction).
+            w.core.installPermissionSubscriptions()
+            w.permission.set(PermissionStatus.LIMITED)
+            w.provision("E")
+            w.addOwnAsset("OK")
+            w.addOwnAsset("OLD", creationDate = "2001-01-01T00:00:00Z") // pre-cutoff
+            w.addScreenshot("SHOT") // origin-excluded by subtype
+
+            w.changeSelection("OK", "OLD", "SHOT")
+            // N counts only the policy-admitted selection (1 of the 3 picked).
+            withTimeout(5_000) { w.ownGallery.size.first { it == 1 } }
+
+            w.runUploadCycle()
+            w.platform.completeJob("OK-primary.jpg")
+            w.runUploadCycle()
+
+            assertTrue("OK-primary.jpg" in w.store.objectsOf(w.ownDeviceId))
+            assertTrue("OLD-primary.jpg" !in w.store.objectsOf(w.ownDeviceId))
+            assertTrue("SHOT-primary.jpg" !in w.store.objectsOf(w.ownDeviceId))
+        } finally {
+            scope.cancel()
+        }
+    }
+
+    @Test
+    fun an_imported_foreign_asset_in_the_selection_never_reuploads() = worldTest {
+        // The app's own import auto-joins the platform selection (measured); the snapshot then carries
+        // it, and echo-suppression drops it at the cycle — no debounce or self-caused-change filter
+        // (capability `limited-photo-access`, "Change consumption ... dedups via the ledger").
+        val scope = CoroutineScope(coroutineContext + Job())
+        try {
+            val w = World(this)
+            // The test plays the HOST: the selection subscription is host-assembly wiring
+            // (installed by the iOS root at assembly; never on mere core construction).
+            w.core.installPermissionSubscriptions()
+            w.permission.set(PermissionStatus.LIMITED)
+            w.provision("E")
+            w.addForeignDevice("DEV-F", "E", listOf(World.foreignAsset("FQ")))
+            w.downloadController.reconcile("E")
+            w.stageAllDownloads()
+            assertTrue(w.importer.imported.isNotEmpty())
+
+            // The imported asset lands in the gallery under its created local id and — as on iOS —
+            // shows up in the next selection snapshot alongside a genuinely-selected own photo.
+            val importedRef = w.importer.imported.first()
+            val importedLocalId = normalizeAssetId("imported-${importedRef.sourceDeviceId}-${importedRef.sourceAssetId}")
+            w.addOwnAsset("MINE")
+            w.changeSelection("MINE", importedLocalId)
+            // The echo is suppressed from the total: only MINE counts.
+            withTimeout(5_000) { w.ownGallery.size.first { it == 1 } }
+
+            w.runUploadCycle()
+            w.platform.completeJob("MINE-primary.jpg")
+            w.runUploadCycle()
+
+            assertTrue("MINE-primary.jpg" in w.store.objectsOf(w.ownDeviceId))
+            // The foreign import never re-uploaded under this device's id.
+            assertEquals(1, w.store.objectsOf(w.ownDeviceId).size)
         } finally {
             scope.cancel()
         }

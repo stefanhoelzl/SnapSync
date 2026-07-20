@@ -63,6 +63,7 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.joinAll
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -292,13 +293,19 @@ class World(
 
     /**
      * Operator lever (capability `limited-photo-access`): the user changed the photo selection under a
-     * partial grant. Emits the full current selection snapshot through the honest fake — the same
-     * one-emission-per-change contract the iOS observer adapter keeps. Suspends until the composition's
-     * collector has processed it (SharedFlow emit suspends for slow collectors), so assertions never
-     * race the N recount.
+     * partial grant to exactly [assetIds]. Mirrors the iOS adapter faithfully: the snapshot is the
+     * selected assets' resources mapped through the SAME enumerator seam
+     * (`PhotoLibrary.resources(ids, "")` — the empty cutoff admits every asset; the policy filters
+     * downstream), emitted whole through the honest fake. Deliver with the scheduler (e.g.
+     * `runCurrent`) before asserting — the collector recounts N and updates the cycle's scope cell.
      */
-    suspend fun changeSelection(resources: List<Resource>) {
-        selectionChangesCell.emit(resources)
+    suspend fun changeSelection(vararg assetIds: String) {
+        // The composition's collector is a host-assembly launch (`installPermissionSubscriptions`);
+        // await its subscription so an emission is never dropped into a not-yet-collected flow. A
+        // world that never installed the host wiring hangs here — deliberately loud, since the lever
+        // would otherwise silently do nothing.
+        selectionChangesCell.subscriptionCount.first { it > 0 }
+        selectionChangesCell.emit(enumerator.resources(assetIds.toList(), since = ""))
     }
 
     /**
