@@ -42,6 +42,15 @@
 	<true/>
 	<key>NSPhotoLibraryUsageDescription</key>
 	<string>SnapSync syncs your photos with the events you join — sharing yours and saving the event's photos to your library.</string>
+	<!-- Under a LIMITED (partial) grant iOS otherwise auto-presents its "Select More Photos / Keep
+	     Current Selection" alert the first time the app touches the library in each session. SnapSync
+	     re-fetches on every foreground and reconcile, so that alert fires over and over and makes the
+	     app unusable (observed on device, 2026-07-20). Suppressing it makes the APP the owner of the
+	     picker — see `presentLimitedLibraryPicker` in :adapter:ios:app-only, driven by the status
+	     screen's "Choose more photos" affordance. Both halves are required: suppress without offering
+	     the picker and a limited user can never widen their selection from inside the app. -->
+	<key>PHPhotoLibraryPreventAutomaticLimitedAccessAlert</key>
+	<true/>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
 	<key>UILaunchScreen</key>
