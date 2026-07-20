@@ -104,12 +104,12 @@ scaffolding out of the way first.
 
 ## 7. UX
 
-- [ ] 7.1 "Choose more photos" affordance: `UiState`/screen support per the sync-status-screen delta —
+- [x] 7.1 "Choose more photos" affordance: `UiState`/screen support per the sync-status-screen delta —
       persistent under `LIMITED`, outside the status-line slot, absent otherwise; wired to a new
       `UserCommands` entry → `presentLimitedLibraryPicker` (built in `compose/`, shell-injected)
-- [ ] 7.2 Explainer copy per the join-event delta (all-photos vs pick-specific-photos as a real choice);
+- [x] 7.2 Explainer copy per the join-event delta (all-photos vs pick-specific-photos as a real choice);
       `AppExplainer` copy update + screen test
-- [ ] 7.3 Forge preset review of the new affordance (headless screenshots via `:test:harness-driver`)
+- [x] 7.3 Forge preset review of the new affordance (headless screenshots via `:test:harness-driver`)
 
 ## 8. Specs, diagrams, docs
 

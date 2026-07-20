@@ -39,7 +39,13 @@ sealed interface UiState {
      * [pendingSwitch] overlays a leave-style switch confirmation when an event link for a **different**
      * event was scanned while joined (capability `join-event`).
      */
-    data class Joined(val health: SyncHealth, val pendingSwitch: PendingSwitch? = null) : UiState
+    data class Joined(
+        val health: SyncHealth,
+        val pendingSwitch: PendingSwitch? = null,
+        /** The joined layer offers "Choose more photos" — true exactly under a partial grant
+         *  (capability `limited-photo-access`): a resting affordance, never an attention state. */
+        val canChoosePhotos: Boolean = false,
+    ) : UiState
 }
 
 /**

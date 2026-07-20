@@ -29,6 +29,9 @@ package app.snapsync.model
  * - [requestAccess] — raise the system photo-access dialog (capability `permission-gate`): returns
  *   nothing and cannot suspend — the grant arrives only via the permission read-model.
  * - [openSettings] — open the app's system Settings page (the `DENIED` affordance).
+ * - [choosePhotos] — present the platform's limited-library picker (capability
+ *   `limited-photo-access`): the joined layer's "Choose more photos" affordance under a partial
+ *   grant. Fire-and-forget; the resulting selection change arrives via the selection-change seam.
  */
 class UserCommands(
     val leave: suspend () -> Unit = {},
@@ -44,4 +47,5 @@ class UserCommands(
     val share: (String) -> Unit = {},
     val requestAccess: () -> Unit = {},
     val openSettings: () -> Unit = {},
+    val choosePhotos: () -> Unit = {},
 )

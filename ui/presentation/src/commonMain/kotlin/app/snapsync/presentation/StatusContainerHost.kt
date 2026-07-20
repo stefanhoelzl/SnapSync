@@ -250,6 +250,10 @@ class StatusContainerHost(
 
     fun onRequestPermission() = intent { commands.requestAccess() }
 
+    /** The joined layer's "Choose more photos" tap (capability `limited-photo-access`) — presents the
+     *  platform's limited-library picker; the selection outcome arrives via the selection seam. */
+    fun onChoosePhotos() = intent { commands.choosePhotos() }
+
     fun onOpenSettings() = intent { commands.openSettings() }
 
     /**
@@ -564,7 +568,13 @@ private fun reduceFrom(
     }
     // A pending join for a DIFFERENT event while joined is a switch confirmation over the joined screen.
     val pendingSwitch = pending?.let { PendingSwitch(it.eventId, it.phase) }
-    return UiState.Joined(health, pendingSwitch)
+    return UiState.Joined(
+        health,
+        pendingSwitch,
+        // The resting affordance, not an attention state (capability `limited-photo-access`): a
+        // partial grant's joined layer always offers the picker, whatever the health.
+        canChoosePhotos = permission == PermissionStatus.LIMITED,
+    )
 }
 
 // Shown tracks completeness (never lies about "everything up/received"); pulse tracks live activity
