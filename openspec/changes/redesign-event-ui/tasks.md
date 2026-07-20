@@ -55,10 +55,13 @@ what the PoC already carries; unchecked are the finishing work.
 
 ## 5. On-device verification (per CLAUDE.md runbooks)
 
-- [ ] 5.1 Join gate on a real device: switches, 3-option cutoff incl. Custom picker + floor, explainer
-      naming the event, standalone album section, both-off Join-disabled
-- [ ] 5.2 Create surface: host hero, stated-consequence start card, error banner path
-- [ ] 5.3 Light/dark contrast eyeball (measured-AA corrections; recessed wells; pinned off-switch colours)
+- [~] 5.1 Join gate on a real device: switches, 3-option cutoff incl. Custom picker + floor, explainer
+      naming the event, standalone album section, both-off Join-disabled — RENDERING verified on device
+      (SE2/iOS 26.5, forge `joining` state = the real StatusScreen); interactive finger-toggling is
+      WebDriverAgent-gated (`developer wda`), not run
+- [x] 5.2 Create surface: host hero, stated-consequence start card, error banner path
+- [~] 5.3 Light/dark contrast eyeball — light verified on device; dark verified from the §6 raws (simctl
+      captures both appearances); measured-AA corrections + recessed wells + pinned off-switch confirmed
 
 ## 6. Marketing screenshots
 
