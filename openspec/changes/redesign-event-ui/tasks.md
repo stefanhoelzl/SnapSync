@@ -60,12 +60,12 @@ what the PoC already carries; unchecked are the finishing work.
       (SE2/iOS 26.5, forge `joining` state = the real StatusScreen); interactive finger-toggling is
       WebDriverAgent-gated (`developer wda`), not run
 - [x] 5.2 Create surface: host hero, stated-consequence start card, error banner path
-- [~] 5.3 Light/dark contrast eyeball — light verified on device; dark verified from the §6 raws (simctl
+- [x] 5.3 Light/dark contrast eyeball — light verified on device; dark verified from the §6 raws (simctl
       captures both appearances); measured-AA corrections + recessed wells + pinned off-switch confirmed
 
 ## 6. Marketing screenshots
 
-- [ ] 6.1 Refresh `screenshots/*.png` (6 raws, `create`/`joining`/`in_sync` × light/dark) via
+- [x] 6.1 Refresh `screenshots/*.png` (6 raws, `create`/`joining`/`in_sync` × light/dark) via
       `screenshots.yml`, eyeball, and commit (drives the App Store listing + landing WebP)
 
 ## 7. OpenSpec close-out (later, not this change)
