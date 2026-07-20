@@ -1,5 +1,6 @@
 package app.snapsync.feature.upload
 
+import app.snapsync.model.PermissionStatus
 import app.snapsync.ports.LogScope
 import app.snapsync.ports.invocation
 import co.touchlab.kermit.Logger
@@ -61,11 +62,24 @@ interface UploadProducer {
  * until the user confirms". So this is not a nicety: a two-valued seam violates it. The root now supplies
  * only a projection of the current config and defaults nothing.
  */
+/**
+ * The producers this process composed (capability `upload-lifecycle`, "Exactly one producer started
+ * per process"). [appDriven] is always present — it serves iOS 18–26.0 fully and every OS under a
+ * partial grant. [osDriven] is present only where the OS-driven mechanism exists (iOS ≥26.1, and
+ * never under the tier-force flag). Which one runs is the [UploadArm]'s decision, by current
+ * permission — the OS never invokes the extension under `.limited` (measured; capability
+ * `ios-photokit-upload`), so composing only one per process cannot express a runtime permission flip.
+ */
+class ComposedProducers(
+    val osDriven: UploadProducer?,
+    val appDriven: UploadProducer,
+)
+
 class UploadArm(
-    private val producer: UploadProducer,
+    private val producers: ComposedProducers,
     // Read fresh at each transition rather than passed in, so a caller cannot hand the arm a stale or
-    // wrong view of the membership it is deciding about.
-    private val isGranted: () -> Boolean,
+    // wrong view of the permission it is deciding about.
+    private val permission: () -> PermissionStatus,
     // The CURRENT membership's upload posture: `true` = joined and the direction includes upload,
     // `false` = joined but download-only, `null` = **no event joined**. One read, so there is no race
     // between "is there a membership" and "does it upload".
@@ -73,6 +87,36 @@ class UploadArm(
     private val log: Logger = Logger.withTag("UploadArm"),
     private val logScope: LogScope = LogScope.NoOp,
 ) {
+
+    /**
+     * The producer the current permission selects, or `null` when access is unusable: the OS-driven
+     * mechanism under a full grant (where composed), the app-driven one under a partial grant (the OS
+     * never invokes the extension there — measured). The whole walk-vs-mechanism policy of the
+     * exactly-one-started invariant is this `when`; every verb below funnels through it.
+     */
+    private fun selectedProducer(): UploadProducer? = when (permission()) {
+        PermissionStatus.GRANTED -> producers.osDriven ?: producers.appDriven
+        PermissionStatus.LIMITED -> producers.appDriven
+        PermissionStatus.NOT_DETERMINED, PermissionStatus.DENIED -> null
+    }
+
+    /**
+     * Start [target], **stop-then-start**: the non-selected producer's `stop()` completes first — the
+     * OS-driven producer's `stop()` is what deregisters the extension, which is what actually prevents
+     * a second `LedgerWriter` over the shared ledger (`sync-ledger`). Stop is idempotent and destroys
+     * no durable state, so stopping a never-started producer is free.
+     */
+    private suspend fun switchTo(target: UploadProducer) {
+        if (producers.osDriven != null && producers.osDriven !== target) producers.osDriven.stop()
+        if (producers.appDriven !== target) producers.appDriven.stop()
+        target.start()
+    }
+
+    /** Stop every composed producer (idempotent; never destroys durable state). */
+    private suspend fun stopAll() {
+        producers.osDriven?.stop()
+        producers.appDriven.stop()
+    }
 
     /**
      * A membership was provisioned — a fresh join, an event switch, or a freshly-created event. (Re-scanning
@@ -92,23 +136,26 @@ class UploadArm(
      * Without access, neither verb fires — the transition to granted will drive it ([onPermissionGranted]).
      */
     suspend fun onProvision() = log.invocation(logScope, "arm.onProvision") {
-        if (!isGranted()) return@invocation
+        val selected = selectedProducer() ?: return@invocation
         // A provision always has a membership, so `null` is unreachable here; treating it like
         // download-only (stop) is the safe reading if it ever were.
-        if (membershipIncludesUpload() == true) producer.start() else producer.stop()
+        if (membershipIncludesUpload() == true) switchTo(selected) else stopAll()
     }
 
     /**
-     * Photo access became `GRANTED`. Starts the producer unless the current membership is download-only —
-     * or unless there is **no membership at all**, in which case neither verb fires: there is no event to
-     * upload to, and starting here would enable a producer before the join is confirmed. The join's
-     * [onProvision] is what arms it.
+     * Photo access changed. With usable access (`GRANTED` or `LIMITED`) and an upload-inclusive
+     * membership, starts the permission-selected producer — which on a `GRANTED` ↔ `LIMITED` flip is a
+     * **switch**: the outgoing mechanism stops (the OS-driven one deregistering its extension) before
+     * the incoming one starts. With a download-only membership — or **no membership at all** — neither
+     * verb fires: there is no event to upload to, and starting here would enable a producer before the
+     * join is confirmed. The join's [onProvision] is what arms it.
      *
-     * This fires on the *transition*, so it cannot rescue a membership provisioned while access was already
-     * granted — [onProvision] owns that case.
+     * This fires on the *transition*, so it cannot rescue a membership provisioned while access was
+     * already usable — [onProvision] owns that case.
      */
-    suspend fun onPermissionGranted() = log.invocation(logScope, "arm.onPermissionGranted") {
-        if (membershipIncludesUpload() == true) producer.start()
+    suspend fun onPermissionChanged() = log.invocation(logScope, "arm.onPermissionChanged") {
+        val selected = selectedProducer() ?: return@invocation
+        if (membershipIncludesUpload() == true) switchTo(selected)
     }
 
     /**
@@ -122,6 +169,6 @@ class UploadArm(
      * anyway, since a mismatched marker forces the reconciler to re-baseline.
      */
     suspend fun onLeave() = log.invocation(logScope, "arm.onLeave") {
-        producer.stop()
+        stopAll()
     }
 }

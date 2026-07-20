@@ -22,6 +22,12 @@ kotlin {
 dependencies {
     testImplementation(kotlin("test"))
     testImplementation(libs.konsist)
+    // ProducerExclusivityTest drives the REAL UploadArm over fakes (capability `architecture-guards`,
+    // "The upload producers are never both started") — the one guard here that executes domain code
+    // rather than reading source: the invariant is behavioral (a start-order property), which no text
+    // scan can see.
+    testImplementation(project(":domain"))
+    testImplementation(libs.coroutines.test)
 }
 
 tasks.test {

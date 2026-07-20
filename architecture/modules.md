@@ -44,6 +44,7 @@ flowchart LR
   app_ios_extension --> adapter_generic_app
   app_ios_extension --> adapter_ios_ext_safe
   app_ios_extension --> domain
+  test_architecture --> domain
   test_harness_driver --> app_desktop
   test_integration --> adapter_generic_app
   test_integration --> domain

@@ -39,6 +39,7 @@ edge :app:ios :ui:screens
 edge :app:ios:extension :adapter:generic:app
 edge :app:ios:extension :adapter:ios:ext-safe
 edge :app:ios:extension :domain
+edge :test:architecture :domain
 edge :test:harness-driver :app:desktop
 edge :test:integration :adapter:generic:app
 edge :test:integration :domain
