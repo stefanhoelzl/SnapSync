@@ -5,6 +5,7 @@ import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.graphics.PixelMap
 import androidx.compose.ui.graphics.toPixelMap
 import androidx.compose.ui.test.SemanticsMatcher
+import androidx.compose.ui.test.assert
 import androidx.compose.ui.test.captureToImage
 import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.assertIsEnabled
@@ -174,34 +175,46 @@ class StatusScreenTest {
     }
 
     @Test
-    fun `the edit affordance opens ONE dialog carrying both the calendar and the time`() {
-        // The picker is a single dialog now (calendar + [HH]:[MM] readout), not the old two-step
-        // date -> Next -> time -> OK flow. One OK commits both.
-        rule.setContent { StatusScreen(UiState.CreateEvent(), cutoff = fixedCutoff()) }
-        rule.onNodeWithText("OK").assertDoesNotExist() // no dialog yet
+    fun `the edit affordance opens ONE dialog showing the calendar and time wheels together`() {
+        // The picker is a single dialog: a hand-drawn month calendar AND the HH:MM time wheels visible at
+        // once — never the old two-step date -> Next -> time -> OK / Edit-time -> Back mode swap. One OK
+        // commits both.
+        //
+        // Reduce motion is REQUIRED: the picker's time wheels animate on open (a LazyColumn settle), and an
+        // animating scene never reaches idle — without this flag `waitForIdle` stalls for ~16 min.
+        rule.setContent {
+            CompositionLocalProvider(LocalReduceMotion provides true) { StatusScreen(UiState.CreateEvent(), cutoff = fixedCutoff()) }
+        }
+        rule.onNodeWithText("Date & time").assertDoesNotExist() // no dialog yet
 
         rule.onNodeWithContentDescription("Edit start date").performClick()
 
+        rule.onNodeWithText("Date & time").assertExists()
         rule.onNodeWithText("OK").assertExists()
-        rule.onNodeWithText("Next").assertDoesNotExist() // the two-step flow is gone
-        rule.onNodeWithText("12:00").assertExists() // the time readout sits under the calendar
+        rule.onNodeWithText("Cancel").assertExists()
+        // The two-step flow's controls are gone: no Next, no Back, no separate time-edit affordance.
+        rule.onNodeWithText("Next").assertDoesNotExist()
+        rule.onNodeWithText("Back").assertDoesNotExist()
+        rule.onNodeWithContentDescription("Edit time").assertDoesNotExist()
+        // Calendar pane present (the visible month) AND the time pane present (both wheels), simultaneously.
+        rule.onNodeWithText("July 2026").assertExists()
+        rule.onNodeWithContentDescription("Hour", useUnmergedTree = true).assertExists()
+        rule.onNodeWithContentDescription("Minute", useUnmergedTree = true).assertExists()
     }
 
     @Test
-    fun `tapping the time readout swaps the calendar for the dial and Back returns`() {
-        rule.setContent { StatusScreen(UiState.CreateEvent(), cutoff = fixedCutoff()) }
+    fun `the picker time wheels expose the current start`() {
+        // The default start is now — 6 Jul 2026, 12:00 — so the wheels open on 12 and 00. Reduce motion is
+        // required so the wheels snap (an animating scene never idles — see the dialog test above).
+        rule.setContent {
+            CompositionLocalProvider(LocalReduceMotion provides true) { StatusScreen(UiState.CreateEvent(), cutoff = fixedCutoff()) }
+        }
         rule.onNodeWithContentDescription("Edit start date").performClick()
-        rule.onNodeWithText("Cancel").assertExists() // calendar view
 
-        rule.onNodeWithContentDescription("Edit time").performClick()
-
-        // The dial replaced the calendar; Back (not Cancel) returns without discarding the picked date.
-        rule.onNodeWithText("Back").assertExists()
-        rule.onNodeWithText("Cancel").assertDoesNotExist()
-        rule.onNodeWithText("12:00").assertExists() // the readout stays visible while editing
-
-        rule.onNodeWithText("Back").performClick()
-        rule.onNodeWithText("Cancel").assertExists()
+        rule.onNodeWithContentDescription("Hour", useUnmergedTree = true)
+            .assert(SemanticsMatcher.expectValue(SemanticsProperties.StateDescription, "12"))
+        rule.onNodeWithContentDescription("Minute", useUnmergedTree = true)
+            .assert(SemanticsMatcher.expectValue(SemanticsProperties.StateDescription, "00"))
     }
 
     @Test
