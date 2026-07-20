@@ -1,14 +1,5 @@
-# device-identity Specification
+## MODIFIED Requirements
 
-## Purpose
-
-The stable per-install device id: a UUID minted once and persisted in the shared Keychain access
-group, read identically by the app process and the upload extension. It is the partition segment for
-the device-global byte store (capability `bunny-upload-endpoint`) and the key for the per-event device
-manifest (`/events/<eventId>/devices/<deviceId>.json`). Exposed to consumers as a plain `() -> String`
-supplier (tests inject a lambda), backed by `KeychainDeviceIdentity` in `:domain:keychain` and wired
-only in the iOS composition roots.
-## Requirements
 ### Requirement: Stable per-install device id
 
 The app SHALL carry a stable per-install device id: a UUID minted exactly once and persisted in the
@@ -96,61 +87,6 @@ identity.
 - **THEN** resolution stops there — the unscoped search is NOT consulted, no value is adopted, and
   nothing is minted
 
-### Requirement: The device id is readable by background work on a locked device
-
-The device id's Keychain item SHALL be stored with an accessibility class that permits reads while the
-device is **locked**, once the device has been unlocked at least once since boot
-(`kSecAttrAccessibleAfterFirstUnlock`). Background work — a `BGProcessingTask`, a silent push, a
-background `URLSession` completion, and the OS-scheduled upload extension — runs while the device is
-idle and therefore usually locked, and each such context resolves the device id.
-
-The item SHALL NOT be restricted to the device (`…ThisDeviceOnly`): it SHALL remain restorable from an
-encrypted backup, so that a restored device recovers the **same** id as the app container (ledger and
-discovery cursor) that is restored alongside it. Decision record:
-`changes/archive/2026-07-14-fix-locked-device-keychain-access`.
-
-#### Scenario: A locked background wake resolves the device id
-
-- **WHEN** background work resolves the device id while the device is locked, and the device has been
-  unlocked at least once since boot
-- **THEN** the persisted id is returned, nothing is minted, and no error is raised
-
-#### Scenario: The id is restorable alongside the app container
-
-- **WHEN** an encrypted backup is restored to a device
-- **THEN** the restored device reads the same device id it had before, consistent with the ledger and
-  discovery cursor restored with it, and therefore does not re-upload its already-stored resources
-
-### Requirement: Accessibility migration preserves the device id
-
-An item persisted by an earlier build under a weaker accessibility class SHALL be migrated in place on
-the first successful read: its accessibility class SHALL be updated to the required one, and its
-**value SHALL be preserved exactly**. Migration SHALL NOT mint, delete-and-re-add a different value, or
-otherwise change the device's identity — a changed device id would orphan this device's byte-store
-partition and its ledger.
-
-Migration is required because the Keychain item survives app uninstall and the device id is written
-exactly once, at mint: without an in-place migration an already-provisioned device would keep its
-unreadable item indefinitely, and no reinstall or update would heal it.
-
-#### Scenario: A legacy item is upgraded in place
-
-- **WHEN** the device id is read successfully and the stored item's accessibility class is weaker than
-  required
-- **THEN** the item's accessibility class is updated in place, its value is unchanged, and the same id
-  is returned
-
-#### Scenario: A migrated device keeps its partition and ledger
-
-- **WHEN** a device that was provisioned by an earlier build migrates its device-id item
-- **THEN** the device id is byte-for-byte the same as before, so its `/files/devices/<deviceId>/`
-  partition and ledger rows remain valid and nothing re-uploads
-
-#### Scenario: An already-correct item is not rewritten
-
-- **WHEN** the device id is read and the stored item already carries the required accessibility class
-- **THEN** no write is performed
-
 ### Requirement: Device-id access is a plain supplier; the Keychain implementation lives in `:adapter:ios:ext-safe`
 
 Consumers of the device id (attestation, the join enrollment, and the composition roots) SHALL take
@@ -188,6 +124,8 @@ the one the field already holds.
 - **WHEN** the runtime-identity guard scans production Kotlin
 - **THEN** the service/account pair (`app.snapsync.deviceid`, `deviceid`) and the shared access-group
   literal are each found exactly once, in `:adapter:ios:ext-safe`
+
+## ADDED Requirements
 
 ### Requirement: Only the app process mints a device identity
 
@@ -249,4 +187,3 @@ fault rather than as normal operation.
 - **WHEN** the app and the extension resolve different ids
 - **THEN** the two diagnostic logs show different values for the same field, and the operator can
   detect the split by reading them
-

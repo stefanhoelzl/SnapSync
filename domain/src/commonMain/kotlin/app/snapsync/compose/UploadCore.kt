@@ -17,6 +17,7 @@ import app.snapsync.ports.BackgroundTransfer
 import app.snapsync.ports.ConfigRead
 import app.snapsync.ports.ConfigReader
 import app.snapsync.ports.DeviceFilesSource
+import app.snapsync.ports.DeviceIdentityAbsent
 import app.snapsync.ports.DeviceManifestStore
 import app.snapsync.ports.DiscoveryStore
 import app.snapsync.ports.Enrollment
@@ -170,9 +171,17 @@ private fun readGate(ports: UploadPorts): CycleGate {
     // The identity probe — an unresolvable id is "I could not look", never "no id", so it belongs
     // on the unreadable side of the roll-up. Every outcome needs the id: the reconciler and the
     // manifest producer each close over it, so even the leave-side branch touches it.
-    val idReadable = runCatching { ports.deviceId() }
-        .onFailure { if (it !is KeychainUnavailable) throw it }
-        .isSuccess
+    //
+    // `DeviceIdentityAbsent` joins `KeychainUnavailable` here, and the two are handled identically on
+    // purpose. It means the lookup succeeded, found nothing, and this process may not mint (the upload
+    // extension — capability `device-identity`). Both are "proceed with no identity", and proceeding
+    // is exactly what must not happen: an invented id partitions this device's bytes away from its own
+    // manifest. Anything else still propagates — a genuine fault must not be silently downgraded to a
+    // skipped cycle.
+    val identityFailure = runCatching { ports.deviceId() }
+        .onFailure { if (it !is KeychainUnavailable && it !is DeviceIdentityAbsent) throw it }
+        .exceptionOrNull()
+    val idReadable = identityFailure == null
     val payload = (read as? ConfigRead.Joined)?.config
     return cycleGate(
         configReadable = read !is ConfigRead.Unavailable && idReadable,
@@ -187,6 +196,14 @@ private fun readGate(ports: UploadPorts): CycleGate {
         // The forensics for a skip: the decision is made in shared code that cannot see WHY the
         // read failed, and an unreadable config is invisible on a device except through this string.
         skipDetail = "protected data unavailable (config status=" +
-            "${(read as? ConfigRead.Unavailable)?.status}, deviceId readable=$idReadable)",
+            "${(read as? ConfigRead.Unavailable)?.status}, deviceId readable=$idReadable" +
+            // Naming WHICH identity failure occurred is the difference between "the device is locked,
+            // this will pass" and "this process has no identity and may not create one", which need
+            // opposite reactions from whoever reads the log.
+            when (identityFailure) {
+                is DeviceIdentityAbsent -> ", deviceId absent and unmintable here"
+                is KeychainUnavailable -> ", deviceId unreadable (status=${identityFailure.status})"
+                else -> ""
+            } + ")",
     )
 }

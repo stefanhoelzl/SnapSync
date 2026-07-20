@@ -53,6 +53,7 @@ import app.snapsync.logging.FileLogWriter
 import app.snapsync.logging.appBuildVersion
 import app.snapsync.logging.IosLogScope
 import app.snapsync.logging.PublicNSLogWriter
+import app.snapsync.keychain.DeviceIdentityRole
 import app.snapsync.keychain.KeychainDeviceIdentity
 import app.snapsync.logging.invocation
 import co.touchlab.kermit.Logger
@@ -226,10 +227,16 @@ object SnapSyncRoot {
     // instance (both enable the extension; a provision must re-enable a producer a prior leave disabled).
     private val permission: PhotoLibraryPermission by lazy { PhotoLibraryPermission() }
 
-    // The stable per-install device id (shared Keychain — the SAME item the extension reads): the
-    // `/files/devices/<deviceId>/` partition the app's status lists. (Finishes wiring `device-identity` into
-    // both roots.)
-    private val deviceId: String by lazy { KeychainDeviceIdentity().deviceId() }
+    // The stable per-install device id (the shared Keychain access group, addressed by name — the SAME
+    // item the extension reads): the `/files/devices/<deviceId>/` partition the app's status lists.
+    //
+    // MINTING is the app's role alone (capability `device-identity`). It also owns adoption: if the
+    // shared group is empty but an id exists in a group an older build wrote to, that value is taken
+    // over verbatim rather than re-minted — a second identity would orphan this device's byte
+    // partition and make its own uploads read as another member's.
+    private val deviceId: String by lazy {
+        KeychainDeviceIdentity(DeviceIdentityRole.MINTING).deviceId()
+    }
 
     /**
      * The composed app graph (spec `module-architecture`, "One shared composition"): this root
