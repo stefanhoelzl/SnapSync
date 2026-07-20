@@ -21,6 +21,7 @@ import app.snapsync.model.Contribution
 import app.snapsync.gallery.PhotoLibraryResourceEnumerator
 import app.snapsync.model.PermissionStatus
 import app.snapsync.permission.PhotoLibraryPermission
+import app.snapsync.permission.PhotoSelectionSnapshotSource
 import app.snapsync.presentation.CutoffFormatter
 import app.snapsync.presentation.MutableAttestedSource
 import app.snapsync.presentation.StatusContainerHost
@@ -159,6 +160,9 @@ object SnapSyncRoot {
                 uploadProducer = { photoKitProducer },
                 pumpForeground = {},
                 uploadSilentPush = { null },
+                // Inert until the permission-aware arm composes both producers on this tier
+                // (upload-lifecycle, "Exactly one producer started per process").
+                pumpSelectionChanged = {},
                 heartbeat = { onComplete -> onComplete() },
             )
             // App-driven URLSession tier (iOS 18–26.0, or the dev force flag): the app process pumps.
@@ -166,6 +170,7 @@ object SnapSyncRoot {
                 uploadProducer = { urlSessionUpload },
                 pumpForeground = { urlSessionUpload.onForeground() },
                 uploadSilentPush = { urlSessionUpload.pushReceiver::onSilentPush },
+                pumpSelectionChanged = { urlSessionUpload.onSelectionChanged() },
                 heartbeat = { onComplete -> urlSessionUpload.onBackgroundTask(onComplete) },
             )
         }
@@ -262,7 +267,12 @@ object SnapSyncRoot {
                 // The same adapter serves the status source and the request/Settings surface — the
                 // bundle's requestAccess/openSettings commands bind to it in `compose/`.
                 photoAccessRequester = permission,
-                photoLibrary = PhotoLibraryResourceEnumerator(),
+                photoLibrary = enumerator,
+                // Selection snapshots under a partial grant (capability `limited-photo-access`):
+                // observes only while LIMITED; each emission is one in-flow read serving N and the
+                // cycle's discovery alike.
+                selectionChanges = selectionSource,
+                pumpSelectionChanged = live.pumpSelectionChanged,
                 ledger = ledgerStore,
                 downloadStore = downloadStore,
                 // The importer writes createdLocalId synchronously from inside a PhotoKit change
@@ -751,6 +761,16 @@ object SnapSyncRoot {
     // the URL_SESSION branch of the mode switch — plus the background-session drain, which may adopt an
     // old upload session on any live tier. On iOS ≥26.1 without the force flag it is otherwise never
     // touched (the extension runs).
+    // The ONE PhotoKit resource enumerator this process holds (shared by the gallery walk and the
+    // selection-snapshot mapping — one mapping, one place).
+    private val enumerator: PhotoLibraryResourceEnumerator by lazy { PhotoLibraryResourceEnumerator() }
+
+    // The selection-change source (capability `limited-photo-access`): registers the library observer
+    // only while permission is LIMITED; the app graph collects its snapshots.
+    private val selectionSource: PhotoSelectionSnapshotSource by lazy {
+        PhotoSelectionSnapshotSource(permission.permission, scope, enumerator)
+    }
+
     private val urlSessionUpload: UrlSessionUploadController by lazy {
         UrlSessionUploadController(
             scope, ledgerStore, config,
@@ -780,6 +800,9 @@ object SnapSyncRoot {
             // membership's opt-in (which arrived with its gate) and `uploadCore` owns the shared
             // `assetId` denormalization.
             albumCoordinator = app.albumCoordinator,
+            // The walk-vs-snapshot decision, derived by the app graph from current permission + the
+            // latest snapshot (capability `limited-photo-access`).
+            selectionScope = { app.selectionScope() },
         )
     }
 
@@ -891,6 +914,8 @@ object SnapSyncRoot {
         val pumpForeground: () -> Unit,
         /** The upload arm's silent-push receiver (app-driven tier); `{ null }` on iOS ≥26.1. */
         val uploadSilentPush: () -> (suspend (eventId: String) -> Unit)?,
+        /** A selection change under a partial grant pumps the app-driven tier; `{}` where it is not composed. */
+        val pumpSelectionChanged: () -> Unit,
         /** The BGProcessingTask heartbeat handler (app-driven tier); completes immediately on ≥26.1. */
         private val heartbeat: (onComplete: () -> Unit) -> Unit,
     ) : Shell {

@@ -31,6 +31,8 @@ import app.snapsync.flow.SilentPush
 import app.snapsync.model.Contribution
 import app.snapsync.model.EventConfig
 import app.snapsync.model.PermissionStatus
+import app.snapsync.model.Resource
+import app.snapsync.model.SelectionScope
 import app.snapsync.model.grantsPhotoAccess
 import app.snapsync.model.UserCommands
 import app.snapsync.ports.AlbumManager
@@ -54,8 +56,10 @@ import app.snapsync.ports.PhotoAccessRequester
 import app.snapsync.ports.PhotoAccessStatusSource
 import app.snapsync.ports.PhotoLibrary
 import app.snapsync.ports.PhotoLibraryImporter
+import app.snapsync.ports.PhotoSelectionChangeSource
 import co.touchlab.kermit.Logger
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.launch
 
 /**
@@ -128,6 +132,12 @@ class AppPorts(
     /** The upload arm's silent-push receiver on the app-driven tier, or `null` on iOS ≥26.1. A thunk so
      *  the tier controller (which depends on this graph) resolves lazily, never at composition time. */
     val uploadSilentPush: () -> (suspend (eventId: String) -> Unit)? = { null },
+    /** Selection snapshots under a partial grant (capability `limited-photo-access`); the inert default
+     *  serves every composition that never sees one (world by default, desktop harnesses). */
+    val selectionChanges: PhotoSelectionChangeSource = PhotoSelectionChangeSource.None,
+    /** Drive one app-driven upload cycle for a selection change (the pump's `onSelectionChanged`),
+     *  wired by the shell to the tier controller; inert where no app-driven tier exists. */
+    val pumpSelectionChanged: () -> Unit = {},
     val log: Logger,
     /** The ambient-context seam the tier-neutral features drive so their device-log lines carry the
      *  triggering entry point's `[<name>]` prefix (capability `diagnostic-logging`). The app shell
@@ -305,6 +315,25 @@ class AppCore internal constructor(
         )
     }
 
+    // ---- Selection-driven reads under a partial grant (capability `limited-photo-access`) -----------
+    // The latest selection snapshot (set only by the selection subscription below). The walk-vs-snapshot
+    // decision is DERIVED per read from current permission + this cell, so it has exactly one owner and
+    // no stored mode can go stale across a permission flip.
+    private val latestSelectionSnapshot = MutableStateFlow<List<Resource>?>(null)
+
+    /**
+     * What upload discovery may read right now (consumed by the tier controllers' `uploadCore` ports):
+     * unrestricted under a full grant; the latest snapshot under a partial one. `Scoped(empty)` between
+     * the grant turning partial and the first snapshot is the honest gap — discovery finds nothing,
+     * rather than walking.
+     */
+    fun selectionScope(): SelectionScope =
+        if (ports.photoAccess.permission.value == PermissionStatus.LIMITED) {
+            SelectionScope.Scoped(latestSelectionSnapshot.value ?: emptyList())
+        } else {
+            SelectionScope.Unrestricted
+        }
+
     // Re-read the own-device gallery total (enumeration, downloads suppressed), the ledger counts
     // (completed + in-flight), and the foreign download line (capability `sync-status`). No membership
     // → nothing to count; a download-only membership counts 0 too — the source's decision from the
@@ -463,6 +492,19 @@ class AppCore internal constructor(
                 // permission-aware arm that uploads under LIMITED arrives with the selection-driven
                 // read path (upload-lifecycle, "Exactly one producer started per process").
                 if (status == PermissionStatus.GRANTED) uploadArm.onPermissionGranted()
+            }
+        }
+        scope.launch {
+            // One selection-change emission → ONE read serving both consumers (capability
+            // `limited-photo-access`, "One discovery serves both the status total and the enqueue"):
+            // the cell feeds the cycle's discovery, `refreshFrom` recounts N over the same list, and
+            // the pump drains — no second library read anywhere on this path.
+            ports.selectionChanges.snapshots.collect { snapshot ->
+                latestSelectionSnapshot.value = snapshot
+                ports.configSource.config.value?.let { cfg ->
+                    gallery.refreshFrom(snapshot, Contribution.of(cfg.direction.includesUpload, cfg.minPhotoDate))
+                }
+                ports.pumpSelectionChanged()
             }
         }
         scope.launch {

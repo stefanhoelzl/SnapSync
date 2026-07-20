@@ -65,15 +65,15 @@ scaffolding out of the way first.
 
 ## 4. The selection-change seam
 
-- [ ] 4.1 New port `ports/PhotoSelectionChangeSource` (`:domain`): a change stream the composition
+- [x] 4.1 New port `ports/PhotoSelectionChangeSource` (`:domain`): a change stream the composition
       collects; KDoc records the reload-and-ledger-dedup consumption contract (design D5)
-- [ ] 4.2 iOS adapter in `:adapter:ios:app-only`: graduate `PhotoSelectionObserver` into the port's
+- [x] 4.2 iOS adapter in `:adapter:ios:app-only`: graduate `PhotoSelectionObserver` into the port's
       adapter — holds the baseline `PHFetchResult` (sorted), emits the pushed
       `fetchResultAfterChanges` per change, registers only while permission is `LIMITED`
       (subscribes to the permission StateFlow), retained for adapter lifetime
-- [ ] 4.3 Fake in `:adapter:generic:fake` (honest double) + operator lever in `:test:world`
+- [x] 4.3 Fake in `:adapter:generic:fake` (honest double) + operator lever in `:test:world`
       (`FakeHonestyTest` compliance: rigging lives in the world wrapper)
-- [ ] 4.4 `compose/`: collect the port under `LIMITED` → drive one discovery+enqueue pass per emission;
+- [x] 4.4 `compose/`: collect the port under `LIMITED` → drive one discovery+enqueue pass per emission;
       cold-launch baseline read wired as the launch-time pass (design D4)
 
 ## 5. Selection-driven upload under LIMITED

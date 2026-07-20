@@ -52,6 +52,7 @@ Roots found:
 | `PhotoKitUploadProducer` | x | | |
 | `PhotoLibraryPermission` | x | | |
 | `PhotoLibraryResourceEnumerator` | x | x | x |
+| `PhotoSelectionSnapshotSource` | x | | |
 | `PublicNSLogWriter` | x | x | |
 | `PushRegistration` | x | | |
 | `PushTokenSource` | x | | |

@@ -110,6 +110,17 @@ class BackgroundUploadPump(
         drive(scheduleOnProcessing = false, alwaysScheduleNext = true)
     }
 
+    /**
+     * The photo **selection changed** under a partial grant (capability `limited-photo-access`): the
+     * one trigger that carries new discoverable work there. Drain and re-arm — like [onForeground],
+     * because a selection change is the limited-mode analogue of "new photos exist": the user just
+     * acted, the device is awake, and the heartbeat chain may be severed (this may be the first
+     * trigger since a force-quit).
+     */
+    suspend fun onSelectionChanged() = log.invocation(logScope, "pump.onSelectionChanged") {
+        drive(scheduleOnProcessing = false, alwaysScheduleNext = true)
+    }
+
     /** An upload finished while foregrounded (a slot freed): pump the next batch. */
     suspend fun onUploadCompleted() = log.invocation(logScope, "pump.onUploadCompleted") {
         drive(scheduleOnProcessing = false, alwaysScheduleNext = false)
