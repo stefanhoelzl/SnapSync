@@ -74,7 +74,16 @@ is no per-root cycle or feature assembly any more.
   (file-backed config store, PhotoKit permission, ledger/download stores, generic HTTP adapters,
   coordination lambdas) and calls `snapSyncApp(scope, ports)`; the returned `AppCore`'s lazily
   composed graph (status sources, attestation, join/leave/create, downloads, upload arm) is wired
-  into `StatusContainerHost`.
+  into `StatusContainerHost`. **The scope carries a `CoroutineExceptionHandler`** — its one
+  non-negotiable member: a `SupervisorJob` isolates siblings from each other but does **nothing**
+  for a throwable no child handles, which on Kotlin/Native hits the default terminate → `SIGABRT`.
+  Without the handler an uncaught launch-path failure (a platform-API call, an App-Group read, a
+  deprecated PhotoKit selector on a newer iOS) aborts the whole app before first paint. The handler
+  logs the throwable to `debug.log` (the un-redacted channel) and lets the app live — the
+  "errors reduce into state, never crash the shell" rule, applied to the one seam Compose reduction
+  cannot reach. Every feature still reduces its own domain errors into `UiState`; this is the last
+  resort for what nothing else did, and it is what makes an otherwise-invisible launch crash
+  self-diagnosing (the exception text lands in `debug.log` instead of an opaque abort).
 - **Extension**: `app/ios/extension/src/iosMain/.../UploadExtensionRoot.kt` — builds
   `UploadPorts` (the file-backed `ConfigReader`, the PhotoKit `IosPhotoKitUploadPlatform` +
   `IosDiscovery` — both from `:adapter:ios:ext-safe`, where the platform adapter lives — App-Group
