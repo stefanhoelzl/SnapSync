@@ -467,41 +467,76 @@ sshmac 'cd snapsync && ./gradlew iosSimulatorArm64Test'
 sshmac 'cd snapsync && xcodebuild -project iosApp/iosApp.xcodeproj -scheme iosApp -configuration Debug \
           -destination "generic/platform=iOS" -archivePath "$HOME/artifacts/SnapSync.xcarchive" \
           CODE_SIGNING_ALLOWED=NO archive'
-# 6b. Manually re-sign the archive INSIDE-OUT with the baked profiles, then repackage the IPA.
+# 6b. Manually re-sign the archive INSIDE-OUT, then repackage the IPA. The entitlements come from the
+#     REPO's own `.entitlements` files, with the build variables expanded — NOT from the profile.
 #     WHY not `xcodebuild -exportArchive`: automatic-signing export does NOT reuse manually-installed
 #     profiles without an ASC key (fails "No profiles for 'app.snapsync…' were found"); and the
 #     CODE_SIGNING_ALLOWED=NO archive has EMPTY entitlements, so any export ships an IPA that aborts at
-#     launch on the App-Group container ("client is not entitled"). Re-signing with the entitlements
-#     RESOLVED inside each profile (app-groups/keychain/aps/get-task-allow) is the working path.
+#     launch on the App-Group container ("client is not entitled").
 #
-#     ⚠️ RESOLVING OUT OF THE PROFILE SILENTLY DESTROYS `associated-domains`. A DEV profile grants the
-#     WILDCARD `*` (permission to claim ANY domain) — so a straight resolve signs the app entitled to `*`
-#     and claiming NOTHING, and every universal link then silently fails (verified 2026-07-16; it is also
-#     why a pre-change build showed `associated-domains: *`). Narrow it to what the app actually declares
-#     BEFORE signing — valid, because entitlements need only be a SUBSET of the profile's grant, and `*`
-#     permits this. Use PlistBuddy: `plutil` CANNOT touch this key, it reads the dots as a key path and
-#     fails "Key path not found".
+#     ⚠️ A PROFILE IS A GRANT; ENTITLEMENTS ARE A CLAIM. The profile says "you MAY use anything in
+#     `<TEAM>.*`"; entitlements say "I AM this". Copying one into the other is a category error, and it
+#     is silently wrong for every WILDCARD key an Apple DEV profile carries — of which there are two:
+#       • `associated-domains: *`      → the app claims every domain, therefore NONE. Every universal
+#                                        link dies silently (verified 2026-07-16).
+#       • `keychain-access-groups: <TEAM>.*` → not a writable group name, so each process falls back to
+#                                        its OWN `application-identifier` group. The app and the upload
+#                                        extension then hold DIFFERENT device ids, both reads succeed,
+#                                        and the app re-imports every photo it uploaded (2026-07-20).
+#     The keychain one is the worse of the two: it writes a real item to a real group, and the device id
+#     is written once and never rewritten — so the mistake is frozen permanently, on a value whose loss
+#     is unrecoverable. This is why we now GENERATE the claim instead of narrowing the grant key by key:
+#     narrowing only ever fixes the wildcard you already know about (`associated-domains` was narrowed in
+#     July; `keychain-access-groups` sat there unnarrowed the whole time and nobody connected the two).
+#
+#     The profile-resolve supplied THREE things for free that the repo `.entitlements` do NOT carry —
+#     `application-identifier`, `com.apple.developer.team-identifier`, and `get-task-allow`. The first is
+#     MANDATORY: without it the install is refused ("Application is missing the application-identifier
+#     entitlement", verified 2026-07-20). Add all three back. The two id keys are CONCRETE in the profile
+#     (never wildcards), so extracting exactly them from the matched profile is safe — it is only the
+#     wildcard keys that a grant must never donate to a claim.
 sshmac 'bash -se' <<'SIGN'
 set -e; cd "$HOME/artifacts"
+SRC="$HOME/snapsync/iosApp"
 PD="$HOME/Library/MobileDevice/Provisioning Profiles"
 ID=$(security find-identity -v -p codesigning | awk '/Apple Development/{print $2; exit}')
 APP="SnapSync.xcarchive/Products/Applications/SnapSync.app"
 EXT="$APP/Extensions/BackgroundUploadExtension.appex"          # iOS 26 uses Extensions/, NOT PlugIns/
-PB=/usr/libexec/PlistBuddy; K=":com.apple.developer.associated-domains"
-for p in "$PD"/*.mobileprovision; do                          # match each profile by its bundle id
+PB=/usr/libexec/PlistBuddy
+CFG="$SRC/Configuration/Config.xcconfig"
+TEAM=$(awk -F= '/^TEAM_ID/{gsub(/[ \t]/,"",$2);print $2}' "$CFG")
+DOMAIN=$(awk -F= '/^ASSOCIATED_DOMAIN/{gsub(/[ \t]/,"",$2);print $2}' "$CFG")
+build_ent() {                                                  # $1 = repo .entitlements, $2 = out, $3 = matched profile
+  sed -e 's|\$(AppIdentifierPrefix)|'"$TEAM"'.|g' \
+      -e 's|\$(ASSOCIATED_DOMAIN)|'"$DOMAIN"'|g' \
+      -e 's|\$(APS_ENVIRONMENT)|development|g' "$1" > "$2"
+  # The identity keys the profile-resolve used to supply. Concrete, never wildcards — safe to lift.
+  local appid teamid
+  appid=$(security cms -D -i "$3" | plutil -extract Entitlements.application-identifier raw -)
+  teamid=$(security cms -D -i "$3" | plutil -extract Entitlements.com\\.apple\\.developer\\.team-identifier raw -)
+  $PB -c "Add :application-identifier string $appid" "$2"      # MANDATORY — install fails without it
+  $PB -c "Add :com.apple.developer.team-identifier string $teamid" "$2"
+  $PB -c "Add :get-task-allow bool true" "$2"                  # dev-only; required to launch/debug
+}
+for p in "$PD"/*.mobileprovision; do                           # embed each profile + remember which target
   aid=$(security cms -D -i "$p" | plutil -extract Entitlements.application-identifier raw -)
   case "$aid" in
-    *.app.snapsync.BackgroundUpload) security cms -D -i "$p" | plutil -extract Entitlements xml1 -o ext.plist -; cp "$p" "$EXT/embedded.mobileprovision";;
-    *.app.snapsync)                  security cms -D -i "$p" | plutil -extract Entitlements xml1 -o app.plist -; cp "$p" "$APP/embedded.mobileprovision";;
+    *.app.snapsync.BackgroundUpload) EXTP="$p"; cp "$p" "$EXT/embedded.mobileprovision";;
+    *.app.snapsync)                  APPP="$p"; cp "$p" "$APP/embedded.mobileprovision";;
   esac
 done
-$PB -c "Delete $K" app.plist                                  # replace the profile's `*` wildcard…
-$PB -c "Add $K array" app.plist
-$PB -c "Add $K:0 string applinks:snapsync.stho.net" app.plist # …with the domain the app really claims
-codesign -f -s "$ID" --entitlements ext.plist "$EXT"          # sign the extension first (inside-out)…
-codesign -f -s "$ID" --entitlements app.plist "$APP"          # …then the app (statically-linked, no nested dylibs)
-# Verify the claim survived — `*` here means universal links are dead and NOTHING will say so:
-codesign -d --entitlements :- "$APP" 2>/dev/null | plutil -p - | grep -A2 associated-domains
+build_ent "$SRC/iosApp/iosApp.entitlements" app.plist "$APPP"
+build_ent "$SRC/BackgroundUploadExtension/BackgroundUploadExtension.entitlements" ext.plist "$EXTP"
+codesign -f -s "$ID" --entitlements ext.plist "$EXT"           # sign the extension first (inside-out)…
+codesign -f -s "$ID" --entitlements app.plist "$APP"           # …then the app (static, no nested dylibs)
+# THE GUARD: no wildcard may reach a signed binary. Key-agnostic ON PURPOSE — it catches whichever
+# wildcard key Apple adds next, which per-key narrowing by construction cannot.
+for b in "$EXT" "$APP"; do
+  if codesign -d --entitlements :- "$b" 2>/dev/null | grep -q '[*]'; then
+    echo "WILDCARD LEAKED into $b — do not install this build:"
+    codesign -d --entitlements :- "$b" 2>/dev/null | plutil -p -; exit 1
+  fi
+done
 codesign -v "$EXT" && codesign -v "$APP"
 rm -rf Payload && mkdir Payload && cp -R "$APP" Payload/ && zip -qry SnapSync.ipa Payload
 SIGN

@@ -9,6 +9,7 @@ import app.snapsync.model.DENYLISTED_ALBUM_TITLES
 import app.snapsync.album.IosAlbumManager
 import app.snapsync.album.IosAlbumMapStore
 import app.snapsync.config.FileBackedConfigStore
+import app.snapsync.keychain.DeviceIdentityRole
 import app.snapsync.keychain.KeychainDeviceIdentity
 import app.snapsync.ports.SuppressionSource
 import app.snapsync.downloadstore.iosSuppressionSource
@@ -97,10 +98,18 @@ object UploadExtensionRoot {
         AlbumCoordinator(albumManager, IosAlbumMapStore())
     }
 
-    // The stable per-install device id (shared Keychain, minted once): the `/files/devices/<deviceId>/`
-    // byte-store partition the provider writes to, and the per-event device-manifest key. Resolved
-    // once for the process lifetime.
-    private val deviceId: String by lazy { KeychainDeviceIdentity().deviceId() }
+    // The stable per-install device id (shared Keychain access group, addressed by name): the
+    // `/files/devices/<deviceId>/` byte-store partition the provider writes to, and the per-event
+    // device-manifest key. Resolved once for the process lifetime.
+    //
+    // READ_ONLY — this process neither mints nor adopts (capability `device-identity`). It cannot tell
+    // "no identity yet" from "the app's identity is not reachable from here", and guessing is what gave
+    // this device two identities: the extension uploaded under one while the app reconciled under the
+    // other, so the app re-imported every photo the device itself had uploaded. Absence raises
+    // `DeviceIdentityAbsent` and the cycle gate skips, exactly as it does for an unreadable Keychain.
+    private val deviceId: String by lazy {
+        KeychainDeviceIdentity(DeviceIdentityRole.READ_ONLY).deviceId()
+    }
 
     // One shared Darwin (NSURLSession) HTTP client for both in-cycle network calls (the reconcile
     // listing GET and the device.json PUT) — a single client avoids running two NSURLSession-backed

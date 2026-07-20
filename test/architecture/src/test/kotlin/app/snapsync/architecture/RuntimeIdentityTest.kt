@@ -27,6 +27,13 @@ import kotlin.test.fail
  * The pin inventory is the spec's (`openspec/specs/architecture-guards/spec.md`): adding, removing,
  * or re-valuing a pin is a spec delta, deliberately.
  */
+/**
+ * The shared Keychain access group, as production Kotlin must state it. Held here as a literal
+ * rather than imported: this guard is JVM-only and the constant lives in an `iosMain` source set, so
+ * the pin is — deliberately — a text assertion about source, exactly like every other pin here.
+ */
+private const val SHARED_ACCESS_GROUP = "E9Z8BADH58.app.snapsync.shared"
+
 class RuntimeIdentityTest {
 
     private val repoRoot: File = generateSequence(File(".").absoluteFile) { it.parentFile }
@@ -76,6 +83,30 @@ class RuntimeIdentityTest {
         "app.snapsync.download.backstop",
         "app.snapsync.upload.session",
         "app.snapsync.download.bg",
+        // The shared Keychain access group (capability `device-identity`). It is runtime identity in
+        // the same sense as a service or account: re-valuing it addresses a DIFFERENT real item, and
+        // does so silently — every read still succeeds and simply returns something else. That is
+        // precisely how the app and the upload extension came to hold two different device ids.
+        SHARED_ACCESS_GROUP,
+    )
+
+    /**
+     * Keychain seats that legitimately search **without** naming an access group, pinned as an exact
+     * inventory.
+     *
+     * Unscoped search is not forbidden — it is *bounded*. `KeychainConfigReader` needs it (its job is
+     * finding an item an older build left anywhere), and the attest pair and album map are left
+     * unscoped deliberately: the attest token demonstrably works cross-process today, and the album
+     * map is a self-healing cache. What must not happen is a *new* unscoped seat appearing by
+     * default, which is how implicit placement spread in the first place.
+     *
+     * Adding, removing, or re-scoping an entry here is a spec delta to `architecture-guards`.
+     */
+    private val unscopedKeychainSeats = setOf(
+        "app.snapsync.config" to "eventconfig",
+        "app.snapsync.attest" to "token",
+        "app.snapsync.attest" to "keyid",
+        "app.snapsync.album" to "albummap",
     )
 
     /**
@@ -142,6 +173,91 @@ class RuntimeIdentityTest {
             }
             assertExactlyOnce("Keychain pair (service=$service, account=$account)", found)
         }
+    }
+
+    /**
+     * The access group is the one pinned literal assembled from THREE surfaces that are edited
+     * independently — Kotlin, `Config.xcconfig`, and the two entitlements files. Pinning the Kotlin
+     * value alone would not catch a team-id change or an entitlements rename, and the resulting
+     * mismatch is invisible at runtime: the item is written to a real group that simply is not the
+     * one the other process reads.
+     */
+    @Test
+    fun `the shared Keychain access group agrees across Kotlin, TEAM_ID and both entitlements`() {
+        val xcconfig = File(repoRoot, "iosApp/Configuration/Config.xcconfig")
+        assertTrue(xcconfig.isFile, "Config.xcconfig is missing — fix this pin's path")
+        val teamId = Regex("""^\s*TEAM_ID\s*=\s*(\S+)\s*$""", RegexOption.MULTILINE)
+            .find(xcconfig.readText())?.groupValues?.get(1)
+        assertTrue(teamId != null, "TEAM_ID not found in Config.xcconfig — the signing surface moved")
+
+        val declared = entitlementsFiles.map { path ->
+            val file = File(repoRoot, path)
+            assertTrue(file.isFile, "$path is missing — the entitlements surface moved; fix this pin's path")
+            val group = Regex("""<string>\$\(AppIdentifierPrefix\)(.+?)</string>""")
+                .find(file.readText())?.groupValues?.get(1)
+            assertTrue(group != null, "$path declares no \$(AppIdentifierPrefix) keychain group")
+            path to group
+        }
+
+        val suffixes = declared.map { it.second }.toSet()
+        assertTrue(
+            suffixes.size == 1,
+            "the two entitlements files must declare the SAME keychain group, or the app and the " +
+                "extension address different items and each silently reads its own:\n  " +
+                declared.joinToString("\n  ") { "${it.first} → ${it.second}" },
+        )
+
+        val composed = "$teamId.${suffixes.single()}"
+        assertTrue(
+            composed == SHARED_ACCESS_GROUP,
+            "the Kotlin access group and the entitlements disagree.\n" +
+                "  Kotlin:       $SHARED_ACCESS_GROUP\n" +
+                "  entitlements: $composed  (TEAM_ID=$teamId + ${suffixes.single()})\n" +
+                "Drift here does not fail loudly — both processes still read successfully and each " +
+                "gets a DIFFERENT item. That is the split-identity fault (capability device-identity).",
+        )
+    }
+
+    /**
+     * The device-id seat names its group; every other seat's unscoped-ness is an explicit inventory
+     * rather than a default nobody noticed.
+     */
+    @Test
+    fun `only the pinned seats search the Keychain without an access group`() {
+        val sources = productionKotlin()
+        assertTrue(sources.isNotEmpty(), "production Kotlin scan resolved zero files — the walk is broken")
+
+        // Construction sites only — not the `class IosKeychain(` declaration itself.
+        val site = Regex("""(?<!class )IosKeychain\(([^)]*)\)""")
+        val unscoped = mutableSetOf<Pair<String, String>>()
+        val scoped = mutableSetOf<Pair<String, String>>()
+        for (file in sources) {
+            for (match in site.findAll(file.readText())) {
+                val args = match.groupValues[1]
+                val service = Regex("""service\s*=\s*"([^"]+)"""").find(args)?.groupValues?.get(1)
+                val account = Regex("""account\s*=\s*"([^"]+)"""").find(args)?.groupValues?.get(1)
+                assertTrue(
+                    service != null && account != null,
+                    "an IosKeychain construction in ${file.toRelativeString(repoRoot)} does not name its " +
+                        "service/account inline; this guard cannot classify it — keep the pinned form",
+                )
+                if ("accessGroup" in args) scoped += service to account else unscoped += service to account
+            }
+        }
+
+        assertTrue(
+            unscoped == unscopedKeychainSeats,
+            "the unscoped-Keychain inventory changed.\n" +
+                "  expected: ${unscopedKeychainSeats.sortedBy { it.first + it.second }}\n" +
+                "  found:    ${unscoped.sortedBy { it.first + it.second }}\n" +
+                "A NEW unscoped seat means an item's access group is again chosen by the platform at " +
+                "write time, from whatever entitlements the writing build carried. Scoping one is " +
+                "welcome — as a spec delta to architecture-guards, not a silent edit.",
+        )
+        assertTrue(
+            ("app.snapsync.deviceid" to "deviceid") in scoped,
+            "the device id must address its access group explicitly (capability device-identity)",
+        )
     }
 
     @Test

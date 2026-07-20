@@ -299,6 +299,25 @@ is a spec change to this requirement, deliberately):
   ever written to the Keychain again): the fallback is the installed base's update path under the
   ship-at-once model, and the pair's pin dies with the designated post-ship Stage-2 change that
   deletes the fallback (capability `event-rejoin-reconciliation`).
+- **Keychain access group** — the shared group the device-id item is addressed with (capability
+  `device-identity`). Pinned once in production Kotlin, and cross-checked against the **suffix**
+  declared in each of the two entitlements files together with `TEAM_ID` from `Config.xcconfig`:
+  the guard SHALL assert the Kotlin literal equals `<TEAM_ID>.` followed by the entitlements'
+  declared group, and that both entitlements files declare the same group. Drift here does not
+  fail loudly — the item is written to a *different real group*, both processes still read
+  successfully, and each simply reads a different item. That is the split-identity fault, which
+  is invisible to every existing gate and unrecoverable once written.
+- **The unscoped-Keychain inventory** — the guard SHALL pin, as an exact set, which Keychain seats
+  search **without** naming an access group. That set SHALL be
+  (`app.snapsync.config`, `eventconfig`), (`app.snapsync.attest`, `token`),
+  (`app.snapsync.attest`, `keyid`), (`app.snapsync.album`, `albummap`); and the device-id seat
+  SHALL NOT be in it. Unscoped search is bounded, not forbidden: the config reader requires it
+  (its job is finding an item an older build placed anywhere), while the attest pair and album map
+  remain unscoped deliberately — the attest token is demonstrably read cross-process today, and the
+  album map is a self-healing cache. What the pin forbids is a **new** unscoped seat appearing by
+  default, which is how implicit placement spread. Adding, removing, or re-scoping an entry is a
+  spec delta to this requirement. The config entry dies with the same Stage-2 change that deletes
+  the fallback.
 - **App-Group `NSUserDefaults` keys** `discovery.changeToken`, `rejoin.joinedEventId`,
   `app.snapsync.album.map`.
 - **Database filenames** `ledger.db`, `downloads.db`.
@@ -339,6 +358,25 @@ files.
 - **WHEN** an edit moves account `token` from service `app.snapsync.attest` to another service,
   leaving every individual string present somewhere
 - **THEN** the pair pin fails, because the (service, account) pair no longer matches
+
+#### Scenario: The access group disagrees with the entitlements
+
+- **WHEN** the Kotlin access-group literal, the group declared in the entitlements files, or
+  `TEAM_ID` are edited so they no longer compose to the same string, or the two entitlements
+  files declare different groups
+- **THEN** the pin guard fails, naming the Kotlin value and the composed entitlements value
+
+#### Scenario: A new unscoped Keychain seat appears
+
+- **WHEN** a production Keychain seat outside the pinned inventory is constructed without naming an
+  access group, or a pinned unscoped seat is silently re-scoped
+- **THEN** the guard fails, listing the expected and found inventories — implicit placement may only
+  change deliberately
+
+#### Scenario: The device id names its group
+
+- **WHEN** the guard classifies the device-id seat
+- **THEN** it is found among the seats that name an access group, never among the unscoped ones
 
 #### Scenario: A BGTask id diverges between Kotlin and Info.plist
 

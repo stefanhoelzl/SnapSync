@@ -136,8 +136,18 @@ constructs no writer.
 - **Keychain group `$(AppIdentifierPrefix)app.snapsync.shared`** (both `*.entitlements`): lets the
   extension read the shared Keychain items the app writes — the device id
   (`KeychainDeviceIdentity`), the attestation token (`KeychainAttestStore`), and the legacy config
-  item (read + leave-delete only, via `KeychainConfigReader`, until the post-ship Stage-2 change) — all of which
-  omit `kSecAttrAccessGroup` and rely on this default group. Keychain groups need **no** portal step.
+  item (read + leave-delete only, via `KeychainConfigReader`, until the post-ship Stage-2 change).
+  Keychain groups need **no** portal step. ⚠️ The **device id names this group explicitly**
+  (`kSecAttrAccessGroup`); declaring the entitlement is *not* sufficient. This entry used to read
+  "…all of which omit `kSecAttrAccessGroup` and rely on this default group", and that was false: with
+  no group named, the platform picks one **at write time** from the writing build's entitlements, so a
+  dev-signed build (whose profile grants the wildcard `<TEAM>.*`) writes into each process's own
+  `application-identifier` group instead. On 2026-07-20 the app and the extension therefore held two
+  different device ids — both reads succeeding — and the app re-imported every photo it had uploaded
+  as if a stranger had sent it. The attest pair and the album map remain unscoped deliberately (the
+  token is demonstrably read cross-process; the map is a self-healing cache), and the config reader
+  must stay unscoped because its job is finding an item an older build left anywhere. That inventory
+  is pinned in `:test:architecture` — a *new* unscoped seat fails the build.
 - **Associated domain `applinks:snapsync.stho.net`** (app entitlements only, via
   `$(ASSOCIATED_DOMAIN)`): claims the event link's Universal Link (capability `event-link`), which is
   how a Camera-scanned QR opens the app. Like App Groups (and unlike keychain groups) **it must be

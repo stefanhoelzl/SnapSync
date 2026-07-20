@@ -35,6 +35,7 @@ import platform.Security.SecItemDelete
 import platform.Security.SecItemUpdate
 import platform.Security.errSecItemNotFound
 import platform.Security.errSecSuccess
+import platform.Security.kSecAttrAccessGroup
 import platform.Security.kSecAttrAccessible
 import platform.Security.kSecAttrAccessibleAfterFirstUnlock
 import platform.Security.kSecAttrAccount
@@ -71,14 +72,33 @@ val ACCESSIBLE_AFTER_FIRST_UNLOCK: String =
  * `SecItem*` outside this module, so that "every Keychain item is background-readable" is provable
  * rather than merely intended).
  *
- * No `kSecAttrAccessGroup` is set: the app's `keychain-access-groups` entitlement declares the shared
- * group as its first entry, so items land in that shared group by default and the upload extension —
- * declaring the same entitlement — reads the same item. Sharing is purely an entitlement concern; no
- * team-id prefix is hardcoded.
+ * [accessGroup] names the Keychain access group **explicitly**, and every operation this class
+ * performs carries it — read, write, delete, and the accessibility migration alike. A partially
+ * scoped item is worse than an unscoped one: it would be written to one group and searched for in
+ * another.
+ *
+ * It is a parameter, and `null` (search and write wherever the platform decides) is still the
+ * default, because exactly one item legitimately wants that: the legacy config reader, whose whole
+ * job is to find an item an older build left *anywhere*. Everything else names its group.
+ *
+ * This used to read: *"No `kSecAttrAccessGroup` is set: the app's entitlement declares the shared
+ * group as its first entry, so items land there by default and the upload extension reads the same
+ * item."* That was false, and the device proved it. When no group is named the platform chooses one
+ * **at write time** from the entitlements of the build performing the write, so an item's group is a
+ * fact about its author, not about this contract. A build signed through the dev re-sign inherits the
+ * provisioning profile's wildcard grant (`<team>.*` — every Apple *development* profile grants it,
+ * because keychain groups need no portal registration and Apple cannot know which concrete groups are
+ * intended); a wildcard is not a writable group name, so writes fall back to each process's own
+ * `application-identifier` group. On 2026-07-20 the app and the upload extension therefore held two
+ * *different* device-id items, in two groups neither could see into, while **both reads reported
+ * success** — the app re-downloaded and re-imported every photo it had itself uploaded.
+ *
+ * Decision record: `changes/archive/2026-07-20-fix-split-device-identity`.
  */
 class IosKeychain(
     private val service: String,
     private val account: String,
+    private val accessGroup: String? = null,
 ) : Keychain {
 
     /**
@@ -170,11 +190,22 @@ class IosKeychain(
         CFRelease(deleteQuery)
     }
 
+    /**
+     * The (class, service, account) triple that identifies the item — plus [accessGroup] when one is
+     * named, which is what makes placement deterministic.
+     *
+     * Every operation is built from this one function (`read`, `write`'s add, `delete`, and
+     * `migrateAccessibility`'s update), so the group cannot be applied to some operations and not
+     * others. On an add it selects the destination group; on a search it narrows the scope to that
+     * group alone, instead of spanning every group the process is entitled to and returning whichever
+     * match the platform happens to surface first.
+     */
     private fun baseQuery(): CFMutableDictionaryRef {
         val dict = newDictionary()
         CFDictionaryAddValue(dict, kSecClass, kSecClassGenericPassword)
         CFDictionaryAddValue(dict, kSecAttrService, cfString(service))
         CFDictionaryAddValue(dict, kSecAttrAccount, cfString(account))
+        accessGroup?.let { CFDictionaryAddValue(dict, kSecAttrAccessGroup, cfString(it)) }
         return dict
     }
 
