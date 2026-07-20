@@ -31,6 +31,7 @@ import app.snapsync.flow.SilentPush
 import app.snapsync.model.Contribution
 import app.snapsync.model.EventConfig
 import app.snapsync.model.PermissionStatus
+import app.snapsync.model.grantsPhotoAccess
 import app.snapsync.model.UserCommands
 import app.snapsync.ports.AlbumManager
 import app.snapsync.ports.AlbumMapStore
@@ -239,6 +240,12 @@ class AppCore internal constructor(
     val uploadArm: UploadArm by lazy {
         UploadArm(
             producer = ports.uploadProducer(),
+            // GRANTED exactly, NOT `grantsPhotoAccess`: starting a producer under LIMITED would drive
+            // an autonomous library walk (the app-driven tier's start() runs a cycle), which
+            // `limited-photo-access` forbids. The permission-aware producer selection that arms
+            // uploads under LIMITED lands with the selection-driven read path (upload-lifecycle,
+            // "Exactly one producer started per process"); until then a LIMITED membership uploads
+            // nothing — receive-only, by design.
             isGranted = { ports.photoAccess.permission.value == PermissionStatus.GRANTED },
             membershipIncludesUpload = { ports.configSource.config.value?.direction?.includesUpload },
             log = ports.log,
@@ -374,7 +381,10 @@ class AppCore internal constructor(
             notifyLeave = ports.notifyLeave,
             saveConfig = { cfg -> ports.configStore.save(cfg) },
             refreshStatus = { refreshStatusSources() },
-            isGranted = { ports.photoAccess.permission.value == PermissionStatus.GRANTED },
+            // Usable access (`grantsPhotoAccess`): this gate feeds only ensureAlbum's granted
+            // parameter, and album creation works under a LIMITED grant (measured — capability
+            // `limited-photo-access`).
+            isGranted = { ports.photoAccess.permission.value.grantsPhotoAccess },
             fetchEventName = fetchEventName,
         )
     }

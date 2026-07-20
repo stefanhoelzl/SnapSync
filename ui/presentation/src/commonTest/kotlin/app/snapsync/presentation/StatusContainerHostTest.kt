@@ -573,6 +573,17 @@ class StatusContainerHostTest {
     }
 
     @Test
+    fun `a limited grant reduces from the snapshot and never to NeedsAccess`() = runTest {
+        // A partial grant is a working state (capability `limited-photo-access`): the selection defines
+        // the scope, so the settled snapshot reads In sync — not the permission-attention line.
+        val source = FakeSyncStatusSource(snapshot(completed = 34, total = 34))
+        val permission = FakePermissionSource(PermissionStatus.LIMITED)
+        val container = host(source, backgroundScope, permission = permission).container
+
+        assertEquals(inSync, container.stateFlow.value)
+    }
+
+    @Test
     fun `revoking permission mid-sync switches the status line to NeedsAccess`() = runTest {
         val source = FakeSyncStatusSource(snapshot(completed = 34, total = 34))
         val permission = FakePermissionSource(PermissionStatus.GRANTED)
@@ -1194,6 +1205,20 @@ class StatusContainerHostTest {
     fun `already-granted access skips the explainer`() = runTest {
         val requester = SpyRequester()
         firstJoinGate(PermissionStatus.GRANTED, requester).test(this) {
+            runOnCreate()
+            containerHost.onOpenUrl(encodeEventUrl(EventLinkPayload(EVENT_ID)))
+            expectState(UiState.JoiningEvent(EVENT_ID, JoinPhase.Ready("My Party", "2026-07-06T00:00:00Z")))
+            cancelAndIgnoreRemainingItems()
+        }
+        assertEquals(0, requester.requests)
+    }
+
+    @Test
+    fun `a limited grant skips the explainer`() = runTest {
+        // The grant exists — there is no dialog to explain (capability `join-event`): LIMITED goes
+        // straight to the confirm surface like GRANTED.
+        val requester = SpyRequester()
+        firstJoinGate(PermissionStatus.LIMITED, requester).test(this) {
             runOnCreate()
             containerHost.onOpenUrl(encodeEventUrl(EventLinkPayload(EVENT_ID)))
             expectState(UiState.JoiningEvent(EVENT_ID, JoinPhase.Ready("My Party", "2026-07-06T00:00:00Z")))

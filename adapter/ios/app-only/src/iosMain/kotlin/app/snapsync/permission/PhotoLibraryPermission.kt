@@ -12,6 +12,7 @@ import platform.Foundation.NSOperationQueue
 import platform.Foundation.NSURL
 import platform.Photos.PHAccessLevelReadWrite
 import platform.Photos.PHAuthorizationStatusAuthorized
+import platform.Photos.PHAuthorizationStatusLimited
 import platform.Photos.PHAuthorizationStatusNotDetermined
 import platform.Photos.PHPhotoLibrary
 import platform.UIKit.UIApplication
@@ -29,10 +30,10 @@ import platform.darwin.NSObjectProtocol
  * the app returning to the foreground (`UIApplicationDidBecomeActiveNotification`) as a refresh
  * ding, re-reading the status. Status changes from a `request()` arrive via the same source.
  *
- * v1 requires a **full** grant: `.limited`/`.denied`/`.restricted` all map to DENIED (so the screen
- * can never report "complete" over a partially-readable library); `.authorized` → GRANTED,
- * `.notDetermined` → NOT_DETERMINED. Access level is `.readWrite` (PhotoKit has no read-only level;
- * full-library access is what discovery and resource reads need).
+ * The mapping is faithful: `.authorized` → GRANTED (full library), `.limited` → LIMITED (the user's
+ * hand-picked selection — a first-class working grant, capability `limited-photo-access`),
+ * `.notDetermined` → NOT_DETERMINED, `.denied`/`.restricted` → DENIED. Access level is `.readWrite`
+ * (PhotoKit has no read-only level; it is what discovery, resource reads, and imports need).
  *
  * Requires `NSPhotoLibraryUsageDescription` in the app's Info.plist, or `request()` traps.
  */
@@ -67,8 +68,9 @@ class PhotoLibraryPermission : PhotoAccessStatusSource, PhotoAccessRequester {
     private fun read(): PermissionStatus =
         when (PHPhotoLibrary.authorizationStatusForAccessLevel(PHAccessLevelReadWrite)) {
             PHAuthorizationStatusAuthorized -> PermissionStatus.GRANTED
+            PHAuthorizationStatusLimited -> PermissionStatus.LIMITED
             PHAuthorizationStatusNotDetermined -> PermissionStatus.NOT_DETERMINED
-            // .limited, .denied, .restricted — anything short of full access gates the screen.
+            // .denied, .restricted — refused or unchangeable.
             else -> PermissionStatus.DENIED
         }
 }
