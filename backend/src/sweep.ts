@@ -32,13 +32,20 @@ import {
 import { eventIsStale, resolveMembership } from "./lifecycle.ts";
 import type { Config } from "./config.ts";
 
-/** What one sweep run did — printed as the GitHub Actions job's summary. */
+/** A count of storage objects plus their total size in bytes (summed from each entry's `Length`). */
+export type Tally = { count: number; bytes: number };
+
+/**
+ * What one sweep run did — rendered by {@link formatSummary} into the GitHub Actions job log. Three
+ * entity tiers, each split deleted/kept: EVENTS (markers + their manifests), DEVICES (a device's global
+ * config + attestation records — one device may own two objects, so this counts DEVICES, not records),
+ * and FILES (the stored resource byte objects). Files carry both a `count` and a real `bytes` total so
+ * the log shows how much storage was actually reclaimed, not just how many objects.
+ */
 export type SweepSummary = {
-  eventsScanned: number;
-  eventsDeleted: number;
-  bytesCollected: number;
-  deviceRecordsCollected: number;
-  bytesRetained: number;
+  events: { deleted: number; kept: number };
+  devices: { deleted: number; kept: number };
+  files: { deleted: Tally; kept: Tally };
   errors: number;
   dryRun: boolean;
 };
@@ -75,11 +82,9 @@ export async function runSweep(deps: SweepDeps): Promise<SweepSummary> {
   const { fetch: f, config, now, dryRun } = deps;
   const log = deps.log ?? console.log;
   const summary: SweepSummary = {
-    eventsScanned: 0,
-    eventsDeleted: 0,
-    bytesCollected: 0,
-    deviceRecordsCollected: 0,
-    bytesRetained: 0,
+    events: { deleted: 0, kept: 0 },
+    devices: { deleted: 0, kept: 0 },
+    files: { deleted: { count: 0, bytes: 0 }, kept: { count: 0, bytes: 0 } },
     errors: 0,
     dryRun,
   };
@@ -92,13 +97,13 @@ export async function runSweep(deps: SweepDeps): Promise<SweepSummary> {
   const surviving: { eventId: string; startsAtMs: number; entries: BunnyEntry[] | null }[] = [];
 
   for (const eventId of eventIds) {
-    summary.eventsScanned++;
     try {
       const marker = await readMarker(f, config, eventId);
       const stale = marker === null || eventIsStale(marker, now(), config.eventGraceSeconds);
       const entries = await listDir(f, config, deviceManifestDir(eventId));
       if (!stale) {
         surviving.push({ eventId, startsAtMs: ms(marker!.startsAt), entries });
+        summary.events.kept++;
         continue;
       }
       // STALE → notify members (best-effort, before the marker is gone), then delete marker + manifests.
@@ -106,7 +111,7 @@ export async function runSweep(deps: SweepDeps): Promise<SweepSummary> {
         log(
           `[dry-run] would delete event ${eventId} (${(entries ?? []).length} manifest object(s))`,
         );
-        summary.eventsDeleted++;
+        summary.events.deleted++;
         continue;
       }
       await deps.notify(eventId); // best-effort; never throws
@@ -114,7 +119,7 @@ export async function runSweep(deps: SweepDeps): Promise<SweepSummary> {
         await deleteObject(f, config, `${deviceManifestDir(eventId)}${e.ObjectName}`);
       }
       await deleteObject(f, config, markerKey(eventId)); // marker LAST — retryable if interrupted
-      summary.eventsDeleted++;
+      summary.events.deleted++;
       log(`deleted stale event ${eventId}`);
     } catch (e) {
       summary.errors++;
@@ -165,22 +170,26 @@ export async function runSweep(deps: SweepDeps): Promise<SweepSummary> {
         // The manifest names the DECODED object name (same as the union's completeness check), so decode
         // the stored `ObjectName` before comparing — a percent-encoded filename must still match.
         if (referenced.has(`${deviceId}/${decodeObjectName(e.ObjectName)}`)) {
-          summary.bytesRetained++;
+          summary.files.kept.count++;
+          summary.files.kept.bytes += e.Length;
           continue;
         }
         const uploadedMs = ms(e.LastChanged);
         // Retain when the upload time is unparseable (fail safe) or at/after the floor (a live upload).
         if (Number.isNaN(uploadedMs) || uploadedMs >= floor) {
-          summary.bytesRetained++;
+          summary.files.kept.count++;
+          summary.files.kept.bytes += e.Length;
           continue;
         }
         if (dryRun) {
           log(`[dry-run] would collect byte files/devices/${deviceId}/${e.ObjectName}`);
-          summary.bytesCollected++;
+          summary.files.deleted.count++;
+          summary.files.deleted.bytes += e.Length;
           continue;
         }
         await deleteObject(f, config, `${deviceDir(deviceId)}${e.ObjectName}`);
-        summary.bytesCollected++;
+        summary.files.deleted.count++;
+        summary.files.deleted.bytes += e.Length;
       }
     } catch (e) {
       summary.errors++;
@@ -188,8 +197,11 @@ export async function runSweep(deps: SweepDeps): Promise<SweepSummary> {
     }
   }
 
-  // Device-global records: collect config + attestation for devices in NO surviving event.
+  // Device-global records: config + attestation. A device owns up to two objects (`<id>.json` and
+  // `<id>.attest.json`), so group the `devices/` entries by deviceId and count DEVICES, not records —
+  // a device is KEPT iff it appears in a surviving event, else its every record is collected.
   const configEntries = await listDir(f, config, `devices/`);
+  const recordsByDevice = new Map<string, string[]>(); // deviceId → its record object name(s)
   for (const e of (configEntries ?? []).filter((e) => !e.IsDirectory)) {
     const name = e.ObjectName;
     // `<id>.attest.json` first (it also ends with `.json`), then `<id>.json`.
@@ -198,22 +210,80 @@ export async function runSweep(deps: SweepDeps): Promise<SweepSummary> {
       : name.endsWith(".json")
       ? name.slice(0, -".json".length)
       : null;
-    if (deviceId === null || inSurviving.has(deviceId)) continue;
+    if (deviceId === null) continue;
+    const records = recordsByDevice.get(deviceId);
+    if (records) records.push(name);
+    else recordsByDevice.set(deviceId, [name]);
+  }
+  for (const [deviceId, names] of recordsByDevice) {
+    if (inSurviving.has(deviceId)) {
+      summary.devices.kept++;
+      continue;
+    }
     try {
       if (dryRun) {
-        log(`[dry-run] would collect device record devices/${name}`);
-        summary.deviceRecordsCollected++;
+        for (const name of names) log(`[dry-run] would collect device record devices/${name}`);
+        summary.devices.deleted++;
         continue;
       }
-      await deleteObject(f, config, `devices/${name}`);
-      summary.deviceRecordsCollected++;
+      for (const name of names) await deleteObject(f, config, `devices/${name}`);
+      summary.devices.deleted++;
     } catch (err) {
       summary.errors++;
-      log(`device record devices/${name} collection failed (continuing): ${err}`);
+      log(`device ${deviceId} record collection failed (continuing): ${err}`);
     }
   }
 
   return summary;
+}
+
+/** Render a byte count as a human-readable size (`1.2 MB`); IEC-style, `< 1024` stays `N B`. */
+export function humanBytes(n: number): string {
+  if (n < 1024) return `${n} B`;
+  const units = ["KB", "MB", "GB", "TB", "PB"];
+  let v = n / 1024;
+  let i = 0;
+  while (v >= 1024 && i < units.length - 1) {
+    v /= 1024;
+    i++;
+  }
+  return `${v.toFixed(1)} ${units[i]}`;
+}
+
+/**
+ * Render a {@link SweepSummary} as an aligned, human-readable block for the job log — events, devices,
+ * and files each on one line, deleted vs kept, with files showing both object count and reclaimed size.
+ */
+export function formatSummary(s: SweepSummary): string {
+  const file = (t: Tally) => `${t.count} (${humanBytes(t.bytes)})`;
+  return [
+    `sweep summary${s.dryRun ? " (dry-run)" : ""}:`,
+    `  events    ${s.events.deleted} deleted   ${s.events.kept} kept`,
+    `  devices   ${s.devices.deleted} deleted   ${s.devices.kept} kept`,
+    `  files     ${file(s.files.deleted)} deleted   ${file(s.files.kept)} kept`,
+    `  errors    ${s.errors}`,
+  ].join("\n");
+}
+
+/**
+ * Render a {@link SweepSummary} as GitHub-flavoured Markdown for the Actions job **Summary** panel
+ * (`$GITHUB_STEP_SUMMARY`) — a table so the tiers render, not a collapsed paragraph. Same numbers as
+ * {@link formatSummary}; only the framing differs.
+ */
+export function markdownSummary(s: SweepSummary): string {
+  const file = (t: Tally) => `${t.count} (${humanBytes(t.bytes)})`;
+  return [
+    `## Nightly cleanup sweep${s.dryRun ? " (dry-run — nothing deleted)" : ""}`,
+    ``,
+    `| tier | deleted | kept |`,
+    `| --- | --- | --- |`,
+    `| events | ${s.events.deleted} | ${s.events.kept} |`,
+    `| devices | ${s.devices.deleted} | ${s.devices.kept} |`,
+    `| files | ${file(s.files.deleted)} | ${file(s.files.kept)} |`,
+    ``,
+    `**errors:** ${s.errors}`,
+    ``,
+  ].join("\n");
 }
 
 // ── Entry point (GitHub Actions) ────────────────────────────────────────────────────────────────────
@@ -246,7 +316,13 @@ if (import.meta.main) {
       notify,
       log: console.log,
     });
-    console.log(`sweep summary: ${JSON.stringify(summary)}`);
+    console.log(formatSummary(summary));
+    // On a GitHub Actions runner, also render the summary to the job's Summary panel (a Markdown table).
+    // The env var is absent locally, so this is a no-op off-CI and needs no write permission there.
+    const stepSummaryPath = Deno.env.get("GITHUB_STEP_SUMMARY");
+    if (stepSummaryPath) {
+      await Deno.writeTextFile(stepSummaryPath, markdownSummary(summary), { append: true });
+    }
   } catch (e) {
     console.error(`sweep: systemic failure — ${e}`);
     Deno.exit(1);
