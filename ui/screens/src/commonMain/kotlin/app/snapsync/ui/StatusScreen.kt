@@ -757,11 +757,18 @@ private fun JoinedLayer(
                 }
             },
         )
-        // The partial-grant resting affordance (capability `limited-photo-access`): present in every
+        // The partial-grant resting affordances (capability `limited-photo-access`): present in every
         // health, OUTSIDE the status-line slot — the selection is the membership's scope, and widening
-        // it is an ordinary action, not a problem to fix.
+        // it is an ordinary action, not a problem to fix. Two peer offers in fixed order: widen the
+        // selection (the cheaper step) above, switch the grant itself below. The second can only
+        // deep-link to Settings — no API re-raises the full-access dialog under a limited grant — and
+        // deliberately carries no interstitial consent: the label plus the OS-mediated toggle are the
+        // consent, and the widened scope stays bounded by the selection policy like any full grant.
         if (canChoosePhotos) {
-            SecondaryButton(label = "Choose more photos", onClick = onChoosePhotos)
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                SecondaryButton(label = "Choose more photos", onClick = onChoosePhotos)
+                SecondaryButton(label = "Allow full access", onClick = onOpenSettings)
+            }
         }
     }
 }
