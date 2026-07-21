@@ -1,0 +1,59 @@
+---
+// Shared page shell for the whole site (capability web-site): head, theme-color metas, header/brand,
+// footer. Both the landing page and the /join download page compose from this one layout so they can
+// never drift in brand, theme, or chrome. Zero off-origin subresources — the web-site self-containment
+// invariant applies to everything defined here.
+import "../styles/theme.css";
+interface Props {
+  title: string;
+  description?: string;
+}
+const { title, description = "Share the photos from an event — synced gallery to gallery." } = Astro.props;
+---
+
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#0E9D6B" media="(prefers-color-scheme: light)" />
+    <meta name="theme-color" content="#0C0E12" media="(prefers-color-scheme: dark)" />
+    <title>{title}</title>
+    <meta name="description" content={description} />
+  </head>
+  <body>
+    <header class="site-header">
+      <a class="brand" href="/">SnapSync</a>
+      <nav>
+        <a href="/#how">How it works</a>
+        <a href="/#privacy">Privacy</a>
+        <a href="/#terms">Terms</a>
+        <a href="https://github.com/stefanhoelzl/SnapSync/issues">Support</a>
+      </nav>
+    </header>
+
+    <main><slot /></main>
+
+    <footer class="site-footer">
+      <a class="brand" href="/">SnapSync</a>
+      <p>Share the photos from an event.</p>
+    </footer>
+
+    <style>
+      .site-header,
+      .site-footer {
+        display: flex;
+        align-items: center;
+        gap: 1.25rem;
+        max-width: var(--maxw);
+        margin: 0 auto;
+        padding: 1rem 1.25rem;
+      }
+      .site-header nav { display: flex; gap: 1.25rem; margin-left: auto; flex-wrap: wrap; }
+      .brand { font-weight: 700; text-decoration: none; color: var(--text); }
+      .site-footer { border-top: 1px solid var(--border); margin-top: 3rem; color: var(--muted); }
+      a { color: var(--text); text-decoration: none; }
+      nav a:hover { color: var(--green); }
+    </style>
+  </body>
+</html>

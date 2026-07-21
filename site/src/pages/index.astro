@@ -1,0 +1,53 @@
+---
+// The marketing landing page (capability marketing-site), built on the shared Layout. Screenshots are
+// processed at build time by astro:assets from the committed raw captures in the repo-root screenshots/
+// dir — the same source of truth the App Store listing is composited from — and emitted as fingerprinted,
+// same-origin assets (never inlined data: URIs, never off-origin).
+//
+// NOTE: this is the scaffold structure that settles the astro:assets toolchain; the full marketing copy,
+// Privacy (#privacy) and Terms (#terms) sections land in task 3.1.
+import { Image } from "astro:assets";
+import Layout from "../layouts/Layout.astro";
+
+import createLight from "../../../screenshots/create-light.png";
+import createDark from "../../../screenshots/create-dark.png";
+import joiningLight from "../../../screenshots/joining-light.png";
+import joiningDark from "../../../screenshots/joining-dark.png";
+import inSyncLight from "../../../screenshots/in_sync-light.png";
+import inSyncDark from "../../../screenshots/in_sync-dark.png";
+
+const screens = [
+  { light: createLight, dark: createDark, alt: "The SnapSync start screen, naming a new event and choosing when it begins." },
+  { light: joiningLight, dark: joiningDark, alt: "The join screen a scanned QR code opens, showing the event name and what will be shared." },
+  { light: inSyncLight, dark: inSyncDark, alt: "The event screen showing its QR code to share and an in-sync confirmation." },
+];
+---
+
+<Layout title="SnapSync — share the photos from an event">
+  <section class="hero">
+    <h1>Share the photos from an event.</h1>
+    <p>Join by scanning a QR. Your photos from the event are shared; everyone else's arrive in your gallery.</p>
+    <a class="cta" href="https://apps.apple.com/app/id6781692480">Get SnapSync</a>
+  </section>
+
+  <section id="screens" class="screens" aria-label="Screenshots of the app">
+    {screens.map((s) => (
+      <figure>
+        <Image src={s.light} alt={s.alt} width={440} height={956} class="light-only shot" loading="lazy" />
+        <Image src={s.dark} alt={s.alt} width={440} height={956} class="dark-only shot" loading="lazy" />
+      </figure>
+    ))}
+  </section>
+
+  <style>
+    .hero { max-width: var(--maxw); margin: 2rem auto; padding: 0 1.25rem; text-align: center; }
+    .hero h1 { font-size: clamp(1.8rem, 5vw, 3rem); }
+    .cta {
+      display: inline-block; margin-top: 1rem; padding: 0.7rem 1.4rem; border-radius: var(--radius);
+      background: var(--green); color: #fff; font-weight: 700; text-decoration: none;
+    }
+    .screens { display: flex; gap: 1rem; overflow-x: auto; padding: 1rem 1.25rem 2rem; max-width: var(--maxw); margin: 0 auto; }
+    .screens figure { margin: 0; flex: 0 0 auto; }
+    .shot { width: 220px; height: auto; border-radius: 24px; border: 1px solid var(--border); }
+  </style>
+</Layout>
