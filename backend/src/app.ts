@@ -2,6 +2,13 @@
 // `bunny-list-endpoint` + `device-config-endpoint` + `event-notify-endpoint` + `device-attestation`,
 // over the shared `backend-deployment`; pushes via `apns-push-sender`).
 //
+// VERSIONED PREFIX (capability `backend-deployment`): every device-API route below is served under the
+// canonical prefix `/api/v1` (e.g. `POST /api/v1/events`, `GET /api/v1/attest/challenge`) AND — for a
+// grace period — at the BARE path shown below as a DEPRECATED ALIAS, so already-installed apps (host baked
+// at compile time, not force-updatable) keep working. The paths documented here are written bare; read each
+// as also available under `/api/v1`. The web/link routes (`/`, `/join`, the AASA) stay at the ROOT only,
+// never under `/api/v1`. See `createApp` for the two mounts and how to end the grace period.
+//
 // EVERY ROUTE BELOW REQUIRES A DEVICE TOKEN (capability `device-attestation`) — obtainable only by
 // completing App Attest, so the API is callable by a genuine, unmodified SnapSync on a genuine Apple
 // device and by nothing else. Exactly four things are ungated, and the list is CLOSED: the three
@@ -850,8 +857,15 @@ export function createApp({ fetch: fetchImpl, config, now = Date.now }: Deps): H
   //     so the script cannot gate it even if it wanted to; and a 401 here would break the plain-PUT
   //     fallback the iOS uploader depends on.
   app.use("*", async (c, next) => {
-    const path = new URL(c.req.url).pathname;
     const method = c.req.method;
+    // Device-API routes are served under a versioned prefix (`/api/v1`, capability `backend-deployment`)
+    // AND — for the grace period — at the bare paths as a deprecated alias. Hono does NOT strip the mount
+    // prefix from the path accessors, so normalize a leading `/api/vN` away HERE, once, before the
+    // closed-list checks below. This is deliberately version-agnostic (`v\d+`): a future `/api/v2` mount is
+    // gated identically with no change here. `/api/v1` → `/`, `/api/v1/attest/x` → `/attest/x`.
+    const rawPath = new URL(c.req.url).pathname;
+    const stripped = rawPath.replace(/^\/api\/v\d+(?=\/|$)/, "");
+    const path = stripped === "" ? "/" : stripped;
     // Ungated (closed list): OPTIONS, the `/attest/*` token issuers, the public marketing page at
     // EXACTLY `/` (capability `marketing-site`), and the event link's two public routes (capability
     // `event-link`) — the AASA, which Apple's CDN and the device fetch with no Authorization header and
@@ -859,6 +873,8 @@ export function createApp({ fetch: fetchImpl, config, now = Date.now }: Deps): H
     // attestation. Every exception is exact-path and GET/HEAD-only — never a prefix, never a mutating
     // method — so no gated route can be reached through one. All three read no storage and carry no side
     // effect, so serving them unauthenticated grows neither the bill nor the storage this gate protects.
+    // (The web/link routes are served at the ROOT only, never under `/api/v1`; the normalization above
+    // matters only for `/attest/*`, the one ungated set that IS a device route reachable under the prefix.)
     const publicGet = path === "/" || path === "/join" ||
       path === "/.well-known/apple-app-site-association";
     if (
@@ -931,15 +947,28 @@ export function createApp({ fetch: fetchImpl, config, now = Date.now }: Deps): H
   // original link again.
   app.on(["GET", "HEAD"], "/join", (c) => c.redirect(config.appStoreUrl, 302));
 
+  // ── THE DEVICE API (capability `backend-deployment`) ────────────────────────────────────────────
+  //
+  // Every device-API route below is registered on this ONE sub-app, mounted twice: canonically under
+  // `/api/v1`, and — for a grace period — at the bare root paths as a DEPRECATED ALIAS so already-installed
+  // apps (whose device-facing host is baked at compile time and cannot be force-updated) keep working. The
+  // routing is version-parametric by construction: a future `/api/v2` is one more `app.route(...)` of a v2
+  // router, without touching v1. ENDING THE GRACE PERIOD is deleting the single bare-alias mount line at the
+  // end of `createApp` — nothing else. The web/link routes above stay at the ROOT, never under `/api/v1`.
+  //
+  // The gate (`app.use("*")`) runs for BOTH mounts (verified: Hono runs parent middleware for mounted
+  // sub-apps) and normalizes the `/api/vN` prefix, so the ungated `/attest/*` set holds under both forms.
+  const deviceApi = new Hono();
+
   // Issue a challenge. Stateless and self-authenticating (an HMAC over its own expiry), so this writes
   // NOTHING — the one route a stranger can call cannot grow the bill this gate exists to protect.
-  app.get("/attest/challenge", async (c) => {
+  deviceApi.get("/attest/challenge", async (c) => {
     c.header("Cache-Control", NO_CACHE);
     return c.json({ challenge: await mintChallenge(config, now()) });
   });
 
   // Attest: verify the attestation object, persist the attested public key, mint a token.
-  app.post("/attest/token", async (c) => {
+  deviceApi.post("/attest/token", async (c) => {
     let body: { deviceId?: string; keyId?: string; attestation?: string; challenge?: string };
     try {
       body = await c.req.json();
@@ -992,7 +1021,7 @@ export function createApp({ fetch: fetchImpl, config, now = Date.now }: Deps): H
 
   // Renew: verify an assertion against the stored key, mint a fresh token. No Apple round-trip, so this
   // is cheap enough for the app to attempt at EVERY wake rather than in a narrow window near expiry.
-  app.post("/attest/renew", async (c) => {
+  deviceApi.post("/attest/renew", async (c) => {
     let body: { deviceId?: string; assertion?: string; challenge?: string };
     try {
       body = await c.req.json();
@@ -1034,7 +1063,7 @@ export function createApp({ fetch: fetchImpl, config, now = Date.now }: Deps): H
   // let a stranger mint unbounded event markers). Beyond that gate it stays possession-is-
   // capability model). Validates the name, mints a server-side UUID, and writes the marker. Faithful
   // outcome: 201 only after bunny confirms the marker store; any upstream failure → 502.
-  app.post("/events", async (c) => {
+  deviceApi.post("/events", async (c) => {
     let body: unknown;
     try {
       body = await c.req.json();
@@ -1088,7 +1117,7 @@ export function createApp({ fetch: fetchImpl, config, now = Date.now }: Deps): H
   // reaped on this touch and indistinguishable from absent); a non-404 marker read failure → 502. This
   // is the canonical existence check the device-manifest write gate relies on. An event in GRACE still
   // serves its metadata: it exists for its members; only joining is closed (at the manifest PUT).
-  app.get("/events/:eventId", async (c) => {
+  deviceApi.get("/events/:eventId", async (c) => {
     const eventId = c.req.param("eventId");
     if (!validateUUID(eventId)) {
       return c.text("invalid event", 400);
@@ -1115,7 +1144,7 @@ export function createApp({ fetch: fetchImpl, config, now = Date.now }: Deps): H
   // read-then-write without coordination (bunny has no compare-and-set): concurrent first enrollments
   // may transiently overshoot, accepted — what is guaranteed is that a request OBSERVING the event at
   // capacity admits no new device.
-  app.put("/events/:eventId/devices/:deviceId", async (c) => {
+  deviceApi.put("/events/:eventId/devices/:deviceId", async (c) => {
     const eventId = c.req.param("eventId");
     const deviceId = c.req.param("deviceId");
     if (!validateUUID(eventId) || !validateUUID(deviceId)) {
@@ -1175,7 +1204,7 @@ export function createApp({ fetch: fetchImpl, config, now = Date.now }: Deps): H
   // config. Idempotent + leak-safe: the `.left.json` is written BEFORE the active is deleted, and every
   // delete of an absent object is a no-op, so a duplicate/retried DELETE re-runs harmlessly. Any
   // transport failure anywhere in the cascade → 502.
-  app.delete("/events/:eventId/devices/:deviceId", async (c) => {
+  deviceApi.delete("/events/:eventId/devices/:deviceId", async (c) => {
     const eventId = c.req.param("eventId");
     const deviceId = c.req.param("deviceId");
     if (!validateUUID(eventId) || !validateUUID(deviceId)) {
@@ -1244,7 +1273,7 @@ export function createApp({ fetch: fetchImpl, config, now = Date.now }: Deps): H
   // asset list is trusted as-is (no re-filtering). Faithful: any non-404 read failure anywhere in the
   // fan-out (incl. a manifest JSON parse failure) → 502, never a partial union; a per-device file dir
   // 404 is "no bytes" (every asset incomplete), not a failure. The 200 response is non-cacheable.
-  app.get("/events/:eventId/files", async (c) => {
+  deviceApi.get("/events/:eventId/files", async (c) => {
     const eventId = c.req.param("eventId");
     if (!validateUUID(eventId)) {
       return c.text("invalid event", 400);
@@ -1318,7 +1347,7 @@ export function createApp({ fetch: fetchImpl, config, now = Date.now }: Deps): H
   // dir; each direct-child object becomes one `{ filename, size, url }`. No manifest read, no
   // completeness, no event gate — the app computes completeness from the gallery enumeration seam ×
   // this list. A non-UUID id → 400; any other method / unmatched path → Hono's 404.
-  app.get("/files/devices/:deviceId", async (c) => {
+  deviceApi.get("/files/devices/:deviceId", async (c) => {
     const deviceId = c.req.param("deviceId");
     if (!validateUUID(deviceId)) {
       return c.text("invalid device", 400);
@@ -1354,7 +1383,7 @@ export function createApp({ fetch: fetchImpl, config, now = Date.now }: Deps): H
   // JSON body into one bunny native PUT at `devices/<deviceId>.json`. Faithful: 201 only on a
   // confirmed store; last-write-wins (a rotated token overwrites). The config is a flat sibling OUTSIDE
   // the `files/devices/<deviceId>/` byte partition, so it never appears in the per-device list or the union.
-  app.put("/devices/:deviceId", async (c) => {
+  deviceApi.put("/devices/:deviceId", async (c) => {
     const deviceId = c.req.param("deviceId");
     if (!validateUUID(deviceId)) {
       return c.text("invalid device", 400);
@@ -1390,7 +1419,7 @@ export function createApp({ fetch: fetchImpl, config, now = Date.now }: Deps): H
   // route's `eventId` in its payload to the rest. Per-member read/send failures never fail the request
   // — always a bare 202 once the marker gate passed and members were enumerated. Server-chosen payload
   // (the path event id), all members, no exclusion; the uploader fires this via `upload-completion-notify`.
-  app.post("/events/:eventId/notify", async (c) => {
+  deviceApi.post("/events/:eventId/notify", async (c) => {
     const eventId = c.req.param("eventId");
     if (!validateUUID(eventId)) {
       return c.text("invalid event", 400);
@@ -1432,6 +1461,12 @@ export function createApp({ fetch: fetchImpl, config, now = Date.now }: Deps): H
   });
 
   // Mount the per-device byte object routes; any unmatched path or wrong method → Hono's 404.
-  app.route("/files/devices/:deviceId/:filename", byteFile);
+  deviceApi.route("/files/devices/:deviceId/:filename", byteFile);
+
+  // Mount the device API under the canonical versioned prefix, and — for the grace period — at the bare
+  // root paths as a DEPRECATED ALIAS. Both are gated by the one `app.use("*")` above (which normalizes the
+  // `/api/vN` prefix). To END THE GRACE PERIOD, delete the bare-alias mount line below; nothing else changes.
+  app.route("/api/v1", deviceApi); // canonical
+  app.route("/", deviceApi); // deprecated bare alias — DELETE to end the grace period
   return app;
 }

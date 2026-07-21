@@ -1,5 +1,10 @@
 import { assert, assertEquals } from "@std/assert";
-import { classifyEvent, createApp as createRealApp, type Deps, type FetchLike } from "../src/app.ts";
+import {
+  classifyEvent,
+  createApp as createRealApp,
+  type Deps,
+  type FetchLike,
+} from "../src/app.ts";
 import { mintToken } from "../src/attest.ts";
 
 // The whole API is gated on a device token (capability `device-attestation`), so every request in this
@@ -1401,7 +1406,10 @@ Deno.test("classifyEvent → a marker missing any limit field is expired (legacy
   assertEquals(classifyEvent(noCap, nowMs, GRACE_S).phase, "expired");
   assertEquals(classifyEvent(noStarts, nowMs, GRACE_S).phase, "expired");
   // An unparseable endsAt (not producible by our own mint) fails closed the same way.
-  assertEquals(classifyEvent({ ...MARKER_BODY, endsAt: "nonsense" }, nowMs, GRACE_S).phase, "expired");
+  assertEquals(
+    classifyEvent({ ...MARKER_BODY, endsAt: "nonsense" }, nowMs, GRACE_S).phase,
+    "expired",
+  );
 });
 
 Deno.test("classifyEvent → live/grace narrow to a complete marker (all limit fields present)", () => {
@@ -1447,7 +1455,10 @@ Deno.test("enroll → a KNOWN device passes the capacity check at capacity (mani
     [`events/${E}/devices/${D}.json`]: { json: mkManifest(D, "A", "A-primary.heic") },
     [`events/${E}/devices/${D2}.json`]: { json: mkManifest(D2, "B", "B-primary.heic") },
   });
-  assertEquals((await manifestPut(createApp({ config: CONFIG, fetch: fetchImpl }), E, D)).status, 201);
+  assertEquals(
+    (await manifestPut(createApp({ config: CONFIG, fetch: fetchImpl }), E, D)).status,
+    201,
+  );
 });
 
 Deno.test("enroll → a rejoin reuses the departed device's own slot at capacity", async () => {
@@ -1504,8 +1515,12 @@ Deno.test("expiry → first touch reaps: silent push to ACTIVE members, then eve
     [`events/${E}/devices/${D}.json`]: { json: mkManifest(D, "A", "A-primary.heic") },
     [`events/${E}/devices/${D2}.left.json`]: { json: mkManifest(D2, "B", "B-primary.heic") },
     [`files/devices/${D}/A-primary.heic`]: { json: {} },
-    [`devices/${D}.json`]: { json: { pushToken: { kind: "apns", token: "TOKA", env: "production" } } },
-    [`devices/${D2}.json`]: { json: { pushToken: { kind: "apns", token: "TOKB", env: "sandbox" } } },
+    [`devices/${D}.json`]: {
+      json: { pushToken: { kind: "apns", token: "TOKA", env: "production" } },
+    },
+    [`devices/${D2}.json`]: {
+      json: { pushToken: { kind: "apns", token: "TOKB", env: "sandbox" } },
+    },
   });
   const res = await createApp({ config, fetch: fetchImpl }).request(`/events/${E}`);
   assertEquals(res.status, 404); // answered as absent
@@ -1538,7 +1553,9 @@ Deno.test("expiry → a push fan-out failure does not block the reap", async () 
   const { store, fetchImpl } = storageFake({
     [`events/${E}/metadata.json`]: { json: EXPIRED_MARKER },
     [`events/${E}/devices/${D}.json`]: { json: mkManifest(D, "A", "A-primary.heic") },
-    [`devices/${D}.json`]: { json: { pushToken: { kind: "apns", token: "TOKA", env: "production" } } },
+    [`devices/${D}.json`]: {
+      json: { pushToken: { kind: "apns", token: "TOKA", env: "production" } },
+    },
   });
   const res = await createApp({ config: CONFIG, fetch: fetchImpl }).request(`/events/${E}`);
   assertEquals(res.status, 404);
@@ -1546,12 +1563,14 @@ Deno.test("expiry → a push fan-out failure does not block the reap", async () 
 });
 
 Deno.test("expiry → every event-scoped route triggers the reap and answers as absent", async () => {
-  for (const touch of [
-    (app: ReturnType<typeof createApp>) => manifestPut(app, E, G),
-    (app: ReturnType<typeof createApp>) => app.request(`/events/${E}/files`),
-    (app: ReturnType<typeof createApp>) => app.request(`/events/${E}/notify`, { method: "POST" }),
-    (app: ReturnType<typeof createApp>) => del(app, E, D),
-  ]) {
+  for (
+    const touch of [
+      (app: ReturnType<typeof createApp>) => manifestPut(app, E, G),
+      (app: ReturnType<typeof createApp>) => app.request(`/events/${E}/files`),
+      (app: ReturnType<typeof createApp>) => app.request(`/events/${E}/notify`, { method: "POST" }),
+      (app: ReturnType<typeof createApp>) => del(app, E, D),
+    ]
+  ) {
     const { store, fetchImpl } = storageFake({
       [`events/${E}/metadata.json`]: { json: EXPIRED_MARKER },
       [`events/${E}/devices/${D}.json`]: { json: mkManifest(D, "A", "A-primary.heic") },
@@ -1598,4 +1617,42 @@ Deno.test("expiry → an interrupted reap keeps the marker and completes on the 
   failing.clear();
   assertEquals((await app.request(`/events/${E}`)).status, 404); // next touch completes the reap
   assertEquals([...store.keys()], []);
+});
+// ── The versioned prefix mirrors the bare paths (capability `backend-deployment`) ────────────────────
+
+Deno.test("prefix: /api/v1 device routes resolve identically to the bare paths", async () => {
+  // Byte upload (UNGATED, event-independent): same status, same single upstream object PUT.
+  for (const p of [BYTE_PATH, `/api/v1${BYTE_PATH}`]) {
+    const { calls, fetchImpl } = recorder();
+    const res = await createApp({ config: CONFIG, fetch: fetchImpl }).request(p, {
+      method: "PUT",
+      body: "hello-bytes",
+      headers: { "content-type": "image/jpeg" },
+    });
+    assertEquals(res.status, 201, p);
+    assertEquals(calls.length, 1, p);
+    assertEquals(putCall(calls).url, BYTE_OBJ_URL, p); // upstream key is prefix-independent
+  }
+
+  // Event create: same 201, same marker returned (the server mints the id, so compare shape not id).
+  for (const p of ["/events", "/api/v1/events"]) {
+    const { fetchImpl } = recorder();
+    const res = await createApp({ config: CONFIG, fetch: fetchImpl }).request(p, {
+      method: "POST",
+      body: JSON.stringify({ name: "Party", startsAt: STARTS_AT }),
+      headers: { "content-type": "application/json" },
+    });
+    assertEquals(res.status, 201, p);
+    const marker = await res.json() as { name: string; startsAt: string };
+    assertEquals(marker.name, "Party", p);
+    assertEquals(marker.startsAt, STARTS_AT, p);
+  }
+
+  // Event metadata read (gated on the marker): same 200, same marker body under both forms.
+  for (const p of [`/events/${E}`, `/api/v1/events/${E}`]) {
+    const { fetchImpl } = recorder({ marker: "present" });
+    const res = await createApp({ config: CONFIG, fetch: fetchImpl }).request(p);
+    assertEquals(res.status, 200, p);
+    assertEquals((await res.json() as { eventId: string }).eventId, E, p);
+  }
 });

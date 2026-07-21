@@ -307,6 +307,55 @@ Deno.test("gate: a gated GET is never cacheable (the pull zone does not vary on 
   assertEquals(res.headers.get("Cache-Control"), "no-store, no-cache, max-age=0");
 });
 
+// ── The versioned prefix (capability `backend-deployment`) ──────────────────────────────────────────
+//
+// Device-API routes are served under `/api/v1` (canonical) AND the bare paths (deprecated grace alias).
+// The gate normalizes the `/api/vN` prefix, so it must hold IDENTICALLY under both forms — including the
+// one ungated set that IS a device route reachable through the prefix, `/attest/*`. Web/link paths are
+// NOT served under `/api/v1`.
+
+Deno.test("gate: EVERY route refuses an unauthenticated request UNDER /api/v1, and touches no storage", async () => {
+  for (const [path, init] of GATED) {
+    const { calls, app: a } = app();
+    const res = await a.request(`/api/v1${path}`, init);
+    assertEquals(res.status, 401, `${init.method ?? "GET"} /api/v1${path} was not gated`);
+    assertEquals(
+      calls.length,
+      0,
+      `${init.method ?? "GET"} /api/v1${path} touched storage while unauthenticated`,
+    );
+  }
+});
+
+Deno.test("gate: EVERY route accepts a valid token UNDER /api/v1", async () => {
+  for (const [path, init] of GATED) {
+    const { app: a } = app({
+      [`events/${E}/metadata.json`]: JSON.stringify({ eventId: E, name: "x", createdAt: "t" }),
+    });
+    const res = await a.request(`/api/v1${path}`, { ...init, headers: bearer });
+    assert(res.status !== 401, `${init.method ?? "GET"} /api/v1${path} rejected a VALID token`);
+  }
+});
+
+Deno.test("gate: the /api/v1/attest/* issuers need no token (the ungated set holds under the prefix)", async () => {
+  const { calls, app: a } = app();
+  const res = await a.request("/api/v1/attest/challenge");
+  assertEquals(res.status, 200); // NOT 401 — else token issuance dead-locks under the prefix
+  const { challenge } = await res.json() as { challenge: string };
+  assert(await challengeIsValid(CONFIG, challenge, NOW));
+  assertEquals(calls.length, 0); // and, like the bare form, it writes nothing
+});
+
+Deno.test("gate: web/link paths are NOT served under /api/v1 (they stay at the root)", async () => {
+  const { app: a } = app();
+  // Each is served at the ROOT (covered above) but must not resolve under the API prefix. The gate
+  // normalizes `/api/v1/join` → `/join` and admits it (ungated), but no route is mounted there → 404 —
+  // never the root's 200/302.
+  assertEquals((await a.request("/api/v1/")).status, 404);
+  assertEquals((await a.request("/api/v1/join")).status, 404);
+  assertEquals((await a.request("/api/v1/.well-known/apple-app-site-association")).status, 404);
+});
+
 // ── The attest routes ─────────────────────────────────────────────────────────────────────────────
 
 Deno.test("attest: the challenge route needs no token and writes nothing", async () => {

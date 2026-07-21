@@ -48,7 +48,14 @@ ASSOCIATED_DOMAIN = applinks:snapsync.stho.net
 // workflow_dispatch `upload_host` is supplied, which must be HTTPS). Must be HTTPS: default ATS
 // (HTTPS-only) applies — no NSAllowsLocalNetworking exception ships. The `$()` splits the `//` so
 // xcconfig does not treat the rest of the line as a comment (CLI overrides need no such trick).
-BACKGROUND_UPLOAD_URL_BASE = https:/$()/snapsync.stho.net
+// The trailing `/api/v1` is the VERSIONED API PREFIX (capability `backend-deployment`): every device
+// client interpolates `$base/…` from this one value, so folding the prefix in here targets `/api/v1` for
+// uploads, event creation, listings, enrollment, leave, directory, device config, notify, push, and
+// attest at once. The backend also serves the BARE paths as a deprecated grace alias, so an installed app
+// baked WITHOUT the prefix keeps working. (The event link's separate LINK_ORIGIN carries no prefix. A
+// workflow_dispatch `upload_host` override that points at a custom rig should include `/api/v1` too, or it
+// exercises only the bare alias.)
+BACKGROUND_UPLOAD_URL_BASE = https:/$()/snapsync.stho.net/api/v1
 // APNs environment (capability `push-registration`). APS_ENVIRONMENT drives the aps-environment
 // entitlement; APNS_ENV is baked into Info.plist and read by the app so its device config reports which
 // APNs host the token belongs to. They MUST agree: `development`+`sandbox` for a plain local/dev build
