@@ -18,6 +18,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import app.snapsync.model.Direction
+import app.snapsync.model.EventConfig
 import app.snapsync.model.PermissionStatus
 import app.snapsync.presentation.CutoffFormatter
 import app.snapsync.presentation.JoinPhase
@@ -66,6 +67,7 @@ import app.snapsync.ui.components.LeaveButton
 import app.snapsync.ui.components.PrimaryButton
 import app.snapsync.ui.components.ScreenLayout
 import app.snapsync.ui.components.SecondaryButton
+import app.snapsync.ui.components.SettingsButton
 import app.snapsync.ui.components.ShareButton
 import app.snapsync.ui.components.StatusHero
 import app.snapsync.ui.components.StatusHint
@@ -78,6 +80,15 @@ fun StatusScreen(
     onOpenSettings: () -> Unit = {},
     onLeaveEvent: () -> Unit = {},
     onShareInvite: () -> Unit = {},
+    // The joined membership's current settings, for the in-place reconfigure surface (capability
+    // `reconfigure-membership`); null when no event is configured. The settings gear opens a full-screen
+    // surface pre-filled from this, and Save fires [onReconfigure]. A screen param like [inviteUrl] —
+    // opening/closing the surface is screen-local navigation, so no external "open" callback is threaded.
+    membership: EventConfig? = null,
+    // Commit an in-place reconfigure (capability `reconfigure-membership`): the event the surface was
+    // opened for, the new direction, the chosen cutoff (clamped to the floor on the far side, in
+    // `ReconfigureEvent`), and the album opt-in.
+    onReconfigure: (String, Direction, String, Boolean) -> Unit = { _, _, _, _ -> },
     inviteUrl: String? = null,
     // The joined event's name (fetched by id), shown as the heading; null until fetched.
     eventName: String? = null,
@@ -107,12 +118,27 @@ fun StatusScreen(
     AppTheme {
         // Local UI state only: the confirm dialog's visibility never enters UiState or the reduction.
         var confirmingLeave by remember { mutableStateOf(false) }
+        // The reconfigure surface's visibility is likewise screen-local navigation (capability
+        // `reconfigure-membership`, design decision "local Compose navigation"): opening it touches no
+        // port; only Save fires a command. Like [confirmingLeave], it never enters UiState.
+        var reconfiguring by remember { mutableStateOf(false) }
 
-        // The invite + leave affordances live in the joined layer (config present) — any health,
-        // including NeedsAccess: sharing needs no photo access. Loading and the create layer show none.
         val joined = state is UiState.Joined
-        val bottomActions: (@Composable () -> Unit)? = if (joined) {
+        val pendingSwitch = (state as? UiState.Joined)?.pendingSwitch != null
+        // The reconfigure surface renders only while joined with a known membership; if the config drops
+        // (a leave lands) the flag is reset so a later rejoin does not reopen it.
+        val reconfigureActive = joined && reconfiguring && membership != null
+        LaunchedEffect(joined) { if (!joined) reconfiguring = false }
+
+        // The joined-layer action cluster: settings · share · leave. Settings is suppressed during a
+        // pending switch (a reconfigure must not race the switch's config write) and needs a known
+        // membership; sharing needs no photo access, and leave always shows. Hidden while the reconfigure
+        // surface is open (it pins its own Save/Cancel). Loading and the create layer show none.
+        val bottomActions: (@Composable () -> Unit)? = if (joined && !reconfigureActive) {
             {
+                if (!pendingSwitch && membership != null) {
+                    SettingsButton(description = "Event settings", onClick = { reconfiguring = true })
+                }
                 if (inviteUrl != null) {
                     ShareButton(description = "Share invite link", onClick = onShareInvite)
                 }
@@ -125,14 +151,24 @@ fun StatusScreen(
         // The app-name nav label is always "SnapSync"; the joined event's name is the prominent heading.
         ScreenLayout(
             title = "SnapSync",
-            heading = if (joined) eventName else null,
+            heading = if (joined && !reconfigureActive) eventName else null,
             bottomActions = bottomActions,
-            // Every join phase pins Cancel (and, on Ready, Join) as its own full-width bottom
-            // cluster, so the whole JoiningEvent branch takes the safe-area-anchored bottom edge —
-            // Cancel then sits at one height across Loading → Ready with no jump.
-            contentPinsActionCluster = state is UiState.JoiningEvent,
+            // Every join phase pins Cancel (and, on Ready, Join) as its own full-width bottom cluster; the
+            // reconfigure surface likewise pins its own Save/Cancel — so both take the safe-area-anchored
+            // bottom edge with no jump.
+            contentPinsActionCluster = state is UiState.JoiningEvent || reconfigureActive,
         ) {
-            when (state) {
+            if (reconfigureActive) {
+                ReconfigureScreen(
+                    membership = membership!!,
+                    cutoff = cutoff,
+                    onSave = { eventId, direction, chosenCutoff, saveToAlbum ->
+                        reconfiguring = false
+                        onReconfigure(eventId, direction, chosenCutoff, saveToAlbum)
+                    },
+                    onCancel = { reconfiguring = false },
+                )
+            } else when (state) {
                 is UiState.CreateEvent ->
                     CreateEventScreen(state, onCreateEvent, transientError, cutoff)
                 UiState.CreatingEvent ->
@@ -626,6 +662,156 @@ private fun ReadyLayout(
                 )
             }
             PrimaryButton(label = "Join", onClick = onJoin, enabled = joinEnabled)
+            SecondaryButton(label = "Cancel", onClick = onCancel)
+        }
+    }
+}
+
+/**
+ * The **reconfigure** surface (capability `reconfigure-membership`): a joined member re-opens the three
+ * participation settings they picked at join — the two switches (Share / Receive → direction), the
+ * capture-date cutoff, and the album opt-in — and changes them **in place**, without leaving.
+ *
+ * It reuses the exact join controls ([AppToggleSection], [AppCutoffChoices], [AppMinorSection]) so there
+ * is one decision surface, differing only in that it is **pre-filled** from the current [membership] and
+ * commits with **Save** (not Join) beneath a read-only event-name header.
+ *
+ * The cutoff preset is **reconstructed** from the persisted value, which is lossy by construction: the
+ * join UI's presets are not persisted, only the resulting instant, so `minPhotoDate == startsAt` seeds
+ * **Event start** and anything above it seeds **Custom** — the original "Now" pick is unrecoverable
+ * (design decision "cutoff pre-fill reconstruction"). The chosen cutoff is re-clamped to the `startsAt`
+ * floor on the far side, in `ReconfigureEvent`.
+ *
+ * Consequences are surfaced as **inline helper text**, never a blocking dialog (Save is the confirmation):
+ * turning the album on states it is forward-only (no backfill), and a standing line states that a change
+ * never retracts photos already shared or received. Both switches off disables Save with a stated reason,
+ * exactly as the join surface disables Join.
+ */
+@Composable
+private fun ReconfigureScreen(
+    membership: EventConfig,
+    cutoff: CutoffFormatter,
+    onSave: (String, Direction, String, Boolean) -> Unit,
+    onCancel: () -> Unit,
+) {
+    var shareOn by remember { mutableStateOf(membership.direction.includesUpload) }
+    var receiveOn by remember { mutableStateOf(membership.direction.includesDownload) }
+    // Reconstruct the preset from the persisted cutoff: at the floor → Event start; above it → Custom.
+    val seededAtFloor = membership.minPhotoDate == membership.startsAt
+    var chosenPreset by remember {
+        mutableStateOf(if (seededAtFloor) CutoffChoice.EVENT_START else CutoffChoice.CUSTOM)
+    }
+    var customValue by remember {
+        mutableStateOf(if (seededAtFloor) null else cutoff.toLocal(membership.minPhotoDate))
+    }
+    var chosenSaveToAlbum by remember { mutableStateOf(membership.saveToAlbum) }
+
+    // Same derivation as the join surface (`JoiningEventScreen`), seeded from the membership's `startsAt`.
+    val eventStart: LocalDateTime = cutoff.toLocal(membership.startsAt) ?: cutoff.nowLocal()
+    val nowLocal: LocalDateTime = cutoff.nowLocal()
+    val eventHasStarted: Boolean = cutoff.toCutoff(eventStart) <= cutoff.nowCutoff()
+    val customResolved: LocalDateTime =
+        (customValue ?: eventStart).let { if (it < eventStart) eventStart else it }
+    val resulting: LocalDateTime = when {
+        chosenPreset == CutoffChoice.CUSTOM -> customResolved
+        chosenPreset == CutoffChoice.EVENT_START || !eventHasStarted -> eventStart
+        else -> nowLocal
+    }
+    val chosenCutoff: String = cutoff.toCutoff(resulting)
+    val chosenDirection: Direction = when {
+        shareOn && receiveOn -> Direction.Both
+        shareOn -> Direction.UploadOnly
+        else -> Direction.DownloadOnly
+    }
+    val saveEnabled: Boolean = shareOn || receiveOn
+
+    Column(modifier = Modifier.fillMaxSize()) {
+        Column(
+            modifier = Modifier
+                .weight(1f)
+                .fillMaxWidth()
+                .verticalScroll(rememberScrollState()),
+            verticalArrangement = Arrangement.spacedBy(14.dp),
+        ) {
+            // Read-only header: which event's settings these are.
+            AppEventHeaderCompact(title = membership.name, subtitle = "Event settings")
+
+            AppToggleSection(
+                title = "Share my photos",
+                checked = shareOn,
+                onCheckedChange = { shareOn = it },
+            ) {
+                if (shareOn) {
+                    AppSectionNote(
+                        "Screenshots, screen recordings, GIFs and pictures saved from chat apps are " +
+                            "never shared.",
+                    )
+                    AppSectionValue("Shared from ${appDateTimeLabel(resulting)}")
+                    AppSubSection {
+                        AppCutoffChoices(
+                            selected = chosenPreset,
+                            onSelect = { chosenPreset = it },
+                            nowAvailable = eventHasStarted,
+                            customValue = customResolved,
+                            onCustomPicked = {
+                                customValue = it
+                                chosenPreset = CutoffChoice.CUSTOM
+                            },
+                            minimum = eventStart,
+                            floorNote = "Can't be earlier than the event started, " +
+                                "${appDateTimeLabel(eventStart)}.",
+                        )
+                    }
+                } else {
+                    AppSectionNote("Nothing of yours leaves this phone.")
+                }
+            }
+
+            AppToggleSection(
+                title = "Receive everyone's photos",
+                checked = receiveOn,
+                onCheckedChange = { receiveOn = it },
+            ) {
+                if (receiveOn) {
+                    AppSectionNote("Photos others share arrive in your library automatically.")
+                } else {
+                    AppSectionNote("You won't receive the event's photos.")
+                }
+            }
+
+            AppMinorSection {
+                AppSummaryToggle(
+                    label = "Create an album",
+                    checked = chosenSaveToAlbum,
+                    onCheckedChange = { chosenSaveToAlbum = it },
+                    // Forward-only (capability `reconfigure-membership`): already-synced photos are not
+                    // retroactively gathered, so the on-note says so plainly.
+                    note = if (chosenSaveToAlbum) {
+                        "Photos are collected in an album named after the event. Only photos synced " +
+                            "from now on are added."
+                    } else {
+                        "No album is created."
+                    },
+                    divider = false,
+                )
+            }
+        }
+        Column(
+            modifier = Modifier.fillMaxWidth(),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            // Standing consequence line: a change is forward-only and never retracts what already synced.
+            StatusHint("Changes apply from now on — photos already shared or received stay.")
+            if (!saveEnabled) {
+                StatusHint(
+                    "Turn on sharing or receiving — a membership that does neither does nothing.",
+                )
+            }
+            PrimaryButton(
+                label = "Save",
+                onClick = { onSave(membership.eventId, chosenDirection, chosenCutoff, chosenSaveToAlbum) },
+                enabled = saveEnabled,
+            )
             SecondaryButton(label = "Cancel", onClick = onCancel)
         }
     }

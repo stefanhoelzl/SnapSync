@@ -42,11 +42,12 @@ Decision record: `changes/archive/2026-07-06-add-join-date-cutoff` (the cutoff);
 
 The system SHALL support a **capture-date cutoff** that scopes a device's participation in an event to
 photos taken at or after a chosen instant. The cutoff SHALL be **per-device** and **per-membership**: it
-is the joining device's own choice for its membership in a specific event, chosen at join time, and it
-SHALL NOT be sent to the backend. In v1 the cutoff SHALL be **immutable after join** (set once at the
-confirm; changed only by leaving and re-joining). The cutoff SHALL be carried on the per-event membership
-state (v1: the single persisted `EventConfig`; the data model SHALL be shaped so a future set of
-memberships each carries its own cutoff without relocating the field).
+is the joining device's own choice for its membership in a specific event, first set at join time, and it
+SHALL NOT be sent to the backend. The cutoff SHALL be **changeable in place after join** via
+`reconfigure-membership` — never by re-scanning (re-provisioning an already-joined event remains a no-op) —
+and any changed value SHALL re-apply the `startsAt` **floor**. The cutoff SHALL be carried on the
+per-event membership state (v1: the single persisted `EventConfig`; the data model SHALL be shaped so a
+future set of memberships each carries its own cutoff without relocating the field).
 
 The event SHALL supply the cutoff's **default** (its `startsAt`, capability `event-creation`) and its
 **floor** (see *The event's start date is a floor on every membership's cutoff*). The surviving safety
@@ -82,9 +83,13 @@ value. There SHALL be no scope in which a membership admits the whole library.
 - **WHEN** an event's `startsAt` is far in the past and the member selects a later cutoff
 - **THEN** the member's selection is persisted unchanged, and no photo before it is uploaded
 
-#### Scenario: The cutoff is immutable after join in v1
-- **WHEN** a device is already joined with a cutoff and re-provisions the same event
+#### Scenario: Re-provisioning an already-joined event leaves the cutoff unchanged
+- **WHEN** a device is already joined with a cutoff and re-provisions (or re-scans) the same event
 - **THEN** the cutoff is unchanged (no re-pick), consistent with the join being a no-op for the already-joined event
+
+#### Scenario: The cutoff can be changed in place after join
+- **WHEN** a joined member opens the reconfigure surface (capability `reconfigure-membership`) and confirms a different cutoff
+- **THEN** the persisted cutoff is replaced with the new value, clamped to the `startsAt` floor, without leaving or re-enrolling, and the next upload cycle applies it
 
 #### Scenario: A membership always carries a cutoff
 - **WHEN** any joined membership is read, by the app process or the upload extension process

@@ -234,6 +234,15 @@ class StatusContainerHost(
             .stateIn(scope, SharingStarted.Eagerly, config.value?.name)
 
     /**
+     * The joined membership's current settings for the reconfigure surface (capability
+     * `reconfigure-membership`): the persisted [EventConfig], or `null` when no event is configured. A
+     * screen-level param like [inviteUrl]/[eventName] — it does NOT enter `UiState`, so the reduction
+     * gains no branch. The settings surface pre-fills its controls (direction / cutoff / album) from
+     * this, seeds the cutoff preset off `minPhotoDate` vs `startsAt`, and Save fires [onReconfigure].
+     */
+    val membership: StateFlow<EventConfig?> = config
+
+    /**
      * Create a new event with [name], starting at [startsAt] (event-creation-ui). Delegates to the
      * injected [EventCreator] (fire-and-forget): it mints the event and, on success, provisions it
      * through the same path a scanned QR uses (config goes present, the reduction leaves the create
@@ -271,6 +280,18 @@ class StatusContainerHost(
      * event is configured (no URL) or no real share is bound (the no-op default).
      */
     fun onShareInvite() = intent { inviteUrl.value?.let { commands.share(it) } }
+
+    /**
+     * Apply a reconfigure of the joined membership (capability `reconfigure-membership`), confirmed on
+     * the settings surface's Save. Delegates to the injected [UserCommands.reconfigure] with [eventId] —
+     * the event the surface was opened for — so a switch that landed mid-edit makes the use-case a no-op
+     * rather than overwriting a different membership. The clamp to the `startsAt` floor is applied on the
+     * far side (inside `ReconfigureEvent`), like `commitJoin` — this passes the chosen values through raw.
+     * Fire-and-forget; the change lands via the config read-model on the next cycle, so no `UiState`
+     * branch here. Opening/closing the surface is screen-local navigation and never reaches this door.
+     */
+    fun onReconfigure(eventId: String, direction: Direction, minPhotoDate: String, saveToAlbum: Boolean) =
+        intent { commands.reconfigure(eventId, direction, minPhotoDate, saveToAlbum) }
 
     /**
      * An event link arrived (forwarded raw from the platform). Decode it with the shared codec; an

@@ -14,6 +14,7 @@ import app.snapsync.feature.membership.JoinEvent
 import app.snapsync.feature.membership.JoinOutcome
 import app.snapsync.feature.membership.LeaveEvent
 import app.snapsync.feature.membership.ManifestDeviceEnroller
+import app.snapsync.feature.membership.ReconfigureEvent
 import app.snapsync.feature.status.LedgerBackedSyncStatusSource
 import app.snapsync.feature.status.LedgerCounts
 import app.snapsync.feature.status.LedgerCountsPoller
@@ -295,6 +296,31 @@ class AppCore internal constructor(
         )
     }
 
+    // The in-place reconfigure use-case (capability `reconfigure-membership`): rewrite the joined
+    // membership's participation fields (direction/cutoff/album) whole, then re-drive the provision-side
+    // effects. Upload ARMS on enable but drains on disable (no stop); download reconciles on enable and
+    // cancels in-flight on disable — the deliberate arm asymmetry lives in the tested use-case.
+    val reconfigureEvent: ReconfigureEvent by lazy {
+        ReconfigureEvent(
+            configSource = ports.configSource,
+            store = ports.configStore,
+            refreshStatus = { refreshStatusSources() },
+            armUpload = { uploadArm.onProvision() },
+            ensureAlbum = { cfg ->
+                albumCoordinator.ensureAlbum(
+                    cfg.eventId,
+                    cfg.name,
+                    cfg.saveToAlbum,
+                    granted = ports.photoAccess.permission.value.grantsPhotoAccess,
+                )
+            },
+            // On its own escaping launch (like Provision's reconcile), so a slow union read never blocks
+            // the command's return.
+            startDownloads = { eventId -> scope.launch { downloadController.reconcile(eventId) } },
+            cancelDownloads = { downloadController.onLeaveOrSwitch() },
+        )
+    }
+
     // The join use-case (capability `join-event`): fetch details, enroll by writing the register-only
     // EMPTY device manifest, then provision through the same path as create/scan.
     val joinEvent: JoinEvent by lazy {
@@ -497,6 +523,11 @@ class AppCore internal constructor(
             // The picker presentation is platform surface; the selection outcome arrives only via
             // the selection-change seam (fire-and-forget, like every command here).
             choosePhotos = { ports.presentPhotoPicker() },
+            // In-place membership reconfigure (capability `reconfigure-membership`): edit direction/
+            // cutoff/album without leaving. Distinct from `openSettings` (the iOS system settings page).
+            reconfigure = { eventId, direction, minPhotoDate, saveToAlbum ->
+                reconfigureEvent.reconfigure(eventId, direction, minPhotoDate, saveToAlbum)
+            },
         )
     }
 

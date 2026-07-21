@@ -46,7 +46,9 @@ class JoinEvent(
      * [provision] enables the upload producer only when [Direction.includesUpload] and runs the download
      * reconcile only when [Direction.includesDownload] (the latter gated inside the download controller).
      * Re-confirming the already-joined event is a [JoinOutcome.AlreadyJoined] no-op that skips enrollment
-     * entirely (the cutoff and direction stay immutable — a change is a leave-then-rejoin).
+     * entirely — re-*scanning* never rewrites config. Changing the cutoff, direction, or album opt-in of a
+     * joined membership is done **in place** by `ReconfigureEvent` (capability `reconfigure-membership`),
+     * not by leaving and re-joining; only [startsAt] (the floor) stays immutable for the membership's life.
      *
      * **The floor is applied here** (capability `photo-selection-policy`): the persisted cutoff is
      * `max(chosen, startsAt)`, never the raw [minPhotoDate]. Doing it in the use-case rather than in the
