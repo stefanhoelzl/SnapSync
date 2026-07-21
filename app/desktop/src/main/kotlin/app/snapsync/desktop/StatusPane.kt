@@ -55,6 +55,10 @@ fun StatusPane(
     loadJoinDetails: suspend (String) -> JoinLoad = { JoinLoad.Failed },
     commitJoin: suspend (String, String, String, String, Direction, Boolean) -> Boolean =
         { _, _, _, _, _, _ -> false },
+    // In-place membership reconfigure (capability `reconfigure-membership`): the forge leaves it inert
+    // (the surface is reviewable, the command a no-op), the full-stack world harness binds it to the real
+    // `world.core.userCommands.reconfigure` so `:app:desktop:run` drives the actual in-place rewrite.
+    reconfigure: suspend (String, Direction, String, Boolean) -> Unit = { _, _, _, _ -> },
     // Attestation health (capability `device-attestation`): defaulted to always-attested so the
     // full-stack harness constructs unchanged; the forge harness injects a MutableAttestedSource so
     // `SyncHealth.Unattested` is forgeable.
@@ -95,6 +99,7 @@ fun StatusPane(
                 share = share,
                 requestAccess = requester::request,
                 openSettings = requester::openSettings,
+                reconfigure = reconfigure,
             ),
             loadJoinDetails = loadJoinDetails,
             cutoffFormatter = cutoffFormatter,
@@ -107,6 +112,8 @@ fun StatusPane(
     // The joined-layer presets force a canned event, so this is non-null there → the QR renders.
     val inviteUrl by host.inviteUrl.collectAsState()
     val eventName by host.eventName.collectAsState()
+    // The current membership settings for the reconfigure surface (capability `reconfigure-membership`).
+    val membership by host.membership.collectAsState()
 
     PhoneFrame {
         // `leave` is the injected edge: the forge leaves it defaulted (Confirm reviewable but inert),
@@ -123,6 +130,8 @@ fun StatusPane(
             host::onOpenSettings,
             onLeaveEvent = host::onLeaveEvent,
             onShareInvite = host::onShareInvite,
+            membership = membership,
+            onReconfigure = host::onReconfigure,
             inviteUrl = inviteUrl,
             eventName = eventName,
             onCreateEvent = host::onCreateEvent,

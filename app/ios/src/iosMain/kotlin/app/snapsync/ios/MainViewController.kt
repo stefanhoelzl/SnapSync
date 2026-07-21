@@ -31,6 +31,8 @@ fun MainViewController() = ComposeUIViewController {
     val inviteUrl by host.inviteUrl.collectAsState()
     // The joined event's name for the screen title (fetched by id; null until fetched).
     val eventName by host.eventName.collectAsState()
+    // The current membership settings for the reconfigure surface (capability `reconfigure-membership`).
+    val membership by host.membership.collectAsState()
 
     // Dev/test: apply a `SNAPSYNC_EVENT_LINK` launch-env event link once per process (no-op in
     // production, where no such env var exists). Runs after `host` is realized; safe to repeat.
@@ -52,6 +54,8 @@ fun MainViewController() = ComposeUIViewController {
             host::onOpenSettings,
             onLeaveEvent = host::onLeaveEvent,
             onShareInvite = host::onShareInvite,
+            membership = membership,
+            onReconfigure = host::onReconfigure,
             inviteUrl = inviteUrl,
             eventName = eventName,
             onCreateEvent = host::onCreateEvent,

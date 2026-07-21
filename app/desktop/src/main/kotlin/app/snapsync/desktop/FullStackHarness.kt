@@ -103,6 +103,8 @@ fun WorldHarnessRoot() {
                         scope = scope,
                         // The real Leave affordance runs the faithful edge (imports retained).
                         leave = controller.leave,
+                        // The real in-place reconfigure edge (capability `reconfigure-membership`).
+                        reconfigure = controller.reconfigure,
                         darkThemeOverride = dark,
                     )
                 }

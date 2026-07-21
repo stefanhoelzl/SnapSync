@@ -18,9 +18,13 @@ import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTextInput
 import app.snapsync.model.PermissionStatus
+import app.snapsync.model.Direction
+import app.snapsync.model.EventConfig
 import app.snapsync.ui.components.LocalReduceMotion
 import app.snapsync.model.Arrow
 import app.snapsync.presentation.CutoffFormatter
+import app.snapsync.presentation.JoinPhase
+import app.snapsync.presentation.PendingSwitch
 import app.snapsync.presentation.SyncHealth
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
@@ -504,9 +508,117 @@ class StatusScreenTest {
         assertEquals(1, shares)
     }
 
+    // ---- the settings action + reconfigure surface (capability `reconfigure-membership`) ----
+
+    @Test
+    fun `joined with a membership shows the settings action next to share and leave`() {
+        rule.setContent { StatusScreen(inSync, membership = MEMBERSHIP, inviteUrl = SAMPLE_INVITE, cutoff = fixedCutoff()) }
+        rule.onNodeWithContentDescription("Event settings").assertExists()
+        rule.onNodeWithContentDescription("Share invite link").assertExists()
+        rule.onNodeWithContentDescription("Leave event").assertExists()
+    }
+
+    @Test
+    fun `the settings action is present under needs-access (no photo access required)`() {
+        rule.setContent {
+            StatusScreen(
+                joined(SyncHealth.NeedsAccess(PermissionStatus.DENIED)),
+                membership = MEMBERSHIP,
+                cutoff = fixedCutoff(),
+            )
+        }
+        rule.onNodeWithContentDescription("Event settings").assertExists()
+    }
+
+    @Test
+    fun `the settings action is suppressed during a pending switch`() {
+        rule.setContent {
+            StatusScreen(
+                UiState.Joined(
+                    SyncHealth.InSync,
+                    PendingSwitch("22222222-2222-4222-8222-222222222222", JoinPhase.Ready("New Event", "2026-07-06T00:00:00Z")),
+                ),
+                membership = MEMBERSHIP,
+                cutoff = fixedCutoff(),
+            )
+        }
+        rule.onNodeWithContentDescription("Event settings").assertDoesNotExist()
+    }
+
+    @Test
+    fun `tapping settings opens the reconfigure surface`() {
+        rule.setContent { StatusScreen(inSync, membership = MEMBERSHIP, cutoff = fixedCutoff()) }
+        rule.onNodeWithText("Save").assertDoesNotExist()
+        rule.onNodeWithContentDescription("Event settings").performClick()
+        rule.onNodeWithText("Save").assertExists()
+        rule.onNodeWithText("Share my photos").assertExists()
+        rule.onNodeWithText("Cancel").assertExists()
+    }
+
+    @Test
+    fun `the reconfigure surface seeds the Event-start cutoff when the cutoff is at the floor`() {
+        // minPhotoDate == startsAt → Event-start preset → resulting instant is the start.
+        rule.setContent { StatusScreen(inSync, membership = MEMBERSHIP, cutoff = fixedCutoff()) }
+        rule.onNodeWithContentDescription("Event settings").performClick()
+        rule.onNodeWithText("Shared from 6 Jul 2026, 12:00").assertExists()
+    }
+
+    @Test
+    fun `the reconfigure surface seeds a Custom cutoff when the cutoff is above the floor`() {
+        val above = MEMBERSHIP.copy(minPhotoDate = "2026-07-06T18:00:00Z")
+        rule.setContent { StatusScreen(inSync, membership = above, cutoff = fixedCutoff()) }
+        rule.onNodeWithContentDescription("Event settings").performClick()
+        rule.onNodeWithText("Shared from 6 Jul 2026, 18:00").assertExists()
+    }
+
+    @Test
+    fun `turning the album on shows the forward-only helper text`() {
+        val withAlbum = MEMBERSHIP.copy(saveToAlbum = true)
+        rule.setContent { StatusScreen(inSync, membership = withAlbum, cutoff = fixedCutoff()) }
+        rule.onNodeWithContentDescription("Event settings").performClick()
+        rule.onNodeWithText("Only photos synced from now on are added.", substring = true).assertExists()
+    }
+
+    @Test
+    fun `saving invokes the reconfigure callback with the membership's values and closes the surface`() {
+        var savedEventId: String? = null
+        var savedDirection: Direction? = null
+        var savedCutoff: String? = null
+        var savedAlbum: Boolean? = null
+        rule.setContent {
+            StatusScreen(
+                inSync,
+                membership = MEMBERSHIP,
+                onReconfigure = { e, d, c, a -> savedEventId = e; savedDirection = d; savedCutoff = c; savedAlbum = a },
+                cutoff = fixedCutoff(),
+            )
+        }
+        rule.onNodeWithContentDescription("Event settings").performClick()
+        rule.onNodeWithText("Save").performClick()
+
+        assertEquals("E1", savedEventId)
+        assertEquals(Direction.Both, savedDirection)
+        assertEquals("2026-07-06T12:00:00Z", savedCutoff)
+        assertEquals(false, savedAlbum)
+        // Save closes the surface (back to the joined layer's action row).
+        rule.onNodeWithText("Save").assertDoesNotExist()
+        rule.onNodeWithContentDescription("Event settings").assertExists()
+    }
+
     private fun hasAnyProgressIndication(): SemanticsMatcher =
         SemanticsMatcher.keyIsDefined(SemanticsProperties.ProgressBarRangeInfo)
 }
+
+// A representative joined membership for the reconfigure-surface tests: event started, cutoff at the
+// floor, bidirectional, no album — so a no-edit Save round-trips these exact values.
+private val MEMBERSHIP = EventConfig(
+    eventId = "E1",
+    name = "Anna's Birthday",
+    minPhotoDate = "2026-07-06T12:00:00Z",
+    startsAt = "2026-07-06T12:00:00Z",
+    direction = Direction.Both,
+    saveToAlbum = false,
+)
 
 private fun samePixels(a: PixelMap, b: PixelMap): Boolean {
     if (a.width != b.width || a.height != b.height) return false

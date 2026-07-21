@@ -28,10 +28,15 @@ package app.snapsync.model
  * - [share] — hand the invite URL to the platform share surface (fire-and-forget, `UiState` unaffected).
  * - [requestAccess] — raise the system photo-access dialog (capability `permission-gate`): returns
  *   nothing and cannot suspend — the grant arrives only via the permission read-model.
- * - [openSettings] — open the app's system Settings page (the `DENIED` affordance).
+ * - [openSettings] — open the app's system Settings page (the `DENIED` affordance). Distinct from
+ *   [reconfigure], which edits this *membership's* settings, not the iOS system settings page.
  * - [choosePhotos] — present the platform's limited-library picker (capability
  *   `limited-photo-access`): the joined layer's "Choose more photos" affordance under a partial
  *   grant. Fire-and-forget; the resulting selection change arrives via the selection-change seam.
+ * - [reconfigure] — change the joined membership's participation settings in place (direction, cutoff,
+ *   album opt-in) without leaving (capability `reconfigure-membership`). [eventId] is the event the
+ *   settings surface was opened for; the use-case no-ops if the current membership no longer matches.
+ *   Fire-and-forget; the change lands via the config read-model on the next cycle.
  */
 class UserCommands(
     val leave: suspend () -> Unit = {},
@@ -48,4 +53,10 @@ class UserCommands(
     val requestAccess: () -> Unit = {},
     val openSettings: () -> Unit = {},
     val choosePhotos: () -> Unit = {},
+    val reconfigure: suspend (
+        eventId: String,
+        direction: Direction,
+        minPhotoDate: String,
+        saveToAlbum: Boolean,
+    ) -> Unit = { _, _, _, _ -> },
 )

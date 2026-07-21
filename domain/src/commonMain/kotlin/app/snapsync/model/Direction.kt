@@ -2,8 +2,8 @@ package app.snapsync.model
 
 /**
  * This device's chosen **participation direction** for a joined event (capability
- * `join-direction-mode`), fixed at join and persisted on [EventConfig]. It masks two independently
- * wired arms:
+ * `join-direction-mode`), first set at join and persisted on [EventConfig] — changeable in place
+ * afterward via `reconfigure-membership`. It masks two independently wired arms:
  * - the **upload** arm (the background-upload producer) runs only when [includesUpload];
  * - the **download** arm (the `DownloadController` reconcile) runs only when [includesDownload].
  *
