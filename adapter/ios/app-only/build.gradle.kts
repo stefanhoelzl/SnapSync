@@ -15,6 +15,19 @@ plugins {
 kotlin {
     iosArm64()
     iosSimulatorArm64()
+
+    // Sentry test-link (capability `crash-reporting`): this module's simulator TEST binary links
+    // :adapter:ios:ext-safe (api) and therefore Sentry symbols — even with no test sources, K/N
+    // still links an empty test.kexe. Reuse the Sentry-Dynamic framework ext-safe provisions.
+    val sentrySimulatorSlice = project(":adapter:ios:ext-safe").layout.buildDirectory
+        .dir("sentry-cocoa/${libs.versions.sentry.cocoa.get()}/Sentry-Dynamic.xcframework/ios-arm64_x86_64-simulator")
+        .get().asFile.toString()
+    iosSimulatorArm64().binaries.all {
+        if (this is org.jetbrains.kotlin.gradle.plugin.mpp.TestExecutable) {
+            linkTaskProvider.configure { dependsOn(":adapter:ios:ext-safe:provisionSentryCocoa") }
+            linkerOpts("-F$sentrySimulatorSlice", "-rpath", sentrySimulatorSlice)
+        }
+    }
     sourceSets {
         commonMain.dependencies {
             api(project(":domain"))
