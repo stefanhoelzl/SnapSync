@@ -124,5 +124,8 @@ Deno.test("canonicalPlusSeconds: adds whole seconds and stays in the canonical c
 Deno.test("canonicalPlusSeconds: rolls over month and year boundaries correctly", () => {
   assertEquals(canonicalPlusSeconds("2026-12-31T23:59:59Z", 1), "2027-01-01T00:00:00Z");
   // Across February in a non-leap year.
-  assertEquals(canonicalPlusSeconds("2026-02-27T12:00:00Z", 2 * 24 * 60 * 60), "2026-03-01T12:00:00Z");
+  assertEquals(
+    canonicalPlusSeconds("2026-02-27T12:00:00Z", 2 * 24 * 60 * 60),
+    "2026-03-01T12:00:00Z",
+  );
 });
