@@ -5,6 +5,14 @@ via TestFlight. Join an event by scanning its QR, and your photos taken since a 
 **capture-date cutoff** are shared to it while everyone else's arrive in your library. The JVM desktop
 app is test equipment, not a product.
 
+**Mission** (full form + decision record: `openspec/config.yaml` context /
+`changes/archive/2026-07-21-align-specs-with-mission`): joined users easily share the photos they take during a
+**short-lived event** (days/weeks — celebrations, holidays, trips), synced gallery-to-gallery; you never
+care how photos arrive, you just look at your own gallery. No accounts; simple setup; the server-stamped
+event lifetime IS how an event ends. Named futures (don't build for them; don't deepen assumptions
+against them unnamed): Android · paid events · concurrent multi-event membership (single active
+membership is the *current* contract).
+
 > It began as a *personal one-way photo backup*. Defaults inherited from that era are dangerous here:
 > what was "back up everything of mine" becomes "upload a guest's whole camera roll to a stranger's
 > event". A membership's cutoff is therefore **required**, never absent.

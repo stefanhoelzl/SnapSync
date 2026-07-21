@@ -16,6 +16,14 @@ Switching events composes leave-then-join, so provisioning a different event cle
 one. `autoJoin` auto-confirms the gate for the device that just created the event, which has already
 expressed intent.
 
+**One active membership at a time is the current contract, not a law of the product.** Joining a
+different event is a switch, and every joined surface renders *the* joined event. Concurrent
+membership in several events is a **named future direction** — the backend already composes with it
+(bytes are device-partitioned and event-independent, the leave cascade reference-counts a device
+across surviving events, the ledger key is event-independent) — so new work SHALL NOT deepen the
+single-membership assumption beyond what this spec already states, and a change that must lean on it
+names it.
+
 Decision record: `changes/archive/2026-07-06-add-event-join-confirmation`.
 ## Requirements
 ### Requirement: Joining is gated by an explicit confirmation
