@@ -16,6 +16,16 @@ This needs a second device: show the event's QR code on the first device and
 scan it with the second. Photos then flow both ways. If a second device is not
 available, we can provide a live event link on request via Resolution Center.
 
+SHARED CONTENT (Guideline 1.2)
+Photos are shared only within a private, invite-only event — the same model as
+a private iCloud Shared Album. Joining requires scanning the event's QR code,
+which is only ever shown in person by another member: possession of the code IS
+the invitation. There is no public feed, no discovery, no browsing of content
+from strangers — members only ever see photos from people they chose to share
+an event with. Only photos taken after the event starts are shared, a member
+can leave the event at any time (which stops all sharing), and any concern can
+be reported to the published support contact on this listing.
+
 UNLISTED DISTRIBUTION
 We intend to distribute this app using Unlisted App Distribution, and will
 submit an unlisted app request following this submission.

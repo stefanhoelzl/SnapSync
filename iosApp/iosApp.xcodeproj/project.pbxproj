@@ -12,6 +12,8 @@
 		0A0000000000000000000042 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 0A0000000000000000000032 /* Assets.xcassets */; };
 		0A0000000000000000000054 /* BackgroundUploadExtension.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0A0000000000000000000050 /* BackgroundUploadExtension.swift */; };
 		0A0000000000000000000055 /* BackgroundUploadExtension.appex in Embed ExtensionKit Extensions */ = {isa = PBXBuildFile; fileRef = 0A0000000000000000000053 /* BackgroundUploadExtension.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+		0A0000000000000000000043 /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = 0A0000000000000000000036 /* PrivacyInfo.xcprivacy */; };
+		0A0000000000000000000062 /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = 0A0000000000000000000061 /* PrivacyInfo.xcprivacy */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -43,6 +45,8 @@
 		0A0000000000000000000031 /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
 		0A0000000000000000000032 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		0A0000000000000000000033 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
+		0A0000000000000000000036 /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
+		0A0000000000000000000061 /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
 		0A0000000000000000000034 /* Config.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; name = Config.xcconfig; path = Configuration/Config.xcconfig; sourceTree = "<group>"; };
 		0A0000000000000000000035 /* SnapSync.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = SnapSync.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		0A0000000000000000000050 /* BackgroundUploadExtension.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BackgroundUploadExtension.swift; sourceTree = "<group>"; };
@@ -95,6 +99,7 @@
 				0A0000000000000000000031 /* ContentView.swift */,
 				0A0000000000000000000032 /* Assets.xcassets */,
 				0A0000000000000000000033 /* Info.plist */,
+				0A0000000000000000000036 /* PrivacyInfo.xcprivacy */,
 			);
 			path = iosApp;
 			sourceTree = "<group>";
@@ -113,6 +118,7 @@
 				0A0000000000000000000050 /* BackgroundUploadExtension.swift */,
 				0A0000000000000000000051 /* Info.plist */,
 				0A0000000000000000000052 /* BackgroundUploadExtension.entitlements */,
+				0A0000000000000000000061 /* PrivacyInfo.xcprivacy */,
 			);
 			path = BackgroundUploadExtension;
 			sourceTree = "<group>";
@@ -147,6 +153,7 @@
 				0A0000000000000000000058 /* Compile Kotlin Framework */,
 				0A0000000000000000000059 /* Sources */,
 				0A000000000000000000005A /* Frameworks */,
+				0A0000000000000000000063 /* Resources */,
 			);
 			buildRules = (
 			);
@@ -200,6 +207,15 @@
 			buildActionMask = 2147483647;
 			files = (
 				0A0000000000000000000042 /* Assets.xcassets in Resources */,
+				0A0000000000000000000043 /* PrivacyInfo.xcprivacy in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		0A0000000000000000000063 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				0A0000000000000000000062 /* PrivacyInfo.xcprivacy in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
