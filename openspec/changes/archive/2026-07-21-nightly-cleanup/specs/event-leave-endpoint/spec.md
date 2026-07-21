@@ -1,26 +1,7 @@
-# event-leave-endpoint Specification
+# event-leave-endpoint Delta
 
-## Purpose
+## MODIFIED Requirements
 
-The backend half of leaving: `DELETE /events/<eventId>/devices/<deviceId>` renames the departing device's
-manifest to a departed `.left.json` sibling — its already-shared photos stay downloadable for the remaining
-members — and when the **last** active member leaves, reaps the event tree and reference-checked-garbage-
-collects each freed device's byte partition and config.
-
-Before it, leave was local-only: the device forgot the event while its manifest, byte partition, and push
-token persisted on the backend forever, so an event's storage could never be reclaimed.
-
-The cascade is designed to be **leak-safe rather than atomic**: every partial failure and every race resolves
-to an orphan, never to destruction of in-use data. Membership is last-write-wins over the two sibling
-manifests' write times, so a stalled leave/rejoin settles on the intended state. The one real correctness
-premise is that the reap's active-member listing reads the storage **main region** — a stale replica read
-could reap an event out from under a concurrently-rejoining device.
-
-There is deliberately **no periodic reaper**: an event whose devices all vanish without a clean leave
-(uninstall, permanent offline) is never reclaimed. That abandon-leak is accepted.
-
-Decision record: `changes/archive/2026-07-06-add-event-leave-lifecycle`.
-## Requirements
 ### Requirement: Leave route and departed rename
 
 The backend SHALL accept an HTTP `DELETE` at the path template `/events/<eventId>/devices/<deviceId>`
@@ -106,3 +87,33 @@ probe which events exist or alter any membership.
 - **WHEN** `DELETE /events/<uuid>/devices/<uuid>` carries a valid token
 - **THEN** the departed rename proceeds and the endpoint returns `200`, idempotently and leak-safely
 
+## REMOVED Requirements
+
+### Requirement: Last-active-member reap
+
+**Reason**: Leaving is now non-destructive — an event survives until it expires, so anyone with the link
+can still join and download, and the organizer leaving no longer destroys the shared album. Deleting an
+event is now solely the scheduled cleanup's job (capability `scheduled-cleanup`).
+
+**Migration**: The leave handler returns success after the departed rename regardless of remaining
+membership and deletes nothing. An event with no active members persists until `now > endsAt + grace`,
+when the nightly sweep deletes its marker and manifests.
+
+### Requirement: Reference-checked garbage collection of freed devices
+
+**Reason**: Byte, config, and attestation collection is unified into the scheduled cleanup's asset phase
+(capability `scheduled-cleanup`), which is the sole garbage collector; the leave path no longer collects
+anything.
+
+**Migration**: The nightly sweep collects a device's bytes (and, when the device is in no surviving event,
+its `devices/<deviceId>.json` and `devices/<deviceId>.attest.json`) using the unified asset predicate
+(unreferenced by any surviving manifest, below the device's per-event upload-time floor). A returning
+device re-registers on launch/join and re-attests on demand.
+
+### Requirement: Reap correctness depends on main-region read-after-write reads
+
+**Reason**: The leave path no longer reaps or garbage-collects, so it has no reap-time read whose
+staleness could delete an event out from under a concurrent rejoin.
+
+**Migration**: The main-region read-after-write invariant now lives with the scheduled cleanup (capability
+`scheduled-cleanup`), whose storage reads determine what it deletes.

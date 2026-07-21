@@ -155,6 +155,10 @@ class AppPorts(
     /** Drive one app-driven upload cycle for a selection change (the pump's `onSelectionChanged`),
      *  wired by the shell to the tier controller; inert where no app-driven tier exists. */
     val pumpSelectionChanged: () -> Unit = {},
+    /** Re-register the device's APNs push token on join (capability `push-registration`): the shell
+     *  builds it from its `PushRegistration` + `PushTokenSource`. Inert by default (world/tests hold no
+     *  push stack). Closes the warm-rejoin window the nightly sweep's config collection opens. */
+    val registerPush: suspend () -> Unit = {},
     val log: Logger,
     /** The ambient-context seam the tier-neutral features drive so their device-log lines carry the
      *  triggering entry point's `[<name>]` prefix (capability `diagnostic-logging`). The app shell
@@ -519,6 +523,7 @@ class AppCore internal constructor(
             // `limited-photo-access`).
             isGranted = { ports.photoAccess.permission.value.grantsPhotoAccess },
             fetchEventName = fetchEventName,
+            registerPush = ports.registerPush,
         )
     }
 

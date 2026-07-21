@@ -131,29 +131,15 @@ class BackendStore {
     }
 
     /**
-     * Leave an event (the `DELETE /events/<id>/devices/<id>` cascade, capability `event-leave-endpoint`).
-     * Marks the device departed (its manifest STAYS, so the union keeps serving its photos); then, if no
-     * ACTIVE member remains, reaps the event (marker + all its manifests + departed marks) and
-     * reference-checked-GCs each freed device that appears in no surviving event (its byte partition +
-     * config). Idempotent; a leave for an unregistered event is a no-op.
+     * Leave an event (the `DELETE /events/<id>/devices/<id>` endpoint, capability `event-leave-endpoint`).
+     * RENAME-ONLY: marks the device departed (its manifest STAYS, so the union keeps serving its photos)
+     * and does nothing else — no last-member reap, no byte/config GC. The event survives (rejoinable)
+     * until it expires and the nightly sweep (capability `scheduled-cleanup`) reclaims it. Idempotent; a
+     * leave for an unregistered event is a no-op.
      */
     fun leave(eventId: String, deviceId: String) {
         if (eventId !in events) return
         departed.add(eventId to deviceId)
-        val activeRemains = manifests.keys.any { (e, d) -> e == eventId && (eventId to d) !in departed }
-        if (activeRemains) return
-        // Reap the event tree.
-        val freedDevices = manifests.keys.filter { it.first == eventId }.map { it.second }.toSet()
-        events.remove(eventId)
-        manifests.keys.filter { it.first == eventId }.toList().forEach { manifests.remove(it) }
-        departed.removeAll { it.first == eventId }
-        // Reference-checked GC: drop bytes + config for any freed device no surviving event references.
-        for (freed in freedDevices) {
-            if (manifests.keys.none { it.second == freed }) {
-                byteStore.remove(freed)
-                deviceConfigs.remove(freed)
-            }
-        }
     }
 
     // ---- inspection (for tests) -----------------------------------------------------------------

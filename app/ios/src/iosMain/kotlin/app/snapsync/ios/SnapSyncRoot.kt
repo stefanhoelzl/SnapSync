@@ -30,6 +30,7 @@ import app.snapsync.presentation.forgeStatusHost
 import app.snapsync.presentation.isForgeState
 import app.snapsync.feature.membership.toJoinLoad
 import app.snapsync.push.KtorPushHttpClient
+import app.snapsync.feature.push.ApnsPushToken
 import app.snapsync.feature.push.PushRegistration
 import app.snapsync.time.SystemClock
 import app.snapsync.time.SystemTimeZone
@@ -355,6 +356,16 @@ object SnapSyncRoot {
                 // The platform half of the choose-photos command (capability `limited-photo-access`):
                 // the PhotosUI limited-library picker over the top view controller.
                 presentPhotoPicker = ::presentLimitedLibraryPicker,
+                // Re-register the APNs token on join (capability `push-registration`): re-`PUT`s the
+                // current OS-delivered token so a device whose config the nightly sweep collected
+                // (capability `scheduled-cleanup`) is pushable again the instant it rejoins warm. The
+                // same idempotent `register` the launch/rotation collector uses; a null token (none
+                // delivered yet) is a no-op.
+                registerPush = {
+                    pushTokenSource.token.value?.let { token ->
+                        pushRegistration.register(ApnsPushToken(token, pushTokenSource.env))
+                    }
+                },
                 // The upload arm's push receiver on the app-driven tier (a thunk — the tier controller
                 // depends on this graph, so it must resolve lazily); null on iOS ≥26.1.
                 uploadSilentPush = live.uploadSilentPush,

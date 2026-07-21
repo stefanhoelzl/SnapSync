@@ -2,10 +2,15 @@ package app.snapsync.integration
 
 import app.snapsync.feature.push.ApnsPushToken
 import app.snapsync.feature.push.PushRegistration
+import app.snapsync.model.Direction
+import app.snapsync.model.EventConfig
 import app.snapsync.push.KtorPushHttpClient
 import app.snapsync.world.BackendStore
+import app.snapsync.world.World
 import app.snapsync.world.miniEdgeClient
 import app.snapsync.world.worldTest
+import kotlinx.coroutines.withTimeout
+import kotlinx.coroutines.yield
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
@@ -39,5 +44,36 @@ class PushRegistrationIntegrationTest {
             store.deviceConfigOf(deviceId),
         )
         assertTrue(store.deviceListing(deviceId).isEmpty())
+    }
+
+    /**
+     * The REAL `Provision` join flow re-registers the push token (capability `push-registration`): joining
+     * fires `registerPush` in addition to the launch/rotation collector, closing the warm-rejoin window
+     * the nightly sweep's device-record collection opens (capability `scheduled-cleanup`). Driven over the
+     * real composed graph via `core.provisionFlow`, asserting the world's spy counter.
+     */
+    @Test
+    fun the_join_flow_re_registers_the_push_token() = worldTest {
+        val event = "33333333-3333-4333-8333-333333333333"
+        val startsAt = "2026-01-01T00:00:00Z"
+        val w = World(this)
+        w.store.registerEvent(event, "Trip", startsAt)
+        assertEquals(0, w.registerPushCount)
+
+        // Drive the REAL Provision flow — the join path — NOT the world's config-cell shortcut.
+        w.core.provisionFlow.run(
+            EventConfig(
+                eventId = event,
+                name = "Trip",
+                minPhotoDate = startsAt,
+                startsAt = startsAt,
+                direction = Direction.Both,
+                saveToAlbum = false,
+            ),
+        )
+        // `registerPush` runs on its own escaping launch (a network PUT must never block the join); the
+        // world runs on real time, so poll for it to settle.
+        withTimeout(2000) { while (w.registerPushCount == 0) yield() }
+        assertEquals(1, w.registerPushCount) // fired exactly once, on join
     }
 }

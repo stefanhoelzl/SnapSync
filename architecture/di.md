@@ -19,6 +19,7 @@ Roots found:
 | Constructed type | SnapSyncRoot | UploadExtensionRoot | UrlSessionUploadController |
 |---|---|---|---|
 | `AlbumCoordinator` | | x | |
+| `ApnsPushToken` | x | | |
 | `AppPorts` | x | | |
 | `BackgroundUploadPump` | | | x |
 | `CutoffFormatter` | x | | |

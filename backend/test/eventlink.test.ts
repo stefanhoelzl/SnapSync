@@ -11,6 +11,7 @@ const CONFIG = readConfig({
   BUNNY_STORAGE_ACCESS_KEY: "k",
   APNS_PRIVATE_KEY: "p",
   ATTEST_TOKEN_KEY: "t",
+  ADMIN_NOTIFY_KEY: "a",
 });
 
 // Serving either route must make NO upstream request and read no storage — any call here is a failure.

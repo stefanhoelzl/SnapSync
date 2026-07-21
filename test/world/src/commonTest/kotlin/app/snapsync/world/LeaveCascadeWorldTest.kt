@@ -3,15 +3,15 @@ package app.snapsync.world
 import app.snapsync.membership.HttpLeaveNotifier
 import kotlin.test.Test
 import kotlin.test.assertEquals
-import kotlin.test.assertFalse
 import kotlin.test.assertNotNull
-import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 /**
- * The event-leave lifecycle over the world's real mini-edge (`DELETE /events/<id>/devices/<id>`):
- * departed rename, last-active-member reap, and reference-checked byte/config GC (capability
- * `event-leave-endpoint`). Asserts backend/world outcomes on the [BackendStore] the real seam drives.
+ * The event-leave behavior over the world's real mini-edge (`DELETE /events/<id>/devices/<id>`):
+ * RENAME-ONLY (capability `event-leave-endpoint`). Leaving marks the device departed and nothing else —
+ * no last-member reap, no byte/config GC; the event survives until it expires and the nightly sweep
+ * (capability `scheduled-cleanup`) reclaims it. Asserts backend/world outcomes on the [BackendStore] the
+ * real seam drives.
  */
 class LeaveCascadeWorldTest {
 
@@ -35,7 +35,7 @@ class LeaveCascadeWorldTest {
         w.leave()
 
         // The own device is DEPARTED, but its manifest + bytes persist, the union still serves its
-        // asset, and the event stays alive (the foreign member keeps it).
+        // asset, and the event stays alive.
         assertTrue(w.store.isDeparted(e, w.ownDeviceId))
         assertTrue(w.store.isRegistered(e))
         assertTrue(w.store.objectsOf(w.ownDeviceId).isNotEmpty())
@@ -45,46 +45,47 @@ class LeaveCascadeWorldTest {
     }
 
     @Test
-    fun last_active_member_leaving_reaps_the_event_and_gcs_its_orphaned_bytes() = worldTest {
+    fun last_active_member_leaving_keeps_the_event_and_its_bytes_rename_only() = worldTest {
         val w = World(this)
         val e = "E"
         w.provision(e)
         w.ownUpload(e, "A")
         assertTrue(w.store.objectsOf(w.ownDeviceId).isNotEmpty())
 
-        w.leave() // the own device is the only member → last active leaves
+        w.leave() // the own device is the only member — but leaving no longer reaps
 
-        assertFalse(w.store.isRegistered(e)) // event reaped
-        assertNull(w.store.union(e)) // gone (unregistered)
-        assertTrue(w.store.objectsOf(w.ownDeviceId).isEmpty()) // bytes GC'd (fully orphaned)
+        assertTrue(w.store.isRegistered(e)) // event NOT reaped — survives until expiry
+        assertTrue(w.store.isDeparted(e, w.ownDeviceId)) // the device is departed
+        assertTrue(w.store.objectsOf(w.ownDeviceId).isNotEmpty()) // bytes NOT GC'd (the sweep does that)
+        assertNotNull(w.store.union(e)) // union still served (departed photos remain)
     }
 
     @Test
-    fun a_device_still_in_another_event_keeps_its_bytes_after_a_reap() = worldTest {
+    fun leaving_one_event_departs_the_device_there_and_leaves_the_other_intact() = worldTest {
         val w = World(this)
         val e = "E"
         val f = "F"
         val x = "DEV-X"
-        // X contributes to BOTH events; it is E's only member, so leaving E reaps E.
+        // X contributes to BOTH events.
         w.addForeignDevice(x, e, listOf(World.foreignAsset("Q1")))
         w.addForeignDevice(x, f, listOf(World.foreignAsset("Q1")))
 
         // X leaves E through the REAL DELETE seam over the mini-edge.
         HttpLeaveNotifier(w.client, w.host).leave(e, x)
 
-        assertFalse(w.store.isRegistered(e)) // E reaped (X was its last active member)
+        assertTrue(w.store.isRegistered(e)) // E NOT reaped — leaving is non-destructive now
+        assertTrue(w.store.isDeparted(e, x)) // X is departed in E
         assertTrue(w.store.isRegistered(f)) // F intact
-        assertTrue(w.store.objectsOf(x).isNotEmpty()) // X's bytes retained — F still references them
+        assertTrue(w.store.objectsOf(x).isNotEmpty()) // X's bytes retained
         assertNotNull(w.store.manifestOf(f, x))
     }
 
     @Test
-    fun rejoin_after_a_non_reap_leave_reconciles_without_re_uploading() = worldTest {
+    fun rejoin_after_a_leave_reconciles_without_re_uploading() = worldTest {
         val w = World(this)
         val e = "E"
         w.provision(e)
         w.ownUpload(e, "A")
-        // a foreign member keeps E alive so leaving only departs the own device (no reap).
         w.addForeignDevice("DEV-FOREIGN", e, listOf(World.foreignAsset("FQ")))
 
         w.leave()

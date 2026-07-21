@@ -29,7 +29,7 @@
 //       LIMITS `endsAt` (= startsAt + configured duration) and `capacity` (capability `event-limits`) —
 //       and returns {eventId,name,createdAt,startsAt,endsAt,capacity}.
 //   GET /events/:eventId
-//     → returns the event marker (existence check); 404 when absent OR expired-and-reaped.
+//     → returns the event marker (existence check); 404 when absent OR `gone` (legacy/corrupt marker).
 //   PUT /devices/:deviceId
 //     → streams a JSON device config (the push token) into `devices/<deviceId>.json`. UNGATED by
 //       event; DEVICE-ID is the capability. Faithful 201/502; last-write-wins. A flat sibling of the
@@ -39,7 +39,8 @@
 //       `<id>.left.json` member is skipped). GATED on the marker (404/502). Enumerate members
 //       (LIST `events/<id>/devices/`, resolve active via last-write-wins) → read each `devices/<id>.json`
 //       → best-effort fan-out via APNs. Bare 202 (no per-device results); 502 only if the member LIST
-//       fails. No production caller wired (the trigger is a deferred use case).
+//       fails. Authorized by a device token OR the notify-only ADMIN_NOTIFY_KEY (capability `scheduled-cleanup`:
+//       the out-of-edge sweep notifies an expiring event's members before deleting it).
 //   PUT /files/devices/:deviceId/:filename
 //     → streams the request body into ONE bunny native Storage PUT. Requires the token, but reads NO
 //       marker: bytes are device-partitioned and event-independent (`files/devices/<deviceId>/<filename>`),
@@ -60,11 +61,11 @@
 //       `capacity` distinct device ids have ever enrolled (leaving frees no slot); a known device's
 //       writes pass both checks.
 //   DELETE /events/:eventId/devices/:deviceId
-//     → LEAVE (capability `event-leave-endpoint`): renames the device's active manifest to
-//       `<deviceId>.left.json` (departed — still served by the union, skipped by notify); if no ACTIVE
-//       member remains (last-write-wins over the devices/ listing), reaps `events/<eventId>/` and GCs
-//       each freed device's `files/devices/<id>/` bytes + `devices/<id>.json` config — but only for a
-//       device that appears in no surviving event. GATED on the marker (404/502). Idempotent + leak-safe.
+//     → LEAVE (capability `event-leave-endpoint`): RENAME-ONLY. Renames the device's active manifest to
+//       `<deviceId>.left.json` (departed — still served by the union, skipped by notify) and returns 200
+//       regardless of remaining membership. NON-DESTRUCTIVE: no last-member reap, no leave-time GC — the
+//       event survives until it expires and the nightly sweep (capability `scheduled-cleanup`) reclaims
+//       it. GATED on the marker (404/502). Idempotent + leak-safe.
 //   GET /events/:eventId/files
 //     → the event-wide UNION: every contributing device's COMPLETE assets (an asset is complete iff
 //       every resource its device.json names is present in `files/devices/<deviceId>/`), flattened across
@@ -76,11 +77,12 @@
 //       skip is the client's concern.
 //
 // EVENT LIFECYCLE (capability `event-limits`): every event-scoped route above resolves its event
-// through ONE gate (`gateEvent`): live (now <= endsAt) → grace (joins closed, members sync) → expired
-// (now > endsAt + grace, or a legacy marker missing the limit fields). The FIRST touch of an expired
-// event runs the lazy reap — silent-push the active members, then delete manifests, GC freed devices,
-// and delete the marker LAST — after which the event is indistinguishable from one never created (no
-// tombstone, no scheduler; reap timing rides on member traffic).
+// through ONE gate (`gateEvent`), which classifies it in TWO states: live (now <= endsAt) → grace
+// (now > endsAt: joins closed 410, members keep full sync). There is NO on-touch reap — an event past
+// endsAt stays in grace, serving members, until the nightly sweep (capability `scheduled-cleanup`, run
+// out-of-edge from GitHub Actions) deletes it once now > endsAt + grace. Deletion by the sweep IS
+// expiry. A legacy/corrupt marker (missing or unparseable limit fields) is `gone`: the gate answers 404
+// and the sweep deletes it.
 //
 // EVENT REGISTRY: an event exists iff the object `events/<id>/metadata.json` is present. Because an
 // eventId is a UUID, the marker key `events/<id>/metadata.json`, the device-manifest keys
@@ -119,7 +121,6 @@ import {
 import type { Config } from "./config.ts";
 import { createApnsSender, type PushToken } from "./apns.ts";
 import {
-  type AttestEnvironment,
   b64ToBytes,
   bytesToB64,
   challengeIsValid,
@@ -129,6 +130,34 @@ import {
   verifyAttestation,
   verifyToken,
 } from "./attest.ts";
+// Storage primitives + on-wire shapes, shared with the nightly sweep (capability `scheduled-cleanup`).
+import {
+  type AttestRecord,
+  byteKey,
+  decodeObjectName,
+  deleteObject,
+  deviceAttestKey,
+  deviceConfigKey,
+  deviceDir,
+  deviceLeftManifestKey,
+  deviceManifestDir,
+  deviceManifestKey,
+  type EventMarker,
+  type FetchLike,
+  listDir,
+  type ManifestResource,
+  markerKey,
+  putObject,
+  readManifestObject,
+  readMarker,
+  readObjectText,
+} from "./storage.ts";
+// Event lifecycle + membership, shared with the nightly sweep.
+import { classifyEvent, type MemberState, resolveMembership } from "./lifecycle.ts";
+
+// Re-exported so existing importers (tests, callers) keep their `from "./app.ts"` imports working.
+export { classifyEvent } from "./lifecycle.ts";
+export type { FetchLike } from "./storage.ts";
 
 // The marketing/landing page (capability `marketing-site`), embedded at build time. `deno bundle` inlines
 // this text import, so the page ships inside the single bundle — served from memory, no runtime file read.
@@ -205,196 +234,6 @@ const DOWNLOAD_ETAG: string = (() => {
   return `"${DOWNLOAD_HTML.length.toString(36)}-${(h >>> 0).toString(36)}"`;
 })();
 
-// The event registry's marker prefix. Because an eventId is a UUID, the marker
-// `events/<id>/metadata.json` is disjoint from any device manifest `events/<id>/devices/<deviceId>.json`
-// and from the byte store `files/devices/<deviceId>/…`.
-const MARKER_PREFIX = "events";
-
-/** Storage key of an event's marker object: `events/<eventId>/metadata.json`. */
-function markerKey(eventId: string): string {
-  return `${MARKER_PREFIX}/${encodeURIComponent(eventId)}/metadata.json`;
-}
-
-/** Storage key of a device's per-event manifest: `events/<eventId>/devices/<deviceId>.json`. */
-function deviceManifestKey(eventId: string, deviceId: string): string {
-  return `${MARKER_PREFIX}/${encodeURIComponent(eventId)}/devices/${
-    encodeURIComponent(deviceId)
-  }.json`;
-}
-
-/** The per-event device-manifest directory to LIST: `events/<eventId>/devices/`. */
-function deviceManifestDir(eventId: string): string {
-  return `${MARKER_PREFIX}/${encodeURIComponent(eventId)}/devices/`;
-}
-
-/**
- * Storage key of a device's **departed** manifest: `events/<eventId>/devices/<deviceId>.left.json`.
- * Leaving renames the active `<deviceId>.json` to this sibling (see the leave route); the union still
- * serves a departed device's photos, but notify skips it and the reap ignores it as an active member.
- */
-function deviceLeftManifestKey(eventId: string, deviceId: string): string {
-  return `${MARKER_PREFIX}/${encodeURIComponent(eventId)}/devices/${
-    encodeURIComponent(deviceId)
-  }.left.json`;
-}
-
-type MemberState = "active" | "departed";
-
-/**
- * Parse one `events/<eventId>/devices/` child object name into its device id and whether it is the
- * departed (`.left.json`) or active (`.json`) manifest. `.left.json` is checked first because it also
- * ends with `.json`. Returns `null` for anything else (a stray object or a directory entry).
- */
-function parseManifestObjectName(objectName: string): { deviceId: string; isLeft: boolean } | null {
-  const decoded = decodeObjectName(objectName);
-  if (decoded.endsWith(".left.json")) {
-    return { deviceId: decoded.slice(0, -".left.json".length), isLeft: true };
-  }
-  if (decoded.endsWith(".json")) {
-    return { deviceId: decoded.slice(0, -".json".length), isLeft: false };
-  }
-  return null;
-}
-
-/**
- * Resolve each device's membership from a single `events/<eventId>/devices/` listing, applying
- * **last-write-wins** when both a `<id>.json` (active) and a `<id>.left.json` (departed) sibling are
- * present: the newer object's state wins; an exact tie resolves to `active` (the leak-safe side; see
- * `device-manifest`). A device is counted once. This is the shared membership source for the union
- * (all devices), notify (active only), and the reap (any active remaining?).
- */
-function resolveMembership(
-  entries: BunnyEntry[] | null,
-): { deviceId: string; state: MemberState }[] {
-  const byDevice = new Map<string, { active?: number; left?: number }>();
-  for (const e of entries ?? []) {
-    if (e.IsDirectory) continue;
-    const parsed = parseManifestObjectName(e.ObjectName);
-    if (!parsed) continue;
-    const parsedTime = Date.parse(e.LastChanged);
-    const time = Number.isNaN(parsedTime) ? 0 : parsedTime;
-    const slot = byDevice.get(parsed.deviceId) ?? {};
-    if (parsed.isLeft) slot.left = Math.max(slot.left ?? -Infinity, time);
-    else slot.active = Math.max(slot.active ?? -Infinity, time);
-    byDevice.set(parsed.deviceId, slot);
-  }
-  const out: { deviceId: string; state: MemberState }[] = [];
-  for (const [deviceId, slot] of byDevice) {
-    const hasActive = slot.active !== undefined;
-    const hasLeft = slot.left !== undefined;
-    // Both present → LWW, active wins the tie; else whichever exists.
-    const state: MemberState = hasActive && (!hasLeft || slot.active! >= slot.left!)
-      ? "active"
-      : "departed";
-    out.push({ deviceId, state });
-  }
-  return out;
-}
-
-/** Storage key of a stored resource byte object: `files/devices/<deviceId>/<filename>`. */
-function byteKey(deviceId: string, filename: string): string {
-  return `files/devices/${encodeURIComponent(deviceId)}/${encodeURIComponent(filename)}`;
-}
-
-/** The device byte-store directory to LIST: `files/devices/<deviceId>/`. */
-function deviceDir(deviceId: string): string {
-  return `files/devices/${encodeURIComponent(deviceId)}/`;
-}
-
-/** Storage key of a device's config document (holds the push token): `devices/<deviceId>.json`. */
-function deviceConfigKey(deviceId: string): string {
-  return `devices/${encodeURIComponent(deviceId)}.json`;
-}
-
-/**
-/**
- * Storage key of a device's attestation record: `devices/<deviceId>.attest.json` (capability
- * `device-attestation`). Holds the attested public key, written ONCE at attestation and read ONLY when
- * renewing — never on a gated request, so no route pays a storage read to authenticate. A flat sibling of
- * `devices/<deviceId>.json`, and disjoint from every other namespace.
- */
-function deviceAttestKey(deviceId: string): string {
-  return `devices/${encodeURIComponent(deviceId)}.attest.json`;
-}
-
-/** A device's attestation record: the attested public key, base64, plus which environment attested it. */
-type AttestRecord = {
-  publicKey: string;
-  environment: AttestEnvironment;
-  attestedAt: string;
-};
-
-/**
- * The event marker's contents — the registry record written on create.
- *
- * `createdAt` and `startsAt` are DISTINCT facts and must not be conflated: `createdAt` is server-minted
- * wall-clock at the moment the marker is written (and carries milliseconds, per `toISOString()`), while
- * `startsAt` is the host's statement of when the event BEGAN — client-supplied, canonical cutoff shape,
- * honored verbatim. `startsAt` is both the default and the FLOOR for every member's capture-date cutoff
- * (capability `photo-selection-policy`).
- *
- * `endsAt` and `capacity` are the event's LIMITS (capability `event-limits`), SERVER-resolved at mint
- * from config — `endsAt = startsAt + duration` in the same canonical cutoff shape, `capacity` the
- * device cap. Enforcement reads these marker fields, never the live config, so a config change never
- * reaches an existing event and a later change can make them creator-chosen with no schema change.
- *
- * Write-once: no route rewrites a stored marker. The backend has no owner field — attestation proves a
- * genuine app instance, NOT ownership of an event (a stated non-goal of `device-attestation`) — so a
- * mutation route would let anyone holding the event id retroactively widen every future joiner's scope,
- * or extend an event's own limits. The lifecycle is recomputed from the stored fields on every read
- * (see `classifyEvent`) precisely so no rewrite is ever needed.
- */
-type EventMarker = {
-  eventId: string;
-  name: string;
-  createdAt: string;
-  startsAt: string;
-  endsAt: string;
-  capacity: number;
-};
-
-/**
- * A marker as it may sit in storage — one written before `startsAt` or the limit fields existed lacks
- * them. There is no read-time synthesis any more: a marker missing a limit field is EXPIRED by
- * definition (`classifyEvent`) and is reaped on first touch, never served.
- */
-type StoredEventMarker = Omit<EventMarker, "startsAt" | "endsAt" | "capacity"> & {
-  startsAt?: string;
-  endsAt?: string;
-  capacity?: number;
-};
-
-/**
- * An event's lifecycle (capability `event-limits`) — a PURE function of its stored marker, the
- * configured grace period, and the wall clock; no stored state machine, no marker rewrite.
- *
- *   live    while now <= endsAt                  joins allowed (under capacity), full sync
- *   grace   while endsAt < now <= endsAt+grace   joins closed (410), members keep full sync
- *   expired once  now > endsAt+grace             reaped on first touch, then absent (404)
- *
- * A marker missing `startsAt`, `endsAt`, or `capacity` (written before `event-limits`) is EXPIRED —
- * the deliberate pre-release posture: no grandfathering, no synthesis. An unparseable `endsAt` (not
- * producible by our own mint) fails closed the same way. On `live`/`grace` the narrowed, complete
- * marker is returned so every consumer downstream of the gate handles only total types.
- */
-export function classifyEvent(
-  stored: StoredEventMarker,
-  nowMs: number,
-  graceSeconds: number,
-): { phase: "live" | "grace"; marker: EventMarker } | { phase: "expired" } {
-  const { startsAt, endsAt, capacity } = stored;
-  if (!startsAt || !endsAt || typeof capacity !== "number") return { phase: "expired" };
-  const endsAtMs = Date.parse(endsAt);
-  if (Number.isNaN(endsAtMs)) return { phase: "expired" };
-  if (nowMs > endsAtMs + graceSeconds * 1000) return { phase: "expired" };
-  return {
-    phase: nowMs > endsAtMs ? "grace" : "live",
-    marker: { ...stored, startsAt, endsAt, capacity },
-  };
-}
-
-export type FetchLike = (url: string, init: RequestInit) => Promise<Response>;
-
 // RequestInit + the streaming-body flag required when `body` is a ReadableStream.
 type StreamInit = RequestInit & { duplex?: "half" };
 
@@ -410,19 +249,6 @@ export type Deps = {
   now?: () => number;
 };
 
-// A single entry from bunny's native Storage "List Files" response. We read only these fields;
-// everything else (Guid, ServerId, …) is ignored. `LastChanged` is the object's server-set
-// last-modified time — the last-write-wins tiebreak between a device's active `<id>.json` and
-// departed `<id>.left.json` manifests (see `resolveMembership`); it is a wall-clock string
-// (e.g. `2026-07-06T10:30:00.000`) minted by the same storage zone, so it is comparable across
-// sibling objects without any client clock.
-type BunnyEntry = {
-  ObjectName: string;
-  Length: number;
-  IsDirectory: boolean;
-  LastChanged: string;
-};
-
 // One file in the per-device listing response — exactly `filename`, `size`, and `url` (a closed shape).
 // `filename` is the uploaded name decoded from the stored key; `size` is the object's byte length;
 // `url` is a presigned S3 GET URL (per `bunny-list-endpoint`, built by `presignDownloadUrl`).
@@ -430,25 +256,6 @@ type FileEntry = {
   filename: string;
   size: number;
   url: string;
-};
-
-// The on-storage device manifest (`device-manifest`), after the `key`/`filename` rename. We read only
-// these fields; the union projects them straight through. A resource's `key` is its storage object
-// name (`files/devices/<deviceId>/<key>`, the fetch handle); `filename` is the human capture name.
-type ManifestResource = {
-  role: string;
-  contentType: string;
-  key: string;
-  filename: string;
-};
-type ManifestAsset = {
-  assetId: string;
-  creationDate: string;
-  resources: ManifestResource[];
-};
-type DeviceManifest = {
-  deviceId: string;
-  assets: ManifestAsset[];
 };
 
 // One asset in the event-wide union: the owning `deviceId` (own-vs-foreign skip is the client's
@@ -499,169 +306,6 @@ async function presignDownloadUrl(
 }
 
 /**
- * List one bunny native Storage directory (trailing slash required). Returns the parsed entries, or
- * `null` when the directory has nothing / does not exist (bunny `404`) — the caller maps `null` to
- * "no objects". Any other non-OK status, network error, or abort THROWS, so the route surfaces a
- * faithful `502` and never a partial list.
- */
-async function listDir(
-  fetchImpl: FetchLike,
-  config: Config,
-  dirPath: string,
-): Promise<BunnyEntry[] | null> {
-  const url = `https://${config.host}/${config.zone}/${dirPath}`;
-  const res = await fetchImpl(url, {
-    method: "GET",
-    headers: { AccessKey: config.accessKey, Accept: "application/json" },
-  });
-  if (res.status === 404) return null; // empty / unknown directory
-  if (!res.ok) throw new Error(`bunny LIST returned ${res.status} for ${dirPath}`);
-  return await res.json() as BunnyEntry[];
-}
-
-// The stored object name is `encodeURIComponent(filename)` (see the upload handler), so decode it
-// back to the filename the client uploaded — the reinstall-stable key a re-joining device reconciles
-// against. Malformed escapes (never produced by our own encoder) fall back to the raw name rather
-// than throw.
-function decodeObjectName(objectName: string): string {
-  try {
-    return decodeURIComponent(objectName);
-  } catch {
-    return objectName;
-  }
-}
-
-/**
- * Read an event's marker RAW (the existence half of the gate). Returns the stored marker when present
- * (bunny `200`), `null` when absent (bunny `404`), and THROWS on any other status, network error, or
- * abort — so the caller surfaces a faithful `502` and never mistakes a transient read failure for
- * "event absent". Bunny's Edge Storage API has no `HEAD`, so existence is a small `GET` of the marker.
- * Callers do not consume this directly: every event-scoped route goes through the lifecycle gate
- * (`gateEvent` in `createApp`), which classifies the stored marker via `classifyEvent` — the former
- * read-time `startsAt` synthesis is gone, because a marker old enough to lack `startsAt` also lacks
- * `endsAt` and is therefore expired, reaped rather than patched.
- */
-async function readMarker(
-  fetchImpl: FetchLike,
-  config: Config,
-  eventId: string,
-): Promise<StoredEventMarker | null> {
-  const url = `https://${config.host}/${config.zone}/${markerKey(eventId)}`;
-  const res = await fetchImpl(url, {
-    method: "GET",
-    headers: { AccessKey: config.accessKey, Accept: "application/json" },
-  });
-  if (res.status === 404) return null; // event was never created
-  if (!res.ok) throw new Error(`bunny marker GET returned ${res.status} for ${eventId}`);
-  return await res.json() as StoredEventMarker;
-}
-
-/**
- * Read one device-manifest object by its full key (the LWW-winning `<id>.json` or `<id>.left.json`).
- * THROWS on any non-OK status, network error, abort, OR a JSON parse failure — so a faulty manifest
- * fails the whole union faithfully (`502`) rather than silently dropping a contributor. The caller only
- * invokes this for devices already discovered by the directory LIST, so the object is expected to exist
- * (a `404` here is a race and is treated as a failure, not absence).
- */
-async function readManifestObject(
-  fetchImpl: FetchLike,
-  config: Config,
-  key: string,
-): Promise<DeviceManifest> {
-  const url = `https://${config.host}/${config.zone}/${key}`;
-  const res = await fetchImpl(url, {
-    method: "GET",
-    headers: { AccessKey: config.accessKey, Accept: "application/json" },
-  });
-  if (!res.ok) {
-    throw new Error(`bunny device-manifest GET returned ${res.status} for ${key}`);
-  }
-  return await res.json() as DeviceManifest;
-}
-
-/**
- * Read a storage object's raw body text, or `null` when absent (`404`). THROWS on any other non-OK
- * status, so the leave cascade surfaces a faithful `502` rather than losing a contribution. Used to
- * copy an active manifest into its departed sibling.
- */
-async function readObjectText(
-  fetchImpl: FetchLike,
-  config: Config,
-  key: string,
-): Promise<string | null> {
-  const url = `https://${config.host}/${config.zone}/${key}`;
-  const res = await fetchImpl(url, {
-    method: "GET",
-    headers: { AccessKey: config.accessKey },
-  });
-  if (res.status === 404) return null;
-  if (!res.ok) throw new Error(`bunny GET returned ${res.status} for ${key}`);
-  return await res.text();
-}
-
-/** PUT a storage object's body (minting a fresh last-modified time). THROWS on any non-OK status. */
-async function putObject(
-  fetchImpl: FetchLike,
-  config: Config,
-  key: string,
-  body: string,
-  contentType: string,
-): Promise<void> {
-  const url = `https://${config.host}/${config.zone}/${key}`;
-  const res = await fetchImpl(url, {
-    method: "PUT",
-    headers: { AccessKey: config.accessKey, "Content-Type": contentType },
-    body,
-  });
-  if (!res.ok) throw new Error(`bunny PUT returned ${res.status} for ${key}`);
-  await res.body?.cancel();
-}
-
-/**
- * DELETE a storage object, idempotently: a `404` (already gone) is success. THROWS on any other non-OK
- * status so a real failure surfaces as `502`. Deleting an absent object is a no-op, which keeps the
- * whole leave cascade safe to re-run under at-least-once delivery.
- */
-async function deleteObject(fetchImpl: FetchLike, config: Config, key: string): Promise<void> {
-  const url = `https://${config.host}/${config.zone}/${key}`;
-  const res = await fetchImpl(url, {
-    method: "DELETE",
-    headers: { AccessKey: config.accessKey },
-  });
-  if (!res.ok && res.status !== 404) {
-    throw new Error(`bunny DELETE returned ${res.status} for ${key}`);
-  }
-  await res.body?.cancel();
-}
-
-/**
- * Reference-count check for the leave cascade's GC: does `deviceId` still appear — as an active
- * `<id>.json` OR a departed `<id>.left.json` — under any event other than `excludeEventId` (the event
- * being reaped)? Enumerates all events with one LIST of `events/` and one LIST per surviving event's
- * `devices/` directory. Reads the storage **main** region (the deployment invariant), so a concurrent
- * rejoin's fresh manifest is visible. THROWS on any transport failure so a partial check never deletes
- * shared bytes.
- */
-async function deviceAppearsInAnotherEvent(
-  fetchImpl: FetchLike,
-  config: Config,
-  deviceId: string,
-  excludeEventId: string,
-): Promise<boolean> {
-  const eventEntries = await listDir(fetchImpl, config, `${MARKER_PREFIX}/`);
-  const eventIds = (eventEntries ?? [])
-    .filter((e) => e.IsDirectory)
-    .map((e) => decodeObjectName(e.ObjectName));
-  for (const eventId of eventIds) {
-    if (eventId === excludeEventId) continue;
-    const entries = await listDir(fetchImpl, config, deviceManifestDir(eventId));
-    const found = resolveMembership(entries).some((m) => m.deviceId === deviceId);
-    if (found) return true;
-  }
-  return false;
-}
-
-/**
  * Read a device's config object (`devices/<deviceId>.json`) and return its `pushToken`, or
  * `null` when the config is absent (`404`), unreadable, unparseable, or carries no usable token. Used
  * by the notify fan-out, which is **best-effort** — a member without a registered token is simply
@@ -702,6 +346,28 @@ async function readPushToken(
   }
 }
 
+/** Does `path` match EXACTLY `/events/<uuid>/notify`? The one route the ADMIN_NOTIFY_KEY authorizes. */
+function isNotifyPath(path: string): boolean {
+  const segs = path.split("/");
+  return segs.length === 4 && segs[0] === "" && segs[1] === "events" &&
+    validateUUID(segs[2]) && segs[3] === "notify";
+}
+
+/**
+ * Constant-time string equality over UTF-8 bytes — no early return on the first mismatched byte, so a
+ * bearer-secret compare (the ADMIN_NOTIFY_KEY) does not leak how much of a guess was correct via timing. The
+ * length is allowed to leak (the secret's length is fixed); only the content compare is constant-time.
+ */
+function constantTimeEqual(a: string, b: string): boolean {
+  const enc = new TextEncoder();
+  const ab = enc.encode(a);
+  const bb = enc.encode(b);
+  if (ab.length !== bb.length) return false;
+  let diff = 0;
+  for (let i = 0; i < ab.length; i++) diff |= ab[i] ^ bb[i];
+  return diff === 0;
+}
+
 export function createApp({ fetch: fetchImpl, config, now = Date.now }: Deps): Hono {
   // The S3 signer used ONLY to presign download URLs (capability `bunny-list-endpoint`). Access Key ID =
   // the zone name, secret = the storage-zone `AccessKey`; pure Web-Crypto, no network. Uploads/reads/
@@ -720,69 +386,17 @@ export function createApp({ fetch: fetchImpl, config, now = Date.now }: Deps): H
 
   // ── THE EVENT-LIMITS GATE (capability `event-limits`) ───────────────────────────────────────────
   //
-  // Every event-scoped route resolves its event through `gateEvent` below: read the marker, classify
-  // the lifecycle (`classifyEvent` — live / grace / expired, a pure function of the marker + clock),
-  // and on `expired` run the lazy reap THEN answer as absent. There is no scheduler: reap timing rides
-  // on traffic, and the likely first toucher is a member's own background sync — which is exactly who
-  // the reap's silent push is for.
+  // Every event-scoped route resolves its event through `gateEvent` below: read the marker and classify
+  // the lifecycle (`classifyEvent` — two states, live / grace, a pure function of the marker + clock).
+  // There is NO on-touch reap: an event past `endsAt` stays in grace (members sync, joins closed) until
+  // the nightly sweep (capability `scheduled-cleanup`) deletes it — deletion by the sweep IS expiry.
 
   /**
-   * The leave cascade's reference-checked GC for one freed device (shared verbatim with the expiry
-   * reap): delete its `files/devices/<id>/` bytes, `devices/<id>.json` config, and attestation record —
-   * but only when the device appears in NO surviving event (shared bytes another event still references
-   * are retained). THROWS on any transport failure so a partial check never deletes shared bytes.
-   */
-  async function gcDeviceIfUnreferenced(freedId: string, excludeEventId: string): Promise<void> {
-    if (await deviceAppearsInAnotherEvent(fetchImpl, config, freedId, excludeEventId)) return;
-    const files = await listDir(fetchImpl, config, deviceDir(freedId));
-    for (const f of (files ?? []).filter((e) => !e.IsDirectory)) {
-      await deleteObject(fetchImpl, config, `${deviceDir(freedId)}${f.ObjectName}`);
-    }
-    await deleteObject(fetchImpl, config, deviceConfigKey(freedId));
-    // …and its attestation record (capability `device-attestation`). Per-device state keyed by a
-    // device that now participates in nothing: leaving it behind leaks one object per departed
-    // device, forever. Safe to drop — a device that returns simply attests again, which writes a
-    // fresh record.
-    await deleteObject(fetchImpl, config, deviceAttestKey(freedId));
-  }
-
-  /**
-   * The expiry reap (capability `event-limits`): notify, then delete EVERYTHING — no tombstone.
-   *
-   * Order matters twice. The silent push to active members goes FIRST because membership is only
-   * readable before it is deleted — and it is best-effort: a failed fan-out never blocks the reap.
-   * The marker goes LAST: an interrupted cascade then leaves the event still discoverable as expired,
-   * so the next touch re-runs the reap to completion (every delete is idempotent). Deletion THROWS on
-   * transport failure so the triggering route answers 502 and the next touch retries.
-   */
-  async function reapExpiredEvent(eventId: string): Promise<void> {
-    const entries = await listDir(fetchImpl, config, deviceManifestDir(eventId));
-    const members = resolveMembership(entries);
-    try {
-      const activeIds = members.filter((m) => m.state === "active").map((m) => m.deviceId);
-      const tokens = (await Promise.all(activeIds.map((d) => readPushToken(fetchImpl, config, d))))
-        .filter((t): t is PushToken => t !== null);
-      const outcomes = await apns.sendSilent(tokens, eventId);
-      const sent = outcomes.filter((o) => o.status === "sent").length;
-      console.info(
-        `reap: event ${eventId} expired — ${activeIds.length} active members, ${sent} pushed`,
-      );
-    } catch (e) {
-      console.error(`reap: push fan-out failed for ${eventId} (reap continues): ${e}`);
-    }
-    for (const e of (entries ?? []).filter((e) => !e.IsDirectory)) {
-      await deleteObject(fetchImpl, config, `${deviceManifestDir(eventId)}${e.ObjectName}`);
-    }
-    for (const { deviceId: freedId } of members) {
-      await gcDeviceIfUnreferenced(freedId, eventId);
-    }
-    await deleteObject(fetchImpl, config, markerKey(eventId)); // LAST — see the docblock
-  }
-
-  /**
-   * Resolve an event for a route: marker read + lifecycle classification + lazy reap. `absent` covers
-   * both "never created" and "expired" — after the reap the two are indistinguishable BY DESIGN (no
-   * tombstone; the response is byte-for-byte the never-created one). THROWS on marker-read or reap
+   * Resolve an event for a route: marker read + two-state lifecycle classification (capability
+   * `event-limits`). `absent` covers "never created" AND a `gone` marker (legacy/corrupt — missing or
+   * unparseable limit fields), which the nightly sweep (capability `scheduled-cleanup`) deletes. There
+   * is no on-touch reap any more: an event past `endsAt` stays in `grace` (serving members, joins
+   * closed) until the sweep deletes it, so deletion by the sweep IS expiry. THROWS on marker-read
    * transport failure, so the route surfaces 502 and never mistakes a transient failure for absence.
    */
   async function gateEvent(
@@ -790,11 +404,8 @@ export function createApp({ fetch: fetchImpl, config, now = Date.now }: Deps): H
   ): Promise<{ kind: "ok"; phase: "live" | "grace"; marker: EventMarker } | { kind: "absent" }> {
     const stored = await readMarker(fetchImpl, config, eventId);
     if (stored === null) return { kind: "absent" };
-    const cls = classifyEvent(stored, now(), config.eventGraceSeconds);
-    if (cls.phase === "expired") {
-      await reapExpiredEvent(eventId);
-      return { kind: "absent" };
-    }
+    const cls = classifyEvent(stored, now());
+    if (cls.phase === "gone") return { kind: "absent" }; // legacy/corrupt marker — the sweep deletes it
     return { kind: "ok", ...cls };
   }
 
@@ -917,6 +528,17 @@ export function createApp({ fetch: fetchImpl, config, now = Date.now }: Deps): H
 
     const auth = c.req.header("authorization") ?? "";
     const token = auth.startsWith("Bearer ") ? auth.slice("Bearer ".length).trim() : "";
+
+    // The notify-only ADMIN_NOTIFY_KEY (capabilities `event-notify-endpoint`, `scheduled-cleanup`): the
+    // out-of-edge nightly sweep holds no device token, so it authenticates its member-notify with this
+    // key instead. Scoped to EXACTLY `POST /events/<uuid>/notify` — checked here, before the device-token
+    // path, so it authorizes that one route and no other. Compared in constant time.
+    if (
+      method === "POST" && isNotifyPath(path) && token && constantTimeEqual(token, config.adminKey)
+    ) {
+      return await next();
+    }
+
     if (!token || !await verifyToken(config, token, now())) {
       return c.text("unattested", 401);
     }
@@ -1234,15 +856,15 @@ export function createApp({ fetch: fetchImpl, config, now = Date.now }: Deps): H
     return c.body(null, 201);
   });
 
-  // Leave an event (capability `event-leave-endpoint`). The device notifies the backend it is leaving.
-  // GATED on the marker (absent → 404; non-404 read failure → 502). Cascade: (1) rename the device's
-  // active manifest to its `.left.json` sibling (copy content → FRESH timestamp, then delete the
-  // active) so the union still serves its photos; (2) if no ACTIVE member remains (last-write-wins over
-  // the devices/ listing) reap the whole `events/<eventId>/` tree; (3) for each freed device that
-  // appears in no surviving event, GC its `files/devices/<id>/` byte partition and `devices/<id>.json`
-  // config. Idempotent + leak-safe: the `.left.json` is written BEFORE the active is deleted, and every
-  // delete of an absent object is a no-op, so a duplicate/retried DELETE re-runs harmlessly. Any
-  // transport failure anywhere in the cascade → 502.
+  // Leave an event (capability `event-leave-endpoint`). RENAME-ONLY: leaving is non-destructive. GATED
+  // on the marker (absent → 404; non-404 read failure → 502). Rename the device's active manifest to its
+  // `.left.json` sibling (copy content → FRESH timestamp, then delete the active) so the union still
+  // serves its photos, then return 200 REGARDLESS of remaining membership — the event survives until it
+  // expires and is deleted by the nightly sweep (capability `scheduled-cleanup`), which also collects the
+  // bytes. No last-member reap, no leave-time garbage collection. Idempotent + leak-safe: the `.left.json`
+  // is written BEFORE the active is deleted, so a failure between them leaves the device recoverable; a
+  // missing active manifest (already departed / never a member) is a no-op, so a retried DELETE re-runs
+  // harmlessly. Any transport failure → 502.
   deviceApi.delete("/events/:eventId/devices/:deviceId", async (c) => {
     const eventId = c.req.param("eventId");
     const deviceId = c.req.param("deviceId");
@@ -1251,9 +873,9 @@ export function createApp({ fetch: fetchImpl, config, now = Date.now }: Deps): H
     }
 
     try {
-      // The lifecycle gate (capability `event-limits`): an expired event reaps here too — the leave
-      // then 404s, which the client already treats as "nothing to leave". A leave DURING grace
-      // proceeds: members may still depart an over-but-not-expired event.
+      // The lifecycle gate (capability `event-limits`): a `gone` (legacy/corrupt) marker 404s, which the
+      // client already treats as "nothing to leave". A leave DURING grace proceeds: members may still
+      // depart an over-but-not-yet-swept event.
       const gate = await gateEvent(eventId);
       if (gate.kind === "absent") return c.text("event not found", 404);
     } catch (e) {
@@ -1262,7 +884,7 @@ export function createApp({ fetch: fetchImpl, config, now = Date.now }: Deps): H
     }
 
     try {
-      // (1) Departed rename. Write the `.left.json` sibling FIRST (fresh timestamp = the commit), then
+      // Departed rename. Write the `.left.json` sibling FIRST (fresh timestamp = the commit), then
       // delete the active. A missing active manifest (already departed / never a member) → no-op.
       const activeKey = deviceManifestKey(eventId, deviceId);
       const activeBody = await readObjectText(fetchImpl, config, activeKey);
@@ -1276,28 +898,10 @@ export function createApp({ fetch: fetchImpl, config, now = Date.now }: Deps): H
         );
         await deleteObject(fetchImpl, config, activeKey);
       }
-
-      // (2) Reap check: re-LIST devices/ (now reflecting the rename); any active member remaining?
-      const entries = await listDir(fetchImpl, config, deviceManifestDir(eventId));
-      const members = resolveMembership(entries);
-      if (members.some((m) => m.state === "active")) {
-        return c.body(null, 200); // an active member remains — keep the event
-      }
-
-      // No active member → reap the event tree: every manifest under devices/, then the marker.
-      for (const e of (entries ?? []).filter((e) => !e.IsDirectory)) {
-        await deleteObject(fetchImpl, config, `${deviceManifestDir(eventId)}${e.ObjectName}`);
-      }
-      await deleteObject(fetchImpl, config, markerKey(eventId));
-
-      // (3) Reference-checked GC: delete a freed device's bytes + config + attestation record only if
-      // it appears in no surviving event (shared with the expiry reap — see `gcDeviceIfUnreferenced`).
-      for (const { deviceId: freedId } of members) {
-        await gcDeviceIfUnreferenced(freedId, eventId);
-      }
+      // Always succeed: the event persists (rejoinable) regardless of how many active members remain.
       return c.body(null, 200);
     } catch (e) {
-      console.error(`leave: cascade failed for ${eventId}/${deviceId}: ${e}`);
+      console.error(`leave: rename failed for ${eventId}/${deviceId}: ${e}`);
       return c.text("upstream error", 502);
     }
   });

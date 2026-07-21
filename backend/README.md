@@ -190,7 +190,7 @@ is not consulted for any of it**, so a stale platform variable cannot override g
 
 | Source constant | Value                        | Meaning                                                                 |
 | --------------- | ---------------------------- | ----------------------------------------------------------------------- |
-| `ZONE`          | `snap-sync`                  | storage zone name (also the S3 Access Key ID + bucket)                  |
+| `ZONE`          | `snap-sync-dev`              | storage zone name (also the S3 Access Key ID + bucket)                  |
 | `HOST`          | `storage.bunnycdn.com`       | native Storage host (DE/Falkenstein) — **main region, never a replica** |
 | `S3_REGION`     | `de`                         | S3 region — used only to presign download URLs                          |
 | `S3_HOST`       | `de-s3.storage.bunnycdn.com` | bunny S3 endpoint — the presigned-URL origin                            |
@@ -238,8 +238,8 @@ BUNNY_STORAGE_ACCESS_KEY=k APNS_PRIVATE_KEY="$(cat AuthKey.p8)" \
 ```
 
 Two env vars, because everything else is a source constant. Note this targets the **real**
-`snap-sync` zone. To point a local run somewhere else, construct a `Config` literal and pass it to
-`createApp({ config, fetch })` directly — that is the injection seam the tests use — rather than
+`snap-sync-dev` zone. To point a local run somewhere else, construct a `Config` literal and pass it
+to `createApp({ config, fetch })` directly — that is the injection seam the tests use — rather than
 reintroducing an env override.
 
 Provision the APNs **Auth Key** (`.p8`) for team `E9Z8BADH58` once (App Store Connect API / portal)

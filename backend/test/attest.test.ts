@@ -28,6 +28,7 @@ const APPLE_ROOT_CA = readConfig({
   BUNNY_STORAGE_ACCESS_KEY: "k",
   APNS_PRIVATE_KEY: "p",
   ATTEST_TOKEN_KEY: "t",
+  ADMIN_NOTIFY_KEY: "a",
 }).appAttestRootCa;
 
 const CONFIG: Config = {
@@ -41,6 +42,7 @@ const CONFIG: Config = {
   apnsPrivateKey: "-----BEGIN PRIVATE KEY-----\nMIG...\n-----END PRIVATE KEY-----\n",
   apnsTopic: "app.snapsync",
   attestTokenKey: "test-attest-token-key",
+  adminKey: "test-admin-key",
   appAttestRootCa: APPLE_ROOT_CA,
   attestTokenTtlSeconds: 30 * DAY / 1000,
   attestAppId: "E9Z8BADH58.app.snapsync",
@@ -260,6 +262,53 @@ Deno.test("gate: opening the reads opens no WRITE — mutating /events/<id>/… 
   assertEquals((await a.request(`/files/devices/${D}`)).status, 401);
 });
 
+// ── The notify ADMIN_NOTIFY_KEY (capabilities `event-notify-endpoint`, `scheduled-cleanup`) ────────────────
+
+const adminHdr = { authorization: `Bearer ${CONFIG.adminKey}` };
+
+Deno.test("gate: the ADMIN_NOTIFY_KEY authorizes POST /events/:id/notify (no device token)", async () => {
+  // The raw recorder 404s every GET, so the marker read → 404 → notify answers 404. The point is it
+  // reached the existence check at all: an admin key that was NOT authorized would 401 before any read.
+  const { app: a } = app();
+  const res = await a.request(`/events/${E}/notify`, { method: "POST", headers: adminHdr });
+  assertEquals(res.status, 404); // authorized (past the gate), event just doesn't exist here — NOT 401
+});
+
+Deno.test("gate: a wrong admin key on notify is refused 401", async () => {
+  const { calls, app: a } = app();
+  const res = await a.request(`/events/${E}/notify`, {
+    method: "POST",
+    headers: { authorization: "Bearer not-the-admin-key" },
+  });
+  assertEquals(res.status, 401);
+  assertEquals(calls.length, 0); // nothing read
+});
+
+Deno.test("gate: the ADMIN_NOTIFY_KEY authorizes ONLY notify — every other route refuses it 401", async () => {
+  const { app: a } = app();
+  // Event creation (a gated write; GET /events/<id> is now a public read — web-event-download)…
+  assertEquals(
+    (await a.request(`/events`, { method: "POST", body: "{}", headers: adminHdr })).status,
+    401,
+  );
+  // …a device-manifest PUT (join)…
+  assertEquals(
+    (await a.request(`/events/${E}/devices/${D}`, {
+      method: "PUT",
+      body: "{}",
+      headers: adminHdr,
+    })).status,
+    401,
+  );
+  // …a leave…
+  assertEquals(
+    (await a.request(`/events/${E}/devices/${D}`, { method: "DELETE", headers: adminHdr })).status,
+    401,
+  );
+  // …and even a GET on the notify PATH (the key is scoped to POST notify, not the path).
+  assertEquals((await a.request(`/events/${E}/notify`, { headers: adminHdr })).status, 401);
+});
+
 Deno.test("gate: OPTIONS is answered without a token (the pull zone may answer it anyway)", async () => {
   const { app: a } = app();
   const res = await a.request(`/files/devices/${D}/IMG_0001-photo.jpg`, { method: "OPTIONS" });
@@ -432,13 +481,14 @@ Deno.test("renew: a device that never attested must attest, not renew", async ()
   assertEquals(res.status, 401);
 });
 
-// ── Leave GC ──────────────────────────────────────────────────────────────────────────────────────
+// ── Leave is rename-only (capability `event-leave-endpoint`) ─────────────────────────────────────────
 
-Deno.test("leave: a fully-orphaned device's attestation record is collected with its config", async () => {
+Deno.test("leave: the departing device's config + attestation record are RETAINED (no leave-time GC)", async () => {
+  // Leaving is non-destructive now: it renames the active manifest to `.left.json` and returns 200,
+  // touching neither the config nor the attestation record. A fully-orphaned device is collected only by
+  // the nightly sweep (capability `scheduled-cleanup`), not by leave.
   const calls: Call[] = [];
   const store = new Map<string, string>([
-    // A LIVE marker at NOW — the limit fields are required (capability `event-limits`): a marker
-    // without them is expired and would be reaped instead of served, and this test is about leave.
     [
       `events/${E}/metadata.json`,
       JSON.stringify({
@@ -477,8 +527,6 @@ Deno.test("leave: a fully-orphaned device's attestation record is collected with
           : new Response(body, { status: 200 }),
       );
     }
-    // Writes must LAND, or the cascade cannot see its own departed-rename and the reap walks an empty
-    // member list — which would make this test pass for the wrong reason.
     if (method === "PUT") store.set(key, typeof init.body === "string" ? init.body : "{}");
     if (method === "DELETE") store.delete(key);
     return Promise.resolve(new Response(null, { status: 200 }));
@@ -491,9 +539,10 @@ Deno.test("leave: a fully-orphaned device's attestation record is collected with
   const deleted = calls.filter((c) => c.init.method === "DELETE").map((c) =>
     c.url.split("/snapsync-zone/")[1]
   );
-  assert(
-    deleted.includes(`devices/${D}.attest.json`),
-    "the freed device's attestation record was left behind — one leaked object per departed device, forever",
-  );
-  assert(deleted.includes(`devices/${D}.json`)); // …alongside its config, as before
+  // The ONLY delete leave performs is the active manifest (renamed to .left.json). Nothing else.
+  assertEquals(deleted, [`events/${E}/devices/${D}.json`]);
+  assert(store.has(`devices/${D}.attest.json`), "attestation record must be retained by leave");
+  assert(store.has(`devices/${D}.json`), "config must be retained by leave");
+  assert(store.has(`events/${E}/devices/${D}.left.json`), "departed manifest must be written");
+  assert(store.has(`events/${E}/metadata.json`), "event marker must survive leave");
 });

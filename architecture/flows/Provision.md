@@ -31,6 +31,7 @@ sequenceDiagram
   Provision->>uploadArm: onProvision()
   Provision->>albumCoordinator: ensureAlbum(…)
   Provision--)downloadController: reconcile(…)
+  Provision--)effects: registerPush()
   alt eventName.fetchNeed(cfg.name) = TitleNeed.MISSING
     Provision--)eventName: storeEventNameIfChanged(…)
   else eventName.fetchNeed(cfg.name) = TitleNeed.PRESENT

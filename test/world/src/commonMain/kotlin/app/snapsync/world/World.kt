@@ -114,6 +114,11 @@ class World(
 
     val importer: FakePhotoLibraryImporter = FakePhotoLibraryImporter(gallery)
     val marker: InMemoryJoinedEventMarker = InMemoryJoinedEventMarker()
+
+    /** Counts the real `Provision` flow's on-join push re-registration (capability `push-registration`):
+     *  the `registerPush` effect below increments it, so a test can assert the join path fired it. */
+    var registerPushCount: Int = 0
+        private set
     val manifestStore: InMemoryDeviceManifestStore = InMemoryDeviceManifestStore()
     val permission: MutablePhotoAccessStatusSource = MutablePhotoAccessStatusSource()
 
@@ -274,6 +279,8 @@ class World(
             albumExcludedAssetIds = { cutoff -> albumManager.assetIdsInAlbums(DENYLISTED_ALBUM_TITLES, cutoff) },
             notifyLeave = { eventId -> leaveNotifier.leave(eventId, ownDeviceId) },
             provision = { cfg -> configCell.value = cfg },
+            // Spy the real Provision flow's on-join push re-registration (capability `push-registration`).
+            registerPush = { registerPushCount++ },
             onEventMinted = { eventId -> onEventMinted(eventId) },
             log = Logger.withTag("World"),
         ),
@@ -450,7 +457,7 @@ class World(
      * Leave the joined event — the **faithful** in-place clear (NOT a world rebuild): run the real
      * [DownloadController.onLeaveOrSwitch] (cancel transfers, prune non-terminal download rows), then
      * the real backend leave (the `:adapter:generic:app` `HttpLeaveNotifier` over the mini-edge — the same
-     * `DELETE` the app fires, driving the store's rename→reap→GC cascade), then clear the config cell
+     * `DELETE` the app fires, driving the store's RENAME-ONLY departed-mark), then clear the config cell
      * and the joined-event marker. Deliberately an operator edge, not [UserCommands.leave]: the
      * composed leave's backend notify is fire-and-forget by design, and the operator's leave must be
      * COMPLETE on return so world assertions never race the DELETE (drive `core.userCommands.leave`
@@ -458,8 +465,8 @@ class World(
      * photos** are retained (imported download rows are terminal / delete-proof), so re-provisioning
      * the same event afterwards still finds them suppressed (real cross-event dedup). Clearing
      * [configCell] is reactive, so the listing-backed status projection leaves the joined layer with
-     * no rebuild. Backend outcomes (the device departed; the event reaped + its bytes GC'd when it
-     * was the last active member) are assertable on [store].
+     * no rebuild. Backend outcomes (the device departed; the event and its bytes RETAINED until the
+     * nightly sweep reclaims them, capability `scheduled-cleanup`) are assertable on [store].
      */
     suspend fun leave() {
         core.downloadController.onLeaveOrSwitch()
