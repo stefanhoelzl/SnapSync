@@ -227,7 +227,42 @@ so a switch / leave-then-rejoin / reinstall re-uploaded the whole post-cutoff li
 `changes/archive/…-fix-app-driven-upload-lifecycle`.) To observe real uploads in the dev loop, point at a
 **fresh event id** (or clear the event's objects in the bunny zone) so the reconcile finds nothing to seed.
 
-`SNAPSYNC_FORGE_STATE=<state>` is a third **dev/test trigger** (capability `ios-app-shell`), read **once
+**Creating an event headlessly.** `SNAPSYNC_CREATE_EVENT=<base64url(JSON)>` is a **dev/test trigger**
+(capability `ios-app-shell`), read **once per process** and inert in production. The JSON carries a
+**required** `name` plus optional `startsAt` (canonical `…Z`; default **now** — which is also the cutoff
+floor, so a create-today event accepts `SNAPSYNC_SEED_POLICY`'s +1h assets), `autoJoin`, `minPhotoDate`,
+`direction`, `saveToAlbum`. It mints via the attest-gated `POST /events`, then:
+- **without `autoJoin`** — mint-only: it joins nothing and logs the greppable oracle
+  `created eventId=<uuid>` (in `debug.log`), the id to reuse in a later `SNAPSYNC_EVENT_LINK` join;
+- **with `autoJoin`** — it forwards a synthesized `autoJoin` link through the **same** join gate a QR
+  uses, landing a live membership in one launch (cutoff/direction/album honoured, cutoff clamped to the
+  floor like every join).
+```
+d=$(python3 -c "import json,base64;print(base64.urlsafe_b64encode(json.dumps(
+  {'name':'Test Party','autoJoin':True,'direction':'both'}).encode()).decode().rstrip('='))")
+$P developer dvt launch app.snapsync --env SNAPSYNC_CREATE_EVENT="$d" --userspace
+uvx pymobiledevice3 apps pull app.snapsync Documents/debug.log   # read `created eventId=…` (mint-only)
+```
+⚠️ **`SNAPSYNC_CREATE_EVENT` is NON-idempotent — every cold launch mints a NEW backend event** (the
+backend mints a fresh UUID per `POST`; there is no create-if-not-exists). This is the **opposite** of
+`SNAPSYNC_EVENT_LINK`, which is safe to leave set for the per-build loop (a re-join reconciles). **Unset
+`SNAPSYNC_CREATE_EVENT` after the mint**, or each relaunch orphans another event (and an `autoJoin`
+re-launch leaves the previous one to join the new). Use mint-only to pre-seed the several distinct events
+a multi-shape test needs (one relaunch per event), then join them with `SNAPSYNC_EVENT_LINK`.
+
+**Leaving headlessly.** `SNAPSYNC_LEAVE=1` (presence-triggered, like `SNAPSYNC_FORCE_URLSESSION_UPLOAD`)
+is a **dev/test trigger** (capability `ios-app-shell`), read **once per process** and inert in production:
+it leaves the current membership (cancel downloads, stop the producer, clear config, notify the backend)
+and returns the device to the unjoined resting state. A no-op when unjoined. It is the only headless route
+to the unjoined state (a *switch* to a different event id leaves-then-joins via the join gate; standalone
+leave does not rejoin).
+
+**Ordering.** When more than one membership trigger is set in a launch, they apply in the fixed order
+`leave → create → event-link`, sequentially (each awaited), so e.g. `SNAPSYNC_LEAVE` + `SNAPSYNC_CREATE_EVENT`
+drops the current membership before minting the new one. A `SNAPSYNC_FORGE_STATE` launch ignores all three
+(forge wins, structurally).
+
+`SNAPSYNC_FORGE_STATE=<state>` is a **dev/test trigger** (capability `ios-app-shell`), read **once
 per process** and inert in production: it mounts the real `StatusScreen` over **forged sources** for a
 recognized state (`create` · `joining` · `in_sync`) — no backend, attestation, or photo access — so a
 marketing/App-Store screenshot can be captured of any state. The forge substitutes the container's
@@ -295,9 +330,9 @@ confirm the id in `debug.log` — `reconcile(eventId=…)` and `config ok` — m
 **One event per membership shape.** `direction`, the cutoff, and the album opt-in are **fixed at join**, and
 re-scanning the *already-joined* event short-circuits as `AlreadyJoined` (capability `join-event`) — so
 `SNAPSYNC_EVENT_LINK` can change **none** of them for the event you are already in. Exercising a different
-direction needs a **different event that already exists**. There is no headless route to creating one
-(`POST /events` is attest-gated, and create auto-routes into the pending-join gate, which wants a tap), so
-pre-create a couple of events in the app — one per membership shape you test — and reuse their ids.
+direction needs a **different event that already exists**. Create those events headlessly with
+`SNAPSYNC_CREATE_EVENT` in mint-only mode (above) — one relaunch per event, each logging its
+`created eventId=<uuid>` — then join each with `SNAPSYNC_EVENT_LINK` carrying the shape you want.
 
 🚫 **Never point it at an event you do not own.** A `direction=download` join imports that event's photos into
 this device's library and registers this device on its backend membership. Log-scraped ids are someone's real

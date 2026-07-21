@@ -3,6 +3,8 @@ package app.snapsync.compose
 import app.snapsync.feature.album.AlbumCoordinator
 import app.snapsync.feature.creation.CreateEvent
 import app.snapsync.feature.creation.EventCreator
+import app.snapsync.feature.creation.HeadlessCreate
+import app.snapsync.feature.creation.LaunchEnvMembership
 import app.snapsync.feature.creation.MutableCreationStatusSource
 import app.snapsync.feature.download.DownloadController
 import app.snapsync.feature.download.DownloadPushReceiver
@@ -32,6 +34,7 @@ import app.snapsync.flow.Provision
 import app.snapsync.flow.SilentPush
 import app.snapsync.model.Contribution
 import app.snapsync.model.EventConfig
+import app.snapsync.model.instantToCutoff
 import app.snapsync.model.PermissionStatus
 import app.snapsync.model.Resource
 import app.snapsync.model.SelectionScope
@@ -61,6 +64,7 @@ import app.snapsync.ports.PhotoLibrary
 import app.snapsync.ports.PhotoLibraryImporter
 import app.snapsync.ports.PhotoSelectionChangeSource
 import co.touchlab.kermit.Logger
+import kotlin.time.Instant
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.launch
@@ -358,6 +362,36 @@ class AppCore internal constructor(
             status = creationStatus,
             onMinted = ports.onEventMinted,
             scope = scope,
+        )
+    }
+
+    /**
+     * The headless create-event use-case (capability `ios-app-shell`, `SNAPSYNC_CREATE_EVENT`): mint an
+     * event and either report its id (mint-only) or forward a synthesized `autoJoin` link the shell wires
+     * to `onOpenUrl`. Distinct from [eventCreator] (which routes into the interactive, tap-gated join
+     * gate). `now` supplies the canonical `…Z` default for a payload with no `startsAt`, derived from the
+     * same `ports.now` epoch-millis clock every other seam uses.
+     */
+    val headlessCreate: HeadlessCreate by lazy {
+        HeadlessCreate(
+            client = ports.eventCreation,
+            log = ports.log,
+            now = { instantToCutoff(Instant.fromEpochMilliseconds(ports.now())) },
+        )
+    }
+
+    /**
+     * The headless membership-trigger coordinator (capability `ios-app-shell`): applies
+     * `leave → create → event-link` in order for the launch-env triggers. Owns the ordering the shell
+     * may not (`architecture-guards`); its effects are built here — [leave] the leave command, the
+     * best-effort attestation refresh — while the shell supplies its `onOpenUrl` join entry to `run`.
+     */
+    val launchEnvMembership: LaunchEnvMembership by lazy {
+        LaunchEnvMembership(
+            headlessCreate = headlessCreate,
+            log = ports.log,
+            leave = { userCommands.leave() },
+            ensureAttested = { runCatching { attestation.ensureFresh() } },
         )
     }
 

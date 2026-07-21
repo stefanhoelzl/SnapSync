@@ -34,9 +34,10 @@ fun MainViewController() = ComposeUIViewController {
     // The current membership settings for the reconfigure surface (capability `reconfigure-membership`).
     val membership by host.membership.collectAsState()
 
-    // Dev/test: apply a `SNAPSYNC_EVENT_LINK` launch-env event link once per process (no-op in
-    // production, where no such env var exists). Runs after `host` is realized; safe to repeat.
-    LaunchedEffect(Unit) { SnapSyncRoot.applyLaunchEnvEventLink() }
+    // Dev/test: apply the membership-mutating launch-env triggers (leave → create → event-link) once
+    // per process (no-op in production, where no such env vars exist). Runs after `host` is realized;
+    // safe to repeat (guarded by a `by lazy`).
+    LaunchedEffect(Unit) { SnapSyncRoot.applyLaunchEnvMembership() }
     // Dev/test: fill the library with `SNAPSYNC_SEED_PHOTOS` synthetic assets (no-op in production).
     LaunchedEffect(Unit) { SnapSyncRoot.applyLaunchEnvSeed() }
 
