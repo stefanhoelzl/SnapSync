@@ -1,5 +1,11 @@
-import { assert, assertEquals } from "@std/assert";
-import { runSweep } from "../src/sweep.ts";
+import { assert, assertEquals, assertStringIncludes } from "@std/assert";
+import {
+  formatSummary,
+  humanBytes,
+  markdownSummary,
+  runSweep,
+  type SweepSummary,
+} from "../src/sweep.ts";
 import type { Config } from "../src/config.ts";
 import type { FetchLike } from "../src/storage.ts";
 
@@ -45,36 +51,37 @@ const LIVE_ENDS = "2026-08-03T00:00:00Z";
  * In-memory bunny native-Storage fake: GET an object or (trailing slash) a directory LIST of direct
  * children with `LastChanged`; DELETE (idempotent). Seeded from `{ key: { json, lc } }`.
  */
-function fake(initial: Record<string, { json?: unknown; lc?: string }>) {
-  const store = new Map<string, { body: string; lc: string }>();
+function fake(initial: Record<string, { json?: unknown; lc?: string; len?: number }>) {
+  const store = new Map<string, { body: string; lc: string; len: number }>();
   for (const [k, v] of Object.entries(initial)) {
     store.set(k, {
       body: v.json === undefined ? "" : JSON.stringify(v.json),
       lc: v.lc ?? "2026-07-01T00:00:00.000Z",
+      len: v.len ?? 1,
     });
   }
   const fetchImpl: FetchLike = (url, init) => {
     const key = url.split(`/${ZONE}/`)[1] ?? "";
     const method = init.method ?? "GET";
     if (method === "GET" && key.endsWith("/")) {
-      const children = new Map<string, { name: string; dir: boolean; lc: string }>();
+      const children = new Map<string, { name: string; dir: boolean; lc: string; len: number }>();
       let any = false;
       for (const [k, v] of store) {
         if (!k.startsWith(key)) continue;
         any = true;
         const rest = k.slice(key.length);
         const slash = rest.indexOf("/");
-        if (slash === -1) children.set(rest, { name: rest, dir: false, lc: v.lc });
+        if (slash === -1) children.set(rest, { name: rest, dir: false, lc: v.lc, len: v.len });
         else {
           const d = rest.slice(0, slash);
-          if (!children.has(d)) children.set(d, { name: d, dir: true, lc: "" });
+          if (!children.has(d)) children.set(d, { name: d, dir: true, lc: "", len: 0 });
         }
       }
       if (!any) return Promise.resolve(new Response("nf", { status: 404 }));
       const entries = [...children.values()].map((e) => ({
         ObjectName: e.name,
         IsDirectory: e.dir,
-        Length: 1,
+        Length: e.len,
         LastChanged: e.lc,
       }));
       return Promise.resolve(new Response(JSON.stringify(entries), { status: 200 }));
@@ -128,7 +135,8 @@ Deno.test("event phase → a stale event is notified then deleted; a live event 
   assert(!store.store.has(`events/${E_STALE}/devices/${D}.json`)); // manifest deleted
   assert(store.store.has(`events/${E_LIVE}/metadata.json`)); // live event kept
   assert(store.store.has(`events/${E_LIVE}/devices/${D2}.json`));
-  assertEquals(summary.eventsDeleted, 1);
+  assertEquals(summary.events.deleted, 1);
+  assertEquals(summary.events.kept, 1); // the live event survived
 });
 
 Deno.test("event phase → a legacy marker (no endsAt) is stale and deleted", async () => {
@@ -138,7 +146,7 @@ Deno.test("event phase → a legacy marker (no endsAt) is stale and deleted", as
   });
   const { summary } = await run(store);
   assert(!store.store.has(`events/${E}/metadata.json`));
-  assertEquals(summary.eventsDeleted, 1);
+  assertEquals(summary.events.deleted, 1);
 });
 
 Deno.test("asset phase → referenced kept; unreferenced-below-floor collected; unreferenced-above-floor kept", async () => {
@@ -155,8 +163,8 @@ Deno.test("asset phase → referenced kept; unreferenced-below-floor collected; 
   assert(store.store.has(`files/devices/${D}/ref.heic`)); // referenced by the live manifest → kept
   assert(!store.store.has(`files/devices/${D}/old.heic`)); // unreferenced + pre-floor → collected
   assert(store.store.has(`files/devices/${D}/new.heic`)); // unreferenced but post-floor (live) → kept
-  assertEquals(summary.bytesCollected, 1);
-  assertEquals(summary.bytesRetained, 2);
+  assertEquals(summary.files.deleted.count, 1);
+  assertEquals(summary.files.kept.count, 2);
 });
 
 Deno.test("asset phase → a device in NO surviving event loses all bytes + config + attestation", async () => {
@@ -178,7 +186,8 @@ Deno.test("asset phase → a device in NO surviving event loses all bytes + conf
   assert(!store.store.has(`devices/${ORPHAN}.attest.json`)); // attestation collected
   assert(store.store.has(`files/devices/${D2}/keep.heic`)); // D2 is in a surviving event → kept
   assert(store.store.has(`devices/${D2}.json`)); // …so its config is kept
-  assertEquals(summary.deviceRecordsCollected, 2); // ORPHAN's config + attest
+  assertEquals(summary.devices.deleted, 1); // ORPHAN — one device (its config + attest are its 2 records)
+  assertEquals(summary.devices.kept, 1); // D2 appears in the surviving event
 });
 
 Deno.test("asset phase → a departed-in-surviving-event device keeps its referenced bytes + records", async () => {
@@ -194,7 +203,8 @@ Deno.test("asset phase → a departed-in-surviving-event device keeps its refere
   const { summary } = await run(store);
   assert(store.store.has(`files/devices/${D}/dep.heic`)); // referenced by the surviving .left manifest → kept
   assert(store.store.has(`devices/${D}.json`)); // D appears in a surviving event → config kept
-  assertEquals(summary.deviceRecordsCollected, 0);
+  assertEquals(summary.devices.deleted, 0);
+  assertEquals(summary.devices.kept, 1); // D is kept (departed, but in a surviving event)
 });
 
 Deno.test("switch → leftover bytes from a swept prior event are collected while the device stays active in a newer one", async () => {
@@ -209,7 +219,7 @@ Deno.test("switch → leftover bytes from a swept prior event are collected whil
   const { summary } = await run(store);
   assert(store.store.has(`files/devices/${D}/july.heic`));
   assert(!store.store.has(`files/devices/${D}/jan.heic`)); // uploaded before the new event's start → collected
-  assertEquals(summary.bytesCollected, 1);
+  assertEquals(summary.files.deleted.count, 1);
 });
 
 Deno.test("asset phase → a referenced byte with a percent-encoded filename is matched (decoded) and kept", async () => {
@@ -224,8 +234,8 @@ Deno.test("asset phase → a referenced byte with a percent-encoded filename is 
   });
   const { summary } = await run(store);
   assert(store.store.has(`files/devices/${D}/IMG%20001.jpg`)); // decoded match → referenced → kept
-  assertEquals(summary.bytesCollected, 0);
-  assertEquals(summary.bytesRetained, 1);
+  assertEquals(summary.files.deleted.count, 0);
+  assertEquals(summary.files.kept.count, 1);
 });
 
 Deno.test("dry-run → deletes NOTHING, notifies NOTHING, but counts the candidates", async () => {
@@ -242,7 +252,73 @@ Deno.test("dry-run → deletes NOTHING, notifies NOTHING, but counts the candida
   assertEquals(store.store.size, before); // nothing deleted
   assertEquals(notified, []); // dry-run never notifies (a side effect)
   assertEquals(summary.dryRun, true);
-  assertEquals(summary.eventsDeleted, 1); // …but the candidate counts are reported
-  assertEquals(summary.bytesCollected, 1);
-  assertEquals(summary.deviceRecordsCollected, 1);
+  assertEquals(summary.events.deleted, 1); // …but the candidate counts are reported
+  assertEquals(summary.files.deleted.count, 1);
+  assertEquals(summary.devices.deleted, 1);
+});
+
+Deno.test("summary → file bytes are the SUM of each entry's Length, not the object count", async () => {
+  const E = "78787878-0000-4000-8000-00000000000a";
+  const store = fake({
+    // Device D active, floor = 2026-07-01.
+    [`events/${E}/metadata.json`]: { json: mkMarker(E, "2026-07-01T00:00:00Z", LIVE_ENDS) },
+    [`events/${E}/devices/${D}.json`]: { json: mkManifest(D, "ref.heic") },
+    // KEPT — 2 objects, 1000 + 2048 bytes: ref.heic (referenced) + new.heic (unref but post-floor).
+    [`files/devices/${D}/ref.heic`]: { json: {}, lc: "2026-07-05T00:00:00.000Z", len: 1000 },
+    [`files/devices/${D}/new.heic`]: { json: {}, lc: "2026-07-10T00:00:00.000Z", len: 2048 },
+    // COLLECTED — 2 objects, 500 + 1500 bytes: both unreferenced + pre-floor.
+    [`files/devices/${D}/a.heic`]: { json: {}, lc: "2026-06-01T00:00:00.000Z", len: 500 },
+    [`files/devices/${D}/b.heic`]: { json: {}, lc: "2026-06-02T00:00:00.000Z", len: 1500 },
+  });
+  const { summary } = await run(store);
+  assertEquals(summary.files.deleted.count, 2);
+  assertEquals(summary.files.deleted.bytes, 2000); // 500 + 1500 — NOT the count (2)
+  assertEquals(summary.files.kept.count, 2);
+  assertEquals(summary.files.kept.bytes, 3048); // 1000 + 2048
+});
+
+Deno.test("humanBytes → renders IEC-ish sizes; < 1024 stays bytes", () => {
+  assertEquals(humanBytes(0), "0 B");
+  assertEquals(humanBytes(512), "512 B");
+  assertEquals(humanBytes(1024), "1.0 KB");
+  assertEquals(humanBytes(1536), "1.5 KB");
+  assertEquals(humanBytes(5 * 1024 * 1024), "5.0 MB");
+  assertEquals(humanBytes(3 * 1024 * 1024 * 1024), "3.0 GB");
+});
+
+Deno.test("formatSummary → one line per tier, files show count and reclaimed size, dry-run flagged", () => {
+  const s: SweepSummary = {
+    events: { deleted: 40, kept: 1 },
+    devices: { deleted: 20, kept: 2 },
+    files: { deleted: { count: 107, bytes: 12_900_000 }, kept: { count: 10, bytes: 3_100_000 } },
+    errors: 0,
+    dryRun: true,
+  };
+  const out = formatSummary(s);
+  assertStringIncludes(out, "sweep summary (dry-run):");
+  assertStringIncludes(out, "events    40 deleted   1 kept");
+  assertStringIncludes(out, "devices   20 deleted   2 kept");
+  assertStringIncludes(out, "files     107 (12.3 MB) deleted   10 (3.0 MB) kept");
+  assertStringIncludes(out, "errors    0");
+  // A real (non-dry) run drops the suffix.
+  assertStringIncludes(formatSummary({ ...s, dryRun: false }), "sweep summary:");
+});
+
+Deno.test("markdownSummary → a GFM table with a row per tier and an errors line", () => {
+  const s: SweepSummary = {
+    events: { deleted: 40, kept: 1 },
+    devices: { deleted: 20, kept: 2 },
+    files: { deleted: { count: 107, bytes: 12_900_000 }, kept: { count: 10, bytes: 3_100_000 } },
+    errors: 3,
+    dryRun: false,
+  };
+  const md = markdownSummary(s);
+  assertStringIncludes(md, "## Nightly cleanup sweep");
+  assertStringIncludes(md, "| tier | deleted | kept |");
+  assertStringIncludes(md, "| events | 40 | 1 |");
+  assertStringIncludes(md, "| devices | 20 | 2 |");
+  assertStringIncludes(md, "| files | 107 (12.3 MB) | 10 (3.0 MB) |");
+  assertStringIncludes(md, "**errors:** 3");
+  // Dry-run is flagged in the heading.
+  assertStringIncludes(markdownSummary({ ...s, dryRun: true }), "(dry-run — nothing deleted)");
 });

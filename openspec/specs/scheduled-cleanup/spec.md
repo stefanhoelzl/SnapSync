@@ -143,20 +143,39 @@ its push token on its next launch or join and re-attests on demand).
 
 The sweep SHALL support a **dry-run** mode that logs every event and asset it *would* delete and deletes
 nothing. A real run SHALL delete **best-effort** per object — a single delete failure SHALL be logged and
-SHALL NOT abort the run (deletes are idempotent and `404`-tolerant) — and SHALL emit a **summary**
-(events deleted, bytes and device records collected, bytes retained by the floor). The run SHALL exit
-non-zero only on a **systemic** failure (an authentication failure or an inability to list storage at
-all), so a stuck sweep is visible while transient per-object errors are not treated as failures.
+SHALL NOT abort the run (deletes are idempotent and `404`-tolerant) — and SHALL emit a **summary** over
+three tiers, each reporting the count **deleted** and the count **kept**: **events** (markers), **devices**
+(a device counted once regardless of how many of its global config/attestation records exist), and
+**files** (byte objects) — with the file tallies additionally carrying the **total byte size** of each,
+so the summary reports storage actually reclaimed and not merely an object count. The summary SHALL also
+carry a single **error** count (the number of per-object failures tolerated during the run). When the
+sweep runs on a GitHub Actions runner (the `GITHUB_STEP_SUMMARY` environment variable is present), it
+SHALL additionally render the summary to the job's **Summary** panel; off-CI (the variable absent) this
+is a no-op. The run SHALL exit non-zero only on a **systemic** failure (an authentication failure or an
+inability to list storage at all), so a stuck sweep is visible while transient per-object errors are not
+treated as failures.
 
 #### Scenario: Dry-run deletes nothing
 
 - **WHEN** the sweep runs in dry-run mode
 - **THEN** it logs the events and assets it would delete and performs no delete
 
+#### Scenario: The summary reports deleted and kept across the three tiers
+
+- **WHEN** a run completes
+- **THEN** its summary gives, for events, devices, and files, both the count deleted and the count kept,
+  and for files the total byte size of each — plus a single tolerated-error count
+
+#### Scenario: The summary renders to the CI job summary panel
+
+- **WHEN** the sweep runs on a GitHub Actions runner
+- **THEN** it also writes the summary to the job's Summary panel; run off-CI, it writes no such panel
+
 #### Scenario: A per-object delete failure does not abort the run
 
 - **WHEN** one object delete fails during a real run
-- **THEN** the failure is logged, the sweep continues, and the run still completes with its summary
+- **THEN** the failure is logged, counted as an error, the sweep continues, and the run still completes
+  with its summary
 
 #### Scenario: A systemic failure exits non-zero
 

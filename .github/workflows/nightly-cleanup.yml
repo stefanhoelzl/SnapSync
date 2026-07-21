@@ -53,14 +53,16 @@ jobs:
         with:
           deno-version: v2.x
 
-      # `--allow-net` (bunny storage + the edge notify route) and `--allow-env` (readSweepConfig reads the
-      # two secrets). No file access. A systemic failure (auth, or an unreachable storage LIST) exits
-      # non-zero and fails the job; per-object errors are logged and counted in the summary.
+      # `--allow-net` (bunny storage + the edge notify route), `--allow-env` (readSweepConfig reads the
+      # two secrets), and `--allow-write` scoped to `$GITHUB_STEP_SUMMARY` ONLY (the sweep appends its
+      # summary table to the job's Summary panel — no other file access). A systemic failure (auth, or an
+      # unreachable storage LIST) exits non-zero and fails the job; per-object errors are logged and
+      # counted in the summary.
       - name: Run the sweep
         working-directory: backend
         env:
           BUNNY_STORAGE_ACCESS_KEY: ${{ secrets.BUNNY_STORAGE_ACCESS_KEY }}
           ADMIN_NOTIFY_KEY: ${{ secrets.ADMIN_NOTIFY_KEY }}
         run: |
-          deno run --allow-net --allow-env src/sweep.ts \
+          deno run --allow-net --allow-env --allow-write="$GITHUB_STEP_SUMMARY" src/sweep.ts \
             ${{ (github.event_name == 'workflow_dispatch' && inputs.dry_run) && '--dry-run' || '' }}
