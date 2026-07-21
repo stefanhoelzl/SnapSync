@@ -354,8 +354,10 @@ jobs:
           APP_STORE_CONNECT_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
           APP_STORE_CONNECT_PRIVATE_KEY: ${{ secrets.ASC_API_PRIVATE_KEY }}
         run: |
-          python3 -m pip install --quiet codemagic-cli-tools
-          app-store-connect publish \
+          # macos-26's default python3 is Homebrew's, which is PEP-668 externally-managed — a bare
+          # `pip install` refuses outright. `pipx run` (pipx ships on the image; uv does NOT) runs
+          # the tool from its own ephemeral venv — the CI twin of the runbooks' `uvx --from`.
+          pipx run --spec codemagic-cli-tools app-store-connect publish \
             --path "$RUNNER_TEMP/export/SnapSync.ipa" \
             --whats-new "$WHATS_NEW"
 
