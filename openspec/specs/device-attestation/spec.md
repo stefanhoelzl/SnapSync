@@ -165,12 +165,30 @@ not named here SHALL require the token:
    here would silently defeat every event link. This exception SHALL be **exact-path and method-scoped**
    on the same terms as entry 5. The document is a static, source-owned constant: it reads no storage and
    carries no side effect.
-7. `GET /join` and `HEAD /join` — the App Store fallback a browser reaches when an event link is opened
-   on a device with no app to claim it (capability `event-link`). By definition its audience holds no
-   attestation. This exception SHALL be **exact-path and method-scoped** on the same terms as entry 5. The
-   route is a constant redirect: it reads no storage, holds no per-event state, and carries no side
-   effect — and it cannot read the link's payload even in principle, because that payload is carried in
-   the URL fragment, which a browser never transmits.
+7. `GET /join` and `HEAD /join` — the no-app download page a browser reaches when an event link is opened
+   on a device with no app to claim it (capabilities `event-link`, `web-event-download`). By definition
+   its audience holds no attestation. This exception SHALL be **exact-path and method-scoped** on the same
+   terms as entry 5. The page is a static, source-owned constant: it reads no storage, holds no per-event
+   state, and carries no side effect — and it cannot read the link's payload even in principle, because
+   that payload is carried in the URL fragment, which a browser never transmits.
+8. `GET /events/<eventId>/files` and `HEAD` on the same path — the event photo **union read** (capability
+   `bunny-list-endpoint`), which the no-app download page fetches from a browser that holds no attestation
+   (capability `web-event-download`). This exception SHALL be **method-scoped**: it admits only `GET` and
+   `HEAD` on the union path; every non-`GET`/`HEAD` method on any `/events/<eventId>/…` path (device
+   manifest write, leave, notify) SHALL remain gated.
+9. `GET /events/<eventId>` and `HEAD` on the same path — the event **marker/metadata read** (capability
+   `event-creation`), which the download page fetches to show the event name. This exception SHALL be
+   **method-scoped**: it admits only `GET` and `HEAD`; `POST /events` (creation) SHALL remain gated.
+
+Entries 8 and 9 restate the gate's posture rather than carve a hole in it: attestation was never a
+read-authorization mechanism (it "says nothing about which device may read whose photos", and the
+presigned bytes it fronts were always ungated). It gates **writes** (byte `PUT`, event creation, manifest,
+leave, notify) and — until this change — **existence-probing** on reads. Opening the two read routes
+authorizes **event reads by `eventId`-possession alone**: the `eventId` is the read capability. This is an
+accepted, eyes-open cost — it lets any HTTP client that learns an `eventId` read the whole event union
+(billed as storage egress), and because the union mints a fresh presigned URL on every call, a leaked
+`eventId` becomes a **perpetual** read grant rather than the inert value it is today. It is accepted with
+no per-event opt-in and no rate limit. Decision record: `changes/archive/2026-07-21-web-event-download`.
 
 #### Scenario: A new route defaults to gated
 
@@ -200,12 +218,28 @@ not named here SHALL require the token:
   token
 - **THEN** it is answered with the AASA document (`200`, `application/json`), not `401`
 
-#### Scenario: The App Store fallback is served without a token
+#### Scenario: The join download page is served without a token
 
 - **WHEN** a `GET /join` (or `HEAD /join`) request arrives without a valid token
-- **THEN** it is answered with the App Store redirect, not `401`
+- **THEN** it is answered with the static download page (`200`), not `401`
 
-#### Scenario: The new exceptions do not leak to other paths or methods
+#### Scenario: The event union read is served without a token
+
+- **WHEN** a `GET /events/<uuid>/files` (or `HEAD`) request arrives without a valid token
+- **THEN** it is answered by the union route (subject to that route's own existence gate), not `401`
+
+#### Scenario: The event marker read is served without a token
+
+- **WHEN** a `GET /events/<uuid>` (or `HEAD`) request arrives without a valid token
+- **THEN** it is answered by the marker route (its metadata or `404`), not `401`
+
+#### Scenario: A write method on an ungated read path stays gated
+
+- **WHEN** a request without a valid token uses a non-`GET`/`HEAD` method on an `/events/<uuid>/…` path
+  (e.g. `PUT`/`DELETE` a device manifest, `POST …/notify`) or `POST /events`
+- **THEN** it responds `401` — only the `GET`/`HEAD` reads are ungated
+
+#### Scenario: The static exceptions do not leak to other paths or methods
 
 - **WHEN** a request without a valid token arrives for a path that merely begins with `/join` or
   `/.well-known/` but is not exactly one of the two named paths, or a non-`GET`/`HEAD` method arrives for
@@ -358,3 +392,4 @@ The following SHALL NOT be inferred from this capability:
 - **WHEN** a presigned download URL obtained from a gated listing is used by an unattested client
 - **THEN** it serves the object, because the bytes are fetched from bunny's S3 endpoint and never traverse
   a gated route
+

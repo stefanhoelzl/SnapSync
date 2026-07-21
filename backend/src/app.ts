@@ -133,6 +133,10 @@ import {
 // The marketing/landing page (capability `marketing-site`), embedded at build time. `deno bundle` inlines
 // this text import, so the page ships inside the single bundle — served from memory, no runtime file read.
 import LANDING_HTML from "./landing.html" with { type: "text" };
+// The no-app download page (capability `web-event-download`), served at `GET /join`. Embedded the same way
+// — a single static asset, identical for every event link, served from memory. It carries no `{{SHOT_…}}`
+// placeholders, so unlike LANDING_HTML it needs no substitution pass; it is served verbatim.
+import DOWNLOAD_HTML from "./download.html" with { type: "text" };
 // The page's screenshots (capability `marketing-site`): SHOTS is the committed contract, SHOT_DATA_URIS the
 // images `deno task shots` derives from the committed raws in `screenshots/`. The generated module is not
 // committed — see src/shots.ts for why the split is what makes the set type-checked.
@@ -185,6 +189,20 @@ const LANDING_ETAG: string = (() => {
     h = Math.imul(h, 0x01000193);
   }
   return `"${LANDING_PAGE.length.toString(36)}-${(h >>> 0).toString(36)}"`;
+})();
+
+/**
+ * The download page's entity tag — same derivation as {@link LANDING_ETAG}, over the download page. It
+ * changes exactly when the page changes, so a returning visitor revalidates with a small `304` (capability
+ * `web-event-download`).
+ */
+const DOWNLOAD_ETAG: string = (() => {
+  let h = 0x811c9dc5;
+  for (let i = 0; i < DOWNLOAD_HTML.length; i++) {
+    h ^= DOWNLOAD_HTML.charCodeAt(i);
+    h = Math.imul(h, 0x01000193);
+  }
+  return `"${DOWNLOAD_HTML.length.toString(36)}-${(h >>> 0).toString(36)}"`;
 })();
 
 // The event registry's marker prefix. Because an eventId is a UUID, the marker
@@ -870,17 +888,29 @@ export function createApp({ fetch: fetchImpl, config, now = Date.now }: Deps): H
     // EXACTLY `/` (capability `marketing-site`), and the event link's two public routes (capability
     // `event-link`) — the AASA, which Apple's CDN and the device fetch with no Authorization header and
     // cannot be made to send one, and `/join`, whose entire audience is people who have no app and so no
-    // attestation. Every exception is exact-path and GET/HEAD-only — never a prefix, never a mutating
-    // method — so no gated route can be reached through one. All three read no storage and carry no side
-    // effect, so serving them unauthenticated grows neither the bill nor the storage this gate protects.
-    // (The web/link routes are served at the ROOT only, never under `/api/v1`; the normalization above
-    // matters only for `/attest/*`, the one ungated set that IS a device route reachable under the prefix.)
+    // attestation. These three (`/`, `/join`, the AASA) are exact-path and GET/HEAD-only — never a prefix,
+    // never a mutating method — and read no storage, so serving them unauthenticated grows neither the bill
+    // nor the storage this gate protects. They are served at the ROOT only, never under `/api/v1`; the
+    // normalization above matters for `/attest/*` (a device route reachable under the prefix) AND for the
+    // two event READS added below, which ARE device routes and so are matched on the normalized `path`.
     const publicGet = path === "/" || path === "/join" ||
       path === "/.well-known/apple-app-site-association";
+    // The two event READS the no-app download page fetches (capability `web-event-download`): the event
+    // marker `/events/<id>` and the photo union `/events/<id>/files`. These are authorized by
+    // eventId-possession alone — the eventId IS the read capability — so a browser that holds no attestation
+    // can fetch them. This narrows the gate's READ posture (attestation never proved who may read whose
+    // photos, and the presigned bytes it fronts were always ungated); it does NOT open any WRITE. The match
+    // is GET/HEAD-only and shape-anchored to exactly these two paths, so every mutating `/events/<id>/…`
+    // method (device manifest, leave, notify) and `POST /events` stay gated. Decision record:
+    // `changes/web-event-download`. This is an accepted, eyes-open widening: a leaked eventId becomes a
+    // perpetual read grant (no per-event opt-in, no rate limit).
+    const publicRead = (method === "GET" || method === "HEAD") &&
+      (/^\/events\/[^/]+$/.test(path) || /^\/events\/[^/]+\/files$/.test(path));
     if (
       method === "OPTIONS" ||
       path.startsWith("/attest/") ||
-      ((method === "GET" || method === "HEAD") && publicGet)
+      ((method === "GET" || method === "HEAD") && publicGet) ||
+      publicRead
     ) {
       return await next();
     }
@@ -935,17 +965,26 @@ export function createApp({ fetch: fetchImpl, config, now = Date.now }: Deps): H
     return c.req.method === "HEAD" ? c.body(null) : c.body(aasa);
   });
 
-  // The App Store fallback (capability `event-link`): the path a browser requests when an event link is
-  // opened on a device with no app to claim it. Identical for every link and reads nothing.
+  // The no-app download page (capabilities `event-link`, `web-event-download`): the path a browser requests
+  // when an event link is opened on a device with no app to claim it. A single STATIC page, identical for
+  // every link, served from memory with no storage read — cacheable (PUBLIC_CACHE) so the pull zone answers
+  // from the edge. GET returns the page; HEAD returns the same headers with no body.
   //
-  // It does not — cannot — read the payload: that rides in the URL fragment, which a browser never
-  // transmits, so this handler sees `/join` and nothing more. That is the point, not a limitation: the
-  // eventId IS the upload capability, and keeping it out of the fragment-blind server path keeps it out
-  // of the edge's logs and cache keys too. It is also why there is no per-event landing page to render.
+  // The handler does not — cannot — read the payload: that rides in the URL fragment, which a browser never
+  // transmits, so this handler sees `/join` and nothing more, and the served bytes are the same for every
+  // link. The eventId IS the capability, and keeping it out of the fragment-blind server path keeps it out
+  // of the edge's logs and cache keys too. Everything per-event — the event name, the photo union, the zip
+  // — is done by the page's own JS, off the fragment, client-side (that is why one static page suffices).
   //
-  // iOS does NO deferred deep linking: someone who installs from here reaches their event by opening the
-  // original link again.
-  app.on(["GET", "HEAD"], "/join", (c) => c.redirect(config.appStoreUrl, 302));
+  // The App Store link now lives ON the page rather than being a 302 target. iOS does NO deferred deep
+  // linking: someone who installs from here reaches their event by opening the original link again.
+  app.on(["GET", "HEAD"], "/join", (c) => {
+    c.header("Cache-Control", PUBLIC_CACHE);
+    c.header("ETag", DOWNLOAD_ETAG);
+    if (c.req.header("If-None-Match") === DOWNLOAD_ETAG) return c.body(null, 304);
+    c.header("Content-Type", "text/html; charset=utf-8");
+    return c.req.method === "HEAD" ? c.body(null) : c.body(DOWNLOAD_HTML);
+  });
 
   // ── THE DEVICE API (capability `backend-deployment`) ────────────────────────────────────────────
   //

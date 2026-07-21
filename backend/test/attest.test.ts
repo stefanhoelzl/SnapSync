@@ -187,10 +187,11 @@ Deno.test("challenge: ours is valid inside its window, invalid outside it, and f
 
 // ── The gate ──────────────────────────────────────────────────────────────────────────────────────
 
+// The GATED routes. `GET /events/<id>` and `GET /events/<id>/files` are NOT here: they were moved off the
+// gate (capability `web-event-download`) so the no-app download page can read them un-attested — see the
+// "served without a token" tests below. Every WRITE, and the per-device raw listing, stays gated.
 const GATED: [string, RequestInit][] = [
   ["/events", { method: "POST", body: JSON.stringify({ name: "x" }) }],
-  [`/events/${E}`, {}],
-  [`/events/${E}/files`, {}],
   [`/events/${E}/notify`, { method: "POST" }],
   [`/events/${E}/devices/${D}`, { method: "PUT", body: "{}" }],
   [`/events/${E}/devices/${D}`, { method: "DELETE" }],
@@ -234,13 +235,29 @@ Deno.test("gate: an expired token is refused like no token at all", async () => 
   assertEquals(calls.length, 0); // and the photo bytes were never streamed upstream
 });
 
-Deno.test("gate: an unauthenticated caller cannot tell an existing event from a missing one", async () => {
-  // The token check runs BEFORE the marker read. Were it the other way round, a 404-vs-401 difference
-  // would let a stranger enumerate which events exist.
-  const { calls, app: a } = app(); // no marker → the event does not exist
-  const res = await a.request(`/events/${E}`);
-  assertEquals(res.status, 401); // NOT 404
-  assertEquals(calls.length, 0); // and the marker was never read
+Deno.test("gate: the event marker and union reads are served WITHOUT a token", async () => {
+  // Capability `web-event-download`: these two reads are authorized by eventId-possession alone, so the
+  // no-app download page (a browser with no attestation) can fetch them. A missing event is a 404, not a
+  // 401 — existence-probing by a tokenless caller is the accepted, eyes-open consequence of opening them.
+  const { app: a } = app(); // no marker → the event does not exist
+  assertEquals((await a.request(`/events/${E}`)).status, 404); // NOT 401
+  assertEquals((await a.request(`/events/${E}/files`)).status, 404); // NOT 401
+});
+
+Deno.test("gate: opening the reads opens no WRITE — mutating /events/<id>/… stays gated", async () => {
+  const { app: a } = app();
+  assertEquals((await a.request("/events", { method: "POST", body: "{}" })).status, 401);
+  assertEquals((await a.request(`/events/${E}/notify`, { method: "POST" })).status, 401);
+  assertEquals(
+    (await a.request(`/events/${E}/devices/${D}`, { method: "PUT", body: "{}" })).status,
+    401,
+  );
+  assertEquals((await a.request(`/events/${E}/devices/${D}`, { method: "DELETE" })).status, 401);
+  // A POST to the ungated READ paths themselves is a mutating method → still gated.
+  assertEquals((await a.request(`/events/${E}`, { method: "POST" })).status, 401);
+  assertEquals((await a.request(`/events/${E}/files`, { method: "POST" })).status, 401);
+  // The per-device RAW listing has no web consumer and stays gated (defense in depth).
+  assertEquals((await a.request(`/files/devices/${D}`)).status, 401);
 });
 
 Deno.test("gate: OPTIONS is answered without a token (the pull zone may answer it anyway)", async () => {
@@ -259,9 +276,10 @@ Deno.test("gate: the marketing page at / is served without a token", async () =>
 
 Deno.test("gate: the / exception is exact-path and GET/HEAD-only — it leaks to nothing else", async () => {
   const { app: a } = app();
-  // A non-root path is still gated, even for GET…
+  // A non-root path is still gated, even for GET… (`/events/<id>` and `…/files` are ungated by their OWN
+  // exception now, so use a GET route that is still gated — the per-device raw listing.)
   assertEquals((await a.request("/events")).status, 401);
-  assertEquals((await a.request(`/events/${E}`)).status, 401);
+  assertEquals((await a.request(`/files/devices/${D}`)).status, 401);
   // …a path that merely begins with "/" but is not exactly "/" is not admitted…
   assertEquals((await a.request("/index.html")).status, 401);
   // …and a mutating method on "/" is gated, not served.
@@ -277,10 +295,11 @@ Deno.test("gate: the event link's AASA is served without a token", async () => {
   assertEquals(calls.length, 0); // and serving it reads no storage
 });
 
-Deno.test("gate: the /join App Store fallback is served without a token", async () => {
+Deno.test("gate: the /join download page is served without a token", async () => {
   const { calls, app: a } = app();
   const res = await a.request("/join");
-  assertEquals(res.status, 302); // NOT 401 — its entire audience has no app, and so no attestation
+  await res.body?.cancel();
+  assertEquals(res.status, 200); // NOT 401 — its entire audience has no app, and so no attestation
   assertEquals(calls.length, 0); // and serving it reads no storage
 });
 
