@@ -52,6 +52,7 @@ import app.snapsync.engine.iosLedgerStore
 import app.snapsync.model.forwardEventLink
 import app.snapsync.feature.upload.UploadProducer
 import app.snapsync.logging.FileLogWriter
+import app.snapsync.logging.SentryCrashReporting
 import app.snapsync.logging.appBuildVersion
 import app.snapsync.logging.IosLogScope
 import app.snapsync.logging.PublicNSLogWriter
@@ -282,6 +283,7 @@ object SnapSyncRoot {
         snapSyncApp(
             scope,
             AppPorts(
+                crashReporting = SentryCrashReporting(),
                 configSource = config,
                 configStore = config,
                 photoAccess = permission,

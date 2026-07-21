@@ -39,6 +39,12 @@ inputs:
   upload-host:
     description: Override BACKGROUND_UPLOAD_URL_BASE (HTTPS-only). Empty = the baked Config.xcconfig host.
     default: ""
+  sentry-dsn:
+    description: >-
+      Crash-reporting DSN baked into both targets' Info.plists (capability crash-reporting). Empty =
+      the Config.xcconfig empty default, which keeps the SDK off — the dev-IPA path passes nothing.
+      Non-empty also bakes SENTRY_ENVIRONMENT=production (the two travel together by design).
+    default: ""
   current-project-version:
     description: CFBundleVersion (build number) — the caller's github.run_number.
     required: true
@@ -141,12 +147,16 @@ runs:
         IN_APS_ENVIRONMENT: ${{ inputs.aps-environment }}
         IN_APNS_ENV: ${{ inputs.apns-env }}
         IN_UPLOAD_HOST: ${{ inputs.upload-host }}
+        IN_SENTRY_DSN: ${{ inputs.sentry-dsn }}
       run: |
         args=""
         [ -n "$IN_MARKETING_VERSION" ] && args="$args MARKETING_VERSION=$IN_MARKETING_VERSION"
         [ -n "$IN_APS_ENVIRONMENT" ]   && args="$args APS_ENVIRONMENT=$IN_APS_ENVIRONMENT"
         [ -n "$IN_APNS_ENV" ]          && args="$args APNS_ENV=$IN_APNS_ENV"
         [ -n "$IN_UPLOAD_HOST" ]       && args="$args BACKGROUND_UPLOAD_URL_BASE=$IN_UPLOAD_HOST"
+        # DSN and environment travel together: a DSN-carrying archive is a production reporter
+        # (capability crash-reporting; the secret value is masked in logs by Actions).
+        [ -n "$IN_SENTRY_DSN" ]        && args="$args SENTRY_DSN=$IN_SENTRY_DSN SENTRY_ENVIRONMENT=production"
         echo "XCB_OVERRIDES=$args" >> "$GITHUB_ENV"
 
     # The signed archive both compiles iosArm64 (so it doubles as the build gate) and is the delivery

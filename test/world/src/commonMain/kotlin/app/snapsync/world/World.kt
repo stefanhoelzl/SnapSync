@@ -9,6 +9,7 @@ import app.snapsync.compose.uploadCore
 import app.snapsync.download.HttpEventUnionSource
 import app.snapsync.eventcreation.HttpEventCreation
 import app.snapsync.fake.InMemoryAttestStore
+import app.snapsync.fake.InMemoryCrashReporting
 import app.snapsync.fake.InMemoryPhotoSelectionChangeSource
 import app.snapsync.fake.InMemoryDeviceManifestStore
 import app.snapsync.fake.InMemoryDiscoveryStore
@@ -238,6 +239,7 @@ class World(
     val core: AppCore = snapSyncApp(
         scope,
         AppPorts(
+            crashReporting = InMemoryCrashReporting(),
             configSource = configSource,
             configStore = configStore,
             photoAccess = permission,
@@ -498,6 +500,7 @@ class World(
         uploadCore(
             scope,
             UploadPorts(
+                crashReporting = InMemoryCrashReporting(),
                 config = configReader,
                 deviceId = { ownDeviceId },
                 host = { host },

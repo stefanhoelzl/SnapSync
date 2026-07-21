@@ -18,6 +18,7 @@ import app.snapsync.model.deviceManifestAssetsFromResources
 import app.snapsync.ports.BackgroundTransfer
 import app.snapsync.ports.ConfigRead
 import app.snapsync.ports.ConfigReader
+import app.snapsync.ports.CrashReporting
 import app.snapsync.ports.DeviceFilesSource
 import app.snapsync.ports.DeviceIdentityAbsent
 import app.snapsync.ports.DeviceManifestStore
@@ -51,6 +52,8 @@ class UploadPorts(
     val host: () -> String?,
     val ledger: LedgerStore,
     val transfer: BackgroundTransfer,
+    /** Crash/error reporting (capability `crash-reporting`). Required on both tiers — see AppPorts. */
+    val crashReporting: CrashReporting,
     /**
      * What upload discovery may read (capability `limited-photo-access`): [SelectionScope.Unrestricted]
      * walks as ever; [SelectionScope.Scoped] makes discovery consume the selection snapshot with no
@@ -95,6 +98,9 @@ class UploadPorts(
  */
 @Suppress("UNUSED_PARAMETER")
 fun uploadCore(scope: CoroutineScope, ports: UploadPorts): UploadCycle {
+    // First act (idempotent — the app process composes this beside snapSyncApp): the extension
+    // process has no other composition entry, so this is where its reporter comes up.
+    ports.crashReporting.start()
     val ledger = LedgerWriter(ports.ledger)
     // Constructed lazily so the device id resolves on first in-cycle use — after the gate's probe
     // has succeeded — never at composition time, where a locked device would throw out of assembly.

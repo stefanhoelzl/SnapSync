@@ -56,6 +56,7 @@ Roots found:
 | `PublicNSLogWriter` | x | x | |
 | `PushRegistration` | x | | |
 | `PushTokenSource` | x | | |
+| `SentryCrashReporting` | x | x | x |
 | `StatusContainerHost` | x | | |
 | `UploadPorts` | | x | x |
 | `UploadPushReceiver` | | | x |
