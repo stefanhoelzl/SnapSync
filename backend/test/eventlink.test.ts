@@ -3,9 +3,9 @@ import { createApp, type FetchLike } from "../src/app.ts";
 import { readConfig } from "../src/config.ts";
 
 // The event link's two public routes (capability `event-link`): the AASA that makes the link a Universal
-// Link, and the `/join` App Store fallback for someone who opened an invite without the app. These tests
-// exercise the served RESPONSES. The gate interaction (served without a token; the exceptions do not leak)
-// lives in attest.test.ts, next to the gate itself.
+// Link, and the `/join` no-app download page for someone who opened an invite without the app (capability
+// `web-event-download`). These tests exercise the served RESPONSES. The gate interaction (served without a
+// token; the exceptions do not leak) lives in attest.test.ts, next to the gate itself.
 
 const CONFIG = readConfig({
   BUNNY_STORAGE_ACCESS_KEY: "k",
@@ -48,23 +48,32 @@ Deno.test("event-link: the AASA's domain matches the configured link domain", ()
   assertEquals(CONFIG.linkDomain, "snapsync.stho.net");
 });
 
-Deno.test("event-link: GET /join redirects to the App Store", async () => {
+Deno.test("event-link: GET /join serves the no-app download page", async () => {
   const res = await app().request("/join");
-  assertEquals(res.status, 302);
-  assertEquals(res.headers.get("Location"), CONFIG.appStoreUrl);
+  assertEquals(res.status, 200); // a static page now, not a 302 to the App Store
+  assertEquals(res.headers.get("Content-Type"), "text/html; charset=utf-8");
+  assertEquals(res.headers.get("Cache-Control"), "public, max-age=300"); // same static-page posture as `/`
+  const body = await res.text();
+  assert(body.includes("Download all photos"), "download control missing");
+  assert(body.includes(CONFIG.appStoreUrl), "App Store link missing from the page");
 });
 
 Deno.test("event-link: /join is identical for every link and reads no event data", async () => {
   // The payload rides in the fragment, which a browser NEVER transmits — so the backend cannot
-  // distinguish one invite from another even in principle. That is the design: the eventId is the upload
-  // capability, and it must never reach a server log or a cache key.
+  // distinguish one invite from another even in principle. That is the design: the eventId is the read
+  // capability, and it must never reach a server log or a cache key. The served bytes are the same for
+  // every link; anything per-event is done by the page's own JS off the fragment, client-side.
   const a = await app().request("/join");
   const b = await app().request("/join?v=3&d=eyJldmVudElkIjoieCJ9"); // a query cannot happen, but must not matter
   assertEquals(a.status, b.status);
-  assertEquals(a.headers.get("Location"), b.headers.get("Location"));
+  assertEquals(await a.text(), await b.text());
 });
 
 Deno.test("event-link: HEAD on both routes behaves", async () => {
-  assertEquals((await app().request(AASA, { method: "HEAD" })).status, 200);
-  assertEquals((await app().request("/join", { method: "HEAD" })).status, 302);
+  const aasa = await app().request(AASA, { method: "HEAD" });
+  await aasa.body?.cancel();
+  assertEquals(aasa.status, 200);
+  const join = await app().request("/join", { method: "HEAD" });
+  await join.body?.cancel();
+  assertEquals(join.status, 200);
 });

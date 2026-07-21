@@ -384,28 +384,31 @@ partition `404` (no bytes) is **not** such a failure — it is handled as an emp
 
 ### Requirement: Union authorization, identity-blindness, and caching
 
-The union SHALL require a valid device token (capability `device-attestation`) in `Authorization: Bearer`;
-a request without one SHALL be rejected with `401`, and the endpoint SHALL NOT read the event marker (so
-an unauthenticated caller cannot probe which events exist). **Which** union is returned remains addressed
-by the event-id path alone — the event id is the capability; the marker is consulted for existence, never
-for authorization. The endpoint SHALL be **identity-blind**: it SHALL return every contributing device's
-complete assets, each tagged with its `deviceId`, and SHALL NOT accept any "own device" / exclude
-parameter — skipping the caller's own device is the client's concern, performed by `deviceId`. It SHALL
-NOT restrict the union to the token's `deviceId`.
+The union SHALL be authorized by the **event id alone** — the event id is the capability. A device token
+(capability `device-attestation`) is **optional**: a request that carries a valid token and a request that
+carries none SHALL both be served the same union (subject to the existence gate below), because the union
+is read-authorized by `eventId`-possession, not by attestation. A tokenless request SHALL therefore
+**not** be rejected with `401`; the no-app download page (capability `web-event-download`) depends on
+exactly this. The marker MAY be consulted for existence; existence-probing by a tokenless caller is an
+accepted consequence of opening this read (decision record: `changes/archive/2026-07-21-web-event-download`). The endpoint
+SHALL be **identity-blind**: it SHALL return every contributing device's complete assets, each tagged with
+its `deviceId`, and SHALL NOT accept any "own device" / exclude parameter — skipping the caller's own
+device is the client's concern, performed by `deviceId`. It SHALL NOT restrict the union to any
+`deviceId`.
 
-The response SHALL carry `Cache-Control: no-store, no-cache, max-age=0` (the union is a live read over
-mutable manifests and listings, carrying time-limited signed URLs, and it is served through a bunny CDN
-pull zone that documents `no-cache` — not `no-store` — as the directive suppressing its cache). This
-directive is now load-bearing for **authorization** as well as freshness: the pull zone forwards
-`Authorization` to the origin but does **not** vary its cache key on it, so a cacheable gated response
-would be served to a *different* device. It SHALL NOT be relaxed. The endpoint SHALL NOT expose or forward
-the bunny account API key.
+The response SHALL carry `Cache-Control: no-store, no-cache, max-age=0`. This directive is load-bearing
+for **freshness**: the union is a live read over mutable manifests and listings, carrying time-limited
+signed URLs, served through a bunny CDN pull zone that documents `no-cache` — not `no-store` — as the
+directive suppressing its cache; a cached union would hand back stale membership and expiring signed URLs.
+It SHALL NOT be relaxed. (It is no longer load-bearing for authorization: with the token optional, the
+union response no longer varies by caller.) The endpoint SHALL NOT expose or forward the bunny account API
+key.
 
-#### Scenario: An unauthenticated union is refused without probing existence
+#### Scenario: A tokenless union is served
 
-- **WHEN** a `GET /events/<uuid>/files` carries a valid event id but no valid token
-- **THEN** the endpoint responds `401` and reads no marker, so the response does not reveal whether the
-  event exists
+- **WHEN** a `GET /events/<uuid>/files` carries a valid event id but no token
+- **THEN** the endpoint serves the union (or `404` if the event does not exist), not `401` — the event id
+  is the capability
 
 #### Scenario: An attested union is returned
 
@@ -416,7 +419,7 @@ the bunny account API key.
 
 - **WHEN** the event has multiple contributing devices with complete assets
 - **THEN** the union contains all of their assets, each tagged with its owning `deviceId`, with no
-  server-side own-device exclusion — and no filtering by the token's `deviceId`
+  server-side own-device exclusion — and no filtering by any `deviceId`
 
 #### Scenario: Response is non-cacheable
 
@@ -427,13 +430,7 @@ the bunny account API key.
 
 - **WHEN** the same event's union is requested twice through the pull zone
 - **THEN** each response is served from the origin (not a cached copy), reflecting any manifest or
-  listing change between the two reads
-
-#### Scenario: One device's authorized response is never served to another
-
-- **WHEN** two devices request the same gated listing URL through the pull zone with different tokens
-- **THEN** each response is produced by the origin for that request, and neither device receives the
-  other's cached response
+  listing change between the two reads, and carrying freshly minted signed URLs
 
 #### Scenario: Account API key never exposed
 

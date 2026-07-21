@@ -1,0 +1,473 @@
+<!DOCTYPE html>
+<!--
+  The no-app download page (capability `web-event-download`), served at `GET /join` to every visitor who
+  opens an event link on a device with no app to claim it (iOS-with-app never reaches here — the OS claims
+  the Universal Link first). It is a single STATIC asset: identical bytes for every link, embedded at build
+  time like landing.html, served from memory with no storage read. The backend cannot read the payload —
+  it rides in the URL fragment, which a browser never transmits — so ALL per-event work is done here in JS,
+  client-side, off the `#v=3&d=<base64url>` fragment.
+
+  SELF-CONTAINED BY CONTRACT (Decision 5): no third-party resource of any kind — a subresource fetched
+  off-origin would carry the page URL, and thus the eventId, away via `Referer`. The zip is assembled in
+  the browser's memory with a hand-rolled STORE-only (no compression — photos are already compressed) zip
+  writer, so there is no vendored library and no CDN import. There is no service worker and no server-side
+  zip (Bunny Edge caps a request at 50 subrequests, so a server zip is impossible for a real event).
+-->
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="theme-color" content="#0E9D6B" media="(prefers-color-scheme: light)">
+    <meta name="theme-color" content="#0C0E12" media="(prefers-color-scheme: dark)">
+    <title>SnapSync — event photos</title>
+    <style>
+    /* Design tokens shared with the marketing page (backend/src/landing.html) and the app. */
+    :root {
+      color-scheme: light dark;
+      --green: #0e9d6b;
+      --green-2: #12b47c;
+      --bg: #f4f6f8;
+      --surface: #ffffff;
+      --text: #14181d;
+      --muted: #5b6472;
+      --border: rgba(20, 24, 29, 0.10);
+      --shadow: 0 1px 2px rgba(20, 24, 29, 0.06), 0 12px 32px -12px rgba(20, 24, 29, 0.16);
+    }
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --green: #2fd69b;
+        --green-2: #3ee6a9;
+        --bg: #0c0e12;
+        --surface: #171b22;
+        --text: #eaedf1;
+        --muted: #8b95a5;
+        --border: rgba(234, 237, 241, 0.10);
+        --shadow: 0 1px 2px rgba(0, 0, 0, 0.4), 0 16px 40px -16px rgba(0, 0, 0, 0.6);
+      }
+    }
+    * {
+      box-sizing: border-box;
+    }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-family:
+        -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      -webkit-font-smoothing: antialiased;
+      background: var(--bg);
+      color: var(--text);
+      padding: 24px;
+    }
+    main {
+      width: 100%;
+      max-width: 420px;
+      text-align: center;
+    }
+    h1 {
+      font-size: 1.6rem;
+      font-weight: 700;
+      letter-spacing: -0.02em;
+      margin: 0 0 8px;
+    }
+    p.sub {
+      margin: 0 0 28px;
+      color: var(--muted);
+      font-size: 1rem;
+    }
+    /* The primary action carries the SnapSync brand green (the app/marketing accent) AND doubles as the
+       download progress bar: a translucent fill sweeps left→right to `--p` while a download runs. */
+    @property --p {
+      syntax: "<percentage>";
+      inherits: false;
+      initial-value: 0%;
+    }
+    button.primary {
+      appearance: none;
+      border: 0;
+      border-radius: 13px;
+      padding: 15px 22px;
+      width: 100%;
+      font-size: 1.05rem;
+      font-weight: 600;
+      color: #fff;
+      --p: 0%;
+      background:
+        linear-gradient(
+        90deg,
+        rgba(255, 255, 255, 0.28) var(--p),
+        rgba(255, 255, 255, 0) var(--p)
+      ),
+        linear-gradient(180deg, var(--green-2), var(--green));
+      box-shadow: var(--shadow);
+      cursor: pointer;
+      transition: transform 0.15s ease, --p 0.2s ease;
+    }
+    button.primary:hover:not(:disabled) {
+      transform: translateY(-2px);
+    }
+    /* Faded only in the pre-load "not ready" disabled state… */
+    button.primary:disabled {
+      opacity: 0.5;
+      cursor: default;
+    }
+    /* …but while downloading the button stays full-strength and shows its own progress fill. */
+    button.primary.busy {
+      opacity: 1;
+    }
+    .status {
+      margin-top: 16px;
+      min-height: 1.2em;
+      font-size: 0.95rem;
+      color: var(--muted);
+    }
+    /* The official App Store button — identical treatment to the marketing page. */
+    .cta {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 12px;
+      margin-top: 28px;
+    }
+    .appstore {
+      display: inline-flex;
+      align-items: center;
+      gap: 11px;
+      background: #000;
+      color: #fff;
+      padding: 12px 20px;
+      border-radius: 13px;
+      font-weight: 500;
+      text-decoration: none;
+      box-shadow: var(--shadow);
+      transition: transform 0.15s ease;
+    }
+    .appstore:hover {
+      transform: translateY(-2px);
+    }
+    .appstore svg {
+      width: 26px;
+      height: 26px;
+      fill: #fff;
+    }
+    .appstore .sub {
+      font-size: 0.66rem;
+      line-height: 1;
+      opacity: 0.85;
+      display: block;
+      margin-bottom: 2px;
+    }
+    .appstore .big {
+      font-size: 1.15rem;
+      line-height: 1;
+      font-weight: 600;
+    }
+    .hidden {
+      display: none;
+    }
+    </style>
+  </head>
+  <body>
+    <main>
+      <div id="app" class="hidden">
+        <h1 id="title">Event photos</h1>
+        <p class="sub" id="subtitle">Download everyone's photos from this event.</p>
+        <button class="primary" id="download" disabled>Download all photos (zip)</button>
+        <div class="status" id="status">Loading…</div>
+        <div class="cta">
+          <a
+            class="appstore"
+            href="https://apps.apple.com/app/id6781692480"
+            aria-label="Download SnapSync on the App Store"
+          >
+            <svg viewBox="0 0 384 512" aria-hidden="true">
+              <path
+                d="M318.7 268.7c-.2-36.7 16.4-64.4 50-84.8-18.8-26.9-47.2-41.7-84.7-44.6-35.5-2.8-74.3 20.7-88.5 20.7-15 0-49.4-19.7-76.4-19.7C63.3 141.2 4 184.8 4 273.5q0 39.3 14.4 81.2c12.8 36.7 59 126.7 107.2 125.2 25.2-.6 43-17.9 75.8-17.9 31.8 0 48.3 17.9 76.4 17.9 48.6-.7 90.4-82.5 102.6-119.3-65.2-30.7-61.7-90-61.7-91.9zm-56.6-164.2c27.3-32.4 24.8-61.9 24-72.5-24.1 1.4-52 16.4-67.9 34.9-17.5 19.8-27.8 44.3-25.6 71.9 26.1 2 49.9-11.4 69.5-34.3z"
+              />
+            </svg>
+            <span><span class="sub">Coming soon on the</span><span class="big"
+              >App Store</span></span>
+          </a>
+        </div>
+      </div>
+      <div id="invalid" class="error hidden">
+        <h1>Invalid or expired link</h1>
+        <p class="sub">
+          This SnapSync invite could not be opened. Ask the event host for a fresh link.
+        </p>
+        <div class="cta">
+          <a
+            class="appstore"
+            href="https://apps.apple.com/app/id6781692480"
+            aria-label="Download SnapSync on the App Store"
+          >
+            <svg viewBox="0 0 384 512" aria-hidden="true">
+              <path
+                d="M318.7 268.7c-.2-36.7 16.4-64.4 50-84.8-18.8-26.9-47.2-41.7-84.7-44.6-35.5-2.8-74.3 20.7-88.5 20.7-15 0-49.4-19.7-76.4-19.7C63.3 141.2 4 184.8 4 273.5q0 39.3 14.4 81.2c12.8 36.7 59 126.7 107.2 125.2 25.2-.6 43-17.9 75.8-17.9 31.8 0 48.3 17.9 76.4 17.9 48.6-.7 90.4-82.5 102.6-119.3-65.2-30.7-61.7-90-61.7-91.9zm-56.6-164.2c27.3-32.4 24.8-61.9 24-72.5-24.1 1.4-52 16.4-67.9 34.9-17.5 19.8-27.8 44.3-25.6 71.9 26.1 2 49.9-11.4 69.5-34.3z"
+              />
+            </svg>
+            <span><span class="sub">Coming soon on the</span><span class="big"
+              >App Store</span></span>
+          </a>
+        </div>
+      </div>
+    </main>
+    <script>
+    "use strict";
+    (function () {
+      const CONFIG_VERSION = "3";
+      const UUID = /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/;
+
+      const $ = (id) => document.getElementById(id);
+      const showInvalid = () => {
+        $("app").classList.add("hidden");
+        $("invalid").classList.remove("hidden");
+      };
+      const showApp = () => {
+        $("invalid").classList.add("hidden");
+        $("app").classList.remove("hidden");
+      };
+      const setStatus = (t) => {
+        $("status").textContent = t;
+      };
+
+      // --- fragment decode: the same wire contract as capability `event-link` (#v=3&d=<base64url(json)>) ---
+      function decodeFragment() {
+        const frag = location.hash.startsWith("#") ? location.hash.slice(1) : location.hash;
+        if (!frag) return null;
+        const params = {};
+        for (const part of frag.split("&")) {
+          const eq = part.indexOf("=");
+          if (eq < 0) continue;
+          params[part.slice(0, eq)] = part.slice(eq + 1);
+        }
+        if (params.v !== CONFIG_VERSION || !params.d) return null;
+        try {
+          let b64 = params.d.replace(/-/g, "+").replace(/_/g, "/");
+          while (b64.length % 4) b64 += "=";
+          const json = decodeURIComponent(escape(atob(b64)));
+          const payload = JSON.parse(json);
+          if (!payload || typeof payload.eventId !== "string" || !UUID.test(payload.eventId)) {
+            return null;
+          }
+          return payload.eventId;
+        } catch (_e) {
+          return null;
+        }
+      }
+
+      // --- CRC-32 (IEEE) over a Uint8Array ---
+      const CRC_TABLE = (() => {
+        const t = new Uint32Array(256);
+        for (let n = 0; n < 256; n++) {
+          let c = n;
+          for (let k = 0; k < 8; k++) c = (c & 1) ? (0xEDB88320 ^ (c >>> 1)) : (c >>> 1);
+          t[n] = c >>> 0;
+        }
+        return t;
+      })();
+      function crc32(bytes) {
+        let c = 0xFFFFFFFF;
+        for (let i = 0; i < bytes.length; i++) c = CRC_TABLE[(c ^ bytes[i]) & 0xFF] ^ (c >>> 8);
+        return (c ^ 0xFFFFFFFF) >>> 0;
+      }
+
+      // --- STORE-only (method 0) zip of {name, bytes} entries, assembled in one buffer (32-bit / no ZIP64) ---
+      function buildZip(files) {
+        const enc = new TextEncoder();
+        const parts = [];
+        for (const f of files) {
+          const name = enc.encode(f.name);
+          parts.push({ name, bytes: f.bytes, crc: crc32(f.bytes), offset: 0 });
+        }
+        let total = 0;
+        for (const p of parts) {
+          p.offset = total;
+          total += 30 + p.name.length + p.bytes.length;
+        }
+        const cdStart = total;
+        for (const p of parts) total += 46 + p.name.length;
+        total += 22; // end of central directory
+
+        const out = new Uint8Array(total);
+        const dv = new DataView(out.buffer);
+        let o = 0;
+        const w16 = (v) => {
+          dv.setUint16(o, v, true);
+          o += 2;
+        };
+        const w32 = (v) => {
+          dv.setUint32(o, v >>> 0, true);
+          o += 4;
+        };
+        const wb = (b) => {
+          out.set(b, o);
+          o += b.length;
+        };
+        const FLAG_UTF8 = 0x0800; // names are UTF-8
+
+        for (const p of parts) { // local headers + data
+          w32(0x04034b50);
+          w16(20);
+          w16(FLAG_UTF8);
+          w16(0);
+          w16(0);
+          w16(0x21); // method 0, DOS date 1980-01-01
+          w32(p.crc);
+          w32(p.bytes.length);
+          w32(p.bytes.length);
+          w16(p.name.length);
+          w16(0);
+          wb(p.name);
+          wb(p.bytes);
+        }
+        for (const p of parts) { // central directory
+          w32(0x02014b50);
+          w16(20);
+          w16(20);
+          w16(FLAG_UTF8);
+          w16(0);
+          w16(0);
+          w16(0x21);
+          w32(p.crc);
+          w32(p.bytes.length);
+          w32(p.bytes.length);
+          w16(p.name.length);
+          w16(0);
+          w16(0);
+          w16(0);
+          w16(0);
+          w32(0);
+          w32(p.offset);
+          wb(p.name);
+        }
+        w32(0x06054b50);
+        w16(0);
+        w16(0);
+        w16(parts.length);
+        w16(parts.length);
+        w32(total - 22 - cdStart);
+        w32(cdStart);
+        w16(0);
+        return out;
+      }
+
+      // Disambiguate duplicate filenames so a collision does not silently drop a photo.
+      function uniqueName(used, name) {
+        if (!used.has(name)) {
+          used.add(name);
+          return name;
+        }
+        const dot = name.lastIndexOf(".");
+        const stem = dot > 0 ? name.slice(0, dot) : name;
+        const ext = dot > 0 ? name.slice(dot) : "";
+        let i = 2, candidate;
+        do {
+          candidate = stem + "-" + i + ext;
+          i++;
+        } while (used.has(candidate));
+        used.add(candidate);
+        return candidate;
+      }
+
+      async function main() {
+        const eventId = decodeFragment();
+        if (!eventId) {
+          showInvalid();
+          return;
+        }
+        showApp();
+
+        // Fetch the event name (marker) and the union. Both are same-origin, un-attested reads.
+        let name, union;
+        try {
+          const markerRes = await fetch("/events/" + eventId);
+          if (markerRes.status === 404) {
+            showInvalid();
+            return;
+          }
+          if (!markerRes.ok) throw new Error("marker " + markerRes.status);
+          name = (await markerRes.json()).name;
+          const unionRes = await fetch("/events/" + eventId + "/files");
+          if (!unionRes.ok) throw new Error("union " + unionRes.status);
+          union = await unionRes.json();
+        } catch (_e) {
+          setStatus("Couldn't load this event. Check your connection and reload.");
+          return;
+        }
+
+        if (name) $("title").textContent = name;
+        document.title = name ? name + " — SnapSync" : "SnapSync — event photos";
+
+        // One file per asset: the PRIMARY resource only. A Live Photo / GIF also carries a paired
+        // "live" video resource in the union — we deliberately skip it and download just the still.
+        const items = [];
+        const used = new Set();
+        for (const asset of union) {
+          for (const r of (asset.resources || [])) {
+            if (r.role !== "primary") continue;
+            items.push({ url: r.url, name: uniqueName(used, r.filename || (r.key || "photo")) });
+          }
+        }
+        if (items.length === 0) {
+          setStatus("No photos have been shared to this event yet.");
+          return;
+        }
+
+        setStatus(items.length + " photo" + (items.length === 1 ? "" : "s") + " ready.");
+        const btn = $("download");
+        const LABEL = "Download all photos (zip)";
+        // The button IS the progress bar: `--p` drives a fill that sweeps across it, and its label
+        // reports the count. `.busy` keeps it full-strength (not the pre-load faded-disabled look).
+        const setP = (frac) => btn.style.setProperty("--p", Math.round(frac * 100) + "%");
+        btn.disabled = false;
+        btn.addEventListener("click", async () => {
+          btn.disabled = true;
+          btn.classList.add("busy");
+          setP(0);
+          const files = [];
+          try {
+            for (let i = 0; i < items.length; i++) {
+              btn.textContent = "Downloading " + (i + 1) + " of " + items.length + "…";
+              setP(i / items.length);
+              const res = await fetch(items[i].url);
+              if (!res.ok) throw new Error("photo " + res.status);
+              files.push({ name: items[i].name, bytes: new Uint8Array(await res.arrayBuffer()) });
+              setP((i + 1) / items.length);
+            }
+            btn.textContent = "Building zip…";
+            setP(1);
+            const zip = buildZip(files);
+            const url = URL.createObjectURL(new Blob([zip], { type: "application/zip" }));
+            const a = document.createElement("a");
+            a.href = url;
+            a.download = (name || "snapsync").replace(/[^\w.-]+/g, "-") + ".zip";
+            document.body.appendChild(a);
+            a.click();
+            a.remove();
+            setTimeout(() => URL.revokeObjectURL(url), 60000);
+            setStatus(
+              "Done — " + items.length + " photo" + (items.length === 1 ? "" : "s") +
+                " downloaded.",
+            );
+          } catch (_e) {
+            setStatus(
+              "Download failed. Reload and try again" +
+                (files.length ? " (a very large event may exceed this browser's memory)." : "."),
+            );
+          } finally {
+            btn.disabled = false;
+            btn.classList.remove("busy");
+            setP(0);
+            btn.textContent = LABEL;
+          }
+        });
+      }
+
+      main();
+    })();
+    </script>
+  </body>
+</html>
