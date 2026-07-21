@@ -138,6 +138,9 @@ def _find_or_create_version(s: requests.Session, app_id: str, version_string: st
                     "platform": "IOS",
                     "versionString": version_string,
                     "copyright": COPYRIGHT,
+                    # Auto-release on approval. The API default is MANUAL_RELEASE, which would leave
+                    # every approved version parked until someone presses Release in the ASC UI.
+                    "releaseType": "AFTER_APPROVAL",
                 },
                 "relationships": {"app": {"data": {"type": "apps", "id": app_id}}},
             }
