@@ -31,18 +31,13 @@ import androidx.compose.ui.unit.sp
  *
  * The background `Surface` fills the whole screen (painting edge-to-edge under the iOS notch /
  * home indicator), while the content `Column` insets past the safe-area before applying the
- * 24.dp margin — uniform, except when [contentPinsActionCluster] tightens the bottom edge.
+ * uniform 24.dp margin.
  */
 @Composable
 fun ScreenLayout(
     title: String,
     heading: String? = null,
     bottomActions: (@Composable () -> Unit)? = null,
-    // The content pins its own full-width action cluster to the bottom edge (e.g. the join gate's
-    // Join / Cancel): the cluster reads as the screen's floor, so it sits on a tighter 12.dp bottom
-    // inset instead of the uniform 24.dp. The inset values stay owned here — screens only name the
-    // arrangement.
-    contentPinsActionCluster: Boolean = false,
     content: @Composable ColumnScope.() -> Unit,
 ) {
     Surface(modifier = Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
@@ -50,12 +45,7 @@ fun ScreenLayout(
             modifier = Modifier
                 .fillMaxSize()
                 .windowInsetsPadding(WindowInsets.safeDrawing)
-                .padding(
-                    start = 24.dp,
-                    top = 24.dp,
-                    end = 24.dp,
-                    bottom = if (contentPinsActionCluster) 12.dp else 24.dp,
-                ),
+                .padding(24.dp),
         ) {
             // The small app-name nav label — always present, top-anchored (mockup `.navtitle`).
             Text(
