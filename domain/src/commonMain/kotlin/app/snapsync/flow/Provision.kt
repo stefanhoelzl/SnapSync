@@ -59,6 +59,12 @@ class Provision(
     /** Best-effort event-name fetch by id, or `null` on a miss/failure — the `EventDirectory` effect
      *  built in `compose/` (a port touch a flow may not make directly). */
     private val fetchEventName: suspend (eventId: String) -> String?,
+    /** Re-register the device's APNs push token with the backend on join (capability
+     *  `push-registration`). Beyond the launch/rotation registration, joining re-`PUT`s the token so a
+     *  device whose config the nightly sweep collected (capability `scheduled-cleanup`) is pushable again
+     *  the instant it rejoins WARM — before its next cold launch. Idempotent, best-effort; the inert
+     *  default keeps world/tests from needing a push stack. */
+    private val registerPush: suspend () -> Unit = {},
 ) {
     suspend fun run(cfg: EventConfig) {
         // 1. Switch: whether a leave is due is membership's sealed rule; on LeavePrevious the flow
@@ -82,6 +88,10 @@ class Provision(
         //    launch. Whether a fetch is due is membership's sealed rule (a scan-path config arrives
         //    nameless); whether the result is persisted is [EventName]'s.
         scope.launch { downloadController.reconcile(cfg.eventId) }
+        // Re-register the push token on join (not on every foreground): closes the warm-rejoin window
+        // the sweep's device-record collection opens (capability `push-registration`). Its own escaping
+        // launch — a network PUT must never block the join — and best-effort.
+        scope.launch { registerPush() }
         when (eventName.fetchNeed(cfg.name)) {
             TitleNeed.MISSING -> scope.launch {
                 eventName.storeEventNameIfChanged(cfg.eventId, fetchEventName(cfg.eventId))

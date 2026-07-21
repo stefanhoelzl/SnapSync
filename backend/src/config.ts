@@ -1,6 +1,7 @@
-// Runtime configuration: NON-SECRET values are SOURCE CONSTANTS below; only the two genuine SECRETS
-// come from the Edge Script environment. `readConfig` is called once at startup and THROWS if either
-// secret is missing/blank, so a misconfigured deployment fails to boot (fail-closed at deploy time).
+// Runtime configuration: NON-SECRET values are SOURCE CONSTANTS below; only the genuine SECRETS
+// (storage AccessKey, APNs key, token-signing key, admin key) come from the Edge Script environment.
+// `readConfig` is called once at startup and THROWS naming any missing/blank secret, so a misconfigured
+// deployment fails to boot (fail-closed at deploy time).
 //
 // WHY THE NON-SECRETS ARE IN SOURCE. bunny issues no scoped API key: writing an Edge Script's
 // environment variables requires the full-access ACCOUNT key, which also owns the storage zone holding
@@ -19,9 +20,9 @@ const ZONE = "snap-sync-dev";
 
 /**
  * bunny native Storage host. MUST be the zone's **main** region host (where writes land), never a
- * replica: reads from the main region are read-after-write consistent, and the leave cascade's reap
- * decision LISTs the devices directories — a stale replica read could reap an event out from under an
- * active device. Every other failure mode of leave is a harmless orphan; this one deletes live data.
+ * replica: reads from the main region are read-after-write consistent, so the nightly sweep (capability
+ * `scheduled-cleanup`) sees a concurrent rejoin's fresh manifest and cannot delete an event out from
+ * under an active device. A stale replica read is the one failure mode that would delete live data.
  */
 const HOST = "storage.bunnycdn.com";
 
@@ -120,7 +121,7 @@ const EVENT_DURATION_SECONDS = 30 * 24 * 60 * 60;
 /**
  * Post-`endsAt` grace: joining is closed but existing members keep full sync, so photos taken during
  * the event that upload late (the OS schedules uploads on its own cadence) still land. 1 day. Past
- * `endsAt + grace` the event is expired and is reaped on first touch.
+ * `endsAt + grace` the event is stale and the nightly sweep (capability `scheduled-cleanup`) deletes it.
  */
 const EVENT_GRACE_SECONDS = 24 * 60 * 60;
 
@@ -155,6 +156,13 @@ export type Config = {
    * environment, never in source.
    */
   attestTokenKey: string;
+  /**
+   * The notify **admin key** (capabilities `event-notify-endpoint`, `scheduled-cleanup`): a bearer secret
+   * whose SOLE authorization is `POST /events/<id>/notify`, held by the out-of-edge nightly sweep so it
+   * can notify an expiring event's members before deleting it despite holding no device token. A SECRET:
+   * read from the environment, never in source.
+   */
+  adminKey: string;
   /** Apple's App Attest root CA (PEM) — the trust anchor for every attestation chain. */
   appAttestRootCa: string;
   /** Device-token lifetime, in seconds. */
@@ -192,9 +200,15 @@ export const ENV_APNS_PRIVATE_KEY = "APNS_PRIVATE_KEY";
  * set by hand. That is not hypothetical; it is how this backend stayed dead for two weeks.
  */
 export const ENV_ATTEST_TOKEN_KEY = "ATTEST_TOKEN_KEY";
+/**
+ * The notify admin-key secret (capability `scheduled-cleanup`). Set on the Edge Script **before** the
+ * code reading it is merged, for the same reason as the token key: `readConfig` throws when it is
+ * missing, and CI ships code but cannot ship config.
+ */
+export const ENV_ADMIN_NOTIFY_KEY = "ADMIN_NOTIFY_KEY";
 
 /**
- * Build {@link Config}: the source constants above, plus the two secrets from `env`. Throws naming
+ * Build {@link Config}: the source constants above, plus the four secrets from `env`. Throws naming
  * every missing/blank secret. The environment is NOT consulted for any non-secret value — a stale
  * platform variable cannot override a source constant.
  */
@@ -205,11 +219,13 @@ export function readConfig(env: Record<string, string | undefined>): Config {
   const apnsPrivateKey = env[ENV_APNS_PRIVATE_KEY];
 
   const attestTokenKey = env[ENV_ATTEST_TOKEN_KEY]?.trim();
+  const adminKey = env[ENV_ADMIN_NOTIFY_KEY]?.trim();
 
   const missing = [
     [ENV_ACCESS_KEY, accessKey],
     [ENV_APNS_PRIVATE_KEY, apnsPrivateKey?.trim()],
     [ENV_ATTEST_TOKEN_KEY, attestTokenKey],
+    [ENV_ADMIN_NOTIFY_KEY, adminKey],
   ].filter(([, value]) => !value).map(([name]) => name);
 
   if (missing.length > 0) {
@@ -217,16 +233,27 @@ export function readConfig(env: Record<string, string | undefined>): Config {
   }
 
   return {
+    ...sourceConstants(),
+    accessKey: accessKey!,
+    apnsPrivateKey: apnsPrivateKey!,
+    attestTokenKey: attestTokenKey!,
+    adminKey: adminKey!,
+  };
+}
+
+/** Every NON-secret Config field — the source constants, shared by `readConfig` and `readSweepConfig`. */
+function sourceConstants(): Omit<
+  Config,
+  "accessKey" | "apnsPrivateKey" | "attestTokenKey" | "adminKey"
+> {
+  return {
     zone: ZONE,
     host: HOST,
-    accessKey: accessKey!,
     s3Region: S3_REGION,
     s3Host: S3_HOST,
     apnsKeyId: APNS_KEY_ID,
     apnsTeamId: APNS_TEAM_ID,
-    apnsPrivateKey: apnsPrivateKey!,
     apnsTopic: APNS_TOPIC,
-    attestTokenKey: attestTokenKey!,
     appAttestRootCa: APPLE_APP_ATTEST_ROOT_CA,
     attestTokenTtlSeconds: ATTEST_TOKEN_TTL_SECONDS,
     // The gate's app id and the push topic are the SAME bundle id, and the attest chain's team is the
@@ -237,5 +264,30 @@ export function readConfig(env: Record<string, string | undefined>): Config {
     eventCapacity: EVENT_CAPACITY,
     eventDurationSeconds: EVENT_DURATION_SECONDS,
     eventGraceSeconds: EVENT_GRACE_SECONDS,
+  };
+}
+
+/**
+ * Build a Config for the nightly sweep (capability `scheduled-cleanup`), which runs OUTSIDE the Edge
+ * Script and holds ONLY two secrets — the storage `AccessKey` (to read/delete storage) and the notify
+ * `ADMIN_NOTIFY_KEY` (to notify an expiring event's members through the edge). The two edge-only secrets it never
+ * uses (the APNs key, the token-signing key) are left blank. Throws naming any missing/blank secret.
+ */
+export function readSweepConfig(env: Record<string, string | undefined>): Config {
+  const accessKey = env[ENV_ACCESS_KEY]?.trim();
+  const adminKey = env[ENV_ADMIN_NOTIFY_KEY]?.trim();
+  const missing = [
+    [ENV_ACCESS_KEY, accessKey],
+    [ENV_ADMIN_NOTIFY_KEY, adminKey],
+  ].filter(([, value]) => !value).map(([name]) => name);
+  if (missing.length > 0) {
+    throw new Error(`missing configuration: ${missing.join(", ")}`);
+  }
+  return {
+    ...sourceConstants(),
+    accessKey: accessKey!,
+    adminKey: adminKey!,
+    apnsPrivateKey: "", // unused by the sweep (the edge holds the real APNs key)
+    attestTokenKey: "", // unused by the sweep (the edge holds the real token-signing key)
   };
 }

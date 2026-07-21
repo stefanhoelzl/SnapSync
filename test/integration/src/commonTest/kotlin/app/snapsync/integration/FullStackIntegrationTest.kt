@@ -401,15 +401,15 @@ class FullStackIntegrationTest {
             // UiState reduces to the setup gate the instant the config clears...
             assertEquals(UiState.CreateEvent(), host.await { it is UiState.CreateEvent })
             assertEquals(null, w.configSource.config.value)
-            // ...and the backend outcomes land when the fire-and-forget DELETE does (awaited, not
-            // assumed synchronous — the flip deliberately never waits on the network).
-            // The GC of the departed device's bytes is the cascade's TAIL — await it like the
-            // deregistration, not assert it synchronously (the flip deliberately never waits).
+            // ...and the backend outcome lands when the fire-and-forget DELETE does (awaited, not assumed
+            // synchronous — the flip deliberately never waits on the network). Leaving is RENAME-ONLY now
+            // (capability `event-leave-endpoint`): the device is departed, but the event and its bytes are
+            // RETAINED until the nightly sweep reclaims them (capability `scheduled-cleanup`).
             withTimeout(5_000) {
-                while (w.store.isRegistered("E") || w.store.objectsOf(w.ownDeviceId).isNotEmpty()) delay(10)
+                while (!w.store.isDeparted("E", w.ownDeviceId)) delay(10)
             }
-            assertFalse(w.store.isRegistered("E"))
-            assertTrue(w.store.objectsOf(w.ownDeviceId).isEmpty())
+            assertTrue(w.store.isRegistered("E")) // NOT reaped — leaving no longer deletes the event
+            assertTrue(w.store.objectsOf(w.ownDeviceId).isNotEmpty()) // bytes NOT collected by leave
         } finally {
             scope.cancel()
         }

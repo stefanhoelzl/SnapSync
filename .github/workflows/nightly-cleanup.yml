@@ -1,0 +1,66 @@
+name: nightly-cleanup
+
+# The nightly storage sweep (capability `scheduled-cleanup`). It reclaims, in two ordered phases, every
+# STALE event (past endsAt + grace, or a legacy/corrupt marker) and every STALE asset (a byte or device
+# record no surviving event still needs) from the bunny Storage zone.
+#
+# WHY IT RUNS HERE AND NOT IN THE EDGE. Bunny Edge Scripting has no scheduler, and it caps a request at
+# 50 subrequests / 30 s CPU (docs.bunny.net/scripting/limits) — a whole-storage sweep issues thousands of
+# storage calls, so it cannot run in the edge at all. This job runs the SAME `backend/src/sweep.ts`
+# program on an Ubuntu runner with no such caps, talking to bunny storage directly. It imports the Edge
+# Script's own `storage`/`lifecycle` modules, so the layout and lifecycle rules cannot drift between the
+# two (backend-deployment).
+#
+# It is DEV/OPS INFRASTRUCTURE, non-gating: it posts no required status check and blocks no merge (like
+# ssh-mac.yml). A failed run is red and visible but stops nothing.
+#
+# SECRETS. Unlike the code-only deploy workflow, this one holds two bunny-zone-scoped secrets — the
+# storage `AccessKey` (to read/delete objects) and the notify `ADMIN_NOTIFY_KEY` (to notify an expiring event's
+# members through the edge before deletion). It does NOT hold the bunny ACCOUNT key (which owns config +
+# DNS) — that prohibition (backend-deployment) is unchanged. The two edge-only secrets (APNs, token
+# signing) are never given to this job; `readSweepConfig` needs only these two.
+#
+# The scheduled run is a REAL delete. Validate first with the manual dry-run:
+#   gh workflow run nightly-cleanup.yml -f dry_run=true
+
+on:
+  schedule:
+    # 03:17 UTC daily — an off-peak hour, deliberately not on the top of the hour.
+    - cron: "17 3 * * *"
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "List what would be deleted without deleting anything"
+        type: boolean
+        default: false
+
+# The sweep mutates nothing in the repo; it needs no write permissions.
+permissions:
+  contents: read
+
+# Never let two sweeps run at once (a scheduled run overlapping a manual dry-run).
+concurrency:
+  group: nightly-cleanup
+  cancel-in-progress: false
+
+jobs:
+  sweep:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.x
+
+      # `--allow-net` (bunny storage + the edge notify route) and `--allow-env` (readSweepConfig reads the
+      # two secrets). No file access. A systemic failure (auth, or an unreachable storage LIST) exits
+      # non-zero and fails the job; per-object errors are logged and counted in the summary.
+      - name: Run the sweep
+        working-directory: backend
+        env:
+          BUNNY_STORAGE_ACCESS_KEY: ${{ secrets.BUNNY_STORAGE_ACCESS_KEY }}
+          ADMIN_NOTIFY_KEY: ${{ secrets.ADMIN_NOTIFY_KEY }}
+        run: |
+          deno run --allow-net --allow-env src/sweep.ts \
+            ${{ (github.event_name == 'workflow_dispatch' && inputs.dry_run) && '--dry-run' || '' }}

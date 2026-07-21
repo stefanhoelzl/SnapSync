@@ -5,3 +5,4 @@ snap-sync:
   BUNNY_API_KEY: bunny/api-key
   BUNNY_STORAGE_ACCESS_KEY: bunny/storage-access-key
   BUNNY_SCRIPT_DEPLOYMENT_KEY: bunny/script-deployment-key
+  ADMIN_NOTIFY_KEY: admin/notify

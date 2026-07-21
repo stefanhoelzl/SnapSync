@@ -18,9 +18,7 @@ enforcement work. Today's initial values are the current free-for-everyone bound
 free tier.
 
 Decision record: `changes/archive/2026-07-21-add-event-limits`.
-
 ## Requirements
-
 ### Requirement: Limit values from backend configuration
 
 The backend SHALL define three event-limit constants in its configuration module — the event
@@ -60,12 +58,15 @@ be a positive integer.
 
 ### Requirement: Event lifecycle from the marker alone
 
-An event's lifecycle state SHALL be a pure function of its marker's `endsAt`, the configured
-grace period, and the server's current wall-clock: **live** while `now <= endsAt`, **grace**
-while `endsAt < now <= endsAt + grace`, and **expired** once `now > endsAt + grace`. A marker
-missing `endsAt` or `capacity` (written before this capability) SHALL be treated as **expired**.
-No stored state machine, flag, or rewrite SHALL represent the lifecycle — the marker stays
-write-once, and the state is recomputed on every read.
+An event's lifecycle state SHALL be a pure function of its marker's `endsAt` and the server's current
+wall-clock: **live** while `now <= endsAt`, and **grace** while `now > endsAt`. There is no distinct
+served **expired** state — an event past `endsAt` remains in grace (closed to new devices, open to
+existing members) until the scheduled cleanup deletes it (capability `scheduled-cleanup`), and deletion
+by that sweep *is* expiry. A marker missing `endsAt` or `capacity` (written before the `event-limits`
+capability) SHALL be treated as **grace** by the gate and is deleted by the sweep. No stored state
+machine, flag, or rewrite SHALL represent the lifecycle — the marker stays write-once, and the state is
+recomputed on every read. The configured grace period governs only **when the sweep deletes** an event
+(`now > endsAt + grace`), not how the gate classifies it.
 
 #### Scenario: Live within the window
 
@@ -74,18 +75,15 @@ write-once, and the state is recomputed on every read.
 
 #### Scenario: Grace after the end
 
-- **WHEN** an event-scoped request arrives while `endsAt < now <= endsAt + grace`
-- **THEN** the event is treated as in grace — closed to new devices, open to existing members
+- **WHEN** an event-scoped request arrives while `now > endsAt`
+- **THEN** the event is treated as in grace — closed to new devices, open to existing members — until the
+  scheduled cleanup deletes it
 
-#### Scenario: Expired past the grace period
-
-- **WHEN** an event-scoped request arrives while `now > endsAt + grace`
-- **THEN** the event is treated as expired and the expiry reap is triggered
-
-#### Scenario: A legacy marker is expired
+#### Scenario: A legacy marker is in grace
 
 - **WHEN** an event-scoped request reads a marker that carries no `endsAt` or no `capacity`
-- **THEN** the event is treated as expired, exactly as if its grace period had elapsed
+- **THEN** the event is treated as in grace (closed to new devices, open to existing members) and is left
+  for the scheduled cleanup to delete
 
 ### Requirement: Capacity bounds devices ever enrolled
 
@@ -162,54 +160,3 @@ The distinct codes keep the two rejection axes separate for future clients: `409
 - **THEN** the endpoint responds `410` — the event being over is the reason joining is closed,
   regardless of remaining capacity
 
-### Requirement: Expiry reap on first touch
-
-Every event-scoped route — any route addressed by an `eventId` — SHALL pass the lifecycle check
-before serving its request. The first request that finds the event expired SHALL trigger the
-reap: (1) resolve the event's active members and fan out the existing best-effort silent push to
-them (capability `event-notify-endpoint` machinery), then (2) delete the event's stored objects
-— every device manifest, the reference-checked garbage collection of freed devices' bytes and
-config documents that the leave cascade already defines (capability `event-leave-endpoint`), and
-finally the marker itself. No tombstone SHALL remain. The triggering request SHALL be answered
-exactly as if the event did not exist (`404` where absence is `404`), and every subsequent
-request SHALL be indistinguishable from one against an event that never existed.
-
-The push precedes the deletes because membership is only readable before it is deleted. A failed
-or partial push SHALL NOT abort the reap. A reap interrupted mid-cascade SHALL be completable by
-the next touch (the surviving marker keeps the event discoverable as expired until the marker —
-deleted last — is gone).
-
-There is no scheduler: reap timing rides on traffic, and an event nobody touches lingers as
-storage until touched. This is accepted; the likely first toucher is a member's own background
-sync, which is exactly who the push is for.
-
-#### Scenario: First touch reaps and answers as absent
-
-- **WHEN** the first event-scoped request arrives after an event's grace period has elapsed
-- **THEN** the silent push is fanned out to the active members, the event's manifests, freed
-  referenced objects, and marker are deleted, and the request is answered as if the event did
-  not exist
-
-#### Scenario: After the reap the event never existed
-
-- **WHEN** any event-scoped request arrives after the reap has completed
-- **THEN** the response is byte-for-byte the response an event that was never created would
-  produce (`404` on the metadata read, `404` on the manifest write, and so on)
-
-#### Scenario: Push failure does not block the reap
-
-- **WHEN** the reap's silent-push fan-out fails for some or all members
-- **THEN** the deletion cascade still runs to completion and the request is still answered as
-  absent
-
-#### Scenario: An interrupted reap completes on the next touch
-
-- **WHEN** a reap is interrupted after deleting some objects but before deleting the marker
-- **THEN** the next event-scoped request finds the marker, recomputes the state as expired, and
-  runs the reap to completion
-
-#### Scenario: A legacy marker is reaped on touch
-
-- **WHEN** an event-scoped request touches an event whose marker predates this capability (no
-  `endsAt`/`capacity`)
-- **THEN** the reap runs exactly as for an expired event

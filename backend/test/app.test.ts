@@ -32,6 +32,7 @@ const CONFIG = {
   apnsPrivateKey: "-----BEGIN PRIVATE KEY-----\nMIG...\n-----END PRIVATE KEY-----\n",
   apnsTopic: "app.snapsync",
   attestTokenKey: "test-attest-token-key",
+  adminKey: "test-admin-key",
   appAttestRootCa: "",
   attestTokenTtlSeconds: 30 * 24 * 60 * 60,
   attestAppId: "E9Z8BADH58.app.snapsync",
@@ -615,17 +616,17 @@ Deno.test("GET /events/:id → 200 marker (events/<id>/metadata.json) when prese
   assertEquals(calls[0].url, MARKER_URL);
 });
 
-Deno.test("GET /events/:id → a legacy marker (no limit fields) is EXPIRED: reaped, 404, never patched", async () => {
-  // A marker written before `event-limits`. The former read-time `startsAt` synthesis is gone: a marker
-  // old enough to lack `startsAt` also lacks `endsAt`, so it is expired by definition and reaped on
-  // this touch (capability `event-limits`) — answered exactly like a never-created event.
+Deno.test("GET /events/:id → a legacy marker (no limit fields) is `gone`: 404, NOT deleted by the gate", async () => {
+  // A marker written before `event-limits`: it cannot be classified or served, so the gate answers 404
+  // (capability `event-limits`). Unlike the old lazy reap, the gate does NOT delete it — the nightly
+  // sweep (capability `scheduled-cleanup`) reclaims it.
   const legacy = { eventId: E, name: "Party", createdAt: "2026-06-27T00:00:00.182Z" };
   const { store, fetchImpl } = storageFake({
     [`events/${E}/metadata.json`]: { json: legacy },
   });
   const res = await createApp({ config: CONFIG, fetch: fetchImpl }).request(`/events/${E}`);
   assertEquals(res.status, 404);
-  assert(!store.has(`events/${E}/metadata.json`)); // reaped, not patched
+  assert(store.has(`events/${E}/metadata.json`)); // NOT reaped by the gate — the sweep deletes it
 });
 
 Deno.test("GET /events/:id → 404 when marker absent", async () => {
@@ -1112,8 +1113,7 @@ Deno.test("notify → wrong method (GET) → 404, no upstream request", async ()
 
 // ── DELETE /events/:eventId/devices/:deviceId (leave cascade) + LWW membership ──────────────────────
 
-const E2 = "7a3f9c21-0000-4000-8000-000000000010"; // a second eventId
-const G = "33333333-0000-4000-8000-000000000004"; // a third deviceId (keeps E2 alive)
+const G = "33333333-0000-4000-8000-000000000004"; // a third deviceId (the never-seen would-be joiner)
 
 let leaveClock = Date.parse("2026-06-27T12:00:00.000Z");
 /** A monotonically-increasing wall-clock string, so a PUT always mints a newer LastChanged (LWW). */
@@ -1245,7 +1245,9 @@ Deno.test("leave with another active member → renames to .left.json, keeps the
   assert(store.has(`events/${E}/metadata.json`)); // event kept
 });
 
-Deno.test("last active member leaves → event reaped + orphaned device GC'd (bytes + config)", async () => {
+Deno.test("last active member leaves → rename-only, event + bytes RETAINED (non-destructive)", async () => {
+  // With the last-member reap removed (capability `event-leave-endpoint`), leaving never deletes the
+  // event or collects bytes; the event survives until it expires and the nightly sweep reclaims it.
   const { store, fetchImpl } = storageFake({
     [`events/${E}/metadata.json`]: { json: MARKER_BODY },
     [`events/${E}/devices/${D}.json`]: { json: mkManifest(D, "A", "A-primary.heic") },
@@ -1254,28 +1256,11 @@ Deno.test("last active member leaves → event reaped + orphaned device GC'd (by
   });
   const res = await del(createApp({ config: CONFIG, fetch: fetchImpl }), E, D);
   assertEquals(res.status, 200);
-  assert(!store.has(`events/${E}/metadata.json`)); // event reaped
-  assert(!store.has(`events/${E}/devices/${D}.left.json`)); // manifest gone
-  assert(!store.has(`files/devices/${D}/A-primary.heic`)); // bytes GC'd
-  assert(!store.has(`devices/${D}.json`)); // config GC'd
-});
-
-Deno.test("last active leaves but device is in another event → bytes/config retained", async () => {
-  const { store, fetchImpl } = storageFake({
-    [`events/${E}/metadata.json`]: { json: MARKER_BODY },
-    [`events/${E}/devices/${D}.json`]: { json: mkManifest(D, "A", "A-primary.heic") },
-    [`events/${E2}/metadata.json`]: { json: { ...MARKER_BODY, eventId: E2 } },
-    [`events/${E2}/devices/${G}.json`]: { json: mkManifest(G, "C", "C-primary.heic") },
-    [`events/${E2}/devices/${D}.left.json`]: { json: mkManifest(D, "A", "A-primary.heic") },
-    [`files/devices/${D}/A-primary.heic`]: { json: {} },
-    [`devices/${D}.json`]: { json: { pushToken: {} } },
-  });
-  const res = await del(createApp({ config: CONFIG, fetch: fetchImpl }), E, D);
-  assertEquals(res.status, 200);
-  assert(!store.has(`events/${E}/metadata.json`)); // E reaped
-  assert(store.has(`files/devices/${D}/A-primary.heic`)); // bytes retained (E2 refs them)
-  assert(store.has(`devices/${D}.json`)); // config retained
-  assert(store.has(`events/${E2}/devices/${D}.left.json`)); // still departed in E2
+  assert(store.has(`events/${E}/metadata.json`)); // event NOT reaped — survives until expiry
+  assert(store.has(`events/${E}/devices/${D}.left.json`)); // departed manifest written
+  assert(!store.has(`events/${E}/devices/${D}.json`)); // active removed
+  assert(store.has(`files/devices/${D}/A-primary.heic`)); // bytes NOT collected (the sweep does that)
+  assert(store.has(`devices/${D}.json`)); // config NOT collected
 });
 
 Deno.test("leave is idempotent — a duplicate DELETE re-runs harmlessly", async () => {
@@ -1381,39 +1366,35 @@ Deno.test("rejoin → fresh active manifest supersedes .left.json (union + notif
   assert(calls.some((c) => c.init.method === "GET" && keyOf(c.url) === `devices/${D}.json`)); // D notified (active)
 });
 
-// ── event limits: lifecycle, capacity, grace, expiry reap (capability `event-limits`) ───────────────
+// ── event limits: lifecycle, capacity, grace (capability `event-limits`) ────────────────────────────
 
 const GRACE_S = CONFIG.eventGraceSeconds;
 
-Deno.test("classifyEvent → live/grace/expired boundaries are exact", () => {
+Deno.test("classifyEvent → live/grace boundaries are exact (two states; deletion is the sweep's)", () => {
   const endsMs = Date.parse(ENDS_AT);
   // now == endsAt is still LIVE (the window is inclusive)…
-  assertEquals(classifyEvent(MARKER_BODY, endsMs, GRACE_S).phase, "live");
+  assertEquals(classifyEvent(MARKER_BODY, endsMs).phase, "live");
   // …one ms past endsAt is GRACE…
-  assertEquals(classifyEvent(MARKER_BODY, endsMs + 1, GRACE_S).phase, "grace");
-  // …now == endsAt + grace is still GRACE (inclusive)…
-  assertEquals(classifyEvent(MARKER_BODY, endsMs + GRACE_S * 1000, GRACE_S).phase, "grace");
-  // …and one ms past that is EXPIRED.
-  assertEquals(classifyEvent(MARKER_BODY, endsMs + GRACE_S * 1000 + 1, GRACE_S).phase, "expired");
+  assertEquals(classifyEvent(MARKER_BODY, endsMs + 1).phase, "grace");
+  // …and it STAYS grace no matter how far past endsAt: the gate never expires an event, the sweep does.
+  assertEquals(classifyEvent(MARKER_BODY, endsMs + GRACE_S * 1000 + 1).phase, "grace");
+  assertEquals(classifyEvent(MARKER_BODY, endsMs + 365 * 24 * 3600 * 1000).phase, "grace");
 });
 
-Deno.test("classifyEvent → a marker missing any limit field is expired (legacy = no grandfathering)", () => {
+Deno.test("classifyEvent → a marker missing any limit field is `gone` (legacy = no grandfathering)", () => {
   const nowMs = Date.parse(STARTS_AT); // well inside what WOULD be the window
   const { endsAt: _e, ...noEnds } = MARKER_BODY;
   const { capacity: _c, ...noCap } = MARKER_BODY;
   const { startsAt: _s, ...noStarts } = MARKER_BODY;
-  assertEquals(classifyEvent(noEnds, nowMs, GRACE_S).phase, "expired");
-  assertEquals(classifyEvent(noCap, nowMs, GRACE_S).phase, "expired");
-  assertEquals(classifyEvent(noStarts, nowMs, GRACE_S).phase, "expired");
+  assertEquals(classifyEvent(noEnds, nowMs).phase, "gone");
+  assertEquals(classifyEvent(noCap, nowMs).phase, "gone");
+  assertEquals(classifyEvent(noStarts, nowMs).phase, "gone");
   // An unparseable endsAt (not producible by our own mint) fails closed the same way.
-  assertEquals(
-    classifyEvent({ ...MARKER_BODY, endsAt: "nonsense" }, nowMs, GRACE_S).phase,
-    "expired",
-  );
+  assertEquals(classifyEvent({ ...MARKER_BODY, endsAt: "nonsense" }, nowMs).phase, "gone");
 });
 
 Deno.test("classifyEvent → live/grace narrow to a complete marker (all limit fields present)", () => {
-  const cls = classifyEvent(MARKER_BODY, Date.parse(STARTS_AT), GRACE_S);
+  const cls = classifyEvent(MARKER_BODY, Date.parse(STARTS_AT));
   assert(cls.phase === "live");
   assertEquals(cls.marker, MARKER_BODY);
 });
@@ -1508,115 +1489,26 @@ Deno.test("grace → existing members keep FULL sync: manifest PUT, union, notif
   assertEquals((await del(app, E, D)).status, 200); // leaving an over event still works
 });
 
-Deno.test("expiry → first touch reaps: silent push to ACTIVE members, then everything deleted, 404", async () => {
-  const config = await configWithApnsKey();
-  const { store, calls, fetchImpl } = storageFake({
+Deno.test("past grace → still served in grace until the sweep deletes it (no on-touch reap)", async () => {
+  // EXPIRED_MARKER's endsAt is 4 days before NOW — past endsAt + the 1-day grace. In the two-state
+  // model the gate treats it as `grace` (not an on-touch reap): members keep syncing, new devices are
+  // refused, and NOTHING is deleted — the nightly sweep (capability `scheduled-cleanup`) reclaims it.
+  const { store, fetchImpl } = storageFake({
     [`events/${E}/metadata.json`]: { json: EXPIRED_MARKER },
     [`events/${E}/devices/${D}.json`]: { json: mkManifest(D, "A", "A-primary.heic") },
-    [`events/${E}/devices/${D2}.left.json`]: { json: mkManifest(D2, "B", "B-primary.heic") },
     [`files/devices/${D}/A-primary.heic`]: { json: {} },
-    [`devices/${D}.json`]: {
-      json: { pushToken: { kind: "apns", token: "TOKA", env: "production" } },
-    },
-    [`devices/${D2}.json`]: {
-      json: { pushToken: { kind: "apns", token: "TOKB", env: "sandbox" } },
-    },
+    [`devices/${D}.json`]: { json: { pushToken: { kind: "apns", token: "TOKA", env: "sandbox" } } },
   });
-  const res = await createApp({ config, fetch: fetchImpl }).request(`/events/${E}`);
-  assertEquals(res.status, 404); // answered as absent
-  // The push went to the ACTIVE member only, BEFORE its membership/config were deleted.
-  assertEquals(apnsCalls(calls), ["https://api.push.apple.com/3/device/TOKA"]);
-  // Everything is gone — manifests, bytes, configs, and the marker (no tombstone).
-  assertEquals([...store.keys()], []);
-});
-
-Deno.test("expiry → reap retains bytes/config a surviving event still references", async () => {
-  const { store, fetchImpl } = storageFake({
-    [`events/${E}/metadata.json`]: { json: EXPIRED_MARKER },
-    [`events/${E}/devices/${D}.json`]: { json: mkManifest(D, "A", "A-primary.heic") },
-    [`events/${E2}/metadata.json`]: { json: { ...MARKER_BODY, eventId: E2 } }, // live, references D
-    [`events/${E2}/devices/${D}.left.json`]: { json: mkManifest(D, "A", "A-primary.heic") },
-    [`events/${E2}/devices/${G}.json`]: { json: mkManifest(G, "C", "C-primary.heic") },
-    [`files/devices/${D}/A-primary.heic`]: { json: {} },
-    [`devices/${D}.json`]: { json: { pushToken: {} } },
-  });
-  const res = await createApp({ config: CONFIG, fetch: fetchImpl }).request(`/events/${E}`);
-  assertEquals(res.status, 404);
-  assert(!store.has(`events/${E}/metadata.json`)); // E reaped
-  assert(store.has(`files/devices/${D}/A-primary.heic`)); // bytes retained (E2 refs them)
-  assert(store.has(`devices/${D}.json`)); // config retained
-  assert(store.has(`events/${E2}/devices/${D}.left.json`)); // E2 untouched
-});
-
-Deno.test("expiry → a push fan-out failure does not block the reap", async () => {
-  // The default CONFIG carries a garbage APNs PEM, so the send path fails — the reap must not care.
-  const { store, fetchImpl } = storageFake({
-    [`events/${E}/metadata.json`]: { json: EXPIRED_MARKER },
-    [`events/${E}/devices/${D}.json`]: { json: mkManifest(D, "A", "A-primary.heic") },
-    [`devices/${D}.json`]: {
-      json: { pushToken: { kind: "apns", token: "TOKA", env: "production" } },
-    },
-  });
-  const res = await createApp({ config: CONFIG, fetch: fetchImpl }).request(`/events/${E}`);
-  assertEquals(res.status, 404);
-  assert(!store.has(`events/${E}/metadata.json`)); // reap completed anyway
-});
-
-Deno.test("expiry → every event-scoped route triggers the reap and answers as absent", async () => {
-  for (
-    const touch of [
-      (app: ReturnType<typeof createApp>) => manifestPut(app, E, G),
-      (app: ReturnType<typeof createApp>) => app.request(`/events/${E}/files`),
-      (app: ReturnType<typeof createApp>) => app.request(`/events/${E}/notify`, { method: "POST" }),
-      (app: ReturnType<typeof createApp>) => del(app, E, D),
-    ]
-  ) {
-    const { store, fetchImpl } = storageFake({
-      [`events/${E}/metadata.json`]: { json: EXPIRED_MARKER },
-      [`events/${E}/devices/${D}.json`]: { json: mkManifest(D, "A", "A-primary.heic") },
-    });
-    const res = await touch(createApp({ config: CONFIG, fetch: fetchImpl }));
-    assertEquals(res.status, 404);
-    assert(!store.has(`events/${E}/metadata.json`)); // reaped on this touch
-    assert(!store.has(`events/${E}/devices/${D}.json`));
-  }
-});
-
-Deno.test("expiry → after the reap, responses are byte-for-byte the never-created ones", async () => {
-  const reaped = storageFake({
-    [`events/${E}/metadata.json`]: { json: EXPIRED_MARKER },
-    [`events/${E}/devices/${D}.json`]: { json: mkManifest(D, "A", "A-primary.heic") },
-  });
-  const never = storageFake({});
-  const reapedApp = createApp({ config: CONFIG, fetch: reaped.fetchImpl });
-  const neverApp = createApp({ config: CONFIG, fetch: never.fetchImpl });
-  await reapedApp.request(`/events/${E}`); // the reaping touch
-  for (
-    const req of [
-      (app: ReturnType<typeof createApp>) => app.request(`/events/${E}`),
-      (app: ReturnType<typeof createApp>) => manifestPut(app, E, D),
-      (app: ReturnType<typeof createApp>) => app.request(`/events/${E}/files`),
-      (app: ReturnType<typeof createApp>) => app.request(`/events/${E}/notify`, { method: "POST" }),
-    ]
-  ) {
-    const [a, b] = [await req(reapedApp), await req(neverApp)];
-    assertEquals(a.status, b.status);
-    assertEquals(await a.text(), await b.text());
-  }
-});
-
-Deno.test("expiry → an interrupted reap keeps the marker and completes on the next touch", async () => {
-  const failing = new Set<string>([`events/${E}/devices/${D}.json`]);
-  const { store, fetchImpl } = storageFake({
-    [`events/${E}/metadata.json`]: { json: EXPIRED_MARKER },
-    [`events/${E}/devices/${D}.json`]: { json: mkManifest(D, "A", "A-primary.heic") },
-  }, failing);
   const app = createApp({ config: CONFIG, fetch: fetchImpl });
-  assertEquals((await app.request(`/events/${E}`)).status, 502); // reap failed mid-cascade
-  assert(store.has(`events/${E}/metadata.json`)); // marker deleted LAST → still discoverable as expired
-  failing.clear();
-  assertEquals((await app.request(`/events/${E}`)).status, 404); // next touch completes the reap
-  assertEquals([...store.keys()], []);
+  assertEquals((await app.request(`/events/${E}`)).status, 200); // metadata still served (grace)
+  assertEquals((await app.request(`/events/${E}/files`)).status, 200); // union still served
+  assertEquals((await app.request(`/events/${E}/notify`, { method: "POST" })).status, 202);
+  assertEquals((await manifestPut(app, E, G)).status, 410); // a NEW device still cannot join
+  // No touch deleted anything — the gate never reaps.
+  assert(store.has(`events/${E}/metadata.json`));
+  assert(store.has(`events/${E}/devices/${D}.json`));
+  assert(store.has(`files/devices/${D}/A-primary.heic`));
+  assert(store.has(`devices/${D}.json`));
 });
 // ── The versioned prefix mirrors the bare paths (capability `backend-deployment`) ────────────────────
 

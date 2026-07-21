@@ -13,6 +13,7 @@ const BASE: Omit<Config, "apnsPrivateKey"> = {
   apnsTeamId: "E9Z8BADH58",
   apnsTopic: "app.snapsync",
   attestTokenKey: "test-attest-token-key",
+  adminKey: "test-admin-key",
   appAttestRootCa: "",
   attestTokenTtlSeconds: 30 * 24 * 60 * 60,
   attestAppId: "E9Z8BADH58.app.snapsync",

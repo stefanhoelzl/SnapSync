@@ -12,6 +12,7 @@ const CONFIG = readConfig({
   BUNNY_STORAGE_ACCESS_KEY: "k",
   APNS_PRIVATE_KEY: "p",
   ATTEST_TOKEN_KEY: "t",
+  ADMIN_NOTIFY_KEY: "a",
 });
 
 // Serving the page must make NO upstream request — any call here is a failure.

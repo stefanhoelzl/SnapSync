@@ -27,7 +27,7 @@ import kotlinx.serialization.json.jsonPrimitive
  * GET  /events/<id>/files           -> 200 [ union ] | 404 (unregistered) (offline -> 502)
  * POST /events                      -> 201 { eventId, name, createdAt } + register marker
  * PUT  /events/<id>/devices/<id>    -> 200 ; deposit the manifest into the store
- * DELETE /events/<id>/devices/<id>  -> 200 ; leave cascade (rename→reap→GC) | 404 (unregistered event)
+ * DELETE /events/<id>/devices/<id>  -> 200 ; leave (rename-only: mark departed) | 404 (unregistered event)
  * (unmatched)                       -> 404
  * ```
  *
@@ -139,7 +139,7 @@ fun miniEdgeClient(store: BackendStore): HttpClient {
                     respond("", HttpStatusCode.OK, jsonHeaders())
                 }
 
-                // DELETE /events/<id>/devices/<id>  (leave — rename→reap→GC, gated on the event marker)
+                // DELETE /events/<id>/devices/<id>  (leave — rename-only mark-departed, gated on the marker)
                 method == HttpMethod.Delete && segments.size == 4 &&
                     segments[0] == "events" && segments[2] == "devices" -> {
                     if (!store.isRegistered(segments[1])) {
