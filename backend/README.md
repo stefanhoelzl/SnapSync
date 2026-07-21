@@ -40,25 +40,27 @@ device-partitioned and event-independent** — a resource is uploaded once under
 namespace and linked into any number of events by reference (the per-event manifest). The device id
 is self-asserted (possession of the UUID is the capability); App Attest is the noted hardening path.
 
-Every event is **bounded** (capability `event-limits`): `POST /events` stamps `endsAt = startsAt +
-30 days` and `capacity = 10` (source constants in `config.ts`) onto the write-once marker, and every
-event-scoped route classifies the lifecycle from the marker + clock before serving — **live**
-(`now <= endsAt`: joins under the cap, full sync) → **grace** (1 day: joins closed with `410`,
-members keep full sync so late uploads still land) → **expired** (first touch runs the lazy reap:
-silent-push the active members, delete manifests + GC'd bytes/configs, delete the marker LAST — then
-`404`, indistinguishable from never-created; no tombstone, no scheduler). A legacy marker missing the
-limit fields is expired by definition and reaped on touch.
+Every event is **bounded** (capability `event-limits`): `POST /events` stamps
+`endsAt = startsAt +
+30 days` and `capacity = 10` (source constants in `config.ts`) onto the
+write-once marker, and every event-scoped route classifies the lifecycle from the marker + clock
+before serving — **live** (`now <= endsAt`: joins under the cap, full sync) → **grace** (1 day:
+joins closed with `410`, members keep full sync so late uploads still land) → **expired** (first
+touch runs the lazy reap: silent-push the active members, delete manifests + GC'd bytes/configs,
+delete the marker LAST — then `404`, indistinguishable from never-created; no tombstone, no
+scheduler). A legacy marker missing the limit fields is expired by definition and reaped on touch.
 
 ## Contract
 
-> **Versioned prefix (capability `backend-deployment`).** Every device-API route below is served under the
-> canonical prefix **`/api/v1`** (e.g. `POST /api/v1/events`, `GET /api/v1/attest/challenge`) **and** — for
-> a grace period — at the **bare** path shown here as a **deprecated alias**, so already-installed apps
-> (device-facing host baked at compile time, not force-updatable) keep working. The paths are written bare
-> below; read each as also available under `/api/v1`. The gate normalizes the `/api/vN` prefix, so the
-> ungated `/attest/*` set holds under both forms. The **web/link** routes (`/`, `/join`, the AASA) stay at
-> the **root**, never under `/api/v1`. The routing is version-parametric: a future `/api/v2` is one more
-> mount. Ending the grace period is deleting the single bare-alias mount in `createApp`.
+> **Versioned prefix (capability `backend-deployment`).** Every device-API route below is served
+> under the canonical prefix **`/api/v1`** (e.g. `POST /api/v1/events`,
+> `GET /api/v1/attest/challenge`) **and** — for a grace period — at the **bare** path shown here as
+> a **deprecated alias**, so already-installed apps (device-facing host baked at compile time, not
+> force-updatable) keep working. The paths are written bare below; read each as also available under
+> `/api/v1`. The gate normalizes the `/api/vN` prefix, so the ungated `/attest/*` set holds under
+> both forms. The **web/link** routes (`/`, `/join`, the AASA) stay at the **root**, never under
+> `/api/v1`. The routing is version-parametric: a future `/api/v2` is one more mount. Ending the
+> grace period is deleting the single bare-alias mount in `createApp`.
 
 ```
 POST /events
@@ -144,9 +146,9 @@ GET  /events/<eventId>/files                               (event-wide UNION —
   former download-proxy route is retired.
 - **Methods** — `POST /events`, `GET /events/<id>`, `GET /files/devices/<id>`, `PUT`/`OPTIONS` on
   `/files/devices/<id>/<name>`, `PUT /events/<id>/devices/<id>`, `DELETE /events/<id>/devices/<id>`,
-  `GET /events/<id>/files` (plus the `/attest/*` issuers) — each served under both `/api/v1/…` and the
-  bare path (deprecated alias). Any other method or unmatched path → **`404`** (Hono's default — no
-  `405`). Bad UUID / unsafe filename / invalid name → `400`.
+  `GET /events/<id>/files` (plus the `/attest/*` issuers) — each served under both `/api/v1/…` and
+  the bare path (deprecated alias). Any other method or unmatched path → **`404`** (Hono's default —
+  no `405`). Bad UUID / unsafe filename / invalid name → `400`.
 
 > **Deployment invariant.** The storage `HOST` constant MUST be the storage zone's **main** region
 > host (where writes land), never a replica endpoint. Bunny replicates asynchronously; reads from
