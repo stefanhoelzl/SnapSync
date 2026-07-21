@@ -1,0 +1,16 @@
+{
+  "name": "@snapsync/site",
+  "type": "module",
+  "private": true,
+  "comment": "Builds under Node, NOT Deno: astro:assets/rolldown fail to resolve Astro's export conditions under Deno's npm-compat (verified 2026-07-22). The api/ backend stays Deno-only; this separate module owns its Node toolchain.",
+  "engines": { "node": ">=20" },
+  "scripts": {
+    "dev": "astro dev",
+    "build": "astro build",
+    "preview": "astro preview"
+  },
+  "dependencies": {
+    "astro": "^5",
+    "sharp": "^0.33"
+  }
+}
