@@ -178,7 +178,7 @@ gh pr list --repo <repo> --head <current-branch> --json number,url,state
 If a PR already exists for this branch:
 
 - If state is OPEN: skip to step 9 (run ship-wait script)
-- If state is MERGED: skip to step 10 (delete workspace) with exit code 0
+- If state is MERGED: skip to step 10 (report + delete workspace) with exit code 0
 - If state is CLOSED: continue to create new PR
 
 ### 6. Push
@@ -314,14 +314,17 @@ The script handles:
 - 1: FAILED
 - 2: TIMEOUT
 
-### 10. Delete workspace
+### 10. Report, then delete workspace
 
-If `--keep-workspace` was NOT passed and merge succeeded (exit code 0):
+Deleting the workspace tears down this worktree (and the agent session running in it), so
+nothing can execute after the delete call. Therefore the order is strict:
 
-1. Call `mcp__codehydra__workspace_delete` tool with `keepBranch: false`
-2. Report: "Workspace deleted."
+1. **First**, emit the final report (see Report Formats below).
+2. **Then**, if `--keep-workspace` was NOT passed and merge succeeded (exit code 0):
+   call `mcp__codehydra__workspace_delete` with `keepBranch: false` as the VERY LAST
+   action — no tool calls or output after it.
 
-If `--keep-workspace` was passed, report: "Workspace kept."
+If `--keep-workspace` was passed, do not delete; the report already says "kept".
 
 ## Report Formats
 
@@ -332,7 +335,7 @@ PR merged successfully!
 
 **PR**: <url>
 **Commit**: <sha> merged to <default-branch>
-**Workspace**: deleted (or "kept" if --keep-workspace)
+**Workspace**: will be deleted now (or "kept" if --keep-workspace)
 ```
 
 ### FAILED (exit code 1)
