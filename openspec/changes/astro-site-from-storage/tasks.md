@@ -9,10 +9,10 @@
 
 ## 2. Scaffold the `site/` Astro project (shared layer)
 
-- [ ] 2.1 Create the `site/` module: minimal Astro project (`@sveltejs`-free), `astro build` → static output
-- [ ] 2.2 Resolve the image toolchain: confirm `astro:assets` runs under Deno; if `sharp` fails under Deno's npm-compat, run the `site/` build under Node (document the choice)
-- [ ] 2.3 Build the shared layer: `Layout.astro` (head, theme-color metas, favicon, header/brand, footer), `theme.css` (tokens incl. SnapSync green, light/dark), shared components (Brand, AppStoreButton, Footer)
-- [ ] 2.4 Confirm fingerprinted output paths (`/_astro/*`, hashed asset names) so the proxy allowlist and immutable-cache policy can target them
+- [x] 2.1 Create the `site/` module: minimal Astro project (`@sveltejs`-free), `astro build` → static output
+- [x] 2.2 Resolve the image toolchain: confirm `astro:assets` runs under Deno; if `sharp` fails under Deno's npm-compat, run the `site/` build under Node (document the choice) — **Node** (Astro/rolldown fails to resolve export conditions under Deno; documented in `site/package.json`)
+- [x] 2.3 Build the shared layer: `Layout.astro` (head, theme-color metas, favicon, header/brand, footer), `theme.css` (tokens incl. SnapSync green, light/dark), shared components (Brand, AppStoreButton, Footer) — Layout + theme + header/footer chrome in place; named sub-components (Brand/AppStoreButton/Footer) to be extracted during the full landing port (3.1)
+- [x] 2.4 Confirm fingerprinted output paths (`/_astro/*`, hashed asset names) so the proxy allowlist and immutable-cache policy can target them
 
 ## 3. Landing page in `site/` (Phase 1)
 
