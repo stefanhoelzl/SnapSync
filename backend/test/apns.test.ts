@@ -18,6 +18,9 @@ const BASE: Omit<Config, "apnsPrivateKey"> = {
   attestAppId: "E9Z8BADH58.app.snapsync",
   linkDomain: "snapsync.stho.net",
   appStoreUrl: "https://apps.apple.com/app/id6781692480",
+  eventCapacity: 10,
+  eventDurationSeconds: 30 * 24 * 60 * 60,
+  eventGraceSeconds: 24 * 60 * 60,
 };
 
 // A real P-256 key so `crypto.subtle.sign` actually produces a valid ES256 JWT in-test.

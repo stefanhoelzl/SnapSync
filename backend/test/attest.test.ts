@@ -46,6 +46,9 @@ const CONFIG: Config = {
   attestAppId: "E9Z8BADH58.app.snapsync",
   linkDomain: "snapsync.stho.net",
   appStoreUrl: "https://apps.apple.com/app/id6781692480",
+  eventCapacity: 10,
+  eventDurationSeconds: 30 * 24 * 60 * 60,
+  eventGraceSeconds: 24 * 60 * 60,
 };
 
 /** The same config, but claiming the FIXTURE's app — so the real attestation's rpIdHash matches. */
@@ -366,7 +369,19 @@ Deno.test("renew: a device that never attested must attest, not renew", async ()
 Deno.test("leave: a fully-orphaned device's attestation record is collected with its config", async () => {
   const calls: Call[] = [];
   const store = new Map<string, string>([
-    [`events/${E}/metadata.json`, JSON.stringify({ eventId: E, name: "x", createdAt: "t" })],
+    // A LIVE marker at NOW — the limit fields are required (capability `event-limits`): a marker
+    // without them is expired and would be reaped instead of served, and this test is about leave.
+    [
+      `events/${E}/metadata.json`,
+      JSON.stringify({
+        eventId: E,
+        name: "x",
+        createdAt: "t",
+        startsAt: "2026-07-01T00:00:00Z",
+        endsAt: "2026-07-31T00:00:00Z",
+        capacity: 10,
+      }),
+    ],
     [`events/${E}/devices/${D}.json`, JSON.stringify({ deviceId: D, assets: [] })],
     [`devices/${D}.json`, "{}"],
     [`devices/${D}.attest.json`, JSON.stringify({ publicKey: "AA==", environment: "production" })],

@@ -27,7 +27,7 @@ Three disjoint key namespaces in one zone (an `eventId`/`deviceId` is a UUID, ne
 so nothing collides):
 
 ```
-events/<eventId>/metadata.json                 event marker / registry record { eventId, name, createdAt }
+events/<eventId>/metadata.json                 event marker / registry record { eventId, name, createdAt, startsAt, endsAt, capacity }
 events/<eventId>/devices/<deviceId>.json       per-event device manifest — ACTIVE member (projected assets)
 events/<eventId>/devices/<deviceId>.left.json  per-event device manifest — DEPARTED (left; still in the union)
 files/devices/<deviceId>/<filename>            a device's raw uploaded photo/resource byte objects
@@ -40,16 +40,26 @@ device-partitioned and event-independent** — a resource is uploaded once under
 namespace and linked into any number of events by reference (the per-event manifest). The device id
 is self-asserted (possession of the UUID is the capability); App Attest is the noted hardening path.
 
+Every event is **bounded** (capability `event-limits`): `POST /events` stamps `endsAt = startsAt +
+30 days` and `capacity = 10` (source constants in `config.ts`) onto the write-once marker, and every
+event-scoped route classifies the lifecycle from the marker + clock before serving — **live**
+(`now <= endsAt`: joins under the cap, full sync) → **grace** (1 day: joins closed with `410`,
+members keep full sync so late uploads still land) → **expired** (first touch runs the lazy reap:
+silent-push the active members, delete manifests + GC'd bytes/configs, delete the marker LAST — then
+`404`, indistinguishable from never-created; no tombstone, no scheduler). A legacy marker missing the
+limit fields is expired by definition and reaped on touch.
+
 ## Contract
 
 ```
 POST /events
-    body: {"name": "<event name>"}                        (JSON; trimmed, non-empty, ≤100 chars)
+    body: {"name": "<name>", "startsAt": "<canonical instant>"}   (name trimmed, non-empty, ≤100 chars)
     →  bunny native PUT  events/<minted-uuid>/metadata.json
-    →  201 {eventId, name, createdAt}                     (eventId minted server-side) | 502
+    →  201 {eventId, name, createdAt, startsAt, endsAt, capacity}   (id + limits minted server-side) | 502
 
 GET  /events/<eventId>
-    →  200 {eventId, name, createdAt}  | 404 when never created | 502 on a non-404 marker read failure
+    →  200 the marker (all fields — an expired/legacy marker is never served)
+       | 404 when never created OR expired-and-reaped | 502 on a non-404 marker read failure
 
 PUT  /files/devices/<deviceId>/<filename>                 (byte upload — UNGATED, no marker read)
     body: raw resource bytes (streamed, never buffered)
@@ -74,9 +84,12 @@ POST /events/<eventId>/notify                              (silent push to membe
        best-effort: members without a token are skipped; a per-token failure never fails the request
        fixed payload (content-available), ACTIVE members only (a departed <id>.left.json is skipped)
 
-PUT  /events/<eventId>/devices/<deviceId>                   (device manifest — GATED on event existence)
+PUT  /events/<eventId>/devices/<deviceId>          (device manifest — GATED on existence + event limits)
     body: full-state JSON device manifest (streamed)
     →  [gate] GET events/<eventId>/metadata.json  → absent? 404 (stream nothing) | non-404 failure? 502
+       expired? reap → 404;  then LIST events/<eventId>/devices/ (known-vs-new + the capacity count):
+       NEW device in grace → 410 | NEW device with ever-enrolled (active ∪ departed) ≥ capacity → 409
+       (a KNOWN device — active or .left — passes both; leaving frees no slot; rejoin reuses its slot)
     →  bunny native PUT  events/<eventId>/devices/<deviceId>.json   → 201 | 502
 
 DELETE /events/<eventId>/devices/<deviceId>                 (LEAVE — GATED on event existence)

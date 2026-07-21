@@ -1,5 +1,6 @@
 import { assertEquals } from "@std/assert";
 import {
+  canonicalPlusSeconds,
   MAX_EVENT_NAME_LENGTH,
   validateEventName,
   validateFilename,
@@ -105,4 +106,23 @@ Deno.test("validateStartsAt: rejects empty and non-string input", () => {
   assertEquals(validateStartsAt(undefined), null);
   assertEquals(validateStartsAt(null), null);
   assertEquals(validateStartsAt(42), null);
+});
+
+Deno.test("canonicalPlusSeconds: adds whole seconds and stays in the canonical cutoff shape", () => {
+  // 30 days — the event-duration case (capability `event-limits`): endsAt = startsAt + duration.
+  assertEquals(
+    canonicalPlusSeconds("2026-06-27T18:00:00Z", 30 * 24 * 60 * 60),
+    "2026-07-27T18:00:00Z",
+  );
+  // No milliseconds, `Z`, second precision — the result validates as a canonical instant itself.
+  assertEquals(
+    validateStartsAt(canonicalPlusSeconds("2026-06-27T18:00:00Z", 1)),
+    "2026-06-27T18:00:01Z",
+  );
+});
+
+Deno.test("canonicalPlusSeconds: rolls over month and year boundaries correctly", () => {
+  assertEquals(canonicalPlusSeconds("2026-12-31T23:59:59Z", 1), "2027-01-01T00:00:00Z");
+  // Across February in a non-leap year.
+  assertEquals(canonicalPlusSeconds("2026-02-27T12:00:00Z", 2 * 24 * 60 * 60), "2026-03-01T12:00:00Z");
 });
