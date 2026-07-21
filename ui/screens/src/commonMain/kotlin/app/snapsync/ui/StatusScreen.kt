@@ -127,6 +127,10 @@ fun StatusScreen(
             title = "SnapSync",
             heading = if (joined) eventName else null,
             bottomActions = bottomActions,
+            // Every join phase pins Cancel (and, on Ready, Join) as its own full-width bottom
+            // cluster, so the whole JoiningEvent branch takes the safe-area-anchored bottom edge —
+            // Cancel then sits at one height across Loading → Ready with no jump.
+            contentPinsActionCluster = state is UiState.JoiningEvent,
         ) {
             when (state) {
                 is UiState.CreateEvent ->
