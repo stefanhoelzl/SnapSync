@@ -1025,15 +1025,22 @@ class StatusContainerHostTest {
         val source = FakeSyncStatusSource(SyncStatus.Loading)
         val permission = FakePermissionSource(PermissionStatus.GRANTED)
         val h = host(source, backgroundScope, permission = permission, configFake = FakeConfig(null))
-        // `intent` returns its Job — joining it is what makes the assertion deterministic (the
-        // container's event loop runs off the virtual scheduler); the self-clear delay then runs
-        // on THIS test's virtual clock (the host scope is backgroundScope).
-        h.onOpenUrl("not a config link").join()
-        assertEquals("That QR code wasn't valid.", h.transientError.value)
-        // …and it self-clears a few seconds after it last appeared.
-        advanceTimeBy(5_000)
-        runCurrent()
-        assertEquals(null, h.transientError.value)
+        // Driven through the orbit-test fixture so the intent event loop runs on THIS test's
+        // virtual scheduler (its dispatcherOverride) — Orbit's public SettingsBuilder cannot pin
+        // it, and calling the intent on the bare container WAS the twice-measured ios-test flake:
+        // the default event loop is Dispatchers.Default, so while this test sat suspended in
+        // `join()`, runTest's clock could auto-advance THROUGH the self-clear delay before the
+        // first assert observed the set (set-then-clear conflated on a real thread's schedule).
+        h.test(this) {
+            containerHost.onOpenUrl("not a config link").join()
+            assertEquals("That QR code wasn't valid.", containerHost.transientError.value)
+            // …and it self-clears a few seconds after it last appeared — the delay runs on this
+            // test's virtual clock (the host scope is backgroundScope).
+            advanceTimeBy(5_000)
+            runCurrent()
+            assertEquals(null, containerHost.transientError.value)
+            cancelAndIgnoreRemainingItems()
+        }
     }
 
     @Test
