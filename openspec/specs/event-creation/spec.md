@@ -119,6 +119,14 @@ carries milliseconds.
 A future `startsAt` is meaningful — it is how an event is created ahead of time, and it is what the app
 renders as its not-started state.
 
+Unboundedness interacts with the event lifetime (capability `event-limits`,
+`endsAt = startsAt + duration`), in opposite directions. A `startsAt` more than the duration plus grace
+in the past mints an event that is **already expired** — reaped on the first touch, self-defusing —
+while a within-window past start is a feature (an event created mid-trip). A far-**future** `startsAt`
+extends the marker's total life to `startsAt + duration`, beyond the duration-from-now an event minted
+today carries. That extension is accepted while creation is attestation-gated and free; it is
+re-examined when duration becomes creator-chosen under paid events.
+
 The value SHALL be stored and returned verbatim.
 
 #### Scenario: A canonical startsAt is accepted and echoed
@@ -275,6 +283,12 @@ carries a valid token and a request that carries none SHALL both be served the m
 `web-event-download`) fetches the event name over this route from a browser that holds no attestation.
 Existence-probing by a tokenless caller is an accepted consequence of opening this read (decision record:
 `changes/archive/2026-07-21-web-event-download`).
+
+Attestation is the **only** creation gate today — creation is free for every attested device. A future
+paid-events change would attach its payment/authorization check **on this route**: creation is the one
+moment an event's tier is decided, and the tier's substance (capacity, duration) is already stamped at
+mint from values that can become creator-chosen with no enforcement change (capability `event-limits`).
+Nothing else in the API is shaped by payment.
 
 #### Scenario: Unauthenticated creation is refused
 

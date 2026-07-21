@@ -57,3 +57,21 @@ context: |
   A MODIFIED delta restates a WHOLE requirement, so it silently drops whatever
   you did not scroll to. Build each one from the current main spec and diff it —
   the removed lines must be only the ones you intended.
+
+  MISSION (decision record: changes/archive/2026-07-21-align-specs-with-mission). SnapSync
+  lets joined users easily share the photos they take during an event. Events are
+  short-lived — days/weeks: celebrations, holidays, trips — and bounded by a
+  server-stamped lifetime; expiry deletes the event, and that IS how an event
+  ends (no capture-date end bound exists, by decision). Photos sync directly
+  between device galleries: members never care how photos arrive, they just look
+  at their own gallery. No accounts — a device UUID plus platform attestation is
+  the whole identity — and setup/enrollment stay simple.
+
+  Named future directions (not commitments; do not build for them, but do not
+  deepen assumptions against them without naming it in the change): Android
+  support (App Attest/APNs are the iOS bindings of platform-neutral seams);
+  paid events (small events stay free; creation is the payment gate's attach
+  point, capacity/duration the tier boundary); concurrent multi-event
+  membership (single active membership is the CURRENT contract — switch =
+  leave-then-join — while bytes, ledger keys, and backend GC are already
+  event-independent).

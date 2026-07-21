@@ -83,8 +83,9 @@ asset with its manifest detail. "Admitted" means the asset survived the selectio
 exclusions** (capability `photo-selection-policy`) — it is not a screenshot, screen recording, animated image,
 sub-floor-resolution asset, or member of a denylisted album. Each event's manifest SHALL be the date-filtered
 projection of that accumulator — the assets whose capture date is at or after **the device's configured
-start for that event** (its per-membership capture-date cutoff). Under a
-whole-library scope (no cutoff) the projection SHALL be the identity over the accumulator. The
+start for that event** (its per-membership capture-date cutoff). A membership's cutoff is **required,
+never absent** (capability `photo-selection-policy`: no scope admits the whole library), so every
+projection SHALL be date-filtered — there is no whole-library projection. The
 accumulator SHALL remain device-global even when a cutoff is set — it holds every admitted asset,
 including those excluded from the current projection by **date** — so that a differing cutoff (a future edit, or a
 concurrent membership in another event) can be projected without re-walking the library. An accumulator
@@ -102,11 +103,6 @@ accumulator no per-event flexibility, while pre-filtering by date would.
 An origin-excluded asset that reached the accumulator would project into `device.json`, enter the event union,
 and be offered to every other member as bytes that were **never uploaded** — because the upload cycle drops it
 before the engine. The accumulator's admitted-only contract is what forecloses that.
-
-#### Scenario: Projection equals the accumulator under whole-library scope
-- **WHEN** the membership has no cutoff (whole-library scope)
-- **THEN** the event's manifest lists exactly the accumulator's not-deleted assets, with no date
-  exclusion
 
 #### Scenario: Date-filtered projection per the device's configured cutoff
 - **WHEN** the membership has a cutoff and an accumulator asset's capture date precedes it

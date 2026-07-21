@@ -61,17 +61,18 @@ fun deviceManifestFromJson(text: String): DeviceManifest =
  * Project a device-global [accumulator] (every discovered, not-deleted asset) into a single event's
  * [DeviceManifest]: keep only assets whose [DeviceManifestAsset.creationDate] is at or after
  * [startDate] (an ISO-8601 string compared lexicographically — valid for the same `…Z` formatter the
- * synthesis uses), or **all** of them when [startDate] is `null` (the whole-library scope — the
- * projection is then the identity). Entries are sorted by `assetId` so the serialized snapshot is
- * deterministic, making the producer's skip-if-unchanged comparison stable.
+ * synthesis uses). [startDate] is required: a membership's cutoff is never absent (capability
+ * `photo-selection-policy` — no scope admits the whole library), so every projection is
+ * date-filtered. Entries are sorted by `assetId` so the serialized snapshot is deterministic,
+ * making the producer's skip-if-unchanged comparison stable.
  */
 fun projectDeviceManifest(
     deviceId: String,
     accumulator: Collection<DeviceManifestAsset>,
-    startDate: String?,
+    startDate: String,
 ): DeviceManifest {
     val assets = accumulator
-        .filter { startDate == null || it.creationDate >= startDate }
+        .filter { it.creationDate >= startDate }
         .sortedBy { it.assetId }
     return DeviceManifest(deviceId = deviceId, assets = assets)
 }

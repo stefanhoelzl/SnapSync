@@ -25,6 +25,13 @@ a leave, a switch, and a re-join; only a triggered reconciliation's `resetTo` ev
 mutual exclusion structural — the non-selected tier's mechanism is never constructed, so it cannot run and
 cannot become a second `LedgerWriter`.
 
+The transition table is written against the **current single-active-membership contract** (capability
+`join-event`): *provision* and *switch* assume one configured event, and no membership means no arm.
+Concurrent multi-event membership is a named future direction; the durable pieces already compose with
+it (the ledger key is event-independent, bytes are device-partitioned), so that future reworks the
+arm's decision table, not the dedup state — and until then, new work SHALL NOT deepen the
+single-membership assumption beyond what this table already encodes.
+
 Decision record: `changes/archive/2026-07-12-fix-app-driven-upload-lifecycle`.
 ## Requirements
 ### Requirement: Upload producer seam has no destructive verb

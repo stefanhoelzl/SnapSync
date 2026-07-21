@@ -10,6 +10,13 @@ still land), and **expired** (deleted on first touch, members notified). Expiry 
 tombstone, no scheduler — the first request that touches an expired event reaps it, and
 afterwards the event is indistinguishable from one that never existed.
 
+These bounds are also the future **free/paid tier boundary**. When paid events arrive, capacity and
+duration become creator-chosen values behind a payment gate at creation (capability
+`event-creation` names the attach point), with small events staying free — and because enforcement
+reads only the marker's own stamped `endsAt` and `capacity`, that change needs no schema or
+enforcement work. Today's initial values are the current free-for-everyone bounds, not that future
+free tier.
+
 Decision record: `changes/archive/2026-07-21-add-event-limits`.
 
 ## Requirements
