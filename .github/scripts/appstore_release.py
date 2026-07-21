@@ -178,14 +178,16 @@ def _validate_store_version(version: str) -> str:
 
 
 def resolve(app_id: str, build_number: str) -> None:
-    """Emit the DERIVED store version (no mutation), so the workflow can guard before attaching."""
+    """Emit the DERIVED store version and the ASC build id (no mutation), so the workflow can guard
+    before attaching AND pass the id to `asc review submit --build` (asc ≥2.8 requires it)."""
     s = _session()
-    _, version = _resolve_build(s, app_id, build_number, wait=False)
+    build_id, version = _resolve_build(s, app_id, build_number, wait=False)
     _validate_store_version(version)
     out = os.environ.get("GITHUB_OUTPUT")
     if out:
         with open(out, "a") as f:
             f.write(f"version={version}\n")
+            f.write(f"build_id={build_id}\n")
     print(version)
 
 

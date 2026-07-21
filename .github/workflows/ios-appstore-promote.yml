@@ -95,6 +95,8 @@ jobs:
         run: |
           echo "STORE_VERSION=${{ steps.resolve.outputs.version }}" >> "$GITHUB_ENV"
           echo "RELEASE_TAG=v${{ steps.resolve.outputs.version }}" >> "$GITHUB_ENV"
+          # asc ≥2.8 `review submit` requires the ASC build id (not the build NUMBER); resolve emits it.
+          echo "BUILD_ID=${{ steps.resolve.outputs.build_id }}" >> "$GITHUB_ENV"
 
       # Guard 1 (before any ASC mutation): the vX.Y tag must not already exist — a released version is
       # never re-released, and a released tag is never moved. The tag is created LAST, so a failed run
@@ -168,7 +170,7 @@ jobs:
         env:
           ASC: ${{ runner.temp }}/asc
         run: |
-          "$ASC" review submit --app "$ASC_APP_ID" --version "$STORE_VERSION" --confirm
+          "$ASC" review submit --app "$ASC_APP_ID" --version "$STORE_VERSION" --build "$BUILD_ID" --confirm
           echo "::notice::version $STORE_VERSION submitted for App Store Review"
 
       # LAST, deliberately. The tag records what SHIPPED — the build's origin commit — and is written only
