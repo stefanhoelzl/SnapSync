@@ -335,6 +335,11 @@ the dispatch-driven App Store release below (`ios-appstore-promote.yml`) — the
 - **Internal testers may be notified per build.** The `autoNotifyEnabled=false` suppression lived in the
   removed `ios-promote` job, so nothing suppresses it now — accepted, since the internal group is
   effectively just the developer.
+- **Every delivered build names its change.** `ios-deliver` sets the TestFlight "What to Test" note to
+  `<PR title> (#<num>, <short sha>)` — PR title because merges are rebase-only, so the head-commit
+  subject can be a trailing docs/test commit (that subject + SHA is the no-PR fallback). Upload and
+  note are one `app-store-connect publish` invocation (codemagic-cli-tools; no `--testflight`/submit
+  flag), which owns the wait for the build to become discoverable in ASC.
 - **The marketing version each build carries is COMPUTED** — `ios.yml` bakes
   `MARKETING_VERSION = max(floor, latest vX.Y tag with its minor +1)`. The **floor** is `Config.xcconfig`'s
   `MARKETING_VERSION` (seed `0.1`, two-part; no target-level entry in `project.pbxproj`). The minor bump is

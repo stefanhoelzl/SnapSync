@@ -13,7 +13,9 @@
 #     (./gradlew iosSimulatorArm64Test), validating the iosSimulatorArm64 target. Runs in PARALLEL
 #     with ios-build (no `needs:`) — neither gate waits on the other.
 #   * ios-deliver — main ONLY, and `needs: [ios-build, ios-test]`: exports the App Store IPA from
-#     ios-build's archive and uploads it to TestFlight. Because it needs BOTH gates, a RED TEST SUITE
+#     ios-build's archive and uploads it to TestFlight via codemagic's `app-store-connect publish`,
+#     which also attaches the "What to Test" note (`<PR title> (#<num>, <short sha>)`) in the same
+#     invocation. Because it needs BOTH gates, a RED TEST SUITE
 #     NOW STOPS THE RELEASE. It previously could not: export+upload lived inside ios-build, which has
 #     no dependency on ios-test, so a green build shipped to TestFlight while the tests were failing
 #     on the very same commit (run #297 / build 297 did exactly that).
@@ -312,13 +314,50 @@ jobs:
             -authenticationKeyID "$ASC_KEY_ID" \
             -authenticationKeyIssuerID "$ASC_ISSUER_ID"
 
-      - name: Upload to TestFlight
-        uses: apple-actions/upload-testflight-build@v5
-        with:
-          app-path: ${{ runner.temp }}/export/SnapSync.ipa
-          issuer-id: ${{ secrets.ASC_ISSUER_ID }}
-          api-key-id: ${{ secrets.ASC_KEY_ID }}
-          api-private-key: ${{ secrets.ASC_API_PRIVATE_KEY }}
+      # The TestFlight "What to Test" note: `<PR title> (#<num>, <short sha>)` — what identifies a
+      # build in the internal group (spec requirement "Delivered builds identify their source
+      # change"). The repo is rebase-merge-only, so the head-commit subject can be a trailing
+      # docs/test commit of the PR; the commits→pulls association names the PR whose title is the
+      # honest summary of the landing. The subject is only the no-PR fallback (branch protection
+      # forbids direct pushes, so it should never fire) — and the `|| echo '[]'` folds an API flake
+      # into that same fallback: a degraded note must never fail the delivery, and the SHA it always
+      # carries is the authoritative half anyway. The note reaches the publish step ONLY via
+      # $GITHUB_ENV → "$WHATS_NEW": a PR title inside `${{ }}` in a run: block would be script
+      # injection by construction (titles are arbitrary text).
+      - name: Compose the release note
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          PULLS=$(gh api "repos/$GITHUB_REPOSITORY/commits/$GITHUB_SHA/pulls" 2>/dev/null || echo '[]')
+          SHORT_SHA=${GITHUB_SHA:0:7}
+          if [ "$(jq 'length' <<<"$PULLS")" -gt 0 ]; then
+            NOTE="$(jq -r '.[0].title' <<<"$PULLS") (#$(jq -r '.[0].number' <<<"$PULLS"), $SHORT_SHA)"
+          else
+            NOTE="$(git log -1 --format='%s') ($SHORT_SHA)"
+          fi
+          echo "note: $NOTE"
+          echo "WHATS_NEW=$NOTE" >> "$GITHUB_ENV"
+
+      # Upload + note are ONE atomic publish (spec requirement "The upload and the note are one
+      # atomic publish"): codemagic's `publish` uploads the IPA, waits for the build to become
+      # discoverable in App Store Connect (its own --max-find-build-wait, default 10 min), and
+      # attaches the beta test info — no bespoke find-build retry lives in the repo. Deliberately NO
+      # --testflight / submit flag: upload and build metadata only — no beta-review submission, no
+      # group assignment (distribution stays App-Store-only, capability ios-appstore-release). This
+      # replaced apple-actions/upload-testflight-build@v5, which has no what's-new input (decision D1
+      # in the change's design record). No continue-on-error: a discovery timeout or note failure is
+      # a visibly red, non-gating run. codemagic reads the key from ITS OWN env var names — same
+      # three ASC_* secret values, bridged here exactly as the portal-chores runbook does.
+      - name: Upload to TestFlight with the release note
+        env:
+          APP_STORE_CONNECT_KEY_IDENTIFIER: ${{ secrets.ASC_KEY_ID }}
+          APP_STORE_CONNECT_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+          APP_STORE_CONNECT_PRIVATE_KEY: ${{ secrets.ASC_API_PRIVATE_KEY }}
+        run: |
+          python3 -m pip install --quiet codemagic-cli-tools
+          app-store-connect publish \
+            --path "$RUNNER_TEMP/export/SnapSync.ipa" \
+            --whats-new "$WHATS_NEW"
 
   ios-test:
     # Display name = the status-check context required by .github/rulesets/main.json. Runs in
