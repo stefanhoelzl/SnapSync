@@ -29,11 +29,20 @@ if [ -z "$version" ]; then
 fi
 echo "Editable App Store version: $version"
 
-if [ ! -d "$DIR/version/$version" ]; then
-  echo "::error::$DIR/version/$version not found. The editable version changed; re-scaffold with"
-  echo "::error::  asc metadata pull --app $APP --version $version --platform IOS --dir $DIR"
+# The committed listing is VERSION-INDEPENDENT (version/current) — store versions auto-advance
+# with every release (capability ios-appstore-release derives them from builds), so a version-named
+# directory goes stale the moment the editable version changes; that failure shipped (run
+# 29789667939, 1.0 vs 0.1). The tool still wants the version-named layout, so materialize it in a
+# scratch root holding ONLY app-info + the resolved version — nothing else for the push to read.
+# (`version/current` stays under version/ so the offline validate gate scans it; verified.)
+if [ ! -d "$DIR/version/current" ]; then
+  echo "::error::$DIR/version/current not found — the committed listing is gone."
   exit 1
 fi
+PUSH_DIR="$(mktemp -d)"
+mkdir -p "$PUSH_DIR/version"
+cp -R "$DIR/app-info" "$PUSH_DIR/app-info"
+cp -R "$DIR/version/current" "$PUSH_DIR/version/$version"
 
 # Declarative push of the localizations. --confirm for non-interactive CI; NO --allow-deletes
 # (absent field = no-op).
@@ -48,6 +57,6 @@ fi
   --app "$APP" \
   --version "$version" \
   --platform IOS \
-  --dir "$DIR" \
+  --dir "$PUSH_DIR" \
   --include localizations \
   --confirm
