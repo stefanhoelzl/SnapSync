@@ -88,5 +88,12 @@
 		     the background URLSession queue + catches new captures while the app is closed. -->
 		<string>app.snapsync.upload.heartbeat</string>
 	</array>
+	<!-- Crash reporting (capability crash-reporting): read by the CrashReporting adapter. Empty in
+	     every dev/sideload build (absence is the off-switch); a CI Release archive injects the DSN
+	     secret + environment=production (capability ios-testflight-delivery). -->
+	<key>SENTRY_DSN</key>
+	<string>$(SENTRY_DSN)</string>
+	<key>SENTRY_ENVIRONMENT</key>
+	<string>$(SENTRY_ENVIRONMENT)</string>
 </dict>
 </plist>

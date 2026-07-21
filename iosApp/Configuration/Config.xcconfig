@@ -56,3 +56,11 @@ BACKGROUND_UPLOAD_URL_BASE = https:/$()/snapsync.stho.net
 // overrides both for a distribution build (as it can override the upload host); a plain build stays dev.
 APS_ENVIRONMENT = development
 APNS_ENV = sandbox
+// Crash reporting (capability `crash-reporting`). Both values are baked into BOTH targets'
+// Info.plists and read by the CrashReporting adapter. The DSN default is EMPTY on purpose —
+// absence is the off-switch (no SDK starts, no connection opens); only a CI Release archive
+// injects the real value from the SENTRY_DSN secret (capability `ios-testflight-delivery`),
+// alongside SENTRY_ENVIRONMENT=production. A dev build that deliberately injects a DSN (the
+// on-device verification loop) keeps `development` here and reports honestly.
+SENTRY_DSN =
+SENTRY_ENVIRONMENT = development

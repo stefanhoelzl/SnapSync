@@ -42,6 +42,7 @@ import app.snapsync.ports.AttestClient
 import app.snapsync.ports.AttestKey
 import app.snapsync.ports.AttestStore
 import app.snapsync.ports.ConfigSource
+import app.snapsync.ports.CrashReporting
 import app.snapsync.ports.ConfigStore
 import app.snapsync.ports.DownloadStore
 import app.snapsync.ports.DownloadTransport
@@ -117,6 +118,9 @@ class AppPorts(
     val notifyLeave: suspend (eventId: String) -> Unit,
     val provision: suspend (EventConfig) -> Unit,
     val onEventMinted: suspend (eventId: String) -> Unit,
+    /** Crash/error reporting (capability `crash-reporting`). Required — a tier that forgot it would
+     *  fail invisibly, exactly like the reconcile this bundle also refuses to default. */
+    val crashReporting: CrashReporting,
     // ── Shell/platform effect lambdas the `flow/` triggers coordinate over (migration step 8) ──
     // Each is a port/platform touch a flow may not make directly (law "flow/ never references ports/"):
     // the shell supplies it here and `compose/` passes it to the flow. All default to inert for the
@@ -163,6 +167,12 @@ class AppCore internal constructor(
     private val scope: CoroutineScope,
     private val ports: AppPorts,
 ) {
+
+    init {
+        // First act, not lazy: the reporter must be live before any other wiring can fail. Reads
+        // only this process's bundle config — safe on a locked background launch.
+        ports.crashReporting.start()
+    }
 
     /**
      * Device attestation (capability `device-attestation`) — the bearer token EVERY backend call

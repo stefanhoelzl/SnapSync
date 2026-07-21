@@ -178,6 +178,9 @@ jobs:
           aps-environment: ${{ env.APS_ENV_OUT }}
           apns-env: ${{ env.APNS_ENV_OUT }}
           upload-host: ${{ env.UPLOAD_HOST_OUT }}
+          # Release archives only (capability crash-reporting): the dev-IPA path bakes no DSN, so the
+          # SDK never starts in a sideload build — absence is the off-switch, no separate flag.
+          sentry-dsn: ${{ env.BUILD_CONFIG == 'Release' && secrets.SENTRY_DSN || '' }}
           current-project-version: ${{ github.run_number }}
           archive-path: ${{ runner.temp }}/SnapSync.xcarchive
           asc-key-id: ${{ secrets.ASC_KEY_ID }}
@@ -277,6 +280,19 @@ jobs:
       # Untar with the same modes ios-build packed (see the tar note there).
       - name: Unpack the signed archive
         run: tar -xzf "$RUNNER_TEMP/SnapSync.xcarchive.tar.gz" -C "$RUNNER_TEMP"
+
+      # Crash-report symbolication (capability crash-reporting): the Bugsink instance ingests no
+      # dSYMs, so each delivered build's symbols stay fetchable BY BUILD NUMBER for offline `atos`
+      # symbolication of an address-only crash report. 90 days is the platform's artifact-retention
+      # maximum — a build expected to live longer in the App Store needs its dSYMs parked elsewhere
+      # before expiry (risk recorded in the change's design).
+      - name: Publish dSYMs for crash symbolication
+        uses: actions/upload-artifact@v7.0.1
+        with:
+          name: dsyms-${{ github.run_number }}
+          path: ${{ runner.temp }}/SnapSync.xcarchive/dSYMs
+          retention-days: 90
+          if-no-files-found: error
 
       # Re-signs and packages the ALREADY-COMPILED archive into an App Store IPA. The build number
       # (CURRENT_PROJECT_VERSION = github.run_number) was baked at archive time and is carried in the

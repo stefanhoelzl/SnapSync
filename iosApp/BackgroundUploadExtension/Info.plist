@@ -32,6 +32,12 @@
 	     default ATS (HTTPS-only) applies, no NSAllowsLocalNetworking exception. -->
 	<key>BackgroundUploadURLBase</key>
 	<string>$(BACKGROUND_UPLOAD_URL_BASE)</string>
+	<!-- Crash reporting (capability crash-reporting): the extension process reads its OWN bundle;
+	     same injection story as the app's Info.plist (empty = off; CI Release injects both). -->
+	<key>SENTRY_DSN</key>
+	<string>$(SENTRY_DSN)</string>
+	<key>SENTRY_ENVIRONMENT</key>
+	<string>$(SENTRY_ENVIRONMENT)</string>
 	<key>EXAppExtensionAttributes</key>
 	<dict>
 		<key>EXExtensionPointIdentifier</key>

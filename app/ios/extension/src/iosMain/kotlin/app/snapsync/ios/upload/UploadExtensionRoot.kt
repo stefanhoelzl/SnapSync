@@ -30,6 +30,7 @@ import app.snapsync.membership.HttpDeviceFilesSource
 import app.snapsync.membership.IosJoinedEventMarker
 import app.snapsync.membership.darwinHttpClient
 import app.snapsync.logging.FileLogWriter
+import app.snapsync.logging.SentryCrashReporting
 import app.snapsync.logging.appBuildVersion
 import app.snapsync.logging.PublicNSLogWriter
 import app.snapsync.logging.invocation
@@ -172,6 +173,7 @@ object UploadExtensionRoot {
         uploadCore(
             scope,
             UploadPorts(
+                crashReporting = SentryCrashReporting(),
                 config = configSource,
                 // The lazy caches the first success; a failure throws `KeychainUnavailable` and is
                 // retried next cycle — the gate's probe puts it on the unreadable side of the roll-up.

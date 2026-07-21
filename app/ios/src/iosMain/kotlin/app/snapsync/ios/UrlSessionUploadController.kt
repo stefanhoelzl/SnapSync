@@ -26,6 +26,7 @@ import app.snapsync.ports.SuppressionSource
 import app.snapsync.feature.upload.UploadPushReceiver
 import app.snapsync.feature.upload.UploadProducer
 import app.snapsync.logging.IosLogScope
+import app.snapsync.logging.SentryCrashReporting
 import app.snapsync.logging.invocation
 import co.touchlab.kermit.Logger
 import io.ktor.client.HttpClient
@@ -179,6 +180,7 @@ class UrlSessionUploadController(
         uploadCore(
             scope,
             UploadPorts(
+                crashReporting = SentryCrashReporting(),
                 config = configSource,
                 // Resolved per probe/use, never held: an unresolvable Keychain id must skip the
                 // cycle cleanly, not throw out of whatever first touches it (see [resolveDeviceId]).
