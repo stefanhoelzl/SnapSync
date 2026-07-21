@@ -71,3 +71,14 @@ export function validateStartsAt(raw: unknown): string | null {
   if (parsed.toISOString().replace(".000Z", "Z") !== raw) return null;
   return raw;
 }
+
+/**
+ * Add a whole number of seconds to a canonical-cutoff-shaped instant, returning the canonical shape
+ * (capability `event-limits`: `endsAt = startsAt + duration`, stored in the SAME shape as `startsAt` so
+ * lifecycle comparisons stay plain string/epoch comparisons and no consumer ever normalizes). The input
+ * is expected to be already-validated (see {@link validateStartsAt}); whole seconds in, whole seconds
+ * out, so the `.000Z` strip is exact, never a truncation.
+ */
+export function canonicalPlusSeconds(canonical: string, seconds: number): string {
+  return new Date(Date.parse(canonical) + seconds * 1000).toISOString().replace(".000Z", "Z");
+}

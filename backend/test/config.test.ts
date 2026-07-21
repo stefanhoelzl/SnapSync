@@ -38,6 +38,11 @@ Deno.test("readConfig: the three secrets → Config, with the non-secrets from s
     // gradle.properties; a :test:architecture guard holds that seam, since Gradle cannot reach here.
     linkDomain: "snapsync.stho.net",
     appStoreUrl: "https://apps.apple.com/app/id6781692480",
+    // The event limits (capability `event-limits`) — the MINT-TIME source only; enforcement reads the
+    // fields POST /events stamps onto each marker, so these values never reach an existing event.
+    eventCapacity: 10,
+    eventDurationSeconds: 30 * 24 * 60 * 60,
+    eventGraceSeconds: 24 * 60 * 60,
   });
 });
 
@@ -112,6 +117,9 @@ Deno.test("readConfig: a platform variable NEVER overrides a source constant", (
     APNS_TEAM_ID: "STALETEAM",
     APNS_TOPIC: "app.imposter",
     PUBLIC_BASE_URL: "https://imposter.example", // the deleted variable, for good measure
+    EVENT_CAPACITY: "9999", // the event limits are source constants like every other non-secret
+    EVENT_DURATION_SECONDS: "1",
+    EVENT_GRACE_SECONDS: "0",
   });
 
   assertEquals(config.zone, "snap-sync-dev");
@@ -121,4 +129,7 @@ Deno.test("readConfig: a platform variable NEVER overrides a source constant", (
   assertEquals(config.apnsKeyId, "W34NF6UMVU");
   assertEquals(config.apnsTeamId, "E9Z8BADH58");
   assertEquals(config.apnsTopic, "app.snapsync");
+  assertEquals(config.eventCapacity, 10);
+  assertEquals(config.eventDurationSeconds, 30 * 24 * 60 * 60);
+  assertEquals(config.eventGraceSeconds, 24 * 60 * 60);
 });

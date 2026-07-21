@@ -1,4 +1,4 @@
-// Hono app for the backend (capabilities `event-creation` + `bunny-upload-endpoint` +
+// Hono app for the backend (capabilities `event-creation` + `event-limits` + `bunny-upload-endpoint` +
 // `bunny-list-endpoint` + `device-config-endpoint` + `event-notify-endpoint` + `device-attestation`,
 // over the shared `backend-deployment`; pushes via `apns-push-sender`).
 //
@@ -18,9 +18,11 @@
 //       Apple round-trip, because re-attestation is the throttled path.
 //
 //   POST /events
-//     → mints an event: writes the marker `events/<id>/metadata.json`, returns {eventId,name,createdAt}.
+//     → mints an event: writes the marker `events/<id>/metadata.json` — stamping the server-resolved
+//       LIMITS `endsAt` (= startsAt + configured duration) and `capacity` (capability `event-limits`) —
+//       and returns {eventId,name,createdAt,startsAt,endsAt,capacity}.
 //   GET /events/:eventId
-//     → returns the event marker (existence check); 404 when absent.
+//     → returns the event marker (existence check); 404 when absent OR expired-and-reaped.
 //   PUT /devices/:deviceId
 //     → streams a JSON device config (the push token) into `devices/<deviceId>.json`. UNGATED by
 //       event; DEVICE-ID is the capability. Faithful 201/502; last-write-wins. A flat sibling of the
@@ -45,7 +47,11 @@
 //       see NO_CACHE — the pull zone honors `no-cache`, not `no-store`).
 //   PUT /events/:eventId/devices/:deviceId
 //     → streams a JSON device manifest into `events/<eventId>/devices/<deviceId>.json`. GATED on event
-//       existence (the marker read) so a manifest is never written under a non-existent event.
+//       existence (the marker read) so a manifest is never written under a non-existent event, AND on
+//       the event limits (capability `event-limits`): a device id never enrolled (no active or `.left`
+//       sibling) is refused with 410 during the post-endsAt grace window (joining closed) and 409 once
+//       `capacity` distinct device ids have ever enrolled (leaving frees no slot); a known device's
+//       writes pass both checks.
 //   DELETE /events/:eventId/devices/:deviceId
 //     → LEAVE (capability `event-leave-endpoint`): renames the device's active manifest to
 //       `<deviceId>.left.json` (departed — still served by the union, skipped by notify); if no ACTIVE
@@ -61,6 +67,13 @@
 //       parse failure) → 502 (never a partial union). `Cache-Control: no-store, no-cache, max-age=0`
 //       (live read over mutable manifests + listings; see NO_CACHE). Identity-blind: own-vs-foreign
 //       skip is the client's concern.
+//
+// EVENT LIFECYCLE (capability `event-limits`): every event-scoped route above resolves its event
+// through ONE gate (`gateEvent`): live (now <= endsAt) → grace (joins closed, members sync) → expired
+// (now > endsAt + grace, or a legacy marker missing the limit fields). The FIRST touch of an expired
+// event runs the lazy reap — silent-push the active members, then delete manifests, GC freed devices,
+// and delete the marker LAST — after which the event is indistinguishable from one never created (no
+// tombstone, no scheduler; reap timing rides on member traffic).
 //
 // EVENT REGISTRY: an event exists iff the object `events/<id>/metadata.json` is present. Because an
 // eventId is a UUID, the marker key `events/<id>/metadata.json`, the device-manifest keys
@@ -90,6 +103,7 @@
 import { Hono } from "hono";
 import { AwsClient } from "aws4fetch";
 import {
+  canonicalPlusSeconds,
   validateEventName,
   validateFilename,
   validateStartsAt,
@@ -294,19 +308,65 @@ type AttestRecord = {
  * honored verbatim. `startsAt` is both the default and the FLOOR for every member's capture-date cutoff
  * (capability `photo-selection-policy`).
  *
+ * `endsAt` and `capacity` are the event's LIMITS (capability `event-limits`), SERVER-resolved at mint
+ * from config — `endsAt = startsAt + duration` in the same canonical cutoff shape, `capacity` the
+ * device cap. Enforcement reads these marker fields, never the live config, so a config change never
+ * reaches an existing event and a later change can make them creator-chosen with no schema change.
+ *
  * Write-once: no route rewrites a stored marker. The backend has no owner field — attestation proves a
  * genuine app instance, NOT ownership of an event (a stated non-goal of `device-attestation`) — so a
- * mutation route would let anyone holding the event id retroactively widen every future joiner's scope.
+ * mutation route would let anyone holding the event id retroactively widen every future joiner's scope,
+ * or extend an event's own limits. The lifecycle is recomputed from the stored fields on every read
+ * (see `classifyEvent`) precisely so no rewrite is ever needed.
  */
 type EventMarker = {
   eventId: string;
   name: string;
   createdAt: string;
   startsAt: string;
+  endsAt: string;
+  capacity: number;
 };
 
-/** A marker as it may sit in storage — one written before `startsAt` existed lacks the field. */
-type StoredEventMarker = Omit<EventMarker, "startsAt"> & { startsAt?: string };
+/**
+ * A marker as it may sit in storage — one written before `startsAt` or the limit fields existed lacks
+ * them. There is no read-time synthesis any more: a marker missing a limit field is EXPIRED by
+ * definition (`classifyEvent`) and is reaped on first touch, never served.
+ */
+type StoredEventMarker = Omit<EventMarker, "startsAt" | "endsAt" | "capacity"> & {
+  startsAt?: string;
+  endsAt?: string;
+  capacity?: number;
+};
+
+/**
+ * An event's lifecycle (capability `event-limits`) — a PURE function of its stored marker, the
+ * configured grace period, and the wall clock; no stored state machine, no marker rewrite.
+ *
+ *   live    while now <= endsAt                  joins allowed (under capacity), full sync
+ *   grace   while endsAt < now <= endsAt+grace   joins closed (410), members keep full sync
+ *   expired once  now > endsAt+grace             reaped on first touch, then absent (404)
+ *
+ * A marker missing `startsAt`, `endsAt`, or `capacity` (written before `event-limits`) is EXPIRED —
+ * the deliberate pre-release posture: no grandfathering, no synthesis. An unparseable `endsAt` (not
+ * producible by our own mint) fails closed the same way. On `live`/`grace` the narrowed, complete
+ * marker is returned so every consumer downstream of the gate handles only total types.
+ */
+export function classifyEvent(
+  stored: StoredEventMarker,
+  nowMs: number,
+  graceSeconds: number,
+): { phase: "live" | "grace"; marker: EventMarker } | { phase: "expired" } {
+  const { startsAt, endsAt, capacity } = stored;
+  if (!startsAt || !endsAt || typeof capacity !== "number") return { phase: "expired" };
+  const endsAtMs = Date.parse(endsAt);
+  if (Number.isNaN(endsAtMs)) return { phase: "expired" };
+  if (nowMs > endsAtMs + graceSeconds * 1000) return { phase: "expired" };
+  return {
+    phase: nowMs > endsAtMs ? "grace" : "live",
+    marker: { ...stored, startsAt, endsAt, capacity },
+  };
+}
 
 export type FetchLike = (url: string, init: RequestInit) => Promise<Response>;
 
@@ -447,18 +507,20 @@ function decodeObjectName(objectName: string): string {
 }
 
 /**
- * Read an event's marker (the existence check). Returns the parsed marker when present (bunny `200`),
- * `null` when absent (bunny `404`), and THROWS on any other status, network error, or abort — so the
- * caller surfaces a faithful `502` and never mistakes a transient read failure for "event absent".
- * Bunny's Edge Storage API has no `HEAD`, so existence is a small `GET` of the marker; the marker is
- * tiny, and the same read serves the `GET /events/:eventId` metadata response and the device-manifest
- * write gate.
+ * Read an event's marker RAW (the existence half of the gate). Returns the stored marker when present
+ * (bunny `200`), `null` when absent (bunny `404`), and THROWS on any other status, network error, or
+ * abort — so the caller surfaces a faithful `502` and never mistakes a transient read failure for
+ * "event absent". Bunny's Edge Storage API has no `HEAD`, so existence is a small `GET` of the marker.
+ * Callers do not consume this directly: every event-scoped route goes through the lifecycle gate
+ * (`gateEvent` in `createApp`), which classifies the stored marker via `classifyEvent` — the former
+ * read-time `startsAt` synthesis is gone, because a marker old enough to lack `startsAt` also lacks
+ * `endsAt` and is therefore expired, reaped rather than patched.
  */
 async function readMarker(
   fetchImpl: FetchLike,
   config: Config,
   eventId: string,
-): Promise<EventMarker | null> {
+): Promise<StoredEventMarker | null> {
   const url = `https://${config.host}/${config.zone}/${markerKey(eventId)}`;
   const res = await fetchImpl(url, {
     method: "GET",
@@ -466,14 +528,7 @@ async function readMarker(
   });
   if (res.status === 404) return null; // event was never created
   if (!res.ok) throw new Error(`bunny marker GET returned ${res.status} for ${eventId}`);
-  const stored = await res.json() as StoredEventMarker;
-  // A marker written before `startsAt` existed is patched AT READ, never rewritten (the marker is
-  // write-once). Synthesizing here — the single place every marker read funnels through — is what keeps
-  // `startsAt` non-null for every consumer, so no client carries a nullable start date and every
-  // downstream type stays total. Such an event behaves exactly as it did before this change: the cutoff
-  // is seeded from creation. NB the synthesized value inherits `createdAt`'s MILLISECONDS, so it is not
-  // canonical; the app normalizes a createdAt-derived cutoff (capability `photo-selection-policy`).
-  return { ...stored, startsAt: stored.startsAt ?? stored.createdAt };
+  return await res.json() as StoredEventMarker;
 }
 
 /**
@@ -634,9 +689,89 @@ export function createApp({ fetch: fetchImpl, config, now = Date.now }: Deps): H
   });
 
   // The APNs provider sender (capability `apns-push-sender`), memoizing its ES256 provider JWT across
-  // sends. Used only by the notify fan-out. No production caller is wired to notify yet (the trigger is
-  // a deferred use case); the route exists so the pipe is exercisable end-to-end.
+  // sends. Used by the notify fan-out and the expiry reap's member notification. No production caller
+  // is wired to notify yet (the trigger is a deferred use case).
   const apns = createApnsSender(config, fetchImpl);
+
+  // ── THE EVENT-LIMITS GATE (capability `event-limits`) ───────────────────────────────────────────
+  //
+  // Every event-scoped route resolves its event through `gateEvent` below: read the marker, classify
+  // the lifecycle (`classifyEvent` — live / grace / expired, a pure function of the marker + clock),
+  // and on `expired` run the lazy reap THEN answer as absent. There is no scheduler: reap timing rides
+  // on traffic, and the likely first toucher is a member's own background sync — which is exactly who
+  // the reap's silent push is for.
+
+  /**
+   * The leave cascade's reference-checked GC for one freed device (shared verbatim with the expiry
+   * reap): delete its `files/devices/<id>/` bytes, `devices/<id>.json` config, and attestation record —
+   * but only when the device appears in NO surviving event (shared bytes another event still references
+   * are retained). THROWS on any transport failure so a partial check never deletes shared bytes.
+   */
+  async function gcDeviceIfUnreferenced(freedId: string, excludeEventId: string): Promise<void> {
+    if (await deviceAppearsInAnotherEvent(fetchImpl, config, freedId, excludeEventId)) return;
+    const files = await listDir(fetchImpl, config, deviceDir(freedId));
+    for (const f of (files ?? []).filter((e) => !e.IsDirectory)) {
+      await deleteObject(fetchImpl, config, `${deviceDir(freedId)}${f.ObjectName}`);
+    }
+    await deleteObject(fetchImpl, config, deviceConfigKey(freedId));
+    // …and its attestation record (capability `device-attestation`). Per-device state keyed by a
+    // device that now participates in nothing: leaving it behind leaks one object per departed
+    // device, forever. Safe to drop — a device that returns simply attests again, which writes a
+    // fresh record.
+    await deleteObject(fetchImpl, config, deviceAttestKey(freedId));
+  }
+
+  /**
+   * The expiry reap (capability `event-limits`): notify, then delete EVERYTHING — no tombstone.
+   *
+   * Order matters twice. The silent push to active members goes FIRST because membership is only
+   * readable before it is deleted — and it is best-effort: a failed fan-out never blocks the reap.
+   * The marker goes LAST: an interrupted cascade then leaves the event still discoverable as expired,
+   * so the next touch re-runs the reap to completion (every delete is idempotent). Deletion THROWS on
+   * transport failure so the triggering route answers 502 and the next touch retries.
+   */
+  async function reapExpiredEvent(eventId: string): Promise<void> {
+    const entries = await listDir(fetchImpl, config, deviceManifestDir(eventId));
+    const members = resolveMembership(entries);
+    try {
+      const activeIds = members.filter((m) => m.state === "active").map((m) => m.deviceId);
+      const tokens = (await Promise.all(activeIds.map((d) => readPushToken(fetchImpl, config, d))))
+        .filter((t): t is PushToken => t !== null);
+      const outcomes = await apns.sendSilent(tokens, eventId);
+      const sent = outcomes.filter((o) => o.status === "sent").length;
+      console.info(
+        `reap: event ${eventId} expired — ${activeIds.length} active members, ${sent} pushed`,
+      );
+    } catch (e) {
+      console.error(`reap: push fan-out failed for ${eventId} (reap continues): ${e}`);
+    }
+    for (const e of (entries ?? []).filter((e) => !e.IsDirectory)) {
+      await deleteObject(fetchImpl, config, `${deviceManifestDir(eventId)}${e.ObjectName}`);
+    }
+    for (const { deviceId: freedId } of members) {
+      await gcDeviceIfUnreferenced(freedId, eventId);
+    }
+    await deleteObject(fetchImpl, config, markerKey(eventId)); // LAST — see the docblock
+  }
+
+  /**
+   * Resolve an event for a route: marker read + lifecycle classification + lazy reap. `absent` covers
+   * both "never created" and "expired" — after the reap the two are indistinguishable BY DESIGN (no
+   * tombstone; the response is byte-for-byte the never-created one). THROWS on marker-read or reap
+   * transport failure, so the route surfaces 502 and never mistakes a transient failure for absence.
+   */
+  async function gateEvent(
+    eventId: string,
+  ): Promise<{ kind: "ok"; phase: "live" | "grace"; marker: EventMarker } | { kind: "absent" }> {
+    const stored = await readMarker(fetchImpl, config, eventId);
+    if (stored === null) return { kind: "absent" };
+    const cls = classifyEvent(stored, now(), config.eventGraceSeconds);
+    if (cls.phase === "expired") {
+      await reapExpiredEvent(eventId);
+      return { kind: "absent" };
+    }
+    return { kind: "ok", ...cls };
+  }
 
   // Per-device byte WRITE route (`bunny-upload-endpoint`). Mounted under
   // `/files/devices/:deviceId/:filename`, so the handlers read `deviceId`/`filename` from the mount.
@@ -915,12 +1050,16 @@ export function createApp({ fetch: fetchImpl, config, now = Date.now }: Deps): H
       return c.text("invalid startsAt", 400); // missing/empty/non-canonical/not a real instant
     }
     // The server is the source of truth for existence, so it mints the id; any client-supplied id is
-    // ignored (we only read `name` and `startsAt` above).
+    // ignored (we only read `name` and `startsAt` above). The LIMITS are server-resolved too
+    // (capability `event-limits`): a client-supplied `endsAt`/`capacity` is equally ignored, and the
+    // config values are consulted HERE ONLY — enforcement reads the marker's own stamped fields.
     const marker: EventMarker = {
       eventId: crypto.randomUUID(),
       name,
       createdAt: new Date().toISOString(),
       startsAt,
+      endsAt: canonicalPlusSeconds(startsAt, config.eventDurationSeconds),
+      capacity: config.eventCapacity,
     };
 
     const target = `https://${config.host}/${config.zone}/${markerKey(marker.eventId)}`;
@@ -943,29 +1082,39 @@ export function createApp({ fetch: fetchImpl, config, now = Date.now }: Deps): H
     return c.json(marker, 201);
   });
 
-  // Event metadata / existence (capability `event-creation`). Returns the marker, or 404 when the
-  // event was never created; a non-404 marker read failure → 502. This is the canonical existence
-  // check the device-manifest write gate relies on.
+  // Event metadata / existence (capability `event-creation`). Returns the marker — always carrying
+  // `startsAt`, `endsAt`, and `capacity`, because the gate never serves a marker without them — or 404
+  // when the event was never created OR has expired (capability `event-limits`: an expired event is
+  // reaped on this touch and indistinguishable from absent); a non-404 marker read failure → 502. This
+  // is the canonical existence check the device-manifest write gate relies on. An event in GRACE still
+  // serves its metadata: it exists for its members; only joining is closed (at the manifest PUT).
   app.get("/events/:eventId", async (c) => {
     const eventId = c.req.param("eventId");
     if (!validateUUID(eventId)) {
       return c.text("invalid event", 400);
     }
-    let marker: EventMarker | null;
     try {
-      marker = await readMarker(fetchImpl, config, eventId);
+      const gate = await gateEvent(eventId);
+      if (gate.kind === "absent") return c.text("event not found", 404);
+      return c.json(gate.marker);
     } catch (e) {
       console.error(`metadata: marker read failed for ${eventId}: ${e}`);
       return c.text("upstream error", 502);
     }
-    if (marker === null) return c.text("event not found", 404);
-    return c.json(marker);
   });
 
   // Write a device's per-event manifest (capability `bunny-upload-endpoint`, device-manifest route).
-  // GATED on event existence: read the marker first; absent → 404 (no upstream object PUT); a non-404
-  // read failure → 502 (never mistaken for absence). The body (a full-state JSON device manifest) is
-  // streamed straight into one bunny native PUT at `events/<eventId>/devices/<deviceId>.json`.
+  // GATED on event existence AND the event limits (capability `event-limits`): read the marker, then
+  // LIST `events/<eventId>/devices/` to classify the writer as KNOWN (an active `<id>.json` or departed
+  // `<id>.left.json` exists — a member's manifest update, or a rejoin reusing its own slot) vs NEW (an
+  // enrollment). Resolution order: absent → 404; expired → reap + 404; grace ∧ new → 410 (joining is
+  // closed — and it wins over 409 even at capacity, the event being over is THE reason); live ∧ new ∧
+  // ever-enrolled ≥ capacity → 409 (active and departed both count: leaving frees no slot); otherwise
+  // stream the body into one bunny native PUT at `events/<eventId>/devices/<deviceId>.json`. Any
+  // non-404 marker/LIST failure → 502 (never mistaken for absent, over, or full). The count is
+  // read-then-write without coordination (bunny has no compare-and-set): concurrent first enrollments
+  // may transiently overshoot, accepted — what is guaranteed is that a request OBSERVING the event at
+  // capacity admits no new device.
   app.put("/events/:eventId/devices/:deviceId", async (c) => {
     const eventId = c.req.param("eventId");
     const deviceId = c.req.param("deviceId");
@@ -973,14 +1122,22 @@ export function createApp({ fetch: fetchImpl, config, now = Date.now }: Deps): H
       return c.text("invalid key", 400);
     }
 
-    let marker: EventMarker | null;
+    let phase: "live" | "grace";
+    let capacity: number;
+    let members: { deviceId: string; state: MemberState }[];
     try {
-      marker = await readMarker(fetchImpl, config, eventId);
+      const gate = await gateEvent(eventId);
+      if (gate.kind === "absent") return c.text("event not found", 404);
+      phase = gate.phase;
+      capacity = gate.marker.capacity;
+      members = resolveMembership(await listDir(fetchImpl, config, deviceManifestDir(eventId)));
     } catch (e) {
-      console.error(`device-manifest: marker read failed for ${eventId}: ${e}`);
+      console.error(`device-manifest: gate failed for ${eventId}: ${e}`);
       return c.text("upstream error", 502);
     }
-    if (marker === null) return c.text("event not found", 404);
+    const known = members.some((m) => m.deviceId === deviceId);
+    if (!known && phase === "grace") return c.text("event over", 410);
+    if (!known && members.length >= capacity) return c.text("event full", 409);
 
     const target = `https://${config.host}/${config.zone}/${deviceManifestKey(eventId, deviceId)}`;
     const init: StreamInit = {
@@ -1025,14 +1182,16 @@ export function createApp({ fetch: fetchImpl, config, now = Date.now }: Deps): H
       return c.text("invalid key", 400);
     }
 
-    let marker: EventMarker | null;
     try {
-      marker = await readMarker(fetchImpl, config, eventId);
+      // The lifecycle gate (capability `event-limits`): an expired event reaps here too — the leave
+      // then 404s, which the client already treats as "nothing to leave". A leave DURING grace
+      // proceeds: members may still depart an over-but-not-expired event.
+      const gate = await gateEvent(eventId);
+      if (gate.kind === "absent") return c.text("event not found", 404);
     } catch (e) {
       console.error(`leave: marker read failed for ${eventId}: ${e}`);
       return c.text("upstream error", 502);
     }
-    if (marker === null) return c.text("event not found", 404);
 
     try {
       // (1) Departed rename. Write the `.left.json` sibling FIRST (fresh timestamp = the commit), then
@@ -1063,20 +1222,10 @@ export function createApp({ fetch: fetchImpl, config, now = Date.now }: Deps): H
       }
       await deleteObject(fetchImpl, config, markerKey(eventId));
 
-      // (3) Reference-checked GC: delete a freed device's bytes + config only if it appears in no
-      // surviving event (shared bytes another event still references are retained).
+      // (3) Reference-checked GC: delete a freed device's bytes + config + attestation record only if
+      // it appears in no surviving event (shared with the expiry reap — see `gcDeviceIfUnreferenced`).
       for (const { deviceId: freedId } of members) {
-        if (await deviceAppearsInAnotherEvent(fetchImpl, config, freedId, eventId)) continue;
-        const files = await listDir(fetchImpl, config, deviceDir(freedId));
-        for (const f of (files ?? []).filter((e) => !e.IsDirectory)) {
-          await deleteObject(fetchImpl, config, `${deviceDir(freedId)}${f.ObjectName}`);
-        }
-        await deleteObject(fetchImpl, config, deviceConfigKey(freedId));
-        // …and its attestation record (capability `device-attestation`). Per-device state keyed by a
-        // device that now participates in nothing: leaving it behind leaks one object per departed
-        // device, forever. Safe to drop — a device that returns simply attests again, which writes a
-        // fresh record.
-        await deleteObject(fetchImpl, config, deviceAttestKey(freedId));
+        await gcDeviceIfUnreferenced(freedId, eventId);
       }
       return c.body(null, 200);
     } catch (e) {
@@ -1101,15 +1250,16 @@ export function createApp({ fetch: fetchImpl, config, now = Date.now }: Deps): H
       return c.text("invalid event", 400);
     }
 
-    // Gate on the marker (existence): absent → 404; a non-404 read failure → 502.
-    let marker: EventMarker | null;
+    // Gate on the marker (existence + lifecycle, capability `event-limits`): absent or expired-and-
+    // reaped → 404; a non-404 read failure → 502. An event in grace still serves its union — members
+    // keep full sync until expiry.
     try {
-      marker = await readMarker(fetchImpl, config, eventId);
+      const gate = await gateEvent(eventId);
+      if (gate.kind === "absent") return c.text("event not found", 404);
     } catch (e) {
       console.error(`union: marker read failed for ${eventId}: ${e}`);
       return c.text("upstream error", 502);
     }
-    if (marker === null) return c.text("event not found", 404);
 
     try {
       // Enumerate contributing devices with a single LIST of the device-manifest dir. A 404/empty dir
@@ -1246,14 +1396,15 @@ export function createApp({ fetch: fetchImpl, config, now = Date.now }: Deps): H
       return c.text("invalid event", 400);
     }
 
-    let marker: EventMarker | null;
     try {
-      marker = await readMarker(fetchImpl, config, eventId);
+      // The lifecycle gate (capability `event-limits`): an expired event reaps here and 404s; an
+      // event in grace still notifies — members keep full sync until expiry.
+      const gate = await gateEvent(eventId);
+      if (gate.kind === "absent") return c.text("event not found", 404);
     } catch (e) {
       console.error(`notify: marker read failed for ${eventId}: ${e}`);
       return c.text("upstream error", 502);
     }
-    if (marker === null) return c.text("event not found", 404);
 
     // Enumerate ACTIVE members only: a departed device (`<id>.left.json` winning by last-write-wins)
     // has left the event and is not notified.

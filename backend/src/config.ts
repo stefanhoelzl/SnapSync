@@ -103,6 +103,27 @@ oyFraWVIyd/dganmrduC1bmTBGwD
  */
 const ATTEST_TOKEN_TTL_SECONDS = 30 * 24 * 60 * 60;
 
+/**
+ * Event limits (capability `event-limits`) — SOURCE CONSTANTS, per this module's rule. They are the
+ * MINT-TIME source only: `POST /events` stamps `endsAt = startsAt + duration` and `capacity` onto the
+ * event's write-once marker, and every later check reads the marker's own fields — so changing a value
+ * here affects only events minted afterwards, never a live event. Tests exercise short windows by
+ * constructing a `Config` directly (the same way the attest TTL is pinned), not via the environment.
+ */
+
+/** Maximum devices EVER enrolled per event (active ∪ departed — leaving frees no slot). */
+const EVENT_CAPACITY = 10;
+
+/** Event lifetime: `endsAt` is stamped this far after the marker's `startsAt`. 30 days. */
+const EVENT_DURATION_SECONDS = 30 * 24 * 60 * 60;
+
+/**
+ * Post-`endsAt` grace: joining is closed but existing members keep full sync, so photos taken during
+ * the event that upload late (the OS schedules uploads on its own cadence) still land. 1 day. Past
+ * `endsAt + grace` the event is expired and is reaped on first touch.
+ */
+const EVENT_GRACE_SECONDS = 24 * 60 * 60;
+
 export type Config = {
   /** bunny Storage zone name (also the S3 Access Key ID + bucket). */
   zone: string;
@@ -151,6 +172,12 @@ export type Config = {
   linkDomain: string;
   /** Where `GET /join` redirects someone who opened an event link without the app. */
   appStoreUrl: string;
+  /** Maximum devices ever enrolled per event (capability `event-limits`). */
+  eventCapacity: number;
+  /** Event lifetime in seconds — the mint-time source of a marker's `endsAt`. */
+  eventDurationSeconds: number;
+  /** Post-`endsAt` grace period in seconds (joins closed, members still sync). */
+  eventGraceSeconds: number;
 };
 
 /** The storage-zone password (the native `AccessKey`; also the S3 secret). The zone's password. */
@@ -207,5 +234,8 @@ export function readConfig(env: Record<string, string | undefined>): Config {
     attestAppId: `${APNS_TEAM_ID}.${APNS_TOPIC}`,
     linkDomain: LINK_DOMAIN,
     appStoreUrl: APP_STORE_URL,
+    eventCapacity: EVENT_CAPACITY,
+    eventDurationSeconds: EVENT_DURATION_SECONDS,
+    eventGraceSeconds: EVENT_GRACE_SECONDS,
   };
 }

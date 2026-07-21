@@ -34,9 +34,12 @@ without materializing the whole body in memory (it SHALL NOT buffer the body, e.
 
 The v1 byte routes `PUT /event/<eventId>/file/<filename>` and `PUT /files/device/<deviceId>/<filename>`
 are **retired** (no longer routed). For each accepted write, exactly **one** upstream `PUT` of the body
-SHALL be made; the only other upstream call permitted is the single small event-existence marker `GET`
-on the device-manifest route's gate — the byte route makes no marker read (no other pre-checks,
-retries, or fan-out).
+SHALL be made; the only other upstream calls permitted are the device-manifest route's gate reads —
+the single small event-existence marker `GET` and the single `devices/` directory listing the limits
+gate requires (capability `event-limits`) — the byte route makes no marker read and no listing (no
+other pre-checks, retries, or fan-out). When the gate finds the event expired, the reap it triggers is
+`event-limits`' own contract and not part of this write budget — the write itself is then refused, so
+no upstream object `PUT` of the body is made.
 
 #### Scenario: Byte body streamed to bunny
 
@@ -47,7 +50,7 @@ retries, or fan-out).
 #### Scenario: Manifest body streamed to bunny
 
 - **WHEN** a valid `PUT /events/<eventId>/devices/<deviceId>` arrives with a JSON body for an existing
-  event
+  live event, from a device the limits gate admits
 - **THEN** the endpoint issues exactly one upstream `PUT` to bunny whose body is the request body
   passed through unchanged, and does not buffer the full body before forwarding
 
@@ -213,15 +216,28 @@ the response the **device** receives from the device-facing origin.
 
 ### Requirement: Device manifest write gated on event existence
 
-Before streaming the body of a `PUT /events/<eventId>/devices/<deviceId>`, the endpoint SHALL determine
-whether the event exists by reading the event marker `events/<eventId>/metadata.json` (a bunny native
-Storage `GET` carrying the configured `AccessKey`). When the marker is absent, the endpoint SHALL
-respond `404` and SHALL NOT stream the body or issue the upstream object `PUT`. When the marker is
-present, the endpoint SHALL proceed with the streamed manifest write. A genuine upstream failure
-reading the marker (any non-`404` error or timeout) SHALL be surfaced as `502` and SHALL NEVER be
-treated as "event absent" (never a `404` for a transient read failure). This gate applies **only** to
-the device-manifest route; the byte route `PUT /files/devices/<deviceId>/<filename>` reads no marker and
-is ungated.
+Before streaming the body of a `PUT /events/<eventId>/devices/<deviceId>`, the endpoint SHALL
+determine whether the event exists by reading the event marker `events/<eventId>/metadata.json` (a
+bunny native Storage `GET` carrying the configured `AccessKey`) and SHALL pass the event-limits
+lifecycle and capacity gate (capability `event-limits`), which additionally lists
+`events/<eventId>/devices/` to classify the writing device as **known** (an active `<deviceId>.json`
+or departed `<deviceId>.left.json` exists) or **new** (neither exists). The gate SHALL resolve, in
+this order:
+
+- marker absent → `404`, nothing streamed, no upstream object `PUT`;
+- event **expired** (past its grace period, or a legacy marker without limit fields) → the expiry
+  reap is triggered and the request answered `404`, nothing streamed;
+- event in **grace** and the device is **new** → `410`, nothing streamed;
+- event **live**, the device is **new**, and the ever-enrolled device count has reached the marker's
+  `capacity` → `409`, nothing streamed;
+- otherwise (a known device in any non-expired state; a new device within capacity while live) →
+  the endpoint SHALL proceed with the streamed manifest write.
+
+A genuine upstream failure reading the marker or the listing (any non-`404` error or timeout) SHALL
+be surfaced as `502` and SHALL NEVER be treated as "event absent", "over", or "full" (never a
+`404`/`409`/`410` for a transient read failure). This gate applies **only** to the device-manifest
+route; the byte route `PUT /files/devices/<deviceId>/<filename>` reads no marker, makes no listing,
+and is ungated.
 
 #### Scenario: Manifest write to a non-existent event rejected
 
@@ -229,21 +245,49 @@ is ungated.
   `events/<uuid>/metadata.json` is absent
 - **THEN** the endpoint responds `404`, streams no body, and issues no upstream object `PUT`
 
-#### Scenario: Manifest write to an existing event proceeds
+#### Scenario: Manifest write to a live event by a known device proceeds
 
-- **WHEN** a valid `PUT /events/<uuid>/devices/<deviceUuid>` arrives and the marker
-  `events/<uuid>/metadata.json` exists
+- **WHEN** a valid `PUT /events/<uuid>/devices/<deviceUuid>` arrives, the marker exists, the event is
+  not expired, and the device already has an active or departed manifest
 - **THEN** the endpoint streams the JSON body to the upstream object `PUT` as usual
 
-#### Scenario: Marker read failure is not treated as absence
+#### Scenario: First enrollment within capacity proceeds
 
-- **WHEN** the marker read returns a non-`404` upstream error or times out
-- **THEN** the endpoint responds `502` and does not return `404` or store the object
+- **WHEN** a valid `PUT /events/<uuid>/devices/<deviceUuid>` arrives for a live event from a device
+  with no manifest in either form, and the ever-enrolled count is below the marker's `capacity`
+- **THEN** the endpoint streams the JSON body to the upstream object `PUT` as usual
+
+#### Scenario: A new device at capacity is rejected
+
+- **WHEN** a valid `PUT /events/<uuid>/devices/<deviceUuid>` arrives for a live event from a device
+  with no manifest in either form, and the ever-enrolled count (active plus departed) has reached the
+  marker's `capacity`
+- **THEN** the endpoint responds `409`, streams no body, and issues no upstream object `PUT`
+
+#### Scenario: A new device during grace is rejected
+
+- **WHEN** a valid `PUT /events/<uuid>/devices/<deviceUuid>` arrives during the event's grace period
+  from a device with no manifest in either form
+- **THEN** the endpoint responds `410`, streams no body, and issues no upstream object `PUT`
+
+#### Scenario: An expired event is reaped and answered absent
+
+- **WHEN** a valid `PUT /events/<uuid>/devices/<deviceUuid>` arrives after the event's grace period
+  has elapsed
+- **THEN** the expiry reap runs (capability `event-limits`) and the endpoint responds `404`, streams
+  no body, and issues no upstream object `PUT`
+
+#### Scenario: Marker or listing read failure is not treated as absence
+
+- **WHEN** the marker read or the `devices/` listing returns a non-`404` upstream error or times out
+- **THEN** the endpoint responds `502` and does not return `404`, `409`, or `410`, and does not store
+  the object
 
 #### Scenario: Byte route makes no marker read
 
 - **WHEN** a valid `PUT /files/devices/<deviceId>/<filename>` arrives
-- **THEN** the endpoint streams the body without reading any event marker (the byte route is ungated)
+- **THEN** the endpoint streams the body without reading any event marker and without listing any
+  devices (the byte route is ungated)
 
 ### Requirement: Writes require a device token
 
