@@ -103,9 +103,10 @@ class BackendStore {
     fun startsAtOf(eventId: String): String? = eventStarts[eventId]
 
     /**
-     * Wipe a device's stored byte objects (models an operator `reset-storage` deleting the
-     * `devices/<id>/files/` partition). The per-device listing then returns empty while the extension
-     * ledger still holds `COMPLETED` rows — the storage-reset condition.
+     * Wipe a device's stored byte objects (models an operator deleting the `devices/<id>/files/`
+     * partition from the bunny zone — e.g. via the dashboard or native Storage API). The per-device
+     * listing then returns empty while the extension ledger still holds `COMPLETED` rows — the
+     * storage-reset condition.
      */
     fun wipeBytes(deviceId: String) {
         byteStore.remove(deviceId)

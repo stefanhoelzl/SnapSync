@@ -234,6 +234,11 @@ tiers. (It did not always: it was wired per-composition-root and the iOS 18–26
 so a switch / leave-then-rejoin / reinstall re-uploaded the whole post-cutoff library. Fixed in
 `changes/archive/…-fix-app-driven-upload-lifecycle`.) To observe real uploads in the dev loop, point at a
 **fresh event id** (or clear the event's objects in the bunny zone) so the reconcile finds nothing to seed.
+⚠️ **There is deliberately NO whole-zone reset tool.** The single `snap-sync-dev` zone is the *only* zone
+(`backend/src/config.ts` — the deployed backend uses it too), so it is **shared with real TestFlight /
+App-Store users' photos**; a blind zone wipe would destroy them. Clean up **targeted only** — a fresh
+event id, `SNAPSYNC_LEAVE`, or deleting the specific event's/device's objects via bunny (dashboard or
+native Storage API). Do not re-introduce a `reset-storage`-style whole-zone delete.
 
 **Creating an event headlessly.** `SNAPSYNC_CREATE_EVENT=<base64url(JSON)>` is a **dev/test trigger**
 (capability `ios-app-shell`), read **once per process** and inert in production. The JSON carries a
