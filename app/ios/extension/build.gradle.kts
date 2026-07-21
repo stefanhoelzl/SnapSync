@@ -15,6 +15,20 @@ kotlin {
         }
     }
 
+    // Sentry test-link (capability `crash-reporting`): this module's simulator TEST binary links
+    // :adapter:ios:ext-safe and therefore Sentry symbols; reuse the Sentry-Dynamic framework that
+    // module provisions (see its build script for why the DYNAMIC variant) — same -F for the link,
+    // same -rpath for the simulator-process load.
+    val sentrySimulatorSlice = project(":adapter:ios:ext-safe").layout.buildDirectory
+        .dir("sentry-cocoa/${libs.versions.sentry.cocoa.get()}/Sentry-Dynamic.xcframework/ios-arm64_x86_64-simulator")
+        .get().asFile.toString()
+    iosSimulatorArm64().binaries.all {
+        if (this is org.jetbrains.kotlin.gradle.plugin.mpp.TestExecutable) {
+            linkTaskProvider.configure { dependsOn(":adapter:ios:ext-safe:provisionSentryCocoa") }
+            linkerOpts("-F$sentrySimulatorSlice", "-rpath", sentrySimulatorSlice)
+        }
+    }
+
     sourceSets {
         commonMain.dependencies {
             api(project(":domain"))
