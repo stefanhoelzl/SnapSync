@@ -1,6 +1,7 @@
 package app.snapsync.ui
 
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.graphics.PixelMap
 import androidx.compose.ui.graphics.toPixelMap
@@ -350,6 +351,78 @@ class StatusScreenTest {
         rule.onNodeWithText("Turn on full access in Settings").assertExists()
         rule.onNodeWithText("Turn on full access in Settings").performClick()
         assertEquals(1, settingsOpens)
+    }
+
+    // ---- joined layer: partial-grant resting affordances (capability `limited-photo-access`) ----
+
+    @Test
+    fun `limited grant shows both affordances in order, in every health`() {
+        // One recomposing scene walks the healths — the affordances are resting offers, present
+        // regardless of the current health value, with the grant switch always BELOW the selection
+        // widening (the cheaper step leads).
+        val state = mutableStateOf<UiState>(UiState.Joined(SyncHealth.InSync, canChoosePhotos = true))
+        rule.setContent { StatusScreen(state.value, cutoff = fixedCutoff()) }
+
+        val healths = listOf(
+            SyncHealth.InSync,
+            SyncHealth.Syncing(Arrow.PULSING, Arrow.HIDDEN),
+            SyncHealth.NotStarted("2026-07-04T18:00:00Z"),
+        )
+        for (health in healths) {
+            state.value = UiState.Joined(health, canChoosePhotos = true)
+            rule.waitForIdle()
+            val chooseY = rule.onNodeWithText("Choose more photos").fetchSemanticsNode().positionInRoot.y
+            val allowY = rule.onNodeWithText("Allow full access").fetchSemanticsNode().positionInRoot.y
+            assertTrue(allowY > chooseY, "Allow full access must sit below Choose more photos ($health)")
+        }
+    }
+
+    @Test
+    fun `allow full access taps open settings and nothing else`() {
+        var settingsOpens = 0
+        var pickerOpens = 0
+        var requests = 0
+        rule.setContent {
+            StatusScreen(
+                UiState.Joined(SyncHealth.InSync, canChoosePhotos = true),
+                onOpenSettings = { settingsOpens++ },
+                onChoosePhotos = { pickerOpens++ },
+                onRequestPermission = { requests++ },
+                cutoff = fixedCutoff(),
+            )
+        }
+
+        rule.onNodeWithText("Allow full access").performClick()
+        assertEquals(1, settingsOpens)
+        assertEquals(0, pickerOpens)
+        assertEquals(0, requests)
+    }
+
+    @Test
+    fun `choose more photos taps the picker callback, not settings`() {
+        var settingsOpens = 0
+        var pickerOpens = 0
+        rule.setContent {
+            StatusScreen(
+                UiState.Joined(SyncHealth.InSync, canChoosePhotos = true),
+                onOpenSettings = { settingsOpens++ },
+                onChoosePhotos = { pickerOpens++ },
+                cutoff = fixedCutoff(),
+            )
+        }
+
+        rule.onNodeWithText("Choose more photos").performClick()
+        assertEquals(1, pickerOpens)
+        assertEquals(0, settingsOpens)
+    }
+
+    @Test
+    fun `no partial-grant affordances under a full grant`() {
+        // canChoosePhotos defaults false (permission != LIMITED) — neither offer renders.
+        rule.setContent { StatusScreen(inSync, cutoff = fixedCutoff()) }
+
+        rule.onNodeWithText("Choose more photos").assertDoesNotExist()
+        rule.onNodeWithText("Allow full access").assertDoesNotExist()
     }
 
     // ---- joined layer: name, leave, invite ----
