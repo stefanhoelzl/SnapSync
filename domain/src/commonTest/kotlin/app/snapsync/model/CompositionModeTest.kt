@@ -80,6 +80,8 @@ class CompositionModeTest {
     fun `directives parse from an environment reader`() {
         val env = mapOf(
             "SNAPSYNC_EVENT_LINK" to "https://x/join#d=1",
+            "SNAPSYNC_CREATE_EVENT" to "eyJuYW1lIjoiWCJ9",
+            "SNAPSYNC_LEAVE" to "1",
             "SNAPSYNC_SEED_PHOTOS" to "4000",
             "SNAPSYNC_SEED_POLICY" to "20",
             "SNAPSYNC_POLICY_PROBE" to "2026-07-01T00:00:00Z",
@@ -90,12 +92,20 @@ class CompositionModeTest {
         val d = LaunchDirectives.from { env[it] }
 
         assertEquals("https://x/join#d=1", d.eventLink)
+        assertEquals("eyJuYW1lIjoiWCJ9", d.createEvent)
+        assertEquals(true, d.leave)
         assertEquals(4000, d.seedPhotos)
         assertEquals(20, d.seedPolicy)
         assertEquals("2026-07-01T00:00:00Z", d.policyProbe)
         assertEquals("in_sync", d.forgeState)
         // Presence (even empty) is the trigger.
         assertEquals(true, d.forceUrlSessionUpload)
+    }
+
+    @Test
+    fun `SNAPSYNC_LEAVE presence with an empty value still triggers`() {
+        assertEquals(true, LaunchDirectives.from { if (it == "SNAPSYNC_LEAVE") "" else null }.leave)
+        assertEquals(false, LaunchDirectives.from { null }.leave)
     }
 
     @Test

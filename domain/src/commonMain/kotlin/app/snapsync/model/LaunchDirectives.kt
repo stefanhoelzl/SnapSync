@@ -13,6 +13,9 @@ package app.snapsync.model
  *
  * - [eventLink] — `SNAPSYNC_EVENT_LINK`: a raw `https://…/join#…` URL forwarded through the same
  *   `onOpenUrl` path a scanned QR takes.
+ * - [createEvent] — `SNAPSYNC_CREATE_EVENT`: a `base64url(JSON)` [CreateEventPayload] describing an
+ *   event to mint headlessly (mint-only, or mint+autoJoin). Decoded by `decodeCreateDirective`.
+ * - [leave] — `SNAPSYNC_LEAVE`: presence (any value) triggers leaving the current membership.
  * - [seedPhotos] — `SNAPSYNC_SEED_PHOTOS`: how many tiny 2001-dated assets to seed (walk-cost test).
  * - [seedPolicy] — `SNAPSYNC_SEED_POLICY`: how many hour-ahead assets straddling the 3 MP floor to
  *   seed (selection-policy probe).
@@ -28,6 +31,8 @@ package app.snapsync.model
  */
 data class LaunchDirectives(
     val eventLink: String?,
+    val createEvent: String?,
+    val leave: Boolean,
     val seedPhotos: Int?,
     val seedPolicy: Int?,
     val policyProbe: String?,
@@ -37,6 +42,8 @@ data class LaunchDirectives(
     companion object {
         val NONE = LaunchDirectives(
             eventLink = null,
+            createEvent = null,
+            leave = false,
             seedPhotos = null,
             seedPolicy = null,
             policyProbe = null,
@@ -52,6 +59,9 @@ data class LaunchDirectives(
          */
         fun from(env: (String) -> String?): LaunchDirectives = LaunchDirectives(
             eventLink = env("SNAPSYNC_EVENT_LINK"),
+            createEvent = env("SNAPSYNC_CREATE_EVENT"),
+            // Presence — not a value — is the trigger (as with [forceUrlSessionUpload]).
+            leave = env("SNAPSYNC_LEAVE") != null,
             seedPhotos = positiveInt(env("SNAPSYNC_SEED_PHOTOS")),
             seedPolicy = positiveInt(env("SNAPSYNC_SEED_POLICY")),
             policyProbe = env("SNAPSYNC_POLICY_PROBE"),

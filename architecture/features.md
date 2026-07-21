@@ -13,8 +13,8 @@ on drift; regenerate instead.
 
 ## `feature/creation`
 
-- files: `CreateEvent.kt`, `CreationStatus.kt`
-- top-level types: `CreateEvent (class)`, `CreationFailureReason (class)`, `CreationStatus (interface)`, `CreationStatusSource (interface)`, `EventCreator (interface)`, `MutableCreationStatusSource (class)`, `NoOpEventCreator (object)`
+- files: `CreateEvent.kt`, `CreationStatus.kt`, `HeadlessCreate.kt`, `LaunchEnvMembership.kt`
+- top-level types: `CreateEvent (class)`, `CreationFailureReason (class)`, `CreationStatus (interface)`, `CreationStatusSource (interface)`, `EventCreator (interface)`, `HeadlessCreate (class)`, `LaunchEnvMembership (class)`, `MutableCreationStatusSource (class)`, `NoOpEventCreator (object)`
 
 ## `feature/download`
 

@@ -658,27 +658,24 @@ object SnapSyncRoot {
     }
 
     /**
-     * Realize [launchEnvEventLinkApplied] once on first view creation (called from
-     * [MainViewController]). Touching the `by lazy` runs the env read exactly once per process.
+     * Realize [launchEnvMembershipApplied] once on first view creation (called from
+     * [MainViewController]). Touching the `by lazy` runs the env reads exactly once per process.
      */
-    fun applyLaunchEnvEventLink() = log.invocation("applyLaunchEnvEventLink") {
-        launchEnvEventLinkApplied
+    fun applyLaunchEnvMembership() = log.invocation("applyLaunchEnvMembership") {
+        launchEnvMembershipApplied
     }
 
     /**
-     * Dev/test trigger: if a `SNAPSYNC_EVENT_LINK` process-environment variable is present, forward its
-     * value through [onOpenUrl] exactly as a scanned QR would, provisioning the event headlessly over
-     * USB. The variable is only injectable via a developer launch
-     * (`pymobiledevice3 developer dvt launch --env …`); SpringBoard and TestFlight launches carry a
-     * clean environment, so this is inert in production with no compile-time guard. Read **once per
-     * process** (`by lazy`): a fresh cold launch with the variable still set re-provisions (the
-     * intended per-build re-trigger); a mere view recreation within the same process does not.
+     * Dev/test triggers: apply the membership-mutating launch-env variables in the fixed order
+     * `leave → create → event-link` (capability `ios-app-shell`), delegated to the mode-resolved
+     * [Shell] so a forge launch no-ops them **structurally** ([ForgeShell] holds no route to the live
+     * stack). The [LiveShell] runs the ordered, sequential application. Read **once per process**
+     * (`by lazy`): a fresh cold launch with a variable still set re-applies (the intended per-build
+     * re-trigger); a mere view recreation within the same process does not. Each variable is only
+     * injectable via a developer launch, so this is inert in production with no compile-time guard.
      */
-    private val launchEnvEventLinkApplied: Boolean by lazy {
-        directives.eventLink?.let { raw ->
-            log.i { "applying SNAPSYNC_EVENT_LINK launch-env event link" }
-            onOpenUrl(raw)
-        }
+    private val launchEnvMembershipApplied: Boolean by lazy {
+        shell.applyLaunchEnvMembership()
         true
     }
 
@@ -860,6 +857,9 @@ object SnapSyncRoot {
     /** What every OS entry point delegates to; implemented once per composition mode. */
     private interface Shell {
         fun renderHost(): StatusContainerHost
+        /** Apply the ordered `leave → create → event-link` membership launch-env triggers (live only;
+         *  forge no-ops). */
+        fun applyLaunchEnvMembership()
         fun onForeground()
         fun onBackground()
         fun onOpenUrl(url: String)
@@ -883,6 +883,13 @@ object SnapSyncRoot {
             log.i { "rendering SNAPSYNC_FORGE_STATE=$state" }
             // Non-null by construction: the resolver only yields Forge for a recognized state.
             return forgeStatusHost(state, scope, cutoffFormatter)!!
+        }
+
+        override fun applyLaunchEnvMembership() = log.invocation("applyLaunchEnvMembership") {
+            // Forge wins over the membership triggers too — provisioning a real event (or leaving one)
+            // from a process rendering a forged frame is incoherent. Structural: this shell holds no
+            // route to the live stack. The log line keeps the debug.log trail.
+            log.i { "forge mode: ignoring membership launch triggers (leave/create/event-link)" }
         }
 
         override fun onForeground() = log.invocation("onForeground", params = foregroundParams()) {
@@ -950,6 +957,24 @@ object SnapSyncRoot {
     ) : Shell {
         /** Touching [host] assembles the live stack (and installs the grant subscriptions). */
         override fun renderHost(): StatusContainerHost = host
+
+        override fun applyLaunchEnvMembership() = log.invocation("applyLaunchEnvMembership") {
+            // The ordering (leave → create → event-link) is the tested `feature/creation`
+            // coordinator's — the shell may hold no branching or ordering (`architecture-guards`). This
+            // is straight-line wiring: assemble the live stack (touch [host]), then hand the coordinator
+            // the parsed triggers and this shell's join entry, in one awaited coroutine so each step
+            // observes the state the prior produced.
+            host
+            scope.launch {
+                app.launchEnvMembership.run(
+                    leaveRequested = directives.leave,
+                    createEvent = directives.createEvent,
+                    eventLink = directives.eventLink,
+                    openUrl = ::onOpenUrl,
+                )
+            }
+            Unit
+        }
 
         override fun onForeground() = log.invocation("onForeground", params = foregroundParams()) {
             host
