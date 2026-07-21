@@ -349,8 +349,10 @@ the dispatch-driven App Store release below (`ios-appstore-promote.yml`) — the
   **promotes** one of these builds and derives its store version from it (there's no version input).
 - **APNs is production for every TestFlight/App Store build.** CI Release archives inject
   `APS_ENVIRONMENT=production` / `APNS_ENV=production` (in the `ios-archive` composite action); only
-  dev-sideload builds (the `ios.yml` `workflow_dispatch` dev-IPA path and ssh-mac) stay
-  `development`/`sandbox`. The `Config.xcconfig` values are the dev default, overridden for distribution.
+  never-distributed Debug builds — the branch-gate archive (non-`main` pushes build Debug; the gate
+  skips the LLVM optimization pass, capability `ios-ci`), the `ios.yml` `workflow_dispatch` dev-IPA
+  path, and ssh-mac — stay `development`/`sandbox`. The `Config.xcconfig` values are the dev default,
+  overridden for distribution.
 
 ### App Store releases PROMOTE a tested build (the tag is the RECEIPT, not the trigger)
 

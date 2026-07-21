@@ -5,8 +5,12 @@
 # (ios-appstore-promote.yml, capability ios-appstore-release); the public alpha promotion was removed.
 #   * ios-build — on EVERY push (any ref) produces a SIGNED archive of the iOS DEVICE (iphoneos,
 #     arm64) app, linking the iosArm64 framework (the shipping target). The archive step compiles
-#     iosArm64, so it IS the merge gate. This job is a PURE GATE: it exports nothing and uploads
-#     nothing to Apple. On main it hands the archive to ios-deliver as a workflow artifact.
+#     iosArm64, so it IS the merge gate. Configuration is per-ref (capability ios-ci): main — the
+#     delivery source — and any plain dispatch archive RELEASE; every other push ref archives DEBUG,
+#     which compiles the identical surface and skips only the LLVM optimization pass that dominates
+#     the Release link (~5-9.5 min) on an archive that is discarded anyway. This job is a PURE GATE:
+#     it exports nothing and uploads nothing to Apple. On main it hands the archive to ios-deliver
+#     as a workflow artifact.
 #     Per-branch device installability before merge is served OUT OF BAND by the ssh-mac build loop
 #     (.github/workflows/ssh-mac.yml; see CLAUDE.md), not by a CI artifact.
 #   * ios-test  — runs the shared commonTest compiled to Kotlin/Native on a booted simulator
@@ -97,12 +101,22 @@ jobs:
             exit 1
           fi
 
-      # Pick the build configuration, host override, and APNs environment. A workflow_dispatch with an
-      # (HTTPS) `upload_host` builds a DEBUG dev-IPA (skips the LLVM optimizer, the bulk of the ~6 min
-      # archive) and keeps the Config.xcconfig development/sandbox APNs default. EVERY push (the merge
-      # gate) and any plain dispatch stay RELEASE, set NO host override (bake the Config.xcconfig host),
-      # and set APNs to PRODUCTION — a TestFlight/App Store distribution build must be production
-      # (capability ios-testflight-delivery); only the dev-sideload path stays sandbox.
+      # Pick the build configuration, host override, and APNs environment — three shapes (capability
+      # ios-ci pins the per-ref configuration):
+      #   * workflow_dispatch WITH an (HTTPS) upload_host — the DEBUG dev-IPA: host override, and the
+      #     Config.xcconfig development/sandbox APNs default.
+      #   * push to main, or a PLAIN dispatch — RELEASE, no host override (bake the Config.xcconfig
+      #     host), APNs PRODUCTION: main's archive is the delivery source (a TestFlight/App Store
+      #     distribution build must be production, capability ios-testflight-delivery), and a plain
+      #     dispatch is the deliberate escape hatch to exercise the full Release path on a branch.
+      #   * push to any OTHER ref — the DEBUG gate archive: identical compile surface (all iosArm64
+      #     klibs, Swift, entitlements, signing), skipping only the LLVM optimization pass that
+      #     dominates the Release link (measured 5-9.5 min of a 9-15 min job) on an archive that is
+      #     discarded (no artifact off main). Version/APNs/DSN are immaterial to it; the
+      #     BUILD_CONFIG-keyed conditionals below give it the dev defaults automatically. Trade-off
+      #     (accepted, capability ios-ci): a Release-only build failure surfaces on the post-merge
+      #     main run — red but non-gating, and delivery is skipped because ios-deliver needs both
+      #     gates.
       - name: Select build configuration, host override, and APNs environment
         env:
           UPLOAD_HOST: ${{ inputs.upload_host }}
@@ -112,11 +126,16 @@ jobs:
             echo "UPLOAD_HOST_OUT=$UPLOAD_HOST" >> "$GITHUB_ENV"
             echo "APS_ENV_OUT=" >> "$GITHUB_ENV"
             echo "APNS_ENV_OUT=" >> "$GITHUB_ENV"
-          else
+          elif [ "${{ github.ref }}" = "refs/heads/main" ] || [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
             echo "BUILD_CONFIG=Release" >> "$GITHUB_ENV"
             echo "UPLOAD_HOST_OUT=" >> "$GITHUB_ENV"
             echo "APS_ENV_OUT=production" >> "$GITHUB_ENV"
             echo "APNS_ENV_OUT=production" >> "$GITHUB_ENV"
+          else
+            echo "BUILD_CONFIG=Debug" >> "$GITHUB_ENV"
+            echo "UPLOAD_HOST_OUT=" >> "$GITHUB_ENV"
+            echo "APS_ENV_OUT=" >> "$GITHUB_ENV"
+            echo "APNS_ENV_OUT=" >> "$GITHUB_ENV"
           fi
 
       # Compute the marketing version this build carries (capability ios-testflight-delivery):
@@ -126,8 +145,8 @@ jobs:
       # is only reachable by bumping the committed floor), and max() compares (major, minor) TUPLES so a
       # floor of 1.0 correctly beats a derived 0.10. A promoted build's App Store version is DERIVED from
       # this value later (ios-appstore-promote), so this is the single source of the store version.
-      # The dev-IPA path leaves it EMPTY (the archive bakes the Config.xcconfig floor) — a sideload build's
-      # version is immaterial and it never reaches App Store Connect.
+      # Debug archives — the dev-IPA path and the branch gate — leave it EMPTY (the archive bakes the
+      # Config.xcconfig floor): neither ever reaches App Store Connect, so the version is immaterial.
       - name: Compute marketing version
         run: |
           if [ "$BUILD_CONFIG" != "Release" ]; then
@@ -171,7 +190,8 @@ jobs:
       # compile, the ASC key, the ephemeral keychain, BOTH persistent certs, and the archive — lives in
       # the shared composite action. Build number = the monotonic run number. marketing-version is the
       # value computed above — max(floor, latest tag + minor 1) for a Release build, empty (Config.xcconfig
-      # floor) for a dev-IPA build. A promoted App Store build derives its store version FROM this value.
+      # floor) for a Debug build (dev-IPA or branch gate). A promoted App Store build derives its store
+      # version FROM this value.
       - name: Archive signed device app
         uses: ./.github/actions/ios-archive
         with:

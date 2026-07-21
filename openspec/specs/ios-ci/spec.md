@@ -3,10 +3,11 @@
 ## Purpose
 Continuous integration that, on every push, builds the iOS device app and runs the shared Kotlin/Native unit tests on a simulator, each reporting a merge-gating status check. Runs on GitHub Actions (`macos-26`, GM Xcode) — the same provider as the Linux build — doing only the irreducible Apple delta. **Two parallel jobs are the merge gates**: `ios-build` produces a **signed archive** of the device (`iosArm64`) app via `xcodebuild` (the archive is the gate, and the app's only compile), and `ios-test` runs `iosSimulatorArm64Test` on a booted simulator. Together they exercise both Kotlin/Native targets. `ios-build` is a **pure gate** — it exports nothing and uploads nothing to Apple. **Delivery is a third job** (`ios-deliver`) that runs on `main` only and **depends on both gates**, so a red test suite stops the release; it re-signs and packages `ios-build`'s archive without recompiling (capability `ios-testflight-delivery`, which also details code signing). Per-branch device installability before merge is served out of band by the ssh-mac build loop, not a CI artifact.
 ## Requirements
-
 ### Requirement: Build iOS on every push
 
 The system SHALL run a **GitHub Actions** job (`ios-build` in `.github/workflows/ios.yml`) on every push that builds the iOS **device (`iphoneos`, arm64)** app on a **`macos-26` hosted runner**, linking the `iosArm64` framework with the runner's **GM Xcode** (no Xcode beta), and reports a stable status-check context (`ios-build`) used to gate merges. On **every** ref the job SHALL produce a **signed archive** of the device app (signing — capability `ios-testflight-delivery`); the archive compiles `iosArm64`, so the `ios-build` check reflects whether the device app builds.
+
+The archive's **build configuration SHALL depend on the ref**: on `refs/heads/main` — the delivery source — and on any `workflow_dispatch` without an `upload_host` (the deliberate escape hatch for exercising the full Release path on a branch before merge), the archive SHALL be built in the **Release** configuration; on every **other** push ref it SHALL be built in the **Debug** configuration. (A dispatch **with** an `upload_host` is the dev-IPA path — Debug by its own contract, capability `ios-testflight-delivery`.) The Debug gate archive compiles the identical surface — the same Kotlin frontend and `iosArm64` klib compiles, the same Swift compile, entitlements, and signing — skipping only the LLVM optimization pass of the Release link, which dominates the archive (measured 5–9.5 min of a 9–15 min job) while gating nothing on an artifact that is discarded off `main`. The accepted trade-off: a **Release-only build failure** (e.g. an optimizer crash in the Kotlin/Native link) passes the branch gate and surfaces on the post-merge `main` run — a red but non-gating `ios-build`, with delivery skipped because `ios-deliver` needs both gates (capability `ios-testflight-delivery`).
 
 The job SHALL be a **pure gate**: it SHALL NOT export an IPA and SHALL NOT upload anything to Apple. On **`refs/heads/main` only** it SHALL publish the signed archive as a **workflow artifact** for the `ios-deliver` job (capability `ios-testflight-delivery`); on any **other** ref the archive is produced **solely as the merge gate** and the job publishes no artifact. Because a workflow-artifact round-trip does not preserve executable bits or symlinks — which would corrupt the signed `.app` bundle and break the later export — the archive SHALL be **packed (tar) before upload and unpacked after download**, so it survives the hand-off intact.
 
@@ -23,6 +24,18 @@ Per-branch device installability before merge is served **out of band** by the i
 #### Scenario: Build failure reports a failing check
 - **WHEN** the device app fails to compile
 - **THEN** the `ios-build` status check concludes as failure (red)
+
+#### Scenario: A branch push gates with a Debug archive
+- **WHEN** a commit is pushed to a ref other than `refs/heads/main`
+- **THEN** the signed archive is built in the Debug configuration — same klib compiles, Swift compile, entitlements, and signing, no LLVM optimization pass — and the `ios-build` check still reflects whether the device app compiles
+
+#### Scenario: main archives Release
+- **WHEN** the `ios-build` job runs on `refs/heads/main`
+- **THEN** the signed archive is built in the Release configuration, so the artifact handed to `ios-deliver` is the distribution build
+
+#### Scenario: A plain dispatch exercises the Release path on a branch
+- **WHEN** the workflow is manually dispatched on a branch with no `upload_host` input
+- **THEN** the archive is built in the Release configuration, providing pre-merge proof of the Release link for that branch
 
 #### Scenario: Every ref archives as the gate; non-main publishes nothing
 - **WHEN** the `ios-build` job runs on any ref
@@ -131,3 +144,4 @@ the TestFlight build inherits whatever host this shared archive step bakes.
 - **WHEN** a manual dispatch supplies `upload_host` for one run
 - **THEN** only that run's archive uses it; subsequent ordinary pushes (including `main`) set no
   override and bake the `Config.xcconfig` default
+
