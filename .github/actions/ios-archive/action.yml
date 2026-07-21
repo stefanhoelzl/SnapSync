@@ -83,13 +83,24 @@ runs:
     - uses: gradle/actions/setup-gradle@v5
 
     # Cache the Kotlin/Native toolchain + compiled klibs. Keyed on libs.versions.toml so a
-    # Kotlin/Native bump invalidates the cache.
+    # Kotlin/Native bump invalidates the cache — and on the BUILD CONFIGURATION, because a Debug
+    # link builds per-dependency compiler caches (Compose, Skiko, …) into ~/.konan on first use:
+    # a Debug-family entry saved WITH those caches is what turns the branch gate's link from ~6 min
+    # (cold cache build, measured run 29819814274) into ~1 min (warm, matching the ssh-mac 57 s
+    # measurement). Without the config in the key, the shared entry is saved by whichever job runs
+    # first after a libs bump — typically a Release archive or ios-test, neither of which builds the
+    # Debug device caches — and every branch push then rebuilds them from scratch. GitHub cache
+    # scoping still applies: a Debug-family entry saved on a branch is visible only to that branch,
+    # so the FIRST push of each branch pays the cold build and saves; later pushes restore warm.
+    # restore-keys fall back to the same-config family, then any konan entry (ios-test's plain
+    # `konan-<os>-…` key included), so a cold start still reuses the toolchain + klibs.
     - name: Cache Kotlin/Native (~/.konan)
       uses: actions/cache@v5
       with:
         path: ~/.konan
-        key: konan-${{ runner.os }}-${{ hashFiles('gradle/libs.versions.toml') }}
+        key: konan-${{ runner.os }}-${{ inputs.build-config }}-${{ hashFiles('gradle/libs.versions.toml') }}
         restore-keys: |
+          konan-${{ runner.os }}-${{ inputs.build-config }}-
           konan-${{ runner.os }}-
 
     # Compile the background-upload extension's Kotlin core (the shipping iosArm64 framework). The
