@@ -1,9 +1,11 @@
 // APNs provider sender (capability `apns-push-sender`). Token-based (provider JWT) auth: an ES256 JWT
-// signed from the `.p8` Auth Key with WebCrypto (no native dependency), reused within its lifetime.
-// Each push is a silent (content-available) background notification sent over HTTP/2 via the runtime
-// `fetch` (which ALPN-negotiates h2 — all APNs requires). Per-token failures are isolated and reported;
-// the sender never throws out of a batch. No token pruning here (410/BadDeviceToken is reported, not acted on).
+// signed from the `.p8` Auth Key via jose (WebCrypto under the hood, no native dependency), reused within
+// its lifetime. Each push is a silent (content-available) background notification sent over HTTP/2 via the
+// runtime `fetch` (which ALPN-negotiates h2 — all APNs requires). Per-token failures are isolated and
+// reported; the sender never throws out of a batch. No token pruning here (410/BadDeviceToken is reported,
+// not acted on).
 
+import { importPKCS8, SignJWT } from "jose";
 import type { Config } from "./config.ts";
 
 // Structural fetch type (kept local so app.ts ↔ apns.ts stay import-acyclic).
@@ -40,25 +42,6 @@ function silentBody(eventId: string): string {
 // throttles re-signing faster than ~20 min; 50 min sits safely between).
 const JWT_TTL_MS = 50 * 60 * 1000;
 
-function base64Url(bytes: Uint8Array): string {
-  let bin = "";
-  for (const b of bytes) bin += String.fromCharCode(b);
-  return btoa(bin).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
-}
-
-function base64UrlJson(obj: unknown): string {
-  return base64Url(new TextEncoder().encode(JSON.stringify(obj)));
-}
-
-// Decode a PKCS#8 `.p8` PEM to its DER bytes (strip the header/footer + whitespace, base64-decode).
-function pemToDer(pem: string): Uint8Array {
-  const body = pem.split("\n").filter((l) => !l.includes("-----")).join("").replace(/\s+/g, "");
-  const bin = atob(body);
-  const der = new Uint8Array(bin.length);
-  for (let i = 0; i < bin.length; i++) der[i] = bin.charCodeAt(i);
-  return der;
-}
-
 export type ApnsSender = {
   sendSilent(tokens: PushToken[], eventId: string): Promise<SendOutcome[]>;
 };
@@ -73,36 +56,22 @@ export function createApnsSender(
   fetchImpl: FetchLike,
   now: () => number = () => Date.now(),
 ): ApnsSender {
+  // jose parses the `.p8` PEM directly (PKCS#8) and its ES256 signer emits the raw r‖s (IEEE-P1363)
+  // signature APNs requires. The imported key is memoized across sends.
   let keyPromise: Promise<CryptoKey> | null = null;
   let cached: { jwt: string; at: number } | null = null;
 
   function signingKey(): Promise<CryptoKey> {
-    if (!keyPromise) {
-      keyPromise = crypto.subtle.importKey(
-        "pkcs8",
-        pemToDer(config.apnsPrivateKey) as BufferSource,
-        { name: "ECDSA", namedCurve: "P-256" },
-        false,
-        ["sign"],
-      );
-    }
+    if (!keyPromise) keyPromise = importPKCS8(config.apnsPrivateKey, "ES256") as Promise<CryptoKey>;
     return keyPromise;
   }
 
   async function providerJwt(): Promise<string> {
     const t = now();
     if (cached && t - cached.at < JWT_TTL_MS) return cached.jwt;
-    const iat = Math.floor(t / 1000);
-    const header = base64UrlJson({ alg: "ES256", kid: config.apnsKeyId });
-    const claims = base64UrlJson({ iss: config.apnsTeamId, iat });
-    const signingInput = `${header}.${claims}`;
-    // WebCrypto ECDSA yields the raw r‖s (IEEE-P1363) signature — exactly JWT ES256's encoding.
-    const sig = await crypto.subtle.sign(
-      { name: "ECDSA", hash: "SHA-256" },
-      await signingKey(),
-      new TextEncoder().encode(signingInput) as BufferSource,
-    );
-    const jwt = `${signingInput}.${base64Url(new Uint8Array(sig))}`;
+    const jwt = await new SignJWT({ iss: config.apnsTeamId, iat: Math.floor(t / 1000) })
+      .setProtectedHeader({ alg: "ES256", kid: config.apnsKeyId })
+      .sign(await signingKey());
     cached = { jwt, at: t };
     return jwt;
   }

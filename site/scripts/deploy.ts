@@ -12,6 +12,9 @@
 //
 // Deno (not Node): `deno run --allow-read --allow-env --allow-net scripts/deploy.ts`. The site is built
 // under Node (astro:assets); only this deploy step runs under Deno, matching the api's tooling.
+import { contentType } from "jsr:@std/media-types@^1";
+import { walk } from "jsr:@std/fs@^1/walk";
+import { fromFileUrl, relative } from "jsr:@std/path@^1";
 import { storageConfig } from "../../api/src/config.ts";
 import { deleteObject, listDir, putObject } from "../../api/src/storage.ts";
 
@@ -24,23 +27,17 @@ const config = storageConfig(accessKey);
 const PREFIX = "site";
 const DIST = new URL("../dist/", import.meta.url);
 
-function contentType(path: string): string {
-  if (path.endsWith(".html")) return "text/html; charset=utf-8";
-  if (path.endsWith(".webp")) return "image/webp";
-  if (path.endsWith(".css")) return "text/css; charset=utf-8";
-  if (path.endsWith(".js")) return "text/javascript; charset=utf-8";
-  if (path.endsWith(".svg")) return "image/svg+xml";
-  if (path.endsWith(".json")) return "application/json; charset=utf-8";
-  return "application/octet-stream";
+/** The stored object's Content-Type, from the file extension (`@std/media-types`). */
+function contentTypeFor(rel: string): string {
+  const dot = rel.lastIndexOf(".");
+  return (dot === -1 ? undefined : contentType(rel.slice(dot))) ?? "application/octet-stream";
 }
 
 /** Every file under dist/, as a POSIX-relative path (e.g. "index.html", "_astro/app.<hash>.js"). */
-async function walkLocal(dir: URL, prefix = "", out: string[] = []): Promise<string[]> {
-  for await (const entry of Deno.readDir(dir)) {
-    const rel = prefix ? `${prefix}/${entry.name}` : entry.name;
-    if (entry.isDirectory) await walkLocal(new URL(`${entry.name}/`, dir), rel, out);
-    else out.push(rel);
-  }
+async function walkLocal(dir: URL): Promise<string[]> {
+  const base = fromFileUrl(dir);
+  const out: string[] = [];
+  for await (const entry of walk(dir, { includeDirs: false })) out.push(relative(base, entry.path));
   return out;
 }
 
@@ -65,7 +62,7 @@ const wanted = new Set<string>();
 for (const rel of local) {
   const key = `${PREFIX}/${rel}`;
   wanted.add(key);
-  await putObject(fetch, config, key, await Deno.readFile(new URL(rel, DIST)), contentType(rel));
+  await putObject(fetch, config, key, await Deno.readFile(new URL(rel, DIST)), contentTypeFor(rel));
 }
 console.log(`uploaded ${local.length} object(s) to ${PREFIX}/`);
 

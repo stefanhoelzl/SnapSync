@@ -123,6 +123,7 @@ import type { Config } from "./config.ts";
 import { createApnsSender, type PushToken } from "./apns.ts";
 import {
   b64ToBytes,
+  bytesEqual,
   bytesToB64,
   challengeIsValid,
   mintChallenge,
@@ -358,12 +359,7 @@ function isNotifyPath(path: string): boolean {
  */
 function constantTimeEqual(a: string, b: string): boolean {
   const enc = new TextEncoder();
-  const ab = enc.encode(a);
-  const bb = enc.encode(b);
-  if (ab.length !== bb.length) return false;
-  let diff = 0;
-  for (let i = 0; i < ab.length; i++) diff |= ab[i] ^ bb[i];
-  return diff === 0;
+  return bytesEqual(enc.encode(a), enc.encode(b));
 }
 
 export function createApp({ fetch: fetchImpl, config, now = Date.now }: Deps): Hono {

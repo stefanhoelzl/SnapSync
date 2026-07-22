@@ -9,6 +9,9 @@
 // (data in a JS string, not a subresource) — neither is matched below.
 //
 // Deno: `deno run --allow-read scripts/check-selfcontained.ts`.
+import { walk } from "jsr:@std/fs@^1/walk";
+import { fromFileUrl, relative } from "jsr:@std/path@^1";
+
 const DIST = new URL("../dist/", import.meta.url);
 
 // Each rule: a description + a regex whose match is an off-origin subresource. `https?://` only — relative
@@ -26,31 +29,23 @@ const CSS_RULES: [string, RegExp][] = [
   ["css @import off-origin", /@import\s+["']https?:\/\//gi],
 ];
 
-async function walk(dir: URL, out: URL[] = []): Promise<URL[]> {
-  for await (const entry of Deno.readDir(dir)) {
-    if (entry.isDirectory) await walk(new URL(`${entry.name}/`, dir), out);
-    else out.push(new URL(entry.name, dir));
-  }
-  return out;
-}
+const base = fromFileUrl(DIST);
+const files: string[] = [];
+for await (const entry of walk(DIST, { includeDirs: false })) files.push(entry.path);
 
-const files = await walk(DIST);
 const violations: string[] = [];
-for (const file of files) {
-  const path = file.pathname;
+for (const path of files) {
   const rules = path.endsWith(".css")
     ? CSS_RULES
     : path.endsWith(".html")
       ? [...HTML_RULES, ...CSS_RULES]
       : null;
   if (!rules) continue;
-  const text = await Deno.readTextFile(file);
+  const text = await Deno.readTextFile(path);
   for (const [desc, re] of rules) {
     const m = text.match(re);
     if (m)
-      violations.push(
-        `${path.replace(DIST.pathname, "")}: ${desc} — ${[...new Set(m)].join(", ")}`,
-      );
+      violations.push(`${relative(base, path)}: ${desc} — ${[...new Set(m)].join(", ")}`);
   }
 }
 
