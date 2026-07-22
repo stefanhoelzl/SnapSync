@@ -12,6 +12,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -114,6 +115,15 @@ fun StatusScreen(
     // system-reading default (migration step 9): the host binds the `Clock`/`TimeZoneSource` ports
     // (production) or a fixed instant/zone (tests); this screen holds no clock or timezone knowledge.
     cutoff: CutoffFormatter,
+    // The join-time shareable-count preview (capability `join-share-count`): given the chosen cutoff, how
+    // many of the member's own gallery photos would be shared. `null` = no count available (DENIED /
+    // unresolved grant) → the row is omitted. Permission-aware and cheap (no per-asset resource read) — the
+    // permission-branch and the LIMITED snapshot live inside the compose-built query. Default `{ null }`
+    // keeps the row absent wherever it is not wired (forge, plain tests).
+    shareableCount: suspend (cutoff: String) -> Int? = { null },
+    // The current photo-access grant, threaded purely as a recompute trigger for the count: a late resolve
+    // (the first-join dialog is answered a beat after Ready renders) must make the count appear.
+    photoPermission: PermissionStatus = PermissionStatus.GRANTED,
 ) {
     AppTheme {
         // Local UI state only: the confirm dialog's visibility never enters UiState or the reduction.
@@ -162,6 +172,8 @@ fun StatusScreen(
                 ReconfigureScreen(
                     membership = membership!!,
                     cutoff = cutoff,
+                    shareableCount = shareableCount,
+                    photoPermission = photoPermission,
                     onSave = { eventId, direction, chosenCutoff, saveToAlbum ->
                         reconfiguring = false
                         onReconfigure(eventId, direction, chosenCutoff, saveToAlbum)
@@ -177,6 +189,7 @@ fun StatusScreen(
                     JoiningEventScreen(
                         state.phase, cutoff, onConfirmJoin, onAcknowledgeAccess,
                         onCancelJoin, onRetryLoad, onRetryJoin,
+                        shareableCount, photoPermission,
                     )
                 is UiState.Joined ->
                     JoinedLayer(
@@ -211,6 +224,8 @@ fun StatusScreen(
                 onRetryLoad = onRetryLoad,
                 // The compact switch path has no album picker — a retry there is album-off.
                 onRetryJoin = { cutoff, direction -> onRetryJoin(cutoff, direction, false) },
+                shareableCount = shareableCount,
+                photoPermission = photoPermission,
             )
         }
     }
@@ -261,6 +276,8 @@ private fun JoiningEventScreen(
     onCancel: () -> Unit,
     onRetryLoad: () -> Unit,
     onRetryJoin: (String, Direction, Boolean) -> Unit,
+    shareableCount: suspend (cutoff: String) -> Int?,
+    photoPermission: PermissionStatus,
 ) {
     // The two participation switches, both default ON. Direction is DERIVED from them, never chosen:
     // share+receive → Both, share only → UploadOnly, receive only → DownloadOnly. There is deliberately no
@@ -341,6 +358,9 @@ private fun JoiningEventScreen(
             joinEnabled = joinEnabled,
             onJoin = { onConfirm(chosenCutoff, chosenDirection, chosenSaveToAlbum) },
             onCancel = onCancel,
+            chosenCutoff = chosenCutoff,
+            shareableCount = shareableCount,
+            photoPermission = photoPermission,
         )
         return
     }
@@ -540,6 +560,11 @@ private fun ReadyLayout(
     joinEnabled: Boolean,
     onJoin: () -> Unit,
     onCancel: () -> Unit,
+    // The UTC `…Z` cutoff the switches+preset currently resolve to, and the permission-aware count query
+    // over it (capability `join-share-count`). [photoPermission] is a recompute trigger only.
+    chosenCutoff: String,
+    shareableCount: suspend (cutoff: String) -> Int?,
+    photoPermission: PermissionStatus,
 ) {
     Column(modifier = Modifier.fillMaxSize()) {
         Column(
@@ -580,6 +605,14 @@ private fun ReadyLayout(
                     // heaviest type the surface renders. The Custom row below deliberately never repeats
                     // it — its picker feeds this line.
                     AppSectionValue("Shared from ${appDateTimeLabel(resulting)}")
+                    // The live shareable count (capability `join-share-count`): how many of the member's
+                    // own gallery photos this cutoff would share, recomputed as the cutoff (or a late
+                    // permission resolve) changes. Omitted when no count is available.
+                    ShareCountRow(
+                        chosenCutoff = chosenCutoff,
+                        shareableCount = shareableCount,
+                        permissionKey = photoPermission,
+                    )
                     // Level 2: the cutoff choices, in the section's recessed well. Switch = does this
                     // section happen; checkmarks = how.
                     AppSubSection {
@@ -667,6 +700,73 @@ private fun ReadyLayout(
     }
 }
 
+/** The live state of the shareable-count row (capability `join-share-count`). */
+private sealed interface CountState {
+    /** The count is being (re)computed — the row shows `counting…`. */
+    data object Counting : CountState
+
+    /** No count is available (DENIED / unresolved grant) — the row is omitted entirely. */
+    data object Unavailable : CountState
+
+    /** The count resolved to [count] photos. */
+    data class Ready(val count: Int) : CountState
+}
+
+/**
+ * The shareable-count row (capability `join-share-count`): `XX photos from your gallery will be shared`,
+ * recomputed whenever the resolved [chosenCutoff] changes (the member tunes the cutoff) or [permissionKey]
+ * flips (a late first-join grant resolves). A brief `counting…` shows while it recomputes; a zero carries a
+ * forward gloss so it does not read as broken; an unavailable count (no usable grant) renders **nothing**.
+ *
+ * Shared by the join, switch, and reconfigure surfaces. It is a rendering concern living entirely in the
+ * screen — [shareableCount] is the permission-aware, no-network query built in `compose/`.
+ */
+@Composable
+private fun ShareCountRow(
+    chosenCutoff: String,
+    shareableCount: suspend (cutoff: String) -> Int?,
+    permissionKey: PermissionStatus,
+) {
+    var state by remember { mutableStateOf<CountState>(CountState.Counting) }
+    LaunchedEffect(chosenCutoff, permissionKey) {
+        state = CountState.Counting
+        val n = shareableCount(chosenCutoff)
+        state = if (n == null) CountState.Unavailable else CountState.Ready(n)
+    }
+    when (val s = state) {
+        CountState.Counting -> AppSectionNote("Counting your photos…")
+        CountState.Unavailable -> Unit // no row without a usable photo grant
+        is CountState.Ready -> {
+            val noun = if (s.count == 1) "photo" else "photos"
+            AppSectionNote("${s.count} $noun from your gallery will be shared")
+            if (s.count == 0) {
+                AppSectionNote("New photos you take will be shared as you go")
+            }
+        }
+    }
+}
+
+/**
+ * The shareable count as a single sentence for the compact switch dialog (capability `join-share-count`):
+ * empty until it resolves and whenever no count is available, so the dialog body reads cleanly meanwhile.
+ */
+@Composable
+private fun shareCountSentence(
+    cutoffValue: String,
+    shareableCount: suspend (cutoff: String) -> Int?,
+    permissionKey: PermissionStatus,
+): String {
+    val count by produceState<Int?>(initialValue = null, cutoffValue, permissionKey) {
+        value = shareableCount(cutoffValue)
+    }
+    return when (val c = count) {
+        null -> ""
+        0 -> "No photos from your gallery will be shared yet."
+        1 -> "1 photo from your gallery will be shared."
+        else -> "$c photos from your gallery will be shared."
+    }
+}
+
 /**
  * The **reconfigure** surface (capability `reconfigure-membership`): a joined member re-opens the three
  * participation settings they picked at join — the two switches (Share / Receive → direction), the
@@ -691,6 +791,8 @@ private fun ReadyLayout(
 private fun ReconfigureScreen(
     membership: EventConfig,
     cutoff: CutoffFormatter,
+    shareableCount: suspend (cutoff: String) -> Int?,
+    photoPermission: PermissionStatus,
     onSave: (String, Direction, String, Boolean) -> Unit,
     onCancel: () -> Unit,
 ) {
@@ -747,6 +849,13 @@ private fun ReconfigureScreen(
                             "never shared.",
                     )
                     AppSectionValue("Shared from ${appDateTimeLabel(resulting)}")
+                    // The live count — truthful on both tiers now that a cutoff-lowering reconfigure
+                    // re-shares the newly-in-scope older photos (capability `reconfigure-membership`).
+                    ShareCountRow(
+                        chosenCutoff = chosenCutoff,
+                        shareableCount = shareableCount,
+                        permissionKey = photoPermission,
+                    )
                     AppSubSection {
                         AppCutoffChoices(
                             selected = chosenPreset,
@@ -831,6 +940,8 @@ private fun SwitchDialog(
     onCancelSwitch: () -> Unit,
     onRetryLoad: () -> Unit,
     onRetryJoin: (String, Direction) -> Unit,
+    shareableCount: suspend (cutoff: String) -> Int? = { null },
+    photoPermission: PermissionStatus = PermissionStatus.GRANTED,
 ) {
     val current = currentEventName ?: "this event"
     // The compact switch dialog has no picker: it uses the new event's default cutoff — its `startsAt`,
@@ -847,14 +958,18 @@ private fun SwitchDialog(
         is JoinPhase.ExplainAccess -> Unit
         is JoinPhase.Ready -> {
             cutoff = phase.startsAt
+            // The shareable count for the switch's fixed cutoff (the new event's start). Appended to the
+            // body as a sentence — the compact dialog has no room for the join surface's own row. Empty
+            // until it resolves (and when no count is available), so the dialog reads cleanly meanwhile.
+            val countSentence = shareCountSentence(phase.startsAt, shareableCount, photoPermission)
             AppDestructiveConfirmDialog(
                 title = "Switch events?",
                 // The names carry the whole weight of the decision, so they lead the body line; the
                 // title is the crisp question. Destructive, because leaving is irreversible. The second
                 // sentence states the participation the switch silently resets to (spec-pinned: a switch
                 // joins with direction Both, cutoff = event start, album off) so it is not a surprise.
-                body = "You'll leave \"$current\" and join \"${phase.name}\". " +
-                    "You'll share photos you take and receive everyone's.",
+                body = ("You'll leave \"$current\" and join \"${phase.name}\". " +
+                    "You'll share photos you take and receive everyone's. $countSentence").trim(),
                 confirmLabel = "Switch",
                 cancelLabel = "Cancel",
                 onConfirm = { onConfirmSwitch(phase.startsAt, Direction.Both) },

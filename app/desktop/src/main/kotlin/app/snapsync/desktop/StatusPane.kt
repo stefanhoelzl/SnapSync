@@ -59,6 +59,10 @@ fun StatusPane(
     // (the surface is reviewable, the command a no-op), the full-stack world harness binds it to the real
     // `world.core.userCommands.reconfigure` so `:app:desktop:run` drives the actual in-place rewrite.
     reconfigure: suspend (String, Direction, String, Boolean) -> Unit = { _, _, _, _ -> },
+    // The join-time shareable-count preview (capability `join-share-count`): the forge leaves it inert
+    // (no count row), the full-stack world harness binds it to `world.core.loadShareableCount` so
+    // `:app:desktop:run` shows the real count over the world gallery.
+    shareableCount: suspend (cutoff: String) -> Int? = { null },
     // Attestation health (capability `device-attestation`): defaulted to always-attested so the
     // full-stack harness constructs unchanged; the forge harness injects a MutableAttestedSource so
     // `SyncHealth.Unattested` is forgeable.
@@ -109,6 +113,8 @@ fun StatusPane(
         ).also(onHostReady)
     }
     val state by host.container.stateFlow.collectAsState()
+    // The photo grant — the shareable-count row's recompute trigger (capability `join-share-count`).
+    val photoPermission by permissionSource.permission.collectAsState()
     // The joined-layer presets force a canned event, so this is non-null there → the QR renders.
     val inviteUrl by host.inviteUrl.collectAsState()
     val eventName by host.eventName.collectAsState()
@@ -144,6 +150,8 @@ fun StatusPane(
             onConfirmSwitch = host::onConfirmSwitch,
             onCancelSwitch = host::onCancelSwitch,
             cutoff = cutoffFormatter,
+            shareableCount = shareableCount,
+            photoPermission = photoPermission,
         )
         }
     }

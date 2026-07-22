@@ -67,6 +67,18 @@ class PhotoLibraryRawAssetSource : RawAssetSource {
         }
 
     /**
+     * The facts-only walk (capability `join-share-count`): same bounded fetch as [walkSince], but it reads
+     * only the cheap in-memory `PHAsset` facts and **never** calls `assetResourcesForAsset` — the ~110 ms
+     * per-asset XPC round-trip [walkSince] pays to build `rawResources`. A count needs no upload keys, so
+     * this is what lets the join surface recompute as the member sweeps the cutoff without re-paying the
+     * resource read for the whole in-scope set. `rawResources` is left empty (the GIF rule admits on this
+     * path — see [factSince]'s port doc). Off-main like every walk here.
+     */
+    override suspend fun factsSince(since: String): List<RawAsset> = withContext(Dispatchers.Default) {
+        factAssetsFrom(PHAsset.fetchAssetsWithOptions(fetchOptionsSince(since)), since)
+    }
+
+    /**
      * Push the capture-date bound **and the cheap origin exclusions** into the fetch, so
      * `assetResourcesForAsset` is issued only for assets that could plausibly be admitted — the difference
      * between one round-trip per library asset and one per event photo.
@@ -166,6 +178,33 @@ class PhotoLibraryRawAssetSource : RawAssetSource {
                 assetId = asset.localIdentifier,
                 creationDate = creationDate,
                 rawResources = rawResources,
+                mediaSubtypes = asset.mediaSubtypes.toLong(),
+                mediaType = asset.mediaType.toLong(),
+                pixelWidth = asset.pixelWidth.toLong(),
+                pixelHeight = asset.pixelHeight.toLong(),
+                hasAdjustments = asset.hasAdjustments,
+            )
+        }
+        return out
+    }
+
+    /**
+     * Map a fetch result to facts-only [RawAsset]s for the shareable-count preview: the cheap `PHAsset`
+     * properties the selection policy decides on, with **empty** `rawResources` — no `assetResourcesForAsset`
+     * call. The cutoff is applied on the cheap `creationDate` fact exactly as [rawAssetsFrom] does.
+     */
+    private fun factAssetsFrom(assets: PHFetchResult, since: String): List<RawAsset> {
+        val out = mutableListOf<RawAsset>()
+        var index = 0uL
+        while (index < assets.count) {
+            val asset = assets.objectAtIndex(index) as PHAsset
+            index++
+            val creationDate = asset.creationDate?.let { NSISO8601DateFormatter().stringFromDate(it) } ?: ""
+            if (creationDate < since) continue
+            out += RawAsset(
+                assetId = asset.localIdentifier,
+                creationDate = creationDate,
+                rawResources = emptyList(), // facts-only: no per-asset resource round-trip
                 mediaSubtypes = asset.mediaSubtypes.toLong(),
                 mediaType = asset.mediaType.toLong(),
                 pixelWidth = asset.pixelWidth.toLong(),

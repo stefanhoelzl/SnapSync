@@ -26,4 +26,10 @@ class InMemoryRawAssetSource(private val state: MutableStateFlow<List<RawAsset>>
         val wanted = localIdentifiers.toSet()
         return state.value.filter { it.assetId in wanted && it.creationDate >= since }
     }
+
+    // The facts-only walk: same capture-date bound as `walkSince`. The in-memory assets already carry only
+    // facts (their `rawResources` are whatever the test set), so there is nothing extra to strip — the real
+    // adapter's saving is skipping the per-asset resource round-trip, which this fake never made anyway.
+    override suspend fun factsSince(since: String): List<RawAsset> =
+        state.value.filter { it.creationDate >= since }
 }

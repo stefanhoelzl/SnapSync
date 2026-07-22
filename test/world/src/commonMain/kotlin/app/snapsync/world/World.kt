@@ -254,6 +254,12 @@ class World(
             // the operator then invokes the cycle by hand, exactly like every other world trigger.
             pumpSelectionChanged = {},
             photoLibrary = enumerator,
+            // The cheap facts-only walk for the shareable-count preview (capability `join-share-count`) —
+            // the same world-owned gallery cell the resource enumeration reads.
+            rawFactsSince = gallery.source::factsSince,
+            // The shared discovery cursor a cutoff-lowering reconfigure invalidates (capability
+            // `reconfigure-membership`) — the SAME store the world's upload cycle reads.
+            clearDiscoveryCursor = discoveryStore::clearToken,
             ledger = ledgerBackend,
             downloadStore = downloadStore,
             importer = importer,

@@ -78,29 +78,78 @@ fun excludedAssetIds(resources: List<Resource>): Set<String> =
         .filterValues { group -> isOriginExcluded(group) }
         .keys
 
+/**
+ * The asset ids among [assets] that the origin rules exclude — the **cheap-facts** twin of
+ * [excludedAssetIds], for the join-time shareable-count preview (capability `join-share-count`). It reads
+ * the origin facts straight off each [RawAsset] (all plain in-memory `PHAsset` properties, no
+ * `assetResourcesForAsset` round-trip) and delegates to the **same** [isOriginExcludedFacts] rule as the
+ * resource path, so the preview and the upload cycle share one policy rather than two copies.
+ *
+ * The **GIF** signal is the one fact that lives on the per-resource MIME, not on the asset: it is read from
+ * [RawAsset.rawResources] when they are present, and is `false` when a facts-only walk left them empty — the
+ * cheap count then *admits* a GIF, which is exactly the policy's admit-on-doubt posture (a stray meme is
+ * visible and harmless; the count is a preview, not the authoritative filter — the cycle still drops it).
+ */
+fun originExcludedAssetIds(assets: List<RawAsset>): Set<String> =
+    assets.asSequence()
+        .filter { asset ->
+            isOriginExcludedFacts(
+                subtypes = asset.mediaSubtypes,
+                isGif = asset.rawResources.any { it.mimeContentType == MIME_GIF },
+                hasAdjustments = asset.hasAdjustments,
+                mediaType = asset.mediaType,
+                pixelWidth = asset.pixelWidth,
+                pixelHeight = asset.pixelHeight,
+            )
+        }
+        .map { it.assetId }
+        .toSet()
+
 /** Whether every resource of one asset is excluded, decided on the facts the enumerator carried across. */
 private fun isOriginExcluded(assetResources: List<Resource>): Boolean {
-    val first = assetResources.first()
-    val meta = first.metadata
+    val meta = assetResources.first().metadata
+    return isOriginExcludedFacts(
+        subtypes = meta[RESOURCE_META_MEDIA_SUBTYPES]?.toLongOrNull() ?: SUBTYPE_NONE,
+        // Checked across ALL of the asset's resources: whichever one is the GIF, the asset is.
+        isGif = assetResources.any { it.metadata[RESOURCE_META_MIME] == MIME_GIF },
+        hasAdjustments = meta[RESOURCE_META_HAS_ADJUSTMENTS]?.toBooleanStrictOrNull() == true,
+        mediaType = meta[RESOURCE_META_MEDIA_TYPE]?.toLongOrNull() ?: MEDIA_TYPE_IMAGE,
+        // Absent dimensions parse to null → admit on doubt (never drop a real photo).
+        pixelWidth = meta[RESOURCE_META_PIXEL_WIDTH]?.toLongOrNull(),
+        pixelHeight = meta[RESOURCE_META_PIXEL_HEIGHT]?.toLongOrNull(),
+    )
+}
 
+/**
+ * The one origin-exclusion rule, decided on primitive facts, shared by the resource path
+ * ([excludedAssetIds]) and the cheap-facts path ([originExcludedAssetIds]) so the policy is never forked.
+ *
+ * Null [pixelWidth]/[pixelHeight] means the dimensions are unknown → **admit on doubt**.
+ */
+private fun isOriginExcludedFacts(
+    subtypes: Long,
+    isGif: Boolean,
+    hasAdjustments: Boolean,
+    mediaType: Long,
+    pixelWidth: Long?,
+    pixelHeight: Long?,
+): Boolean {
     // 1. Screenshots and screen recordings — exact, perfect recall, and the highest-frequency case.
-    val subtypes = meta[RESOURCE_META_MEDIA_SUBTYPES]?.toLongOrNull() ?: SUBTYPE_NONE
     if (subtypes and EXCLUDED_SUBTYPE_MASK != 0L) return true
 
-    // 2. Animated images. Checked across ALL of the asset's resources: whichever one is the GIF, the asset is.
-    if (assetResources.any { it.metadata[RESOURCE_META_MIME] == MIME_GIF }) return true
+    // 2. Animated images. A GIF is never a camera capture.
+    if (isGif) return true
 
     // 3. Resolution floors — compressed received media. Skipped entirely for an EDITED asset: a photo cropped
     //    in Photos renders at its cropped size and would otherwise be mistaken for a compressed download and
     //    dropped, which is precisely the false drop this policy exists to avoid.
-    if (meta[RESOURCE_META_HAS_ADJUSTMENTS]?.toBooleanStrictOrNull() == true) return false
+    if (hasAdjustments) return false
 
-    val width = meta[RESOURCE_META_PIXEL_WIDTH]?.toLongOrNull() ?: return false // unknown → admit on doubt
-    val height = meta[RESOURCE_META_PIXEL_HEIGHT]?.toLongOrNull() ?: return false
+    val width = pixelWidth ?: return false // unknown → admit on doubt
+    val height = pixelHeight ?: return false
     val area = width * height
     if (area <= 0L) return false // unknown/absent dimensions → admit on doubt, never drop a real photo
 
-    val mediaType = meta[RESOURCE_META_MEDIA_TYPE]?.toLongOrNull() ?: MEDIA_TYPE_IMAGE
     val floor = if (mediaType == MEDIA_TYPE_VIDEO) MIN_VIDEO_PIXEL_AREA else MIN_IMAGE_PIXEL_AREA
     return area < floor
 }

@@ -159,6 +159,9 @@ class WorldInspectorController(private val scope: CoroutineScope) {
         EventDetails.Failed -> JoinLoad.Failed
     }
 
+    /** The join-time shareable-count preview over the world gallery (capability `join-share-count`). */
+    suspend fun loadShareableCount(cutoff: String): Int? = world.core.loadShareableCount(cutoff)
+
     /** Confirm the join through the composed command bundle (enroll then provision); refresh after. */
     suspend fun commitJoin(
         eventId: String,

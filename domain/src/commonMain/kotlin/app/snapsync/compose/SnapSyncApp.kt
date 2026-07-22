@@ -22,6 +22,7 @@ import app.snapsync.feature.status.LedgerCounts
 import app.snapsync.feature.status.LedgerCountsPoller
 import app.snapsync.feature.status.OwnDeviceGalleryStatusSource
 import app.snapsync.feature.status.ReadingLedgerCountsSource
+import app.snapsync.feature.status.ShareableCountSource
 import app.snapsync.feature.status.SyncStatusSource
 import app.snapsync.feature.trust.DeviceAttestation
 import app.snapsync.feature.upload.ComposedProducers
@@ -36,6 +37,7 @@ import app.snapsync.model.Contribution
 import app.snapsync.model.EventConfig
 import app.snapsync.model.instantToCutoff
 import app.snapsync.model.PermissionStatus
+import app.snapsync.model.RawAsset
 import app.snapsync.model.Resource
 import app.snapsync.model.SelectionScope
 import app.snapsync.model.grantsPhotoAccess
@@ -67,6 +69,7 @@ import co.touchlab.kermit.Logger
 import kotlin.time.Instant
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
 
 /**
@@ -91,6 +94,10 @@ class AppPorts(
      *  bundle and never names the port). */
     val photoAccessRequester: PhotoAccessRequester,
     val photoLibrary: PhotoLibrary,
+    /** The **facts-only** cutoff-bounded gallery read for the join-time shareable-count preview
+     *  (capability `join-share-count`): a `RawAssetSource.factsSince` — cheap `PHAsset` facts, NO per-asset
+     *  resource round-trip. Default `{ emptyList() }` keeps the count at zero wherever it is not wired. */
+    val rawFactsSince: suspend (cutoff: String) -> List<RawAsset> = { emptyList() },
     /** Read-only in this graph: the app-side ledger handle (aggregates read; the arm never writes records). */
     val ledger: LedgerStore,
     val downloadStore: DownloadStore,
@@ -120,6 +127,10 @@ class AppPorts(
     val albumManager: AlbumManager,
     val albumMapStore: AlbumMapStore,
     val albumExcludedAssetIds: suspend (cutoff: String) -> Set<String>,
+    /** Invalidate the shared discovery cursor (capability `reconfigure-membership`): `ReconfigureEvent`
+     *  calls it on a cutoff-lowering so the next cycle re-enumerates and back-shares the newly-in-scope
+     *  older photos on both tiers. Default no-op keeps other compositions unaffected. */
+    val clearDiscoveryCursor: () -> Unit = {},
     val notifyLeave: suspend (eventId: String) -> Unit,
     val provision: suspend (EventConfig) -> Unit,
     val onEventMinted: suspend (eventId: String) -> Unit,
@@ -218,6 +229,32 @@ class AppCore internal constructor(
             albumExcludedAssetIds = ports.albumExcludedAssetIds,
         )
     }
+
+    // The join-time shareable-count preview (capability `join-share-count`): the SAME policy the cycle and
+    // `gallery` (N) apply, over the cheap facts read. GRANTED reads `rawFactsSince`; LIMITED re-filters the
+    // already-held selection snapshot (no fresh read); no usable grant → null → the surface omits the row.
+    private val shareableCountSource: ShareableCountSource by lazy {
+        ShareableCountSource(
+            factsSince = ports.rawFactsSince,
+            suppressedLocalIds = { ports.downloadStore.suppressedLocalIds() },
+            albumExcludedAssetIds = ports.albumExcludedAssetIds,
+        )
+    }
+
+    /**
+     * The join surface's live "how many photos from your gallery will be shared" query (capability
+     * `join-share-count`): for a candidate [cutoff] with sharing on, the count of own photos the policy
+     * admits, or `null` when the grant permits no count. Purely local — no backend LIST.
+     */
+    suspend fun loadShareableCount(cutoff: String): Int? =
+        shareableCountSource.count(
+            Contribution.Since(cutoff),
+            ports.photoAccess.permission.value,
+            selectionSnapshot = latestSelectionSnapshot.value,
+        )
+
+    /** The photo-access grant, exposed for the join surface's count-recompute trigger (a late resolve). */
+    val photoPermission: StateFlow<PermissionStatus> get() = ports.photoAccess.permission
 
     /** The real ledger-backed status source (ledger truth × permission × gallery total). */
     val syncStatusSource: SyncStatusSource by lazy {
@@ -326,6 +363,9 @@ class AppCore internal constructor(
             // the command's return.
             startDownloads = { eventId -> scope.launch { downloadController.reconcile(eventId) } },
             cancelDownloads = { downloadController.onLeaveOrSwitch() },
+            // A cutoff-lowering reconfigure re-shares the newly-in-scope older photos on both tiers by
+            // invalidating the forward-only discovery cursor (capability `reconfigure-membership`).
+            clearDiscoveryCursor = ports.clearDiscoveryCursor,
         )
     }
 
