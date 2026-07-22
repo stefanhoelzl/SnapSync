@@ -31,10 +31,10 @@
 
 ## 5. Site build + mirror deploy (Phase 1)
 
-- [ ] 5.1 Add a CI workflow that builds `site/` and mirror-deploys to the storage `site/` prefix: upload new (HTML at stable keys; assets at new hashed keys) THEN delete `site/` objects not in the new build — never clear-first
-- [ ] 5.2 Authenticate the deploy with the storage-zone password only (`BUNNY_STORAGE_ACCESS_KEY`); assert the bunny account key is absent from the job
-- [ ] 5.3 First cutover: deploy `site/` to storage before/independently of the api proxy change so `/` resolves; verify `GET /` returns the Astro page through the pull zone, `no-cache` on HTML, `immutable` on assets
-- [ ] 5.4 Confirm the nightly sweep still lists only `events/`, `files/devices/`, `devices/` and leaves `site/` untouched; add `site/` as an explicitly-ignored prefix and pin it in a sweep test
+- [x] 5.1 Add a CI workflow that builds `site/` and mirror-deploys to the storage `site/` prefix: upload new (HTML at stable keys; assets at new hashed keys) THEN delete `site/` objects not in the new build — never clear-first — `site-deploy.yml` + `site/scripts/deploy.mjs` (local walk verified: 8 build files → correct `site/` keys). Also fixed the now-broken `backend-deploy.yml` (removed the dead `deno task shots` step + `screenshots/**` trigger, moved to `site-deploy.yml`)
+- [x] 5.2 Authenticate the deploy with the storage-zone password only (`BUNNY_STORAGE_ACCESS_KEY`); assert the bunny account key is absent from the job
+- [ ] 5.3 First cutover: deploy `site/` to storage before/independently of the api proxy change so `/` resolves; verify `GET /` returns the Astro page through the pull zone, `no-cache` on HTML, `immutable` on assets — **NEEDS BUNNY CREDS**: workflow + script are correct and the walk is verified, but the actual storage write + pull-zone serve can only be confirmed on the deployed backend (see backend/README "Verify real uploads")
+- [x] 5.4 Confirm the nightly sweep still lists only `events/`, `files/devices/`, `devices/` and leaves `site/` untouched; add `site/` as an explicitly-ignored prefix and pin it in a sweep test — sweep is prefix-scoped by construction (nothing to explicitly exclude); pinned by the new "site/ prefix is never touched by the sweep" test
 
 ## 6. Move `/join` into `site/` (Phase 2)
 

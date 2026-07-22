@@ -322,3 +322,24 @@ Deno.test("markdownSummary → a GFM table with a row per tier and an errors lin
   // Dry-run is flagged in the heading.
   assertStringIncludes(markdownSummary({ ...s, dryRun: true }), "(dry-run — nothing deleted)");
 });
+
+// The browser-facing site (capability `web-site`) lives under a `site/` prefix, co-tenant with the private
+// data in the same zone. The sweep is PREFIX-SCOPED — it enumerates only `events/`, `files/devices/` and
+// `devices/` — so `site/` is invisible to it, and its hygiene is the mirror-deploy's job, not the sweep's.
+// This pins that load-bearing invariant: a future "simplify the sweep to a whole-zone walk" would delete
+// the live site, and this test would catch it.
+Deno.test("site/ prefix is never touched by the sweep", async () => {
+  const E = "aaaaaaaa-0000-4000-8000-0000000000ff";
+  const store = fake({
+    // A stale event so the sweep actually runs both phases (and would delete broadly if mis-scoped).
+    [`events/${E}/metadata.json`]: { json: mkMarker(E, "2026-06-01T00:00:00Z", STALE_ENDS) },
+    // Built-site objects that MUST survive.
+    ["site/index.html"]: { lc: "2026-06-01T00:00:00.000Z" },
+    ["site/join/index.html"]: { lc: "2026-06-01T00:00:00.000Z" },
+    ["site/_astro/app.abcdef12.js"]: { lc: "2026-06-01T00:00:00.000Z" },
+  });
+  await run(store);
+  assert(store.store.has("site/index.html"), "the sweep deleted the landing page");
+  assert(store.store.has("site/join/index.html"), "the sweep deleted the join page");
+  assert(store.store.has("site/_astro/app.abcdef12.js"), "the sweep deleted a site asset");
+});

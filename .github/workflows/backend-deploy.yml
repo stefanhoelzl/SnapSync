@@ -20,11 +20,9 @@ on:
   push:
     paths:
       - "backend/**"
-      # The served page embeds images DERIVED from these raws at build time (`deno task shots`), so a
-      # capture refresh must redeploy — otherwise the live page keeps serving the previous screenshots
-      # until some unrelated backend change happens to ship. The widening is exact, not a guess at a
-      # dependency graph: this path IS the derive's input. Capability `marketing-site`.
-      - "screenshots/**"
+      # The marketing page's screenshots are no longer embedded here — they are built into the Astro
+      # `site/` module and shipped by `site-deploy.yml`. A `screenshots/**` refresh triggers that
+      # workflow, not this one. Capability `web-site`.
       - ".github/workflows/backend-deploy.yml"
 
 jobs:
@@ -36,21 +34,6 @@ jobs:
       - uses: denoland/setup-deno@v2
         with:
           deno-version: v2.x
-
-      # The landing page's screenshots are DERIVED from the committed raws in screenshots/ (capability
-      # `marketing-site`) and are NOT committed — they are build output. Every step below that reads src/
-      # therefore needs this first: `deno check`, `deno test` and `deno bundle` all resolve
-      # `src/shots.generated.ts`, and without it the type-check fails on an unresolved import.
-      #
-      # It is a step here rather than folded into the deno.json tasks because THIS workflow invokes deno
-      # directly (`deno check src/*.ts`, not `deno task check`) — deliberately, so what CI runs is legible
-      # here rather than indirected through a task alias.
-      #
-      # Pure WASM (@jsquash), so it needs no system dependency — the same property that keeps a fresh clone
-      # checkable with only Deno installed.
-      - name: Derive the landing page's screenshots
-        working-directory: backend
-        run: deno task shots
 
       # --- Test gate: deploy runs only if these pass ---
       - name: Format check
