@@ -1,0 +1,51 @@
+name: site-deploy
+
+# Builds the browser-facing Astro site (site/) and mirror-deploys it to the bunny storage `site/` prefix
+# (capability web-site). The api Edge Script proxies that prefix (serveSiteObject), so this ships the
+# marketing landing and — later — the /join page as static assets, OFF the api bundle.
+#
+# It builds under NODE, not Deno: astro:assets/rolldown fail to resolve Astro's export conditions under
+# Deno's npm-compat. The api/ backend stays Deno-only; this separate module owns its Node toolchain.
+#
+# It holds ONLY the storage-zone password (BUNNY_STORAGE_ACCESS_KEY) — the same secret the nightly sweep
+# uses — and NEVER the bunny account key (which owns DNS + every user's photos). Routing is not configured
+# here: it lives in the api bundle as source-owned code (no pull-zone edge rules). Capability
+# backend-deployment.
+
+on:
+  push:
+    paths:
+      - "site/**"
+      # The landing page's screenshots are processed from these raws at build time (astro:assets), so a
+      # capture refresh must rebuild + redeploy the site. This path IS the build's input.
+      - "screenshots/**"
+      - ".github/workflows/site-deploy.yml"
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Install
+        working-directory: site
+        run: npm ci
+
+      # Build gate: runs on every branch. The build fails if astro:assets can't process the screenshots,
+      # so a broken capture or import is caught before main.
+      - name: Build
+        working-directory: site
+        run: npm run build
+
+      # Mirror-deploy: main only. Feature-branch pushes build (the gate) but do not touch the live site/
+      # prefix. Uploads the new build, then deletes stale objects — never clears the prefix first.
+      - name: Mirror-deploy to bunny storage
+        if: github.ref == 'refs/heads/main'
+        working-directory: site
+        env:
+          BUNNY_STORAGE_ACCESS_KEY: ${{ secrets.BUNNY_STORAGE_ACCESS_KEY }}
+        run: node scripts/deploy.mjs
