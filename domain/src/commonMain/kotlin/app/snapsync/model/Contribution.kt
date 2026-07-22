@@ -47,14 +47,20 @@ sealed interface Contribution {
     data object None : Contribution
 
     /**
-     * The membership contributes every policy-admitted asset captured at or after [cutoff].
+     * The membership contributes every policy-admitted asset captured **within** the capture-date range
+     * `[cutoff, until]` — at or after [cutoff] and at or before [until].
      *
-     * [cutoff] is the per-device, per-membership capture-date bound, already clamped to `max(chosen, startsAt)`
-     * at join. It is compared lexically against a resource's `creationDate`, so it must be in the cutoff string
-     * format the policy pins (see `photo-selection-policy`, "Cutoff string format invariant"). The origin
-     * exclusions apply on top of it; this type carries only the two scalars a membership chooses.
+     * [cutoff] is the per-device, per-membership capture-date **lower** bound, already clamped to
+     * `max(chosen, startsAt)` at join. [until] is the **upper** bound (the ceiling), already clamped to
+     * `min(chosen, endsAt)` at join — or **`null`** when the membership carries no ceiling (unbounded: a
+     * legacy membership persisted before the range existed, before the reconcile backfill supplies one;
+     * capability `event-rejoin-reconciliation`). A `null` upper bound admits every capture date, consistent
+     * with admit-on-doubt — never the fail-closed direction. Both are compared lexically against a
+     * resource's `creationDate`, so they must be in the cutoff string format the policy pins (see
+     * `photo-selection-policy`, "Cutoff string format invariant"). The origin exclusions apply on top; this
+     * type carries only the scalars a membership chooses.
      */
-    data class Since(val cutoff: String) : Contribution
+    data class Since(val cutoff: String, val until: String?) : Contribution
 
     companion object {
         /**
@@ -68,12 +74,12 @@ sealed interface Contribution {
          * not exist.
          *
          * So the roots pass **facts** — [includesUpload] read off `EventConfig.direction`, [cutoff] off
-         * `EventConfig.minPhotoDate` — and this function, which is tested, makes the decision. Primitives in,
-         * so this stays primitives-in (the same reason `DownloadController` takes a plain
-         * predicate).
+         * `EventConfig.minPhotoDate`, [until] off `EventConfig.maxPhotoDate` (`null` when the membership has
+         * no ceiling yet) — and this function, which is tested, makes the decision. Primitives in, so this
+         * stays primitives-in (the same reason `DownloadController` takes a plain predicate).
          */
-        fun of(includesUpload: Boolean, cutoff: String): Contribution =
-            if (includesUpload) Since(cutoff) else None
+        fun of(includesUpload: Boolean, cutoff: String, until: String?): Contribution =
+            if (includesUpload) Since(cutoff, until) else None
     }
 }
 
@@ -82,6 +88,17 @@ val Contribution.cutoffOrNull: String?
     get() = when (this) {
         Contribution.None -> null
         is Contribution.Since -> cutoff
+    }
+
+/**
+ * The upper capture-date bound (ceiling) to scope a walk by, or `null` when there is none — either the
+ * membership contributes nothing ([None]) or it carries an unbounded ceiling ([Since.until] `== null`).
+ * A `null` here means "no upper filter", never "exclude everything".
+ */
+val Contribution.untilOrNull: String?
+    get() = when (this) {
+        Contribution.None -> null
+        is Contribution.Since -> until
     }
 
 /** Whether this membership contributes at all — `false` short-circuits before any enumeration. */

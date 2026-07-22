@@ -36,8 +36,10 @@ import kotlinx.serialization.json.Json
 class CreateEventPayload(
     val name: String,
     val startsAt: String? = null,
+    val endsAt: String? = null,
     val autoJoin: Boolean = false,
     val minPhotoDate: String? = null,
+    val maxPhotoDate: String? = null,
     val direction: String? = null,
     val saveToAlbum: Boolean? = null,
 )

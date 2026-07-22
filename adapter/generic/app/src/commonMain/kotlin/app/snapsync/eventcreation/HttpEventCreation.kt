@@ -33,12 +33,12 @@ class HttpEventCreation(
 
     private val base = host.trimEnd('/')
 
-    override suspend fun create(name: String, startsAt: String): CreateOutcome =
+    override suspend fun create(name: String, startsAt: String, endsAt: String?): CreateOutcome =
         runCatching {
             val response = client.post("$base/events") {
                 contentType(ContentType.Application.Json)
                 setBody(
-                    json.encodeToString(CreateRequest.serializer(), CreateRequest(name, startsAt)),
+                    json.encodeToString(CreateRequest.serializer(), CreateRequest(name, startsAt, endsAt)),
                 )
             }
             when (response.status) {
@@ -50,8 +50,10 @@ class HttpEventCreation(
             }
         }.getOrElse { CreateOutcome.Transient }
 
+    // `endsAt` is sent verbatim like `startsAt`, and omitted entirely when null (encodeDefaults is off, so
+    // a null default is not serialized) — an absent `endsAt` is the backend's legacy `+30d` fallback signal.
     @Serializable
-    private class CreateRequest(val name: String, val startsAt: String)
+    private class CreateRequest(val name: String, val startsAt: String, val endsAt: String? = null)
 
     @Serializable
     private class CreatedDto(
@@ -59,5 +61,6 @@ class HttpEventCreation(
         val name: String? = null,
         val createdAt: String? = null,
         val startsAt: String? = null,
+        val endsAt: String? = null,
     )
 }

@@ -1,5 +1,6 @@
 package app.snapsync.feature.membership
 
+import app.snapsync.model.JoinLoad
 import app.snapsync.ports.ConfigSource
 import app.snapsync.ports.ConfigStore
 
@@ -19,23 +20,35 @@ class EventName(
 ) {
 
     /**
-     * Store [fetched] as the joined event's name — iff it resolved at all (`null` is the sealed
-     * no-result of a best-effort fetch — offline / 404 / parse — and stores nothing; part of this
-     * rule since the migration finale, so the flows' fetch-then-store is a single straight-line
-     * step), [eventId] is still the configured event (a fetch that resolves after a switch/leave
-     * must not resurrect the old membership), and the name actually changed (an unchanged name
-     * saves nothing).
+     * Fold a freshly [fetched] event-details result into the persisted membership — iff it resolved at
+     * all (`null` is the sealed no-result of a best-effort fetch — offline / 404 / parse — and stores
+     * nothing) and [eventId] is still the configured event (a fetch that resolves after a switch/leave
+     * must not resurrect the old membership). Two rewrites ride together, in **one** whole-config save:
+     * - **name refresh**: persist a changed event name (an unchanged one saves nothing);
+     * - **window backfill** (capability `event-rejoin-reconciliation`): a membership persisted before the
+     *   event window existed carries a `null` `endsAt`; fill `endsAt` and the ceiling `maxPhotoDate` from
+     *   the fetched details, but only when absent, so a chosen ceiling is never overwritten.
      *
-     * The save is the **whole** current config with only `name` replaced (`copy(name = fetched)`) —
-     * a name refresh must never clobber the persisted cutoff (capability `photo-selection-policy`)
-     * or any other membership field.
+     * The save is the **whole** current config with only those fields replaced — it must never clobber
+     * the persisted cutoff (capability `photo-selection-policy`) or any other membership field; and doing
+     * both edits in one save is what stops the name refresh and the backfill from losing each other.
      */
-    suspend fun storeEventNameIfChanged(eventId: String, fetched: String?) {
+    suspend fun storeRefreshedDetails(eventId: String, fetched: JoinLoad.Found?) {
         if (fetched == null) return
-        val current = configSource.config.value
-        if (current?.eventId == eventId && current.name != fetched) {
-            store.save(current.copy(name = fetched))
+        val current = configSource.config.value ?: return
+        if (current.eventId != eventId) return
+        var next = current
+        // Name refresh: persist a changed name (an unchanged one saves nothing).
+        if (current.name != fetched.name) next = next.copy(name = fetched.name)
+        // Window backfill (capability `event-rejoin-reconciliation`): a membership persisted before the
+        // event window existed carries a `null` `endsAt`; fill it — and its ceiling — from the freshly
+        // fetched details, so a legacy member gains the same range a new join has. Only when ABSENT, so a
+        // chosen ceiling is never overwritten. Done in the SAME `save` as the name so the two rewrites of
+        // the whole config cannot lose each other's field.
+        if (current.endsAt == null) {
+            next = next.copy(endsAt = fetched.endsAt, maxPhotoDate = current.maxPhotoDate ?: fetched.endsAt)
         }
+        if (next != current) store.save(next)
     }
 
     /**

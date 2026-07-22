@@ -14,10 +14,10 @@ import kotlinx.serialization.json.Json
 
 /**
  * [EventDirectory] over an injected Ktor [HttpClient] and host (Darwin on iOS, `MockEngine` in
- * tests). `GET <host>/events/<eventId>`: `200 { eventId, name, createdAt, startsAt }` with a **non-null
- * name AND a non-null `startsAt`** → [EventDetails.Found]; a `200` missing **either** →
- * [EventDetails.Failed] (malformed/transient, retryable); `404` → [EventDetails.NotFound]; any other
- * status / transport / parse failure → [EventDetails.Failed].
+ * tests). `GET <host>/events/<eventId>`: `200 { eventId, name, createdAt, startsAt, endsAt }` with a
+ * **non-null name, a non-null `startsAt`, AND a non-null `endsAt`** → [EventDetails.Found]; a `200`
+ * missing **any** → [EventDetails.Failed] (malformed/transient, retryable); `404` →
+ * [EventDetails.NotFound]; any other status / transport / parse failure → [EventDetails.Failed].
  */
 class HttpEventDirectory(
     private val client: HttpClient,
@@ -38,8 +38,9 @@ class HttpEventDirectory(
                     // invented floor (that would silently LOWER it).
                     val name = meta.name
                     val startsAt = meta.startsAt?.let(::canonicalOrNull)
-                    if (name != null && startsAt != null) {
-                        EventDetails.Found(name = name, startsAt = startsAt)
+                    val endsAt = meta.endsAt?.let(::canonicalOrNull)
+                    if (name != null && startsAt != null && endsAt != null) {
+                        EventDetails.Found(name = name, startsAt = startsAt, endsAt = endsAt)
                     } else {
                         EventDetails.Failed
                     }
@@ -72,5 +73,6 @@ class HttpEventDirectory(
         val name: String? = null,
         val createdAt: String? = null,
         val startsAt: String? = null,
+        val endsAt: String? = null,
     )
 }

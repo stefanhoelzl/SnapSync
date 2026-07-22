@@ -130,7 +130,7 @@ class UploadCycleTest {
         backend: InMemoryLedgerStore,
         platform: FakePlatform,
         store: DiscoveryStore = FakeStore(),
-        contribution: Contribution = Contribution.Since(TEST_CUTOFF),
+        contribution: Contribution = Contribution.Since(TEST_CUTOFF, until = null),
         saveToAlbum: Boolean = true,
         readGate: (() -> CycleGate)? = null,
         reconcile: suspend (String?) -> Boolean = { true }, // a settled join unless a test says otherwise
@@ -295,7 +295,7 @@ class UploadCycleTest {
                 if (joined) {
                     CycleGate.Run(
                         UploadConfig(TEST_HOST, TEST_EVENT),
-                        JoinedMembership(TEST_EVENT, Contribution.Since(TEST_CUTOFF), saveToAlbum = false),
+                        JoinedMembership(TEST_EVENT, Contribution.Since(TEST_CUTOFF, until = null), saveToAlbum = false),
                     )
                 } else {
                     CycleGate.NotJoined
@@ -878,7 +878,7 @@ class UploadCycleTest {
         backend: InMemoryLedgerStore,
         platform: FakePlatform,
         cutoff: String,
-    ): UploadCycle = cycle(backend, platform, contribution = Contribution.Since(cutoff))
+    ): UploadCycle = cycle(backend, platform, contribution = Contribution.Since(cutoff, until = null))
 
     @Test
     fun cutoff_excludes_pre_cutoff_resources_from_upload() = runTest {

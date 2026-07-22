@@ -19,12 +19,17 @@ class CreateEventTest {
     /** The event's start date, already canonical — the caller converts the local pick, not this layer. */
     private val startsAt = "2026-07-14T18:00:00Z"
 
+    /** The event's end date, already canonical — passed through the interactive create alongside startsAt. */
+    private val endsAt = "2026-07-21T18:00:00Z"
+
     private class FakeClient(private val outcome: CreateOutcome) : EventCreation {
         var lastName: String? = null
         var lastStartsAt: String? = null
-        override suspend fun create(name: String, startsAt: String): CreateOutcome {
+        var lastEndsAt: String? = null
+        override suspend fun create(name: String, startsAt: String, endsAt: String?): CreateOutcome {
             lastName = name
             lastStartsAt = startsAt
+            lastEndsAt = endsAt
             return outcome
         }
     }
@@ -37,10 +42,11 @@ class CreateEventTest {
         val scope = CoroutineScope(UnconfinedTestDispatcher(testScheduler))
         val useCase = CreateEvent(client, status, onMinted = { eventId -> provisioned = eventId }, scope = scope)
 
-        useCase.create("  My Party  ", startsAt)
+        useCase.create("  My Party  ", startsAt, endsAt)
 
         assertEquals("My Party", client.lastName) // trimmed before the call
         assertEquals(startsAt, client.lastStartsAt) // start date passed through VERBATIM, never re-derived
+        assertEquals(endsAt, client.lastEndsAt) // end date passed through VERBATIM too
         assertEquals(eventId, provisioned) // handed to the join-gate routing hook
         assertEquals(CreationStatus.Idle, status.creationStatus.value) // no success state
     }
@@ -54,7 +60,7 @@ class CreateEventTest {
             FakeClient(CreateOutcome.InvalidName), status, onMinted = { eventId -> provisioned = eventId }, scope = scope,
         )
 
-        useCase.create("x", startsAt)
+        useCase.create("x", startsAt, endsAt)
 
         assertEquals(CreationStatus.Failed(CreationFailureReason.INVALID_NAME), status.creationStatus.value)
         assertNull(provisioned)
@@ -69,7 +75,7 @@ class CreateEventTest {
             FakeClient(CreateOutcome.Transient), status, onMinted = { eventId -> provisioned = eventId }, scope = scope,
         )
 
-        useCase.create("x", startsAt)
+        useCase.create("x", startsAt, endsAt)
 
         assertEquals(CreationStatus.Failed(CreationFailureReason.SERVER), status.creationStatus.value)
         assertNull(provisioned)

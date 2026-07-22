@@ -539,7 +539,7 @@ object SnapSyncRoot {
     val renderHost: StatusContainerHost by lazy { shell.renderHost() }
 
     /** The join surface's shareable-count query (capability `join-share-count`) — live or forge, one switch. */
-    val shareableCount: suspend (cutoff: String) -> Int? get() = shell.shareableCount
+    val shareableCount: suspend (cutoff: String, until: String?) -> Int? get() = shell.shareableCount
 
     /** The photo grant, the count's recompute trigger. */
     val photoPermission: StateFlow<PermissionStatus> get() = shell.photoPermission
@@ -789,7 +789,7 @@ object SnapSyncRoot {
         // the whole point — the policy is otherwise unobservable without a joined event), so there is no
         // direction to read. `None` would skip the walk and prove nothing; this probe exists to make the walk
         // happen and report what it found.
-        app.gallery.refresh(Contribution.Since(cutoff))
+        app.gallery.refresh(Contribution.Since(cutoff, until = null))
         log.i { "policy probe: N=${app.gallery.size.value} (see the `gallery:` line above for the breakdown)" }
     }
 
@@ -897,7 +897,7 @@ object SnapSyncRoot {
         fun renderHost(): StatusContainerHost
 
         /** The join-time shareable-count query (capability `join-share-count`); `{ null }` in forge. */
-        val shareableCount: suspend (cutoff: String) -> Int?
+        val shareableCount: suspend (cutoff: String, until: String?) -> Int?
 
         /** The photo grant, the count's recompute trigger; a constant in forge. */
         val photoPermission: StateFlow<PermissionStatus>
@@ -930,7 +930,7 @@ object SnapSyncRoot {
         }
 
         // No live core to count against — the join surface renders no count row in forge (structural).
-        override val shareableCount: suspend (cutoff: String) -> Int? = { null }
+        override val shareableCount: suspend (cutoff: String, until: String?) -> Int? = { _, _ -> null }
         override val photoPermission: StateFlow<PermissionStatus> = MutableStateFlow(PermissionStatus.GRANTED)
 
         override fun applyLaunchEnvMembership() = log.invocation("applyLaunchEnvMembership") {
@@ -1007,7 +1007,7 @@ object SnapSyncRoot {
         override fun renderHost(): StatusContainerHost = host
 
         // The real permission-aware, no-network count query and the live grant (capability `join-share-count`).
-        override val shareableCount: suspend (cutoff: String) -> Int? get() = app::loadShareableCount
+        override val shareableCount: suspend (cutoff: String, until: String?) -> Int? get() = app::loadShareableCount
         override val photoPermission: StateFlow<PermissionStatus> get() = app.photoPermission
 
         override fun applyLaunchEnvMembership() = log.invocation("applyLaunchEnvMembership") {

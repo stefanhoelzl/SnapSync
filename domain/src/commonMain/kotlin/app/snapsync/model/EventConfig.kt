@@ -12,8 +12,11 @@ import kotlinx.serialization.Serializable
  * [autoJoin] is a **dev/test** hint (default `false`): when `true`, the join gate auto-confirms
  * instead of waiting for a tap (capability `join-event`). [minPhotoDate] is likewise a **dev/test**
  * key (default absent): a capture-date cutoff (UTC `…Z` string, capability `photo-selection-policy`) that,
- * on an auto-confirmed join, forces a specific cutoff so a headless launch can observe date filtering.
- * [direction] is likewise a **dev/test** key (default absent): a participation-direction override — one
+ * on an auto-confirmed join, forces a specific lower bound so a headless launch can observe date filtering.
+ * [maxPhotoDate] is likewise a **dev/test** key (default absent): the capture-date **ceiling** (UTC `…Z`
+ * string) that, on an auto-confirmed join, forces a specific upper bound — clamped to the event `endsAt` on
+ * the far side in `JoinEvent`, exactly as [minPhotoDate] is clamped to the floor — so a headless launch can
+ * exercise the upper end of the range. [direction] is likewise a **dev/test** key (default absent): a participation-direction override — one
  * of the [Direction.wire] tokens `both`/`upload`/`download` — that, on an auto-confirmed join, forces the
  * membership's direction (capability `join-event`) so a headless launch can exercise upload-only /
  * download-only without a tap. [saveToAlbum] is likewise a **dev/test** key (default absent): an override
@@ -21,8 +24,8 @@ import kotlinx.serialization.Serializable
  * album (capability `event-album`) so a headless launch can exercise album placement without a tap.
  * Because `encodeDefaults` is off, a `false`/absent value is not serialized, so the canonical
  * [encodeEventUrl] QR stays `eventId`-only; the strict decoder accepts
- * `autoJoin`/`minPhotoDate`/`direction`/`saveToAlbum` as known optional keys but still rejects any
- * *other* extra key (and a `direction` outside the known tokens).
+ * `autoJoin`/`minPhotoDate`/`maxPhotoDate`/`direction`/`saveToAlbum` as known optional keys but still
+ * rejects any *other* extra key (and a `direction` outside the known tokens).
  *
  * This class is the wire DTO: its property name is the exact JSON key of the event-link payload.
  */
@@ -31,6 +34,7 @@ class EventLinkPayload(
     val eventId: String,
     val autoJoin: Boolean = false,
     val minPhotoDate: String? = null,
+    val maxPhotoDate: String? = null,
     val direction: String? = null,
     val saveToAlbum: Boolean? = null,
 )
@@ -83,6 +87,22 @@ internal fun EventLinkPayload.sameAs(other: EventLinkPayload): Boolean =
  * (The `@Serializable` plugin honours a default that references an **earlier** constructor parameter —
  * verified by `EventConfigTest`. [startsAt] must therefore stay declared *after* [minPhotoDate].)
  *
+ * [endsAt] is the **event's** end date (capability `event-creation`) — the host's declared, immutable event
+ * window ceiling, same canonical `…Z` shape as [startsAt]. It is the ceiling the membership's upper bound is
+ * clamped to, the default upper bound a joiner sees, and what the "Event ended" status line compares against
+ * (`now > endsAt`, capability `sync-status-screen`). [maxPhotoDate] is this membership's chosen capture-date
+ * **upper** bound, always clamped to `min(chosen, endsAt)` at join (the clamp lives in `JoinEvent`), so
+ * `maxPhotoDate <= endsAt` holds for every config that has one.
+ *
+ * Both **default to `null`** — unlike [minPhotoDate], and for the opposite reason to it. A config persisted
+ * before these fields existed decodes with both absent, and a `null` [maxPhotoDate] means **unbounded** (no
+ * ceiling): the filter is `creationDate <= maxPhotoDate` applied only when non-null, so a null ceiling admits
+ * every capture date — the admit-on-doubt direction, never the fail-closed one. The reconcile backfill
+ * (capability `event-rejoin-reconciliation`) fetches the event's details and persists `endsAt` and
+ * `maxPhotoDate = endsAt` onto such a legacy config; until then it uploads exactly as it did before, nothing
+ * silently dropped. A **new** join always sets both non-null (the event's `endsAt` is required on a
+ * successful details load, capability `join-event`).
+ *
  * The extension reads the `eventId`, the `minPhotoDate` (the cutoff scopes its upload cycle), **and**
  * [saveToAlbum] (whether to add completed uploads to the event album) from the shared Keychain item; the
  * name is cosmetic, for the status-screen title.
@@ -98,6 +118,8 @@ data class EventConfig(
     val name: String = "",
     val minPhotoDate: String,
     val startsAt: String = minPhotoDate,
+    val endsAt: String? = null,
+    val maxPhotoDate: String? = null,
     val direction: Direction = Direction.Both,
     val saveToAlbum: Boolean = false,
 )

@@ -122,15 +122,23 @@ class StatusContainerHost(
     @OptIn(ExperimentalCoroutinesApi::class)
     private val nowTick: Flow<String> =
         config
-            .map { it?.startsAt }
+            .map { it?.let { c -> c.startsAt to c.endsAt } }
             .distinctUntilChanged()
-            .flatMapLatest { startsAt ->
+            .flatMapLatest { bounds ->
                 flow {
                     while (true) {
                         val now = cutoffFormatter.nowCutoff()
                         emit(now)
-                        // Canonical fixed-width UTC on both sides ⇒ lexicographic order IS chronological.
-                        if (startsAt == null || now >= startsAt) return@flow
+                        if (bounds == null) return@flow
+                        val (startsAt, endsAt) = bounds
+                        // Two wall-clock lines depend on this tick: NotStarted (until `startsAt`) and the
+                        // "Event ended" marker (until `endsAt`). Keep ticking while EITHER boundary is still
+                        // ahead; once both have passed, no clock-driven line can change, so the timer
+                        // self-terminates. Canonical fixed-width UTC ⇒ lexicographic order IS chronological.
+                        // (A backgrounded iOS app is suspended, so this is foreground-only in practice.)
+                        val startPassed = now >= startsAt
+                        val endPassed = endsAt == null || now >= endsAt
+                        if (startPassed && endPassed) return@flow
                         delay(NOT_STARTED_TICK_MILLIS)
                     }
                 }
@@ -254,8 +262,8 @@ class StatusContainerHost(
      * [CutoffFormatter] the join surface uses — so the app has exactly one origin of "now" and one
      * local→UTC conversion, and `:ui:screens` stays free of any clock or timezone knowledge.
      */
-    fun onCreateEvent(name: String, startsAt: LocalDateTime) =
-        intent { commands.create(name, cutoffFormatter.toCutoff(startsAt)) }
+    fun onCreateEvent(name: String, startsAt: LocalDateTime, endsAt: LocalDateTime) =
+        intent { commands.create(name, cutoffFormatter.toCutoff(startsAt), cutoffFormatter.toCutoff(endsAt)) }
 
     fun onRequestPermission() = intent { commands.requestAccess() }
 
@@ -290,8 +298,13 @@ class StatusContainerHost(
      * Fire-and-forget; the change lands via the config read-model on the next cycle, so no `UiState`
      * branch here. Opening/closing the surface is screen-local navigation and never reaches this door.
      */
-    fun onReconfigure(eventId: String, direction: Direction, minPhotoDate: String, saveToAlbum: Boolean) =
-        intent { commands.reconfigure(eventId, direction, minPhotoDate, saveToAlbum) }
+    fun onReconfigure(
+        eventId: String,
+        direction: Direction,
+        minPhotoDate: String,
+        maxPhotoDate: String?,
+        saveToAlbum: Boolean,
+    ) = intent { commands.reconfigure(eventId, direction, minPhotoDate, maxPhotoDate, saveToAlbum) }
 
     /**
      * An event link arrived (forwarded raw from the platform). Decode it with the shared codec; an
@@ -311,6 +324,7 @@ class StatusContainerHost(
                         autoConfirm(
                             eventId,
                             result.payload.minPhotoDate,
+                            result.payload.maxPhotoDate,
                             result.payload.direction,
                             result.payload.saveToAlbum,
                         )
@@ -333,20 +347,24 @@ class StatusContainerHost(
      * Confirm a first join with the chosen capture-date [cutoff], participation [direction], and album
      * choice [saveToAlbum] (capability `event-album`): enroll → provision (no leave).
      */
-    fun onConfirmJoin(cutoff: String, direction: Direction, saveToAlbum: Boolean) =
-        intent { commit(withLeave = false, cutoff = cutoff, direction = direction, saveToAlbum = saveToAlbum) }
+    fun onConfirmJoin(cutoff: String, until: String, direction: Direction, saveToAlbum: Boolean) =
+        intent {
+            commit(withLeave = false, cutoff = cutoff, until = until, direction = direction, saveToAlbum = saveToAlbum)
+        }
 
     /**
      * Confirm a switch: leave the current event, then enroll → provision the new one with [cutoff]. The
      * compact switch dialog carries no direction/album picker, so the caller supplies [Direction.Both]
      * and album-off.
      */
-    fun onConfirmSwitch(cutoff: String, direction: Direction) =
-        intent { commit(withLeave = true, cutoff = cutoff, direction = direction, saveToAlbum = false) }
+    fun onConfirmSwitch(cutoff: String, until: String, direction: Direction) =
+        intent { commit(withLeave = true, cutoff = cutoff, until = until, direction = direction, saveToAlbum = false) }
 
     /** Retry a failed commit — the leave (if any) already succeeded, so this re-runs only the join. */
-    fun onRetryJoin(cutoff: String, direction: Direction, saveToAlbum: Boolean) =
-        intent { commit(withLeave = false, cutoff = cutoff, direction = direction, saveToAlbum = saveToAlbum) }
+    fun onRetryJoin(cutoff: String, until: String, direction: Direction, saveToAlbum: Boolean) =
+        intent {
+            commit(withLeave = false, cutoff = cutoff, until = until, direction = direction, saveToAlbum = saveToAlbum)
+        }
 
     /**
      * The photo-access explainer was acknowledged ("I understand") — the **only** way the join gate
@@ -363,7 +381,7 @@ class StatusContainerHost(
         val p = pending.state.value ?: return@intent
         val ph = p.phase as? JoinPhase.ExplainAccess ?: return@intent
         commands.requestAccess()
-        pending.set(p.copy(phase = JoinPhase.Ready(ph.name, ph.startsAt)))
+        pending.set(p.copy(phase = JoinPhase.Ready(ph.name, ph.startsAt, ph.endsAt)))
     }
 
     /** Discard the pending join/switch, returning to the base screen. */
@@ -418,7 +436,7 @@ class StatusContainerHost(
             // successful load (the backend synthesizes one for legacy markers, and the details source
             // fails the load rather than invent one), so the default is simply the event's start. The
             // photo-access explainer still gates the Ready phase on a first join.
-            is JoinLoad.Found -> readyOrExplain(load.name, load.startsAt)
+            is JoinLoad.Found -> readyOrExplain(load.name, load.startsAt, load.endsAt)
             JoinLoad.NotFound -> JoinPhase.NotFound
             JoinLoad.Failed -> JoinPhase.LoadFailed
         }
@@ -440,38 +458,39 @@ class StatusContainerHost(
      *   would be a lie; `DENIED` goes straight to the confirm and meets the Settings affordance after
      *   joining. `GRANTED` needs no explanation.
      */
-    private fun readyOrExplain(name: String, startsAt: String): JoinPhase {
+    private fun readyOrExplain(name: String, startsAt: String, endsAt: String): JoinPhase {
         val firstJoin = config.value == null
         val neverAsked = permission.value == PermissionStatus.NOT_DETERMINED
         return if (firstJoin && neverAsked) {
-            JoinPhase.ExplainAccess(name, startsAt)
+            JoinPhase.ExplainAccess(name, startsAt, endsAt)
         } else {
-            JoinPhase.Ready(name, startsAt)
+            JoinPhase.Ready(name, startsAt, endsAt)
         }
     }
 
     private suspend fun commit(
         withLeave: Boolean,
         cutoff: String,
+        until: String,
         direction: Direction,
         saveToAlbum: Boolean,
     ) {
         val p = pending.state.value ?: return
         // Only a loaded (Ready) or previously-failed (CommitFailed) surface can be confirmed; a
-        // still-loading/blocked/committing phase ignores the action. Both carry a non-null name AND a
-        // non-null startsAt — so a commit can never reach `JoinEvent` without the floor.
-        val (name, startsAt) = when (val ph = p.phase) {
-            is JoinPhase.Ready -> ph.name to ph.startsAt
-            is JoinPhase.CommitFailed -> ph.name to ph.startsAt
+        // still-loading/blocked/committing phase ignores the action. Both carry a non-null name, startsAt
+        // AND endsAt — so a commit can never reach `JoinEvent` without the floor and ceiling.
+        val (name, startsAt, endsAt) = when (val ph = p.phase) {
+            is JoinPhase.Ready -> Triple(ph.name, ph.startsAt, ph.endsAt)
+            is JoinPhase.CommitFailed -> Triple(ph.name, ph.startsAt, ph.endsAt)
             else -> return
         }
-        pending.set(p.copy(phase = JoinPhase.Committing(name, startsAt)))
+        pending.set(p.copy(phase = JoinPhase.Committing(name, startsAt, endsAt)))
         if (withLeave) commands.leave()
-        if (commands.commitJoin(p.eventId, name, startsAt, cutoff, direction, saveToAlbum)) {
+        if (commands.commitJoin(p.eventId, name, startsAt, endsAt, cutoff, until, direction, saveToAlbum)) {
             // Success: config flips present via ConfigSource → reduces to Joined; drop the overlay.
             if (pending.state.value?.eventId == p.eventId) pending.set(null)
         } else if (pending.state.value?.eventId == p.eventId) {
-            pending.set(p.copy(phase = JoinPhase.CommitFailed(name, startsAt)))
+            pending.set(p.copy(phase = JoinPhase.CommitFailed(name, startsAt, endsAt)))
         }
     }
 
@@ -483,6 +502,7 @@ class StatusContainerHost(
     private suspend fun autoConfirm(
         eventId: String,
         explicitCutoff: String?,
+        explicitUntil: String?,
         explicitDirection: String?,
         explicitSaveToAlbum: Boolean?,
     ) {
@@ -504,13 +524,17 @@ class StatusContainerHost(
         // A TAP. (Cost, accepted: the dev loop can no longer force a cutoff below the event's start — it
         // creates the event with an early `startsAt` instead, which the unbounded picker permits.)
         val cutoff = explicitCutoff ?: load.startsAt
+        // The upper bound defaults to the event's `endsAt` (the full window), unless the event link supplied
+        // an explicit dev/test override. Like the cutoff, an explicit `maxPhotoDate` is passed RAW and
+        // clamped to the ceiling on the far side, inside `JoinEvent`.
+        val until = explicitUntil ?: load.endsAt
         // The direction defaults to Both, unless the event link supplied an explicit dev/test override
         // (`both`/`upload`/`download`); an unrecognized token was already rejected by the decoder.
         val direction = explicitDirection?.let(Direction::fromWire) ?: Direction.Both
         // The album choice defaults to off, unless the event link supplied an explicit dev/test override
         // (capability `event-album`).
         val saveToAlbum = explicitSaveToAlbum ?: false
-        if (!commands.commitJoin(eventId, load.name, load.startsAt, cutoff, direction, saveToAlbum)) {
+        if (!commands.commitJoin(eventId, load.name, load.startsAt, load.endsAt, cutoff, until, direction, saveToAlbum)) {
             log("autoJoin aborted: enrollment failed for $eventId")
         }
     }
@@ -589,12 +613,18 @@ private fun reduceFrom(
     }
     // A pending join for a DIFFERENT event while joined is a switch confirmation over the joined screen.
     val pendingSwitch = pending?.let { PendingSwitch(it.eventId, it.phase) }
+    // The event's declared end has passed: an "Event ended" marker prefixing the health line (capability
+    // `sync-status-screen`). Informational only — the health above is unchanged and sync continues in the
+    // backend grace window. `null` endsAt (a legacy config before its reconcile backfill) shows no marker.
+    // Canonical fixed-width UTC on both sides ⇒ lexicographic IS chronological.
+    val ended = config.endsAt?.let { it < nowCutoff } ?: false
     return UiState.Joined(
         health,
         pendingSwitch,
         // The resting affordance, not an attention state (capability `limited-photo-access`): a
         // partial grant's joined layer always offers the picker, whatever the health.
         canChoosePhotos = permission == PermissionStatus.LIMITED,
+        ended = ended,
     )
 }
 

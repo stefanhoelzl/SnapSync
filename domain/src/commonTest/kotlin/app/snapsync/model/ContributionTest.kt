@@ -25,7 +25,7 @@ class ContributionTest {
 
     @Test
     fun since_carries_the_membership_cutoff() {
-        val c: Contribution = Contribution.Since("2026-07-16T10:00:00Z")
+        val c: Contribution = Contribution.Since("2026-07-16T10:00:00Z", until = null)
         assertEquals("2026-07-16T10:00:00Z", c.cutoffOrNull)
         assertTrue(c.uploads)
     }
@@ -34,7 +34,7 @@ class ContributionTest {
     fun the_two_states_are_distinct_and_exhaustive() {
         // Exhaustiveness is the enforcement: a `when` over Contribution with no else must compile, so a
         // future third state forces every consumer to state its answer rather than inherit one.
-        val cases = listOf(Contribution.None, Contribution.Since("2026-01-01T00:00:00Z"))
+        val cases = listOf(Contribution.None, Contribution.Since("2026-01-01T00:00:00Z", until = null))
         val described = cases.map { c ->
             when (c) {
                 Contribution.None -> "none"
@@ -48,15 +48,18 @@ class ContributionTest {
     fun of_maps_a_membership_s_two_facts_and_is_the_only_place_that_decision_is_made() {
         // The roots pass facts; this makes the decision. Five untested composition roots would otherwise
         // each carry this `if` — which is how the download arm's root binding acquired its `?: true`.
-        assertEquals(Contribution.Since("2026-07-16T10:00:00Z"), Contribution.of(true, "2026-07-16T10:00:00Z"))
-        assertEquals(Contribution.None, Contribution.of(false, "2026-07-16T10:00:00Z"))
+        assertEquals(
+            Contribution.Since("2026-07-16T10:00:00Z", until = null),
+            Contribution.of(true, "2026-07-16T10:00:00Z", until = null),
+        )
+        assertEquals(Contribution.None, Contribution.of(false, "2026-07-16T10:00:00Z", until = null))
     }
 
     @Test
     fun of_drops_the_cutoff_when_nothing_is_contributed() {
         // A download-only membership still HAS a cutoff on its EventConfig — it is just meaningless. The
         // mapping discards it rather than carrying it into a state where it could be mistaken for scope.
-        assertNull(Contribution.of(includesUpload = false, cutoff = "2026-01-01T00:00:00Z").cutoffOrNull)
+        assertNull(Contribution.of(includesUpload = false, cutoff = "2026-01-01T00:00:00Z", until = null).cutoffOrNull)
     }
 
     @Test
@@ -64,7 +67,7 @@ class ContributionTest {
         // `Since("")` admits every creationDate — it is "share the whole library from the beginning of
         // time", NOT "share nothing". Anyone reaching for a default lands on this; the type offers None as
         // the only way to say nothing, and no default at all.
-        val everything = Contribution.Since("")
+        val everything = Contribution.Since("", until = null)
         assertTrue(everything.uploads)
         assertEquals("", everything.cutoffOrNull)
     }

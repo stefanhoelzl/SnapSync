@@ -45,6 +45,11 @@ sealed interface UiState {
         /** The joined layer offers "Choose more photos" — true exactly under a partial grant
          *  (capability `limited-photo-access`): a resting affordance, never an attention state. */
         val canChoosePhotos: Boolean = false,
+        /** The event's declared end has passed (`now > endsAt`, capability `sync-status-screen`): the
+         *  status line shows an "Event ended" marker prefixing the regular [health]. Informational only —
+         *  sync continues during the backend grace window; joining is closed server-side. `false` when the
+         *  membership has no stored `endsAt` (a legacy config before its reconcile backfill). */
+        val ended: Boolean = false,
     ) : UiState
 }
 
@@ -71,11 +76,11 @@ sealed interface JoinPhase {
      * is a silent no-op, so an explainer promising a dialog would be false).
      *
      * Its confirm requests permission and advances to [Ready]; its cancel discards the pending join like
-     * any other phase. [name] and [startsAt] are carried **solely to hand off to [Ready]** — this
-     * phase renders neither. Permission is a snapshot taken when the phase is chosen, not an observation:
-     * the phase advances only by user action.
+     * any other phase. [name], [startsAt] and [endsAt] are carried **solely to hand off to [Ready]** —
+     * this phase renders neither. Permission is a snapshot taken when the phase is chosen, not an
+     * observation: the phase advances only by user action.
      */
-    data class ExplainAccess(val name: String, val startsAt: String) : JoinPhase
+    data class ExplainAccess(val name: String, val startsAt: String, val endsAt: String) : JoinPhase
 
     /**
      * Details loaded; the confirm (Join/Switch) is offered. [name] is the event name (required,
@@ -86,11 +91,13 @@ sealed interface JoinPhase {
      * cutoff row's **default** and its **floor** (capability `photo-selection-policy`): the row cannot be
      * empty, and the confirm cannot join below it, so joining at whole-library scope is unrepresentable.
      *
-     * It also decides the cutoff selector's shape: when [startsAt] is in the **future**, the "Now" preset
+     * It also decides the range selector's shape: when [startsAt] is in the **future**, the "Now" preset
      * would clamp to this same instant, so it is offered **disabled** rather than as a button that
-     * visibly does nothing.
+     * visibly does nothing. [endsAt] is the event's **end date** — required, non-null, canonical UTC `…Z`
+     * — the range row's upper **default** and its **ceiling** (capability `photo-selection-policy`): the
+     * upper bound cannot exceed it, and it seeds the "Event end" preset.
      */
-    data class Ready(val name: String, val startsAt: String) : JoinPhase
+    data class Ready(val name: String, val startsAt: String, val endsAt: String) : JoinPhase
 
     /** The event does not exist (404) — an invalid/expired invite; no confirm offered. */
     data object NotFound : JoinPhase
@@ -99,15 +106,16 @@ sealed interface JoinPhase {
     data object LoadFailed : JoinPhase
 
     /** The confirm was taken; enroll + provision are in flight. [name] carries the loaded name. */
-    data class Committing(val name: String, val startsAt: String) : JoinPhase
+    data class Committing(val name: String, val startsAt: String, val endsAt: String) : JoinPhase
 
     /**
      * Enrollment/commit failed (or a switch's join failed after leaving); a Retry re-runs the join.
      *
-     * [startsAt] rides along for the same reason [name] does: a Retry commits **without** passing back
-     * through the loaded phase, so the floor has to still be here or the retry would join unclamped.
+     * [startsAt] and [endsAt] ride along for the same reason [name] does: a Retry commits **without**
+     * passing back through the loaded phase, so the floor and ceiling have to still be here or the retry
+     * would join unclamped.
      */
-    data class CommitFailed(val name: String, val startsAt: String) : JoinPhase
+    data class CommitFailed(val name: String, val startsAt: String, val endsAt: String) : JoinPhase
 }
 
 /**

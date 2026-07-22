@@ -1,5 +1,7 @@
 package app.snapsync.flow
 
+import app.snapsync.model.JoinLoad
+
 import app.snapsync.feature.download.DownloadController
 import app.snapsync.feature.membership.EventName
 import app.snapsync.feature.status.LedgerCountsPoller
@@ -56,7 +58,7 @@ class Foreground(
     private val activeEventId: () -> String?,
     /** Best-effort event-name fetch by id (`GET /events/:id`), or `null` on a miss/failure — the
      *  `EventDirectory` effect built in `compose/` (a port touch a flow may not make directly). */
-    private val fetchEventName: suspend (eventId: String) -> String?,
+    private val fetchEventDetails: suspend (eventId: String) -> JoinLoad.Found?,
     /** Renew the attestation token if it is stale (a wake point; covers launch, the first foreground). */
     private val refreshAttestation: () -> Unit,
 ) {
@@ -76,7 +78,7 @@ class Foreground(
         // Keep the event title current (fills a name a scan couldn't fetch while offline): fetch, then
         // let the membership rule decide whether the result is persisted (a no-result stores nothing).
         scope.launch {
-            activeEventId()?.let { id -> eventName.storeEventNameIfChanged(id, fetchEventName(id)) }
+            activeEventId()?.let { id -> eventName.storeRefreshedDetails(id, fetchEventDetails(id)) }
         }
         // Wake point (capability `device-attestation`): renew the token if stale. Also covers launch.
         refreshAttestation()

@@ -1,6 +1,7 @@
 package app.snapsync.feature.membership
 
 import app.snapsync.model.EventConfig
+import app.snapsync.model.JoinLoad
 import app.snapsync.ports.ConfigSource
 import app.snapsync.ports.ConfigStore
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -24,19 +25,28 @@ private class FakeConfig(initial: EventConfig?) : ConfigSource, ConfigStore {
     }
 }
 
+private const val STARTS = "2026-07-06T14:32:11Z"
+private const val ENDS = "2026-07-13T14:32:11Z"
+
 class EventNameTest {
 
+    // A NON-legacy membership: it already carries the event window, so a details refresh only touches the
+    // name (backfill is a no-op). This keeps the name-refresh assertions isolated from the backfill.
     private val joined = EventConfig(
         eventId = "E",
         name = "",
-        minPhotoDate = "2026-07-06T14:32:11Z",
-        startsAt = "2026-07-06T14:32:11Z",
+        minPhotoDate = STARTS,
+        startsAt = STARTS,
+        endsAt = ENDS,
+        maxPhotoDate = ENDS,
     )
+
+    private fun found(name: String, endsAt: String = ENDS) = JoinLoad.Found(name, STARTS, endsAt)
 
     @Test
     fun `stores a changed name as the whole config with the cutoff preserved`() = runTest {
         val config = FakeConfig(joined)
-        EventName(config, config).storeEventNameIfChanged("E", "Anna's Birthday")
+        EventName(config, config).storeRefreshedDetails("E", found("Anna's Birthday"))
         // The WHOLE config is saved with only `name` replaced — the cutoff (and every other
         // membership field) rides along untouched (capability `photo-selection-policy`).
         assertEquals(joined.copy(name = "Anna's Birthday"), config.saved)
@@ -45,7 +55,7 @@ class EventNameTest {
     @Test
     fun `an unchanged name saves nothing`() = runTest {
         val config = FakeConfig(joined.copy(name = "Anna's Birthday"))
-        EventName(config, config).storeEventNameIfChanged("E", "Anna's Birthday")
+        EventName(config, config).storeRefreshedDetails("E", found("Anna's Birthday"))
         assertNull(config.saved)
     }
 
@@ -53,14 +63,14 @@ class EventNameTest {
     fun `a fetch resolving for a different event saves nothing`() = runTest {
         // A stale fetch landing after a switch must not resurrect the departed membership's name.
         val config = FakeConfig(joined)
-        EventName(config, config).storeEventNameIfChanged("OTHER", "Someone Else's Party")
+        EventName(config, config).storeRefreshedDetails("OTHER", found("Someone Else's Party"))
         assertNull(config.saved)
     }
 
     @Test
     fun `no membership saves nothing`() = runTest {
         val config = FakeConfig(null)
-        EventName(config, config).storeEventNameIfChanged("E", "Anna's Birthday")
+        EventName(config, config).storeRefreshedDetails("E", found("Anna's Birthday"))
         assertNull(config.saved)
     }
 
@@ -69,14 +79,43 @@ class EventNameTest {
         // The best-effort fetch's sealed no-result (offline / 404 / parse) is part of this rule
         // since the migration finale, so the flows' fetch-then-store is one straight-line step.
         val config = FakeConfig(joined)
-        EventName(config, config).storeEventNameIfChanged("E", null)
+        EventName(config, config).storeRefreshedDetails("E", null)
         assertNull(config.saved)
+    }
+
+    @Test
+    fun `a legacy config missing the window is backfilled from the fetched details`() = runTest {
+        // capability `event-rejoin-reconciliation`: endsAt/maxPhotoDate absent (joined before the window
+        // existed) → filled from the fetched details, in the SAME save as any name refresh.
+        val legacy = EventConfig(eventId = "E", name = "Anna's Birthday", minPhotoDate = STARTS, startsAt = STARTS)
+        val config = FakeConfig(legacy)
+        EventName(config, config).storeRefreshedDetails("E", found("Anna's Birthday"))
+        assertEquals(legacy.copy(endsAt = ENDS, maxPhotoDate = ENDS), config.saved)
+    }
+
+    @Test
+    fun `backfill and name refresh ride in one save`() = runTest {
+        val legacy = EventConfig(eventId = "E", name = "", minPhotoDate = STARTS, startsAt = STARTS)
+        val config = FakeConfig(legacy)
+        EventName(config, config).storeRefreshedDetails("E", found("Anna's Birthday"))
+        assertEquals(
+            legacy.copy(name = "Anna's Birthday", endsAt = ENDS, maxPhotoDate = ENDS),
+            config.saved,
+        )
+    }
+
+    @Test
+    fun `an already-set window is never overwritten by a backfill`() = runTest {
+        // The member already chose a window; a later details fetch must not clobber their ceiling.
+        val config = FakeConfig(joined.copy(name = "Anna's Birthday", maxPhotoDate = STARTS))
+        EventName(config, config).storeRefreshedDetails("E", found("Anna's Birthday", endsAt = ENDS))
+        assertNull(config.saved) // name unchanged AND endsAt already present → nothing to write
     }
 
     @Test
     fun `fetchNeed is MISSING only for a nameless membership`() {
         val eventName = EventName(FakeConfig(null), FakeConfig(null))
-        kotlin.test.assertEquals(TitleNeed.MISSING, eventName.fetchNeed(""))
-        kotlin.test.assertEquals(TitleNeed.PRESENT, eventName.fetchNeed("Anna's Birthday"))
+        assertEquals(TitleNeed.MISSING, eventName.fetchNeed(""))
+        assertEquals(TitleNeed.PRESENT, eventName.fetchNeed("Anna's Birthday"))
     }
 }

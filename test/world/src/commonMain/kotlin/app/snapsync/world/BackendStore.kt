@@ -36,6 +36,7 @@ class CreatedEventDto(
     val name: String,
     val createdAt: String,
     val startsAt: String,
+    val endsAt: String,
 )
 
 /**
@@ -64,6 +65,8 @@ class BackendStore {
     // Per-event start date (capability `event-creation`). Absent ⇒ a legacy marker, whose `startsAt` the
     // mini-edge synthesizes from `createdAt` on read.
     private val eventStarts = mutableMapOf<String, String>()
+    // Per-event end date (capability `event-limits`). Absent ⇒ the mini-edge's GET synthesizes `+30d`.
+    private val eventEnds = mutableMapOf<String, String>()
     // Per-device config docs (`devices/<id>.json`, the push token) — a SEPARATE namespace from
     // the byte store, so a config never appears in [deviceListing] or the [union].
     private val deviceConfigs = mutableMapOf<String, String>()
@@ -90,10 +93,16 @@ class BackendStore {
      * An event registered with **no** `startsAt` models a marker written before start dates existed; the
      * mini-edge's `GET` then synthesizes one from `createdAt`, exactly as the real backend does.
      */
-    fun registerEvent(eventId: String, name: String? = null, startsAt: String? = null) {
+    fun registerEvent(
+        eventId: String,
+        name: String? = null,
+        startsAt: String? = null,
+        endsAt: String? = null,
+    ) {
         events.add(eventId)
         if (name != null) eventNames[eventId] = name
         if (startsAt != null) eventStarts[eventId] = startsAt
+        if (endsAt != null) eventEnds[eventId] = endsAt
     }
 
     /** The event's human name for `GET /events/<id>` (null when unnamed). */
@@ -101,6 +110,10 @@ class BackendStore {
 
     /** The event's start date for `GET /events/<id>` (null when registered without one — a legacy marker). */
     fun startsAtOf(eventId: String): String? = eventStarts[eventId]
+
+    /** The event's end date for `GET /events/<id>` (null when registered without one — the mini-edge then
+     *  synthesizes `startsAt + 30d`, exactly as the real backend's creator-supplied/fallback stamp). */
+    fun endsAtOf(eventId: String): String? = eventEnds[eventId]
 
     /**
      * Wipe a device's stored byte objects (models an operator deleting the `devices/<id>/files/`

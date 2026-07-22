@@ -53,16 +53,16 @@ fun StatusPane(
     // reviewable when a JoiningEvent state is forged), the full-stack world harness binds them to a
     // real `JoinEvent` over the world so `:app:desktop:run` drives the actual gate.
     loadJoinDetails: suspend (String) -> JoinLoad = { JoinLoad.Failed },
-    commitJoin: suspend (String, String, String, String, Direction, Boolean) -> Boolean =
-        { _, _, _, _, _, _ -> false },
+    commitJoin: suspend (String, String, String, String, String, String, Direction, Boolean) -> Boolean =
+        { _, _, _, _, _, _, _, _ -> false },
     // In-place membership reconfigure (capability `reconfigure-membership`): the forge leaves it inert
     // (the surface is reviewable, the command a no-op), the full-stack world harness binds it to the real
     // `world.core.userCommands.reconfigure` so `:app:desktop:run` drives the actual in-place rewrite.
-    reconfigure: suspend (String, Direction, String, Boolean) -> Unit = { _, _, _, _ -> },
+    reconfigure: suspend (String, Direction, String, String?, Boolean) -> Unit = { _, _, _, _, _ -> },
     // The join-time shareable-count preview (capability `join-share-count`): the forge leaves it inert
     // (no count row), the full-stack world harness binds it to `world.core.loadShareableCount` so
-    // `:app:desktop:run` shows the real count over the world gallery.
-    shareableCount: suspend (cutoff: String) -> Int? = { null },
+    // `:app:desktop:run` shows the real count over the world gallery. Range-aware (`[cutoff, until]`).
+    shareableCount: suspend (cutoff: String, until: String?) -> Int? = { _, _ -> null },
     // Attestation health (capability `device-attestation`): defaulted to always-attested so the
     // full-stack harness constructs unchanged; the forge harness injects a MutableAttestedSource so
     // `SyncHealth.Unattested` is forgeable.

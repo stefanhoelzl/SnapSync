@@ -113,6 +113,7 @@ import { Hono } from "hono";
 import { AwsClient } from "aws4fetch";
 import {
   canonicalPlusSeconds,
+  validateEndsAt,
   validateEventName,
   validateFilename,
   validateStartsAt,
@@ -739,16 +740,29 @@ export function createApp({ fetch: fetchImpl, config, now = Date.now }: Deps): H
     if (startsAt === null) {
       return c.text("invalid startsAt", 400); // missing/empty/non-canonical/not a real instant
     }
-    // The server is the source of truth for existence, so it mints the id; any client-supplied id is
-    // ignored (we only read `name` and `startsAt` above). The LIMITS are server-resolved too
-    // (capability `event-limits`): a client-supplied `endsAt`/`capacity` is equally ignored, and the
-    // config values are consulted HERE ONLY — enforcement reads the marker's own stamped fields.
+    // `endsAt` is now CREATOR-SUPPLIED at mint (capability `event-limits`). When the body carries one it is
+    // validated (canonical instant, strictly after `startsAt`, no upper cap) and stamped; when ABSENT it
+    // falls back to the legacy `startsAt + duration`, so old clients that send only `startsAt` keep working.
+    // A present-but-invalid `endsAt` is a 400. `capacity` stays server-resolved — a client-supplied
+    // `capacity` (and `eventId`) is still ignored. The config values are consulted HERE ONLY; enforcement
+    // reads the marker's own stamped fields.
+    const rawEndsAt = (body as { endsAt?: unknown } | null)?.endsAt;
+    let endsAt: string;
+    if (rawEndsAt === undefined || rawEndsAt === null) {
+      endsAt = canonicalPlusSeconds(startsAt, config.eventDurationSeconds); // legacy fallback
+    } else {
+      const validated = validateEndsAt(rawEndsAt, startsAt);
+      if (validated === null) {
+        return c.text("invalid endsAt", 400); // non-canonical / not a real instant / not after startsAt
+      }
+      endsAt = validated;
+    }
     const marker: EventMarker = {
       eventId: crypto.randomUUID(),
       name,
       createdAt: new Date().toISOString(),
       startsAt,
-      endsAt: canonicalPlusSeconds(startsAt, config.eventDurationSeconds),
+      endsAt,
       capacity: config.eventCapacity,
     };
 

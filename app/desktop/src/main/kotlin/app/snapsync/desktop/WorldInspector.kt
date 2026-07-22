@@ -93,10 +93,10 @@ fun WorldInspector(
             // `photo-selection-policy`). "started" is the ordinary case. "not started" is the interesting one:
             // the event's start is in the future, so the clamped cutoff admits NO photo — invoking the
             // extension must leave the backend column empty while the phone frame reads the clock line.
-            OutlinedButton(onClick = { controller.createEvent("Harness event", PAST_START) }) {
+            OutlinedButton(onClick = { controller.createEvent("Harness event", PAST_START, PAST_END) }) {
                 Text("Create event (started)")
             }
-            OutlinedButton(onClick = { controller.createEvent("Future event", FUTURE_START) }) {
+            OutlinedButton(onClick = { controller.createEvent("Future event", FUTURE_START, FUTURE_END) }) {
                 Text("Create event (not started)")
             }
             OutlinedButton(enabled = snap.joinedEventId != null, onClick = { controller.leaveEvent() }) { Text("Leave") }
@@ -272,3 +272,9 @@ private fun TwoUp(left: @Composable () -> Unit, right: @Composable () -> Unit) {
  */
 private const val PAST_START = "2026-01-01T00:00:00Z"
 private const val FUTURE_START = "2099-12-31T23:59:59Z"
+
+// The window ENDS (capability `event-limits`: creator-chosen). [PAST_END] is far future so the past-start
+// event stays LIVE with a wide window — a default-dated gallery asset is well inside `[PAST_START, PAST_END]`.
+// [FUTURE_END] follows [FUTURE_START] so the future event carries a valid `startsAt < endsAt` window.
+private const val PAST_END = "2099-12-31T23:59:59Z"
+private const val FUTURE_END = "2100-01-07T23:59:59Z"

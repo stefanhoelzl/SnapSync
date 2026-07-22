@@ -10,15 +10,18 @@ package app.snapsync.model
  */
 sealed interface JoinLoad {
     /**
-     * [name] is the (required, non-null) event name; [startsAt] is the event's **start date** — a
-     * canonical UTC `…Z` string, likewise required and non-null. It is both the cutoff row's default and
-     * its **floor** (capability `photo-selection-policy`).
+     * [name] is the (required, non-null) event name; [startsAt] is the event's **start date** and [endsAt]
+     * its **end date** — canonical UTC `…Z` strings, all required and non-null. [startsAt] is both the
+     * range row's lower default and its **floor**; [endsAt] is both its upper default and its **ceiling**
+     * (capability `photo-selection-policy`).
      *
-     * A details response lacking **either** is a transient [Failed], never a [Found] with a null name
-     * (the event-album title needs one) nor one with an invented `startsAt` (a defaulted floor is a
-     * *lowered* floor — the one direction the design forbids).
+     * A details response lacking **any** of the three is a transient [Failed], never a [Found] with a null
+     * name (the event-album title needs one) nor one with an invented `startsAt`/`endsAt` (a defaulted
+     * floor is a *lowered* floor and a defaulted ceiling a *raised* one — the directions the design
+     * forbids). The backend always serves `endsAt` on a `200` (an event with no stamped end is `gone` →
+     * 404), so the app never sees a null.
      */
-    data class Found(val name: String, val startsAt: String) : JoinLoad
+    data class Found(val name: String, val startsAt: String, val endsAt: String) : JoinLoad
     data object NotFound : JoinLoad
     data object Failed : JoinLoad
 }

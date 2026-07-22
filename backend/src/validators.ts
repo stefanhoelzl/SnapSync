@@ -82,3 +82,24 @@ export function validateStartsAt(raw: unknown): string | null {
 export function canonicalPlusSeconds(canonical: string, seconds: number): string {
   return new Date(Date.parse(canonical) + seconds * 1000).toISOString().replace(".000Z", "Z");
 }
+
+/**
+ * Validate a client-supplied event `endsAt` (capability `event-limits`: `endsAt` is now
+ * CREATOR-SUPPLIED at mint rather than stamped from a fixed global duration). Same canonical-instant
+ * discipline as {@link validateStartsAt} — right shape, a real instant that round-trips — PLUS it must
+ * fall strictly after the (already-validated) `startsAt`. There is deliberately NO upper-duration cap:
+ * creator-chosen duration is the additive future paid-tier gate, and enforcement reads only the marker's
+ * own stamped `endsAt`, so a long window is a product choice, not a validation concern. Returns the value
+ * when valid, else null (the caller maps null to a 400). An ABSENT `endsAt` is handled by the caller (it
+ * falls back to `startsAt + duration`), not here — this only judges a value that was supplied.
+ */
+export function validateEndsAt(raw: unknown, startsAt: string): string | null {
+  if (typeof raw !== "string") return null;
+  if (!CUTOFF_RE.test(raw)) return null;
+  const parsed = new Date(raw);
+  if (Number.isNaN(parsed.getTime())) return null;
+  if (parsed.toISOString().replace(".000Z", "Z") !== raw) return null;
+  // Both are fixed-width canonical UTC, so a plain string compare is chronological.
+  if (raw <= startsAt) return null; // must be strictly after the start
+  return raw;
+}

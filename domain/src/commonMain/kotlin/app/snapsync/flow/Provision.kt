@@ -1,5 +1,7 @@
 package app.snapsync.flow
 
+import app.snapsync.model.JoinLoad
+
 import app.snapsync.feature.album.AlbumCoordinator
 import app.snapsync.feature.download.DownloadController
 import app.snapsync.feature.membership.EventName
@@ -58,7 +60,7 @@ class Provision(
     private val isGranted: () -> Boolean,
     /** Best-effort event-name fetch by id, or `null` on a miss/failure — the `EventDirectory` effect
      *  built in `compose/` (a port touch a flow may not make directly). */
-    private val fetchEventName: suspend (eventId: String) -> String?,
+    private val fetchEventDetails: suspend (eventId: String) -> JoinLoad.Found?,
     /** Re-register the device's APNs push token with the backend on join (capability
      *  `push-registration`). Beyond the launch/rotation registration, joining re-`PUT`s the token so a
      *  device whose config the nightly sweep collected (capability `scheduled-cleanup`) is pushable again
@@ -94,7 +96,7 @@ class Provision(
         scope.launch { registerPush() }
         when (eventName.fetchNeed(cfg.name)) {
             TitleNeed.MISSING -> scope.launch {
-                eventName.storeEventNameIfChanged(cfg.eventId, fetchEventName(cfg.eventId))
+                eventName.storeRefreshedDetails(cfg.eventId, fetchEventDetails(cfg.eventId))
             }
             TitleNeed.PRESENT -> Unit
         }

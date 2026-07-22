@@ -60,9 +60,11 @@ context: |
 
   MISSION (decision record: changes/archive/2026-07-21-align-specs-with-mission). SnapSync
   lets joined users easily share the photos they take during an event. Events are
-  short-lived — days/weeks: celebrations, holidays, trips — and bounded by a
-  server-stamped lifetime; expiry deletes the event, and that IS how an event
-  ends (no capture-date end bound exists, by decision). Photos sync directly
+  short-lived — days/weeks: celebrations, holidays, trips — with a host-declared
+  date range (creator-chosen start AND end); the end is both the capture-date
+  ceiling and the server-stamped lifetime whose expiry deletes the event, and that
+  IS how an event ends. A member shares photos taken within a chosen sub-range of
+  the event window. Photos sync directly
   between device galleries: members never care how photos arrive, they just look
   at their own gallery. No accounts — a device UUID plus platform attestation is
   the whole identity — and setup/enrollment stay simple.

@@ -100,4 +100,30 @@ class CutoffTest {
         assertEquals(future, clampToFloor(chosen = "2026-07-14T12:00:00Z", startsAt = future))
         assertTrue("2026-07-14T12:00:00Z" < future, "no photo of today satisfies a 2099 cutoff")
     }
+
+    private val endsAt = "2026-07-21T18:00:00Z"
+
+    @Test
+    fun `an upper bound above the event end is clamped down to it`() {
+        assertEquals(endsAt, clampToCeiling(chosen = "2026-07-31T00:00:00Z", endsAt = endsAt))
+        assertEquals(endsAt, clampToCeiling(chosen = "2099-01-01T00:00:00Z", endsAt = endsAt))
+    }
+
+    @Test
+    fun `an upper bound at or below the event end is honored unchanged`() {
+        assertEquals(endsAt, clampToCeiling(chosen = endsAt, endsAt = endsAt))
+        assertEquals(
+            "2026-07-18T09:00:00Z",
+            clampToCeiling(chosen = "2026-07-18T09:00:00Z", endsAt = endsAt),
+        )
+    }
+
+    @Test
+    fun `the ceiling only ever narrows scope`() {
+        // Mirror of the floor property: the persisted upper bound is never ABOVE the event end, whatever
+        // the member picked — so the event can only narrow a membership's window, never widen it.
+        for (chosen in listOf("2026-07-14T00:00:00Z", endsAt, "2030-01-01T00:00:00Z")) {
+            assertTrue(clampToCeiling(chosen, endsAt) <= endsAt, "clampToCeiling($chosen) must be <= endsAt")
+        }
+    }
 }

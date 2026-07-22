@@ -60,7 +60,7 @@ class MiniEdgeTest {
     fun event_creation_mints_and_registers_marker() = runTest {
         val store = BackendStore()
         val outcome = HttpEventCreation(miniEdgeClient(store), host)
-            .create("Party", "2026-07-14T18:00:00Z")
+            .create("Party", "2026-07-14T18:00:00Z", null)
         assertTrue(outcome is CreateOutcome.Created)
         val eventId = (outcome as CreateOutcome.Created).eventId
         assertTrue(store.isRegistered(eventId))
@@ -70,7 +70,7 @@ class MiniEdgeTest {
     @Test
     fun event_creation_rejects_blank_name() = runTest {
         val outcome = HttpEventCreation(miniEdgeClient(BackendStore()), host)
-            .create("   ", "2026-07-14T18:00:00Z")
+            .create("   ", "2026-07-14T18:00:00Z", null)
         assertEquals(CreateOutcome.InvalidName, outcome)
     }
 
@@ -81,7 +81,7 @@ class MiniEdgeTest {
         // fails in the fast loop instead.
         val store = BackendStore()
         for (bad in listOf("2026-07-14T18:00:00.000Z", "2026-07-14T18:00:00+02:00", "", "yesterday")) {
-            val outcome = HttpEventCreation(miniEdgeClient(store), host).create("Party", bad)
+            val outcome = HttpEventCreation(miniEdgeClient(store), host).create("Party", bad, null)
             assertEquals(CreateOutcome.InvalidName, outcome, "startsAt=$bad must be rejected (400)")
         }
     }

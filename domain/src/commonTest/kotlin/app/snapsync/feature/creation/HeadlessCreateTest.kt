@@ -23,9 +23,11 @@ class HeadlessCreateTest {
     private class FakeClient(private val outcome: CreateOutcome) : EventCreation {
         var lastName: String? = null
         var lastStartsAt: String? = null
-        override suspend fun create(name: String, startsAt: String): CreateOutcome {
+        var lastEndsAt: String? = null
+        override suspend fun create(name: String, startsAt: String, endsAt: String?): CreateOutcome {
             lastName = name
             lastStartsAt = startsAt
+            lastEndsAt = endsAt
             return outcome
         }
     }

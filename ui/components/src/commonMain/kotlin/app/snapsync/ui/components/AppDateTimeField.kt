@@ -93,8 +93,8 @@ import kotlinx.datetime.todayIn
  * positioned centered **within the pane** — the enclosing full-width anchor gives [PaneCenteredProvider]
  * the pane's own bounds — so the full picker is visible at 390pt on device and in the harness alike.
  *
- * Shared by [AppEventStartSection]'s row and [AppCutoffChoices] so both surfaces present the *same*
- * picker; the dialog stays internal to this module.
+ * Used by [AppRangePresetChoices]' per-handle Custom rows (each a single instant within the event window);
+ * the range span itself is picked by [DateTimeRangePickerDialog]. The dialog stays internal to this module.
  */
 @Composable
 internal fun DateTimePickerDialog(
@@ -102,6 +102,7 @@ internal fun DateTimePickerDialog(
     onDismiss: () -> Unit,
     onConfirm: (LocalDateTime) -> Unit,
     minimum: LocalDateTime? = null,
+    maximum: LocalDateTime? = null,
 ) {
     val scheme = MaterialTheme.colorScheme
     val today = remember { Clock.System.todayIn(TimeZone.currentSystemDefault()) }
@@ -114,6 +115,7 @@ internal fun DateTimePickerDialog(
     var minute by remember { mutableStateOf(initial?.minute ?: 0) }
 
     val floorDate = minimum?.date
+    val ceilingDate = maximum?.date
 
     // The full-width anchor: its bounds ARE the pane content width, so the position provider can centre the
     // card within the pane rather than within the (wider, in the harness) host window.
@@ -155,6 +157,7 @@ internal fun DateTimePickerDialog(
                         selected = selectedDate,
                         today = today,
                         floor = floorDate,
+                        ceiling = ceilingDate,
                         onPick = { selectedDate = it },
                     )
                     TimeWheels(
@@ -187,6 +190,297 @@ internal fun DateTimePickerDialog(
                     }
                 }
             }
+        }
+    }
+}
+
+/**
+ * The **dual-handle range** variant of the one-dialog picker (capability `design-system`): the same
+ * hand-drawn single-month calendar, but the user taps a **start day** then an **end day** to select an
+ * inclusive `[from, until]` span, with **two** time-wheel pairs — a **From time** and an **Until time** —
+ * beneath it. One confirmation commits the whole span.
+ *
+ * Selection is a three-tap cycle: with a complete range showing, the next tap **resets** to a new start
+ * (span cleared); the tap after that sets the end (a same-day range is that same day tapped twice). A tap
+ * **earlier** than the pending start moves the start earlier rather than forming an inverted range — so an
+ * `until` before `from` is unreachable. Tapping a new day span changes **only the dates**; the two wheel
+ * times are preserved (they are independent state).
+ *
+ * The optional `[minimum, maximum]` **window** (either bound absent) greys days outside it and constrains
+ * the picker; the create surface passes **no** window, so any day/time is selectable and only `start < end`
+ * is required (the caller enforces that). A day-grain calendar cannot forbid an out-of-window *hour* on a
+ * boundary day, so the confirmed instants are additionally coerced into the window here.
+ */
+@Composable
+internal fun DateTimeRangePickerDialog(
+    initialFrom: LocalDateTime,
+    initialUntil: LocalDateTime,
+    minimum: LocalDateTime?,
+    maximum: LocalDateTime?,
+    onDismiss: () -> Unit,
+    onConfirm: (from: LocalDateTime, until: LocalDateTime) -> Unit,
+) {
+    val scheme = MaterialTheme.colorScheme
+    val today = remember { Clock.System.todayIn(TimeZone.currentSystemDefault()) }
+
+    // The span. `endDate == null` means mid-selection (only the start is placed); it resolves to the start
+    // for both the highlight and the confirmed value, so a single-tap day is a valid same-day range.
+    var startDate by remember { mutableStateOf(initialFrom.date) }
+    var endDate by remember { mutableStateOf<LocalDate?>(initialUntil.date) }
+    var visibleMonth by remember {
+        mutableStateOf(LocalDate(initialFrom.date.year, initialFrom.date.month.ordinal.plus(1), 1))
+    }
+    var fromHour by remember { mutableStateOf(initialFrom.hour) }
+    var fromMinute by remember { mutableStateOf(initialFrom.minute) }
+    var untilHour by remember { mutableStateOf(initialUntil.hour) }
+    var untilMinute by remember { mutableStateOf(initialUntil.minute) }
+
+    val floorDate = minimum?.date
+    val ceilingDate = maximum?.date
+
+    fun onPick(picked: LocalDate) {
+        if (endDate != null) {
+            // A complete range is showing → begin a fresh selection at the tapped day.
+            startDate = picked
+            endDate = null
+        } else if (picked < startDate) {
+            // Mid-selection, tapped before the start → move the start earlier (never an inverted range).
+            startDate = picked
+        } else {
+            // Mid-selection, tapped on/after the start → close the span.
+            endDate = picked
+        }
+    }
+
+    Box(modifier = Modifier.fillMaxWidth()) {
+        Popup(
+            popupPositionProvider = remember { PaneCenteredProvider() },
+            onDismissRequest = onDismiss,
+            properties = PopupProperties(focusable = true),
+        ) {
+            Surface(
+                modifier = Modifier.width(340.dp),
+                shape = RoundedCornerShape(24.dp),
+                color = scheme.surface,
+                border = BorderStroke(1.dp, scheme.outlineVariant),
+                shadowElevation = 16.dp,
+            ) {
+                Column(
+                    modifier = Modifier
+                        .padding(20.dp)
+                        .verticalScroll(rememberScrollState()),
+                    verticalArrangement = Arrangement.spacedBy(10.dp),
+                ) {
+                    Text(
+                        text = "Date & time",
+                        style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold),
+                        color = scheme.onSurface,
+                        modifier = Modifier.semantics { heading() },
+                    )
+                    MonthHeader(
+                        month = visibleMonth,
+                        onPrev = { visibleMonth = visibleMonth.plus(-1L, DateTimeUnit.MONTH) },
+                        onNext = { visibleMonth = visibleMonth.plus(1L, DateTimeUnit.MONTH) },
+                    )
+                    WeekdayHeader()
+                    RangeCalendarGrid(
+                        visibleMonth = visibleMonth,
+                        rangeStart = startDate,
+                        rangeEnd = endDate ?: startDate,
+                        today = today,
+                        floor = floorDate,
+                        ceiling = ceilingDate,
+                        onPick = { onPick(it) },
+                    )
+                    // From and Until times sit side by side — two captioned wheel pairs sharing the row.
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(12.dp),
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            WheelCaption("From time")
+                            TimeWheels(
+                                hour = fromHour,
+                                minute = fromMinute,
+                                onHour = { fromHour = it },
+                                onMinute = { fromMinute = it },
+                                hourDescription = "From hour",
+                                minuteDescription = "From minute",
+                            )
+                        }
+                        Column(modifier = Modifier.weight(1f)) {
+                            WheelCaption("Until time")
+                            TimeWheels(
+                                hour = untilHour,
+                                minute = untilMinute,
+                                onHour = { untilHour = it },
+                                onMinute = { untilMinute = it },
+                                hourDescription = "Until hour",
+                                minuteDescription = "Until minute",
+                            )
+                        }
+                    }
+                    Row(
+                        modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        Box(Modifier.weight(1f)) { SecondaryButton(label = "Cancel", onClick = onDismiss) }
+                        Box(Modifier.weight(1f)) {
+                            PrimaryButton(
+                                label = "OK",
+                                onClick = {
+                                    val eDate = endDate ?: startDate
+                                    var from = LocalDateTime(
+                                        startDate.year, startDate.month.ordinal.plus(1), startDate.day,
+                                        fromHour, fromMinute,
+                                    )
+                                    var until = LocalDateTime(
+                                        eDate.year, eDate.month.ordinal.plus(1), eDate.day,
+                                        untilHour, untilMinute,
+                                    )
+                                    // Coerce each bound into the window (the calendar cannot forbid a
+                                    // boundary-day hour outside it).
+                                    if (minimum != null && from < minimum) from = minimum
+                                    if (maximum != null && until > maximum) until = maximum
+                                    onConfirm(from, until)
+                                },
+                            )
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+/** The small caption above each of the range dialog's two wheel pairs. */
+@Composable
+private fun WheelCaption(text: String) {
+    Text(
+        text = text,
+        style = MaterialTheme.typography.labelMedium,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+    )
+}
+
+/**
+ * The month grid in **range mode**: the two endpoint days are filled with the brand-green circle, the days
+ * strictly between them wear a lighter `primaryContainer` band, and days outside the `[floor, ceiling]`
+ * window are greyed and inert. Layout mirrors [CalendarGrid]; only the per-day treatment differs.
+ */
+@Composable
+private fun RangeCalendarGrid(
+    visibleMonth: LocalDate,
+    rangeStart: LocalDate,
+    rangeEnd: LocalDate,
+    today: LocalDate,
+    floor: LocalDate?,
+    ceiling: LocalDate?,
+    onPick: (LocalDate) -> Unit,
+) {
+    val firstOfMonth = LocalDate(visibleMonth.year, visibleMonth.month.ordinal.plus(1), 1)
+    val leadingBlanks = firstOfMonth.dayOfWeek.ordinal // Monday == 0
+    val daysInMonth = firstOfMonth.daysUntil(firstOfMonth.plus(1L, DateTimeUnit.MONTH))
+    val rows = (leadingBlanks + daysInMonth + 6) / 7
+
+    Column(
+        modifier = Modifier.selectableGroup(),
+        verticalArrangement = Arrangement.spacedBy(2.dp),
+    ) {
+        for (row in 0 until rows) {
+            Row(modifier = Modifier.fillMaxWidth()) {
+                for (col in 0 until 7) {
+                    val dayNumber = row * 7 + col - leadingBlanks + 1
+                    Box(modifier = Modifier.weight(1f), contentAlignment = Alignment.Center) {
+                        if (dayNumber in 1..daysInMonth) {
+                            val date = LocalDate(firstOfMonth.year, firstOfMonth.month.ordinal.plus(1), dayNumber)
+                            RangeDayCell(
+                                date = date,
+                                isStart = date == rangeStart,
+                                isEnd = date == rangeEnd,
+                                inRange = date > rangeStart && date < rangeEnd,
+                                isToday = date == today,
+                                enabled = (floor == null || date >= floor) && (ceiling == null || date <= ceiling),
+                                onClick = { onPick(date) },
+                            )
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+/**
+ * One day in range mode. An endpoint (start or end) is the filled brand circle; a strictly-between day gets
+ * the `primaryContainer` band across the whole cell; a below/above-window day is muted and inert. The whole
+ * cell is one [selectable] carrying the FULL date as its contentDescription, reporting `selected` on either
+ * endpoint — the same accessibility contract [DayCell] carries.
+ */
+@Composable
+private fun RangeDayCell(
+    date: LocalDate,
+    isStart: Boolean,
+    isEnd: Boolean,
+    inRange: Boolean,
+    isToday: Boolean,
+    enabled: Boolean,
+    onClick: () -> Unit,
+) {
+    val scheme = MaterialTheme.colorScheme
+    val endpoint = isStart || isEnd
+    val fill = if (endpoint) scheme.primary else Color.Transparent
+    val ring = if (isToday && !endpoint && !inRange) scheme.primary else Color.Transparent
+    val textColor = when {
+        endpoint -> scheme.onPrimary
+        !enabled -> scheme.onSurfaceVariant.copy(alpha = 0.35f)
+        else -> scheme.onSurface
+    }
+    val label = buildString {
+        append(weekdayName(date))
+        append(' ')
+        append(date.day)
+        append(' ')
+        append(monthName(date.month.ordinal.plus(1)))
+        append(' ')
+        append(date.year)
+        if (isToday) append(", today")
+    }
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            // The connecting band for strictly-between days spans the full cell width so the range reads as
+            // one continuous stripe rather than isolated dots.
+            .background(if (inRange) scheme.primaryContainer else Color.Transparent)
+            .selectable(
+                selected = endpoint,
+                enabled = enabled,
+                role = Role.Button,
+                onClick = onClick,
+            )
+            .semantics { contentDescription = label },
+        contentAlignment = Alignment.Center,
+    ) {
+        Box(
+            modifier = Modifier
+                .padding(1.dp)
+                .size(38.dp)
+                .clip(CircleShape)
+                .background(fill)
+                .border(
+                    width = if (ring != Color.Transparent) 1.5.dp else 0.dp,
+                    color = ring,
+                    shape = CircleShape,
+                ),
+            contentAlignment = Alignment.Center,
+        ) {
+            Text(
+                text = date.day.toString(),
+                style = MaterialTheme.typography.bodyMedium.copy(
+                    fontWeight = if (endpoint || isToday) FontWeight.Bold else FontWeight.Normal,
+                ),
+                color = textColor,
+            )
         }
     }
 }
@@ -284,6 +578,7 @@ private fun CalendarGrid(
     selected: LocalDate,
     today: LocalDate,
     floor: LocalDate?,
+    ceiling: LocalDate? = null,
     onPick: (LocalDate) -> Unit,
 ) {
     val firstOfMonth = LocalDate(visibleMonth.year, visibleMonth.month.ordinal.plus(1), 1)
@@ -311,7 +606,9 @@ private fun CalendarGrid(
                                 date = date,
                                 selected = date == selected,
                                 isToday = date == today,
-                                enabled = floor == null || date >= floor,
+                                // A day is selectable only inside the supplied window (either bound may be
+                                // absent): at or after the floor AND at or before the ceiling.
+                                enabled = (floor == null || date >= floor) && (ceiling == null || date <= ceiling),
                                 onClick = { onPick(date) },
                             )
                         }
@@ -417,6 +714,10 @@ private fun TimeWheels(
     minute: Int,
     onHour: (Int) -> Unit,
     onMinute: (Int) -> Unit,
+    // Overridable so the range dialog can label its two wheel pairs distinctly ("From hour"/"Until hour")
+    // rather than presenting two identically-described "Hour" columns.
+    hourDescription: String = "Hour",
+    minuteDescription: String = "Minute",
 ) {
     Box(
         modifier = Modifier
@@ -441,7 +742,7 @@ private fun TimeWheels(
                 onIndexChange = onHour,
                 label = { it.toString().padStart(2, '0') },
                 modifier = Modifier.width(52.dp).semantics {
-                    contentDescription = "Hour"
+                    contentDescription = hourDescription
                     stateDescription = hour.toString().padStart(2, '0')
                 },
             )
@@ -457,7 +758,7 @@ private fun TimeWheels(
                 onIndexChange = onMinute,
                 label = { it.toString().padStart(2, '0') },
                 modifier = Modifier.width(52.dp).semantics {
-                    contentDescription = "Minute"
+                    contentDescription = minuteDescription
                     stateDescription = minute.toString().padStart(2, '0')
                 },
             )

@@ -2,6 +2,7 @@ import { assertEquals } from "@std/assert";
 import {
   canonicalPlusSeconds,
   MAX_EVENT_NAME_LENGTH,
+  validateEndsAt,
   validateEventName,
   validateFilename,
   validateStartsAt,
@@ -106,6 +107,32 @@ Deno.test("validateStartsAt: rejects empty and non-string input", () => {
   assertEquals(validateStartsAt(undefined), null);
   assertEquals(validateStartsAt(null), null);
   assertEquals(validateStartsAt(42), null);
+});
+
+Deno.test("validateEndsAt: accepts a canonical instant strictly after startsAt", () => {
+  const startsAt = "2026-07-14T18:00:00Z";
+  assertEquals(validateEndsAt("2026-07-21T23:00:00Z", startsAt), "2026-07-21T23:00:00Z");
+  // One second after start is enough; no upper-duration cap, so years ahead is fine too.
+  assertEquals(validateEndsAt("2026-07-14T18:00:01Z", startsAt), "2026-07-14T18:00:01Z");
+  assertEquals(validateEndsAt("2031-07-14T18:00:00Z", startsAt), "2031-07-14T18:00:00Z");
+});
+
+Deno.test("validateEndsAt: rejects an end at or before startsAt", () => {
+  const startsAt = "2026-07-14T18:00:00Z";
+  assertEquals(validateEndsAt("2026-07-14T18:00:00Z", startsAt), null); // equal
+  assertEquals(validateEndsAt("2026-07-14T17:59:59Z", startsAt), null); // before
+  assertEquals(validateEndsAt("2001-01-01T00:00:00Z", startsAt), null); // long before
+});
+
+Deno.test("validateEndsAt: rejects off-canonical shapes and non-instants", () => {
+  const startsAt = "2026-07-14T18:00:00Z";
+  assertEquals(validateEndsAt("2026-07-21T23:00:00.000Z", startsAt), null); // millis
+  assertEquals(validateEndsAt("2026-07-21T23:00:00", startsAt), null); // no Z
+  assertEquals(validateEndsAt("2026-13-45T99:99:99Z", startsAt), null); // not a real instant
+  assertEquals(validateEndsAt("", startsAt), null);
+  assertEquals(validateEndsAt(undefined, startsAt), null);
+  assertEquals(validateEndsAt(null, startsAt), null);
+  assertEquals(validateEndsAt(42, startsAt), null);
 });
 
 Deno.test("canonicalPlusSeconds: adds whole seconds and stays in the canonical cutoff shape", () => {
