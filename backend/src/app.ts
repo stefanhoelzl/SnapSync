@@ -160,28 +160,10 @@ import { classifyEvent, type MemberState, resolveMembership } from "./lifecycle.
 export { classifyEvent } from "./lifecycle.ts";
 export type { FetchLike } from "./storage.ts";
 
-// The marketing/landing page (capability `marketing-site`) is no longer embedded here — it is built by the
-// `site/` Astro module and served by proxying the storage `site/` prefix (capability `web-site`, see
-// `serveSiteObject` + the `/` and `/_astro/*` routes below). The `shots` pipeline that inlined its
-// screenshots as `data:` URIs is gone with it.
-//
-// The no-app download page (capability `web-event-download`), served at `GET /join`, is still embedded and
-// served verbatim from memory; it moves into `site/` in Phase 2.
-import DOWNLOAD_HTML from "./download.html" with { type: "text" };
-
-/**
- * The download page's entity tag — FNV-1a over the download page's bytes, salted with its length. It
- * changes exactly when the page changes, so a returning visitor revalidates with a small `304` (capability
- * `web-event-download`).
- */
-const DOWNLOAD_ETAG: string = (() => {
-  let h = 0x811c9dc5;
-  for (let i = 0; i < DOWNLOAD_HTML.length; i++) {
-    h ^= DOWNLOAD_HTML.charCodeAt(i);
-    h = Math.imul(h, 0x01000193);
-  }
-  return `"${DOWNLOAD_HTML.length.toString(36)}-${(h >>> 0).toString(36)}"`;
-})();
+// The browser-facing pages (capabilities `marketing-site` at `/` and `web-event-download` at `/join`) are
+// no longer embedded here — they are built by the `site/` Astro module and served by proxying the storage
+// `site/` prefix (capability `web-site`, see `serveSiteObject` + the `/`, `/join`, and `/_astro/*` routes
+// below). The `shots` pipeline that inlined the landing screenshots is gone with them.
 
 // RequestInit + the streaming-body flag required when `body` is a ReadableStream.
 type StreamInit = RequestInit & { duplex?: "half" };
@@ -608,26 +590,20 @@ export function createApp({ fetch: fetchImpl, config, now = Date.now }: Deps): H
     return c.req.method === "HEAD" ? c.body(null) : c.body(aasa);
   });
 
-  // The no-app download page (capabilities `event-link`, `web-event-download`): the path a browser requests
-  // when an event link is opened on a device with no app to claim it. A single STATIC page, identical for
-  // every link, served from memory with no storage read — cacheable (PUBLIC_CACHE) so the pull zone answers
-  // from the edge. GET returns the page; HEAD returns the same headers with no body.
+  // The no-app download page (capabilities `event-link`, `web-event-download`, built by `web-site`): the
+  // path a browser requests when an event link is opened on a device with no app to claim it. Served by
+  // proxying the CONSTANT `site/join/index.html` object from storage — byte-identical for every link, and
+  // `no-cache` (the always-fresh shell). GET returns the page; HEAD returns the headers with no body.
   //
   // The handler does not — cannot — read the payload: that rides in the URL fragment, which a browser never
-  // transmits, so this handler sees `/join` and nothing more, and the served bytes are the same for every
-  // link. The eventId IS the capability, and keeping it out of the fragment-blind server path keeps it out
-  // of the edge's logs and cache keys too. Everything per-event — the event name, the photo union, the zip
-  // — is done by the page's own JS, off the fragment, client-side (that is why one static page suffices).
-  //
-  // The App Store link now lives ON the page rather than being a 302 target. iOS does NO deferred deep
-  // linking: someone who installs from here reaches their event by opening the original link again.
-  app.on(["GET", "HEAD"], "/join", (c) => {
-    c.header("Cache-Control", PUBLIC_CACHE);
-    c.header("ETag", DOWNLOAD_ETAG);
-    if (c.req.header("If-None-Match") === DOWNLOAD_ETAG) return c.body(null, 304);
-    c.header("Content-Type", "text/html; charset=utf-8");
-    return c.req.method === "HEAD" ? c.body(null) : c.body(DOWNLOAD_HTML);
-  });
+  // transmits, so this handler sees `/join` and nothing more, and it reads the same constant object for
+  // every request (no per-event state). Everything per-event — the event name, the photo union, the zip —
+  // is done by the page's own client island, off the fragment. The eventId never reaches the server here.
+  app.on(
+    ["GET", "HEAD"],
+    "/join",
+    (c) => serveSiteObject(fetchImpl, config, "join/index.html", c.req.method, SITE_HTML_CACHE),
+  );
 
   // ── THE DEVICE API (capability `backend-deployment`) ────────────────────────────────────────────
   //
