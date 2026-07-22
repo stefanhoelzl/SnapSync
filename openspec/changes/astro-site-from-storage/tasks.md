@@ -22,12 +22,12 @@
 
 ## 4. API static-proxy serving + remove the shots pipeline (Phase 1)
 
-- [ ] 4.1 Add the static-path allowlist + proxy handler in `api/`: for `/`, `/assets/*`, `/_astro/*` (and the site's other top-level static files), fetch the object from storage `site/` (AccessKey GET) and stream it back; everything else continues to the existing gate/API
-- [ ] 4.2 Set cache headers on the proxy response: `no-cache` for the HTML entry point(s); `public, max-age=31536000, immutable` for fingerprinted assets
-- [ ] 4.3 Add `/`, `/assets/*`, `/_astro/*` to the attestation gate's ungated closed-list (served without a device token); keep every device route gated
-- [ ] 4.4 Replace the in-bundle `GET|HEAD /` handler (serve `LANDING_PAGE`) with the proxy path; delete `landing.html`, `src/shots.ts`, `src/shots.generated.ts`, `scripts/shots.ts`, the `{{SHOT_*}}` substitution and `LANDING_ETAG`; remove the three `@jsquash` deps and the `shots` task from `deno.json`
-- [ ] 4.5 Update/retire `api/` tests for `/` (the landing.test.ts assertions on inlined bytes/ETag) to the proxy behavior; keep the suite offline (inject a fake fetch for the storage read)
-- [ ] 4.6 Confirm `deno task check`/`test`/`bundle` pass and the api bundle no longer contains the landing HTML or screenshots
+- [x] 4.1 Add the static-path allowlist + proxy handler in `api/`: for `/`, `/assets/*`, `/_astro/*` (and the site's other top-level static files), fetch the object from storage `site/` (AccessKey GET) and stream it back; everything else continues to the existing gate/API — `serveSiteObject` + the `/` and `/_astro/*` routes (Astro emits `/_astro/*`, not `/assets/*`, by default)
+- [x] 4.2 Set cache headers on the proxy response: `no-cache` for the HTML entry point(s); `public, max-age=31536000, immutable` for fingerprinted assets — `SITE_HTML_CACHE` / `SITE_ASSET_CACHE`
+- [x] 4.3 Add `/`, `/assets/*`, `/_astro/*` to the attestation gate's ungated closed-list (served without a device token); keep every device route gated
+- [x] 4.4 Replace the in-bundle `GET|HEAD /` handler (serve `LANDING_PAGE`) with the proxy path; delete `landing.html`, `src/shots.ts`, `src/shots.generated.ts`, `scripts/shots.ts`, the `{{SHOT_*}}` substitution and `LANDING_ETAG`; remove the three `@jsquash` deps and the `shots` task from `deno.json`
+- [x] 4.5 Update/retire `api/` tests for `/` (the landing.test.ts assertions on inlined bytes/ETag) to the proxy behavior; keep the suite offline (inject a fake fetch for the storage read)
+- [x] 4.6 Confirm `deno task check`/`test`/`bundle` pass and the api bundle no longer contains the landing HTML or screenshots — 191 tests pass, bundle 615 KB (screenshots gone)
 
 ## 5. Site build + mirror deploy (Phase 1)
 
