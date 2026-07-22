@@ -8,7 +8,7 @@
 // Auth is the STORAGE-ZONE PASSWORD only (BUNNY_STORAGE_ACCESS_KEY) — never the bunny account key, which
 // stays out of CI (backend-deployment). This is the same secret the nightly sweep already holds.
 //
-// ZONE/HOST mirror the api's source constants (backend/src/config.ts). They are public and change ~never;
+// ZONE/HOST mirror the api's source constants (api/src/config.ts). They are public and change ~never;
 // they MUST match what the api proxy reads, or the proxy would serve a different zone than this writes.
 import { readdir, readFile, stat } from "node:fs/promises";
 import { join, relative, sep } from "node:path";

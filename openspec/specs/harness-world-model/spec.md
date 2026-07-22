@@ -67,7 +67,7 @@ keys per device byte-partition (`files/devices/<deviceId>/<filename>`), one devi
 read-models **faithfully in behavior** — the per-device file listing (`GET /files/devices/<id>`), the
 event-wide union (`GET /events/<id>/files`), and the reconcile-seed listing — where the reconcile-seed
 listing is the **same** per-device read-model consumed by the rejoin reconciler. Byte-level fidelity to
-the real Deno `backend/` edge is **NOT** required: drift is **accepted**, there is **no golden
+the real Deno `api/` edge is **NOT** required: drift is **accepted**, there is **no golden
 fixture**, and the store SHALL NOT mint real presigned S3 URLs (each `url` is a synthetic in-memory
 handle the fake download seams resolve store-direct). The per-device listing SHALL return one
 `{filename, size, url}` entry per stored object. The event-union SHALL include an asset **only when

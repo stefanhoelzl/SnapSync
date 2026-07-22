@@ -109,7 +109,7 @@ Site Association document the backend serves, and the backend's own domain const
 
 Two of the four SHALL be **single-sourced** rather than merely guarded: `LINK_ORIGIN` SHALL be generated
 from one Gradle property, and the entitlement's value SHALL be supplied from `Config.xcconfig`. The
-backend's copy **cannot** be: `backend/` is a Deno tree deployed by a separate, path-scoped workflow that
+backend's copy **cannot** be: `api/` is a Deno tree deployed by a separate, path-scoped workflow that
 ships code only and never config (capability `backend-deployment`), so nothing in the Gradle build can
 reach it, and generating it would couple two deliberately independent pipelines. The guard therefore
 exists to hold exactly the seam that single-sourcing cannot close.

@@ -1,14 +1,14 @@
-name: backend-deploy
+name: api-deploy
 
-# Deploys the backend/ upload endpoint to bunny Edge Scripting — the ONE runtime. The device-facing host
+# Deploys the api upload endpoint to bunny Edge Scripting — the ONE runtime. The device-facing host
 # is the custom domain `snapsync.stho.net` (we own it via Bunny DNS), CNAME'd to the pull zone fronting
-# the Edge Script. Path-scoped to the backend sources, isolated from the Gradle/iOS workflows, and gated
+# the Edge Script. Path-scoped to the api sources, isolated from the Gradle/iOS workflows, and gated
 # on green Deno fmt/lint/check/test. Capability: backend-deployment.
 #
 # This workflow ships CODE ONLY — it configures nothing. bunny issues no scoped API key (writing an Edge
 # Script's env vars needs the full-access ACCOUNT key, which also owns the photo storage zone and our DNS
 # zone), so CI holds only the script-scoped deploy key. That is precisely why every non-secret config
-# value is a SOURCE CONSTANT (backend/src/config.ts): config ships in the bundle with the code that reads
+# value is a SOURCE CONSTANT (api/src/config.ts): config ships in the bundle with the code that reads
 # it, and cannot drift. Only two SECRETS live in the Edge Script env, set once by hand.
 #
 # There is deliberately no post-deploy boot probe: `POST /code` + `POST /publish` succeed whether or not
@@ -19,11 +19,11 @@ name: backend-deploy
 on:
   push:
     paths:
-      - "backend/**"
+      - "api/**"
       # The marketing page's screenshots are no longer embedded here — they are built into the Astro
       # `site/` module and shipped by `site-deploy.yml`. A `screenshots/**` refresh triggers that
       # workflow, not this one. Capability `web-site`.
-      - ".github/workflows/backend-deploy.yml"
+      - ".github/workflows/api-deploy.yml"
 
 jobs:
   test-and-deploy:
@@ -37,27 +37,27 @@ jobs:
 
       # --- Test gate: deploy runs only if these pass ---
       - name: Format check
-        working-directory: backend
+        working-directory: api
         run: deno fmt --check
 
       - name: Lint
-        working-directory: backend
+        working-directory: api
         run: deno lint
 
       # Type-check all source explicitly. `deno test` only checks test-reachable code, so this
       # covers main.ts/SDK wiring (no test imports it) and any future orphan source file.
       - name: Type check
-        working-directory: backend
+        working-directory: api
         run: deno check src/*.ts
 
       - name: Test
-        working-directory: backend
+        working-directory: api
         run: deno test
 
       # Bundle to a single file — the deploy action uploads the file as-is (no bundling). Must stay
       # within the Edge Scripting 10 MB script limit.
       - name: Bundle
-        working-directory: backend
+        working-directory: api
         run: deno bundle src/main.ts -o dist/main.js
 
       # --- Deploy: main only. Feature-branch pushes run the checks (incl. bundle) but do not ship
@@ -68,4 +68,4 @@ jobs:
         with:
           script_id: ${{ secrets.BUNNY_SCRIPT_ID }}
           deploy_key: ${{ secrets.BUNNY_DEPLOY_KEY }}
-          file: backend/dist/main.js
+          file: api/dist/main.js

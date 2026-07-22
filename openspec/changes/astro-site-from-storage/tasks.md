@@ -1,11 +1,11 @@
 ## 1. Rename backend → api (Phase 0 — may ship as a separate mechanical PR)
 
-- [ ] 1.1 Rename the `backend/` directory to `api/` (git mv); confirm no source path references break
-- [ ] 1.2 Update `.github/workflows/backend-deploy.yml`: path filter `backend/**` → `api/**`, `working-directory`, and rename the workflow file to `api-deploy.yml`
-- [ ] 1.3 Update `.github/workflows/nightly-cleanup.yml` `working-directory: backend` → `api`
-- [ ] 1.4 Update `backend/` references in `CLAUDE.md`, `README.md`, and any `openspec/` prose to `api/`
-- [ ] 1.5 Verify the `api↔sweep` sharing is intact: `sweep.ts` still imports `./storage.ts` and `./lifecycle.ts`; `deno task test` passes; `deno task shots`/`check`/`bundle` still run
-- [ ] 1.6 Confirm `snapsync.stho.net`, the pull zone, DNS, and the baked `BACKGROUND_UPLOAD_URL_BASE` are untouched
+- [x] 1.1 Rename the `backend/` directory to `api/` (git mv); confirm no source path references break
+- [x] 1.2 Update `.github/workflows/backend-deploy.yml`: path filter `backend/**` → `api/**`, `working-directory`, and rename the workflow file to `api-deploy.yml` — done (not a required check, so safe to rename)
+- [x] 1.3 Update `.github/workflows/nightly-cleanup.yml` `working-directory: backend` → `api`
+- [x] 1.4 Update `backend/` references in `CLAUDE.md`, `README.md`, and any `openspec/` prose to `api/` — path forms only; the `backend-deployment` capability name and conceptual "the backend" (the server) kept; `openspec/changes/archive/` left as historical record
+- [x] 1.5 Verify the `api↔sweep` sharing is intact: `sweep.ts` still imports `./storage.ts` and `./lifecycle.ts`; `deno task test` passes (193); `check`/`bundle` still run (the `shots` task is gone)
+- [x] 1.6 Confirm `snapsync.stho.net`, the pull zone, DNS, and the baked `BACKGROUND_UPLOAD_URL_BASE` are untouched — no domain/URL/config changed by the rename
 
 ## 2. Scaffold the `site/` Astro project (shared layer)
 
@@ -47,4 +47,4 @@
 
 - [x] 7.1 Add a build check over the `site/` emitted output that fails on any off-origin subresource `src=`/`href=`/`url()` (allowing `<a href>` navigation and the presigned photo fetches) — `site/scripts/check-selfcontained.mjs`, wired as `npm run check` + a workflow step; verified it passes clean and catches an injected CDN `<link>`
 - [x] 7.2 Full pass: `deno task test` (api, offline) green; `site/` builds and mirror-deploys; `GET /` and `GET /join` served from storage with correct cache headers; screenshots refresh flow (`screenshots.yml` raws → `astro:assets`) still works; App Store / screenshots workflows unaffected — backend: fmt/lint/check green, 193 tests, bundle 598 KB; site: builds + self-contained check green
-- [~] 7.3 Update `CLAUDE.md`/`README.md`: the site now lives in `site/` (Astro), served by the api proxy from storage `site/`; the `shots` pipeline is gone; the storage layout gains `site/` — **backend/README.md done** (storage layout, app.ts role, site-deploy); the root **CLAUDE.md** pass (stale `shots`/marketing references, module list) is pending, best folded into the `backend→api` rename (group 1) since both rewrite that 77 KB file
+- [x] 7.3 Update `CLAUDE.md`/`README.md`: the site now lives in `site/` (Astro), served by the api proxy from storage `site/`; the `shots` pipeline is gone; the storage layout gains `site/` — `api/README.md` (storage layout, app.ts role, site-deploy) + `CLAUDE.md` (marketing-screenshots section now names `astro:assets`/`site-deploy.yml`; `backend/` path forms → `api/`) done alongside the rename
