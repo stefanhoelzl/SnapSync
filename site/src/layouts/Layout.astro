@@ -1,14 +1,18 @@
 ---
-// Shared page shell for the whole site (capability web-site): head, theme-color metas, header/brand,
-// footer. Both the landing page and the /join download page compose from this one layout so they can
-// never drift in brand, theme, or chrome. Zero off-origin subresources — the web-site self-containment
+// Shared page shell for the whole site (capability web-site): the sticky header (brand + nav), the
+// <main> slot, and the footer. Both the landing page and the /join download page compose from this one
+// layout so they can never drift in brand, theme, or chrome. Nav links point at the landing's sections
+// (/#…) so they work from either page. Zero off-origin subresources — the web-site self-containment
 // invariant applies to everything defined here.
 import "../styles/theme.css";
 interface Props {
   title: string;
   description?: string;
 }
-const { title, description = "Share the photos from an event — synced gallery to gallery." } = Astro.props;
+const {
+  title,
+  description = "Share the photos from an event — every photo the group takes lands in everyone's library.",
+} = Astro.props;
 ---
 
 <!doctype html>
@@ -22,38 +26,35 @@ const { title, description = "Share the photos from an event — synced gallery 
     <meta name="description" content={description} />
   </head>
   <body>
-    <header class="site-header">
-      <a class="brand" href="/">SnapSync</a>
-      <nav>
-        <a href="/#how">How it works</a>
-        <a href="/#privacy">Privacy</a>
-        <a href="/#terms">Terms</a>
-        <a href="https://github.com/stefanhoelzl/SnapSync/issues">Support</a>
-      </nav>
+    <header>
+      <div class="wrap">
+        <a class="brand" href="/"><span class="brandmark sm"></span>SnapSync</a>
+        <nav>
+          <a class="hide-sm" href="/#how">How it works</a>
+          <a class="hide-sm" href="/#privacy">Privacy</a>
+          <a class="hide-sm" href="/#terms">Terms</a>
+          <a href="https://github.com/stefanhoelzl/SnapSync/issues">Support</a>
+        </nav>
+      </div>
     </header>
 
     <main><slot /></main>
 
-    <footer class="site-footer">
-      <a class="brand" href="/">SnapSync</a>
-      <p>Share the photos from an event.</p>
+    <footer>
+      <div class="wrap">
+        <a class="brand" href="/" style="font-size:1rem"><span class="brandmark xs"></span>SnapSync</a>
+        <div class="flinks">
+          <a href="/#how">How it works</a>
+          <a href="/#privacy">Privacy</a>
+          <a href="/#terms">Terms</a>
+          <a href="https://github.com/stefanhoelzl/SnapSync/issues">Support</a>
+          <a href="mailto:stefanh+snapsync@posteo.de">Contact</a>
+        </div>
+        <p class="copy">
+          © 2026 SnapSync · An independent project · Not affiliated with Apple Inc. "App Store" is a
+          trademark of Apple Inc.
+        </p>
+      </div>
     </footer>
-
-    <style>
-      .site-header,
-      .site-footer {
-        display: flex;
-        align-items: center;
-        gap: 1.25rem;
-        max-width: var(--maxw);
-        margin: 0 auto;
-        padding: 1rem 1.25rem;
-      }
-      .site-header nav { display: flex; gap: 1.25rem; margin-left: auto; flex-wrap: wrap; }
-      .brand { font-weight: 700; text-decoration: none; color: var(--text); }
-      .site-footer { border-top: 1px solid var(--border); margin-top: 3rem; color: var(--muted); }
-      a { color: var(--text); text-decoration: none; }
-      nav a:hover { color: var(--green); }
-    </style>
   </body>
 </html>
