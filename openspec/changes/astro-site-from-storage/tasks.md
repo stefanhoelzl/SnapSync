@@ -45,6 +45,6 @@
 
 ## 7. Self-containment guard + final verification
 
-- [ ] 7.1 Add a build check over the `site/` emitted output that fails on any off-origin subresource `src=`/`href=`/`url()` (allowing `<a href>` navigation and the presigned photo fetches)
+- [x] 7.1 Add a build check over the `site/` emitted output that fails on any off-origin subresource `src=`/`href=`/`url()` (allowing `<a href>` navigation and the presigned photo fetches) — `site/scripts/check-selfcontained.mjs`, wired as `npm run check` + a workflow step; verified it passes clean and catches an injected CDN `<link>`
 - [ ] 7.2 Full pass: `deno task test` (api, offline) green; `site/` builds and mirror-deploys; `GET /` and `GET /join` served from storage with correct cache headers; screenshots refresh flow (`screenshots.yml` raws → `astro:assets`) still works; App Store / screenshots workflows unaffected
 - [ ] 7.3 Update `CLAUDE.md`/`README.md`: the site now lives in `site/` (Astro), served by the api proxy from storage `site/`; the `shots` pipeline is gone; the storage layout gains `site/`
