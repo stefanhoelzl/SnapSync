@@ -23,8 +23,10 @@ folded into it). Rationale lives in each spec's `## Purpose` and its `Decision r
 
 ## Storage layout
 
-Three disjoint key namespaces in one zone (an `eventId`/`deviceId` is a UUID, never a literal label,
-so nothing collides):
+Disjoint key namespaces in one zone (an `eventId`/`deviceId` is a UUID, never a literal label, so nothing
+collides). The private data (below) is joined by one PUBLIC `site/` prefix holding the built browser-facing
+site (capability `web-site`), which the api proxies (`serveSiteObject`); the nightly sweep is prefix-scoped
+and never touches it:
 
 ```
 events/<eventId>/metadata.json                 event marker / registry record { eventId, name, createdAt, startsAt, endsAt, capacity }
@@ -32,6 +34,7 @@ events/<eventId>/devices/<deviceId>.json       per-event device manifest — ACT
 events/<eventId>/devices/<deviceId>.left.json  per-event device manifest — DEPARTED (left; still in the union)
 files/devices/<deviceId>/<filename>            a device's raw uploaded photo/resource byte objects
 devices/<deviceId>.json                        a device's config { pushToken: { kind, token, env } } (NOT a file)
+site/index.html · site/join/index.html · site/_astro/*   the Astro build (public; mirror-deployed by site-deploy.yml)
 ```
 
 An event **exists** iff its marker `events/<eventId>/metadata.json` is present. Bunny's Edge Storage
@@ -170,9 +173,12 @@ GET  /events/<eventId>/files                               (event-wide UNION —
 
 ```
 src/app.ts        Hono app (createApp({config, fetch}) → routes): create + metadata + byte upload +
-                  per-device list + device-manifest write + event union + device config + event notify.
-                  Key helpers (markerKey, deviceManifestKey/Dir, byteKey, deviceDir, deviceConfigKey),
-                  the existence gates, presignDownloadUrl(), and readPushToken() (notify fan-out).
+                  per-device list + device-manifest write + event union + device config + event notify;
+                  PLUS the static-site proxy (serveSiteObject → GET /, /join, /_astro/* from the storage
+                  site/ prefix, capability web-site) and the AASA. Key helpers (markerKey,
+                  deviceManifestKey/Dir, byteKey, deviceDir, deviceConfigKey), the existence gates,
+                  presignDownloadUrl(), and readPushToken() (notify fan-out). The landing + /join pages
+                  are NOT here — they are built by the sibling site/ Astro module.
 src/apns.ts       createApnsSender(config, fetch) → { sendSilent(tokens) }: ES256 provider-JWT signing
                   (WebCrypto, memoized) + a silent HTTP/2 push per token; per-token best-effort outcomes.
 src/validators.ts validateUUID / validateFilename → boolean; validateEventName(raw) → trimmed | null
@@ -251,6 +257,13 @@ and set `APNS_PRIVATE_KEY` (the PEM) as an Edge Script **secret**. `APNS_KEY_ID`
 CI deploys via `.github/workflows/backend-deploy.yml` (path-scoped to `backend/**`, **gated on green
 `deno fmt`/`lint`/`check`/`test`**) using `BunnyWay/actions/deploy-script`. It ships **code only** —
 it configures nothing (see above). Provision once:
+
+> **The browser-facing site is a SEPARATE deploy.** `.github/workflows/site-deploy.yml` builds the Astro
+> `site/` module (under Node) and **mirror-deploys** it to the storage `site/` prefix (`site/scripts/deploy.mjs`
+> — upload new, delete stale, never clear-first), authenticating with **only the storage-zone password**
+> (`BUNNY_STORAGE_ACCESS_KEY`), never the account key. The api Edge Script proxies that prefix, so the
+> routing lives in the bundle as source-owned code — **no pull-zone edge rules**. Capability `web-site`.
+
 
 1. With the Bunny **account API key**: an **S3-enabled** Storage zone (DE), and the Edge Scripting
    app (record its **script id** and a **deploy key**). Set the two **secrets** on the Edge Script.
