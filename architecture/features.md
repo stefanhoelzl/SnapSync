@@ -33,8 +33,8 @@ on drift; regenerate instead.
 
 ## `feature/status`
 
-- files: `LedgerBackedSyncStatusSource.kt`, `LedgerCountsPoller.kt`, `LedgerCountsSource.kt`, `OwnDeviceGalleryStatusSource.kt`, `SyncStatusSource.kt`
-- top-level types: `LedgerCounts (class)`, `LedgerCountsPoller (class)`, `LedgerCountsSource (interface)`, `MutableLedgerCountsSource (class)`, `OwnDeviceGalleryStatusSource (class)`, `ReadingLedgerCountsSource (class)`, `SyncStatusSource (interface)`
+- files: `LedgerBackedSyncStatusSource.kt`, `LedgerCountsPoller.kt`, `LedgerCountsSource.kt`, `OwnDeviceGalleryStatusSource.kt`, `ShareableCount.kt`, `SyncStatusSource.kt`
+- top-level types: `LedgerCounts (class)`, `LedgerCountsPoller (class)`, `LedgerCountsSource (interface)`, `MutableLedgerCountsSource (class)`, `OwnDeviceGalleryStatusSource (class)`, `ReadingLedgerCountsSource (class)`, `ShareableCountSource (class)`, `SyncStatusSource (interface)`
 
 ## `feature/trust`
 

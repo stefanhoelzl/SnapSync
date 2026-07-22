@@ -46,6 +46,16 @@ class ReconfigureEvent(
     private val ensureAlbum: suspend (EventConfig) -> Unit,
     private val startDownloads: suspend (eventId: String) -> Unit,
     private val cancelDownloads: suspend () -> Unit,
+    /**
+     * Invalidate the persisted discovery cursor (capability `reconfigure-membership`). Called **only when
+     * the cutoff is lowered**, so the next cycle re-enumerates the whole library at the new (earlier)
+     * cutoff and shares the newly-in-scope older photos — on **both** upload tiers. Without it the
+     * forward-only change cursor never re-visits those unchanged older assets (the iOS 18–26.0 silent
+     * no-backfill this fixes). The ledger's `COMPLETED` rows still suppress re-upload of already-shared
+     * photos, so a re-enumeration costs a walk, not a re-upload. Built in `compose/` over the shared
+     * App-Group `DiscoveryStore`; a no-op default keeps every other composition unaffected.
+     */
+    private val clearDiscoveryCursor: () -> Unit = {},
 ) {
     private val log = Logger.withTag("ReconfigureEvent")
 
@@ -70,6 +80,13 @@ class ReconfigureEvent(
         )
         // Persist the WHOLE config with only the three participation fields changed (one-writer, in place).
         step("save config") { store.save(newCfg) }
+        // A LOWERED cutoff widens scope: invalidate the forward-only discovery cursor BEFORE the arm kicks
+        // the next cycle, so it re-enumerates at the new cutoff and back-shares the newly-in-scope older
+        // photos — tier-agnostically. Cutoffs are canonical `…Z`, so a lexicographic `<` is chronological.
+        // Raising the cutoff needs no re-enumeration (nothing new comes into scope) and un-shares nothing.
+        if (newCfg.minPhotoDate < current.minPhotoDate) {
+            step("clear discovery cursor") { clearDiscoveryCursor() }
+        }
         // Re-enumerate the own total + re-read completeness so the status reflects a changed cutoff/direction.
         step("refresh status") { refreshStatus() }
         // Upload arm: START on enable; on disable leave the producer to drain (see class doc).

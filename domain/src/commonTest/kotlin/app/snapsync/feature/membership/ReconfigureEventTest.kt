@@ -51,6 +51,7 @@ class ReconfigureEventTest {
         ensureAlbum = { order += "album" },
         startDownloads = { id -> order += "reconcile:$id" },
         cancelDownloads = { order += "cancelDownloads" },
+        clearDiscoveryCursor = { order += "clearCursor" },
     )
 
     @Test
@@ -140,6 +141,36 @@ class ReconfigureEventTest {
             .reconfigure("E1", Direction.UploadOnly, "2026-07-06T12:00:00Z", false)
         assertTrue("cancelDownloads" in order)
         assertTrue(order.none { it.startsWith("reconcile") })
+    }
+
+    // ---- the cutoff-lowering backfill fix (capability `reconfigure-membership`) -----------------------
+
+    @Test
+    fun `lowering the cutoff invalidates the discovery cursor before the arm kicks`() = runTest {
+        val order = mutableListOf<String>()
+        // Current cutoff is 20:00 (above the 12:00 floor); lower it to 15:00 (still above the floor).
+        make(FakeConfigSource(current(minPhotoDate = "2026-07-06T20:00:00Z")), FakeConfigStore(), order)
+            .reconfigure("E1", Direction.Both, "2026-07-06T15:00:00Z", false)
+        assertTrue("clearCursor" in order, "a lowered cutoff must invalidate the cursor so older photos re-enumerate")
+        // Before the arm, so the next cycle re-enumerates at the new cutoff rather than off a settled cursor.
+        assertTrue(order.indexOf("clearCursor") < order.indexOf("arm"))
+    }
+
+    @Test
+    fun `raising the cutoff does not invalidate the discovery cursor`() = runTest {
+        val order = mutableListOf<String>()
+        // Current cutoff at the floor (12:00); raise it to 18:00 — narrowing, nothing new comes into scope.
+        make(FakeConfigSource(current(minPhotoDate = "2026-07-06T12:00:00Z")), FakeConfigStore(), order)
+            .reconfigure("E1", Direction.Both, "2026-07-06T18:00:00Z", false)
+        assertTrue("clearCursor" !in order, "raising the cutoff needs no re-enumeration and un-shares nothing")
+    }
+
+    @Test
+    fun `an unchanged cutoff does not invalidate the discovery cursor`() = runTest {
+        val order = mutableListOf<String>()
+        make(FakeConfigSource(current(minPhotoDate = "2026-07-06T15:00:00Z")), FakeConfigStore(), order)
+            .reconfigure("E1", Direction.UploadOnly, "2026-07-06T15:00:00Z", false)
+        assertTrue("clearCursor" !in order)
     }
 
     @Test

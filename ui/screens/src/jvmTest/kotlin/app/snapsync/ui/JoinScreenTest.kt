@@ -313,6 +313,76 @@ class JoinScreenTest {
     // (Custom picker Cancel-restores is asserted unambiguously at the component level in
     // AppCutoffChoicesTest — at the screen level the picker's "Cancel" collides with the bottom "Cancel".)
 
+    // ---- the shareable-count row (capability `join-share-count`) ---------------------------------------
+
+    @Test
+    fun `the share section shows how many photos will be shared`() {
+        setScreen {
+            StatusScreen(
+                joining(JoinPhase.Ready("Anna's Wedding", EVENT_START)),
+                cutoff = fixedCutoff(),
+                shareableCount = { 34 },
+            )
+        }
+        rule.onNodeWithText("34 photos from your gallery will be shared").assertExists()
+    }
+
+    @Test
+    fun `a zero count carries the forward gloss`() {
+        setScreen {
+            StatusScreen(
+                joining(JoinPhase.Ready("Anna's Wedding", EVENT_START)),
+                cutoff = fixedCutoff(),
+                shareableCount = { 0 },
+            )
+        }
+        rule.onNodeWithText("0 photos from your gallery will be shared").assertExists()
+        rule.onNodeWithText("New photos you take will be shared as you go").assertExists()
+    }
+
+    @Test
+    fun `no count is shown when none is available`() {
+        setScreen {
+            StatusScreen(
+                joining(JoinPhase.Ready("Anna's Wedding", EVENT_START)),
+                cutoff = fixedCutoff(),
+                // null = DENIED / unresolved grant → the row is omitted (no spinner that can't resolve).
+                shareableCount = { null },
+            )
+        }
+        rule.onNodeWithText("from your gallery will be shared", substring = true).assertDoesNotExist()
+        rule.onNodeWithText("Counting your photos…").assertDoesNotExist()
+    }
+
+    @Test
+    fun `turning share off hides the count`() {
+        setScreen {
+            StatusScreen(
+                joining(JoinPhase.Ready("Anna's Wedding", EVENT_START)),
+                cutoff = fixedCutoff(),
+                shareableCount = { 34 },
+            )
+        }
+        rule.onNodeWithText("34 photos from your gallery will be shared").assertExists()
+        rule.onNodeWithText("Share my photos").performClick()
+        rule.onNodeWithText("34 photos from your gallery will be shared").assertDoesNotExist()
+    }
+
+    @Test
+    fun `the count recomputes as the cutoff changes`() {
+        setScreen {
+            StatusScreen(
+                joining(JoinPhase.Ready("Anna's Wedding", EVENT_START)),
+                cutoff = fixedCutoff(),
+                // A cutoff-dependent count: Now shares just 1 (singular), Event start reaches back to 5.
+                shareableCount = { c -> if (c == NOW) 1 else 5 },
+            )
+        }
+        rule.onNodeWithText("5 photos from your gallery will be shared").assertExists()
+        rule.onNodeWithText("Now").performClick()
+        rule.onNodeWithText("1 photo from your gallery will be shared").assertExists()
+    }
+
     // ---- the standalone album minor section (capability `event-album`) ---------------------------------
 
     @Test

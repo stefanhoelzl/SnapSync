@@ -39,7 +39,7 @@ Roots found:
 | `IosBackgroundScheduler` | | | x |
 | `IosDeviceManifestStore` | | x | x |
 | `IosDiscovery` | | x | x |
-| `IosDiscoveryStore` | | x | x |
+| `IosDiscoveryStore` | x | x | x |
 | `IosDownloadTransport` | x | | |
 | `IosJoinedEventMarker` | | x | x |
 | `IosPhotoKitUploadPlatform` | | x | |
@@ -52,6 +52,7 @@ Roots found:
 | `OsFacts` | x | | |
 | `PhotoKitUploadProducer` | x | | |
 | `PhotoLibraryPermission` | x | | |
+| `PhotoLibraryRawAssetSource` | x | | |
 | `PhotoLibraryResourceEnumerator` | x | x | x |
 | `PhotoSelectionSnapshotSource` | x | | |
 | `PublicNSLogWriter` | x | x | |

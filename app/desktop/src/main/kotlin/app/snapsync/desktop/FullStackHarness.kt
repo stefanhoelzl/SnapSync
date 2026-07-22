@@ -105,6 +105,8 @@ fun WorldHarnessRoot() {
                         leave = controller.leave,
                         // The real in-place reconfigure edge (capability `reconfigure-membership`).
                         reconfigure = controller.reconfigure,
+                        // The real shareable-count query over the world gallery (capability `join-share-count`).
+                        shareableCount = controller::loadShareableCount,
                         darkThemeOverride = dark,
                     )
                 }

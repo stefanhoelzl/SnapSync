@@ -33,4 +33,16 @@ interface RawAssetSource {
      * `PHAsset` property, so out-of-scope assets are rejected before their resources are ever fetched.
      */
     suspend fun walk(localIdentifiers: List<String>, since: String): List<RawAsset>
+
+    /**
+     * The **facts-only** walk for the join-time shareable-count preview (capability `join-share-count`):
+     * every asset captured at or after [since], carrying only the cheap in-memory `PHAsset` facts the
+     * selection policy decides on (`assetId`, `creationDate`, `mediaSubtypes`, `mediaType`, pixel
+     * dimensions, `hasAdjustments`) and an **empty** [RawAsset.rawResources] — it SHALL NOT issue the
+     * per-asset `assetResourcesForAsset` round-trip (~110 ms/asset) that [walkSince] pays, because a count
+     * needs no upload keys. Bounded by [since] exactly as [walkSince] is; the caller's own cutoff/origin
+     * filter stays authoritative. Because `rawResources` is empty, the GIF origin rule (which reads a
+     * per-resource MIME) admits on this path — consistent with the policy's admit-on-doubt posture.
+     */
+    suspend fun factsSince(since: String): List<RawAsset>
 }

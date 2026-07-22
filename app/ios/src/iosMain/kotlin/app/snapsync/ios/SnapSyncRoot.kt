@@ -18,7 +18,9 @@ import app.snapsync.join.HttpEnrollment
 import app.snapsync.join.HttpEventDirectory
 import app.snapsync.feature.membership.JoinOutcome
 import app.snapsync.model.Contribution
+import app.snapsync.gallery.PhotoLibraryRawAssetSource
 import app.snapsync.gallery.PhotoLibraryResourceEnumerator
+import app.snapsync.ios.discovery.IosDiscoveryStore
 import app.snapsync.model.PermissionStatus
 import app.snapsync.permission.PhotoLibraryPermission
 import app.snapsync.permission.PhotoSelectionSnapshotSource
@@ -68,6 +70,8 @@ import kotlinx.coroutines.CoroutineExceptionHandler
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
 import platform.BackgroundTasks.BGProcessingTaskRequest
 import platform.BackgroundTasks.BGTaskScheduler
@@ -292,6 +296,14 @@ object SnapSyncRoot {
                 // bundle's requestAccess/openSettings commands bind to it in `compose/`.
                 photoAccessRequester = permission,
                 photoLibrary = enumerator,
+                // The cheap facts-only walk for the shareable-count preview (capability
+                // `join-share-count`): a stateless PhotoKit `RawAssetSource`, skipping the per-asset
+                // resource round-trip the resource enumeration pays.
+                rawFactsSince = rawAssetFacts::factsSince,
+                // A cutoff-lowering reconfigure invalidates the shared discovery cursor so both tiers
+                // re-enumerate and back-share the newly-in-scope older photos (capability
+                // `reconfigure-membership`).
+                clearDiscoveryCursor = discoveryStore::clearToken,
                 // Selection snapshots under a partial grant (capability `limited-photo-access`):
                 // observes only while LIMITED; each emission is one in-flow read serving N and the
                 // cycle's discovery alike.
@@ -525,6 +537,12 @@ object SnapSyncRoot {
      * backend), else the live [host].
      */
     val renderHost: StatusContainerHost by lazy { shell.renderHost() }
+
+    /** The join surface's shareable-count query (capability `join-share-count`) — live or forge, one switch. */
+    val shareableCount: suspend (cutoff: String) -> Int? get() = shell.shareableCount
+
+    /** The photo grant, the count's recompute trigger. */
+    val photoPermission: StateFlow<PermissionStatus> get() = shell.photoPermission
 
     /**
      * The app became active (observed from Kotlin via `UIApplicationDidBecomeActive` — see
@@ -800,6 +818,15 @@ object SnapSyncRoot {
     // selection-snapshot mapping — one mapping, one place).
     private val enumerator: PhotoLibraryResourceEnumerator by lazy { PhotoLibraryResourceEnumerator() }
 
+    // The facts-only PhotoKit walk for the shareable-count preview (capability `join-share-count`):
+    // stateless, so a second instance beside `enumerator` is free; it never issues the per-asset resource
+    // round-trip the resource enumeration pays.
+    private val rawAssetFacts: PhotoLibraryRawAssetSource by lazy { PhotoLibraryRawAssetSource() }
+
+    // The shared App-Group discovery cursor (capability `reconfigure-membership`): any `IosDiscoveryStore`
+    // instance reads/writes the same App-Group token, so this clears the cursor both upload tiers consult.
+    private val discoveryStore: IosDiscoveryStore by lazy { IosDiscoveryStore() }
+
     // The selection-change source (capability `limited-photo-access`): registers the library observer
     // only while permission is LIMITED; the app graph collects its snapshots.
     private val selectionSource: PhotoSelectionSnapshotSource by lazy {
@@ -868,6 +895,12 @@ object SnapSyncRoot {
     /** What every OS entry point delegates to; implemented once per composition mode. */
     private interface Shell {
         fun renderHost(): StatusContainerHost
+
+        /** The join-time shareable-count query (capability `join-share-count`); `{ null }` in forge. */
+        val shareableCount: suspend (cutoff: String) -> Int?
+
+        /** The photo grant, the count's recompute trigger; a constant in forge. */
+        val photoPermission: StateFlow<PermissionStatus>
         /** Apply the ordered `leave → create → event-link` membership launch-env triggers (live only;
          *  forge no-ops). */
         fun applyLaunchEnvMembership()
@@ -895,6 +928,10 @@ object SnapSyncRoot {
             // Non-null by construction: the resolver only yields Forge for a recognized state.
             return forgeStatusHost(state, scope, cutoffFormatter)!!
         }
+
+        // No live core to count against — the join surface renders no count row in forge (structural).
+        override val shareableCount: suspend (cutoff: String) -> Int? = { null }
+        override val photoPermission: StateFlow<PermissionStatus> = MutableStateFlow(PermissionStatus.GRANTED)
 
         override fun applyLaunchEnvMembership() = log.invocation("applyLaunchEnvMembership") {
             // Forge wins over the membership triggers too — provisioning a real event (or leaving one)
@@ -968,6 +1005,10 @@ object SnapSyncRoot {
     ) : Shell {
         /** Touching [host] assembles the live stack (and installs the grant subscriptions). */
         override fun renderHost(): StatusContainerHost = host
+
+        // The real permission-aware, no-network count query and the live grant (capability `join-share-count`).
+        override val shareableCount: suspend (cutoff: String) -> Int? get() = app::loadShareableCount
+        override val photoPermission: StateFlow<PermissionStatus> get() = app.photoPermission
 
         override fun applyLaunchEnvMembership() = log.invocation("applyLaunchEnvMembership") {
             // The ordering (leave → create → event-link) is the tested `feature/creation`

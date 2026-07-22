@@ -44,6 +44,10 @@ fun MainViewController() = ComposeUIViewController {
     // The transient invalid-link error — presentation-owned, self-clearing (see the host).
     val transientError by host.transientError.collectAsState()
 
+    // The photo grant — the shareable-count row's recompute trigger (a late first-join resolve makes the
+    // count appear); capability `join-share-count`.
+    val photoPermission by SnapSyncRoot.photoPermission.collectAsState()
+
     // The platform's reduce-motion preference (capability `design-system`). Compose Multiplatform has no
     // cross-platform accessor for it, so the composition root supplies it — this is the only place that
     // knows. Read on each composition rather than `remember`ed: it is a cheap property read, and caching it
@@ -72,6 +76,10 @@ fun MainViewController() = ComposeUIViewController {
             // The root's one system-bound formatter (migration step 9: the screen's default died with
             // the through-ports repayment; forge and live share this same instance).
             cutoff = SnapSyncRoot.cutoffFormatter,
+            // The join-time shareable-count preview (capability `join-share-count`): the permission-aware,
+            // no-network query, plus the live grant as its recompute trigger.
+            shareableCount = SnapSyncRoot.shareableCount,
+            photoPermission = photoPermission,
         )
     }
 }
