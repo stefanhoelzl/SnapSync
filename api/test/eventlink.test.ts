@@ -58,7 +58,7 @@ Deno.test("event-link: the AASA declares the app and the /join path only", async
 
 Deno.test("event-link: the AASA's domain matches the configured link domain", () => {
   // The guard that the app's entitlement/LINK_ORIGIN agree with this lives in :test:architecture —
-  // Gradle cannot reach backend/. Here we only pin that the backend has one source for it.
+  // Gradle cannot reach api/. Here we only pin that the backend has one source for it.
   assertEquals(CONFIG.linkDomain, "snapsync.stho.net");
 });
 

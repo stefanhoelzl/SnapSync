@@ -237,7 +237,7 @@ so a switch / leave-then-rejoin / reinstall re-uploaded the whole post-cutoff li
 `changes/archive/…-fix-app-driven-upload-lifecycle`.) To observe real uploads in the dev loop, point at a
 **fresh event id** (or clear the event's objects in the bunny zone) so the reconcile finds nothing to seed.
 ⚠️ **There is deliberately NO whole-zone reset tool.** The single `snap-sync-dev` zone is the *only* zone
-(`backend/src/config.ts` — the deployed backend uses it too), so it is **shared with real TestFlight /
+(`api/src/config.ts` — the deployed backend uses it too), so it is **shared with real TestFlight /
 App-Store users' photos**; a blind zone wipe would destroy them. Clean up **targeted only** — a fresh
 event id, `SNAPSYNC_LEAVE`, or deleting the specific event's/device's objects via bunny (dashboard or
 native Storage API). Do not re-introduce a `reset-storage`-style whole-zone delete.
@@ -289,9 +289,10 @@ non-gating, dispatch-only `.github/workflows/screenshots.yml` drives on a simula
 ### Refreshing the marketing screenshots (operator runbook)
 
 `screenshots/*.png` — 6 raws, 3 forge states × light/dark — are the **single source of truth for two
-surfaces**: `appstore-screenshots.yml` composites the App Store listing images from them, and the backend
-derives the landing page's WebP from them (`deno task shots`). So **refreshing them is a commit**, and
-committing one is what ships both. Nothing regenerates automatically — the capture is dispatch-only.
+surfaces**: `appstore-screenshots.yml` composites the App Store listing images from them, and the `site/`
+Astro build derives the landing page's WebP from them (`astro:assets`, shipped by `site-deploy.yml`). So
+**refreshing them is a commit**, and committing one is what ships both. Nothing regenerates automatically —
+the capture is dispatch-only.
 
 Do this when the UI changes:
 
@@ -313,8 +314,8 @@ git add screenshots/ && git commit
   (`simctl` writes no timestamp) while `create` differs in a 90×32 px region and nowhere else. So a diff
   anywhere else means the UI really moved. Light and dark agree on the minute — both come from one launch,
   seconds apart.
-- **A headline or size change needs NO dispatch** — both consumers composite from the committed raws.
-  Edit `metadata/screenshots/en-US.json` (App Store copy) or `landing.html` and push.
+- **A headline or size change needs NO dispatch** — both consumers derive from the committed raws.
+  Edit `metadata/screenshots/en-US.json` (App Store copy) or the `site/` landing page and push.
 - The App Store upload fires only on `main` and only when `screenshots/**` or `metadata/**` changes; it
   replaces the live set, behind the editable-version gate (never a version in review).
 
@@ -723,7 +724,7 @@ installed apps on its own.
 
 On-device uploads go to the **deployed HTTPS backend** (the device-facing host baked from
 `Config.xcconfig`); there is no local upload rig. Confirm an upload landed by checking the backend's
-bunny **storage zone** (see `backend/README.md` / `openspec/specs/backend-deployment`), not the app
+bunny **storage zone** (see `api/README.md` / `openspec/specs/backend-deployment`), not the app
 status screen. Connections are HTTPS-only — default ATS, no `NSAllowsLocalNetworking` exception.
 
 ## App Store Connect via API (agent-driven portal chores)

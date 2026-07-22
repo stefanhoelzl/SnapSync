@@ -6,7 +6,7 @@ name: nightly-cleanup
 #
 # WHY IT RUNS HERE AND NOT IN THE EDGE. Bunny Edge Scripting has no scheduler, and it caps a request at
 # 50 subrequests / 30 s CPU (docs.bunny.net/scripting/limits) — a whole-storage sweep issues thousands of
-# storage calls, so it cannot run in the edge at all. This job runs the SAME `backend/src/sweep.ts`
+# storage calls, so it cannot run in the edge at all. This job runs the SAME `api/src/sweep.ts`
 # program on an Ubuntu runner with no such caps, talking to bunny storage directly. It imports the Edge
 # Script's own `storage`/`lifecycle` modules, so the layout and lifecycle rules cannot drift between the
 # two (backend-deployment).
@@ -59,7 +59,7 @@ jobs:
       # unreachable storage LIST) exits non-zero and fails the job; per-object errors are logged and
       # counted in the summary.
       - name: Run the sweep
-        working-directory: backend
+        working-directory: api
         env:
           BUNNY_STORAGE_ACCESS_KEY: ${{ secrets.BUNNY_STORAGE_ACCESS_KEY }}
           ADMIN_NOTIFY_KEY: ${{ secrets.ADMIN_NOTIFY_KEY }}

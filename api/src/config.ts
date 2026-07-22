@@ -50,7 +50,7 @@ const APNS_TOPIC = "app.snapsync";
  *
  * This is the ONE place the backend knows it, and it MUST equal `snapsync.domain` in the repo's
  * `gradle.properties` (which generates the app's `LINK_ORIGIN` and feeds `Config.xcconfig`'s
- * `applinks:` entitlement). Nothing in the Gradle build can reach this file — `backend/` is deployed by
+ * `applinks:` entitlement). Nothing in the Gradle build can reach this file — `api/` is deployed by
  * a separate, path-scoped workflow that ships code only — so a `:test:architecture` guard asserts the
  * two agree instead. Drift is SILENT: iOS simply declines to match the link and every invite opens a
  * browser, which is indistinguishable from a recipient who never installed the app.

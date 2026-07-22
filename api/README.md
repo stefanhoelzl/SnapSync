@@ -1,4 +1,4 @@
-# backend/ — SnapSync backend (bunny Edge Scripting)
+# api/ — SnapSync backend (bunny Edge Scripting)
 
 A **streaming proxy** (Deno/TypeScript + **Hono**) on **bunny Edge Scripting** — the one runtime.
 The device-facing origin is the custom domain **`snapsync.stho.net`** (our Bunny DNS zone, Let's
@@ -23,10 +23,10 @@ folded into it). Rationale lives in each spec's `## Purpose` and its `Decision r
 
 ## Storage layout
 
-Disjoint key namespaces in one zone (an `eventId`/`deviceId` is a UUID, never a literal label, so nothing
-collides). The private data (below) is joined by one PUBLIC `site/` prefix holding the built browser-facing
-site (capability `web-site`), which the api proxies (`serveSiteObject`); the nightly sweep is prefix-scoped
-and never touches it:
+Disjoint key namespaces in one zone (an `eventId`/`deviceId` is a UUID, never a literal label, so
+nothing collides). The private data (below) is joined by one PUBLIC `site/` prefix holding the built
+browser-facing site (capability `web-site`), which the api proxies (`serveSiteObject`); the nightly
+sweep is prefix-scoped and never touches it:
 
 ```
 events/<eventId>/metadata.json                 event marker / registry record { eventId, name, createdAt, startsAt, endsAt, capacity }
@@ -254,16 +254,16 @@ and set `APNS_PRIVATE_KEY` (the PEM) as an Edge Script **secret**. `APNS_KEY_ID`
 
 ## Deploy
 
-CI deploys via `.github/workflows/backend-deploy.yml` (path-scoped to `backend/**`, **gated on green
+CI deploys via `.github/workflows/api-deploy.yml` (path-scoped to `api/**`, **gated on green
 `deno fmt`/`lint`/`check`/`test`**) using `BunnyWay/actions/deploy-script`. It ships **code only** —
 it configures nothing (see above). Provision once:
 
-> **The browser-facing site is a SEPARATE deploy.** `.github/workflows/site-deploy.yml` builds the Astro
-> `site/` module (under Node) and **mirror-deploys** it to the storage `site/` prefix (`site/scripts/deploy.mjs`
-> — upload new, delete stale, never clear-first), authenticating with **only the storage-zone password**
-> (`BUNNY_STORAGE_ACCESS_KEY`), never the account key. The api Edge Script proxies that prefix, so the
-> routing lives in the bundle as source-owned code — **no pull-zone edge rules**. Capability `web-site`.
-
+> **The browser-facing site is a SEPARATE deploy.** `.github/workflows/site-deploy.yml` builds the
+> Astro `site/` module (under Node) and **mirror-deploys** it to the storage `site/` prefix
+> (`site/scripts/deploy.mjs` — upload new, delete stale, never clear-first), authenticating with
+> **only the storage-zone password** (`BUNNY_STORAGE_ACCESS_KEY`), never the account key. The api
+> Edge Script proxies that prefix, so the routing lives in the bundle as source-owned code — **no
+> pull-zone edge rules**. Capability `web-site`.
 
 1. With the Bunny **account API key**: an **S3-enabled** Storage zone (DE), and the Edge Scripting
    app (record its **script id** and a **deploy key**). Set the two **secrets** on the Edge Script.
