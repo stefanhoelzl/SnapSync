@@ -38,10 +38,10 @@
 
 ## 6. Move `/join` into `site/` (Phase 2)
 
-- [ ] 6.1 Port `download.html` to `join.astro` on the shared layout, with the fragment-read + union-fetch + zip logic as a client island; optionally bundle a zip library (`fflate`, STORE mode) and delete the hand-rolled writer; point API fetches at `/api/v1/events/:id`
-- [ ] 6.2 Add `/join` to the proxy allowlist and the ungated closed-list; serve `no-cache`; confirm byte-identical for every link and reads no per-event state
-- [ ] 6.3 Delete the in-bundle `GET|HEAD /join` handler, `download.html`, and `DOWNLOAD_ETAG`; update/retire the api `/join` tests to the proxy behavior
-- [ ] 6.4 Verify `/join` end-to-end through the pull zone: same-origin only (no off-origin subresource), the download/install controls present, the zip assembles client-side
+- [x] 6.1 Port `download.html` to `join.astro` on the shared layout, with the fragment-read + union-fetch + zip logic as a client island; optionally bundle a zip library (`fflate`, STORE mode) and delete the hand-rolled writer; point API fetches at `/api/v1/events/:id` — kept the PROVEN hand-rolled STORE zip writer verbatim (fflate swap deferred: browser-untestable here); fetches → `/api/v1/events/…`; island bundles same-origin
+- [x] 6.2 Add `/join` to the proxy allowlist and the ungated closed-list; serve `no-cache`; confirm byte-identical for every link and reads no per-event state — `/join` was already in the gate's `publicGet`; added the proxy route (`site/join/index.html`)
+- [x] 6.3 Delete the in-bundle `GET|HEAD /join` handler, `download.html`, and `DOWNLOAD_ETAG`; update/retire the api `/join` tests to the proxy behavior — download.test.ts, eventlink.test.ts, attest.test.ts gate all updated (193 pass)
+- [ ] 6.4 Verify `/join` end-to-end through the pull zone: same-origin only (no off-origin subresource), the download/install controls present, the zip assembles client-side — **NEEDS A BROWSER**: build verified self-contained (no off-origin) + island intact (zip sigs, `/api/v1/` fetches present); the actual union-fetch → zip → download flow needs a browser against a live event
 
 ## 7. Self-containment guard + final verification
 

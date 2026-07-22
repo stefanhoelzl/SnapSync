@@ -348,11 +348,13 @@ Deno.test("gate: the event link's AASA is served without a token", async () => {
 });
 
 Deno.test("gate: the /join download page is served without a token", async () => {
-  const { calls, app: a } = app();
+  const { calls, app: a } = app({ "site/join/index.html": "<!doctype html>join" });
   const res = await a.request("/join");
   await res.body?.cancel();
   assertEquals(res.status, 200); // NOT 401 — its entire audience has no app, and so no attestation
-  assertEquals(calls.length, 0); // and serving it reads no storage
+  // Admitted without a token and served by proxying the PUBLIC site/ prefix — one storage GET.
+  assertEquals(calls.length, 1);
+  assertEquals(calls[0].url.endsWith("/site/join/index.html"), true);
 });
 
 Deno.test("gate: the event-link exceptions are exact-path and GET/HEAD-only — they leak to nothing else", async () => {

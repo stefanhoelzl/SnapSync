@@ -1,12 +1,15 @@
-import { assert, assertEquals, assertStringIncludes } from "@std/assert";
+import { assert, assertEquals } from "@std/assert";
 import { createApp, type FetchLike } from "../src/app.ts";
 import { readConfig } from "../src/config.ts";
 
-// The no-app download page (capability `web-event-download`): a single source-owned static page served at
-// `GET /join`. These tests exercise the served RESPONSE — its status, headers, self-containment, and that
-// the download affordance and the App Store link are present. The gate interaction (served without a
-// token) and the /join response shape live in attest.test.ts and eventlink.test.ts respectively; the
-// per-event zip logic runs client-side in the browser and is out of scope for these origin tests.
+// The no-app download page (capability `web-event-download`, built by the `site/` Astro module) is served
+// by PROXYING the constant `site/join/index.html` object from storage (capability `web-site`). These tests
+// exercise the PROXY mechanics — that `/join` reads the same constant object for every request (no
+// per-event state), serves it `no-cache`, and yields a faithful 404/502 — against an injected fake
+// storage, so they stay offline. The page's CONTENT (the download/install controls, the client zip logic)
+// and its self-containment are the `site/` build's concern and are checked there.
+//
+// The gate interaction (`/join` served without a token) lives in attest.test.ts.
 
 const CONFIG = readConfig({
   BUNNY_STORAGE_ACCESS_KEY: "k",
@@ -15,40 +18,53 @@ const CONFIG = readConfig({
   ADMIN_NOTIFY_KEY: "a",
 });
 
-// Serving the page must make NO upstream request — any call here is a failure.
-const noFetch: FetchLike = () => {
-  throw new Error("serving the download page must make no upstream request");
-};
-const app = () => createApp({ config: CONFIG, fetch: noFetch });
+const JOIN_HTML = "<!doctype html><title>SnapSync — event photos</title><body>join</body>";
 
-Deno.test("download: GET /join serves the page as cacheable HTML", async () => {
-  const res = await app().request("/join");
+// A fake storage serving only site/join/index.html.
+function fakeStorage(): { fetch: FetchLike; keys: string[] } {
+  const keys: string[] = [];
+  const fetch: FetchLike = (url, init) => {
+    assertEquals(init.method, "GET");
+    const key = url.match(/\/snap-sync-dev\/(site\/.*)$/)?.[1] ?? "";
+    keys.push(key);
+    if (key === "site/join/index.html") {
+      return Promise.resolve(new Response(JOIN_HTML, { status: 200 }));
+    }
+    return Promise.resolve(new Response("not found", { status: 404 }));
+  };
+  return { fetch, keys };
+}
+
+const app = (f: FetchLike) => createApp({ config: CONFIG, fetch: f });
+
+Deno.test("download: GET /join proxies the constant site/join/index.html as no-cache HTML", async () => {
+  const s = fakeStorage();
+  const res = await app(s.fetch).request("/join");
   assertEquals(res.status, 200);
   assertEquals(res.headers.get("Content-Type"), "text/html; charset=utf-8");
-  assertEquals(res.headers.get("Cache-Control"), "public, max-age=300");
-  assert((await res.text()).length > 0);
+  assertEquals(res.headers.get("Cache-Control"), "no-cache"); // always-fresh shell
+  assertEquals(await res.text(), JOIN_HTML);
+  assert(s.keys.includes("site/join/index.html"), "the proxy read the constant join page");
 });
 
-Deno.test("download: the page offers both download and install", async () => {
-  const body = await (await app().request("/join")).text();
-  assertStringIncludes(body, "Download all photos"); // the zip control
-  assertStringIncludes(body, CONFIG.appStoreUrl); // the App Store link, ON the page (not a 302 target)
-  assertStringIncludes(body, "Invalid or expired link"); // the bad/missing-event state
+Deno.test("download: /join reads the SAME constant object for different links (no per-event state)", async () => {
+  // The payload rides in the fragment (never sent), so the backend serves byte-identical bytes and makes
+  // the same single storage read regardless of which event link is opened.
+  const s = fakeStorage();
+  const a = await (await app(s.fetch).request("/join")).text();
+  const b = await (await app(s.fetch).request("/join")).text();
+  assertEquals(a, b);
+  assertEquals(s.keys.every((k) => k === "site/join/index.html"), true);
 });
 
-Deno.test("download: the page is fully self-contained — no third-party resource", async () => {
-  // Load-bearing for the event-link fragment property: a subresource fetched off-origin would carry the
-  // page URL (and the eventId risk) away via `Referer`. Inline <script> IS expected here (unlike the
-  // landing page) — the page's whole job is client-side — but nothing may be LOADED from another host.
-  const body = await (await app().request("/join")).text();
-  assert(
-    !/(?:src|srcset)\s*=\s*["']https?:/i.test(body),
-    "external src=/srcset= asset reference found",
-  );
-  assert(!/<link\b[^>]*href\s*=\s*["']https?:/i.test(body), "external <link> found");
-  assert(
-    !/<script\b[^>]*\bsrc\s*=/i.test(body),
-    "external <script src=> found (script must be inline)",
-  );
-  assert(!/\bimport\b[^;]*\bfrom\s*["']https?:/i.test(body), "off-origin ES import found");
+Deno.test("download: HEAD /join returns the headers with no body", async () => {
+  const res = await app(fakeStorage().fetch).request("/join", { method: "HEAD" });
+  assertEquals(res.status, 200);
+  assertEquals(res.headers.get("Cache-Control"), "no-cache");
+  assertEquals(await res.text(), "");
+});
+
+Deno.test("download: an upstream storage failure is a 502", async () => {
+  const failing: FetchLike = () => Promise.resolve(new Response("boom", { status: 500 }));
+  assertEquals((await app(failing).request("/join")).status, 502);
 });

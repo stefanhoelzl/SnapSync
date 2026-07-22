@@ -14,11 +14,24 @@ const CONFIG = readConfig({
   ADMIN_NOTIFY_KEY: "a",
 });
 
-// Serving either route must make NO upstream request and read no storage — any call here is a failure.
+// The AASA reads no storage — serving it must make NO upstream request (any call is a failure).
 const noFetch: FetchLike = () => {
-  throw new Error("serving an event-link route must make no upstream request");
+  throw new Error("serving the AASA must make no upstream request");
 };
 const app = () => createApp({ config: CONFIG, fetch: noFetch });
+
+// `/join` is now built by `site/` and PROXIED from the constant `site/join/index.html` object; this app
+// injects a fake storage that serves it (capability `web-site`).
+const JOIN_HTML = "<!doctype html><title>SnapSync — event photos</title><body>join</body>";
+const siteApp = () => {
+  const fetch: FetchLike = (url) =>
+    Promise.resolve(
+      url.endsWith("/site/join/index.html")
+        ? new Response(JOIN_HTML, { status: 200 })
+        : new Response("nf", { status: 404 }),
+    );
+  return createApp({ config: CONFIG, fetch });
+};
 
 const AASA = "/.well-known/apple-app-site-association";
 
@@ -50,13 +63,12 @@ Deno.test("event-link: the AASA's domain matches the configured link domain", ()
 });
 
 Deno.test("event-link: GET /join serves the no-app download page", async () => {
-  const res = await app().request("/join");
-  assertEquals(res.status, 200); // a static page now, not a 302 to the App Store
+  const res = await siteApp().request("/join");
+  assertEquals(res.status, 200); // a static page (proxied from site/), not a 302 to the App Store
   assertEquals(res.headers.get("Content-Type"), "text/html; charset=utf-8");
-  assertEquals(res.headers.get("Cache-Control"), "public, max-age=300"); // same static-page posture as `/`
-  const body = await res.text();
-  assert(body.includes("Download all photos"), "download control missing");
-  assert(body.includes(CONFIG.appStoreUrl), "App Store link missing from the page");
+  assertEquals(res.headers.get("Cache-Control"), "no-cache"); // the always-fresh shell (web-site)
+  assert((await res.text()).length > 0);
+  // The download control and the App Store link are part of the page BUILT by site/ and checked there.
 });
 
 Deno.test("event-link: /join is identical for every link and reads no event data", async () => {
@@ -64,9 +76,10 @@ Deno.test("event-link: /join is identical for every link and reads no event data
   // distinguish one invite from another even in principle. That is the design: the eventId is the read
   // capability, and it must never reach a server log or a cache key. The served bytes are the same for
   // every link; anything per-event is done by the page's own JS off the fragment, client-side.
-  const a = await app().request("/join");
-  const b = await app().request("/join?v=3&d=eyJldmVudElkIjoieCJ9"); // a query cannot happen, but must not matter
-  assertEquals(a.status, b.status);
+  const a = await siteApp().request("/join");
+  const b = await siteApp().request("/join?v=3&d=eyJldmVudElkIjoieCJ9"); // a query cannot happen, but must not matter
+  assertEquals(a.status, 200);
+  assertEquals(b.status, 200);
   assertEquals(await a.text(), await b.text());
 });
 
@@ -74,7 +87,7 @@ Deno.test("event-link: HEAD on both routes behaves", async () => {
   const aasa = await app().request(AASA, { method: "HEAD" });
   await aasa.body?.cancel();
   assertEquals(aasa.status, 200);
-  const join = await app().request("/join", { method: "HEAD" });
+  const join = await siteApp().request("/join", { method: "HEAD" });
   await join.body?.cancel();
   assertEquals(join.status, 200);
 });

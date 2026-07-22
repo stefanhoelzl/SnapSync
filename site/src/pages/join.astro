@@ -1,0 +1,318 @@
+---
+// The no-app download page (capabilities event-link, web-event-download), served at /join. Built by the
+// site/ module and served by proxying the constant site/join/index.html from storage (capability
+// web-site). It is BYTE-IDENTICAL for every event link: the backend never sees the payload (it rides in
+// the URL fragment). All per-event work happens in the client island below — read the eventId from the
+// fragment, fetch the event name + photo union, and assemble a STORE-only zip in browser memory.
+//
+// SELF-CONTAINED (web-site invariant + web-event-download Decision 5): every subresource is same-origin
+// (the island bundles to _astro/*), and the ONLY off-origin fetches are the presigned photo URLs — data,
+// not code. The zip is hand-rolled (no library) so there is nothing to vendor; fflate remains an option
+// if this is ever browser-verified.
+import Layout from "../layouts/Layout.astro";
+import AppStoreButton from "../components/AppStoreButton.astro";
+---
+
+<Layout title="SnapSync — event photos">
+  <div class="join">
+    <div id="app" class="hidden">
+      <h1 id="title">Event photos</h1>
+      <p class="sub" id="subtitle">Download everyone's photos from this event.</p>
+      <button class="primary" id="download" disabled>Download all photos (zip)</button>
+      <div class="status" id="status">Loading…</div>
+      <div class="cta"><AppStoreButton /></div>
+    </div>
+    <div id="invalid" class="hidden">
+      <h1>Invalid or expired link</h1>
+      <p class="sub">This SnapSync invite could not be opened. Ask the event host for a fresh link.</p>
+      <div class="cta"><AppStoreButton /></div>
+    </div>
+  </div>
+</Layout>
+
+<style is:global>
+  /* @property must be global (custom-property registration is document-scoped). It drives the download
+     button's progress fill. */
+  @property --p {
+    syntax: "<percentage>";
+    inherits: false;
+    initial-value: 0%;
+  }
+  .join { max-width: 420px; margin: 8vh auto; padding: 0 24px; text-align: center; }
+  .join h1 { font-size: 1.6rem; font-weight: 700; letter-spacing: -0.02em; margin: 0 0 8px; }
+  .join p.sub { margin: 0 0 28px; color: var(--muted); font-size: 1rem; }
+  /* The primary action carries the SnapSync green AND doubles as the download progress bar: a translucent
+     fill sweeps left→right to --p while a download runs. */
+  .join button.primary {
+    appearance: none;
+    border: 0;
+    border-radius: 13px;
+    padding: 15px 22px;
+    width: 100%;
+    font-size: 1.05rem;
+    font-weight: 600;
+    color: #fff;
+    --p: 0%;
+    background:
+      linear-gradient(90deg, rgba(255, 255, 255, 0.28) var(--p), rgba(255, 255, 255, 0) var(--p)),
+      linear-gradient(180deg, var(--green-2), var(--green));
+    box-shadow: var(--shadow);
+    cursor: pointer;
+    transition: transform 0.15s ease, --p 0.2s ease;
+  }
+  .join button.primary:hover:not(:disabled) { transform: translateY(-2px); }
+  .join button.primary:disabled { opacity: 0.5; cursor: default; }
+  .join button.primary.busy { opacity: 1; }
+  .join .status { margin-top: 16px; min-height: 1.2em; font-size: 0.95rem; color: var(--muted); }
+  .join .cta { display: flex; flex-direction: column; align-items: center; gap: 12px; margin-top: 28px; }
+  .join .hidden { display: none; }
+</style>
+
+<script>
+  (function () {
+    const CONFIG_VERSION = "3";
+    const UUID = /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/;
+
+    const $ = (id: string) => document.getElementById(id)!;
+    const showInvalid = () => {
+      $("app").classList.add("hidden");
+      $("invalid").classList.remove("hidden");
+    };
+    const showApp = () => {
+      $("invalid").classList.add("hidden");
+      $("app").classList.remove("hidden");
+    };
+    const setStatus = (t: string) => {
+      $("status").textContent = t;
+    };
+
+    // fragment decode: the same wire contract as capability `event-link` (#v=3&d=<base64url(json)>)
+    function decodeFragment(): string | null {
+      const frag = location.hash.startsWith("#") ? location.hash.slice(1) : location.hash;
+      if (!frag) return null;
+      const params: Record<string, string> = {};
+      for (const part of frag.split("&")) {
+        const eq = part.indexOf("=");
+        if (eq < 0) continue;
+        params[part.slice(0, eq)] = part.slice(eq + 1);
+      }
+      if (params.v !== CONFIG_VERSION || !params.d) return null;
+      try {
+        let b64 = params.d.replace(/-/g, "+").replace(/_/g, "/");
+        while (b64.length % 4) b64 += "=";
+        const json = decodeURIComponent(escape(atob(b64)));
+        const payload = JSON.parse(json);
+        if (!payload || typeof payload.eventId !== "string" || !UUID.test(payload.eventId)) return null;
+        return payload.eventId;
+      } catch (_e) {
+        return null;
+      }
+    }
+
+    // CRC-32 (IEEE) over a Uint8Array
+    const CRC_TABLE = (() => {
+      const t = new Uint32Array(256);
+      for (let n = 0; n < 256; n++) {
+        let c = n;
+        for (let k = 0; k < 8; k++) c = (c & 1) ? (0xedb88320 ^ (c >>> 1)) : (c >>> 1);
+        t[n] = c >>> 0;
+      }
+      return t;
+    })();
+    function crc32(bytes: Uint8Array): number {
+      let c = 0xffffffff;
+      for (let i = 0; i < bytes.length; i++) c = CRC_TABLE[(c ^ bytes[i]) & 0xff] ^ (c >>> 8);
+      return (c ^ 0xffffffff) >>> 0;
+    }
+
+    // STORE-only (method 0) zip of {name, bytes} entries, assembled in one buffer (32-bit / no ZIP64)
+    function buildZip(files: { name: string; bytes: Uint8Array }[]): Uint8Array {
+      const enc = new TextEncoder();
+      const parts = [];
+      for (const f of files) {
+        const name = enc.encode(f.name);
+        parts.push({ name, bytes: f.bytes, crc: crc32(f.bytes), offset: 0 });
+      }
+      let total = 0;
+      for (const p of parts) {
+        p.offset = total;
+        total += 30 + p.name.length + p.bytes.length;
+      }
+      const cdStart = total;
+      for (const p of parts) total += 46 + p.name.length;
+      total += 22; // end of central directory
+
+      const out = new Uint8Array(total);
+      const dv = new DataView(out.buffer);
+      let o = 0;
+      const w16 = (v: number) => {
+        dv.setUint16(o, v, true);
+        o += 2;
+      };
+      const w32 = (v: number) => {
+        dv.setUint32(o, v >>> 0, true);
+        o += 4;
+      };
+      const wb = (b: Uint8Array) => {
+        out.set(b, o);
+        o += b.length;
+      };
+      const FLAG_UTF8 = 0x0800; // names are UTF-8
+
+      for (const p of parts) { // local headers + data
+        w32(0x04034b50);
+        w16(20);
+        w16(FLAG_UTF8);
+        w16(0);
+        w16(0);
+        w16(0x21); // method 0, DOS date 1980-01-01
+        w32(p.crc);
+        w32(p.bytes.length);
+        w32(p.bytes.length);
+        w16(p.name.length);
+        w16(0);
+        wb(p.name);
+        wb(p.bytes);
+      }
+      for (const p of parts) { // central directory
+        w32(0x02014b50);
+        w16(20);
+        w16(20);
+        w16(FLAG_UTF8);
+        w16(0);
+        w16(0);
+        w16(0x21);
+        w32(p.crc);
+        w32(p.bytes.length);
+        w32(p.bytes.length);
+        w16(p.name.length);
+        w16(0);
+        w16(0);
+        w16(0);
+        w16(0);
+        w32(0);
+        w32(p.offset);
+        wb(p.name);
+      }
+      w32(0x06054b50);
+      w16(0);
+      w16(0);
+      w16(parts.length);
+      w16(parts.length);
+      w32(total - 22 - cdStart);
+      w32(cdStart);
+      w16(0);
+      return out;
+    }
+
+    // Disambiguate duplicate filenames so a collision does not silently drop a photo.
+    function uniqueName(used: Set<string>, name: string): string {
+      if (!used.has(name)) {
+        used.add(name);
+        return name;
+      }
+      const dot = name.lastIndexOf(".");
+      const stem = dot > 0 ? name.slice(0, dot) : name;
+      const ext = dot > 0 ? name.slice(dot) : "";
+      let i = 2, candidate;
+      do {
+        candidate = stem + "-" + i + ext;
+        i++;
+      } while (used.has(candidate));
+      used.add(candidate);
+      return candidate;
+    }
+
+    async function main() {
+      const eventId = decodeFragment();
+      if (!eventId) {
+        showInvalid();
+        return;
+      }
+      showApp();
+
+      // Fetch the event name (marker) and the union — same-origin, un-attested reads on the canonical
+      // versioned prefix.
+      let name: string | undefined, union: any[];
+      try {
+        const markerRes = await fetch("/api/v1/events/" + eventId);
+        if (markerRes.status === 404) {
+          showInvalid();
+          return;
+        }
+        if (!markerRes.ok) throw new Error("marker " + markerRes.status);
+        name = (await markerRes.json()).name;
+        const unionRes = await fetch("/api/v1/events/" + eventId + "/files");
+        if (!unionRes.ok) throw new Error("union " + unionRes.status);
+        union = await unionRes.json();
+      } catch (_e) {
+        setStatus("Couldn't load this event. Check your connection and reload.");
+        return;
+      }
+
+      if (name) $("title").textContent = name;
+      document.title = name ? name + " — SnapSync" : "SnapSync — event photos";
+
+      // One file per asset: the PRIMARY resource only. A Live Photo / GIF also carries a paired "live"
+      // video resource in the union — we deliberately skip it and download just the still.
+      const items: { url: string; name: string }[] = [];
+      const used = new Set<string>();
+      for (const asset of union) {
+        for (const r of (asset.resources || [])) {
+          if (r.role !== "primary") continue;
+          items.push({ url: r.url, name: uniqueName(used, r.filename || (r.key || "photo")) });
+        }
+      }
+      if (items.length === 0) {
+        setStatus("No photos have been shared to this event yet.");
+        return;
+      }
+
+      setStatus(items.length + " photo" + (items.length === 1 ? "" : "s") + " ready.");
+      const btn = $("download") as HTMLButtonElement;
+      const LABEL = "Download all photos (zip)";
+      const setP = (frac: number) => btn.style.setProperty("--p", Math.round(frac * 100) + "%");
+      btn.disabled = false;
+      btn.addEventListener("click", async () => {
+        btn.disabled = true;
+        btn.classList.add("busy");
+        setP(0);
+        const files: { name: string; bytes: Uint8Array }[] = [];
+        try {
+          for (let i = 0; i < items.length; i++) {
+            btn.textContent = "Downloading " + (i + 1) + " of " + items.length + "…";
+            setP(i / items.length);
+            const res = await fetch(items[i].url);
+            if (!res.ok) throw new Error("photo " + res.status);
+            files.push({ name: items[i].name, bytes: new Uint8Array(await res.arrayBuffer()) });
+            setP((i + 1) / items.length);
+          }
+          btn.textContent = "Building zip…";
+          setP(1);
+          const zip = buildZip(files);
+          const url = URL.createObjectURL(new Blob([zip as BlobPart], { type: "application/zip" }));
+          const a = document.createElement("a");
+          a.href = url;
+          a.download = (name || "snapsync").replace(/[^\w.-]+/g, "-") + ".zip";
+          document.body.appendChild(a);
+          a.click();
+          a.remove();
+          setTimeout(() => URL.revokeObjectURL(url), 60000);
+          setStatus("Done — " + items.length + " photo" + (items.length === 1 ? "" : "s") + " downloaded.");
+        } catch (_e) {
+          setStatus(
+            "Download failed. Reload and try again" +
+              (files.length ? " (a very large event may exceed this browser's memory)." : "."),
+          );
+        } finally {
+          btn.disabled = false;
+          btn.classList.remove("busy");
+          setP(0);
+          btn.textContent = LABEL;
+        }
+      });
+    }
+
+    main();
+  })();
+</script>
