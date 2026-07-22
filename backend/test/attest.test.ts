@@ -317,10 +317,13 @@ Deno.test("gate: OPTIONS is answered without a token (the pull zone may answer i
 });
 
 Deno.test("gate: the marketing page at / is served without a token", async () => {
-  const { calls, app: a } = app();
+  const { calls, app: a } = app({ "site/index.html": "<!doctype html>hi" });
   const res = await a.request("/");
   assertEquals(res.status, 200); // NOT 401 — `marketing-site` is on the closed ungated list
-  assertEquals(calls.length, 0); // and serving it reads no storage
+  // It is admitted without a token and served by proxying the PUBLIC `site/` prefix (capability
+  // `web-site`) — exactly one storage GET, of the public page, never the gated user data.
+  assertEquals(calls.length, 1);
+  assertEquals(calls[0].url.endsWith("/site/index.html"), true);
 });
 
 Deno.test("gate: the / exception is exact-path and GET/HEAD-only — it leaks to nothing else", async () => {

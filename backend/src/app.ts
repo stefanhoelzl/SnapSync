@@ -160,69 +160,17 @@ import { classifyEvent, type MemberState, resolveMembership } from "./lifecycle.
 export { classifyEvent } from "./lifecycle.ts";
 export type { FetchLike } from "./storage.ts";
 
-// The marketing/landing page (capability `marketing-site`), embedded at build time. `deno bundle` inlines
-// this text import, so the page ships inside the single bundle — served from memory, no runtime file read.
-import LANDING_HTML from "./landing.html" with { type: "text" };
-// The no-app download page (capability `web-event-download`), served at `GET /join`. Embedded the same way
-// — a single static asset, identical for every event link, served from memory. It carries no `{{SHOT_…}}`
-// placeholders, so unlike LANDING_HTML it needs no substitution pass; it is served verbatim.
+// The marketing/landing page (capability `marketing-site`) is no longer embedded here — it is built by the
+// `site/` Astro module and served by proxying the storage `site/` prefix (capability `web-site`, see
+// `serveSiteObject` + the `/` and `/_astro/*` routes below). The `shots` pipeline that inlined its
+// screenshots as `data:` URIs is gone with it.
+//
+// The no-app download page (capability `web-event-download`), served at `GET /join`, is still embedded and
+// served verbatim from memory; it moves into `site/` in Phase 2.
 import DOWNLOAD_HTML from "./download.html" with { type: "text" };
-// The page's screenshots (capability `marketing-site`): SHOTS is the committed contract, SHOT_DATA_URIS the
-// images `deno task shots` derives from the committed raws in `screenshots/`. The generated module is not
-// committed — see src/shots.ts for why the split is what makes the set type-checked.
-import { SHOTS } from "./shots.ts";
-import { SHOT_DATA_URIS } from "./shots.generated.ts";
 
 /**
- * The page with its `{{SHOT_*}}` placeholders replaced by inlined `data:` URIs — computed ONCE here at
- * module scope, not per request, and folded into the bundle by `deno bundle`. This is a string
- * substitution, not a file read: `marketing-site` requires serving the page to touch neither the disk nor
- * an upstream.
- *
- * Driven by [SHOTS] and indexed by placeholder, so the type system carries the pairing: `SHOT_DATA_URIS` is
- * `Record<ShotPlaceholder, string>`, hence every lookup here is a `string` — no cast, no `undefined`, and a
- * capture the derive failed to emit cannot reach this code at all.
- *
- * The leftover scan catches what types cannot: a placeholder typo'd *in the HTML* matches no key, so it
- * would otherwise ship `{{SHOT_…}}` as literal text on the public page with nothing to notice. Fail at boot
- * instead.
- */
-const LANDING_PAGE: string = (() => {
-  let page = LANDING_HTML;
-  for (const { placeholder } of SHOTS) {
-    page = page.replaceAll(`{{${placeholder}}}`, SHOT_DATA_URIS[placeholder]);
-  }
-  const leftover = page.match(/\{\{SHOT_[A-Z_]+\}\}/g);
-  if (leftover) {
-    throw new Error(
-      `landing page has unsubstituted screenshot placeholders: ${
-        [...new Set(leftover)].join(", ")
-      }`,
-    );
-  }
-  return page;
-})();
-
-/**
- * The landing page's entity tag — derived FROM the built page, so it changes exactly when the page changes
- * and cannot be forgotten on a deploy.
- *
- * FNV-1a over the content, salted with its length. A non-cryptographic hash is the right tool here: an ETag
- * only has to *differ* when the bytes differ, and nothing about this is adversarial. Deliberately sync —
- * `crypto.subtle.digest` is async, and a top-level `await` in the entry module is not a thing to introduce
- * into an Edge Script bundle for the sake of a cache header.
- */
-const LANDING_ETAG: string = (() => {
-  let h = 0x811c9dc5;
-  for (let i = 0; i < LANDING_PAGE.length; i++) {
-    h ^= LANDING_PAGE.charCodeAt(i);
-    h = Math.imul(h, 0x01000193);
-  }
-  return `"${LANDING_PAGE.length.toString(36)}-${(h >>> 0).toString(36)}"`;
-})();
-
-/**
- * The download page's entity tag — same derivation as {@link LANDING_ETAG}, over the download page. It
+ * The download page's entity tag — FNV-1a over the download page's bytes, salted with its length. It
  * changes exactly when the page changes, so a returning visitor revalidates with a small `304` (capability
  * `web-event-download`).
  */
@@ -280,10 +228,77 @@ const PRESIGN_EXPIRY_SECONDS = 604800;
 // and a cached listing serves stale, expiring presigned URLs.
 const NO_CACHE = "no-store, no-cache, max-age=0";
 
-// The marketing page is PUBLIC and static — the deliberate inverse of the listings' NO_CACHE. A `public`
-// directive lets the bunny pull zone serve it from the edge, keeping the Edge Script off the request hot
-// path (capability `marketing-site`).
+// PUBLIC and static — the deliberate inverse of the listings' NO_CACHE. A `public` directive lets the
+// bunny pull zone serve it from the edge, keeping the Edge Script off the request hot path. Still used by
+// the AASA and (until Phase 2) the `/join` page.
 const PUBLIC_CACHE = "public, max-age=300";
+
+// Cache policy for the proxied `site/` objects (capability `web-site`). HTML entry points are the
+// always-fresh shell — `no-cache` so a deploy is picked up immediately; the pull zone still revalidates
+// cheaply. Fingerprinted assets are addressed by content hash, so they are immutable for a year — the hash
+// is the version, and a changed asset gets a new URL.
+const SITE_HTML_CACHE = "no-cache";
+const SITE_ASSET_CACHE = "public, max-age=31536000, immutable";
+
+// Content-Type by extension for proxied `site/` objects — deterministic, so we do not rest the served
+// type on the storage API's guess. Falls back to octet-stream.
+function siteContentType(sitePath: string): string {
+  if (sitePath.endsWith(".html")) return "text/html; charset=utf-8";
+  if (sitePath.endsWith(".webp")) return "image/webp";
+  if (sitePath.endsWith(".css")) return "text/css; charset=utf-8";
+  if (sitePath.endsWith(".js") || sitePath.endsWith(".mjs")) {
+    return "text/javascript; charset=utf-8";
+  }
+  if (sitePath.endsWith(".svg")) return "image/svg+xml";
+  if (sitePath.endsWith(".png")) return "image/png";
+  if (sitePath.endsWith(".json")) return "application/json; charset=utf-8";
+  if (sitePath.endsWith(".ico")) return "image/x-icon";
+  if (sitePath.endsWith(".woff2")) return "font/woff2";
+  return "application/octet-stream";
+}
+
+/**
+ * Serve a built page/asset by streaming it from the storage `site/` prefix (capability `web-site`). The api
+ * owns this routing in source (no pull-zone edge rules, no account key); the pull zone caches the response
+ * by the `Cache-Control` we set here, so only cold misses reach the script. `sitePath` is the storage key
+ * under `site/` (e.g. `index.html`, `_astro/app.<hash>.js`). `HEAD` returns the headers with no body. A
+ * missing object is `404`; any other upstream failure is `502` — the same faithful-outcome contract as the
+ * rest of the api (never a false success, never a partial body mislabelled `200`).
+ */
+async function serveSiteObject(
+  fetchImpl: FetchLike,
+  config: Config,
+  sitePath: string,
+  method: string,
+  cacheControl: string,
+): Promise<Response> {
+  const url = `https://${config.host}/${config.zone}/site/${sitePath}`;
+  let upstream: Response;
+  try {
+    upstream = await fetchImpl(url, { method: "GET", headers: { AccessKey: config.accessKey } });
+  } catch (e) {
+    console.error(`site: upstream GET errored for site/${sitePath}: ${e}`);
+    return new Response("upstream error", { status: 502 });
+  }
+  if (upstream.status === 404) {
+    await upstream.body?.cancel();
+    return new Response("not found", { status: 404 });
+  }
+  if (!upstream.ok) {
+    await upstream.body?.cancel();
+    console.error(`site: bunny returned ${upstream.status} for site/${sitePath}`);
+    return new Response("upstream error", { status: 502 });
+  }
+  const headers = new Headers({
+    "Content-Type": siteContentType(sitePath),
+    "Cache-Control": cacheControl,
+  });
+  if (method === "HEAD") {
+    await upstream.body?.cancel();
+    return new Response(null, { status: 200, headers });
+  }
+  return new Response(upstream.body, { status: 200, headers });
+}
 
 /**
  * Mint an AWS SigV4 **presigned S3 GET URL** for a stored object (the download-URL authority for
@@ -505,8 +520,13 @@ export function createApp({ fetch: fetchImpl, config, now = Date.now }: Deps): H
     // nor the storage this gate protects. They are served at the ROOT only, never under `/api/v1`; the
     // normalization above matters for `/attest/*` (a device route reachable under the prefix) AND for the
     // two event READS added below, which ARE device routes and so are matched on the normalized `path`.
+    // `/` and the site's fingerprinted assets under `/_astro/*` are the browser-facing site (capability
+    // `web-site`), proxied by the api from the PUBLIC storage `site/` prefix. Unlike the other public GETs
+    // they DO read storage — but only the public `site/` prefix, never the bill-/photo-protected user data
+    // this gate guards, so serving them unauthenticated is safe. GET/HEAD only.
     const publicGet = path === "/" || path === "/join" ||
-      path === "/.well-known/apple-app-site-association";
+      path === "/.well-known/apple-app-site-association" ||
+      path.startsWith("/_astro/");
     // The two event READS the no-app download page fetches (capability `web-event-download`): the event
     // marker `/events/<id>` and the photo union `/events/<id>/files`. These are authorized by
     // eventId-possession alone — the eventId IS the read capability — so a browser that holds no attestation
@@ -546,23 +566,23 @@ export function createApp({ fetch: fetchImpl, config, now = Date.now }: Deps): H
     return await next();
   });
 
-  // The public marketing/landing page (capability `marketing-site`): a single source-owned static page,
-  // served from memory with no storage or Apple call. Cacheable (PUBLIC_CACHE) so the pull zone answers
-  // from the edge. GET returns the page; HEAD returns the same headers with no body. The gate above admits
-  // both at exactly `/`.
-  //
-  // The ETag does NOT invalidate anything — `max-age` already caps staleness, because a cache serves its
-  // stored copy for that long without asking. What it buys is the revalidation AFTER that: the page is
-  // ~290KB (mostly inlined screenshots), so a returning visitor re-checking it costs a ~200-byte 304
-  // instead of re-sending the whole thing. It changes exactly when the built page changes, so it needs no
-  // maintenance and cannot go stale.
-  app.on(["GET", "HEAD"], "/", (c) => {
-    c.header("Cache-Control", PUBLIC_CACHE);
-    c.header("ETag", LANDING_ETAG);
-    // A conditional hit must still carry the caching headers, or the cache learns nothing from the 304.
-    if (c.req.header("If-None-Match") === LANDING_ETAG) return c.body(null, 304);
-    c.header("Content-Type", "text/html; charset=utf-8");
-    return c.req.method === "HEAD" ? c.body(null) : c.body(LANDING_PAGE);
+  // The public marketing/landing page (capability `marketing-site`, built by `web-site`): served by
+  // proxying `site/index.html` from storage. The HTML entry point is `no-cache` — the always-fresh shell —
+  // so a deploy is picked up immediately; it references immutable, content-hashed `/_astro/*` assets. The
+  // gate above admits `/` (GET/HEAD).
+  app.on(
+    ["GET", "HEAD"],
+    "/",
+    (c) => serveSiteObject(fetchImpl, config, "index.html", c.req.method, SITE_HTML_CACHE),
+  );
+
+  // The landing page's fingerprinted assets (capability `web-site`): served by proxying `site/_astro/*`
+  // from storage with a year-long immutable cache — the content hash in the name is the version, so the
+  // pull zone serves repeat hits from the edge and only cold misses reach the script. The wildcard segment
+  // after `/_astro/` is the storage key tail. The gate above admits `/_astro/*` (GET/HEAD).
+  app.on(["GET", "HEAD"], "/_astro/*", (c) => {
+    const tail = new URL(c.req.url).pathname.slice("/".length); // "_astro/app.<hash>.js"
+    return serveSiteObject(fetchImpl, config, tail, c.req.method, SITE_ASSET_CACHE);
   });
 
   // The Apple App Site Association document (capability `event-link`): what makes the event link a
