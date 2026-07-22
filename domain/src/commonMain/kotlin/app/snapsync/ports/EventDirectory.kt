@@ -12,17 +12,19 @@ package app.snapsync.ports
  */
 sealed interface EventDetails {
     /**
-     * [name] is the (required, non-null) event name; [startsAt] is the event's **start date** — the host's
-     * statement of when the event began (capability `event-creation`).
+     * [name] is the (required, non-null) event name; [startsAt] is the event's **start date** and [endsAt]
+     * its **end date** — the host's statement of when the event began and ended (capability
+     * `event-creation`).
      *
-     * [startsAt] is **required and non-null**, like [name]. It is always present on a `200`: the backend
-     * rejects a non-canonical one on create and synthesizes one from `createdAt` for markers written
-     * before it existed, so the app never sees a null. A `200` lacking it is therefore malformed /
-     * transient → [Failed], never a [Found] with an invented one — [startsAt] is a **floor** on this
-     * membership's cutoff (capability `photo-selection-policy`), and a client that defaulted it would be
-     * silently *lowering* that floor. Failing loudly and retrying is the only safe reading.
+     * All three are **required and non-null**. They are always present on a `200`: the backend rejects a
+     * non-canonical `startsAt`/`endsAt` on create, stamps `endsAt` at mint (creator-supplied or the legacy
+     * `+30d` fallback), and serves a marker with no stamped end as `gone` (→ 404) rather than a partial
+     * `200`. A `200` lacking any is therefore malformed / transient → [Failed], never a [Found] with an
+     * invented one — [startsAt] is a **floor** and [endsAt] a **ceiling** on this membership's capture-date
+     * range (capability `photo-selection-policy`), and a client that defaulted either would silently move
+     * that bound. Failing loudly and retrying is the only safe reading.
      */
-    data class Found(val name: String, val startsAt: String) : EventDetails
+    data class Found(val name: String, val startsAt: String, val endsAt: String) : EventDetails
     data object NotFound : EventDetails
     data object Failed : EventDetails
 }

@@ -31,7 +31,7 @@ import app.snapsync.ui.components.AppConfirmDialog
 import app.snapsync.ui.components.AppDestructiveConfirmDialog
 import app.snapsync.ui.components.AppErrorBanner
 import app.snapsync.ui.components.AppEventHeaderHost
-import app.snapsync.ui.components.AppEventStartSection
+import app.snapsync.ui.components.AppEventDateRangeSection
 import app.snapsync.ui.components.AppEyebrow
 import app.snapsync.ui.components.AppInvitationHeaderLoading
 import app.snapsync.ui.components.AppJoinProgress
@@ -46,11 +46,14 @@ import app.snapsync.ui.components.JoinAccessShare
 import app.snapsync.ui.components.JoinNoticeFailed
 import app.snapsync.ui.components.JoinNoticeInvalid
 import app.snapsync.ui.components.JoinNoticeOffline
+import kotlinx.datetime.DateTimeUnit
 import kotlinx.datetime.LocalDateTime
+import kotlinx.datetime.plus
 import app.snapsync.ui.components.AppQrCode
 import app.snapsync.ui.components.AccessPrompt
-import app.snapsync.ui.components.AppCutoffChoices
-import app.snapsync.ui.components.CutoffChoice
+import app.snapsync.ui.components.AppRangePresetChoices
+import app.snapsync.ui.components.FromChoice
+import app.snapsync.ui.components.UntilChoice
 import app.snapsync.ui.components.AppEventHeaderCompact
 import app.snapsync.ui.components.AppQuestionHeading
 import app.snapsync.ui.components.AppSectionNote
@@ -87,19 +90,22 @@ fun StatusScreen(
     // opening/closing the surface is screen-local navigation, so no external "open" callback is threaded.
     membership: EventConfig? = null,
     // Commit an in-place reconfigure (capability `reconfigure-membership`): the event the surface was
-    // opened for, the new direction, the chosen cutoff (clamped to the floor on the far side, in
-    // `ReconfigureEvent`), and the album opt-in.
-    onReconfigure: (String, Direction, String, Boolean) -> Unit = { _, _, _, _ -> },
+    // opened for, the new direction, the chosen capture-date range (`minPhotoDate` floor-clamped and
+    // `maxPhotoDate` — nullable, absent = no ceiling — ceiling-clamped on the far side in `ReconfigureEvent`),
+    // and the album opt-in.
+    onReconfigure: (String, Direction, String, String?, Boolean) -> Unit = { _, _, _, _, _ -> },
     inviteUrl: String? = null,
     // The joined event's name (fetched by id), shown as the heading; null until fetched.
     eventName: String? = null,
-    onCreateEvent: (String, LocalDateTime) -> Unit = { _, _ -> },
+    // Create an event (capability `event-creation-ui`): the trimmed name and the chosen `[startsAt, endsAt]`
+    // event window as LOCAL wall-clock values (the container converts each to a canonical `…Z` string).
+    onCreateEvent: (String, LocalDateTime, LocalDateTime) -> Unit = { _, _, _ -> },
     transientError: String? = null,
     // Join-gate actions (capability `join-event`), routed to the container intents. The confirm/retry
-    // actions carry the chosen capture-date cutoff (capability `photo-selection-policy`; always present),
-    // the chosen participation direction (capability `join-event`), and the album opt-in (`saveToAlbum`,
-    // capability `event-album`).
-    onConfirmJoin: (String, Direction, Boolean) -> Unit = { _, _, _ -> },
+    // actions carry the chosen capture-date range (`cutoff` = the lower bound, `until` = the upper bound;
+    // capability `photo-selection-policy`, both always present), the chosen participation direction
+    // (capability `join-event`), and the album opt-in (`saveToAlbum`, capability `event-album`).
+    onConfirmJoin: (String, String, Direction, Boolean) -> Unit = { _, _, _, _ -> },
     // The photo-access explainer's confirm: requests permission, then advances to the confirm surface.
     // The only route from the join gate to the system dialog (capability `join-event`).
     onAcknowledgeAccess: () -> Unit = {},
@@ -108,8 +114,8 @@ fun StatusScreen(
     onChoosePhotos: () -> Unit = {},
     onCancelJoin: () -> Unit = {},
     onRetryLoad: () -> Unit = {},
-    onRetryJoin: (String, Direction, Boolean) -> Unit = { _, _, _ -> },
-    onConfirmSwitch: (String, Direction) -> Unit = { _, _ -> },
+    onRetryJoin: (String, String, Direction, Boolean) -> Unit = { _, _, _, _ -> },
+    onConfirmSwitch: (String, String, Direction) -> Unit = { _, _, _ -> },
     onCancelSwitch: () -> Unit = {},
     // Bridges the cutoff picker (local wall-clock) to the UTC `…Z` cutoff string. Required — with NO
     // system-reading default (migration step 9): the host binds the `Clock`/`TimeZoneSource` ports
@@ -120,7 +126,7 @@ fun StatusScreen(
     // unresolved grant) → the row is omitted. Permission-aware and cheap (no per-asset resource read) — the
     // permission-branch and the LIMITED snapshot live inside the compose-built query. Default `{ null }`
     // keeps the row absent wherever it is not wired (forge, plain tests).
-    shareableCount: suspend (cutoff: String) -> Int? = { null },
+    shareableCount: suspend (cutoff: String, until: String?) -> Int? = { _, _ -> null },
     // The current photo-access grant, threaded purely as a recompute trigger for the count: a late resolve
     // (the first-join dialog is answered a beat after Ready renders) must make the count appear.
     photoPermission: PermissionStatus = PermissionStatus.GRANTED,
@@ -174,9 +180,9 @@ fun StatusScreen(
                     cutoff = cutoff,
                     shareableCount = shareableCount,
                     photoPermission = photoPermission,
-                    onSave = { eventId, direction, chosenCutoff, saveToAlbum ->
+                    onSave = { eventId, direction, minPhotoDate, maxPhotoDate, saveToAlbum ->
                         reconfiguring = false
-                        onReconfigure(eventId, direction, chosenCutoff, saveToAlbum)
+                        onReconfigure(eventId, direction, minPhotoDate, maxPhotoDate, saveToAlbum)
                     },
                     onCancel = { reconfiguring = false },
                 )
@@ -194,7 +200,7 @@ fun StatusScreen(
                 is UiState.Joined ->
                     JoinedLayer(
                         state.health, inviteUrl, onRequestPermission, onOpenSettings,
-                        state.canChoosePhotos, onChoosePhotos, cutoff,
+                        state.canChoosePhotos, onChoosePhotos, state.ended, cutoff,
                     )
             }
         }
@@ -223,7 +229,7 @@ fun StatusScreen(
                 onCancelSwitch = onCancelSwitch,
                 onRetryLoad = onRetryLoad,
                 // The compact switch path has no album picker — a retry there is album-off.
-                onRetryJoin = { cutoff, direction -> onRetryJoin(cutoff, direction, false) },
+                onRetryJoin = { cutoff, until, direction -> onRetryJoin(cutoff, until, direction, false) },
                 shareableCount = shareableCount,
                 photoPermission = photoPermission,
             )
@@ -254,6 +260,20 @@ private fun JoinPhase.startsAt(): String? = when (this) {
 }
 
 /**
+ * The event's end, from whichever phase carries it (capability `photo-selection-policy`) — the range's
+ * upper **default** and its **ceiling**. Carried by the same four phases as [startsAt], and for the same
+ * reason: a Retry commits without passing back through the loaded phase, so the ceiling has to still be
+ * here or the retry would derive its upper bound from a phase that lost it.
+ */
+private fun JoinPhase.endsAt(): String? = when (this) {
+    is JoinPhase.ExplainAccess -> endsAt
+    is JoinPhase.Ready -> endsAt
+    is JoinPhase.Committing -> endsAt
+    is JoinPhase.CommitFailed -> endsAt
+    JoinPhase.Loading, JoinPhase.NotFound, JoinPhase.LoadFailed -> null
+}
+
+/**
  * The full-screen "Join event" surface (capability `join-event`): the event summary is the hero, with
  * the participation-direction row, the capture-date cutoff row (capability `photo-selection-policy`), and the
  * save-to-album opt-in (capability `event-album`), with Join / Cancel pinned to the bottom. Further future
@@ -271,12 +291,12 @@ private fun JoinPhase.startsAt(): String? = when (this) {
 private fun JoiningEventScreen(
     phase: JoinPhase,
     cutoff: CutoffFormatter,
-    onConfirm: (String, Direction, Boolean) -> Unit,
+    onConfirm: (String, String, Direction, Boolean) -> Unit,
     onAcknowledgeAccess: () -> Unit,
     onCancel: () -> Unit,
     onRetryLoad: () -> Unit,
-    onRetryJoin: (String, Direction, Boolean) -> Unit,
-    shareableCount: suspend (cutoff: String) -> Int?,
+    onRetryJoin: (String, String, Direction, Boolean) -> Unit,
+    shareableCount: suspend (cutoff: String, until: String?) -> Int?,
     photoPermission: PermissionStatus,
 ) {
     // The two participation switches, both default ON. Direction is DERIVED from them, never chosen:
@@ -287,43 +307,50 @@ private fun JoiningEventScreen(
     var shareOn by remember { mutableStateOf(true) }
     var receiveOn by remember { mutableStateOf(true) }
 
-    // The cutoff is a preset (capability `photo-selection-policy`), defaulting to the event's start — so a
-    // share with no cutoff is unrepresentable, not merely guarded (it would upload the whole library).
-    // What is REMEMBERED is the preset, not an instant — the instant is derived fresh from the phase on
-    // every composition, sidestepping the seeding bug a `remember`-ed instant had (this screen mounts at
-    // `Loading`, before the details fetch, so a first-composition seed captured `now` and never re-ran).
-    var chosenPreset by remember { mutableStateOf(CutoffChoice.EVENT_START) }
-    // The custom cutoff's local wall-clock value; null until the guest opens the picker (it then defaults
-    // to the floor). Coerced up to the floor before it is ever displayed or committed.
-    var customValue by remember { mutableStateOf<LocalDateTime?>(null) }
+    // The capture-date RANGE is a pair of presets (capability `photo-selection-policy`), defaulting to the
+    // FULL event window `[Event start, Event end]` (narrow, never widen — admits on doubt). What is
+    // REMEMBERED is the presets and (for Custom) the picked wall-clock values, NEVER a default instant — the
+    // instants are derived fresh from the phase on every composition, sidestepping the seeding bug a
+    // `remember`-ed instant had (this screen mounts at `Loading`, before the details fetch, so a
+    // first-composition seed captured `now` and never re-ran).
+    var fromPreset by remember { mutableStateOf(FromChoice.EVENT_START) }
+    var fromCustom by remember { mutableStateOf<LocalDateTime?>(null) }
+    var untilPreset by remember { mutableStateOf(UntilChoice.EVENT_END) }
+    var untilCustom by remember { mutableStateOf<LocalDateTime?>(null) }
     var chosenSaveToAlbum by remember { mutableStateOf(false) }
 
-    // The event's start, as a local wall-clock value. Non-null on Ready (the host guarantees `startsAt`);
-    // a screen mounted straight into CommitFailed falls back to now, which is inert there — that phase
-    // renders no cutoff row, and its Retry re-sends the cutoff the Ready phase already committed.
-    val eventStart: LocalDateTime =
-        phase.startsAt()?.let { cutoff.toLocal(it) } ?: cutoff.nowLocal()
+    // Range derivation from the phase's window. On Ready the host guarantees both `startsAt` and `endsAt`;
+    // a screen mounted straight into a phase with neither falls back to a now
+    // from-bound and an effectively-unbounded until (the safe direction), which is inert there — those
+    // phases render no range row, and a retry re-sends the range the Ready phase already committed.
+    val startStr = phase.startsAt()
+    val endStr = phase.endsAt()
+    val nowStr = cutoff.nowCutoff()
+
+    val windowStart: LocalDateTime = startStr?.let { cutoff.toLocal(it) } ?: cutoff.nowLocal()
+    val windowEnd: LocalDateTime = endStr?.let { cutoff.toLocal(it) }
+        ?: LocalDateTime(windowStart.year + 100, 1, 1, 0, 0)
+
+    // "Now" is offered only while the present is INSIDE the event window (`startsAt <= now <= endsAt`) —
+    // compared in the canonical cutoff-string domain (fixed-width UTC → lexicographic IS chronological).
+    val nowAvailable: Boolean =
+        startStr != null && nowStr >= startStr && (endStr == null || nowStr <= endStr)
     val nowLocal: LocalDateTime = cutoff.nowLocal()
 
-    // Pre-start, "Now" would clamp to the very same instant as "Event start" (`max(now, startsAt) ==
-    // startsAt`), so it is offered disabled rather than as a button that visibly does nothing.
-    val eventHasStarted: Boolean = cutoff.toCutoff(eventStart) <= cutoff.nowCutoff()
-
-    // The custom value coerced up to the floor. The backend silently raises anything earlier than the
-    // event start to it (`max(chosen, startsAt)`), so we apply the same `max` before this value is ever
-    // shown or sent — the screen never displays a cutoff the backend would overrule.
-    val customResolved: LocalDateTime =
-        (customValue ?: eventStart).let { if (it < eventStart) eventStart else it }
-
-    // What the member is actually committing to. `JoinEvent` clamps this to `max(chosen, startsAt)` on the
-    // far side; EVENT_START (and NOW before the event has started, and any coerced CUSTOM) already land on
-    // or above the floor.
-    val resulting: LocalDateTime = when {
-        chosenPreset == CutoffChoice.CUSTOM -> customResolved
-        chosenPreset == CutoffChoice.EVENT_START || !eventHasStarted -> eventStart
-        else -> nowLocal
+    // Resolve until first (independent of from), then floor `from`'s ceiling to it so the range can never
+    // invert. Every bound is coerced into the event window on every composition.
+    val untilResolved: LocalDateTime = when (untilPreset) {
+        UntilChoice.EVENT_END -> windowEnd
+        UntilChoice.CUSTOM -> (untilCustom ?: windowEnd).coerceIn(windowStart, windowEnd)
     }
-    val chosenCutoff: String = cutoff.toCutoff(resulting)
+    val fromResolved: LocalDateTime = when (fromPreset) {
+        FromChoice.EVENT_START -> windowStart
+        FromChoice.NOW -> nowLocal
+        FromChoice.CUSTOM -> (fromCustom ?: windowStart)
+    }.coerceIn(windowStart, untilResolved)
+
+    val chosenFrom: String = cutoff.toCutoff(fromResolved)
+    val chosenUntil: String = cutoff.toCutoff(untilResolved)
 
     // Direction is derived from the switches. The dead (both-off) case never reaches a commit — Join is
     // disabled there — so its value is inert; DownloadOnly is an arbitrary safe placeholder.
@@ -344,21 +371,27 @@ private fun JoiningEventScreen(
             onShareOn = { shareOn = it },
             receiveOn = receiveOn,
             onReceiveOn = { receiveOn = it },
-            preset = chosenPreset,
-            onPreset = { chosenPreset = it },
-            resulting = resulting,
-            nowAvailable = eventHasStarted,
-            // The DISPLAYED custom value is the resolved one (floored, defaulting to the event start), so
-            // the inline field agrees with the bold instant above and never shows a date below the floor.
-            customValue = customResolved,
-            onCustomChange = { customValue = it },
-            floor = eventStart,
+            fromPreset = fromPreset,
+            onFromPreset = { fromPreset = it },
+            fromCustom = fromCustom,
+            onFromCustom = { fromCustom = it },
+            untilPreset = untilPreset,
+            onUntilPreset = { untilPreset = it },
+            untilCustom = untilCustom,
+            onUntilCustom = { untilCustom = it },
+            rangeLabel = cutoff.formatRange(fromResolved, untilResolved),
+            nowAvailable = nowAvailable,
+            windowStart = windowStart,
+            windowEnd = windowEnd,
+            floorLabel = appDateTimeLabel(windowStart),
+            ceilingLabel = appDateTimeLabel(windowEnd),
             saveToAlbum = chosenSaveToAlbum,
             onSaveToAlbum = { chosenSaveToAlbum = it },
             joinEnabled = joinEnabled,
-            onJoin = { onConfirm(chosenCutoff, chosenDirection, chosenSaveToAlbum) },
+            onJoin = { onConfirm(chosenFrom, chosenUntil, chosenDirection, chosenSaveToAlbum) },
             onCancel = onCancel,
-            chosenCutoff = chosenCutoff,
+            chosenFrom = chosenFrom,
+            chosenUntil = chosenUntil,
             shareableCount = shareableCount,
             photoPermission = photoPermission,
         )
@@ -479,7 +512,7 @@ private fun JoiningEventScreen(
                 is JoinPhase.CommitFailed -> {
                     PrimaryButton(
                         label = "Retry",
-                        onClick = { onRetryJoin(chosenCutoff, chosenDirection, chosenSaveToAlbum) },
+                        onClick = { onRetryJoin(chosenFrom, chosenUntil, chosenDirection, chosenSaveToAlbum) },
                     )
                     SecondaryButton(label = "Cancel", onClick = onCancel)
                 }
@@ -520,7 +553,7 @@ private fun ColumnScope.CenteredBody(content: @Composable () -> Unit) {
  * The two sections, top to bottom:
  *  1. **Share** ([AppToggleSection]) — the switch, the origin-exclusions note (what the app already
  *     filters out of a camera roll — new information no other state of this screen carries), the resulting
- *     cutoff instant in the heaviest type on the surface, and the cutoff choice rows ([AppCutoffChoices]:
+ *     cutoff instant in the heaviest type on the surface, and the cutoff choice rows ([AppRangePresetChoices]:
  *     Now / Event start / Custom) — one card, because "do I share" and "from when" are one decision.
  *     Custom opens the floored date+time picker dialog directly; only its OK commits the choice, and the
  *     chosen instant appears solely in the bold "Shared from …" line (never repeated in the row). When
@@ -548,22 +581,31 @@ private fun ReadyLayout(
     onShareOn: (Boolean) -> Unit,
     receiveOn: Boolean,
     onReceiveOn: (Boolean) -> Unit,
-    preset: CutoffChoice,
-    onPreset: (CutoffChoice) -> Unit,
-    resulting: LocalDateTime,
+    fromPreset: FromChoice,
+    onFromPreset: (FromChoice) -> Unit,
+    fromCustom: LocalDateTime?,
+    onFromCustom: (LocalDateTime) -> Unit,
+    untilPreset: UntilChoice,
+    onUntilPreset: (UntilChoice) -> Unit,
+    untilCustom: LocalDateTime?,
+    onUntilCustom: (LocalDateTime) -> Unit,
+    // The resolved range as one readable label — the section's single statement of what will be shared.
+    rangeLabel: String,
     nowAvailable: Boolean,
-    customValue: LocalDateTime?,
-    onCustomChange: (LocalDateTime) -> Unit,
-    floor: LocalDateTime,
+    windowStart: LocalDateTime,
+    windowEnd: LocalDateTime,
+    floorLabel: String,
+    ceilingLabel: String,
     saveToAlbum: Boolean,
     onSaveToAlbum: (Boolean) -> Unit,
     joinEnabled: Boolean,
     onJoin: () -> Unit,
     onCancel: () -> Unit,
-    // The UTC `…Z` cutoff the switches+preset currently resolve to, and the permission-aware count query
-    // over it (capability `join-share-count`). [photoPermission] is a recompute trigger only.
-    chosenCutoff: String,
-    shareableCount: suspend (cutoff: String) -> Int?,
+    // The UTC `…Z` range bounds the switches+presets currently resolve to, and the permission-aware count
+    // query over `[from, until]` (capability `join-share-count`). [photoPermission] is a recompute trigger only.
+    chosenFrom: String,
+    chosenUntil: String,
+    shareableCount: suspend (cutoff: String, until: String?) -> Int?,
     photoPermission: PermissionStatus,
 ) {
     Column(modifier = Modifier.fillMaxSize()) {
@@ -601,39 +643,45 @@ private fun ReadyLayout(
                         "Screenshots, screen recordings, GIFs and pictures saved from chat apps are " +
                             "never shared.",
                     )
-                    // The ONE statement of the instant that decides which photos leave the phone, in the
-                    // heaviest type the surface renders. The Custom row below deliberately never repeats
-                    // it — its picker feeds this line.
-                    AppSectionValue("Shared from ${appDateTimeLabel(resulting)}")
+                    // The ONE statement of the RANGE that decides which photos leave the phone, in the
+                    // heaviest type the surface renders. The Custom rows below deliberately never repeat
+                    // it — their pickers feed this line.
+                    AppSectionValue("Sharing $rangeLabel")
                     // The live shareable count (capability `join-share-count`): how many of the member's
-                    // own gallery photos this cutoff would share, recomputed as the cutoff (or a late
+                    // own gallery photos this RANGE would share, recomputed as either bound (or a late
                     // permission resolve) changes. Omitted when no count is available.
                     ShareCountRow(
-                        chosenCutoff = chosenCutoff,
+                        chosenCutoff = chosenFrom,
+                        chosenUntil = chosenUntil,
                         shareableCount = shareableCount,
                         permissionKey = photoPermission,
                     )
-                    // Level 2: the cutoff choices, in the section's recessed well. Switch = does this
-                    // section happen; checkmarks = how.
+                    // Level 2: the From/Until range presets, in the section's recessed well. Switch = does
+                    // this section happen; checkmarks = how.
                     AppSubSection {
-                        AppCutoffChoices(
-                            selected = preset,
-                            onSelect = onPreset,
-                            // Pre-start, "Now" clamps to the same instant as "Event start" — offered
-                            // disabled.
-                            nowAvailable = nowAvailable,
-                            customValue = customValue,
-                            // Only the picker's OK selects CUSTOM — a cancelled dialog leaves the
-                            // previous choice (and its instant) exactly as it was.
-                            onCustomPicked = {
-                                onCustomChange(it)
-                                onPreset(CutoffChoice.CUSTOM)
+                        AppRangePresetChoices(
+                            fromSelected = fromPreset,
+                            onFromSelect = onFromPreset,
+                            fromCustomValue = fromCustom,
+                            // Only the picker's OK selects CUSTOM — a cancelled dialog leaves the previous
+                            // choice (and its instant) exactly as it was.
+                            onFromCustomPicked = {
+                                onFromCustom(it)
+                                onFromPreset(FromChoice.CUSTOM)
                             },
-                            // The floor: the backend silently raises anything earlier to the event
-                            // start, so the picker enforces it and the Custom row's note states it.
-                            minimum = floor,
-                            floorNote = "Can't be earlier than the event started, " +
-                                "${appDateTimeLabel(floor)}.",
+                            untilSelected = untilPreset,
+                            onUntilSelect = onUntilPreset,
+                            untilCustomValue = untilCustom,
+                            onUntilCustomPicked = {
+                                onUntilCustom(it)
+                                onUntilPreset(UntilChoice.CUSTOM)
+                            },
+                            // Pre-start (and post-end), "Now" would fall outside the window — offered disabled.
+                            nowAvailable = nowAvailable,
+                            windowStart = windowStart,
+                            windowEnd = windowEnd,
+                            fromFloorNote = "Can't be earlier than the event started, $floorLabel.",
+                            untilCeilingNote = "Can't be later than the event ends, $ceilingLabel.",
                         )
                     }
                 } else {
@@ -724,13 +772,14 @@ private sealed interface CountState {
 @Composable
 private fun ShareCountRow(
     chosenCutoff: String,
-    shareableCount: suspend (cutoff: String) -> Int?,
+    chosenUntil: String?,
+    shareableCount: suspend (cutoff: String, until: String?) -> Int?,
     permissionKey: PermissionStatus,
 ) {
     var state by remember { mutableStateOf<CountState>(CountState.Counting) }
-    LaunchedEffect(chosenCutoff, permissionKey) {
+    LaunchedEffect(chosenCutoff, chosenUntil, permissionKey) {
         state = CountState.Counting
-        val n = shareableCount(chosenCutoff)
+        val n = shareableCount(chosenCutoff, chosenUntil)
         state = if (n == null) CountState.Unavailable else CountState.Ready(n)
     }
     when (val s = state) {
@@ -753,11 +802,12 @@ private fun ShareCountRow(
 @Composable
 private fun shareCountSentence(
     cutoffValue: String,
-    shareableCount: suspend (cutoff: String) -> Int?,
+    untilValue: String,
+    shareableCount: suspend (cutoff: String, until: String?) -> Int?,
     permissionKey: PermissionStatus,
 ): String {
-    val count by produceState<Int?>(initialValue = null, cutoffValue, permissionKey) {
-        value = shareableCount(cutoffValue)
+    val count by produceState<Int?>(initialValue = null, cutoffValue, untilValue, permissionKey) {
+        value = shareableCount(cutoffValue, untilValue)
     }
     return when (val c = count) {
         null -> ""
@@ -772,7 +822,7 @@ private fun shareCountSentence(
  * participation settings they picked at join — the two switches (Share / Receive → direction), the
  * capture-date cutoff, and the album opt-in — and changes them **in place**, without leaving.
  *
- * It reuses the exact join controls ([AppToggleSection], [AppCutoffChoices], [AppMinorSection]) so there
+ * It reuses the exact join controls ([AppToggleSection], [AppRangePresetChoices], [AppMinorSection]) so there
  * is one decision surface, differing only in that it is **pre-filled** from the current [membership] and
  * commits with **Save** (not Join) beneath a read-only event-name header.
  *
@@ -791,35 +841,70 @@ private fun shareCountSentence(
 private fun ReconfigureScreen(
     membership: EventConfig,
     cutoff: CutoffFormatter,
-    shareableCount: suspend (cutoff: String) -> Int?,
+    shareableCount: suspend (cutoff: String, until: String?) -> Int?,
     photoPermission: PermissionStatus,
-    onSave: (String, Direction, String, Boolean) -> Unit,
+    onSave: (String, Direction, String, String?, Boolean) -> Unit,
     onCancel: () -> Unit,
 ) {
     var shareOn by remember { mutableStateOf(membership.direction.includesUpload) }
     var receiveOn by remember { mutableStateOf(membership.direction.includesDownload) }
-    // Reconstruct the preset from the persisted cutoff: at the floor → Event start; above it → Custom.
-    val seededAtFloor = membership.minPhotoDate == membership.startsAt
-    var chosenPreset by remember {
-        mutableStateOf(if (seededAtFloor) CutoffChoice.EVENT_START else CutoffChoice.CUSTOM)
+
+    // The join UI's presets are not persisted — only the resulting timestamps — so BOTH bounds are
+    // reconstructed (lossy by construction; the original "Now" is unrecoverable). From: at the floor →
+    // Event start, above it → Custom. Until: at the ceiling (or a legacy config with no ceiling) →
+    // Event end, below it → Custom.
+    val fromAtFloor = membership.minPhotoDate == membership.startsAt
+    var fromPreset by remember {
+        mutableStateOf(if (fromAtFloor) FromChoice.EVENT_START else FromChoice.CUSTOM)
     }
-    var customValue by remember {
-        mutableStateOf(if (seededAtFloor) null else cutoff.toLocal(membership.minPhotoDate))
+    var fromCustom by remember {
+        mutableStateOf(if (fromAtFloor) null else cutoff.toLocal(membership.minPhotoDate))
+    }
+    val untilAtCeiling = membership.maxPhotoDate == null || membership.maxPhotoDate == membership.endsAt
+    var untilPreset by remember {
+        mutableStateOf(if (untilAtCeiling) UntilChoice.EVENT_END else UntilChoice.CUSTOM)
+    }
+    var untilCustom by remember {
+        mutableStateOf(membership.maxPhotoDate?.takeIf { !untilAtCeiling }?.let { cutoff.toLocal(it) })
     }
     var chosenSaveToAlbum by remember { mutableStateOf(membership.saveToAlbum) }
 
-    // Same derivation as the join surface (`JoiningEventScreen`), seeded from the membership's `startsAt`.
-    val eventStart: LocalDateTime = cutoff.toLocal(membership.startsAt) ?: cutoff.nowLocal()
+    val windowStart: LocalDateTime = cutoff.toLocal(membership.startsAt) ?: cutoff.nowLocal()
+    // A legacy membership (pre-backfill) may carry no `endsAt` — an unbounded ceiling. The UI still needs a
+    // concrete window end for the picker, so use a far-future sentinel while remembering that "Event end"
+    // then means "no ceiling" (the saved `maxPhotoDate` stays null).
+    val ceilingLocal: LocalDateTime? = membership.endsAt?.let { cutoff.toLocal(it) }
+    val hasCeiling = ceilingLocal != null
+    val windowEnd: LocalDateTime = ceilingLocal ?: LocalDateTime(windowStart.year + 100, 1, 1, 0, 0)
+
+    val nowStr = cutoff.nowCutoff()
+    val endStr = membership.endsAt
+    val nowAvailable: Boolean =
+        nowStr >= membership.startsAt && (endStr == null || nowStr <= endStr)
     val nowLocal: LocalDateTime = cutoff.nowLocal()
-    val eventHasStarted: Boolean = cutoff.toCutoff(eventStart) <= cutoff.nowCutoff()
-    val customResolved: LocalDateTime =
-        (customValue ?: eventStart).let { if (it < eventStart) eventStart else it }
-    val resulting: LocalDateTime = when {
-        chosenPreset == CutoffChoice.CUSTOM -> customResolved
-        chosenPreset == CutoffChoice.EVENT_START || !eventHasStarted -> eventStart
-        else -> nowLocal
+
+    val untilResolved: LocalDateTime = when (untilPreset) {
+        UntilChoice.EVENT_END -> windowEnd
+        UntilChoice.CUSTOM -> (untilCustom ?: windowEnd).coerceIn(windowStart, windowEnd)
     }
-    val chosenCutoff: String = cutoff.toCutoff(resulting)
+    val fromResolved: LocalDateTime = when (fromPreset) {
+        FromChoice.EVENT_START -> windowStart
+        FromChoice.NOW -> nowLocal
+        FromChoice.CUSTOM -> (fromCustom ?: windowStart)
+    }.coerceIn(windowStart, untilResolved)
+
+    // When the until is the unbounded "Event end" of a legacy config, there is no upper instant to state.
+    val untilUnbounded = untilPreset == UntilChoice.EVENT_END && !hasCeiling
+    val rangeLabel = if (untilUnbounded) {
+        "from ${appDateTimeLabel(fromResolved)} onwards"
+    } else {
+        cutoff.formatRange(fromResolved, untilResolved)
+    }
+    val minPhotoDate: String = cutoff.toCutoff(fromResolved)
+    // Unbounded stays null; every other case sends the resolved upper bound (clamped to `endsAt` on the far
+    // side in `ReconfigureEvent`).
+    val maxPhotoDate: String? = if (untilUnbounded) null else cutoff.toCutoff(untilResolved)
+
     val chosenDirection: Direction = when {
         shareOn && receiveOn -> Direction.Both
         shareOn -> Direction.UploadOnly
@@ -848,27 +933,42 @@ private fun ReconfigureScreen(
                         "Screenshots, screen recordings, GIFs and pictures saved from chat apps are " +
                             "never shared.",
                     )
-                    AppSectionValue("Shared from ${appDateTimeLabel(resulting)}")
-                    // The live count — truthful on both tiers now that a cutoff-lowering reconfigure
-                    // re-shares the newly-in-scope older photos (capability `reconfigure-membership`).
+                    AppSectionValue("Sharing $rangeLabel")
+                    // The live count over the resolved RANGE — truthful on both tiers now that a
+                    // range-widening reconfigure re-shares the newly-in-scope photos (capability
+                    // `reconfigure-membership`). An unbounded (legacy) upper bound counts to the present.
                     ShareCountRow(
-                        chosenCutoff = chosenCutoff,
+                        chosenCutoff = minPhotoDate,
+                        chosenUntil = maxPhotoDate,
                         shareableCount = shareableCount,
                         permissionKey = photoPermission,
                     )
                     AppSubSection {
-                        AppCutoffChoices(
-                            selected = chosenPreset,
-                            onSelect = { chosenPreset = it },
-                            nowAvailable = eventHasStarted,
-                            customValue = customResolved,
-                            onCustomPicked = {
-                                customValue = it
-                                chosenPreset = CutoffChoice.CUSTOM
+                        AppRangePresetChoices(
+                            fromSelected = fromPreset,
+                            onFromSelect = { fromPreset = it },
+                            fromCustomValue = fromCustom,
+                            onFromCustomPicked = {
+                                fromCustom = it
+                                fromPreset = FromChoice.CUSTOM
                             },
-                            minimum = eventStart,
-                            floorNote = "Can't be earlier than the event started, " +
-                                "${appDateTimeLabel(eventStart)}.",
+                            untilSelected = untilPreset,
+                            onUntilSelect = { untilPreset = it },
+                            untilCustomValue = untilCustom,
+                            onUntilCustomPicked = {
+                                untilCustom = it
+                                untilPreset = UntilChoice.CUSTOM
+                            },
+                            nowAvailable = nowAvailable,
+                            windowStart = windowStart,
+                            windowEnd = windowEnd,
+                            fromFloorNote = "Can't be earlier than the event started, " +
+                                "${appDateTimeLabel(windowStart)}.",
+                            untilCeilingNote = if (hasCeiling) {
+                                "Can't be later than the event ends, ${appDateTimeLabel(windowEnd)}."
+                            } else {
+                                "Pick when to stop sharing."
+                            },
                         )
                     }
                 } else {
@@ -918,7 +1018,7 @@ private fun ReconfigureScreen(
             }
             PrimaryButton(
                 label = "Save",
-                onClick = { onSave(membership.eventId, chosenDirection, chosenCutoff, chosenSaveToAlbum) },
+                onClick = { onSave(membership.eventId, chosenDirection, minPhotoDate, maxPhotoDate, chosenSaveToAlbum) },
                 enabled = saveEnabled,
             )
             SecondaryButton(label = "Cancel", onClick = onCancel)
@@ -936,19 +1036,21 @@ private fun ReconfigureScreen(
 private fun SwitchDialog(
     switch: PendingSwitch,
     currentEventName: String?,
-    onConfirmSwitch: (String, Direction) -> Unit,
+    onConfirmSwitch: (String, String, Direction) -> Unit,
     onCancelSwitch: () -> Unit,
     onRetryLoad: () -> Unit,
-    onRetryJoin: (String, Direction) -> Unit,
-    shareableCount: suspend (cutoff: String) -> Int? = { null },
+    onRetryJoin: (String, String, Direction) -> Unit,
+    shareableCount: suspend (cutoff: String, until: String?) -> Int? = { _, _ -> null },
     photoPermission: PermissionStatus = PermissionStatus.GRANTED,
 ) {
     val current = currentEventName ?: "this event"
-    // The compact switch dialog has no picker: it uses the new event's default cutoff — its `startsAt`,
-    // which is also the FLOOR, so the switch lands exactly on it (capability `photo-selection-policy`) — and the
-    // default participation direction ([Direction.Both]).
-    // Remembered so a retry after a failed commit reuses it (the CommitFailed phase carries name+startsAt).
+    // The compact switch dialog has no picker: it uses the new event's default RANGE — the full window
+    // `[startsAt, endsAt]` (`startsAt` is also the FLOOR and `endsAt` the CEILING, so the switch lands on
+    // the whole event window; capability `photo-selection-policy`) — and the default participation direction
+    // ([Direction.Both]). Both bounds are remembered so a retry after a failed commit reuses them (the
+    // CommitFailed phase carries name + startsAt + endsAt).
     var cutoff by remember { mutableStateOf<String?>(null) }
+    var until by remember { mutableStateOf<String?>(null) }
     when (val phase = switch.phase) {
         // Unreachable. The photo-access explainer is a FIRST-join surface: `readyOrExplain` emits it only
         // when `config == null`, and a switch by definition has a config. Anyone switching is already on the
@@ -958,10 +1060,11 @@ private fun SwitchDialog(
         is JoinPhase.ExplainAccess -> Unit
         is JoinPhase.Ready -> {
             cutoff = phase.startsAt
-            // The shareable count for the switch's fixed cutoff (the new event's start). Appended to the
-            // body as a sentence — the compact dialog has no room for the join surface's own row. Empty
+            until = phase.endsAt
+            // The shareable count for the switch's fixed RANGE (the new event's full window). Appended to
+            // the body as a sentence — the compact dialog has no room for the join surface's own row. Empty
             // until it resolves (and when no count is available), so the dialog reads cleanly meanwhile.
-            val countSentence = shareCountSentence(phase.startsAt, shareableCount, photoPermission)
+            val countSentence = shareCountSentence(phase.startsAt, phase.endsAt, shareableCount, photoPermission)
             AppDestructiveConfirmDialog(
                 title = "Switch events?",
                 // The names carry the whole weight of the decision, so they lead the body line; the
@@ -972,7 +1075,7 @@ private fun SwitchDialog(
                     "You'll share photos you take and receive everyone's. $countSentence").trim(),
                 confirmLabel = "Switch",
                 cancelLabel = "Cancel",
-                onConfirm = { onConfirmSwitch(phase.startsAt, Direction.Both) },
+                onConfirm = { onConfirmSwitch(phase.startsAt, phase.endsAt, Direction.Both) },
                 onDismiss = onCancelSwitch,
             )
         }
@@ -1000,9 +1103,13 @@ private fun SwitchDialog(
                 body = "Something went wrong. Try again.",
                 confirmLabel = "Retry",
                 cancelLabel = "Cancel",
-                // The remembered cutoff was set by the Ready phase this commit came from; a retry without
+                // The remembered range was set by the Ready phase this commit came from; a retry without
                 // one would join at whole-library scope, so it is inert rather than unbounded.
-                onConfirm = { cutoff?.let { c -> onRetryJoin(c, Direction.Both) } },
+                onConfirm = {
+                    val c = cutoff
+                    val u = until
+                    if (c != null && u != null) onRetryJoin(c, u, Direction.Both)
+                },
                 onDismiss = onCancelSwitch,
             )
         // Transient — no dialog while the details load or the switch commits.
@@ -1023,6 +1130,9 @@ private fun JoinedLayer(
     onOpenSettings: () -> Unit,
     canChoosePhotos: Boolean,
     onChoosePhotos: () -> Unit,
+    // The event's declared end has passed (capability `sync-status-screen`): prefix the health line with an
+    // informational "Event ended" marker. Sync continues; the end is enforced only server-side.
+    ended: Boolean,
     cutoff: CutoffFormatter,
 ) {
     Column(
@@ -1048,6 +1158,7 @@ private fun JoinedLayer(
         // needs no frame, just position (centered, beneath the code).
         AppStatusLine(
             status = health.toAppSyncStatus(cutoff),
+            ended = ended,
             onAttentionClick = {
                 if (health is SyncHealth.NeedsAccess) {
                     if (health.permission == PermissionStatus.NOT_DETERMINED) {
@@ -1095,33 +1206,42 @@ private fun SyncHealth.toAppSyncStatus(cutoff: CutoffFormatter): AppSyncStatus =
  * The create-event landing layer (event-creation-ui) — the app's front door for a HOST, brought to the
  * same design language as the join gate. It reads as an invitation being *authored*: the compact host
  * header (the real app mark + "HOST AN EVENT" eyebrow + title + one warm line) leads, then the one
- * question the surface asks — what is it called — with the name field answering it, then the event start
- * as a stated-consequence card. Create + the scan hint stay pinned to the bottom.
+ * question the surface asks — what is it called — with the name field answering it, then the event's
+ * date range as a stated-consequence card. Create + the scan hint stay pinned to the bottom.
  *
  * The header is the compact (left-aligned) form so identity costs one line-pair: the short form below —
  * and the transient "creating …" state that replaces it ([CreatingEventScreen]) — stay anchored in the
  * same place, so the surface never jumps between the two.
  *
- * The name and the start live in local Compose state (only the submitted values cross the container);
- * Create is disabled until the trimmed name is non-empty, and the field caps at 100 characters — so a
- * returned failure is a *submission* failure (the server was unreachable or rejected it), not the current
- * name being malformed. It is therefore stated in an [AppErrorBanner] above the action, never as a red
- * field, which would falsely blame the host's typing.
+ * The name and the date range live in local Compose state (only the submitted values cross the container);
+ * Create is disabled until the trimmed name is non-empty AND the range satisfies `start < end`, and the
+ * field caps at 100 characters — so a returned failure is a *submission* failure (the server was
+ * unreachable or rejected it), not the current name being malformed. It is therefore stated in an
+ * [AppErrorBanner] above the action, never as a red field, which would falsely blame the host's typing.
  *
- * The start defaults to **now, frozen at first composition** (`remember { … }`, not re-derived at submit).
- * The label is the screen's whole statement about what will be sent, so a value that silently drifted
- * between being displayed and being posted would make the screen lie. A slow typer therefore sets a start
- * a few minutes in the past — harmless, since they are at their own event.
+ * The range defaults to **`[now, now + 1 day]`, frozen at first composition** (`remember { … }`, not
+ * re-derived at submit). The label is the screen's whole statement about what will be sent, so a value that
+ * silently drifted between being displayed and being posted would make the screen lie. A slow typer
+ * therefore sets a start a few minutes in the past — harmless, since they are at their own event.
  */
 @Composable
 private fun CreateEventScreen(
     state: UiState.CreateEvent,
-    onCreateEvent: (String, LocalDateTime) -> Unit,
+    onCreateEvent: (String, LocalDateTime, LocalDateTime) -> Unit,
     transientError: String?,
     cutoff: CutoffFormatter,
 ) {
     var name by remember { mutableStateOf("") }
-    var startsAt by remember { mutableStateOf(cutoff.nowLocal()) }
+    // The default window `[now, now + 1 day]`, FROZEN at first composition (not re-derived at submit): the
+    // label is the screen's whole statement of what will be sent, so a value that drifted between display
+    // and post would make it lie.
+    val initialFrom = remember { cutoff.nowLocal() }
+    val initialUntil = remember(initialFrom) {
+        val next = initialFrom.date.plus(1, DateTimeUnit.DAY)
+        LocalDateTime(next.year, next.month.ordinal + 1, next.day, initialFrom.hour, initialFrom.minute)
+    }
+    var from by remember { mutableStateOf(initialFrom) }
+    var until by remember { mutableStateOf(initialUntil) }
     // A returned failure — a scanned-invalid-link (transient) or a creation failure reduced into
     // `state.error` — is a submission-level condition, not a live field error, so it is banished to a
     // banner above the action rather than reddening the name field.
@@ -1154,12 +1274,16 @@ private fun CreateEventScreen(
                     maxLength = EVENT_NAME_MAX_LENGTH,
                 )
             }
-            AppEventStartSection(
-                value = startsAt,
-                onValueChange = { startsAt = it },
-                // The truthfulness line: this start is the floor of every guest's capture-date cutoff
+            AppEventDateRangeSection(
+                from = from,
+                until = until,
+                rangeLabel = { f, u -> cutoff.formatRange(f, u) },
+                // The live humanized duration hint (capability `event-creation-ui`), e.g. "Event lasts 5 days".
+                durationLabel = { f, u -> "Event lasts ${cutoff.humanizedDuration(f, u)}" },
+                // The truthfulness line: this window is the event's capture-date bound
                 // (capability `photo-selection-policy`) — stated once, where it is set.
-                note = "Only photos taken after this time are shared — the earliest cutoff any guest can pick.",
+                note = "Only photos taken during this window are shared — the range every guest starts from.",
+                onRangeChange = { f, u -> from = f; until = u },
             )
         }
         // Action pinned to the bottom.
@@ -1172,8 +1296,9 @@ private fun CreateEventScreen(
             }
             PrimaryButton(
                 label = "Create event",
-                onClick = { onCreateEvent(name, startsAt) },
-                enabled = name.isNotBlank(),
+                onClick = { onCreateEvent(name, from, until) },
+                // Disabled while the name is blank OR the range is not `start < end`.
+                enabled = name.isNotBlank() && from < until,
             )
             StatusHint("Or scan a QR code in the Camera app to join one.")
         }

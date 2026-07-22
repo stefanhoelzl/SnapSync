@@ -206,7 +206,7 @@ private fun readGate(ports: UploadPorts): CycleGate {
         membership = payload?.let {
             JoinedMembership(
                 eventId = it.eventId,
-                contribution = Contribution.of(it.direction.includesUpload, it.minPhotoDate),
+                contribution = Contribution.of(it.direction.includesUpload, it.minPhotoDate, it.maxPhotoDate),
                 saveToAlbum = it.saveToAlbum,
             )
         },

@@ -33,7 +33,7 @@ sequenceDiagram
   Provision--)downloadController: reconcile(…)
   Provision--)effects: registerPush()
   alt eventName.fetchNeed(cfg.name) = TitleNeed.MISSING
-    Provision--)eventName: storeEventNameIfChanged(…)
+    Provision--)eventName: storeRefreshedDetails(…)
   else eventName.fetchNeed(cfg.name) = TitleNeed.PRESENT
     Note over Provision: nothing
   end

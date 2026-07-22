@@ -46,18 +46,18 @@ class ShareableCountSource(
         permission: PermissionStatus,
         selectionSnapshot: List<Resource>?,
     ): Int? {
-        val cutoff = when (contribution) {
+        val (cutoff, until) = when (contribution) {
             // A non-contributing candidate (Share off / DownloadOnly) counts zero without any read.
             Contribution.None -> return 0
-            is Contribution.Since -> contribution.cutoff
+            is Contribution.Since -> contribution.cutoff to contribution.until
         }
         val suppressed = suppressedLocalIds()
         val albumExcluded = albumExcludedAssetIds(cutoff)
         return when (permission) {
             PermissionStatus.GRANTED ->
-                shareableCountFromAssets(factsSince(cutoff), cutoff, suppressed, albumExcluded)
+                shareableCountFromAssets(factsSince(cutoff), cutoff, until, suppressed, albumExcluded)
             PermissionStatus.LIMITED ->
-                selectionSnapshot?.let { shareableCountFromSnapshot(it, cutoff, suppressed, albumExcluded) }
+                selectionSnapshot?.let { shareableCountFromSnapshot(it, cutoff, until, suppressed, albumExcluded) }
             PermissionStatus.DENIED, PermissionStatus.NOT_DETERMINED -> null
         }
     }
@@ -70,12 +70,13 @@ class ShareableCountSource(
 fun shareableCountFromAssets(
     assets: List<RawAsset>,
     cutoff: String,
+    until: String?,
     suppressed: Set<String>,
     albumExcluded: Set<String>,
 ): Int {
     val originExcluded = originExcludedAssetIds(assets) + albumExcluded
     return assets.asSequence()
-        .filter { it.creationDate >= cutoff }
+        .filter { it.creationDate >= cutoff && (until == null || it.creationDate <= until) }
         .map { it.assetId }
         .filter { it !in suppressed }
         .filter { it !in originExcluded }
@@ -90,12 +91,16 @@ fun shareableCountFromAssets(
 fun shareableCountFromSnapshot(
     resources: List<Resource>,
     cutoff: String,
+    until: String?,
     suppressed: Set<String>,
     albumExcluded: Set<String>,
 ): Int {
     val originExcluded = excludedAssetIds(resources) + albumExcluded
     return resources.asSequence()
-        .filter { (it.metadata[RESOURCE_META_CREATION_DATE] ?: "") >= cutoff }
+        .filter {
+            val cd = it.metadata[RESOURCE_META_CREATION_DATE] ?: ""
+            cd >= cutoff && (until == null || cd <= until)
+        }
         .map { it.assetId }
         .filter { it !in suppressed }
         .filter { it !in originExcluded }

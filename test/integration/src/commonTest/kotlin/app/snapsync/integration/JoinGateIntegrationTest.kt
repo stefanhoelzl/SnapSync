@@ -41,6 +41,9 @@ private const val EVENT_F = "22222222-2222-4222-8222-222222222222"
 /** A membership always carries a cutoff (capability `photo-selection-policy`). */
 private const val CUTOFF = "2026-01-01T00:00:00Z"
 
+/** The event window ceiling the mini-edge stamps (startsAt + 30d). */
+private const val ENDS = "2026-01-31T00:00:00Z"
+
 class JoinGateIntegrationTest {
 
     @Test
@@ -64,7 +67,7 @@ class JoinGateIntegrationTest {
             assertTrue(!phase.startsAt.contains('.'), "a cutoff never carries fractional seconds")
 
             // Confirm with exactly what the surface showed — the round-trip through the real screen.
-            host.onConfirmJoin(phase.startsAt, Direction.Both, false)
+            host.onConfirmJoin(phase.startsAt, phase.endsAt, Direction.Both, false)
             host.await { it is UiState.Joined }
 
             assertEquals(
@@ -92,11 +95,11 @@ class JoinGateIntegrationTest {
 
             host.onOpenUrl(deeplink(EVENT_E))
             assertEquals(
-                UiState.JoiningEvent(EVENT_E, JoinPhase.Ready("Anna's Wedding", "2026-01-01T00:00:00Z")),
+                UiState.JoiningEvent(EVENT_E, JoinPhase.Ready("Anna's Wedding", "2026-01-01T00:00:00Z", "2026-01-31T00:00:00Z")),
                 host.await { (it as? UiState.JoiningEvent)?.phase is JoinPhase.Ready },
             )
 
-            host.onConfirmJoin(CUTOFF, Direction.Both, false)
+            host.onConfirmJoin(CUTOFF, ENDS, Direction.Both, false)
             host.await { it is UiState.Joined } // config flipped present → joined layer
 
             // World outcomes: config provisioned + a register-only EMPTY manifest deposited (membership).
@@ -157,7 +160,7 @@ class JoinGateIntegrationTest {
             host.await { (it as? UiState.JoiningEvent)?.phase is JoinPhase.Ready }
 
             w.backendOffline = true // enrollment PUT now fails
-            host.onConfirmJoin(CUTOFF, Direction.Both, false)
+            host.onConfirmJoin(CUTOFF, ENDS, Direction.Both, false)
             host.await { (it as? UiState.JoiningEvent)?.phase is JoinPhase.CommitFailed }
 
             assertNull(w.configSource.config.value) // not joined
@@ -178,7 +181,7 @@ class JoinGateIntegrationTest {
             host.onOpenUrl(deeplink(EVENT_F))
             host.await { (it as? UiState.Joined)?.pendingSwitch?.phase is JoinPhase.Ready }
 
-            host.onConfirmSwitch(CUTOFF, Direction.Both)
+            host.onConfirmSwitch(CUTOFF, ENDS, Direction.Both)
             host.await { it is UiState.Joined && it.pendingSwitch == null && w.configSource.config.value?.eventId == EVENT_F }
 
             assertEquals(EVENT_F, w.configSource.config.value?.eventId) // switched
@@ -210,7 +213,7 @@ class JoinGateIntegrationTest {
             host.onOpenUrl(deeplink(EVENT_F))
             host.await { (it as? UiState.Joined)?.pendingSwitch?.phase is JoinPhase.Ready }
 
-            host.onConfirmSwitch(CUTOFF, Direction.Both)
+            host.onConfirmSwitch(CUTOFF, ENDS, Direction.Both)
             // The new event's join completes even though E's DELETE is still pending — the switch never
             // waits on the departed event's fire-and-forget backend notify.
             host.await {

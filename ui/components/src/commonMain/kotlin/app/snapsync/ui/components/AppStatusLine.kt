@@ -114,7 +114,30 @@ private val StaticAlpha = 0.38f
  * opacity; a `Static` arrow is shown dimmed without motion. No counts are shown.
  */
 @Composable
-fun AppStatusLine(status: AppSyncStatus, onAttentionClick: () -> Unit = {}) {
+fun AppStatusLine(status: AppSyncStatus, ended: Boolean = false, onAttentionClick: () -> Unit = {}) {
+    // The event's declared end has passed (capability `sync-status-screen`): an informational "Event ended"
+    // marker PREFIXES the regular one-line status, in the SAME single slot — the joined layer never grows a
+    // second line. Purely a marker: it changes no arrow, count, or health value, and sync continues.
+    if (ended) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
+        ) {
+            Text(
+                text = "Event ended ·",
+                style = MaterialTheme.typography.titleMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            StatusBody(status, onAttentionClick)
+        }
+    } else {
+        StatusBody(status, onAttentionClick)
+    }
+}
+
+/** The one-line status content itself, without the ended marker. Extracted so the marker can prefix it. */
+@Composable
+private fun StatusBody(status: AppSyncStatus, onAttentionClick: () -> Unit) {
     when (status) {
         AppSyncStatus.Loading ->
             LineText("Syncing…", MaterialTheme.colorScheme.onSurfaceVariant)

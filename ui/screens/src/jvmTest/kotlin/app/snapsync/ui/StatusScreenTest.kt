@@ -11,9 +11,11 @@ import androidx.compose.ui.test.captureToImage
 import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsNotEnabled
+import androidx.compose.ui.test.assertIsSelected
 import androidx.compose.ui.test.hasSetTextAction
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
+import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTextInput
@@ -118,7 +120,7 @@ class StatusScreenTest {
     @Test
     fun `tapping create submits the typed name`() {
         var created: String? = null
-        rule.setContent { StatusScreen(UiState.CreateEvent(), onCreateEvent = { n, _ -> created = n }, cutoff = fixedCutoff()) }
+        rule.setContent { StatusScreen(UiState.CreateEvent(), onCreateEvent = { n, _, _ -> created = n }, cutoff = fixedCutoff()) }
 
         rule.onNode(hasSetTextAction()).performTextInput("My Party")
         rule.onNodeWithText("Create event").performClick()
@@ -126,22 +128,25 @@ class StatusScreenTest {
     }
 
     @Test
-    fun `the create screen shows the start row defaulting to now`() {
+    fun `the create screen shows the date range defaulting to now to now plus 1d with a duration hint`() {
         rule.setContent {
             StatusScreen(UiState.CreateEvent(), cutoff = fixedCutoff())
         }
-        rule.onNodeWithText("Starts 6 Jul 2026, 12:00").assertExists()
-        rule.onNodeWithContentDescription("Edit start date").assertExists()
+        // now = 6 Jul 12:00 (UTC) → default window [6 Jul 12:00, 7 Jul 12:00], the compact adaptive label.
+        rule.onNodeWithText("6 Jul 12:00 – 7 Jul 12:00").assertExists()
+        rule.onNodeWithText("Event lasts 1 day").assertExists()
+        rule.onNodeWithContentDescription("Edit event dates").assertExists()
     }
 
     @Test
-    fun `tapping create submits the typed name AND the chosen start`() {
+    fun `tapping create submits the typed name AND the chosen date range`() {
         var createdName: String? = null
-        var createdStart: LocalDateTime? = null
+        var createdFrom: LocalDateTime? = null
+        var createdUntil: LocalDateTime? = null
         rule.setContent {
             StatusScreen(
                 UiState.CreateEvent(),
-                onCreateEvent = { n, s -> createdName = n; createdStart = s },
+                onCreateEvent = { n, f, u -> createdName = n; createdFrom = f; createdUntil = u },
                 cutoff = fixedCutoff(),
             )
         }
@@ -149,25 +154,26 @@ class StatusScreenTest {
         rule.onNodeWithText("Create event").performClick()
 
         assertEquals("My Party", createdName)
-        // The default start is "now" — as a LOCAL wall-clock value. The container converts it; the screen
-        // never touches a clock, a timezone, or a cutoff string.
-        assertEquals(LocalDateTime(2026, 7, 6, 12, 0), createdStart)
+        // The default window is [now, now + 1 day] as LOCAL wall-clock values. The container converts each;
+        // the screen never touches a clock, a timezone, or a cutoff string.
+        assertEquals(LocalDateTime(2026, 7, 6, 12, 0), createdFrom)
+        assertEquals(LocalDateTime(2026, 7, 7, 12, 0), createdUntil)
     }
 
     @Test
-    fun `the start default is frozen at first composition, not re-derived at submit`() {
-        // The label is the screen's whole statement about what will be sent. A start that silently drifted
+    fun `the range default is frozen at first composition, not re-derived at submit`() {
+        // The label is the screen's whole statement about what will be sent. A range that silently drifted
         // between being displayed and being posted would make the screen lie.
         val clock = MovableClock(Instant.parse("2026-07-06T12:00:00Z"))
-        var createdStart: LocalDateTime? = null
+        var createdFrom: LocalDateTime? = null
         rule.setContent {
             StatusScreen(
                 UiState.CreateEvent(),
-                onCreateEvent = { _, s -> createdStart = s },
+                onCreateEvent = { _, f, _ -> createdFrom = f },
                 cutoff = CutoffFormatter(now = clock::now, zone = TimeZone.UTC),
             )
         }
-        rule.onNodeWithText("Starts 6 Jul 2026, 12:00").assertExists()
+        rule.onNodeWithText("6 Jul 12:00 – 7 Jul 12:00").assertExists()
 
         // Ten minutes pass while the user types.
         clock.instant = Instant.parse("2026-07-06T12:10:00Z")
@@ -175,15 +181,14 @@ class StatusScreenTest {
         rule.onNodeWithText("Create event").performClick()
 
         // The label said 12:00 and 12:00 is what was sent — NOT the instant Create was tapped.
-        rule.onNodeWithText("Starts 6 Jul 2026, 12:00").assertExists()
-        assertEquals(LocalDateTime(2026, 7, 6, 12, 0), createdStart)
+        rule.onNodeWithText("6 Jul 12:00 – 7 Jul 12:00").assertExists()
+        assertEquals(LocalDateTime(2026, 7, 6, 12, 0), createdFrom)
     }
 
     @Test
-    fun `the edit affordance opens ONE dialog showing the calendar and time wheels together`() {
-        // The picker is a single dialog: a hand-drawn month calendar AND the HH:MM time wheels visible at
-        // once — never the old two-step date -> Next -> time -> OK / Edit-time -> Back mode swap. One OK
-        // commits both.
+    fun `the edit affordance opens ONE range dialog showing the calendar and both time wheels together`() {
+        // The picker is a single dialog: a hand-drawn month calendar AND both HH:MM time-wheel pairs (From
+        // and Until) visible at once. One OK commits the whole span.
         //
         // Reduce motion is REQUIRED: the picker's time wheels animate on open (a LazyColumn settle), and an
         // animating scene never reaches idle — without this flag `waitForIdle` stalls for ~16 min.
@@ -192,33 +197,33 @@ class StatusScreenTest {
         }
         rule.onNodeWithText("Date & time").assertDoesNotExist() // no dialog yet
 
-        rule.onNodeWithContentDescription("Edit start date").performClick()
+        rule.onNodeWithContentDescription("Edit event dates").performClick()
 
         rule.onNodeWithText("Date & time").assertExists()
         rule.onNodeWithText("OK").assertExists()
         rule.onNodeWithText("Cancel").assertExists()
-        // The two-step flow's controls are gone: no Next, no Back, no separate time-edit affordance.
-        rule.onNodeWithText("Next").assertDoesNotExist()
-        rule.onNodeWithText("Back").assertDoesNotExist()
-        rule.onNodeWithContentDescription("Edit time").assertDoesNotExist()
-        // Calendar pane present (the visible month) AND the time pane present (both wheels), simultaneously.
+        // Calendar pane present (the visible month) AND both time panes present (all four wheels).
         rule.onNodeWithText("July 2026").assertExists()
-        rule.onNodeWithContentDescription("Hour", useUnmergedTree = true).assertExists()
-        rule.onNodeWithContentDescription("Minute", useUnmergedTree = true).assertExists()
+        rule.onNodeWithContentDescription("From hour", useUnmergedTree = true).assertExists()
+        rule.onNodeWithContentDescription("From minute", useUnmergedTree = true).assertExists()
+        rule.onNodeWithContentDescription("Until hour", useUnmergedTree = true).assertExists()
+        rule.onNodeWithContentDescription("Until minute", useUnmergedTree = true).assertExists()
     }
 
     @Test
-    fun `the picker time wheels expose the current start`() {
-        // The default start is now — 6 Jul 2026, 12:00 — so the wheels open on 12 and 00. Reduce motion is
-        // required so the wheels snap (an animating scene never idles — see the dialog test above).
+    fun `the range picker time wheels expose the current window bounds`() {
+        // The default window is [6 Jul 12:00, 7 Jul 12:00], so both wheel pairs open on 12 and 00. Reduce
+        // motion is required so the wheels snap (an animating scene never idles — see the dialog test above).
         rule.setContent {
             CompositionLocalProvider(LocalReduceMotion provides true) { StatusScreen(UiState.CreateEvent(), cutoff = fixedCutoff()) }
         }
-        rule.onNodeWithContentDescription("Edit start date").performClick()
+        rule.onNodeWithContentDescription("Edit event dates").performClick()
 
-        rule.onNodeWithContentDescription("Hour", useUnmergedTree = true)
+        rule.onNodeWithContentDescription("From hour", useUnmergedTree = true)
             .assert(SemanticsMatcher.expectValue(SemanticsProperties.StateDescription, "12"))
-        rule.onNodeWithContentDescription("Minute", useUnmergedTree = true)
+        rule.onNodeWithContentDescription("Until hour", useUnmergedTree = true)
+            .assert(SemanticsMatcher.expectValue(SemanticsProperties.StateDescription, "12"))
+        rule.onNodeWithContentDescription("From minute", useUnmergedTree = true)
             .assert(SemanticsMatcher.expectValue(SemanticsProperties.StateDescription, "00"))
     }
 
@@ -536,7 +541,10 @@ class StatusScreenTest {
             StatusScreen(
                 UiState.Joined(
                     SyncHealth.InSync,
-                    PendingSwitch("22222222-2222-4222-8222-222222222222", JoinPhase.Ready("New Event", "2026-07-06T00:00:00Z")),
+                    PendingSwitch(
+                        "22222222-2222-4222-8222-222222222222",
+                        JoinPhase.Ready("New Event", "2026-07-06T00:00:00Z", "2026-07-16T00:00:00Z"),
+                    ),
                 ),
                 membership = MEMBERSHIP,
                 cutoff = fixedCutoff(),
@@ -556,19 +564,32 @@ class StatusScreenTest {
     }
 
     @Test
-    fun `the reconfigure surface seeds the Event-start cutoff when the cutoff is at the floor`() {
-        // minPhotoDate == startsAt → Event-start preset → resulting instant is the start.
+    fun `the reconfigure surface seeds the Event-start lower bound when the cutoff is at the floor`() {
+        // minPhotoDate == startsAt → Event-start preset; maxPhotoDate == endsAt → Event-end preset. The
+        // value line states the full window as the compact adaptive range.
         rule.setContent { StatusScreen(inSync, membership = MEMBERSHIP, cutoff = fixedCutoff()) }
         rule.onNodeWithContentDescription("Event settings").performClick()
-        rule.onNodeWithText("Shared from 6 Jul 2026, 12:00").assertExists()
+        rule.onNodeWithTag("from-event-start").assertIsSelected()
+        rule.onNodeWithTag("until-event-end").assertIsSelected()
+        rule.onNodeWithText("Sharing 6 Jul 12:00 – 10 Jul 12:00").assertExists()
     }
 
     @Test
-    fun `the reconfigure surface seeds a Custom cutoff when the cutoff is above the floor`() {
+    fun `the reconfigure surface seeds a Custom lower bound when the cutoff is above the floor`() {
         val above = MEMBERSHIP.copy(minPhotoDate = "2026-07-06T18:00:00Z")
         rule.setContent { StatusScreen(inSync, membership = above, cutoff = fixedCutoff()) }
         rule.onNodeWithContentDescription("Event settings").performClick()
-        rule.onNodeWithText("Shared from 6 Jul 2026, 18:00").assertExists()
+        rule.onNodeWithTag("from-custom").assertIsSelected()
+        rule.onNodeWithText("Sharing 6 Jul 18:00 – 10 Jul 12:00").assertExists()
+    }
+
+    @Test
+    fun `the reconfigure surface seeds a Custom upper bound when the ceiling is below the event end`() {
+        val below = MEMBERSHIP.copy(maxPhotoDate = "2026-07-09T12:00:00Z")
+        rule.setContent { StatusScreen(inSync, membership = below, cutoff = fixedCutoff()) }
+        rule.onNodeWithContentDescription("Event settings").performClick()
+        rule.onNodeWithTag("until-custom").assertIsSelected()
+        rule.onNodeWithText("Sharing 6 Jul 12:00 – 9 Jul 12:00").assertExists()
     }
 
     @Test
@@ -583,13 +604,16 @@ class StatusScreenTest {
     fun `saving invokes the reconfigure callback with the membership's values and closes the surface`() {
         var savedEventId: String? = null
         var savedDirection: Direction? = null
-        var savedCutoff: String? = null
+        var savedMin: String? = null
+        var savedMax: String? = "unset"
         var savedAlbum: Boolean? = null
         rule.setContent {
             StatusScreen(
                 inSync,
                 membership = MEMBERSHIP,
-                onReconfigure = { e, d, c, a -> savedEventId = e; savedDirection = d; savedCutoff = c; savedAlbum = a },
+                onReconfigure = { e, d, mn, mx, a ->
+                    savedEventId = e; savedDirection = d; savedMin = mn; savedMax = mx; savedAlbum = a
+                },
                 cutoff = fixedCutoff(),
             )
         }
@@ -598,24 +622,46 @@ class StatusScreenTest {
 
         assertEquals("E1", savedEventId)
         assertEquals(Direction.Both, savedDirection)
-        assertEquals("2026-07-06T12:00:00Z", savedCutoff)
+        // Full-window membership (floor + ceiling) round-trips its exact bounds on a no-edit Save.
+        assertEquals("2026-07-06T12:00:00Z", savedMin)
+        assertEquals("2026-07-10T12:00:00Z", savedMax)
         assertEquals(false, savedAlbum)
         // Save closes the surface (back to the joined layer's action row).
         rule.onNodeWithText("Save").assertDoesNotExist()
         rule.onNodeWithContentDescription("Event settings").assertExists()
     }
 
+    // ---- joined layer: the "Event ended" marker (capability `sync-status-screen`) ----
+
+    @Test
+    fun `an ended event prefixes the health line with the Event ended marker`() {
+        rule.setContent { StatusScreen(UiState.Joined(SyncHealth.InSync, ended = true), cutoff = fixedCutoff()) }
+        // Same single slot: the marker prefixes the regular status, which is unchanged.
+        rule.onNodeWithText("Event ended", substring = true).assertExists()
+        rule.onNodeWithText("In sync").assertExists()
+    }
+
+    @Test
+    fun `a non-ended event shows no Event ended marker`() {
+        rule.setContent { StatusScreen(inSync, cutoff = fixedCutoff()) }
+        rule.onNodeWithText("Event ended", substring = true).assertDoesNotExist()
+        rule.onNodeWithText("In sync").assertExists()
+    }
+
     private fun hasAnyProgressIndication(): SemanticsMatcher =
         SemanticsMatcher.keyIsDefined(SemanticsProperties.ProgressBarRangeInfo)
 }
 
-// A representative joined membership for the reconfigure-surface tests: event started, cutoff at the
-// floor, bidirectional, no album — so a no-edit Save round-trips these exact values.
+// A representative joined membership for the reconfigure-surface tests: event started, the full window
+// `[startsAt, endsAt]` at both bounds (floor + ceiling), bidirectional, no album — so a no-edit Save
+// round-trips these exact values.
 private val MEMBERSHIP = EventConfig(
     eventId = "E1",
     name = "Anna's Birthday",
     minPhotoDate = "2026-07-06T12:00:00Z",
     startsAt = "2026-07-06T12:00:00Z",
+    endsAt = "2026-07-10T12:00:00Z",
+    maxPhotoDate = "2026-07-10T12:00:00Z",
     direction = Direction.Both,
     saveToAlbum = false,
 )

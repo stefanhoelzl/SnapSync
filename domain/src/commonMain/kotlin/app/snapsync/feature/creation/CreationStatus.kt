@@ -49,7 +49,7 @@ enum class CreationFailureReason {
  * clock, no timezone, and no dependency on the cutoff codec.
  */
 interface EventCreator {
-    fun create(name: String, startsAt: String)
+    fun create(name: String, startsAt: String, endsAt: String)
 }
 
 /** Read face of the create status — what the presentation reduction consumes. */
@@ -69,5 +69,5 @@ class MutableCreationStatusSource(initial: CreationStatus = CreationStatus.Idle)
 
 /** A no-op [EventCreator] for hosts/tests that forge [CreationStatus] directly (e.g. the harness). */
 object NoOpEventCreator : EventCreator {
-    override fun create(name: String, startsAt: String) = Unit
+    override fun create(name: String, startsAt: String, endsAt: String) = Unit
 }

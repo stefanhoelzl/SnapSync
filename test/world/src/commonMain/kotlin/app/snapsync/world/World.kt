@@ -493,7 +493,7 @@ class World(
      * so there is nothing to contribute and `N` is 0, the same answer the cycle reaches.
      */
     fun contribution(): Contribution = configCell.value?.let {
-        Contribution.of(includesUpload = it.direction.includesUpload, cutoff = it.minPhotoDate)
+        Contribution.of(includesUpload = it.direction.includesUpload, cutoff = it.minPhotoDate, until = it.maxPhotoDate)
     } ?: Contribution.None
 
     /**

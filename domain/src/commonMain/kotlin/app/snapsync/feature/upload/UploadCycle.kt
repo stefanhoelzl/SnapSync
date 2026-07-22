@@ -179,12 +179,12 @@ class UploadCycle(
         // because `stop()` deregistered the extension (`setUploadJobExtensionEnabled(false)` wipes the
         // configuration and every in-flight job), and the app-driven tier has no appex, so there is no
         // "acknowledge or the system errors 50008" obligation to honour here.
-        val scope = when (val c = membership.contribution) {
+        val (scope, until) = when (val c = membership.contribution) {
             Contribution.None -> {
                 log.i { "cycle skipped — this membership contributes nothing (direction excludes upload)" }
                 return CycleResult.SKIPPED
             }
-            is Contribution.Since -> c.cutoff
+            is Contribution.Since -> c.cutoff to c.until
         }
 
         val eventId = config.eventId
@@ -314,19 +314,24 @@ class UploadCycle(
                 .also { log.i { "origin policy dropped ${unsuppressed.size - it.size} resource(s)" } }
         }
 
-        // Capture-date cutoff (capability `photo-selection-policy`): drop resources whose asset `creationDate`
-        // precedes the cutoff, so pre-cutoff bytes never upload. An asset with no `creationDate` (empty
-        // string) sorts before any non-empty cutoff and is excluded.
+        // Capture-date RANGE (capability `photo-selection-policy`): keep resources whose asset `creationDate`
+        // lies within `[cutoff, until]` — at or after the lower cutoff AND at or before the upper ceiling
+        // (`until`), inclusive on both ends. A `null` ceiling means unbounded (no upper filter — the
+        // admit-on-doubt direction, e.g. a legacy membership before its reconcile backfill). An asset with no
+        // `creationDate` (empty string) sorts before any non-empty cutoff and is excluded.
         //
-        // This filter stays **authoritative** even though the platform walk now narrows its own fetch by
-        // the same bound: the walk may return a superset (its predicate is deliberately widened), and this
-        // is what makes that optimization unable to change the admitted set.
+        // This filter stays **authoritative** even though the platform walk now narrows its own fetch by the
+        // same bounds: the walk may return a superset (its predicate is deliberately widened), and this is
+        // what makes that optimization unable to change the admitted set.
         //
-        // NB the cutoff is applied AFTER `unfiltered`, and `unfiltered` — not `liveResources` — is what
+        // NB the range is applied AFTER `unfiltered`, and `unfiltered` — not `liveResources` — is what
         // feeds the device manifest below. That split is deliberate; see the `onDiscovery` call.
         val liveResources = unfiltered
-            .filter { (it.metadata[RESOURCE_META_CREATION_DATE] ?: "") >= cutoff }
-            .also { log.i { "cutoff dropped ${unfiltered.size - it.size} pre-cutoff resource(s)" } }
+            .filter { r ->
+                val cd = r.metadata[RESOURCE_META_CREATION_DATE] ?: ""
+                cd >= cutoff && (until == null || cd <= until)
+            }
+            .also { log.i { "date range dropped ${unfiltered.size - it.size} out-of-range resource(s)" } }
 
         // Prune rows for assets the change feed reported removed (incremental, every cycle — even a
         // cap-truncated one — so a mid-upload deletion's stuck row is cleared promptly).

@@ -6,6 +6,7 @@ import app.snapsync.ports.EventDirectory
 import app.snapsync.ports.ConfigSource
 import app.snapsync.model.Direction
 import app.snapsync.model.EventConfig
+import app.snapsync.model.clampToCeiling
 import app.snapsync.model.clampToFloor
 
 /**
@@ -67,7 +68,9 @@ class JoinEvent(
         eventId: String,
         name: String,
         startsAt: String,
+        endsAt: String,
         minPhotoDate: String,
+        maxPhotoDate: String,
         direction: Direction,
         saveToAlbum: Boolean,
     ): JoinOutcome {
@@ -79,6 +82,8 @@ class JoinEvent(
                 name = name,
                 minPhotoDate = clampToFloor(chosen = minPhotoDate, startsAt = startsAt),
                 startsAt = startsAt,
+                endsAt = endsAt,
+                maxPhotoDate = clampToCeiling(chosen = maxPhotoDate, endsAt = endsAt),
                 direction = direction,
                 saveToAlbum = saveToAlbum,
             ),

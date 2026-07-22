@@ -36,6 +36,7 @@ import app.snapsync.flow.SilentPush
 import app.snapsync.model.Contribution
 import app.snapsync.model.EventConfig
 import app.snapsync.model.instantToCutoff
+import app.snapsync.model.JoinLoad
 import app.snapsync.model.PermissionStatus
 import app.snapsync.model.RawAsset
 import app.snapsync.model.Resource
@@ -246,9 +247,9 @@ class AppCore internal constructor(
      * `join-share-count`): for a candidate [cutoff] with sharing on, the count of own photos the policy
      * admits, or `null` when the grant permits no count. Purely local — no backend LIST.
      */
-    suspend fun loadShareableCount(cutoff: String): Int? =
+    suspend fun loadShareableCount(cutoff: String, until: String?): Int? =
         shareableCountSource.count(
-            Contribution.Since(cutoff),
+            Contribution.Since(cutoff, until),
             ports.photoAccess.permission.value,
             selectionSnapshot = latestSelectionSnapshot.value,
         )
@@ -391,8 +392,9 @@ class AppCore internal constructor(
     // The best-effort `GET /events/:id` name fetch (`null` on offline / 404 / parse) — the
     // `EventDirectory` port effect the flows coordinate over, built here because a flow may not
     // touch a port directly (law "flow/ never references ports/").
-    private val fetchEventName: suspend (eventId: String) -> String? = { eventId ->
-        (ports.directory.fetch(eventId) as? EventDetails.Found)?.name
+    private val fetchEventDetails: suspend (eventId: String) -> JoinLoad.Found? = { eventId ->
+        (ports.directory.fetch(eventId) as? EventDetails.Found)
+            ?.let { JoinLoad.Found(it.name, it.startsAt, it.endsAt) }
     }
 
     /** The create-event status the use-case drives and the container reads (same instance). */
@@ -468,7 +470,7 @@ class AppCore internal constructor(
             // (`limited-photo-access`): under LIMITED the total derives from the selection-driven
             // discovery instead of an autonomous enumeration.
             if (ports.photoAccess.permission.value == PermissionStatus.GRANTED) {
-                gallery.refresh(Contribution.of(cfg.direction.includesUpload, cfg.minPhotoDate))
+                gallery.refresh(Contribution.of(cfg.direction.includesUpload, cfg.minPhotoDate, cfg.maxPhotoDate))
             }
         }
         ledgerCounts.refresh()
@@ -508,7 +510,7 @@ class AppCore internal constructor(
             },
             refreshStatus = { refreshStatusSources() },
             activeEventId = { ports.configSource.config.value?.eventId },
-            fetchEventName = fetchEventName,
+            fetchEventDetails = fetchEventDetails,
             refreshAttestation = ports.refreshAttestation,
         )
     }
@@ -562,7 +564,7 @@ class AppCore internal constructor(
             // parameter, and album creation works under a LIMITED grant (measured — capability
             // `limited-photo-access`).
             isGranted = { ports.photoAccess.permission.value.grantsPhotoAccess },
-            fetchEventName = fetchEventName,
+            fetchEventDetails = fetchEventDetails,
             registerPush = ports.registerPush,
         )
     }
@@ -584,12 +586,13 @@ class AppCore internal constructor(
             },
             // Create: mint via the backend; the use-case routes the minted event into the SAME join
             // gate a scanned QR takes (fire-and-forget; outcomes ride `creationStatus`).
-            create = { name, startsAt -> eventCreator.create(name, startsAt) },
+            create = { name, startsAt, endsAt -> eventCreator.create(name, startsAt, endsAt) },
             // The join gate's commit (capability `join-event`): enroll (register-only empty manifest)
             // then provision. `true` unless enrollment failed (the same-event no-op is a success).
-            commitJoin = { eventId, name, startsAt, minPhotoDate, direction, saveToAlbum ->
-                joinEvent.join(eventId, name, startsAt, minPhotoDate, direction, saveToAlbum) !=
-                    JoinOutcome.EnrollFailed
+            commitJoin = { eventId, name, startsAt, endsAt, minPhotoDate, maxPhotoDate, direction, saveToAlbum ->
+                joinEvent.join(
+                    eventId, name, startsAt, endsAt, minPhotoDate, maxPhotoDate, direction, saveToAlbum,
+                ) != JoinOutcome.EnrollFailed
             },
             // Share is pure platform (a system sheet over the top view controller) — the shell's lambda,
             // passed through undecorated.
@@ -604,8 +607,8 @@ class AppCore internal constructor(
             choosePhotos = { ports.presentPhotoPicker() },
             // In-place membership reconfigure (capability `reconfigure-membership`): edit direction/
             // cutoff/album without leaving. Distinct from `openSettings` (the iOS system settings page).
-            reconfigure = { eventId, direction, minPhotoDate, saveToAlbum ->
-                reconfigureEvent.reconfigure(eventId, direction, minPhotoDate, saveToAlbum)
+            reconfigure = { eventId, direction, minPhotoDate, maxPhotoDate, saveToAlbum ->
+                reconfigureEvent.reconfigure(eventId, direction, minPhotoDate, maxPhotoDate, saveToAlbum)
             },
         )
     }
@@ -639,7 +642,7 @@ class AppCore internal constructor(
             ports.selectionChanges.snapshots.collect { snapshot ->
                 latestSelectionSnapshot.value = snapshot
                 ports.configSource.config.value?.let { cfg ->
-                    gallery.refreshFrom(snapshot, Contribution.of(cfg.direction.includesUpload, cfg.minPhotoDate))
+                    gallery.refreshFrom(snapshot, Contribution.of(cfg.direction.includesUpload, cfg.minPhotoDate, cfg.maxPhotoDate))
                 }
                 ports.pumpSelectionChanged()
             }

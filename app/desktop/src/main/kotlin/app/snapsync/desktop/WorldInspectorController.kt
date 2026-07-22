@@ -92,9 +92,9 @@ class WorldInspectorController(private val scope: CoroutineScope) {
     // The real in-place reconfigure edge (capability `reconfigure-membership`): drives the world's REAL
     // `userCommands.reconfigure`, then recomputes the inspector snapshot so the changed direction/cutoff/
     // album is reflected.
-    val reconfigure: suspend (String, Direction, String, Boolean) -> Unit =
-        { eventId, direction, minPhotoDate, saveToAlbum ->
-            world.userCommands.reconfigure(eventId, direction, minPhotoDate, saveToAlbum)
+    val reconfigure: suspend (String, Direction, String, String?, Boolean) -> Unit =
+        { eventId, direction, minPhotoDate, maxPhotoDate, saveToAlbum ->
+            world.userCommands.reconfigure(eventId, direction, minPhotoDate, maxPhotoDate, saveToAlbum)
             afterMutation()
         }
 
@@ -154,24 +154,26 @@ class WorldInspectorController(private val scope: CoroutineScope) {
 
     /** Details load for the join gate (GET /events/:id over the mini-edge), mapped to the gate's [JoinLoad]. */
     suspend fun loadJoinDetails(eventId: String): JoinLoad = when (val d = joinEvent.loadDetails(eventId)) {
-        is EventDetails.Found -> JoinLoad.Found(d.name, d.startsAt)
+        is EventDetails.Found -> JoinLoad.Found(d.name, d.startsAt, d.endsAt)
         EventDetails.NotFound -> JoinLoad.NotFound
         EventDetails.Failed -> JoinLoad.Failed
     }
 
     /** The join-time shareable-count preview over the world gallery (capability `join-share-count`). */
-    suspend fun loadShareableCount(cutoff: String): Int? = world.core.loadShareableCount(cutoff)
+    suspend fun loadShareableCount(cutoff: String, until: String?): Int? = world.core.loadShareableCount(cutoff, until)
 
     /** Confirm the join through the composed command bundle (enroll then provision); refresh after. */
     suspend fun commitJoin(
         eventId: String,
         name: String,
         startsAt: String,
+        endsAt: String,
         cutoff: String,
+        until: String,
         direction: Direction,
         saveToAlbum: Boolean,
     ): Boolean =
-        world.userCommands.commitJoin(eventId, name, startsAt, cutoff, direction, saveToAlbum)
+        world.userCommands.commitJoin(eventId, name, startsAt, endsAt, cutoff, until, direction, saveToAlbum)
             .also { afterMutation() }
 
     // ---- the OS invocation + token ---------------------------------------------------------------
@@ -209,7 +211,8 @@ class WorldInspectorController(private val scope: CoroutineScope) {
      * because a gate refuses, but because the clamped cutoff admits no photo. The forge harness can only
      * show the status line; only this world can show the empty object store behind it.
      */
-    fun createEvent(name: String, startsAt: String) = launchMutation { creator.create(name, startsAt) }
+    fun createEvent(name: String, startsAt: String, endsAt: String) =
+        launchMutation { creator.create(name, startsAt, endsAt) }
 
     /** The inspector's Leave button — the same faithful edge as the phone-frame Leave affordance. */
     fun leaveEvent() = launchMutation { world.leave() }

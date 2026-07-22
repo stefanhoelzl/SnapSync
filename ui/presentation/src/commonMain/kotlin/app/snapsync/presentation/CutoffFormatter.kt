@@ -4,6 +4,8 @@ import app.snapsync.model.localToCutoff
 import kotlin.time.Instant
 import kotlinx.datetime.LocalDateTime
 import kotlinx.datetime.TimeZone
+import kotlinx.datetime.periodUntil
+import kotlinx.datetime.toInstant
 import kotlinx.datetime.toLocalDateTime
 
 /**
@@ -42,4 +44,57 @@ class CutoffFormatter(
      * fail, for a comparison that needs neither.
      */
     fun nowCutoff(): String = toCutoff(nowLocal())
+
+    /**
+     * A **compact adaptive** rendering of a chosen capture-date range `[from, until]` for the join /
+     * reconfigure surfaces (capability `photo-selection-policy`). Collapses to the shortest unambiguous
+     * form:
+     * - same calendar day → `14 Jul, 18:00–23:00`
+     * - multi-day, both ends at midnight (whole days) → `14–21 Jul 2026`
+     * - otherwise → `14 Jul 18:00 – 21 Jul 23:00`
+     */
+    fun formatRange(from: LocalDateTime, until: LocalDateTime): String {
+        val sameDay = from.year == until.year && from.month == until.month && from.day == until.day
+        if (sameDay) return "${dayMon(from)}, ${hhmm(from)}–${hhmm(until)}"
+        val wholeDays = from.hour == 0 && from.minute == 0 && from.second == 0 &&
+            until.hour == 0 && until.minute == 0 && until.second == 0
+        if (wholeDays) {
+            return if (from.month == until.month && from.year == until.year) {
+                "${from.day}–${until.day} ${mon(until)} ${until.year}"
+            } else {
+                "${dayMon(from)} – ${dayMon(until)} ${until.year}"
+            }
+        }
+        return "${dayMon(from)} ${hhmm(from)} – ${dayMon(until)} ${hhmm(until)}"
+    }
+
+    /**
+     * A **humanized** duration between [from] and [until] for the create screen's live hint, e.g.
+     * `1 day`, `5 days`, `2 weeks`, `3 hours`. The calendar math is done by `kotlinx.datetime`'s
+     * [periodUntil] (so month/day lengths are handled by the library, not re-derived here); this only
+     * chooses the coarsest single unit to name.
+     */
+    fun humanizedDuration(from: LocalDateTime, until: LocalDateTime): String {
+        val period = from.toInstant(zone).periodUntil(until.toInstant(zone), zone)
+        val totalDays = period.years * 365 + period.months * 30 + period.days
+        return when {
+            totalDays >= 14 -> plural(totalDays / 7, "week")
+            totalDays >= 1 -> plural(totalDays, "day")
+            period.hours >= 1 -> plural(period.hours, "hour")
+            period.minutes >= 1 -> plural(period.minutes, "minute")
+            else -> "less than a minute"
+        }
+    }
+
+    private fun plural(n: Int, unit: String) = "$n $unit${if (n == 1) "" else "s"}"
+    private fun p2(n: Int) = n.toString().padStart(2, '0')
+    private fun hhmm(d: LocalDateTime) = "${p2(d.hour)}:${p2(d.minute)}"
+    private fun mon(d: LocalDateTime) = MONTHS[d.month.ordinal]
+    private fun dayMon(d: LocalDateTime) = "${d.day} ${mon(d)}"
+
+    private companion object {
+        val MONTHS = arrayOf(
+            "Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
+        )
+    }
 }

@@ -40,7 +40,7 @@ class ForgeStatusHostTest {
         // Found details load, with config absent (a first join, not a switch) and permission granted
         // (so readyOrExplain picks Ready rather than the access explainer).
         val state = host.container.stateFlow.first { it is UiState.JoiningEvent }
-        assertEquals(UiState.JoiningEvent(EVENT_ID, JoinPhase.Ready(EVENT_NAME, EVENT_START)), state)
+        assertEquals(UiState.JoiningEvent(EVENT_ID, JoinPhase.Ready(EVENT_NAME, EVENT_START, EVENT_END)), state)
     }
 
     @Test

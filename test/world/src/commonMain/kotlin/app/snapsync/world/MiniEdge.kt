@@ -8,6 +8,8 @@ import io.ktor.http.HttpMethod
 import io.ktor.http.HttpStatusCode
 import io.ktor.http.content.TextContent
 import io.ktor.http.headersOf
+import kotlin.time.Duration.Companion.days
+import kotlin.time.Instant
 import kotlinx.serialization.builtins.ListSerializer
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.jsonObject
@@ -94,12 +96,21 @@ fun miniEdgeClient(store: BackendStore): HttpClient {
                     if (startsAt == null || !CANONICAL_CUTOFF.matches(startsAt)) {
                         return@MockEngine respond("invalid startsAt", HttpStatusCode.BadRequest)
                     }
+                    // `endsAt` is creator-supplied at mint (capability `event-limits`): when present it must
+                    // be canonical AND strictly after `startsAt`; when absent it falls back to `startsAt + 30d`.
+                    val rawEndsAt = obj["endsAt"]?.jsonPrimitive?.content
+                    val endsAt = when {
+                        rawEndsAt == null -> plus30Days(startsAt)
+                        !CANONICAL_CUTOFF.matches(rawEndsAt) || rawEndsAt <= startsAt ->
+                            return@MockEngine respond("invalid endsAt", HttpStatusCode.BadRequest)
+                        else -> rawEndsAt
+                    }
                     val eventId = mintEventId(eventCounter++)
-                    store.registerEvent(eventId, name.trim(), startsAt)
+                    store.registerEvent(eventId, name.trim(), startsAt, endsAt)
                     respond(
                         json.encodeToString(
                             CreatedEventDto.serializer(),
-                            CreatedEventDto(eventId, name.trim(), CREATED_AT, startsAt),
+                            CreatedEventDto(eventId, name.trim(), CREATED_AT, startsAt, endsAt),
                         ),
                         HttpStatusCode.Created,
                         jsonHeaders(),
@@ -115,16 +126,16 @@ fun miniEdgeClient(store: BackendStore): HttpClient {
                     respond(
                         json.encodeToString(
                             CreatedEventDto.serializer(),
-                            CreatedEventDto(
-                                segments[1],
-                                store.nameOf(segments[1]) ?: "",
-                                CREATED_AT,
+                            run {
                                 // A marker registered without a start date is a LEGACY one: synthesize
                                 // `startsAt` from `createdAt`, exactly as the real backend does on read.
                                 // Note that inherits createdAt's milliseconds — off-canonical on purpose,
                                 // so the app's normalization is exercised rather than assumed.
-                                store.startsAtOf(segments[1]) ?: CREATED_AT,
-                            ),
+                                val startsAt = store.startsAtOf(segments[1]) ?: CREATED_AT
+                                // `endsAt` likewise: stored when creator-supplied, else `startsAt + 30d`.
+                                val endsAt = store.endsAtOf(segments[1]) ?: plus30Days(startsAt)
+                                CreatedEventDto(segments[1], store.nameOf(segments[1]) ?: "", CREATED_AT, startsAt, endsAt)
+                            },
                         ),
                         HttpStatusCode.OK,
                         jsonHeaders(),
@@ -173,6 +184,10 @@ private const val CREATED_AT = "2026-01-01T00:00:00.000Z"
  * contract: the real endpoint 400s anything else, so the world must too.
  */
 private val CANONICAL_CUTOFF = Regex("""^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$""")
+
+/** The mini-edge's `endsAt` fallback (capability `event-limits`): `startsAt + 30d`, mirroring the real
+ *  backend's legacy stamp. The app normalizes any sub-second precision, so the raw instant string is fine. */
+private fun plus30Days(canonical: String): String = (Instant.parse(canonical) + 30.days).toString()
 
 /** Mint a canonical `8-4-4-4-12` v4-shaped UUID deterministically from a counter (no clock/random). */
 internal fun mintEventId(n: Long): String {

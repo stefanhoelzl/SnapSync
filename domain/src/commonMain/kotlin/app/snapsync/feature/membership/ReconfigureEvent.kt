@@ -2,6 +2,7 @@ package app.snapsync.feature.membership
 
 import app.snapsync.model.Direction
 import app.snapsync.model.EventConfig
+import app.snapsync.model.clampToCeiling
 import app.snapsync.model.clampToFloor
 import app.snapsync.ports.ConfigSource
 import app.snapsync.ports.ConfigStore
@@ -69,13 +70,20 @@ class ReconfigureEvent(
         eventId: String,
         direction: Direction,
         chosenCutoff: String,
+        chosenUpper: String?,
         saveToAlbum: Boolean,
     ) {
         val current = configSource.config.value
         if (current == null || current.eventId != eventId) return
+        // The upper bound mirrors the cutoff: re-clamp the chosen ceiling to the event's immutable `endsAt`
+        // (`min(chosen, endsAt)`). A `null` chosen upper means unbounded; and a legacy config whose `endsAt`
+        // has not yet been backfilled (capability `event-rejoin-reconciliation`) has nothing to clamp to, so
+        // the chosen value stands as-is until the backfill supplies the ceiling.
+        val newMax = chosenUpper?.let { c -> current.endsAt?.let { clampToCeiling(c, it) } ?: c }
         val newCfg = current.copy(
             direction = direction,
             minPhotoDate = clampToFloor(chosenCutoff, current.startsAt),
+            maxPhotoDate = newMax,
             saveToAlbum = saveToAlbum,
         )
         // Persist the WHOLE config with only the three participation fields changed (one-writer, in place).

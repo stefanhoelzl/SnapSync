@@ -8,8 +8,9 @@ app is test equipment, not a product.
 **Mission** (full form + decision record: `openspec/config.yaml` context /
 `changes/archive/2026-07-21-align-specs-with-mission`): joined users easily share the photos they take during a
 **short-lived event** (days/weeks — celebrations, holidays, trips), synced gallery-to-gallery; you never
-care how photos arrive, you just look at your own gallery. No accounts; simple setup; the server-stamped
-event lifetime IS how an event ends. Named futures (don't build for them; don't deepen assumptions
+care how photos arrive, you just look at your own gallery. No accounts; simple setup; the host picks the
+event's **date range** at creation, and its **end** is both the capture-date ceiling and the server-stamped
+lifetime whose expiry IS how an event ends. Named futures (don't build for them; don't deepen assumptions
 against them unnamed): Android · paid events · concurrent multi-event membership (single active
 membership is the *current* contract).
 
@@ -18,8 +19,9 @@ membership is the *current* contract).
 > event". A membership's cutoff is therefore **required**, never absent.
 
 What a member contributes is decided by **one** policy at **one** place (capability
-`photo-selection-policy`, enforced in `UploadCycle`'s resource selection): the cutoff bounds *when* a photo
-was taken; the **origin exclusions** bound *what it is* — screenshots, screen recordings, GIFs,
+`photo-selection-policy`, enforced in `UploadCycle`'s resource selection): the capture-date **range**
+`[from, until]` bounds *when* a photo was taken (lower bound clamped to the event start, upper to the event
+end); the **origin exclusions** bound *what it is* — screenshots, screen recordings, GIFs,
 sub-floor-resolution received media, and members of a denylisted album (WhatsApp, Telegram, …) never enter
 an event. PhotoKit exposes **no** camera-origin flag on any iOS through 26, so the policy can only
 *subtract* known non-captures and **admits on doubt**: a stray uploaded meme is harmless and visible, while

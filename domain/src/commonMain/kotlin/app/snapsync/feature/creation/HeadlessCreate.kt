@@ -38,7 +38,9 @@ class HeadlessCreate(
 ) {
     suspend fun run(payload: CreateEventPayload, forwardAutoJoinLink: (String) -> Unit) {
         val startsAt = payload.startsAt ?: now()
-        when (val outcome = client.create(payload.name.trim(), startsAt)) {
+        // `endsAt` is forwarded as-is: null lets the backend apply the legacy `+30d` fallback (capability
+        // `event-limits`), a value is honoured as the creator-chosen window end.
+        when (val outcome = client.create(payload.name.trim(), startsAt, payload.endsAt)) {
             is CreateOutcome.Created -> {
                 if (payload.autoJoin) {
                     forwardAutoJoinLink(
@@ -47,6 +49,7 @@ class HeadlessCreate(
                                 eventId = outcome.eventId,
                                 autoJoin = true,
                                 minPhotoDate = payload.minPhotoDate,
+                                maxPhotoDate = payload.maxPhotoDate,
                                 direction = payload.direction,
                                 saveToAlbum = payload.saveToAlbum,
                             ),

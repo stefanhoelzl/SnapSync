@@ -21,10 +21,13 @@ package app.snapsync.model
  *
  * - [leave] — leave the configured event: cancel in-flight downloads, stop the producer, clear the
  *   config, notify the backend (capability `leave-event`).
- * - [create] — mint a new event with a name and canonical UTC start, then route it into the join gate
- *   (capability `event-creation-ui`). Fire-and-forget; outcomes arrive via `CreationStatusSource`.
- * - [commitJoin] — enroll (register-only empty manifest) then provision, returning `true` when joined
- *   (incl. the already-joined no-op) and `false` on a failed enrollment (capability `join-event`).
+ * - [create] — mint a new event with a name and canonical UTC date **range** (`startsAt`, `endsAt`), then
+ *   route it into the join gate (capability `event-creation-ui`). Fire-and-forget; outcomes arrive via
+ *   `CreationStatusSource`.
+ * - [commitJoin] — enroll (register-only empty manifest) then provision the membership's capture-date
+ *   **range** (`minPhotoDate`..`maxPhotoDate`, each clamped to the event window `startsAt`..`endsAt`),
+ *   returning `true` when joined (incl. the already-joined no-op) and `false` on a failed enrollment
+ *   (capability `join-event`).
  * - [share] — hand the invite URL to the platform share surface (fire-and-forget, `UiState` unaffected).
  * - [requestAccess] — raise the system photo-access dialog (capability `permission-gate`): returns
  *   nothing and cannot suspend — the grant arrives only via the permission read-model.
@@ -40,15 +43,17 @@ package app.snapsync.model
  */
 class UserCommands(
     val leave: suspend () -> Unit = {},
-    val create: (name: String, startsAt: String) -> Unit = { _, _ -> },
+    val create: (name: String, startsAt: String, endsAt: String) -> Unit = { _, _, _ -> },
     val commitJoin: suspend (
         eventId: String,
         name: String,
         startsAt: String,
+        endsAt: String,
         minPhotoDate: String,
+        maxPhotoDate: String,
         direction: Direction,
         saveToAlbum: Boolean,
-    ) -> Boolean = { _, _, _, _, _, _ -> false },
+    ) -> Boolean = { _, _, _, _, _, _, _, _ -> false },
     val share: (String) -> Unit = {},
     val requestAccess: () -> Unit = {},
     val openSettings: () -> Unit = {},
@@ -57,6 +62,7 @@ class UserCommands(
         eventId: String,
         direction: Direction,
         minPhotoDate: String,
+        maxPhotoDate: String?,
         saveToAlbum: Boolean,
-    ) -> Unit = { _, _, _, _ -> },
+    ) -> Unit = { _, _, _, _, _ -> },
 )

@@ -21,13 +21,13 @@ class HttpEventDirectoryTest {
         HttpEventDirectory(HttpClient(handler), "https://edge.example/")
 
     @Test
-    fun `200 yields Found with the name and startsAt from the event route`() = runTest {
+    fun `200 yields Found with the name startsAt and endsAt from the event route`() = runTest {
         var requested: String? = null
         val engine = MockEngine { request ->
             requested = request.url.toString()
             respond(
                 content =
-                    """{"eventId":"$eventId","name":"Anna's Birthday","createdAt":"2026-06-27T10:00:00.182Z","startsAt":"2026-07-14T18:00:00Z"}""",
+                    """{"eventId":"$eventId","name":"Anna's Birthday","createdAt":"2026-06-27T10:00:00.182Z","startsAt":"2026-07-14T18:00:00Z","endsAt":"2026-07-21T18:00:00Z"}""",
                 status = HttpStatusCode.OK,
                 headers = headersOf(HttpHeaders.ContentType, "application/json"),
             )
@@ -36,8 +36,11 @@ class HttpEventDirectoryTest {
         val result = source(engine).fetch(eventId)
 
         assertEquals("https://edge.example/events/$eventId", requested)
-        // `startsAt` is the fact the gate needs — `createdAt` (millisecond-bearing) is ignored entirely.
-        assertEquals(EventDetails.Found("Anna's Birthday", "2026-07-14T18:00:00Z"), result)
+        // `startsAt`/`endsAt` are the facts the gate needs — `createdAt` (millisecond-bearing) is ignored.
+        assertEquals(
+            EventDetails.Found("Anna's Birthday", "2026-07-14T18:00:00Z", "2026-07-21T18:00:00Z"),
+            result,
+        )
     }
 
     @Test
@@ -50,14 +53,17 @@ class HttpEventDirectoryTest {
         val engine = MockEngine {
             respond(
                 content =
-                    """{"eventId":"$eventId","name":"Legacy","createdAt":"2026-06-27T10:00:00.182Z","startsAt":"2026-06-27T10:00:00.182Z"}""",
+                    """{"eventId":"$eventId","name":"Legacy","createdAt":"2026-06-27T10:00:00.182Z","startsAt":"2026-06-27T10:00:00.182Z","endsAt":"2026-07-27T10:00:00Z"}""",
                 status = HttpStatusCode.OK,
                 headers = headersOf(HttpHeaders.ContentType, "application/json"),
             )
         }
         // Truncated toward the EARLIER instant — the inclusive direction, so a photo taken within the
         // cutoff's own second is admitted rather than lost.
-        assertEquals(EventDetails.Found("Legacy", "2026-06-27T10:00:00Z"), source(engine).fetch(eventId))
+        assertEquals(
+            EventDetails.Found("Legacy", "2026-06-27T10:00:00Z", "2026-07-27T10:00:00Z"),
+            source(engine).fetch(eventId),
+        )
     }
 
     @Test
@@ -100,7 +106,24 @@ class HttpEventDirectoryTest {
         // direction the design forbids. Failing loudly and offering Retry is the only safe reading.
         val engine = MockEngine {
             respond(
-                content = """{"eventId":"$eventId","name":"Anna's Birthday","createdAt":"2026-06-27T10:00:00Z"}""",
+                content =
+                    """{"eventId":"$eventId","name":"Anna's Birthday","createdAt":"2026-06-27T10:00:00Z","endsAt":"2026-07-21T18:00:00Z"}""",
+                status = HttpStatusCode.OK,
+                headers = headersOf(HttpHeaders.ContentType, "application/json"),
+            )
+        }
+        assertEquals(EventDetails.Failed, source(engine).fetch(eventId))
+    }
+
+    @Test
+    fun `a 200 without an endsAt yields Failed rather than an invented ceiling`() = runTest {
+        // `endsAt` is a CEILING on this membership's capture-date window. A client that defaulted a
+        // missing one — to now, to startsAt + something, to anything — would be silently inventing that
+        // ceiling. Failing loudly and offering Retry is the only safe reading (mirrors the startsAt floor).
+        val engine = MockEngine {
+            respond(
+                content =
+                    """{"eventId":"$eventId","name":"Anna's Birthday","createdAt":"2026-06-27T10:00:00Z","startsAt":"2026-07-14T18:00:00Z"}""",
                 status = HttpStatusCode.OK,
                 headers = headersOf(HttpHeaders.ContentType, "application/json"),
             )
@@ -112,7 +135,8 @@ class HttpEventDirectoryTest {
     fun `a 200 with an unparseable startsAt yields Failed`() = runTest {
         val engine = MockEngine {
             respond(
-                content = """{"eventId":"$eventId","name":"Anna's Birthday","startsAt":"yesterday"}""",
+                content =
+                    """{"eventId":"$eventId","name":"Anna's Birthday","startsAt":"yesterday","endsAt":"2026-07-21T18:00:00Z"}""",
                 status = HttpStatusCode.OK,
                 headers = headersOf(HttpHeaders.ContentType, "application/json"),
             )

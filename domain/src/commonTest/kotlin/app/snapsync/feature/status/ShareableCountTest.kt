@@ -17,6 +17,8 @@ import kotlinx.coroutines.test.runTest
 private const val CUTOFF = "2026-07-06T00:00:00Z"
 private const val IN_SCOPE = "2026-07-10T00:00:00Z"
 private const val PRE_CUTOFF = "2026-07-01T00:00:00Z"
+private const val UNTIL = "2026-07-14T00:00:00Z"
+private const val POST_UNTIL = "2026-07-20T00:00:00Z"
 
 /** An admitted camera photo unless it opts into an exclusion (RawAsset defaults are a 12 MP capture). */
 private fun asset(
@@ -43,9 +45,21 @@ class ShareableCountTest {
     fun `counts distinct admitted assets at or after the cutoff`() {
         val n = shareableCountFromAssets(
             listOf(asset("A"), asset("B"), asset("OLD", creationDate = PRE_CUTOFF)),
-            CUTOFF, emptySet(), emptySet(),
+            CUTOFF, until = null, suppressed = emptySet(), albumExcluded = emptySet(),
         )
         assertEquals(2, n, "OLD precedes the cutoff and is not shared")
+    }
+
+    @Test
+    fun `an upper bound excludes assets captured after it`() {
+        // The count is a policy consumer (capability `photo-selection-policy`): it must respect the
+        // capture-date range [cutoff, until] exactly as the upload cycle does, or the join surface
+        // over-reports what will be shared.
+        val n = shareableCountFromAssets(
+            listOf(asset("IN", creationDate = IN_SCOPE), asset("AFTER", creationDate = POST_UNTIL)),
+            CUTOFF, until = UNTIL, suppressed = emptySet(), albumExcluded = emptySet(),
+        )
+        assertEquals(1, n, "AFTER is past the upper bound and is not shared; a null until would count both")
     }
 
     @Test
@@ -56,7 +70,7 @@ class ShareableCountTest {
                 asset("SHOT", subtypes = SUBTYPE_SCREENSHOT),
                 asset("WA", width = 1600, height = 1200), // 1.9 MP → below the 3 MP floor
             ),
-            CUTOFF, emptySet(), emptySet(),
+            CUTOFF, until = null, suppressed = emptySet(), albumExcluded = emptySet(),
         )
         assertEquals(1, n, "only the camera photo is shared — the same policy the cycle applies")
     }
@@ -66,7 +80,7 @@ class ShareableCountTest {
         val assets = listOf(asset("CAM"), asset("WA"), asset("DL"))
         assertEquals(
             1,
-            shareableCountFromAssets(assets, CUTOFF, suppressed = setOf("DL"), albumExcluded = setOf("WA")),
+            shareableCountFromAssets(assets, CUTOFF, until = null, suppressed = setOf("DL"), albumExcluded = setOf("WA")),
             "a downloaded echo (DL) and a denylisted-album member (WA) do not count",
         )
     }
@@ -79,7 +93,7 @@ class ShareableCountTest {
         val source = ShareableCountSource(
             factsSince = { walked++; listOf(asset("A"), asset("B")) },
         )
-        val n = source.count(Contribution.Since(CUTOFF), PermissionStatus.GRANTED, selectionSnapshot = null)
+        val n = source.count(Contribution.Since(CUTOFF, until = null), PermissionStatus.GRANTED, selectionSnapshot = null)
         assertEquals(2, n)
         assertEquals(1, walked)
     }
@@ -101,7 +115,7 @@ class ShareableCountTest {
             Resource("A-primary.jpg", "A", "image/jpeg", mapOf(RESOURCE_META_CREATION_DATE to IN_SCOPE), Unit),
             Resource("O-primary.jpg", "O", "image/jpeg", mapOf(RESOURCE_META_CREATION_DATE to PRE_CUTOFF), Unit),
         )
-        val n = source.count(Contribution.Since(CUTOFF), PermissionStatus.LIMITED, snapshot)
+        val n = source.count(Contribution.Since(CUTOFF, until = null), PermissionStatus.LIMITED, snapshot)
         assertEquals(1, n, "the in-scope selected photo counts; the pre-cutoff one does not")
         assertEquals(0, walked, "no autonomous library read under LIMITED")
     }
@@ -109,7 +123,7 @@ class ShareableCountTest {
     @Test
     fun `DENIED and unresolved grants yield no count`() = runTest {
         val source = ShareableCountSource(factsSince = { error("must not read") })
-        assertNull(source.count(Contribution.Since(CUTOFF), PermissionStatus.DENIED, selectionSnapshot = null))
-        assertNull(source.count(Contribution.Since(CUTOFF), PermissionStatus.NOT_DETERMINED, selectionSnapshot = null))
+        assertNull(source.count(Contribution.Since(CUTOFF, until = null), PermissionStatus.DENIED, selectionSnapshot = null))
+        assertNull(source.count(Contribution.Since(CUTOFF, until = null), PermissionStatus.NOT_DETERMINED, selectionSnapshot = null))
     }
 }

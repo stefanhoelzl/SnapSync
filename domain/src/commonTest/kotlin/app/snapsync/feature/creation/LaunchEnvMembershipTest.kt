@@ -21,7 +21,7 @@ class LaunchEnvMembershipTest {
 
     /** A client that always mints, recording a "create" marker so create's ordering is observable. */
     private class FakeClient(private val events: MutableList<String>) : EventCreation {
-        override suspend fun create(name: String, startsAt: String): CreateOutcome {
+        override suspend fun create(name: String, startsAt: String, endsAt: String?): CreateOutcome {
             events += "create"
             return CreateOutcome.Created(eventId = "11111111-1111-4111-8111-111111111111")
         }

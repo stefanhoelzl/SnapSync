@@ -28,7 +28,7 @@ sequenceDiagram
     Foreground--)downloadController: reconcile(…)
   end
   opt only when activeEventId() resolves
-    Foreground--)eventName: storeEventNameIfChanged(…)
+    Foreground--)eventName: storeRefreshedDetails(…)
   end
   Foreground->>effects: refreshAttestation()
 ```

@@ -159,7 +159,7 @@ class FullStackIntegrationTest {
             assertEquals(UiState.CreateEvent(), host.container.stateFlow.value)
 
             w.refreshStatus()
-            host.onCreateEvent("Party", LocalDateTime(2026, 1, 1, 0, 0)) // POST /events → provision → gate lifts
+            host.onCreateEvent("Party", LocalDateTime(2026, 1, 1, 0, 0), LocalDateTime(2026, 1, 8, 0, 0)) // POST /events → provision → gate lifts
             // Await the SETTLED health, not merely "left the create layer": the snapshot's first read is
             // itself asynchronous (`LedgerBackedSyncStatusSource` seeds `Loading` and reaches `Ready`
             // only once its collector runs), so `Joined(Loading)` — the neutral first frame — is a

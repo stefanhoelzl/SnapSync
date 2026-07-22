@@ -609,14 +609,16 @@ The iOS app SHALL read a `SNAPSYNC_CREATE_EVENT` variable from the process envir
 process launch**. When present, its value SHALL be a `base64url(JSON)` payload decoded by a dedicated,
 **strict** `model/` codec (rejecting unknown keys, tested in `commonTest` so it runs on both JVM and
 `iosSimulatorArm64`) carrying a **required** `name` and the optional keys `startsAt` (a canonical
-`…Z` UTC string; default **now**), `autoJoin` (default `false`), `minPhotoDate`, `direction`, and
-`saveToAlbum`. A payload that is absent, not valid `base64url(JSON)`, missing `name`, or carrying an
-unknown key SHALL produce **no** side effect.
+`…Z` UTC string; default **now**), `endsAt` (a canonical `…Z` UTC string; when absent, the create falls
+back exactly as today — the backend stamps the legacy `startsAt + 30d`, capability `event-creation`),
+`autoJoin` (default `false`), `minPhotoDate`, `direction`, and `saveToAlbum`. A payload that is absent,
+not valid `base64url(JSON)`, missing `name`, or carrying an unknown key SHALL produce **no** side effect.
 
 When the payload is valid the app SHALL mint the event through the **existing attest-gated
 `POST /events`** path (the same event-creation client the interactive create uses; it SHALL introduce no
-second create path), and SHALL ensure an attestation token is fresh **before** that request so a
-cold-launch create is not lost to a not-yet-ready token. Then:
+second create path), passing `endsAt` through to that request the same way `startsAt` is passed (an absent
+`endsAt` sends none, so the backend applies its fallback), and SHALL ensure an attestation token is fresh
+**before** that request so a cold-launch create is not lost to a not-yet-ready token. Then:
 
 - **without `autoJoin`** — the app SHALL mint the event and join **nothing**, emitting the line
   `created eventId=<uuid>` to the device log (`debug.log`) as the headless oracle for the minted id;
@@ -643,6 +645,17 @@ the trigger is inert in production **with no compile-time guard**.
   payload carrying a `name` and **no** `autoJoin`
 - **THEN** the app mints the event via `POST /events`, emits `created eventId=<uuid>` to `debug.log`,
   and provisions **no** membership (config stays as it was)
+
+#### Scenario: A supplied endsAt is passed through to the mint
+- **WHEN** the app is cold-launched with `SNAPSYNC_CREATE_EVENT` carrying a `name` and an `endsAt`
+  (a canonical `…Z` string)
+- **THEN** the `POST /events` request carries that `endsAt`, so the minted event's window ends at the
+  supplied instant rather than the backend fallback
+
+#### Scenario: An absent endsAt falls back as today
+- **WHEN** the app is cold-launched with `SNAPSYNC_CREATE_EVENT` carrying a `name` and **no** `endsAt`
+- **THEN** the `POST /events` request sends no `endsAt` and the backend stamps its legacy fallback —
+  behavior identical to before this change
 
 #### Scenario: autoJoin cold launch creates and joins in one launch
 - **WHEN** the app is cold-launched with `SNAPSYNC_CREATE_EVENT` carrying `autoJoin = true` (optionally

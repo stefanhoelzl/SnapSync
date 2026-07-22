@@ -534,21 +534,63 @@ Deno.test("POST /events → client-supplied id ignored, server mints a fresh UUI
   assertEquals(json.eventId === "client-supplied", false);
 });
 
-Deno.test("POST /events → client-supplied endsAt/capacity ignored, server stamps its own", async () => {
+Deno.test("POST /events → a client-supplied endsAt is HONORED (creator-chosen window), capacity still ignored", async () => {
   const { fetchImpl } = recorder();
+  const chosenEnd = "2026-07-21T23:00:00Z"; // the host's declared end, within no cap
   const res = await createApp({ config: CONFIG, fetch: fetchImpl }).request("/events", {
     method: "POST",
     body: JSON.stringify({
       name: "X",
       startsAt: STARTS_AT,
-      endsAt: "2099-01-01T00:00:00Z", // a client may not extend its own event
-      capacity: 9999, // nor widen it
+      endsAt: chosenEnd, // capability `event-limits`: endsAt is now creator-supplied at mint
+      capacity: 9999, // capacity stays server-resolved
     }),
   });
   assertEquals(res.status, 201);
   const json = await res.json();
-  assertEquals(json.endsAt, ENDS_AT);
-  assertEquals(json.capacity, 10);
+  assertEquals(json.endsAt, chosenEnd); // honored verbatim, NOT the +30d default
+  assertEquals(json.capacity, 10); // client capacity still ignored
+});
+
+Deno.test("POST /events → an absent endsAt falls back to startsAt + 30d (legacy clients)", async () => {
+  const { fetchImpl } = recorder();
+  const res = await createApp({ config: CONFIG, fetch: fetchImpl }).request("/events", {
+    method: "POST",
+    body: JSON.stringify({ name: "X", startsAt: STARTS_AT }), // no endsAt — old client
+  });
+  assertEquals(res.status, 201);
+  assertEquals((await res.json()).endsAt, ENDS_AT); // startsAt + the configured 30 days
+});
+
+Deno.test("POST /events → a far-future endsAt is accepted (no duration cap)", async () => {
+  const { fetchImpl } = recorder();
+  const res = await createApp({ config: CONFIG, fetch: fetchImpl }).request("/events", {
+    method: "POST",
+    body: JSON.stringify({ name: "X", startsAt: STARTS_AT, endsAt: "2031-07-14T18:00:00Z" }),
+  });
+  assertEquals(res.status, 201);
+  assertEquals((await res.json()).endsAt, "2031-07-14T18:00:00Z");
+});
+
+Deno.test("POST /events → an endsAt at/before startsAt or non-canonical → 400, no upstream", async () => {
+  const ends = [
+    STARTS_AT, // equal to start
+    "2026-06-27T17:59:59Z", // before start
+    "2026-07-21T23:00:00.000Z", // fractional seconds
+    "2026-07-21T23:00:00", // no Z
+    "2026-13-45T99:99:99Z", // right shape, not a real instant
+    "later",
+    12345,
+  ];
+  for (const endsAt of ends) {
+    const { calls, fetchImpl } = recorder();
+    const res = await createApp({ config: CONFIG, fetch: fetchImpl }).request("/events", {
+      method: "POST",
+      body: JSON.stringify({ name: "X", startsAt: STARTS_AT, endsAt }),
+    });
+    assertEquals(res.status, 400, `endsAt=${JSON.stringify(endsAt)} should be rejected`);
+    assertEquals(calls.length, 0);
+  }
 });
 
 Deno.test("POST /events → 100-char name accepted (boundary)", async () => {

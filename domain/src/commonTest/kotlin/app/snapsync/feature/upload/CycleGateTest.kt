@@ -23,7 +23,7 @@ class CycleGateTest {
 
     private fun joined(
         eventId: String = this.eventId,
-        contribution: Contribution = Contribution.Since(cutoff),
+        contribution: Contribution = Contribution.Since(cutoff, until = null),
         saveToAlbum: Boolean = false,
     ) = JoinedMembership(eventId = eventId, contribution = contribution, saveToAlbum = saveToAlbum)
 
@@ -94,7 +94,7 @@ class CycleGateTest {
     fun `a joined config runs the cycle and carries the membership through`() {
         val gate = cycleGate(
             configReadable = true,
-            membership = joined(contribution = Contribution.Since(cutoff), saveToAlbum = true),
+            membership = joined(contribution = Contribution.Since(cutoff, until = null), saveToAlbum = true),
             host = host,
         )
 
@@ -103,7 +103,7 @@ class CycleGateTest {
         assertEquals(host, gate.config.host)
         // The cycle's selection inputs arrive WITH the decision — there is no second read, and nothing
         // downstream has to invent a cutoff for a membership that may not exist.
-        assertEquals(Contribution.Since(cutoff), gate.membership.contribution)
+        assertEquals(Contribution.Since(cutoff, until = null), gate.membership.contribution)
         assertEquals(true, gate.membership.saveToAlbum)
     }
 

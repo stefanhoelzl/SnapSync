@@ -58,6 +58,23 @@ fun localToCutoff(local: LocalDateTime, zone: TimeZone): String =
  */
 fun clampToFloor(chosen: String, startsAt: String): String = maxOf(chosen, startsAt)
 
+/**
+ * Clamp a [chosen] upper bound down to the event's [endsAt] **ceiling** — the effective upper bound is
+ * `min(chosen, endsAt)` (capability `photo-selection-policy`). The mirror of [clampToFloor].
+ *
+ * Applied ONCE, at join, alongside the floor clamp in the single `JoinEvent` choke point; the result is
+ * persisted as `EventConfig.maxPhotoDate`. Because [endsAt] is the host's declared, immutable event window
+ * ceiling (creator-chosen at creation, capability `event-creation`), the clamp guarantees the invariant
+ * `maxPhotoDate <= endsAt`: the event can only **narrow** a membership's window, never widen it beyond the
+ * member's own pick. A photo taken after `endsAt` is not a late event photo but a **non-event** photo, and
+ * the window the member is committing to is shown before confirm — so the ceiling is neither coarse nor
+ * silent. Every photo `<= endsAt` is still admitted on doubt.
+ *
+ * As with [clampToFloor], the plain string `minOf` is correct **only because** both operands are the
+ * canonical fixed-width UTC shape, so lexicographic order IS chronological order.
+ */
+fun clampToCeiling(chosen: String, endsAt: String): String = minOf(chosen, endsAt)
+
 private fun buildCutoff(year: Int, month: Int, day: Int, hour: Int, minute: Int, second: Int): String {
     fun p(n: Int, width: Int) = n.toString().padStart(width, '0')
     return "${p(year, 4)}-${p(month, 2)}-${p(day, 2)}T${p(hour, 2)}:${p(minute, 2)}:${p(second, 2)}Z"
