@@ -291,3 +291,20 @@ export function readSweepConfig(env: Record<string, string | undefined>): Config
     attestTokenKey: "", // unused by the sweep (the edge holds the real token-signing key)
   };
 }
+
+/**
+ * Build a Config for storage-ONLY tooling that runs outside the Edge Script and needs only the storage
+ * `AccessKey` — currently the `site/` mirror-deploy (capability `web-site`, `site/scripts/deploy.ts`).
+ * It reuses the SAME source constants (`zone`/`host`) the edge and the sweep use, so the deploy can never
+ * target a different zone than the api proxy reads. Every credential the storage helpers do not touch is
+ * left blank.
+ */
+export function storageConfig(accessKey: string): Config {
+  return {
+    ...sourceConstants(),
+    accessKey,
+    adminKey: "",
+    apnsPrivateKey: "",
+    attestTokenKey: "",
+  };
+}

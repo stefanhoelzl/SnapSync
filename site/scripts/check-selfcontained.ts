@@ -7,15 +7,13 @@
 // url(...) / @import (fonts, styles, scripts, images loaded from another host).
 // ALLOWED: navigational <a href="https://…"> (loads nothing), and the presigned photo URLs /join fetches
 // (data in a JS string, not a subresource) — neither is matched below.
-import { readdir, readFile, stat } from "node:fs/promises";
-import { join } from "node:path";
-import process from "node:process";
-
-const DIST = new URL("../dist/", import.meta.url).pathname;
+//
+// Deno: `deno run --allow-read scripts/check-selfcontained.ts`.
+const DIST = new URL("../dist/", import.meta.url);
 
 // Each rule: a description + a regex whose match is an off-origin subresource. `https?://` only — relative
 // and same-origin references (/_astro/…, ./…) never match.
-const HTML_RULES = [
+const HTML_RULES: [string, RegExp][] = [
   ["<script src> off-origin", /<script\b[^>]*\bsrc\s*=\s*["']https?:\/\//gi],
   ["<link href> off-origin", /<link\b[^>]*\bhref\s*=\s*["']https?:\/\//gi],
   ["<img src|srcset> off-origin", /<img\b[^>]*\b(?:src|srcset)\s*=\s*["']https?:\/\//gi],
@@ -23,35 +21,42 @@ const HTML_RULES = [
   ["<iframe src> off-origin", /<iframe\b[^>]*\bsrc\s*=\s*["']https?:\/\//gi],
   ["off-origin ES import", /\bimport\b[^;\n]*\bfrom\s*["']https?:\/\//gi],
 ];
-const CSS_RULES = [
+const CSS_RULES: [string, RegExp][] = [
   ["css url() off-origin", /url\(\s*["']?https?:\/\//gi],
   ["css @import off-origin", /@import\s+["']https?:\/\//gi],
 ];
 
-async function walk(dir, out = []) {
-  for (const name of await readdir(dir)) {
-    const full = join(dir, name);
-    if ((await stat(full)).isDirectory()) await walk(full, out);
-    else out.push(full);
+async function walk(dir: URL, out: URL[] = []): Promise<URL[]> {
+  for await (const entry of Deno.readDir(dir)) {
+    if (entry.isDirectory) await walk(new URL(`${entry.name}/`, dir), out);
+    else out.push(new URL(entry.name, dir));
   }
   return out;
 }
 
 const files = await walk(DIST);
-const violations = [];
+const violations: string[] = [];
 for (const file of files) {
-  const rules = file.endsWith(".css") ? CSS_RULES : file.endsWith(".html") ? [...HTML_RULES, ...CSS_RULES] : null;
+  const path = file.pathname;
+  const rules = path.endsWith(".css")
+    ? CSS_RULES
+    : path.endsWith(".html")
+      ? [...HTML_RULES, ...CSS_RULES]
+      : null;
   if (!rules) continue;
-  const text = await readFile(file, "utf8");
+  const text = await Deno.readTextFile(file);
   for (const [desc, re] of rules) {
     const m = text.match(re);
-    if (m) violations.push(`${file.replace(DIST, "")}: ${desc} — ${[...new Set(m)].join(", ")}`);
+    if (m)
+      violations.push(
+        `${path.replace(DIST.pathname, "")}: ${desc} — ${[...new Set(m)].join(", ")}`,
+      );
   }
 }
 
 if (violations.length) {
   console.error("✗ off-origin subresource(s) found — the site must be self-contained (web-site):");
   for (const v of violations) console.error("  " + v);
-  process.exit(1);
+  Deno.exit(1);
 }
 console.log(`✓ self-contained: no off-origin subresource across ${files.length} built file(s)`);

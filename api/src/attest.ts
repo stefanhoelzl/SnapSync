@@ -23,14 +23,13 @@
 import { type CBORType, decodeCBOR } from "@levischuck/tiny-cbor";
 import * as x509 from "@peculiar/x509";
 import type { Config } from "./config.ts";
+import type { AttestEnvironment } from "./storage.ts";
 
 /** Apple puts the attestation's nonce in this certificate extension. */
 const APPLE_NONCE_OID = "1.2.840.113635.100.8.2";
 
 /** How long a challenge stays usable. Long enough for a slow attestation, short enough to be worthless later. */
 const CHALLENGE_TTL_SECONDS = 300;
-
-export type AttestEnvironment = "production" | "development";
 
 /**
  * The `aaguid` in `authData` names the attestation environment.
