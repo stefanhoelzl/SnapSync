@@ -50,7 +50,7 @@ class CreatedEventDto(
  *
  * From these it computes the edge's read-models **faithfully in behavior** — [deviceListing], [union],
  * and (the same as the per-device listing) the reconcile-seed listing. Byte-level fidelity to the real
- * Deno `backend/` edge is NOT a goal: drift is accepted, there is no golden fixture, and each `url` is a
+ * Deno `api/` edge is NOT a goal: drift is accepted, there is no golden fixture, and each `url` is a
  * synthetic presigned-link stand-in (`https://world.store/<deviceId>/<filename>`) the fake download transport resolves
  * store-direct — never a real presigned S3 URL. [offline] flips the two GET read-models to failure so
  * the mini-edge answers `502`.

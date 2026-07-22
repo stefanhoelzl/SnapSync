@@ -19,7 +19,7 @@ import kotlin.test.assertTrue
  * The REAL device-side push registration (`PushRegistration` + `KtorPushHttpClient`) driven against the
  * world's mini-edge, asserting the world outcome: the device config document lands in the backend store,
  * and — because config lives in its own namespace — it is NOT surfaced as a listed file. (The backend
- * notify fan-out is Deno-side logic, covered by `backend/test/app.test.ts`, so it is not re-exercised
+ * notify fan-out is Deno-side logic, covered by `api/test/app.test.ts`, so it is not re-exercised
  * here.) Runs on JVM and `iosSimulatorArm64`.
  */
 class PushRegistrationIntegrationTest {

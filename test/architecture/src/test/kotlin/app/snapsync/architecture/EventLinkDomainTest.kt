@@ -15,10 +15,10 @@ import kotlin.test.fail
  *    the codec are anchored to it),
  * 2. `Config.xcconfig` → `ASSOCIATED_DOMAIN`, which fills the app's `applinks:` entitlement,
  * 3. `iosApp.entitlements`, which must actually reference that setting rather than hard-code a host,
- * 4. `backend/src/config.ts` → `LINK_DOMAIN`, the host the AASA is served for.
+ * 4. `api/src/config.ts` → `LINK_DOMAIN`, the host the AASA is served for.
  *
  * (1)–(3) are single-sourced from one Gradle property, so they cannot drift by construction. (4) is the
- * seam this guard exists for: `backend/` is a Deno tree deployed by a separate, path-scoped workflow that
+ * seam this guard exists for: `api/` is a Deno tree deployed by a separate, path-scoped workflow that
  * ships **code only, never config** — bunny issues no scoped API key — so nothing in the Gradle build can
  * reach it, and generating it would couple two deliberately independent pipelines.
  *
@@ -47,16 +47,16 @@ class EventLinkDomainTest {
 
     @Test
     fun `the backend serves the AASA for the same domain the app claims`() {
-        val backend = read("backend/src/config.ts")
+        val backend = read("api/src/config.ts")
         val backendDomain = Regex("""const LINK_DOMAIN = "([^"]+)"""").find(backend)?.groupValues?.get(1)
-            ?: fail("backend/src/config.ts declares no `LINK_DOMAIN` — the AASA has no domain to serve for")
+            ?: fail("api/src/config.ts declares no `LINK_DOMAIN` — the AASA has no domain to serve for")
         assertEquals(
             domain,
             backendDomain,
             "the event-link domain has drifted: gradle.properties says `$domain` but " +
-                "backend/src/config.ts says `$backendDomain`. Nothing will raise — iOS will simply stop " +
+                "api/src/config.ts says `$backendDomain`. Nothing will raise — iOS will simply stop " +
                 "matching the link and every invite will open a browser instead of the app. Gradle " +
-                "cannot reach backend/ (it ships code, never config), which is why this guard exists.",
+                "cannot reach api/ (it ships code, never config), which is why this guard exists.",
         )
     }
 
@@ -116,7 +116,7 @@ class EventLinkDomainTest {
     @Test
     fun `the guard actually found the files it inspects`() {
         assertTrue(domain.isNotBlank(), "resolved an empty event-link domain — the guard proves nothing")
-        assertTrue(read("backend/src/config.ts").contains("LINK_DOMAIN"))
+        assertTrue(read("api/src/config.ts").contains("LINK_DOMAIN"))
         assertTrue(read("iosApp/Configuration/Config.xcconfig").contains("ASSOCIATED_DOMAIN"))
         assertTrue(read("iosApp/iosApp/iosApp.entitlements").contains("application-groups"))
         assertTrue(read("iosApp/iosApp/Info.plist").contains("APNS_ENV"))
