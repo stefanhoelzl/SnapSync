@@ -24,7 +24,7 @@ built by the `web-site` capability and served by **proxying the `site/index.html
 - **THEN** the handler fetches the landing page from the storage `site/` prefix and streams it back, and
   makes no request to Apple
 
-### Requirement: The page is the App Store submission surface and is self-contained
+### Requirement: The page is the App Store submission surface and is fully self-contained
 
 The served page SHALL carry, in one document, the marketing content, a **Privacy Policy** reachable at
 the `#privacy` fragment, and **Terms of Use / EULA** reachable at the `#terms` fragment. It SHALL expose a
