@@ -29,7 +29,7 @@ CODE_SIGN_ENTITLEMENTS = iosApp/iosApp.entitlements
 // The event link's associated domain (capability `event-link`), consumed by the app's
 // com.apple.developer.associated-domains entitlement. The host MUST match `snapsync.domain` in
 // gradle.properties (which generates the app's LINK_ORIGIN) and the AASA the backend serves from its
-// own constant — nothing in the build can reach `backend/`, so a :test:architecture guard asserts all
+// own constant — nothing in the build can reach `api/`, so a :test:architecture guard asserts all
 // of them agree. Drift is SILENT: iOS simply declines to match the link and every invite opens Safari,
 // which looks exactly like a recipient who never installed the app.
 // Plain `applinks:` deliberately — no `?mode=developer` dev/prod split (unlike APS_ENVIRONMENT below):

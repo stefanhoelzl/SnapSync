@@ -10,7 +10,7 @@ import kotlin.test.assertTrue
  * The event-leave behavior over the world's real mini-edge (`DELETE /events/<id>/devices/<id>`):
  * RENAME-ONLY (capability `event-leave-endpoint`). Leaving marks the device departed and nothing else —
  * no last-member reap, no byte/config GC; the event survives until it expires and the nightly sweep
- * (capability `scheduled-cleanup`) reclaims it. Asserts backend/world outcomes on the [BackendStore] the
+ * (capability `scheduled-cleanup`) reclaims it. Asserts api/world outcomes on the [BackendStore] the
  * real seam drives.
  */
 class LeaveCascadeWorldTest {

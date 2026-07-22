@@ -10,4 +10,3 @@ local.properties
 backend/dist/
 
 # Derived from the committed raws in screenshots/ by `deno task shots` (capability marketing-site).
-backend/src/shots.generated.ts

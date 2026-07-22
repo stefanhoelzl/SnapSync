@@ -14,7 +14,7 @@ import kotlin.test.fail
  * was tested on two targets, Apple's CDN had fetched and approved the AASA, the entitlement was verified
  * in the installed binary, and a guard held the link domain across four files. The one seam none of that
  * covers is `iosApp/`, which the project declares wiring-only and untested. `:test:architecture` read
- * Kotlin, entitlements, xcconfig, plists, even `backend/src/config.ts` — and no Swift at all. The one
+ * Kotlin, entitlements, xcconfig, plists, even `api/src/config.ts` — and no Swift at all. The one
  * file that broke was the one file no guard inspected.
  *
  * What iOS actually does (Apple, *Supporting universal links in your app*): a Universal Link arrives as

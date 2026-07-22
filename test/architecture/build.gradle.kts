@@ -51,7 +51,7 @@ tasks.test {
             // exists to catch is exactly the kind of edit that touches nothing else. Verified: changing
             // `LINK_DOMAIN` alone left the task UP-TO-DATE until they were declared here.
             include("gradle.properties")
-            include("backend/src/config.ts")
+            include("api/src/config.ts")
             // The laws-digest guard's subjects (capability `module-architecture`): CLAUDE.md's digest
             // must name exactly the spec's requirement set. Without these declared, editing either side
             // alone leaves the task UP-TO-DATE — the precise staleness the guard exists to catch.
