@@ -22,6 +22,7 @@
 
 import { type CBORType, decodeCBOR } from "@levischuck/tiny-cbor";
 import * as x509 from "@peculiar/x509";
+import { decodeBase64Url, encodeBase64 } from "@std/encoding";
 import type { Config } from "./config.ts";
 import type { AttestEnvironment } from "./storage.ts";
 
@@ -63,22 +64,24 @@ function concat(...parts: Uint8Array[]): Uint8Array {
 const toArrayBuffer = (b: Uint8Array): ArrayBuffer =>
   b.buffer.slice(b.byteOffset, b.byteOffset + b.byteLength) as ArrayBuffer;
 
-/** Constant-time-ish equality. Length is not secret here; the bytes are. */
-function bytesEqual(a: Uint8Array, b: Uint8Array): boolean {
+/**
+ * Constant-time-ish equality. Length is not secret here; the bytes are. The one byte-compare primitive on
+ * the backend — `app.ts`'s bearer-secret compare delegates to it over UTF-8 bytes.
+ */
+export function bytesEqual(a: Uint8Array, b: Uint8Array): boolean {
   if (a.length !== b.length) return false;
   let diff = 0;
   for (let i = 0; i < a.length; i++) diff |= a[i] ^ b[i];
   return diff === 0;
 }
 
-export const b64ToBytes = (s: string): Uint8Array => {
-  // Accept base64url as well as base64 — the device may send either.
-  const norm = s.replaceAll("-", "+").replaceAll("_", "/");
-  const padded = norm + "=".repeat((4 - (norm.length % 4)) % 4);
-  return Uint8Array.from(atob(padded), (c) => c.charCodeAt(0));
-};
+export const b64ToBytes = (s: string): Uint8Array =>
+  // Accept base64 as well as base64url — the device may send either. `decodeBase64Url` is strict about the
+  // url alphabet, so normalize the two standard-base64 chars to their url-safe forms first; it tolerates
+  // both padded and unpadded input.
+  decodeBase64Url(s.replaceAll("+", "-").replaceAll("/", "_"));
 
-export const bytesToB64 = (b: Uint8Array): string => btoa(String.fromCharCode(...b));
+export const bytesToB64 = (b: Uint8Array): string => encodeBase64(b);
 
 async function hmacKey(secret: string): Promise<CryptoKey> {
   return await crypto.subtle.importKey(
