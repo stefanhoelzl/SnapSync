@@ -12,7 +12,6 @@
   --muted: #5b6472;
   --border: rgba(20, 24, 29, 0.1);
   --shadow: 0 1px 2px rgba(20, 24, 29, 0.06), 0 12px 32px -12px rgba(20, 24, 29, 0.16);
-  --grad: linear-gradient(135deg, #2fd69b 0%, #0e9d6b 100%);
   color-scheme: light dark;
 }
 @media (prefers-color-scheme: dark) {
@@ -37,12 +36,20 @@ html {
 }
 body {
   margin: 0;
+  /* Sticky footer: fill the viewport and let <main> take the slack, so a short page (e.g. /join) keeps
+     the footer at the bottom instead of floating it up mid-viewport. Harmless on the tall landing page. */
+  min-height: 100dvh;
+  display: flex;
+  flex-direction: column;
   background: var(--bg);
   color: var(--text);
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
   line-height: 1.6;
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
+}
+main {
+  flex: 1;
 }
 a {
   color: var(--green);
@@ -127,10 +134,12 @@ nav a:hover {
   }
 }
 
-/* Logo mark — the green gradient (never a fetched image; the whole site is self-contained). */
+/* Logo mark — the real app icon, emitted same-origin by astro:assets and supplied as --appicon on <body>
+   in Layout.astro (the whole site stays self-contained: _astro/…, never an off-origin url()). CSS rounds
+   the square icon's corners; the favicon rounds in Layout instead, as a tab icon gets no CSS. */
 .brandmark {
   flex: none;
-  background: var(--grad);
+  background: var(--appicon) center / cover no-repeat;
   border-radius: 9px;
   box-shadow: var(--shadow);
 }
@@ -295,21 +304,6 @@ nav a:hover {
   color: var(--muted);
   font-size: 0.88rem;
   margin-top: 2px;
-}
-/* Light/dark screenshot pairing — one shown per scheme, no script. */
-.light-only {
-  display: block;
-}
-.dark-only {
-  display: none;
-}
-@media (prefers-color-scheme: dark) {
-  .light-only {
-    display: none;
-  }
-  .dark-only {
-    display: block;
-  }
 }
 
 /* Privacy highlight cards */

@@ -4,7 +4,7 @@
 // and the app screenshots — processed at build time by astro:assets from the committed raws in the
 // repo-root screenshots/ dir (the same source of truth the App Store listing is composited from) and
 // emitted as fingerprinted, same-origin WebP. Zero client JS, zero off-origin subresources.
-import { Image } from "astro:assets";
+import { Image, getImage } from "astro:assets";
 import Layout from "../layouts/Layout.astro";
 import AppStoreButton from "../components/AppStoreButton.astro";
 
@@ -38,6 +38,17 @@ const screens = [
     sub: "Share the code; photos flow both ways.",
   },
 ];
+
+// One <picture> per screenshot, exactly as the original landing page did: the browser serves ONE image
+// per the prefers-color-scheme media query — never a CSS display toggle, which lost the specificity fight
+// with `.shots img{display:block}` and rendered both themes at once. The light capture is the <img>
+// fallback (astro:assets-optimized); the dark one is a same-origin <source> (getImage → _astro/…webp).
+const shots = await Promise.all(
+  screens.map(async (s) => ({
+    ...s,
+    darkSrc: (await getImage({ src: s.dark, width: 440, height: 956, format: "webp" })).src,
+  })),
+);
 ---
 
 <Layout title="SnapSync — everyone's photos of the moment, together">
@@ -59,24 +70,12 @@ const screens = [
       <h2 style="text-align:center">Three screens. That's the whole thing.</h2>
       <div class="shots" tabindex="0" role="group" aria-label="Screenshots of SnapSync, scrollable">
         {
-          screens.map((s) => (
+          shots.map((s) => (
             <figure>
-              <Image
-                src={s.light}
-                alt={s.alt}
-                width={440}
-                height={956}
-                class="light-only"
-                loading="lazy"
-              />
-              <Image
-                src={s.dark}
-                alt={s.alt}
-                width={440}
-                height={956}
-                class="dark-only"
-                loading="lazy"
-              />
+              <picture>
+                <source srcset={s.darkSrc} media="(prefers-color-scheme: dark)" />
+                <Image src={s.light} alt={s.alt} width={440} height={956} loading="lazy" />
+              </picture>
               <figcaption>
                 {s.title}
                 <span>{s.sub}</span>

@@ -5,14 +5,28 @@
 // (/#…) so they work from either page. Zero off-origin subresources — the web-site self-containment
 // invariant applies to everything defined here.
 import "../styles/theme.css";
+import { getImage } from "astro:assets";
+import appIcon from "../../../iosApp/iosApp/Assets.xcassets/AppIcon.appiconset/Icon-1024.png";
+
 interface Props {
   title: string;
   description?: string;
+  ogUrl?: string;
 }
 const {
   title,
   description = "Share the photos from an event — every photo the group takes lands in everyone's library.",
+  ogUrl = "https://snapsync.stho.net/",
 } = Astro.props;
+
+// The real app icon, emitted same-origin (astro:assets → _astro/…, so the web-site self-containment
+// invariant holds). Two derived sizes from the one committed source of truth (Icon-1024.png): a 192px
+// webp drives the on-page .brandmark (rendered ≤96px, so 2× for retina) via the --appicon CSS var set on
+// <body>; a 64px png is the browser-tab favicon (a raster tab icon is wanted, and png is accepted where
+// a webp favicon is not). The port had replaced the brandmark with a flat green gradient and dropped the
+// favicon entirely — this restores both.
+const brandmark = await getImage({ src: appIcon, width: 192, height: 192, format: "webp" });
+const favicon = await getImage({ src: appIcon, width: 64, height: 64, format: "png" });
 ---
 
 <!doctype html>
@@ -20,12 +34,17 @@ const {
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <link rel="icon" type="image/png" href={favicon.src} />
     <meta name="theme-color" content="#0E9D6B" media="(prefers-color-scheme: light)" />
     <meta name="theme-color" content="#0C0E12" media="(prefers-color-scheme: dark)" />
     <title>{title}</title>
     <meta name="description" content={description} />
+    <meta property="og:title" content={title} />
+    <meta property="og:description" content={description} />
+    <meta property="og:type" content="website" />
+    <meta property="og:url" content={ogUrl} />
   </head>
-  <body>
+  <body style={`--appicon:url(${brandmark.src})`}>
     <header>
       <div class="wrap">
         <a class="brand" href="/"><span class="brandmark sm"></span>SnapSync</a>
