@@ -41,6 +41,12 @@ jobs:
         working-directory: site
         run: npm run build
 
+      # Guard the web-site self-containment invariant: fail if the emitted site loads any off-origin
+      # subresource (load-bearing for /join's fragment privacy). Runs on every branch, before deploy.
+      - name: Check self-contained
+        working-directory: site
+        run: npm run check
+
       # Mirror-deploy: main only. Feature-branch pushes build (the gate) but do not touch the live site/
       # prefix. Uploads the new build, then deletes stale objects — never clears the prefix first.
       - name: Mirror-deploy to bunny storage
