@@ -3,15 +3,29 @@
   "type": "module",
   "private": true,
   "comment": "Builds under Node, NOT Deno: astro:assets/rolldown fail to resolve Astro's export conditions under Deno's npm-compat (verified 2026-07-22). The api/ backend stays Deno-only; this separate module owns its Node toolchain.",
-  "engines": { "node": ">=20" },
+  "engines": {
+    "node": ">=20"
+  },
   "scripts": {
     "dev": "astro dev",
     "build": "astro build",
-    "check": "node scripts/check-selfcontained.mjs",
+    "fmt": "prettier --write .",
+    "check:fmt": "prettier --check .",
+    "check:types": "astro check",
+    "check:selfcontained": "deno run --allow-read scripts/check-selfcontained.ts",
+    "check": "npm run check:types && npm run check:fmt && npm run check:selfcontained",
+    "deploy": "deno run --allow-read --allow-env --allow-net scripts/deploy.ts",
     "preview": "astro preview"
   },
   "dependencies": {
     "astro": "^5",
+    "fflate": "^0.8.3",
     "sharp": "^0.33"
+  },
+  "devDependencies": {
+    "@astrojs/check": "^0.9.9",
+    "prettier": "^3.9.6",
+    "prettier-plugin-astro": "^0.14.1",
+    "typescript": "^5.9.3"
   }
 }

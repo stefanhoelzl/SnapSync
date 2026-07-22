@@ -6,9 +6,16 @@
 // drift between the two. Everything here is parameterized by `(fetch, config)`; nothing imports Hono.
 
 import type { Config } from "./config.ts";
-import type { AttestEnvironment } from "./attest.ts";
 
 export type FetchLike = (url: string, init: RequestInit) => Promise<Response>;
+
+/**
+ * Which App Attest environment attested a device — persisted in {@link AttestRecord}. Defined here (with
+ * the storage shapes) rather than in `attest.ts` so this module carries NO dependency on the attest
+ * verifier (and its `@peculiar/x509` graph); the verifier imports this type. Keeping `storage.ts` free of
+ * heavy deps is what lets storage-only tooling (the `site/` mirror-deploy) reuse its primitives.
+ */
+export type AttestEnvironment = "production" | "development";
 
 // The event registry's marker prefix. Because an eventId is a UUID, the marker
 // `events/<id>/metadata.json` is disjoint from any device manifest `events/<id>/devices/<deviceId>.json`
@@ -223,12 +230,15 @@ export async function readObjectText(
   return await res.text();
 }
 
-/** PUT a storage object's body (minting a fresh last-modified time). THROWS on any non-OK status. */
+/**
+ * PUT a storage object's body (minting a fresh last-modified time). THROWS on any non-OK status. `body` is
+ * `BodyInit` so callers may PUT text (JSON manifests) OR bytes (the `site/` mirror-deploy's built assets).
+ */
 export async function putObject(
   fetchImpl: FetchLike,
   config: Config,
   key: string,
-  body: string,
+  body: BodyInit,
   contentType: string,
 ): Promise<void> {
   const url = `https://${config.host}/${config.zone}/${key}`;

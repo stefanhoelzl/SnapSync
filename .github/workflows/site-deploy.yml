@@ -2,10 +2,12 @@ name: site-deploy
 
 # Builds the browser-facing Astro site (site/) and mirror-deploys it to the bunny storage `site/` prefix
 # (capability web-site). The api Edge Script proxies that prefix (serveSiteObject), so this ships the
-# marketing landing and — later — the /join page as static assets, OFF the api bundle.
+# marketing landing and the /join page as static assets, OFF the api bundle.
 #
-# It builds under NODE, not Deno: astro:assets/rolldown fail to resolve Astro's export conditions under
-# Deno's npm-compat. The api/ backend stays Deno-only; this separate module owns its Node toolchain.
+# TWO RUNTIMES, deliberately: the site BUILD runs under NODE (astro:assets/rolldown fail under Deno's
+# npm-compat), while the deploy + self-containment scripts run under DENO — they reuse the api's own
+# storage client (api/src/{storage,config}.ts), matching the api's tooling. The api/ backend stays
+# Deno-only.
 #
 # It holds ONLY the storage-zone password (BUNNY_STORAGE_ACCESS_KEY) — the same secret the nightly sweep
 # uses — and NEVER the bunny account key (which owns DNS + every user's photos). Routing is not configured
@@ -19,6 +21,10 @@ on:
       # The landing page's screenshots are processed from these raws at build time (astro:assets), so a
       # capture refresh must rebuild + redeploy the site. This path IS the build's input.
       - "screenshots/**"
+      # The Deno deploy/self-containment scripts reuse api/src/{storage,config}.ts — a change there can
+      # affect them.
+      - "api/src/storage.ts"
+      - "api/src/config.ts"
       - ".github/workflows/site-deploy.yml"
 
 jobs:
@@ -31,6 +37,10 @@ jobs:
         with:
           node-version: "20"
 
+      - uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.x
+
       - name: Install
         working-directory: site
         run: npm ci
@@ -41,17 +51,19 @@ jobs:
         working-directory: site
         run: npm run build
 
-      # Guard the web-site self-containment invariant: fail if the emitted site loads any off-origin
-      # subresource (load-bearing for /join's fragment privacy). Runs on every branch, before deploy.
-      - name: Check self-contained
+      # Gates (every branch, before deploy):
+      #   check:types        — astro check (real TS type-checking of the .astro pages + island)
+      #   check:fmt          — prettier --check (formatting)
+      #   check:selfcontained — Deno: fail on any off-origin subresource (load-bearing for /join privacy)
+      - name: Check
         working-directory: site
         run: npm run check
 
-      # Mirror-deploy: main only. Feature-branch pushes build (the gate) but do not touch the live site/
-      # prefix. Uploads the new build, then deletes stale objects — never clears the prefix first.
+      # Mirror-deploy: main only. Feature-branch pushes build + check (the gate) but do not touch the live
+      # site/ prefix. Deno: uploads the new build, then deletes stale objects — never clears first.
       - name: Mirror-deploy to bunny storage
         if: github.ref == 'refs/heads/main'
         working-directory: site
         env:
           BUNNY_STORAGE_ACCESS_KEY: ${{ secrets.BUNNY_STORAGE_ACCESS_KEY }}
-        run: node scripts/deploy.mjs
+        run: npm run deploy
