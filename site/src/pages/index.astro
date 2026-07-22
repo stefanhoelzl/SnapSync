@@ -1,13 +1,12 @@
 ---
-// The marketing landing page (capability marketing-site), built on the shared Layout. Screenshots are
-// processed at build time by astro:assets from the committed raw captures in the repo-root screenshots/
-// dir — the same source of truth the App Store listing is composited from — and emitted as fingerprinted,
-// same-origin assets (never inlined data: URIs, never off-origin).
-//
-// NOTE: this is the scaffold structure that settles the astro:assets toolchain; the full marketing copy,
-// Privacy (#privacy) and Terms (#terms) sections land in task 3.1.
+// The marketing landing page (capability marketing-site), built on the shared Layout. It carries the
+// marketing content, the Privacy Policy (#privacy) and Terms of Use (#terms) App Store review requires,
+// and the app screenshots — processed at build time by astro:assets from the committed raws in the
+// repo-root screenshots/ dir (the same source of truth the App Store listing is composited from) and
+// emitted as fingerprinted, same-origin WebP. Zero client JS, zero off-origin subresources.
 import { Image } from "astro:assets";
 import Layout from "../layouts/Layout.astro";
+import AppStoreButton from "../components/AppStoreButton.astro";
 
 import createLight from "../../../screenshots/create-light.png";
 import createDark from "../../../screenshots/create-dark.png";
@@ -17,37 +16,233 @@ import inSyncLight from "../../../screenshots/in_sync-light.png";
 import inSyncDark from "../../../screenshots/in_sync-dark.png";
 
 const screens = [
-  { light: createLight, dark: createDark, alt: "The SnapSync start screen, naming a new event and choosing when it begins." },
-  { light: joiningLight, dark: joiningDark, alt: "The join screen a scanned QR code opens, showing the event name and what will be shared." },
-  { light: inSyncLight, dark: inSyncDark, alt: "The event screen showing its QR code to share and an in-sync confirmation." },
+  {
+    light: createLight,
+    dark: createDark,
+    alt: "The SnapSync start screen, naming a new event and choosing when it begins.",
+    title: "Start an event",
+    sub: "Name it, pick when it begins.",
+  },
+  {
+    light: joiningLight,
+    dark: joiningDark,
+    alt: "The join screen a scanned QR code opens, showing the event name and what will be shared.",
+    title: "Scan to join",
+    sub: "See what you'll share before you do.",
+  },
+  {
+    light: inSyncLight,
+    dark: inSyncDark,
+    alt: "The event screen showing its QR code to share and an in-sync confirmation.",
+    title: "Everyone's in sync",
+    sub: "Share the code; photos flow both ways.",
+  },
 ];
 ---
 
-<Layout title="SnapSync — share the photos from an event">
+<Layout title="SnapSync — everyone's photos of the moment, together">
   <section class="hero">
-    <h1>Share the photos from an event.</h1>
-    <p>Join by scanning a QR. Your photos from the event are shared; everyone else's arrive in your gallery.</p>
-    <a class="cta" href="https://apps.apple.com/app/id6781692480">Get SnapSync</a>
+    <div class="wrap">
+      <span class="brandmark lg" role="img" aria-label="SnapSync"></span>
+      <h1>Everyone's photos of the moment, together.</h1>
+      <p class="lede">
+        Scan the event's QR, and every photo the group takes lands in everyone's library —
+        automatically.
+      </p>
+      <div class="cta"><AppStoreButton /></div>
+    </div>
   </section>
 
-  <section id="screens" class="screens" aria-label="Screenshots of the app">
-    {screens.map((s) => (
-      <figure>
-        <Image src={s.light} alt={s.alt} width={440} height={956} class="light-only shot" loading="lazy" />
-        <Image src={s.dark} alt={s.alt} width={440} height={956} class="dark-only shot" loading="lazy" />
-      </figure>
-    ))}
+  <section id="screens">
+    <div class="wrap">
+      <p class="eyebrow" style="text-align:center">The app</p>
+      <h2 style="text-align:center">Three screens. That's the whole thing.</h2>
+      <div class="shots" tabindex="0" role="group" aria-label="Screenshots of SnapSync, scrollable">
+        {
+          screens.map((s) => (
+            <figure>
+              <Image src={s.light} alt={s.alt} width={440} height={956} class="light-only" loading="lazy" />
+              <Image src={s.dark} alt={s.alt} width={440} height={956} class="dark-only" loading="lazy" />
+              <figcaption>
+                {s.title}
+                <span>{s.sub}</span>
+              </figcaption>
+            </figure>
+          ))
+        }
+      </div>
+    </div>
   </section>
 
-  <style>
-    .hero { max-width: var(--maxw); margin: 2rem auto; padding: 0 1.25rem; text-align: center; }
-    .hero h1 { font-size: clamp(1.8rem, 5vw, 3rem); }
-    .cta {
-      display: inline-block; margin-top: 1rem; padding: 0.7rem 1.4rem; border-radius: var(--radius);
-      background: var(--green); color: #fff; font-weight: 700; text-decoration: none;
-    }
-    .screens { display: flex; gap: 1rem; overflow-x: auto; padding: 1rem 1.25rem 2rem; max-width: var(--maxw); margin: 0 auto; }
-    .screens figure { margin: 0; flex: 0 0 auto; }
-    .shot { width: 220px; height: auto; border-radius: 24px; border: 1px solid var(--border); }
-  </style>
+  <section id="how" class="band">
+    <div class="wrap">
+      <p class="eyebrow" style="text-align:center">How it works</p>
+      <h2 style="text-align:center">Three steps. No account.</h2>
+      <div class="flow">
+        <div class="step">
+          <span class="n">01</span>
+          <div class="art">
+            <svg width="72" height="72" viewBox="0 0 24 24" fill="none" stroke="var(--green)" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+              <rect x="4" y="4" width="6.6" height="6.6" rx="1.6"></rect>
+              <rect x="13.4" y="4" width="6.6" height="6.6" rx="1.6"></rect>
+              <rect x="4" y="13.4" width="6.6" height="6.6" rx="1.6"></rect>
+              <g fill="var(--green)" stroke="none">
+                <rect x="13.6" y="13.6" width="2.8" height="2.8" rx=".6"></rect>
+                <rect x="17.2" y="17.2" width="2.8" height="2.8" rx=".6"></rect>
+              </g>
+            </svg>
+          </div>
+          <h3>Scan the event QR</h3>
+          <p>Point your camera at the host's code to join. That's the whole sign-up.</p>
+        </div>
+        <div class="step">
+          <span class="n">02</span>
+          <div class="art">
+            <svg width="72" height="72" viewBox="0 0 24 24" fill="none" stroke="var(--green)" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+              <rect x="3.5" y="2.6" width="17" height="12" rx="2.6"></rect>
+              <circle cx="8" cy="7" r="1.5"></circle>
+              <path d="M3.9 12.6l3.7-3.4 3.1 2.9 2.7-2.3 4.2 4"></path>
+              <path d="M12 21.8V16"></path>
+              <path d="M9.2 18.8 12 16l2.8 2.8"></path>
+            </svg>
+          </div>
+          <h3>Your photos flow in</h3>
+          <p>Only pictures taken after you join go to the event. Screenshots and saved memes stay out.</p>
+        </div>
+        <div class="step">
+          <span class="n">03</span>
+          <div class="art">
+            <svg width="72" height="72" viewBox="0 0 24 24" fill="none" stroke="var(--green)" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+              <rect x="3.5" y="2.6" width="17" height="12" rx="2.6"></rect>
+              <circle cx="8" cy="7" r="1.5"></circle>
+              <path d="M3.9 12.6l3.7-3.4 3.1 2.9 2.7-2.3 4.2 4"></path>
+              <path d="M12 16v5.8"></path>
+              <path d="M9.2 19 12 21.8l2.8-2.8"></path>
+            </svg>
+          </div>
+          <h3>Everyone's arrive in your library</h3>
+          <p>The whole group's photos of the moment land right in your camera roll. No shared album to check.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section id="privacy-story">
+    <div class="wrap">
+      <p class="eyebrow" style="text-align:center">Private by design</p>
+      <h2 style="text-align:center">Your camera roll stays yours.</h2>
+      <p class="center" style="color:var(--muted)">
+        SnapSync was built so a guest can share the moment without handing over their photo library. It
+        shares only what belongs to the event — and nothing about you.
+      </p>
+      <div class="grid">
+        <div class="card">
+          <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><line x1="17" y1="8" x2="22" y2="13"></line><line x1="22" y1="8" x2="17" y2="13"></line></svg>
+          <h3>No account</h3>
+          <p>No email, no password, no profile. You join an event by scanning it.</p>
+        </div>
+        <div class="card">
+          <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path><circle cx="12" cy="10" r="2.4"></circle><path d="M12 12.4V16"></path></svg>
+          <h3>Anonymous by design</h3>
+          <p>Your device is a random ID — never your name, number, or contacts.</p>
+        </div>
+        <div class="card">
+          <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4.5" width="18" height="16" rx="2.5"></rect><line x1="3" y1="9.5" x2="21" y2="9.5"></line><line x1="8" y1="2.5" x2="8" y2="6"></line><line x1="16" y1="2.5" x2="16" y2="6"></line></svg>
+          <h3>Event-scoped</h3>
+          <p>Photos are shared to that one event and reach only the people in it.</p>
+        </div>
+        <div class="card">
+          <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9.9 5A9.8 9.8 0 0 1 12 4.8c6 0 10 7.2 10 7.2a17 17 0 0 1-2.2 3.1M6.6 6.6A17 17 0 0 0 2 12s4 7.2 10 7.2a9.6 9.6 0 0 0 5.4-1.6"></path><path d="M9.9 9.9a3 3 0 0 0 4.2 4.2"></path><line x1="3" y1="3" x2="21" y2="21"></line></svg>
+          <h3>No tracking</h3>
+          <p>No ads, no analytics, no cookies. This site sets nothing on your device.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <hr class="div" />
+
+  <section id="privacy" class="legal band">
+    <div class="wrap legal">
+      <p class="eyebrow">Legal</p>
+      <h2>Privacy Policy</h2>
+      <p class="meta">
+        Last updated 21 July 2026 · Contact: <a href="mailto:stefanh+snapsync@posteo.de">stefanh+snapsync@posteo.de</a>
+      </p>
+
+      <p>
+        SnapSync ("we", "the app") is an independent project that lets people share the photos from an
+        event with each other. This policy explains what data the app processes and why. We designed
+        SnapSync to collect as little as possible: there are no accounts, and we never ask for your name,
+        email, phone number, or contacts.
+      </p>
+
+      <h3>Who is responsible</h3>
+      <p>
+        The data controller for SnapSync is the project's operator, reachable at <a href="mailto:stefanh+snapsync@posteo.de">stefanh+snapsync@posteo.de</a>. Please use this address for any privacy question or request.
+      </p>
+
+      <h3>What we process, and why</h3>
+      <ul>
+        <li><strong>Photos you share.</strong> When you join an event, photos you take afterwards are uploaded so the other people in that event can receive them. They are stored to make sharing work, and are removed when the event ends. Legal basis: performance of the service you asked for (GDPR Art. 6(1)(b)).</li>
+        <li><strong>A random device ID.</strong> Each install generates a random identifier so the service can tell devices apart within an event. It is not linked to your identity and we cannot use it to contact you.</li>
+        <li><strong>A push token.</strong> If you allow notifications, Apple gives the app a token so we can tell your device when new photos are ready. It is used only for that.</li>
+        <li><strong>An app-integrity check.</strong> The app proves to our server that it is a genuine, unmodified copy of SnapSync (Apple App Attest). This checks the <em>app</em>, not you, and carries no personal information. Legal basis: our legitimate interest in preventing abuse of the service (GDPR Art. 6(1)(f)).</li>
+        <li><strong>Crash and error reports.</strong> When the app crashes or hits an error, a technical report (what went wrong, device model, iOS version, app version) is sent to our error-monitoring service so we can find and fix the problem. Before anything is sent, the app removes identifiers from the report — event and device identifiers never leave your phone. Each report carries a random per-install identifier so we can tell how many devices an error affects; it is generated by the app, not linked to your identity, and not linked to the device identifier above. Legal basis: our legitimate interest in keeping the app working (GDPR Art. 6(1)(f)).</li>
+      </ul>
+      <p>We do <strong>not</strong> use analytics, advertising, or tracking of any kind — in the app or on this website.</p>
+
+      <h3>Who processes it for us</h3>
+      <p>We rely on three service providers to run SnapSync:</p>
+      <ul>
+        <li><strong>Bunny.net</strong> — hosting, storage, and content delivery for the photos and the service.</li>
+        <li><strong>Apple</strong> — push notifications, the app-integrity check, and app distribution.</li>
+        <li><strong>Bugsink</strong> — error monitoring: receives the crash and error reports described above (with identifiers already removed).</li>
+      </ul>
+
+      <h3>How long we keep photos</h3>
+      <p>Photos are stored only to enable sharing within an event. When an event ends, its photos are deleted. If you want data associated with your device removed sooner, email us at the address above.</p>
+
+      <h3>Your rights</h3>
+      <p>Under the GDPR you can request access to, correction of, or deletion of your personal data, and you can lodge a complaint with a supervisory authority. Because we hold no name or email for you, we may need your device's identifier to act on a request — email us and we'll help.</p>
+
+      <h3>Changes</h3>
+      <p>We may update this policy; the "last updated" date above always reflects the current version.</p>
+    </div>
+  </section>
+
+  <section id="terms" class="legal">
+    <div class="wrap legal">
+      <p class="eyebrow">Legal</p>
+      <h2>Terms of Use</h2>
+      <p class="meta">Last updated 15 July 2026</p>
+
+      <p>By using SnapSync you agree to these terms. If you do not agree, please do not use the app.</p>
+
+      <h3>Beta software</h3>
+      <p>SnapSync is early, in-development software provided <strong>"as is"</strong> and <strong>"as available"</strong>, without warranties of any kind. Features may change or break, and <strong>photos or other data may be lost</strong>. Do not rely on SnapSync as your only copy of any photo.</p>
+
+      <h3>Your photos</h3>
+      <p>You keep all rights to the photos you share. By sharing a photo to an event, you grant us the limited permission needed to store, transmit, and deliver it to the other members of that event, and you confirm you have the right to share it.</p>
+
+      <h3>Acceptable use</h3>
+      <p>You agree not to use SnapSync to share unlawful content, to share images of people without the consent required where you are, or to interfere with, abuse, or attempt to circumvent the service or its integrity checks.</p>
+
+      <h3>Liability</h3>
+      <p>To the fullest extent permitted by law, we are not liable for any indirect or consequential loss, or for loss of data, arising from your use of this beta software.</p>
+
+      <h3>Apple App Store terms</h3>
+      <p>The following apply when you obtain SnapSync through the Apple App Store:</p>
+      <ul>
+        <li>These terms are between you and us only, not with Apple; we, not Apple, are solely responsible for the app and its content.</li>
+        <li>Your licence to use SnapSync is the non-transferable licence described in Apple's <a href="https://www.apple.com/legal/internet-services/itunes/dev/stdeula/">Licensed Application End User License Agreement</a>, as supplemented by these terms.</li>
+        <li>Apple has no obligation to provide support or maintenance for SnapSync. Apple is not responsible for any product warranties, product or third-party claims, or intellectual-property claims relating to the app.</li>
+        <li>Apple and its subsidiaries are third-party beneficiaries of these terms and may enforce them against you.</li>
+        <li>You confirm you are not located in a country subject to a U.S. Government embargo or designated as terrorist-supporting, and are not on any U.S. Government list of prohibited or restricted parties.</li>
+      </ul>
+
+      <h3>Contact</h3>
+      <p>Questions about these terms: <a href="mailto:stefanh+snapsync@posteo.de">stefanh+snapsync@posteo.de</a>.</p>
+    </div>
+  </section>
 </Layout>

@@ -16,9 +16,9 @@
 
 ## 3. Landing page in `site/` (Phase 1)
 
-- [ ] 3.1 Port `landing.html` to `index.astro` on the shared layout: marketing content, Privacy (`#privacy`), Terms (`#terms`), support/GitHub link, `mailto:` contact — zero client JS (no `<script>`)
-- [ ] 3.2 Move the six `screenshots/*.png` raws under `astro:assets`; render light/dark by `prefers-color-scheme`; no Apple-hardware frame; images emitted as fingerprinted same-origin assets
-- [ ] 3.3 Verify the emitted landing page loads no off-origin subresource (styles, scripts, fonts, images all same-origin)
+- [x] 3.1 Port `landing.html` to `index.astro` on the shared layout: marketing content, Privacy (`#privacy`), Terms (`#terms`), support/GitHub link, `mailto:` contact — zero client JS (no `<script>`) — recovered from git history; extracted `AppStoreButton.astro`; full theme in `theme.css`
+- [x] 3.2 Move the six `screenshots/*.png` raws under `astro:assets`; render light/dark by `prefers-color-scheme`; no Apple-hardware frame; images emitted as fingerprinted same-origin assets
+- [x] 3.3 Verify the emitted landing page loads no off-origin subresource (styles, scripts, fonts, images all same-origin)
 
 ## 4. API static-proxy serving + remove the shots pipeline (Phase 1)
 
