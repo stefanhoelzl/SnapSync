@@ -62,6 +62,7 @@ import app.snapsync.ui.components.AppSubSection
 import app.snapsync.ui.components.AppSectionValue
 import app.snapsync.ui.components.AppSummaryToggle
 import app.snapsync.ui.components.AppToggleSection
+import app.snapsync.ui.components.appDateLabel
 import app.snapsync.ui.components.appDateTimeLabel
 import app.snapsync.ui.components.AppStatusLine
 import app.snapsync.ui.components.AppSyncStatus
@@ -274,6 +275,23 @@ private fun JoinPhase.endsAt(): String? = when (this) {
 }
 
 /**
+ * The event's **retention deadline**, from whichever phase carries it (capability `event-limits`) — when
+ * the shared photos are deleted. Server-derived and carried verbatim; never computed here, because a
+ * client-side copy of the retention rule would promise a date the backend will not honour, silently.
+ *
+ * Carried by the same four phases as [startsAt]/[endsAt] for the same reason — a Retry commits without
+ * passing back through the loaded phase, and the commit persists this value as the offline witness of the
+ * self-leave (capability `leave-event`).
+ */
+private fun JoinPhase.deletesAt(): String? = when (this) {
+    is JoinPhase.ExplainAccess -> deletesAt
+    is JoinPhase.Ready -> deletesAt
+    is JoinPhase.Committing -> deletesAt
+    is JoinPhase.CommitFailed -> deletesAt
+    JoinPhase.Loading, JoinPhase.NotFound, JoinPhase.LoadFailed -> null
+}
+
+/**
  * The full-screen "Join event" surface (capability `join-event`): the event summary is the hero, with
  * the participation-direction row, the capture-date cutoff row (capability `photo-selection-policy`), and the
  * save-to-album opt-in (capability `event-album`), with Join / Cancel pinned to the bottom. Further future
@@ -385,6 +403,9 @@ private fun JoiningEventScreen(
             windowEnd = windowEnd,
             floorLabel = appDateTimeLabel(windowStart),
             ceilingLabel = appDateTimeLabel(windowEnd),
+            // The retention deadline, rendered as a plain date. Absent only if a phase somehow lost it,
+            // in which case the section states the fixed ceiling alone rather than inventing a date.
+            deletesLabel = phase.deletesAt()?.let { cutoff.toLocal(it) }?.let(::appDateLabel),
             saveToAlbum = chosenSaveToAlbum,
             onSaveToAlbum = { chosenSaveToAlbum = it },
             joinEnabled = joinEnabled,
@@ -596,6 +617,9 @@ private fun ReadyLayout(
     windowEnd: LocalDateTime,
     floorLabel: String,
     ceilingLabel: String,
+    // When the event's shared photos are deleted (capability `event-limits`), pre-formatted; `null` only
+    // when the phase carries no deadline, in which case only the fixed ceiling is stated.
+    deletesLabel: String?,
     saveToAlbum: Boolean,
     onSaveToAlbum: (Boolean) -> Unit,
     joinEnabled: Boolean,
@@ -728,6 +752,23 @@ private fun ReadyLayout(
                         else -> "Nothing is shared or received, so nothing is collected."
                     },
                     divider = false,
+                )
+            }
+
+            // How long the shared photos are kept (capability `event-limits`). This is the ONE place the
+            // app states retention — the creator passes through this same gate right after minting, so a
+            // single line serves the host and every guest.
+            //
+            // The date is the CEILING, stated unconditionally. An event is often reclaimed sooner (once
+            // everyone has left, capability `scheduled-cleanup`), but that depends on every member's leave
+            // reaching the backend and is NOT assured — so it must never be presented as a promise, nor as
+            // a qualification that makes this date read as unreliable.
+            AppMinorSection {
+                AppSectionNote(
+                    buildString {
+                        if (deletesLabel != null) append("Shared photos are deleted on $deletesLabel. ")
+                        append("An event's photos are kept for at most 30 days from the day it starts.")
+                    },
                 )
             }
         }

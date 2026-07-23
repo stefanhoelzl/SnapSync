@@ -6,7 +6,6 @@ const APPLE_ROOT_CA_PEM = readConfig({
   BUNNY_STORAGE_ACCESS_KEY: "k",
   APNS_PRIVATE_KEY: "p",
   ATTEST_TOKEN_KEY: "t",
-  ADMIN_NOTIFY_KEY: "a",
 }).appAttestRootCa;
 
 const PEM = "-----BEGIN PRIVATE KEY-----\nMIG...\n-----END PRIVATE KEY-----\n";
@@ -16,7 +15,6 @@ const SECRETS = {
   BUNNY_STORAGE_ACCESS_KEY: "k",
   APNS_PRIVATE_KEY: PEM,
   ATTEST_TOKEN_KEY: "t",
-  ADMIN_NOTIFY_KEY: "a",
 };
 
 Deno.test("readConfig: the secrets → Config, with the non-secrets from source", () => {
@@ -31,7 +29,6 @@ Deno.test("readConfig: the secrets → Config, with the non-secrets from source"
     apnsPrivateKey: PEM,
     apnsTopic: "app.snapsync",
     attestTokenKey: "t",
-    adminKey: "a",
     appAttestRootCa: APPLE_ROOT_CA_PEM,
     attestTokenTtlSeconds: 30 * 24 * 60 * 60,
     // Derived from the team + bundle constants, never restated — so the gate's app id and the push topic
@@ -44,8 +41,8 @@ Deno.test("readConfig: the secrets → Config, with the non-secrets from source"
     // The event limits (capability `event-limits`) — the MINT-TIME source only; enforcement reads the
     // fields POST /events stamps onto each marker, so these values never reach an existing event.
     eventCapacity: 10,
-    eventDurationSeconds: 30 * 24 * 60 * 60,
-    eventGraceSeconds: 24 * 60 * 60,
+    eventWindowMaxSeconds: 30 * 24 * 60 * 60,
+    eventLifetimeSeconds: 30 * 24 * 60 * 60,
   });
 });
 
@@ -54,34 +51,27 @@ Deno.test("readConfig: missing token signing key → throws naming it (the gate 
   assertThrows(() => readConfig(rest), Error, "ATTEST_TOKEN_KEY");
 });
 
-Deno.test("readConfig: missing admin key → throws naming it (fail-closed; capability scheduled-cleanup)", () => {
-  const { ADMIN_NOTIFY_KEY: _omit, ...rest } = SECRETS;
-  assertThrows(() => readConfig(rest), Error, "ADMIN_NOTIFY_KEY");
+Deno.test("readConfig: a retired admin key in the environment is simply unread", () => {
+  // Removing a required secret is safe in either deploy order — a value no longer read cannot fail
+  // validation — so an Edge Script still carrying ADMIN_NOTIFY_KEY boots and serves, authorizing nothing
+  // with it (capability `backend-deployment`).
+  const c = readConfig({ ...SECRETS, ADMIN_NOTIFY_KEY: "left-over" });
+  assertEquals(Object.hasOwn(c, "adminKey"), false);
 });
 
-Deno.test("readConfig: blank admin key → throws (treated as missing)", () => {
-  assertThrows(
-    () => readConfig({ ...SECRETS, ADMIN_NOTIFY_KEY: "   " }),
-    Error,
-    "ADMIN_NOTIFY_KEY",
-  );
-});
-
-Deno.test("readSweepConfig: needs ONLY the storage AccessKey + admin key (edge-only secrets blank)", () => {
-  // The nightly sweep (capability `scheduled-cleanup`) holds just these two — not the APNs or
-  // token-signing keys, which stay on the edge.
-  const c = readSweepConfig({ BUNNY_STORAGE_ACCESS_KEY: "k", ADMIN_NOTIFY_KEY: "a" });
+Deno.test("readSweepConfig: needs ONLY the storage AccessKey (edge-only secrets blank)", () => {
+  // The nightly sweep (capability `scheduled-cleanup`) makes no request to the Edge Script, so it holds
+  // no credential authorizing one — just the storage key it reads and deletes with.
+  const c = readSweepConfig({ BUNNY_STORAGE_ACCESS_KEY: "k" });
   assertEquals(c.accessKey, "k");
-  assertEquals(c.adminKey, "a");
   assertEquals(c.apnsPrivateKey, ""); // never used by the sweep
   assertEquals(c.attestTokenKey, "");
   assertEquals(c.zone, "snap-sync-dev"); // source constants still present
-  assertEquals(c.eventGraceSeconds, 24 * 60 * 60);
+  assertEquals(c.eventLifetimeSeconds, 30 * 24 * 60 * 60);
 });
 
-Deno.test("readSweepConfig: missing either secret throws naming it", () => {
-  assertThrows(() => readSweepConfig({ ADMIN_NOTIFY_KEY: "a" }), Error, "BUNNY_STORAGE_ACCESS_KEY");
-  assertThrows(() => readSweepConfig({ BUNNY_STORAGE_ACCESS_KEY: "k" }), Error, "ADMIN_NOTIFY_KEY");
+Deno.test("readSweepConfig: a missing storage AccessKey throws naming it", () => {
+  assertThrows(() => readSweepConfig({}), Error, "BUNNY_STORAGE_ACCESS_KEY");
 });
 
 Deno.test("readConfig: blank token signing key → throws (treated as missing)", () => {
@@ -163,6 +153,6 @@ Deno.test("readConfig: a platform variable NEVER overrides a source constant", (
   assertEquals(config.apnsTeamId, "E9Z8BADH58");
   assertEquals(config.apnsTopic, "app.snapsync");
   assertEquals(config.eventCapacity, 10);
-  assertEquals(config.eventDurationSeconds, 30 * 24 * 60 * 60);
-  assertEquals(config.eventGraceSeconds, 24 * 60 * 60);
+  assertEquals(config.eventWindowMaxSeconds, 30 * 24 * 60 * 60);
+  assertEquals(config.eventLifetimeSeconds, 30 * 24 * 60 * 60);
 });

@@ -8,6 +8,11 @@ import { decodeObjectName } from "./storage.ts";
 
 export type MemberState = "active" | "departed";
 
+/** The narrowed marker `classifyEvent` hands a `live` event's consumers. */
+export type LiveEventMarker =
+  & Omit<EventMarker, "lifetimeSeconds">
+  & { lifetimeSeconds?: number };
+
 /**
  * Parse one `events/<eventId>/devices/` child object name into its device id and whether it is the
  * departed (`.left.json`) or active (`.json`) manifest. `.left.json` is checked first because it also
@@ -62,49 +67,94 @@ export function resolveMembership(
 }
 
 /**
- * An event's lifecycle (capability `event-limits`) — a PURE function of its stored marker and the wall
- * clock; no stored state machine, no marker rewrite. TWO gate states, since deletion moved to the
- * scheduled sweep (capability `scheduled-cleanup`): deletion *is* expiry, so the gate never sees an
- * "expired" state — an event past `endsAt` stays in grace (serving members, joins closed) until the
- * sweep deletes it.
+ * An event's lifecycle (capability `event-limits`) — a PURE function of its stored marker; no stored
+ * state machine, no marker rewrite. The lifecycle is BINARY: an event exists, or it has been deleted by
+ * the sweep. There is no served intermediate state.
  *
- *   live    while now <= endsAt   joins allowed (under capacity), full sync
- *   grace   while now >  endsAt   joins closed (410), members keep full sync — until the sweep deletes it
+ * In particular `endsAt` is NOT read here. It bounds only which captures may be uploaded; it closes
+ * nothing. **Joining is never closed by time** — an event is joinable for as long as it exists, bounded
+ * only by capacity — because a guest who joins after the window closed still holds in-window captures
+ * that belong in the event. That is the whole point of separating the window from the lifetime.
  *
- * A marker missing `startsAt`, `endsAt`, or `capacity`, or with an unparseable `endsAt` (written before
- * `event-limits`, or corrupt), is `gone`: it cannot be classified or served, so the gate treats it as
- * absent (404) and the sweep deletes it. There is no grace-period argument any more — the configured
- * grace governs only *when the sweep deletes* (`now > endsAt + grace`), not how the gate classifies.
- * On `live`/`grace` the narrowed, complete marker is returned so every consumer downstream handles only
- * total types.
+ * A marker missing `startsAt`, `endsAt`, or `capacity` (written before `event-limits`, or corrupt) is
+ * `gone`: it cannot be served, so the gate treats it as absent (404) and the sweep deletes it. On
+ * `live` the narrowed marker is returned so every consumer downstream handles only total types —
+ * except `lifetimeSeconds`, which stays optional because a legacy marker lacking it is still perfectly
+ * serviceable (see {@link deleteByMs}).
  */
 export function classifyEvent(
   stored: StoredEventMarker,
-  nowMs: number,
-): { phase: "live" | "grace"; marker: EventMarker } | { phase: "gone" } {
+): { phase: "live"; marker: LiveEventMarker } | { phase: "gone" } {
   const { startsAt, endsAt, capacity } = stored;
   if (!startsAt || !endsAt || typeof capacity !== "number") return { phase: "gone" };
-  const endsAtMs = Date.parse(endsAt);
-  if (Number.isNaN(endsAtMs)) return { phase: "gone" };
-  return {
-    phase: nowMs > endsAtMs ? "grace" : "live",
-    marker: { ...stored, startsAt, endsAt, capacity },
-  };
+  return { phase: "live", marker: { ...stored, startsAt, endsAt, capacity } };
 }
 
 /**
- * Is a stored marker STALE — past `endsAt + grace`, or legacy/corrupt (missing or unparseable limit
- * fields)? The nightly sweep's event-phase predicate (capability `scheduled-cleanup`): a stale event's
- * marker + manifests are deleted. Kept beside `classifyEvent` so the two read the same marker fields.
+ * When an event's data is deleted (capability `event-limits`), in epoch ms — DERIVED on every read,
+ * never stored. `NaN` when neither anchor date can be parsed (a corrupt marker, which the sweep reaps).
+ *
+ * `anchor = max(createdAt, startsAt)`, plus the marker's own stamped `lifetimeSeconds` (or
+ * [lifetimeFallbackSeconds] for a marker written before that field existed).
+ *
+ * ⚠️ Both anchors are parsed to absolute instants rather than compared as strings. `startsAt` is in the
+ * canonical cutoff form (`…T…:…:…Z`, second precision) but `createdAt` is a full ISO-8601 timestamp WITH
+ * fractional seconds, so the lexicographic comparison every other date in this codebase uses would
+ * silently pick the wrong anchor.
+ *
+ * Anchoring at the LATER of the two is what makes both directions survivable: a back-dated event (whose
+ * `startsAt` is already weeks past) is not stamped dead on arrival, and a created-early event (whose
+ * `startsAt` is weeks away) outlives the window it declares.
+ */
+export function deleteByMs(
+  stored: StoredEventMarker,
+  lifetimeFallbackSeconds: number,
+): number {
+  const createdAtMs = Date.parse(stored.createdAt ?? "");
+  const startsAtMs = Date.parse(stored.startsAt ?? "");
+  const anchor = Number.isNaN(createdAtMs)
+    ? startsAtMs
+    : Number.isNaN(startsAtMs)
+    ? createdAtMs
+    : Math.max(createdAtMs, startsAtMs);
+  if (Number.isNaN(anchor)) return Number.NaN;
+  const lifetime = typeof stored.lifetimeSeconds === "number"
+    ? stored.lifetimeSeconds
+    : lifetimeFallbackSeconds;
+  return anchor + lifetime * 1000;
+}
+
+/**
+ * Is an event STALE — should the nightly sweep delete it (capability `scheduled-cleanup`)? Kept beside
+ * {@link classifyEvent} so the gate and the sweep read the same marker fields. Three independent
+ * reasons, any one of which suffices:
+ *
+ *   INCOMPLETE  the marker cannot be classified (or its anchor dates will not parse)
+ *   DEADLINE    now is past the derived delete-by — the GUARANTEE, nothing can prevent it
+ *   EMPTY       every enrolled device has departed — OPPORTUNISTIC, see below
+ *
+ * [entries] is the event's `devices/` listing. An event whose listing holds NO manifest object at all is
+ * NOT empty — it has been minted but never joined, which is the normal state of every fresh event
+ * (`POST /events` always produces a zero-device event, because the creator confirms through the same
+ * join gate a scanned QR uses). Deleting on an empty listing would reap a mint before the host confirms.
+ *
+ * Emptiness is OPPORTUNISTIC RECLAMATION, NOT A GUARANTEE. `LeaveEvent` clears the device's local config
+ * and then dispatches the backend `DELETE` fire-and-forget, best-effort, never retried — so a leave that
+ * never reaches storage leaves an active manifest behind and the event never empties. The deadline is
+ * the only bound that always holds; nothing (spec, client behaviour, or user-facing copy) may be written
+ * as if emptiness were assured.
  */
 export function eventIsStale(
   stored: StoredEventMarker,
+  entries: BunnyEntry[] | null,
   nowMs: number,
-  graceSeconds: number,
+  lifetimeFallbackSeconds: number,
 ): boolean {
-  const { endsAt } = stored;
-  if (!endsAt) return true; // legacy marker — no lifetime to be within
-  const endsAtMs = Date.parse(endsAt);
-  if (Number.isNaN(endsAtMs)) return true; // corrupt — fail toward reclamation
-  return nowMs > endsAtMs + graceSeconds * 1000;
+  if (classifyEvent(stored).phase === "gone") return true; // incomplete — fail toward reclamation
+  const deleteBy = deleteByMs(stored, lifetimeFallbackSeconds);
+  if (Number.isNaN(deleteBy)) return true; // corrupt anchors — likewise
+  if (nowMs > deleteBy) return true;
+  const members = resolveMembership(entries);
+  // Ever joined (at least one manifest object) and nobody active left → empty.
+  return members.length > 0 && !members.some((m) => m.state === "active");
 }

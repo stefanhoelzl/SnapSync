@@ -2,26 +2,40 @@
 
 ## Purpose
 
-The bounds every event carries: a device **capacity** and a wall-clock **lifetime** (`endsAt`), stamped
-onto the event marker at mint and enforced entirely server-side. The **lifetime** is now
-**creator-supplied**: `POST /events` accepts the host's chosen `endsAt` when present (validated: canonical
-instant, strictly after `startsAt`, **no upper cap**) and falls back to the configured `startsAt + duration`
-when absent (an old client sending only `startsAt`). Capacity stays server-resolved from configuration.
-An event moves through three states — **live** (joins allowed under the cap, full sync),
-**grace** (no new devices, existing members keep full sync so late uploads of in-event photos
-still land), and **expired** (deleted on first touch, members notified). Expiry is deletion: no
-tombstone, no scheduler — the first request that touches an expired event reaps it, and
-afterwards the event is indistinguishable from one that never existed.
+The bounds every event carries, along **two independent axes** that used to be one value.
 
-These bounds are also the future **free/paid tier boundary**. Creator-chosen **duration** is the
-mechanism the paid tier will gate — it exists now, uncapped and free for everyone; the payment gate is
-**additive future** work at the `event-creation` attach point (charge for a longer window, or cap the free
-tier there), needing no schema or enforcement change because enforcement reads only the marker's own stamped
-`endsAt` and `capacity`. **Capacity** remains a server-resolved global today and is the other future paid
-lever. Today's values are the current free-for-everyone bounds, not that future free tier.
+The host's date **range** (`startsAt`…`endsAt`, at most **30 days** long) is the capture **window**: it
+bounds which photos may be *uploaded* and closes nothing else. Joining is never refused on time, so a
+guest who scans the QR days after the party still joins and contributes the in-window photos still on
+their phone — the case the old grace gate refused.
+
+How long the event **lives** is a separate, stamped `lifetimeSeconds` (30 days). The delete-by is
+**derived** on every read as `max(createdAt, startsAt) + lifetimeSeconds`; anchoring at the later of the
+two keeps a back-dated event from being born expired and a created-early one from dying inside its own
+window. Stamping the **duration** rather than the instant keeps the per-event value immutable against a
+later configuration change, while leaving the anchor policy in shared code where it can be corrected
+without rewriting a single stored marker. That is a deliberate, narrow exception to this capability's own
+"enforcement reads only stamped fields" rule, and it is stated rather than left to be discovered.
+
+The lifecycle is therefore **binary**: an event exists, or the nightly cleanup has deleted it. There is no
+served intermediate state, no `410`, and no on-touch reap — deletion belongs solely to the sweep
+(capability `scheduled-cleanup`), which reclaims an event past its delete-by (**the guarantee**) or one
+that is **empty** — ever joined, with no active member left. Emptiness is **opportunistic reclamation, not
+a promise**: a leave whose backend `DELETE` never lands keeps a manifest active, so an abandoned event may
+never empty.
+
+That no route deletes on touch is load-bearing beyond tidiness: it is what makes a `404` a *real*
+deletion, and therefore safe as one of the two witnesses a device requires before tearing its own
+membership down (capability `leave-event`).
+
+**Capacity** (10 devices ever enrolled) is the only refusal any route makes. The window maximum and the
+lifetime are fixed for every event, permanently; the sole future paid-tier lever is device count, which is
+already per-event and stamped, so raising it needs no schema or enforcement change.
 
 Decision record: `changes/archive/2026-07-21-add-event-limits`;
-`changes/archive/…-add-event-date-range` (`endsAt` becomes creator-supplied at mint).
+`changes/archive/…-add-event-date-range` (`endsAt` becomes creator-supplied at mint);
+`changes/archive/…-decouple-event-window-from-lifetime` (the window and the lifetime become independent).
+
 ## Requirements
 ### Requirement: Limit values from backend configuration
 

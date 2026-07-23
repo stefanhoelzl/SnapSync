@@ -69,6 +69,7 @@ class JoinEvent(
         name: String,
         startsAt: String,
         endsAt: String,
+        deletesAt: String,
         minPhotoDate: String,
         maxPhotoDate: String,
         direction: Direction,
@@ -84,6 +85,10 @@ class JoinEvent(
                 startsAt = startsAt,
                 endsAt = endsAt,
                 maxPhotoDate = clampToCeiling(chosen = maxPhotoDate, endsAt = endsAt),
+                // Persisted verbatim from the loaded details, never computed here: it is the OFFLINE
+                // witness of the self-leave (capability `leave-event`), and a client-derived one would
+                // decide whether this membership is later destroyed.
+                deletesAt = deletesAt,
                 direction = direction,
                 saveToAlbum = saveToAlbum,
             ),

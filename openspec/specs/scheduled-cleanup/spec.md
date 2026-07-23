@@ -2,21 +2,33 @@
 
 ## Purpose
 
-The one mechanism that reclaims backend storage on a schedule, replacing the removed on-touch expiry
-reap (`event-limits`) and last-active-member reap (`event-leave-endpoint`). A **nightly** job runs two
-ordered phases against the Bunny storage zone: it deletes every **stale event** (past `endsAt + grace`)
+The one mechanism that reclaims backend storage, and the **only** thing that deletes an event. A
+**nightly** job runs two ordered phases against the Bunny storage zone: it deletes every **stale event**
 and then collects every **stale asset** (a byte or device record no surviving event still needs).
 
+An event is stale when it is past its derived delete-by (`max(createdAt, startsAt) + lifetimeSeconds`,
+capability `event-limits` — **the guarantee, which nothing can prevent**), or **empty** (ever joined, with
+no active member left), or incomplete. Emptiness is **opportunistic reclamation, not a promise**: a leave
+whose backend `DELETE` never lands keeps a manifest active, so an abandoned event may never empty. Nothing
+— spec, client behaviour, or user-facing copy — may be written as if it were assured.
+
 It runs **outside** the Edge Script. Bunny Edge Scripting has no scheduler and caps a request at 50
-subrequests / 30 s CPU, so a whole-storage sweep — thousands of storage calls — cannot run there. The
-job runs on a GitHub Actions runner and talks to storage **directly**, importing the Edge Script's own
-storage helpers, lifecycle rules, and config constants so the two can never diverge.
+subrequests / 30 s CPU, so a whole-storage sweep — thousands of storage calls — cannot run there. The job
+runs on a GitHub Actions runner and talks to storage **directly**, importing the Edge Script's own storage
+helpers, lifecycle rules, and config constants so the two can never diverge.
 
-Deletion by the sweep *is* expiry: there is no longer an on-touch "expired" state. Reclamation latency
-of up to one nightly cycle is accepted, and the sweep also closes the two leaks the prior specs
-accepted — untouched-expired events and the abandon-leak of devices that vanish without a clean leave.
+It announces nothing. The sweep holds the storage `AccessKey` and no other credential, and makes no request
+to the Edge Script at all. A notify-before-delete once existed and was removed: the notify channel carries a
+semantic-free "something changed, go sync" payload — the opposite of what a deletion means — and it had to be
+dispatched milliseconds before the deletes it described, so devices woke to an already-deleted event and
+burned a scarce background wake syncing against it. Members instead discover the deletion on their own next
+foreground details fetch, which is the only context where acting on it is safe (capability `leave-event`).
 
-Decision record: `changes/archive/2026-07-21-nightly-cleanup`.
+Reclamation latency of up to one nightly cycle is accepted, and the sweep closes the two leaks the prior
+specs accepted — untouched-expired events and the abandon-leak of devices that vanish without a clean leave.
+
+Decision record: `changes/archive/2026-07-21-nightly-cleanup`;
+`changes/archive/…-decouple-event-window-from-lifetime` (deadline-or-empty predicate; notify removed).
 
 ## Requirements
 ### Requirement: Scheduled runner with direct storage access

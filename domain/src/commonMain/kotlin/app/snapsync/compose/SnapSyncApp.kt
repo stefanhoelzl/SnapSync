@@ -11,7 +11,8 @@ import app.snapsync.feature.download.DownloadPushReceiver
 import app.snapsync.feature.download.DownloadStatusSource
 import app.snapsync.feature.download.QueuedPhotoDownloadJobs
 import app.snapsync.feature.download.StoreDownloadStatusSource
-import app.snapsync.feature.membership.EventName
+import app.snapsync.feature.membership.MembershipRefresh
+import app.snapsync.feature.membership.toJoinLoad
 import app.snapsync.feature.membership.JoinEvent
 import app.snapsync.feature.membership.JoinOutcome
 import app.snapsync.feature.membership.LeaveEvent
@@ -383,19 +384,30 @@ class AppCore internal constructor(
         )
     }
 
-    // The event-name refresh rule (capability `join-event`): whether a fetched name is persisted —
-    // seated in `feature/membership` because the membership config is that feature's durable state.
-    // The *fetch* it pairs with is [fetchEventName], coordinated by the Foreground/Provision flows.
-    val eventName: EventName by lazy {
-        EventName(ports.configSource, ports.configStore)
+    // The membership-refresh rule (capability `join-event`): what a fetched details result MEANS for the
+    // persisted membership — seated in `feature/membership` because that config is the feature's durable
+    // state. The *fetch* it pairs with is [fetchEventDetails], coordinated by the Foreground/Provision
+    // flows. It reads the clock because the absence verdict needs a second, OFFLINE witness.
+    val membershipRefresh: MembershipRefresh by lazy {
+        MembershipRefresh(
+            configSource = ports.configSource,
+            store = ports.configStore,
+            now = { instantToCutoff(Instant.fromEpochMilliseconds(ports.now())) },
+            leaveEvent = leaveEvent,
+        )
     }
 
-    // The best-effort `GET /events/:id` name fetch (`null` on offline / 404 / parse) — the
-    // `EventDirectory` port effect the flows coordinate over, built here because a flow may not
-    // touch a port directly (law "flow/ never references ports/").
-    private val fetchEventDetails: suspend (eventId: String) -> JoinLoad.Found? = { eventId ->
-        (ports.directory.fetch(eventId) as? EventDetails.Found)
-            ?.let { JoinLoad.Found(it.name, it.startsAt, it.endsAt) }
+    // The `GET /events/:id` fetch — the `EventDirectory` port effect the flows coordinate over, built
+    // here because a flow may not touch a port directly (law "flow/ never references ports/").
+    //
+    // It carries the SEALED outcome, via the same `toJoinLoad` mapping the join gate uses. This used to
+    // flatten to `Found?` with an `as?` cast, deliberately, so that no fetch result could ever be
+    // destructive — "offline", "parse failure", and "the event is gone" arrived as one indistinguishable
+    // `null`. That blindness is now replaced by something strictly stronger rather than merely removed:
+    // the rule requires a definitive `NotFound` AND the membership's own persisted deadline before it
+    // will tear anything down (capability `leave-event`).
+    private val fetchEventDetails: suspend (eventId: String) -> JoinLoad = { eventId ->
+        ports.directory.fetch(eventId).toJoinLoad()
     }
 
     /** The create-event status the use-case drives and the container reads (same instance). */
@@ -509,7 +521,7 @@ class AppCore internal constructor(
         Foreground(
             scope = scope,
             downloadController = downloadController,
-            eventName = eventName,
+            membershipRefresh = membershipRefresh,
             statusPoller = ledgerCountsPoller,
             reloadConfig = ports.reloadConfig,
             // Permission routes the foreground pump: under GRANTED the tier's own thunk (which walks —
@@ -573,7 +585,7 @@ class AppCore internal constructor(
             uploadArm = uploadArm,
             downloadController = downloadController,
             albumCoordinator = albumCoordinator,
-            eventName = eventName,
+            membershipRefresh = membershipRefresh,
             activeEventId = { ports.configSource.config.value?.eventId },
             notifyLeave = ports.notifyLeave,
             saveConfig = { cfg -> ports.configStore.save(cfg) },
@@ -607,9 +619,13 @@ class AppCore internal constructor(
             create = { name, startsAt, endsAt -> eventCreator.create(name, startsAt, endsAt) },
             // The join gate's commit (capability `join-event`): enroll (register-only empty manifest)
             // then provision. `true` unless enrollment failed (the same-event no-op is a success).
-            commitJoin = { eventId, name, startsAt, endsAt, minPhotoDate, maxPhotoDate, direction, saveToAlbum ->
+            commitJoin = {
+                eventId, name, startsAt, endsAt, deletesAt, minPhotoDate, maxPhotoDate, direction,
+                saveToAlbum,
+                ->
                 joinEvent.join(
-                    eventId, name, startsAt, endsAt, minPhotoDate, maxPhotoDate, direction, saveToAlbum,
+                    eventId, name, startsAt, endsAt, deletesAt, minPhotoDate, maxPhotoDate, direction,
+                    saveToAlbum,
                 ) != JoinOutcome.EnrollFailed
             },
             // Share is pure platform (a system sheet over the top view controller) — the shell's lambda,

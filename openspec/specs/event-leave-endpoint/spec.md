@@ -4,22 +4,27 @@
 
 The backend half of leaving: `DELETE /events/<eventId>/devices/<deviceId>` renames the departing device's
 manifest to a departed `.left.json` sibling — its already-shared photos stay downloadable for the remaining
-members — and when the **last** active member leaves, reaps the event tree and reference-checked-garbage-
-collects each freed device's byte partition and config.
+members — and returns `200` regardless of remaining membership. It is **rename-only**: it reaps nothing and
+collects nothing.
 
 Before it, leave was local-only: the device forgot the event while its manifest, byte partition, and push
 token persisted on the backend forever, so an event's storage could never be reclaimed.
 
-The cascade is designed to be **leak-safe rather than atomic**: every partial failure and every race resolves
+The rename is designed to be **leak-safe rather than atomic**: every partial failure and every race resolves
 to an orphan, never to destruction of in-use data. Membership is last-write-wins over the two sibling
-manifests' write times, so a stalled leave/rejoin settles on the intended state. The one real correctness
-premise is that the reap's active-member listing reads the storage **main region** — a stale replica read
-could reap an event out from under a concurrently-rejoining device.
+manifests' write times, so a stalled leave/rejoin settles on the intended state.
 
-There is deliberately **no periodic reaper**: an event whose devices all vanish without a clean leave
-(uninstall, permanent offline) is never reclaimed. That abandon-leak is accepted.
+Reclamation belongs entirely to the nightly sweep (capability `scheduled-cleanup`), which deletes an event
+past its stamped lifetime **or** one that is empty — ever joined, with no active member left. This route's
+rename is therefore what *makes* an event empty, but never what deletes it.
 
-Decision record: `changes/archive/2026-07-06-add-event-leave-lifecycle`.
+That emptiness path is **opportunistic, not a guarantee**: the client clears its local state and dispatches
+this `DELETE` fire-and-forget, best-effort, never retried, so a leave that never reaches storage leaves an
+active manifest behind and the event never empties. The same mechanism that produces that abandon-leak is
+what prevents a premature emptiness deletion; the stamped lifetime is the only bound that always holds.
+
+Decision record: `changes/archive/2026-07-06-add-event-leave-lifecycle`;
+`changes/archive/…-decouple-event-window-from-lifetime` (reclamation moved wholly to the nightly sweep).
 ## Requirements
 ### Requirement: Leave route and departed rename
 

@@ -103,6 +103,22 @@ internal fun EventLinkPayload.sameAs(other: EventLinkPayload): Boolean =
  * silently dropped. A **new** join always sets both non-null (the event's `endsAt` is required on a
  * successful details load, capability `join-event`).
  *
+ * [deletesAt] is when the backend deletes the event's shared data (capability `event-limits`) — a
+ * canonical `…Z` instant **derived server-side** (`max(createdAt, startsAt) + lifetime`) and served on the
+ * details response. The device stores it, never computes it: duplicating the retention constant and the
+ * anchor rule in the client would let a join gate confidently promise a date the backend will not honour,
+ * and the drift would be silent.
+ *
+ * It exists for exactly one job — the **second witness** of the self-leave (capability `leave-event`). A
+ * membership is torn down without user action only when the backend reports the event definitively absent
+ * **and** this stored deadline has passed. One witness is offline, so no backend misconfiguration can
+ * manufacture both: a zone-wide fault that 404s every event would otherwise destroy every membership in
+ * the install base at once, unrecoverably, since this class is the only record of the join.
+ *
+ * It **defaults to `null`** like [endsAt], and a `null` means **never reached** — the self-leave cannot
+ * fire on a membership that has not yet learned its deadline. Reconcile backfills it (capability
+ * `event-rejoin-reconciliation`). Both defaults fail toward keeping the membership.
+ *
  * The extension reads the `eventId`, the `minPhotoDate` (the cutoff scopes its upload cycle), **and**
  * [saveToAlbum] (whether to add completed uploads to the event album) from the shared Keychain item; the
  * name is cosmetic, for the status-screen title.
@@ -120,6 +136,7 @@ data class EventConfig(
     val startsAt: String = minPhotoDate,
     val endsAt: String? = null,
     val maxPhotoDate: String? = null,
+    val deletesAt: String? = null,
     val direction: Direction = Direction.Both,
     val saveToAlbum: Boolean = false,
 )

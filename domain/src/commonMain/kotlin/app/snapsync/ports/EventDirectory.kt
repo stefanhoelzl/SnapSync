@@ -13,18 +13,27 @@ package app.snapsync.ports
 sealed interface EventDetails {
     /**
      * [name] is the (required, non-null) event name; [startsAt] is the event's **start date** and [endsAt]
-     * its **end date** — the host's statement of when the event began and ended (capability
-     * `event-creation`).
+     * its **end date** — the host's statement of the capture WINDOW (capability `event-creation`), which
+     * bounds only which photos may be uploaded and closes nothing. [deletesAt] is when the backend
+     * deletes the event's shared data (capability `event-limits`), **derived server-side** and served
+     * ready-made so no client ever holds a copy of the retention constant or the anchor rule.
      *
-     * All three are **required and non-null**. They are always present on a `200`: the backend rejects a
-     * non-canonical `startsAt`/`endsAt` on create, stamps `endsAt` at mint (creator-supplied or the legacy
-     * `+30d` fallback), and serves a marker with no stamped end as `gone` (→ 404) rather than a partial
-     * `200`. A `200` lacking any is therefore malformed / transient → [Failed], never a [Found] with an
-     * invented one — [startsAt] is a **floor** and [endsAt] a **ceiling** on this membership's capture-date
-     * range (capability `photo-selection-policy`), and a client that defaulted either would silently move
-     * that bound. Failing loudly and retrying is the only safe reading.
+     * All four are **required and non-null**. They are always present on a `200`: the backend rejects a
+     * non-canonical `startsAt`/`endsAt` on create, stamps the limit fields at mint, and serves an
+     * incomplete marker as `gone` (→ 404) rather than a partial `200`. A `200` lacking any is therefore
+     * malformed / transient → [Failed], never a [Found] with an invented one — [startsAt] is a **floor**
+     * and [endsAt] a **ceiling** on this membership's capture-date range (capability
+     * `photo-selection-policy`), and a client that defaulted either would silently move that bound;
+     * [deletesAt] is a witness the self-leave depends on (capability `leave-event`), and an invented one
+     * would decide whether a membership is destroyed. Failing loudly and retrying is the only safe
+     * reading.
      */
-    data class Found(val name: String, val startsAt: String, val endsAt: String) : EventDetails
+    data class Found(
+        val name: String,
+        val startsAt: String,
+        val endsAt: String,
+        val deletesAt: String,
+    ) : EventDetails
     data object NotFound : EventDetails
     data object Failed : EventDetails
 }

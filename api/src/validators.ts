@@ -74,26 +74,44 @@ export function validateStartsAt(raw: unknown): string | null {
 
 /**
  * Add a whole number of seconds to a canonical-cutoff-shaped instant, returning the canonical shape
- * (capability `event-limits`: `endsAt = startsAt + duration`, stored in the SAME shape as `startsAt` so
- * lifecycle comparisons stay plain string/epoch comparisons and no consumer ever normalizes). The input
- * is expected to be already-validated (see {@link validateStartsAt}); whole seconds in, whole seconds
- * out, so the `.000Z` strip is exact, never a truncation.
+ * (capability `event-limits`: `endsAt` is stored in the SAME shape as `startsAt` so comparisons stay
+ * plain string/epoch comparisons and no consumer ever normalizes). The input is expected to be
+ * already-validated (see {@link validateStartsAt}); whole seconds in, whole seconds out, so the `.000Z`
+ * strip is exact, never a truncation.
  */
 export function canonicalPlusSeconds(canonical: string, seconds: number): string {
   return new Date(Date.parse(canonical) + seconds * 1000).toISOString().replace(".000Z", "Z");
 }
 
 /**
- * Validate a client-supplied event `endsAt` (capability `event-limits`: `endsAt` is now
- * CREATOR-SUPPLIED at mint rather than stamped from a fixed global duration). Same canonical-instant
- * discipline as {@link validateStartsAt} — right shape, a real instant that round-trips — PLUS it must
- * fall strictly after the (already-validated) `startsAt`. There is deliberately NO upper-duration cap:
- * creator-chosen duration is the additive future paid-tier gate, and enforcement reads only the marker's
- * own stamped `endsAt`, so a long window is a product choice, not a validation concern. Returns the value
- * when valid, else null (the caller maps null to a 400). An ABSENT `endsAt` is handled by the caller (it
- * falls back to `startsAt + duration`), not here — this only judges a value that was supplied.
+ * Render an epoch-ms instant in the canonical cutoff shape, rounding DOWN to the second (capability
+ * `event-limits`: the derived `deletesAt` is served in the same shape as `startsAt`/`endsAt`, so a client
+ * compares all three the same way). Rounding down rather than to nearest keeps the served deadline at or
+ * before the real one — an early self-leave is recoverable by re-scanning, a late one is a phantom.
  */
-export function validateEndsAt(raw: unknown, startsAt: string): string | null {
+export function canonicalFromMs(ms: number): string {
+  return new Date(Math.floor(ms / 1000) * 1000).toISOString().replace(".000Z", "Z");
+}
+
+/**
+ * Validate a client-supplied event `endsAt` (capability `event-limits`). Same canonical-instant
+ * discipline as {@link validateStartsAt} — right shape, a real instant that round-trips — PLUS it must
+ * fall strictly after the (already-validated) `startsAt` and no more than [windowMaxSeconds] after it.
+ *
+ * The upper cap is a HARD BOUND, not a pricing lever. `endsAt` says which captures may be uploaded, and
+ * the event's storage lifetime is bounded independently; a window longer than that lifetime would declare
+ * captures eligible for upload into an event that no longer exists by then — a photo uploading into
+ * nothing, which is exactly the silent loss the selection policy exists to prevent. The only future
+ * paid-tier lever is `capacity`.
+ *
+ * Returns the value when valid, else null (the caller maps null to a 400). An ABSENT `endsAt` is handled
+ * by the caller (it falls back to `startsAt + windowMax`), not here — this only judges a supplied value.
+ */
+export function validateEndsAt(
+  raw: unknown,
+  startsAt: string,
+  windowMaxSeconds: number,
+): string | null {
   if (typeof raw !== "string") return null;
   if (!CUTOFF_RE.test(raw)) return null;
   const parsed = new Date(raw);
@@ -101,5 +119,6 @@ export function validateEndsAt(raw: unknown, startsAt: string): string | null {
   if (parsed.toISOString().replace(".000Z", "Z") !== raw) return null;
   // Both are fixed-width canonical UTC, so a plain string compare is chronological.
   if (raw <= startsAt) return null; // must be strictly after the start
+  if (parsed.getTime() - Date.parse(startsAt) > windowMaxSeconds * 1000) return null; // window cap
   return raw;
 }

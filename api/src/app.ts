@@ -25,11 +25,13 @@
 //       Apple round-trip, because re-attestation is the throttled path.
 //
 //   POST /events
-//     → mints an event: writes the marker `events/<id>/metadata.json` — stamping the server-resolved
-//       LIMITS `endsAt` (= startsAt + configured duration) and `capacity` (capability `event-limits`) —
-//       and returns {eventId,name,createdAt,startsAt,endsAt,capacity}.
+//     → mints an event: writes the marker `events/<id>/metadata.json` — stamping `capacity` and the
+//       `lifetimeSeconds` DURATION, and validating the creator's `endsAt` against the configured window
+//       maximum (capability `event-limits`) — and returns
+//       {eventId,name,createdAt,startsAt,endsAt,capacity,deletesAt}.
 //   GET /events/:eventId
-//     → returns the event marker (existence check); 404 when absent OR `gone` (legacy/corrupt marker).
+//     → returns the event (existence check) with the DERIVED `deletesAt`; 404 when absent OR `gone`
+//       (legacy/corrupt marker). Never deletes on touch, even past the deadline.
 //   PUT /devices/:deviceId
 //     → streams a JSON device config (the push token) into `devices/<deviceId>.json`. UNGATED by
 //       event; DEVICE-ID is the capability. Faithful 201/502; last-write-wins. A flat sibling of the
@@ -39,8 +41,7 @@
 //       `<id>.left.json` member is skipped). GATED on the marker (404/502). Enumerate members
 //       (LIST `events/<id>/devices/`, resolve active via last-write-wins) → read each `devices/<id>.json`
 //       → best-effort fan-out via APNs. Bare 202 (no per-device results); 502 only if the member LIST
-//       fails. Authorized by a device token OR the notify-only ADMIN_NOTIFY_KEY (capability `scheduled-cleanup`:
-//       the out-of-edge sweep notifies an expiring event's members before deleting it).
+//       fails. Authorized by a device token — the ONLY credential this backend accepts.
 //   PUT /files/devices/:deviceId/:filename
 //     → streams the request body into ONE bunny native Storage PUT. Requires the token, but reads NO
 //       marker: bytes are device-partitioned and event-independent (`files/devices/<deviceId>/<filename>`),
@@ -56,16 +57,16 @@
 //   PUT /events/:eventId/devices/:deviceId
 //     → streams a JSON device manifest into `events/<eventId>/devices/<deviceId>.json`. GATED on event
 //       existence (the marker read) so a manifest is never written under a non-existent event, AND on
-//       the event limits (capability `event-limits`): a device id never enrolled (no active or `.left`
-//       sibling) is refused with 410 during the post-endsAt grace window (joining closed) and 409 once
-//       `capacity` distinct device ids have ever enrolled (leaving frees no slot); a known device's
-//       writes pass both checks.
+//       CAPACITY (capability `event-limits`): a device id never enrolled (no active or `.left` sibling)
+//       is refused 409 once `capacity` distinct device ids have ever enrolled (leaving frees no slot);
+//       a known device's writes always pass. Capacity is the ONLY refusal — enrollment is never closed
+//       by time, however long after `endsAt` it arrives.
 //   DELETE /events/:eventId/devices/:deviceId
 //     → LEAVE (capability `event-leave-endpoint`): RENAME-ONLY. Renames the device's active manifest to
 //       `<deviceId>.left.json` (departed — still served by the union, skipped by notify) and returns 200
-//       regardless of remaining membership. NON-DESTRUCTIVE: no last-member reap, no leave-time GC — the
-//       event survives until it expires and the nightly sweep (capability `scheduled-cleanup`) reclaims
-//       it. GATED on the marker (404/502). Idempotent + leak-safe.
+//       regardless of remaining membership. NON-DESTRUCTIVE: no reap here, no leave-time GC. When this
+//       was the LAST active member the event becomes EMPTY, and the nightly sweep (capability
+//       `scheduled-cleanup`) reclaims it on its next run. GATED on the marker (404/502). Idempotent.
 //   GET /events/:eventId/files
 //     → the event-wide UNION: every contributing device's COMPLETE assets (an asset is complete iff
 //       every resource its device.json names is present in `files/devices/<deviceId>/`), flattened across
@@ -76,13 +77,19 @@
 //       (live read over mutable manifests + listings; see NO_CACHE). Identity-blind: own-vs-foreign
 //       skip is the client's concern.
 //
-// EVENT LIFECYCLE (capability `event-limits`): every event-scoped route above resolves its event
-// through ONE gate (`gateEvent`), which classifies it in TWO states: live (now <= endsAt) → grace
-// (now > endsAt: joins closed 410, members keep full sync). There is NO on-touch reap — an event past
-// endsAt stays in grace, serving members, until the nightly sweep (capability `scheduled-cleanup`, run
-// out-of-edge from GitHub Actions) deletes it once now > endsAt + grace. Deletion by the sweep IS
-// expiry. A legacy/corrupt marker (missing or unparseable limit fields) is `gone`: the gate answers 404
-// and the sweep deletes it.
+// EVENT LIFECYCLE (capability `event-limits`): every event-scoped route above resolves its event through
+// ONE gate (`gateEvent`), and the lifecycle is BINARY — the event exists, or the sweep has deleted it.
+// `endsAt` is NOT a lifecycle input: it bounds only which captures may be UPLOADED, so nothing closes
+// when the window does (in particular, JOINING IS NEVER CLOSED BY TIME — a guest who scans days late
+// still holds in-window captures that belong in the event).
+//
+// The nightly sweep (capability `scheduled-cleanup`, run out-of-edge from GitHub Actions) is the ONLY
+// deleter. It reclaims an event that is past its derived delete-by (`max(createdAt, startsAt) +
+// lifetimeSeconds` — the guarantee) or EMPTY (ever joined, no active member left — opportunistic, since
+// a leave whose DELETE never landed keeps a manifest active). No route reaps on touch, even past the
+// deadline: that is what makes a 404 a REAL deletion, and therefore safe as one of the two witnesses the
+// client's self-leave requires (capability `leave-event`). A legacy/corrupt marker (missing `startsAt`,
+// `endsAt`, or `capacity`) is `gone`: the gate answers 404 and the sweep deletes it.
 //
 // EVENT REGISTRY: an event exists iff the object `events/<id>/metadata.json` is present. Because an
 // eventId is a UUID, the marker key `events/<id>/metadata.json`, the device-manifest keys
@@ -112,6 +119,7 @@
 import { Hono } from "hono";
 import { AwsClient } from "aws4fetch";
 import {
+  canonicalFromMs,
   canonicalPlusSeconds,
   validateEndsAt,
   validateEventName,
@@ -123,7 +131,6 @@ import type { Config } from "./config.ts";
 import { createApnsSender, type PushToken } from "./apns.ts";
 import {
   b64ToBytes,
-  bytesEqual,
   bytesToB64,
   challengeIsValid,
   mintChallenge,
@@ -155,7 +162,13 @@ import {
   readObjectText,
 } from "./storage.ts";
 // Event lifecycle + membership, shared with the nightly sweep.
-import { classifyEvent, type MemberState, resolveMembership } from "./lifecycle.ts";
+import {
+  classifyEvent,
+  deleteByMs,
+  type LiveEventMarker,
+  type MemberState,
+  resolveMembership,
+} from "./lifecycle.ts";
 
 // Re-exported so existing importers (tests, callers) keep their `from "./app.ts"` imports working.
 export { classifyEvent } from "./lifecycle.ts";
@@ -345,22 +358,9 @@ async function readPushToken(
   }
 }
 
-/** Does `path` match EXACTLY `/events/<uuid>/notify`? The one route the ADMIN_NOTIFY_KEY authorizes. */
-function isNotifyPath(path: string): boolean {
-  const segs = path.split("/");
-  return segs.length === 4 && segs[0] === "" && segs[1] === "events" &&
-    validateUUID(segs[2]) && segs[3] === "notify";
-}
-
-/**
- * Constant-time string equality over UTF-8 bytes — no early return on the first mismatched byte, so a
- * bearer-secret compare (the ADMIN_NOTIFY_KEY) does not leak how much of a guess was correct via timing. The
- * length is allowed to leak (the secret's length is fixed); only the content compare is constant-time.
- */
-function constantTimeEqual(a: string, b: string): boolean {
-  const enc = new TextEncoder();
-  return bytesEqual(enc.encode(a), enc.encode(b));
-}
+// (`isNotifyPath` + `constantTimeEqual` lived here to authorize the notify-only ADMIN_NOTIFY_KEY. That
+// credential is retired — a device token is now the only one this backend accepts — so both are gone
+// rather than left as dead code inviting a second bearer-secret path.)
 
 export function createApp({ fetch: fetchImpl, config, now = Date.now }: Deps): Hono {
   // The S3 signer used ONLY to presign download URLs (capability `bunny-list-endpoint`). Access Key ID =
@@ -380,27 +380,42 @@ export function createApp({ fetch: fetchImpl, config, now = Date.now }: Deps): H
 
   // ── THE EVENT-LIMITS GATE (capability `event-limits`) ───────────────────────────────────────────
   //
-  // Every event-scoped route resolves its event through `gateEvent` below: read the marker and classify
-  // the lifecycle (`classifyEvent` — two states, live / grace, a pure function of the marker + clock).
-  // There is NO on-touch reap: an event past `endsAt` stays in grace (members sync, joins closed) until
-  // the nightly sweep (capability `scheduled-cleanup`) deletes it — deletion by the sweep IS expiry.
+  // Every event-scoped route resolves its event through `gateEvent` below: read the marker and check it
+  // is complete. The lifecycle is BINARY — an event exists, or the sweep has deleted it. `endsAt` is NOT
+  // consulted: it bounds only which captures may be UPLOADED, and closes nothing. In particular JOINING
+  // IS NEVER CLOSED BY TIME, because a guest who scans days late still holds in-window captures that
+  // belong in the event. There is no on-touch reap: deleting is the nightly sweep's alone
+  // (capability `scheduled-cleanup`), including for an event already past its derived delete-by.
 
   /**
-   * Resolve an event for a route: marker read + two-state lifecycle classification (capability
-   * `event-limits`). `absent` covers "never created" AND a `gone` marker (legacy/corrupt — missing or
-   * unparseable limit fields), which the nightly sweep (capability `scheduled-cleanup`) deletes. There
-   * is no on-touch reap any more: an event past `endsAt` stays in `grace` (serving members, joins
-   * closed) until the sweep deletes it, so deletion by the sweep IS expiry. THROWS on marker-read
-   * transport failure, so the route surfaces 502 and never mistakes a transient failure for absence.
+   * Resolve an event for a route: marker read + completeness check (capability `event-limits`).
+   * `absent` covers "never created" AND a `gone` marker (legacy/corrupt — missing `startsAt`, `endsAt`,
+   * or `capacity`), which the nightly sweep deletes. THROWS on marker-read transport failure, so the
+   * route surfaces 502 and never mistakes a transient failure for absence.
    */
   async function gateEvent(
     eventId: string,
-  ): Promise<{ kind: "ok"; phase: "live" | "grace"; marker: EventMarker } | { kind: "absent" }> {
+  ): Promise<{ kind: "ok"; marker: LiveEventMarker } | { kind: "absent" }> {
     const stored = await readMarker(fetchImpl, config, eventId);
     if (stored === null) return { kind: "absent" };
-    const cls = classifyEvent(stored, now());
+    const cls = classifyEvent(stored);
     if (cls.phase === "gone") return { kind: "absent" }; // legacy/corrupt marker — the sweep deletes it
-    return { kind: "ok", ...cls };
+    return { kind: "ok", marker: cls.marker };
+  }
+
+  /**
+   * The WIRE shape of an event (capabilities `event-creation`, `event-limits`): the marker's public
+   * fields with the stamped `lifetimeSeconds` replaced by the DERIVED `deletesAt`, in the canonical
+   * cutoff shape.
+   *
+   * Serving the derived instant — rather than the duration and the anchor for a client to combine —
+   * keeps the anchor policy in ONE place and means no client ever holds a copy of the lifetime constant.
+   * A duplicated constant would let a join gate confidently promise a date the backend will not honour,
+   * and the drift would be silent.
+   */
+  function publicEvent(marker: LiveEventMarker) {
+    const { lifetimeSeconds: _stamped, ...wire } = marker;
+    return { ...wire, deletesAt: canonicalFromMs(deleteByMs(marker, config.eventLifetimeSeconds)) };
   }
 
   // Per-device byte WRITE route (`bunny-upload-endpoint`). Mounted under
@@ -528,16 +543,11 @@ export function createApp({ fetch: fetchImpl, config, now = Date.now }: Deps): H
     const auth = c.req.header("authorization") ?? "";
     const token = auth.startsWith("Bearer ") ? auth.slice("Bearer ".length).trim() : "";
 
-    // The notify-only ADMIN_NOTIFY_KEY (capabilities `event-notify-endpoint`, `scheduled-cleanup`): the
-    // out-of-edge nightly sweep holds no device token, so it authenticates its member-notify with this
-    // key instead. Scoped to EXACTLY `POST /events/<uuid>/notify` — checked here, before the device-token
-    // path, so it authorizes that one route and no other. Compared in constant time.
-    if (
-      method === "POST" && isNotifyPath(path) && token && constantTimeEqual(token, config.adminKey)
-    ) {
-      return await next();
-    }
-
+    // A valid device token is the ONLY credential this backend accepts. There is no admin key, master
+    // key, or route-scoped bypass: the former notify-only ADMIN_NOTIFY_KEY existed solely so the
+    // out-of-edge sweep could announce an expiring event before deleting it, and that announcement is
+    // gone (capability `scheduled-cleanup`) — so the credential is retired rather than left standing as
+    // an authorization path with no caller.
     if (!token || !await verifyToken(config, token, now())) {
       return c.text("unattested", 401);
     }
@@ -732,20 +742,22 @@ export function createApp({ fetch: fetchImpl, config, now = Date.now }: Deps): H
     if (startsAt === null) {
       return c.text("invalid startsAt", 400); // missing/empty/non-canonical/not a real instant
     }
-    // `endsAt` is now CREATOR-SUPPLIED at mint (capability `event-limits`). When the body carries one it is
-    // validated (canonical instant, strictly after `startsAt`, no upper cap) and stamped; when ABSENT it
-    // falls back to the legacy `startsAt + duration`, so old clients that send only `startsAt` keep working.
-    // A present-but-invalid `endsAt` is a 400. `capacity` stays server-resolved — a client-supplied
-    // `capacity` (and `eventId`) is still ignored. The config values are consulted HERE ONLY; enforcement
-    // reads the marker's own stamped fields.
+    // `endsAt` is CREATOR-SUPPLIED at mint (capability `event-limits`) and bounds ONLY which captures may
+    // be uploaded — it is not a lifetime. When the body carries one it is validated (canonical instant,
+    // strictly after `startsAt`, and no longer than the configured WINDOW MAXIMUM) and stamped; when
+    // ABSENT it falls back to `startsAt + windowMax`, so old clients that send only `startsAt` keep
+    // working. A present-but-invalid `endsAt` is a 400. `capacity` and `lifetimeSeconds` stay
+    // server-resolved — a client-supplied `capacity` (and `eventId`) is still ignored. The config values
+    // are consulted HERE ONLY; enforcement reads the marker's own stamped fields.
     const rawEndsAt = (body as { endsAt?: unknown } | null)?.endsAt;
     let endsAt: string;
     if (rawEndsAt === undefined || rawEndsAt === null) {
-      endsAt = canonicalPlusSeconds(startsAt, config.eventDurationSeconds); // legacy fallback
+      endsAt = canonicalPlusSeconds(startsAt, config.eventWindowMaxSeconds); // absent-endsAt fallback
     } else {
-      const validated = validateEndsAt(rawEndsAt, startsAt);
+      const validated = validateEndsAt(rawEndsAt, startsAt, config.eventWindowMaxSeconds);
       if (validated === null) {
-        return c.text("invalid endsAt", 400); // non-canonical / not a real instant / not after startsAt
+        // non-canonical / not a real instant / not after startsAt / longer than the window maximum
+        return c.text("invalid endsAt", 400);
       }
       endsAt = validated;
     }
@@ -756,6 +768,7 @@ export function createApp({ fetch: fetchImpl, config, now = Date.now }: Deps): H
       startsAt,
       endsAt,
       capacity: config.eventCapacity,
+      lifetimeSeconds: config.eventLifetimeSeconds,
     };
 
     const target = `https://${config.host}/${config.zone}/${markerKey(marker.eventId)}`;
@@ -775,15 +788,19 @@ export function createApp({ fetch: fetchImpl, config, now = Date.now }: Deps): H
       return c.text("upstream rejected", 502);
     }
     // Bunny confirmed the marker — only now is the event created.
-    return c.json(marker, 201);
+    return c.json(publicEvent(marker), 201);
   });
 
-  // Event metadata / existence (capability `event-creation`). Returns the marker — always carrying
-  // `startsAt`, `endsAt`, and `capacity`, because the gate never serves a marker without them — or 404
-  // when the event was never created OR has expired (capability `event-limits`: an expired event is
-  // reaped on this touch and indistinguishable from absent); a non-404 marker read failure → 502. This
-  // is the canonical existence check the device-manifest write gate relies on. An event in GRACE still
-  // serves its metadata: it exists for its members; only joining is closed (at the manifest PUT).
+  // Event metadata / existence (capability `event-creation`). Returns the event — always carrying
+  // `startsAt`, `endsAt`, `capacity`, and the derived `deletesAt`, because the gate never serves a marker
+  // without the first three — or 404 when the event was never created OR its marker is incomplete
+  // (capability `event-limits`); a non-404 marker read failure → 502. This is the canonical existence
+  // check the device-manifest write gate relies on.
+  //
+  // An event past its WINDOW (`endsAt`) serves normally — the window closes nothing. An event past its
+  // derived `deletesAt` ALSO serves normally until the nightly sweep removes it: no route deletes on
+  // touch. The 404 a client acts on is therefore always a real deletion, which is what makes it safe as
+  // one of the two witnesses the client's self-leave requires (capability `leave-event`).
   deviceApi.get("/events/:eventId", async (c) => {
     const eventId = c.req.param("eventId");
     if (!validateUUID(eventId)) {
@@ -792,7 +809,7 @@ export function createApp({ fetch: fetchImpl, config, now = Date.now }: Deps): H
     try {
       const gate = await gateEvent(eventId);
       if (gate.kind === "absent") return c.text("event not found", 404);
-      return c.json(gate.marker);
+      return c.json(publicEvent(gate.marker));
     } catch (e) {
       console.error(`metadata: marker read failed for ${eventId}: ${e}`);
       return c.text("upstream error", 502);
@@ -800,17 +817,22 @@ export function createApp({ fetch: fetchImpl, config, now = Date.now }: Deps): H
   });
 
   // Write a device's per-event manifest (capability `bunny-upload-endpoint`, device-manifest route).
-  // GATED on event existence AND the event limits (capability `event-limits`): read the marker, then
-  // LIST `events/<eventId>/devices/` to classify the writer as KNOWN (an active `<id>.json` or departed
+  // GATED on event existence AND capacity (capability `event-limits`): read the marker, then LIST
+  // `events/<eventId>/devices/` to classify the writer as KNOWN (an active `<id>.json` or departed
   // `<id>.left.json` exists — a member's manifest update, or a rejoin reusing its own slot) vs NEW (an
-  // enrollment). Resolution order: absent → 404; expired → reap + 404; grace ∧ new → 410 (joining is
-  // closed — and it wins over 409 even at capacity, the event being over is THE reason); live ∧ new ∧
-  // ever-enrolled ≥ capacity → 409 (active and departed both count: leaving frees no slot); otherwise
-  // stream the body into one bunny native PUT at `events/<eventId>/devices/<deviceId>.json`. Any
-  // non-404 marker/LIST failure → 502 (never mistaken for absent, over, or full). The count is
-  // read-then-write without coordination (bunny has no compare-and-set): concurrent first enrollments
-  // may transiently overshoot, accepted — what is guaranteed is that a request OBSERVING the event at
-  // capacity admits no new device.
+  // enrollment). Resolution order: absent → 404; new ∧ ever-enrolled ≥ capacity → 409 (active and
+  // departed both count: leaving frees no slot); otherwise stream the body into one bunny native PUT at
+  // `events/<eventId>/devices/<deviceId>.json`. Any non-404 marker/LIST failure → 502 (never mistaken
+  // for absent or full).
+  //
+  // CAPACITY IS THE ONLY REFUSAL. There is no time-based rejection: a device may enroll for as long as
+  // the event exists, however long after `endsAt` that is, because a guest who scans days late still
+  // holds in-window captures that belong in the event. (The former 410 "event over" is deleted with the
+  // grace period.)
+  //
+  // The count is read-then-write without coordination (bunny has no compare-and-set): concurrent first
+  // enrollments may transiently overshoot, accepted — what is guaranteed is that a request OBSERVING the
+  // event at capacity admits no new device.
   deviceApi.put("/events/:eventId/devices/:deviceId", async (c) => {
     const eventId = c.req.param("eventId");
     const deviceId = c.req.param("deviceId");
@@ -818,13 +840,11 @@ export function createApp({ fetch: fetchImpl, config, now = Date.now }: Deps): H
       return c.text("invalid key", 400);
     }
 
-    let phase: "live" | "grace";
     let capacity: number;
     let members: { deviceId: string; state: MemberState }[];
     try {
       const gate = await gateEvent(eventId);
       if (gate.kind === "absent") return c.text("event not found", 404);
-      phase = gate.phase;
       capacity = gate.marker.capacity;
       members = resolveMembership(await listDir(fetchImpl, config, deviceManifestDir(eventId)));
     } catch (e) {
@@ -832,7 +852,6 @@ export function createApp({ fetch: fetchImpl, config, now = Date.now }: Deps): H
       return c.text("upstream error", 502);
     }
     const known = members.some((m) => m.deviceId === deviceId);
-    if (!known && phase === "grace") return c.text("event over", 410);
     if (!known && members.length >= capacity) return c.text("event full", 409);
 
     const target = `https://${config.host}/${config.zone}/${deviceManifestKey(eventId, deviceId)}`;

@@ -42,15 +42,14 @@ const CONFIG: Config = {
   apnsPrivateKey: "-----BEGIN PRIVATE KEY-----\nMIG...\n-----END PRIVATE KEY-----\n",
   apnsTopic: "app.snapsync",
   attestTokenKey: "test-attest-token-key",
-  adminKey: "test-admin-key",
   appAttestRootCa: APPLE_ROOT_CA,
   attestTokenTtlSeconds: 30 * DAY / 1000,
   attestAppId: "E9Z8BADH58.app.snapsync",
   linkDomain: "snapsync.stho.net",
   appStoreUrl: "https://apps.apple.com/app/id6781692480",
   eventCapacity: 10,
-  eventDurationSeconds: 30 * 24 * 60 * 60,
-  eventGraceSeconds: 24 * 60 * 60,
+  eventWindowMaxSeconds: 30 * 24 * 60 * 60,
+  eventLifetimeSeconds: 30 * 24 * 60 * 60,
 };
 
 /** The same config, but claiming the FIXTURE's app — so the real attestation's rpIdHash matches. */
@@ -262,33 +261,31 @@ Deno.test("gate: opening the reads opens no WRITE — mutating /events/<id>/… 
   assertEquals((await a.request(`/files/devices/${D}`)).status, 401);
 });
 
-// ── The notify ADMIN_NOTIFY_KEY (capabilities `event-notify-endpoint`, `scheduled-cleanup`) ────────────────
+// ── The retired notify admin key (capabilities `event-notify-endpoint`, `backend-deployment`) ─────────
+//
+// A valid device token is now the ONLY credential this backend accepts. The former ADMIN_NOTIFY_KEY
+// existed solely so the out-of-edge sweep could announce an expiring event before deleting it; that
+// announcement is gone (capability `scheduled-cleanup`), so the credential was retired rather than left
+// standing as an authorization path with no caller. These pin that it authorizes NOTHING.
 
-const adminHdr = { authorization: `Bearer ${CONFIG.adminKey}` };
-
-Deno.test("gate: the ADMIN_NOTIFY_KEY authorizes POST /events/:id/notify (no device token)", async () => {
-  // The raw recorder 404s every GET, so the marker read → 404 → notify answers 404. The point is it
-  // reached the existence check at all: an admin key that was NOT authorized would 401 before any read.
-  const { app: a } = app();
-  const res = await a.request(`/events/${E}/notify`, { method: "POST", headers: adminHdr });
-  assertEquals(res.status, 404); // authorized (past the gate), event just doesn't exist here — NOT 401
-});
-
-Deno.test("gate: a wrong admin key on notify is refused 401", async () => {
+Deno.test("gate: notify with no device token is refused 401, reading nothing", async () => {
   const { calls, app: a } = app();
-  const res = await a.request(`/events/${E}/notify`, {
-    method: "POST",
-    headers: { authorization: "Bearer not-the-admin-key" },
-  });
+  const res = await a.request(`/events/${E}/notify`, { method: "POST" });
   assertEquals(res.status, 401);
-  assertEquals(calls.length, 0); // nothing read
+  assertEquals(calls.length, 0); // no marker read, no member enumeration, no push
 });
 
-Deno.test("gate: the ADMIN_NOTIFY_KEY authorizes ONLY notify — every other route refuses it 401", async () => {
-  const { app: a } = app();
-  // Event creation (a gated write; GET /events/<id> is now a public read — web-event-download)…
+Deno.test("gate: the retired admin key authorizes nothing — not even notify", async () => {
+  const { calls, app: a } = app();
+  const stale = { authorization: "Bearer test-admin-key" };
+  // The route it used to authorize…
   assertEquals(
-    (await a.request(`/events`, { method: "POST", body: "{}", headers: adminHdr })).status,
+    (await a.request(`/events/${E}/notify`, { method: "POST", headers: stale })).status,
+    401,
+  );
+  // …event creation…
+  assertEquals(
+    (await a.request(`/events`, { method: "POST", body: "{}", headers: stale })).status,
     401,
   );
   // …a device-manifest PUT (join)…
@@ -296,17 +293,16 @@ Deno.test("gate: the ADMIN_NOTIFY_KEY authorizes ONLY notify — every other rou
     (await a.request(`/events/${E}/devices/${D}`, {
       method: "PUT",
       body: "{}",
-      headers: adminHdr,
+      headers: stale,
     })).status,
     401,
   );
-  // …a leave…
+  // …and a leave.
   assertEquals(
-    (await a.request(`/events/${E}/devices/${D}`, { method: "DELETE", headers: adminHdr })).status,
+    (await a.request(`/events/${E}/devices/${D}`, { method: "DELETE", headers: stale })).status,
     401,
   );
-  // …and even a GET on the notify PATH (the key is scoped to POST notify, not the path).
-  assertEquals((await a.request(`/events/${E}/notify`, { headers: adminHdr })).status, 401);
+  assertEquals(calls.length, 0); // every one refused before any upstream read
 });
 
 Deno.test("gate: OPTIONS is answered without a token (the pull zone may answer it anyway)", async () => {

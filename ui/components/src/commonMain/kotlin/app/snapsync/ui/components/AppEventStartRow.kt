@@ -123,6 +123,16 @@ fun AppEventDateRangeSection(
  */
 fun appDateTimeLabel(value: LocalDateTime): String = formatStart(value)
 
+/**
+ * The design system's human rendering of a DAY, with no time of day — `14 Jul 2026`.
+ *
+ * Public for the same reason as [appDateTimeLabel], and separate from it because some statements are
+ * about a day rather than an instant: the join gate's retention line ("Shared photos are deleted on …",
+ * capability `event-limits`) would read as false precision with a minute attached.
+ */
+fun appDateLabel(value: LocalDateTime): String =
+    "${value.day} ${monthAbbrev(value.month.ordinal)} ${value.year}"
+
 /** `14 Jul 2026, 18:00` — a human rendering of the start, in the device's local wall-clock terms. */
 internal fun formatStart(value: LocalDateTime): String {
     fun p(n: Int) = n.toString().padStart(2, '0')
