@@ -3,7 +3,7 @@ package app.snapsync.flow
 import app.snapsync.model.JoinLoad
 
 import app.snapsync.feature.download.DownloadController
-import app.snapsync.feature.membership.EventName
+import app.snapsync.feature.membership.MembershipRefresh
 import app.snapsync.feature.status.LedgerCountsPoller
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
@@ -19,11 +19,20 @@ import kotlinx.coroutines.launch
  * This flow **coordinates** (ordering + fan-out of the escaping launches); it **decides** nothing. The
  * stack-assembly touch and the entry-point log wrap stay in the shell (platform surfaces `flow/`
  * cannot reach); every step that touches a port ([reloadConfig] the membership re-read,
- * [pumpForeground] the tier pump, [refreshStatus] the read-model refreshes, [fetchEventName] the
+ * [pumpForeground] the tier pump, [refreshStatus] the read-model refreshes, [fetchEventDetails] the
  * directory fetch, [activeEventId] the config read, [refreshAttestation] the token wake) arrives as a
- * `model`-typed effect lambda built in `compose/`. The title refresh coordinates fetch-then-store:
- * whether a fetched name is *persisted* is [EventName]'s rule (`feature/membership`); a fetch that
- * resolves nothing (offline / 404 / parse) is the sealed no-result and stores nothing.
+ * `model`-typed effect lambda built in `compose/`.
+ *
+ * The membership refresh coordinates fetch-then-fold: what a fetched result *means* is
+ * [MembershipRefresh]'s rule (`feature/membership`), including the one destructive consequence — when the
+ * event is definitively gone AND past the membership's own stored deadline, the rule tears the membership
+ * down, returning the device to the unjoined resting state.
+ *
+ * That teardown is reachable from THIS trigger and no background one, deliberately. `SilentPush` and
+ * `DownloadBackstop` promise that nothing mints, clears, or leaves, because a background wake can land
+ * before the first unlock and read an unreadable config as *absent* — destroying a healthy membership.
+ * Foreground entry re-reads the membership from an unlocked device first ([reloadConfig], below), which
+ * is the only context where acting on absence is safe.
  *
  * [reloadConfig] runs **first** (migration step 12, replacing the deleted unlock-hook repair): a
  * background launch before the first unlock seeds an unreadable — therefore empty — config
@@ -44,8 +53,9 @@ import kotlinx.coroutines.launch
 class Foreground(
     private val scope: CoroutineScope,
     private val downloadController: DownloadController,
-    /** The name-refresh rule (capability `join-event`): stores a fetched name iff still ours + changed. */
-    private val eventName: EventName,
+    /** The membership-refresh rule (capability `join-event`): folds a fetched result, backfills, and on
+     *  a CONFIRMED absence performs the teardown itself. */
+    private val membershipRefresh: MembershipRefresh,
     /** The foreground-gated ledger-counts poll (capability `sync-status`); stopped by the Background flow. */
     private val statusPoller: LedgerCountsPoller,
     /** Re-read the persisted membership into the config StateFlow — the port touch, injected. */
@@ -56,9 +66,11 @@ class Foreground(
     private val refreshStatus: suspend () -> Unit,
     /** The active event id, or `null` when unjoined — the config read, injected (a port touch). */
     private val activeEventId: () -> String?,
-    /** Best-effort event-name fetch by id (`GET /events/:id`), or `null` on a miss/failure — the
-     *  `EventDirectory` effect built in `compose/` (a port touch a flow may not make directly). */
-    private val fetchEventDetails: suspend (eventId: String) -> JoinLoad.Found?,
+    /** Event-details fetch by id (`GET /events/:id`) — the `EventDirectory` effect built in `compose/`
+     *  (a port touch a flow may not make directly). Carries the SEALED outcome: `NotFound` (definitively
+     *  gone) must stay distinguishable from `Failed` (could not tell), because that difference is the
+     *  only thing separating a real deletion from a transient fault. */
+    private val fetchEventDetails: suspend (eventId: String) -> JoinLoad,
     /** Renew the attestation token if it is stale (a wake point; covers launch, the first foreground). */
     private val refreshAttestation: () -> Unit,
 ) {
@@ -75,11 +87,9 @@ class Foreground(
         scope.launch { refreshStatus() }
         // Foreground-only discovery (capability `photo-download`): pick up foreign photos and import staged.
         scope.launch { activeEventId()?.let { downloadController.reconcile(it) } }
-        // Keep the event title current (fills a name a scan couldn't fetch while offline): fetch, then
-        // let the membership rule decide whether the result is persisted (a no-result stores nothing).
-        scope.launch {
-            activeEventId()?.let { id -> eventName.storeRefreshedDetails(id, fetchEventDetails(id)) }
-        }
+        // Keep the membership current: fetch, then let the membership rule decide what the result MEANS
+        // (name refresh, window/retention backfill, or — on a CONFIRMED absence — the teardown).
+        scope.launch { activeEventId()?.let { id -> membershipRefresh.refresh(id, fetchEventDetails(id)) } }
         // Wake point (capability `device-attestation`): renew the token if stale. Also covers launch.
         refreshAttestation()
     }

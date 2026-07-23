@@ -237,6 +237,17 @@ class World(
     }
 
     /**
+     * The world's wall clock, in epoch millis — an operator **lever**, pinned at the epoch so nothing
+     * depends on the host clock and every run is deterministic.
+     *
+     * Advance it to reach a time-gated behaviour. The one that needs it is the membership self-leave
+     * (capability `leave-event`), whose second, OFFLINE witness is the device's own persisted deadline:
+     * with the clock at the epoch that witness can never be satisfied, so a `404` is always disbelieved —
+     * which is the safe default a test must be able to step past deliberately.
+     */
+    var nowMillis: Long = 0L
+
+    /**
      * The REAL app graph (spec `module-architecture`, "One shared composition"): the same
      * [snapSyncApp] the iOS shell calls, over the world's ports. Features, flows, and the user-tap
      * command bundle all live on this — the world adds only operator levers and inspection around it.
@@ -275,7 +286,7 @@ class World(
             attestClient = attestClient,
             attestStore = InMemoryAttestStore(),
             deviceId = { ownDeviceId },
-            now = { 0L },
+            now = { nowMillis },
             // The operator IS the producer: nothing auto-runs; a cycle happens when invoked by hand.
             uploadProducer = { OperatorUploadProducer() },
             albumManager = albumManager,

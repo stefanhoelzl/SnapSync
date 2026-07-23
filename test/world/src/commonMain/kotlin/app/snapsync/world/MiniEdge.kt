@@ -110,7 +110,14 @@ fun miniEdgeClient(store: BackendStore): HttpClient {
                     respond(
                         json.encodeToString(
                             CreatedEventDto.serializer(),
-                            CreatedEventDto(eventId, name.trim(), CREATED_AT, startsAt, endsAt),
+                            CreatedEventDto(
+                                eventId,
+                                name.trim(),
+                                CREATED_AT,
+                                startsAt,
+                                endsAt,
+                                deletesAt = deleteBy(CREATED_AT, startsAt),
+                            ),
                         ),
                         HttpStatusCode.Created,
                         jsonHeaders(),
@@ -134,7 +141,14 @@ fun miniEdgeClient(store: BackendStore): HttpClient {
                                 val startsAt = store.startsAtOf(segments[1]) ?: CREATED_AT
                                 // `endsAt` likewise: stored when creator-supplied, else `startsAt + 30d`.
                                 val endsAt = store.endsAtOf(segments[1]) ?: plus30Days(startsAt)
-                                CreatedEventDto(segments[1], store.nameOf(segments[1]) ?: "", CREATED_AT, startsAt, endsAt)
+                                CreatedEventDto(
+                                    segments[1],
+                                    store.nameOf(segments[1]) ?: "",
+                                    CREATED_AT,
+                                    startsAt,
+                                    endsAt,
+                                    deletesAt = deleteBy(CREATED_AT, startsAt),
+                                )
                             },
                         ),
                         HttpStatusCode.OK,
@@ -186,8 +200,19 @@ private const val CREATED_AT = "2026-01-01T00:00:00.000Z"
 private val CANONICAL_CUTOFF = Regex("""^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$""")
 
 /** The mini-edge's `endsAt` fallback (capability `event-limits`): `startsAt + 30d`, mirroring the real
- *  backend's legacy stamp. The app normalizes any sub-second precision, so the raw instant string is fine. */
+ *  backend's absent-`endsAt` stamp. The app normalizes any sub-second precision, so the raw instant
+ *  string is fine. */
 private fun plus30Days(canonical: String): String = (Instant.parse(canonical) + 30.days).toString()
+
+/**
+ * The mini-edge's DERIVED retention deadline (capability `event-limits`), mirroring the real backend:
+ * `max(createdAt, startsAt) + 30d`. Anchoring at the LATER of the two is what keeps a back-dated event
+ * from being born already expired and a created-early event from dying inside its own window.
+ */
+private fun deleteBy(createdAt: String, startsAt: String): String {
+    val anchor = maxOf(Instant.parse(createdAt), Instant.parse(startsAt))
+    return (anchor + 30.days).toString()
+}
 
 /** Mint a canonical `8-4-4-4-12` v4-shaped UUID deterministically from a counter (no clock/random). */
 internal fun mintEventId(n: Long): String {

@@ -13,15 +13,23 @@ sealed interface JoinLoad {
      * [name] is the (required, non-null) event name; [startsAt] is the event's **start date** and [endsAt]
      * its **end date** — canonical UTC `…Z` strings, all required and non-null. [startsAt] is both the
      * range row's lower default and its **floor**; [endsAt] is both its upper default and its **ceiling**
-     * (capability `photo-selection-policy`).
+     * (capability `photo-selection-policy`). [deletesAt] is when the event's shared photos are deleted
+     * (capability `event-limits`) — the retention deadline the gate states before confirm, and the second
+     * witness the self-leave later depends on (capability `leave-event`).
      *
-     * A details response lacking **any** of the three is a transient [Failed], never a [Found] with a null
+     * A details response lacking **any** of the four is a transient [Failed], never a [Found] with a null
      * name (the event-album title needs one) nor one with an invented `startsAt`/`endsAt` (a defaulted
      * floor is a *lowered* floor and a defaulted ceiling a *raised* one — the directions the design
-     * forbids). The backend always serves `endsAt` on a `200` (an event with no stamped end is `gone` →
-     * 404), so the app never sees a null.
+     * forbids) nor an invented `deletesAt` (which would decide whether a membership is destroyed). The
+     * backend always serves all four on a `200` (an incomplete marker is `gone` → 404), so the app never
+     * sees a null.
      */
-    data class Found(val name: String, val startsAt: String, val endsAt: String) : JoinLoad
+    data class Found(
+        val name: String,
+        val startsAt: String,
+        val endsAt: String,
+        val deletesAt: String,
+    ) : JoinLoad
     data object NotFound : JoinLoad
     data object Failed : JoinLoad
 }

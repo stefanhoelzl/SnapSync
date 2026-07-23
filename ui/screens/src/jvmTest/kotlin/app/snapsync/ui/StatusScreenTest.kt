@@ -543,7 +543,12 @@ class StatusScreenTest {
                     SyncHealth.InSync,
                     PendingSwitch(
                         "22222222-2222-4222-8222-222222222222",
-                        JoinPhase.Ready("New Event", "2026-07-06T00:00:00Z", "2026-07-16T00:00:00Z"),
+                        JoinPhase.Ready(
+                            "New Event",
+                            "2026-07-06T00:00:00Z",
+                            "2026-07-16T00:00:00Z",
+                            "2026-08-05T00:00:00Z",
+                        ),
                     ),
                 ),
                 membership = MEMBERSHIP,
@@ -634,11 +639,28 @@ class StatusScreenTest {
     // ---- joined layer: the "Event ended" marker (capability `sync-status-screen`) ----
 
     @Test
-    fun `an ended event prefixes the health line with the Event ended marker`() {
+    fun `an ended event marks the health line on its own line`() {
         rule.setContent { StatusScreen(UiState.Joined(SyncHealth.InSync, ended = true), cutoff = fixedCutoff()) }
-        // Same single slot: the marker prefixes the regular status, which is unchanged.
-        rule.onNodeWithText("Event ended", substring = true).assertExists()
+        // The marker is its OWN line above the status, not an inline prefix. Asserting the EXACT text is
+        // the point: an inline `Event ended · In sync` would satisfy a substring match, and reading as one
+        // sentence is exactly the failure this layout exists to prevent — the two are unrelated facts (the
+        // capture window closed; the transfer is still going).
+        rule.onNodeWithText("Event ended").assertExists()
+        rule.onNodeWithText("Event ended ·", substring = true).assertDoesNotExist()
+        // The status itself is untouched — same value, same slot, full width.
         rule.onNodeWithText("In sync").assertExists()
+    }
+
+    @Test
+    fun `the ended marker never merges into the status text`() {
+        // A syncing health is the case that produced the original complaint: `Event ended ·
+        // Synchronization pending…` parses as a claim ABOUT the syncing and wraps mid-phrase on a phone.
+        rule.setContent { StatusScreen(
+                UiState.Joined(SyncHealth.Syncing(Arrow.STATIC, Arrow.HIDDEN), ended = true),
+                cutoff = fixedCutoff(),
+            ) }
+        rule.onNodeWithText("Event ended").assertExists()
+        rule.onNodeWithText("Event ended ·", substring = true).assertDoesNotExist()
     }
 
     @Test

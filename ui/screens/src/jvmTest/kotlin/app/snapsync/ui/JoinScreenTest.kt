@@ -50,6 +50,9 @@ private const val NOW = "2026-07-06T12:00:00Z"
 private const val EVENT_START = "2026-07-04T18:00:00Z"
 private const val EVENT_END = "2026-07-20T18:00:00Z"
 
+/** The event's retention deadline (capability `event-limits`): 30 days past its start. */
+private const val EVENT_DELETES = "2026-08-03T18:00:00Z"
+
 /** An event that has NOT started yet (after [NOW]) — where the "Now" preset falls outside the window. */
 private const val FUTURE_START = "2026-07-09T18:00:00Z"
 
@@ -61,7 +64,7 @@ class JoinScreenTest {
     private fun joining(phase: JoinPhase) = UiState.JoiningEvent("11111111-1111-4111-8111-111111111111", phase)
 
     private fun ready(start: String = EVENT_START, end: String = EVENT_END) =
-        JoinPhase.Ready("Anna's Wedding", start, end)
+        JoinPhase.Ready("Anna's Wedding", start, end, EVENT_DELETES)
 
     /**
      * Mounts the screen under **reduced motion**. The Custom picker's time wheels animate on open (a
@@ -113,7 +116,7 @@ class JoinScreenTest {
         var retried = 0
         setScreen {
             StatusScreen(
-                joining(JoinPhase.CommitFailed("Anna's Wedding", EVENT_START, EVENT_END)),
+                joining(JoinPhase.CommitFailed("Anna's Wedding", EVENT_START, EVENT_END, EVENT_DELETES)),
                 onRetryJoin = { _, _, _, _ -> retried++ },
                 cutoff = fixedCutoff(),
             )
@@ -304,13 +307,33 @@ class JoinScreenTest {
         assertEquals(EVENT_END, committedUntil, "the committed custom upper bound is coerced down to the ceiling")
     }
 
+    // ---- the retention statement (capability `event-limits`) ------------------------------------------
+
+    @Test
+    fun `the join surface states the retention deadline and the fixed ceiling`() {
+        // The ONE place the app states retention. The creator passes through this same gate right after
+        // minting, so a single line serves the host and every guest.
+        setScreen {
+            StatusScreen(
+                joining(JoinPhase.Ready("Anna's Wedding", EVENT_START, EVENT_END, EVENT_DELETES)),
+                cutoff = fixedCutoff(),
+            )
+        }
+        // The DATE comes from the server-supplied deadline — never derived on the device, because a
+        // client-side copy of the retention rule would promise a date the backend will not honour.
+        rule.onNodeWithText("Shared photos are deleted on 3 Aug 2026.", substring = true).assertExists()
+        // …and the fixed ceiling, stated unconditionally: an event may be reclaimed sooner, but that is
+        // not assured, so it is never presented as a qualification on the date.
+        rule.onNodeWithText("kept for at most 30 days", substring = true).assertExists()
+    }
+
     // ---- the shareable-count row (capability `join-share-count`) ---------------------------------------
 
     @Test
     fun `the share section shows how many photos will be shared`() {
         setScreen {
             StatusScreen(
-                joining(JoinPhase.Ready("Anna's Wedding", EVENT_START, EVENT_END)),
+                joining(JoinPhase.Ready("Anna's Wedding", EVENT_START, EVENT_END, EVENT_DELETES)),
                 cutoff = fixedCutoff(),
                 shareableCount = { _, _ -> 34 },
             )
@@ -322,7 +345,7 @@ class JoinScreenTest {
     fun `a zero count carries the forward gloss`() {
         setScreen {
             StatusScreen(
-                joining(JoinPhase.Ready("Anna's Wedding", EVENT_START, EVENT_END)),
+                joining(JoinPhase.Ready("Anna's Wedding", EVENT_START, EVENT_END, EVENT_DELETES)),
                 cutoff = fixedCutoff(),
                 shareableCount = { _, _ -> 0 },
             )
@@ -335,7 +358,7 @@ class JoinScreenTest {
     fun `no count is shown when none is available`() {
         setScreen {
             StatusScreen(
-                joining(JoinPhase.Ready("Anna's Wedding", EVENT_START, EVENT_END)),
+                joining(JoinPhase.Ready("Anna's Wedding", EVENT_START, EVENT_END, EVENT_DELETES)),
                 cutoff = fixedCutoff(),
                 // null = DENIED / unresolved grant → the row is omitted (no spinner that can't resolve).
                 shareableCount = { _, _ -> null },
@@ -349,7 +372,7 @@ class JoinScreenTest {
     fun `turning share off hides the count`() {
         setScreen {
             StatusScreen(
-                joining(JoinPhase.Ready("Anna's Wedding", EVENT_START, EVENT_END)),
+                joining(JoinPhase.Ready("Anna's Wedding", EVENT_START, EVENT_END, EVENT_DELETES)),
                 cutoff = fixedCutoff(),
                 shareableCount = { _, _ -> 34 },
             )
@@ -363,7 +386,7 @@ class JoinScreenTest {
     fun `the count recomputes as the cutoff changes`() {
         setScreen {
             StatusScreen(
-                joining(JoinPhase.Ready("Anna's Wedding", EVENT_START, EVENT_END)),
+                joining(JoinPhase.Ready("Anna's Wedding", EVENT_START, EVENT_END, EVENT_DELETES)),
                 cutoff = fixedCutoff(),
                 // A cutoff-dependent count: Now shares just 1 (singular), Event start reaches back to 5.
                 shareableCount = { c, _ -> if (c == NOW) 1 else 5 },
@@ -426,7 +449,7 @@ class JoinScreenTest {
     fun `explain-access names the event and states the three consent facts`() {
         setScreen {
             StatusScreen(
-                joining(JoinPhase.ExplainAccess("Anna's Wedding", EVENT_START, EVENT_END)),
+                joining(JoinPhase.ExplainAccess("Anna's Wedding", EVENT_START, EVENT_END, EVENT_DELETES)),
                 cutoff = fixedCutoff(),
             )
         }
@@ -446,7 +469,7 @@ class JoinScreenTest {
         var acknowledged = 0
         setScreen {
             StatusScreen(
-                joining(JoinPhase.ExplainAccess("Anna's Wedding", EVENT_START, EVENT_END)),
+                joining(JoinPhase.ExplainAccess("Anna's Wedding", EVENT_START, EVENT_END, EVENT_DELETES)),
                 onAcknowledgeAccess = { acknowledged++ },
                 cutoff = fixedCutoff(),
             )
@@ -460,7 +483,7 @@ class JoinScreenTest {
         var cancelled = 0
         setScreen {
             StatusScreen(
-                joining(JoinPhase.ExplainAccess("Anna's Wedding", EVENT_START, EVENT_END)),
+                joining(JoinPhase.ExplainAccess("Anna's Wedding", EVENT_START, EVENT_END, EVENT_DELETES)),
                 onCancelJoin = { cancelled++ },
                 cutoff = fixedCutoff(),
             )
@@ -482,7 +505,7 @@ class JoinScreenTest {
         setScreen { StatusScreen(joining(phase), cutoff = fixedCutoff()) }
         rule.onNodeWithText("Loading event details …").assertExists()
 
-        phase = JoinPhase.ExplainAccess("Anna's Wedding", EVENT_START, EVENT_END)
+        phase = JoinPhase.ExplainAccess("Anna's Wedding", EVENT_START, EVENT_END, EVENT_DELETES)
         rule.waitForIdle()
         rule.onNodeWithText("I understand").assertExists()
 
@@ -498,7 +521,7 @@ class JoinScreenTest {
         var retriedUntil: String? = null
         setScreen {
             StatusScreen(
-                joining(JoinPhase.CommitFailed("Anna's Wedding", EVENT_START, EVENT_END)),
+                joining(JoinPhase.CommitFailed("Anna's Wedding", EVENT_START, EVENT_END, EVENT_DELETES)),
                 onRetryJoin = { c, u, _, _ -> retriedFrom = c; retriedUntil = u },
                 cutoff = fixedCutoff(),
             )
@@ -521,7 +544,7 @@ class JoinScreenTest {
                     SyncHealth.Loading,
                     PendingSwitch(
                         "22222222-2222-4222-8222-222222222222",
-                        JoinPhase.Ready("New Event", CUTOFF, SWITCH_END),
+                        JoinPhase.Ready("New Event", CUTOFF, SWITCH_END, EVENT_DELETES),
                     ),
                 ),
                 eventName = "Summer Trip",
@@ -550,7 +573,7 @@ class JoinScreenTest {
                     SyncHealth.Loading,
                     PendingSwitch(
                         "22222222-2222-4222-8222-222222222222",
-                        JoinPhase.Ready("New Event", CUTOFF, SWITCH_END),
+                        JoinPhase.Ready("New Event", CUTOFF, SWITCH_END, EVENT_DELETES),
                     ),
                 ),
                 eventName = "Summer Trip",

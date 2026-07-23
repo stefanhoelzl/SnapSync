@@ -85,9 +85,17 @@ export type AttestRecord = {
 /**
  * The event marker's contents — the registry record written on create (capability `event-creation`).
  * `createdAt` (server wall-clock, ms) and `startsAt` (the host's canonical statement of when the event
- * began) are distinct facts. `endsAt` and `capacity` are the event's LIMITS (capability `event-limits`),
- * server-resolved at mint (`endsAt = startsAt + duration`). Write-once — no route rewrites a marker; the
- * lifecycle is recomputed from these fields on every read (see `classifyEvent`).
+ * began) are distinct facts.
+ *
+ * `endsAt`, `capacity`, and `lifetimeSeconds` are the event's LIMITS (capability `event-limits`), all
+ * resolved at mint. `endsAt` bounds ONLY which captures may be uploaded — it is not a lifetime and no
+ * lifecycle check reads it. `lifetimeSeconds` is a DURATION, never an absolute delete-by: stamping the
+ * duration keeps the per-event value immutable against a later config change while leaving the anchor it
+ * is measured from (`max(createdAt, startsAt)`) in `lifecycle.ts`, so the anchor policy can be corrected
+ * without rewriting a single stored marker.
+ *
+ * Write-once — no route rewrites a marker; the lifecycle is recomputed from these fields on every read
+ * (see `classifyEvent` / `deleteByMs`).
  */
 export type EventMarker = {
   eventId: string;
@@ -96,17 +104,24 @@ export type EventMarker = {
   startsAt: string;
   endsAt: string;
   capacity: number;
+  lifetimeSeconds: number;
 };
 
 /**
  * A marker as it may sit in storage — one written before `startsAt` or the limit fields existed lacks
- * them. There is no read-time synthesis: a marker missing a limit field is handled by `classifyEvent`.
+ * them. There is no read-time synthesis: a marker missing `startsAt`, `endsAt`, or `capacity` is `gone`
+ * (see `classifyEvent`). A marker missing only `lifetimeSeconds` is still served; its delete-by falls
+ * back to the configured lifetime constant (see `deleteByMs`), so there is one lifecycle path rather
+ * than a second rule kept alive for legacy markers.
  */
-export type StoredEventMarker = Omit<EventMarker, "startsAt" | "endsAt" | "capacity"> & {
-  startsAt?: string;
-  endsAt?: string;
-  capacity?: number;
-};
+export type StoredEventMarker =
+  & Omit<EventMarker, "startsAt" | "endsAt" | "capacity" | "lifetimeSeconds">
+  & {
+    startsAt?: string;
+    endsAt?: string;
+    capacity?: number;
+    lifetimeSeconds?: number;
+  };
 
 // A single entry from bunny's native Storage "List Files" response. We read only these fields;
 // everything else (Guid, ServerId, …) is ignored. `LastChanged` is the object's server-set

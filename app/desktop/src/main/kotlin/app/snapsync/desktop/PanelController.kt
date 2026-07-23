@@ -162,17 +162,17 @@ class PanelController {
     // row's "Now" preset enabled (the common case).
     fun showJoinLoading() = forgeJoin(JoinPhase.Loading)
 
-    fun showJoinExplainAccess() = forgeJoin(JoinPhase.ExplainAccess(JOIN_NAME, JOIN_STARTS_AT, JOIN_ENDS_AT))
+    fun showJoinExplainAccess() = forgeJoin(JoinPhase.ExplainAccess(JOIN_NAME, JOIN_STARTS_AT, JOIN_ENDS_AT, JOIN_DELETES_AT))
 
-    fun showJoinReady() = forgeJoin(JoinPhase.Ready(JOIN_NAME, JOIN_STARTS_AT, JOIN_ENDS_AT))
+    fun showJoinReady() = forgeJoin(JoinPhase.Ready(JOIN_NAME, JOIN_STARTS_AT, JOIN_ENDS_AT, JOIN_DELETES_AT))
 
     fun showJoinNotFound() = forgeJoin(JoinPhase.NotFound)
 
     fun showJoinLoadFailed() = forgeJoin(JoinPhase.LoadFailed)
 
-    fun showJoinCommitting() = forgeJoin(JoinPhase.Committing(JOIN_NAME, JOIN_STARTS_AT, JOIN_ENDS_AT))
+    fun showJoinCommitting() = forgeJoin(JoinPhase.Committing(JOIN_NAME, JOIN_STARTS_AT, JOIN_ENDS_AT, JOIN_DELETES_AT))
 
-    fun showJoinCommitFailed() = forgeJoin(JoinPhase.CommitFailed(JOIN_NAME, JOIN_STARTS_AT, JOIN_ENDS_AT))
+    fun showJoinCommitFailed() = forgeJoin(JoinPhase.CommitFailed(JOIN_NAME, JOIN_STARTS_AT, JOIN_ENDS_AT, JOIN_DELETES_AT))
 
     private fun forgeJoin(phase: JoinPhase) {
         configState.value = null
@@ -187,13 +187,13 @@ class PanelController {
     // the phase; the reducer maps `pending != null` with config present to `pendingSwitch`. The new
     // event's name differs from the current config's so the dialog reads "Leave Anna's Birthday and join
     // Bob's Wedding?". Only the four phases the switch dialog renders are offered.
-    fun showSwitchReady() = forgeSwitch(JoinPhase.Ready(JOIN_NAME, JOIN_STARTS_AT, JOIN_ENDS_AT))
+    fun showSwitchReady() = forgeSwitch(JoinPhase.Ready(JOIN_NAME, JOIN_STARTS_AT, JOIN_ENDS_AT, JOIN_DELETES_AT))
 
     fun showSwitchNotFound() = forgeSwitch(JoinPhase.NotFound)
 
     fun showSwitchLoadFailed() = forgeSwitch(JoinPhase.LoadFailed)
 
-    fun showSwitchCommitFailed() = forgeSwitch(JoinPhase.CommitFailed(JOIN_NAME, JOIN_STARTS_AT, JOIN_ENDS_AT))
+    fun showSwitchCommitFailed() = forgeSwitch(JoinPhase.CommitFailed(JOIN_NAME, JOIN_STARTS_AT, JOIN_ENDS_AT, JOIN_DELETES_AT))
 
     private fun forgeSwitch(phase: JoinPhase) {
         permissionState.value = PermissionStatus.GRANTED
@@ -321,6 +321,9 @@ class PanelController {
         const val JOIN_NAME = "Bob's Wedding"
         const val JOIN_STARTS_AT = "2026-06-01T12:00:00Z"
         const val JOIN_ENDS_AT = "2026-06-08T12:00:00Z"
+
+        /** The forged event's retention deadline — 30 days past its start (capability `event-limits`). */
+        const val JOIN_DELETES_AT = "2026-07-01T12:00:00Z"
 
         // A stand-in config so the "joined an event" step shows connected; never used to upload. The
         // name gives the joined layer a title to review.

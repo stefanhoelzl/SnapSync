@@ -53,8 +53,9 @@ fun StatusPane(
     // reviewable when a JoiningEvent state is forged), the full-stack world harness binds them to a
     // real `JoinEvent` over the world so `:app:desktop:run` drives the actual gate.
     loadJoinDetails: suspend (String) -> JoinLoad = { JoinLoad.Failed },
-    commitJoin: suspend (String, String, String, String, String, String, Direction, Boolean) -> Boolean =
-        { _, _, _, _, _, _, _, _ -> false },
+    commitJoin: suspend (
+        String, String, String, String, String, String, String, Direction, Boolean,
+    ) -> Boolean = { _, _, _, _, _, _, _, _, _ -> false },
     // In-place membership reconfigure (capability `reconfigure-membership`): the forge leaves it inert
     // (the surface is reviewable, the command a no-op), the full-stack world harness binds it to the real
     // `world.core.userCommands.reconfigure` so `:app:desktop:run` drives the actual in-place rewrite.

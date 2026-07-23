@@ -9,10 +9,13 @@ app is test equipment, not a product.
 `changes/archive/2026-07-21-align-specs-with-mission`): joined users easily share the photos they take during a
 **short-lived event** (days/weeks — celebrations, holidays, trips), synced gallery-to-gallery; you never
 care how photos arrive, you just look at your own gallery. No accounts; simple setup; the host picks the
-event's **date range** at creation, and its **end** is both the capture-date ceiling and the server-stamped
-lifetime whose expiry IS how an event ends. Named futures (don't build for them; don't deepen assumptions
-against them unnamed): Android · paid events · concurrent multi-event membership (single active
-membership is the *current* contract).
+event's **date range** at creation (at most **30 days** long), and that **end** is the capture-date ceiling
+**only** — it bounds which photos may be uploaded and closes nothing, so a guest who scans days late still
+joins and contributes their in-window photos. How long the event **lives** is a separate stamped lifetime
+(30 days from `max(createdAt, startsAt)`); the nightly sweep deletes it then — or sooner, once every member
+has left — and that IS how an event ends. Named futures (don't build for them; don't deepen assumptions
+against them unnamed): Android · paid events (device count is the only lever) · concurrent multi-event
+membership (single active membership is the *current* contract).
 
 > It began as a *personal one-way photo backup*. Defaults inherited from that era are dangerous here:
 > what was "back up everything of mine" becomes "upload a guest's whole camera roll to a stranger's

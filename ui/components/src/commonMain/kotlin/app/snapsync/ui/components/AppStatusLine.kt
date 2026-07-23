@@ -116,16 +116,23 @@ private val StaticAlpha = 0.38f
 @Composable
 fun AppStatusLine(status: AppSyncStatus, ended: Boolean = false, onAttentionClick: () -> Unit = {}) {
     // The event's declared end has passed (capability `sync-status-screen`): an informational "Event ended"
-    // marker PREFIXES the regular one-line status, in the SAME single slot — the joined layer never grows a
-    // second line. Purely a marker: it changes no arrow, count, or health value, and sync continues.
+    // marker sits on its OWN line ABOVE the regular status. Purely a marker: it changes no arrow, count,
+    // or health value, and sync continues.
+    //
+    // It was once an inline `Event ended · <status>` prefix in the single status slot. Two things broke
+    // that. It reads as ONE sentence — "Event ended · Synchronization pending…" parses as a claim about
+    // the syncing, when the two are unrelated facts (the window closed; the transfer is still going). And
+    // on a phone-width line the pair wraps mid-phrase, so the break lands wherever the text happens to
+    // run out. Stacking states each fact once, and lets the status keep the full width it was designed
+    // for. The marker is styled DOWN from the status it labels, so the health stays the thing you read.
     if (ended) {
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(6.dp),
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(4.dp),
         ) {
             Text(
-                text = "Event ended ·",
-                style = MaterialTheme.typography.titleMedium,
+                text = "Event ended",
+                style = MaterialTheme.typography.labelLarge,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
             StatusBody(status, onAttentionClick)

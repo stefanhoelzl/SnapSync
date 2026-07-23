@@ -75,6 +75,34 @@ fun clampToFloor(chosen: String, startsAt: String): String = maxOf(chosen, start
  */
 fun clampToCeiling(chosen: String, endsAt: String): String = minOf(chosen, endsAt)
 
+/**
+ * Has this membership's own retention deadline passed (capability `leave-event`)? [deletesAt] is the
+ * server-derived instant persisted on the membership (`EventConfig.deletesAt`); [now] is the current
+ * canonical instant.
+ *
+ * This is the **second witness** of the self-leave. A membership is torn down without user action only
+ * when the backend reports the event definitively absent **and** this returns `true` — two independent
+ * witnesses, one of which is **offline**. A backend that reports absence alone is disbelieved, because a
+ * systemic fault (a deployed configuration once named a storage zone that does not exist) would otherwise
+ * 404 every event and destroy every membership in the install base at once, unrecoverably: `EventConfig`
+ * is the only record of the join and the invite QR is derived from it.
+ *
+ * The check is **exact, not heuristic**. Early reclamation deletes an event only once *every* enrolled
+ * device has departed, and departing clears the local config before the backend is told — so a device
+ * that still holds a membership can only ever be observing a **deadline** deletion, which is precisely
+ * what this tests.
+ *
+ * A **null** [deletesAt] is **never reached**: a membership persisted before the field existed, or one
+ * whose reconcile backfill has not landed yet, can never satisfy the witness. Every error mode of this
+ * rule therefore resolves toward *keeping* the membership — held too long is recoverable, destroyed
+ * wrongly is not.
+ *
+ * As with the clamps above, the plain string compare is correct **only because** both operands are the
+ * canonical fixed-width UTC shape, so lexicographic order IS chronological order.
+ */
+fun confirmedGone(deletesAt: String?, now: String): Boolean =
+    deletesAt != null && now > deletesAt
+
 private fun buildCutoff(year: Int, month: Int, day: Int, hour: Int, minute: Int, second: Int): String {
     fun p(n: Int, width: Int) = n.toString().padStart(width, '0')
     return "${p(year, 4)}-${p(month, 2)}-${p(day, 2)}T${p(hour, 2)}:${p(minute, 2)}:${p(second, 2)}Z"

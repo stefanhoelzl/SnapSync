@@ -14,11 +14,12 @@ name: nightly-cleanup
 # It is DEV/OPS INFRASTRUCTURE, non-gating: it posts no required status check and blocks no merge (like
 # ssh-mac.yml). A failed run is red and visible but stops nothing.
 #
-# SECRETS. Unlike the code-only deploy workflow, this one holds two bunny-zone-scoped secrets — the
-# storage `AccessKey` (to read/delete objects) and the notify `ADMIN_NOTIFY_KEY` (to notify an expiring event's
-# members through the edge before deletion). It does NOT hold the bunny ACCOUNT key (which owns config +
-# DNS) — that prohibition (backend-deployment) is unchanged. The two edge-only secrets (APNs, token
-# signing) are never given to this job; `readSweepConfig` needs only these two.
+# SECRETS. Unlike the code-only deploy workflow, this one holds ONE bunny-zone-scoped secret — the
+# storage `AccessKey`, to read and delete objects. That is its ONLY credential: the sweep makes no request
+# to the Edge Script, so it needs none authorizing one (it no longer announces a deletion — the notify
+# channel could not say what a deletion means, and arrived after the deletes it described). It does NOT
+# hold the bunny ACCOUNT key (which owns config + DNS) — that prohibition (backend-deployment) is
+# unchanged. The edge-only secrets (APNs, token signing) are never given to this job either.
 #
 # The scheduled run is a REAL delete. Validate first with the manual dry-run:
 #   gh workflow run nightly-cleanup.yml -f dry_run=true
@@ -62,7 +63,6 @@ jobs:
         working-directory: api
         env:
           BUNNY_STORAGE_ACCESS_KEY: ${{ secrets.BUNNY_STORAGE_ACCESS_KEY }}
-          ADMIN_NOTIFY_KEY: ${{ secrets.ADMIN_NOTIFY_KEY }}
         run: |
           deno run --allow-net --allow-env --allow-write="$GITHUB_STEP_SUMMARY" src/sweep.ts \
             ${{ (github.event_name == 'workflow_dispatch' && inputs.dry_run) && '--dry-run' || '' }}

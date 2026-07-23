@@ -10,16 +10,15 @@ import type { Config } from "../src/config.ts";
 import type { FetchLike } from "../src/storage.ts";
 
 // The sweep (capability `scheduled-cleanup`) drives the SAME storage/lifecycle modules the Edge Script
-// uses, over an in-memory storage fake. NOW is pinned; the config carries the 1-day grace period.
+// uses, over an in-memory storage fake. NOW is pinned; the config carries the 30-day event lifetime.
+// The sweep holds ONLY the storage AccessKey — it makes no request to the Edge Script.
 const NOW = Date.parse("2026-07-14T12:00:00Z");
 const ZONE = "snap-sync-dev";
 const CONFIG = {
   zone: ZONE,
   host: "storage.bunnycdn.com",
   accessKey: "k",
-  eventGraceSeconds: 24 * 60 * 60,
-  adminKey: "admin",
-  linkDomain: "snapsync.test",
+  eventLifetimeSeconds: 30 * 24 * 60 * 60,
 } as unknown as Config;
 
 const D = "11111111-0000-4000-8000-000000000001";
@@ -43,9 +42,13 @@ const mkManifest = (deviceId: string, ...keys: string[]) => ({
   })),
 });
 
-// endsAt 4 days before NOW → past the 1-day grace → STALE; endsAt 20 days after NOW → LIVE.
+// `endsAt` no longer participates in staleness at all (capability `event-limits`: it bounds only which
+// captures may be UPLOADED). What decides is the derived delete-by, `max(createdAt, startsAt) + lifetime`
+// — with `createdAt` pinned at 2026-06-01 by `mkMarker`, a `startsAt` of 2026-06-10 lands the deadline on
+// 2026-07-10 (before NOW → STALE) and one of 2026-07-01 lands it on 2026-07-31 (after NOW → LIVE).
 const STALE_ENDS = "2026-07-10T00:00:00Z";
 const LIVE_ENDS = "2026-08-03T00:00:00Z";
+const LIVE_STARTS = "2026-07-01T00:00:00Z";
 
 /**
  * In-memory bunny native-Storage fake: GET an object or (trailing slash) a directory LIST of direct
@@ -100,23 +103,18 @@ function fake(initial: Record<string, { json?: unknown; lc?: string; len?: numbe
   return { store, fetchImpl };
 }
 
-/** A sweep run with a notify spy, pinned clock. */
+/** A sweep run against the fake, pinned clock. */
 function run(store: ReturnType<typeof fake>, dryRun = false) {
-  const notified: string[] = [];
   return runSweep({
     fetch: store.fetchImpl,
     config: CONFIG,
     now: () => NOW,
     dryRun,
-    notify: (id) => {
-      notified.push(id);
-      return Promise.resolve();
-    },
     log: () => {},
-  }).then((summary) => ({ summary, notified }));
+  }).then((summary) => ({ summary }));
 }
 
-Deno.test("event phase → a stale event is notified then deleted; a live event is untouched", async () => {
+Deno.test("event phase → an event past its deadline is deleted; one within it is untouched", async () => {
   const E_STALE = "aaaaaaaa-0000-4000-8000-000000000001";
   const E_LIVE = "bbbbbbbb-0000-4000-8000-000000000002";
   const store = fake({
@@ -129,8 +127,7 @@ Deno.test("event phase → a stale event is notified then deleted; a live event 
     },
     [`events/${E_LIVE}/devices/${D2}.json`]: { json: mkManifest(D2, "l.heic") },
   });
-  const { summary, notified } = await run(store);
-  assertEquals(notified, [E_STALE]); // the stale event's members were notified (not the live one)
+  const { summary } = await run(store);
   assert(!store.store.has(`events/${E_STALE}/metadata.json`)); // marker deleted
   assert(!store.store.has(`events/${E_STALE}/devices/${D}.json`)); // manifest deleted
   assert(store.store.has(`events/${E_LIVE}/metadata.json`)); // live event kept
@@ -147,6 +144,120 @@ Deno.test("event phase → a legacy marker (no endsAt) is stale and deleted", as
   const { summary } = await run(store);
   assert(!store.store.has(`events/${E}/metadata.json`));
   assertEquals(summary.events.deleted, 1);
+});
+
+Deno.test("event phase → an EMPTIED event is deleted early, before its deadline", async () => {
+  // Every enrolled device has departed → opportunistic reclamation (capability `scheduled-cleanup`),
+  // even though the deadline is weeks away.
+  const E = "e0e0e0e0-0000-4000-8000-0000000000e0";
+  const store = fake({
+    [`events/${E}/metadata.json`]: { json: mkMarker(E, LIVE_STARTS, LIVE_ENDS) },
+    [`events/${E}/devices/${D}.left.json`]: { json: mkManifest(D, "a.heic") },
+    [`events/${E}/devices/${D2}.left.json`]: { json: mkManifest(D2, "b.heic") },
+  });
+  const { summary } = await run(store);
+  assert(!store.store.has(`events/${E}/metadata.json`));
+  assert(!store.store.has(`events/${E}/devices/${D}.left.json`));
+  assertEquals(summary.events.deleted, 1);
+});
+
+Deno.test("event phase → ONE active member keeps a within-deadline event alive", async () => {
+  const E = "e1e1e1e1-0000-4000-8000-0000000000e1";
+  const store = fake({
+    [`events/${E}/metadata.json`]: { json: mkMarker(E, LIVE_STARTS, LIVE_ENDS) },
+    [`events/${E}/devices/${D}.left.json`]: { json: mkManifest(D, "a.heic") },
+    [`events/${E}/devices/${D2}.json`]: { json: mkManifest(D2, "b.heic") }, // still active
+  });
+  const { summary } = await run(store);
+  assert(store.store.has(`events/${E}/metadata.json`));
+  assertEquals(summary.events.kept, 1);
+});
+
+Deno.test("event phase → a MINTED-BUT-NEVER-JOINED event is not empty and survives", async () => {
+  // `POST /events` always produces a zero-device event (the creator confirms through the same join gate
+  // a scanned QR uses), so an empty `devices/` listing is the NORMAL state of a fresh mint. Reaping it
+  // would delete the event before the host confirms.
+  const E = "e2e2e2e2-0000-4000-8000-0000000000e2";
+  const store = fake({
+    [`events/${E}/metadata.json`]: { json: mkMarker(E, LIVE_STARTS, LIVE_ENDS) },
+  });
+  const { summary } = await run(store);
+  assert(store.store.has(`events/${E}/metadata.json`));
+  assertEquals(summary.events.kept, 1);
+  assertEquals(summary.events.deleted, 0);
+});
+
+Deno.test("event phase → the deadline anchors at max(createdAt, startsAt), both directions", async () => {
+  // BACK-DATED: startsAt five weeks before createdAt. Anchoring on startsAt alone would stamp the event
+  // dead on arrival; anchoring at the max gives it createdAt + 30d = 2026-07-01 … still before NOW here,
+  // so pair it with a fresh createdAt to show it survives.
+  const BACKDATED = "e3e3e3e3-0000-4000-8000-0000000000e3";
+  // CREATED-EARLY: startsAt three weeks AFTER createdAt → anchored on startsAt, it outlives the window
+  // it declares rather than dying nine days in.
+  const EARLY = "e4e4e4e4-0000-4000-8000-0000000000e4";
+  const store = fake({
+    [`events/${BACKDATED}/metadata.json`]: {
+      json: {
+        eventId: BACKDATED,
+        name: "e",
+        createdAt: "2026-07-13T00:00:00.000Z", // yesterday
+        startsAt: "2026-06-05T00:00:00Z", // the trip was five weeks ago
+        endsAt: "2026-06-12T00:00:00Z",
+        capacity: 10,
+      },
+    },
+    [`events/${EARLY}/metadata.json`]: {
+      json: {
+        eventId: EARLY,
+        name: "e",
+        createdAt: "2026-06-20T00:00:00.000Z",
+        startsAt: "2026-07-11T00:00:00Z", // three weeks after creation
+        endsAt: "2026-07-18T00:00:00Z",
+        capacity: 10,
+      },
+    },
+  });
+  const { summary } = await run(store);
+  // Back-dated: anchor = createdAt (2026-07-13) + 30d → 2026-08-12, well after NOW. NOT dead on arrival.
+  assert(store.store.has(`events/${BACKDATED}/metadata.json`));
+  // Created-early: anchor = startsAt (2026-07-11) + 30d → 2026-08-10. Had it anchored on createdAt it
+  // would be 2026-07-20 — still alive here, but it would die mid-window for a longer lead time.
+  assert(store.store.has(`events/${EARLY}/metadata.json`));
+  assertEquals(summary.events.kept, 2);
+});
+
+Deno.test("event phase → a marker's OWN stamped lifetime wins over the configured fallback", async () => {
+  // The stamped value is what makes a config change unable to reach a live event. Here a 1-day lifetime
+  // is stamped on an event the 30-day fallback would have kept alive.
+  const SHORT = "e5e5e5e5-0000-4000-8000-0000000000e5";
+  const LONG = "e6e6e6e6-0000-4000-8000-0000000000e6";
+  const store = fake({
+    [`events/${SHORT}/metadata.json`]: {
+      json: { ...mkMarker(SHORT, LIVE_STARTS, LIVE_ENDS), lifetimeSeconds: 24 * 60 * 60 },
+    },
+    [`events/${LONG}/metadata.json`]: {
+      json: { ...mkMarker(LONG, LIVE_STARTS, LIVE_ENDS), lifetimeSeconds: 365 * 24 * 60 * 60 },
+    },
+  });
+  const { summary } = await run(store);
+  assert(!store.store.has(`events/${SHORT}/metadata.json`)); // 2026-07-01 + 1d → long past NOW
+  assert(store.store.has(`events/${LONG}/metadata.json`)); // 2026-07-01 + 365d → far future
+  assertEquals(summary.events.deleted, 1);
+  assertEquals(summary.events.kept, 1);
+});
+
+Deno.test("event phase → an event past its WINDOW but within its lifetime is untouched", async () => {
+  // The whole point of the decoupling: `endsAt` closes nothing. Members keep syncing their backlog and
+  // late guests can still join, for as long as the event exists.
+  const E = "e7e7e7e7-0000-4000-8000-0000000000e7";
+  const store = fake({
+    // startsAt 2026-07-01 → deadline 2026-07-31; endsAt 2026-07-05 → the window closed 9 days ago.
+    [`events/${E}/metadata.json`]: { json: mkMarker(E, LIVE_STARTS, "2026-07-05T00:00:00Z") },
+    [`events/${E}/devices/${D}.json`]: { json: mkManifest(D, "a.heic") },
+  });
+  const { summary } = await run(store);
+  assert(store.store.has(`events/${E}/metadata.json`));
+  assertEquals(summary.events.kept, 1);
 });
 
 Deno.test("asset phase → referenced kept; unreferenced-below-floor collected; unreferenced-above-floor kept", async () => {
@@ -238,7 +349,7 @@ Deno.test("asset phase → a referenced byte with a percent-encoded filename is 
   assertEquals(summary.files.kept.count, 1);
 });
 
-Deno.test("dry-run → deletes NOTHING, notifies NOTHING, but counts the candidates", async () => {
+Deno.test("dry-run → deletes NOTHING, but counts the candidates", async () => {
   const E_STALE = "34343434-0000-4000-8000-000000000008";
   const store = fake({
     [`events/${E_STALE}/metadata.json`]: {
@@ -248,9 +359,8 @@ Deno.test("dry-run → deletes NOTHING, notifies NOTHING, but counts the candida
     [`devices/${ORPHAN}.json`]: { json: {} },
   });
   const before = store.store.size;
-  const { summary, notified } = await run(store, true);
+  const { summary } = await run(store, true);
   assertEquals(store.store.size, before); // nothing deleted
-  assertEquals(notified, []); // dry-run never notifies (a side effect)
   assertEquals(summary.dryRun, true);
   assertEquals(summary.events.deleted, 1); // …but the candidate counts are reported
   assertEquals(summary.files.deleted.count, 1);

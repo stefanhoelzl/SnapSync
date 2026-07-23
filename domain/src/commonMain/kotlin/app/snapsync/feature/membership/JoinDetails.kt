@@ -12,7 +12,7 @@ import app.snapsync.ports.EventDetails
  * is a fetch composed with this mapping.
  */
 fun EventDetails.toJoinLoad(): JoinLoad = when (this) {
-    is EventDetails.Found -> JoinLoad.Found(name, startsAt, endsAt)
+    is EventDetails.Found -> JoinLoad.Found(name, startsAt, endsAt, deletesAt)
     EventDetails.NotFound -> JoinLoad.NotFound
     EventDetails.Failed -> JoinLoad.Failed
 }

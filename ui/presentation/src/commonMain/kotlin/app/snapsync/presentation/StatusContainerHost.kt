@@ -381,7 +381,7 @@ class StatusContainerHost(
         val p = pending.state.value ?: return@intent
         val ph = p.phase as? JoinPhase.ExplainAccess ?: return@intent
         commands.requestAccess()
-        pending.set(p.copy(phase = JoinPhase.Ready(ph.name, ph.startsAt, ph.endsAt)))
+        pending.set(p.copy(phase = JoinPhase.Ready(ph.name, ph.startsAt, ph.endsAt, ph.deletesAt)))
     }
 
     /** Discard the pending join/switch, returning to the base screen. */
@@ -436,7 +436,7 @@ class StatusContainerHost(
             // successful load (the backend synthesizes one for legacy markers, and the details source
             // fails the load rather than invent one), so the default is simply the event's start. The
             // photo-access explainer still gates the Ready phase on a first join.
-            is JoinLoad.Found -> readyOrExplain(load.name, load.startsAt, load.endsAt)
+            is JoinLoad.Found -> readyOrExplain(load.name, load.startsAt, load.endsAt, load.deletesAt)
             JoinLoad.NotFound -> JoinPhase.NotFound
             JoinLoad.Failed -> JoinPhase.LoadFailed
         }
@@ -458,15 +458,28 @@ class StatusContainerHost(
      *   would be a lie; `DENIED` goes straight to the confirm and meets the Settings affordance after
      *   joining. `GRANTED` needs no explanation.
      */
-    private fun readyOrExplain(name: String, startsAt: String, endsAt: String): JoinPhase {
+    private fun readyOrExplain(
+        name: String,
+        startsAt: String,
+        endsAt: String,
+        deletesAt: String,
+    ): JoinPhase {
         val firstJoin = config.value == null
         val neverAsked = permission.value == PermissionStatus.NOT_DETERMINED
         return if (firstJoin && neverAsked) {
-            JoinPhase.ExplainAccess(name, startsAt, endsAt)
+            JoinPhase.ExplainAccess(name, startsAt, endsAt, deletesAt)
         } else {
-            JoinPhase.Ready(name, startsAt, endsAt)
+            JoinPhase.Ready(name, startsAt, endsAt, deletesAt)
         }
     }
+
+    /** The four facts a loaded details response supplies, carried together through the commit path. */
+    private data class LoadedEvent(
+        val name: String,
+        val startsAt: String,
+        val endsAt: String,
+        val deletesAt: String,
+    )
 
     private suspend fun commit(
         withLeave: Boolean,
@@ -477,20 +490,25 @@ class StatusContainerHost(
     ) {
         val p = pending.state.value ?: return
         // Only a loaded (Ready) or previously-failed (CommitFailed) surface can be confirmed; a
-        // still-loading/blocked/committing phase ignores the action. Both carry a non-null name, startsAt
-        // AND endsAt — so a commit can never reach `JoinEvent` without the floor and ceiling.
-        val (name, startsAt, endsAt) = when (val ph = p.phase) {
-            is JoinPhase.Ready -> Triple(ph.name, ph.startsAt, ph.endsAt)
-            is JoinPhase.CommitFailed -> Triple(ph.name, ph.startsAt, ph.endsAt)
+        // still-loading/blocked/committing phase ignores the action. Both carry a non-null name, startsAt,
+        // endsAt AND deletesAt — so a commit can never reach `JoinEvent` without the floor, the ceiling,
+        // and the retention deadline.
+        val loaded = when (val ph = p.phase) {
+            is JoinPhase.Ready -> LoadedEvent(ph.name, ph.startsAt, ph.endsAt, ph.deletesAt)
+            is JoinPhase.CommitFailed -> LoadedEvent(ph.name, ph.startsAt, ph.endsAt, ph.deletesAt)
             else -> return
         }
-        pending.set(p.copy(phase = JoinPhase.Committing(name, startsAt, endsAt)))
+        val (name, startsAt, endsAt, deletesAt) = loaded
+        pending.set(p.copy(phase = JoinPhase.Committing(name, startsAt, endsAt, deletesAt)))
         if (withLeave) commands.leave()
-        if (commands.commitJoin(p.eventId, name, startsAt, endsAt, cutoff, until, direction, saveToAlbum)) {
+        if (commands.commitJoin(
+                p.eventId, name, startsAt, endsAt, deletesAt, cutoff, until, direction, saveToAlbum,
+            )
+        ) {
             // Success: config flips present via ConfigSource → reduces to Joined; drop the overlay.
             if (pending.state.value?.eventId == p.eventId) pending.set(null)
         } else if (pending.state.value?.eventId == p.eventId) {
-            pending.set(p.copy(phase = JoinPhase.CommitFailed(name, startsAt, endsAt)))
+            pending.set(p.copy(phase = JoinPhase.CommitFailed(name, startsAt, endsAt, deletesAt)))
         }
     }
 
@@ -534,7 +552,11 @@ class StatusContainerHost(
         // The album choice defaults to off, unless the event link supplied an explicit dev/test override
         // (capability `event-album`).
         val saveToAlbum = explicitSaveToAlbum ?: false
-        if (!commands.commitJoin(eventId, load.name, load.startsAt, load.endsAt, cutoff, until, direction, saveToAlbum)) {
+        if (!commands.commitJoin(
+                eventId, load.name, load.startsAt, load.endsAt, load.deletesAt, cutoff, until, direction,
+                saveToAlbum,
+            )
+        ) {
             log("autoJoin aborted: enrollment failed for $eventId")
         }
     }

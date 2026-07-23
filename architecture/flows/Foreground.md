@@ -18,7 +18,7 @@ sequenceDiagram
   participant effects
   participant statusPoller
   participant downloadController
-  participant eventName
+  participant membershipRefresh
   Trigger->>Foreground: run(…)
   Foreground->>effects: reloadConfig()
   Foreground->>effects: pumpForeground()
@@ -28,7 +28,7 @@ sequenceDiagram
     Foreground--)downloadController: reconcile(…)
   end
   opt only when activeEventId() resolves
-    Foreground--)eventName: storeRefreshedDetails(…)
+    Foreground--)membershipRefresh: refresh(…)
   end
   Foreground->>effects: refreshAttestation()
 ```

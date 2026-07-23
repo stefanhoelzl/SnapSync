@@ -22,6 +22,8 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.withTimeout
 import kotlin.coroutines.coroutineContext
 import kotlin.time.Instant
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.datetime.TimeZone
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -95,7 +97,14 @@ class JoinGateIntegrationTest {
 
             host.onOpenUrl(deeplink(EVENT_E))
             assertEquals(
-                UiState.JoiningEvent(EVENT_E, JoinPhase.Ready("Anna's Wedding", "2026-01-01T00:00:00Z", "2026-01-31T00:00:00Z")),
+                UiState.JoiningEvent(EVENT_E, JoinPhase.Ready(
+                        "Anna's Wedding",
+                        "2026-01-01T00:00:00Z",
+                        "2026-01-31T00:00:00Z",
+                        // The world edge derives it exactly as the real one does:
+                        // `max(createdAt, startsAt) + 30d` (capability `event-limits`).
+                        "2026-01-31T00:00:00Z",
+                    )),
                 host.await { (it as? UiState.JoiningEvent)?.phase is JoinPhase.Ready },
             )
 
@@ -329,6 +338,72 @@ class JoinGateIntegrationTest {
     // ---- helpers --------------------------------------------------------------------------------
 
     private fun deeplink(eventId: String) = encodeEventUrl(EventLinkPayload(eventId))
+
+    // ── The membership self-leave (capability `leave-event`) ────────────────────────────────────────
+    //
+    // The one path that destroys user state without a tap. It runs over the REAL composition — the same
+    // `Foreground` flow and `MembershipRefresh` rule the iOS shell wires — so these prove the WIRING, not
+    // just the rule (`MembershipRefreshTest` covers the verdict matrix in isolation).
+
+    @Test
+    fun a_swept_event_returns_the_device_to_unjoined_on_the_next_foreground() = worldTest {
+        val scope = CoroutineScope(coroutineContext + Job())
+        try {
+            val w = World(this)
+            w.store.registerEvent(EVENT_E, "Anna's Wedding")
+            val host = joinHost(w, scope)
+            host.onOpenUrl(deeplink(EVENT_E))
+            host.await { (it as? UiState.JoiningEvent)?.phase is JoinPhase.Ready }
+            host.onConfirmJoin(CUTOFF, ENDS, Direction.Both, false)
+            host.await { it is UiState.Joined }
+            assertEquals(EVENT_E, w.configSource.config.value?.eventId)
+
+            // The nightly sweep deletes the event out from under a still-active member, and time moves
+            // past the deadline the membership persisted at join. BOTH witnesses now hold.
+            w.store.sweepEvent(EVENT_E)
+            w.nowMillis = Instant.parse("2027-01-01T00:00:00Z").toEpochMilliseconds()
+
+            w.core.foregroundFlow.run()
+            host.await { it is UiState.CreateEvent }
+            assertNull(
+                w.configSource.config.value,
+                "the membership is torn down and the device is back at the setup gate",
+            )
+        } finally {
+            scope.cancel()
+        }
+    }
+
+    @Test
+    fun a_transient_details_failure_never_tears_the_membership_down() = worldTest {
+        val scope = CoroutineScope(coroutineContext + Job())
+        try {
+            val w = World(this)
+            w.store.registerEvent(EVENT_E, "Anna's Wedding")
+            val host = joinHost(w, scope)
+            host.onOpenUrl(deeplink(EVENT_E))
+            host.await { (it as? UiState.JoiningEvent)?.phase is JoinPhase.Ready }
+            host.onConfirmJoin(CUTOFF, ENDS, Direction.Both, false)
+            host.await { it is UiState.Joined }
+            val joined = w.configSource.config.value
+
+            // The event is very much alive; the backend just cannot be reached. Past the deadline too, so
+            // ONLY the confirmed-absence witness is missing — exactly the systemic-fault shape.
+            w.store.offline = true
+            w.nowMillis = Instant.parse("2027-01-01T00:00:00Z").toEpochMilliseconds()
+
+            w.core.foregroundFlow.run()
+            // A NEGATIVE assertion, so it needs a bounded wait rather than an await-until: give the
+            // flow's escaping launch real time to do the wrong thing, and assert it never does.
+            assertNull(
+                withTimeoutOrNull(500) { w.configSource.config.first { it == null } },
+                "a fetch that could not tell is never destructive",
+            )
+            assertEquals(joined, w.configSource.config.value, "the membership is untouched")
+        } finally {
+            scope.cancel()
+        }
+    }
 
     private fun joinHost(
         w: World,

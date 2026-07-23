@@ -1,5 +1,6 @@
 import { assertEquals } from "@std/assert";
 import {
+  canonicalFromMs,
   canonicalPlusSeconds,
   MAX_EVENT_NAME_LENGTH,
   validateEndsAt,
@@ -109,34 +110,54 @@ Deno.test("validateStartsAt: rejects empty and non-string input", () => {
   assertEquals(validateStartsAt(42), null);
 });
 
-Deno.test("validateEndsAt: accepts a canonical instant strictly after startsAt", () => {
+const WINDOW_MAX = 30 * 24 * 60 * 60;
+
+Deno.test("validateEndsAt: accepts a canonical instant strictly after startsAt, within the window cap", () => {
   const startsAt = "2026-07-14T18:00:00Z";
-  assertEquals(validateEndsAt("2026-07-21T23:00:00Z", startsAt), "2026-07-21T23:00:00Z");
-  // One second after start is enough; no upper-duration cap, so years ahead is fine too.
-  assertEquals(validateEndsAt("2026-07-14T18:00:01Z", startsAt), "2026-07-14T18:00:01Z");
-  assertEquals(validateEndsAt("2031-07-14T18:00:00Z", startsAt), "2031-07-14T18:00:00Z");
+  assertEquals(
+    validateEndsAt("2026-07-21T23:00:00Z", startsAt, WINDOW_MAX),
+    "2026-07-21T23:00:00Z",
+  );
+  // One second after start is enough.
+  assertEquals(
+    validateEndsAt("2026-07-14T18:00:01Z", startsAt, WINDOW_MAX),
+    "2026-07-14T18:00:01Z",
+  );
+});
+
+Deno.test("validateEndsAt: the window cap is inclusive at the maximum and rejects one second past it", () => {
+  // The cap is a HARD bound, not a pricing lever: a window longer than the event's storage lifetime
+  // would declare captures eligible for upload into an event that no longer exists by then — a photo
+  // uploading into nothing, the silent loss the selection policy exists to prevent.
+  const startsAt = "2026-07-14T18:00:00Z";
+  assertEquals(
+    validateEndsAt("2026-08-13T18:00:00Z", startsAt, WINDOW_MAX), // exactly 30 days
+    "2026-08-13T18:00:00Z",
+  );
+  assertEquals(validateEndsAt("2026-08-13T18:00:01Z", startsAt, WINDOW_MAX), null); // 30d + 1s
+  assertEquals(validateEndsAt("2031-07-14T18:00:00Z", startsAt, WINDOW_MAX), null); // years ahead
 });
 
 Deno.test("validateEndsAt: rejects an end at or before startsAt", () => {
   const startsAt = "2026-07-14T18:00:00Z";
-  assertEquals(validateEndsAt("2026-07-14T18:00:00Z", startsAt), null); // equal
-  assertEquals(validateEndsAt("2026-07-14T17:59:59Z", startsAt), null); // before
-  assertEquals(validateEndsAt("2001-01-01T00:00:00Z", startsAt), null); // long before
+  assertEquals(validateEndsAt("2026-07-14T18:00:00Z", startsAt, WINDOW_MAX), null); // equal
+  assertEquals(validateEndsAt("2026-07-14T17:59:59Z", startsAt, WINDOW_MAX), null); // before
+  assertEquals(validateEndsAt("2001-01-01T00:00:00Z", startsAt, WINDOW_MAX), null); // long before
 });
 
 Deno.test("validateEndsAt: rejects off-canonical shapes and non-instants", () => {
   const startsAt = "2026-07-14T18:00:00Z";
-  assertEquals(validateEndsAt("2026-07-21T23:00:00.000Z", startsAt), null); // millis
-  assertEquals(validateEndsAt("2026-07-21T23:00:00", startsAt), null); // no Z
-  assertEquals(validateEndsAt("2026-13-45T99:99:99Z", startsAt), null); // not a real instant
-  assertEquals(validateEndsAt("", startsAt), null);
-  assertEquals(validateEndsAt(undefined, startsAt), null);
-  assertEquals(validateEndsAt(null, startsAt), null);
-  assertEquals(validateEndsAt(42, startsAt), null);
+  assertEquals(validateEndsAt("2026-07-21T23:00:00.000Z", startsAt, WINDOW_MAX), null); // millis
+  assertEquals(validateEndsAt("2026-07-21T23:00:00", startsAt, WINDOW_MAX), null); // no Z
+  assertEquals(validateEndsAt("2026-13-45T99:99:99Z", startsAt, WINDOW_MAX), null); // not real
+  assertEquals(validateEndsAt("", startsAt, WINDOW_MAX), null);
+  assertEquals(validateEndsAt(undefined, startsAt, WINDOW_MAX), null);
+  assertEquals(validateEndsAt(null, startsAt, WINDOW_MAX), null);
+  assertEquals(validateEndsAt(42, startsAt, WINDOW_MAX), null);
 });
 
 Deno.test("canonicalPlusSeconds: adds whole seconds and stays in the canonical cutoff shape", () => {
-  // 30 days — the event-duration case (capability `event-limits`): endsAt = startsAt + duration.
+  // 30 days — the absent-endsAt fallback (capability `event-limits`): endsAt = startsAt + windowMax.
   assertEquals(
     canonicalPlusSeconds("2026-06-27T18:00:00Z", 30 * 24 * 60 * 60),
     "2026-07-27T18:00:00Z",
@@ -155,4 +176,16 @@ Deno.test("canonicalPlusSeconds: rolls over month and year boundaries correctly"
     canonicalPlusSeconds("2026-02-27T12:00:00Z", 2 * 24 * 60 * 60),
     "2026-03-01T12:00:00Z",
   );
+});
+
+Deno.test("canonicalFromMs: renders the canonical cutoff shape, rounding DOWN to the second", () => {
+  const at = Date.parse("2026-07-27T18:00:00Z");
+  assertEquals(canonicalFromMs(at), "2026-07-27T18:00:00Z");
+  // Sub-second precision is TRUNCATED, not rounded to nearest: the served deadline lands at or before
+  // the real one, so a client's self-leave can only ever fire slightly early (recoverable by
+  // re-scanning) and never slightly late (a phantom membership).
+  assertEquals(canonicalFromMs(at + 999), "2026-07-27T18:00:00Z");
+  assertEquals(canonicalFromMs(at + 1000), "2026-07-27T18:00:01Z");
+  // The result validates as a canonical instant itself.
+  assertEquals(validateStartsAt(canonicalFromMs(at + 1)), "2026-07-27T18:00:00Z");
 });

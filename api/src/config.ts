@@ -1,5 +1,5 @@
 // Runtime configuration: NON-SECRET values are SOURCE CONSTANTS below; only the genuine SECRETS
-// (storage AccessKey, APNs key, token-signing key, admin key) come from the Edge Script environment.
+// (storage AccessKey, APNs key, token-signing key) come from the Edge Script environment.
 // `readConfig` is called once at startup and THROWS naming any missing/blank secret, so a misconfigured
 // deployment fails to boot (fail-closed at deploy time).
 //
@@ -106,24 +106,42 @@ const ATTEST_TOKEN_TTL_SECONDS = 30 * 24 * 60 * 60;
 
 /**
  * Event limits (capability `event-limits`) — SOURCE CONSTANTS, per this module's rule. They are the
- * MINT-TIME source only: `POST /events` stamps `endsAt = startsAt + duration` and `capacity` onto the
- * event's write-once marker, and every later check reads the marker's own fields — so changing a value
- * here affects only events minted afterwards, never a live event. Tests exercise short windows by
- * constructing a `Config` directly (the same way the attest TTL is pinned), not via the environment.
+ * MINT-TIME source only: `POST /events` validates against the window maximum and stamps `capacity` +
+ * `lifetimeSeconds` onto the event's write-once marker, and every later check reads the marker's own
+ * fields — so changing a value here affects only events minted afterwards, never a live event. Tests
+ * exercise short windows by constructing a `Config` directly (the same way the attest TTL is pinned),
+ * not via the environment.
  */
 
 /** Maximum devices EVER enrolled per event (active ∪ departed — leaving frees no slot). */
 const EVENT_CAPACITY = 10;
 
-/** Event lifetime: `endsAt` is stamped this far after the marker's `startsAt`. 30 days. */
-const EVENT_DURATION_SECONDS = 30 * 24 * 60 * 60;
+/**
+ * Maximum event WINDOW: the largest `endsAt - startsAt` a create may declare, and the fallback applied
+ * when a create sends no `endsAt` at all. 30 days.
+ *
+ * DELIBERATELY NOT the same constant as {@link EVENT_LIFETIME_SECONDS}, even though the two hold the
+ * same value today. They answer different questions — "how long may photos be *taken* for?" vs "how long
+ * do we *keep* them?" — and only the lifetime is stamped onto the marker. Collapsing them would make a
+ * future divergence a silent behaviour change in two unrelated places.
+ *
+ * The cap is a hard bound, not a pricing lever: a window longer than the lifetime would declare captures
+ * eligible for upload into an event that no longer exists by then, and a photo that uploads into nothing
+ * is exactly the silent loss the selection policy exists to prevent. The only future paid-tier lever is
+ * {@link EVENT_CAPACITY}.
+ */
+const EVENT_WINDOW_MAX_SECONDS = 30 * 24 * 60 * 60;
 
 /**
- * Post-`endsAt` grace: joining is closed but existing members keep full sync, so photos taken during
- * the event that upload late (the OS schedules uploads on its own cadence) still land. 1 day. Past
- * `endsAt + grace` the event is stale and the nightly sweep (capability `scheduled-cleanup`) deletes it.
+ * Event LIFETIME: how long an event's data is kept, measured from `max(createdAt, startsAt)`. 30 days.
+ *
+ * Stamped onto the marker as a DURATION, never as an absolute delete-by instant. Stamping the duration
+ * keeps the per-event value immutable against a later change to this constant, while leaving the anchor
+ * it is measured from in shared code (`lifecycle.ts`) — so the anchor policy can be corrected without
+ * rewriting a single stored marker. Past that derived instant the event is stale and the nightly sweep
+ * (capability `scheduled-cleanup`) deletes it.
  */
-const EVENT_GRACE_SECONDS = 24 * 60 * 60;
+const EVENT_LIFETIME_SECONDS = 30 * 24 * 60 * 60;
 
 export type Config = {
   /** bunny Storage zone name (also the S3 Access Key ID + bucket). */
@@ -156,13 +174,6 @@ export type Config = {
    * environment, never in source.
    */
   attestTokenKey: string;
-  /**
-   * The notify **admin key** (capabilities `event-notify-endpoint`, `scheduled-cleanup`): a bearer secret
-   * whose SOLE authorization is `POST /events/<id>/notify`, held by the out-of-edge nightly sweep so it
-   * can notify an expiring event's members before deleting it despite holding no device token. A SECRET:
-   * read from the environment, never in source.
-   */
-  adminKey: string;
   /** Apple's App Attest root CA (PEM) — the trust anchor for every attestation chain. */
   appAttestRootCa: string;
   /** Device-token lifetime, in seconds. */
@@ -182,10 +193,10 @@ export type Config = {
   appStoreUrl: string;
   /** Maximum devices ever enrolled per event (capability `event-limits`). */
   eventCapacity: number;
-  /** Event lifetime in seconds — the mint-time source of a marker's `endsAt`. */
-  eventDurationSeconds: number;
-  /** Post-`endsAt` grace period in seconds (joins closed, members still sync). */
-  eventGraceSeconds: number;
+  /** Largest permitted `endsAt - startsAt`, in seconds; also the absent-`endsAt` fallback. */
+  eventWindowMaxSeconds: number;
+  /** Event lifetime in seconds — stamped onto the marker, measured from `max(createdAt, startsAt)`. */
+  eventLifetimeSeconds: number;
 };
 
 /** The storage-zone password (the native `AccessKey`; also the S3 secret). The zone's password. */
@@ -200,12 +211,6 @@ export const ENV_APNS_PRIVATE_KEY = "APNS_PRIVATE_KEY";
  * set by hand. That is not hypothetical; it is how this backend stayed dead for two weeks.
  */
 export const ENV_ATTEST_TOKEN_KEY = "ATTEST_TOKEN_KEY";
-/**
- * The notify admin-key secret (capability `scheduled-cleanup`). Set on the Edge Script **before** the
- * code reading it is merged, for the same reason as the token key: `readConfig` throws when it is
- * missing, and CI ships code but cannot ship config.
- */
-export const ENV_ADMIN_NOTIFY_KEY = "ADMIN_NOTIFY_KEY";
 
 /**
  * Build {@link Config}: the source constants above, plus the four secrets from `env`. Throws naming
@@ -219,13 +224,11 @@ export function readConfig(env: Record<string, string | undefined>): Config {
   const apnsPrivateKey = env[ENV_APNS_PRIVATE_KEY];
 
   const attestTokenKey = env[ENV_ATTEST_TOKEN_KEY]?.trim();
-  const adminKey = env[ENV_ADMIN_NOTIFY_KEY]?.trim();
 
   const missing = [
     [ENV_ACCESS_KEY, accessKey],
     [ENV_APNS_PRIVATE_KEY, apnsPrivateKey?.trim()],
     [ENV_ATTEST_TOKEN_KEY, attestTokenKey],
-    [ENV_ADMIN_NOTIFY_KEY, adminKey],
   ].filter(([, value]) => !value).map(([name]) => name);
 
   if (missing.length > 0) {
@@ -237,14 +240,13 @@ export function readConfig(env: Record<string, string | undefined>): Config {
     accessKey: accessKey!,
     apnsPrivateKey: apnsPrivateKey!,
     attestTokenKey: attestTokenKey!,
-    adminKey: adminKey!,
   };
 }
 
 /** Every NON-secret Config field — the source constants, shared by `readConfig` and `readSweepConfig`. */
 function sourceConstants(): Omit<
   Config,
-  "accessKey" | "apnsPrivateKey" | "attestTokenKey" | "adminKey"
+  "accessKey" | "apnsPrivateKey" | "attestTokenKey"
 > {
   return {
     zone: ZONE,
@@ -262,31 +264,27 @@ function sourceConstants(): Omit<
     linkDomain: LINK_DOMAIN,
     appStoreUrl: APP_STORE_URL,
     eventCapacity: EVENT_CAPACITY,
-    eventDurationSeconds: EVENT_DURATION_SECONDS,
-    eventGraceSeconds: EVENT_GRACE_SECONDS,
+    eventWindowMaxSeconds: EVENT_WINDOW_MAX_SECONDS,
+    eventLifetimeSeconds: EVENT_LIFETIME_SECONDS,
   };
 }
 
 /**
  * Build a Config for the nightly sweep (capability `scheduled-cleanup`), which runs OUTSIDE the Edge
- * Script and holds ONLY two secrets — the storage `AccessKey` (to read/delete storage) and the notify
- * `ADMIN_NOTIFY_KEY` (to notify an expiring event's members through the edge). The two edge-only secrets it never
- * uses (the APNs key, the token-signing key) are left blank. Throws naming any missing/blank secret.
+ * Script and holds exactly ONE secret — the storage `AccessKey`, to read and delete storage.
+ *
+ * The sweep makes NO request to the Edge Script, so it needs no credential authorizing one: it no longer
+ * announces a deletion (the announcement could not say what it meant, and arrived after the deletes it
+ * described). The edge-only secrets it never uses are left blank. Throws naming any missing/blank secret.
  */
 export function readSweepConfig(env: Record<string, string | undefined>): Config {
   const accessKey = env[ENV_ACCESS_KEY]?.trim();
-  const adminKey = env[ENV_ADMIN_NOTIFY_KEY]?.trim();
-  const missing = [
-    [ENV_ACCESS_KEY, accessKey],
-    [ENV_ADMIN_NOTIFY_KEY, adminKey],
-  ].filter(([, value]) => !value).map(([name]) => name);
-  if (missing.length > 0) {
-    throw new Error(`missing configuration: ${missing.join(", ")}`);
+  if (!accessKey) {
+    throw new Error(`missing configuration: ${ENV_ACCESS_KEY}`);
   }
   return {
     ...sourceConstants(),
-    accessKey: accessKey!,
-    adminKey: adminKey!,
+    accessKey,
     apnsPrivateKey: "", // unused by the sweep (the edge holds the real APNs key)
     attestTokenKey: "", // unused by the sweep (the edge holds the real token-signing key)
   };
@@ -303,7 +301,6 @@ export function storageConfig(accessKey: string): Config {
   return {
     ...sourceConstants(),
     accessKey,
-    adminKey: "",
     apnsPrivateKey: "",
     attestTokenKey: "",
   };

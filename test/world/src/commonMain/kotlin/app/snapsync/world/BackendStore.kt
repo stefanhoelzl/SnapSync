@@ -29,7 +29,12 @@ class UnionAssetDto(
     val resources: List<UnionResourceDto>,
 )
 
-/** The `201` body of `POST /events` (and the `GET /events/<id>` marker). */
+/**
+ * The `201` body of `POST /events` (and the `GET /events/<id>` read). [deletesAt] is the event's
+ * retention deadline (capability `event-limits`) — DERIVED by the edge, never stored as a field, and
+ * required on every `200`: the client refuses a details response missing it, because an invented
+ * deadline would decide whether a membership is destroyed (capability `leave-event`).
+ */
 @Serializable
 class CreatedEventDto(
     val eventId: String,
@@ -37,6 +42,7 @@ class CreatedEventDto(
     val createdAt: String,
     val startsAt: String,
     val endsAt: String,
+    val deletesAt: String,
 )
 
 /**
@@ -126,6 +132,21 @@ class BackendStore {
     }
 
     fun isRegistered(eventId: String): Boolean = eventId in events
+
+    /**
+     * Delete an event from the registry — the **nightly sweep's** effect (capability
+     * `scheduled-cleanup`), which is the only thing that ever removes one. Every subsequent
+     * `GET /events/<id>` then answers `404`, exactly as it would against the real backend after a sweep.
+     *
+     * A DELIBERATELY blunt lever: the sweep runs out-of-edge and the world models no scheduler, so what
+     * matters here is the observable consequence for a device that was still joined.
+     */
+    fun sweepEvent(eventId: String) {
+        events.remove(eventId)
+        eventNames.remove(eventId)
+        eventStarts.remove(eventId)
+        eventEnds.remove(eventId)
+    }
 
     /** Deposit a device manifest from its JSON body (the `PUT /events/<id>/devices/<id>` effect). */
     fun putManifestJson(eventId: String, deviceId: String, json: String) {

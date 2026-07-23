@@ -17,6 +17,7 @@ import app.snapsync.feature.membership.JoinEvent
 import app.snapsync.ports.PhotoAccessRequester
 import app.snapsync.model.PermissionStatus
 import app.snapsync.ports.PhotoAccessStatusSource
+import app.snapsync.feature.membership.toJoinLoad
 import app.snapsync.model.JoinLoad
 import app.snapsync.presentation.StatusContainerHost
 import app.snapsync.model.DENYLISTED_ALBUM_TITLES
@@ -152,12 +153,10 @@ class WorldInspectorController(private val scope: CoroutineScope) {
         creator = world.core.eventCreator
     }
 
-    /** Details load for the join gate (GET /events/:id over the mini-edge), mapped to the gate's [JoinLoad]. */
-    suspend fun loadJoinDetails(eventId: String): JoinLoad = when (val d = joinEvent.loadDetails(eventId)) {
-        is EventDetails.Found -> JoinLoad.Found(d.name, d.startsAt, d.endsAt)
-        EventDetails.NotFound -> JoinLoad.NotFound
-        EventDetails.Failed -> JoinLoad.Failed
-    }
+    /** Details load for the join gate (GET /events/:id over the mini-edge), mapped to the gate's
+     *  [JoinLoad] by the SAME `feature/membership` mapping the device shells use — never a second copy,
+     *  which is how the `NotFound` ↔ `Failed` distinction would drift out of the harness. */
+    suspend fun loadJoinDetails(eventId: String): JoinLoad = joinEvent.loadDetails(eventId).toJoinLoad()
 
     /** The join-time shareable-count preview over the world gallery (capability `join-share-count`). */
     suspend fun loadShareableCount(cutoff: String, until: String?): Int? = world.core.loadShareableCount(cutoff, until)
@@ -168,12 +167,14 @@ class WorldInspectorController(private val scope: CoroutineScope) {
         name: String,
         startsAt: String,
         endsAt: String,
+        deletesAt: String,
         cutoff: String,
         until: String,
         direction: Direction,
         saveToAlbum: Boolean,
     ): Boolean =
-        world.userCommands.commitJoin(eventId, name, startsAt, endsAt, cutoff, until, direction, saveToAlbum)
+        world.userCommands
+            .commitJoin(eventId, name, startsAt, endsAt, deletesAt, cutoff, until, direction, saveToAlbum)
             .also { afterMutation() }
 
     // ---- the OS invocation + token ---------------------------------------------------------------

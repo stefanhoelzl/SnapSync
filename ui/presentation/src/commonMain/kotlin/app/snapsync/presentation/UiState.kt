@@ -76,11 +76,16 @@ sealed interface JoinPhase {
      * is a silent no-op, so an explainer promising a dialog would be false).
      *
      * Its confirm requests permission and advances to [Ready]; its cancel discards the pending join like
-     * any other phase. [name], [startsAt] and [endsAt] are carried **solely to hand off to [Ready]** —
-     * this phase renders neither. Permission is a snapshot taken when the phase is chosen, not an
+     * any other phase. [name], [startsAt], [endsAt] and [deletesAt] are carried **solely to hand off to [Ready]** —
+     * this phase renders none of them. Permission is a snapshot taken when the phase is chosen, not an
      * observation: the phase advances only by user action.
      */
-    data class ExplainAccess(val name: String, val startsAt: String, val endsAt: String) : JoinPhase
+    data class ExplainAccess(
+        val name: String,
+        val startsAt: String,
+        val endsAt: String,
+        val deletesAt: String,
+    ) : JoinPhase
 
     /**
      * Details loaded; the confirm (Join/Switch) is offered. [name] is the event name (required,
@@ -96,8 +101,19 @@ sealed interface JoinPhase {
      * visibly does nothing. [endsAt] is the event's **end date** — required, non-null, canonical UTC `…Z`
      * — the range row's upper **default** and its **ceiling** (capability `photo-selection-policy`): the
      * upper bound cannot exceed it, and it seeds the "Event end" preset.
+     *
+     * [deletesAt] is the event's **retention deadline** (capability `event-limits`) — required, non-null,
+     * canonical UTC `…Z`, **server-derived** and carried verbatim. This phase renders it (the gate states
+     * when the shared photos go, before the confirm) and the commit persists it as the offline witness of
+     * the self-leave (capability `leave-event`). It is never computed on the device: a client-side copy of
+     * the retention constant would promise a date the backend will not honour, silently.
      */
-    data class Ready(val name: String, val startsAt: String, val endsAt: String) : JoinPhase
+    data class Ready(
+        val name: String,
+        val startsAt: String,
+        val endsAt: String,
+        val deletesAt: String,
+    ) : JoinPhase
 
     /** The event does not exist (404) — an invalid/expired invite; no confirm offered. */
     data object NotFound : JoinPhase
@@ -106,16 +122,26 @@ sealed interface JoinPhase {
     data object LoadFailed : JoinPhase
 
     /** The confirm was taken; enroll + provision are in flight. [name] carries the loaded name. */
-    data class Committing(val name: String, val startsAt: String, val endsAt: String) : JoinPhase
+    data class Committing(
+        val name: String,
+        val startsAt: String,
+        val endsAt: String,
+        val deletesAt: String,
+    ) : JoinPhase
 
     /**
      * Enrollment/commit failed (or a switch's join failed after leaving); a Retry re-runs the join.
      *
-     * [startsAt] and [endsAt] ride along for the same reason [name] does: a Retry commits **without**
-     * passing back through the loaded phase, so the floor and ceiling have to still be here or the retry
-     * would join unclamped.
+     * [startsAt], [endsAt] and [deletesAt] ride along for the same reason [name] does: a Retry commits
+     * **without** passing back through the loaded phase, so the floor, the ceiling, and the retention
+     * deadline have to still be here or the retry would join unclamped and without a deadline.
      */
-    data class CommitFailed(val name: String, val startsAt: String, val endsAt: String) : JoinPhase
+    data class CommitFailed(
+        val name: String,
+        val startsAt: String,
+        val endsAt: String,
+        val deletesAt: String,
+    ) : JoinPhase
 }
 
 /**

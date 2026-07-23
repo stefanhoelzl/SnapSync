@@ -5,6 +5,7 @@ import {
   type Deps,
   type FetchLike,
 } from "../src/app.ts";
+import { deleteByMs } from "../src/lifecycle.ts";
 import { mintToken } from "../src/attest.ts";
 
 // The whole API is gated on a device token (capability `device-attestation`), so every request in this
@@ -32,15 +33,14 @@ const CONFIG = {
   apnsPrivateKey: "-----BEGIN PRIVATE KEY-----\nMIG...\n-----END PRIVATE KEY-----\n",
   apnsTopic: "app.snapsync",
   attestTokenKey: "test-attest-token-key",
-  adminKey: "test-admin-key",
   appAttestRootCa: "",
   attestTokenTtlSeconds: 30 * 24 * 60 * 60,
   attestAppId: "E9Z8BADH58.app.snapsync",
   linkDomain: "snapsync.stho.net",
   appStoreUrl: "https://apps.apple.com/app/id6781692480",
   eventCapacity: 10,
-  eventDurationSeconds: 30 * 24 * 60 * 60,
-  eventGraceSeconds: 24 * 60 * 60,
+  eventWindowMaxSeconds: 30 * 24 * 60 * 60,
+  eventLifetimeSeconds: 30 * 24 * 60 * 60,
 };
 
 const TOKEN = await mintToken(CONFIG, "11111111-0000-4000-8000-000000000002", NOW);
@@ -77,10 +77,12 @@ const MARKER_BODY = {
   capacity: 10,
 };
 const markerPresent = { [MARKER_URL]: { body: MARKER_BODY } };
-// Lifecycle variants for the event-limits tests: endsAt 12h before NOW (inside the 1-day grace) and
-// 4 days before NOW (expired — past endsAt + grace).
-const GRACE_MARKER = { ...MARKER_BODY, endsAt: "2026-07-14T00:00:00Z" };
-const EXPIRED_MARKER = { ...MARKER_BODY, endsAt: "2026-07-10T00:00:00Z" };
+// An event whose capture WINDOW has closed (endsAt 4 days before NOW) but which is very much alive: its
+// deadline is `max(createdAt, startsAt) + 30d` = 2026-07-27. The window closing must change NOTHING.
+const PAST_WINDOW_MARKER = { ...MARKER_BODY, endsAt: "2026-07-10T00:00:00Z" };
+// An event past its DELETE-BY (a 1-day stamped lifetime off a 2026-06-27 anchor). The gate still serves
+// it — no route deletes on touch; the nightly sweep does, and only it.
+const PAST_DEADLINE_MARKER = { ...MARKER_BODY, lifetimeSeconds: 24 * 60 * 60 };
 
 /**
  * Assert `url` is a presigned S3 GET for the bare object key `key` (e.g. `files/devices/<D>/A-primary.heic`):
@@ -433,7 +435,7 @@ Deno.test("device list → a percent-encoded filename round-trips and re-encodes
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
-Deno.test("POST /events → 201 {eventId,name,createdAt,startsAt,endsAt,capacity} + one marker PUT to events/<id>/metadata.json", async () => {
+Deno.test("POST /events → 201 {eventId,name,createdAt,startsAt,endsAt,capacity,deletesAt} + one marker PUT to events/<id>/metadata.json", async () => {
   const { calls, fetchImpl } = recorder();
   const res = await createApp({ config: CONFIG, fetch: fetchImpl }).request("/events", {
     method: "POST",
@@ -447,8 +449,17 @@ Deno.test("POST /events → 201 {eventId,name,createdAt,startsAt,endsAt,capacity
   assertEquals(typeof json.createdAt, "string");
   assertEquals(json.startsAt, STARTS_AT); // honored VERBATIM, not re-derived
   // The limits are STAMPED at mint from config (capability `event-limits`), in the canonical shape.
-  assertEquals(json.endsAt, ENDS_AT); // startsAt + the configured 30 days
+  assertEquals(json.endsAt, ENDS_AT); // absent endsAt → startsAt + the configured 30-day window max
   assertEquals(json.capacity, 10);
+  // The RESPONSE carries the DERIVED delete-by; the MARKER carries the stamped duration it derives from.
+  // Serving the derived instant keeps the anchor policy in one place: no client holds the constant.
+  // STARTS_AT is in the past relative to the real wall clock this mints at, so the anchor is `createdAt`
+  // — which is the back-dating guard: an event created today for last month's trip is not born expired.
+  const anchorMs = Math.max(Date.parse(json.createdAt), Date.parse(STARTS_AT));
+  const expected = new Date(Math.floor(anchorMs / 1000) * 1000 + 30 * 24 * 3600 * 1000)
+    .toISOString().replace(".000Z", "Z");
+  assertEquals(json.deletesAt, expected);
+  assertEquals(json.lifetimeSeconds, undefined); // the duration never goes on the wire
   assertEquals(calls.length, 1);
   const put = calls[0];
   assertEquals(put.init.method, "PUT");
@@ -456,7 +467,11 @@ Deno.test("POST /events → 201 {eventId,name,createdAt,startsAt,endsAt,capacity
   const h = new Headers(put.init.headers);
   assertEquals(h.get("AccessKey"), "zone-password");
   assertEquals(h.get("Content-Type"), "application/json");
-  assertEquals(JSON.parse(put.init.body as string), json);
+  const stored = JSON.parse(put.init.body as string);
+  assertEquals(stored.lifetimeSeconds, 30 * 24 * 60 * 60); // stamped as a DURATION, not an instant
+  assertEquals(stored.deletesAt, undefined); // …and never as an absolute delete-by
+  const { deletesAt: _derived, ...wire } = json;
+  assertEquals({ ...stored, lifetimeSeconds: undefined }, { ...wire, lifetimeSeconds: undefined });
 });
 
 Deno.test("POST /events → createdAt and startsAt are independent facts", async () => {
@@ -562,14 +577,29 @@ Deno.test("POST /events → an absent endsAt falls back to startsAt + 30d (legac
   assertEquals((await res.json()).endsAt, ENDS_AT); // startsAt + the configured 30 days
 });
 
-Deno.test("POST /events → a far-future endsAt is accepted (no duration cap)", async () => {
-  const { fetchImpl } = recorder();
-  const res = await createApp({ config: CONFIG, fetch: fetchImpl }).request("/events", {
+Deno.test("POST /events → a window longer than the 30-day maximum is refused 400, no upstream", async () => {
+  // The cap is a HARD bound, not a pricing lever: a window outliving the event's storage lifetime would
+  // declare captures eligible for upload into an event that is already deleted by then.
+  const { calls, fetchImpl } = recorder();
+  const app = createApp({ config: CONFIG, fetch: fetchImpl });
+  const far = await app.request("/events", {
     method: "POST",
     body: JSON.stringify({ name: "X", startsAt: STARTS_AT, endsAt: "2031-07-14T18:00:00Z" }),
   });
-  assertEquals(res.status, 201);
-  assertEquals((await res.json()).endsAt, "2031-07-14T18:00:00Z");
+  assertEquals(far.status, 400);
+  // One second past the maximum is refused; exactly at it is accepted.
+  const overBy1s = await app.request("/events", {
+    method: "POST",
+    body: JSON.stringify({ name: "X", startsAt: STARTS_AT, endsAt: "2026-07-27T18:00:01Z" }),
+  });
+  assertEquals(overBy1s.status, 400);
+  assertEquals(calls.length, 0); // neither reached storage
+  const exact = await app.request("/events", {
+    method: "POST",
+    body: JSON.stringify({ name: "X", startsAt: STARTS_AT, endsAt: ENDS_AT }),
+  });
+  assertEquals(exact.status, 201);
+  assertEquals((await exact.json()).endsAt, ENDS_AT);
 });
 
 Deno.test("POST /events → an endsAt at/before startsAt or non-canonical → 400, no upstream", async () => {
@@ -653,7 +683,9 @@ Deno.test("GET /events/:id → 200 marker (events/<id>/metadata.json) when prese
   const { calls, fetchImpl } = listFake({ ...markerPresent });
   const res = await createApp({ config: CONFIG, fetch: fetchImpl }).request(`/events/${E}`);
   assertEquals(res.status, 200);
-  assertEquals(await res.json(), MARKER_BODY);
+  // The marker's fields plus the DERIVED delete-by (capability `event-limits`). MARKER_BODY stamps no
+  // `lifetimeSeconds`, so the deadline falls back to the configured 30 days off `max(createdAt, startsAt)`.
+  assertEquals(await res.json(), { ...MARKER_BODY, deletesAt: ENDS_AT });
   assertEquals(calls.length, 1);
   assertEquals(calls[0].url, MARKER_URL);
 });
@@ -1408,37 +1440,66 @@ Deno.test("rejoin → fresh active manifest supersedes .left.json (union + notif
   assert(calls.some((c) => c.init.method === "GET" && keyOf(c.url) === `devices/${D}.json`)); // D notified (active)
 });
 
-// ── event limits: lifecycle, capacity, grace (capability `event-limits`) ────────────────────────────
+// ── event limits: lifecycle, capacity (capability `event-limits`) ───────────────────────────────────
 
-const GRACE_S = CONFIG.eventGraceSeconds;
-
-Deno.test("classifyEvent → live/grace boundaries are exact (two states; deletion is the sweep's)", () => {
-  const endsMs = Date.parse(ENDS_AT);
-  // now == endsAt is still LIVE (the window is inclusive)…
-  assertEquals(classifyEvent(MARKER_BODY, endsMs).phase, "live");
-  // …one ms past endsAt is GRACE…
-  assertEquals(classifyEvent(MARKER_BODY, endsMs + 1).phase, "grace");
-  // …and it STAYS grace no matter how far past endsAt: the gate never expires an event, the sweep does.
-  assertEquals(classifyEvent(MARKER_BODY, endsMs + GRACE_S * 1000 + 1).phase, "grace");
-  assertEquals(classifyEvent(MARKER_BODY, endsMs + 365 * 24 * 3600 * 1000).phase, "grace");
+Deno.test("classifyEvent → the lifecycle is BINARY and never reads endsAt", () => {
+  // An event exists or the sweep has deleted it. `endsAt` bounds only which captures may be UPLOADED;
+  // it closes nothing — so a marker classifies `live` at every instant, including long past its window.
+  assertEquals(classifyEvent(MARKER_BODY).phase, "live");
 });
 
 Deno.test("classifyEvent → a marker missing any limit field is `gone` (legacy = no grandfathering)", () => {
-  const nowMs = Date.parse(STARTS_AT); // well inside what WOULD be the window
   const { endsAt: _e, ...noEnds } = MARKER_BODY;
   const { capacity: _c, ...noCap } = MARKER_BODY;
   const { startsAt: _s, ...noStarts } = MARKER_BODY;
-  assertEquals(classifyEvent(noEnds, nowMs).phase, "gone");
-  assertEquals(classifyEvent(noCap, nowMs).phase, "gone");
-  assertEquals(classifyEvent(noStarts, nowMs).phase, "gone");
-  // An unparseable endsAt (not producible by our own mint) fails closed the same way.
-  assertEquals(classifyEvent({ ...MARKER_BODY, endsAt: "nonsense" }, nowMs).phase, "gone");
+  assertEquals(classifyEvent(noEnds).phase, "gone");
+  assertEquals(classifyEvent(noCap).phase, "gone");
+  assertEquals(classifyEvent(noStarts).phase, "gone");
 });
 
-Deno.test("classifyEvent → live/grace narrow to a complete marker (all limit fields present)", () => {
-  const cls = classifyEvent(MARKER_BODY, Date.parse(STARTS_AT));
+Deno.test("classifyEvent → a live event narrows to a complete marker (all limit fields present)", () => {
+  const cls = classifyEvent(MARKER_BODY);
   assert(cls.phase === "live");
   assertEquals(cls.marker, MARKER_BODY);
+});
+
+Deno.test("deleteByMs → anchors at max(createdAt, startsAt) and adds the stamped lifetime", () => {
+  const DAY = 24 * 3600 * 1000;
+  // Created BEFORE it starts (the ordinary case, and the create-early case): anchor is startsAt.
+  assertEquals(
+    deleteByMs(
+      { ...MARKER_BODY, createdAt: "2026-06-01T00:00:00.000Z", startsAt: "2026-06-27T18:00:00Z" },
+      30 * 24 * 3600,
+    ),
+    Date.parse("2026-06-27T18:00:00Z") + 30 * DAY,
+  );
+  // BACK-DATED — startsAt weeks before createdAt: anchor is createdAt, so it is not stamped dead on
+  // arrival. Anchoring on startsAt alone would put the deadline five weeks in the past.
+  assertEquals(
+    deleteByMs(
+      { ...MARKER_BODY, createdAt: "2026-07-13T00:00:00.000Z", startsAt: "2026-06-05T00:00:00Z" },
+      30 * 24 * 3600,
+    ),
+    Date.parse("2026-07-13T00:00:00.000Z") + 30 * DAY,
+  );
+});
+
+Deno.test("deleteByMs → a stamped lifetime wins; an absent one falls back to configuration", () => {
+  const DAY = 24 * 3600 * 1000;
+  const anchor = Date.parse(MARKER_BODY.startsAt);
+  assertEquals(
+    deleteByMs({ ...MARKER_BODY, lifetimeSeconds: 24 * 3600 }, 30 * 24 * 3600),
+    anchor + DAY,
+  );
+  // A legacy marker (written before the field existed) is still perfectly serviceable — one lifecycle
+  // path, no second rule kept alive for it.
+  assertEquals(deleteByMs(MARKER_BODY, 30 * 24 * 3600), anchor + 30 * DAY);
+});
+
+Deno.test("deleteByMs → NaN when neither anchor parses (a corrupt marker the sweep reaps)", () => {
+  assert(
+    Number.isNaN(deleteByMs({ ...MARKER_BODY, createdAt: "x", startsAt: "y" }, 30 * 24 * 3600)),
+  );
 });
 
 // A capacity-2 marker: capacity checks want a cap small enough to fill with two devices.
@@ -1495,28 +1556,31 @@ Deno.test("enroll → a rejoin reuses the departed device's own slot at capacity
   assert(store.has(`events/${E}/devices/${D}.json`)); // active again
 });
 
-Deno.test("grace → a NEW device cannot enroll (410, nothing written)", async () => {
+Deno.test("past window → a NEW device CAN still enroll (the window closes nothing)", async () => {
+  // The point of separating the window from the lifetime: a guest who scans days late still holds
+  // in-window captures that belong in the event, so joining is never closed by time. The former
+  // 410 "event over" is gone with the grace period.
   const { store, fetchImpl } = storageFake({
-    [`events/${E}/metadata.json`]: { json: GRACE_MARKER },
+    [`events/${E}/metadata.json`]: { json: PAST_WINDOW_MARKER },
     [`events/${E}/devices/${D}.json`]: { json: mkManifest(D, "A", "A-primary.heic") },
   });
   const res = await manifestPut(createApp({ config: CONFIG, fetch: fetchImpl }), E, G);
-  assertEquals(res.status, 410);
-  assert(!store.has(`events/${E}/devices/${G}.json`));
+  assertEquals(res.status, 201);
+  assert(store.has(`events/${E}/devices/${G}.json`));
 });
 
-Deno.test("grace → 410 wins over 409 for a new device on a full, over event (time is THE reason)", async () => {
+Deno.test("past window → capacity is the ONLY refusal: a full event still answers 409, never 410", async () => {
   const { fetchImpl } = storageFake({
-    [`events/${E}/metadata.json`]: { json: { ...GRACE_MARKER, capacity: 1 } },
+    [`events/${E}/metadata.json`]: { json: { ...PAST_WINDOW_MARKER, capacity: 1 } },
     [`events/${E}/devices/${D}.json`]: { json: mkManifest(D, "A", "A-primary.heic") },
   });
   const res = await manifestPut(createApp({ config: CONFIG, fetch: fetchImpl }), E, G);
-  assertEquals(res.status, 410); // not 409
+  assertEquals(res.status, 409); // full — and 410 no longer exists on this route
 });
 
-Deno.test("grace → existing members keep FULL sync: manifest PUT, union, notify, metadata, leave", async () => {
+Deno.test("past window → members keep FULL sync: manifest PUT, union, notify, metadata, leave", async () => {
   const { fetchImpl } = storageFake({
-    [`events/${E}/metadata.json`]: { json: GRACE_MARKER },
+    [`events/${E}/metadata.json`]: { json: PAST_WINDOW_MARKER },
     [`events/${E}/devices/${D}.json`]: { json: mkManifest(D, "A", "A-primary.heic") },
     [`events/${E}/devices/${D2}.json`]: { json: mkManifest(D2, "B", "B-primary.heic") },
     [`files/devices/${D}/A-primary.heic`]: { json: {} },
@@ -1528,25 +1592,26 @@ Deno.test("grace → existing members keep FULL sync: manifest PUT, union, notif
   assertEquals(((await union.json()) as unknown[]).length, 1);
   assertEquals((await app.request(`/events/${E}/notify`, { method: "POST" })).status, 202);
   assertEquals((await manifestPut(app, E, D)).status, 201); // known device still writes
-  assertEquals((await del(app, E, D)).status, 200); // leaving an over event still works
+  assertEquals((await del(app, E, D)).status, 200); // leaving a past-window event still works
 });
 
-Deno.test("past grace → still served in grace until the sweep deletes it (no on-touch reap)", async () => {
-  // EXPIRED_MARKER's endsAt is 4 days before NOW — past endsAt + the 1-day grace. In the two-state
-  // model the gate treats it as `grace` (not an on-touch reap): members keep syncing, new devices are
-  // refused, and NOTHING is deleted — the nightly sweep (capability `scheduled-cleanup`) reclaims it.
+Deno.test("past DELETE-BY → still fully served until the sweep deletes it (no route reaps on touch)", async () => {
+  // PAST_DEADLINE_MARKER stamps a 1-day lifetime off a 2026-06-27 anchor, so its delete-by is weeks
+  // behind NOW. The gate serves it anyway: deletion belongs solely to the nightly sweep (capability
+  // `scheduled-cleanup`). That is what makes a 404 a REAL deletion — and therefore safe as one of the two
+  // witnesses the client's self-leave requires (capability `leave-event`).
   const { store, fetchImpl } = storageFake({
-    [`events/${E}/metadata.json`]: { json: EXPIRED_MARKER },
+    [`events/${E}/metadata.json`]: { json: PAST_DEADLINE_MARKER },
     [`events/${E}/devices/${D}.json`]: { json: mkManifest(D, "A", "A-primary.heic") },
     [`files/devices/${D}/A-primary.heic`]: { json: {} },
     [`devices/${D}.json`]: { json: { pushToken: { kind: "apns", token: "TOKA", env: "sandbox" } } },
   });
   const app = createApp({ config: CONFIG, fetch: fetchImpl });
-  assertEquals((await app.request(`/events/${E}`)).status, 200); // metadata still served (grace)
+  assertEquals((await app.request(`/events/${E}`)).status, 200); // metadata still served
   assertEquals((await app.request(`/events/${E}/files`)).status, 200); // union still served
   assertEquals((await app.request(`/events/${E}/notify`, { method: "POST" })).status, 202);
-  assertEquals((await manifestPut(app, E, G)).status, 410); // a NEW device still cannot join
-  // No touch deleted anything — the gate never reaps.
+  assertEquals((await manifestPut(app, E, G)).status, 201); // a NEW device can even still join
+  // No touch deleted anything — no route reaps.
   assert(store.has(`events/${E}/metadata.json`));
   assert(store.has(`events/${E}/devices/${D}.json`));
   assert(store.has(`files/devices/${D}/A-primary.heic`));

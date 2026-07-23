@@ -43,15 +43,28 @@ device-partitioned and event-independent** — a resource is uploaded once under
 namespace and linked into any number of events by reference (the per-event manifest). The device id
 is self-asserted (possession of the UUID is the capability); App Attest is the noted hardening path.
 
-Every event is **bounded** (capability `event-limits`): `POST /events` stamps
-`endsAt = startsAt +
-30 days` and `capacity = 10` (source constants in `config.ts`) onto the
-write-once marker, and every event-scoped route classifies the lifecycle from the marker + clock
-before serving — **live** (`now <= endsAt`: joins under the cap, full sync) → **grace** (1 day:
-joins closed with `410`, members keep full sync so late uploads still land) → **expired** (first
-touch runs the lazy reap: silent-push the active members, delete manifests + GC'd bytes/configs,
-delete the marker LAST — then `404`, indistinguishable from never-created; no tombstone, no
-scheduler). A legacy marker missing the limit fields is expired by definition and reaped on touch.
+Every event is **bounded** (capability `event-limits`), along two INDEPENDENT axes:
+
+- the capture **window** — the creator's `[startsAt, endsAt]`, at most **30 days** long (`400`
+  otherwise; absent `endsAt` falls back to the maximum). It bounds only which photos may be
+  **uploaded** and closes nothing: joining is never refused on time, so a guest who scans days late
+  still contributes the in-window photos still on their phone.
+- the **lifetime** — `lifetimeSeconds` (30 days), stamped onto the write-once marker as a DURATION.
+  The delete-by is DERIVED per read as `max(createdAt, startsAt) + lifetimeSeconds`: anchoring at
+  the later of the two keeps a back-dated event from being born expired and a created-early one from
+  dying inside its own window. Stamping the duration rather than the instant keeps the per-event
+  value immutable against a config change while leaving the anchor policy correctable without
+  rewriting stored markers.
+
+`capacity = 10` (ever-enrolled, active ∪ departed) is the only refusal a route makes, `409`.
+
+The lifecycle is **binary**: the event exists, or the nightly sweep (capability `scheduled-cleanup`)
+has deleted it. No route reaps on touch, even past the delete-by — which is what makes a `404` a
+REAL deletion, and therefore safe as one of the two witnesses a client's self-leave requires
+(capability `leave-event`). The sweep reclaims an event past its delete-by (the guarantee) or one
+that is EMPTY — ever joined, no active member left (opportunistic: a leave whose `DELETE` never
+landed keeps a manifest active, so an abandoned event may never empty). A marker missing
+`startsAt`/`endsAt`/`capacity` is `gone`: `404`, and the sweep deletes it.
 
 ## Contract
 
@@ -68,12 +81,14 @@ scheduler). A legacy marker missing the limit fields is expired by definition an
 ```
 POST /events
     body: {"name": "<name>", "startsAt": "<canonical instant>"}   (name trimmed, non-empty, ≤100 chars)
-    →  bunny native PUT  events/<minted-uuid>/metadata.json
-    →  201 {eventId, name, createdAt, startsAt, endsAt, capacity}   (id + limits minted server-side) | 502
+    body: … optional {"endsAt": "<canonical instant>"}  (strictly after startsAt, ≤30 days after it)
+    →  bunny native PUT  events/<minted-uuid>/metadata.json   (stamps capacity + lifetimeSeconds)
+    →  201 {eventId, name, createdAt, startsAt, endsAt, capacity, deletesAt}   | 400 | 502
 
 GET  /events/<eventId>
-    →  200 the marker (all fields — an expired/legacy marker is never served)
-       | 404 when never created OR expired-and-reaped | 502 on a non-404 marker read failure
+    →  200 {eventId, name, createdAt, startsAt, endsAt, capacity, deletesAt}
+       (`deletesAt` DERIVED per response, never stored; a legacy/incomplete marker is never served)
+       | 404 when never created OR already swept | 502 on a non-404 marker read failure
 
 PUT  /files/devices/<deviceId>/<filename>                 (byte upload — UNGATED, no marker read)
     body: raw resource bytes (streamed, never buffered)
@@ -101,9 +116,10 @@ POST /events/<eventId>/notify                              (silent push to membe
 PUT  /events/<eventId>/devices/<deviceId>          (device manifest — GATED on existence + event limits)
     body: full-state JSON device manifest (streamed)
     →  [gate] GET events/<eventId>/metadata.json  → absent? 404 (stream nothing) | non-404 failure? 502
-       expired? reap → 404;  then LIST events/<eventId>/devices/ (known-vs-new + the capacity count):
-       NEW device in grace → 410 | NEW device with ever-enrolled (active ∪ departed) ≥ capacity → 409
-       (a KNOWN device — active or .left — passes both; leaving frees no slot; rejoin reuses its slot)
+       then LIST events/<eventId>/devices/ (known-vs-new + the capacity count):
+       NEW device with ever-enrolled (active ∪ departed) ≥ capacity → 409  — the ONLY refusal; there is
+       no time-based rejection, however long after endsAt the enrollment arrives
+       (a KNOWN device — active or .left — always passes; leaving frees no slot; rejoin reuses its slot)
     →  bunny native PUT  events/<eventId>/devices/<deviceId>.json   → 201 | 502
 
 DELETE /events/<eventId>/devices/<deviceId>                 (LEAVE — GATED on event existence)

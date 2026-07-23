@@ -20,8 +20,6 @@ import { type Config, storageConfig } from "../config.ts";
 const DEV_ACCESS_KEY = "dev-access-key";
 /** Signs the device bearer token. Any stable string works — the rig mints and verifies with the same one. */
 const DEV_ATTEST_TOKEN_KEY = "dev-attest-token-key";
-/** The notify admin key, so the `POST /events/<id>/notify` admin path stays exercisable locally. */
-const DEV_ADMIN_KEY = "dev-admin-key";
 
 /**
  * The device id the rig's fallback bearer token is minted for.
@@ -41,7 +39,6 @@ export function devConfig(publicHost: string): Config {
     ...storageConfig(DEV_ACCESS_KEY),
     s3Host: publicHost,
     attestTokenKey: DEV_ATTEST_TOKEN_KEY,
-    adminKey: DEV_ADMIN_KEY,
     // Left blank, as `storageConfig` already leaves it. `createApnsSender` imports the key lazily and
     // catches a signing failure PER TOKEN, so `/events/<id>/notify` still answers 202 with every token
     // reported failed — which is exactly the route's best-effort contract, not a local fake of it.

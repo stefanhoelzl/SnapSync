@@ -48,7 +48,7 @@ fun forgeStatusHost(state: String, scope: CoroutineScope, cutoffFormatter: Cutof
         // The join gate's details fetch (capability `join-event`), forged to a `Found` so the gate can
         // reach its confirmation surface with no backend. `commitJoin` stays inert by default — a
         // screenshot never confirms a join.
-        loadJoinDetails = { JoinLoad.Found(EVENT_NAME, EVENT_START, EVENT_END) },
+        loadJoinDetails = { JoinLoad.Found(EVENT_NAME, EVENT_START, EVENT_END, EVENT_DELETES) },
         cutoffFormatter = cutoffFormatter,
     )
     // Drive the real join gate by feeding it the very input a scanned QR delivers: the event's own
@@ -101,6 +101,10 @@ internal const val EVENT_START = "2026-07-20T18:00:00Z"
 /** The event's end (a five-day window), as the join gate's details fetch reports it — the range row's
  *  upper default/ceiling and the "Event end" preset. */
 internal const val EVENT_END = "2026-07-25T18:00:00Z"
+
+/** The event's retention deadline, as the details fetch reports it (capability `event-limits`): the
+ *  30-day lifetime measured from the event's start. The join gate states it before confirm. */
+internal const val EVENT_DELETES = "2026-08-19T18:00:00Z"
 
 /**
  * The canned joined event. Its `startsAt` defaults to `minPhotoDate` (both in the past), so the event
