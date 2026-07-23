@@ -1,5 +1,6 @@
 package app.snapsync.feature.creation
 
+import app.snapsync.model.CaptureDate
 import app.snapsync.model.CreateEventPayload
 import app.snapsync.model.EventLinkPayload
 import app.snapsync.model.encodeEventUrl
@@ -34,10 +35,10 @@ import co.touchlab.kermit.Logger
 class HeadlessCreate(
     private val client: EventCreation,
     private val log: Logger,
-    private val now: () -> String,
+    private val now: () -> CaptureDate,
 ) {
     suspend fun run(payload: CreateEventPayload, forwardAutoJoinLink: (String) -> Unit) {
-        val startsAt = payload.startsAt ?: now()
+        val startsAt = payload.startsAt ?: now().iso
         // `endsAt` is forwarded as-is: null lets the backend apply the legacy `+30d` fallback (capability
         // `event-limits`), a value is honoured as the creator-chosen window end.
         when (val outcome = client.create(payload.name.trim(), startsAt, payload.endsAt)) {

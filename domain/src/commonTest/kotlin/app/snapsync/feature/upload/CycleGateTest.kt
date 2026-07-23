@@ -1,6 +1,7 @@
 package app.snapsync.feature.upload
 
-import app.snapsync.model.Contribution
+import app.snapsync.model.SelectionPolicy
+import app.snapsync.model.captureCutoff
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertIs
@@ -19,13 +20,14 @@ class CycleGateTest {
 
     private val host = "https://edge.example"
     private val eventId = "event-1"
-    private val cutoff = "2026-07-01T00:00:00Z"
+    private val cutoff = captureCutoff("2026-07-01T00:00:00Z")
+    private val admitting = SelectionPolicy.from(includesUpload = true, cutoff = cutoff, ceiling = null)
 
     private fun joined(
         eventId: String = this.eventId,
-        contribution: Contribution = Contribution.Since(cutoff, until = null),
+        policy: SelectionPolicy = admitting,
         saveToAlbum: Boolean = false,
-    ) = JoinedMembership(eventId = eventId, contribution = contribution, saveToAlbum = saveToAlbum)
+    ) = JoinedMembership(eventId = eventId, policy = policy, saveToAlbum = saveToAlbum)
 
     // THE regression. A locked device cannot read the Keychain; that must not clear the join marker.
     @Test
@@ -94,7 +96,7 @@ class CycleGateTest {
     fun `a joined config runs the cycle and carries the membership through`() {
         val gate = cycleGate(
             configReadable = true,
-            membership = joined(contribution = Contribution.Since(cutoff, until = null), saveToAlbum = true),
+            membership = joined(policy = admitting, saveToAlbum = true),
             host = host,
         )
 
@@ -103,7 +105,7 @@ class CycleGateTest {
         assertEquals(host, gate.config.host)
         // The cycle's selection inputs arrive WITH the decision — there is no second read, and nothing
         // downstream has to invent a cutoff for a membership that may not exist.
-        assertEquals(Contribution.Since(cutoff, until = null), gate.membership.contribution)
+        assertEquals(admitting, gate.membership.policy)
         assertEquals(true, gate.membership.saveToAlbum)
     }
 
@@ -113,12 +115,12 @@ class CycleGateTest {
     fun `a non-contributing membership is Run and declines later at the direction gate`() {
         val gate = cycleGate(
             configReadable = true,
-            membership = joined(contribution = Contribution.None),
+            membership = joined(policy = SelectionPolicy.None),
             host = host,
         )
 
         assertIs<CycleGate.Run>(gate)
-        assertEquals(Contribution.None, gate.membership.contribution)
+        assertEquals(SelectionPolicy.None, gate.membership.policy)
     }
 
     @Test

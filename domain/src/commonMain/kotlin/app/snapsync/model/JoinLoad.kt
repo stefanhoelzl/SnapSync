@@ -26,9 +26,9 @@ sealed interface JoinLoad {
      */
     data class Found(
         val name: String,
-        val startsAt: String,
-        val endsAt: String,
-        val deletesAt: String,
+        val startsAt: EventStart,
+        val endsAt: EventEnd,
+        val deletesAt: DeletesAt,
     ) : JoinLoad
     data object NotFound : JoinLoad
     data object Failed : JoinLoad

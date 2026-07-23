@@ -17,10 +17,11 @@ import app.snapsync.model.SyncEvent
 import app.snapsync.model.UploadError
 import app.snapsync.model.UploadJob
 import app.snapsync.model.UploadRequest
-import app.snapsync.model.Contribution
-import app.snapsync.model.RESOURCE_META_CREATION_DATE
+import app.snapsync.model.CaptureCutoff
+import app.snapsync.model.SelectionPolicy
+import app.snapsync.model.admittedResources
 import app.snapsync.model.assetIdFromUploadKey
-import app.snapsync.model.excludedAssetIds
+import app.snapsync.model.excluding
 import co.touchlab.kermit.Logger
 import kotlinx.coroutines.withTimeout
 
@@ -57,7 +58,7 @@ class UploadCycle(
     // the reads (its own storage, its own bundle); this decides.
     //
     // Required, with **no default**: a default would have to invent an answer for "what is this device
-    // joined to", and every answer is wrong. See [reconcile] and [Contribution] for the same reasoning
+    // joined to", and every answer is wrong. See [reconcile] and [SelectionPolicy] for the same reasoning
     // applied after each shipped bug that a default caused.
     private val readGate: () -> CycleGate,
     // The engine for THIS cycle's config — the edge provider needs the host and the device id, and the
@@ -92,7 +93,7 @@ class UploadCycle(
     //
     // Required, with **no default**: a no-op means this device's photos never enter the event union — they
     // upload, and nobody can see them. That is the invisible failure, and `{}` states it silently.
-    private val onDiscovery: suspend (eventId: String, cutoff: String, discovery: Discovery) -> Unit,
+    private val onDiscovery: suspend (eventId: String, policy: SelectionPolicy, discovery: Discovery) -> Unit,
     // Suppression port (capability `photo-download`): the set of `assetId`s of foreign assets this
     // device downloaded + imported. Read once per cycle; discovery drops these BEFORE fan-out so an
     // imported foreign asset (a fresh local id) is never re-uploaded (the echo). Read-only, backed in
@@ -114,7 +115,7 @@ class UploadCycle(
     // Required, with **no default**: `{ emptySet() }` uploads the member's WhatsApp album into a stranger's
     // event. A tier without an album source states `{ emptySet() }` at its call site, where a reviewer can
     // see it — that is the difference this requirement buys.
-    private val albumExcludedAssetIds: suspend (cutoff: String) -> Set<String>,
+    private val albumExcludedAssetIds: suspend (cutoff: CaptureCutoff) -> Set<String>,
     // Notify hook (capability `upload-completion-notify`): fired once per FULLY-DRAINED cycle that
     // recorded >= 1 real completion, AFTER `onDiscovery` (the device-manifest PUT) — the only moment the
     // event union reflects the just-completed assets, so recipients woken by the fan-out find them.
@@ -179,12 +180,16 @@ class UploadCycle(
         // because `stop()` deregistered the extension (`setUploadJobExtensionEnabled(false)` wipes the
         // configuration and every in-flight job), and the app-driven tier has no appex, so there is no
         // "acknowledge or the system errors 50008" obligation to honour here.
-        val (scope, until) = when (val c = membership.contribution) {
-            Contribution.None -> {
-                log.i { "cycle skipped — this membership contributes nothing (direction excludes upload)" }
-                return CycleResult.SKIPPED
-            }
-            is Contribution.Since -> c.cutoff to c.until
+        val configPolicy = membership.policy
+        // The walk's lower bound. `None` never reaches here (it returned above), and an admitting policy
+        // always carries a cutoff — a membership without one is not a representable state.
+        val cutoff = configPolicy.walkFloor ?: run {
+            log.e { "admitting policy carries no capture floor — refusing an unbounded walk" }
+            return CycleResult.SKIPPED
+        }
+        if (!configPolicy.enumerates) {
+            log.i { "cycle skipped — this membership contributes nothing (direction excludes upload)" }
+            return CycleResult.SKIPPED
         }
 
         val eventId = config.eventId
@@ -282,56 +287,35 @@ class UploadCycle(
         // cutoff came in with the contribution and is passed down, so a full enumeration is scoped at the
         // platform fetch rather than walked whole and filtered afterwards (capability
         // `photo-selection-policy`).
-        val cutoff = scope
-        val discovery = platform.discoverResources(store.loadToken(), cutoff)
+        val discovery = platform.discoverResources(store.loadToken(), cutoff.at.iso)
         log.i { "discovered ${discovery.resources.size} resource(s)" }
 
-        // Echo-suppression: drop resources of assets this device downloaded + imported (their fresh
-        // local id would otherwise look like new work and re-upload the foreign photo). Filtered here,
-        // before the engine sees them and before retainAssets, so no upload job is ever created.
-        val suppressed = suppressedAssetIds()
-        val unsuppressed = if (suppressed.isEmpty()) {
-            discovery.resources
-        } else {
-            discovery.resources.filterNot { it.assetId in suppressed }
-                .also { log.i { "suppressed ${discovery.resources.size - it.size} downloaded resource(s)" } }
-        }
-
-        // Origin exclusions (capability `photo-selection-policy`): drop assets that were never *taken* —
-        // screenshots, screen recordings, GIFs, sub-floor-resolution received media, and members of a
-        // denylisted album. Authoritative and platform-free: the iOS fetch predicate narrows by subtype as
-        // an optimization, but it can express neither the floors nor `hasAdjustments` (both abort the
-        // process), and the incremental walk takes no predicate at all — so this filter is what actually
-        // decides, on every tier and on both walks.
+        // THE ADMISSION (capability `photo-selection-policy`): one policy, applied once, deciding the
+        // whole admitted set — the capture-date RANGE (both bounds), the origin exclusions, the echo
+        // suppression, and the album denylist together. Every consumer of this cycle reads the set below;
+        // none re-states a rule, which is what makes the drift that produced the ceiling bug
+        // unrepresentable (see `SelectionPolicy`).
         //
-        // Excluded per ASSET, not per resource: an asset's resources stand or fall together, or a live
-        // photo's paired video would survive its excluded primary as an orphan.
-        val originExcluded = excludedAssetIds(unsuppressed) + albumExcludedAssetIds(cutoff)
-        val unfiltered = if (originExcluded.isEmpty()) {
-            unsuppressed
-        } else {
-            unsuppressed.filterNot { it.assetId in originExcluded }
-                .also { log.i { "origin policy dropped ${unsuppressed.size - it.size} resource(s)" } }
-        }
-
-        // Capture-date RANGE (capability `photo-selection-policy`): keep resources whose asset `creationDate`
-        // lies within `[cutoff, until]` — at or after the lower cutoff AND at or before the upper ceiling
-        // (`until`), inclusive on both ends. A `null` ceiling means unbounded (no upper filter — the
-        // admit-on-doubt direction, e.g. a legacy membership before its reconcile backfill). An asset with no
-        // `creationDate` (empty string) sorts before any non-empty cutoff and is excluded.
+        // It stays **authoritative** even though the platform walk narrows its own fetch by some of the
+        // same rules: the walk may return a superset (its predicate is deliberately widened, and the
+        // incremental walk takes no predicate at all), and this is what makes that optimization unable to
+        // change the admitted set.
         //
-        // This filter stays **authoritative** even though the platform walk now narrows its own fetch by the
-        // same bounds: the walk may return a superset (its predicate is deliberately widened), and this is
-        // what makes that optimization unable to change the admitted set.
-        //
-        // NB the range is applied AFTER `unfiltered`, and `unfiltered` — not `liveResources` — is what
-        // feeds the device manifest below. That split is deliberate; see the `onDiscovery` call.
-        val liveResources = unfiltered
-            .filter { r ->
-                val cd = r.metadata[RESOURCE_META_CREATION_DATE] ?: ""
-                cd >= cutoff && (until == null || cd <= until)
+        // The two port-read sets complete the config-derived policy here, at the one moment they are
+        // readable: the echo ids (assets this device downloaded and imported — re-uploading one sends a
+        // foreign photo back into the event) and the denylisted-album members (a platform lookup, scoped
+        // by the same cutoff as the walk).
+        val policy = configPolicy.excluding(
+            suppressedAssetIds = suppressedAssetIds(),
+            albumExcludedAssetIds = albumExcludedAssetIds(cutoff),
+        )
+        val liveResources = policy.admittedResources(discovery.resources)
+            .also {
+                log.i {
+                    "selection policy admitted ${it.size} of ${discovery.resources.size} discovered " +
+                        "resource(s)"
+                }
             }
-            .also { log.i { "date range dropped ${unfiltered.size - it.size} out-of-range resource(s)" } }
 
         // Prune rows for assets the change feed reported removed (incremental, every cycle — even a
         // cap-truncated one — so a mid-upload deletion's stuck row is cleared promptly).
@@ -371,27 +355,24 @@ class UploadCycle(
         // Feed the device manifest from THIS cycle's discovery (no second enumeration). Best-effort and
         // bounded by the impl — it must never fail or stall the cycle (byte jobs are already created).
         //
-        // It is handed the ORIGIN-FILTERED set (`unfiltered`), NOT the raw discovery and NOT the
-        // cutoff-filtered `liveResources`. The two exclusions land on opposite sides of the manifest's
-        // device-global accumulator on purpose (capability `device-manifest`):
+        // It is handed the **admitted set** — the same `liveResources` the byte uploads were created
+        // from — and the policy that produced it. Both bounds of the capture-date range therefore reach
+        // the manifest by construction.
         //
-        //  - The CUTOFF is per-membership, so it must stay OUT of the accumulator — another event's cutoff
-        //    may admit an asset this one excludes. The accumulator keeps it; the per-event projection drops
-        //    it. Hence `unfiltered`, not `liveResources`.
-        //  - The ORIGIN exclusions are event-independent — a screenshot is a screenshot in every event, and
-        //    no membership will ever admit one — so they go IN before the accumulator, costing it no
-        //    per-event flexibility. Hence `unfiltered`, not `discovery`.
-        //
-        // Passing the raw discovery here (as this did before) put every excluded asset into the accumulator,
-        // from which it projected into device.json, entered the event union, and was offered to every other
-        // member as bytes that were never uploaded — because the cycle drops them above. A 404 for everyone.
+        // This is the bug that motivated the whole change: the manifest used to be fed the *origin*-
+        // filtered set and a bare **cutoff**, so the ceiling never reached it. A photo captured after the
+        // event's end was listed in `device.json` and counted in `N` while its bytes were never uploaded
+        // — the status screen pegged below 100% forever, and every other member was offered a resource
+        // that 404s. (Before that, it was fed the raw discovery, which put screenshots into the union the
+        // same way.) A consumer that receives the set cannot forget a rule; a consumer that receives the
+        // inputs can, and did, twice.
         val manifestDiscovery = Discovery(
-            resources = unfiltered,
+            resources = liveResources,
             nextToken = discovery.nextToken,
             removedAssetIds = discovery.removedAssetIds,
             fullEnumeration = discovery.fullEnumeration,
         )
-        runCatching { withTimeout(deviceManifestTimeoutMs) { onDiscovery(eventId, cutoff, manifestDiscovery) } }
+        runCatching { withTimeout(deviceManifestTimeoutMs) { onDiscovery(eventId, policy, manifestDiscovery) } }
             .onFailure { log.w(it) { "device.json production failed/timed out this cycle" } }
 
         // Notify the event's members (capability `upload-completion-notify`) — but only now, on a

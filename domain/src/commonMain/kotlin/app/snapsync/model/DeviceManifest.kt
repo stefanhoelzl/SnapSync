@@ -59,20 +59,28 @@ fun deviceManifestFromJson(text: String): DeviceManifest =
 
 /**
  * Project a device-global [accumulator] (every discovered, not-deleted asset) into a single event's
- * [DeviceManifest]: keep only assets whose [DeviceManifestAsset.creationDate] is at or after
- * [startDate] (an ISO-8601 string compared lexicographically — valid for the same `…Z` formatter the
- * synthesis uses). [startDate] is required: a membership's cutoff is never absent (capability
- * `photo-selection-policy` — no scope admits the whole library), so every projection is
- * date-filtered. Entries are sorted by `assetId` so the serialized snapshot is deterministic,
- * making the producer's skip-if-unchanged comparison stable.
+ * [DeviceManifest]: keep exactly the assets the membership's [policy] **admits** (capability
+ * `photo-selection-policy`).
+ *
+ * It applies the *one* admission rather than a date comparison of its own. That is the fix for the bug
+ * this change exists to close: the projection used to take a bare `startDate` and filter
+ * `creationDate >= startDate`, so when the capture-date **ceiling** was added it reached the byte filter
+ * and never reached here. Post-ceiling photos were listed in `device.json` — offered to every other
+ * member as bytes that were never uploaded — while the status total counted them and could never settle.
+ *
+ * The accumulator's entries carry a date and an id but not the origin facts (those were already applied
+ * before an asset entered it), so the facts default to admit-on-doubt: the rules that can still speak here
+ * are the two capture-date bounds and the two id-set exclusions, which is precisely what a per-event
+ * projection of a device-global accumulator needs to decide. Entries are sorted by `assetId` so the
+ * serialized snapshot is deterministic, making the producer's skip-if-unchanged comparison stable.
  */
 fun projectDeviceManifest(
     deviceId: String,
     accumulator: Collection<DeviceManifestAsset>,
-    startDate: String,
+    policy: SelectionPolicy,
 ): DeviceManifest {
     val assets = accumulator
-        .filter { it.creationDate >= startDate }
+        .filter { policy.admits(AssetFacts(assetId = it.assetId, creationDate = CaptureDate(it.creationDate))) }
         .sortedBy { it.assetId }
     return DeviceManifest(deviceId = deviceId, assets = assets)
 }

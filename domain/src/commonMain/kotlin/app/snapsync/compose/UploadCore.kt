@@ -11,7 +11,8 @@ import app.snapsync.feature.upload.SelectionScopedTransfer
 import app.snapsync.feature.upload.UploadCycle
 import app.snapsync.feature.upload.cycleGate
 import app.snapsync.model.SelectionScope
-import app.snapsync.model.Contribution
+import app.snapsync.model.CaptureCutoff
+import app.snapsync.model.SelectionPolicy
 import app.snapsync.model.EdgeUploadRequestProvider
 import app.snapsync.model.denormalizeAssetId
 import app.snapsync.model.deviceManifestAssetsFromResources
@@ -77,7 +78,7 @@ class UploadPorts(
      * tier admits on doubt via its shared wrapper; the extension lets a throw fail the cycle), and
      * this step changes no behavior beyond the entry gate (design D1).
      */
-    val albumExcludedAssetIds: suspend (cutoff: String) -> Set<String>,
+    val albumExcludedAssetIds: suspend (cutoff: CaptureCutoff) -> Set<String>,
     /** Event-album placement (capability `event-album`); the `denormalizeAssetId` mapping is shared here. */
     val albumCoordinator: AlbumCoordinator,
     /** The attestation bearer token, read per request. Required: `{ null }` must be stated, not inherited. */
@@ -142,10 +143,10 @@ fun uploadCore(scope: CoroutineScope, ports: UploadPorts): UploadCycle {
         reconcile = { eventId -> reconciler.reconcile(eventId) },
         // Device manifest (capability `device-manifest`) from the cycle's OWN discovery — no second
         // library enumeration. Bounding is the cycle's.
-        onDiscovery = { eventId, cutoff, discovery ->
+        onDiscovery = { eventId, policy, discovery ->
             manifestProducer.produce(
                 eventId = eventId,
-                startDate = cutoff, // per-device capture-date cutoff (photo-selection-policy)
+                policy = policy, // the ONE admission (capability `photo-selection-policy`)
                 discovered = deviceManifestAssetsFromResources(discovery.resources),
                 removedAssetIds = discovery.removedAssetIds.toSet(),
                 fullEnumeration = discovery.fullEnumeration,
@@ -206,7 +207,7 @@ private fun readGate(ports: UploadPorts): CycleGate {
         membership = payload?.let {
             JoinedMembership(
                 eventId = it.eventId,
-                contribution = Contribution.of(it.direction.includesUpload, it.minPhotoDate, it.maxPhotoDate),
+                policy = SelectionPolicy.from(it),
                 saveToAlbum = it.saveToAlbum,
             )
         },

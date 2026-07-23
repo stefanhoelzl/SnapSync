@@ -1,5 +1,10 @@
 package app.snapsync.model
 
+import app.snapsync.model.captureCeiling
+import app.snapsync.model.captureCutoff
+import app.snapsync.model.deletesAt
+import app.snapsync.model.eventEnd
+import app.snapsync.model.eventStart
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -17,8 +22,8 @@ class ConfigFileTest {
     private val config = EventConfig(
         eventId = "e1",
         name = "Party",
-        minPhotoDate = "2026-07-01T00:00:00Z",
-        startsAt = "2026-06-30T00:00:00Z",
+        minPhotoDate = captureCutoff("2026-07-01T00:00:00Z"),
+        startsAt = eventStart("2026-06-30T00:00:00Z"),
         direction = Direction.UploadOnly,
         saveToAlbum = true,
     )
@@ -34,7 +39,7 @@ class ConfigFileTest {
     fun `defaulted fields round-trip through an omitting encode`() {
         // encodeDefaults is off (matching the Keychain item's serialization posture), so a config at
         // defaults must still decode to the same values via the payload's own defaults.
-        val minimal = EventConfig(eventId = "e2", minPhotoDate = "2026-07-01T00:00:00Z")
+        val minimal = EventConfig(eventId = "e2", minPhotoDate = captureCutoff("2026-07-01T00:00:00Z"))
 
         assertEquals(ConfigFileDecode.Valid(minimal), decodeConfigFile(encodeConfigFile(minimal)))
     }
@@ -82,7 +87,7 @@ class ConfigFileTest {
         )
 
         assertEquals(
-            ConfigFileDecode.Valid(EventConfig(eventId = "e1", minPhotoDate = "2026-07-01T00:00:00Z")),
+            ConfigFileDecode.Valid(EventConfig(eventId = "e1", minPhotoDate = captureCutoff("2026-07-01T00:00:00Z"))),
             decoded,
         )
     }

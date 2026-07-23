@@ -43,15 +43,15 @@ package app.snapsync.model
  */
 class UserCommands(
     val leave: suspend () -> Unit = {},
-    val create: (name: String, startsAt: String, endsAt: String) -> Unit = { _, _, _ -> },
+    val create: (name: String, startsAt: EventStart, endsAt: EventEnd) -> Unit = { _, _, _ -> },
     val commitJoin: suspend (
         eventId: String,
         name: String,
-        startsAt: String,
-        endsAt: String,
-        deletesAt: String,
-        minPhotoDate: String,
-        maxPhotoDate: String,
+        startsAt: EventStart,
+        endsAt: EventEnd,
+        deletesAt: DeletesAt,
+        minPhotoDate: CaptureCutoff,
+        maxPhotoDate: CaptureCeiling,
         direction: Direction,
         saveToAlbum: Boolean,
     ) -> Boolean = { _, _, _, _, _, _, _, _, _ -> false },
@@ -62,8 +62,8 @@ class UserCommands(
     val reconfigure: suspend (
         eventId: String,
         direction: Direction,
-        minPhotoDate: String,
-        maxPhotoDate: String?,
+        minPhotoDate: CaptureCutoff,
+        maxPhotoDate: CaptureCeiling?,
         saveToAlbum: Boolean,
     ) -> Unit = { _, _, _, _, _ -> },
 )
