@@ -121,10 +121,13 @@ value class DeletesAt(val at: CaptureDate) : Comparable<DeletesAt> {
  * `toISOString()` and therefore carries **milliseconds** (`…T10:00:00.182Z`).
  *
  * It is modelled — rather than left a bare `String` — precisely so it cannot be compared against or
- * assigned to any of the canonical roles above. A millisecond-bearing string sorts *after* the same
- * instant without them (`"…:00.182Z" > "…:00Z"`), so a lexicographic compare that mixes the two shapes is
- * wrong in a way no test using round instants would ever show. Nothing in the client reads it; the type
- * exists to keep it that way.
+ * assigned to any of the canonical roles above. A millisecond-bearing string sorts *before* the same
+ * instant without them (`"…:00.182Z" < "…:00Z"`, since `.` is `0x2E` and `Z` is `0x5A`), which is the
+ * dangerous direction: fed to the floor's `maxOf` clamp such a value reads as EARLIER and loses,
+ * silently lowering the capture floor and admitting photos the member excluded. A lexicographic compare
+ * that mixes the two shapes is wrong in a way no test using round instants would ever show. Nothing in
+ * the client reads it; the type exists to keep it that way. (`HttpEventDirectory` is where the shape is
+ * normalized at the wire boundary, for exactly this reason.)
  */
 @Serializable(with = MillisInstantSerializer::class)
 @JvmInline

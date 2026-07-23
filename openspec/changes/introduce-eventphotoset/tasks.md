@@ -12,9 +12,9 @@
 - [x] 1.2 Add the distinct role types — `CaptureCutoff`, `CaptureCeiling`, `EventStart`, `EventEnd`,
       `DeletesAt` — each wrapping `CaptureDate`; `createdAt` gets its own type (it carries milliseconds, not
       the canonical shape).
-- [~] 1.3 Thread the role types through `EventConfig`, `JoinLoad`/`EventDetails`, the `Cutoff` clamps, and
+- [x] 1.3 Thread the role types through `EventConfig`, `JoinLoad`/`EventDetails`, the `Cutoff` clamps, and
       the pickers; keep serialization emitting `…Z` so nothing on the wire or in storage changes.
-- [ ] 1.4 `commonTest`: string-ordering preserved (lexicographic == chronological), round-trip serialization,
+- [x] 1.4 `commonTest`: string-ordering preserved (lexicographic == chronological), round-trip serialization,
       and that a role type cannot be constructed from another role's value (compile-fenced by type).
 
 ## 2. One-policy admission over typed dates (fixes the ceiling bug)
@@ -30,9 +30,9 @@
       projection, `OwnDeviceGalleryStatusSource` (both `refresh` and `refreshFrom`), and `ShareableCountSource`
       — all deriving the admitted set, none re-stating a rule. This is the fix: the ceiling now applies at
       the manifest and `N`.
-- [ ] 2.4 Add a `:test:architecture` guard forbidding a capture-date comparison (`creationDate` against a
+- [x] 2.4 Add a `:test:architecture` guard forbidding a capture-date comparison (`creationDate` against a
       bound) anywhere but inside `SelectionPolicy` — the drift-class guard.
-- [ ] 2.5 `commonTest`: a post-ceiling asset is admitted by NONE of upload/manifest/`N`/preview; add a
+- [x] 2.5 `commonTest`: a post-ceiling asset is admitted by NONE of upload/manifest/`N`/preview; add a
       closed-window fixture (a photo after `until`) — the exact task-11.1 shape the old fixtures missed.
 
 ## 3. Neutral fact vocabulary
