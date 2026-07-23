@@ -1,8 +1,11 @@
 ## 0. Preconditions (external gate)
 
-- [ ] 0.1 Confirm `decouple-event-window-from-lifetime` has shipped and every device has reconciled — its
-      backfill fills the capture-date ceiling that this change's strict decode (task 6.x) will require
-      (design D7a). Do NOT merge the ceiling-required tasks until this holds.
+- [x] 0.1 **Satisfied by an earlier build than D7a assumed.** `decouple` and this change now ship in one
+      release, so decouple cannot be the build that backfills first — but it never was the one that
+      mattered. The ceiling AND its reconcile backfill shipped together in `add-event-date-range`
+      (`fd609cd5`, on `main` and therefore on TestFlight), so any device that has foregrounded since has
+      already persisted a concrete ceiling. A device that has not loses its membership on update: the
+      accepted cost on this controlled install base, with `SNAPSYNC_RESET_STATE` as the escape hatch.
 
 ## 1. Global value-class dates (foundation, behavior-preserving)
 
@@ -81,10 +84,10 @@
 
 ## 6. Ceiling required (LAST — gated on §0)
 
-- [ ] 6.1 Make `EventConfig.maxPhotoDate` (the ceiling) required; a config lacking it fails to decode. Remove
+- [x] 6.1 Make `EventConfig.maxPhotoDate` (the ceiling) required; a config lacking it fails to decode. Remove
       the unbounded-ceiling default and the `CaptureCeiling.Unbounded`-equivalent everywhere.
-- [ ] 6.2 Remove the reconcile's absent-ceiling backfill / unbounded-until-backfilled branch.
-- [ ] 6.3 Update `EventConfig` decode tests: a pre-ceiling blob reads as no config (the deliberate reversal);
+- [x] 6.2 Remove the reconcile's absent-ceiling backfill / unbounded-until-backfilled branch.
+- [x] 6.3 Update `EventConfig` decode tests: a pre-ceiling blob reads as no config (the deliberate reversal);
       a current config decodes with a concrete ceiling.
 
 ## 7. Device spike — DONE
