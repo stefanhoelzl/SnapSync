@@ -316,7 +316,7 @@ class StatusContainerHost(
         eventId: String,
         direction: Direction,
         minPhotoDate: CaptureCutoff,
-        maxPhotoDate: CaptureCeiling?,
+        maxPhotoDate: CaptureCeiling,
         saveToAlbum: Boolean,
     ) = intent { commands.reconfigure(eventId, direction, minPhotoDate, maxPhotoDate, saveToAlbum) }
 

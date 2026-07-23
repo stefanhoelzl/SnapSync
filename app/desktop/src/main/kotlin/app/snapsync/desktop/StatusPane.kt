@@ -64,7 +64,7 @@ fun StatusPane(
     // In-place membership reconfigure (capability `reconfigure-membership`): the forge leaves it inert
     // (the surface is reviewable, the command a no-op), the full-stack world harness binds it to the real
     // `world.core.userCommands.reconfigure` so `:app:desktop:run` drives the actual in-place rewrite.
-    reconfigure: suspend (String, Direction, CaptureCutoff, CaptureCeiling?, Boolean) -> Unit =
+    reconfigure: suspend (String, Direction, CaptureCutoff, CaptureCeiling, Boolean) -> Unit =
         { _, _, _, _, _ -> },
     // The join-time shareable-count preview (capability `join-share-count`): the forge leaves it inert
     // (no count row), the full-stack world harness binds it to `world.core.loadShareableCount` so

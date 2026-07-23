@@ -63,7 +63,7 @@ class UserCommands(
         eventId: String,
         direction: Direction,
         minPhotoDate: CaptureCutoff,
-        maxPhotoDate: CaptureCeiling?,
+        maxPhotoDate: CaptureCeiling,
         saveToAlbum: Boolean,
     ) -> Unit = { _, _, _, _, _ -> },
 )

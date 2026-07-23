@@ -18,12 +18,16 @@ import kotlin.test.assertNull
  * failure on a foreground entry would otherwise clear a good membership and flip the screen to the
  * setup gate — the same regression class the status counts' keep-last-good posture prevents.
  */
+
+/** Every membership carries a concrete capture-date ceiling (capability `join-event`). */
+private val FIXTURE_CEILING = captureCeiling("2099-01-01T00:00:00Z")
+
 class ConfigAfterReloadTest {
 
     private val config = EventConfig(
         eventId = "e1",
         name = "Party",
-        minPhotoDate = captureCutoff("2026-07-01T00:00:00Z"),
+        minPhotoDate = captureCutoff("2026-07-01T00:00:00Z"), maxPhotoDate = FIXTURE_CEILING,
         direction = Direction.Both,
         saveToAlbum = true,
     )

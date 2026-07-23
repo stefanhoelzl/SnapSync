@@ -23,12 +23,17 @@ import kotlin.test.assertIs
  * branch that matters is unchanged from the Keychain era: *unreadable is not absent*, grounded on
  * file errors instead of `OSStatus`.
  */
+
+/** Every membership carries a concrete capture-date ceiling (capability `join-event`). */
+private val FIXTURE_CEILING = captureCeiling("2099-01-01T00:00:00Z")
+
 class ConfigFileReadTest {
 
     private val config = EventConfig(
         eventId = "e1",
         name = "Party",
         minPhotoDate = captureCutoff("2026-07-01T00:00:00Z"),
+        maxPhotoDate = FIXTURE_CEILING,
     )
 
     private fun noFallback(): ConfigRead = throw AssertionError("fallback must not be consulted")

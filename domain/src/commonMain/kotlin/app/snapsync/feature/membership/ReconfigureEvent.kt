@@ -72,16 +72,17 @@ class ReconfigureEvent(
         eventId: String,
         direction: Direction,
         chosenCutoff: CaptureCutoff,
-        chosenUpper: CaptureCeiling?,
+        chosenUpper: CaptureCeiling,
         saveToAlbum: Boolean,
     ) {
         val current = configSource.config.value
         if (current == null || current.eventId != eventId) return
         // The upper bound mirrors the cutoff: re-clamp the chosen ceiling to the event's immutable `endsAt`
-        // (`min(chosen, endsAt)`). A `null` chosen upper means unbounded; and a legacy config whose `endsAt`
-        // has not yet been backfilled (capability `event-rejoin-reconciliation`) has nothing to clamp to, so
-        // the chosen value stands as-is until the backfill supplies the ceiling.
-        val newMax = chosenUpper?.let { c -> current.endsAt?.let { clampToCeiling(c, it) } ?: c }
+        // (`min(chosen, endsAt)`). A membership always carries a concrete ceiling now (capability
+        // `join-event`), so there is no unbounded case to express — only a legacy config whose `endsAt` has
+        // not yet been backfilled has nothing to clamp against, and the member's own choice stands until it
+        // does. The clamp can only ever narrow.
+        val newMax = current.endsAt?.let { clampToCeiling(chosenUpper, it) } ?: chosenUpper
         val newCfg = current.copy(
             direction = direction,
             minPhotoDate = clampToFloor(chosenCutoff, current.startsAt),

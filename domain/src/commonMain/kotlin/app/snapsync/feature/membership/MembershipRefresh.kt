@@ -1,6 +1,5 @@
 package app.snapsync.feature.membership
 
-import app.snapsync.model.CaptureCeiling
 import app.snapsync.model.CaptureDate
 import app.snapsync.model.JoinLoad
 import app.snapsync.model.confirmedGone
@@ -49,9 +48,11 @@ class MembershipRefresh(
      *
      * - [RefreshOutcome.REFRESHED] — the fetch resolved for the still-configured event. Two rewrites ride
      *   together in **one** whole-config save: a **name refresh** (an unchanged name saves nothing), and
-     *   the **window + retention backfill** (capability `event-rejoin-reconciliation`) filling `endsAt`,
-     *   the ceiling `maxPhotoDate`, and `deletesAt` — each only when ABSENT, so a chosen ceiling is never
-     *   overwritten. Doing them in one save is what stops the rewrites from losing each other's field.
+     *   the **window + retention backfill** (capability `event-rejoin-reconciliation`) filling the
+     *   event's `endsAt` and `deletesAt` — each only when ABSENT. Doing them in one save is what stops
+     *   the rewrites from losing each other's field. The membership's own `maxPhotoDate` is **not**
+     *   backfilled: it is required on every persisted membership (capability `join-event`), so a config
+     *   that decoded at all already carries one.
      * - [RefreshOutcome.INCONCLUSIVE] — the fetch could not tell (offline, transport, non-404 status,
      *   unparseable body), or it resolved for an event that is no longer configured (a fetch landing
      *   after a switch or leave must not resurrect the departed membership). **Nothing is persisted and
@@ -87,16 +88,15 @@ class MembershipRefresh(
                 var next = current
                 // Name refresh: persist a changed name (an unchanged one saves nothing).
                 if (current.name != fetched.name) next = next.copy(name = fetched.name)
-                // Window backfill (capability `event-rejoin-reconciliation`): a membership persisted
-                // before the event window existed carries a `null` `endsAt`; fill it — and its ceiling —
-                // from the freshly fetched details, so a legacy member gains the same range a new join
-                // has. Only when ABSENT, so a chosen ceiling is never overwritten.
-                if (current.endsAt == null) {
-                    next = next.copy(
-                        endsAt = fetched.endsAt,
-                        maxPhotoDate = current.maxPhotoDate ?: CaptureCeiling(fetched.endsAt.at),
-                    )
-                }
+                // Event-window backfill (capability `event-rejoin-reconciliation`): a membership
+                // persisted before the event window existed carries a `null` `endsAt`; fill it from the
+                // freshly fetched details, so a legacy member gains the event's declared end.
+                //
+                // The membership's own **ceiling** is NOT backfilled here any more: it is required on
+                // every persisted membership (capability `join-event`), so a config that decoded at all
+                // already has one and there is nothing absent to fill. A config lacking it does not reach
+                // this rule — it failed to decode and read as no config.
+                if (current.endsAt == null) next = next.copy(endsAt = fetched.endsAt)
                 // Retention backfill: until this lands the membership's deadline reads as "never
                 // reached" and the self-leave cannot fire — the safe direction, mirroring the unbounded
                 // ceiling above.

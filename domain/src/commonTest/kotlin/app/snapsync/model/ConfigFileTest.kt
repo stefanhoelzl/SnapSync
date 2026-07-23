@@ -17,12 +17,16 @@ import kotlin.test.assertTrue
  * interpret must land on the unreadable side ([ConfigFileDecode.Foreign]) — a future build's file,
  * or corruption, must never read as a leave on a revert build.
  */
+
+/** Every membership carries a concrete capture-date ceiling (capability `join-event`). */
+private val FIXTURE_CEILING = captureCeiling("2099-01-01T00:00:00Z")
+
 class ConfigFileTest {
 
     private val config = EventConfig(
         eventId = "e1",
         name = "Party",
-        minPhotoDate = captureCutoff("2026-07-01T00:00:00Z"),
+        minPhotoDate = captureCutoff("2026-07-01T00:00:00Z"), maxPhotoDate = FIXTURE_CEILING,
         startsAt = eventStart("2026-06-30T00:00:00Z"),
         direction = Direction.UploadOnly,
         saveToAlbum = true,
@@ -39,7 +43,7 @@ class ConfigFileTest {
     fun `defaulted fields round-trip through an omitting encode`() {
         // encodeDefaults is off (matching the Keychain item's serialization posture), so a config at
         // defaults must still decode to the same values via the payload's own defaults.
-        val minimal = EventConfig(eventId = "e2", minPhotoDate = captureCutoff("2026-07-01T00:00:00Z"))
+        val minimal = EventConfig(eventId = "e2", minPhotoDate = captureCutoff("2026-07-01T00:00:00Z"), maxPhotoDate = FIXTURE_CEILING)
 
         assertEquals(ConfigFileDecode.Valid(minimal), decodeConfigFile(encodeConfigFile(minimal)))
     }
@@ -83,11 +87,17 @@ class ConfigFileTest {
     @Test
     fun `unknown keys are ignored on envelope and payload — additive change needs no version bump`() {
         val decoded = decodeConfigFile(
-            """{"v":1,"extra":"ignored","payload":{"eventId":"e1","minPhotoDate":"2026-07-01T00:00:00Z","novel":"ignored"}}""",
+            """{"v":1,"extra":"ignored","payload":{"eventId":"e1","minPhotoDate":"2026-07-01T00:00:00Z","maxPhotoDate":"2099-01-01T00:00:00Z","novel":"ignored"}}""",
         )
 
         assertEquals(
-            ConfigFileDecode.Valid(EventConfig(eventId = "e1", minPhotoDate = captureCutoff("2026-07-01T00:00:00Z"))),
+            ConfigFileDecode.Valid(
+                EventConfig(
+                    eventId = "e1",
+                    minPhotoDate = captureCutoff("2026-07-01T00:00:00Z"),
+                    maxPhotoDate = FIXTURE_CEILING,
+                ),
+            ),
             decoded,
         )
     }

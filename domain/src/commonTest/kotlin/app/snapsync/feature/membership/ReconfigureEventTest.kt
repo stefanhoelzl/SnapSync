@@ -17,6 +17,10 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.test.runTest
 
+
+/** Every membership carries a concrete capture-date ceiling (capability `join-event`). */
+private val FIXTURE_CEILING = captureCeiling("2099-01-01T00:00:00Z")
+
 class ReconfigureEventTest {
 
     private class FakeConfigStore : ConfigStore {
@@ -40,6 +44,7 @@ class ReconfigureEventTest {
         name = "Anna's Birthday",
         minPhotoDate = minPhotoDate,
         startsAt = eventStart("2026-07-06T12:00:00Z"),
+        maxPhotoDate = FIXTURE_CEILING,
         direction = direction,
         saveToAlbum = saveToAlbum,
     )
@@ -66,7 +71,7 @@ class ReconfigureEventTest {
             eventId = "E1",
             direction = Direction.UploadOnly,
             chosenCutoff = captureCutoff("2026-07-06T18:00:00Z"),
-            chosenUpper = null,
+            chosenUpper = FIXTURE_CEILING,
             saveToAlbum = true,
         )
 
@@ -87,7 +92,7 @@ class ReconfigureEventTest {
             eventId = "E1",
             direction = Direction.Both,
             chosenCutoff = captureCutoff("2026-07-01T00:00:00Z"), // before the event start
-            chosenUpper = null,
+            chosenUpper = FIXTURE_CEILING,
             saveToAlbum = false,
         )
         assertEquals(captureCutoff("2026-07-06T12:00:00Z"), store.saved!!.minPhotoDate)
@@ -102,7 +107,7 @@ class ReconfigureEventTest {
             eventId = "E9",
             direction = Direction.DownloadOnly,
             chosenCutoff = captureCutoff("2026-07-06T18:00:00Z"),
-            chosenUpper = null,
+            chosenUpper = FIXTURE_CEILING,
             saveToAlbum = true,
         )
         assertNull(store.saved)
@@ -112,7 +117,7 @@ class ReconfigureEventTest {
     @Test
     fun `no config is a no-op`() = runTest {
         val store = FakeConfigStore()
-        make(FakeConfigSource(null), store).reconfigure("E1", Direction.Both, captureCutoff("2026-07-06T18:00:00Z"), null, false)
+        make(FakeConfigSource(null), store).reconfigure("E1", Direction.Both, captureCutoff("2026-07-06T18:00:00Z"), FIXTURE_CEILING, false)
         assertNull(store.saved)
     }
 
@@ -120,7 +125,7 @@ class ReconfigureEventTest {
     fun `enabling upload arms the producer`() = runTest {
         val order = mutableListOf<String>()
         make(FakeConfigSource(current(direction = Direction.DownloadOnly)), FakeConfigStore(), order)
-            .reconfigure("E1", Direction.Both, captureCutoff("2026-07-06T12:00:00Z"), null, false)
+            .reconfigure("E1", Direction.Both, captureCutoff("2026-07-06T12:00:00Z"), FIXTURE_CEILING, false)
         assertTrue("arm" in order)
     }
 
@@ -128,7 +133,7 @@ class ReconfigureEventTest {
     fun `disabling upload does NOT stop the producer so in-flight drains`() = runTest {
         val order = mutableListOf<String>()
         make(FakeConfigSource(current(direction = Direction.Both)), FakeConfigStore(), order)
-            .reconfigure("E1", Direction.DownloadOnly, captureCutoff("2026-07-06T12:00:00Z"), null, false)
+            .reconfigure("E1", Direction.DownloadOnly, captureCutoff("2026-07-06T12:00:00Z"), FIXTURE_CEILING, false)
         // Upload is being turned off: the arm is deliberately not driven, so nothing cancels in-flight.
         assertTrue("arm" !in order)
     }
@@ -137,7 +142,7 @@ class ReconfigureEventTest {
     fun `enabling download reconciles`() = runTest {
         val order = mutableListOf<String>()
         make(FakeConfigSource(current(direction = Direction.UploadOnly)), FakeConfigStore(), order)
-            .reconfigure("E1", Direction.Both, captureCutoff("2026-07-06T12:00:00Z"), null, false)
+            .reconfigure("E1", Direction.Both, captureCutoff("2026-07-06T12:00:00Z"), FIXTURE_CEILING, false)
         assertTrue("reconcile:E1" in order)
         assertTrue("cancelDownloads" !in order)
     }
@@ -146,7 +151,7 @@ class ReconfigureEventTest {
     fun `disabling download cancels in-flight downloads`() = runTest {
         val order = mutableListOf<String>()
         make(FakeConfigSource(current(direction = Direction.Both)), FakeConfigStore(), order)
-            .reconfigure("E1", Direction.UploadOnly, captureCutoff("2026-07-06T12:00:00Z"), null, false)
+            .reconfigure("E1", Direction.UploadOnly, captureCutoff("2026-07-06T12:00:00Z"), FIXTURE_CEILING, false)
         assertTrue("cancelDownloads" in order)
         assertTrue(order.none { it.startsWith("reconcile") })
     }
@@ -158,7 +163,7 @@ class ReconfigureEventTest {
         val order = mutableListOf<String>()
         // Current cutoff is 20:00 (above the 12:00 floor); lower it to 15:00 (still above the floor).
         make(FakeConfigSource(current(minPhotoDate = captureCutoff("2026-07-06T20:00:00Z"))), FakeConfigStore(), order)
-            .reconfigure("E1", Direction.Both, captureCutoff("2026-07-06T15:00:00Z"), null, false)
+            .reconfigure("E1", Direction.Both, captureCutoff("2026-07-06T15:00:00Z"), FIXTURE_CEILING, false)
         assertTrue("clearCursor" in order, "a lowered cutoff must invalidate the cursor so older photos re-enumerate")
         // Before the arm, so the next cycle re-enumerates at the new cutoff rather than off a settled cursor.
         assertTrue(order.indexOf("clearCursor") < order.indexOf("arm"))
@@ -169,7 +174,7 @@ class ReconfigureEventTest {
         val order = mutableListOf<String>()
         // Current cutoff at the floor (12:00); raise it to 18:00 — narrowing, nothing new comes into scope.
         make(FakeConfigSource(current(minPhotoDate = captureCutoff("2026-07-06T12:00:00Z"))), FakeConfigStore(), order)
-            .reconfigure("E1", Direction.Both, captureCutoff("2026-07-06T18:00:00Z"), null, false)
+            .reconfigure("E1", Direction.Both, captureCutoff("2026-07-06T18:00:00Z"), FIXTURE_CEILING, false)
         assertTrue("clearCursor" !in order, "raising the cutoff needs no re-enumeration and un-shares nothing")
     }
 
@@ -177,7 +182,7 @@ class ReconfigureEventTest {
     fun `an unchanged cutoff does not invalidate the discovery cursor`() = runTest {
         val order = mutableListOf<String>()
         make(FakeConfigSource(current(minPhotoDate = captureCutoff("2026-07-06T15:00:00Z"))), FakeConfigStore(), order)
-            .reconfigure("E1", Direction.UploadOnly, captureCutoff("2026-07-06T15:00:00Z"), null, false)
+            .reconfigure("E1", Direction.UploadOnly, captureCutoff("2026-07-06T15:00:00Z"), FIXTURE_CEILING, false)
         assertTrue("clearCursor" !in order)
     }
 
@@ -185,7 +190,7 @@ class ReconfigureEventTest {
     fun `always ensures the album and refreshes status`() = runTest {
         val order = mutableListOf<String>()
         make(FakeConfigSource(current()), FakeConfigStore(), order)
-            .reconfigure("E1", Direction.Both, captureCutoff("2026-07-06T12:00:00Z"), null, true)
+            .reconfigure("E1", Direction.Both, captureCutoff("2026-07-06T12:00:00Z"), FIXTURE_CEILING, true)
         assertTrue("refresh" in order)
         assertTrue("album" in order)
     }

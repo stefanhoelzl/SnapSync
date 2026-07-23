@@ -1,5 +1,6 @@
 package app.snapsync.feature.membership
 
+import app.snapsync.model.captureCeiling
 import app.snapsync.ports.ConfigSource
 import app.snapsync.ports.ConfigStore
 import app.snapsync.model.captureCutoff
@@ -14,6 +15,10 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 
+
+/** Every membership carries a concrete capture-date ceiling (capability `join-event`). */
+private val FIXTURE_CEILING = captureCeiling("2099-01-01T00:00:00Z")
+
 class LeaveEventTest {
 
     private class FakeConfigStore(private val order: MutableList<String>? = null) : ConfigStore {
@@ -25,7 +30,7 @@ class LeaveEventTest {
     private class FakeConfigSource(eventId: String?) : ConfigSource {
         override val config: StateFlow<EventConfig?> =
             // A membership always carries a cutoff (capability `photo-selection-policy`); leave ignores it.
-            MutableStateFlow(eventId?.let { EventConfig(it, minPhotoDate = captureCutoff("2026-07-06T14:32:11Z")) })
+            MutableStateFlow(eventId?.let { EventConfig(it, minPhotoDate = captureCutoff("2026-07-06T14:32:11Z"), maxPhotoDate = FIXTURE_CEILING) })
     }
 
     @Test
