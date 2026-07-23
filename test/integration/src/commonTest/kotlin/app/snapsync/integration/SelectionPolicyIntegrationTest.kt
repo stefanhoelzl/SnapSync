@@ -35,10 +35,15 @@ class SelectionPolicyIntegrationTest {
         assertEquals(listOf("CAM-primary.jpg"), w.platform.created.map { it.filename })
         // 2. No ledger row.
         assertNull(w.ledgerBackend.get("SHOT-primary.jpg"), "an excluded asset gains no ledger row")
-        // 3. Not in the manifest → never in the event union, so no other member ever sees it.
-        val manifest = w.manifestStore.loadAccumulator()
-        assertTrue(manifest.none { it.assetId == "SHOT" }, "the screenshot never reaches the device manifest")
-        assertTrue(manifest.any { it.assetId == "CAM" }, "…while the camera photo does")
+        // 3. Not in the manifest → never in the event union, so no other member ever sees it. The
+        //    manifest is the deposited `device.json` now (projected from the ledger), not an
+        //    accumulator this test can read behind the producer's back.
+        // The manifest lists COMPLETED resources (capability `device-manifest`), so complete the
+        // admitted job and invoke again — the cycle that records the completion re-projects.
+        w.platform.completeJob("CAM-primary.jpg")
+        w.runUploadCycle()
+        val listed = w.store.manifestOf(eventId, w.ownDeviceId)?.assets?.map { it.assetId }.orEmpty()
+        assertEquals(listOf("CAM"), listed, "only the camera photo reaches the device manifest")
     }
 
     @Test
@@ -53,7 +58,12 @@ class SelectionPolicyIntegrationTest {
         w.runUploadCycle()
 
         assertEquals(listOf("CAM-primary.jpg"), w.platform.created.map { it.filename })
-        assertTrue(w.manifestStore.loadAccumulator().none { it.assetId == "WA" })
+        w.platform.completeJob("CAM-primary.jpg")
+        w.runUploadCycle()
+        assertEquals(
+            listOf("CAM"),
+            w.store.manifestOf(eventId, w.ownDeviceId)?.assets?.map { it.assetId },
+        )
     }
 
     @Test

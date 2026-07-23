@@ -103,20 +103,20 @@ class SyncEngine(
         val job = UploadJob(provider.provide(resource), failed.attempt + 1)
         // Record FAILED only. The retry's REQUESTED is written when the platform reports
         // UploadStarted for the freshly created retry job (write-after-act).
-        ledger.recordFailed(resource.filename, resource.assetId, failed.attempt, eventId)
+        ledger.recordFailed(resource, failed.attempt, eventId)
         return SyncDecision.Retry(job)
     }
 
     private suspend fun complete(job: UploadJob): SyncDecision {
         val resource = job.request.resource
-        ledger.recordCompleted(resource.filename, resource.assetId, job.attempt, eventId)
+        ledger.recordCompleted(resource, job.attempt, eventId)
         return SyncDecision.AlreadyUploaded
     }
 
     /** The sole site that records REQUESTED: the platform created/retried the job (write-after-act). */
     private suspend fun started(job: UploadJob): SyncDecision {
         val resource = job.request.resource
-        ledger.recordRequested(resource.filename, resource.assetId, job.attempt, eventId)
+        ledger.recordRequested(resource, job.attempt, eventId)
         return SyncDecision.AlreadyUploaded
     }
 

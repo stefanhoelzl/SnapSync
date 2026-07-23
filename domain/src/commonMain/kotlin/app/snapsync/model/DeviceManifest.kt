@@ -58,9 +58,8 @@ fun deviceManifestFromJson(text: String): DeviceManifest =
     deviceManifestJson.decodeFromString(DeviceManifest.serializer(), text)
 
 /**
- * Project a device-global [accumulator] (every discovered, not-deleted asset) into a single event's
- * [DeviceManifest]: keep exactly the assets the membership's [policy] **admits** (capability
- * `photo-selection-policy`).
+ * Project the upload ledger's COMPLETED [rows] into a single event's [DeviceManifest], keeping exactly
+ * the assets the membership's [policy] **admits** (capability `photo-selection-policy`).
  *
  * It applies the *one* admission rather than a date comparison of its own. That is the fix for the bug
  * this change exists to close: the projection used to take a bare `startDate` and filter
@@ -68,23 +67,43 @@ fun deviceManifestFromJson(text: String): DeviceManifest =
  * and never reached here. Post-ceiling photos were listed in `device.json` — offered to every other
  * member as bytes that were never uploaded — while the status total counted them and could never settle.
  *
- * The accumulator's entries carry a date and an id but not the origin facts (those were already applied
- * before an asset entered it), so the facts default to admit-on-doubt: the rules that can still speak here
- * are the two capture-date bounds and the two id-set exclusions, which is precisely what a per-event
- * projection of a device-global accumulator needs to decide. Entries are sorted by `assetId` so the
- * serialized snapshot is deterministic, making the producer's skip-if-unchanged comparison stable.
+ * A ledger row carries a date and an id but not the origin facts (a screenshot's row is COMPLETED only
+ * if a policy admitted it when it uploaded), so those facts default to admit-on-doubt: the rules that can
+ * still speak here are the two capture-date bounds and the two id-set exclusions — which is exactly what
+ * a per-event projection of a device-global ledger needs to decide.
+ *
+ * Rows are grouped per asset (several resources of one photo share an `assetId`) and sorted by
+ * `assetId`, so the serialized snapshot is deterministic and the producer's skip-if-unchanged comparison
+ * is stable. Within an asset, resources are sorted by their key for the same reason.
  */
 suspend fun projectDeviceManifest(
     deviceId: String,
-    accumulator: Collection<DeviceManifestAsset>,
+    rows: Collection<LedgerEntry>,
     policy: SelectionPolicy,
 ): DeviceManifest {
-    val byId = accumulator.associateBy { it.assetId }
+    val byAsset = rows.groupBy { it.assetId }
     val admitted = EventPhotoSet(policy) {
         candidatesFromFacts(
-            accumulator.map { AssetFacts(assetId = it.assetId, creationDate = CaptureDate(it.creationDate)) },
+            byAsset.map { (assetId, group) ->
+                AssetFacts(assetId = assetId, creationDate = CaptureDate(group.first().creationDate))
+            },
         )
     }.assets()
-    val assets = admitted.mapNotNull { byId[it.facts.assetId] }.sortedBy { it.assetId }
+
+    val assets = admitted.mapNotNull { candidate ->
+        val group = byAsset[candidate.facts.assetId] ?: return@mapNotNull null
+        DeviceManifestAsset(
+            assetId = candidate.facts.assetId,
+            creationDate = group.first().creationDate,
+            resources = group.sortedBy { it.key }.map {
+                ManifestResource(
+                    role = it.role ?: ResourceRole.PRIMARY,
+                    contentType = it.contentType,
+                    key = it.key,
+                    filename = it.originalFilename,
+                )
+            },
+        )
+    }.sortedBy { it.assetId }
     return DeviceManifest(deviceId = deviceId, assets = assets)
 }

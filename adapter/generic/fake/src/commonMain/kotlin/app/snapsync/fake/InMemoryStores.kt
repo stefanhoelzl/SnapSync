@@ -31,13 +31,8 @@ class InMemoryJoinedEventMarker(private var value: String? = null) : JoinedEvent
 
 /** The honest in-memory [DeviceManifestStore] for the composed `DeviceManifestProducer`. */
 class InMemoryDeviceManifestStore : DeviceManifestStore {
-    private var accumulator: List<DeviceManifestAsset> = emptyList()
     private var lastUploaded: String? = null
 
-    override fun loadAccumulator(): List<DeviceManifestAsset> = accumulator
-    override fun saveAccumulator(assets: List<DeviceManifestAsset>) {
-        accumulator = assets
-    }
     override fun loadLastUploaded(): String? = lastUploaded
     override fun saveLastUploaded(json: String) {
         lastUploaded = json

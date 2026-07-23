@@ -2,11 +2,7 @@
 
 package app.snapsync.gallery
 
-import app.snapsync.model.encodeToJson
 
-import app.snapsync.model.DeviceManifest
-import app.snapsync.model.DeviceManifestAsset
-import app.snapsync.model.deviceManifestFromJson
 import app.snapsync.ports.DeviceManifestStore
 
 import app.snapsync.engine.LEDGER_APP_GROUP
@@ -24,11 +20,13 @@ import platform.Foundation.writeToURL
 
 /**
  * The App-Group persistence for the device manifest (capability `device-manifest`): the device-global
- * accumulator and the JSON of the last successfully-uploaded projection (skip-if-unchanged), under
- * `device-manifest/` in the [LEDGER_APP_GROUP] container. The accumulator is serialized as a
- * [DeviceManifest] with an empty `deviceId` (only its `assets` matter here — the real `deviceId` is
- * applied at projection time). Wiring-only and untestable (Foundation file I/O); the model + producer
- * it backs are exercised in `commonTest`.
+ * JSON of the last successfully-uploaded projection (skip-if-unchanged), under `device-manifest/` in
+ * the [LEDGER_APP_GROUP] container. Wiring-only and untestable (Foundation file I/O); the model +
+ * producer it backs are exercised in `commonTest`.
+ *
+ * The device-global accumulator this also held is gone — the manifest is projected from the upload
+ * ledger now (capability `sync-ledger`). Its file is simply abandoned: a stale `accumulator.json` in
+ * the container is inert, and deleting it would be a migration with nothing to gain.
  */
 class IosDeviceManifestStore(appGroup: String = LEDGER_APP_GROUP) : DeviceManifestStore {
 
@@ -37,15 +35,6 @@ class IosDeviceManifestStore(appGroup: String = LEDGER_APP_GROUP) : DeviceManife
     private val dir: NSURL? = fileManager
         .containerURLForSecurityApplicationGroupIdentifier(appGroup)
         ?.URLByAppendingPathComponent("device-manifest", isDirectory = true)
-
-    override fun loadAccumulator(): List<DeviceManifestAsset> {
-        val text = readString(ACCUMULATOR) ?: return emptyList()
-        return runCatching { deviceManifestFromJson(text).assets }.getOrDefault(emptyList())
-    }
-
-    override fun saveAccumulator(assets: List<DeviceManifestAsset>) {
-        writeString(ACCUMULATOR, DeviceManifest(deviceId = "", assets = assets).encodeToJson())
-    }
 
     override fun loadLastUploaded(): String? = readString(LAST_UPLOADED)
 
@@ -68,7 +57,6 @@ class IosDeviceManifestStore(appGroup: String = LEDGER_APP_GROUP) : DeviceManife
     }
 
     private companion object {
-        const val ACCUMULATOR = "accumulator.json"
         const val LAST_UPLOADED = "last-uploaded.json"
     }
 }

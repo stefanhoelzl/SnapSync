@@ -94,7 +94,7 @@ class UploadCycle(
     //
     // Required, with **no default**: a no-op means this device's photos never enter the event union — they
     // upload, and nobody can see them. That is the invisible failure, and `{}` states it silently.
-    private val onDiscovery: suspend (eventId: String, policy: SelectionPolicy, discovery: Discovery) -> Unit,
+    private val onDiscovery: suspend (eventId: String, policy: SelectionPolicy) -> Unit,
     // Suppression port (capability `photo-download`): the set of `assetId`s of foreign assets this
     // device downloaded + imported. Read once per cycle; discovery drops these BEFORE fan-out so an
     // imported foreign asset (a fresh local id) is never re-uploaded (the echo). Read-only, backed in
@@ -339,6 +339,16 @@ class UploadCycle(
                 }
             } else {
                 alreadyUploaded++
+                // Enrich a row that predates the manifest detail, or that the re-join reconcile seeded
+                // from a filename listing (capability `sync-ledger`). The engine writes nothing on an
+                // already-uploaded resource, so without this sweep a seeded row would never learn its
+                // capture date — and the device manifest, projected from the ledger, would silently drop
+                // this member's photos out of the event union after every re-join or reinstall.
+                //
+                // Idempotent and bare-only, exactly like the `eventId` sentinel sweep: a row already
+                // enriched is never rewritten. It runs BEFORE the manifest PUT below, in this same cycle,
+                // so the projection never reads a bare row it could have filled.
+                ledger.backfillManifestDetail(resource, eventId)
             }
         }
         // Per-cycle enumeration summary (capability `diagnostic-logging`, D6): accountable for the whole
@@ -354,27 +364,22 @@ class UploadCycle(
             ledger.retainAssets(liveResources.mapTo(mutableSetOf()) { it.assetId })
         }
 
-        // Feed the device manifest from THIS cycle's discovery (no second enumeration). Best-effort and
-        // bounded by the impl — it must never fail or stall the cycle (byte jobs are already created).
+        // Write the device manifest (capability `device-manifest`). It is a PROJECTION of the ledger's
+        // COMPLETED rows, so nothing is handed over here but the event and the admission: every row this
+        // cycle recorded or backfilled is already durable above, and the projection reads them.
         //
-        // It is handed the **admitted set** — the same `liveResources` the byte uploads were created
-        // from — and the policy that produced it. Both bounds of the capture-date range therefore reach
-        // the manifest by construction.
+        // That closes the leak this change exists to fix at its source. The hook used to be handed a
+        // discovery plus a bare **cutoff**, and the projection applied the floor alone — so a photo taken
+        // after the event's end was listed in `device.json`, entered the event union, and was offered to
+        // every other member as bytes that were never uploaded, while the status total counted it and
+        // could never settle. (Before that, it was handed the RAW discovery, which put screenshots into
+        // the union the same way.) A consumer that receives the set cannot forget a rule; a consumer that
+        // receives the inputs can, and did, twice.
         //
-        // This is the bug that motivated the whole change: the manifest used to be fed the *origin*-
-        // filtered set and a bare **cutoff**, so the ceiling never reached it. A photo captured after the
-        // event's end was listed in `device.json` and counted in `N` while its bytes were never uploaded
-        // — the status screen pegged below 100% forever, and every other member was offered a resource
-        // that 404s. (Before that, it was fed the raw discovery, which put screenshots into the union the
-        // same way.) A consumer that receives the set cannot forget a rule; a consumer that receives the
-        // inputs can, and did, twice.
-        val manifestDiscovery = Discovery(
-            resources = liveResources,
-            nextToken = discovery.nextToken,
-            removedAssetIds = discovery.removedAssetIds,
-            fullEnumeration = discovery.fullEnumeration,
-        )
-        runCatching { withTimeout(deviceManifestTimeoutMs) { onDiscovery(eventId, policy, manifestDiscovery) } }
+        // Best-effort and bounded here, so a hung host can never stall a cycle and no root has to
+        // remember to bound it (both used to, with the same two constants — one copied from the other,
+        // along with a justification that only applied to the tier it was copied FROM).
+        runCatching { withTimeout(deviceManifestTimeoutMs) { onDiscovery(eventId, policy) } }
             .onFailure { log.w(it) { "device.json production failed/timed out this cycle" } }
 
         // Notify the event's members (capability `upload-completion-notify`) — but only now, on a

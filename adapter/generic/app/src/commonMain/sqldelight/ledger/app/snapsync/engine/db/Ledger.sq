@@ -3,24 +3,58 @@ import app.snapsync.model.LedgerState;
 -- `eventId` is provenance, not dedup state: the event that was joined when the row was recorded.
 -- `DEFAULT ''` must match 4.sqm exactly (the verify task compares migrated vs created schemas);
 -- `''` is the pre-provenance sentinel the writer's per-cycle backfill sweeps to the live event id.
+-- The last four columns carry the DEVICE MANIFEST's presentation detail (capability `sync-ledger`),
+-- so the manifest is a projection of this table's COMPLETED rows rather than a parallel accumulator
+-- that tracked the same deletion-aware asset set with different columns. `DEFAULT ''` must match
+-- 5.sqm exactly (the verify task compares migrated vs created schemas); `''` is the "not yet
+-- enriched" sentinel that a re-join seed and a pre-5.sqm row both start in, swept by
+-- `backfillManifestDetail`.
 CREATE TABLE ledgerRow (
     key TEXT NOT NULL PRIMARY KEY,
     assetId TEXT NOT NULL,
     state TEXT AS LedgerState NOT NULL,
     attempt INTEGER NOT NULL,
-    eventId TEXT NOT NULL DEFAULT ''
+    eventId TEXT NOT NULL DEFAULT '',
+    creationDate TEXT NOT NULL DEFAULT '',
+    role TEXT NOT NULL DEFAULT '',
+    contentType TEXT NOT NULL DEFAULT '',
+    originalFilename TEXT NOT NULL DEFAULT ''
 );
 
 CREATE INDEX ledgerRow_assetId ON ledgerRow(assetId);
 
 get:
-SELECT key, assetId, state, attempt, eventId
+SELECT key, assetId, state, attempt, eventId, creationDate, role, contentType, originalFilename
 FROM ledgerRow
 WHERE key = :key;
 
 put:
-INSERT OR REPLACE INTO ledgerRow (key, assetId, state, attempt, eventId)
-VALUES (:key, :assetId, :state, :attempt, :eventId);
+INSERT OR REPLACE INTO ledgerRow (
+    key, assetId, state, attempt, eventId, creationDate, role, contentType, originalFilename
+)
+VALUES (
+    :key, :assetId, :state, :attempt, :eventId, :creationDate, :role, :contentType, :originalFilename
+);
+
+-- Fill the manifest detail of ONE already-recorded row, without touching its state or attempt.
+-- The sweep for rows a migration could not fill and for rows the re-join reconcile seeded from a
+-- filename listing (which carries no capture date). Touches only bare rows: a row already enriched
+-- is never rewritten, so re-running is free and cannot clobber a good value with a worse one.
+backfillManifestDetail:
+UPDATE ledgerRow
+SET creationDate = :creationDate,
+    role = :role,
+    contentType = :contentType,
+    originalFilename = :originalFilename
+WHERE key = :key AND creationDate = '';
+
+-- The COMPLETED rows that carry manifest detail — the device manifest, projected. Rows still bare
+-- (`creationDate = ''`) are excluded: they are mid-backfill, and listing a resource with no capture
+-- date would put it outside every membership window rather than inside the right one.
+selectCompletedManifestRows:
+SELECT key, assetId, creationDate, role, contentType, originalFilename
+FROM ledgerRow
+WHERE state = 'COMPLETED' AND creationDate != '';
 
 -- Rewrite the provenance of every pre-provenance row (`eventId = ''` — rows recorded by a build
 -- before 4.sqm, or by a staged-revert build) to the live event id. Touches ONLY the sentinel:

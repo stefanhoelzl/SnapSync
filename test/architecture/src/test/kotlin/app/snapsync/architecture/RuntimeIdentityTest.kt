@@ -77,7 +77,10 @@ class RuntimeIdentityTest {
         "downloads.db",
         "eventconfig.json",
         "device-manifest",
-        "accumulator.json",
+        // NB `accumulator.json` was pinned here until the device manifest became a projection of the
+        // upload ledger (capability `sync-ledger`). The file is gone, so pinning it would fail the
+        // "nowhere — a move dropped or re-valued it" arm forever; `DeletionLedgerTest` keeps the
+        // accumulator itself from growing back.
         "last-uploaded.json",
         "app.snapsync.upload.heartbeat",
         "app.snapsync.download.backstop",

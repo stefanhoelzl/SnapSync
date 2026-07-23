@@ -83,9 +83,41 @@ class InMemoryLedgerStore : LedgerStore {
         // targeted UPDATE (last write wins, no interpretation).
         for ((key, entry) in rows) {
             if (entry.eventId.isEmpty()) {
-                rows[key] = LedgerEntry(entry.key, entry.assetId, entry.state, entry.attempt, eventId)
+                rows[key] = LedgerEntry(
+                    key = entry.key,
+                    assetId = entry.assetId,
+                    state = entry.state,
+                    attempt = entry.attempt,
+                    eventId = eventId,
+                    // "verbatim otherwise" includes the manifest detail: the targeted SQL UPDATE sets
+                    // `eventId` alone, so a fake that dropped these would let a green suite hide a store
+                    // that silently blanks the manifest on every cycle's sweep.
+                    creationDate = entry.creationDate,
+                    role = entry.role,
+                    contentType = entry.contentType,
+                    originalFilename = entry.originalFilename,
+                )
             }
         }
         dings.tryEmit(Unit)
+    }
+
+    override suspend fun completedManifestRows(): List<LedgerEntry> =
+        rows.values.filter { it.state == LedgerState.COMPLETED && !it.needsManifestDetail }
+
+    override suspend fun backfillManifestDetail(entry: LedgerEntry) {
+        val current = rows[entry.key] ?: return
+        if (!current.needsManifestDetail) return // bare-only, exactly like the SQL UPDATE's WHERE
+        rows[entry.key] = LedgerEntry(
+            key = current.key,
+            assetId = current.assetId,
+            state = current.state,
+            attempt = current.attempt,
+            eventId = current.eventId,
+            creationDate = entry.creationDate,
+            role = entry.role,
+            contentType = entry.contentType,
+            originalFilename = entry.originalFilename,
+        )
     }
 }

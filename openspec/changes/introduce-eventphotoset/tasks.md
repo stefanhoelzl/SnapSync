@@ -69,13 +69,14 @@
 
 ## 5. Manifest from the enriched ledger (eliminate the accumulator)
 
-- [ ] 5.1 Add `creationDate`/`role`/`contentType`/`filename` to the ledger row (SQLDelight schema + a
+- [x] 5.1 Add `creationDate`/`role`/`contentType`/`filename` to the ledger row (SQLDelight schema + a
       migration `.sqm`); update the store contract.
-- [ ] 5.2 Rewrite `DeviceManifestProducer` to project the manifest from the ledger's COMPLETED rows,
+- [x] 5.2 Rewrite `DeviceManifestProducer` to project the manifest from the ledger's COMPLETED rows,
       date-filtered to the current event window; delete the durable accumulator + its store.
-- [ ] 5.3 Confirm the union's byte-presence check stays as defense-in-depth (no code change; note in tests
-      that a COMPLETED-but-absent byte is still excluded).
-- [ ] 5.4 `commonTest`: manifest lists exactly the in-window COMPLETED resources; a deleted asset drops; a
+- [x] 5.3 Union byte-presence check unchanged (no code change). It is now genuinely defense-in-depth:
+      the manifest lists only COMPLETED resources, so a named byte is present by construction and the
+      check catches only a residual COMPLETED-but-absent edge.
+- [x] 5.4 `commonTest`: manifest lists exactly the in-window COMPLETED resources; a deleted asset drops; a
       not-yet-uploaded asset is absent until COMPLETED.
 
 ## 6. Ceiling required (LAST — gated on §0)
