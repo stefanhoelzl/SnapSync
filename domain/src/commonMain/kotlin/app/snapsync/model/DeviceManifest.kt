@@ -74,13 +74,17 @@ fun deviceManifestFromJson(text: String): DeviceManifest =
  * projection of a device-global accumulator needs to decide. Entries are sorted by `assetId` so the
  * serialized snapshot is deterministic, making the producer's skip-if-unchanged comparison stable.
  */
-fun projectDeviceManifest(
+suspend fun projectDeviceManifest(
     deviceId: String,
     accumulator: Collection<DeviceManifestAsset>,
     policy: SelectionPolicy,
 ): DeviceManifest {
-    val assets = accumulator
-        .filter { policy.admits(AssetFacts(assetId = it.assetId, creationDate = CaptureDate(it.creationDate))) }
-        .sortedBy { it.assetId }
+    val byId = accumulator.associateBy { it.assetId }
+    val admitted = EventPhotoSet(policy) {
+        candidatesFromFacts(
+            accumulator.map { AssetFacts(assetId = it.assetId, creationDate = CaptureDate(it.creationDate)) },
+        )
+    }.assets()
+    val assets = admitted.mapNotNull { byId[it.facts.assetId] }.sortedBy { it.assetId }
     return DeviceManifest(deviceId = deviceId, assets = assets)
 }

@@ -1,6 +1,7 @@
 package app.snapsync.model
 
 import kotlin.test.Test
+import kotlinx.coroutines.test.runTest
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 
@@ -44,25 +45,27 @@ class SelectionPolicyTest {
      * policy whose capture-date floor is empty (admitting every date) — so this matrix isolates the origin
      * rules from the range, exactly as it did when they were a separate function.
      */
-    private fun excluded(resources: List<Resource>): Set<String> {
+    private suspend fun excluded(resources: List<Resource>): Set<String> {
         val policy = SelectionPolicy.from(includesUpload = true, cutoff = captureCutoff(""), ceiling = null)
-        return resources.mapTo(mutableSetOf()) { it.assetId } - policy.admittedAssetIds(resources)
+        val admitted = EventPhotoSet(policy) { candidatesFromResources(resources) }
+            .assets().mapTo(mutableSetOf()) { it.facts.assetId }
+        return resources.mapTo(mutableSetOf()) { it.assetId } - admitted
     }
 
     // ── Subtypes ──────────────────────────────────────────────────────────────────────────────────────
 
     @Test
-    fun screenshot_is_excluded() {
+    fun screenshot_is_excluded() = runTest {
         assertEquals(setOf("A"), excluded(asset("A", isScreenshot = true)))
     }
 
     @Test
-    fun screen_recording_is_excluded() {
+    fun screen_recording_is_excluded() = runTest {
         assertEquals(setOf("A"), excluded(asset("A", isScreenRecording = true, isVideo = true)))
     }
 
     @Test
-    fun a_camera_photo_with_no_exclusion_flag_is_admitted() {
+    fun a_camera_photo_with_no_exclusion_flag_is_admitted() = runTest {
         // The other half of every rule: what it must NOT drop. Panoramas, HDR, Live Photos and depth
         // captures all arrive here as plain camera facts — the iOS adapter is what decides which subtype
         // bits mean "screenshot"/"screen recording", and `PhotoKitAssetFactsTest` pins that mapping where
@@ -73,51 +76,51 @@ class SelectionPolicyTest {
     // ── GIFs ──────────────────────────────────────────────────────────────────────────────────────────
 
     @Test
-    fun a_gif_is_excluded() {
+    fun a_gif_is_excluded() = runTest {
         assertEquals(setOf("A"), excluded(asset("A", mime = MIME_GIF)))
     }
 
     // ── Resolution floors ─────────────────────────────────────────────────────────────────────────────
 
     @Test
-    fun a_compressed_received_image_is_excluded() {
+    fun a_compressed_received_image_is_excluded() = runTest {
         // WhatsApp's 1600-long-edge cap → 1600x1200 = 1.92 MP, under the 3 MP floor.
         assertEquals(setOf("A"), excluded(asset("A", width = 1600, height = 1200)))
     }
 
     @Test
-    fun a_camera_photo_is_admitted() {
+    fun a_camera_photo_is_admitted() = runTest {
         assertTrue(excluded(asset("A", width = 4032, height = 3024)).isEmpty())
     }
 
     @Test
-    fun a_cropped_camera_photo_below_the_floor_is_admitted() {
+    fun a_cropped_camera_photo_below_the_floor_is_admitted() = runTest {
         // The `hasAdjustments` guard. Without it, every heavy crop would silently vanish from the event.
         assertTrue(excluded(asset("A", width = 1000, height = 800, adjusted = true)).isEmpty())
     }
 
     @Test
-    fun a_1080p_recording_is_admitted() {
+    fun a_1080p_recording_is_admitted() = runTest {
         // THE load-bearing case: 1920x1080 = 2.07 MP is BELOW the 3 MP image floor. A single shared floor
         // would silently drop every 1080p video — and 1080p is the iOS capture default.
         assertTrue(excluded(asset("A", isVideo = true, width = 1920, height = 1080)).isEmpty())
     }
 
     @Test
-    fun a_compressed_received_video_is_excluded() {
+    fun a_compressed_received_video_is_excluded() = runTest {
         assertEquals(setOf("A"), excluded(asset("A", isVideo = true, width = 848, height = 480)))
     }
 
     // ── Admit on doubt ────────────────────────────────────────────────────────────────────────────────
 
     @Test
-    fun an_asset_with_unknown_dimensions_is_admitted() {
+    fun an_asset_with_unknown_dimensions_is_admitted() = runTest {
         // Missing facts must never condemn an asset. A zero/absent dimension is "we don't know", not "tiny".
         assertTrue(excluded(asset("A", width = 0, height = 0)).isEmpty())
     }
 
     @Test
-    fun an_asset_with_no_origin_metadata_at_all_is_admitted() {
+    fun an_asset_with_no_origin_metadata_at_all_is_admitted() = runTest {
         val bare = listOf(
             Resource(
                 filename = "A-primary.heic",
@@ -133,7 +136,7 @@ class SelectionPolicyTest {
     // ── Per-asset, not per-resource ───────────────────────────────────────────────────────────────────
 
     @Test
-    fun an_excluded_asset_takes_all_of_its_resources_with_it() {
+    fun an_excluded_asset_takes_all_of_its_resources_with_it() = runTest {
         // A live photo's primary + paired video. If the policy filtered per-resource on MIME, a GIF's
         // primary would be dropped while its sibling survived as an orphan whose bytes nothing uploads.
         val meta = mapOf(
@@ -149,7 +152,7 @@ class SelectionPolicyTest {
     }
 
     @Test
-    fun admitted_and_excluded_assets_are_separated_correctly() {
+    fun admitted_and_excluded_assets_are_separated_correctly() = runTest {
         val resources = asset("KEEP") + asset("SHOT", isScreenshot = true) +
             asset("SMALL", width = 800, height = 600) + asset("GIF", mime = MIME_GIF)
         assertEquals(setOf("SHOT", "SMALL", "GIF"), excluded(resources))

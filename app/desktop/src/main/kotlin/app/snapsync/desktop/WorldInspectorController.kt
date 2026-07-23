@@ -27,7 +27,8 @@ import app.snapsync.model.DENYLISTED_ALBUM_TITLES
 import app.snapsync.model.CaptureCeiling
 import app.snapsync.model.CaptureCutoff
 import app.snapsync.model.SelectionPolicy
-import app.snapsync.model.admittedAssetIds
+import app.snapsync.model.EventPhotoSet
+import app.snapsync.model.candidatesFromResources
 import app.snapsync.model.captureCutoff
 import app.snapsync.model.excluding
 import app.snapsync.feature.download.DownloadStatusSource
@@ -407,7 +408,8 @@ class WorldInspectorController(private val scope: CoroutineScope) {
             suppressedAssetIds = emptySet(), // the badge below reports echo separately
             albumExcludedAssetIds = world.albumManager.assetIdsInAlbums(DENYLISTED_ALBUM_TITLES, cutoff.at.iso),
         )
-        val admitted = policy.admittedAssetIds(enumerated)
+        val admitted = EventPhotoSet(policy) { candidatesFromResources(enumerated) }
+            .assets().mapTo(mutableSetOf()) { it.facts.assetId }
         val policyExcluded = enumerated.mapTo(mutableSetOf()) { it.assetId } - admitted
         val galleryRows = world.gallery.current()
             .map {

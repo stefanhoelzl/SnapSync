@@ -3,7 +3,8 @@ package app.snapsync.feature.status
 import app.snapsync.model.CaptureCutoff
 import app.snapsync.model.Resource
 import app.snapsync.model.SelectionPolicy
-import app.snapsync.model.admittedAssetIds
+import app.snapsync.model.EventPhotoSet
+import app.snapsync.model.candidatesFromResources
 import app.snapsync.model.excluding
 import app.snapsync.ports.GalleryStatusSource
 import app.snapsync.ports.PhotoLibrary
@@ -109,7 +110,11 @@ class OwnDeviceGalleryStatusSource(
         }
     }
 
-    /** The one admission, shared by [refresh] and [refreshFrom]. */
+    /**
+     * The one admission, shared by [refresh] and [refreshFrom]: `N` is the **size of the admitted set**,
+     * asked of the same [EventPhotoSet] abstraction the upload cycle uploads from. It counts; it does not
+     * filter, and it has no disallowed asset in reach to miscount.
+     */
     private suspend fun count(
         resources: List<Resource>,
         configPolicy: SelectionPolicy,
@@ -119,7 +124,7 @@ class OwnDeviceGalleryStatusSource(
             suppressedAssetIds = suppressedLocalIds(),
             albumExcludedAssetIds = albumExcludedAssetIds(cutoff),
         )
-        val size = policy.admittedAssetIds(resources).size
+        val size = EventPhotoSet(policy) { candidatesFromResources(resources) }.count()
         _size.value = size
         return size
     }

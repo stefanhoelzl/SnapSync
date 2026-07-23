@@ -16,13 +16,15 @@ import app.snapsync.model.RawAsset
 import app.snapsync.model.RawResource
 import app.snapsync.model.assetIdFromUploadKey
 import app.snapsync.model.SelectionPolicy
-import app.snapsync.model.admittedAssetIds
+import app.snapsync.model.EventPhotoSet
+import app.snapsync.model.candidatesFromResources
 import app.snapsync.model.captureCutoff
 import app.snapsync.model.resourcesFrom
 
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertTrue
 
 /**
  * The fan-out orchestration ([resourcesFrom]) exercised off-device — the coverage Move A unlocks. This
@@ -121,7 +123,8 @@ class RawAssetMappingTest {
 
         assertEquals(1, resources.size, "the walk emits the screenshot as a fact — it does not drop it")
         val policy = SelectionPolicy.from(includesUpload = true, cutoff = captureCutoff(""), ceiling = null)
-        assertEquals(emptySet(), policy.admittedAssetIds(resources), "…and the policy is what excludes it")
+        val admitted = EventPhotoSet(policy) { candidatesFromResources(resources) }.assets()
+        assertTrue(admitted.isEmpty(), "…and the policy is what excludes it")
     }
 
     @Test

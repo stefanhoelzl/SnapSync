@@ -19,7 +19,8 @@ import app.snapsync.model.UploadJob
 import app.snapsync.model.UploadRequest
 import app.snapsync.model.CaptureCutoff
 import app.snapsync.model.SelectionPolicy
-import app.snapsync.model.admittedResources
+import app.snapsync.model.EventPhotoSet
+import app.snapsync.model.candidatesFromResources
 import app.snapsync.model.assetIdFromUploadKey
 import app.snapsync.model.excluding
 import co.touchlab.kermit.Logger
@@ -309,7 +310,8 @@ class UploadCycle(
             suppressedAssetIds = suppressedAssetIds(),
             albumExcludedAssetIds = albumExcludedAssetIds(cutoff),
         )
-        val liveResources = policy.admittedResources(discovery.resources)
+        val liveResources = EventPhotoSet(policy) { candidatesFromResources(discovery.resources) }
+            .resources()
             .also {
                 log.i {
                     "selection policy admitted ${it.size} of ${discovery.resources.size} discovered " +

@@ -99,14 +99,14 @@ class DeviceManifestProducerTest {
     // ── projection ──
 
     @Test
-    fun projection_keeps_every_asset_at_or_after_the_start_date_sorted() {
+    fun projection_keeps_every_asset_at_or_after_the_start_date_sorted() = runTest {
         val m = projectDeviceManifest("dev", listOf(asset("B"), asset("A")), policy = policyFrom("0001-01-01T00:00:00Z"))
         assertEquals("dev", m.deviceId)
         assertEquals(listOf("A", "B"), m.assets.map { it.assetId }) // sorted, all kept
     }
 
     @Test
-    fun projection_excludes_assets_before_the_start_date() {
+    fun projection_excludes_assets_before_the_start_date() = runTest {
         val acc = listOf(asset("old", "2025-01-01T00:00:00Z"), asset("new", "2026-06-27T10:00:00Z"))
         val m = projectDeviceManifest("dev", acc, policy = policyFrom("2026-01-01T00:00:00Z"))
         assertEquals(listOf("new"), m.assets.map { it.assetId })
