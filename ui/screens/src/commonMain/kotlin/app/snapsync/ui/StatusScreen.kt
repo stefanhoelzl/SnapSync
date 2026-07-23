@@ -99,7 +99,7 @@ fun StatusScreen(
     // opened for, the new direction, the chosen capture-date range (`minPhotoDate` floor-clamped and
     // `maxPhotoDate` — nullable, absent = no ceiling — ceiling-clamped on the far side in `ReconfigureEvent`),
     // and the album opt-in.
-    onReconfigure: (String, Direction, CaptureCutoff, CaptureCeiling?, Boolean) -> Unit = { _, _, _, _, _ -> },
+    onReconfigure: (String, Direction, CaptureCutoff, CaptureCeiling, Boolean) -> Unit = { _, _, _, _, _ -> },
     inviteUrl: String? = null,
     // The joined event's name (fetched by id), shown as the heading; null until fetched.
     eventName: String? = null,
@@ -889,7 +889,7 @@ private fun ReconfigureScreen(
     cutoff: CutoffFormatter,
     shareableCount: suspend (cutoff: CaptureCutoff, until: CaptureCeiling?) -> Int?,
     photoPermission: PermissionStatus,
-    onSave: (String, Direction, CaptureCutoff, CaptureCeiling?, Boolean) -> Unit,
+    onSave: (String, Direction, CaptureCutoff, CaptureCeiling, Boolean) -> Unit,
     onCancel: () -> Unit,
 ) {
     var shareOn by remember { mutableStateOf(membership.direction.includesUpload) }
@@ -906,22 +906,22 @@ private fun ReconfigureScreen(
     var fromCustom by remember {
         mutableStateOf(if (fromAtFloor) null else cutoff.toLocal(membership.minPhotoDate.at))
     }
-    val untilAtCeiling = membership.maxPhotoDate == null || membership.maxPhotoDate?.at == membership.endsAt?.at
+    val untilAtCeiling = membership.endsAt == null || membership.maxPhotoDate.at == membership.endsAt?.at
     var untilPreset by remember {
         mutableStateOf(if (untilAtCeiling) UntilChoice.EVENT_END else UntilChoice.CUSTOM)
     }
     var untilCustom by remember {
-        mutableStateOf(membership.maxPhotoDate?.takeIf { !untilAtCeiling }?.let { cutoff.toLocal(it.at) })
+        mutableStateOf(if (untilAtCeiling) null else cutoff.toLocal(membership.maxPhotoDate.at))
     }
     var chosenSaveToAlbum by remember { mutableStateOf(membership.saveToAlbum) }
 
     val windowStart: LocalDateTime = cutoff.toLocal(membership.startsAt.at) ?: cutoff.nowLocal()
-    // A legacy membership (pre-backfill) may carry no `endsAt` — an unbounded ceiling. The UI still needs a
-    // concrete window end for the picker, so use a far-future sentinel while remembering that "Event end"
-    // then means "no ceiling" (the saved `maxPhotoDate` stays null).
-    val ceilingLocal: LocalDateTime? = membership.endsAt?.let { cutoff.toLocal(it.at) }
-    val hasCeiling = ceilingLocal != null
-    val windowEnd: LocalDateTime = ceilingLocal ?: LocalDateTime(windowStart.year + 100, 1, 1, 0, 0)
+    // A legacy membership (pre-backfill) may still carry no event `endsAt`, but it always carries its own
+    // ceiling now (capability `join-event`) — so the picker bounds against that instead of a far-future
+    // sentinel. "Event end" then resolves to the member's current upper bound, which makes a no-edit Save
+    // idempotent rather than silently widening.
+    val windowEnd: LocalDateTime =
+        cutoff.toLocal(membership.endsAt?.at ?: membership.maxPhotoDate.at) ?: windowStart
 
     val nowStr = cutoff.nowCutoff()
     val endStr = membership.endsAt
@@ -939,17 +939,11 @@ private fun ReconfigureScreen(
         FromChoice.CUSTOM -> (fromCustom ?: windowStart)
     }.coerceIn(windowStart, untilResolved)
 
-    // When the until is the unbounded "Event end" of a legacy config, there is no upper instant to state.
-    val untilUnbounded = untilPreset == UntilChoice.EVENT_END && !hasCeiling
-    val rangeLabel = if (untilUnbounded) {
-        "from ${appDateTimeLabel(fromResolved)} onwards"
-    } else {
-        cutoff.formatRange(fromResolved, untilResolved)
-    }
+    val rangeLabel = cutoff.formatRange(fromResolved, untilResolved)
     val minPhotoDate = CaptureCutoff(cutoff.toCutoff(fromResolved))
-    // Unbounded stays null; every other case sends the resolved upper bound (clamped to `endsAt` on the far
-    // side in `ReconfigureEvent`).
-    val maxPhotoDate: CaptureCeiling? = if (untilUnbounded) null else CaptureCeiling(cutoff.toCutoff(untilResolved))
+    // Always a concrete upper bound — there is no unbounded membership any more. Clamped to `endsAt` on
+    // the far side in `ReconfigureEvent`.
+    val maxPhotoDate = CaptureCeiling(cutoff.toCutoff(untilResolved))
 
     val chosenDirection: Direction = when {
         shareOn && receiveOn -> Direction.Both
@@ -1010,9 +1004,12 @@ private fun ReconfigureScreen(
                             windowEnd = windowEnd,
                             fromFloorNote = "Can't be earlier than the event started, " +
                                 "${appDateTimeLabel(windowStart)}.",
-                            untilCeilingNote = if (hasCeiling) {
+                            untilCeilingNote = if (membership.endsAt != null) {
                                 "Can't be later than the event ends, ${appDateTimeLabel(windowEnd)}."
                             } else {
+                                // A legacy membership whose event `endsAt` has not been backfilled yet:
+                                // the picker still bounds against the member's own ceiling, but naming
+                                // an event end we do not know would be a guess.
                                 "Pick when to stop sharing."
                             },
                         )

@@ -37,6 +37,7 @@ import app.snapsync.model.EventEnd
 import app.snapsync.model.CaptureDate
 import app.snapsync.model.EventStart
 import app.snapsync.model.SelectionPolicy
+import app.snapsync.model.captureCeiling
 import app.snapsync.model.captureCutoff
 import app.snapsync.model.eventStart
 import app.snapsync.model.toFacts
@@ -467,10 +468,11 @@ class World(
         name: String? = null,
         minPhotoDate: CaptureCutoff = captureCutoff(DEFAULT_CUTOFF),
         startsAt: EventStart = eventStart(DEFAULT_STARTS_AT),
-        // The capture-date CEILING and the event's end. Absent by default (an unbounded membership, which
-        // is what every fixture used while the ceiling was silently dropped at two consumers) — pass them
-        // to forge a CLOSED window, the shape that surfaced the bug.
-        maxPhotoDate: CaptureCeiling? = null,
+        // The capture-date CEILING is REQUIRED on every membership (capability `join-event`), so the
+        // default is a far-future one — the closest thing to the unbounded membership every fixture used
+        // while the ceiling was silently dropped at two consumers. Pass a real one (with [endsAt]) to
+        // forge a CLOSED window, the shape that surfaced the bug.
+        maxPhotoDate: CaptureCeiling = captureCeiling(DEFAULT_FAR_CEILING),
         endsAt: EventEnd? = null,
         direction: Direction = Direction.Both,
         saveToAlbum: Boolean = false,
@@ -618,6 +620,14 @@ class World(
          * start dates existed. Pass a future value to `provision` to model an event that has not begun.
          */
         const val DEFAULT_STARTS_AT: String = "2026-01-01T00:00:00Z"
+
+        /**
+         * The default capture-date **ceiling** of a provisioned membership. Far enough out that it
+         * admits every asset the harness adds, so a test that does not care about the ceiling behaves as
+         * the old unbounded default did — while the type still refuses a membership without one
+         * (capability `join-event`).
+         */
+        const val DEFAULT_FAR_CEILING: String = "2099-01-01T00:00:00Z"
 
         /** A single primary raw resource (`PHAssetResourceType.photo` == 1). */
         fun primaryResource(

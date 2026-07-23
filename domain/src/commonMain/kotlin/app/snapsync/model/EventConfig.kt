@@ -94,14 +94,21 @@ internal fun EventLinkPayload.sameAs(other: EventLinkPayload): Boolean =
  * **upper** bound, always clamped to `min(chosen, endsAt)` at join (the clamp lives in `JoinEvent`), so
  * `maxPhotoDate <= endsAt` holds for every config that has one.
  *
- * Both **default to `null`** — unlike [minPhotoDate], and for the opposite reason to it. A config persisted
- * before these fields existed decodes with both absent, and a `null` [maxPhotoDate] means **unbounded** (no
- * ceiling): the filter is `creationDate <= maxPhotoDate` applied only when non-null, so a null ceiling admits
- * every capture date — the admit-on-doubt direction, never the fail-closed one. The reconcile backfill
- * (capability `event-rejoin-reconciliation`) fetches the event's details and persists `endsAt` and
- * `maxPhotoDate = endsAt` onto such a legacy config; until then it uploads exactly as it did before, nothing
- * silently dropped. A **new** join always sets both non-null (the event's `endsAt` is required on a
- * successful details load, capability `join-event`).
+ * [maxPhotoDate] is **required and non-null, with no default** — like [minPhotoDate], and this **reverses**
+ * the allowance it shipped with. A membership persisted before the ceiling existed used to decode with a
+ * `null` ceiling meaning *unbounded*, pending the reconcile backfill. That allowance is gone: a config
+ * lacking the ceiling now fails to decode and reads as *no config*, returning the device to the setup gate.
+ *
+ * The reversal is safe **only by sequencing**, and the sequence has already run: the ceiling and its
+ * reconcile backfill shipped together in `add-event-date-range` (commit `fd609cd5`, on `main` and therefore
+ * on TestFlight), so every device that has foregrounded since has already persisted a concrete ceiling —
+ * the reconcile fills `endsAt` and `maxPhotoDate` from the fetched details on any config that lacked them.
+ * A device that has *not* foregrounded since then loses its membership on update; that is the accepted cost
+ * on this controlled, internal install base, and `SNAPSYNC_RESET_STATE` clears any holdout.
+ *
+ * [endsAt] stays nullable, deliberately. It is the *event's* fact rather than the membership's bound: it
+ * feeds the "Event ended" line and gives the reconfigure surface something to clamp against, and neither
+ * failure is worth a decode failure. Its backfill stays.
  *
  * [deletesAt] is when the backend deletes the event's shared data (capability `event-limits`) — a
  * canonical `…Z` instant **derived server-side** (`max(createdAt, startsAt) + lifetime`) and served on the
@@ -135,7 +142,7 @@ data class EventConfig(
     val minPhotoDate: CaptureCutoff,
     val startsAt: EventStart = EventStart(minPhotoDate.at),
     val endsAt: EventEnd? = null,
-    val maxPhotoDate: CaptureCeiling? = null,
+    val maxPhotoDate: CaptureCeiling,
     val deletesAt: DeletesAt? = null,
     val direction: Direction = Direction.Both,
     val saveToAlbum: Boolean = false,

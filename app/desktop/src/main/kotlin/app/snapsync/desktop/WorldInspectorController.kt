@@ -102,7 +102,7 @@ class WorldInspectorController(private val scope: CoroutineScope) {
     // The real in-place reconfigure edge (capability `reconfigure-membership`): drives the world's REAL
     // `userCommands.reconfigure`, then recomputes the inspector snapshot so the changed direction/cutoff/
     // album is reflected.
-    val reconfigure: suspend (String, Direction, CaptureCutoff, CaptureCeiling?, Boolean) -> Unit =
+    val reconfigure: suspend (String, Direction, CaptureCutoff, CaptureCeiling, Boolean) -> Unit =
         { eventId, direction, minPhotoDate, maxPhotoDate, saveToAlbum ->
             world.userCommands.reconfigure(eventId, direction, minPhotoDate, maxPhotoDate, saveToAlbum)
             afterMutation()

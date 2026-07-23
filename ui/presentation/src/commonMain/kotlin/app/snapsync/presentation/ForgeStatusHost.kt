@@ -1,5 +1,6 @@
 package app.snapsync.presentation
 
+import app.snapsync.model.captureCeiling
 import app.snapsync.model.eventStart
 import app.snapsync.model.eventEnd
 import app.snapsync.model.deletesAt
@@ -119,6 +120,7 @@ private val EVENT = EventConfig(
     eventId = EVENT_ID,
     name = EVENT_NAME,
     minPhotoDate = captureCutoff("2026-01-01T00:00:00Z"),
+    maxPhotoDate = captureCeiling("2026-02-01T00:00:00Z"),
 )
 
 private fun ready(completed: Int, total: Int, pending: Int = 0): SyncStatus =

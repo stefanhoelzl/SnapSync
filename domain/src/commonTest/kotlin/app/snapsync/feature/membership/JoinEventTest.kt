@@ -49,6 +49,10 @@ private val CEILING = captureCeiling("2026-07-08T09:00:00Z")
  *  load and persisted onto the membership as the self-leave's offline witness. */
 private val DELETES_AT = deletesAt("2026-07-31T09:00:00Z")
 
+
+/** Every membership carries a concrete capture-date ceiling (capability `join-event`). */
+private val FIXTURE_CEILING = captureCeiling("2099-01-01T00:00:00Z")
+
 private class FakeConfigSource(initial: EventConfig?) : ConfigSource {
     val state = MutableStateFlow(initial)
     override val config: StateFlow<EventConfig?> = state
@@ -111,7 +115,7 @@ fun `a failed enrollment commits nothing`() = runTest {
 fun `re-joining the current event is a no-op that skips enrollment`() = runTest {
     val provisioned = mutableListOf<EventConfig>()
     val enroller = FakeEnroller(result = true)
-    val outcome = joinEvent(config = EventConfig(EVENT_A, "Anna's Wedding", CUTOFF), enroller = enroller, provisioned = provisioned)
+    val outcome = joinEvent(config = EventConfig(EVENT_A, "Anna's Wedding", CUTOFF, maxPhotoDate = FIXTURE_CEILING), enroller = enroller, provisioned = provisioned)
         .join(EVENT_A, "Anna's Wedding", STARTS_AT, ENDS_AT, DELETES_AT, CUTOFF, CEILING, Direction.Both, false)
 
     assertEquals(JoinOutcome.AlreadyJoined, outcome)
@@ -122,7 +126,7 @@ fun `re-joining the current event is a no-op that skips enrollment`() = runTest 
 @Test
 fun `switching to a different event enrolls`() = runTest {
     val enroller = FakeEnroller(result = true)
-    val outcome = joinEvent(config = EventConfig(EVENT_A, "Old", CUTOFF), enroller = enroller)
+    val outcome = joinEvent(config = EventConfig(EVENT_A, "Old", CUTOFF, maxPhotoDate = FIXTURE_CEILING), enroller = enroller)
         .join(EVENT_B, "New", STARTS_AT, ENDS_AT, DELETES_AT, CUTOFF, CEILING, Direction.Both, false)
 
     assertEquals(JoinOutcome.Committed, outcome)

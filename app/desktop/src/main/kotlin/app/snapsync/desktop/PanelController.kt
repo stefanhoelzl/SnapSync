@@ -1,5 +1,6 @@
 package app.snapsync.desktop
 
+import app.snapsync.model.captureCeiling
 import app.snapsync.model.eventStart
 import app.snapsync.model.eventEnd
 import app.snapsync.model.deletesAt
@@ -336,6 +337,7 @@ class PanelController {
             name = "Anna's Birthday",
             // A membership always carries a cutoff (capability `photo-selection-policy`); the forge never uploads.
             minPhotoDate = captureCutoff("2026-01-01T00:00:00Z"),
+            maxPhotoDate = captureCeiling("2026-02-01T00:00:00Z"),
         )
 
         /**
@@ -348,6 +350,7 @@ class PanelController {
             eventId = "00000000-0000-4000-8000-000000000000",
             name = "New Year's Eve",
             minPhotoDate = captureCutoff("2099-12-31T23:59:59Z"),
+            maxPhotoDate = captureCeiling("2100-01-07T23:59:59Z"),
             startsAt = eventStart("2099-12-31T23:59:59Z"),
         )
     }

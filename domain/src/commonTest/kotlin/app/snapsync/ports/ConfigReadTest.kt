@@ -17,12 +17,16 @@ import kotlin.test.assertIs
  * **this device left the event** and clears its `joinedEventId` marker — so conflating the two turned
  * every locked-device wake into a false leave.
  */
+
+/** Every membership carries a concrete capture-date ceiling (capability `join-event`). */
+private val FIXTURE_CEILING = captureCeiling("2099-01-01T00:00:00Z")
+
 class ConfigReadTest {
 
     private val config = EventConfig(
         eventId = "e1",
         name = "Party",
-        minPhotoDate = captureCutoff("2026-07-01T00:00:00Z"),
+        minPhotoDate = captureCutoff("2026-07-01T00:00:00Z"), maxPhotoDate = FIXTURE_CEILING,
         direction = Direction.Both,
         saveToAlbum = true,
     )

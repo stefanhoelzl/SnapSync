@@ -85,6 +85,7 @@ private val SAMPLE_CONFIG = EventConfig(
     eventId = EVENT_ID,
     name = "Anna's Birthday",
     minPhotoDate = captureCutoff("2026-07-06T14:32:11Z"),
+    maxPhotoDate = captureCeiling("2026-07-13T14:32:11Z"),
 )
 
 private class FakeConfig(initial: EventConfig? = SAMPLE_CONFIG) {
@@ -204,7 +205,7 @@ class StatusContainerHostTest {
         eventId = EVENT_ID,
         name = "Anna's Birthday",
         // The floor guarantees this shape: `minPhotoDate == max(chosen, startsAt) == startsAt` pre-start.
-        minPhotoDate = CaptureCutoff(startsAt.at),
+        minPhotoDate = CaptureCutoff(startsAt.at), maxPhotoDate = CEILING,
         startsAt = startsAt,
     )
 
@@ -321,7 +322,7 @@ class StatusContainerHostTest {
         direction: Direction,
         download: DownloadProgress = DownloadProgress(0, 0),
     ): StatusContainerHost {
-        val cfg = FakeConfig(EventConfig(EVENT_ID, "Anna's Birthday", CUTOFF, direction = direction))
+        val cfg = FakeConfig(EventConfig(EVENT_ID, "Anna's Birthday", CUTOFF, maxPhotoDate = CEILING, direction = direction))
         return StatusContainerHost(
             source, FakePermissionSource(PermissionStatus.GRANTED).permission, cfg.config, scope,
             downloadSource = InMemoryDownloadStatusSource(download),
@@ -485,7 +486,7 @@ class StatusContainerHostTest {
             config.config, backgroundScope,
             commands = UserCommands(
                 commitJoin = { id, name, startsAt, _, _, cutoff, _, direction, _ ->
-                    config.save(EventConfig(id, name, minPhotoDate = cutoff, startsAt = startsAt, direction = direction))
+                    config.save(EventConfig(id, name, minPhotoDate = cutoff, maxPhotoDate = CEILING, startsAt = startsAt, direction = direction))
                     true
                 },
             ),
@@ -744,7 +745,7 @@ class StatusContainerHostTest {
             permission = FakePermissionSource(PermissionStatus.GRANTED), configFake = configFake,
             loadJoinDetails = { JoinLoad.Found("Anna's Birthday", EventStart(CUTOFF.at), ENDS_AT, DELETES_AT) },
             commitJoin = { id, name, _, _, _, cutoff, _, _, _ ->
-                committedCutoff = cutoff; configFake.save(EventConfig(id, name, cutoff)); true
+                committedCutoff = cutoff; configFake.save(EventConfig(id, name, cutoff, maxPhotoDate = CEILING)); true
             },
         ).test(this) {
             runOnCreate()
@@ -772,7 +773,7 @@ class StatusContainerHostTest {
             commitJoin = { id, name, startsAt, _, _, cutoff, _, _, _ ->
                 seenStartsAt = startsAt
                 seenCutoff = cutoff
-                configFake.save(EventConfig(id, name, cutoff))
+                configFake.save(EventConfig(id, name, cutoff, maxPhotoDate = CEILING))
                 true
             },
         ).test(this) {
@@ -798,7 +799,7 @@ class StatusContainerHostTest {
             permission = FakePermissionSource(PermissionStatus.GRANTED), configFake = configFake,
             loadJoinDetails = { JoinLoad.Found("Anna's Birthday", eventStart("2026-07-06T14:32:11Z"), ENDS_AT, DELETES_AT) },
             commitJoin = { id, name, _, _, _, cutoff, _, _, _ ->
-                committedCutoff = cutoff; configFake.save(EventConfig(id, name, cutoff)); true
+                committedCutoff = cutoff; configFake.save(EventConfig(id, name, cutoff, maxPhotoDate = CEILING)); true
             },
         ).test(this) {
             runOnCreate()
@@ -819,7 +820,7 @@ class StatusContainerHostTest {
             FakeSyncStatusSource(SyncStatus.Loading), backgroundScope,
             permission = FakePermissionSource(PermissionStatus.GRANTED), configFake = configFake,
             loadJoinDetails = { JoinLoad.Found("Anna's Birthday", EventStart(CUTOFF.at), ENDS_AT, DELETES_AT) },
-            commitJoin = { id, name, _, _, _, _, _, _, _ -> enrolled += id; configFake.save(EventConfig(id, name, CUTOFF)); true },
+            commitJoin = { id, name, _, _, _, _, _, _, _ -> enrolled += id; configFake.save(EventConfig(id, name, CUTOFF, maxPhotoDate = CEILING)); true },
         ).test(this) {
             runOnCreate()
             containerHost.onOpenUrl(encodeEventUrl(EventLinkPayload(EVENT_ID)))
@@ -910,7 +911,7 @@ class StatusContainerHostTest {
             FakeSyncStatusSource(SyncStatus.Loading), backgroundScope,
             permission = FakePermissionSource(PermissionStatus.GRANTED), configFake = configFake,
             loadJoinDetails = { JoinLoad.Found("New Event", EventStart(CUTOFF.at), ENDS_AT, DELETES_AT) },
-            commitJoin = { id, name, _, _, _, _, _, _, _ -> order += "join"; configFake.save(EventConfig(id, name, CUTOFF)); true },
+            commitJoin = { id, name, _, _, _, _, _, _, _ -> order += "join"; configFake.save(EventConfig(id, name, CUTOFF, maxPhotoDate = CEILING)); true },
             leave = { order += "leave"; configFake.clear() },
         ).test(this) {
             runOnCreate()
@@ -933,7 +934,7 @@ class StatusContainerHostTest {
             FakeSyncStatusSource(SyncStatus.Loading), backgroundScope,
             permission = FakePermissionSource(PermissionStatus.GRANTED), configFake = configFake,
             loadJoinDetails = { JoinLoad.Found("Anna's Birthday", EventStart(CUTOFF.at), ENDS_AT, DELETES_AT) },
-            commitJoin = { id, name, _, _, _, _, _, _, _ -> committed = id; configFake.save(EventConfig(id, name, CUTOFF)); true },
+            commitJoin = { id, name, _, _, _, _, _, _, _ -> committed = id; configFake.save(EventConfig(id, name, CUTOFF, maxPhotoDate = CEILING)); true },
         ).test(this) {
             runOnCreate()
             containerHost.onOpenUrl(encodeEventUrl(EventLinkPayload(EVENT_ID, autoJoin = true)))
@@ -1001,7 +1002,7 @@ class StatusContainerHostTest {
             permission = FakePermissionSource(PermissionStatus.GRANTED), configFake = configFake,
             loadJoinDetails = { JoinLoad.Found("Anna's Birthday", EventStart(CUTOFF.at), ENDS_AT, DELETES_AT) },
             commitJoin = { id, name, _, _, _, _, _, direction, _ ->
-                committedDirection = direction; configFake.save(EventConfig(id, name, CUTOFF, direction = direction)); true
+                committedDirection = direction; configFake.save(EventConfig(id, name, CUTOFF, maxPhotoDate = CEILING, direction = direction)); true
             },
         ).test(this) {
             runOnCreate()
@@ -1023,7 +1024,7 @@ class StatusContainerHostTest {
             FakeSyncStatusSource(SyncStatus.Loading), backgroundScope,
             permission = FakePermissionSource(PermissionStatus.GRANTED), configFake = configFake,
             loadJoinDetails = { JoinLoad.Found("Anna's Birthday", EventStart(CUTOFF.at), ENDS_AT, DELETES_AT) },
-            commitJoin = { _, _, _, _, _, _, _, direction, _ -> committedDirection = direction; configFake.save(EventConfig(EVENT_ID, minPhotoDate = CUTOFF)); true },
+            commitJoin = { _, _, _, _, _, _, _, direction, _ -> committedDirection = direction; configFake.save(EventConfig(EVENT_ID, minPhotoDate = CUTOFF, maxPhotoDate = CEILING)); true },
         ).test(this) {
             runOnCreate()
             containerHost.onOpenUrl(encodeEventUrl(EventLinkPayload(EVENT_ID, autoJoin = true)))
@@ -1041,7 +1042,7 @@ class StatusContainerHostTest {
             FakeSyncStatusSource(SyncStatus.Loading), backgroundScope,
             permission = FakePermissionSource(PermissionStatus.GRANTED), configFake = configFake,
             loadJoinDetails = { JoinLoad.Found("Anna's Birthday", EventStart(CUTOFF.at), ENDS_AT, DELETES_AT) },
-            commitJoin = { _, _, _, _, _, _, _, direction, _ -> committedDirection = direction; configFake.save(EventConfig(EVENT_ID, minPhotoDate = CUTOFF)); true },
+            commitJoin = { _, _, _, _, _, _, _, direction, _ -> committedDirection = direction; configFake.save(EventConfig(EVENT_ID, minPhotoDate = CUTOFF, maxPhotoDate = CEILING)); true },
         ).test(this) {
             runOnCreate()
             containerHost.onOpenUrl(

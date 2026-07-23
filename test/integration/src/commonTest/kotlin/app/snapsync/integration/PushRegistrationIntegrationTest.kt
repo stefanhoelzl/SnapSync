@@ -70,6 +70,7 @@ class PushRegistrationIntegrationTest {
                 eventId = event,
                 name = "Trip",
                 minPhotoDate = CaptureCutoff(startsAt.at),
+                maxPhotoDate = captureCeiling("2099-01-01T00:00:00Z"),
                 startsAt = startsAt,
                 direction = Direction.Both,
                 saveToAlbum = false,

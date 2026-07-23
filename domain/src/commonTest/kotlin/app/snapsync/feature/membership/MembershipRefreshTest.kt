@@ -124,7 +124,7 @@ class MembershipRefreshTest {
         // capability `event-rejoin-reconciliation`: endsAt/maxPhotoDate/deletesAt all absent (joined
         // before the window and the deadline existed) → filled from the fetched details, in the SAME save
         // as any name refresh.
-        val legacy = EventConfig(eventId = "E", name = "Anna's Birthday", minPhotoDate = CUTOFF, startsAt = STARTS)
+        val legacy = EventConfig(eventId = "E", name = "Anna's Birthday", minPhotoDate = CUTOFF, startsAt = STARTS, maxPhotoDate = CEILING)
         val config = FakeConfig(legacy)
         refresh(config).refresh("E", found("Anna's Birthday"))
         assertEquals(legacy.copy(endsAt = ENDS, maxPhotoDate = CEILING, deletesAt = DELETES), config.saved)
@@ -132,7 +132,7 @@ class MembershipRefreshTest {
 
     @Test
     fun `backfill and name refresh ride in one save`() = runTest {
-        val legacy = EventConfig(eventId = "E", name = "", minPhotoDate = CUTOFF, startsAt = STARTS)
+        val legacy = EventConfig(eventId = "E", name = "", minPhotoDate = CUTOFF, startsAt = STARTS, maxPhotoDate = CEILING)
         val config = FakeConfig(legacy)
         refresh(config).refresh("E", found("Anna's Birthday"))
         assertEquals(
