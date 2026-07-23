@@ -9,4 +9,11 @@ local.properties
 # backend bundle output (built in CI, deployed; never committed)
 backend/dist/
 
+# Local backend rig (dev infrastructure): the filesystem store the api runs against locally, plus the
+# tunnel host file and a downloaded cloudflared. Wiping api/.localstore is the reset — the deliberate
+# INVERSE of the production rule, where no whole-zone reset tool exists because that one zone holds real
+# users' photos. This one holds nothing.
+api/.localstore/
+api/.localdev/
+
 # Derived from the committed raws in screenshots/ by `deno task shots` (capability marketing-site).

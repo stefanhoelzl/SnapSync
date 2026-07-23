@@ -16,6 +16,11 @@ package app.snapsync.model
  * - [createEvent] — `SNAPSYNC_CREATE_EVENT`: a `base64url(JSON)` [CreateEventPayload] describing an
  *   event to mint headlessly (mint-only, or mint+autoJoin). Decoded by `decodeCreateDirective`.
  * - [leave] — `SNAPSYNC_LEAVE`: presence (any value) triggers leaving the current membership.
+ * - [resetState] — `SNAPSYNC_RESET_STATE`: presence (any value) voids this device's durable sync
+ *   state, so a build pointed at a DIFFERENT backend starts from nothing. Without it, crossing
+ *   backends fails silently in both directions: the ledger key is event-independent and a leave
+ *   deliberately keeps it, so `COMPLETED` rows suppress every upload against a backend that does not
+ *   hold those bytes — and the discovery cursor suppresses re-enumeration even after a ledger wipe.
  * - [seedPhotos] — `SNAPSYNC_SEED_PHOTOS`: how many tiny 2001-dated assets to seed (walk-cost test).
  * - [seedPolicy] — `SNAPSYNC_SEED_POLICY`: how many hour-ahead assets straddling the 3 MP floor to
  *   seed (selection-policy probe).
@@ -33,6 +38,7 @@ data class LaunchDirectives(
     val eventLink: String?,
     val createEvent: String?,
     val leave: Boolean,
+    val resetState: Boolean,
     val seedPhotos: Int?,
     val seedPolicy: Int?,
     val policyProbe: String?,
@@ -44,6 +50,7 @@ data class LaunchDirectives(
             eventLink = null,
             createEvent = null,
             leave = false,
+            resetState = false,
             seedPhotos = null,
             seedPolicy = null,
             policyProbe = null,
@@ -62,6 +69,8 @@ data class LaunchDirectives(
             createEvent = env("SNAPSYNC_CREATE_EVENT"),
             // Presence — not a value — is the trigger (as with [forceUrlSessionUpload]).
             leave = env("SNAPSYNC_LEAVE") != null,
+            // Presence — not a value — is the trigger, like [leave].
+            resetState = env("SNAPSYNC_RESET_STATE") != null,
             seedPhotos = positiveInt(env("SNAPSYNC_SEED_PHOTOS")),
             seedPolicy = positiveInt(env("SNAPSYNC_SEED_POLICY")),
             policyProbe = env("SNAPSYNC_POLICY_PROBE"),

@@ -186,7 +186,13 @@ src/config.ts     the 7 non-secret SOURCE CONSTANTS (zone/host/S3 region+host/AP
                   readConfig(env) → Config, which reads only the 2 SECRETS and THROWS if either is
                   missing/blank. Env is never consulted for a constant.
 src/main.ts       Edge Scripting entry: reads config at startup, serves createApp(...).fetch via the SDK
+src/dev/*.ts      DEV-ONLY, never imported by main.ts (so `deno bundle` cannot reach it): the local rig —
+                  fs-storage.ts (a FetchLike answering bunny's native Storage API off a directory),
+                  config.ts (source constants + dev secrets, s3Host pointed at the rig), serve.ts (the
+                  second entry: presigned-path serving + the fallback bearer), tunnel.ts (cloudflared)
 test/*.test.ts    Deno tests (app via app.request(), upstream fetch + config injected)
+test/dev/         the fs shim's contract test — pins it to the same bunny assumptions the mocks encode
+                  (proves shim ≡ mocks, NOT that either matches bunny; nothing here ever has)
 ```
 
 ## Configuration — 7 source constants, 2 env secrets
@@ -235,18 +241,40 @@ is in source.**
 ## Develop & test
 
 ```bash
-deno task test          # full suite; upstream bunny mocked, config injected → offline, no perms
+deno task test          # full suite; upstream bunny mocked, config injected → offline
 deno task lint
+deno task check         # type-checks src/ AND src/dev/
 deno fmt --check
-# run locally (the SDK binds 127.0.0.1:8080 when no Edge Scripting runtime is present):
+
+# The LOCAL RIG — the real app over a FILESYSTEM store, touching no bunny zone:
+deno task dev:local     # 127.0.0.1:8080 — the curl loop
+deno task dev:tunnel    # + a cloudflared quick tunnel, so a physical device can reach it
+```
+
+`deno task test` carries `--allow-read --allow-write` for the dev shim's contract test.
+**`--allow-net` is deliberately absent** — that absence is what guarantees no test can reach the
+real zone: a network call fails as a permission error rather than becoming a live request.
+
+**The local rig** (`src/dev/`, dev infrastructure — non-gating, no spec) composes the **same**
+`createApp({ config, fetch })` this file documents, with a filesystem `fetch` in place of bunny and
+a `Config` built from the same source constants — so event limits, the attest TTL, and every route
+behave exactly as deployed. Keys map 1:1 onto `api/.localstore/objects/<key>`, so `find` is the
+verification oracle; reset is `rm -rf api/.localstore`. The attestation gate stays fully on (a bad
+token still `401`s), but a request arriving with **no** `authorization` header gets a dev token
+attached, so bare `curl` works. Presigned download URLs are minted with the real production shape,
+pointed at the rig. Full runbook — including pointing a device build at it, and the mandatory
+`SNAPSYNC_RESET_STATE` when crossing backends — is in the root `CLAUDE.md`.
+
+`src/dev/` **cannot ship**: `deno bundle src/main.ts` roots the deployed bundle at `main.ts`, which
+imports nothing under it.
+
+Running `src/main.ts` directly still targets the **real** `snap-sync-dev` zone and needs the two
+secrets; prefer the rig unless you specifically mean to hit production storage:
+
+```bash
 BUNNY_STORAGE_ACCESS_KEY=k APNS_PRIVATE_KEY="$(cat AuthKey.p8)" \
   deno run --allow-net --allow-env src/main.ts
 ```
-
-Two env vars, because everything else is a source constant. Note this targets the **real**
-`snap-sync-dev` zone. To point a local run somewhere else, construct a `Config` literal and pass it
-to `createApp({ config, fetch })` directly — that is the injection seam the tests use — rather than
-reintroducing an env override.
 
 Provision the APNs **Auth Key** (`.p8`) for team `E9Z8BADH58` once (App Store Connect API / portal)
 and set `APNS_PRIVATE_KEY` (the PEM) as an Edge Script **secret**. `APNS_KEY_ID` / `APNS_TEAM_ID` /

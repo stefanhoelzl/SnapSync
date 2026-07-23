@@ -35,6 +35,7 @@ class LaunchEnvMembershipTest {
             log = silentLog,
             leave = { events += "leave" },
             ensureAttested = { events += "attest" },
+            resetState = { events += "reset" },
         )
 
     @Test
@@ -61,7 +62,7 @@ class LaunchEnvMembershipTest {
         val events = mutableListOf<String>()
         val opened = mutableListOf<String>()
         runTest {
-            coordinator(events).run(false, null, null) { opened += it }
+            coordinator(events).run(leaveRequested = false, createEvent = null, eventLink = null) { opened += it }
         }
         assertEquals(emptyList(), events)
         assertEquals(emptyList(), opened)
@@ -115,9 +116,64 @@ class LaunchEnvMembershipTest {
         val events = mutableListOf<String>()
         val opened = mutableListOf<String>()
         runTest {
-            coordinator(events).run(false, null, "https://x/join#raw") { opened += it }
+            coordinator(events).run(
+                    leaveRequested = false,
+                    createEvent = null,
+                    eventLink = "https://x/join#raw",
+                ) { opened += it }
         }
         assertEquals(emptyList(), events) // no leave, no attest, no create
         assertEquals(listOf("https://x/join#raw"), opened)
+    }
+
+    @Test
+    fun `reset runs before every other trigger`() {
+        val events = mutableListOf<String>()
+        val opened = mutableListOf<String>()
+        runTest {
+            coordinator(events).run(
+                leaveRequested = true,
+                createEvent = b64("""{"name":"Party","autoJoin":true}"""),
+                eventLink = "https://x/join#raw",
+                openUrl = { opened += it },
+                resetRequested = true,
+            )
+        }
+        // Reset FIRST is the whole point: it voids the durable state a foreign backend left behind, so
+        // the create/join that follow start clean. A leave after it is a no-op on an unjoined device
+        // rather than a DELETE aimed at the backend that is no longer baked in.
+        assertEquals(listOf("reset", "leave", "attest", "create"), events)
+    }
+
+    @Test
+    fun `reset-only voids state and neither leaves nor creates nor opens`() {
+        val events = mutableListOf<String>()
+        val opened = mutableListOf<String>()
+        runTest {
+            coordinator(events).run(
+                leaveRequested = false,
+                createEvent = null,
+                eventLink = null,
+                openUrl = { opened += it },
+                resetRequested = true,
+            )
+        }
+        assertEquals(listOf("reset"), events)
+        assertEquals(0, opened.size)
+    }
+
+    @Test
+    fun `an absent reset trigger contributes nothing`() {
+        val events = mutableListOf<String>()
+        runTest {
+            coordinator(events).run(
+                leaveRequested = true,
+                createEvent = null,
+                eventLink = null,
+                openUrl = {},
+                resetRequested = false,
+            )
+        }
+        assertEquals(listOf("leave"), events)
     }
 }

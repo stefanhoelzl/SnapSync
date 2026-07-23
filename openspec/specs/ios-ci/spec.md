@@ -7,7 +7,9 @@ Continuous integration that, on every push, builds the iOS device app and runs t
 
 The system SHALL run a **GitHub Actions** job (`ios-build` in `.github/workflows/ios.yml`) on every push that builds the iOS **device (`iphoneos`, arm64)** app on a **`macos-26` hosted runner**, linking the `iosArm64` framework with the runner's **GM Xcode** (no Xcode beta), and reports a stable status-check context (`ios-build`) used to gate merges. On **every** ref the job SHALL produce a **signed archive** of the device app (signing — capability `ios-testflight-delivery`); the archive compiles `iosArm64`, so the `ios-build` check reflects whether the device app builds.
 
-The archive's **build configuration SHALL depend on the ref**: on `refs/heads/main` — the delivery source — and on any `workflow_dispatch` without an `upload_host` (the deliberate escape hatch for exercising the full Release path on a branch before merge), the archive SHALL be built in the **Release** configuration; on every **other** push ref it SHALL be built in the **Debug** configuration. (A dispatch **with** an `upload_host` is the dev-IPA path — Debug by its own contract, capability `ios-testflight-delivery`.) The Debug gate archive compiles the identical surface — the same Kotlin frontend and `iosArm64` klib compiles, the same Swift compile, entitlements, and signing — skipping only the LLVM optimization pass of the Release link, which dominates the archive (measured 5–9.5 min of a 9–15 min job) while gating nothing on an artifact that is discarded off `main`. The accepted trade-off: a **Release-only build failure** (e.g. an optimizer crash in the Kotlin/Native link) passes the branch gate and surfaces on the post-merge `main` run — a red but non-gating `ios-build`, with delivery skipped because `ios-deliver` needs both gates (capability `ios-testflight-delivery`).
+The workflow SHALL be triggered by **branch pushes only**. It SHALL carry **no `workflow_dispatch` trigger**: the manual-dispatch path existed to build a dev IPA against an alternate host, but `ios-build` publishes its archive on `refs/heads/main` **only**, so a dispatched run archived and then **discarded** the very build it was dispatched to produce. Pointing a device build at an alternate backend is served by the ssh-mac loop, which is where per-branch device installability already lives and where a human is present to receive the IPA.
+
+The archive's **build configuration SHALL depend on the ref**: on `refs/heads/main` — the delivery source — the archive SHALL be built in the **Release** configuration; on every **other** push ref it SHALL be built in the **Debug** configuration. The Debug gate archive compiles the identical surface — the same Kotlin frontend and `iosArm64` klib compiles, the same Swift compile, entitlements, and signing — skipping only the LLVM optimization pass of the Release link, which dominates the archive (measured 5–9.5 min of a 9–15 min job) while gating nothing on an artifact that is discarded off `main`. The accepted trade-off: a **Release-only build failure** (e.g. an optimizer crash in the Kotlin/Native link) passes the branch gate and surfaces on the post-merge `main` run — a red but non-gating `ios-build`, with delivery skipped because `ios-deliver` needs both gates (capability `ios-testflight-delivery`). Removing the dispatch trigger **widens** this accepted trade-off: there is no longer any pre-merge way to force the Release path on a branch, so a Release-only failure is discovered only after merge.
 
 The job SHALL be a **pure gate**: it SHALL NOT export an IPA and SHALL NOT upload anything to Apple. On **`refs/heads/main` only** it SHALL publish the signed archive as a **workflow artifact** for the `ios-deliver` job (capability `ios-testflight-delivery`); on any **other** ref the archive is produced **solely as the merge gate** and the job publishes no artifact. Because a workflow-artifact round-trip does not preserve executable bits or symlinks — which would corrupt the signed `.app` bundle and break the later export — the archive SHALL be **packed (tar) before upload and unpacked after download**, so it survives the hand-off intact.
 
@@ -25,6 +27,10 @@ Per-branch device installability before merge is served **out of band** by the i
 - **WHEN** the device app fails to compile
 - **THEN** the `ios-build` status check concludes as failure (red)
 
+#### Scenario: The workflow offers no manual dispatch
+- **WHEN** an operator inspects the iOS workflow's triggers
+- **THEN** only the branch-push trigger is present and the workflow cannot be dispatched manually
+
 #### Scenario: A branch push gates with a Debug archive
 - **WHEN** a commit is pushed to a ref other than `refs/heads/main`
 - **THEN** the signed archive is built in the Debug configuration — same klib compiles, Swift compile, entitlements, and signing, no LLVM optimization pass — and the `ios-build` check still reflects whether the device app compiles
@@ -32,10 +38,6 @@ Per-branch device installability before merge is served **out of band** by the i
 #### Scenario: main archives Release
 - **WHEN** the `ios-build` job runs on `refs/heads/main`
 - **THEN** the signed archive is built in the Release configuration, so the artifact handed to `ios-deliver` is the distribution build
-
-#### Scenario: A plain dispatch exercises the Release path on a branch
-- **WHEN** the workflow is manually dispatched on a branch with no `upload_host` input
-- **THEN** the archive is built in the Release configuration, providing pre-merge proof of the Release link for that branch
 
 #### Scenario: Every ref archives as the gate; non-main publishes nothing
 - **WHEN** the `ios-build` job runs on any ref
@@ -107,41 +109,35 @@ The delivery job `ios-deliver` SHALL NOT be a required status check. It runs onl
 - **WHEN** the branch ruleset's required status checks are applied
 - **THEN** they include `ios-build` and `ios-test` but NOT `ios-deliver`, which never runs on a pull-request branch and would freeze merges if required
 
-### Requirement: Compile-time edge host default and override
+### Requirement: Compile-time edge host default
 
 The extension's `BackgroundUploadURLBase` (build setting `BACKGROUND_UPLOAD_URL_BASE`) SHALL default
 to the **deployed HTTPS backend URL** baked from `Config.xcconfig` — the single source of the host
 literal — so **every ref**, including the `main`/TestFlight build, targets it (safe because the
 device carries no storage credential and the endpoint is the production backend). The iOS workflow
-SHALL **not** restate the host: on a plain push or a dispatch with an empty `upload_host`, the
-workflow SHALL omit any `BACKGROUND_UPLOAD_URL_BASE` override and let the `Config.xcconfig` default
-flow through. The workflow SHALL retain a `workflow_dispatch` `upload_host` input that, when
-non-empty, overrides the baked host for that run (for pointing a development IPA at an alternate
-**HTTPS** host, e.g. a staging backend). The `upload_host` input SHALL be **HTTPS-only**: a value
-that does not begin with `https://` SHALL fail the run before archiving (default ATS forbids
-plaintext, so a baked `http://` host would silently fail on device). The inert `https://dummy.invalid`
-default is removed. This requirement is the **single owner** of the compile-time upload-host contract;
-the TestFlight build inherits whatever host this shared archive step bakes.
+SHALL **not** restate the host and SHALL provide **no** mechanism to override it: it SHALL omit any
+`BACKGROUND_UPLOAD_URL_BASE` override on every ref and let the `Config.xcconfig` default flow
+through. This requirement is the **single owner** of the compile-time upload-host contract; the
+TestFlight build inherits whatever host this shared archive step bakes.
 
-#### Scenario: Default build bakes the deployed host from xcconfig
-- **WHEN** the iOS workflow runs on any ref with no `upload_host` dispatch input
+Overriding the host for a **development** build is an out-of-band operator action performed on the
+ssh-mac `xcodebuild` invocation (dev infrastructure; see the runbook in `CLAUDE.md`), never a CI
+input. The one xcconfig setting feeds **both** targets' `Info.plist`, so a single override covers the
+app and the background-upload extension together. It SHALL remain **HTTPS**: default ATS forbids
+plaintext and no `NSAllowsLocalNetworking` exception ships, so a baked `http://` host would fail
+silently on device.
+
+#### Scenario: Every build bakes the deployed host from xcconfig
+- **WHEN** the iOS workflow runs on any ref
 - **THEN** the workflow sets no `BACKGROUND_UPLOAD_URL_BASE` override and the archive bakes the
-  `Config.xcconfig` default (the deployed HTTPS backend URL, not `dummy.invalid`)
+  `Config.xcconfig` default (the deployed HTTPS backend URL)
 
 #### Scenario: TestFlight build targets the live endpoint
 - **WHEN** the `ios-build` job runs on `refs/heads/main`
 - **THEN** the uploaded TestFlight build's `BackgroundUploadURLBase` is the deployed HTTPS backend URL
 
-#### Scenario: Dispatch override bakes a supplied HTTPS host
-- **WHEN** the workflow is dispatched with a non-empty `upload_host` beginning with `https://`
-- **THEN** that host is baked into `BackgroundUploadURLBase` for that run, overriding the default
-
-#### Scenario: A non-HTTPS dispatch override fails the run
-- **WHEN** the workflow is dispatched with an `upload_host` that does not begin with `https://`
-- **THEN** the run fails before archiving and bakes no plaintext host
-
-#### Scenario: A dispatch override does not pollute subsequent builds
-- **WHEN** a manual dispatch supplies `upload_host` for one run
-- **THEN** only that run's archive uses it; subsequent ordinary pushes (including `main`) set no
-  override and bake the `Config.xcconfig` default
+#### Scenario: CI exposes no host override
+- **WHEN** an operator wants a device build pointed at an alternate backend
+- **THEN** no CI input provides one, and the override is applied to the ssh-mac `xcodebuild`
+  invocation instead, where the resulting IPA is actually delivered to a device
 
