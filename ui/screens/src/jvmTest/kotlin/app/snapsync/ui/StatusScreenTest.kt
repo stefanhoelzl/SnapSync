@@ -1,5 +1,12 @@
 package app.snapsync.ui
 
+import app.snapsync.model.eventEnd
+import app.snapsync.model.deletesAt
+import app.snapsync.model.captureCutoff
+import app.snapsync.model.captureCeiling
+import app.snapsync.model.CaptureCutoff
+import app.snapsync.model.CaptureCeiling
+import app.snapsync.model.eventStart
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.semantics.SemanticsProperties
@@ -69,7 +76,7 @@ class StatusScreenTest {
     fun `the not-started health renders a clock line naming the start, below the QR`() {
         rule.setContent {
             StatusScreen(
-                joined(SyncHealth.NotStarted("2026-07-04T18:00:00Z")),
+                joined(SyncHealth.NotStarted(eventStart("2026-07-04T18:00:00Z"))),
                 inviteUrl = "https://snapsync.stho.net/join#v=3&d=abc",
                 cutoff = fixedCutoff(),
             )
@@ -375,7 +382,7 @@ class StatusScreenTest {
         val healths = listOf(
             SyncHealth.InSync,
             SyncHealth.Syncing(Arrow.PULSING, Arrow.HIDDEN),
-            SyncHealth.NotStarted("2026-07-04T18:00:00Z"),
+            SyncHealth.NotStarted(eventStart("2026-07-04T18:00:00Z")),
         )
         for (health in healths) {
             state.value = UiState.Joined(health, canChoosePhotos = true)
@@ -545,9 +552,9 @@ class StatusScreenTest {
                         "22222222-2222-4222-8222-222222222222",
                         JoinPhase.Ready(
                             "New Event",
-                            "2026-07-06T00:00:00Z",
-                            "2026-07-16T00:00:00Z",
-                            "2026-08-05T00:00:00Z",
+                            eventStart("2026-07-06T00:00:00Z"),
+                            eventEnd("2026-07-16T00:00:00Z"),
+                            deletesAt("2026-08-05T00:00:00Z"),
                         ),
                     ),
                 ),
@@ -581,7 +588,7 @@ class StatusScreenTest {
 
     @Test
     fun `the reconfigure surface seeds a Custom lower bound when the cutoff is above the floor`() {
-        val above = MEMBERSHIP.copy(minPhotoDate = "2026-07-06T18:00:00Z")
+        val above = MEMBERSHIP.copy(minPhotoDate = captureCutoff("2026-07-06T18:00:00Z"))
         rule.setContent { StatusScreen(inSync, membership = above, cutoff = fixedCutoff()) }
         rule.onNodeWithContentDescription("Event settings").performClick()
         rule.onNodeWithTag("from-custom").assertIsSelected()
@@ -590,7 +597,7 @@ class StatusScreenTest {
 
     @Test
     fun `the reconfigure surface seeds a Custom upper bound when the ceiling is below the event end`() {
-        val below = MEMBERSHIP.copy(maxPhotoDate = "2026-07-09T12:00:00Z")
+        val below = MEMBERSHIP.copy(maxPhotoDate = captureCeiling("2026-07-09T12:00:00Z"))
         rule.setContent { StatusScreen(inSync, membership = below, cutoff = fixedCutoff()) }
         rule.onNodeWithContentDescription("Event settings").performClick()
         rule.onNodeWithTag("until-custom").assertIsSelected()
@@ -609,8 +616,8 @@ class StatusScreenTest {
     fun `saving invokes the reconfigure callback with the membership's values and closes the surface`() {
         var savedEventId: String? = null
         var savedDirection: Direction? = null
-        var savedMin: String? = null
-        var savedMax: String? = "unset"
+        var savedMin: CaptureCutoff? = null
+        var savedMax: CaptureCeiling? = captureCeiling("unset")
         var savedAlbum: Boolean? = null
         rule.setContent {
             StatusScreen(
@@ -628,8 +635,8 @@ class StatusScreenTest {
         assertEquals("E1", savedEventId)
         assertEquals(Direction.Both, savedDirection)
         // Full-window membership (floor + ceiling) round-trips its exact bounds on a no-edit Save.
-        assertEquals("2026-07-06T12:00:00Z", savedMin)
-        assertEquals("2026-07-10T12:00:00Z", savedMax)
+        assertEquals(captureCutoff("2026-07-06T12:00:00Z"), savedMin)
+        assertEquals(captureCeiling("2026-07-10T12:00:00Z"), savedMax)
         assertEquals(false, savedAlbum)
         // Save closes the surface (back to the joined layer's action row).
         rule.onNodeWithText("Save").assertDoesNotExist()
@@ -680,10 +687,10 @@ class StatusScreenTest {
 private val MEMBERSHIP = EventConfig(
     eventId = "E1",
     name = "Anna's Birthday",
-    minPhotoDate = "2026-07-06T12:00:00Z",
-    startsAt = "2026-07-06T12:00:00Z",
-    endsAt = "2026-07-10T12:00:00Z",
-    maxPhotoDate = "2026-07-10T12:00:00Z",
+    minPhotoDate = captureCutoff("2026-07-06T12:00:00Z"),
+    startsAt = eventStart("2026-07-06T12:00:00Z"),
+    endsAt = eventEnd("2026-07-10T12:00:00Z"),
+    maxPhotoDate = captureCeiling("2026-07-10T12:00:00Z"),
     direction = Direction.Both,
     saveToAlbum = false,
 )

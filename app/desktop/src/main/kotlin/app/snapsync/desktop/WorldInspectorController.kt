@@ -1,5 +1,8 @@
 package app.snapsync.desktop
 
+import app.snapsync.model.EventStart
+import app.snapsync.model.EventEnd
+import app.snapsync.model.DeletesAt
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
@@ -21,7 +24,12 @@ import app.snapsync.feature.membership.toJoinLoad
 import app.snapsync.model.JoinLoad
 import app.snapsync.presentation.StatusContainerHost
 import app.snapsync.model.DENYLISTED_ALBUM_TITLES
-import app.snapsync.model.excludedAssetIds
+import app.snapsync.model.CaptureCeiling
+import app.snapsync.model.CaptureCutoff
+import app.snapsync.model.SelectionPolicy
+import app.snapsync.model.admittedAssetIds
+import app.snapsync.model.captureCutoff
+import app.snapsync.model.excluding
 import app.snapsync.feature.download.DownloadStatusSource
 import app.snapsync.feature.status.SyncStatusSource
 import app.snapsync.world.World
@@ -93,7 +101,7 @@ class WorldInspectorController(private val scope: CoroutineScope) {
     // The real in-place reconfigure edge (capability `reconfigure-membership`): drives the world's REAL
     // `userCommands.reconfigure`, then recomputes the inspector snapshot so the changed direction/cutoff/
     // album is reflected.
-    val reconfigure: suspend (String, Direction, String, String?, Boolean) -> Unit =
+    val reconfigure: suspend (String, Direction, CaptureCutoff, CaptureCeiling?, Boolean) -> Unit =
         { eventId, direction, minPhotoDate, maxPhotoDate, saveToAlbum ->
             world.userCommands.reconfigure(eventId, direction, minPhotoDate, maxPhotoDate, saveToAlbum)
             afterMutation()
@@ -159,17 +167,18 @@ class WorldInspectorController(private val scope: CoroutineScope) {
     suspend fun loadJoinDetails(eventId: String): JoinLoad = joinEvent.loadDetails(eventId).toJoinLoad()
 
     /** The join-time shareable-count preview over the world gallery (capability `join-share-count`). */
-    suspend fun loadShareableCount(cutoff: String, until: String?): Int? = world.core.loadShareableCount(cutoff, until)
+    suspend fun loadShareableCount(cutoff: CaptureCutoff, until: CaptureCeiling?): Int? =
+        world.core.loadShareableCount(cutoff, until)
 
     /** Confirm the join through the composed command bundle (enroll then provision); refresh after. */
     suspend fun commitJoin(
         eventId: String,
         name: String,
-        startsAt: String,
-        endsAt: String,
-        deletesAt: String,
-        cutoff: String,
-        until: String,
+        startsAt: EventStart,
+        endsAt: EventEnd,
+        deletesAt: DeletesAt,
+        cutoff: CaptureCutoff,
+        until: CaptureCeiling,
         direction: Direction,
         saveToAlbum: Boolean,
     ): Boolean =
@@ -392,9 +401,14 @@ class WorldInspectorController(private val scope: CoroutineScope) {
         // REAL policy over the REAL enumeration, so the row badge cannot drift from what the cycle does.
         // Without this the levers are mute: an operator would add a screenshot, watch it sit in the gallery,
         // and have no way to tell "correctly excluded" from "silently broken".
-        val cutoff = world.configSource.config.value?.minPhotoDate ?: World.DEFAULT_CUTOFF
-        val policyExcluded = excludedAssetIds(world.enumerator.enumerate(cutoff)) +
-            world.albumManager.assetIdsInAlbums(DENYLISTED_ALBUM_TITLES, cutoff)
+        val cutoff = world.configSource.config.value?.minPhotoDate ?: captureCutoff(World.DEFAULT_CUTOFF)
+        val enumerated = world.enumerator.enumerate(cutoff.at.iso)
+        val policy = world.selectionPolicy().excluding(
+            suppressedAssetIds = emptySet(), // the badge below reports echo separately
+            albumExcludedAssetIds = world.albumManager.assetIdsInAlbums(DENYLISTED_ALBUM_TITLES, cutoff.at.iso),
+        )
+        val admitted = policy.admittedAssetIds(enumerated)
+        val policyExcluded = enumerated.mapTo(mutableSetOf()) { it.assetId } - admitted
         val galleryRows = world.gallery.current()
             .map {
                 GalleryRow(

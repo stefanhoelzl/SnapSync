@@ -1,5 +1,13 @@
 package app.snapsync.presentation
 
+import app.snapsync.model.captureCeiling
+import app.snapsync.model.captureCutoff
+import app.snapsync.model.CaptureDate
+import app.snapsync.model.EventStart
+import app.snapsync.model.EventEnd
+import app.snapsync.model.DeletesAt
+import app.snapsync.model.CaptureCutoff
+import app.snapsync.model.CaptureCeiling
 import app.snapsync.model.Arrow
 import app.snapsync.model.ConfigDecodeResult
 import app.snapsync.model.Direction
@@ -120,7 +128,7 @@ class StatusContainerHost(
      * case (the floor guarantees it), so a briefly-late transition costs the label and nothing else.
      */
     @OptIn(ExperimentalCoroutinesApi::class)
-    private val nowTick: Flow<String> =
+    private val nowTick: Flow<CaptureDate> =
         config
             .map { it?.let { c -> c.startsAt to c.endsAt } }
             .distinctUntilChanged()
@@ -136,8 +144,8 @@ class StatusContainerHost(
                         // ahead; once both have passed, no clock-driven line can change, so the timer
                         // self-terminates. Canonical fixed-width UTC ⇒ lexicographic order IS chronological.
                         // (A backgrounded iOS app is suspended, so this is foreground-only in practice.)
-                        val startPassed = now >= startsAt
-                        val endPassed = endsAt == null || now >= endsAt
+                        val startPassed = now >= startsAt.at
+                        val endPassed = endsAt == null || now >= endsAt.at
                         if (startPassed && endPassed) return@flow
                         delay(NOT_STARTED_TICK_MILLIS)
                     }
@@ -182,7 +190,7 @@ class StatusContainerHost(
                         values[3] as CreationStatus,
                         values[4] as DownloadProgress,
                         values[5] as PendingJoin?,
-                        values[6] as String,
+                        values[6] as CaptureDate,
                         values[7] as Boolean,
                     )
                 }
@@ -263,7 +271,13 @@ class StatusContainerHost(
      * local→UTC conversion, and `:ui:screens` stays free of any clock or timezone knowledge.
      */
     fun onCreateEvent(name: String, startsAt: LocalDateTime, endsAt: LocalDateTime) =
-        intent { commands.create(name, cutoffFormatter.toCutoff(startsAt), cutoffFormatter.toCutoff(endsAt)) }
+        intent {
+            commands.create(
+                name,
+                EventStart(cutoffFormatter.toCutoff(startsAt)),
+                EventEnd(cutoffFormatter.toCutoff(endsAt)),
+            )
+        }
 
     fun onRequestPermission() = intent { commands.requestAccess() }
 
@@ -301,8 +315,8 @@ class StatusContainerHost(
     fun onReconfigure(
         eventId: String,
         direction: Direction,
-        minPhotoDate: String,
-        maxPhotoDate: String?,
+        minPhotoDate: CaptureCutoff,
+        maxPhotoDate: CaptureCeiling?,
         saveToAlbum: Boolean,
     ) = intent { commands.reconfigure(eventId, direction, minPhotoDate, maxPhotoDate, saveToAlbum) }
 
@@ -323,8 +337,8 @@ class StatusContainerHost(
                     result.payload.autoJoin ->
                         autoConfirm(
                             eventId,
-                            result.payload.minPhotoDate,
-                            result.payload.maxPhotoDate,
+                            result.payload.minPhotoDate?.let(::captureCutoff),
+                            result.payload.maxPhotoDate?.let(::captureCeiling),
                             result.payload.direction,
                             result.payload.saveToAlbum,
                         )
@@ -347,7 +361,7 @@ class StatusContainerHost(
      * Confirm a first join with the chosen capture-date [cutoff], participation [direction], and album
      * choice [saveToAlbum] (capability `event-album`): enroll → provision (no leave).
      */
-    fun onConfirmJoin(cutoff: String, until: String, direction: Direction, saveToAlbum: Boolean) =
+    fun onConfirmJoin(cutoff: CaptureCutoff, until: CaptureCeiling, direction: Direction, saveToAlbum: Boolean) =
         intent {
             commit(withLeave = false, cutoff = cutoff, until = until, direction = direction, saveToAlbum = saveToAlbum)
         }
@@ -357,11 +371,11 @@ class StatusContainerHost(
      * compact switch dialog carries no direction/album picker, so the caller supplies [Direction.Both]
      * and album-off.
      */
-    fun onConfirmSwitch(cutoff: String, until: String, direction: Direction) =
+    fun onConfirmSwitch(cutoff: CaptureCutoff, until: CaptureCeiling, direction: Direction) =
         intent { commit(withLeave = true, cutoff = cutoff, until = until, direction = direction, saveToAlbum = false) }
 
     /** Retry a failed commit — the leave (if any) already succeeded, so this re-runs only the join. */
-    fun onRetryJoin(cutoff: String, until: String, direction: Direction, saveToAlbum: Boolean) =
+    fun onRetryJoin(cutoff: CaptureCutoff, until: CaptureCeiling, direction: Direction, saveToAlbum: Boolean) =
         intent {
             commit(withLeave = false, cutoff = cutoff, until = until, direction = direction, saveToAlbum = saveToAlbum)
         }
@@ -460,9 +474,9 @@ class StatusContainerHost(
      */
     private fun readyOrExplain(
         name: String,
-        startsAt: String,
-        endsAt: String,
-        deletesAt: String,
+        startsAt: EventStart,
+        endsAt: EventEnd,
+        deletesAt: DeletesAt,
     ): JoinPhase {
         val firstJoin = config.value == null
         val neverAsked = permission.value == PermissionStatus.NOT_DETERMINED
@@ -476,15 +490,15 @@ class StatusContainerHost(
     /** The four facts a loaded details response supplies, carried together through the commit path. */
     private data class LoadedEvent(
         val name: String,
-        val startsAt: String,
-        val endsAt: String,
-        val deletesAt: String,
+        val startsAt: EventStart,
+        val endsAt: EventEnd,
+        val deletesAt: DeletesAt,
     )
 
     private suspend fun commit(
         withLeave: Boolean,
-        cutoff: String,
-        until: String,
+        cutoff: CaptureCutoff,
+        until: CaptureCeiling,
         direction: Direction,
         saveToAlbum: Boolean,
     ) {
@@ -519,8 +533,8 @@ class StatusContainerHost(
      */
     private suspend fun autoConfirm(
         eventId: String,
-        explicitCutoff: String?,
-        explicitUntil: String?,
+        explicitCutoff: CaptureCutoff?,
+        explicitUntil: CaptureCeiling?,
         explicitDirection: String?,
         explicitSaveToAlbum: Boolean?,
     ) {
@@ -541,11 +555,11 @@ class StatusContainerHost(
         // `autoJoin=true` + a distant-past cutoff auto-confirm a join at near-whole-library scope WITHOUT
         // A TAP. (Cost, accepted: the dev loop can no longer force a cutoff below the event's start — it
         // creates the event with an early `startsAt` instead, which the unbounded picker permits.)
-        val cutoff = explicitCutoff ?: load.startsAt
+        val cutoff = explicitCutoff ?: CaptureCutoff(load.startsAt.at)
         // The upper bound defaults to the event's `endsAt` (the full window), unless the event link supplied
         // an explicit dev/test override. Like the cutoff, an explicit `maxPhotoDate` is passed RAW and
         // clamped to the ceiling on the far side, inside `JoinEvent`.
-        val until = explicitUntil ?: load.endsAt
+        val until = explicitUntil ?: CaptureCeiling(load.endsAt.at)
         // The direction defaults to Both, unless the event link supplied an explicit dev/test override
         // (`both`/`upload`/`download`); an unrecognized token was already rejected by the decoder.
         val direction = explicitDirection?.let(Direction::fromWire) ?: Direction.Both
@@ -596,7 +610,7 @@ private fun reduceFrom(
     creation: CreationStatus,
     download: DownloadProgress,
     pending: PendingJoin?,
-    nowCutoff: String,
+    nowCutoff: CaptureDate,
     attested: Boolean,
 ): UiState {
     if (config == null) {
@@ -621,7 +635,7 @@ private fun reduceFrom(
         // CAN be syncing yet — the cutoff floor guarantees it (`minPhotoDate >= startsAt > now`, and a
         // photo cannot be captured in the future) — so a snapshot line would say nothing true that this
         // does not say better. Canonical fixed-width UTC on both sides ⇒ lexicographic IS chronological.
-        config.startsAt > nowCutoff -> SyncHealth.NotStarted(config.startsAt)
+        config.startsAt.at > nowCutoff -> SyncHealth.NotStarted(config.startsAt)
         // Uploads are gated on an attestation token, and we could not get one. Ranked BELOW permission and
         // BELOW NotStarted for the same reason: with no library access — or before the event begins —
         // nothing of this member's can upload anyway, so an unusable token is not yet their problem, and
@@ -639,7 +653,7 @@ private fun reduceFrom(
     // `sync-status-screen`). Informational only — the health above is unchanged and sync continues in the
     // backend grace window. `null` endsAt (a legacy config before its reconcile backfill) shows no marker.
     // Canonical fixed-width UTC on both sides ⇒ lexicographic IS chronological.
-    val ended = config.endsAt?.let { it < nowCutoff } ?: false
+    val ended = config.endsAt?.let { it.at < nowCutoff } ?: false
     return UiState.Joined(
         health,
         pendingSwitch,

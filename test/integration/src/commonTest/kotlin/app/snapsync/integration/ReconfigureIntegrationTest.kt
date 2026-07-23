@@ -1,5 +1,8 @@
 package app.snapsync.integration
 
+import app.snapsync.model.eventStart
+import app.snapsync.model.captureCutoff
+import app.snapsync.model.captureCeiling
 import app.snapsync.model.Direction
 import app.snapsync.model.PermissionStatus
 import app.snapsync.presentation.CutoffFormatter
@@ -43,7 +46,7 @@ class ReconfigureIntegrationTest {
             val host = statusHost(w, scope)
 
             // Reconfigure IN PLACE to Both — no leave, same eventId.
-            w.userCommands.reconfigure("E", Direction.Both, World.DEFAULT_CUTOFF, null, false)
+            w.userCommands.reconfigure("E", Direction.Both, captureCutoff(World.DEFAULT_CUTOFF), null, false)
             assertEquals(Direction.Both, w.configSource.config.value?.direction, "config changed in place")
             assertEquals("E", w.configSource.config.value?.eventId, "same membership, never left")
 
@@ -78,7 +81,7 @@ class ReconfigureIntegrationTest {
             assertTrue(w.albumManager.created.isEmpty(), "no album while opted out")
 
             // Reconfigure the album ON: the album is ensured but A is NOT retroactively gathered.
-            w.userCommands.reconfigure("E", Direction.Both, World.DEFAULT_CUTOFF, null, true)
+            w.userCommands.reconfigure("E", Direction.Both, captureCutoff(World.DEFAULT_CUTOFF), null, true)
             val albumId = w.albumManager.created.single().first
             assertTrue(w.albumManager.assetsIn(albumId).isEmpty(), "album-on does not backfill already-synced A")
 
@@ -103,7 +106,7 @@ class ReconfigureIntegrationTest {
 
             // Enqueue an in-flight download, then turn RECEIVE off before it is staged.
             w.downloadController.reconcile("E")
-            w.userCommands.reconfigure("E", Direction.UploadOnly, World.DEFAULT_CUTOFF, null, false)
+            w.userCommands.reconfigure("E", Direction.UploadOnly, captureCutoff(World.DEFAULT_CUTOFF), null, false)
             assertEquals(Direction.UploadOnly, w.configSource.config.value?.direction)
 
             // The in-flight download was cancelled, so staging imports nothing, and the now-gated

@@ -1,5 +1,8 @@
 package app.snapsync.presentation
 
+import app.snapsync.model.EventStart
+import app.snapsync.model.EventEnd
+import app.snapsync.model.DeletesAt
 import app.snapsync.model.Arrow
 import app.snapsync.model.PermissionStatus
 
@@ -82,9 +85,9 @@ sealed interface JoinPhase {
      */
     data class ExplainAccess(
         val name: String,
-        val startsAt: String,
-        val endsAt: String,
-        val deletesAt: String,
+        val startsAt: EventStart,
+        val endsAt: EventEnd,
+        val deletesAt: DeletesAt,
     ) : JoinPhase
 
     /**
@@ -110,9 +113,9 @@ sealed interface JoinPhase {
      */
     data class Ready(
         val name: String,
-        val startsAt: String,
-        val endsAt: String,
-        val deletesAt: String,
+        val startsAt: EventStart,
+        val endsAt: EventEnd,
+        val deletesAt: DeletesAt,
     ) : JoinPhase
 
     /** The event does not exist (404) — an invalid/expired invite; no confirm offered. */
@@ -124,9 +127,9 @@ sealed interface JoinPhase {
     /** The confirm was taken; enroll + provision are in flight. [name] carries the loaded name. */
     data class Committing(
         val name: String,
-        val startsAt: String,
-        val endsAt: String,
-        val deletesAt: String,
+        val startsAt: EventStart,
+        val endsAt: EventEnd,
+        val deletesAt: DeletesAt,
     ) : JoinPhase
 
     /**
@@ -138,9 +141,9 @@ sealed interface JoinPhase {
      */
     data class CommitFailed(
         val name: String,
-        val startsAt: String,
-        val endsAt: String,
-        val deletesAt: String,
+        val startsAt: EventStart,
+        val endsAt: EventEnd,
+        val deletesAt: DeletesAt,
     ) : JoinPhase
 }
 
@@ -172,7 +175,7 @@ sealed interface SyncHealth {
      * Unlike every other health, this one depends on **wall-clock time** rather than the ledger, so no
      * snapshot emission retires it — `StatusContainerHost` runs a foreground tick for that.
      */
-    data class NotStarted(val startsAt: String) : SyncHealth
+    data class NotStarted(val startsAt: EventStart) : SyncHealth
 
     /**
      * Uploads are blocked: this device holds no valid attestation token, and the attempt to obtain one

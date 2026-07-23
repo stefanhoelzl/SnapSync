@@ -15,7 +15,9 @@ import app.snapsync.model.RawAsset
 import app.snapsync.model.RawResource
 import app.snapsync.model.SUBTYPE_SCREENSHOT
 import app.snapsync.model.assetIdFromUploadKey
-import app.snapsync.model.excludedAssetIds
+import app.snapsync.model.SelectionPolicy
+import app.snapsync.model.admittedAssetIds
+import app.snapsync.model.captureCutoff
 import app.snapsync.model.resourcesFrom
 
 import kotlinx.coroutines.test.runTest
@@ -113,7 +115,8 @@ class RawAssetMappingTest {
         val resources = ResourceEnumerator(source).enumerate("2026-01-01T00:00:00Z")
 
         assertEquals(1, resources.size, "the walk emits the screenshot as a fact — it does not drop it")
-        assertEquals(setOf("S1"), excludedAssetIds(resources), "…and the policy is what excludes it")
+        val policy = SelectionPolicy.from(includesUpload = true, cutoff = captureCutoff(""), ceiling = null)
+        assertEquals(emptySet(), policy.admittedAssetIds(resources), "…and the policy is what excludes it")
     }
 
     @Test

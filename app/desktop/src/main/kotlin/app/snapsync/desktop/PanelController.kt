@@ -1,5 +1,9 @@
 package app.snapsync.desktop
 
+import app.snapsync.model.eventStart
+import app.snapsync.model.eventEnd
+import app.snapsync.model.deletesAt
+import app.snapsync.model.captureCutoff
 import app.snapsync.ports.ConfigSource
 import app.snapsync.ports.ConfigStore
 import app.snapsync.ports.PhotoAccessRequester
@@ -319,11 +323,11 @@ class PanelController {
         // keeps the join surface's cutoff "Now" preset enabled.
         const val JOIN_EVENT_ID = "11111111-1111-4111-8111-111111111111"
         const val JOIN_NAME = "Bob's Wedding"
-        const val JOIN_STARTS_AT = "2026-06-01T12:00:00Z"
-        const val JOIN_ENDS_AT = "2026-06-08T12:00:00Z"
+        val JOIN_STARTS_AT = eventStart("2026-06-01T12:00:00Z")
+        val JOIN_ENDS_AT = eventEnd("2026-06-08T12:00:00Z")
 
         /** The forged event's retention deadline — 30 days past its start (capability `event-limits`). */
-        const val JOIN_DELETES_AT = "2026-07-01T12:00:00Z"
+        val JOIN_DELETES_AT = deletesAt("2026-07-01T12:00:00Z")
 
         // A stand-in config so the "joined an event" step shows connected; never used to upload. The
         // name gives the joined layer a title to review.
@@ -331,7 +335,7 @@ class PanelController {
             eventId = "00000000-0000-4000-8000-000000000000",
             name = "Anna's Birthday",
             // A membership always carries a cutoff (capability `photo-selection-policy`); the forge never uploads.
-            minPhotoDate = "2026-01-01T00:00:00Z",
+            minPhotoDate = captureCutoff("2026-01-01T00:00:00Z"),
         )
 
         /**
@@ -343,8 +347,8 @@ class PanelController {
         val NOT_STARTED_CONFIG = EventConfig(
             eventId = "00000000-0000-4000-8000-000000000000",
             name = "New Year's Eve",
-            minPhotoDate = "2099-12-31T23:59:59Z",
-            startsAt = "2099-12-31T23:59:59Z",
+            minPhotoDate = captureCutoff("2099-12-31T23:59:59Z"),
+            startsAt = eventStart("2099-12-31T23:59:59Z"),
         )
     }
 }

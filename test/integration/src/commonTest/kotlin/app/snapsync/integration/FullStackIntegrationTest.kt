@@ -1,5 +1,7 @@
 package app.snapsync.integration
 
+import app.snapsync.model.eventStart
+import app.snapsync.model.captureCutoff
 import app.snapsync.model.Direction
 import app.snapsync.model.LedgerState
 import app.snapsync.feature.membership.LeaveEvent
@@ -53,13 +55,13 @@ class FullStackIntegrationTest {
             val w = World(this)
             val future = "2099-12-31T23:59:59Z"
             // Pre-start, the clamp yields `minPhotoDate == startsAt` whatever the member chose.
-            w.provision("E", minPhotoDate = future, startsAt = future)
+            w.provision("E", minPhotoDate = captureCutoff(future), startsAt = eventStart(future))
             w.addOwnAsset("A") // dated DEFAULT_DATE (2026) — long before the event begins
             w.refreshStatus()
 
             val host = statusHost(w, scope)
             assertEquals(
-                UiState.Joined(SyncHealth.NotStarted(future)),
+                UiState.Joined(SyncHealth.NotStarted(eventStart(future))),
                 host.await { it.health() is SyncHealth.NotStarted },
             )
 
@@ -71,7 +73,7 @@ class FullStackIntegrationTest {
             assertTrue(w.store.objectsOf(w.ownDeviceId).isEmpty(), "no object may land before the event starts")
             assertNull(w.ledgerBackend.get("A-primary.jpg"), "the asset never even reached the ledger")
             assertEquals(
-                UiState.Joined(SyncHealth.NotStarted(future)),
+                UiState.Joined(SyncHealth.NotStarted(eventStart(future))),
                 host.await { it.health() is SyncHealth.NotStarted },
             )
         } finally {
@@ -86,7 +88,7 @@ class FullStackIntegrationTest {
         val scope = CoroutineScope(coroutineContext + Job())
         try {
             val w = World(this)
-            w.provision("E", minPhotoDate = World.DEFAULT_CUTOFF, startsAt = World.DEFAULT_STARTS_AT)
+            w.provision("E", minPhotoDate = captureCutoff(World.DEFAULT_CUTOFF), startsAt = eventStart(World.DEFAULT_STARTS_AT))
             w.addOwnAsset("A")
             w.refreshStatus()
 

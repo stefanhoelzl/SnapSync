@@ -204,7 +204,7 @@ object UploadExtensionRoot {
                 // Denylisted-album membership (capability `photo-selection-policy`): this tier's
                 // stated failure posture is unchanged — a thrown lookup fails the cycle (retried on
                 // the OS's next invocation).
-                albumExcludedAssetIds = { cutoff -> albumManager.assetIdsInAlbums(DENYLISTED_ALBUM_TITLES, cutoff) },
+                albumExcludedAssetIds = { cutoff -> albumManager.assetIdsInAlbums(DENYLISTED_ALBUM_TITLES, cutoff.at.iso) },
                 albumCoordinator = albumCoordinator,
                 token = { attestToken() },
                 onBatchUploaded = { eventId -> notifier.notify(eventId) },

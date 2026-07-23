@@ -1,5 +1,8 @@
 package app.snapsync.join
 
+import app.snapsync.model.eventStart
+import app.snapsync.model.eventEnd
+import app.snapsync.model.deletesAt
 import app.snapsync.ports.EventDetails
 
 import io.ktor.client.HttpClient
@@ -40,9 +43,9 @@ class HttpEventDirectoryTest {
         assertEquals(
             EventDetails.Found(
                 "Anna's Birthday",
-                "2026-07-14T18:00:00Z",
-                "2026-07-21T18:00:00Z",
-                "2026-08-13T18:00:00Z",
+                eventStart("2026-07-14T18:00:00Z"),
+                eventEnd("2026-07-21T18:00:00Z"),
+                deletesAt("2026-08-13T18:00:00Z"),
             ),
             result,
         )
@@ -66,7 +69,7 @@ class HttpEventDirectoryTest {
         // Truncated toward the EARLIER instant — the inclusive direction, so a photo taken within the
         // cutoff's own second is admitted rather than lost.
         assertEquals(
-            EventDetails.Found("Legacy", "2026-06-27T10:00:00Z", "2026-07-27T10:00:00Z", "2026-07-27T10:00:00Z"),
+            EventDetails.Found("Legacy", eventStart("2026-06-27T10:00:00Z"), eventEnd("2026-07-27T10:00:00Z"), deletesAt("2026-07-27T10:00:00Z")),
             source(engine).fetch(eventId),
         )
     }

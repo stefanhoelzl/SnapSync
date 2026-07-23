@@ -1,5 +1,6 @@
 package app.snapsync.ios
 
+import app.snapsync.model.CaptureCutoff
 import app.snapsync.compose.UploadPorts
 import app.snapsync.compose.uploadCore
 import app.snapsync.config.FileBackedConfigStore
@@ -77,7 +78,7 @@ class UrlSessionUploadController(
     // **No default.** It used to carry `{ emptySet() }` while this comment argued it must never be omitted —
     // the signature permitting exactly what the prose forbade. `SnapSyncRoot` did pass it, so the property
     // held by diligence rather than by the compiler, which is what the same comment says failed last time.
-    private val albumExcludedAssetIds: suspend (String) -> Set<String>,
+    private val albumExcludedAssetIds: suspend (CaptureCutoff) -> Set<String>,
     // What upload discovery may read (capability `limited-photo-access`): the app graph's derived
     // walk-vs-snapshot decision. **No default** for the same reason as the album lookup above — this
     // tier serves LIMITED memberships, and a composition that forgot the scope would walk the library
