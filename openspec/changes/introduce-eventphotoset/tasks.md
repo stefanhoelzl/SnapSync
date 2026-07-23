@@ -97,9 +97,9 @@
 
 ## 8. Verification
 
-- [ ] 8.1 `./gradlew build` (all targets + JVM tests, incl. `:test:architecture`) green.
-- [ ] 8.2 `./gradlew compileIosMainKotlinMetadata` green.
-- [ ] 8.3 `deno test` (api) green — no backend change expected; confirms the manifest wire shape is unchanged.
-- [ ] 8.4 `./gradlew architectureDiagrams` run + committed if the graph moved.
+- [x] 8.1 `./gradlew build` (all targets + JVM tests, incl. `:test:architecture`) green.
+- [x] 8.2 `./gradlew compileIosMainKotlinMetadata` green.
+- [x] 8.3 `deno test` (api) green — 219 passed; the manifest wire shape is unchanged — no backend change expected; confirms the manifest wire shape is unchanged.
+- [x] 8.4 `./gradlew architectureDiagrams` run — no drift (the module graph did not move; every change was within `:domain` packages and existing adapters).
 - [ ] 8.5 On-device re-run of decouple's task 11.1 scenario: join a closed-window event with a post-ceiling
       photo; confirm the status reaches "In sync" and the manifest lists no post-ceiling asset.
