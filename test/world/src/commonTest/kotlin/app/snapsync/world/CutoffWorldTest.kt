@@ -1,5 +1,7 @@
 package app.snapsync.world
 
+import app.snapsync.model.eventStart
+import app.snapsync.model.captureCutoff
 import kotlin.test.Test
 import kotlin.test.assertTrue
 
@@ -15,7 +17,7 @@ class CutoffWorldTest {
     fun cutoff_excludes_pre_cutoff_photos_from_upload_and_the_union() = worldTest {
         val w = World(this)
         val eventId = "E"
-        w.provision(eventId, minPhotoDate = "2026-07-06T00:00:00Z")
+        w.provision(eventId, minPhotoDate = captureCutoff("2026-07-06T00:00:00Z"))
         w.addOwnAsset("OLD", creationDate = "2026-07-01T00:00:00Z") // before the cutoff
         w.addOwnAsset("NEW", creationDate = "2026-07-10T00:00:00Z") // after the cutoff
 

@@ -1,5 +1,6 @@
 package app.snapsync.integration
 
+import app.snapsync.model.captureCutoff
 import app.snapsync.model.PermissionStatus
 import app.snapsync.world.World
 import app.snapsync.world.worldTest
@@ -24,7 +25,7 @@ class ShareableCountIntegrationTest {
         w.addLowResPhoto("WA")   // 1.9 MP → below the 3 MP floor, excluded
 
         // The preview for the same cutoff the cycle applies: exactly the camera photo.
-        assertEquals(1, w.core.loadShareableCount(World.DEFAULT_CUTOFF, null), "the preview counts only the admitted photo")
+        assertEquals(1, w.core.loadShareableCount(captureCutoff(World.DEFAULT_CUTOFF), null), "the preview counts only the admitted photo")
 
         // …and the cycle uploads exactly that set — the count is not a separate, looser rule.
         w.runUploadCycle()
@@ -39,9 +40,9 @@ class ShareableCountIntegrationTest {
         w.addOwnAsset("NEW", creationDate = "2026-07-01T00:00:00Z")
 
         // A candidate cutoff between the two dates admits only NEW — the preview tracks the chosen cutoff.
-        assertEquals(2, w.core.loadShareableCount("2026-04-01T00:00:00Z", null))
-        assertEquals(1, w.core.loadShareableCount("2026-06-01T00:00:00Z", null))
-        assertEquals(0, w.core.loadShareableCount("2026-08-01T00:00:00Z", null))
+        assertEquals(2, w.core.loadShareableCount(captureCutoff("2026-04-01T00:00:00Z"), null))
+        assertEquals(1, w.core.loadShareableCount(captureCutoff("2026-06-01T00:00:00Z"), null))
+        assertEquals(0, w.core.loadShareableCount(captureCutoff("2026-08-01T00:00:00Z"), null))
     }
 
     @Test
@@ -51,9 +52,9 @@ class ShareableCountIntegrationTest {
         w.addOwnAsset("CAM")
 
         w.permission.set(PermissionStatus.DENIED)
-        assertNull(w.core.loadShareableCount(World.DEFAULT_CUTOFF, null), "a denied grant yields no count")
+        assertNull(w.core.loadShareableCount(captureCutoff(World.DEFAULT_CUTOFF), null), "a denied grant yields no count")
 
         w.permission.set(PermissionStatus.NOT_DETERMINED)
-        assertNull(w.core.loadShareableCount(World.DEFAULT_CUTOFF, null), "an unresolved grant yields no count")
+        assertNull(w.core.loadShareableCount(captureCutoff(World.DEFAULT_CUTOFF), null), "an unresolved grant yields no count")
     }
 }

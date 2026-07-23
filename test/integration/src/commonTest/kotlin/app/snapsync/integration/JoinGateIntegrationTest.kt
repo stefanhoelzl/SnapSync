@@ -1,5 +1,12 @@
 package app.snapsync.integration
 
+import app.snapsync.model.eventStart
+import app.snapsync.model.eventEnd
+import app.snapsync.model.deletesAt
+import app.snapsync.model.captureCutoff
+import app.snapsync.model.captureCeiling
+import app.snapsync.model.CaptureCutoff
+import app.snapsync.model.CaptureCeiling
 import app.snapsync.model.Direction
 import app.snapsync.model.EventLinkPayload
 import app.snapsync.model.encodeEventUrl
@@ -41,10 +48,10 @@ private const val EVENT_F = "22222222-2222-4222-8222-222222222222"
  * both `UiState` and world outcomes (config provisioned, manifest membership landed).
  */
 /** A membership always carries a cutoff (capability `photo-selection-policy`). */
-private const val CUTOFF = "2026-01-01T00:00:00Z"
+private val CUTOFF = captureCutoff("2026-01-01T00:00:00Z")
 
 /** The event window ceiling the mini-edge stamps (startsAt + 30d). */
-private const val ENDS = "2026-01-31T00:00:00Z"
+private val ENDS = captureCeiling("2026-01-31T00:00:00Z")
 
 class JoinGateIntegrationTest {
 
@@ -65,15 +72,15 @@ class JoinGateIntegrationTest {
             val phase = (host.await { (it as? UiState.JoiningEvent)?.phase is JoinPhase.Ready }
                 as UiState.JoiningEvent).phase as JoinPhase.Ready
 
-            assertEquals("2026-01-01T00:00:00Z", phase.startsAt, "a synthesized millisecond startsAt is truncated")
-            assertTrue(!phase.startsAt.contains('.'), "a cutoff never carries fractional seconds")
+            assertEquals(eventStart("2026-01-01T00:00:00Z"), phase.startsAt, "a synthesized millisecond startsAt is truncated")
+            assertTrue(!phase.startsAt.at.iso.contains('.'), "a cutoff never carries fractional seconds")
 
             // Confirm with exactly what the surface showed — the round-trip through the real screen.
-            host.onConfirmJoin(phase.startsAt, phase.endsAt, Direction.Both, false)
+            host.onConfirmJoin(CaptureCutoff(phase.startsAt.at), CaptureCeiling(phase.endsAt.at), Direction.Both, false)
             host.await { it is UiState.Joined }
 
             assertEquals(
-                phase.startsAt,
+                CaptureCutoff(phase.startsAt.at),
                 w.configSource.config.value?.minPhotoDate,
                 "the persisted cutoff is the one the join surface displayed",
             )
@@ -99,11 +106,11 @@ class JoinGateIntegrationTest {
             assertEquals(
                 UiState.JoiningEvent(EVENT_E, JoinPhase.Ready(
                         "Anna's Wedding",
-                        "2026-01-01T00:00:00Z",
-                        "2026-01-31T00:00:00Z",
+                        eventStart("2026-01-01T00:00:00Z"),
+                        eventEnd("2026-01-31T00:00:00Z"),
                         // The world edge derives it exactly as the real one does:
                         // `max(createdAt, startsAt) + 30d` (capability `event-limits`).
-                        "2026-01-31T00:00:00Z",
+                        deletesAt("2026-01-31T00:00:00Z"),
                     )),
                 host.await { (it as? UiState.JoiningEvent)?.phase is JoinPhase.Ready },
             )
@@ -292,7 +299,7 @@ class JoinGateIntegrationTest {
             host.onOpenUrl(encodeEventUrl(EventLinkPayload(EVENT_E, autoJoin = true, minPhotoDate = cutoff)))
             host.await { it is UiState.Joined }
 
-            assertEquals(cutoff, w.configSource.config.value?.minPhotoDate, "the cutoff must be persisted in config")
+            assertEquals(captureCutoff(cutoff), w.configSource.config.value?.minPhotoDate, "the cutoff must be persisted in config")
         } finally {
             scope.cancel()
         }
@@ -324,10 +331,10 @@ class JoinGateIntegrationTest {
             host.await { it is UiState.Joined }
 
             val config = w.configSource.config.value
-            assertEquals(startsAt, config?.minPhotoDate, "the 2001 cutoff must not survive the clamp")
-            assertEquals(startsAt, config?.startsAt)
+            assertEquals(captureCutoff(startsAt), config?.minPhotoDate, "the 2001 cutoff must not survive the clamp")
+            assertEquals(eventStart(startsAt), config?.startsAt)
             assertTrue(
-                config!!.minPhotoDate >= config.startsAt,
+                config!!.minPhotoDate.at >= config.startsAt.at,
                 "the floor invariant holds for every reachable membership",
             )
         } finally {

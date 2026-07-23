@@ -30,7 +30,12 @@ import app.snapsync.join.HttpEventDirectory
 import app.snapsync.membership.HttpDeviceFilesSource
 import app.snapsync.membership.HttpLeaveNotifier
 import app.snapsync.model.Resource
-import app.snapsync.model.Contribution
+import app.snapsync.model.CaptureCutoff
+import app.snapsync.model.EventStart
+import app.snapsync.model.SelectionPolicy
+import app.snapsync.model.captureCutoff
+import app.snapsync.model.eventStart
+import app.snapsync.model.toFacts
 import app.snapsync.model.DENYLISTED_ALBUM_TITLES
 import app.snapsync.model.DeviceManifestAsset
 import app.snapsync.model.Direction
@@ -267,7 +272,7 @@ class World(
             photoLibrary = enumerator,
             // The cheap facts-only walk for the shareable-count preview (capability `join-share-count`) —
             // the same world-owned gallery cell the resource enumeration reads.
-            rawFactsSince = gallery.source::factsSince,
+            rawFactsSince = { cutoff -> gallery.source.factsSince(cutoff.at.iso).map { it.toFacts() } },
             // The shared discovery cursor a cutoff-lowering reconfigure invalidates (capability
             // `reconfigure-membership`) — the SAME store the world's upload cycle reads.
             clearDiscoveryCursor = discoveryStore::clearToken,
@@ -293,7 +298,7 @@ class World(
             albumMapStore = albumMapStore,
             // Denylisted-album membership (capability `photo-selection-policy`) — the REAL policy
             // constant over the world's forgeable album membership, exactly as the shell wires it.
-            albumExcludedAssetIds = { cutoff -> albumManager.assetIdsInAlbums(DENYLISTED_ALBUM_TITLES, cutoff) },
+            albumExcludedAssetIds = { cutoff -> albumManager.assetIdsInAlbums(DENYLISTED_ALBUM_TITLES, cutoff.at.iso) },
             notifyLeave = { eventId -> leaveNotifier.leave(eventId, ownDeviceId) },
             provision = { cfg -> configCell.value = cfg },
             // Spy the real Provision flow's on-join push re-registration (capability `push-registration`).
@@ -454,12 +459,12 @@ class World(
     fun provision(
         eventId: String,
         name: String? = null,
-        minPhotoDate: String = DEFAULT_CUTOFF,
-        startsAt: String = DEFAULT_STARTS_AT,
+        minPhotoDate: CaptureCutoff = captureCutoff(DEFAULT_CUTOFF),
+        startsAt: EventStart = eventStart(DEFAULT_STARTS_AT),
         direction: Direction = Direction.Both,
         saveToAlbum: Boolean = false,
     ) {
-        store.registerEvent(eventId, name, startsAt)
+        store.registerEvent(eventId, name, startsAt.at.iso)
         configCell.value = EventConfig(
             eventId = eventId,
             name = name ?: "",
@@ -500,12 +505,11 @@ class World(
      * composition roots use. Both consumers of the policy take this: the upload cycle (which declines with
      * `SKIPPED` for `None`) and the own-device total `N` (which reports 0 without walking).
      *
-     * An **unjoined** world contributes [Contribution.None], not a default cutoff — there is no membership,
+     * An **unjoined** world yields [SelectionPolicy.None], not a default cutoff — there is no membership,
      * so there is nothing to contribute and `N` is 0, the same answer the cycle reaches.
      */
-    fun contribution(): Contribution = configCell.value?.let {
-        Contribution.of(includesUpload = it.direction.includesUpload, cutoff = it.minPhotoDate, until = it.maxPhotoDate)
-    } ?: Contribution.None
+    fun selectionPolicy(): SelectionPolicy =
+        configCell.value?.let { SelectionPolicy.from(it) } ?: SelectionPolicy.None
 
     /**
      * Every event this world's cycles notified (capability `upload-completion-notify`), in order.
@@ -538,7 +542,7 @@ class World(
                 enrollment = manifestUploader,
                 suppression = downloadStore,
                 // The SAME policy wrapper the app graph gets (capability `photo-selection-policy`).
-                albumExcludedAssetIds = { cutoff -> albumManager.assetIdsInAlbums(DENYLISTED_ALBUM_TITLES, cutoff) },
+                albumExcludedAssetIds = { cutoff -> albumManager.assetIdsInAlbums(DENYLISTED_ALBUM_TITLES, cutoff.at.iso) },
                 // Shared with the app graph, as the world's single-process stand-in for the App-Group map.
                 albumCoordinator = core.albumCoordinator,
                 // The mini-edge is unauthenticated; the world states its empty answer explicitly.

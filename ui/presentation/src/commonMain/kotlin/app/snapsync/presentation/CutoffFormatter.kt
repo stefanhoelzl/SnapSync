@@ -1,5 +1,6 @@
 package app.snapsync.presentation
 
+import app.snapsync.model.CaptureDate
 import app.snapsync.model.localToCutoff
 import kotlin.time.Instant
 import kotlinx.datetime.LocalDateTime
@@ -27,11 +28,11 @@ class CutoffFormatter(
     fun nowLocal(): LocalDateTime = now().toLocalDateTime(zone)
 
     /** Convert a picked local wall-clock value to the UTC `yyyy-MM-dd'T'HH:mm:ss'Z'` cutoff string. */
-    fun toCutoff(local: LocalDateTime): String = localToCutoff(local, zone)
+    fun toCutoff(local: LocalDateTime): CaptureDate = localToCutoff(local, zone)
 
     /** Parse a UTC `…Z` cutoff (the event's `startsAt`) back to a local value for the picker. */
-    fun toLocal(cutoff: String): LocalDateTime? =
-        runCatching { Instant.parse(cutoff).toLocalDateTime(zone) }.getOrNull()
+    fun toLocal(cutoff: CaptureDate): LocalDateTime? =
+        runCatching { Instant.parse(cutoff.iso).toLocalDateTime(zone) }.getOrNull()
 
     /**
      * "Now" directly as a canonical `…Z` string — the form the event-start comparison needs
@@ -43,7 +44,7 @@ class CutoffFormatter(
      * filter relies on. Round-tripping through local time would introduce a zone and a parse that can
      * fail, for a comparison that needs neither.
      */
-    fun nowCutoff(): String = toCutoff(nowLocal())
+    fun nowCutoff(): CaptureDate = toCutoff(nowLocal())
 
     /**
      * A **compact adaptive** rendering of a chosen capture-date range `[from, until]` for the join /

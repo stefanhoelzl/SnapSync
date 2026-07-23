@@ -3,6 +3,11 @@ package app.snapsync.join
 import app.snapsync.ports.EventDetails
 import app.snapsync.ports.EventDirectory
 
+import app.snapsync.model.MillisInstant
+import app.snapsync.model.EventStart
+import app.snapsync.model.EventEnd
+import app.snapsync.model.DeletesAt
+import app.snapsync.model.CaptureDate
 import app.snapsync.model.instantToCutoff
 import io.ktor.client.HttpClient
 import io.ktor.client.request.get
@@ -48,9 +53,9 @@ class HttpEventDirectory(
                     if (name != null && startsAt != null && endsAt != null && deletesAt != null) {
                         EventDetails.Found(
                             name = name,
-                            startsAt = startsAt,
-                            endsAt = endsAt,
-                            deletesAt = deletesAt,
+                            startsAt = EventStart(startsAt),
+                            endsAt = EventEnd(endsAt),
+                            deletesAt = DeletesAt(deletesAt),
                         )
                     } else {
                         EventDetails.Failed
@@ -75,14 +80,14 @@ class HttpEventDirectory(
      * `instantToCutoff` truncates toward the earlier instant (dropping the fraction), the inclusive
      * direction — so a photo taken within the cutoff's own second is admitted rather than lost.
      */
-    private fun canonicalOrNull(raw: String): String? =
+    private fun canonicalOrNull(raw: String): CaptureDate? =
         runCatching { instantToCutoff(Instant.parse(raw)) }.getOrNull()
 
     @Serializable
     private class MetaDto(
         val eventId: String? = null,
         val name: String? = null,
-        val createdAt: String? = null,
+        val createdAt: MillisInstant? = null,
         val startsAt: String? = null,
         val endsAt: String? = null,
         val deletesAt: String? = null,

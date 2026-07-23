@@ -1,5 +1,13 @@
 package app.snapsync.ui
 
+import app.snapsync.model.EventStart
+import app.snapsync.model.EventEnd
+import app.snapsync.model.captureCutoff
+import app.snapsync.model.eventStart
+import app.snapsync.model.eventEnd
+import app.snapsync.model.deletesAt
+import app.snapsync.model.CaptureCutoff
+import app.snapsync.model.CaptureCeiling
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
@@ -40,21 +48,21 @@ import org.junit.Rule
  */
 
 /** The switch dialog's new-event `startsAt` / `endsAt` (a different event scanned while joined). */
-private const val CUTOFF = "2026-07-06T14:32:11Z"
-private const val SWITCH_END = "2026-07-16T00:00:00Z"
+private val CUTOFF = eventStart("2026-07-06T14:32:11Z")
+private val SWITCH_END = eventEnd("2026-07-16T00:00:00Z")
 
 /** "Now" for the fixed test clock. */
-private const val NOW = "2026-07-06T12:00:00Z"
+private val NOW = captureCutoff("2026-07-06T12:00:00Z")
 
 /** An event that has ALREADY started (before [NOW]) — the ordinary case — and its end (after [NOW]). */
-private const val EVENT_START = "2026-07-04T18:00:00Z"
-private const val EVENT_END = "2026-07-20T18:00:00Z"
+private val EVENT_START = eventStart("2026-07-04T18:00:00Z")
+private val EVENT_END = eventEnd("2026-07-20T18:00:00Z")
 
 /** The event's retention deadline (capability `event-limits`): 30 days past its start. */
-private const val EVENT_DELETES = "2026-08-03T18:00:00Z"
+private val EVENT_DELETES = deletesAt("2026-08-03T18:00:00Z")
 
 /** An event that has NOT started yet (after [NOW]) — where the "Now" preset falls outside the window. */
-private const val FUTURE_START = "2026-07-09T18:00:00Z"
+private val FUTURE_START = eventStart("2026-07-09T18:00:00Z")
 
 class JoinScreenTest {
 
@@ -63,7 +71,7 @@ class JoinScreenTest {
 
     private fun joining(phase: JoinPhase) = UiState.JoiningEvent("11111111-1111-4111-8111-111111111111", phase)
 
-    private fun ready(start: String = EVENT_START, end: String = EVENT_END) =
+    private fun ready(start: EventStart = EVENT_START, end: EventEnd = EVENT_END) =
         JoinPhase.Ready("Anna's Wedding", start, end, EVENT_DELETES)
 
     /**
@@ -80,7 +88,7 @@ class JoinScreenTest {
      * whether the present is inside the window by comparing `startsAt`/`endsAt` against "now", so a formatter
      * that ignored its input could not express the pre-start case at all.
      */
-    private fun fixedCutoff(now: String = NOW) = CutoffFormatter(
+    private fun fixedCutoff(now: String = NOW.at.iso) = CutoffFormatter(
         now = { Instant.parse(now) },
         zone = TimeZone.UTC,
     )
@@ -218,7 +226,7 @@ class JoinScreenTest {
 
     @Test
     fun `selecting Now moves the lower bound to the current instant`() {
-        var committed: String? = null
+        var committed: CaptureCutoff? = null
         setScreen {
             StatusScreen(joining(ready()), onConfirmJoin = { c, _, _, _ -> committed = c }, cutoff = fixedCutoff())
         }
@@ -231,8 +239,8 @@ class JoinScreenTest {
 
     @Test
     fun `the confirm carries the full window's from and until by default`() {
-        var from: String? = null
-        var until: String? = null
+        var from: CaptureCutoff? = null
+        var until: CaptureCeiling? = null
         setScreen {
             StatusScreen(
                 joining(ready()),
@@ -241,13 +249,13 @@ class JoinScreenTest {
             )
         }
         rule.onNodeWithText("Join").performClick()
-        assertEquals(EVENT_START, from)
-        assertEquals(EVENT_END, until)
+        assertEquals(CaptureCutoff(EVENT_START.at), from)
+        assertEquals(CaptureCeiling(EVENT_END.at), until)
     }
 
     @Test
     fun `selecting Event start commits the event start`() {
-        var committed: String? = null
+        var committed: CaptureCutoff? = null
         setScreen {
             StatusScreen(joining(ready()), onConfirmJoin = { c, _, _, _ -> committed = c }, cutoff = fixedCutoff())
         }
@@ -256,7 +264,7 @@ class JoinScreenTest {
         rule.onNodeWithTag("from-event-start").assertIsSelected()
         rule.onNodeWithText("Sharing 4 Jul 18:00 – 20 Jul 18:00").assertExists()
         rule.onNodeWithText("Join").performClick()
-        assertEquals(EVENT_START, committed)
+        assertEquals(CaptureCutoff(EVENT_START.at), committed)
     }
 
     @Test
@@ -275,7 +283,7 @@ class JoinScreenTest {
 
     @Test
     fun `tapping the From Custom opens the picker, and OK commits a floor-coerced lower bound`() {
-        var committed: String? = null
+        var committed: CaptureCutoff? = null
         setScreen {
             StatusScreen(joining(ready()), onConfirmJoin = { c, _, _, _ -> committed = c }, cutoff = fixedCutoff())
         }
@@ -289,12 +297,12 @@ class JoinScreenTest {
         rule.onNodeWithTag("from-custom").assertIsSelected()
         rule.onNodeWithText("Can't be earlier than the event started, 4 Jul 2026, 18:00.").assertExists()
         rule.onNodeWithText("Join").performClick()
-        assertEquals(EVENT_START, committed, "the committed custom lower bound is coerced up to the floor")
+        assertEquals(CaptureCutoff(EVENT_START.at), committed, "the committed custom lower bound is coerced up to the floor")
     }
 
     @Test
     fun `tapping the Until Custom opens the picker, and OK commits a ceiling-coerced upper bound`() {
-        var committedUntil: String? = null
+        var committedUntil: CaptureCeiling? = null
         setScreen {
             StatusScreen(joining(ready()), onConfirmJoin = { _, u, _, _ -> committedUntil = u }, cutoff = fixedCutoff())
         }
@@ -304,7 +312,7 @@ class JoinScreenTest {
         rule.onNodeWithText("OK").performClick()
         rule.onNodeWithTag("until-custom").assertIsSelected()
         rule.onNodeWithText("Join").performClick()
-        assertEquals(EVENT_END, committedUntil, "the committed custom upper bound is coerced down to the ceiling")
+        assertEquals(CaptureCeiling(EVENT_END.at), committedUntil, "the committed custom upper bound is coerced down to the ceiling")
     }
 
     // ---- the retention statement (capability `event-limits`) ------------------------------------------
@@ -517,8 +525,8 @@ class JoinScreenTest {
 
     @Test
     fun `a retry after a failed commit still carries the event window, not now`() {
-        var retriedFrom: String? = null
-        var retriedUntil: String? = null
+        var retriedFrom: CaptureCutoff? = null
+        var retriedUntil: CaptureCeiling? = null
         setScreen {
             StatusScreen(
                 joining(JoinPhase.CommitFailed("Anna's Wedding", EVENT_START, EVENT_END, EVENT_DELETES)),
@@ -527,8 +535,8 @@ class JoinScreenTest {
             )
         }
         rule.onNodeWithText("Retry").performClick()
-        assertEquals(EVENT_START, retriedFrom, "the retry must carry the event start, not now")
-        assertEquals(EVENT_END, retriedUntil, "the retry must carry the event end")
+        assertEquals(CaptureCutoff(EVENT_START.at), retriedFrom, "the retry must carry the event start, not now")
+        assertEquals(CaptureCeiling(EVENT_END.at), retriedUntil, "the retry must carry the event end")
     }
 
     // ---- the switch-events dialog (a different event scanned while joined) -----------------------------
@@ -536,8 +544,8 @@ class JoinScreenTest {
     @Test
     fun `switch dialog states the participation reset and confirms with the new window and Both`() {
         var switchedDirection: Direction? = null
-        var switchedCutoff: String? = null
-        var switchedUntil: String? = null
+        var switchedCutoff: CaptureCutoff? = null
+        var switchedUntil: CaptureCeiling? = null
         setScreen {
             StatusScreen(
                 UiState.Joined(
@@ -560,8 +568,8 @@ class JoinScreenTest {
 
         rule.onNodeWithText("Switch").performClick()
         assertEquals(Direction.Both, switchedDirection)
-        assertEquals(CUTOFF, switchedCutoff)
-        assertEquals(SWITCH_END, switchedUntil)
+        assertEquals(CaptureCutoff(CUTOFF.at), switchedCutoff)
+        assertEquals(CaptureCeiling(SWITCH_END.at), switchedUntil)
     }
 
     @Test

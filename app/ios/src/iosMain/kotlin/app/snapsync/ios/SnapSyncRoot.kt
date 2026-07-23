@@ -17,7 +17,11 @@ import app.snapsync.attest.KeychainAttestStore
 import app.snapsync.join.HttpEnrollment
 import app.snapsync.join.HttpEventDirectory
 import app.snapsync.feature.membership.JoinOutcome
-import app.snapsync.model.Contribution
+import app.snapsync.model.CaptureCeiling
+import app.snapsync.model.captureCutoff
+import app.snapsync.model.CaptureCutoff
+import app.snapsync.model.SelectionPolicy
+import app.snapsync.model.toFacts
 import app.snapsync.gallery.PhotoLibraryRawAssetSource
 import app.snapsync.gallery.PhotoLibraryResourceEnumerator
 import app.snapsync.ios.discovery.IosDiscoveryStore
@@ -258,8 +262,8 @@ object SnapSyncRoot {
      * and the own-device status total — they enumerate independently, so a rule applied to one and not the
      * other would peg the joined screen below 100% forever.
      */
-    private suspend fun albumExcludedAssetIds(cutoff: String): Set<String> =
-        runCatching { albumManager.assetIdsInAlbums(DENYLISTED_ALBUM_TITLES, cutoff) }
+    private suspend fun albumExcludedAssetIds(cutoff: CaptureCutoff): Set<String> =
+        runCatching { albumManager.assetIdsInAlbums(DENYLISTED_ALBUM_TITLES, cutoff.at.iso) }
             .onFailure { log.w(it) { "denylisted-album lookup failed — admitting on doubt this cycle" } }
             .getOrDefault(emptySet()) // admit-on-doubt: a failed lookup must never DROP a real photo
 
@@ -307,7 +311,7 @@ object SnapSyncRoot {
                 // The cheap facts-only walk for the shareable-count preview (capability
                 // `join-share-count`): a stateless PhotoKit `RawAssetSource`, skipping the per-asset
                 // resource round-trip the resource enumeration pays.
-                rawFactsSince = rawAssetFacts::factsSince,
+                rawFactsSince = { cutoff -> rawAssetFacts.factsSince(cutoff.at.iso).map { it.toFacts() } },
                 // A cutoff-lowering reconfigure invalidates the shared discovery cursor so both tiers
                 // re-enumerate and back-share the newly-in-scope older photos (capability
                 // `reconfigure-membership`).
@@ -548,7 +552,7 @@ object SnapSyncRoot {
     val renderHost: StatusContainerHost by lazy { shell.renderHost() }
 
     /** The join surface's shareable-count query (capability `join-share-count`) — live or forge, one switch. */
-    val shareableCount: suspend (cutoff: String, until: String?) -> Int? get() = shell.shareableCount
+    val shareableCount: suspend (cutoff: CaptureCutoff, until: CaptureCeiling?) -> Int? get() = shell.shareableCount
 
     /** The photo grant, the count's recompute trigger. */
     val photoPermission: StateFlow<PermissionStatus> get() = shell.photoPermission
@@ -772,7 +776,7 @@ object SnapSyncRoot {
     // Expiry: dies with the probe itself if a headless event-creation route ever exists.
     @Suppress("CyclomaticComplexMethod")
     private suspend fun runLaunchEnvPolicyProbe() {
-        val cutoff = directives.policyProbe ?: return
+        val cutoff = directives.policyProbe?.let(::captureCutoff) ?: return
 
         // Subtype census, on the RAW library (no exclusion predicate) — this is the part the status refresh
         // below cannot show, because the production predicate drops screenshots and screen recordings at the
@@ -798,7 +802,7 @@ object SnapSyncRoot {
         // the whole point — the policy is otherwise unobservable without a joined event), so there is no
         // direction to read. `None` would skip the walk and prove nothing; this probe exists to make the walk
         // happen and report what it found.
-        app.gallery.refresh(Contribution.Since(cutoff, until = null))
+        app.gallery.refresh(SelectionPolicy.from(includesUpload = true, cutoff = cutoff, ceiling = null))
         log.i { "policy probe: N=${app.gallery.size.value} (see the `gallery:` line above for the breakdown)" }
     }
 
@@ -906,7 +910,7 @@ object SnapSyncRoot {
         fun renderHost(): StatusContainerHost
 
         /** The join-time shareable-count query (capability `join-share-count`); `{ null }` in forge. */
-        val shareableCount: suspend (cutoff: String, until: String?) -> Int?
+        val shareableCount: suspend (cutoff: CaptureCutoff, until: CaptureCeiling?) -> Int?
 
         /** The photo grant, the count's recompute trigger; a constant in forge. */
         val photoPermission: StateFlow<PermissionStatus>
@@ -939,7 +943,7 @@ object SnapSyncRoot {
         }
 
         // No live core to count against — the join surface renders no count row in forge (structural).
-        override val shareableCount: suspend (cutoff: String, until: String?) -> Int? = { _, _ -> null }
+        override val shareableCount: suspend (cutoff: CaptureCutoff, until: CaptureCeiling?) -> Int? = { _, _ -> null }
         override val photoPermission: StateFlow<PermissionStatus> = MutableStateFlow(PermissionStatus.GRANTED)
 
         override fun applyLaunchEnvMembership() = log.invocation("applyLaunchEnvMembership") {
@@ -1017,7 +1021,7 @@ object SnapSyncRoot {
         override fun renderHost(): StatusContainerHost = host
 
         // The real permission-aware, no-network count query and the live grant (capability `join-share-count`).
-        override val shareableCount: suspend (cutoff: String, until: String?) -> Int? get() = app::loadShareableCount
+        override val shareableCount: suspend (cutoff: CaptureCutoff, until: CaptureCeiling?) -> Int? get() = app::loadShareableCount
         override val photoPermission: StateFlow<PermissionStatus> get() = app.photoPermission
 
         override fun applyLaunchEnvMembership() = log.invocation("applyLaunchEnvMembership") {

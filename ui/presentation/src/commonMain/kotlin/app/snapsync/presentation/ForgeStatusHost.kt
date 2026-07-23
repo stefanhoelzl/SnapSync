@@ -1,5 +1,9 @@
 package app.snapsync.presentation
 
+import app.snapsync.model.eventStart
+import app.snapsync.model.eventEnd
+import app.snapsync.model.deletesAt
+import app.snapsync.model.captureCutoff
 import app.snapsync.model.EventConfig
 import app.snapsync.model.EventLinkPayload
 import app.snapsync.model.JoinLoad
@@ -48,7 +52,7 @@ fun forgeStatusHost(state: String, scope: CoroutineScope, cutoffFormatter: Cutof
         // The join gate's details fetch (capability `join-event`), forged to a `Found` so the gate can
         // reach its confirmation surface with no backend. `commitJoin` stays inert by default — a
         // screenshot never confirms a join.
-        loadJoinDetails = { JoinLoad.Found(EVENT_NAME, EVENT_START, EVENT_END, EVENT_DELETES) },
+        loadJoinDetails = { JoinLoad.Found(EVENT_NAME, eventStart(EVENT_START), eventEnd(EVENT_END), deletesAt(EVENT_DELETES)) },
         cutoffFormatter = cutoffFormatter,
     )
     // Drive the real join gate by feeding it the very input a scanned QR delivers: the event's own
@@ -114,7 +118,7 @@ internal const val EVENT_DELETES = "2026-08-19T18:00:00Z"
 private val EVENT = EventConfig(
     eventId = EVENT_ID,
     name = EVENT_NAME,
-    minPhotoDate = "2026-01-01T00:00:00Z",
+    minPhotoDate = captureCutoff("2026-01-01T00:00:00Z"),
 )
 
 private fun ready(completed: Int, total: Int, pending: Int = 0): SyncStatus =

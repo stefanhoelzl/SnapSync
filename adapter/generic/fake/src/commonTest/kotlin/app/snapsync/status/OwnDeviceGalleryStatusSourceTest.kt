@@ -1,7 +1,8 @@
 package app.snapsync.status
 
 import app.snapsync.model.Resource
-import app.snapsync.model.Contribution
+import app.snapsync.model.SelectionPolicy
+import app.snapsync.model.captureCutoff
 import app.snapsync.ports.PhotoLibrary
 import app.snapsync.feature.status.OwnDeviceGalleryStatusSource
 import app.snapsync.fake.InMemoryPhotoLibrary
@@ -19,7 +20,10 @@ import kotlin.test.assertEquals
 import kotlinx.coroutines.test.runTest
 
 /** Every membership carries a cutoff (capability `photo-selection-policy`); there is no whole-library total. */
-private const val CUTOFF = "2026-07-06T00:00:00Z"
+private val CUTOFF = captureCutoff("2026-07-06T00:00:00Z")
+
+/** The admitting policy every test here drives, bounded below by [CUTOFF] and unbounded above. */
+private val ADMITTING = SelectionPolicy.from(includesUpload = true, cutoff = CUTOFF, ceiling = null)
 
 /** After [CUTOFF], so a default-dated resource is in scope. */
 private const val IN_SCOPE = "2026-07-10T00:00:00Z"
@@ -54,7 +58,7 @@ class OwnDeviceGalleryStatusSourceTest {
         )
         val source = OwnDeviceGalleryStatusSource(enumerator)
 
-        source.refresh(Contribution.None)
+        source.refresh(SelectionPolicy.None)
 
         assertEquals(0, source.size.value, "a member who shares nothing has nothing to count")
         // The load-bearing half. Counting 0 by walking 4000 assets would be ~7 minutes of PhotoKit XPC to
@@ -73,7 +77,7 @@ class OwnDeviceGalleryStatusSourceTest {
         )
         val source = OwnDeviceGalleryStatusSource(enumerator)
 
-        source.refresh(Contribution.Since(CUTOFF, until = null))
+        source.refresh(ADMITTING)
 
         assertEquals(2, source.size.value)
         assertEquals(1, enumerator.walks)
@@ -92,7 +96,7 @@ class OwnDeviceGalleryStatusSourceTest {
                 resource("A-primary.jpg", "A"),
                 datedResource("B-primary.jpg", "B", "2026-07-01T00:00:00Z"), // pre-cutoff → excluded
             ),
-            Contribution.Since(CUTOFF, until = null),
+            ADMITTING,
         )
 
         assertEquals(1, source.size.value, "the snapshot is counted through the same three-way subtraction")
@@ -104,7 +108,7 @@ class OwnDeviceGalleryStatusSourceTest {
         val enumerator = RecordingEnumerator(InMemoryPhotoLibrary(emptyList()))
         val source = OwnDeviceGalleryStatusSource(enumerator)
 
-        source.refreshFrom(listOf(resource("A-primary.jpg", "A")), Contribution.None)
+        source.refreshFrom(listOf(resource("A-primary.jpg", "A")), SelectionPolicy.None)
 
         assertEquals(0, source.size.value)
         assertEquals(0, enumerator.walks)
@@ -153,7 +157,7 @@ class OwnDeviceGalleryStatusSourceTest {
         )
         val source = OwnDeviceGalleryStatusSource(enumerator)
 
-        source.refresh(Contribution.Since(CUTOFF, until = null))
+        source.refresh(ADMITTING)
 
         assertEquals(1, source.size.value, "only the camera photo counts toward N")
     }
@@ -165,7 +169,7 @@ class OwnDeviceGalleryStatusSourceTest {
         )
         val source = OwnDeviceGalleryStatusSource(enumerator, albumExcludedAssetIds = { setOf("WA") })
 
-        source.refresh(Contribution.Since(CUTOFF, until = null))
+        source.refresh(ADMITTING)
 
         assertEquals(1, source.size.value)
     }
@@ -181,7 +185,7 @@ class OwnDeviceGalleryStatusSourceTest {
         )
         val source = OwnDeviceGalleryStatusSource(enumerator)
 
-        source.refresh(Contribution.Since(CUTOFF, until = null))
+        source.refresh(ADMITTING)
 
         assertEquals(2, source.size.value) // A and B — counted by photo, not resource row
     }
@@ -198,7 +202,7 @@ class OwnDeviceGalleryStatusSourceTest {
         )
         val source = OwnDeviceGalleryStatusSource(enumerator, suppressedLocalIds = { setOf("B") })
 
-        source.refresh(Contribution.Since(CUTOFF, until = null))
+        source.refresh(ADMITTING)
 
         assertEquals(1, source.size.value, "total counts only own assets (A), not the downloaded B")
     }
@@ -209,11 +213,11 @@ class OwnDeviceGalleryStatusSourceTest {
         val cell = MutableStateFlow(listOf(resource("A-primary.jpg", "A")))
         val enumerator = InMemoryPhotoLibrary(cell)
         val source = OwnDeviceGalleryStatusSource(enumerator)
-        source.refresh(Contribution.Since(CUTOFF, until = null))
+        source.refresh(ADMITTING)
         assertEquals(1, source.size.value)
 
         cell.value = listOf(resource("A-primary.jpg", "A"), resource("C-primary.jpg", "C"))
-        source.refresh(Contribution.Since(CUTOFF, until = null))
+        source.refresh(ADMITTING)
         assertEquals(2, source.size.value)
     }
 
@@ -229,7 +233,7 @@ class OwnDeviceGalleryStatusSourceTest {
         )
         val source = OwnDeviceGalleryStatusSource(enumerator)
 
-        source.refresh(Contribution.Since(CUTOFF, until = null))
+        source.refresh(ADMITTING)
 
         assertEquals(1, source.size.value, "only the post-cutoff asset (NEW) counts toward the total")
     }
@@ -239,7 +243,7 @@ class OwnDeviceGalleryStatusSourceTest {
         val enumerator = InMemoryPhotoLibrary(listOf(undatedResource("U-primary.jpg", "U")))
         val source = OwnDeviceGalleryStatusSource(enumerator)
 
-        source.refresh(Contribution.Since(CUTOFF, until = null))
+        source.refresh(ADMITTING)
 
         assertEquals(0, source.size.value, "an asset with no creationDate is out of scope under a cutoff")
     }

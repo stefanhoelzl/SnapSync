@@ -1,5 +1,10 @@
 package app.snapsync.desktop
 
+import app.snapsync.model.EventStart
+import app.snapsync.model.EventEnd
+import app.snapsync.model.DeletesAt
+import app.snapsync.model.CaptureCutoff
+import app.snapsync.model.CaptureCeiling
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.collectAsState
@@ -54,16 +59,17 @@ fun StatusPane(
     // real `JoinEvent` over the world so `:app:desktop:run` drives the actual gate.
     loadJoinDetails: suspend (String) -> JoinLoad = { JoinLoad.Failed },
     commitJoin: suspend (
-        String, String, String, String, String, String, String, Direction, Boolean,
+        String, String, EventStart, EventEnd, DeletesAt, CaptureCutoff, CaptureCeiling, Direction, Boolean,
     ) -> Boolean = { _, _, _, _, _, _, _, _, _ -> false },
     // In-place membership reconfigure (capability `reconfigure-membership`): the forge leaves it inert
     // (the surface is reviewable, the command a no-op), the full-stack world harness binds it to the real
     // `world.core.userCommands.reconfigure` so `:app:desktop:run` drives the actual in-place rewrite.
-    reconfigure: suspend (String, Direction, String, String?, Boolean) -> Unit = { _, _, _, _, _ -> },
+    reconfigure: suspend (String, Direction, CaptureCutoff, CaptureCeiling?, Boolean) -> Unit =
+        { _, _, _, _, _ -> },
     // The join-time shareable-count preview (capability `join-share-count`): the forge leaves it inert
     // (no count row), the full-stack world harness binds it to `world.core.loadShareableCount` so
     // `:app:desktop:run` shows the real count over the world gallery. Range-aware (`[cutoff, until]`).
-    shareableCount: suspend (cutoff: String, until: String?) -> Int? = { _, _ -> null },
+    shareableCount: suspend (cutoff: CaptureCutoff, until: CaptureCeiling?) -> Int? = { _, _ -> null },
     // Attestation health (capability `device-attestation`): defaulted to always-attested so the
     // full-stack harness constructs unchanged; the forge harness injects a MutableAttestedSource so
     // `SyncHealth.Unattested` is forgeable.
@@ -99,7 +105,7 @@ fun StatusPane(
             // permission taps bind the injected requester, mirroring `AppCore.userCommands`.
             commands = UserCommands(
                 leave = leave,
-                create = creator::create,
+                create = { name, startsAt, endsAt -> creator.create(name, startsAt.at.iso, endsAt.at.iso) },
                 commitJoin = commitJoin,
                 share = share,
                 requestAccess = requester::request,

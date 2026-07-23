@@ -1,5 +1,9 @@
 package app.snapsync.integration
 
+import app.snapsync.model.CaptureCutoff
+import app.snapsync.model.eventStart
+import app.snapsync.model.captureCutoff
+import app.snapsync.model.captureCeiling
 import app.snapsync.feature.push.ApnsPushToken
 import app.snapsync.feature.push.PushRegistration
 import app.snapsync.model.Direction
@@ -55,9 +59,9 @@ class PushRegistrationIntegrationTest {
     @Test
     fun the_join_flow_re_registers_the_push_token() = worldTest {
         val event = "33333333-3333-4333-8333-333333333333"
-        val startsAt = "2026-01-01T00:00:00Z"
+        val startsAt = eventStart("2026-01-01T00:00:00Z")
         val w = World(this)
-        w.store.registerEvent(event, "Trip", startsAt)
+        w.store.registerEvent(event, "Trip", startsAt.at.iso)
         assertEquals(0, w.registerPushCount)
 
         // Drive the REAL Provision flow — the join path — NOT the world's config-cell shortcut.
@@ -65,7 +69,7 @@ class PushRegistrationIntegrationTest {
             EventConfig(
                 eventId = event,
                 name = "Trip",
-                minPhotoDate = startsAt,
+                minPhotoDate = CaptureCutoff(startsAt.at),
                 startsAt = startsAt,
                 direction = Direction.Both,
                 saveToAlbum = false,

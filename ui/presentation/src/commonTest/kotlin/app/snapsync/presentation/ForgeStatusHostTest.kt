@@ -1,5 +1,8 @@
 package app.snapsync.presentation
 
+import app.snapsync.model.eventStart
+import app.snapsync.model.eventEnd
+import app.snapsync.model.deletesAt
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
@@ -40,7 +43,7 @@ class ForgeStatusHostTest {
         // Found details load, with config absent (a first join, not a switch) and permission granted
         // (so readyOrExplain picks Ready rather than the access explainer).
         val state = host.container.stateFlow.first { it is UiState.JoiningEvent }
-        assertEquals(UiState.JoiningEvent(EVENT_ID, JoinPhase.Ready(EVENT_NAME, EVENT_START, EVENT_END, EVENT_DELETES)), state)
+        assertEquals(UiState.JoiningEvent(EVENT_ID, JoinPhase.Ready(EVENT_NAME, eventStart(EVENT_START), eventEnd(EVENT_END), deletesAt(EVENT_DELETES))), state)
     }
 
     @Test
