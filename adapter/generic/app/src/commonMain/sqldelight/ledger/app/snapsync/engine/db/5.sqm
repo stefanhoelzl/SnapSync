@@ -1,0 +1,32 @@
+-- v5 -> v6: carry the device manifest's presentation detail on the ledger row (capability
+-- `sync-ledger`), so the manifest can be PROJECTED from the ledger instead of maintained in a
+-- parallel accumulator that tracked the same deletion-aware asset set with different columns.
+--
+-- Like 2.sqm/3.sqm/4.sqm this migration is ROW-PRESERVING, and here that matters more than usual: a
+-- surviving COMPLETED row is exactly what stops the next discovery cycle from re-uploading an
+-- already-stored resource, and losing them would re-upload every member's whole in-window library.
+-- `ALTER TABLE … ADD COLUMN` is a catalog-only change (SQLite rewrites the schema record, never the
+-- rows), so no row is touched.
+--
+-- `DEFAULT ''` is the same load-bearing sentinel 4.sqm introduced for `eventId`, for the same two
+-- reasons and one more:
+--  - The TRUE values are not available in SQL. They live on the PhotoKit resource (`creationDate`,
+--    the original filename, the iOS-resolved content type), which a migration script cannot reach.
+--    `''` means "recorded before the row carried manifest detail".
+--  - It keeps the older column-explicit `INSERT OR REPLACE` working against the wider table, which
+--    is what makes a staged revert (keep the migration + the columns, revert the Kotlin threading)
+--    shippable.
+--  - It is ALSO the resting state of a row the **re-join reconcile** seeds. That path clears and
+--    re-seeds the ledger from the device's stored-file listing, which returns `{filename, size,
+--    url}` — a filename carries no capture date, so a seeded row is necessarily bare. The single
+--    writer fills both cases the same way: the reconcile forces a full re-enumeration, and the next
+--    cycle backfills the detail for every re-discovered row that lacks it (`backfillManifestDetail`,
+--    idempotent, exactly like `backfillEventId`). Discovery runs before the manifest PUT in that
+--    same cycle, so the manifest never projects from bare rows.
+--
+-- The PRIMARY KEY stays `key` (the bare, event-independent resource filename): dedup semantics are
+-- unchanged. Migration SQL is raw (no `AS ResourceRole` annotations).
+ALTER TABLE ledgerRow ADD COLUMN creationDate TEXT NOT NULL DEFAULT '';
+ALTER TABLE ledgerRow ADD COLUMN role TEXT NOT NULL DEFAULT '';
+ALTER TABLE ledgerRow ADD COLUMN contentType TEXT NOT NULL DEFAULT '';
+ALTER TABLE ledgerRow ADD COLUMN originalFilename TEXT NOT NULL DEFAULT '';

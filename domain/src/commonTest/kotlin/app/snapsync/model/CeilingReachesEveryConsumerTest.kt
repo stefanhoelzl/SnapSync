@@ -44,6 +44,10 @@ class CeilingReachesEveryConsumerTest {
         data = Unit,
     )
 
+    /** The COMPLETED ledger rows those resources would have produced — what the manifest projects from. */
+    private fun ledgerRows(): List<LedgerEntry> =
+        discovered.map { it.toLedgerRow(LedgerState.COMPLETED, attempt = 0, eventId = "E") }
+
     private val discovered = listOf(
         resource("IN", inWindow),
         resource("AFTER", postCeiling),
@@ -65,8 +69,7 @@ class CeilingReachesEveryConsumerTest {
         // The projection used to take a bare `startDate` and apply the floor alone — so AFTER was listed
         // in `device.json`, entered the event union, and was offered to every other member as bytes that
         // were never uploaded. A 404 for everyone.
-        val accumulator = discovered.map { DeviceManifestAsset(it.assetId, it.metadata[RESOURCE_META_CREATION_DATE]!!, emptyList()) }
-        val manifest = projectDeviceManifest("dev", accumulator, policy)
+        val manifest = projectDeviceManifest("dev", ledgerRows(), policy)
         assertEquals(listOf("IN"), manifest.assets.map { it.assetId })
     }
 
@@ -99,11 +102,8 @@ class CeilingReachesEveryConsumerTest {
         // consumers see, so a future rule added to one of them fails here rather than on a device.
         val fromResources = admitted()
         val fromFacts = factsFromResources(discovered).filter { policy.admits(it) }.map { it.assetId }.toSet()
-        val fromManifest = projectDeviceManifest(
-            "dev",
-            discovered.map { DeviceManifestAsset(it.assetId, it.metadata[RESOURCE_META_CREATION_DATE]!!, emptyList()) },
-            policy,
-        ).assets.map { it.assetId }.toSet()
+        val fromManifest = projectDeviceManifest("dev", ledgerRows(), policy)
+            .assets.map { it.assetId }.toSet()
 
         assertEquals(fromResources, fromFacts)
         assertEquals(fromResources, fromManifest)

@@ -1,5 +1,6 @@
 package app.snapsync.world
 
+import app.snapsync.model.toLedgerRow
 import app.snapsync.fake.InMemoryLedgerStore
 
 import app.snapsync.model.LedgerEntry
@@ -59,7 +60,7 @@ class SyncEngineTest {
 
         engine.handle(SyncEvent.UploadStarted(upload.job))
         assertEquals(
-            LedgerEntry(resource.filename, resource.assetId, LedgerState.REQUESTED, 0, eventId),
+            resource.toLedgerRow(LedgerState.REQUESTED, attempt = 0, eventId = eventId),
             ledger.entry(resource.filename),
         )
     }
@@ -158,13 +159,13 @@ class SyncEngineTest {
         assertSame(resource, retry.job.request.resource)
         // UploadFailed records FAILED only; the retry's REQUESTED comes via UploadStarted.
         assertEquals(
-            LedgerEntry(resource.filename, resource.assetId, LedgerState.FAILED, 0, eventId),
+            resource.toLedgerRow(LedgerState.FAILED, attempt = 0, eventId = eventId),
             ledger.entry(resource.filename),
         )
 
         engine.handle(SyncEvent.UploadStarted(retry.job))
         assertEquals(
-            LedgerEntry(resource.filename, resource.assetId, LedgerState.REQUESTED, 1, eventId),
+            resource.toLedgerRow(LedgerState.REQUESTED, attempt = 1, eventId = eventId),
             ledger.entry(resource.filename),
         )
     }
@@ -208,7 +209,7 @@ class SyncEngineTest {
 
         assertIs<SyncDecision.AlreadyUploaded>(decision)
         assertEquals(
-            LedgerEntry(resource.filename, resource.assetId, LedgerState.COMPLETED, 0, eventId),
+            resource.toLedgerRow(LedgerState.COMPLETED, attempt = 0, eventId = eventId),
             ledger.entry(resource.filename),
         )
     }

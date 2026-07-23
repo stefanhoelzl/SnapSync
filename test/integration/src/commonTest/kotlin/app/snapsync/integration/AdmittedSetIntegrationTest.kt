@@ -56,6 +56,12 @@ class AdmittedSetIntegrationTest {
         // ④ the device manifest — the consumer that leaked. A post-ceiling asset listed here enters the
         //    event union and is offered to every other member as bytes that were never uploaded: a 404
         //    for everyone, and invisible on the device that caused it.
+        //
+        //    The manifest lists COMPLETED resources now (capability `device-manifest`), so the operator
+        //    plays the OS exactly as a device does: complete the job, then invoke again — the cycle that
+        //    records the completion is the one that re-projects.
+        w.platform.completeJob("IN-primary.jpg")
+        w.runUploadCycle()
         val manifest = w.store.manifestOf("E", w.ownDeviceId)
         assertEquals(
             listOf("IN"),
@@ -79,6 +85,9 @@ class AdmittedSetIntegrationTest {
         assertEquals(2, w.core.gallery.size.value)
         w.runUploadCycle()
         assertEquals(2, w.platform.created.size)
+        w.platform.completeJob("IN-primary.jpg")
+        w.platform.completeJob("AFTER-primary.jpg")
+        w.runUploadCycle()
         assertEquals(2, w.store.manifestOf("E", w.ownDeviceId)?.assets?.size)
     }
 
@@ -97,6 +106,8 @@ class AdmittedSetIntegrationTest {
         assertEquals(1, w.core.gallery.size.value)
         w.runUploadCycle()
         assertEquals(listOf("CAM-primary.jpg"), w.platform.created.map { it.filename })
+        w.platform.completeJob("CAM-primary.jpg")
+        w.runUploadCycle()
 
         val listed = w.store.manifestOf("E", w.ownDeviceId)?.assets?.map { it.assetId }.orEmpty()
         assertEquals(listOf("CAM"), listed)

@@ -27,6 +27,24 @@ interface LedgerStore {
     suspend fun pendingResources(): List<PendingResource>
 
     /**
+     * The `COMPLETED` rows that carry manifest detail — the **device manifest, projected**
+     * (capability `device-manifest`). Rows still bare (no `creationDate`) are excluded: they are
+     * mid-backfill, and listing a resource with no capture date would place it outside every
+     * membership window rather than inside the right one.
+     */
+    suspend fun completedManifestRows(): List<LedgerEntry>
+
+    /**
+     * Fill the manifest detail of one already-recorded row **without touching its state or attempt**,
+     * and only while the row is still bare — so re-running is free and can never clobber a good value.
+     *
+     * The sweep for the two ways a row rests bare: it predates the 5.sqm migration, or the re-join
+     * reconcile seeded it from a stored-file listing (filenames carry no capture date). A writer-family
+     * operation like the prunes and [backfillEventId]: only the single writer's cycle runs it.
+     */
+    suspend fun backfillManifestDetail(entry: LedgerEntry)
+
+    /**
      * Delete every row — a deliberate reset (the app re-provisioning config), not a sync write.
      * Dings [changes] like a [put] so watchers re-read the now-empty truth.
      */

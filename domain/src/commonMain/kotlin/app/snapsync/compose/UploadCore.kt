@@ -15,7 +15,6 @@ import app.snapsync.model.CaptureCutoff
 import app.snapsync.model.SelectionPolicy
 import app.snapsync.model.EdgeUploadRequestProvider
 import app.snapsync.model.denormalizeAssetId
-import app.snapsync.model.deviceManifestAssetsFromResources
 import app.snapsync.ports.BackgroundTransfer
 import app.snapsync.ports.ConfigRead
 import app.snapsync.ports.ConfigReader
@@ -143,13 +142,14 @@ fun uploadCore(scope: CoroutineScope, ports: UploadPorts): UploadCycle {
         reconcile = { eventId -> reconciler.reconcile(eventId) },
         // Device manifest (capability `device-manifest`) from the cycle's OWN discovery — no second
         // library enumeration. Bounding is the cycle's.
-        onDiscovery = { eventId, policy, discovery ->
+        // The device manifest is a PROJECTION of the ledger's COMPLETED rows (capability
+        // `device-manifest`), so this hook needs no discovery of its own — the cycle has already
+        // recorded and backfilled the rows by the time it fires.
+        onDiscovery = { eventId, policy ->
             manifestProducer.produce(
                 eventId = eventId,
                 policy = policy, // the ONE admission (capability `photo-selection-policy`)
-                discovered = deviceManifestAssetsFromResources(discovery.resources),
-                removedAssetIds = discovery.removedAssetIds.toSet(),
-                fullEnumeration = discovery.fullEnumeration,
+                rows = ledger.completedManifestRows(),
             )
         },
         suppressedAssetIds = { ports.suppression.suppressedLocalIds() },

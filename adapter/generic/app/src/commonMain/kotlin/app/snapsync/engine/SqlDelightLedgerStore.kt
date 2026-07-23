@@ -3,6 +3,7 @@ package app.snapsync.engine
 import app.snapsync.model.LedgerAggregates
 import app.snapsync.ports.LedgerStore
 import app.snapsync.model.LedgerEntry
+import app.snapsync.model.ResourceRole
 import app.snapsync.model.LedgerState
 import app.snapsync.model.PendingResource
 
@@ -39,13 +40,49 @@ class SqlDelightLedgerStore(
     override val changes: Flow<Unit> = dings
 
     override suspend fun get(key: String): LedgerEntry? =
-        queries.get(key) { _, assetId, state, attempt, eventId ->
-            LedgerEntry(key, assetId, state, attempt.toInt(), eventId)
+        queries.get(key) { _, assetId, state, attempt, eventId, creationDate, role, contentType, filename ->
+            LedgerEntry(
+                key, assetId, state, attempt.toInt(), eventId,
+                creationDate = creationDate,
+                role = roleOrNull(role),
+                contentType = contentType,
+                originalFilename = filename,
+            )
         }.executeAsOneOrNull()
 
     override suspend fun put(entry: LedgerEntry) {
-        queries.put(entry.key, entry.assetId, entry.state, entry.attempt.toLong(), entry.eventId)
+        queries.put(
+            entry.key, entry.assetId, entry.state, entry.attempt.toLong(), entry.eventId,
+            entry.creationDate, entry.role?.wire ?: "", entry.contentType, entry.originalFilename,
+        )
         dings.tryEmit(Unit)
+    }
+
+    override suspend fun completedManifestRows(): List<LedgerEntry> =
+        queries.selectCompletedManifestRows { key, assetId, creationDate, role, contentType, filename ->
+            LedgerEntry(
+                key = key,
+                assetId = assetId,
+                state = LedgerState.COMPLETED,
+                attempt = 0,
+                eventId = "", // provenance is irrelevant to the projection; the window decides
+                creationDate = creationDate,
+                role = roleOrNull(role),
+                contentType = contentType,
+                originalFilename = filename,
+            )
+        }.executeAsList()
+
+    override suspend fun backfillManifestDetail(entry: LedgerEntry) {
+        // One UPDATE matching the '' sentinel only — a row already enriched is untouched by the
+        // WHERE clause, so the sweep is idempotent by construction and cannot clobber a good value.
+        queries.backfillManifestDetail(
+            creationDate = entry.creationDate,
+            role = entry.role?.wire ?: "",
+            contentType = entry.contentType,
+            originalFilename = entry.originalFilename,
+            key = entry.key,
+        )
     }
 
     override suspend fun aggregates(): LedgerAggregates =
@@ -73,7 +110,10 @@ class SqlDelightLedgerStore(
         queries.transaction {
             queries.deleteAll()
             entries.forEach {
-                queries.put(it.key, it.assetId, it.state, it.attempt.toLong(), it.eventId)
+                queries.put(
+                    it.key, it.assetId, it.state, it.attempt.toLong(), it.eventId,
+                    it.creationDate, it.role?.wire ?: "", it.contentType, it.originalFilename,
+                )
             }
         }
         dings.tryEmit(Unit)
@@ -93,6 +133,10 @@ class SqlDelightLedgerStore(
         queries.transaction { toDelete.forEach { queries.deleteByAssetId(it) } }
         dings.tryEmit(Unit)
     }
+
+    /** `""` is the not-yet-enriched sentinel; every other value is a wire token the enum knows. */
+    private fun roleOrNull(wire: String): ResourceRole? =
+        ResourceRole.entries.firstOrNull { it.wire == wire }
 
     override suspend fun backfillEventId(eventId: String) {
         // One UPDATE matching the '' sentinel only — rows already carrying a real eventId are

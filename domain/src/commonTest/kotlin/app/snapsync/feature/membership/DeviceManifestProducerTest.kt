@@ -8,7 +8,8 @@ import app.snapsync.model.RESOURCE_META_CREATION_DATE
 import app.snapsync.model.RESOURCE_META_MIME
 import app.snapsync.model.RESOURCE_META_ORIGINAL_FILENAME
 import app.snapsync.model.ResourceRole
-import app.snapsync.model.deviceManifestAssetsFromResources
+import app.snapsync.model.LedgerEntry
+import app.snapsync.model.LedgerState
 import app.snapsync.model.deviceManifestFromJson
 import app.snapsync.model.SelectionPolicy
 import app.snapsync.model.captureCutoff
@@ -40,13 +41,21 @@ class DeviceManifestProducerTest {
         ),
     )
 
+    /** One COMPLETED ledger row — what the manifest is now projected from (capability `sync-ledger`). */
+    private fun row(id: String, date: String = "2026-06-27T10:00:00Z") = LedgerEntry(
+        key = "$id-primary.jpg",
+        assetId = id,
+        state = LedgerState.COMPLETED,
+        attempt = 0,
+        eventId = "E",
+        creationDate = date,
+        role = ResourceRole.PRIMARY,
+        contentType = "image/jpeg",
+        originalFilename = "IMG_$id.JPG",
+    )
+
     private class FakeStore : DeviceManifestStore {
-        var accumulator: List<DeviceManifestAsset> = emptyList()
         var lastUploaded: String? = null
-        override fun loadAccumulator() = accumulator
-        override fun saveAccumulator(assets: List<DeviceManifestAsset>) {
-            accumulator = assets
-        }
         override fun loadLastUploaded() = lastUploaded
         override fun saveLastUploaded(json: String) {
             lastUploaded = json
@@ -63,52 +72,19 @@ class DeviceManifestProducerTest {
 
     // ── mapping from the cycle's discovered resources ──
 
-    @Test
-    fun maps_resources_to_device_manifest_assets_grouping_and_reading_metadata() {
-        fun res(filename: String, assetId: String, date: String, orig: String, mime: String) = Resource(
-            filename = filename,
-            assetId = assetId,
-            contentType = "public.heic", // the UTI on the byte upload; the manifest uses the MIME from metadata
-            metadata = mapOf(
-                RESOURCE_META_CREATION_DATE to date,
-                RESOURCE_META_ORIGINAL_FILENAME to orig,
-                RESOURCE_META_MIME to mime,
-            ),
-            data = Unit,
-        )
-        // A Live Photo (primary + live) sharing one assetId, and a plain photo.
-        val assets = deviceManifestAssetsFromResources(
-            listOf(
-                res("UUID-1-2_L0_001-primary.heic", "UUID-1-2_L0_001", "2026-06-27T10:00:00Z", "IMG_1.HEIC", "image/heic"),
-                res("UUID-1-2_L0_001-live.mov", "UUID-1-2_L0_001", "2026-06-27T10:00:00Z", "IMG_1.MOV", "video/quicktime"),
-                res("B-primary.jpg", "B", "2026-06-28T09:00:00Z", "IMG_2.JPG", "image/jpeg"),
-            ),
-        ).associateBy { it.assetId }
-
-        val live = assets.getValue("UUID-1-2_L0_001")
-        assertEquals("2026-06-27T10:00:00Z", live.creationDate)
-        assertEquals(setOf(ResourceRole.PRIMARY, ResourceRole.LIVE), live.resources.map { it.role }.toSet())
-        val primary = live.resources.single { it.role == ResourceRole.PRIMARY }
-        assertEquals("image/heic", primary.contentType) // MIME, not the UTI
-        assertEquals("IMG_1.HEIC", primary.filename) // human capture name
-        assertEquals("UUID-1-2_L0_001-primary.heic", primary.key) // storage object name (fetch handle)
-
-        assertEquals(listOf(ResourceRole.PRIMARY), assets.getValue("B").resources.map { it.role })
-    }
-
     // ── projection ──
 
     @Test
     fun projection_keeps_every_asset_at_or_after_the_start_date_sorted() = runTest {
-        val m = projectDeviceManifest("dev", listOf(asset("B"), asset("A")), policy = policyFrom("0001-01-01T00:00:00Z"))
+        val m = projectDeviceManifest("dev", listOf(row("B"), row("A")), policy = policyFrom("0001-01-01T00:00:00Z"))
         assertEquals("dev", m.deviceId)
         assertEquals(listOf("A", "B"), m.assets.map { it.assetId }) // sorted, all kept
     }
 
     @Test
     fun projection_excludes_assets_before_the_start_date() = runTest {
-        val acc = listOf(asset("old", "2025-01-01T00:00:00Z"), asset("new", "2026-06-27T10:00:00Z"))
-        val m = projectDeviceManifest("dev", acc, policy = policyFrom("2026-01-01T00:00:00Z"))
+        val rows = listOf(row("old", "2025-01-01T00:00:00Z"), row("new", "2026-06-27T10:00:00Z"))
+        val m = projectDeviceManifest("dev", rows, policy = policyFrom("2026-01-01T00:00:00Z"))
         assertEquals(listOf("new"), m.assets.map { it.assetId })
     }
 
@@ -134,38 +110,33 @@ class DeviceManifestProducerTest {
     // ── producer ──
 
     @Test
-    fun incremental_upserts_discovered_and_prunes_removed() = runTest {
-        val store = FakeStore().apply { accumulator = listOf(asset("A"), asset("B")) }
-        val up = FakeUploader()
-        DeviceManifestProducer(store, up, "dev").produce(
-            eventId = "E",
-            policy = policyFrom("0001-01-01T00:00:00Z"),
-            discovered = listOf(asset("C")),
-            removedAssetIds = setOf("A"),
-            fullEnumeration = false,
-        )
-        assertEquals(listOf("B", "C"), store.accumulator.map { it.assetId }.sorted()) // A pruned, C added
+    fun the_projection_carries_each_rows_full_resource_detail() = runTest {
+        // The ledger row is what names the resource now, so it must carry everything the union's field
+        // vocabulary needs — otherwise the manifest would have to re-read PhotoKit to describe bytes it
+        // has already uploaded.
+        val m = projectDeviceManifest("dev", listOf(row("A")), policyFrom("0001-01-01T00:00:00Z"))
+        val r = m.assets.single().resources.single()
+        assertEquals(ResourceRole.PRIMARY, r.role)
+        assertEquals("image/jpeg", r.contentType)
+        assertEquals("A-primary.jpg", r.key)
+        assertEquals("IMG_A.JPG", r.filename)
     }
 
     @Test
-    fun full_enumeration_replaces_the_accumulator_dropping_absent_assets() = runTest {
-        val store = FakeStore().apply { accumulator = listOf(asset("A"), asset("B"), asset("C")) }
-        val up = FakeUploader()
-        DeviceManifestProducer(store, up, "dev").produce(
-            eventId = "E",
-            policy = policyFrom("0001-01-01T00:00:00Z"),
-            discovered = listOf(asset("A"), asset("C")), // B gone from the library
-            removedAssetIds = emptySet(),
-            fullEnumeration = true,
-        )
-        assertEquals(listOf("A", "C"), store.accumulator.map { it.assetId }.sorted()) // B dropped
+    fun a_bare_row_is_not_listed() = runTest {
+        // A row the re-join reconcile seeded from a filename listing has no capture date until the next
+        // full enumeration backfills it. Listing it would place it outside every membership window
+        // rather than inside the right one, so the projection waits for the sweep.
+        val bare = LedgerEntry("Z-primary.jpg", "Z", LedgerState.COMPLETED, attempt = 0, eventId = "E")
+        val m = projectDeviceManifest("dev", listOf(row("A"), bare), policyFrom("0001-01-01T00:00:00Z"))
+        assertEquals(listOf("A"), m.assets.map { it.assetId })
     }
 
     @Test
     fun puts_the_projected_snapshot_and_records_it_on_success() = runTest {
         val store = FakeStore()
         val up = FakeUploader(ok = true)
-        DeviceManifestProducer(store, up, "dev").produce("E", policyFrom("0001-01-01T00:00:00Z"), listOf(asset("A")), emptySet(), false)
+        DeviceManifestProducer(store, up, "dev").produce("E", policyFrom("0001-01-01T00:00:00Z"), listOf(row("A")))
         assertEquals(1, up.puts.size)
         assertEquals("E", up.puts.single().first)
         assertTrue(store.lastUploaded!!.endsWith(up.puts.single().third)) // marker records the json
@@ -178,8 +149,8 @@ class DeviceManifestProducerTest {
         val store = FakeStore()
         val up = FakeUploader()
         val producer = DeviceManifestProducer(store, up, "dev")
-        producer.produce("EVENT-A", policyFrom("0001-01-01T00:00:00Z"), listOf(asset("A")), emptySet(), false)
-        producer.produce("EVENT-B", policyFrom("0001-01-01T00:00:00Z"), listOf(asset("A")), emptySet(), false) // same content, new event
+        producer.produce("EVENT-A", policyFrom("0001-01-01T00:00:00Z"), listOf(row("A")))
+        producer.produce("EVENT-B", policyFrom("0001-01-01T00:00:00Z"), listOf(row("A"))) // same content, new event
         assertEquals(2, up.puts.size) // both events written, despite identical content
         assertEquals(listOf("EVENT-A", "EVENT-B"), up.puts.map { it.first })
     }
@@ -189,8 +160,8 @@ class DeviceManifestProducerTest {
         val store = FakeStore()
         val up = FakeUploader()
         val producer = DeviceManifestProducer(store, up, "dev")
-        producer.produce("E", policyFrom("0001-01-01T00:00:00Z"), listOf(asset("A")), emptySet(), false)
-        producer.produce("E", policyFrom("0001-01-01T00:00:00Z"), listOf(asset("A")), emptySet(), false) // identical
+        producer.produce("E", policyFrom("0001-01-01T00:00:00Z"), listOf(row("A")))
+        producer.produce("E", policyFrom("0001-01-01T00:00:00Z"), listOf(row("A"))) // identical
         assertEquals(1, up.puts.size) // second produce skipped the PUT
     }
 
@@ -198,10 +169,9 @@ class DeviceManifestProducerTest {
     fun a_failed_put_does_not_record_last_uploaded() = runTest {
         val store = FakeStore()
         val up = FakeUploader(ok = false)
-        DeviceManifestProducer(store, up, "dev").produce("E", policyFrom("0001-01-01T00:00:00Z"), listOf(asset("A")), emptySet(), false)
+        DeviceManifestProducer(store, up, "dev").produce("E", policyFrom("0001-01-01T00:00:00Z"), listOf(row("A")))
         assertEquals(1, up.puts.size)
         assertEquals(null, store.lastUploaded) // not recorded → retried next cycle
-        assertTrue(store.accumulator.isNotEmpty()) // accumulator still saved
         assertFalse(up.puts.isEmpty())
     }
 }

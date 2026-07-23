@@ -1,5 +1,11 @@
 package app.snapsync.world
 
+import app.snapsync.model.toLedgerRow
+import app.snapsync.model.ResourceRole
+import app.snapsync.model.Resource
+import app.snapsync.model.RESOURCE_META_ORIGINAL_FILENAME
+import app.snapsync.model.RESOURCE_META_MIME
+import app.snapsync.model.RESOURCE_META_CREATION_DATE
 import app.snapsync.model.LedgerAggregates
 import app.snapsync.ports.LedgerStore
 import app.snapsync.model.LedgerEntry
@@ -19,6 +25,9 @@ import kotlinx.coroutines.test.runTest
  * The storage-seam contract every [LedgerStore] must satisfy (sync-ledger spec). Concrete
  * backends bind [createBackend]; the same scenarios run unchanged against each.
  */
+/** One canonical capture date for every row the contract builds. */
+private const val CREATION_DATE = "2026-06-27T10:00:00Z"
+
 abstract class LedgerStoreContract {
 
     protected abstract fun createBackend(): LedgerStore
@@ -33,7 +42,26 @@ abstract class LedgerStoreContract {
         state: LedgerState = LedgerState.REQUESTED,
         attempt: Int = 0,
         eventId: String = "",
-    ) = LedgerEntry(key, assetId, state, attempt, eventId)
+    ) = LedgerEntry(
+        key, assetId, state, attempt, eventId,
+        creationDate = CREATION_DATE,
+        role = ResourceRole.PRIMARY,
+        contentType = "image/heic",
+        originalFilename = "IMG_0001.HEIC",
+    )
+
+    /** The resource whose recording produces [entry] — the writer takes resources now, not bare keys. */
+    private fun res(key: String = "cloud-1-ios.photo.heic", assetId: String = key) = Resource(
+        filename = key,
+        assetId = assetId,
+        contentType = "public.heic",
+        metadata = mapOf(
+            RESOURCE_META_CREATION_DATE to CREATION_DATE,
+            RESOURCE_META_MIME to "image/heic",
+            RESOURCE_META_ORIGINAL_FILENAME to "IMG_0001.HEIC",
+        ),
+        data = Unit,
+    )
 
     @Test
     fun `put then get round-trips field for field`() = runTest {
@@ -147,13 +175,13 @@ abstract class LedgerStoreContract {
         val backend = createBackend()
         val writer = LedgerWriter(backend)
 
-        writer.recordRequested("k", "A", attempt = 0, eventId = "E1")
+        writer.recordRequested(res("k", "A"), attempt = 0, eventId = "E1")
         assertEquals(entry("k", "A", LedgerState.REQUESTED, 0, eventId = "E1"), writer.entry("k"))
 
-        writer.recordFailed("k", "A", attempt = 0, eventId = "E1")
+        writer.recordFailed(res("k", "A"), attempt = 0, eventId = "E1")
         assertEquals(entry("k", "A", LedgerState.FAILED, 0, eventId = "E1"), writer.entry("k"))
 
-        writer.recordCompleted("k", "A", attempt = 1, eventId = "E1")
+        writer.recordCompleted(res("k", "A"), attempt = 1, eventId = "E1")
         assertEquals(entry("k", "A", LedgerState.COMPLETED, 1, eventId = "E1"), writer.entry("k"))
     }
 
@@ -211,7 +239,7 @@ abstract class LedgerStoreContract {
     fun `writer exposes the backfill sweep`() = runTest {
         val backend = createBackend()
         val writer = LedgerWriter(backend)
-        writer.recordCompleted("k", "A", attempt = 0, eventId = "")
+        writer.recordCompleted(res("k", "A"), attempt = 0, eventId = "")
 
         writer.backfillEventId("E1")
 
@@ -360,16 +388,16 @@ abstract class LedgerStoreContract {
     fun `writer prunes by assetId and retains an asset set - reader cannot`() = runTest {
         val backend = createBackend()
         val writer = LedgerWriter(backend)
-        writer.recordRequested("X-photo.jpg", "X", attempt = 0, eventId = "E1")
-        writer.recordRequested("X-video.mov", "X", attempt = 0, eventId = "E1")
-        writer.recordRequested("Y-photo.jpg", "Y", attempt = 0, eventId = "E1")
+        writer.recordRequested(res("X-photo.jpg", "X"), attempt = 0, eventId = "E1")
+        writer.recordRequested(res("X-video.mov", "X"), attempt = 0, eventId = "E1")
+        writer.recordRequested(res("Y-photo.jpg", "Y"), attempt = 0, eventId = "E1")
 
         writer.deleteByAssetId("X")
         assertNull(writer.entry("X-photo.jpg"))
         assertNull(writer.entry("X-video.mov"))
         assertEquals("Y-photo.jpg", writer.entry("Y-photo.jpg")?.key)
 
-        writer.recordRequested("Z-photo.jpg", "Z", attempt = 0, eventId = "E1")
+        writer.recordRequested(res("Z-photo.jpg", "Z"), attempt = 0, eventId = "E1")
         writer.retainAssets(setOf("Y"))
         assertNull(writer.entry("Z-photo.jpg"))
         assertEquals("Y-photo.jpg", writer.entry("Y-photo.jpg")?.key)
@@ -380,13 +408,78 @@ abstract class LedgerStoreContract {
         val backend = createBackend()
         val writer = LedgerWriter(backend)
 
-        writer.recordCompleted("k", "A", attempt = 2, eventId = "E1")
-        writer.recordCompleted("k", "A", attempt = 2, eventId = "E1")
+        writer.recordCompleted(res("k", "A"), attempt = 2, eventId = "E1")
+        writer.recordCompleted(res("k", "A"), attempt = 2, eventId = "E1")
 
         val entry = writer.entry("k")!!
         assertEquals("A", entry.assetId)
         assertEquals(LedgerState.COMPLETED, entry.state)
         assertEquals(2, entry.attempt)
         assertEquals("E1", entry.eventId)
+    }
+
+    // ── manifest detail (capability `sync-ledger`) ────────────────────────────────────────────────
+
+    @Test
+    fun `a recorded row round-trips its manifest detail`() = runTest {
+        val backend = createBackend()
+        LedgerWriter(backend).recordCompleted(res(), attempt = 0, eventId = "E1")
+
+        val row = backend.get("cloud-1-ios.photo.heic")!!
+        assertEquals(CREATION_DATE, row.creationDate)
+        assertEquals(ResourceRole.PRIMARY, row.role)
+        assertEquals("image/heic", row.contentType)
+        assertEquals("IMG_0001.HEIC", row.originalFilename)
+    }
+
+    @Test
+    fun `a state transition never erases the manifest detail`() = runTest {
+        // THE invariant behind the ledger-backed manifest. A terminal job comes back from the platform
+        // as a key, and the cycle rebuilds its Resource from that key alone — with empty metadata,
+        // because completion needs nothing else. If the COMPLETED write overwrote with those blanks,
+        // every row would be blanked at the exact moment it became eligible for the manifest, and the
+        // device's photos would vanish from the event union while its bytes sat in storage.
+        val backend = createBackend()
+        val writer = LedgerWriter(backend)
+        writer.recordRequested(res(), attempt = 0, eventId = "E1")
+
+        val bare = Resource("cloud-1-ios.photo.heic", "cloud-1", "image/heic", emptyMap(), Unit)
+        writer.recordCompleted(bare, attempt = 0, eventId = "E1")
+
+        val row = backend.get("cloud-1-ios.photo.heic")!!
+        assertEquals(LedgerState.COMPLETED, row.state)
+        assertEquals(CREATION_DATE, row.creationDate, "the detail written at REQUESTED survives")
+        assertEquals("IMG_0001.HEIC", row.originalFilename)
+    }
+
+    @Test
+    fun `the manifest projection lists completed enriched rows only`() = runTest {
+        val backend = createBackend()
+        val writer = LedgerWriter(backend)
+        writer.recordCompleted(res("done.heic", "A"), attempt = 0, eventId = "E1")
+        writer.recordRequested(res("inflight.heic", "B"), attempt = 0, eventId = "E1")
+        // A row the re-join reconcile seeded from a filename listing: COMPLETED, but no capture date.
+        backend.put(LedgerEntry("seeded.heic", "C", LedgerState.COMPLETED, attempt = 0, eventId = "E1"))
+
+        assertEquals(listOf("done.heic"), backend.completedManifestRows().map { it.key })
+    }
+
+    @Test
+    fun `the backfill fills a bare row and leaves an enriched one alone`() = runTest {
+        val backend = createBackend()
+        backend.put(LedgerEntry("seeded.heic", "C", LedgerState.COMPLETED, attempt = 3, eventId = "E1"))
+
+        backend.backfillManifestDetail(res("seeded.heic", "C").toLedgerRow(LedgerState.COMPLETED, 0, "E1"))
+        val filled = backend.get("seeded.heic")!!
+        assertEquals(CREATION_DATE, filled.creationDate)
+        assertEquals(3, filled.attempt, "the sweep touches the detail only — state and attempt are not its business")
+
+        // Idempotent: a second sweep with a DIFFERENT value must not overwrite what is already there.
+        val other = Resource(
+            "seeded.heic", "C", "image/heic",
+            mapOf(RESOURCE_META_CREATION_DATE to "2099-01-01T00:00:00Z"), Unit,
+        )
+        backend.backfillManifestDetail(other.toLedgerRow(LedgerState.COMPLETED, 0, "E1"))
+        assertEquals(CREATION_DATE, backend.get("seeded.heic")!!.creationDate)
     }
 }

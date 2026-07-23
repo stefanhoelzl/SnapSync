@@ -52,6 +52,14 @@ class DeletionLedgerTest {
             ) {
                 add("Arrow/ArrowLevel duplicate enum (unified at migration step 9)")
             }
+            // The device-manifest accumulator: a second durable structure tracking the same
+            // deletion-aware asset set as the upload ledger, with different columns and the same
+            // pruning signals. The ledger already had to be right about all of it — a wrong row
+            // re-uploads a library or hides a photo forever — so the accumulator could only ever
+            // disagree. The manifest is a projection of the ledger now (capability `device-manifest`).
+            declared(files, "fun load" + "Accumulator").forEach {
+                add("the device-manifest accumulator in $it (the manifest projects from the ledger)")
+            }
             val enrollments = declared(files, """class \w*""" + "Enrollment")
             if (enrollments.size > 1) {
                 add("Enrollment ×${enrollments.size} (exactly one uploader serves all): ${enrollments.sorted()}")

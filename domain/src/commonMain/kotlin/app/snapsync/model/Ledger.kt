@@ -13,6 +13,17 @@ package app.snapsync.model
  * `sync-ledger`, "Event-independent key"). `""` is the pre-provenance sentinel — a row recorded
  * before the ledger carried the column (the 4.sqm migration default, or a staged-revert build's
  * writes) — which the single writer's per-cycle backfill sweeps to the then-live event id.
+ *
+ * The last four fields carry the **device manifest's presentation detail** (capability
+ * `sync-ledger`): the asset's [creationDate] and, per resource, its [role], [contentType] and human
+ * [originalFilename]. They make this table the single durable, deletion-aware record of the device's
+ * in-event resources, so the manifest is a projection of it (capability `device-manifest`) rather
+ * than a parallel accumulator maintaining the same asset set with different columns.
+ *
+ * They default to `""` — the "not yet enriched" sentinel, and a row can rest there two ways: it
+ * predates the 5.sqm migration, or the **re-join reconcile** seeded it from the device's stored-file
+ * listing, which returns filenames and therefore carries no capture date. Both are swept the same
+ * way, by the single writer's next full enumeration ([LedgerStore.backfillManifestDetail]).
  */
 class LedgerEntry(
     val key: String,
@@ -20,16 +31,45 @@ class LedgerEntry(
     val state: LedgerState,
     val attempt: Int,
     val eventId: String,
+    val creationDate: String = "",
+    val role: ResourceRole? = null,
+    val contentType: String = "",
+    val originalFilename: String = "",
 ) {
+    /** Whether this row still needs the manifest-detail backfill. */
+    val needsManifestDetail: Boolean get() = creationDate.isEmpty()
+
     override fun equals(other: Any?): Boolean = other is LedgerEntry &&
         key == other.key && assetId == other.assetId && state == other.state &&
-        attempt == other.attempt && eventId == other.eventId
+        attempt == other.attempt && eventId == other.eventId &&
+        creationDate == other.creationDate && role == other.role &&
+        contentType == other.contentType && originalFilename == other.originalFilename
 
     override fun hashCode(): Int = key.hashCode()
 
     override fun toString(): String =
         "LedgerEntry($key, assetId=$assetId, $state, attempt=$attempt, eventId=$eventId)"
 }
+
+/**
+ * Record one resource as a ledger row, carrying the **device manifest's** presentation detail
+ * (capability `sync-ledger`) off the resource that caused the transition.
+ *
+ * The one place that mapping is made, so the manifest cannot disagree with the ledger about what a
+ * resource is called or when it was taken. [role] is derived from the upload key rather than stored
+ * twice; an unrecognized key yields `null`, which the projection treats as a row it cannot name.
+ */
+fun Resource.toLedgerRow(state: LedgerState, attempt: Int, eventId: String): LedgerEntry = LedgerEntry(
+    key = filename,
+    assetId = assetId,
+    state = state,
+    attempt = attempt,
+    eventId = eventId,
+    creationDate = metadata[RESOURCE_META_CREATION_DATE] ?: "",
+    role = roleFromUploadKey(filename),
+    contentType = metadata[RESOURCE_META_MIME] ?: contentType,
+    originalFilename = metadata[RESOURCE_META_ORIGINAL_FILENAME] ?: "",
+)
 
 enum class LedgerState {
     /** Work was answered for this key — a hope; the engine cannot prove it was executed. */

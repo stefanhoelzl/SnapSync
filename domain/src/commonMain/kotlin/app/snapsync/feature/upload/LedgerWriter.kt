@@ -1,6 +1,8 @@
 package app.snapsync.feature.upload
 
 import app.snapsync.model.LedgerEntry
+import app.snapsync.model.Resource
+import app.snapsync.model.toLedgerRow
 import app.snapsync.model.LedgerState
 import app.snapsync.ports.LedgerStore
 
@@ -19,14 +21,14 @@ class LedgerWriter(
 
     suspend fun entry(key: String): LedgerEntry? = backend.get(key)
 
-    suspend fun recordRequested(key: String, assetId: String, attempt: Int, eventId: String) =
-        record(key, assetId, LedgerState.REQUESTED, attempt, eventId)
+    suspend fun recordRequested(resource: Resource, attempt: Int, eventId: String) =
+        record(resource, LedgerState.REQUESTED, attempt, eventId)
 
-    suspend fun recordCompleted(key: String, assetId: String, attempt: Int, eventId: String) =
-        record(key, assetId, LedgerState.COMPLETED, attempt, eventId)
+    suspend fun recordCompleted(resource: Resource, attempt: Int, eventId: String) =
+        record(resource, LedgerState.COMPLETED, attempt, eventId)
 
-    suspend fun recordFailed(key: String, assetId: String, attempt: Int, eventId: String) =
-        record(key, assetId, LedgerState.FAILED, attempt, eventId)
+    suspend fun recordFailed(resource: Resource, attempt: Int, eventId: String) =
+        record(resource, LedgerState.FAILED, attempt, eventId)
 
     /**
      * Prune every row for [assetId] — a sync write by the single writer (distinct from the app-side
@@ -45,6 +47,55 @@ class LedgerWriter(
      */
     suspend fun backfillEventId(eventId: String) = backend.backfillEventId(eventId)
 
-    private suspend fun record(key: String, assetId: String, state: LedgerState, attempt: Int, eventId: String) =
-        backend.put(LedgerEntry(key, assetId, state, attempt, eventId))
+    /**
+     * Fill an already-recorded row's manifest detail from the freshly discovered [resource]
+     * (capability `sync-ledger`). A no-op unless the row is still bare.
+     *
+     * This is what makes the ledger-backed manifest survive a re-join: the reconcile seeds
+     * `COMPLETED` rows from a filename listing, the engine then answers `AlreadyUploaded` for each
+     * and writes nothing, so without this the seeded rows would never learn their capture date and
+     * the member's photos would silently drop out of the event union.
+     */
+    suspend fun backfillManifestDetail(resource: Resource, eventId: String) =
+        backend.backfillManifestDetail(resource.toLedgerRow(LedgerState.COMPLETED, attempt = 0, eventId))
+
+    /** The COMPLETED rows the device manifest projects from. */
+    suspend fun completedManifestRows(): List<LedgerEntry> = backend.completedManifestRows()
+
+    /**
+     * Record a state transition, carrying the manifest detail off the resource that caused it — and
+     * **never erasing** detail the row already holds.
+     *
+     * The preservation is load-bearing, not defensive. A terminal job comes back from the platform as a
+     * key, and the cycle rebuilds its `Resource` from that key alone (`UploadCycle.reconstruct`) with
+     * empty metadata, because completion needs nothing else. So the COMPLETED write — the only write
+     * that ever produces a row the manifest projects from — carries no capture date. Overwriting with it
+     * would blank every row at the exact moment it became eligible for the manifest, and the device's
+     * photos would vanish from the event union while its bytes sat in storage.
+     *
+     * The detail is a property of the **resource**, not of the transition: it was written when the row
+     * was first recorded from a real discovered resource, and a later state change has nothing new to
+     * say about it.
+     */
+    private suspend fun record(resource: Resource, state: LedgerState, attempt: Int, eventId: String) {
+        val row = resource.toLedgerRow(state, attempt, eventId)
+        val prior = if (row.needsManifestDetail) backend.get(row.key) else null
+        backend.put(
+            if (prior == null || prior.needsManifestDetail) {
+                row
+            } else {
+                LedgerEntry(
+                    key = row.key,
+                    assetId = row.assetId,
+                    state = state,
+                    attempt = attempt,
+                    eventId = eventId,
+                    creationDate = prior.creationDate,
+                    role = prior.role,
+                    contentType = prior.contentType,
+                    originalFilename = prior.originalFilename,
+                )
+            },
+        )
+    }
 }
