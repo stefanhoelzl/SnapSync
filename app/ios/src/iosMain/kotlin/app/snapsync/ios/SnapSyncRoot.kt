@@ -51,6 +51,7 @@ import app.snapsync.downloadstore.iosDownloadStore
 import platform.Foundation.NSFileManager
 import app.snapsync.engine.LEDGER_APP_GROUP
 import app.snapsync.ports.LedgerStore
+import app.snapsync.config.bakedUploadBase
 import app.snapsync.engine.iosLedgerStore
 import app.snapsync.model.forwardEventLink
 import app.snapsync.feature.upload.UploadProducer
@@ -124,6 +125,13 @@ object SnapSyncRoot {
         // reader who concatenates the app/extension files can tell runs apart. `log` isn't assigned
         // yet in this init block, so use a fresh tagged logger.
         Logger.withTag("SnapSyncRoot").i { "=== app process start build=${appBuildVersion()} ===" }
+        // The BAKED backend this build talks to. Cheap (one Info.plist read) and it names the one fact
+        // that makes an otherwise-silent failure legible: point a build at a different backend without
+        // `SNAPSYNC_RESET_STATE` and the ledger still says COMPLETED, so the device uploads nothing —
+        // no error, no failed request. Read together with the cycle's own
+        // `enumeration: N seen, X new, Y already-uploaded`, a changed host beside an unchanged ledger
+        // names the cause immediately. Diagnostic only: no behaviour, no state, no extra I/O.
+        Logger.withTag("SnapSyncRoot").i { "[boot] upload base = ${bakedUploadBase()}" }
     }
 
     private val log = Logger.withTag("SnapSyncRoot")
@@ -447,10 +455,11 @@ object SnapSyncRoot {
     private val leaveNotifier: HttpLeaveNotifier by lazy { HttpLeaveNotifier(http, backendHost) }
 
     // The device-facing backend host (baked at compile time); shared by every generic HTTP adapter
-    // handed to the composed graph and the event-metadata (name) fetch.
-    private val backendHost: String by lazy {
-        NSBundle.mainBundle.objectForInfoDictionaryKey("BackgroundUploadURLBase") as? String ?: ""
-    }
+    // handed to the composed graph and the event-metadata (name) fetch. Reads through
+    // `:adapter:ios:ext-safe`'s [bakedUploadBase] — the same call the boot diagnostic makes, so a
+    // banner that disagreed with the host the adapters use is impossible, and the absent-key
+    // defaulting decision stays out of this wiring-only shell.
+    private val backendHost: String by lazy { bakedUploadBase() }
 
     // The ONE GET /events/:id client (capability `join-event`): the join gate's details fetch and the
     // best-effort scan-path/foreground name refresh both read through it — the latter via the
@@ -934,10 +943,11 @@ object SnapSyncRoot {
         override val photoPermission: StateFlow<PermissionStatus> = MutableStateFlow(PermissionStatus.GRANTED)
 
         override fun applyLaunchEnvMembership() = log.invocation("applyLaunchEnvMembership") {
-            // Forge wins over the membership triggers too — provisioning a real event (or leaving one)
-            // from a process rendering a forged frame is incoherent. Structural: this shell holds no
-            // route to the live stack. The log line keeps the debug.log trail.
-            log.i { "forge mode: ignoring membership launch triggers (leave/create/event-link)" }
+            // Forge wins over the membership triggers too — provisioning a real event (or leaving one,
+            // or voiding this device's durable state) from a process rendering a forged frame is
+            // incoherent. Structural: this shell holds no route to the live stack. The log line keeps
+            // the debug.log trail.
+            log.i { "forge mode: ignoring membership launch triggers (reset/leave/create/event-link)" }
         }
 
         override fun onForeground() = log.invocation("onForeground", params = foregroundParams()) {
@@ -1011,7 +1021,7 @@ object SnapSyncRoot {
         override val photoPermission: StateFlow<PermissionStatus> get() = app.photoPermission
 
         override fun applyLaunchEnvMembership() = log.invocation("applyLaunchEnvMembership") {
-            // The ordering (leave → create → event-link) is the tested `feature/creation`
+            // The ordering (reset → leave → create → event-link) is the tested `feature/creation`
             // coordinator's — the shell may hold no branching or ordering (`architecture-guards`). This
             // is straight-line wiring: assemble the live stack (touch [host]), then hand the coordinator
             // the parsed triggers and this shell's join entry, in one awaited coroutine so each step
@@ -1023,6 +1033,7 @@ object SnapSyncRoot {
                     createEvent = directives.createEvent,
                     eventLink = directives.eventLink,
                     openUrl = ::onOpenUrl,
+                    resetRequested = directives.resetState,
                 )
             }
             Unit

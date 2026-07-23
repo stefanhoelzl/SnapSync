@@ -17,6 +17,7 @@ import app.snapsync.feature.membership.JoinOutcome
 import app.snapsync.feature.membership.LeaveEvent
 import app.snapsync.feature.membership.ManifestDeviceEnroller
 import app.snapsync.feature.membership.ReconfigureEvent
+import app.snapsync.feature.membership.ResetDeviceState
 import app.snapsync.feature.status.LedgerBackedSyncStatusSource
 import app.snapsync.feature.status.LedgerCounts
 import app.snapsync.feature.status.LedgerCountsPoller
@@ -428,9 +429,10 @@ class AppCore internal constructor(
 
     /**
      * The headless membership-trigger coordinator (capability `ios-app-shell`): applies
-     * `leave → create → event-link` in order for the launch-env triggers. Owns the ordering the shell
-     * may not (`architecture-guards`); its effects are built here — [leave] the leave command, the
-     * best-effort attestation refresh — while the shell supplies its `onOpenUrl` join entry to `run`.
+     * `reset → leave → create → event-link` in order for the launch-env triggers. Owns the ordering the
+     * shell may not (`architecture-guards`); its effects are built here — [leave] the leave command, the
+     * best-effort attestation refresh, the durable-state reset — while the shell supplies its
+     * `onOpenUrl` join entry to `run`.
      */
     val launchEnvMembership: LaunchEnvMembership by lazy {
         LaunchEnvMembership(
@@ -438,6 +440,22 @@ class AppCore internal constructor(
             log = ports.log,
             leave = { userCommands.leave() },
             ensureAttested = { runCatching { attestation.ensureFresh() } },
+            resetState = { resetDeviceState.reset() },
+        )
+    }
+
+    /**
+     * Voids this device's durable sync state (the `SNAPSYNC_RESET_STATE` trigger, capability
+     * `ios-app-shell`) so a build pointed at a different backend starts from nothing. The cursor
+     * invalidation reuses the SAME [AppPorts.clearDiscoveryCursor] effect `ReconfigureEvent` uses, so
+     * there is one surface for "make the next cycle re-enumerate" rather than two that could diverge.
+     */
+    private val resetDeviceState: ResetDeviceState by lazy {
+        ResetDeviceState(
+            config = ports.configStore,
+            ledger = ports.ledger,
+            downloads = ports.downloadStore,
+            clearDiscoveryCursor = ports.clearDiscoveryCursor,
         )
     }
 

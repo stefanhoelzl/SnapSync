@@ -9,6 +9,7 @@ import app.snapsync.model.DENYLISTED_ALBUM_TITLES
 import app.snapsync.album.IosAlbumManager
 import app.snapsync.album.IosAlbumMapStore
 import app.snapsync.config.FileBackedConfigStore
+import app.snapsync.config.bakedUploadBase
 import app.snapsync.keychain.DeviceIdentityRole
 import app.snapsync.keychain.KeychainDeviceIdentity
 import app.snapsync.ports.SuppressionSource
@@ -52,7 +53,7 @@ import kotlinx.coroutines.runBlocking
  * finale ended the 11a Keychain write-through; the read keeps the legacy-Keychain migration
  * fallback until the post-ship Stage-2 change, so this extension can be the process that migrates
  * a pre-file device on the OS's first post-update invocation) combined with the compile-time upload host
- * ([uploadHostFromBundle], `BackgroundUploadURLBase`). When no event has been joined yet (the
+ * ([bakedUploadBase], `BackgroundUploadURLBase`). When no event has been joined yet (the
  * extension woke before setup), the cycle is skipped as a clean success — no job, no ledger write,
  * no crash.
  *
@@ -71,6 +72,12 @@ object UploadExtensionRoot {
         // Boot banner (capability `diagnostic-logging`, D5) — the extension is a separate, short-lived
         // process; name it + the build version so its file is unambiguous. `log` isn't assigned yet.
         Logger.withTag("UploadExtension").i { "=== extension process start build=${appBuildVersion()} ===" }
+        // The BAKED backend this build uploads to — the same diagnostic the app emits, and it matters
+        // more here: this process IS the upload path, and pointing a build at a different backend
+        // without `SNAPSYNC_RESET_STATE` leaves the ledger claiming everything is already COMPLETED, so
+        // the cycle enumerates and enqueues nothing with no error anywhere. Read beside this process's
+        // own `enumeration: N seen, X new, Y already-uploaded`, a changed host names the cause at once.
+        Logger.withTag("UploadExtension").i { "[boot] upload base = ${bakedUploadBase()}" }
     }
 
     private val log = Logger.withTag("UploadExtension")
@@ -150,7 +157,7 @@ object UploadExtensionRoot {
     // co-contributors are woken to download. Same compile-time host as the manifest. Root-constructed
     // over this process's shared HTTP client; `uploadCore` takes the notify as a stated lambda.
     private val notifier: EventNotifier by lazy {
-        EventNotifier(KtorPushHttpClient(httpClient), uploadHostFromBundle() ?: "")
+        EventNotifier(KtorPushHttpClient(httpClient), bakedUploadBase())
     }
 
     // The extension's process scope, handed to the shared composition per its contract (`module-
@@ -180,19 +187,19 @@ object UploadExtensionRoot {
                 deviceId = { deviceId },
                 // Read per gate call, as this root always has: the compile-time
                 // `BackgroundUploadURLBase` baked into the extension bundle.
-                host = { uploadHostFromBundle() },
+                host = { bakedUploadBase() },
                 ledger = ledgerStore,
                 transfer = platform,
                 discoveryStore = discoveryStore,
                 // Re-join reconciliation seed (capability `event-rejoin-reconciliation`): the
                 // device's stored-file listing over the Darwin HTTPS client, same compile-time host.
-                deviceFiles = HttpDeviceFilesSource(httpClient, uploadHostFromBundle() ?: ""),
+                deviceFiles = HttpDeviceFilesSource(httpClient, bakedUploadBase()),
                 joinedMarker = IosJoinedEventMarker(),
                 // The per-event device manifest (capability `device-manifest`): the extension is its
                 // SOLE writer and PUTs it SYNCHRONOUSLY in-cycle via the generic `HttpEnrollment`
                 // (the former extension-local `IosEnrollment` copy is dead — one uploader serves all).
                 manifestStore = IosDeviceManifestStore(),
-                enrollment = HttpEnrollment(httpClient, uploadHostFromBundle() ?: ""),
+                enrollment = HttpEnrollment(httpClient, bakedUploadBase()),
                 suppression = suppression,
                 // Denylisted-album membership (capability `photo-selection-policy`): this tier's
                 // stated failure posture is unchanged — a thrown lookup fails the cycle (retried on

@@ -46,13 +46,19 @@ jobs:
 
       # Type-check all source explicitly. `deno test` only checks test-reachable code, so this
       # covers main.ts/SDK wiring (no test imports it) and any future orphan source file.
+      # Invoked through the deno task (rather than restating the globs) so the set of type-checked
+      # directories is defined in exactly one place — deno.json — and cannot drift from what a
+      # developer runs locally. The task covers src/ AND src/dev/ (the local backend rig).
       - name: Type check
         working-directory: api
-        run: deno check src/*.ts
+        run: deno task check
 
+      # Likewise through the task, which carries --allow-read/--allow-write for the dev filesystem
+      # shim's contract test. --allow-net stays ABSENT: that absence is what guarantees no test can
+      # reach the real bunny zone (a network call fails as a permission error, not a live request).
       - name: Test
         working-directory: api
-        run: deno test
+        run: deno task test
 
       # Bundle to a single file — the deploy action uploads the file as-is (no bundling). Must stay
       # within the Edge Scripting 10 MB script limit.

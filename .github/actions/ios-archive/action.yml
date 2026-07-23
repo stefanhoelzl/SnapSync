@@ -19,13 +19,16 @@
 #     max(floor, latest tag + minor 1) for a Release build.
 #   * aps-environment / apns-env — Release archives pass `production`; Debug/dev-IPA leaves the
 #     Config.xcconfig development/sandbox default.
-#   * upload-host — empty = the baked deployed host; the dev-IPA path may point elsewhere (HTTPS-only).
+#   * There is deliberately NO upload-host input: every CI archive bakes the Config.xcconfig host,
+#     the single source of the host literal (capability ios-ci). Pointing a DEV build at another
+#     backend is done on the ssh-mac loop's own xcodebuild line, where the IPA is actually delivered
+#     to a device — CI never produced an installable dev IPA, so the input it once had was dead.
 name: iOS archive (signed)
 description: Compile the extension framework, import signing certs, and produce a signed device xcarchive.
 
 inputs:
   build-config:
-    description: Xcode configuration. Release for TestFlight/App Store distribution; Debug for the dev-IPA.
+    description: Xcode configuration. Release for TestFlight/App Store distribution; Debug for the branch gate.
     default: Release
   marketing-version:
     description: Override MARKETING_VERSION (CFBundleShortVersionString). Empty = Config.xcconfig floor.
@@ -35,9 +38,6 @@ inputs:
     default: ""
   apns-env:
     description: Override APNS_ENV (Info.plist). Empty = Config.xcconfig default (sandbox).
-    default: ""
-  upload-host:
-    description: Override BACKGROUND_UPLOAD_URL_BASE (HTTPS-only). Empty = the baked Config.xcconfig host.
     default: ""
   sentry-dsn:
     description: >-
@@ -157,14 +157,12 @@ runs:
         IN_MARKETING_VERSION: ${{ inputs.marketing-version }}
         IN_APS_ENVIRONMENT: ${{ inputs.aps-environment }}
         IN_APNS_ENV: ${{ inputs.apns-env }}
-        IN_UPLOAD_HOST: ${{ inputs.upload-host }}
         IN_SENTRY_DSN: ${{ inputs.sentry-dsn }}
       run: |
         args=""
         [ -n "$IN_MARKETING_VERSION" ] && args="$args MARKETING_VERSION=$IN_MARKETING_VERSION"
         [ -n "$IN_APS_ENVIRONMENT" ]   && args="$args APS_ENVIRONMENT=$IN_APS_ENVIRONMENT"
         [ -n "$IN_APNS_ENV" ]          && args="$args APNS_ENV=$IN_APNS_ENV"
-        [ -n "$IN_UPLOAD_HOST" ]       && args="$args BACKGROUND_UPLOAD_URL_BASE=$IN_UPLOAD_HOST"
         # DSN and environment travel together: a DSN-carrying archive is a production reporter
         # (capability crash-reporting; the secret value is masked in logs by Actions).
         [ -n "$IN_SENTRY_DSN" ]        && args="$args SENTRY_DSN=$IN_SENTRY_DSN SENTRY_ENVIRONMENT=production"

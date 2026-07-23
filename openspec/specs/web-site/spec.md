@@ -1,7 +1,30 @@
 # web-site Specification
 
 ## Purpose
-TBD - created by archiving change astro-site-from-storage. Update Purpose after archive.
+The **authoring and delivery** of everything a browser sees: one **Astro** project (`site/`) that builds
+both browser-facing pages — the marketing landing (`marketing-site`) and the no-app `/join` download page
+(`web-event-download`) — from a shared layout, theme, and components, mirror-deployed to the storage
+`site/` prefix and proxied from there by the api. Those two capabilities own what their pages *say*; this
+one owns that they are built once, share a brand layer, and reach a browser at all.
+
+It exists because the Edge Script had quietly become a website host. Two hand-written HTML documents rode
+inside the deployed bundle as text imports, with the landing page's six screenshots inlined as base64
+`data:` URIs by a build-time substitution pass — ~290 KB of screenshots and two full documents sharing the
+10 MB script that streams every photo upload, while the pages themselves **shared nothing** (duplicated
+style, brand mark, footer, App Store button, theme metadata). Serving the site from storage moves that
+weight out of the upload path, and the shared layer removes the duplication.
+
+Three properties are load-bearing rather than incidental. **Routing lives in the api bundle as source**, so
+the site needs no pull-zone edge rules and no bunny **account** key — CI ships it with the same
+script-scoped deploy key and storage password it already holds, preserving the config-in-source rule that
+`backend-deployment` exists to protect. **The site emits no off-origin runtime subresource** (no CDN
+script, font, or style; no external fetch beyond the presigned photo URLs `/join` already uses), which
+generalizes what was previously a `/join`-only rule to the whole site and is pinned by a build check over
+the emitted output. **HTML is never cached while fingerprinted assets are immutable**, so a deploy is
+picked up immediately with the content hash as the version — no ETag machinery.
+
+Decision record: `changes/archive/2026-07-22-astro-site-from-storage`.
+
 ## Requirements
 ### Requirement: The browser-facing pages are one Astro project with a shared layer
 

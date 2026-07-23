@@ -272,10 +272,21 @@ and returns the device to the unjoined resting state. A no-op when unjoined. It 
 to the unjoined state (a *switch* to a different event id leaves-then-joins via the join gate; standalone
 leave does not rejoin).
 
+**Resetting durable state headlessly.** `SNAPSYNC_RESET_STATE=1` (presence-triggered, like
+`SNAPSYNC_LEAVE`) is a **dev/test trigger** (capability `ios-app-shell`), read **once per process** and
+inert in production: it voids this device's durable sync state — the upload ledger, the discovery
+cursor, the membership config (**locally**, notifying no backend), and non-terminal download rows —
+while **keeping** imported download rows (their `createdLocalId` is what stops a downloaded photo being
+re-uploaded). It exists because **crossing backends otherwise fails silently in both directions**; see
+*The local backend rig* below, which is the only reason to reach for it. Not needed for ordinary
+event-to-event work — a *leave* keeps the ledger deliberately, and correctly, against one backend.
+
 **Ordering.** When more than one membership trigger is set in a launch, they apply in the fixed order
-`leave → create → event-link`, sequentially (each awaited), so e.g. `SNAPSYNC_LEAVE` + `SNAPSYNC_CREATE_EVENT`
-drops the current membership before minting the new one. A `SNAPSYNC_FORGE_STATE` launch ignores all three
-(forge wins, structurally).
+`reset → leave → create → event-link`, sequentially (each awaited), so e.g. `SNAPSYNC_LEAVE` +
+`SNAPSYNC_CREATE_EVENT` drops the current membership before minting the new one, and a
+`SNAPSYNC_RESET_STATE` + `SNAPSYNC_CREATE_EVENT` launch mints against a clean slate (after a reset the
+device is unjoined, so a paired `SNAPSYNC_LEAVE` is a no-op rather than a `DELETE` aimed at the backend
+that is no longer baked in). A `SNAPSYNC_FORGE_STATE` launch ignores all four (forge wins, structurally).
 
 `SNAPSYNC_FORGE_STATE=<state>` is a **dev/test trigger** (capability `ios-app-shell`), read **once
 per process** and inert in production: it mounts the real `StatusScreen` over **forged sources** for a
@@ -360,7 +371,7 @@ still-alive old one and the app sticks on a **black launch screen** (status bar 
 black). To truly restart: `dvt signal <pid> 9` (SIGKILL) **then** `dvt launch` (verified recovery).
 Take the screenshot promptly after a single launch; avoid rapid relaunch cycles.
 
-**The headless per-build loop:** CI builds the dev IPA → `apps install` → `dvt launch --env
+**The headless per-build loop:** the ssh-mac loop builds the dev IPA (below) → `apps install` → `dvt launch --env
 SNAPSYNC_EVENT_LINK=…` (use a **fresh event id**, per the note above, or the reconcile will seed
 already-stored photos and nothing uploads) → the OS invokes the upload extension on its own cadence →
 confirm the objects landed in the backend's bunny storage zone (see *Verify real uploads* below; the
@@ -401,9 +412,14 @@ the dispatch-driven App Store release below (`ios-appstore-promote.yml`) — the
 - **APNs is production for every TestFlight/App Store build.** CI Release archives inject
   `APS_ENVIRONMENT=production` / `APNS_ENV=production` (in the `ios-archive` composite action); only
   never-distributed Debug builds — the branch-gate archive (non-`main` pushes build Debug; the gate
-  skips the LLVM optimization pass, capability `ios-ci`), the `ios.yml` `workflow_dispatch` dev-IPA
-  path, and ssh-mac — stay `development`/`sandbox`. The `Config.xcconfig` values are the dev default,
-  overridden for distribution.
+  skips the LLVM optimization pass, capability `ios-ci`) and ssh-mac — stay `development`/`sandbox`.
+  The `Config.xcconfig` values are the dev default, overridden for distribution. **`ios.yml` has no
+  `workflow_dispatch`**: it once carried an `upload_host` input for a dev IPA, but `ios-build` uploads
+  its archive on `main` only, so a dispatched run built a Debug archive and discarded it — there was no
+  way to get the IPA out. Point a dev build at another backend on the ssh-mac `xcodebuild` line instead
+  (see *Pointing a build at a local backend*). Removing it also removed the plain-dispatch escape hatch
+  for exercising the Release path pre-merge, so a Release-only link failure now surfaces only on the
+  post-merge `main` run.
 
 ### App Store releases PROMOTE a tested build (the tag is the RECEIPT, not the trigger)
 
@@ -531,7 +547,7 @@ sshmac 'cd snapsync && ./gradlew iosSimulatorArm64Test'
 #     so it costs you on every iterate, not just cold. Measured on the warm runner (macos-26, 3 cores,
 #     Xcode 26.5, ~/.konan warm), archive of a ONE-FILE Kotlin change: Release 449s vs Debug 57s (~8×);
 #     cold-from-empty-build/: Release 523s vs Debug 348s; no-op rebuild ~30s either way. The dev/sideload
-#     IPA needs no optimization (ios.yml's on-demand dev path already builds Debug for exactly this), and
+#     IPA needs no optimization, and
 #     the Debug archive is a complete installable bundle (arm64 app binary + BackgroundUploadExtension.appex
 #     in Extensions/) — the 6b re-sign is config-agnostic, so ONLY this -configuration line changes. Switch
 #     to Release only when you need an optimization-representative build. Keep the cold cost paid once: never
@@ -722,10 +738,88 @@ installed apps on its own.
 
 ### Verify real uploads
 
-On-device uploads go to the **deployed HTTPS backend** (the device-facing host baked from
-`Config.xcconfig`); there is no local upload rig. Confirm an upload landed by checking the backend's
-bunny **storage zone** (see `api/README.md` / `openspec/specs/backend-deployment`), not the app
-status screen. Connections are HTTPS-only — default ATS, no `NSAllowsLocalNetworking` exception.
+By default on-device uploads go to the **deployed HTTPS backend** (the device-facing host baked from
+`Config.xcconfig`). Confirm one landed by checking the backend's bunny **storage zone** (see
+`api/README.md` / `openspec/specs/backend-deployment`), not the app status screen. Connections are
+HTTPS-only — default ATS, no `NSAllowsLocalNetworking` exception, on any host.
+
+To test a **backend change** without deploying it, point the device at a local rig instead (below);
+there the oracle is `find api/.localstore -type f`.
+
+### The local backend rig (test backend changes without deploying)
+
+Runs the **real** `api/` app — same routes, same gates, same source constants — against a filesystem
+store, so nothing touches the shared `snap-sync-dev` zone (which holds real users' photos). Dev
+infrastructure: non-gating, no spec, same posture as `ssh-mac.yml` and `:test:harness-driver`.
+`main.ts` never imports `src/dev/`, and `deno bundle` roots the deployed bundle at `main.ts`, so none
+of it can ship.
+
+```bash
+cd api
+deno task dev:local     # 127.0.0.1:8080, no tunnel — the curl loop
+deno task dev:tunnel    # + a cloudflared quick tunnel, for a real device
+```
+
+Both print the origin, the store path, and a ready-to-paste `BACKGROUND_UPLOAD_URL_BASE=…` line, and
+write the origin to `api/.localdev/host`. **curl needs no `authorization` header** — the gate stays
+fully on and a request carrying a *bad* token still `401`s; the rig only fills in a token when one is
+absent (the same trick `test/app.test.ts` uses). `/attest/*` is untouched, so a device's real
+attestation runs for real against the rig.
+
+- **Reset is `rm -rf api/.localstore`.** This is the deliberate **inverse** of the production rule
+  above: no whole-zone reset tool exists for bunny because that one zone holds real users' photos;
+  the local store holds nothing.
+- **`dev:local` mints download URLs as `https://127.0.0.1:8080/…`** because the production presigned
+  URL shape is fixed. Swap the scheme to follow one by hand: `… | sed 's|^https://|http://|'`.
+- **No APNs**, so `/events/<id>/notify` returns `202` with every token skipped — faithful to the
+  route's best-effort contract. A receiving device therefore reconciles on foreground/relaunch rather
+  than on a silent push.
+
+#### Pointing a build at a local backend
+
+The upload host is **compile-time** (PhotoKit forces it), so this needs a rebuild. One xcconfig
+setting feeds **both** targets' `Info.plist`, so one override covers the app and the extension:
+
+```bash
+H=$(cat api/.localdev/host)
+sshmac "cd snapsync && xcodebuild -project iosApp/iosApp.xcodeproj -scheme iosApp \
+          -configuration Debug -destination 'generic/platform=iOS' \
+          -archivePath \"\$HOME/artifacts/SnapSync.xcarchive\" \
+          BACKGROUND_UPLOAD_URL_BASE=$H/api/v1 CODE_SIGNING_ALLOWED=NO archive"
+# then the unchanged 6b re-sign + install steps from the ssh-mac loop above
+```
+
+A quick tunnel's hostname is **random per session**, so the IPA is rebuilt per session (~1 min
+incremental Debug). There is no CI path for this: `ios.yml` has no `workflow_dispatch` (see above).
+
+#### ⚠️ Crossing backends REQUIRES `SNAPSYNC_RESET_STATE` — or nothing uploads, silently
+
+Launch the swapped build with `SNAPSYNC_RESET_STATE=1` **every time you change which backend is
+baked in — in both directions**, including going back to production:
+
+```bash
+$P developer dvt launch app.snapsync --env SNAPSYNC_RESET_STATE=1 \
+   --env SNAPSYNC_CREATE_EVENT="$d" --userspace
+```
+
+Why it is not optional: the upload ledger's key is the **bare filename**, event-independent, and a
+*leave* deliberately keeps it (a `COMPLETED` row stays true across a leave — `sync-ledger`). Point the
+build at a different backend and the bytes are on the one you left while the ledger still says
+`COMPLETED`, so the device uploads **nothing** — no error, no failed request, no log line. Clearing
+the ledger alone is **not enough** either: the discovery cursor is a `PHPersistentChangeToken`, and
+with it retained the next cycle sees no changes and enumerates nothing. The trigger clears both, plus
+the membership config (**locally**, notifying no backend) and non-terminal download rows; it **keeps**
+imported download rows, whose `createdLocalId` suppresses re-uploading photos this device downloaded.
+
+**The oracle when you forget:** each process logs `[boot] upload base = …` in `debug.log`. A tunnel
+host there beside a cycle reporting `enumeration: 0 seen` (or `N seen, 0 new, N already-uploaded`)
+means the reset did not run. Ordering is `reset → leave → create → event-link`, so a reset in the
+same launch as a create lands clean; after a reset the device is unjoined, so a paired
+`SNAPSYNC_LEAVE` is a no-op rather than a `DELETE` aimed at the wrong backend.
+
+Going **back to production** is the direction with no automatic protection and it needs the same
+flag; `event-rejoin-reconciliation` then re-seeds already-stored photos as `COMPLETED`, so the cost is
+one reconcile, not a re-upload of the library.
 
 ## App Store Connect via API (agent-driven portal chores)
 
