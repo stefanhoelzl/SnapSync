@@ -39,8 +39,7 @@ class CeilingReachesEveryConsumerTest {
         contentType = "public.heic",
         metadata = mapOf(
             RESOURCE_META_CREATION_DATE to creationDate,
-            RESOURCE_META_PIXEL_WIDTH to "4032",
-            RESOURCE_META_PIXEL_HEIGHT to "3024",
+            RESOURCE_META_PIXEL_AREA to "12192768",
         ),
         data = Unit,
     )

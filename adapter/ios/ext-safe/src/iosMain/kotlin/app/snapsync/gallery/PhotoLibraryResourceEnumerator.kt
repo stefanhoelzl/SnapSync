@@ -1,7 +1,6 @@
 package app.snapsync.gallery
 
 import app.snapsync.compose.ResourceEnumerator
-import app.snapsync.model.EXCLUDED_SUBTYPE_MASK
 import app.snapsync.model.RawAsset
 import app.snapsync.model.RawResource
 import app.snapsync.ports.PhotoLibrary
@@ -170,19 +169,16 @@ class PhotoLibraryRawAssetSource : RawAssetSource {
                     handle = resource, // opaque PHAssetResource, crosses uninterpreted
                 )
             }
-            // The RAW localIdentifier (with '/'); resourcesFrom normalizes it. The five origin facts are
-            // plain in-memory `PHAsset` properties — no extra XPC round-trip; the expensive call above is
-            // the only one per asset (capability `photo-selection-policy`). They cross as FACTS: nothing is
-            // dropped here on a subtype, a dimension, or an adjustment — the upload cycle's filter decides.
+            // The RAW localIdentifier (with '/'); resourcesFrom normalizes it. The origin facts are
+            // interpreted HERE, from plain in-memory `PHAsset` properties — no extra XPC round-trip; the
+            // expensive call above is the only one per asset (capability `photo-selection-policy`). They
+            // cross as neutral FACTS: nothing is dropped here on a subtype, a dimension, or an
+            // adjustment — the one admission decides.
             out += RawAsset(
                 assetId = asset.localIdentifier,
                 creationDate = creationDate,
                 rawResources = rawResources,
-                mediaSubtypes = asset.mediaSubtypes.toLong(),
-                mediaType = asset.mediaType.toLong(),
-                pixelWidth = asset.pixelWidth.toLong(),
-                pixelHeight = asset.pixelHeight.toLong(),
-                hasAdjustments = asset.hasAdjustments,
+                facts = asset.toAssetFacts(creationDate),
             )
         }
         return out
@@ -205,11 +201,7 @@ class PhotoLibraryRawAssetSource : RawAssetSource {
                 assetId = asset.localIdentifier,
                 creationDate = creationDate,
                 rawResources = emptyList(), // facts-only: no per-asset resource round-trip
-                mediaSubtypes = asset.mediaSubtypes.toLong(),
-                mediaType = asset.mediaType.toLong(),
-                pixelWidth = asset.pixelWidth.toLong(),
-                pixelHeight = asset.pixelHeight.toLong(),
-                hasAdjustments = asset.hasAdjustments,
+                facts = asset.toAssetFacts(creationDate),
             )
         }
         return out

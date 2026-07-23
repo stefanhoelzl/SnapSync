@@ -19,19 +19,14 @@ import app.snapsync.model.UploadRequestProvider
 import app.snapsync.model.CaptureCutoff
 import app.snapsync.model.SelectionPolicy
 import app.snapsync.model.captureCutoff
-import app.snapsync.model.MEDIA_TYPE_IMAGE
-import app.snapsync.model.MEDIA_TYPE_VIDEO
 import app.snapsync.model.MIME_GIF
 import app.snapsync.model.RESOURCE_META_CREATION_DATE
-import app.snapsync.model.RESOURCE_META_HAS_ADJUSTMENTS
-import app.snapsync.model.RESOURCE_META_MEDIA_SUBTYPES
-import app.snapsync.model.RESOURCE_META_MEDIA_TYPE
+import app.snapsync.model.RESOURCE_META_IS_EDITED
+import app.snapsync.model.RESOURCE_META_IS_SCREENSHOT
+import app.snapsync.model.RESOURCE_META_IS_SCREEN_RECORDING
+import app.snapsync.model.RESOURCE_META_IS_VIDEO
+import app.snapsync.model.RESOURCE_META_PIXEL_AREA
 import app.snapsync.model.RESOURCE_META_MIME
-import app.snapsync.model.RESOURCE_META_PIXEL_HEIGHT
-import app.snapsync.model.RESOURCE_META_PIXEL_WIDTH
-import app.snapsync.model.SUBTYPE_NONE
-import app.snapsync.model.SUBTYPE_SCREENSHOT
-import app.snapsync.model.SUBTYPE_SCREEN_RECORDING
 import app.snapsync.model.normalizeAssetId
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
@@ -960,8 +955,9 @@ class UploadCycleTest {
     private fun originResource(
         name: String,
         assetId: String = name,
-        subtypes: Long = SUBTYPE_NONE,
-        mediaType: Long = MEDIA_TYPE_IMAGE,
+        isScreenshot: Boolean = false,
+        isScreenRecording: Boolean = false,
+        isVideo: Boolean = false,
         width: Long = 4032,
         height: Long = 3024,
         adjusted: Boolean = false,
@@ -971,11 +967,11 @@ class UploadCycleTest {
         metadata = mapOf(
             RESOURCE_META_CREATION_DATE to IN_SCOPE_DATE,
             RESOURCE_META_MIME to mime,
-            RESOURCE_META_MEDIA_SUBTYPES to subtypes.toString(),
-            RESOURCE_META_MEDIA_TYPE to mediaType.toString(),
-            RESOURCE_META_PIXEL_WIDTH to width.toString(),
-            RESOURCE_META_PIXEL_HEIGHT to height.toString(),
-            RESOURCE_META_HAS_ADJUSTMENTS to adjusted.toString(),
+            RESOURCE_META_IS_SCREENSHOT to isScreenshot.toString(),
+            RESOURCE_META_IS_SCREEN_RECORDING to isScreenRecording.toString(),
+            RESOURCE_META_IS_VIDEO to isVideo.toString(),
+            RESOURCE_META_IS_EDITED to adjusted.toString(),
+            RESOURCE_META_PIXEL_AREA to (width * height).toString(),
         ),
         data = Unit,
     )
@@ -997,7 +993,7 @@ class UploadCycleTest {
         val backend = InMemoryLedgerStore()
         val platform = FakePlatform(
             discovered = listOf(
-                originResource("shot-primary.png", "shot", subtypes = SUBTYPE_SCREENSHOT),
+                originResource("shot-primary.png", "shot", isScreenshot = true),
                 originResource("cam-primary.heic", "cam"),
             ),
         )
@@ -1012,7 +1008,7 @@ class UploadCycleTest {
     fun a_screen_recording_and_a_gif_are_excluded() = runTest {
         val platform = FakePlatform(
             discovered = listOf(
-                originResource("rec.mov", "rec", subtypes = SUBTYPE_SCREEN_RECORDING, mediaType = MEDIA_TYPE_VIDEO),
+                originResource("rec.mov", "rec", isScreenRecording = true, isVideo = true),
                 originResource("meme.gif", "meme", mime = MIME_GIF),
                 originResource("cam.heic", "cam"),
             ),
@@ -1030,7 +1026,7 @@ class UploadCycleTest {
         val platform = FakePlatform(
             discovered = listOf(
                 originResource("wa.jpg", "wa", width = 1600, height = 1200), // 1.9 MP → excluded
-                originResource("clip.mov", "clip", mediaType = MEDIA_TYPE_VIDEO, width = 1920, height = 1080),
+                originResource("clip.mov", "clip", isVideo = true, width = 1920, height = 1080),
             ),
         )
 
@@ -1065,7 +1061,7 @@ class UploadCycleTest {
     @Test
     fun the_origin_filter_covers_the_incremental_walk() = runTest {
         val platform = FakePlatform(
-            discovered = listOf(originResource("shot.png", "shot", subtypes = SUBTYPE_SCREENSHOT)),
+            discovered = listOf(originResource("shot.png", "shot", isScreenshot = true)),
             fullEnumeration = false,
         )
 
@@ -1082,7 +1078,7 @@ class UploadCycleTest {
         val manifestSaw = mutableListOf<String>()
         val platform = FakePlatform(
             discovered = listOf(
-                originResource("shot.png", "shot", subtypes = SUBTYPE_SCREENSHOT),
+                originResource("shot.png", "shot", isScreenshot = true),
                 originResource("wa.heic", "wa"),
                 originResource("cam.heic", "cam"),
             ),
@@ -1107,7 +1103,7 @@ class UploadCycleTest {
         val platform = FakePlatform(
             discovered = listOf(
                 datedResource("old.heic", "2020-01-01T00:00:00Z", "old"), // pre-cutoff, no origin facts
-                originResource("shot.png", "shot", subtypes = SUBTYPE_SCREENSHOT),
+                originResource("shot.png", "shot", isScreenshot = true),
             ),
             fullEnumeration = true,
         )
@@ -1129,7 +1125,7 @@ class UploadCycleTest {
         )
         val platform = FakePlatform(
             discovered = listOf(
-                originResource("shot.png", "shot", subtypes = SUBTYPE_SCREENSHOT),
+                originResource("shot.png", "shot", isScreenshot = true),
                 originResource("cam.heic", "cam"),
             ),
             fullEnumeration = true,

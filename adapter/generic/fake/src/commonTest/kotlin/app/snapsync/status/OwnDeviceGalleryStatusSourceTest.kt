@@ -1,5 +1,8 @@
 package app.snapsync.status
 
+import app.snapsync.model.RESOURCE_META_IS_SCREENSHOT
+import app.snapsync.model.RESOURCE_META_IS_VIDEO
+import app.snapsync.model.RESOURCE_META_PIXEL_AREA
 import app.snapsync.model.Resource
 import app.snapsync.model.SelectionPolicy
 import app.snapsync.model.captureCutoff
@@ -7,14 +10,7 @@ import app.snapsync.ports.PhotoLibrary
 import app.snapsync.feature.status.OwnDeviceGalleryStatusSource
 import app.snapsync.fake.InMemoryPhotoLibrary
 import kotlinx.coroutines.flow.MutableStateFlow
-import app.snapsync.model.MEDIA_TYPE_IMAGE
 import app.snapsync.model.RESOURCE_META_CREATION_DATE
-import app.snapsync.model.RESOURCE_META_MEDIA_SUBTYPES
-import app.snapsync.model.RESOURCE_META_MEDIA_TYPE
-import app.snapsync.model.RESOURCE_META_PIXEL_HEIGHT
-import app.snapsync.model.RESOURCE_META_PIXEL_WIDTH
-import app.snapsync.model.SUBTYPE_NONE
-import app.snapsync.model.SUBTYPE_SCREENSHOT
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlinx.coroutines.test.runTest
@@ -127,17 +123,16 @@ class OwnDeviceGalleryStatusSourceTest {
     private fun originResource(
         filename: String,
         assetId: String,
-        subtypes: Long = SUBTYPE_NONE,
+        isScreenshot: Boolean = false,
         width: Long = 4032,
         height: Long = 3024,
     ) = Resource(
         filename, assetId, "public.heic",
         mapOf(
             RESOURCE_META_CREATION_DATE to IN_SCOPE,
-            RESOURCE_META_MEDIA_SUBTYPES to subtypes.toString(),
-            RESOURCE_META_MEDIA_TYPE to MEDIA_TYPE_IMAGE.toString(),
-            RESOURCE_META_PIXEL_WIDTH to width.toString(),
-            RESOURCE_META_PIXEL_HEIGHT to height.toString(),
+            RESOURCE_META_IS_SCREENSHOT to isScreenshot.toString(),
+            RESOURCE_META_IS_VIDEO to "false",
+            RESOURCE_META_PIXEL_AREA to (width * height).toString(),
         ),
         Unit,
     )
@@ -151,7 +146,7 @@ class OwnDeviceGalleryStatusSourceTest {
         val enumerator = InMemoryPhotoLibrary(
             listOf(
                 originResource("cam-primary.heic", "CAM"),
-                originResource("shot-primary.png", "SHOT", subtypes = SUBTYPE_SCREENSHOT),
+                originResource("shot-primary.png", "SHOT", isScreenshot = true),
                 originResource("wa-primary.jpg", "WA", width = 1600, height = 1200), // 1.9 MP → below floor
             ),
         )
