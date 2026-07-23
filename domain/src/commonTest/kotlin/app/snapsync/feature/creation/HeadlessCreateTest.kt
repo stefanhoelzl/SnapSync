@@ -1,5 +1,6 @@
 package app.snapsync.feature.creation
 
+import app.snapsync.model.CaptureDate
 import app.snapsync.model.ConfigDecodeResult
 import app.snapsync.model.CreateEventPayload
 import app.snapsync.model.decodeEventUrl
@@ -53,7 +54,7 @@ class HeadlessCreateTest {
     private fun exercise(
         payload: CreateEventPayload,
         outcome: CreateOutcome,
-        now: () -> String = { fixedNow },
+        now: () -> CaptureDate = { CaptureDate(fixedNow) },
     ): Triple<FakeClient, RecordingLog, MutableList<String>> {
         val client = FakeClient(outcome)
         val rec = RecordingLog()

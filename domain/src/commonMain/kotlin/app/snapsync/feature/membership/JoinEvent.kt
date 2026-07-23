@@ -4,7 +4,12 @@ import app.snapsync.ports.EventDetails
 import app.snapsync.ports.EventDirectory
 
 import app.snapsync.ports.ConfigSource
+import app.snapsync.model.CaptureCeiling
+import app.snapsync.model.CaptureCutoff
+import app.snapsync.model.DeletesAt
 import app.snapsync.model.Direction
+import app.snapsync.model.EventEnd
+import app.snapsync.model.EventStart
 import app.snapsync.model.EventConfig
 import app.snapsync.model.clampToCeiling
 import app.snapsync.model.clampToFloor
@@ -67,11 +72,11 @@ class JoinEvent(
     suspend fun join(
         eventId: String,
         name: String,
-        startsAt: String,
-        endsAt: String,
-        deletesAt: String,
-        minPhotoDate: String,
-        maxPhotoDate: String,
+        startsAt: EventStart,
+        endsAt: EventEnd,
+        deletesAt: DeletesAt,
+        minPhotoDate: CaptureCutoff,
+        maxPhotoDate: CaptureCeiling,
         direction: Direction,
         saveToAlbum: Boolean,
     ): JoinOutcome {

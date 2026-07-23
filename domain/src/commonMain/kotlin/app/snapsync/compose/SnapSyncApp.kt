@@ -35,7 +35,10 @@ import app.snapsync.flow.DownloadBackstop
 import app.snapsync.flow.Foreground
 import app.snapsync.flow.Provision
 import app.snapsync.flow.SilentPush
-import app.snapsync.model.Contribution
+import app.snapsync.model.AssetFacts
+import app.snapsync.model.SelectionPolicy
+import app.snapsync.model.CaptureCeiling
+import app.snapsync.model.CaptureCutoff
 import app.snapsync.model.EventConfig
 import app.snapsync.model.instantToCutoff
 import app.snapsync.model.JoinLoad
@@ -100,7 +103,7 @@ class AppPorts(
     /** The **facts-only** cutoff-bounded gallery read for the join-time shareable-count preview
      *  (capability `join-share-count`): a `RawAssetSource.factsSince` — cheap `PHAsset` facts, NO per-asset
      *  resource round-trip. Default `{ emptyList() }` keeps the count at zero wherever it is not wired. */
-    val rawFactsSince: suspend (cutoff: String) -> List<RawAsset> = { emptyList() },
+    val rawFactsSince: suspend (cutoff: CaptureCutoff) -> List<AssetFacts> = { emptyList() },
     /** Read-only in this graph: the app-side ledger handle (aggregates read; the arm never writes records). */
     val ledger: LedgerStore,
     val downloadStore: DownloadStore,
@@ -129,7 +132,7 @@ class AppPorts(
     val osUploadProducer: () -> UploadProducer? = { null },
     val albumManager: AlbumManager,
     val albumMapStore: AlbumMapStore,
-    val albumExcludedAssetIds: suspend (cutoff: String) -> Set<String>,
+    val albumExcludedAssetIds: suspend (cutoff: CaptureCutoff) -> Set<String>,
     /** Invalidate the shared discovery cursor (capability `reconfigure-membership`): `ReconfigureEvent`
      *  calls it on a cutoff-lowering so the next cycle re-enumerates and back-shares the newly-in-scope
      *  older photos on both tiers. Default no-op keeps other compositions unaffected. */
@@ -249,10 +252,12 @@ class AppCore internal constructor(
      * `join-share-count`): for a candidate [cutoff] with sharing on, the count of own photos the policy
      * admits, or `null` when the grant permits no count. Purely local — no backend LIST.
      */
-    suspend fun loadShareableCount(cutoff: String, until: String?): Int? =
+    suspend fun loadShareableCount(cutoff: CaptureCutoff, until: CaptureCeiling?): Int? =
         shareableCountSource.count(
-            Contribution.Since(cutoff, until),
-            ports.photoAccess.permission.value,
+            includesUpload = true,
+            cutoff = cutoff,
+            ceiling = until,
+            permission = ports.photoAccess.permission.value,
             selectionSnapshot = latestSelectionSnapshot.value,
         )
 
@@ -500,7 +505,7 @@ class AppCore internal constructor(
             // (`limited-photo-access`): under LIMITED the total derives from the selection-driven
             // discovery instead of an autonomous enumeration.
             if (ports.photoAccess.permission.value == PermissionStatus.GRANTED) {
-                gallery.refresh(Contribution.of(cfg.direction.includesUpload, cfg.minPhotoDate, cfg.maxPhotoDate))
+                gallery.refresh(SelectionPolicy.from(cfg))
             }
         }
         ledgerCounts.refresh()
@@ -616,7 +621,7 @@ class AppCore internal constructor(
             },
             // Create: mint via the backend; the use-case routes the minted event into the SAME join
             // gate a scanned QR takes (fire-and-forget; outcomes ride `creationStatus`).
-            create = { name, startsAt, endsAt -> eventCreator.create(name, startsAt, endsAt) },
+            create = { name, startsAt, endsAt -> eventCreator.create(name, startsAt.at.iso, endsAt.at.iso) },
             // The join gate's commit (capability `join-event`): enroll (register-only empty manifest)
             // then provision. `true` unless enrollment failed (the same-event no-op is a success).
             commitJoin = {
@@ -676,7 +681,7 @@ class AppCore internal constructor(
             ports.selectionChanges.snapshots.collect { snapshot ->
                 latestSelectionSnapshot.value = snapshot
                 ports.configSource.config.value?.let { cfg ->
-                    gallery.refreshFrom(snapshot, Contribution.of(cfg.direction.includesUpload, cfg.minPhotoDate, cfg.maxPhotoDate))
+                    gallery.refreshFrom(snapshot, SelectionPolicy.from(cfg))
                 }
                 ports.pumpSelectionChanged()
             }

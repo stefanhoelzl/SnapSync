@@ -132,11 +132,11 @@ internal fun EventLinkPayload.sameAs(other: EventLinkPayload): Boolean =
 data class EventConfig(
     val eventId: String,
     val name: String = "",
-    val minPhotoDate: String,
-    val startsAt: String = minPhotoDate,
-    val endsAt: String? = null,
-    val maxPhotoDate: String? = null,
-    val deletesAt: String? = null,
+    val minPhotoDate: CaptureCutoff,
+    val startsAt: EventStart = EventStart(minPhotoDate.at),
+    val endsAt: EventEnd? = null,
+    val maxPhotoDate: CaptureCeiling? = null,
+    val deletesAt: DeletesAt? = null,
     val direction: Direction = Direction.Both,
     val saveToAlbum: Boolean = false,
 )

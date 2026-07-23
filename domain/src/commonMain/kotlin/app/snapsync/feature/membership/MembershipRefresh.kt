@@ -1,5 +1,7 @@
 package app.snapsync.feature.membership
 
+import app.snapsync.model.CaptureCeiling
+import app.snapsync.model.CaptureDate
 import app.snapsync.model.JoinLoad
 import app.snapsync.model.confirmedGone
 import app.snapsync.ports.ConfigSource
@@ -28,7 +30,7 @@ class MembershipRefresh(
     private val store: ConfigStore,
     /** Canonical `…Z` "now" — the OFFLINE witness of the absence verdict. Injected as a `model`-typed
      *  lambda over the composition's one clock, matching `HeadlessCreate`'s seam. */
-    private val now: () -> String,
+    private val now: () -> CaptureDate,
     /**
      * The ordinary local teardown (capability `leave-event`), performed on a confirmed absence.
      *
@@ -92,7 +94,7 @@ class MembershipRefresh(
                 if (current.endsAt == null) {
                     next = next.copy(
                         endsAt = fetched.endsAt,
-                        maxPhotoDate = current.maxPhotoDate ?: fetched.endsAt,
+                        maxPhotoDate = current.maxPhotoDate ?: CaptureCeiling(fetched.endsAt.at),
                     )
                 }
                 // Retention backfill: until this lands the membership's deadline reads as "never

@@ -1,6 +1,7 @@
 package app.snapsync.feature.upload
 
-import app.snapsync.model.Contribution
+import app.snapsync.model.SelectionPolicy
+
 
 /** The assembled inputs for the edge upload provider: the compile-time host and the joined event. */
 class UploadConfig(
@@ -24,19 +25,20 @@ fun buildUploadConfig(eventId: String?, host: String?): UploadConfig? {
  * The membership facts one cycle needs, in the shared vocabulary — present **only** when the read
  * found a joined event.
  *
- * It exists so [cycleGate] can never be handed a [Contribution] for a membership that does not exist.
- * Fold these into the gate's arguments instead and every caller must supply a contribution even in the
+ * It exists so [cycleGate] can never be handed a [SelectionPolicy] for a membership that does not exist.
+ * Fold these into the gate's arguments instead and every caller must supply a policy even in the
  * not-joined case, which means inventing one — and an invented cutoff is precisely the invariant this
  * project is built against (a membership's cutoff is required, never absent). The type deletes the
- * state rather than tolerating it, the same reasoning [Contribution] itself is built on.
+ * state rather than tolerating it, the same reasoning [SelectionPolicy] itself is built on.
  *
- * Primitives plus [Contribution] (`:domain:gallery`), never a config type: this module stays event- and
- * platform-agnostic, so a root translates *its* storage into this and the decision stays testable off
- * every device.
+ * The [policy] is the config-derived one ([SelectionPolicy.from]); the cycle completes it with the two
+ * port-read exclusion sets (`excluding`) once it can read them. Primitives plus that pure value, never a
+ * config type: this module stays event- and platform-agnostic, so a root translates *its* storage into
+ * this and the decision stays testable off every device.
  */
 class JoinedMembership(
     val eventId: String,
-    val contribution: Contribution,
+    val policy: SelectionPolicy,
     val saveToAlbum: Boolean,
 )
 

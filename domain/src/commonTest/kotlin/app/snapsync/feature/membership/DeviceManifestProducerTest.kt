@@ -10,6 +10,8 @@ import app.snapsync.model.RESOURCE_META_ORIGINAL_FILENAME
 import app.snapsync.model.ResourceRole
 import app.snapsync.model.deviceManifestAssetsFromResources
 import app.snapsync.model.deviceManifestFromJson
+import app.snapsync.model.SelectionPolicy
+import app.snapsync.model.captureCutoff
 import app.snapsync.model.projectDeviceManifest
 import app.snapsync.ports.DeviceManifestStore
 import app.snapsync.ports.Enrollment
@@ -23,6 +25,10 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
+
+/** An admitting policy bounded below by [cutoff] and unbounded above — the projection's date filter. */
+private fun policyFrom(cutoff: String): SelectionPolicy =
+    SelectionPolicy.from(includesUpload = true, cutoff = captureCutoff(cutoff), ceiling = null)
 
 class DeviceManifestProducerTest {
 
@@ -94,7 +100,7 @@ class DeviceManifestProducerTest {
 
     @Test
     fun projection_keeps_every_asset_at_or_after_the_start_date_sorted() {
-        val m = projectDeviceManifest("dev", listOf(asset("B"), asset("A")), startDate = "0001-01-01T00:00:00Z")
+        val m = projectDeviceManifest("dev", listOf(asset("B"), asset("A")), policy = policyFrom("0001-01-01T00:00:00Z"))
         assertEquals("dev", m.deviceId)
         assertEquals(listOf("A", "B"), m.assets.map { it.assetId }) // sorted, all kept
     }
@@ -102,7 +108,7 @@ class DeviceManifestProducerTest {
     @Test
     fun projection_excludes_assets_before_the_start_date() {
         val acc = listOf(asset("old", "2025-01-01T00:00:00Z"), asset("new", "2026-06-27T10:00:00Z"))
-        val m = projectDeviceManifest("dev", acc, startDate = "2026-01-01T00:00:00Z")
+        val m = projectDeviceManifest("dev", acc, policy = policyFrom("2026-01-01T00:00:00Z"))
         assertEquals(listOf("new"), m.assets.map { it.assetId })
     }
 
@@ -133,7 +139,7 @@ class DeviceManifestProducerTest {
         val up = FakeUploader()
         DeviceManifestProducer(store, up, "dev").produce(
             eventId = "E",
-            startDate = "0001-01-01T00:00:00Z",
+            policy = policyFrom("0001-01-01T00:00:00Z"),
             discovered = listOf(asset("C")),
             removedAssetIds = setOf("A"),
             fullEnumeration = false,
@@ -147,7 +153,7 @@ class DeviceManifestProducerTest {
         val up = FakeUploader()
         DeviceManifestProducer(store, up, "dev").produce(
             eventId = "E",
-            startDate = "0001-01-01T00:00:00Z",
+            policy = policyFrom("0001-01-01T00:00:00Z"),
             discovered = listOf(asset("A"), asset("C")), // B gone from the library
             removedAssetIds = emptySet(),
             fullEnumeration = true,
@@ -159,7 +165,7 @@ class DeviceManifestProducerTest {
     fun puts_the_projected_snapshot_and_records_it_on_success() = runTest {
         val store = FakeStore()
         val up = FakeUploader(ok = true)
-        DeviceManifestProducer(store, up, "dev").produce("E", "0001-01-01T00:00:00Z", listOf(asset("A")), emptySet(), false)
+        DeviceManifestProducer(store, up, "dev").produce("E", policyFrom("0001-01-01T00:00:00Z"), listOf(asset("A")), emptySet(), false)
         assertEquals(1, up.puts.size)
         assertEquals("E", up.puts.single().first)
         assertTrue(store.lastUploaded!!.endsWith(up.puts.single().third)) // marker records the json
@@ -172,8 +178,8 @@ class DeviceManifestProducerTest {
         val store = FakeStore()
         val up = FakeUploader()
         val producer = DeviceManifestProducer(store, up, "dev")
-        producer.produce("EVENT-A", "0001-01-01T00:00:00Z", listOf(asset("A")), emptySet(), false)
-        producer.produce("EVENT-B", "0001-01-01T00:00:00Z", listOf(asset("A")), emptySet(), false) // same content, new event
+        producer.produce("EVENT-A", policyFrom("0001-01-01T00:00:00Z"), listOf(asset("A")), emptySet(), false)
+        producer.produce("EVENT-B", policyFrom("0001-01-01T00:00:00Z"), listOf(asset("A")), emptySet(), false) // same content, new event
         assertEquals(2, up.puts.size) // both events written, despite identical content
         assertEquals(listOf("EVENT-A", "EVENT-B"), up.puts.map { it.first })
     }
@@ -183,8 +189,8 @@ class DeviceManifestProducerTest {
         val store = FakeStore()
         val up = FakeUploader()
         val producer = DeviceManifestProducer(store, up, "dev")
-        producer.produce("E", "0001-01-01T00:00:00Z", listOf(asset("A")), emptySet(), false)
-        producer.produce("E", "0001-01-01T00:00:00Z", listOf(asset("A")), emptySet(), false) // identical
+        producer.produce("E", policyFrom("0001-01-01T00:00:00Z"), listOf(asset("A")), emptySet(), false)
+        producer.produce("E", policyFrom("0001-01-01T00:00:00Z"), listOf(asset("A")), emptySet(), false) // identical
         assertEquals(1, up.puts.size) // second produce skipped the PUT
     }
 
@@ -192,7 +198,7 @@ class DeviceManifestProducerTest {
     fun a_failed_put_does_not_record_last_uploaded() = runTest {
         val store = FakeStore()
         val up = FakeUploader(ok = false)
-        DeviceManifestProducer(store, up, "dev").produce("E", "0001-01-01T00:00:00Z", listOf(asset("A")), emptySet(), false)
+        DeviceManifestProducer(store, up, "dev").produce("E", policyFrom("0001-01-01T00:00:00Z"), listOf(asset("A")), emptySet(), false)
         assertEquals(1, up.puts.size)
         assertEquals(null, store.lastUploaded) // not recorded → retried next cycle
         assertTrue(store.accumulator.isNotEmpty()) // accumulator still saved

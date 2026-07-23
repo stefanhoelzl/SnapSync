@@ -1,5 +1,13 @@
 package app.snapsync.feature.membership
 
+import app.snapsync.model.CaptureCeiling
+import app.snapsync.model.CaptureDate
+import app.snapsync.model.EventEnd
+import app.snapsync.model.captureCeiling
+import app.snapsync.model.captureCutoff
+import app.snapsync.model.deletesAt
+import app.snapsync.model.eventEnd
+import app.snapsync.model.eventStart
 import app.snapsync.model.EventConfig
 import app.snapsync.model.JoinLoad
 import app.snapsync.ports.ConfigSource
@@ -26,11 +34,13 @@ private class FakeConfig(initial: EventConfig?) : ConfigSource, ConfigStore {
     }
 }
 
-private const val STARTS = "2026-07-06T14:32:11Z"
-private const val ENDS = "2026-07-13T14:32:11Z"
-private const val DELETES = "2026-08-05T14:32:11Z" // the event's retention deadline
-private const val BEFORE_DEADLINE = "2026-07-20T00:00:00Z"
-private const val AFTER_DEADLINE = "2026-08-06T00:00:00Z"
+private val STARTS = eventStart("2026-07-06T14:32:11Z")
+private val CUTOFF = captureCutoff("2026-07-06T14:32:11Z")
+private val ENDS = eventEnd("2026-07-13T14:32:11Z")
+private val CEILING = captureCeiling("2026-07-13T14:32:11Z")
+private val DELETES = deletesAt("2026-08-05T14:32:11Z") // the event's retention deadline
+private val BEFORE_DEADLINE = CaptureDate("2026-07-20T00:00:00Z")
+private val AFTER_DEADLINE = CaptureDate("2026-08-06T00:00:00Z")
 
 class MembershipRefreshTest {
 
@@ -39,14 +49,14 @@ class MembershipRefreshTest {
     private val joined = EventConfig(
         eventId = "E",
         name = "",
-        minPhotoDate = STARTS,
+        minPhotoDate = CUTOFF,
         startsAt = STARTS,
         endsAt = ENDS,
-        maxPhotoDate = ENDS,
+        maxPhotoDate = CEILING,
         deletesAt = DELETES,
     )
 
-    private fun found(name: String, endsAt: String = ENDS) =
+    private fun found(name: String, endsAt: EventEnd = ENDS) =
         JoinLoad.Found(name, STARTS, endsAt, DELETES)
 
     /**
@@ -55,7 +65,7 @@ class MembershipRefreshTest {
      * The teardown is the REAL [LeaveEvent] over the same fake config, so an ABSENT verdict is asserted by
      * its actual effect — the membership gone — rather than by a spy that could drift from it.
      */
-    private fun TestScope.refresh(config: FakeConfig, now: String = BEFORE_DEADLINE) =
+    private fun TestScope.refresh(config: FakeConfig, now: CaptureDate = BEFORE_DEADLINE) =
         MembershipRefresh(
             configSource = config,
             store = config,
@@ -114,22 +124,22 @@ class MembershipRefreshTest {
         // capability `event-rejoin-reconciliation`: endsAt/maxPhotoDate/deletesAt all absent (joined
         // before the window and the deadline existed) → filled from the fetched details, in the SAME save
         // as any name refresh.
-        val legacy = EventConfig(eventId = "E", name = "Anna's Birthday", minPhotoDate = STARTS, startsAt = STARTS)
+        val legacy = EventConfig(eventId = "E", name = "Anna's Birthday", minPhotoDate = CUTOFF, startsAt = STARTS)
         val config = FakeConfig(legacy)
         refresh(config).refresh("E", found("Anna's Birthday"))
-        assertEquals(legacy.copy(endsAt = ENDS, maxPhotoDate = ENDS, deletesAt = DELETES), config.saved)
+        assertEquals(legacy.copy(endsAt = ENDS, maxPhotoDate = CEILING, deletesAt = DELETES), config.saved)
     }
 
     @Test
     fun `backfill and name refresh ride in one save`() = runTest {
-        val legacy = EventConfig(eventId = "E", name = "", minPhotoDate = STARTS, startsAt = STARTS)
+        val legacy = EventConfig(eventId = "E", name = "", minPhotoDate = CUTOFF, startsAt = STARTS)
         val config = FakeConfig(legacy)
         refresh(config).refresh("E", found("Anna's Birthday"))
         assertEquals(
             legacy.copy(
                 name = "Anna's Birthday",
                 endsAt = ENDS,
-                maxPhotoDate = ENDS,
+                maxPhotoDate = CEILING,
                 deletesAt = DELETES,
             ),
             config.saved,
@@ -139,7 +149,7 @@ class MembershipRefreshTest {
     @Test
     fun `an already-set window is never overwritten by a backfill`() = runTest {
         // The member already chose a window; a later details fetch must not clobber their ceiling.
-        val config = FakeConfig(joined.copy(name = "Anna's Birthday", maxPhotoDate = STARTS))
+        val config = FakeConfig(joined.copy(name = "Anna's Birthday", maxPhotoDate = CaptureCeiling(STARTS.at)))
         refresh(config).refresh("E", found("Anna's Birthday", endsAt = ENDS))
         assertNull(config.saved) // name unchanged AND endsAt already present → nothing to write
     }

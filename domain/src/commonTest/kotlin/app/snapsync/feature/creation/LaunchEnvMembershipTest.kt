@@ -2,6 +2,7 @@
 
 package app.snapsync.feature.creation
 
+import app.snapsync.model.CaptureDate
 import app.snapsync.ports.CreateOutcome
 import app.snapsync.ports.EventCreation
 import co.touchlab.kermit.Logger
@@ -31,7 +32,7 @@ class LaunchEnvMembershipTest {
 
     private fun coordinator(events: MutableList<String>): LaunchEnvMembership =
         LaunchEnvMembership(
-            headlessCreate = HeadlessCreate(FakeClient(events), silentLog, now = { "2026-07-14T18:00:00Z" }),
+            headlessCreate = HeadlessCreate(FakeClient(events), silentLog, now = { CaptureDate("2026-07-14T18:00:00Z") }),
             log = silentLog,
             leave = { events += "leave" },
             ensureAttested = { events += "attest" },

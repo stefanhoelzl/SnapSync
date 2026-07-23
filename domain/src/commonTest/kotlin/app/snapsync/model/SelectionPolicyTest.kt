@@ -38,7 +38,15 @@ class SelectionPolicyTest {
         ),
     )
 
-    private fun excluded(resources: List<Resource>) = excludedAssetIds(resources)
+    /**
+     * The ids the ORIGIN rules exclude. Expressed as "everything the one admission did not admit", over a
+     * policy whose capture-date floor is empty (admitting every date) — so this matrix isolates the origin
+     * rules from the range, exactly as it did when they were a separate function.
+     */
+    private fun excluded(resources: List<Resource>): Set<String> {
+        val policy = SelectionPolicy.from(includesUpload = true, cutoff = captureCutoff(""), ceiling = null)
+        return resources.mapTo(mutableSetOf()) { it.assetId } - policy.admittedAssetIds(resources)
+    }
 
     // ── Subtypes ──────────────────────────────────────────────────────────────────────────────────────
 
@@ -133,8 +141,8 @@ class SelectionPolicyTest {
             RESOURCE_META_PIXEL_HEIGHT to "3024",
         )
         val both = listOf(
-            Resource("A-primary.heic", "A", "public.heic", meta, Unit),
-            Resource("A-live.mov", "A", "com.apple.quicktime-movie", meta, Unit),
+            Resource("A-primary.heic", "A", "public.heic", metadata = meta, data = Unit),
+            Resource("A-live.mov", "A", "com.apple.quicktime-movie", metadata = meta, data = Unit),
         )
         assertEquals(setOf("A"), excluded(both), "the asset is excluded, so both of its resources go")
     }

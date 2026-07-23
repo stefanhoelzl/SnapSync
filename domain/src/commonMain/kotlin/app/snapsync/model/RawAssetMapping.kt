@@ -34,3 +34,23 @@ fun resourcesFrom(rawAssets: List<RawAsset>): List<Resource> =
             )
         }
     }
+
+/**
+ * The neutral [AssetFacts] of one raw asset — the origin facts the selection policy decides on, read off
+ * the cheap in-memory `PHAsset` properties the walk carried across.
+ *
+ * The GIF signal lives on the per-resource MIME, not on the asset: it is read from [RawAsset.rawResources]
+ * when they are present, and is `false` when a facts-only walk left them empty — the cheap count then
+ * *admits* a GIF, which is exactly the policy's admit-on-doubt posture (a stray meme is visible and
+ * harmless; the count is a preview, and the cycle's authoritative admission still drops it).
+ */
+fun RawAsset.toFacts(): AssetFacts = AssetFacts(
+    assetId = normalizeAssetId(assetId),
+    creationDate = CaptureDate(creationDate),
+    isScreenshot = mediaSubtypes and SUBTYPE_SCREENSHOT != 0L,
+    isScreenRecording = mediaSubtypes and SUBTYPE_SCREEN_RECORDING != 0L,
+    isVideo = mediaType == MEDIA_TYPE_VIDEO,
+    isGif = rawResources.any { it.mimeContentType == MIME_GIF },
+    isEdited = hasAdjustments,
+    pixelArea = if (pixelWidth > 0 && pixelHeight > 0) pixelWidth * pixelHeight else null,
+)

@@ -1,5 +1,9 @@
 package app.snapsync.ports
 
+import app.snapsync.model.DeletesAt
+import app.snapsync.model.EventEnd
+import app.snapsync.model.EventStart
+
 /**
  * The outcome of fetching an event's details (capability `join-event`) — the app's ONE
  * `GET /events/:id` client, serving both the join gate and the best-effort name refresh (which reads
@@ -30,9 +34,9 @@ sealed interface EventDetails {
      */
     data class Found(
         val name: String,
-        val startsAt: String,
-        val endsAt: String,
-        val deletesAt: String,
+        val startsAt: EventStart,
+        val endsAt: EventEnd,
+        val deletesAt: DeletesAt,
     ) : EventDetails
     data object NotFound : EventDetails
     data object Failed : EventDetails

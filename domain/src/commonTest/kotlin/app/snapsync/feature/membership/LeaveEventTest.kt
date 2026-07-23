@@ -2,6 +2,7 @@ package app.snapsync.feature.membership
 
 import app.snapsync.ports.ConfigSource
 import app.snapsync.ports.ConfigStore
+import app.snapsync.model.captureCutoff
 import app.snapsync.model.EventConfig
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -24,7 +25,7 @@ class LeaveEventTest {
     private class FakeConfigSource(eventId: String?) : ConfigSource {
         override val config: StateFlow<EventConfig?> =
             // A membership always carries a cutoff (capability `photo-selection-policy`); leave ignores it.
-            MutableStateFlow(eventId?.let { EventConfig(it, minPhotoDate = "2026-07-06T14:32:11Z") })
+            MutableStateFlow(eventId?.let { EventConfig(it, minPhotoDate = captureCutoff("2026-07-06T14:32:11Z")) })
     }
 
     @Test

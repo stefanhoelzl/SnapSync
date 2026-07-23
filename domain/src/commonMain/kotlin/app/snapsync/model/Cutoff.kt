@@ -20,19 +20,19 @@ import kotlinx.datetime.toLocalDateTime
  */
 
 /** Format any instant to the exact UTC `yyyy-MM-dd'T'HH:mm:ss'Z'` cutoff shape. */
-fun instantToCutoff(instant: Instant): String {
+fun instantToCutoff(instant: Instant): CaptureDate {
     val dt = instant.toLocalDateTime(TimeZone.UTC)
-    return buildCutoff(dt.year, dt.month.ordinal + 1, dt.day, dt.hour, dt.minute, dt.second)
+    return CaptureDate(buildCutoff(dt.year, dt.month.ordinal + 1, dt.day, dt.hour, dt.minute, dt.second))
 }
 
 /** The "now" cutoff from the injected [clock], in the required UTC `…Z` shape. */
-fun nowCutoff(clock: Clock): String = instantToCutoff(clock.now())
+fun nowCutoff(clock: Clock): CaptureDate = instantToCutoff(clock.now())
 
 /**
  * Convert a picked **local** wall-clock date-time (in the device [zone]) to the UTC `…Z` cutoff,
  * so a manual pick compares correctly against the UTC `creationDate` strings.
  */
-fun localToCutoff(local: LocalDateTime, zone: TimeZone): String =
+fun localToCutoff(local: LocalDateTime, zone: TimeZone): CaptureDate =
     instantToCutoff(local.toInstant(zone))
 
 /**
@@ -56,7 +56,8 @@ fun localToCutoff(local: LocalDateTime, zone: TimeZone): String =
  * canonical fixed-width UTC shape, so lexicographic order IS chronological order — the very same property
  * the `creationDate >= cutoff` filter relies on. Feed it an off-shape string and it silently lies.
  */
-fun clampToFloor(chosen: String, startsAt: String): String = maxOf(chosen, startsAt)
+fun clampToFloor(chosen: CaptureCutoff, startsAt: EventStart): CaptureCutoff =
+    CaptureCutoff(maxOf(chosen.at, startsAt.at))
 
 /**
  * Clamp a [chosen] upper bound down to the event's [endsAt] **ceiling** — the effective upper bound is
@@ -73,7 +74,8 @@ fun clampToFloor(chosen: String, startsAt: String): String = maxOf(chosen, start
  * As with [clampToFloor], the plain string `minOf` is correct **only because** both operands are the
  * canonical fixed-width UTC shape, so lexicographic order IS chronological order.
  */
-fun clampToCeiling(chosen: String, endsAt: String): String = minOf(chosen, endsAt)
+fun clampToCeiling(chosen: CaptureCeiling, endsAt: EventEnd): CaptureCeiling =
+    CaptureCeiling(minOf(chosen.at, endsAt.at))
 
 /**
  * Has this membership's own retention deadline passed (capability `leave-event`)? [deletesAt] is the
@@ -100,8 +102,8 @@ fun clampToCeiling(chosen: String, endsAt: String): String = minOf(chosen, endsA
  * As with the clamps above, the plain string compare is correct **only because** both operands are the
  * canonical fixed-width UTC shape, so lexicographic order IS chronological order.
  */
-fun confirmedGone(deletesAt: String?, now: String): Boolean =
-    deletesAt != null && now > deletesAt
+fun confirmedGone(deletesAt: DeletesAt?, now: CaptureDate): Boolean =
+    deletesAt != null && now > deletesAt.at
 
 private fun buildCutoff(year: Int, month: Int, day: Int, hour: Int, minute: Int, second: Int): String {
     fun p(n: Int, width: Int) = n.toString().padStart(width, '0')

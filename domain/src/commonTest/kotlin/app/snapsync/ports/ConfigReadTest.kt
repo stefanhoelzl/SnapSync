@@ -1,5 +1,10 @@
 package app.snapsync.ports
 
+import app.snapsync.model.captureCeiling
+import app.snapsync.model.captureCutoff
+import app.snapsync.model.deletesAt
+import app.snapsync.model.eventEnd
+import app.snapsync.model.eventStart
 import app.snapsync.model.Direction
 import app.snapsync.model.EventConfig
 
@@ -17,7 +22,7 @@ class ConfigReadTest {
     private val config = EventConfig(
         eventId = "e1",
         name = "Party",
-        minPhotoDate = "2026-07-01T00:00:00Z",
+        minPhotoDate = captureCutoff("2026-07-01T00:00:00Z"),
         direction = Direction.Both,
         saveToAlbum = true,
     )

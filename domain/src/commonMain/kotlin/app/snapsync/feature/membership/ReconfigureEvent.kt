@@ -1,5 +1,7 @@
 package app.snapsync.feature.membership
 
+import app.snapsync.model.CaptureCeiling
+import app.snapsync.model.CaptureCutoff
 import app.snapsync.model.Direction
 import app.snapsync.model.EventConfig
 import app.snapsync.model.clampToCeiling
@@ -69,8 +71,8 @@ class ReconfigureEvent(
     suspend fun reconfigure(
         eventId: String,
         direction: Direction,
-        chosenCutoff: String,
-        chosenUpper: String?,
+        chosenCutoff: CaptureCutoff,
+        chosenUpper: CaptureCeiling?,
         saveToAlbum: Boolean,
     ) {
         val current = configSource.config.value

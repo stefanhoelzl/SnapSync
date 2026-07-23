@@ -1,5 +1,11 @@
 package app.snapsync.model
 
+import app.snapsync.model.EventStart
+import app.snapsync.model.captureCeiling
+import app.snapsync.model.captureCutoff
+import app.snapsync.model.deletesAt
+import app.snapsync.model.eventEnd
+import app.snapsync.model.eventStart
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
@@ -11,7 +17,7 @@ class EventConfigTest {
     private val json = Json { ignoreUnknownKeys = true }
 
     /** Every config carries a cutoff; it is required (capability `photo-selection-policy`). */
-    private val cutoff = "2026-07-06T14:32:11Z"
+    private val cutoff = captureCutoff("2026-07-06T14:32:11Z")
 
     private fun roundTrip(config: EventConfig): EventConfig =
         json.decodeFromString(EventConfig.serializer(), json.encodeToString(EventConfig.serializer(), config))
@@ -41,7 +47,7 @@ class EventConfigTest {
     fun `equality distinguishes a differing cutoff`() {
         val base = EventConfig(eventId = "e", name = "n", minPhotoDate = cutoff)
         assertEquals(base, base.copy())
-        assertEquals(false, base == base.copy(minPhotoDate = "2026-07-06T14:32:12Z"))
+        assertEquals(false, base == base.copy(minPhotoDate = captureCutoff("2026-07-06T14:32:12Z")))
     }
 
     @Test
@@ -151,7 +157,7 @@ class EventConfigTest {
         val legacy =
             """{"eventId":"11111111-1111-4111-8111-111111111111","name":"Birthday","minPhotoDate":"$cutoff"}"""
         val decoded = json.decodeFromString(EventConfig.serializer(), legacy)
-        assertEquals(cutoff, decoded.startsAt)
+        assertEquals(EventStart(cutoff.at), decoded.startsAt)
         assertEquals(cutoff, decoded.minPhotoDate)
     }
 
@@ -160,24 +166,24 @@ class EventConfigTest {
         val config = EventConfig(
             eventId = "11111111-1111-4111-8111-111111111111",
             name = "Birthday",
-            minPhotoDate = "2026-07-14T21:00:00Z",
-            startsAt = "2026-07-14T18:00:00Z",
+            minPhotoDate = captureCutoff("2026-07-14T21:00:00Z"),
+            startsAt = eventStart("2026-07-14T18:00:00Z"),
         )
         assertEquals(config, roundTrip(config))
         // The two are independent facts: a member who joined late sits ABOVE the event's floor.
-        assertEquals("2026-07-14T18:00:00Z", roundTrip(config).startsAt)
-        assertEquals("2026-07-14T21:00:00Z", roundTrip(config).minPhotoDate)
+        assertEquals(eventStart("2026-07-14T18:00:00Z"), roundTrip(config).startsAt)
+        assertEquals(captureCutoff("2026-07-14T21:00:00Z"), roundTrip(config).minPhotoDate)
     }
 
     @Test
     fun `equality distinguishes a differing startsAt`() {
         val base = EventConfig(eventId = "e", name = "n", minPhotoDate = cutoff)
-        assertEquals(false, base == base.copy(startsAt = "2001-01-01T00:00:00Z"))
+        assertEquals(false, base == base.copy(startsAt = eventStart("2001-01-01T00:00:00Z")))
     }
 
     @Test
     fun `an empty cutoff would admit every asset — it is never a valid value`() {
-        // Guards the trap that makes `minPhotoDate = ""` an unsafe legacy default: the cutoff compare is
+        // Guards the trap that makes `minPhotoDate = captureCutoff("")` an unsafe legacy default: the cutoff compare is
         // `creationDate >= minPhotoDate`, and every string is `>= ""`. The mirror case is the safe one an
         // empty-string default is easily confused with: an undated ASSET is excluded by any real cutoff.
         assertEquals(true, "2026-07-06T14:32:11Z" >= "")

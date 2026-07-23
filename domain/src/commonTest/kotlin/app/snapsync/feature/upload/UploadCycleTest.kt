@@ -16,7 +16,9 @@ import app.snapsync.feature.upload.SyncEngine
 import app.snapsync.model.UploadError
 import app.snapsync.model.UploadRequest
 import app.snapsync.model.UploadRequestProvider
-import app.snapsync.model.Contribution
+import app.snapsync.model.CaptureCutoff
+import app.snapsync.model.SelectionPolicy
+import app.snapsync.model.captureCutoff
 import app.snapsync.model.MEDIA_TYPE_IMAGE
 import app.snapsync.model.MEDIA_TYPE_VIDEO
 import app.snapsync.model.MIME_GIF
@@ -47,6 +49,10 @@ class UploadCycleTest {
      */
     private companion object {
         const val TEST_CUTOFF = "2026-01-01T00:00:00Z"
+
+        /** An admitting policy over [cutoff], unbounded above — the shape every cycle fixture wants. */
+        fun admitting(cutoff: String): SelectionPolicy =
+            SelectionPolicy.from(includesUpload = true, cutoff = captureCutoff(cutoff), ceiling = null)
         const val IN_SCOPE_DATE = "2026-06-01T10:00:00Z"
         const val TEST_HOST = "https://edge.example"
         const val TEST_EVENT = "event-1"
@@ -130,13 +136,13 @@ class UploadCycleTest {
         backend: InMemoryLedgerStore,
         platform: FakePlatform,
         store: DiscoveryStore = FakeStore(),
-        contribution: Contribution = Contribution.Since(TEST_CUTOFF, until = null),
+        policy: SelectionPolicy = admitting(TEST_CUTOFF),
         saveToAlbum: Boolean = true,
         readGate: (() -> CycleGate)? = null,
         reconcile: suspend (String?) -> Boolean = { true }, // a settled join unless a test says otherwise
-        onDiscovery: suspend (String, String, Discovery) -> Unit = { _, _, _ -> },
+        onDiscovery: suspend (String, SelectionPolicy, Discovery) -> Unit = { _, _, _ -> },
         suppressedAssetIds: suspend () -> Set<String> = { emptySet() },
-        albumExcludedAssetIds: suspend (String) -> Set<String> = { emptySet() },
+        albumExcludedAssetIds: suspend (CaptureCutoff) -> Set<String> = { emptySet() },
         onBatchUploaded: suspend (String) -> Unit = {},
         placeInAlbum: suspend (String, Set<String>) -> Unit = { _, _ -> },
     ): UploadCycle {
@@ -145,7 +151,7 @@ class UploadCycleTest {
             readGate = readGate ?: {
                 CycleGate.Run(
                     UploadConfig(host = TEST_HOST, eventId = TEST_EVENT),
-                    JoinedMembership(eventId = TEST_EVENT, contribution = contribution, saveToAlbum = saveToAlbum),
+                    JoinedMembership(eventId = TEST_EVENT, policy = policy, saveToAlbum = saveToAlbum),
                 )
             },
             engineFor = { config -> SyncEngine(StubUploadRequestProvider(), ledger, config.eventId) },
@@ -295,7 +301,7 @@ class UploadCycleTest {
                 if (joined) {
                     CycleGate.Run(
                         UploadConfig(TEST_HOST, TEST_EVENT),
-                        JoinedMembership(TEST_EVENT, Contribution.Since(TEST_CUTOFF, until = null), saveToAlbum = false),
+                        JoinedMembership(TEST_EVENT, admitting(TEST_CUTOFF), saveToAlbum = false),
                     )
                 } else {
                     CycleGate.NotJoined
@@ -327,7 +333,7 @@ class UploadCycleTest {
         order: MutableList<String> = mutableListOf(),
     ): UploadCycle = cycle(
         backend, platform, store,
-        contribution = Contribution.None,
+        policy = SelectionPolicy.None,
         onDiscovery = { _, _, _ -> order += "discovery" },
         onBatchUploaded = { order += "notify" },
         reconcile = { order += "reconcile"; true },
@@ -878,7 +884,7 @@ class UploadCycleTest {
         backend: InMemoryLedgerStore,
         platform: FakePlatform,
         cutoff: String,
-    ): UploadCycle = cycle(backend, platform, contribution = Contribution.Since(cutoff, until = null))
+    ): UploadCycle = cycle(backend, platform, policy = admitting(cutoff))
 
     @Test
     fun cutoff_excludes_pre_cutoff_resources_from_upload() = runTest {
@@ -1089,11 +1095,14 @@ class UploadCycleTest {
     }
 
     @Test
-    fun a_pre_cutoff_asset_still_reaches_the_manifest_hook_but_an_excluded_one_does_not() = runTest {
-        // The two exclusions land on OPPOSITE sides of the manifest accumulator, deliberately. The cutoff
-        // is per-membership, so a pre-cutoff asset must stay in the device-global accumulator (another
-        // event's cutoff may admit it) and is dropped by the per-event projection instead. The origin
-        // exclusions are event-independent, so they are applied before the accumulator.
+    fun the_manifest_hook_sees_the_admitted_set_and_nothing_else() = runTest {
+        // BOTH exclusions now land on the SAME side of the manifest hook — it is handed the admitted set
+        // itself, not the inputs to compute one from. This REVERSES the earlier split, deliberately: the
+        // capture-date bounds used to be withheld from the accumulator as forward-prep for multi-event
+        // membership ("another event's cutoff may admit it"), leaving the per-event projection to re-apply
+        // them. That is exactly how the ceiling went missing — the projection was given a bare cutoff and
+        // silently applied only the floor. Multi-event membership is a named non-goal, so the forward-prep
+        // is removed rather than deepened, and the hook receives one already-decided set.
         val manifestSaw = mutableListOf<String>()
         val platform = FakePlatform(
             discovered = listOf(
@@ -1105,7 +1114,7 @@ class UploadCycleTest {
 
         originCycle(InMemoryLedgerStore(), platform, manifestSaw = manifestSaw).run()
 
-        assertEquals(listOf("old.heic"), manifestSaw, "pre-cutoff stays in the accumulator; the screenshot does not")
+        assertTrue(manifestSaw.isEmpty(), "neither the pre-cutoff asset nor the screenshot is admitted")
         assertTrue(platform.created.isEmpty(), "…and neither is uploaded")
     }
 
