@@ -31,7 +31,9 @@ import app.snapsync.membership.HttpDeviceFilesSource
 import app.snapsync.membership.HttpLeaveNotifier
 import app.snapsync.model.Resource
 import app.snapsync.model.AssetFacts
+import app.snapsync.model.CaptureCeiling
 import app.snapsync.model.CaptureCutoff
+import app.snapsync.model.EventEnd
 import app.snapsync.model.CaptureDate
 import app.snapsync.model.EventStart
 import app.snapsync.model.SelectionPolicy
@@ -465,6 +467,11 @@ class World(
         name: String? = null,
         minPhotoDate: CaptureCutoff = captureCutoff(DEFAULT_CUTOFF),
         startsAt: EventStart = eventStart(DEFAULT_STARTS_AT),
+        // The capture-date CEILING and the event's end. Absent by default (an unbounded membership, which
+        // is what every fixture used while the ceiling was silently dropped at two consumers) — pass them
+        // to forge a CLOSED window, the shape that surfaced the bug.
+        maxPhotoDate: CaptureCeiling? = null,
+        endsAt: EventEnd? = null,
         direction: Direction = Direction.Both,
         saveToAlbum: Boolean = false,
     ) {
@@ -473,6 +480,8 @@ class World(
             eventId = eventId,
             name = name ?: "",
             minPhotoDate = minPhotoDate,
+            maxPhotoDate = maxPhotoDate,
+            endsAt = endsAt,
             startsAt = startsAt,
             direction = direction,
             saveToAlbum = saveToAlbum,

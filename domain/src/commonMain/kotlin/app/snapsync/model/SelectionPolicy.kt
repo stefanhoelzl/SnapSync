@@ -159,21 +159,6 @@ fun SelectionPolicy.excluding(
 }
 
 /**
- * The **admitted set** over a flat resource list: the ids of the assets this policy admits, decided once
- * on per-asset facts ([factsFromResources]) so an asset's resources stand or fall together.
- *
- * Consumers filter by this rather than re-stating any rule — which is the whole point of the type.
- */
-fun SelectionPolicy.admittedAssetIds(resources: List<Resource>): Set<String> =
-    factsFromResources(resources).filter { admits(it) }.mapTo(mutableSetOf()) { it.assetId }
-
-/** The resources of the admitted assets — the set the upload cycle uploads and the manifest lists. */
-fun SelectionPolicy.admittedResources(resources: List<Resource>): List<Resource> {
-    val admitted = admittedAssetIds(resources)
-    return resources.filter { it.assetId in admitted }
-}
-
-/**
  * One rule of the [SelectionPolicy]. Sealed so the platform can pattern-match the set and translate the
  * rules it can express into a native fetch predicate (capability `photo-selection-policy`, *Selection
  * filter*) — a domain rule, translated per platform, never a platform hint leaking into `model/`.

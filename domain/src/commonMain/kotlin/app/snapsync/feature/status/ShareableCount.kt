@@ -6,7 +6,9 @@ import app.snapsync.model.CaptureCutoff
 import app.snapsync.model.PermissionStatus
 import app.snapsync.model.Resource
 import app.snapsync.model.SelectionPolicy
-import app.snapsync.model.admittedAssetIds
+import app.snapsync.model.EventPhotoSet
+import app.snapsync.model.candidatesFromFacts
+import app.snapsync.model.candidatesFromResources
 import app.snapsync.model.excluding
 
 /**
@@ -61,9 +63,17 @@ class ShareableCountSource(
             suppressedAssetIds = suppressedLocalIds(),
             albumExcludedAssetIds = albumExcludedAssetIds(cutoff),
         )
+        // Both grants ask the SAME abstraction for the same thing — a count — differing only in which
+        // backing supplies the candidates. GRANTED reads the cheap facts walk; LIMITED re-filters the
+        // already-held selection snapshot and issues no library read at all. Neither pays a resource
+        // read: admission is decidable on facts, and a preview never uploads.
         return when (permission) {
-            PermissionStatus.GRANTED -> factsSince(cutoff).count { policy.admits(it) }
-            PermissionStatus.LIMITED -> selectionSnapshot?.let { policy.admittedAssetIds(it).size }
+            PermissionStatus.GRANTED ->
+                EventPhotoSet(policy) { candidatesFromFacts(factsSince(cutoff)) }.count()
+            PermissionStatus.LIMITED ->
+                selectionSnapshot?.let { snapshot ->
+                    EventPhotoSet(policy) { candidatesFromResources(snapshot) }.count()
+                }
             PermissionStatus.DENIED, PermissionStatus.NOT_DETERMINED -> null
         }
     }

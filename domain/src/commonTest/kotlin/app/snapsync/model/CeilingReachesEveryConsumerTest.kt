@@ -50,13 +50,18 @@ class CeilingReachesEveryConsumerTest {
         resource("BEFORE", preCutoff),
     )
 
+    /** The admitted set, asked exactly as every production consumer asks for it. */
+    private suspend fun admitted(p: SelectionPolicy = policy): Set<String> =
+        EventPhotoSet(p) { candidatesFromResources(discovered) }
+            .assets().mapTo(mutableSetOf()) { it.facts.assetId }
+
     @Test
-    fun `the byte upload admits only the in-window asset`() {
-        assertEquals(setOf("IN"), policy.admittedAssetIds(discovered))
+    fun `the byte upload admits only the in-window asset`() = runTest {
+        assertEquals(setOf("IN"), admitted())
     }
 
     @Test
-    fun `the device manifest lists only the in-window asset`() {
+    fun `the device manifest lists only the in-window asset`() = runTest {
         // The projection used to take a bare `startDate` and apply the floor alone — so AFTER was listed
         // in `device.json`, entered the event union, and was offered to every other member as bytes that
         // were never uploaded. A 404 for everyone.
@@ -69,7 +74,7 @@ class CeilingReachesEveryConsumerTest {
     fun `the status total counts only the in-window asset`() = runTest {
         // `N` used to apply the floor alone too, which is the half the user could actually see: an asset
         // that counts toward the total but never uploads pegs completeness below 100% permanently.
-        assertEquals(1, policy.admittedAssetIds(discovered).size)
+        assertEquals(1, admitted().size)
     }
 
     @Test
@@ -89,10 +94,10 @@ class CeilingReachesEveryConsumerTest {
     }
 
     @Test
-    fun `every consumer resolves the identical admitted set`() {
+    fun `every consumer resolves the identical admitted set`() = runTest {
         // The property the whole change exists to make true. Stated over the SAME inputs the four
         // consumers see, so a future rule added to one of them fails here rather than on a device.
-        val fromResources = policy.admittedAssetIds(discovered)
+        val fromResources = admitted()
         val fromFacts = factsFromResources(discovered).filter { policy.admits(it) }.map { it.assetId }.toSet()
         val fromManifest = projectDeviceManifest(
             "dev",
@@ -106,10 +111,10 @@ class CeilingReachesEveryConsumerTest {
     }
 
     @Test
-    fun `an unbounded ceiling still admits the post-window asset`() {
+    fun `an unbounded ceiling still admits the post-window asset`() = runTest {
         // The control. Without it the tests above would pass just as well against a policy that dropped
         // the asset for some unrelated reason — which is precisely how the original bug hid.
         val unbounded = SelectionPolicy.from(includesUpload = true, cutoff = cutoff, ceiling = null)
-        assertEquals(setOf("IN", "AFTER"), unbounded.admittedAssetIds(discovered))
+        assertEquals(setOf("IN", "AFTER"), admitted(unbounded))
     }
 }

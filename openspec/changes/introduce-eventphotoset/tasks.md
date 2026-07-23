@@ -48,21 +48,24 @@
 
 ## 4. EventPhotoSet + CandidateSource
 
-- [ ] 4.1 Define `EventPhotoSet { count(); assets() }` and `Asset { assetId; creationDate; resources() }` in
+- [x] 4.1 Define `EventPhotoSet { count(); assets() }` and `Asset { assetId; creationDate; resources() }` in
       `:domain`; admission applied at query, over an injected `CandidateSource`.
-- [ ] 4.2 `CandidateSource` impls: `FullWalk` (app GRANTED), `Snapshot` (LIMITED), and the cycle-side source
-      (GRANTED incremental). The iOS `FullWalk`/incremental source pattern-matches the sealed rules → its own
-      `PHFetchOptions` narrowing; the lower-bound push is a source contract (adapter-test-verified). LIMITED
-      `Snapshot` does no narrowing.
-- [ ] 4.3 `Asset.resources()`: ONE lazy-fetch path for both grants — the device spike (task 7.1, DONE)
+- [~] 4.2 Candidate backings: `candidatesFromResources` (cycle-side + LIMITED snapshot) and
+      `candidatesFromFacts` (app-side facts walk) are in place, and the native narrowing is platform-owned
+      (§3 moved `EXCLUDED_SUBTYPE_MASK` into the iOS adapter alongside the predicate that inlines it). The
+      lower-bound push remains a source contract, honoured as today. **Not done:** having the iOS source
+      `when`-translate the sealed `SelectionRule` set instead of hardcoding the mask + a cutoff string —
+      a refinement of an optimization layer that can neither widen nor narrow the admitted set, so it is
+      separable from the correctness work above.
+- [x] 4.3 `Asset.resources()`: ONE lazy-fetch path for both grants — the device spike (task 7.1, DONE)
       measured zero alerts from off-flow `assetResourcesForAsset` on held refs under `.limited`. The LIMITED
       `Snapshot` source therefore carries **facts only** (cheaper capture), not pre-captured resources. Keep
       the backing behind the `Asset.resources()` seam so reverting to pre-capture is a one-impl change if a
       storm ever appears.
-- [ ] 4.4 Reduce the four consumers to `EventPhotoSet` calls: upload `assets().flatMap { it.resources() }`,
+- [x] 4.4 Reduce the four consumers to `EventPhotoSet` calls: upload `assets().flatMap { it.resources() }`,
       `N`/preview `count()`, manifest via the ledger view (§5). Per-process impls (design D4): cycle-side vs
       app-side.
-- [ ] 4.5 `commonTest` + `:test:integration`: the admitted set is identical across consumers over `:test:world`.
+- [x] 4.5 `commonTest` + `:test:integration`: the admitted set is identical across consumers over `:test:world`.
 
 ## 5. Manifest from the enriched ledger (eliminate the accumulator)
 
