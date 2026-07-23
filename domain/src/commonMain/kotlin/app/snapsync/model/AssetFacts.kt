@@ -41,8 +41,14 @@ class AssetFacts(
      * make an invalid state representable. Which **floor** applies is decided from [isVideo] by the rules
      * ([SelectionRule.MinImageArea] / [SelectionRule.MinVideoArea]).
      */
-    val pixelArea: Long? = null,
+    val pixelArea: Long? = DEFAULT_CAMERA_PIXEL_AREA,
 )
+
+/**
+ * 4032×3024 — an SE2 back-camera photo (12.2 MP), comfortably above every floor. The default so a facts
+ * value assembled without dimensions is an admitted camera photo, never a silently-excluded one.
+ */
+private const val DEFAULT_CAMERA_PIXEL_AREA: Long = 4032L * 3024L
 
 /**
  * Fold a flat resource list into per-asset [AssetFacts], reading the origin facts the enumerator carried
@@ -54,17 +60,16 @@ class AssetFacts(
 fun factsFromResources(resources: List<Resource>): List<AssetFacts> =
     resources.groupBy { it.assetId }.map { (assetId, group) ->
         val meta = group.first().metadata
-        val width = meta[RESOURCE_META_PIXEL_WIDTH]?.toLongOrNull()
-        val height = meta[RESOURCE_META_PIXEL_HEIGHT]?.toLongOrNull()
-        val subtypes = meta[RESOURCE_META_MEDIA_SUBTYPES]?.toLongOrNull() ?: SUBTYPE_NONE
         AssetFacts(
             assetId = assetId,
             creationDate = CaptureDate(meta[RESOURCE_META_CREATION_DATE] ?: ""),
-            isScreenshot = subtypes and SUBTYPE_SCREENSHOT != 0L,
-            isScreenRecording = subtypes and SUBTYPE_SCREEN_RECORDING != 0L,
-            isVideo = (meta[RESOURCE_META_MEDIA_TYPE]?.toLongOrNull() ?: MEDIA_TYPE_IMAGE) == MEDIA_TYPE_VIDEO,
+            isScreenshot = meta[RESOURCE_META_IS_SCREENSHOT]?.toBooleanStrictOrNull() == true,
+            isScreenRecording = meta[RESOURCE_META_IS_SCREEN_RECORDING]?.toBooleanStrictOrNull() == true,
+            isVideo = meta[RESOURCE_META_IS_VIDEO]?.toBooleanStrictOrNull() == true,
+            // The one fact that lives on a RESOURCE, not the asset: whichever resource is the GIF, the
+            // asset is. Checked across all of them for that reason.
             isGif = group.any { it.metadata[RESOURCE_META_MIME] == MIME_GIF },
-            isEdited = meta[RESOURCE_META_HAS_ADJUSTMENTS]?.toBooleanStrictOrNull() == true,
-            pixelArea = if (width != null && height != null) width * height else null,
+            isEdited = meta[RESOURCE_META_IS_EDITED]?.toBooleanStrictOrNull() == true,
+            pixelArea = meta[RESOURCE_META_PIXEL_AREA]?.toLongOrNull(),
         )
     }

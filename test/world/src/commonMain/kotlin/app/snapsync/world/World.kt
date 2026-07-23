@@ -30,7 +30,9 @@ import app.snapsync.join.HttpEventDirectory
 import app.snapsync.membership.HttpDeviceFilesSource
 import app.snapsync.membership.HttpLeaveNotifier
 import app.snapsync.model.Resource
+import app.snapsync.model.AssetFacts
 import app.snapsync.model.CaptureCutoff
+import app.snapsync.model.CaptureDate
 import app.snapsync.model.EventStart
 import app.snapsync.model.SelectionPolicy
 import app.snapsync.model.captureCutoff
@@ -40,16 +42,11 @@ import app.snapsync.model.DENYLISTED_ALBUM_TITLES
 import app.snapsync.model.DeviceManifestAsset
 import app.snapsync.model.Direction
 import app.snapsync.model.EventConfig
-import app.snapsync.model.MEDIA_TYPE_IMAGE
-import app.snapsync.model.MEDIA_TYPE_VIDEO
 import app.snapsync.model.MIME_GIF
 import app.snapsync.model.ManifestResource
 import app.snapsync.model.RawAsset
 import app.snapsync.model.RawResource
 import app.snapsync.model.ResourceRole
-import app.snapsync.model.SUBTYPE_NONE
-import app.snapsync.model.SUBTYPE_SCREENSHOT
-import app.snapsync.model.SUBTYPE_SCREEN_RECORDING
 import app.snapsync.model.UserCommands
 import app.snapsync.model.uploadKey
 import app.snapsync.ports.AttestClient
@@ -370,22 +367,29 @@ class World(
         assetId: String,
         creationDate: String = DEFAULT_DATE,
         resources: List<RawResource> = listOf(primaryResource()),
-        mediaSubtypes: Long = SUBTYPE_NONE,
-        mediaType: Long = MEDIA_TYPE_IMAGE,
+        isScreenshot: Boolean = false,
+        isScreenRecording: Boolean = false,
+        isVideo: Boolean = false,
         pixelWidth: Long = 4032,
         pixelHeight: Long = 3024,
-        hasAdjustments: Boolean = false,
+        isEdited: Boolean = false,
     ) {
         gallery.set(
             gallery.current() + RawAsset(
                 assetId = assetId,
                 creationDate = creationDate,
                 rawResources = resources,
-                mediaSubtypes = mediaSubtypes,
-                mediaType = mediaType,
-                pixelWidth = pixelWidth,
-                pixelHeight = pixelHeight,
-                hasAdjustments = hasAdjustments,
+                // NEUTRAL facts — the world forges what the platform would have interpreted, never a
+                // PhotoKit bitmask (capability `gallery-status`).
+                facts = AssetFacts(
+                    assetId = assetId,
+                    creationDate = CaptureDate(creationDate),
+                    isScreenshot = isScreenshot,
+                    isScreenRecording = isScreenRecording,
+                    isVideo = isVideo,
+                    isEdited = isEdited,
+                    pixelArea = pixelWidth * pixelHeight,
+                ),
             ),
         )
     }
@@ -396,13 +400,13 @@ class World(
 
     /** A screenshot. Excluded by media subtype — the sharpest and highest-frequency case. */
     suspend fun addScreenshot(assetId: String, creationDate: String = DEFAULT_DATE) =
-        addOwnAsset(assetId, creationDate, mediaSubtypes = SUBTYPE_SCREENSHOT, pixelWidth = 750, pixelHeight = 1334)
+        addOwnAsset(assetId, creationDate, isScreenshot = true, pixelWidth = 750, pixelHeight = 1334)
 
     /** A screen recording. Excluded by media subtype. */
     suspend fun addScreenRecording(assetId: String, creationDate: String = DEFAULT_DATE) =
         addOwnAsset(
             assetId, creationDate,
-            mediaSubtypes = SUBTYPE_SCREEN_RECORDING, mediaType = MEDIA_TYPE_VIDEO,
+            isScreenRecording = true, isVideo = true,
             pixelWidth = 886, pixelHeight = 1920,
         )
 
@@ -414,7 +418,7 @@ class World(
     suspend fun addHdVideo(assetId: String, creationDate: String = DEFAULT_DATE) =
         addOwnAsset(
             assetId, creationDate,
-            mediaType = MEDIA_TYPE_VIDEO, pixelWidth = 1920, pixelHeight = 1080,
+            isVideo = true, pixelWidth = 1920, pixelHeight = 1080,
         )
 
     /** A GIF. Excluded by MIME — never a camera capture, not even one exported from a Live Photo. */

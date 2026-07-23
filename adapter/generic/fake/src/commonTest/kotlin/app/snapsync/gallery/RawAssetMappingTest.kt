@@ -2,18 +2,18 @@ package app.snapsync.gallery
 
 import app.snapsync.compose.ResourceEnumerator
 import app.snapsync.fake.InMemoryRawAssetSource
-import app.snapsync.model.MEDIA_TYPE_IMAGE
+import app.snapsync.model.AssetFacts
+import app.snapsync.model.CaptureDate
+import app.snapsync.model.RESOURCE_META_IS_EDITED
+import app.snapsync.model.RESOURCE_META_IS_SCREENSHOT
+import app.snapsync.model.RESOURCE_META_IS_SCREEN_RECORDING
+import app.snapsync.model.RESOURCE_META_IS_VIDEO
+import app.snapsync.model.RESOURCE_META_PIXEL_AREA
 import app.snapsync.model.RESOURCE_META_CREATION_DATE
-import app.snapsync.model.RESOURCE_META_HAS_ADJUSTMENTS
-import app.snapsync.model.RESOURCE_META_MEDIA_SUBTYPES
-import app.snapsync.model.RESOURCE_META_MEDIA_TYPE
 import app.snapsync.model.RESOURCE_META_MIME
 import app.snapsync.model.RESOURCE_META_ORIGINAL_FILENAME
-import app.snapsync.model.RESOURCE_META_PIXEL_HEIGHT
-import app.snapsync.model.RESOURCE_META_PIXEL_WIDTH
 import app.snapsync.model.RawAsset
 import app.snapsync.model.RawResource
-import app.snapsync.model.SUBTYPE_SCREENSHOT
 import app.snapsync.model.assetIdFromUploadKey
 import app.snapsync.model.SelectionPolicy
 import app.snapsync.model.admittedAssetIds
@@ -76,11 +76,13 @@ class RawAssetMappingTest {
                 raw(1L, uti = "public.heic", mime = "image/heic", name = "IMG_0001.HEIC"),
                 raw(9L, uti = "com.apple.quicktime-movie", mime = "video/quicktime", name = "IMG_0001.MOV"),
             ),
-            mediaSubtypes = SUBTYPE_SCREENSHOT,
-            mediaType = MEDIA_TYPE_IMAGE,
-            pixelWidth = 750,
-            pixelHeight = 1334,
-            hasAdjustments = true,
+            facts = AssetFacts(
+                assetId = "ABC/L0/001",
+                creationDate = CaptureDate("2026-07-01T00:00:00Z"),
+                isScreenshot = true,
+                isEdited = true,
+                pixelArea = 750L * 1334L,
+            ),
         )
 
         val resources = resourcesFrom(listOf(asset))
@@ -89,11 +91,11 @@ class RawAssetMappingTest {
         // paired video must not be left without the facts that condemn (or save) its primary.
         assertEquals(2, resources.size)
         for (r in resources) {
-            assertEquals("${SUBTYPE_SCREENSHOT}", r.metadata[RESOURCE_META_MEDIA_SUBTYPES])
-            assertEquals("${MEDIA_TYPE_IMAGE}", r.metadata[RESOURCE_META_MEDIA_TYPE])
-            assertEquals("750", r.metadata[RESOURCE_META_PIXEL_WIDTH])
-            assertEquals("1334", r.metadata[RESOURCE_META_PIXEL_HEIGHT])
-            assertEquals("true", r.metadata[RESOURCE_META_HAS_ADJUSTMENTS])
+            assertEquals("true", r.metadata[RESOURCE_META_IS_SCREENSHOT])
+            assertEquals("false", r.metadata[RESOURCE_META_IS_SCREEN_RECORDING])
+            assertEquals("false", r.metadata[RESOURCE_META_IS_VIDEO])
+            assertEquals("true", r.metadata[RESOURCE_META_IS_EDITED])
+            assertEquals("${750L * 1334L}", r.metadata[RESOURCE_META_PIXEL_AREA])
         }
     }
 
@@ -106,9 +108,12 @@ class RawAssetMappingTest {
             assetId = "S1",
             creationDate = "2026-07-01T00:00:00Z",
             rawResources = listOf(raw(1L, uti = "public.png", mime = "image/png", name = "IMG_0002.PNG")),
-            mediaSubtypes = SUBTYPE_SCREENSHOT,
-            pixelWidth = 750,
-            pixelHeight = 1334,
+            facts = AssetFacts(
+                assetId = "S1",
+                creationDate = CaptureDate("2026-07-01T00:00:00Z"),
+                isScreenshot = true,
+                pixelArea = 750L * 1334L,
+            ),
         )
         val source = InMemoryRawAssetSource(listOf(screenshot))
 

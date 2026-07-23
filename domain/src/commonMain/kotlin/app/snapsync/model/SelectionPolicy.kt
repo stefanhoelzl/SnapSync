@@ -264,19 +264,6 @@ private fun admitsByArea(facts: AssetFacts, minArea: Long): Boolean {
     return area >= minArea
 }
 
-/** `PHAssetMediaSubtype.photoScreenshot` — `1 shl 2`. */
-const val SUBTYPE_SCREENSHOT: Long = 1L shl 2
-
-/** `PHAssetMediaSubtype.videoScreenRecording` — `1 shl 19`. Runtime-present since iOS 13. */
-const val SUBTYPE_SCREEN_RECORDING: Long = 1L shl 19
-
-/**
- * The subtype bits that exclude an asset outright. Also inlined into the iOS fetch predicate as an
- * optimization — see `PhotoLibraryRawAssetSource.fetchOptionsSince`, and note the hard-won constraint
- * that the predicate form must be `NOT ((mediaSubtypes & N) != 0)`.
- */
-const val EXCLUDED_SUBTYPE_MASK: Long = SUBTYPE_SCREENSHOT or SUBTYPE_SCREEN_RECORDING
-
 /** A GIF is never a camera capture — including one exported from a Live Photo, which is a re-encode. */
 const val MIME_GIF: String = "image/gif"
 

@@ -23,12 +23,13 @@ fun resourcesFrom(rawAssets: List<RawAsset>): List<Resource> =
                     RESOURCE_META_CREATION_DATE to asset.creationDate,
                     RESOURCE_META_ORIGINAL_FILENAME to raw.originalFilename,
                     RESOURCE_META_MIME to raw.mimeContentType,
-                    // Origin facts (capability `photo-selection-policy`) — carried, never acted on here.
-                    RESOURCE_META_MEDIA_SUBTYPES to asset.mediaSubtypes.toString(),
-                    RESOURCE_META_MEDIA_TYPE to asset.mediaType.toString(),
-                    RESOURCE_META_PIXEL_WIDTH to asset.pixelWidth.toString(),
-                    RESOURCE_META_PIXEL_HEIGHT to asset.pixelHeight.toString(),
-                    RESOURCE_META_HAS_ADJUSTMENTS to asset.hasAdjustments.toString(),
+                    // Neutral origin facts (capability `photo-selection-policy`) — carried, never acted
+                    // on here. Already interpreted by the platform; no PhotoKit value crosses.
+                    RESOURCE_META_IS_SCREENSHOT to asset.facts.isScreenshot.toString(),
+                    RESOURCE_META_IS_SCREEN_RECORDING to asset.facts.isScreenRecording.toString(),
+                    RESOURCE_META_IS_VIDEO to asset.facts.isVideo.toString(),
+                    RESOURCE_META_IS_EDITED to asset.facts.isEdited.toString(),
+                    RESOURCE_META_PIXEL_AREA to (asset.facts.pixelArea?.toString() ?: ""),
                 ),
                 data = raw.handle,
             )
@@ -36,8 +37,8 @@ fun resourcesFrom(rawAssets: List<RawAsset>): List<Resource> =
     }
 
 /**
- * The neutral [AssetFacts] of one raw asset — the origin facts the selection policy decides on, read off
- * the cheap in-memory `PHAsset` properties the walk carried across.
+ * The neutral [AssetFacts] of one raw asset, with the id normalized and the one **resource**-level fact
+ * folded in.
  *
  * The GIF signal lives on the per-resource MIME, not on the asset: it is read from [RawAsset.rawResources]
  * when they are present, and is `false` when a facts-only walk left them empty — the cheap count then
@@ -47,10 +48,10 @@ fun resourcesFrom(rawAssets: List<RawAsset>): List<Resource> =
 fun RawAsset.toFacts(): AssetFacts = AssetFacts(
     assetId = normalizeAssetId(assetId),
     creationDate = CaptureDate(creationDate),
-    isScreenshot = mediaSubtypes and SUBTYPE_SCREENSHOT != 0L,
-    isScreenRecording = mediaSubtypes and SUBTYPE_SCREEN_RECORDING != 0L,
-    isVideo = mediaType == MEDIA_TYPE_VIDEO,
+    isScreenshot = facts.isScreenshot,
+    isScreenRecording = facts.isScreenRecording,
+    isVideo = facts.isVideo,
     isGif = rawResources.any { it.mimeContentType == MIME_GIF },
-    isEdited = hasAdjustments,
-    pixelArea = if (pixelWidth > 0 && pixelHeight > 0) pixelWidth * pixelHeight else null,
+    isEdited = facts.isEdited,
+    pixelArea = facts.pixelArea,
 )

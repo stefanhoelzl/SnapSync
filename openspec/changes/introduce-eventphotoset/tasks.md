@@ -39,11 +39,11 @@
 
 - [x] 3.1 Define neutral `AssetFacts` (`isScreenshot`, `isScreenRecording`, `isVideo`, `imageArea`,
       `videoArea`, `isEdited`, `isGif`, `creationDate`) in `model/`; the selection rules read only these.
-- [ ] 3.2 Move the `PHAsset` → `AssetFacts` interpretation (the `mediaSubtypes`/`mediaType` bit logic + pinned
+- [x] 3.2 Move the `PHAsset` → `AssetFacts` interpretation (the `mediaSubtypes`/`mediaType` bit logic + pinned
       constants) into `:adapter:ios` (`iosMain`); `model/` no longer references a PhotoKit bitmask.
-- [ ] 3.3 `InMemoryRawAssetSource` (fake) produces neutral `AssetFacts` directly; policy `commonTest` uses
+- [x] 3.3 `InMemoryRawAssetSource` (fake) produces neutral `AssetFacts` directly; policy `commonTest` uses
       `isScreenshot = true` etc. (no hand-built bitmask). `iosSimulatorArm64Test` covers the interpretation.
-- [ ] 3.4 Extend the `:test:architecture` guard (or add one) forbidding PhotoKit media-subtype/type ABI in
+- [x] 3.4 Extend the `:test:architecture` guard (or add one) forbidding PhotoKit media-subtype/type ABI in
       `:domain`.
 
 ## 4. EventPhotoSet + CandidateSource
