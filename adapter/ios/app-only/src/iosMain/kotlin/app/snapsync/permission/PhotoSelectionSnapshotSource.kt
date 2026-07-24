@@ -2,7 +2,7 @@ package app.snapsync.permission
 
 import app.snapsync.model.PermissionStatus
 import app.snapsync.model.Resource
-import app.snapsync.ports.PhotoLibrary
+import app.snapsync.gallery.PhotoKitCandidateSource
 import app.snapsync.ports.PhotoSelectionChangeSource
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
@@ -43,7 +43,7 @@ import platform.Photos.PHFetchResult
 class PhotoSelectionSnapshotSource(
     private val permission: StateFlow<PermissionStatus>,
     private val scope: CoroutineScope,
-    private val enumerator: PhotoLibrary,
+    private val source: PhotoKitCandidateSource,
     private val ioDispatcher: CoroutineDispatcher = Dispatchers.Default,
 ) : PhotoSelectionChangeSource {
 
@@ -101,13 +101,14 @@ class PhotoSelectionSnapshotSource(
     }
 
     private suspend fun emitSnapshot(result: PHFetchResult) {
-        val ids = buildList {
-            var i = 0uL
-            while (i < result.count) {
-                (result.objectAtIndex(i) as? PHAsset)?.let { add(it.localIdentifier) }
-                i++
-            }
-        }
-        _snapshots.emit(enumerator.resources(ids, since = ""))
+        // Read the resources straight off the HELD result. This used to collect local identifiers and
+        // re-fetch by them — a second library fetch for assets already in hand. Both were in-flow, so it
+        // was waste rather than a bug, but the fewer fetches this path makes the tighter the
+        // "every fetch is in-flow" property is (capability `limited-photo-access`).
+        //
+        // Eager on purpose: deferring the resource read would leave a later consumer holding only
+        // identifiers, and reaching the assets again off-flow IS the measured storm. The selection is
+        // hand-picked and small, so eagerness costs little and buys the discipline.
+        _snapshots.emit(source.candidatesFrom(result).flatMap { it.resources() })
     }
 }

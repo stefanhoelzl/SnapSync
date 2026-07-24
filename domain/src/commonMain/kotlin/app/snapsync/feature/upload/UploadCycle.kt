@@ -20,7 +20,6 @@ import app.snapsync.model.UploadRequest
 import app.snapsync.model.CaptureCutoff
 import app.snapsync.model.SelectionPolicy
 import app.snapsync.model.EventPhotoSet
-import app.snapsync.model.candidatesFromResources
 import app.snapsync.model.assetIdFromUploadKey
 import app.snapsync.model.excluding
 import co.touchlab.kermit.Logger
@@ -288,8 +287,8 @@ class UploadCycle(
         // cutoff came in with the contribution and is passed down, so a full enumeration is scoped at the
         // platform fetch rather than walked whole and filtered afterwards (capability
         // `photo-selection-policy`).
-        val discovery = platform.discoverResources(store.loadToken(), cutoff.at.iso)
-        log.i { "discovered ${discovery.resources.size} resource(s)" }
+        val discovery = platform.discoverResources(store.loadToken(), configPolicy)
+        log.i { "discovered ${discovery.candidates.size} candidate asset(s)" }
 
         // THE ADMISSION (capability `photo-selection-policy`): one policy, applied once, deciding the
         // whole admitted set — the capture-date RANGE (both bounds), the origin exclusions, the echo
@@ -310,12 +309,15 @@ class UploadCycle(
             suppressedAssetIds = suppressedAssetIds(),
             albumExcludedAssetIds = albumExcludedAssetIds(cutoff),
         )
-        val liveResources = EventPhotoSet(policy) { candidatesFromResources(discovery.resources) }
-            .resources()
+        // The fetch already narrowed by the rules the platform could express; this admission is
+        // authoritative over whatever came back, and `resources()` pays the per-asset round-trip ONLY for
+        // the assets it kept (capability `photo-selection-policy`).
+        val admitted = EventPhotoSet(policy) { discovery.candidates }.assets()
+        val liveResources = admitted.flatMap { it.resources() }
             .also {
                 log.i {
-                    "selection policy admitted ${it.size} of ${discovery.resources.size} discovered " +
-                        "resource(s)"
+                    "selection policy admitted ${admitted.size} of ${discovery.candidates.size} " +
+                        "candidate(s) → ${it.size} resource(s)"
                 }
             }
 

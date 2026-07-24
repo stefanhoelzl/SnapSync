@@ -1,7 +1,9 @@
 package app.snapsync.ios.discovery
 
 import app.snapsync.model.UploadRequest
-import app.snapsync.ports.PhotoLibrary
+import app.snapsync.gallery.PhotoKitCandidateSource
+import app.snapsync.model.SelectionPolicy
+import app.snapsync.ports.CandidateSource
 import app.snapsync.ports.Discovery
 import co.touchlab.kermit.Logger
 import kotlinx.cinterop.BetaInteropApi
@@ -12,6 +14,7 @@ import platform.Foundation.NSMutableURLRequest
 import platform.Foundation.NSURL
 import platform.Foundation.setHTTPMethod
 import platform.Foundation.setValue
+import platform.Photos.PHAsset
 import platform.Photos.PHObjectTypeAsset
 import platform.Photos.PHPersistentChangeToken
 import platform.Photos.PHPhotoLibrary
@@ -30,33 +33,41 @@ import platform.Photos.PHPhotoLibrary
 @OptIn(ExperimentalForeignApi::class, BetaInteropApi::class)
 class IosDiscovery(
     private val log: Logger,
-    private val enumerator: PhotoLibrary,
+    private val source: PhotoKitCandidateSource,
 ) {
     private val library: PHPhotoLibrary get() = PHPhotoLibrary.sharedPhotoLibrary()
 
     /**
-     * Enumerate the resources changed since [sinceToken] (null / unarchivable / expired → a full
-     * enumeration, scoped to assets captured at or after [since]), plus the cursor to persist once the
-     * cycle drains. Identical for both upload tiers.
+     * The candidate assets changed since [sinceToken] (null / unarchivable / expired → a full
+     * enumeration, narrowed by [policy]), plus the cursor to persist once the cycle drains. Identical for
+     * both upload tiers.
+     *
+     * The **id-scoped** variant lives here rather than on [CandidateSource]: only this class has
+     * identifiers to scope by, because only it reads the change feed. Putting it on the shared seam would
+     * push an upload-only concern onto the port the status total and the join preview also hold.
      */
-    suspend fun discover(sinceToken: ByteArray?, since: String): Discovery {
+    suspend fun discover(sinceToken: ByteArray?, policy: SelectionPolicy): Discovery {
         val token = sinceToken?.let(::unarchiveToken)
         val changes = token?.let { library.fetchPersistentChangesSinceToken(it, error = null) }
         if (token == null || changes == null) {
-            // Full enumeration: `resources` is every current IN-SCOPE resource key — the live set the
-            // cycle reconciles against. No change feed, so no incremental removals. Scoped by [since] so
-            // the walk does not issue a PhotoKit round-trip per library asset; the cycle's own cutoff
-            // filter stays authoritative over what comes back.
+            // Full enumeration: every current IN-SCOPE candidate — the live set the cycle reconciles
+            // against. No change feed, so no incremental removals. The policy narrows the fetch so the
+            // walk does not touch every library asset; the cycle's own admission stays authoritative
+            // over what comes back.
             return Discovery(
-                resources = enumerator.enumerate(since),
+                candidates = source.candidates(policy),
                 nextToken = archiveToken(library.currentChangeToken),
                 fullEnumeration = true,
             )
         }
         // Incremental: derive changed assets to (re)upload and removed assets to prune. Removed ids
-        // are normalized `/`→`_` so they match the `<localId>-…` key scheme. The changed set is bounded by
-        // [since] too: a change feed says what CHANGED, not what is in SCOPE, and an iCloud sync can hand
-        // back thousands of decades-old assets whose resources would each cost a PhotoKit round-trip.
+        // are normalized `/`→`_` so they match the `<localId>-…` key scheme.
+        //
+        // `fetchAssetsWithLocalIdentifiers` takes no predicate, so the policy cannot narrow this fetch.
+        // It does not need to: the candidates it returns carry facts only, and the cycle's admission
+        // rejects the out-of-scope ones BEFORE any of them is asked for its resources. A change feed says
+        // what CHANGED, not what is in SCOPE — an iCloud sync can hand back thousands of decades-old
+        // assets — and the expensive part is the per-asset resource read, which none of them now reaches.
         val identifiers = linkedSetOf<String>()
         val removed = linkedSetOf<String>()
         changes.enumerateChangesWithBlock { change, _ ->
@@ -67,7 +78,9 @@ class IosDiscovery(
             details.deletedLocalIdentifiers().forEach { removed.add((it as String).replace('/', '_')) }
         }
         return Discovery(
-            resources = enumerator.resources(identifiers.toList(), since),
+            candidates = source.candidatesFrom(
+                PHAsset.fetchAssetsWithLocalIdentifiers(identifiers.toList(), null),
+            ),
             nextToken = archiveToken(library.currentChangeToken),
             removedAssetIds = removed.toList(),
         )

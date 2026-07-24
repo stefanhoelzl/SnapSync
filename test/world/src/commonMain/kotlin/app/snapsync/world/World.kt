@@ -2,7 +2,6 @@ package app.snapsync.world
 
 import app.snapsync.compose.AppCore
 import app.snapsync.compose.AppPorts
-import app.snapsync.compose.ResourceEnumerator
 import app.snapsync.compose.UploadPorts
 import app.snapsync.compose.snapSyncApp
 import app.snapsync.compose.uploadCore
@@ -29,6 +28,8 @@ import app.snapsync.join.HttpEnrollment
 import app.snapsync.join.HttpEventDirectory
 import app.snapsync.membership.HttpDeviceFilesSource
 import app.snapsync.membership.HttpLeaveNotifier
+import app.snapsync.model.normalizeAssetId
+import app.snapsync.model.resourcesFrom
 import app.snapsync.model.Resource
 import app.snapsync.model.AssetFacts
 import app.snapsync.model.CaptureCeiling
@@ -59,7 +60,7 @@ import app.snapsync.ports.ConfigSource
 import app.snapsync.ports.ConfigStore
 import app.snapsync.ports.CycleResult
 import app.snapsync.ports.PhotoAccessRequester
-import app.snapsync.ports.PhotoLibrary
+import app.snapsync.ports.CandidateSource
 import app.snapsync.ports.TransferOutcome
 import app.snapsync.model.PermissionStatus
 import co.touchlab.kermit.Logger
@@ -104,7 +105,8 @@ class World(
 
     /** The world's gallery rigging around the honest raw-asset fake (see [WorldGallery]). */
     val gallery: WorldGallery = WorldGallery()
-    val enumerator: PhotoLibrary = ResourceEnumerator(gallery.source)
+    /** The one read seam, straight off the world-owned cell — no enumerator composition to stand up. */
+    val enumerator: CandidateSource = gallery.source
     val ledgerBackend: InMemoryLedgerStore = InMemoryLedgerStore()
     val discoveryStore: InMemoryDiscoveryStore = InMemoryDiscoveryStore()
     val downloadStore: RecordingDownloadStore = RecordingDownloadStore(InMemoryDownloadStore())
@@ -268,10 +270,7 @@ class World(
             // The operator plays the OS: nothing auto-runs. A selection change updates the cell + N;
             // the operator then invokes the cycle by hand, exactly like every other world trigger.
             pumpSelectionChanged = {},
-            photoLibrary = enumerator,
-            // The cheap facts-only walk for the shareable-count preview (capability `join-share-count`) —
-            // the same world-owned gallery cell the resource enumeration reads.
-            rawFactsSince = { cutoff -> gallery.source.factsSince(cutoff.at.iso).map { it.toFacts() } },
+            candidateSource = enumerator,
             // The shared discovery cursor a cutoff-lowering reconfigure invalidates (capability
             // `reconfigure-membership`) — the SAME store the world's upload cycle reads.
             clearDiscoveryCursor = discoveryStore::clearToken,
@@ -335,7 +334,13 @@ class World(
         // world that never installed the host wiring hangs here — deliberately loud, since the lever
         // would otherwise silently do nothing.
         selectionChangesCell.subscriptionCount.first { it > 0 }
-        selectionChangesCell.emit(enumerator.resources(assetIds.toList(), since = ""))
+        // The sanctioned read the real snapshot source makes: eager, WITH resources (capability
+        // `limited-photo-access` — deferring it would need a re-fetch by identifier later, which is the
+        // measured storm). Unscoped here because the selection IS the scope.
+        val wanted = assetIds.toSet()
+        selectionChangesCell.emit(
+            gallery.current().filter { normalizeAssetId(it.assetId) in wanted }.flatMap { resourcesFrom(listOf(it)) },
+        )
     }
 
     /**

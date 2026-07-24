@@ -1,6 +1,6 @@
 package app.snapsync.world
 
-import app.snapsync.fake.InMemoryRawAssetSource
+import app.snapsync.fake.InMemoryCandidateSource
 import app.snapsync.model.PermissionStatus
 import app.snapsync.model.RawAsset
 import app.snapsync.ports.AssetRef
@@ -37,8 +37,8 @@ class MutablePhotoAccessStatusSource(
 class WorldGallery {
     private val state = MutableStateFlow<List<RawAsset>>(emptyList())
 
-    /** The honest port impl over the world-owned cell — handed to `ResourceEnumerator`/compositions. */
-    val source: InMemoryRawAssetSource = InMemoryRawAssetSource(state)
+    /** The honest port impl over the world-owned cell — handed straight to the compositions. */
+    val source: InMemoryCandidateSource = InMemoryCandidateSource(state)
 
     /** The current contents, unscoped — a rigging-only read (production has no unbounded walk). */
     fun current(): List<RawAsset> = state.value

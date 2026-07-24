@@ -1,5 +1,6 @@
 package app.snapsync.ios.urlsession
 
+import app.snapsync.model.SelectionPolicy
 import app.snapsync.model.Resource
 import app.snapsync.model.UploadError
 import app.snapsync.model.UploadRequest
@@ -104,9 +105,9 @@ class IosUrlSessionUploadPlatform(
         }
     }
 
-    override suspend fun discoverResources(sinceToken: ByteArray?, since: String): Discovery =
-        log.invocation("platform.discoverResources", result = { "${it.resources.size} resource(s)" }) {
-            discovery.discover(sinceToken, since)
+    override suspend fun discoverResources(sinceToken: ByteArray?, policy: SelectionPolicy): Discovery =
+        log.invocation("platform.discoverResources", result = { "${it.candidates.size} candidate(s)" }) {
+            discovery.discover(sinceToken, policy)
         }
 
     // No OS-sponsored free retry on this platform: failures return via fetchAckJobs and are recreated.

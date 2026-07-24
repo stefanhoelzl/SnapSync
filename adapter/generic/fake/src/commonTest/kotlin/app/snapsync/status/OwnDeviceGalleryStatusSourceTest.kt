@@ -1,14 +1,15 @@
 package app.snapsync.status
 
+import app.snapsync.model.candidatesFromResources
+import app.snapsync.model.Candidate
 import app.snapsync.model.RESOURCE_META_IS_SCREENSHOT
 import app.snapsync.model.RESOURCE_META_IS_VIDEO
 import app.snapsync.model.RESOURCE_META_PIXEL_AREA
 import app.snapsync.model.Resource
 import app.snapsync.model.SelectionPolicy
 import app.snapsync.model.captureCutoff
-import app.snapsync.ports.PhotoLibrary
 import app.snapsync.feature.status.OwnDeviceGalleryStatusSource
-import app.snapsync.fake.InMemoryPhotoLibrary
+import app.snapsync.ports.CandidateSource
 import kotlinx.coroutines.flow.MutableStateFlow
 import app.snapsync.model.RESOURCE_META_CREATION_DATE
 import kotlin.test.Test
@@ -24,19 +25,23 @@ private val ADMITTING = SelectionPolicy.from(includesUpload = true, cutoff = CUT
 /** After [CUTOFF], so a default-dated resource is in scope. */
 private const val IN_SCOPE = "2026-07-10T00:00:00Z"
 
+/** A candidate source over a fixed resource list — held candidates, as a snapshot or a fake walk gives. */
+private class ResourceCandidates(private val cell: MutableStateFlow<List<Resource>>) : CandidateSource {
+    constructor(resources: List<Resource>) : this(MutableStateFlow(resources))
+
+    override suspend fun candidates(policy: SelectionPolicy): List<Candidate> =
+        candidatesFromResources(cell.value)
+}
+
 class OwnDeviceGalleryStatusSourceTest {
 
     /** Records whether the walk happened at all — "counted 0" and "never looked" are different claims. */
-    private class RecordingEnumerator(
-        private val delegate: PhotoLibrary,
-    ) : PhotoLibrary {
+    private class RecordingEnumerator(private val delegate: CandidateSource) : CandidateSource {
         var walks = 0
-        override suspend fun enumerate(since: String): List<Resource> {
+        override suspend fun candidates(policy: SelectionPolicy): List<Candidate> {
             walks++
-            return delegate.enumerate(since)
+            return delegate.candidates(policy)
         }
-        override suspend fun resources(localIdentifiers: List<String>, since: String): List<Resource> =
-            delegate.resources(localIdentifiers, since)
     }
 
     // ---- The direction gate, for the total (capability `photo-selection-policy`) ----------------------
@@ -48,7 +53,7 @@ class OwnDeviceGalleryStatusSourceTest {
     @Test
     fun `a non-contributing membership totals zero without walking the library`() = runTest {
         val enumerator = RecordingEnumerator(
-            InMemoryPhotoLibrary(
+            ResourceCandidates(
                 listOf(resource("A-primary.jpg", "A"), resource("B-primary.jpg", "B")),
             ),
         )
@@ -67,7 +72,7 @@ class OwnDeviceGalleryStatusSourceTest {
         // The control: None is not a blanket off-switch, it is one branch. Since must behave exactly as the
         // bare cutoff did before, or this change quietly broke every normal member's progress.
         val enumerator = RecordingEnumerator(
-            InMemoryPhotoLibrary(
+            ResourceCandidates(
                 listOf(resource("A-primary.jpg", "A"), resource("B-primary.jpg", "B")),
             ),
         )
@@ -80,34 +85,37 @@ class OwnDeviceGalleryStatusSourceTest {
     }
 
     /** Dated in scope by default: an asset with no `creationDate` is out of scope under any cutoff. */
-    // ---- refreshFrom: the selection snapshot serves the total (capability `limited-photo-access`) ----
+    // ---- the selection snapshot serves the total (capability `limited-photo-access`) ----
+    // There is no `refreshFrom` any more: the permission-aware source supplies the snapshot under LIMITED,
+    // so the total has ONE entry point regardless of grant. A second one restated the mode difference the
+    // source owns, and it is that restatement — not the reading — that lets two paths drift apart.
 
     @Test
-    fun `refreshFrom counts the provided snapshot without walking`() = runTest {
-        val enumerator = RecordingEnumerator(InMemoryPhotoLibrary(emptyList()))
-        val source = OwnDeviceGalleryStatusSource(enumerator)
-
-        source.refreshFrom(
+    fun `a snapshot-backed source is counted through the same admission`() = runTest {
+        // The snapshot backs the source instead of being pushed in as an argument; the admission over it
+        // is identical either way, which is the whole point of the collapse.
+        val snapshot = ResourceCandidates(
             listOf(
                 resource("A-primary.jpg", "A"),
                 datedResource("B-primary.jpg", "B", "2026-07-01T00:00:00Z"), // pre-cutoff → excluded
             ),
-            ADMITTING,
         )
+        val source = OwnDeviceGalleryStatusSource(snapshot)
 
-        assertEquals(1, source.size.value, "the snapshot is counted through the same three-way subtraction")
-        assertEquals(0, enumerator.walks, "a snapshot refresh never enumerates the library")
+        source.refresh(ADMITTING)
+
+        assertEquals(1, source.size.value, "the snapshot is counted through the same admission")
     }
 
     @Test
-    fun `refreshFrom for a non-contributing membership totals zero`() = runTest {
-        val enumerator = RecordingEnumerator(InMemoryPhotoLibrary(emptyList()))
+    fun `a non-contributing membership totals zero whatever the source holds`() = runTest {
+        val enumerator = RecordingEnumerator(ResourceCandidates(listOf(resource("A-primary.jpg", "A"))))
         val source = OwnDeviceGalleryStatusSource(enumerator)
 
-        source.refreshFrom(listOf(resource("A-primary.jpg", "A")), SelectionPolicy.None)
+        source.refresh(SelectionPolicy.None)
 
         assertEquals(0, source.size.value)
-        assertEquals(0, enumerator.walks)
+        assertEquals(0, enumerator.walks, "a non-contributor is answered without consulting the source")
     }
 
     private fun resource(filename: String, assetId: String) =
@@ -143,7 +151,7 @@ class OwnDeviceGalleryStatusSourceTest {
         // policy. If it counted the screenshot the cycle refuses to upload, N would be 3 while only 2 could
         // ever complete — and the joined screen would sit at "pending" forever. That is the whole reason
         // this rule is a requirement rather than an implementation detail.
-        val enumerator = InMemoryPhotoLibrary(
+        val enumerator = ResourceCandidates(
             listOf(
                 originResource("cam-primary.heic", "CAM"),
                 originResource("shot-primary.png", "SHOT", isScreenshot = true),
@@ -159,7 +167,7 @@ class OwnDeviceGalleryStatusSourceTest {
 
     @Test
     fun `a denylisted album member does not inflate the total`() = runTest {
-        val enumerator = InMemoryPhotoLibrary(
+        val enumerator = ResourceCandidates(
             listOf(originResource("cam.heic", "CAM"), originResource("wa.heic", "WA")),
         )
         val source = OwnDeviceGalleryStatusSource(enumerator, albumExcludedAssetIds = { setOf("WA") })
@@ -171,7 +179,7 @@ class OwnDeviceGalleryStatusSourceTest {
 
     @Test
     fun `size counts own qualifying assets by photo`() = runTest {
-        val enumerator = InMemoryPhotoLibrary(
+        val enumerator = ResourceCandidates(
             listOf(
                 resource("A-primary.jpg", "A"),
                 resource("A-live.mov", "A"), // A is a Live Photo: two resources, one photo
@@ -189,7 +197,7 @@ class OwnDeviceGalleryStatusSourceTest {
     fun `downloaded suppressed assets are excluded from the upload total`() = runTest {
         // B is a foreign photo this device downloaded + imported (suppressed). It is in the library
         // (enumerated) but must NOT count toward the upload universe — else progress pegs below 100%.
-        val enumerator = InMemoryPhotoLibrary(
+        val enumerator = ResourceCandidates(
             listOf(
                 resource("A-primary.jpg", "A"), // own
                 resource("B-primary.jpg", "B"), // downloaded foreign (suppressed)
@@ -206,7 +214,7 @@ class OwnDeviceGalleryStatusSourceTest {
     fun `refresh recomputes after the library changes`() = runTest {
         // The honest fake exposes only the port; the test owns the cell it reads (fake-honesty gate).
         val cell = MutableStateFlow(listOf(resource("A-primary.jpg", "A")))
-        val enumerator = InMemoryPhotoLibrary(cell)
+        val enumerator = ResourceCandidates(cell)
         val source = OwnDeviceGalleryStatusSource(enumerator)
         source.refresh(ADMITTING)
         assertEquals(1, source.size.value)
@@ -220,7 +228,7 @@ class OwnDeviceGalleryStatusSourceTest {
     fun `pre-cutoff assets are excluded from the total so progress can reach 100 percent`() = runTest {
         // OLD precedes the cutoff → never uploads → must not inflate N (else the screen shows "pending"
         // forever). NEW is at/after the cutoff → counted (capability photo-selection-policy).
-        val enumerator = InMemoryPhotoLibrary(
+        val enumerator = ResourceCandidates(
             listOf(
                 datedResource("OLD-primary.jpg", "OLD", "2026-07-01T00:00:00Z"),
                 datedResource("NEW-primary.jpg", "NEW", "2026-07-10T00:00:00Z"),
@@ -235,7 +243,7 @@ class OwnDeviceGalleryStatusSourceTest {
 
     @Test
     fun `an undated asset is excluded under a cutoff`() = runTest {
-        val enumerator = InMemoryPhotoLibrary(listOf(undatedResource("U-primary.jpg", "U")))
+        val enumerator = ResourceCandidates(listOf(undatedResource("U-primary.jpg", "U")))
         val source = OwnDeviceGalleryStatusSource(enumerator)
 
         source.refresh(ADMITTING)

@@ -36,9 +36,19 @@ package app.snapsync.model
  * precisely how the ceiling went missing, because the device-global accumulator was fed the
  * origin-filtered set and left the capture bounds to a projection that applied only one of them.
  *
- * [candidates] is a `compose/`-built effect (spec `module-architecture`: every platform touch is an
- * injected lambda), so this type stays pure `model/` — visible to every feature, and unit-tested on both
- * JVM and the simulator.
+ * ## Why [candidates] is a lambda and not the port itself
+ *
+ * The production backing IS a port (`ports/CandidateSource`), but this type cannot name it: `model/` is the
+ * innermost zone and references nothing project-internal outside itself (law `module-architecture`, "Zones
+ * inside the core"), while a port lives in `ports/`. Features — which may hold ports — bind the two:
+ * `EventPhotoSet(policy, source::candidates)`. That keeps the admission itself in `model/`, where it is
+ * exercised in `commonTest` on JVM **and** the simulator, rather than in untested wiring.
+ *
+ * The lambda's hazard is real and was realised once: this seam previously existed with the same signature
+ * and **all nine call sites ignored the parameter**, each fetching eagerly and handing over a finished
+ * list, so the policy never reached the platform that could have narrowed on it. A type cannot catch that.
+ * `EventPhotoSetSourceTest` (`:test:architecture`) does instead: outside the two backings that genuinely
+ * already hold their resources, a construction whose lambda discards its parameter is a red build.
  */
 class EventPhotoSet(
     private val policy: SelectionPolicy,

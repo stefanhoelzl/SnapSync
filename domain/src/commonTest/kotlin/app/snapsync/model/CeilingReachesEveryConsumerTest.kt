@@ -1,6 +1,7 @@
 package app.snapsync.model
 
 import app.snapsync.feature.status.ShareableCountSource
+import app.snapsync.ports.CandidateSource
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
@@ -85,14 +86,15 @@ class CeilingReachesEveryConsumerTest {
         val facts = discovered.map {
             AssetFacts(it.assetId, CaptureDate(it.metadata[RESOURCE_META_CREATION_DATE]!!), pixelArea = 12_000_000)
         }
-        val count = ShareableCountSource(factsSince = { facts })
-            .count(
-                includesUpload = true,
-                cutoff = cutoff,
-                ceiling = ceiling,
-                permission = PermissionStatus.GRANTED,
-                selectionSnapshot = null,
-            )
+        val source = object : CandidateSource {
+            override suspend fun candidates(policy: SelectionPolicy) = candidatesFromFacts(facts)
+        }
+        val count = ShareableCountSource(source).count(
+            includesUpload = true,
+            cutoff = cutoff,
+            ceiling = ceiling,
+            permission = PermissionStatus.GRANTED,
+        )
         assertEquals(1, count)
     }
 

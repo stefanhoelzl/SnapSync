@@ -8,6 +8,7 @@ import app.snapsync.ports.PlatformJobState
 import app.snapsync.ports.PlatformUploadJob
 import app.snapsync.ports.BackgroundTransfer
 
+import app.snapsync.model.candidatesFromResources
 import app.snapsync.model.LedgerEntry
 import app.snapsync.model.LedgerState
 import app.snapsync.feature.upload.LedgerWriter
@@ -73,17 +74,21 @@ class UploadCycleTest {
         val retried = mutableListOf<PlatformUploadJob>()
         val acknowledged = mutableListOf<PlatformUploadJob>()
         var discoverTokenArg: ByteArray? = null
-        var discoverSinceArg: String? = null
+        var discoverPolicyArg: SelectionPolicy? = null
         private var creates = 0
 
         override suspend fun fetchRetryJobs() = retryJobs
         override suspend fun fetchAckJobs() = ackJobs
         override suspend fun retryJob(job: PlatformUploadJob, request: UploadRequest) { retried += job }
         override suspend fun acknowledge(job: PlatformUploadJob) { acknowledged += job }
-        override suspend fun discoverResources(sinceToken: ByteArray?, since: String): Discovery {
+        override suspend fun discoverResources(sinceToken: ByteArray?, policy: SelectionPolicy): Discovery {
             discoverTokenArg = sinceToken
-            discoverSinceArg = since
-            return Discovery(discovered, nextToken, removedAssetIds, fullEnumeration)
+            discoverPolicyArg = policy
+            // The fake returns HELD candidates: it stands in for a platform whose discovery already
+            // carried resources, which is the honest shape for an in-memory fixture. It deliberately
+            // does NOT narrow by the policy — a fake that mirrored the real fetch predicate would hide
+            // an admission relying on the fetch to have already excluded something.
+            return Discovery(candidatesFromResources(discovered), nextToken, removedAssetIds, fullEnumeration)
         }
         override suspend fun createJob(request: UploadRequest, resource: Resource): CreateResult {
             if (failCreate) return CreateResult.FAILED
@@ -368,7 +373,7 @@ class UploadCycleTest {
         decliningCycle(InMemoryLedgerStore(), platform, store, order).run()
 
         assertEquals(emptyList(), order, "nothing runs — not even the reconcile")
-        assertNull(platform.discoverSinceArg, "the library is never enumerated")
+        assertNull(platform.discoverPolicyArg, "the library is never enumerated")
     }
 
     /** A declined cycle discovered nothing, so it advances nothing: the cursor stays exactly where it was. */
@@ -428,7 +433,7 @@ class UploadCycleTest {
 
         assertTrue(platform.created.isEmpty(), "a deferred cycle must create no upload jobs")
         assertTrue(platform.acknowledged.isEmpty(), "a deferred cycle must not adjudicate jobs either")
-        assertNull(platform.discoverSinceArg, "a deferred cycle must not even walk the library")
+        assertNull(platform.discoverPolicyArg, "a deferred cycle must not even walk the library")
         assertNull(store.saved, "the cursor must not advance on a deferred cycle")
         assertTrue(!store.cleared, "a deferral leaves the cursor untouched so the next cycle retries")
     }
@@ -918,7 +923,13 @@ class UploadCycleTest {
 
         cycleWithCutoff(backend, platform, "2026-07-06T14:32:11Z").run()
 
-        assertEquals("2026-07-06T14:32:11Z", platform.discoverSinceArg)
+        // The POLICY reaches the platform, not a bound flattened out of it — which is what lets the
+        // fetch predicate be derived by translating the rules (capability `photo-selection-policy`).
+        assertEquals(
+            captureCutoff("2026-07-06T14:32:11Z"),
+            platform.discoverPolicyArg?.walkFloor,
+            "the platform receives the membership's policy, carrying its capture floor",
+        )
     }
 
     @Test

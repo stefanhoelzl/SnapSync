@@ -11,14 +11,14 @@
 
 ## 2. The candidate source seam
 
-- [ ] 2.1 Define `ports/CandidateSource` with the single method `candidates(policy): List<Candidate>`.
+- [x] 2.1 Define `ports/CandidateSource` with the single method `candidates(policy): List<Candidate>`.
       `Candidate` (facts + `suspend resources()`) already exists in `model/` from `introduce-eventphotoset`.
-- [ ] 2.2 `EventPhotoSet` takes a `CandidateSource` instead of a lambda; delete `candidatesFromFacts` /
+- [x] 2.2 `EventPhotoSet` takes a `CandidateSource` instead of a lambda; delete `candidatesFromFacts` /
       `candidatesFromResources` as *public* seams where a real source now serves, keeping whichever remain
       genuinely "already fetched" (the ledger-backed manifest projection, the LIMITED snapshot).
-- [ ] 2.3 Delete `ports/RawAssetSource`, `ports/PhotoLibrary` and `compose/ResourceEnumerator`. Keep
+- [x] 2.3 Delete `ports/RawAssetSource`, `ports/PhotoLibrary` and `compose/ResourceEnumerator`. Keep
       `resourcesFrom`, `uploadKey`, `resourceRole`, `normalizeAssetId` in `model/`, now called per-asset.
-- [ ] 2.4 `BackgroundTransfer.discoverResources(sinceToken, policy)` — replace `since: String`; `Discovery`
+- [x] 2.4 `BackgroundTransfer.discoverResources(sinceToken, policy)` — replace `since: String`; `Discovery`
       carries candidates. Update `SelectionScopedTransfer` (behavior unchanged — it still reports
       `fullEnumeration = false`, which is what stops `retainAssets` pruning to the selection).
 - [ ] 2.5 Confirm no `since: String` parameter survives anywhere in the read path (grep gate, then delete
@@ -26,38 +26,38 @@
 
 ## 3. iOS adapter: translate the rules
 
-- [ ] 3.1 `PhotoLibraryRawAssetSource` becomes the iOS `CandidateSource`: fetch → `toAssetFacts` → candidates
+- [x] 3.1 `PhotoLibraryRawAssetSource` becomes the iOS `CandidateSource`: fetch → `toAssetFacts` → candidates
       that close over the `PHAsset` (never over a bare id — a candidate that re-fetched by identifier at
       read time would reintroduce the measured off-flow-fetch storm).
-- [ ] 3.2 Build `PHFetchOptions` by `when`-matching `SelectionRule`: translate `CaptureAfter`,
+- [x] 3.2 Build `PHFetchOptions` by `when`-matching `SelectionRule`: translate `CaptureAfter`,
       `CaptureBefore`, `ExcludeScreenshots`, `ExcludeScreenRecordings`; explicitly ignore `MinImageArea`,
       `MinVideoArea`, `NotEcho`, `NotInDenylistedAlbum` with the reason at each branch. The three
       device-verified predicate constraints are unchanged — `NOT ((mediaSubtypes & N) != 0)`, no arithmetic,
       no `hasAdjustments`.
-- [ ] 3.3 `Candidate.resources()` reads `assetResourcesForAsset` for that asset and maps through the shared
+- [x] 3.3 `Candidate.resources()` reads `assetResourcesForAsset` for that asset and maps through the shared
       `resourcesFrom`.
-- [ ] 3.4 `IosDiscovery` builds candidates from its own full or id-scoped fetch via one shared internal
+- [x] 3.4 `IosDiscovery` builds candidates from its own full or id-scoped fetch via one shared internal
       mapping; the id-scoped variant stays internal to it (nothing else has identifiers to scope by).
 - [ ] 3.5 `iosSimulatorArm64Test`: the exhaustive `when` is the point of the translation — assert every rule
       is either translated or explicitly declined, so a new rule cannot be silently dropped.
 
 ## 4. Permission-aware source; consumers stop branching
 
-- [ ] 4.1 `SnapshotCandidateSource` over the existing selection cell. **Read discipline unchanged**: the
+- [x] 4.1 `SnapshotCandidateSource` over the existing selection cell. **Read discipline unchanged**: the
       snapshot is still read eagerly, with resources, at the cold-launch baseline and observer emissions.
-- [ ] 4.2 Assemble the permission-aware `CandidateSource` in `compose/` (full walk under `GRANTED`, snapshot
+- [x] 4.2 Assemble the permission-aware `CandidateSource` in `compose/` (full walk under `GRANTED`, snapshot
       under `LIMITED`).
-- [ ] 4.3 Delete `OwnDeviceGalleryStatusSource.refreshFrom`; `refresh(policy)` serves both grants.
-- [ ] 4.4 `ShareableCountSource` takes a `CandidateSource`; delete its `GRANTED`/`LIMITED` arm. **Keep** the
+- [x] 4.3 Delete `OwnDeviceGalleryStatusSource.refreshFrom`; `refresh(policy)` serves both grants.
+- [x] 4.4 `ShareableCountSource` takes a `CandidateSource`; delete its `GRANTED`/`LIMITED` arm. **Keep** the
       `DENIED`/`NOT_DETERMINED` → `null`, which is a different question (render no row, not zero).
 - [ ] 4.5 `commonTest`: `N` and the preview agree under `GRANTED` and under `LIMITED`; a `DENIED` grant still
       yields no count rather than zero.
 
 ## 5. Fakes and harness
 
-- [ ] 5.1 `InMemoryRawAssetSource` + `InMemoryPhotoLibrary` collapse into one honest in-memory
+- [x] 5.1 `InMemoryRawAssetSource` + `InMemoryPhotoLibrary` collapse into one honest in-memory
       `CandidateSource` (state cell constructor-injected; `FakeHonestyTest` still applies).
-- [ ] 5.2 `:test:world` gallery lever and `WorldInspectorController`'s policy badge read the new seam.
+- [x] 5.2 `:test:world` gallery lever and `WorldInspectorController`'s policy badge read the new seam.
 - [ ] 5.3 `:test:integration`: `AdmittedSetIntegrationTest` still passes unchanged — it asserts the property
       over the composed core, so it should not need to know the seam moved. If it does need changing, that
       is a signal the seam leaked into the assertion.
