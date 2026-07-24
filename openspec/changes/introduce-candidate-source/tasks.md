@@ -21,7 +21,7 @@
 - [x] 2.4 `BackgroundTransfer.discoverResources(sinceToken, policy)` — replace `since: String`; `Discovery`
       carries candidates. Update `SelectionScopedTransfer` (behavior unchanged — it still reports
       `fullEnumeration = false`, which is what stops `retainAssets` pruning to the selection).
-- [ ] 2.5 Confirm no `since: String` parameter survives anywhere in the read path (grep gate, then delete
+- [x] 2.5 Confirm no `since: String` parameter survives anywhere in the read path (grep gate, then delete
       the grep — the ports are gone, so there is nothing left to regress).
 
 ## 3. iOS adapter: translate the rules
@@ -38,7 +38,7 @@
       `resourcesFrom`.
 - [x] 3.4 `IosDiscovery` builds candidates from its own full or id-scoped fetch via one shared internal
       mapping; the id-scoped variant stays internal to it (nothing else has identifiers to scope by).
-- [ ] 3.5 `iosSimulatorArm64Test`: the exhaustive `when` is the point of the translation — assert every rule
+- [x] 3.5 `iosSimulatorArm64Test`: the exhaustive `when` is the point of the translation — assert every rule
       is either translated or explicitly declined, so a new rule cannot be silently dropped.
 
 ## 4. Permission-aware source; consumers stop branching
@@ -50,7 +50,7 @@
 - [x] 4.3 Delete `OwnDeviceGalleryStatusSource.refreshFrom`; `refresh(policy)` serves both grants.
 - [x] 4.4 `ShareableCountSource` takes a `CandidateSource`; delete its `GRANTED`/`LIMITED` arm. **Keep** the
       `DENIED`/`NOT_DETERMINED` → `null`, which is a different question (render no row, not zero).
-- [ ] 4.5 `commonTest`: `N` and the preview agree under `GRANTED` and under `LIMITED`; a `DENIED` grant still
+- [x] 4.5 `commonTest`: `N` and the preview agree under `GRANTED` and under `LIMITED`; a `DENIED` grant still
       yields no count rather than zero.
 
 ## 5. Fakes and harness
@@ -58,15 +58,15 @@
 - [x] 5.1 `InMemoryRawAssetSource` + `InMemoryPhotoLibrary` collapse into one honest in-memory
       `CandidateSource` (state cell constructor-injected; `FakeHonestyTest` still applies).
 - [x] 5.2 `:test:world` gallery lever and `WorldInspectorController`'s policy badge read the new seam.
-- [ ] 5.3 `:test:integration`: `AdmittedSetIntegrationTest` still passes unchanged — it asserts the property
+- [x] 5.3 `:test:integration`: `AdmittedSetIntegrationTest` still passes unchanged — it asserts the property
       over the composed core, so it should not need to know the seam moved. If it does need changing, that
       is a signal the seam leaked into the assertion.
 
 ## 6. Verification
 
-- [ ] 6.1 `./gradlew build` green (all targets + JVM tests, incl. `:test:architecture`).
-- [ ] 6.2 `./gradlew compileIosMainKotlinMetadata` green.
-- [ ] 6.3 `./gradlew architectureDiagrams` — the module graph is unchanged, but ports moved; commit if it
+- [x] 6.1 `./gradlew build` green (all targets + JVM tests, incl. `:test:architecture`).
+- [x] 6.2 `./gradlew compileIosMainKotlinMetadata` green.
+- [x] 6.3 `./gradlew architectureDiagrams` — the module graph is unchanged, but ports moved; commit if it
       drifts.
 - [ ] 6.4 Measure what the change is for: log the resource-read count for one walk before and after on a
       library holding sub-floor images. The claim is that reads drop from *every date-passing asset* to
