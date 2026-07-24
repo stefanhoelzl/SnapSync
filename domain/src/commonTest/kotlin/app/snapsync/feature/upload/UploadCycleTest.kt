@@ -19,7 +19,6 @@ import app.snapsync.model.UploadRequestProvider
 import app.snapsync.model.CaptureCutoff
 import app.snapsync.model.SelectionPolicy
 import app.snapsync.model.captureCutoff
-import app.snapsync.model.MIME_GIF
 import app.snapsync.model.RESOURCE_META_CREATION_DATE
 import app.snapsync.model.RESOURCE_META_IS_EDITED
 import app.snapsync.model.RESOURCE_META_IS_SCREENSHOT
@@ -1019,10 +1018,12 @@ class UploadCycleTest {
 
     @Test
     fun a_screen_recording_and_a_gif_are_excluded() = runTest {
+        // The GIF is excluded by the RESOLUTION FLOOR now, not by a rule reading its MIME — a messenger
+        // GIF is 480x270 = 0.13 MP. The cycle's admitted set is unchanged for the ordinary case.
         val platform = FakePlatform(
             discovered = listOf(
                 originResource("rec.mov", "rec", isScreenRecording = true, isVideo = true),
-                originResource("meme.gif", "meme", mime = MIME_GIF),
+                originResource("meme.gif", "meme", width = 480, height = 270, mime = "image/gif"),
                 originResource("cam.heic", "cam"),
             ),
         )

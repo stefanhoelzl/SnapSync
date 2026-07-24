@@ -45,7 +45,6 @@ import app.snapsync.model.DENYLISTED_ALBUM_TITLES
 import app.snapsync.model.DeviceManifestAsset
 import app.snapsync.model.Direction
 import app.snapsync.model.EventConfig
-import app.snapsync.model.MIME_GIF
 import app.snapsync.model.ManifestResource
 import app.snapsync.model.RawAsset
 import app.snapsync.model.RawResource
@@ -424,11 +423,18 @@ class World(
             isVideo = true, pixelWidth = 1920, pixelHeight = 1080,
         )
 
-    /** A GIF. Excluded by MIME — never a camera capture, not even one exported from a Live Photo. */
+    /**
+     * A GIF as a messenger saves one — 480×270 = 0.13 MP. Excluded by the **resolution floor**, not by a
+     * rule reading its MIME: there is no animated-image rule any more (capability
+     * `photo-selection-policy`). Kept as a lever because "a received GIF does not upload" is still the
+     * operator-visible behaviour worth forging, even though the rule that used to produce it is gone.
+     */
     suspend fun addGif(assetId: String, creationDate: String = DEFAULT_DATE) =
         addOwnAsset(
             assetId, creationDate,
-            resources = listOf(primaryResource(filename = "giphy.gif", contentType = MIME_GIF)),
+            resources = listOf(primaryResource(filename = "giphy.gif", contentType = "image/gif")),
+            pixelWidth = 480,
+            pixelHeight = 270,
         )
 
     /** Put an existing own asset into an album some app made — e.g. `placeInAlbum("WhatsApp", "A1")`. */

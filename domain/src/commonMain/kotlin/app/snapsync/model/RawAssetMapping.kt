@@ -37,13 +37,11 @@ fun resourcesFrom(rawAssets: List<RawAsset>): List<Resource> =
     }
 
 /**
- * The neutral [AssetFacts] of one raw asset, with the id normalized and the one **resource**-level fact
- * folded in.
+ * The neutral [AssetFacts] of one raw asset, with the id normalized.
  *
- * The GIF signal lives on the per-resource MIME, not on the asset: it is read from [RawAsset.rawResources]
- * when they are present, and is `false` when a facts-only walk left them empty — the cheap count then
- * *admits* a GIF, which is exactly the policy's admit-on-doubt posture (a stray meme is visible and
- * harmless; the count is a preview, and the cycle's authoritative admission still drops it).
+ * Every fact reads a plain in-memory platform property, so this is complete whether or not the asset's
+ * resources have been fetched — a facts-only walk and a resource-carrying one produce the identical value,
+ * which is what lets every consumer resolve the same admitted set at different costs.
  */
 fun RawAsset.toFacts(): AssetFacts = AssetFacts(
     assetId = normalizeAssetId(assetId),
@@ -51,7 +49,6 @@ fun RawAsset.toFacts(): AssetFacts = AssetFacts(
     isScreenshot = facts.isScreenshot,
     isScreenRecording = facts.isScreenRecording,
     isVideo = facts.isVideo,
-    isGif = rawResources.any { it.mimeContentType == MIME_GIF },
     isEdited = facts.isEdited,
     pixelArea = facts.pixelArea,
 )

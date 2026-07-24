@@ -73,11 +73,30 @@ class SelectionPolicyTest {
         assertTrue(excluded(asset("A")).isEmpty())
     }
 
-    // ── GIFs ──────────────────────────────────────────────────────────────────────────────────────────
+    // ── Animated images ───────────────────────────────────────────────────────────────────────────────
+    // There is no GIF RULE any more (it was the one rule needing a resource read to decide, and the only
+    // reason two consumers of "the admitted set" could disagree). Ordinary GIFs are still excluded — by
+    // the resolution floor — and these tests pin that, so the removal is never mistaken for "GIFs upload
+    // freely now".
 
     @Test
-    fun a_gif_is_excluded() = runTest {
-        assertEquals(setOf("A"), excluded(asset("A", mime = MIME_GIF)))
+    fun an_ordinary_gif_is_still_excluded_by_the_resolution_floor() = runTest {
+        // A messenger / Giphy GIF: 480x270 = 0.13 MP, three orders of magnitude below the 3 MP floor.
+        assertEquals(
+            setOf("A"),
+            excluded(asset("A", width = 480, height = 270, mime = "image/gif")),
+            "the floor catches it — no rule reads its MIME",
+        )
+    }
+
+    @Test
+    fun a_large_or_edited_gif_is_now_admitted_and_that_is_the_accepted_trade() = runTest {
+        // The recall the removal costs, stated explicitly rather than left implicit. An EDITED gif skips
+        // the floor (`hasAdjustments`), and a >=3 MP one clears it. Both are rare, and both land on the
+        // admit-on-doubt side: a stray meme is visible and deletable, a silently-dropped event photo is
+        // neither.
+        assertTrue(excluded(asset("EDITED", width = 480, height = 270, adjusted = true, mime = "image/gif")).isEmpty())
+        assertTrue(excluded(asset("BIG", width = 2048, height = 1536, mime = "image/gif")).isEmpty())
     }
 
     // ── Resolution floors ─────────────────────────────────────────────────────────────────────────────
@@ -154,7 +173,7 @@ class SelectionPolicyTest {
     @Test
     fun admitted_and_excluded_assets_are_separated_correctly() = runTest {
         val resources = asset("KEEP") + asset("SHOT", isScreenshot = true) +
-            asset("SMALL", width = 800, height = 600) + asset("GIF", mime = MIME_GIF)
+            asset("SMALL", width = 800, height = 600) + asset("GIF", width = 480, height = 270, mime = "image/gif")
         assertEquals(setOf("SHOT", "SMALL", "GIF"), excluded(resources))
     }
 }
