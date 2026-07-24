@@ -1,5 +1,7 @@
 package app.snapsync.feature.upload
 
+import app.snapsync.model.SelectionPolicy
+import app.snapsync.model.candidatesFromResources
 import app.snapsync.model.SelectionScope
 import app.snapsync.ports.BackgroundTransfer
 import app.snapsync.ports.Discovery
@@ -26,11 +28,15 @@ class SelectionScopedTransfer(
     private val selectionScope: () -> SelectionScope,
 ) : BackgroundTransfer by delegate {
 
-    override suspend fun discoverResources(sinceToken: ByteArray?, since: String): Discovery =
+    override suspend fun discoverResources(sinceToken: ByteArray?, policy: SelectionPolicy): Discovery =
         when (val scope = selectionScope()) {
-            SelectionScope.Unrestricted -> delegate.discoverResources(sinceToken, since)
+            SelectionScope.Unrestricted -> delegate.discoverResources(sinceToken, policy)
             is SelectionScope.Scoped -> Discovery(
-                resources = scope.resources,
+                // The snapshot arrives already read, with resources — the sanctioned eager read is what
+                // keeps every library FETCH in-flow (capability `limited-photo-access`). Wrapping it as
+                // held candidates is honest: they genuinely are in hand, so nothing is deferred and
+                // nothing will need re-fetching by identifier later.
+                candidates = candidatesFromResources(scope.resources),
                 nextToken = sinceToken ?: ByteArray(0),
                 removedAssetIds = emptyList(),
                 fullEnumeration = false,

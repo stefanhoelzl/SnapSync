@@ -9,7 +9,7 @@ import app.snapsync.feature.album.AlbumCoordinator
 import app.snapsync.model.SelectionScope
 import app.snapsync.ports.LedgerStore
 import app.snapsync.gallery.IosDeviceManifestStore
-import app.snapsync.gallery.PhotoLibraryResourceEnumerator
+import app.snapsync.gallery.PhotoKitCandidateSource
 import app.snapsync.ios.discovery.IosDiscovery
 import app.snapsync.ios.discovery.IosDiscoveryStore
 import app.snapsync.ios.urlsession.IosBackgroundScheduler
@@ -100,7 +100,7 @@ class UrlSessionUploadController(
         const val HEARTBEAT_TASK_IDENTIFIER = "app.snapsync.upload.heartbeat"
     }
 
-    private val discovery = IosDiscovery(log, PhotoLibraryResourceEnumerator())
+    private val discovery = IosDiscovery(log, PhotoKitCandidateSource())
     private val discoveryStore = IosDiscoveryStore()
     private val scheduler = IosBackgroundScheduler(log, HEARTBEAT_TASK_IDENTIFIER)
 

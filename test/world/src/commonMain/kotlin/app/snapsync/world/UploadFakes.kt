@@ -1,9 +1,10 @@
 package app.snapsync.world
 
+import app.snapsync.model.SelectionPolicy
 import app.snapsync.model.Resource
 import app.snapsync.model.UploadError
 import app.snapsync.model.UploadRequest
-import app.snapsync.ports.PhotoLibrary
+import app.snapsync.ports.CandidateSource
 import app.snapsync.ports.CreateResult
 import app.snapsync.ports.Discovery
 import app.snapsync.ports.PlatformJobState
@@ -32,7 +33,7 @@ import app.snapsync.ports.BackgroundTransfer
 class FakeBackgroundTransfer(
     private val store: BackendStore,
     private val ownDeviceId: String,
-    private val enumerator: PhotoLibrary,
+    private val source: CandidateSource,
 ) : BackgroundTransfer {
 
     /** Failure lever: the OS in-flight job cap. `createJob` returns `LIMIT_EXCEEDED` at/above it. */
@@ -92,22 +93,22 @@ class FakeBackgroundTransfer(
         return CreateResult.CREATED
     }
 
-    override suspend fun discoverResources(sinceToken: ByteArray?, since: String): Discovery {
-        // The full enumeration is scoped by the membership's cutoff, exactly as the PhotoKit walk is
-        // (capability `photo-selection-policy`); the cycle's own filter still runs over what comes back.
-        val current = enumerator.enumerate(since)
-        val currentAssetIds = current.mapTo(mutableSetOf()) { it.assetId }
+    override suspend fun discoverResources(sinceToken: ByteArray?, policy: SelectionPolicy): Discovery {
+        // Scoped by the POLICY, exactly as the PhotoKit walk is (capability `photo-selection-policy`);
+        // the cycle's own admission still runs over whatever comes back.
+        val current = source.candidates(policy)
+        val currentAssetIds = current.mapTo(mutableSetOf()) { it.facts.assetId }
         val full = forceFull || sinceToken == null
         forceFull = false
         val nextToken = (++tokenCounter).toString().encodeToByteArray()
         return if (full) {
             knownAssetIds = currentAssetIds
-            Discovery(resources = current, nextToken = nextToken, fullEnumeration = true)
+            Discovery(candidates = current, nextToken = nextToken, fullEnumeration = true)
         } else {
-            val added = current.filter { it.assetId !in knownAssetIds }
+            val added = current.filter { it.facts.assetId !in knownAssetIds }
             val removed = (knownAssetIds - currentAssetIds).toList()
             knownAssetIds = currentAssetIds
-            Discovery(resources = added, nextToken = nextToken, removedAssetIds = removed, fullEnumeration = false)
+            Discovery(candidates = added, nextToken = nextToken, removedAssetIds = removed, fullEnumeration = false)
         }
     }
 

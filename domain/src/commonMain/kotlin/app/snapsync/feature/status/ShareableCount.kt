@@ -1,14 +1,12 @@
 package app.snapsync.feature.status
 
-import app.snapsync.model.AssetFacts
 import app.snapsync.model.CaptureCeiling
 import app.snapsync.model.CaptureCutoff
 import app.snapsync.model.PermissionStatus
-import app.snapsync.model.Resource
+import app.snapsync.model.grantsPhotoAccess
 import app.snapsync.model.SelectionPolicy
 import app.snapsync.model.EventPhotoSet
-import app.snapsync.model.candidatesFromFacts
-import app.snapsync.model.candidatesFromResources
+import app.snapsync.ports.CandidateSource
 import app.snapsync.model.excluding
 
 /**
@@ -34,8 +32,8 @@ import app.snapsync.model.excluding
  * renders no row.
  */
 class ShareableCountSource(
-    /** GRANTED-only: the cheap, cutoff-bounded facts walk (no per-asset resource read). Built in `compose/`. */
-    private val factsSince: suspend (CaptureCutoff) -> List<AssetFacts>,
+    /** The permission-aware read seam — the SAME one the status total holds, so the two cannot disagree. */
+    private val source: CandidateSource,
     /** Downloaded/imported foreign photos, suppressed from this device's contribution (capability `photo-download`). */
     private val suppressedLocalIds: suspend () -> Set<String> = { emptySet() },
     /** Denylisted-album members for the candidate cutoff — the SAME lookup the cycle gets; cached per surface upstream. */
@@ -55,26 +53,23 @@ class ShareableCountSource(
         cutoff: CaptureCutoff,
         ceiling: CaptureCeiling?,
         permission: PermissionStatus,
-        selectionSnapshot: List<Resource>?,
     ): Int? {
+        // The grant question this keeps: "can we answer at all". A DENIED or unresolved grant yields NO
+        // COUNT (the surface renders no row) — which is not the same as a count of zero, and is why this
+        // check does not belong in the source. Where candidates COME FROM is the source's business.
+        if (!permission.grantsPhotoAccess) return null
+
         val configPolicy = SelectionPolicy.from(includesUpload, cutoff, ceiling)
         if (!configPolicy.enumerates) return 0
         val policy = configPolicy.excluding(
             suppressedAssetIds = suppressedLocalIds(),
             albumExcludedAssetIds = albumExcludedAssetIds(cutoff),
         )
-        // Both grants ask the SAME abstraction for the same thing — a count — differing only in which
-        // backing supplies the candidates. GRANTED reads the cheap facts walk; LIMITED re-filters the
-        // already-held selection snapshot and issues no library read at all. Neither pays a resource
-        // read: admission is decidable on facts, and a preview never uploads.
-        return when (permission) {
-            PermissionStatus.GRANTED ->
-                EventPhotoSet(policy) { candidatesFromFacts(factsSince(cutoff)) }.count()
-            PermissionStatus.LIMITED ->
-                selectionSnapshot?.let { snapshot ->
-                    EventPhotoSet(policy) { candidatesFromResources(snapshot) }.count()
-                }
-            PermissionStatus.DENIED, PermissionStatus.NOT_DETERMINED -> null
-        }
+        // Cheap AND exact: every rule decides on facts, so the count that skips the per-asset resource
+        // read is the admitted-set size rather than an approximation of it (capability
+        // `photo-selection-policy`). It was not always — while the animated-image rule needed a resource's
+        // MIME, this facts-only path admitted a GIF on doubt while the status total excluded it, and the
+        // preview over-counted by exactly the GIFs in scope.
+        return EventPhotoSet(policy, source::candidates).count()
     }
 }

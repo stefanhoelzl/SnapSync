@@ -28,7 +28,6 @@ import app.snapsync.model.CaptureCeiling
 import app.snapsync.model.CaptureCutoff
 import app.snapsync.model.SelectionPolicy
 import app.snapsync.model.EventPhotoSet
-import app.snapsync.model.candidatesFromResources
 import app.snapsync.model.captureCutoff
 import app.snapsync.model.excluding
 import app.snapsync.feature.download.DownloadStatusSource
@@ -343,7 +342,9 @@ class WorldInspectorController(private val scope: CoroutineScope) {
         // COMPLETED, so a subsequent invoke uploads nothing new. Deposit exactly the enumerator-derived
         // keys (uploadKey) so the completeness check matches — don't reconstruct the key by hand.
         addOwnAsset("own-a1")
-        enumerator.enumerate(World.DEFAULT_CUTOFF).forEach { store.deposit(ownDeviceId, it.filename) }
+        enumerator.candidates(selectionPolicy())
+            .flatMap { it.resources() }
+            .forEach { store.deposit(ownDeviceId, it.filename) }
         provision(EVENT)
     }
 
@@ -403,14 +404,15 @@ class WorldInspectorController(private val scope: CoroutineScope) {
         // Without this the levers are mute: an operator would add a screenshot, watch it sit in the gallery,
         // and have no way to tell "correctly excluded" from "silently broken".
         val cutoff = world.configSource.config.value?.minPhotoDate ?: captureCutoff(World.DEFAULT_CUTOFF)
-        val enumerated = world.enumerator.enumerate(cutoff.at.iso)
-        val policy = world.selectionPolicy().excluding(
+        val configPolicy = world.selectionPolicy()
+        val policy = configPolicy.excluding(
             suppressedAssetIds = emptySet(), // the badge below reports echo separately
             albumExcludedAssetIds = world.albumManager.assetIdsInAlbums(DENYLISTED_ALBUM_TITLES, cutoff.at.iso),
         )
-        val admitted = EventPhotoSet(policy) { candidatesFromResources(enumerated) }
+        val candidates = world.enumerator.candidates(configPolicy)
+        val admitted = EventPhotoSet(policy) { candidates }
             .assets().mapTo(mutableSetOf()) { it.facts.assetId }
-        val policyExcluded = enumerated.mapTo(mutableSetOf()) { it.assetId } - admitted
+        val policyExcluded = candidates.mapTo(mutableSetOf()) { it.facts.assetId } - admitted
         val galleryRows = world.gallery.current()
             .map {
                 GalleryRow(

@@ -1,5 +1,6 @@
 package app.snapsync.ios.upload
 
+import app.snapsync.model.SelectionPolicy
 import app.snapsync.model.Resource
 import app.snapsync.model.UploadError
 import app.snapsync.model.UploadRequest
@@ -171,9 +172,9 @@ class IosPhotoKitUploadPlatform(
         }
     }
 
-    override suspend fun discoverResources(sinceToken: ByteArray?, since: String): Discovery =
-        log.invocation("platform.discoverResources", result = { "${it.resources.size} resource(s)" }) {
-            discovery.discover(sinceToken, since)
+    override suspend fun discoverResources(sinceToken: ByteArray?, policy: SelectionPolicy): Discovery =
+        log.invocation("platform.discoverResources", result = { "${it.candidates.size} candidate(s)" }) {
+            discovery.discover(sinceToken, policy)
         }
 
     private fun mapState(state: PHAssetResourceUploadJobState): PlatformJobState = when (state) {

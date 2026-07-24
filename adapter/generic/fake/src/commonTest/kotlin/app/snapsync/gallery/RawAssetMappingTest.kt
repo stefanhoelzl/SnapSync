@@ -1,7 +1,6 @@
 package app.snapsync.gallery
 
-import app.snapsync.compose.ResourceEnumerator
-import app.snapsync.fake.InMemoryRawAssetSource
+import app.snapsync.fake.InMemoryCandidateSource
 import app.snapsync.model.AssetFacts
 import app.snapsync.model.CaptureDate
 import app.snapsync.model.RESOURCE_META_IS_EDITED
@@ -31,6 +30,14 @@ import kotlin.test.assertTrue
  * loop (role filter, `'/'→'_'` normalization, `uploadKey`, metadata assembly) previously lived only in
  * the iOS enumerator; here it runs on JVM and the iOS simulator against a fake raw-asset walk.
  */
+/** An admitting policy bounded below by [cutoff] — what the fake narrows its walk by. */
+private fun admitting(cutoff: String) =
+    SelectionPolicy.from(includesUpload = true, cutoff = captureCutoff(cutoff), ceiling = null)
+
+/** The resources a source yields for [cutoff] — walk composed with the per-candidate mapping. */
+private suspend fun InMemoryCandidateSource.resourcesFor(cutoff: String) =
+    candidates(admitting(cutoff)).flatMap { it.resources() }.map { it.filename }
+
 class RawAssetMappingTest {
 
     private fun raw(
@@ -117,14 +124,12 @@ class RawAssetMappingTest {
                 pixelArea = 750L * 1334L,
             ),
         )
-        val source = InMemoryRawAssetSource(listOf(screenshot))
+        val source = InMemoryCandidateSource(listOf(screenshot))
+        val policy = admitting("2026-01-01T00:00:00Z")
 
-        val resources = ResourceEnumerator(source).enumerate("2026-01-01T00:00:00Z")
-
-        assertEquals(1, resources.size, "the walk emits the screenshot as a fact — it does not drop it")
-        val policy = SelectionPolicy.from(includesUpload = true, cutoff = captureCutoff(""), ceiling = null)
-        val admitted = EventPhotoSet(policy) { candidatesFromResources(resources) }.assets()
-        assertTrue(admitted.isEmpty(), "…and the policy is what excludes it")
+        val candidates = source.candidates(policy)
+        assertEquals(1, candidates.size, "the walk emits the screenshot as a candidate — it does not drop it")
+        assertTrue(EventPhotoSet(policy) { candidates }.assets().isEmpty(), "…and the policy is what excludes it")
     }
 
     @Test
@@ -142,60 +147,55 @@ class RawAssetMappingTest {
     }
 
     @Test
-    fun enumerator_composes_walk_then_map_over_the_fake_source() = runTest {
-        val source = InMemoryRawAssetSource(
+    fun the_source_composes_walk_then_map_per_candidate() = runTest {
+        val source = InMemoryCandidateSource(
             listOf(
                 RawAsset("A", IN_SCOPE, listOf(raw(1L, name = "a.JPG"))),
                 RawAsset("B", IN_SCOPE, listOf(raw(1L, name = "b.JPG"))),
             ),
         )
-        val enumerator = ResourceEnumerator(source)
 
-        assertEquals(listOf("A-primary.jpg", "B-primary.jpg"), enumerator.enumerate(CUTOFF).map { it.filename })
-        assertEquals(
-            listOf("A-primary.jpg"),
-            enumerator.resources(listOf("A"), CUTOFF).map { it.filename },
-            "incremental walk",
-        )
+        assertEquals(listOf("A-primary.jpg", "B-primary.jpg"), source.resourcesFor(CUTOFF))
     }
 
     @Test
     fun the_bounded_walk_excludes_assets_captured_before_the_bound() = runTest {
         // There is no unbounded walk (capability `photo-selection-policy`): the whole-library enumeration cost
         // one synchronous PhotoKit round-trip per asset, and a membership always has a cutoff to scope it.
-        val source = InMemoryRawAssetSource(
+        val source = InMemoryCandidateSource(
             listOf(
                 RawAsset("OLD", "2000-01-01T00:00:00Z", listOf(raw(1L, name = "old.JPG"))),
                 RawAsset("NEW", IN_SCOPE, listOf(raw(1L, name = "new.JPG"))),
             ),
         )
 
-        assertEquals(listOf("NEW-primary.jpg"), ResourceEnumerator(source).enumerate(CUTOFF).map { it.filename })
+        assertEquals(listOf("NEW-primary.jpg"), source.resourcesFor(CUTOFF))
     }
 
     @Test
-    fun the_incremental_walk_skips_a_changed_asset_that_is_out_of_scope() = runTest {
-        // A change feed says what CHANGED, not what is in SCOPE. An iCloud sync or bulk import hands back
-        // decades-old assets; fetching each one's resources to then drop it on capture date cost 166 s for
-        // ~1500 assets on an iPhone SE2 (extension hard-capped at ~3 min). The bound rejects them first.
-        val source = InMemoryRawAssetSource(
+    fun a_candidate_reads_its_resources_only_when_asked() = runTest {
+        // The cost ladder, over the fake: obtaining candidates costs nothing per asset, and the mapping
+        // (role filter, upload key, id normalization) runs per candidate when its resources are asked for.
+        // The id-scoped incremental walk that used to be tested here is now internal to `IosDiscovery` —
+        // only it has identifiers to scope by, because only it reads the change feed.
+        val source = InMemoryCandidateSource(
             listOf(
                 RawAsset("OLD", "2000-01-01T00:00:00Z", listOf(raw(1L, name = "old.JPG"))),
                 RawAsset("NEW", IN_SCOPE, listOf(raw(1L, name = "new.JPG"))),
             ),
         )
-        val enumerator = ResourceEnumerator(source)
 
-        val changed = enumerator.resources(listOf("OLD", "NEW"), CUTOFF).map { it.filename }
-        assertEquals(listOf("NEW-primary.jpg"), changed, "a changed-but-out-of-scope asset is skipped")
+        val candidates = source.candidates(admitting(CUTOFF))
+        assertEquals(listOf("NEW"), candidates.map { it.facts.assetId }, "the walk is bounded by the floor")
+        assertEquals(listOf("NEW-primary.jpg"), candidates.single().resources().map { it.filename })
     }
 
     @Test
     fun an_undated_asset_is_before_every_bound() = runTest {
         // An empty `creationDate` sorts before any non-empty cutoff, so an undated asset is never in scope.
-        val source = InMemoryRawAssetSource(listOf(RawAsset("U", "", listOf(raw(1L, name = "u.JPG")))))
+        val source = InMemoryCandidateSource(listOf(RawAsset("U", "", listOf(raw(1L, name = "u.JPG")))))
 
-        assertEquals(emptyList(), ResourceEnumerator(source).enumerate(CUTOFF).map { it.filename })
+        assertEquals(emptyList(), source.resourcesFor(CUTOFF))
     }
 }
 

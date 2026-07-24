@@ -1,5 +1,7 @@
 package app.snapsync.feature.upload
 
+import app.snapsync.model.captureCutoff
+import app.snapsync.model.SelectionPolicy
 import app.snapsync.model.Resource
 import app.snapsync.model.SelectionScope
 import app.snapsync.model.UploadRequest
@@ -21,6 +23,10 @@ import kotlinx.coroutines.test.runTest
  * delegates unchanged. The walk cursor is preserved across the scoped period, and a snapshot is
  * never a full enumeration (it must not drive ledger pruning).
  */
+/** An admitting policy over [cutoff] — the shape the cycle hands the transfer. */
+private fun admitting(cutoff: String): SelectionPolicy =
+    SelectionPolicy.from(includesUpload = true, cutoff = captureCutoff(cutoff), ceiling = null)
+
 class SelectionScopedTransferTest {
 
     private class RecordingDelegate : BackgroundTransfer {
@@ -29,7 +35,7 @@ class SelectionScopedTransferTest {
         override suspend fun fetchAckJobs(): List<PlatformUploadJob> = emptyList()
         override suspend fun retryJob(job: PlatformUploadJob, request: UploadRequest) = Unit
         override suspend fun acknowledge(job: PlatformUploadJob) = Unit
-        override suspend fun discoverResources(sinceToken: ByteArray?, since: String): Discovery {
+        override suspend fun discoverResources(sinceToken: ByteArray?, policy: SelectionPolicy): Discovery {
             discoverCalls++
             return Discovery(emptyList(), byteArrayOf(7))
         }
@@ -45,7 +51,7 @@ class SelectionScopedTransferTest {
         val delegate = RecordingDelegate()
         val transfer = SelectionScopedTransfer(delegate) { SelectionScope.Unrestricted }
 
-        val discovery = transfer.discoverResources(byteArrayOf(1), "2026-01-01T00:00:00Z")
+        val discovery = transfer.discoverResources(byteArrayOf(1), admitting("2026-01-01T00:00:00Z"))
 
         assertEquals(1, delegate.discoverCalls)
         assertContentEquals(byteArrayOf(7), discovery.nextToken)
@@ -57,10 +63,14 @@ class SelectionScopedTransferTest {
         val snapshot = listOf(resource("A"), resource("B"))
         val transfer = SelectionScopedTransfer(delegate) { SelectionScope.Scoped(snapshot) }
 
-        val discovery = transfer.discoverResources(byteArrayOf(1, 2), "2026-01-01T00:00:00Z")
+        val discovery = transfer.discoverResources(byteArrayOf(1, 2), admitting("2026-01-01T00:00:00Z"))
 
         assertEquals(0, delegate.discoverCalls)
-        assertSame(snapshot, discovery.resources)
+        assertEquals(
+            snapshot.map { it.assetId },
+            discovery.candidates.map { it.facts.assetId },
+            "the snapshot crosses verbatim — wrapped as HELD candidates, nothing re-read",
+        )
         // The walk cursor survives the scoped period: a later full-access walk resumes incrementally.
         assertContentEquals(byteArrayOf(1, 2), discovery.nextToken)
         // A snapshot is not the whole-library key-set — it must never drive ledger pruning.
@@ -73,10 +83,10 @@ class SelectionScopedTransferTest {
         val delegate = RecordingDelegate()
         val transfer = SelectionScopedTransfer(delegate) { SelectionScope.Scoped(emptyList()) }
 
-        val discovery = transfer.discoverResources(null, "2026-01-01T00:00:00Z")
+        val discovery = transfer.discoverResources(null, admitting("2026-01-01T00:00:00Z"))
 
         assertEquals(0, delegate.discoverCalls)
-        assertTrue(discovery.resources.isEmpty())
+        assertTrue(discovery.candidates.isEmpty())
         assertContentEquals(ByteArray(0), discovery.nextToken)
     }
 }

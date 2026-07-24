@@ -1,13 +1,11 @@
 package app.snapsync.feature.status
 
 import app.snapsync.model.CaptureCutoff
-import app.snapsync.model.Resource
 import app.snapsync.model.SelectionPolicy
 import app.snapsync.model.EventPhotoSet
-import app.snapsync.model.candidatesFromResources
 import app.snapsync.model.excluding
 import app.snapsync.ports.GalleryStatusSource
-import app.snapsync.ports.PhotoLibrary
+import app.snapsync.ports.CandidateSource
 import co.touchlab.kermit.Logger
 import kotlin.time.TimeSource
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -44,7 +42,7 @@ import kotlinx.coroutines.flow.asStateFlow
  * `N` stays at its seeded `0`. There is deliberately no "no policy" value to pass.
  */
 class OwnDeviceGalleryStatusSource(
-    private val enumerator: PhotoLibrary,
+    private val source: CandidateSource,
     private val suppressedLocalIds: suspend () -> Set<String> = { emptySet() },
     // Denylisted-album membership (capability `photo-selection-policy`) — the SAME lookup the upload cycle
     // is given, and the one origin fact that is not already on the asset. Takes the cutoff, which scopes
@@ -60,18 +58,24 @@ class OwnDeviceGalleryStatusSource(
     override val size: StateFlow<Int> = _size.asStateFlow()
 
     /**
-     * Re-enumerate within [configPolicy] (what the joined membership contributes) and recompute `N`.
+     * Re-read within [configPolicy] (what the joined membership contributes) and recompute `N`.
+     *
+     * **One entry point, both grants.** There used to be a second — `refreshFrom(resources, policy)` — for
+     * the `LIMITED` snapshot, which meant the caller decided which mode was in play. That restated the
+     * mode difference the source already owns, and it is the restatement rather than the reading that lets
+     * two paths drift apart (capability `limited-photo-access`). The permission-aware source now answers
+     * "where do candidates come from"; this asks only for the count.
      *
      * **The direction gate, for the total** (capability `photo-selection-policy`). A non-contributing
      * membership reports `0` **without enumerating** — the short-circuit must live here, because `N` is a
      * *parallel* computation that no upload gate feeds (unlike the download arm, whose total flows through
-     * its gate and is zero for free). A walk costs one synchronous PhotoKit round-trip per in-scope asset
-     * (~110 ms on an SE2), so a 4000-photo library would spend minutes of XPC to reach the empty set the
-     * direction already told us.
+     * its gate and is zero for free). A walk costs one synchronous platform round-trip per in-scope asset,
+     * so a 4000-photo library would spend minutes of XPC to reach the empty set the direction already
+     * told us.
      *
-     * The enumeration's cost and shape are **logged** (capability `diagnostic-logging`). Without a line
-     * here, whether the capture bound is actually bounding anything is invisible on a real device: a
-     * bounded and an unbounded fetch differ only in how many assets they touch.
+     * The cost and shape are **logged** (capability `diagnostic-logging`). Without a line here, whether the
+     * capture bound is actually bounding anything is invisible on a real device: a bounded and an
+     * unbounded fetch differ only in how many assets they touch.
      */
     suspend fun refresh(configPolicy: SelectionPolicy) {
         val cutoff = configPolicy.walkFloor
@@ -81,51 +85,15 @@ class OwnDeviceGalleryStatusSource(
             return
         }
         val started = timeSource.markNow()
-        val enumerated = enumerator.enumerate(cutoff.at.iso)
-        val size = count(enumerated, configPolicy, cutoff)
-        val elapsed = started.elapsedNow()
-        log.i {
-            "gallery: enumerated ${enumerated.size} resource(s) since $cutoff " +
-                "→ N=$size own admitted asset(s) in ${elapsed.inWholeMilliseconds}ms"
-        }
-    }
-
-    /**
-     * Recompute `N` from a **provided** resource list instead of enumerating (capability
-     * `limited-photo-access`, "One discovery serves both the status total and the enqueue"): under a
-     * partial grant, the selection snapshot the upload discovery consumes is also what the total counts
-     * — one read, and `N` and the upload set are provably the same universe. The admission is the SAME
-     * one the enumerating [refresh] applies, so the policy identity holds by construction.
-     */
-    suspend fun refreshFrom(resources: List<Resource>, configPolicy: SelectionPolicy) {
-        val cutoff = configPolicy.walkFloor
-        if (!configPolicy.enumerates || cutoff == null) {
-            _size.value = 0
-            log.i { "gallery: this membership contributes nothing → N=0 (snapshot ignored)" }
-            return
-        }
-        val size = count(resources, configPolicy, cutoff)
-        log.i {
-            "gallery: selection snapshot of ${resources.size} resource(s) → N=$size own admitted asset(s)"
-        }
-    }
-
-    /**
-     * The one admission, shared by [refresh] and [refreshFrom]: `N` is the **size of the admitted set**,
-     * asked of the same [EventPhotoSet] abstraction the upload cycle uploads from. It counts; it does not
-     * filter, and it has no disallowed asset in reach to miscount.
-     */
-    private suspend fun count(
-        resources: List<Resource>,
-        configPolicy: SelectionPolicy,
-        cutoff: CaptureCutoff,
-    ): Int {
         val policy = configPolicy.excluding(
             suppressedAssetIds = suppressedLocalIds(),
             albumExcludedAssetIds = albumExcludedAssetIds(cutoff),
         )
-        val size = EventPhotoSet(policy) { candidatesFromResources(resources) }.count()
+        // `count()` reads facts only — no per-asset resource round-trip is issued for a number
+        // (capability `photo-selection-policy`, *Admission is decidable on asset facts alone*).
+        val size = EventPhotoSet(policy, source::candidates).count()
         _size.value = size
-        return size
+        val elapsed = started.elapsedNow()
+        log.i { "gallery: N=$size own admitted asset(s) since $cutoff in ${elapsed.inWholeMilliseconds}ms" }
     }
 }

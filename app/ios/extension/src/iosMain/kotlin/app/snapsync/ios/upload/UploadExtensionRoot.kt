@@ -24,7 +24,7 @@ import app.snapsync.feature.upload.UploadCycle
 import app.snapsync.ports.LedgerStore
 import app.snapsync.engine.iosLedgerStore
 import app.snapsync.gallery.IosDeviceManifestStore
-import app.snapsync.gallery.PhotoLibraryResourceEnumerator
+import app.snapsync.gallery.PhotoKitCandidateSource
 import app.snapsync.feature.push.EventNotifier
 import app.snapsync.push.KtorPushHttpClient
 import app.snapsync.membership.HttpDeviceFilesSource
@@ -84,7 +84,7 @@ object UploadExtensionRoot {
 
     private val ledgerStore: LedgerStore by lazy { iosLedgerStore() }
     private val discovery: IosDiscovery by lazy {
-        IosDiscovery(log, PhotoLibraryResourceEnumerator())
+        IosDiscovery(log, PhotoKitCandidateSource())
     }
     private val platform: IosPhotoKitUploadPlatform by lazy {
         IosPhotoKitUploadPlatform(log, discovery)

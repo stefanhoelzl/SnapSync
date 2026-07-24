@@ -1,5 +1,7 @@
 package app.snapsync.ports
 
+import app.snapsync.model.Candidate
+import app.snapsync.model.SelectionPolicy
 import app.snapsync.model.Resource
 import app.snapsync.model.UploadError
 import app.snapsync.model.UploadRequest
@@ -38,7 +40,7 @@ interface BackgroundTransfer {
      * omit any at or after it. The incremental change-token walk is already bounded by the change feed and
      * ignores [since]; the cycle filters its output the same way.
      */
-    suspend fun discoverResources(sinceToken: ByteArray?, since: String): Discovery
+    suspend fun discoverResources(sinceToken: ByteArray?, policy: SelectionPolicy): Discovery
 
     /** Create a system upload job for [resource] at [request]; distinguishes the in-flight cap. */
     suspend fun createJob(request: UploadRequest, resource: Resource): CreateResult
@@ -81,7 +83,12 @@ enum class CreateResult { CREATED, LIMIT_EXCEEDED, FAILED }
  * current resource key — the live key-set the cycle reconciles the ledger against.
  */
 class Discovery(
-    val resources: List<Resource>,
+    /**
+     * The assets the platform returned — **candidates**, not yet admitted. Each carries cheap facts and
+     * fetches its own resources on demand, so the cycle pays the per-asset round-trip only for the ones
+     * its admission keeps (capability `gallery-status`).
+     */
+    val candidates: List<Candidate>,
     val nextToken: ByteArray,
     val removedAssetIds: List<String> = emptyList(),
     val fullEnumeration: Boolean = false,

@@ -22,8 +22,7 @@ import app.snapsync.model.captureCutoff
 import app.snapsync.model.CaptureCutoff
 import app.snapsync.model.SelectionPolicy
 import app.snapsync.model.toFacts
-import app.snapsync.gallery.PhotoLibraryRawAssetSource
-import app.snapsync.gallery.PhotoLibraryResourceEnumerator
+import app.snapsync.gallery.PhotoKitCandidateSource
 import app.snapsync.ios.discovery.IosDiscoveryStore
 import app.snapsync.model.PermissionStatus
 import app.snapsync.permission.PhotoLibraryPermission
@@ -307,11 +306,7 @@ object SnapSyncRoot {
                 // The same adapter serves the status source and the request/Settings surface — the
                 // bundle's requestAccess/openSettings commands bind to it in `compose/`.
                 photoAccessRequester = permission,
-                photoLibrary = enumerator,
-                // The cheap facts-only walk for the shareable-count preview (capability
-                // `join-share-count`): a stateless PhotoKit `RawAssetSource`, skipping the per-asset
-                // resource round-trip the resource enumeration pays.
-                rawFactsSince = { cutoff -> rawAssetFacts.factsSince(cutoff.at.iso).map { it.toFacts() } },
+                candidateSource = candidateSource,
                 // A cutoff-lowering reconfigure invalidates the shared discovery cursor so both tiers
                 // re-enumerate and back-share the newly-in-scope older photos (capability
                 // `reconfigure-membership`).
@@ -827,14 +822,13 @@ object SnapSyncRoot {
     // the URL_SESSION branch of the mode switch — plus the background-session drain, which may adopt an
     // old upload session on any live tier. On iOS ≥26.1 without the force flag it is otherwise never
     // touched (the extension runs).
-    // The ONE PhotoKit resource enumerator this process holds (shared by the gallery walk and the
+    // The ONE PhotoKit read seam this process holds (shared by the gallery walk and the
     // selection-snapshot mapping — one mapping, one place).
-    private val enumerator: PhotoLibraryResourceEnumerator by lazy { PhotoLibraryResourceEnumerator() }
-
-    // The facts-only PhotoKit walk for the shareable-count preview (capability `join-share-count`):
-    // stateless, so a second instance beside `enumerator` is free; it never issues the per-asset resource
-    // round-trip the resource enumeration pays.
-    private val rawAssetFacts: PhotoLibraryRawAssetSource by lazy { PhotoLibraryRawAssetSource() }
+    // One instance serves every reader — the status total, the join preview, both upload tiers, and the
+    // selection observer. There used to be two (a resource-reading walk and a facts-only one) because the
+    // seam forced the choice at construction; a candidate defers it to the caller instead, so the cheap
+    // and the expensive read are the same source asked different questions.
+    private val candidateSource: PhotoKitCandidateSource by lazy { PhotoKitCandidateSource() }
 
     // The shared App-Group discovery cursor (capability `reconfigure-membership`): any `IosDiscoveryStore`
     // instance reads/writes the same App-Group token, so this clears the cursor both upload tiers consult.
@@ -843,7 +837,7 @@ object SnapSyncRoot {
     // The selection-change source (capability `limited-photo-access`): registers the library observer
     // only while permission is LIMITED; the app graph collects its snapshots.
     private val selectionSource: PhotoSelectionSnapshotSource by lazy {
-        PhotoSelectionSnapshotSource(permission.permission, scope, enumerator)
+        PhotoSelectionSnapshotSource(permission.permission, scope, candidateSource)
     }
 
     private val urlSessionUpload: UrlSessionUploadController by lazy {

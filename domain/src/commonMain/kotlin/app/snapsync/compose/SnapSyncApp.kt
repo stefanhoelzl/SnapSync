@@ -68,7 +68,7 @@ import app.snapsync.ports.LedgerStore
 import app.snapsync.ports.LogScope
 import app.snapsync.ports.PhotoAccessRequester
 import app.snapsync.ports.PhotoAccessStatusSource
-import app.snapsync.ports.PhotoLibrary
+import app.snapsync.ports.CandidateSource
 import app.snapsync.ports.PhotoLibraryImporter
 import app.snapsync.ports.PhotoSelectionChangeSource
 import co.touchlab.kermit.Logger
@@ -99,11 +99,10 @@ class AppPorts(
      *  `openSettings` user-tap commands (migration step 9: presentation fires them through the
      *  bundle and never names the port). */
     val photoAccessRequester: PhotoAccessRequester,
-    val photoLibrary: PhotoLibrary,
+    val candidateSource: CandidateSource,
     /** The **facts-only** cutoff-bounded gallery read for the join-time shareable-count preview
      *  (capability `join-share-count`): a `RawAssetSource.factsSince` — cheap `PHAsset` facts, NO per-asset
      *  resource round-trip. Default `{ emptyList() }` keeps the count at zero wherever it is not wired. */
-    val rawFactsSince: suspend (cutoff: CaptureCutoff) -> List<AssetFacts> = { emptyList() },
     /** Read-only in this graph: the app-side ledger handle (aggregates read; the arm never writes records). */
     val ledger: LedgerStore,
     val downloadStore: DownloadStore,
@@ -228,20 +227,33 @@ class AppCore internal constructor(
     // (capability `photo-selection-policy`) — the SAME album lookup the upload cycle gets, because the
     // two enumerate independently and a rule applied to one and not the other would peg the joined
     // screen below 100% forever.
+    /**
+     * The one read seam the app's consumers hold — the grant decides the backing, not the consumer
+     * (capability `limited-photo-access`). Built here because choosing between ports by a third port's
+     * state is composition.
+     */
+    private val candidates: CandidateSource by lazy {
+        PermissionAwareCandidateSource(
+            permission = ports.photoAccess.permission,
+            walk = ports.candidateSource,
+            selection = latestSelectionSnapshot,
+        )
+    }
+
     val gallery: OwnDeviceGalleryStatusSource by lazy {
         OwnDeviceGalleryStatusSource(
-            ports.photoLibrary,
+            candidates,
             suppressedLocalIds = { ports.downloadStore.suppressedLocalIds() },
             albumExcludedAssetIds = ports.albumExcludedAssetIds,
         )
     }
 
     // The join-time shareable-count preview (capability `join-share-count`): the SAME policy the cycle and
-    // `gallery` (N) apply, over the cheap facts read. GRANTED reads `rawFactsSince`; LIMITED re-filters the
-    // already-held selection snapshot (no fresh read); no usable grant → null → the surface omits the row.
+    // `gallery` (N) apply, over the same permission-aware source — so the preview and the total cannot
+    // disagree about where candidates come from. No usable grant → null → the surface omits the row.
     private val shareableCountSource: ShareableCountSource by lazy {
         ShareableCountSource(
-            factsSince = ports.rawFactsSince,
+            source = candidates,
             suppressedLocalIds = { ports.downloadStore.suppressedLocalIds() },
             albumExcludedAssetIds = ports.albumExcludedAssetIds,
         )
@@ -258,7 +270,6 @@ class AppCore internal constructor(
             cutoff = cutoff,
             ceiling = until,
             permission = ports.photoAccess.permission.value,
-            selectionSnapshot = latestSelectionSnapshot.value,
         )
 
     /** The photo-access grant, exposed for the join surface's count-recompute trigger (a late resolve). */
@@ -676,13 +687,12 @@ class AppCore internal constructor(
         scope.launch {
             // One selection-change emission → ONE read serving both consumers (capability
             // `limited-photo-access`, "One discovery serves both the status total and the enqueue"):
-            // the cell feeds the cycle's discovery, `refreshFrom` recounts N over the same list, and
-            // the pump drains — no second library read anywhere on this path.
+            // the cell feeds the cycle's discovery AND backs the permission-aware candidate source, so
+            // `refresh` recounts N over the very same snapshot — no second library read on this path, and
+            // no snapshot-specific entry point for the total to drift through.
             ports.selectionChanges.snapshots.collect { snapshot ->
                 latestSelectionSnapshot.value = snapshot
-                ports.configSource.config.value?.let { cfg ->
-                    gallery.refreshFrom(snapshot, SelectionPolicy.from(cfg))
-                }
+                ports.configSource.config.value?.let { cfg -> gallery.refresh(SelectionPolicy.from(cfg)) }
                 ports.pumpSelectionChanged()
             }
         }

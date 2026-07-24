@@ -50,10 +50,9 @@ Roots found:
 | `KtorPushHttpClient` | x | x | x |
 | `MutableAttestedSource` | x | | |
 | `OsFacts` | x | | |
+| `PhotoKitCandidateSource` | x | x | x |
 | `PhotoKitUploadProducer` | x | | |
 | `PhotoLibraryPermission` | x | | |
-| `PhotoLibraryRawAssetSource` | x | | |
-| `PhotoLibraryResourceEnumerator` | x | x | x |
 | `PhotoSelectionSnapshotSource` | x | | |
 | `PublicNSLogWriter` | x | x | |
 | `PushRegistration` | x | | |
