@@ -8,6 +8,7 @@ import app.snapsync.model.SelectionPolicy
 import app.snapsync.model.SelectionRule
 import app.snapsync.model.resourcesFrom
 import app.snapsync.ports.CandidateSource
+import co.touchlab.kermit.Logger
 import kotlinx.cinterop.ExperimentalForeignApi
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -55,11 +56,25 @@ import platform.UniformTypeIdentifiers.UTType
  * it feeds is unit-tested in `commonTest`.
  */
 @OptIn(ExperimentalForeignApi::class)
-class PhotoKitCandidateSource : CandidateSource {
+class PhotoKitCandidateSource(private val log: Logger = Logger.withTag("gallery")) : CandidateSource {
+
+    /**
+     * Resource reads issued since the last walk — the number this whole seam exists to lower
+     * (capability `diagnostic-logging`).
+     *
+     * Without it the saving is invisible on a device: a walk that reads every fetched asset's resources
+     * and one that reads only the admitted ones differ in *nothing observable* except elapsed time, which
+     * is noisy. Reported against the candidate count, so the two numbers that matter — how many the fetch
+     * returned, and how many were actually paid for — sit on one line.
+     */
+    private var resourceReads = 0
 
     override suspend fun candidates(policy: SelectionPolicy): List<Candidate> =
         withContext(Dispatchers.Default) {
-            candidatesFrom(PHAsset.fetchAssetsWithOptions(fetchOptions(policy)))
+            if (resourceReads > 0) log.i { "gallery: $resourceReads resource read(s) since the last walk" }
+            resourceReads = 0
+            val fetched = PHAsset.fetchAssetsWithOptions(fetchOptions(policy))
+            candidatesFrom(fetched).also { log.i { "gallery: fetched ${it.size} candidate(s)" } }
         }
 
     /**
@@ -79,7 +94,7 @@ class PhotoKitCandidateSource : CandidateSource {
             index++
             // Per-asset capture timestamp (ISO-8601), reused for every resource of the asset.
             val creationDate = asset.creationDate?.let { NSISO8601DateFormatter().stringFromDate(it) } ?: ""
-            out += PhotoKitCandidate(asset, creationDate)
+            out += PhotoKitCandidate(asset, creationDate) { resourceReads++ }
         }
         return out
     }
@@ -98,11 +113,13 @@ class PhotoKitCandidateSource : CandidateSource {
 private class PhotoKitCandidate(
     private val asset: PHAsset,
     private val creationDate: String,
+    private val onResourceRead: () -> Unit,
 ) : Candidate {
 
     override val facts = asset.toAssetFacts(creationDate)
 
     override suspend fun resources(): List<Resource> = withContext(Dispatchers.Default) {
+        onResourceRead()
         val rawResources = PHAssetResource.assetResourcesForAsset(asset).map { any ->
             val resource = any as PHAssetResource
             RawResource(
