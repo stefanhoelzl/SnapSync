@@ -63,6 +63,7 @@ import app.snapsync.ports.EventCreation
 import app.snapsync.ports.EventDetails
 import app.snapsync.ports.EventDirectory
 import app.snapsync.ports.EventUnionSource
+import app.snapsync.ports.DeviceManifestStore
 import app.snapsync.ports.Enrollment
 import app.snapsync.ports.LedgerStore
 import app.snapsync.ports.LogScope
@@ -114,6 +115,13 @@ class AppPorts(
     val directory: EventDirectory,
     /** The enrollment PUT — production passes `:adapter:generic:app`'s `HttpEnrollment`. */
     val enrollment: Enrollment,
+    /**
+     * The **same** manifest record the upload tier's producer keeps (`UploadPorts.manifestStore`).
+     * Enrolling overwrites the server's manifest with an empty one, so it must invalidate that record or
+     * the producer skips the rewrite — see [app.snapsync.feature.membership.ManifestDeviceEnroller].
+     * Required rather than defaulted: a shell that quietly omitted it would reproduce the bug exactly.
+     */
+    val manifestStore: DeviceManifestStore,
     val eventCreation: EventCreation,
     val attestKey: AttestKey,
     val attestClient: AttestClient,
@@ -395,7 +403,7 @@ class AppCore internal constructor(
             configSource = ports.configSource,
             deviceId = ports.deviceId,
             details = ports.directory,
-            enroller = ManifestDeviceEnroller(ports.enrollment),
+            enroller = ManifestDeviceEnroller(ports.enrollment, ports.manifestStore),
             provision = ports.provision,
         )
     }

@@ -48,6 +48,12 @@ import kotlinx.coroutines.launch
  * failed clear does not suppress it (the resulting transient "backend told, still joined locally"
  * self-heals when the producer restarts and re-writes the manifest). A stale join marker is cleared on
  * the upload tier's next cycle via the marker mismatch, not at leave time.
+ *
+ * The leave deliberately **keeps** the device-manifest record, like the ledger: nothing about the server's
+ * copy changed here, so the belief is still true. It is the *re-join*'s enrollment that falsifies it, and
+ * that is where it is cleared ([ManifestDeviceEnroller]) — which is what makes the self-heal claimed above
+ * actually happen. Before that, the record survived the re-enroll's empty manifest and suppressed the
+ * rewrite forever.
  */
 class LeaveEvent(
     private val config: ConfigStore,

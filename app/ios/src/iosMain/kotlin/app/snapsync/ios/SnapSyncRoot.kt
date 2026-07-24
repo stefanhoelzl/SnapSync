@@ -22,6 +22,7 @@ import app.snapsync.model.captureCutoff
 import app.snapsync.model.CaptureCutoff
 import app.snapsync.model.SelectionPolicy
 import app.snapsync.model.toFacts
+import app.snapsync.gallery.IosDeviceManifestStore
 import app.snapsync.gallery.PhotoKitCandidateSource
 import app.snapsync.ios.discovery.IosDiscoveryStore
 import app.snapsync.model.PermissionStatus
@@ -342,6 +343,10 @@ object SnapSyncRoot {
                 union = HttpEventUnionSource(http, backendHost),
                 directory = detailsSource,
                 enrollment = HttpEnrollment(http, backendHost),
+                // The App-Group file, so the record this app process invalidates at enroll is the same one
+                // the ≥26.1 tier's producer reads in the EXTENSION process. A per-process record would
+                // leave the extension believing the server still holds a projection the app just replaced.
+                manifestStore = IosDeviceManifestStore(),
                 eventCreation = HttpEventCreation(http, backendHost),
                 attestKey = IosAttestKey(),
                 attestClient = HttpAttestClient(darwinHttpClient(), backendHost),
