@@ -21,5 +21,5 @@
 
 ## 4. On device
 
-- [ ] 4.1 Re-join an event this device has contributed to and confirm `device.json` lists its assets
+- [x] 4.1 Re-join an event this device has contributed to and confirm `device.json` lists its assets
       afterwards, rather than being empty

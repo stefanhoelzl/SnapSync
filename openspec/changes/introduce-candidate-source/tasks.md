@@ -109,3 +109,18 @@
       eager and held) nor what this change's D5 concludes. It is unarchived, so fix it there rather than
       layer a contradiction over it here.
 - [x] 7.3 Update `CLAUDE.md`'s `:domain` module description if the deleted ports are named in it.
+
+## 7. Defect found by §6's device run — the walk's asset id
+
+Replacing the resource enumerator with a facts-producing walk changed **which form of asset id the
+policy decides on**. `resourcesFrom` normalizes (`/`→`_`); `PHAsset.toAssetFacts` passed the raw
+`localIdentifier`. Both id-matching rules compare against sets that normalize, so on device
+`NotEcho` and `NotInDenylistedAlbum` were **inert** — the device re-uploaded two photos it had
+downloaded from another event, and the album denylist did nothing. Neither raises, logs, or shows.
+
+- [x] 7.1 Normalize inside `AssetFacts` rather than at each producer, so the mismatch is
+      unrepresentable instead of documented (idempotent; the `LIMITED` path already normalized)
+- [x] 7.2 `AssetFactsIdentityTest` in **commonTest** — the reader that got it wrong is `iosMain`,
+      whose own test runs only on macOS; these run on JVM and simulator
+- [x] 7.3 Confirm on device: the two known echoes are no longer uploaded, and the admitted count
+      drops from 28 to 26 — matching the manifest exactly

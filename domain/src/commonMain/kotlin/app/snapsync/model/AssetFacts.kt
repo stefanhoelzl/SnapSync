@@ -25,7 +25,7 @@ package app.snapsync.model
  * would exclude every asset whose dimensions were not carried.
  */
 class AssetFacts(
-    val assetId: String,
+    assetId: String,
     val creationDate: CaptureDate,
     val isScreenshot: Boolean = false,
     val isScreenRecording: Boolean = false,
@@ -45,7 +45,24 @@ class AssetFacts(
      * ([SelectionRule.MinImageArea] / [SelectionRule.MinVideoArea]).
      */
     val pixelArea: Long? = DEFAULT_CAMERA_PIXEL_AREA,
-)
+) {
+    /**
+     * The asset's identity, **always normalized** ([normalizeAssetId]) whatever the caller passed.
+     *
+     * Two selection rules match this against id sets produced by entirely different code paths —
+     * [SelectionRule.NotEcho] against the download importer's stored `createdLocalId`, and
+     * [SelectionRule.NotInDenylistedAlbum] against the album manager's listing — and both of those
+     * normalize. Normalizing *there* and trusting each producer to match was not enough: the PhotoKit
+     * facts reader passed a raw `localIdentifier`, so on device **both rules admitted everything**, and
+     * neither failure raises, logs, or shows on the screen. The device re-uploaded photos it had
+     * downloaded from another event, and the WhatsApp/Telegram denylist was inert.
+     *
+     * Doing it here makes the mismatch unrepresentable rather than merely documented: every producer of
+     * facts — the PhotoKit walk, the `LIMITED` snapshot, the fakes, a future platform — lands on one
+     * form. The transform is idempotent, so a caller that already normalized is unaffected.
+     */
+    val assetId: String = normalizeAssetId(assetId)
+}
 
 /**
  * 4032×3024 — an SE2 back-camera photo (12.2 MP), comfortably above every floor. The default so a facts
