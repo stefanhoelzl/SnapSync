@@ -324,9 +324,13 @@ is a spec change to this requirement, deliberately):
 - **Config filename** `eventconfig.json` — the App-Group config file of record (capability
   `event-link`; the only config storage). Re-valuing it reads every joined device's file as
   absent: a **false leave on every joined device**.
-- **Device-manifest App-Group layout**: directory `device-manifest`, files `accumulator.json`,
-  `last-uploaded.json` — the manifest is the physical fact of membership; losing the accumulator
-  shrinks the event union.
+- **Device-manifest App-Group layout**: directory `device-manifest`, file `last-uploaded.json` —
+  the skip-if-unchanged record of the manifest this device last published successfully. The manifest
+  itself is a projection of the upload ledger's `COMPLETED` rows (capability `sync-ledger`), so this
+  is the layout's only file: re-valuing either name reads the previously-written state as absent and
+  abandons it in the container. A device-global accumulator file is deliberately **not** in this
+  inventory — there is none; pinning one would fail the exactly-once assertion forever, and a stale
+  `accumulator.json` an older build left in the container is inert.
 - **BGTask identifiers** `app.snapsync.upload.heartbeat`, `app.snapsync.download.backstop` —
   once in Kotlin AND once in `Info.plist`'s `BGTaskSchedulerPermittedIdentifiers`; the guard
   SHALL assert the Kotlin value and the plist value agree, because drift between them silently

@@ -191,18 +191,18 @@ they **match** (a relaunch or re-provision of the already-joined event) the swit
 seed, no cursor clear, no re-projection, no marker write. When they **differ** — an event switch, a
 reinstall with no marker, or a fresh provision — the tier SHALL **`resetTo`** (atomic clear-and-seed)
 the ledger from the per-device listing; **clear the discovery cursor** to force a full re-enumeration;
-**keep** the device-global accumulator intact and **re-project** the device manifest (`device.json`) to
-the **new** event's storage path; and set the `joinedEventId` marker to the configured `eventId`. The
+**re-project** the device manifest (`device.json`) from the re-baselined ledger to the **new** event's
+storage path; and set the `joinedEventId` marker to the configured `eventId`. The
 clear-and-seed makes the ledger exactly the device's stored files — dropping stale/phantom rows —
 while the device-global listing re-seeds the same files `COMPLETED`, so nothing already stored
 re-uploads; the cursor clear re-enumerates to find genuinely-unstored work (the App-Group cursor
 survives an app upgrade, so without it a re-join would scan incrementally and find nothing).
 
-After a **leave** (config absent), **no** lifecycle path SHALL clear the ledger or the accumulator
+After a **leave** (config absent), **no** lifecycle path SHALL clear the ledger
 (`upload-lifecycle`, "Upload producer seam has no destructive verb"). The tier SHALL clear
-the `joinedEventId` marker **only**, on its next cycle, while **keeping** the ledger and the
-accumulator intact (the ledger is device-global and valid across events), so a subsequent provision of
-any event runs a fresh reconciliation without losing dedup.
+the `joinedEventId` marker **only**, on its next cycle, while **keeping** the ledger intact (it is
+device-global and valid across events), so a subsequent provision of any event runs a fresh
+reconciliation without losing dedup.
 
 The property this defends is **dedup**: the ledger's `COMPLETED` rows are device-global and stay true
 across a leave, a switch, and a re-join, so clearing them would re-upload every already-stored resource on
@@ -214,12 +214,12 @@ it did not touch still knows what is stored.
 #### Scenario: Re-provision of an already-joined event is a no-op
 
 - **WHEN** the configured `eventId` equals the `joinedEventId` marker
-- **THEN** no seed, no cursor clear, no re-projection, and no marker write occur; the ledger, cursor, and accumulator are unchanged
+- **THEN** no seed, no cursor clear, no re-projection, and no marker write occur; the ledger and cursor are unchanged
 
 #### Scenario: A different event resets-and-seeds and clears the cursor
 
 - **WHEN** the configured `eventId` differs from the marker
-- **THEN** the ledger is `resetTo` (clear-and-seed) from the per-device listing, the discovery cursor is cleared, the accumulator is kept and `device.json` is re-projected to the new event path, and the marker is set — with the global listing re-seeding the same files `COMPLETED` so nothing already stored re-uploads
+- **THEN** the ledger is `resetTo` (clear-and-seed) from the per-device listing, the discovery cursor is cleared, `device.json` is re-projected from the re-baselined ledger to the new event path, and the marker is set — with the global listing re-seeding the same files `COMPLETED` so nothing already stored re-uploads
 
 #### Scenario: A reinstall restores via the same clear-and-seed
 
@@ -229,7 +229,7 @@ it did not touch still knows what is stored.
 #### Scenario: Leaving clears the marker but keeps dedup
 
 - **WHEN** the user has left an event (config absent) and the upload tier next runs
-- **THEN** the tier clears the `joinedEventId` marker **only** and keeps the ledger and accumulator intact, so provisioning any event afterward runs a fresh reconciliation and re-uploads nothing already stored
+- **THEN** the tier clears the `joinedEventId` marker **only** and keeps the ledger intact, so provisioning any event afterward runs a fresh reconciliation and re-uploads nothing already stored
 
 #### Scenario: No lifecycle transition wipes the ledger
 
@@ -335,42 +335,71 @@ reasoning).
 
 ### Requirement: Reconcile backfills the event window onto pre-existing memberships
 
-A reconciliation SHALL backfill the event window onto a membership stored **before** this change — one
-that carries no `endsAt` and no `maxPhotoDate` field (the event window and its capture-date ceiling did not
-exist). When the configured `EventConfig` lacks the window fields, the upload tier SHALL fetch the event
-details (`GET /events`) and, on a successful response, **backfill and persist** the membership with
-`endsAt` from the fetched event and `maxPhotoDate = endsAt` (the guest ceiling defaults to the event end,
-capability `photo-selection-policy`).
+A reconciliation SHALL backfill the event's **window and retention** fields onto a membership stored
+**before** they existed — one that carries no `endsAt` or no `deletesAt`. When the configured
+`EventConfig` lacks either of them, the upload tier SHALL fetch the event details
+(`GET /events`) and, on a successful response, **backfill and persist** the membership with `endsAt` from
+the fetched event and `deletesAt` from the fetched event's derived delete-by (capability
+`event-creation`). Each field SHALL be filled only when **absent**, and both SHALL ride in a **single
+whole-config save** so two rewrites cannot lose each other's field.
+
+The membership's own capture-date **ceiling** (`maxPhotoDate`) is **not** among the backfilled fields: it
+is required on every persisted membership (capability `join-event`), so a config that decoded at all
+already carries a concrete ceiling and there is nothing absent to fill.
+
 Legacy events (whose `endsAt` was the server-fixed `startsAt + 30d` backstop) are thereby capped at their
 30-day mark — accepted: for a short-lived-event product a post-30-day capture is almost certainly not an
 event photo.
 
 Until a membership is backfilled — for example while the details fetch is unavailable — an **absent**
-`maxPhotoDate` SHALL be treated as **unbounded** (no capture-date ceiling applied), so nothing of the
-member's is silently dropped mid-upgrade; the ceiling takes effect only once a real value is persisted. A
-details fetch that returns **404** (the event is already gone) SHALL **skip** the backfill and leave the
-membership's window fields absent — there is nothing to backfill from a deleted event, and the membership
-otherwise reconciles unchanged.
+`endsAt` SHALL leave the "Event ended" marker (capability `sync-status-screen`) unreached, and an
+**absent** `deletesAt` SHALL be treated as **never reached**, so the self-leave (capability
+`leave-event`) cannot fire on a membership that has not yet learned its deadline. Both defaults fail
+toward keeping data and keeping the membership.
 
-The backfill SHALL write only the new window fields onto the config; it SHALL NOT alter the `eventId`,
-`name`, cutoff (`minPhotoDate`), `direction`, or `saveToAlbum`, and it is not a switch (no ledger reset,
-no cursor clear).
+A details fetch that returns **404** (the event is already gone) SHALL **skip** the backfill and leave the
+membership's fields absent — there is nothing to backfill from a deleted event, and the membership
+otherwise reconciles unchanged. Note that this is the reconcile path only: whether that same `404` tears
+the membership down is the separate two-witness rule of capability `leave-event`, and a membership with
+no backfilled `deletesAt` can never satisfy it.
 
-#### Scenario: A legacy membership is backfilled to the event end
+The backfill SHALL write only the new window and retention fields onto the config; it SHALL NOT alter the
+`eventId`, `name`, the capture-date range (`minPhotoDate`, `maxPhotoDate`), `direction`, or
+`saveToAlbum`, and it is not a switch (no ledger reset, no cursor clear).
+
+#### Scenario: A legacy membership is backfilled to the event end and its deadline
 - **WHEN** a reconciliation runs for a membership stored before this change (no `endsAt`, no
-  `maxPhotoDate`) and `GET /events` returns the event with an `endsAt`
-- **THEN** the membership is persisted with that `endsAt` and `maxPhotoDate = endsAt`, so a legacy
-  server-fixed `+30d` event is capped at its 30-day mark
+  `deletesAt`) and `GET /events` returns the event with an `endsAt` and a `deletesAt`
+- **THEN** the membership is persisted, in one save, with that `endsAt` and that `deletesAt`, its
+  existing `maxPhotoDate` untouched
 
-#### Scenario: Before backfill an absent ceiling is unbounded
-- **WHEN** a membership missing the window fields reconciles while `GET /events` is unavailable, so no
-  backfill is written
-- **THEN** the absent `maxPhotoDate` is treated as unbounded — no capture-date ceiling is applied and no
-  in-scope photo is dropped — and the next reconciliation retries the backfill
+#### Scenario: A membership missing only the deadline is backfilled
+- **WHEN** a reconciliation runs for a membership that already carries `endsAt` but no `deletesAt`, and
+  `GET /events` succeeds
+- **THEN** only `deletesAt` is filled, and the membership's `endsAt` and capture-date range are left
+  unchanged
+
+#### Scenario: Before backfill an absent deadline is never reached
+- **WHEN** a membership missing `deletesAt` reconciles while `GET /events` is unavailable, so no backfill
+  is written
+- **THEN** the absent `deletesAt` is treated as never reached, so no self-leave can fire, and the next
+  reconciliation retries the backfill
 
 #### Scenario: A 404 skips the backfill
 - **WHEN** a reconciliation runs for a membership missing the window fields and `GET /events` returns
   `404` (the event is already gone)
-- **THEN** no backfill is written, the window fields stay absent (the ceiling stays unbounded), and the
+- **THEN** no backfill is written, the fields stay absent (the deadline stays unreached), and the
   reconciliation otherwise proceeds unchanged
 
+### Requirement: Reconcile no longer backfills an absent ceiling
+
+The reconcile path SHALL NOT carry an absent-ceiling backfill or an unbounded-until-backfilled allowance,
+because the capture-date ceiling is now required on every persisted membership (capability `join-event`).
+Any membership that reaches this change's build already carries a concrete ceiling (backfilled by
+`decouple-event-window-from-lifetime` before this change deploys). The reconcile continues to refresh the
+event name and other membership details unchanged; it simply has no absent ceiling to fill.
+
+#### Scenario: No absent-ceiling branch remains
+
+- **WHEN** the reconcile path is inspected
+- **THEN** it contains no branch that treats an absent capture-date ceiling as unbounded or backfills one

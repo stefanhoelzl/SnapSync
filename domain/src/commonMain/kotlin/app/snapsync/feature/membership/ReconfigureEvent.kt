@@ -14,8 +14,8 @@ import co.touchlab.kermit.Logger
  * The in-place **reconfigure** use-case (capability `reconfigure-membership`): a joined member changes
  * the three participation settings they picked at join — the capture-date cutoff, the direction, and the
  * album opt-in — **without leaving**. It is the fourth writer of the one-writer membership config
- * (join/provision saves it, leave clears it, [EventName] refreshes the name, this rewrites the
- * participation fields), and it mirrors [EventName.storeEventNameIfChanged]'s discipline: read the current
+ * (join/provision saves it, leave clears it, [MembershipRefresh] reconciles it against fresh details,
+ * this rewrites the participation fields), and it mirrors that reconcile's discipline: read the current
  * config, guard the `eventId` still matches, and save the **whole** object with only the intended fields
  * replaced (`copy(direction, minPhotoDate, saveToAlbum)`). It never enters `JoinEvent`, so the
  * `AlreadyJoined` short-circuit and the enrollment path are untouched, and the ledger / enrollment /

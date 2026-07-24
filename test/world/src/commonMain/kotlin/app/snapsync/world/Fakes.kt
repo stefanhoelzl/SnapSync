@@ -29,7 +29,7 @@ class MutablePhotoAccessStatusSource(
 }
 
 /**
- * The world's gallery: the operator rigging around the honest `:adapter:generic:fake` [InMemoryRawAssetSource]
+ * The world's gallery: the operator rigging around the honest `:adapter:generic:fake` [InMemoryCandidateSource]
  * (spec `architecture-guards`, "The fake-honesty gate": the fake exposes only its port; the settable
  * state cell and the unscoped [current] read live HERE, in the world wrapper). [source] is what the
  * compositions consume; [set]/[current] are what the operator (and [FakePhotoLibraryImporter]) drive.

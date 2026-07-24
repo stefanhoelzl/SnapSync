@@ -161,9 +161,11 @@ inspectable so tests assert the lifecycle, not only the final outcome.
 
 ### Requirement: Token-delta discovery feed driven by the in-memory gallery
 
-The world's fake `BackgroundTransfer.discoverResources(sinceToken)` SHALL derive its change feed from the
-in-memory gallery (`InMemoryRawAssetSource` mapped through the real resource fan-out). Adding an asset
-SHALL surface it as a new `Resource` in `Discovery.resources`; removing an asset SHALL surface its id in
+The world's fake `BackgroundTransfer.discoverResources(sinceToken, policy)` SHALL derive its change feed
+from the in-memory gallery — the honest `InMemoryCandidateSource`, which answers the single
+`CandidateSource.candidates(policy)` read over the world-owned asset cell and whose candidates map their
+resources through the real shared fan-out when the cycle asks for them. Adding an asset SHALL surface it
+as a new `Candidate` in `Discovery.candidates`; removing an asset SHALL surface its id in
 `Discovery.removedAssetIds`; and an operator **expire-token** action SHALL return
 `Discovery.fullEnumeration = true` carrying the whole current key-set (the routine token-expiry path),
 so the real cycle reconciles via `retainAssets`.
@@ -171,7 +173,7 @@ so the real cycle reconciles via `retainAssets`.
 #### Scenario: Adding an asset yields a new resource
 
 - **WHEN** an asset is added to the in-memory gallery and discovery runs
-- **THEN** `Discovery.resources` carries that asset's resources
+- **THEN** `Discovery.candidates` carries that asset, and its resources fan out when the cycle asks
 
 #### Scenario: Removing an asset yields a removed id
 

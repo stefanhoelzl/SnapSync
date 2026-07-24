@@ -39,87 +39,143 @@ Decision record: `changes/archive/2026-07-21-add-event-limits`;
 ## Requirements
 ### Requirement: Limit values from backend configuration
 
-The backend SHALL define three event-limit constants in its configuration module — the event
-device capacity (initial value `10`), the event duration (initial value 30 days), and the
-post-`endsAt` grace period (initial value 1 day) — as source constants carried on the runtime
-`Config`, per the module's config-in-source law (capability `backend-deployment`: the
-environment is never consulted for a non-secret; tests inject shortened windows by constructing
-a `Config` directly). `POST /events` SHALL resolve `capacity` from this configuration **at mint
-time** and stamp it onto the marker (capability `event-creation`).
+The backend SHALL define three event-limit constants in its configuration module — the event device
+**capacity** (initial value `10`), the maximum event **window** (initial value 30 days), and the event
+**lifetime** (initial value 30 days) — as source constants carried on the runtime `Config`, per the
+module's config-in-source law (capability `backend-deployment`: the environment is never consulted for a
+non-secret; tests inject shortened values by constructing a `Config` directly). The window maximum and
+the lifetime SHALL be **two distinct constants** even while they hold the same value: they answer
+different questions, only the lifetime is stamped, and collapsing them would make a future divergence a
+silent behavior change in two places. There SHALL be **no** grace-period constant.
 
-`endsAt` SHALL be **creator-supplied at mint when present**: when the `POST /events` body carries
-a valid `endsAt` — canonical cutoff shape, a real round-tripping instant, and strictly after
-`startsAt` (`startsAt < endsAt`), with **no upper cap on the duration** — the endpoint SHALL stamp
-that value as the marker's `endsAt`. When the body carries no `endsAt`, the endpoint SHALL fall
-back to `endsAt = startsAt + duration` from configuration, so clients that send only `startsAt`
-keep working. The configured duration is thus a **fallback default**, not a fixed global bound on
-how long an event may run; a creator-chosen duration is the additive future paid-tier gate
-(capability `event-creation` names the attach point) — enforcement needs no change because it
-already reads only the marker's own stamped fields.
+`POST /events` SHALL resolve `capacity` and `lifetimeSeconds` from this configuration **at mint time**
+and stamp both onto the marker (capability `event-creation`).
 
-All subsequent enforcement SHALL read the marker's own `endsAt` and `capacity` fields, never the
-live configuration values or a global duration — so a configuration change affects only the
-fallback used by events minted after it, and a later change can make capacity creator-chosen with
-no schema or enforcement change.
+`endsAt` SHALL be **creator-supplied at mint when present**: when the `POST /events` body carries a valid
+`endsAt` — canonical cutoff shape, a real round-tripping instant, strictly after `startsAt`
+(`startsAt < endsAt`), and no more than the configured window maximum after it
+(`endsAt - startsAt <= windowMax`) — the endpoint SHALL stamp that value as the marker's `endsAt`. When
+the body carries no `endsAt`, the endpoint SHALL fall back to `endsAt = startsAt + windowMax`, so clients
+that send only `startsAt` keep working.
 
-`endsAt` SHALL be stored in the canonical cutoff form `yyyy-MM-dd'T'HH:mm:ss'Z'` (the same shape
-as `startsAt`), so lifecycle comparisons are lexicographic string comparisons. `capacity` SHALL
-be a positive integer.
+`endsAt` SHALL bound **only** which captures may be uploaded (capability `photo-selection-policy`). It
+SHALL NOT determine when the event is deleted, SHALL NOT close enrollment, and SHALL NOT be read by any
+lifecycle check.
 
-#### Scenario: A creator-supplied endsAt is stamped verbatim
+All subsequent enforcement SHALL read the marker's own `endsAt`, `capacity`, and `lifetimeSeconds`
+fields, never the live configuration values — so a configuration change affects only events minted after
+it. The one deliberate exception is the **anchor** from which the lifetime is measured, which is shared
+code rather than a stamped value (see the lifetime requirement), so that the anchor policy can be
+corrected without rewriting stored metadata.
 
-- **WHEN** a valid `POST /events` carries a valid `endsAt` (canonical shape, a real instant, and
-  strictly after `startsAt`)
-- **THEN** the written marker carries that `endsAt` unchanged — no configured duration is applied
-  and no upper cap on `endsAt - startsAt` is enforced
+The window maximum and the lifetime are **fixed for every event, permanently**. The only future paid-tier
+lever is `capacity`, which is already per-event and stamped, so raising it needs no schema or enforcement
+change.
 
-#### Scenario: An absent endsAt falls back to the configured duration
+`endsAt` SHALL be stored in the canonical cutoff form `yyyy-MM-dd'T'HH:mm:ss'Z'` (the same shape as
+`startsAt`). `capacity` SHALL be a positive integer. `lifetimeSeconds` SHALL be a positive integer number
+of seconds.
 
-- **WHEN** a valid `POST /events` carries no `endsAt` while the configured duration is 30 days and
+#### Scenario: A creator-supplied endsAt within the cap is stamped verbatim
+
+- **WHEN** a valid `POST /events` carries a valid `endsAt` (canonical shape, a real instant, strictly
+  after `startsAt`, and no more than the configured window maximum after it)
+- **THEN** the written marker carries that `endsAt` unchanged
+
+#### Scenario: An absent endsAt falls back to the maximum window
+
+- **WHEN** a valid `POST /events` carries no `endsAt` while the configured window maximum is 30 days and
   the configured capacity is 10
-- **THEN** the written marker carries `endsAt` equal to `startsAt` plus 30 days in canonical
-  cutoff form, and `capacity` `10`
+- **THEN** the written marker carries `endsAt` equal to `startsAt` plus 30 days in canonical cutoff form,
+  and `capacity` `10`
+
+#### Scenario: The lifetime is stamped at mint
+
+- **WHEN** a valid `POST /events` is processed while the configured lifetime is 30 days
+- **THEN** the written marker carries `lifetimeSeconds` equal to 30 days in seconds
 
 #### Scenario: A configuration change does not reach existing events
 
-- **WHEN** the configured duration or capacity is changed after an event was minted
-- **THEN** that event's enforcement still uses the `endsAt` and `capacity` stamped on its own
-  marker, unchanged
+- **WHEN** the configured window maximum, lifetime, or capacity is changed after an event was minted
+- **THEN** that event's enforcement still uses the `endsAt`, `lifetimeSeconds`, and `capacity` stamped on
+  its own marker, unchanged
 
-#### Scenario: Tests inject shortened windows through Config
+#### Scenario: The window bounds uploads only
 
-- **WHEN** a test constructs a `Config` carrying a shortened event duration or grace period
-- **THEN** the app built over it mints (when no `endsAt` is supplied) and enforces with those
-  values — no environment variable and no clock mocking involved
+- **WHEN** an event-scoped request arrives after the event's `endsAt` has passed
+- **THEN** no lifecycle check consults `endsAt`, and the request is served exactly as it would have been
+  before `endsAt` passed
+
+#### Scenario: Tests inject shortened values through Config
+
+- **WHEN** a test constructs a `Config` carrying a shortened window maximum or lifetime
+- **THEN** the app built over it mints and enforces with those values — no environment variable and no
+  clock mocking involved
 
 ### Requirement: Event lifecycle from the marker alone
 
-An event's lifecycle state SHALL be a pure function of its marker's `endsAt` and the server's current
-wall-clock: **live** while `now <= endsAt`, and **grace** while `now > endsAt`. There is no distinct
-served **expired** state — an event past `endsAt` remains in grace (closed to new devices, open to
-existing members) until the scheduled cleanup deletes it (capability `scheduled-cleanup`), and deletion
-by that sweep *is* expiry. A marker missing `endsAt` or `capacity` (written before the `event-limits`
-capability) SHALL be treated as **grace** by the gate and is deleted by the sweep. No stored state
-machine, flag, or rewrite SHALL represent the lifecycle — the marker stays write-once, and the state is
-recomputed on every read. The configured grace period governs only **when the sweep deletes** an event
-(`now > endsAt + grace`), not how the gate classifies it.
+An event's lifecycle SHALL be binary — it **exists**, or it has been **deleted** — with no served
+intermediate state and no stored state machine, flag, or marker rewrite. While its marker is present and
+complete, every event-scoped operation SHALL be served: enrollment (under capacity), manifest writes,
+photo-byte uploads, the union read, notify fan-out, and leave.
+**Joining SHALL NOT be closed by time under any condition** — an event is joinable for
+as long as it exists, bounded only by capacity — because a guest who joins after the window closed still
+holds in-window captures that belong in the event.
 
-#### Scenario: Live within the window
+An event's **delete-by** instant SHALL be derived on every read as
+`max(createdAt, startsAt) + lifetimeSeconds`, where `createdAt` and `startsAt` are parsed to absolute
+instants rather than compared as strings (`createdAt` is not in canonical cutoff form, so a lexicographic
+comparison silently yields the wrong anchor). Anchoring at the later of the two is what makes a
+back-dated event (whose `startsAt` is already weeks past) survive long enough to be joined, and a
+created-early event (whose `startsAt` is weeks away) survive its own window.
 
-- **WHEN** an event-scoped request arrives while `now <= endsAt`
-- **THEN** the event is treated as live and the request proceeds under the capacity rules
+The delete-by SHALL be **derived, never stamped**: the marker carries the lifetime *duration*, so the
+per-event value is immutable while the anchor formula stays in shared code and can be corrected without
+rewriting stored metadata.
 
-#### Scenario: Grace after the end
+A marker missing `startsAt`, `endsAt`, or `capacity`, or with an unparseable field, SHALL be treated as
+**gone**: it cannot be classified or served, so every route answers `404` and the scheduled cleanup
+deletes it. A marker carrying `startsAt` but no `lifetimeSeconds` SHALL derive its delete-by from the
+**configured** lifetime constant — one lifecycle path, with no second rule kept alive for legacy markers.
 
-- **WHEN** an event-scoped request arrives while `now > endsAt`
-- **THEN** the event is treated as in grace — closed to new devices, open to existing members — until the
-  scheduled cleanup deletes it
+Deletion is performed solely by the scheduled cleanup (capability `scheduled-cleanup`). No route SHALL
+delete an event on touch.
 
-#### Scenario: A legacy marker is in grace
+#### Scenario: An event past its window still serves everything
 
-- **WHEN** an event-scoped request reads a marker that carries no `endsAt` or no `capacity`
-- **THEN** the event is treated as in grace (closed to new devices, open to existing members) and is left
-  for the scheduled cleanup to delete
+- **WHEN** an event-scoped request arrives after `endsAt` but before the event's delete-by
+- **THEN** it is served exactly as it would have been while the window was open, including a
+  first-time enrollment for a never-seen device
+
+#### Scenario: The delete-by anchors at the later of createdAt and startsAt
+
+- **WHEN** an event's marker carries a `startsAt` five weeks before its `createdAt`
+- **THEN** the derived delete-by is `createdAt + lifetimeSeconds`, so the event is not already past its
+  deadline at the moment it is minted
+
+#### Scenario: A created-early event survives its own window
+
+- **WHEN** an event's marker carries a `startsAt` three weeks after its `createdAt`
+- **THEN** the derived delete-by is `startsAt + lifetimeSeconds`, so the event outlives the window it
+  declares
+
+#### Scenario: A legacy marker without a stamped lifetime derives from configuration
+
+- **WHEN** an event's marker carries `startsAt`, `endsAt`, and `capacity` but no `lifetimeSeconds`
+- **THEN** its delete-by is derived using the configured lifetime constant, and it is served normally
+  until that instant
+
+#### Scenario: An incomplete marker is gone
+
+- **WHEN** an event-scoped request reads a marker that carries no `startsAt`, no `endsAt`, or no
+  `capacity`
+- **THEN** every route answers `404` and the scheduled cleanup deletes the event
+
+#### Scenario: No route deletes on touch
+
+- **WHEN** an event-scoped request arrives for an event past its derived delete-by, before the next
+  scheduled cleanup has run
+- **THEN** the request is served normally and the route deletes nothing — deletion is the sweep's alone
 
 ### Requirement: Capacity bounds devices ever enrolled
 
@@ -163,36 +219,3 @@ guarantees is that a request observing the event at or over capacity admits no n
   live
 - **THEN** the write passes the capacity check (its device id is already counted) and the device
   is active again
-
-### Requirement: Grace closes enrollment but not sync
-
-During grace the endpoint SHALL reject a device-manifest write for a device id with no active or
-departed manifest on the event with `410 Gone`, and no manifest SHALL be written. Every other
-event-scoped operation SHALL behave exactly as when live for devices already on the event:
-manifest writes, photo-byte uploads, the union read, notify fan-out, and leave all proceed. The
-grace period exists so photos taken during the event but uploaded late — the platform schedules
-uploads on its own cadence — still land; closing anything but enrollment would silently drop
-them.
-
-The distinct codes keep the two rejection axes separate for future clients: `409` means
-**full** (capacity), `410` means **over** (time). Neither carries a response-body contract.
-
-#### Scenario: A new device cannot enroll during grace
-
-- **WHEN** a device-manifest write arrives during grace for a device id with no manifest (active
-  or departed) on the event
-- **THEN** the endpoint responds `410` and writes no manifest
-
-#### Scenario: An existing member syncs through grace
-
-- **WHEN** a device with an active manifest writes its manifest, uploads bytes, or reads the
-  union during grace
-- **THEN** each operation proceeds exactly as when the event was live
-
-#### Scenario: Full beats over for a new device in grace
-
-- **WHEN** a device-manifest write arrives during grace for a never-seen device id on an event
-  that is also at capacity
-- **THEN** the endpoint responds `410` — the event being over is the reason joining is closed,
-  regardless of remaining capacity
-

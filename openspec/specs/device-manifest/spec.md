@@ -3,11 +3,12 @@
 ## Purpose
 
 The per-event device manifest: one mutable JSON object per (event, device) at
-`/events/<eventId>/devices/<deviceId>.json` that projects all of a device's not-deleted assets — with
-their original-only resources, each typed by a generic `role` — into a single full-state snapshot. It
+`/events/<eventId>/devices/<deviceId>.json` that projects all of a device's uploaded, not-deleted
+resources — original-only, each typed by a generic `role` — into a single full-state snapshot. It
 supersedes the per-asset manifest: the upload extension is its sole writer, PUTting it synchronously
-in-cycle as a date-filtered projection of a device-global accumulator. Write-only in v1 (no in-app
-consumer reads it), it exists as forward-preparation for restore and event-wide union.
+in-cycle as a per-event projection of the upload ledger's `COMPLETED` rows (capability `sync-ledger`),
+admitted by the membership's one selection policy. Write-only in v1 (no in-app consumer reads it), it
+exists as forward-preparation for restore and event-wide union.
 ## Requirements
 ### Requirement: Per-event device manifest document
 
@@ -59,59 +60,76 @@ next cycle, so older `live` manifests from un-updated builds age out and are not
 
 ### Requirement: Mutable full-state projection
 
-The device manifest SHALL be a **mutable** full-state snapshot, not an immutable write-once object. It
-SHALL be rewritten each cycle as a complete, self-contained snapshot of the projected asset set, so
-there is no read-modify-write step and no lost update under last-write-wins. Each write SHALL fully
-replace the prior object, and any transient staleness SHALL self-heal on the next cycle.
+The device manifest SHALL be projected from the upload **ledger** (capability `sync-ledger`). For a given
+event the manifest SHALL list exactly the ledger's **COMPLETED** rows whose asset falls within the current
+membership's admitted capture-date range (capability `photo-selection-policy`) — a full-state document
+listing only genuinely-uploaded resources. The ledger SHALL be the **only** durable record the projection
+reads: no second structure holding the same asset set exists, so none can disagree with it, and
+deletion-awareness comes from the ledger's own pruning (a deleted asset's rows are dropped).
 
-#### Scenario: Each write is a complete snapshot
+Because the manifest lists only `COMPLETED` resources, the event union's byte-presence check (capability
+`bunny-list-endpoint`) is not the mechanism that hides not-yet-uploaded assets; it is defense-in-depth
+against a `COMPLETED`-but-absent byte.
 
-- **WHEN** the producer writes the manifest for an event
-- **THEN** the written object is a complete self-contained snapshot of the projected assets, computed
-  without reading the prior object
+#### Scenario: The manifest lists completed rows in the event window
 
-#### Scenario: Last-write-wins is harmless
+- **WHEN** the manifest is produced for an event
+- **THEN** it lists exactly the device's COMPLETED ledger resources whose asset is within the membership's
+  admitted range — no discovered-but-unuploaded asset, and nothing outside the range
 
-- **WHEN** two manifest writes for the same (event, device) race or repeat
-- **THEN** the result is the last write, with no lost update and no corruption, and the snapshot
-  converges on the next cycle
+#### Scenario: A deleted asset drops from the manifest
 
-### Requirement: Device-global accumulator with per-event projection
+- **WHEN** an asset is deleted locally and its ledger rows are pruned
+- **THEN** it no longer appears in the projected manifest
 
-The manifest's entries SHALL derive from a device-global accumulator holding every **admitted**, not-deleted
-asset with its manifest detail. "Admitted" means the asset survived the selection policy's **origin
-exclusions** (capability `photo-selection-policy`) — it is not a screenshot, screen recording, animated image,
-sub-floor-resolution asset, or member of a denylisted album. Each event's manifest SHALL be the date-filtered
-projection of that accumulator — the assets whose capture date is at or after **the device's configured
-start for that event** (its per-membership capture-date cutoff). A membership's cutoff is **required,
-never absent** (capability `photo-selection-policy`: no scope admits the whole library), so every
-projection SHALL be date-filtered — there is no whole-library projection. The
-accumulator SHALL remain device-global even when a cutoff is set — it holds every admitted asset,
-including those excluded from the current projection by **date** — so that a differing cutoff (a future edit, or a
-concurrent membership in another event) can be projected without re-walking the library. An accumulator
-entry SHALL be written on **every** discovery of an admitted asset, including an already-uploaded one, so the
-accumulator is a rebuildable cache rather than a source of truth; after an App-Group wipe it SHALL
-rebuild gradually as discovery re-encounters each present asset.
+### Requirement: Device-global ledger with per-event projection
 
-The two exclusions land on **opposite sides** of the accumulator, and this asymmetry is deliberate. The
-**capture-date cutoff is per-membership**, so it SHALL be applied in the per-event *projection* — the
-accumulator must retain a pre-cutoff asset because another event's cutoff may admit it. The **origin
-exclusions are event-independent** — a screenshot is a screenshot in every event, and no membership will ever
-admit one — so they SHALL be applied **before** the accumulator. Pre-filtering by origin therefore costs the
-accumulator no per-event flexibility, while pre-filtering by date would.
+The manifest's entries SHALL derive from the device-global upload ledger — the durable, event-independently
+keyed record of every resource this device has uploaded and not deleted, each row carrying the manifest's
+presentation detail (capability `sync-ledger`). Each event's manifest SHALL be the **admitted** projection of
+that ledger's `COMPLETED` rows: the assets the membership's selection policy admits by **capture date**
+(capability `photo-selection-policy`) — at or after the device's configured start for that event (its
+per-membership capture-date cutoff) and at or before the event's capture-date ceiling. A membership's cutoff is
+**required, never absent** (no scope admits the whole library), so every projection SHALL be date-bounded —
+there is no whole-library projection. The projection SHALL apply that one policy rather than a date comparison
+of its own, so a bound added to the policy reaches the manifest by construction. The ledger SHALL remain
+device-global under a cutoff — it holds every uploaded resource, including ones the current projection
+excludes by **date** — so that a differing cutoff (a future edit, or a concurrent membership in another
+event) can be projected without re-walking the library.
 
-An origin-excluded asset that reached the accumulator would project into `device.json`, enter the event union,
-and be offered to every other member as bytes that were **never uploaded** — because the upload cycle drops it
-before the engine. The accumulator's admitted-only contract is what forecloses that.
+The ledger is a durable record rather than a cache of the library: a row exists because bytes landed, and the
+re-join reconciliation re-seeds it from the authoritative per-device file listing (capability
+`event-rejoin-reconciliation`). Such a seeded row is **bare** — a filename listing carries no capture date —
+and a bare row SHALL NOT be listed in any projection until a full enumeration backfills its manifest detail.
+This is fail-closed on purpose: a row whose capture date is unknown cannot be shown to fall inside an event's
+range.
 
-#### Scenario: Date-filtered projection per the device's configured cutoff
-- **WHEN** the membership has a cutoff and an accumulator asset's capture date precedes it
-- **THEN** that asset is excluded from that event's manifest while remaining in the device-global accumulator
+The two kinds of exclusion land on **opposite sides** of the ledger, and this asymmetry is deliberate. The
+**capture-date bounds are per-membership**, so they SHALL be applied in the per-event *projection* — the
+ledger must retain an out-of-range row because another event's range may admit it. The **origin exclusions
+are event-independent** — a screenshot is a screenshot in every event, and no membership will ever admit
+one — so they SHALL be applied **before** the upload, by the cycle's resource selection, and an
+origin-excluded asset therefore never earns a `COMPLETED` row at all. Excluding by origin up front
+therefore costs the projection no per-event flexibility, while excluding by date would.
 
-#### Scenario: An origin-excluded asset never enters the accumulator
+An origin-excluded asset that reached the manifest would enter the event union and be offered to every other
+member as bytes that were **never uploaded** — because the upload cycle drops it before the engine. Projecting
+only from `COMPLETED` rows is what forecloses that.
+
+#### Scenario: Date-bounded projection per the device's configured cutoff
+- **WHEN** the membership has a cutoff and a `COMPLETED` ledger row's capture date precedes it
+- **THEN** that asset is excluded from that event's manifest while its row remains in the device-global ledger
+
+#### Scenario: An origin-excluded asset never reaches the ledger
 - **WHEN** discovery surfaces a screenshot captured after the membership's cutoff
-- **THEN** it is excluded before the accumulator, so it appears in **no** event's manifest and never enters
-  the event union — and it does not remain in the accumulator against a future cutoff either
+- **THEN** the cycle drops it before the engine, so it earns no `COMPLETED` row, appears in **no** event's
+  manifest, and never enters the event union
+
+#### Scenario: A bare reconciled row is not listed until it is backfilled
+- **WHEN** the re-join reconciliation seeds a `COMPLETED` row from the per-device file listing, so the row
+  carries no capture date
+- **THEN** the projection omits that resource until a full enumeration backfills its capture date, after which
+  the next projection lists it if the membership admits it
 
 #### Scenario: The manifest never lists an asset whose bytes were not uploaded
 - **WHEN** the selection policy excludes an asset from byte upload
@@ -120,17 +138,35 @@ before the engine. The accumulator's admitted-only contract is what forecloses t
 
 ### Requirement: Sole writer, synchronous in-cycle upload
 
-The upload extension SHALL be the **sole** writer of the device manifest. It SHALL PUT the manifest
-**synchronously within the upload cycle** — no background `URLSession` and no app involvement. The
-extension MAY skip the PUT when the projected snapshot is unchanged since the last successful write. A
-kill mid-PUT SHALL be tolerated: the partial write is lost and recomputed on the next cycle (benign,
+The upload extension SHALL be the **sole** writer of the *projected* device manifest. It SHALL PUT the
+manifest **synchronously within the upload cycle** — no background `URLSession` and no app involvement.
+The extension MAY skip the PUT when the projected snapshot is unchanged since the last successful write.
+A kill mid-PUT SHALL be tolerated: the partial write is lost and recomputed on the next cycle (benign,
 because the manifest is write-only in v1 and converges).
+
+Enrollment (capability `join-event`) writes a **register-only empty** manifest to the same resource, so
+the skip-if-unchanged record is a belief about the server that a second writer can falsify. Any
+successful register-only write SHALL therefore **invalidate** that record, so the next cycle re-PUTs the
+projection rather than skipping it. A **failed** register-only write SHALL leave the record intact — the
+server was not changed, so the belief is still true.
 
 #### Scenario: Synchronous PUT with skip-if-unchanged
 
 - **WHEN** the upload cycle has produced the projected snapshot
 - **THEN** the extension PUTs the manifest synchronously in-cycle, or skips the PUT when the snapshot is
   unchanged since the last successful write
+
+#### Scenario: Re-joining an event does not empty this device's manifest
+
+- **WHEN** the device re-enrolls in an event it has already contributed to — after a leave, a durable
+  state reset, or a reinstall — and the projected snapshot is unchanged from before
+- **THEN** the enrollment's empty manifest is overwritten by the projection on the next cycle, so the
+  event union still lists this device's uploaded photos
+
+#### Scenario: A failed enrollment does not force a redundant PUT
+
+- **WHEN** a register-only enrollment write is not confirmed by the edge
+- **THEN** the skip-if-unchanged record is unchanged, and an unchanged projection still skips its PUT
 
 #### Scenario: Kill mid-PUT is caught next cycle
 
@@ -139,14 +175,15 @@ because the manifest is write-only in v1 and converges).
 
 ### Requirement: Deletion-aware manifest
 
-When an asset is deleted from the library, its accumulator entry SHALL be pruned, so the manifest stops
-listing that asset on the next projection. This pruning is the basis for future deletion-correct
-restore.
+When an asset is deleted from the library, its **ledger rows** SHALL be pruned — incrementally from the
+change feed, and by the full enumeration's retain-live reconcile — so the next projection stops listing that
+asset. Because the projection reads the ledger and nothing else, one pruning keeps the manifest honest; there
+is no second structure to keep in step. This pruning is the basis for future deletion-correct restore.
 
-#### Scenario: Deletion prunes the entry
+#### Scenario: Deletion prunes the rows
 
 - **WHEN** an asset previously listed in the manifest is deleted from the library
-- **THEN** its accumulator entry is pruned and the next manifest projection no longer lists it
+- **THEN** its ledger rows are pruned and the next manifest projection no longer lists it
 
 ### Requirement: Write-only in v1
 
