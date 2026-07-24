@@ -25,6 +25,8 @@ internal fun PHAsset.toAssetFacts(creationDate: String): AssetFacts {
     val width = pixelWidth.toLong()
     val height = pixelHeight.toLong()
     return AssetFacts(
+        // AssetFacts normalizes this itself — the raw `localIdentifier` would match neither the echo
+        // set nor the album denylist, and both would silently admit everything. See AssetFacts.assetId.
         assetId = localIdentifier,
         creationDate = CaptureDate(creationDate),
         isScreenshot = subtypes and SUBTYPE_SCREENSHOT != 0L,
