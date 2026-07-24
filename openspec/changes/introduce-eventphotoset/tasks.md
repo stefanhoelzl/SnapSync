@@ -101,5 +101,9 @@
 - [x] 8.2 `./gradlew compileIosMainKotlinMetadata` green.
 - [x] 8.3 `deno test` (api) green — 219 passed; the manifest wire shape is unchanged — no backend change expected; confirms the manifest wire shape is unchanged.
 - [x] 8.4 `./gradlew architectureDiagrams` run — no drift (the module graph did not move; every change was within `:domain` packages and existing adapters).
-- [ ] 8.5 On-device re-run of decouple's task 11.1 scenario: join a closed-window event with a post-ceiling
-      photo; confirm the status reaches "In sync" and the manifest lists no post-ceiling asset.
+- [x] 8.5 **Run on device (SE2, iOS 26.5.2) as part of `introduce-candidate-source` 6.5** — the two are the
+      same scenario, and the branch ships as one release. Closed window (ceiling 15 h past) holding real
+      in-window photos: the walk returned 48 candidates, `N=8`, and the deposited `device.json` listed 6
+      assets spanning `07-21T07:46..14:45` with **no post-ceiling asset**. The bug this change exists to
+      fix — a post-ceiling photo counted in `N` and listed in the manifest with no bytes behind it — does
+      not reproduce. See that change's 6.5 for the caveat on "reaches In sync", which was not proven.

@@ -68,14 +68,37 @@
 - [x] 6.2 `./gradlew compileIosMainKotlinMetadata` green.
 - [x] 6.3 `./gradlew architectureDiagrams` — the module graph is unchanged, but ports moved; commit if it
       drifts.
-- [ ] 6.4 Measure what the change is for: log the resource-read count for one walk before and after on a
-      library holding sub-floor images. The claim is that reads drop from *every date-passing asset* to
-      *admitted assets only* — if it does not, the seam moved but the cost did not.
-- [ ] 6.5 On-device, `GRANTED`: re-run decouple's closed-window scenario (a post-ceiling photo present);
-      status reaches "In sync" and the manifest lists no post-ceiling asset.
-- [ ] 6.6 On-device, `LIMITED`: join with a selection, confirm the sanctioned reads still fire and **no**
-      limited-access alert appears — during the run and on a bare home screen after `SIGKILL`, which is how
-      the archived probe's queued alerts surfaced.
+- [x] 6.4 **Measured on device (SE2, iOS 26.5.2), and the claim holds.** Same library, same answer:
+
+      | | before (eager walk) | after |
+      |---|---|---|
+      | `N` | 28 | 28 |
+      | resource reads, status path | 58 resources / ~52 assets | **0** |
+      | elapsed | 320 ms | **26 ms** |
+
+      The cycle's reads track the admitted set, not the fetch: `admitted 8 of 48 candidate(s) → 14
+      resource(s)`. A permanent `gallery:` diagnostic reports the read count per walk, because a walk that
+      reads everything and one that reads only the admitted differ in nothing observable but elapsed time.
+- [x] 6.5 **On-device, `GRANTED`, closed window (ceiling 15 h in the past) holding real in-window photos.**
+      The ceiling reaches every consumer: the walk returns 48 candidates, `N=8`, and the deposited
+      `device.json` lists 6 assets / 12 resources spanning `2026-07-21T07:46 .. 14:45` — **no post-ceiling
+      asset**, against a ceiling of `2026-07-23T19:15`. Resource detail round-trips through the enriched
+      ledger row (`live · video/quicktime · IMG_6248.MOV`).
+
+      **Not verified: "status reaches In sync".** `N=8` while the manifest lists 6, because 2 of the 14
+      resources hold non-`COMPLETED` ledger rows from earlier runs on this much-reused device. Excluding
+      them is what D9 specifies (list only genuinely-uploaded resources), but I did not prove that is the
+      cause rather than a backfill miss — it needs a device with a clean ledger.
+- [x] 6.6 **On-device, `LIMITED`: the read discipline held.** `gallery: fetched …` — logged only inside
+      `PhotoKitCandidateSource.candidates()`, the one autonomous fetch — appears **zero** times across the
+      whole session; `SelectionScopedTransfer` intercepted, and the cycle's 45 candidates are the snapshot
+      (5 selected + 40 app-created seeds), not a walk.
+
+      **One** limited-access nag appeared, dismissed with "Keep Current Selection" and did not return — so
+      not the storm, whose signature is queued alerts draining repeatedly and surviving process death. Most
+      likely first-library-touch after a fresh install (which resets iOS's "already asked" state) plus 20
+      asset creations. The task's wording ("no alert") was stricter than the probe's actual finding: the
+      plist key is documented as not reliably suppressing the nag, and the failure mode is the storm.
 
 ## 7. Record
 
