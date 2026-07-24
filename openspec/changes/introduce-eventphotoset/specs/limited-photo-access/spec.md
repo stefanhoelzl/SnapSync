@@ -23,9 +23,14 @@ SHALL live entirely in how the source is **constructed and fed**:
   six off-flow bursts over already-held baseline refs produced zero alerts, during the bursts and on the
   bare home screen after a `SIGKILL`.
 
-Consequently the LIMITED snapshot SHALL carry **facts only** (what the admission decides on), and each
-admitted asset's resources SHALL be read **lazily**, through the same `Asset.resources()` seam `GRANTED`
-uses — one path for both grants, and no resource read paid for an asset the policy excludes.
+The snapshot SHALL nonetheless continue to be read **eagerly, with resources**, at those sanctioned
+points. The spike licenses a lazy per-asset read where the asset reference is still held; it does not
+license one across the snapshot cell, because reaching those assets again later would mean either holding
+platform references for an unbounded period — storm-safety resting on an invariant no type expresses — or
+re-fetching by local identifier, which is the measured storm itself. The eager read is what keeps every
+library **fetch** in-flow, and a limited selection is hand-picked and small, so the deferral would save
+almost nothing for that risk. The lazy path belongs to the *walking* sources, where the reference never
+leaves the call.
 
 #### Scenario: The admitted set under LIMITED is the filtered selection
 
@@ -33,11 +38,11 @@ uses — one path for both grants, and no resource read paid for an asset the po
 - **THEN** it filters the fed selection snapshot by the same policy it would apply to a walk, and issues no
   autonomous library fetch to do so
 
-#### Scenario: Resources are read lazily, only for admitted assets
+#### Scenario: The snapshot's resources are already in hand
 
 - **WHEN** a consumer under `LIMITED` needs an admitted asset's resources
-- **THEN** they are read per-asset on demand through the same seam `GRANTED` uses — the snapshot itself
-  carries facts only, and an asset the policy excludes never costs a resource read
+- **THEN** they are already held from the sanctioned read — nothing is fetched again, and in particular no
+  fetch by local identifier is issued outside the sanctioned points
 
 #### Scenario: No autonomous fetch is issued under LIMITED
 

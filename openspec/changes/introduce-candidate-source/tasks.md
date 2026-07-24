@@ -79,10 +79,10 @@
 
 ## 7. Record
 
-- [ ] 7.1 Mark `introduce-eventphotoset` task 4.2 superseded by this change (it proposed threading the policy
+- [x] 7.1 Mark `introduce-eventphotoset` task 4.2 superseded by this change (it proposed threading the policy
       through the seven-layer relay; this removes the relay).
-- [ ] 7.2 Correct `introduce-eventphotoset`'s `limited-photo-access` delta, which states the snapshot carries
+- [x] 7.2 Correct `introduce-eventphotoset`'s `limited-photo-access` delta, which states the snapshot carries
       **facts only** with lazy resources — that describes neither what was built (`candidatesFromResources`,
       eager and held) nor what this change's D5 concludes. It is unarchived, so fix it there rather than
       layer a contradiction over it here.
-- [ ] 7.3 Update `CLAUDE.md`'s `:domain` module description if the deleted ports are named in it.
+- [x] 7.3 Update `CLAUDE.md`'s `:domain` module description if the deleted ports are named in it.
