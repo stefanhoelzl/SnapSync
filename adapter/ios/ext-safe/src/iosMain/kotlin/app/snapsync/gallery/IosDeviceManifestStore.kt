@@ -40,6 +40,12 @@ class IosDeviceManifestStore(appGroup: String = LEDGER_APP_GROUP) : DeviceManife
 
     override fun saveLastUploaded(json: String) = writeString(LAST_UPLOADED, json)
 
+    /** Deletes the file: absent and "not believed" are the same state, which `loadLastUploaded` reads. */
+    override fun clearLastUploaded() {
+        val url = fileUrl(LAST_UPLOADED) ?: return
+        fileManager.removeItemAtURL(url, error = null)
+    }
+
     private fun fileUrl(name: String): NSURL? = dir?.URLByAppendingPathComponent(name)
 
     private fun readString(name: String): String? {

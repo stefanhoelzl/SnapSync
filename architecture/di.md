@@ -37,7 +37,7 @@ Roots found:
 | `IosAlbumMapStore` | x | x | |
 | `IosAttestKey` | x | | |
 | `IosBackgroundScheduler` | | | x |
-| `IosDeviceManifestStore` | | x | x |
+| `IosDeviceManifestStore` | x | x | x |
 | `IosDiscovery` | | x | x |
 | `IosDiscoveryStore` | x | x | x |
 | `IosDownloadTransport` | x | | |

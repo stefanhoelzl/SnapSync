@@ -284,6 +284,7 @@ class World(
             union = unionSource,
             directory = HttpEventDirectory(client, host),
             enrollment = manifestUploader,
+            manifestStore = manifestStore,
             eventCreation = HttpEventCreation(client, host),
             attestKey = attestKey,
             attestClient = attestClient,

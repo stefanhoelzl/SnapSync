@@ -37,6 +37,9 @@ class InMemoryDeviceManifestStore : DeviceManifestStore {
     override fun saveLastUploaded(json: String) {
         lastUploaded = json
     }
+    override fun clearLastUploaded() {
+        lastUploaded = null
+    }
 }
 
 /** The honest in-memory [AlbumMapStore] — the leave-surviving `eventId → albumLocalId` map. */

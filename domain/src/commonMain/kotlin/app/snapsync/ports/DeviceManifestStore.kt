@@ -14,4 +14,15 @@ package app.snapsync.ports
 interface DeviceManifestStore {
     fun loadLastUploaded(): String?
     fun saveLastUploaded(json: String)
+
+    /**
+     * Stop believing the server holds the recorded projection.
+     *
+     * The recorded value is a belief about a **remote** resource, and the producer is not its only
+     * writer: enrollment PUTs a register-only empty manifest to the same path (capability `join-event`).
+     * When that happens the record is false in the direction that loses data — the producer computes the
+     * same projection, matches the stale record, and skips, leaving the empty manifest standing. Clearing
+     * is how the falsifying writer says so.
+     */
+    fun clearLastUploaded()
 }

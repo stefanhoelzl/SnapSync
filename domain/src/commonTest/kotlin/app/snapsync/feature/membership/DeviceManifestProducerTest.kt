@@ -60,6 +60,9 @@ class DeviceManifestProducerTest {
         override fun saveLastUploaded(json: String) {
             lastUploaded = json
         }
+        override fun clearLastUploaded() {
+            lastUploaded = null
+        }
     }
 
     private class FakeUploader(var ok: Boolean = true) : Enrollment {
@@ -163,6 +166,45 @@ class DeviceManifestProducerTest {
         producer.produce("E", policyFrom("0001-01-01T00:00:00Z"), listOf(row("A")))
         producer.produce("E", policyFrom("0001-01-01T00:00:00Z"), listOf(row("A"))) // identical
         assertEquals(1, up.puts.size) // second produce skipped the PUT
+    }
+
+    @Test
+    fun re_joining_an_event_rewrites_the_manifest_the_enrollment_emptied() = runTest {
+        // The bug this pins, end to end at the seam that actually broke. The producer's record is a
+        // belief about the SERVER, and enrollment is a second writer of that same object: re-joining an
+        // event this device has already contributed to PUTs `assets: []` over a real manifest. If the
+        // record survives that, the next cycle projects the identical snapshot, matches, skips — and the
+        // event union hides every photo this device uploaded, forever, with no error anywhere.
+        //
+        // Found on device: SNAPSYNC_RESET_STATE + re-join left the server holding an empty manifest. But
+        // a plain leave → rejoin reaches it too, which is why the fix is at the enroller and not the
+        // reset. Pre-existing — the accumulator-backed producer had the same record and the same enroll.
+        val store = FakeStore()
+        val up = FakeUploader()
+        val producer = DeviceManifestProducer(store, up, "dev")
+        producer.produce("E", policyFrom("0001-01-01T00:00:00Z"), listOf(row("A")))
+        assertEquals(1, up.puts.size)
+
+        ManifestDeviceEnroller(up, store).enroll("E", "dev") // the re-join: empty manifest over the real one
+
+        producer.produce("E", policyFrom("0001-01-01T00:00:00Z"), listOf(row("A"))) // UNCHANGED projection
+        assertEquals(3, up.puts.size, "the projection must be rewritten over the enrollment's empty manifest")
+        assertEquals(listOf("A"), deviceManifestFromJson(up.puts.last().third).assets.map { it.assetId })
+    }
+
+    @Test
+    fun a_failed_enrollment_leaves_the_record_and_the_skip_intact() = runTest {
+        // The other half of D3: an unconfirmed PUT changed nothing on the server, so the belief is still
+        // true. Clearing it anyway would buy a redundant PUT every cycle after any flaky enroll.
+        val store = FakeStore()
+        val up = FakeUploader()
+        DeviceManifestProducer(store, up, "dev").produce("E", policyFrom("0001-01-01T00:00:00Z"), listOf(row("A")))
+        up.ok = false
+        ManifestDeviceEnroller(up, store).enroll("E", "dev")
+        up.ok = true
+
+        DeviceManifestProducer(store, up, "dev").produce("E", policyFrom("0001-01-01T00:00:00Z"), listOf(row("A")))
+        assertEquals(2, up.puts.size, "one projection + the failed enroll; the unchanged projection still skips")
     }
 
     @Test
