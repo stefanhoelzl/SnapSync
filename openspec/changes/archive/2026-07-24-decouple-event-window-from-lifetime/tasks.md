@@ -26,7 +26,7 @@
 
 ## 4. Retire the admin secret (operator, after the backend deploy)
 
-- [ ] 4.1 Once no deployed code reads it, delete the `ADMIN_NOTIFY_KEY` GitHub Actions secret and remove the variable from the Edge Script environment
+- [x] 4.1 Once no deployed code reads it, delete the `ADMIN_NOTIFY_KEY` GitHub Actions secret and remove the variable from the Edge Script environment
 
 ## 5. Client — model
 
