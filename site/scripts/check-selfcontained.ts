@@ -44,8 +44,7 @@ for (const path of files) {
   const text = await Deno.readTextFile(path);
   for (const [desc, re] of rules) {
     const m = text.match(re);
-    if (m)
-      violations.push(`${relative(base, path)}: ${desc} — ${[...new Set(m)].join(", ")}`);
+    if (m) violations.push(`${relative(base, path)}: ${desc} — ${[...new Set(m)].join(", ")}`);
   }
 }
 
