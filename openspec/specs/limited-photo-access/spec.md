@@ -129,15 +129,93 @@ harmless; asset creation itself never triggers the limited-access alert).
 
 ### Requirement: One discovery serves both the status total and the enqueue
 
-Under `LIMITED`, the own-device status total `N` SHALL be derived from the same discovery pass that
-enqueues upload work — the baseline read or a selection-change consumption — rather than from a
-separate autonomous gallery walk. This preserves the policy identity (`photo-selection-policy`: the
-total and the upload walk apply the same three-way subtraction) with **one** library read per event
-instead of two. Under `GRANTED` the existing separate gallery refresh is unchanged.
+Under `LIMITED`, the own-device status total `N` SHALL be derived from the same selection snapshot that
+enqueues upload work — the baseline read or a selection-change consumption — rather than from a separate
+autonomous gallery walk. This preserves the policy identity (`photo-selection-policy`: the total and the
+upload walk resolve the same admitted set) with **one** library read per event instead of two. Under
+`GRANTED` the existing separate gallery refresh is unchanged.
+
+The total SHALL obtain that snapshot through the permission-aware candidate source rather than by being
+handed a resource list through a second, snapshot-specific entry point. A consumer with two entry points —
+one for walking, one for a pushed snapshot — restates the mode difference the source already owns, and it is
+that restatement, not the reading itself, that lets the two paths drift apart.
 
 #### Scenario: A selection change updates N and the queue together
+
 - **WHEN** permission is `LIMITED` and a selection change adds two in-scope photos
 - **THEN** one read both raises `N` by two and enqueues the two uploads — no second library read occurs
+
+#### Scenario: The total has one entry point regardless of grant
+
+- **WHEN** the status total is refreshed under `GRANTED` and under `LIMITED`
+- **THEN** the same single refresh entry point serves both, differing only in which source backs it
+
+### Requirement: The limited selection is a facts-only candidate source for the admitted set
+
+Under `LIMITED`, the user's hand-picked selection SHALL be presented to the admission (capability
+`photo-selection-policy`) as one **candidate source** — pre-filled with the current selection — so the
+same single admission runs over it exactly as over a full-library walk under `GRANTED`. The admission and
+the `EventPhotoSet` abstraction SHALL be permission-oblivious: the mode difference is one source impl, not
+a branch in the policy or its consumers. No consumer SHALL select between a walking and a snapshot path
+itself; the permission-aware source SHALL make that choice once (capability `permission-gate`'s grant
+read), leaving each consumer to handle only whether a grant permits an answer at all. No native fetch
+narrowing applies under `LIMITED` (there is no walk to narrow); the authoritative in-memory admission
+filters the captured selection.
+
+The sanctioned-read discipline SHALL be scoped to **library fetches**, not to every PhotoKit call, and
+SHALL live entirely in how the source is **constructed and fed**:
+
+- A library **fetch/query** (`PHAsset.fetchAssets…`) SHALL NOT be issued autonomously. The selection is
+  captured only at the cold-launch baseline and at photo-selection-change observer emissions, and the
+  source is **fed** that snapshot — never pulled. This is the measured storm: off-flow fetches queue
+  limited-access alerts that survive process death, and
+  `PHPhotoLibraryPreventAutomaticLimitedAccessAlert` does **not** reliably suppress them (decision record
+  `changes/archive/2026-07-20-accept-limited-photo-access`).
+- A per-asset **resource read** (`assetResourcesForAsset`) of an already-selected asset MAY be issued
+  off-flow. This was measured storm-free on device (SE2, iOS 26.5.2, `.limited`, alert-suppression on):
+  six off-flow bursts over already-held baseline refs produced zero alerts, during the bursts and on the
+  bare home screen after a `SIGKILL`.
+
+The snapshot SHALL nonetheless continue to be read **eagerly, with resources**, at those sanctioned
+points. The spike licenses a lazy per-asset read where the asset reference is still held; it does not
+license one across the snapshot cell, because reaching those assets again later would mean either holding
+platform references for an unbounded period — storm-safety resting on an invariant no type expresses — or
+re-fetching by local identifier, which is the measured storm itself. The eager read is what keeps every
+library **fetch** in-flow, and a limited selection is hand-picked and small, so the deferral would save
+almost nothing for that risk. The lazy path belongs to the *walking* sources, where the reference never
+leaves the call.
+
+Consequently a candidate under `LIMITED` carries facts derived from the snapshot it was built from, and
+its resources are already held rather than fetched on demand. That is not a special case in the admission
+— a candidate source is free to have its resources in hand — and no rule reads resources to decide
+(capability `photo-selection-policy`).
+
+#### Scenario: The admitted set under LIMITED is the filtered selection
+
+- **WHEN** permission is `LIMITED` and any consumer resolves the admitted set
+- **THEN** the permission-aware source yields the snapshot's candidates and the one admission filters them
+  exactly as it would a walk, with no autonomous library fetch and no branch in the consumer
+
+#### Scenario: The snapshot's resources are already in hand
+
+- **WHEN** a consumer under `LIMITED` needs an admitted asset's resources
+- **THEN** they are already held from the sanctioned read — nothing is fetched again, and in particular no
+  fetch by local identifier is issued outside the sanctioned points
+
+#### Scenario: No autonomous fetch is issued under LIMITED
+
+- **WHEN** any consumer resolves the admitted set under `LIMITED`
+- **THEN** no library fetch/query is issued outside the cold-launch baseline and the observer emissions —
+  the selection always arrives as a fed snapshot
+
+#### Scenario: The snapshot is read at the sanctioned points only
+
+- **WHEN** the selection is captured
+- **THEN** it is read at the cold-launch baseline or an observer emission, eagerly and with resources — never
+#### Scenario: No consumer branches on the grant to pick a source
+
+- **WHEN** the status total or the join preview resolves its answer
+- **THEN** it calls one candidate source and never distinguishes `GRANTED` from `LIMITED` itself; only the
 
 ### Requirement: The app owns the limited-library picker
 

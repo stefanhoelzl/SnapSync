@@ -173,16 +173,21 @@ The value SHALL be stored and returned verbatim.
 ### Requirement: Event marker registry
 
 An event SHALL exist in the registry exactly when the object `/events/<eventId>/metadata.json` is
-present in the storage zone (this supersedes the prior `events/<eventId>.json` key). On create the
-endpoint SHALL write this marker via a bunny native Storage `PUT` with the `AccessKey` header from
-configuration and `Content-Type: application/json`, whose body is the JSON `{ eventId, name,
-createdAt, startsAt, endsAt, capacity }` (`createdAt` an ISO-8601 timestamp; `startsAt` and `endsAt`
-the canonical cutoff form; `capacity` a positive integer — the limit fields stamped per capability
-`event-limits`). The marker SHALL live under the event's own `/events/<eventId>/` prefix, alongside
-the per-event device manifests at `/events/<eventId>/devices/<deviceId>.json`. Because an `eventId` is
-a UUID, the marker key `/events/<eventId>/metadata.json`, the device-manifest keys
+present in the storage zone. On create the endpoint SHALL write this marker via a bunny native Storage
+`PUT` with the `AccessKey` header from configuration and `Content-Type: application/json`, whose body is
+the JSON `{ eventId, name, createdAt, startsAt, endsAt, capacity, lifetimeSeconds }` (`createdAt` an
+ISO-8601 timestamp; `startsAt` and `endsAt` the canonical cutoff form; `capacity` and `lifetimeSeconds`
+positive integers — the limit fields stamped per capability `event-limits`). The marker SHALL live under
+the event's own `/events/<eventId>/` prefix, alongside the per-event device manifests at
+`/events/<eventId>/devices/<deviceId>.json`. Because an `eventId` is a UUID, the marker key
+`/events/<eventId>/metadata.json`, the device-manifest keys
 `/events/<eventId>/devices/<deviceId>.json`, and the device-global byte store
 `/files/devices/<deviceId>/…` are mutually disjoint and never collide.
+
+`lifetimeSeconds` is a **duration**, never an absolute delete-by instant. Stamping the duration keeps the
+per-event value immutable against a later configuration change while leaving the anchor it is measured
+from (`max(createdAt, startsAt)`, capability `event-limits`) in shared code, so the anchor policy can be
+corrected without rewriting a single stored marker.
 
 The marker SHALL be **write-once**: there is no route by which a stored `startsAt` (or any other marker
 field) can be changed after creation. The backend has no owner field and no authentication, so a
@@ -195,13 +200,19 @@ the stored fields on every read precisely so that no rewrite is ever needed.
 - **WHEN** a valid `POST /events` is processed
 - **THEN** the endpoint issues a bunny native Storage `PUT` to `/events/<eventId>/metadata.json`
   carrying the `AccessKey` header and a JSON body of
-  `{ eventId, name, createdAt, startsAt, endsAt, capacity }`
+  `{ eventId, name, createdAt, startsAt, endsAt, capacity, lifetimeSeconds }`
+
+#### Scenario: The marker stamps a duration, not an instant
+
+- **WHEN** the marker written by a create is inspected
+- **THEN** it carries `lifetimeSeconds` as a positive integer number of seconds and carries no absolute
+  delete-by field
 
 #### Scenario: No route mutates an existing marker
 
 - **WHEN** the backend's routes are enumerated
 - **THEN** none of them rewrites `/events/<eventId>/metadata.json` for an event that already exists, so
-  `startsAt`, `endsAt`, and `capacity` are immutable after creation
+  `startsAt`, `endsAt`, `capacity`, and `lifetimeSeconds` are immutable after creation
 
 #### Scenario: Marker is disjoint from manifests and the byte store
 
@@ -220,7 +231,8 @@ exposed in any response.
 #### Scenario: Marker store confirmed
 
 - **WHEN** bunny confirms the marker `PUT`
-- **THEN** the endpoint responds `201` with `{ eventId, name, createdAt, startsAt, endsAt, capacity }`
+- **THEN** the endpoint responds `201` with
+  `{ eventId, name, createdAt, startsAt, endsAt, capacity, deletesAt }`
 
 #### Scenario: Marker store fails
 
@@ -232,32 +244,47 @@ exposed in any response.
 The backend SHALL accept an HTTP `GET` at the path `/events/<eventId>` (the literal label `events`
 required) and return the event's metadata. `eventId` MUST match a UUID pattern; a matched request
 whose `eventId` is not a UUID SHALL yield `400` and make no upstream request. The endpoint SHALL read
-the marker `/events/<eventId>/metadata.json` and, when present and the event is not expired, respond
-`200` with its contents `{ eventId, name, createdAt, startsAt, endsAt, capacity }`; when the marker is
-absent, respond `404`. A genuine upstream failure reading the marker (not a `404`) SHALL be surfaced
-as `502`. This route is the canonical existence check; the same `/events/<eventId>/metadata.json` read
-backs the existence gate the device-manifest write enforces.
+the marker `/events/<eventId>/metadata.json` and, when present and complete, respond `200` with
+`{ eventId, name, createdAt, startsAt, endsAt, capacity, deletesAt }`; when the marker is absent,
+respond `404`. A genuine upstream failure reading the marker (not a `404`) SHALL be surfaced as `502`.
+This route is the canonical existence check; the same `/events/<eventId>/metadata.json` read backs the
+existence gate the device-manifest write enforces.
 
-The route SHALL pass the event-limits lifecycle check (capability `event-limits`) like every
-event-scoped route: a marker whose grace period has elapsed — including a legacy marker missing
-`endsAt`/`capacity` — is never served; it is reaped on touch and answered `404`. This supersedes the
-former read-time `startsAt` synthesis for legacy markers: a marker old enough to lack `startsAt` also
-lacks `endsAt`, so it is expired by definition and reaped rather than patched. The response's
-`startsAt`, `endsAt`, and `capacity` are therefore **always present** on a `200`, so no client
-carries a nullable field and every downstream type stays total.
+`deletesAt` SHALL be the **derived** delete-by instant (`max(createdAt, startsAt) + lifetimeSeconds`,
+capability `event-limits`) rendered in the canonical cutoff form, computed per response and never read
+from a stored field. Serving it — rather than serving the lifetime and the anchor for a client to combine
+— keeps the anchor policy in one place and means no client ever holds a copy of the lifetime constant.
 
-#### Scenario: Existing event returns metadata
+The route SHALL apply the lifecycle check (capability `event-limits`): a marker missing `startsAt`,
+`endsAt`, or `capacity`, or carrying an unparseable field, is **gone** and answered `404` — no field is
+synthesized and the stored object is not patched. The route SHALL NOT delete anything on touch, and
+SHALL serve an event past its derived `deletesAt` normally until the scheduled cleanup removes it. The
+response's `startsAt`, `endsAt`, `capacity`, and `deletesAt` are therefore **always present** on a `200`,
+so no client carries a nullable field and every downstream type stays total.
 
-- **WHEN** a `GET /events/<uuid>` arrives for an event whose marker exists, carries its limit fields,
-  and is not expired
+#### Scenario: Existing event returns metadata including the derived delete-by
+
+- **WHEN** a `GET /events/<uuid>` arrives for an event whose marker exists and carries its limit fields
 - **THEN** the endpoint reads `/events/<uuid>/metadata.json` and responds `200` with
-  `{ eventId, name, createdAt, startsAt, endsAt, capacity }`
+  `{ eventId, name, createdAt, startsAt, endsAt, capacity, deletesAt }`, where `deletesAt` is
+  `max(createdAt, startsAt) + lifetimeSeconds` in canonical cutoff form
 
-#### Scenario: A legacy marker is reaped, not patched
+#### Scenario: An event past its window is served normally
+
+- **WHEN** a `GET /events/<uuid>` arrives after the event's `endsAt` has passed but before its
+  `deletesAt`
+- **THEN** the endpoint responds `200` with the full metadata — the window is not a lifecycle input
+
+#### Scenario: An event past its delete-by is still served until the sweep runs
+
+- **WHEN** a `GET /events/<uuid>` arrives for an event whose derived `deletesAt` has passed, before the
+  next scheduled cleanup
+- **THEN** the endpoint responds `200` and deletes nothing — deletion belongs solely to the sweep
+
+#### Scenario: An incomplete marker is 404, not patched
 
 - **WHEN** a `GET /events/<uuid>` reads a marker written before the limit fields existed
-- **THEN** the event is treated as expired (capability `event-limits`): reaped on this touch and
-  answered `404` — no field is synthesized and the stored object is not patched
+- **THEN** the endpoint responds `404` — no field is synthesized and the stored object is not patched
 
 #### Scenario: Unknown event yields 404
 
@@ -322,22 +349,28 @@ Nothing else in the API is shaped by payment.
 The endpoint SHALL accept an **optional** `endsAt` field on the `POST /events` body. When present it
 SHALL be validated against the **canonical cutoff form** `yyyy-MM-dd'T'HH:mm:ss'Z'` — UTC (`Z`), second
 precision, no timezone offset, no fractional seconds — SHALL name a **real, round-tripping instant** (the
-same instant check `startsAt` receives, rejecting e.g. rolled-over components), and SHALL be **strictly
-after** `startsAt` (`startsAt < endsAt`). A request whose `endsAt` is present but is not a string, is the
-empty string, does not match that exact shape, is not a real instant, or is not strictly after `startsAt`
-SHALL yield `400` and SHALL NOT make any upstream write.
+same instant check `startsAt` receives, rejecting e.g. rolled-over components), SHALL be **strictly
+after** `startsAt` (`startsAt < endsAt`), and SHALL be no more than the configured **window maximum**
+after it (`endsAt - startsAt <= windowMax`, initial value 30 days; capability `event-limits`). A request
+whose `endsAt` is present but is not a string, is the empty string, does not match that exact shape, is
+not a real instant, is not strictly after `startsAt`, or exceeds the window maximum SHALL yield `400` and
+SHALL NOT make any upstream write.
 
 The canonical form is required **at the boundary** for the same reason as `startsAt`: `endsAt` is
 consumed directly as a capture-date ceiling, compared lexicographically and parsed without normalization
-(capability `photo-selection-policy`). There SHALL be **no upper-duration cap** — `endsAt - startsAt` MAY
-be arbitrarily large; a creator-chosen duration is the additive future paid-tier lever, not a validation
-bound (capability `event-limits`).
+(capability `photo-selection-policy`).
 
-An **absent** `endsAt` is valid and SHALL trigger the legacy fallback `endsAt = startsAt + configured
-duration` (capability `event-limits`), so an un-updated client that sends only `startsAt` keeps working.
-A present, valid `endsAt` SHALL be stored and returned verbatim.
+The window maximum is a **hard bound, not a pricing lever**. It exists because the event's storage
+lifetime is independently bounded (capability `event-limits`): a window longer than the lifetime would
+declare captures eligible for upload into an event that no longer exists by then, and a photo that
+uploads into nothing is exactly the silent loss the selection policy is built to avoid. The only future
+paid-tier lever is `capacity`.
 
-#### Scenario: A canonical endsAt after startsAt is accepted and echoed
+An **absent** `endsAt` is valid and SHALL trigger the fallback `endsAt = startsAt + windowMax`, so an
+un-updated client that sends only `startsAt` keeps working. A present, valid `endsAt` SHALL be stored and
+returned verbatim.
+
+#### Scenario: A canonical endsAt within the cap is accepted and echoed
 
 - **WHEN** a `POST /events` arrives with body `{ "name": "Party", "startsAt": "2026-07-14T18:00:00Z",
   "endsAt": "2026-07-21T23:00:00Z" }`
@@ -347,7 +380,19 @@ A present, valid `endsAt` SHALL be stored and returned verbatim.
 #### Scenario: An absent endsAt is accepted and triggers the fallback
 
 - **WHEN** a `POST /events` body carries a valid `name` and `startsAt` but no `endsAt`
-- **THEN** the endpoint responds `201` and stamps `endsAt = startsAt + configured duration`
+- **THEN** the endpoint responds `201` and stamps `endsAt = startsAt + windowMax`
+
+#### Scenario: A window longer than the maximum is rejected
+
+- **WHEN** a `POST /events` body carries an `endsAt` more than the configured window maximum after
+  `startsAt` (for example 31 days, against a 30-day maximum)
+- **THEN** the endpoint responds `400` and writes nothing upstream
+
+#### Scenario: A window exactly at the maximum is accepted
+
+- **WHEN** a `POST /events` body carries an `endsAt` exactly the configured window maximum after
+  `startsAt`
+- **THEN** the endpoint responds `201` and stores it unchanged
 
 #### Scenario: A non-canonical endsAt is rejected
 
@@ -366,10 +411,3 @@ A present, valid `endsAt` SHALL be stored and returned verbatim.
 
 - **WHEN** a `POST /events` body carries `endsAt` as the empty string
 - **THEN** the endpoint responds `400` and writes nothing upstream
-
-#### Scenario: A large duration is accepted (no upper cap)
-
-- **WHEN** a `POST /events` carries a valid `endsAt` many months after `startsAt`
-- **THEN** the endpoint responds `201` and stores it unchanged — no upper bound on `endsAt - startsAt`
-  is enforced
-

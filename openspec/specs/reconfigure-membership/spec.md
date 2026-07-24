@@ -26,8 +26,8 @@ The system SHALL let a joined member change their membership's `direction`, its 
 `feature/membership`) SHALL read the current `EventConfig`, **guard that its `eventId` still matches** the
 membership being edited, and persist
 `current.copy(direction = …, minPhotoDate = …, maxPhotoDate = …, saveToAlbum = …)` as a **whole-object**
-save through `ConfigStore.save` — the same one-writer discipline as
-`EventName.storeEventNameIfChanged`. It SHALL NOT enter `JoinEvent` (the `AlreadyJoined` short-circuit and
+save through `ConfigStore.save` — the same one-writer discipline as `MembershipRefresh`. It SHALL NOT
+enter `JoinEvent` (the `AlreadyJoined` short-circuit and
 the enrollment path are untouched), SHALL NOT re-enroll or clear the ledger, and SHALL preserve the
 `eventId`, the sync ledger, the backend enrollment, and the device identity. Because `direction` is a
 device-local gate (capability `photo-selection-policy`, `photo-download`), a reconfigure SHALL send **no**
@@ -85,8 +85,7 @@ a wall-clock instant at join). A changed lower bound SHALL be clamped to the imm
 never lower a membership's cutoff below the event's start.
 
 For the **upper bound** (Until), it SHALL seed from the persisted `maxPhotoDate`: when
-`maxPhotoDate == endsAt` (or the ceiling is absent/unbounded) it SHALL show the **Event-end** preset;
-otherwise it SHALL show the **Custom** preset carrying that timestamp. A changed upper bound SHALL be
+`maxPhotoDate == endsAt` it SHALL show the **Event-end** preset; otherwise it SHALL show the **Custom** preset carrying that timestamp. A changed upper bound SHALL be
 clamped to the event's `endsAt` ceiling — `min(chosen, endsAt)` — exactly as at join (capability
 `photo-selection-policy`), so a reconfigure can never widen a membership's range above the event's end.
 

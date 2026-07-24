@@ -231,8 +231,9 @@ walk, upload job, device manifest, or notify. The decision SHALL have exactly th
 
 A composition root SHALL NOT make this decision. A root SHALL supply only the platform reads the decision
 consumes — the membership read, the device-identity probe, and the build-time host — and the shared,
-tested decision function SHALL combine them. This is the same containment `reconcile` and `Contribution`
-already have, and for the same reason: an upload tier's root is wiring-only and untested by project rule,
+tested decision function SHALL combine them. This is the same containment `reconcile` and the
+`SelectionPolicy` already have, and for the same reason: an upload tier's root is wiring-only and
+untested by project rule,
 so a decision placed there reaches whichever tiers its author happened to enumerate.
 
 The **translation** of those reads into the decision's inputs SHALL itself exist exactly once, in the

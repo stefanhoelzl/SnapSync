@@ -121,45 +121,46 @@ resolve `PHCloudIdentifier` and SHALL NOT skip any asset for an unresolved cloud
 - **WHEN** the device has no iCloud account (no asset has a resolvable cloud identifier)
 - **THEN** assets are still discovered and keyed by their `localIdentifier`, and uploads proceed — none are skipped for a missing cloud id
 
-### Requirement: Per-asset manifest generation and side-channel upload
+### Requirement: Device manifest projection and side-channel upload
 
-The extension SHALL maintain a durable, device-global **accumulator** in the shared App-Group store
-of per-asset manifest entries (per `device-manifest`: per asset its `assetId`, `creationDate`, and
-per resource its `role`, `contentType`, `key` (the storage object name), and `filename` (the human
-capture name)). It SHALL write or update an asset's accumulator entry on **every discovery** of that
-asset — **even when the engine answers `AlreadyUploaded`** — so the accumulator is a rebuildable cache
-reflecting every discovered-not-deleted asset, not a source of truth. The accumulator MUST NOT be
-driven through the `SyncEngine`, the `createJob` path, or the ledger.
+The extension SHALL project the current event's `device.json` from the **upload ledger's `COMPLETED`
+rows** (capability `sync-ledger`), which carry the manifest's presentation detail (per `device-manifest`:
+per asset its `assetId` and `creationDate`, and per resource its `role`, `contentType`, `key` (the
+storage object name), and `filename` (the human capture name)). It SHALL keep **no** second durable
+structure of manifest entries: the ledger is the only record the projection reads, so there is nothing
+that can drift out of step with it.
 
-On each cycle the extension SHALL **project** the accumulator to the current event's `device.json`
-(filtering to assets whose capture date meets the event's cutoff; under the current whole-library
-scope the projection is the identity) and **PUT it synchronously, in-cycle**, to
-`<host>/events/<eventId>/devices/<deviceId>` with `Content-Type: application/json` — **not** over a
-background `URLSession`, and **not** via the engine or ledger. The extension SHALL be the **sole
-writer** of `device.json`; each write is a complete, self-contained full-state snapshot (no
-read-modify-write). It MAY skip the PUT when the projection is **byte-identical** to the last written
-`device.json`. Because the resource field names (`key`, `filename`) are part of that snapshot content,
-a build that changes them produces a projection that differs from any previously-stored snapshot, so
-the first cycle on the new build re-PUTs `device.json` with the new names — no special one-shot flag
-is needed. A process kill mid-PUT is benign — `device.json` is write-only in v1 and the next cycle
-re-projects and re-PUTs, so the loss is caught and converges. The previous `PENDING`/`DONE` manifest
-markers and the app's `handleEventsForBackgroundURLSession` manifest wiring are **removed**; the app
-reads no manifest state.
+On each cycle the extension SHALL **project** those rows to the current event's `device.json` — keeping
+exactly the assets the membership's selection policy admits by capture date (capability
+`photo-selection-policy`), applying that one policy rather than a date comparison of its own — and **PUT
+it synchronously, in-cycle**, to `<host>/events/<eventId>/devices/<deviceId>` with `Content-Type:
+application/json` — **not** over a background `URLSession`, and **not** through the `SyncEngine` or the
+`createJob` path. The extension SHALL be the **sole writer** of `device.json`; each write is a complete,
+self-contained full-state snapshot (no read-modify-write). It MAY skip the PUT when the projection is
+**byte-identical** to the last written `device.json` **for the same event**, recorded in the App-Group
+`last-uploaded.json` marker — event-keyed, so a switch to a new event never compares equal to the prior
+event's write and skips the new event's still-absent document. Because the resource field names (`key`,
+`filename`) are part of that snapshot content, a build that changes them produces a projection that
+differs from any previously-stored snapshot, so the first cycle on the new build re-PUTs `device.json`
+with the new names — no special one-shot flag is needed. A process kill mid-PUT is benign —
+`device.json` is write-only in v1 and the next cycle re-projects and re-PUTs, so the loss is caught and
+converges. There are no `PENDING`/`DONE` manifest markers and no `handleEventsForBackgroundURLSession`
+manifest wiring in the app; the app reads no manifest state.
 
-#### Scenario: Accumulator entry is written on every discovery, including AlreadyUploaded
+#### Scenario: An already-uploaded asset stays listed without a new job
 
 - **WHEN** the extension discovers asset `A`, and the engine answers `AlreadyUploaded` for every one
   of `A`'s resources (its keys are already `REQUESTED`/`COMPLETED`)
-- **THEN** the extension still writes/updates `A`'s entry in the device-global accumulator (no job is
-  created and the ledger is not written)
+- **THEN** no job is created, and `A`'s already-`COMPLETED` rows are still projected into `device.json`,
+  so an already-uploaded asset never drops out of the manifest
 
-#### Scenario: Each cycle projects the accumulator and PUTs device.json synchronously
+#### Scenario: Each cycle projects the ledger and PUTs device.json synchronously
 
 - **WHEN** a `process()` cycle finishes its discovery and the projection differs from the last write
-- **THEN** the extension projects the accumulator to the current event's `device.json` and PUTs it
-  synchronously, in-cycle, to `<host>/events/<eventId>/devices/<deviceId>` (`Content-Type:
-  application/json`), with no background `URLSession` task and no engine/ledger involvement, each
-  resource carrying `key` (the storage object name) and `filename` (the human capture name)
+- **THEN** the extension projects the ledger's `COMPLETED` rows to the current event's `device.json` and
+  PUTs it synchronously, in-cycle, to `<host>/events/<eventId>/devices/<deviceId>` (`Content-Type:
+  application/json`), with no background `URLSession` task and no engine or job-creation involvement,
+  each resource carrying `key` (the storage object name) and `filename` (the human capture name)
 
 #### Scenario: Unchanged projection skips the PUT
 
@@ -176,7 +177,7 @@ reads no manifest state.
 #### Scenario: A kill mid-PUT is caught next cycle
 
 - **WHEN** the extension process is killed while the synchronous `device.json` PUT is in flight
-- **THEN** the partial write is discarded and the next cycle re-projects the accumulator and re-PUTs
+- **THEN** the partial write is discarded and the next cycle re-projects the ledger and re-PUTs
   `device.json`, converging without any cross-process marker
 
 ### Requirement: Extension owns the single ledger writer
@@ -391,10 +392,11 @@ On its next cycle the extension reconciles against the per-device file listing (
 the ledger to one already-uploaded row per stored file and **clears the discovery cursor** (forcing a
 full re-enumeration). The device-global listing re-seeds the same files as already-uploaded, so
 **nothing already stored re-uploads**, while the clear drops stale/phantom rows and the cursor clear
-re-enumerates to find genuinely-unstored work. The device-global accumulator is **kept** and the
-extension **re-projects** it to the **new** event's `device.json` path, then sets the joined-event
-marker. The app decodes the event link only to gate this on a valid payload; the authoritative
-decode/validate/persist still happens in the shared container intent.
+re-enumerates to find genuinely-unstored work. The re-baselined ledger is then **re-projected** to the
+**new** event's `device.json` path, and the joined-event marker is set. Rows seeded from the listing are
+**bare** (a filename carries no capture date) and are therefore not listed until the forced full
+re-enumeration backfills their manifest detail. The app decodes the event link only to gate this on a
+valid payload; the authoritative decode/validate/persist still happens in the shared container intent.
 
 The re-provision itself SHALL NOT clear the **ledger** (`upload-lifecycle`): only the reconciliation's
 `resetTo` re-baselines it, from the authoritative per-device listing. The **discovery cursor** is cleared
@@ -406,8 +408,8 @@ ledger they leave intact is what knows the work is already done.
 #### Scenario: Valid re-scan reconciles and re-projects to the new event
 - **WHEN** a valid `https://<link domain>/join#…` event link is opened for a different event on iOS ≥26.1
 - **THEN** the extension is re-registered (disable→enable), and the next cycle `resetTo`s the ledger
-  from the per-device file listing, clears the discovery cursor, keeps the accumulator, and
-  re-projects `device.json` to the new event path with the joined-event marker set
+  from the per-device file listing, clears the discovery cursor, and re-projects `device.json` from
+  that ledger to the new event path with the joined-event marker set
 
 #### Scenario: Already-stored photos do not re-upload on a switch
 - **WHEN** the device switches to an event whose photos are already present in its device
@@ -417,7 +419,7 @@ ledger they leave intact is what knows the work is already done.
 
 #### Scenario: Invalid event link does not re-provision
 - **WHEN** an opened URL fails config decoding
-- **THEN** no re-provision occurs (the ledger, cursor, accumulator, and joined-event marker are untouched)
+- **THEN** no re-provision occurs (the ledger, cursor, and joined-event marker are untouched)
 
 #### Scenario: The disable→enable toggle is confined to this tier
 - **WHEN** the app re-provisions an event on iOS 18–26.0
@@ -425,48 +427,47 @@ ledger they leave intact is what knows the work is already done.
 
 ### Requirement: Discovery prunes ledger rows for deleted assets
 
-The extension SHALL prune ledger rows **and** accumulator entries for assets removed from the library,
-via two paths driven from its discovery cycle (the ledger writes preserve the single-writer
-invariant). This keeps the ledger honest about what still exists on device and, critically, removes a
-row left non-`COMPLETED` by an asset deleted mid-upload — which would otherwise keep `pending > 0`
-forever and hold the extension in the perpetual `processing` re-invocation loop (see "Cap-aware
-creation and tri-state processing result"). On deletion the extension SHALL **also prune the asset's
-device-global accumulator entry**, so the next projected `device.json` stops listing that asset (the
-basis for a future deletion-correct restore). No remote object is deleted; the one-way model is
+The extension SHALL prune ledger rows for assets removed from the library, via two paths driven from
+its discovery cycle (the ledger writes preserve the single-writer invariant). This keeps the ledger
+honest about what still exists on device and, critically, removes a row left non-`COMPLETED` by an
+asset deleted mid-upload — which would otherwise keep `pending > 0` forever and hold the extension in
+the perpetual `processing` re-invocation loop (see "Cap-aware creation and tri-state processing
+result"). Because the device manifest is projected from those same rows, one pruning also makes the
+next projected `device.json` stop listing the deleted asset (the basis for a future deletion-correct
+restore) — there is no second structure to prune. No remote object is deleted; the one-way model is
 unchanged.
 
 - **Incremental (every cycle):** when deriving the changed set from
   `fetchPersistentChanges(since:)`, the extension SHALL also collect each change record's
   `deletedLocalIdentifiers()` and, for each removed `localIdentifier` `L` (normalized `/`→`_` to
   match the stored `assetId`), call `deleteByAssetId(L)` so all of that asset's resource rows are
-  removed, and remove `L`'s accumulator entry.
+  removed.
 - **Reconcile (backstop):** on a full enumeration that completes with no `PHPhotosErrorLimitExceeded`,
   the extension SHALL call `retainAssets(liveAssetIds)`, where `liveAssetIds` is the set of
-  `assetId`s of the resources it built during enumeration — pruning ledger rows and accumulator
-  entries for assets no longer present, closing the gap for deletions that occurred while the
-  persistent-change token was expired.
+  `assetId`s of the resources it built during enumeration — pruning ledger rows for assets no longer
+  present, closing the gap for deletions that occurred while the persistent-change token was expired.
 
 A re-added asset (e.g. recovered from "Recently Deleted") whose rows were pruned SHALL be treated
 as new work: discovery finds no ledger entry, so the engine returns `Upload` and a fresh
-(idempotent) job is created, and its accumulator entry is re-written. No `DELETED` state is
-introduced and the upload decision is unchanged.
+(idempotent) job is created, and the completed upload re-creates its rows — so the manifest lists it
+again. No `DELETED` state is introduced and the upload decision is unchanged.
 
-#### Scenario: Removed asset's rows and accumulator entry are pruned incrementally
+#### Scenario: Removed asset's rows are pruned incrementally
 - **WHEN** `fetchPersistentChanges(since:)` reports `deletedLocalIdentifiers` containing asset `L`,
   and the ledger holds rows for `L`'s resources
-- **THEN** the extension calls `deleteByAssetId(L)` and removes `L`'s accumulator entry, so `L` no
-  longer contributes to `pending`/`completed` and the next projected `device.json` omits it
+- **THEN** the extension calls `deleteByAssetId(L)`, so `L` no longer contributes to
+  `pending`/`completed` and the next projected `device.json` omits it
 
 #### Scenario: Mid-upload deletion lets the extension rest
 - **WHEN** an asset deleted before its upload completed leaves a non-`COMPLETED` ledger row, and a
   later cycle's change feed reports that asset as removed
-- **THEN** the extension prunes the row (and its accumulator entry), the ledger reaches no pending rows, and `process()` can
+- **THEN** the extension prunes the row, the ledger reaches no pending rows, and `process()` can
   return `completed` instead of looping on `processing`
 
 #### Scenario: Full enumeration reconciles against the live library
 - **WHEN** a full enumeration completes with no `limitExceeded` and the ledger holds rows for an
   asset that is no longer present in the library
-- **THEN** the extension calls `retainAssets(liveAssetIds)` and the absent asset's ledger rows and accumulator entry are removed
+- **THEN** the extension calls `retainAssets(liveAssetIds)` and the absent asset's ledger rows are removed
 
 #### Scenario: Reconcile is skipped on a cap-truncated cycle
 - **WHEN** a full enumeration stops early because job creation raised `limitExceeded`
@@ -478,7 +479,8 @@ introduced and the upload decision is unchanged.
 - **WHEN** an asset whose rows were pruned reappears in the library (e.g. recovered from
   "Recently Deleted")
 - **THEN** discovery finds no ledger entry for its resources, the engine returns `Upload`, a fresh
-  job is created (the idempotent PUT targets the unchanged key), and its accumulator entry is re-written
+  job is created (the idempotent PUT targets the unchanged key), and the completed upload re-creates
+  its ledger rows, so the next projection lists it again
 
 ### Requirement: Disabling the extension clears orphaned REQUESTED rows
 

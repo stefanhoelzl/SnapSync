@@ -322,120 +322,176 @@ of the feature.
 - **WHEN** a device joins an event that has already started and foreign photos exist in the union
 - **THEN** the download machinery runs immediately and imports them, the start date having gated nothing
 
-### Requirement: Participation direction is a selection input, carried as Contribution
+### Requirement: Participation direction is a selection input on the policy
 
 The membership's participation **direction** SHALL be an input to the selection policy, alongside the
-capture-date cutoff and the origin exclusions. The policy answers *what does this member contribute?* — the
-cutoff bounds **when** a photo was taken, the origin exclusions bound **what it is**, and the direction bounds
+capture-date range and the origin exclusions. The policy answers *what does this member contribute?* — the
+range bounds **when** a photo was taken, the origin exclusions bound **what it is**, and the direction bounds
 **whether at all**. A `DownloadOnly` membership contributes the **empty set**.
 
-The three inputs SHALL be carried to both policy consumers as a single value, `Contribution`, defined in `:domain`'s `model/` zone (package `app.snapsync.model`, seated there by migration step 3a —
-visible to both policy consumers, `feature/upload` and `feature/status`):
+All three SHALL be carried to every policy consumer as one already-decided value, `SelectionPolicy`, defined
+in `:domain`'s `model/` zone (package `app.snapsync.model`, seated there by migration step 3a — the only
+zone visible to every consumer, `feature/upload` and `feature/status` being mutually blind). It is the
+rules, not the inputs from which rules could be derived: a consumer receives the decision, never the
+material to re-decide (see *The admitted set is a single derivation every consumer receives*).
 
-- `Contribution.None` — the membership contributes nothing (`DownloadOnly`). It carries **no** cutoff,
-  because a non-contributor has no cutoff to speak of.
-- `Contribution.Since(cutoff)` — the membership contributes every admitted asset captured at or after
-  `cutoff`.
+- `SelectionPolicy.None` — the membership contributes nothing (`DownloadOnly`). It carries **no** rules and
+  therefore **no** bounds, because a non-contributor has none to speak of.
+- `SelectionPolicy.Admitting(rules)` — the membership contributes every asset **all** of its `rules` admit.
+  A contributing membership's rules always carry the capture-date lower bound (`CaptureAfter`).
 
-`Contribution` SHALL be a **required** argument on both consumers, with **no default value**. A default is
-prohibited in both polarities: a permissive default (`Since("")`) uploads the entire library from the
+`SelectionPolicy` SHALL be a **required** argument on every consumer, with **no default value**. This is a
+privacy requirement, not an ergonomic one: there SHALL be no value, and no absent-argument fallback, under
+which a membership admits the whole library. A default is prohibited in both polarities: a permissive
+default (an `Admitting` policy carrying no `CaptureAfter` rule) uploads the entire library from the
 beginning of time, and a fail-closed default (`None`) makes a contributing member silently share nothing
 while the screen reads "In sync" — the invisible failure this capability exists to prevent. The two states
-being distinct constructors, rather than a cutoff plus a boolean, SHALL make "contributes nothing, and here
-is the cutoff it is not using" unrepresentable.
+being distinct variants, rather than a rule list plus a boolean, SHALL make "contributes nothing, and here
+are the rules it is not using" unrepresentable.
 
-The direction is a **per-membership** input, not a per-resource rule: it SHALL be applied **before** any
-library walk, never as a per-asset filter within one. The walk costs one synchronous PhotoKit round-trip per
+The direction is a **per-membership** input, not a per-asset rule: it SHALL be applied **before** any
+library walk, never as a rule evaluated within one. The walk costs one synchronous PhotoKit round-trip per
 asset, so a non-contributor must never begin one to conclude it contributes nothing.
 
 #### Scenario: A download-only membership contributes the empty set
 - **WHEN** the membership's participation direction excludes upload
 - **THEN** the selection policy admits no asset, regardless of any asset's capture date or origin
 
-#### Scenario: The non-contributing case carries no cutoff
+#### Scenario: The non-contributing case carries no bounds
 - **WHEN** a membership contributes nothing
-- **THEN** it is expressed as `Contribution.None`, which carries no cutoff — the combination "contributes
-  nothing, with a cutoff" cannot be constructed
+- **THEN** it is expressed as `SelectionPolicy.None`, which carries no rules and no capture-date bounds —
+  the combination "contributes nothing, and here is the cutoff it is not using" cannot be constructed
 
 #### Scenario: A non-contributor never walks the library
-- **WHEN** the selection policy is applied for a `Contribution.None` membership
+- **WHEN** the selection policy is applied for a `SelectionPolicy.None` membership
 - **THEN** no library enumeration is performed — the empty result is reached before any per-asset walk begins
+
+### Requirement: The admitted set is a single derivation every consumer receives
+
+There SHALL be exactly **one** derivation of a membership's **admitted set** — the assets the selection
+policy admits — and every consumer SHALL obtain its answer from that one set rather than re-applying the
+policy's rules itself. The policy SHALL be expressed as a value (`SelectionPolicy`) carrying its rules,
+with a single `admits(facts)` decision; the admitted set is `candidates.filter { policy.admits }`. The
+byte upload, the device manifest, the own-device status total `N`, and the join-time shareable-count
+preview SHALL each derive from this set — upload uploads the admitted assets' resources, the manifest
+lists them, `N` counts them, the preview counts them.
+
+No consumer SHALL restate any of the policy's rules — not the capture-date range, the origin exclusions,
+the echo suppression, nor the album denylist. A consumer that re-enumerates a rule is how the set drifts:
+`add-event-date-range` added the capture-date **ceiling** to the byte filter and the preview but not the
+manifest projection or `N`, so those two silently admitted post-ceiling photos into the manifest and the
+status total while their bytes never uploaded — pegging the screen below 100% and offering foreign members
+a resource that 404s. Making the admitted set one derivation makes that class of drift unrepresentable:
+adding or changing a rule is one edit, and every consumer follows by construction.
+
+Admission SHALL be applied at the point of **query** — when a consumer asks for the set or the count — and
+no consumer SHALL treat an upstream-filtered structure as the admitted set. An upstream stage MAY exclude
+assets earlier (the cycle drops origin-excluded resources before they reach the ledger, so they never reach
+any reader downstream of it), but such a pre-filter enforces only a subset of the rules, so the consumer
+still asks the policy. The single authoritative in-memory admission SHALL remain authoritative over every optimization
+(platform fetch narrowing included, capability's *Selection filter* requirement) — a narrowing MAY reduce
+what a walk returns but SHALL NOT change the admitted set.
+
+#### Scenario: Every consumer admits the same set
+
+- **WHEN** a membership's byte upload, device manifest, status total `N`, and join preview each resolve
+  their assets for the same capture-date range
+- **THEN** all four resolve the identical admitted set — no consumer includes or excludes an asset the
+  others do not
+
+#### Scenario: The ceiling reaches every consumer
+
+- **WHEN** a membership has a capture-date ceiling and the device holds a photo captured after it
+- **THEN** that photo is admitted by **no** consumer — it is neither uploaded, nor listed in the device
+  manifest, nor counted in `N`, nor counted in the preview
+
+#### Scenario: Adding a rule is one edit
+
+- **WHEN** a new selection rule is introduced
+- **THEN** it is defined once on `SelectionPolicy`, and every consumer's admitted set reflects it without
+  any per-consumer change — no consumer carries a copy of the rule set
+
+#### Scenario: A consumer cannot re-enumerate the policy
+
+- **WHEN** the codebase is inspected for the capture-date comparison (`creationDate` against a bound)
+- **THEN** it appears only inside the single `SelectionPolicy` admission, not at any consumer
+
+### Requirement: Admission is decidable on asset facts alone
+
+Every selection rule SHALL be decidable from an asset's **neutral facts** — properties readable without a
+per-asset platform resource round-trip — or from an identifier set supplied to the policy. No rule SHALL
+require reading an asset's resources to decide whether it is admitted.
+
+This is what makes the admitted set **one** set rather than a family of approximations. A rule needing a
+resource read forces every consumer to choose between paying for it (expensive, and pointless for a count)
+and admitting on doubt (cheap, and a different answer) — so the same policy yields different sets at
+different consumers, which is the drift class the *single derivation* requirement exists to close.
+
+It also inverts the cost of the walk: because admission is settled before any resource is read, resources
+SHALL be read only for assets the policy has **already admitted**. The previous ordering read every
+in-scope asset's resources and then discarded the excluded ones, paying the round-trip for exactly the
+assets it was about to throw away.
+
+#### Scenario: A count reads no resources
+
+- **WHEN** any consumer resolves only the size of the admitted set
+- **THEN** it issues no per-asset resource read, because no rule needs one
+
+#### Scenario: The preview and the status total agree exactly
+
+- **WHEN** the join preview and the own-device status total are computed over the same library and the same
+  membership bounds
+- **THEN** they report the same count — neither admits an asset the other excludes
+
+#### Scenario: An excluded asset costs no resource read
+
+- **WHEN** the walk encounters an asset the policy excludes
+- **THEN** the asset's resources are never fetched
 
 ### Requirement: One policy gates both byte upload and manifest listing
 
 A membership's **selection policy** SHALL gate **both** which of the device's photo bytes are uploaded
-**and** which of its assets are listed in that event's device manifest — the policy being its participation
-direction, its capture-date cutoff, and the origin exclusions, carried together as `Contribution`. The two
-SHALL use the **same** admitted set, so the set uploaded equals the set listed. Because the event union exposes each
-device's manifest-listed assets to other members, the policy thereby governs both this device's backup scope
-and what other members can download from it. A photo excluded by the policy SHALL neither have its bytes
-uploaded nor appear in the manifest (and therefore SHALL NOT enter the event union).
+**and** which of its assets are listed in that event's device manifest. Both SHALL derive from the **one
+admitted set** (see *The admitted set is a single derivation every consumer receives*): the set uploaded
+equals the set listed, because both read the same admitted set rather than each re-applying the policy.
+Because the event union exposes each device's manifest-listed assets to other members, the policy thereby
+governs both this device's backup scope and what other members can download from it. A photo excluded by
+the policy — by capture-date range (**both** the lower cutoff and the upper ceiling), origin, echo, or
+album — SHALL neither have its bytes uploaded nor appear in the manifest (and therefore SHALL NOT enter
+the event union).
 
-A photo excluded by the policy but listed in the manifest would be strictly worse than one merely uploaded:
-it would enter the event union and every other member would attempt to download bytes that were never
-uploaded.
+#### Scenario: Upload and manifest admit the identical set
 
-A `Contribution.None` membership admits nothing, so it SHALL upload no bytes **and** write no manifest
-listing any asset. Publishing a non-contributor's assets to the manifest would be the same failure in its
-most complete form: the member's entire library would enter the event union, be offered to every other
-member, and 404 for all of them — while the member was told they would share nothing.
+- **WHEN** a device backs up for an event
+- **THEN** the assets whose bytes it uploads and the assets its device manifest lists are the same set,
+  each derived from the one admitted set
 
-#### Scenario: An in-scope photo is both uploaded and shared
-- **WHEN** a photo's `creationDate` is at or after the membership's cutoff and no origin exclusion applies
-- **THEN** its bytes are uploaded and it is listed in the device manifest (eligible for the event union)
+#### Scenario: A post-ceiling photo is in neither
 
-#### Scenario: An out-of-scope photo is neither uploaded nor shared
-- **WHEN** a photo's `creationDate` precedes the membership's cutoff
-- **THEN** its bytes are not uploaded and it is not listed in the manifest, so no other member can download it
-
-#### Scenario: An origin-excluded photo is neither uploaded nor shared
-- **WHEN** a photo is at or after the cutoff but is excluded by an origin rule (for example a screenshot)
-- **THEN** its bytes are not uploaded **and** it does not appear in the device manifest, so it never enters
-  the event union and no other member downloads it
-
-#### Scenario: A non-contributing membership uploads nothing and lists nothing
-- **WHEN** the membership is `Contribution.None` and the library holds admitted-looking photos
-- **THEN** no bytes are uploaded and no device manifest listing any asset is written, so nothing enters the
-  event union
+- **WHEN** the device holds a photo captured after the membership's ceiling
+- **THEN** its bytes are not uploaded and it is not listed in the manifest
 
 ### Requirement: The policy scopes the own-device status total
 
-The own-device upload **total** `N` SHALL count only the device's own assets that the **selection policy
-admits** — a contributing membership, at or after the cutoff, **and** not origin-excluded — the same set the
-upload cycle admits (`N` is the count driving the joined screen's sync health, capability `sync-status`). An
-asset the policy excludes SHALL NOT count toward `N`, because it is never uploaded; counting it would peg
-completeness permanently below 100% and hold the screen at "pending" forever.
+The own-device upload **total** `N` SHALL count exactly the assets in the membership's **admitted set** —
+the same set the upload cycle admits — and SHALL NOT re-apply the policy's rules independently. `N` SHALL
+respect the capture-date **range** (both bounds), the origin exclusions, the echo suppression, and the
+album denylist by deriving from that set, so an asset the policy excludes never counts toward `N`.
+Counting an excluded asset would peg completeness permanently below 100% and hold the screen at "pending"
+forever — which is the concrete failure a floor-only `N` produced.
 
-A `Contribution.None` membership SHALL report `N = 0`, computed **without enumerating the library**. `N` is
-otherwise a parallel computation that no upload gate feeds, so without this the total would report a library
-the cycle will never upload, and the joined screen would show an upload arrow that never settles.
+A `SelectionPolicy.None` (non-contributing) membership SHALL report `N = 0` without enumerating the library.
 
-The status total and the upload cycle SHALL apply the **same** policy, from the **same** `Contribution`
-value. They are computed by different components (`OwnDeviceGalleryStatusSource` in the app process,
-`UploadCycle` in the upload path), so this identity is a requirement, not an implementation coincidence.
+#### Scenario: N counts the admitted set, ceiling included
 
-#### Scenario: A pre-cutoff asset does not inflate the total
-- **WHEN** the library holds a pre-cutoff asset and an in-scope asset, and the in-scope asset is uploaded
-- **THEN** the total counts only the in-scope asset, so the joined screen reaches "in sync" (not a
-  perpetual "pending")
+- **WHEN** the device holds photos both within and after the membership's capture-date range
+- **THEN** `N` counts only those within the full range `[cutoff, until]` — a post-ceiling photo is not
+  counted, so completeness can reach 100%
 
-#### Scenario: An origin-excluded asset does not inflate the total
-- **WHEN** the library holds a screenshot taken after the cutoff, and every admitted asset is uploaded
-- **THEN** the screenshot does not count toward `N`, and the joined screen reaches "in sync" rather than
-  holding permanently below 100%
+#### Scenario: N derives from the same set as upload
 
-#### Scenario: A non-contributing membership totals zero without a walk
-- **WHEN** the own-device total is computed for a `Contribution.None` membership whose library holds photos
-- **THEN** `N` is `0` and no library enumeration is performed
-
-#### Scenario: There is no unscoped whole-library total
-- **WHEN** the own-device total is computed for any joined membership
-- **THEN** it derives from that membership's `Contribution` — a contributing one counted against its
-  non-null cutoff, a non-contributing one reported as `0` — and there is no unscoped whole-library branch
-
-#### Scenario: The total and the cycle admit the same set
-- **WHEN** the own-device total and the upload cycle are computed for the same membership
-- **THEN** both are derived from the same `Contribution` value, so the counted set equals the admitted set
+- **WHEN** the upload cycle admits a set and `N` is computed
+- **THEN** `N` equals the size of that admitted own-device set, not a separately-filtered count
 
 ### Requirement: Selection filter over the shared upload cycle
 
@@ -456,53 +512,79 @@ non-null. The engine and ledger SHALL remain policy-blind; the exclusion happens
 resource selection.
 
 The filter in the cycle's resource selection SHALL remain the **authoritative** exclusion, and SHALL live in
-the **platform-free upload-cycle core**, not in untested platform wiring, so it is exercised in `commonTest`. A
-platform enumeration MAY additionally narrow its fetch (by capture date — including an upper narrowing by
-the upper bound — media subtype, or pixel dimensions) as an optimization, but the cycle's filter SHALL still
-run over whatever that fetch returns, so **a platform fetch can never widen or narrow the admitted set**.
+the **platform-free upload-cycle core**, not in untested platform wiring, so it is exercised in `commonTest`.
 
-The origin exclusions SHALL be applied **before** the device-manifest hook, whereas the capture-date range
-SHALL NOT be. The origin exclusions are **event-independent** (a screenshot is a screenshot in every event),
-while the range is **per-membership** — so pre-filtering by origin costs the device-global accumulator no
-per-event flexibility, while pre-filtering by date would (capability `device-manifest`).
+A platform enumeration MAY additionally narrow its fetch as an optimization. That narrowing SHALL be derived
+by **translating the policy's own rules** — the platform receives the policy and pattern-matches the rules it
+can express into its native query — rather than by re-stating a bound the caller flattened for it. Rules the
+platform cannot express SHALL simply not be translated; an untranslated rule costs performance only, never
+correctness, because the authoritative filter runs over whatever the fetch returns. **A platform fetch can
+never widen or narrow the admitted set.** Because the rule set is a sealed type, adding a rule SHALL force
+each platform translator to state explicitly whether it can express it.
+
+Exactly one narrowing is **required** rather than advisory: the capture-date **lower bound** SHALL be pushed
+into the platform query. That is a **liveness** property of the walk, not a correctness property of
+admission — every rule is equally load-bearing for what is admitted, but an unbounded walk is watchdog-killed
+before the authoritative filter ever runs.
+
+The origin exclusions SHALL be applied before a resource reaches the ledger, so an origin-excluded asset
+never gains a ledger row and therefore cannot appear in any device manifest — the manifest being a
+projection of the ledger's `COMPLETED` rows (capability `device-manifest`). The capture-date bounds SHALL be
+applied at **projection** time, against the membership's own policy, exactly as every other consumer applies
+it. The projection SHALL receive the **policy**, not the inputs from which one could be derived, and SHALL
+NOT take the ledger's contents for the admitted set.
 
 #### Scenario: Pre-lower-bound resources never reach the engine
+
 - **WHEN** the cycle discovers a resource whose asset `creationDate` precedes the lower bound `from`
 - **THEN** the resource is dropped before the engine, so no upload job is created and the ledger gains no entry for it
 
 #### Scenario: Post-upper-bound resources never reach the engine
+
 - **WHEN** the cycle discovers a resource whose asset `creationDate` exceeds the upper bound `until`
 - **THEN** the resource is dropped before the engine, so no upload job is created and the ledger gains no entry for it
 
 #### Scenario: A resource captured exactly at the upper bound is admitted
+
 - **WHEN** the cycle discovers a resource whose asset `creationDate` equals the upper bound `until` (and is
   at or after `from` and origin-admitted)
 - **THEN** it is admitted, because the upper bound is inclusive (`creationDate <= until`)
 
 #### Scenario: Origin-excluded resources never reach the engine
+
 - **WHEN** the cycle discovers a resource whose owning asset an origin rule rejects
 - **THEN** the resource is dropped before the engine and before `retainAssets`, so no upload job is created
   and the ledger gains no entry for it
 
 #### Scenario: The filter covers the incremental walk
+
 - **WHEN** the incremental change-token walk surfaces a changed asset the policy does not admit
 - **THEN** that asset is excluded, exactly as in the full enumeration
 
 #### Scenario: The admitted set is the minimum across memberships
+
 - **WHEN** the device has memberships with lower bounds `C1` and `C2`
 - **THEN** a resource is admitted for upload when its `creationDate >= min(C1, C2)` (in v1 this is the single membership's lower bound)
 
 #### Scenario: A platform fetch narrowed by date or origin does not change the admitted set
+
 - **WHEN** the platform enumeration returns a superset of the admitted assets (for example because its
   predicate was deliberately widened, or because it cannot express an exclusion the policy makes)
 - **THEN** the cycle's filter still excludes every non-admitted resource, so the admitted set is identical to
   that of an unnarrowed fetch
 
-#### Scenario: The manifest sees the origin-filtered set but not the date-filtered set
-- **WHEN** a cycle discovers a screenshot and a pre-lower-bound camera photo
-- **THEN** the device-manifest hook is fed neither the screenshot (origin-excluded before the hook) nor, in
-  the event's manifest, the out-of-range photo (excluded by the per-event date projection) — while the
-  out-of-range photo remains in the device-global accumulator and the screenshot does not
+#### Scenario: A new rule forces a translation decision
+
+- **WHEN** a new selection rule is added to the sealed rule set
+- **THEN** each platform translator fails to compile until it states explicitly whether it can express that
+  rule, so a rule can never be silently left out of the narrowing
+
+#### Scenario: The manifest lists only the admitted set
+
+- **WHEN** a cycle discovers a screenshot, a pre-lower-bound camera photo, and an in-range camera photo
+- **THEN** neither the screenshot nor the pre-lower-bound photo gains a ledger row, and the manifest
+  projected from the ledger's `COMPLETED` rows — admitted by the same membership policy — lists only the
+  in-range camera photo, so no consumer downstream can re-derive a different set
 
 ### Requirement: Origin exclusions admit on doubt
 
@@ -527,31 +609,35 @@ allowlist of `originalFilename` shapes (which excludes third-party camera apps).
   membership and no excluded media subtype
 - **THEN** the asset is admitted — the policy makes no attempt to exclude it, and this is a known, accepted gap
 
-### Requirement: Screenshots, screen recordings and animated images are excluded
+### Requirement: Screenshots and screen recordings are excluded
 
 The policy SHALL exclude every asset whose `mediaSubtypes` carries the **screenshot** bit (`1 << 2`) or the
-**screen-recording** bit (`1 << 19`), and every asset whose **primary** resource MIME content type is
-`image/gif`.
+**screen-recording** bit (`1 << 19`).
 
-None of these three is a camera capture under any reading. Screenshots are the highest-frequency non-captured
-asset in a typical library, and both bits are exact — this is the one rule with perfect recall.
+Neither is a camera capture under any reading. Screenshots are the highest-frequency non-captured asset in a
+typical library, and both bits are exact — this is the rule with perfect recall. Both are plain properties of
+the asset, so the rule is decidable without reading any resource.
 
 #### Scenario: A screenshot is excluded
+
 - **WHEN** a discovered asset's `mediaSubtypes` has the screenshot bit set
 - **THEN** it is excluded from upload and from the manifest, whatever its capture date
 
 #### Scenario: A screen recording is excluded
+
 - **WHEN** a discovered asset's `mediaSubtypes` has the screen-recording bit set
 - **THEN** it is excluded from upload and from the manifest
 
-#### Scenario: A GIF is excluded
-- **WHEN** a discovered asset's primary resource MIME content type is `image/gif`
-- **THEN** it is excluded from upload and from the manifest
-
 #### Scenario: A camera photo carrying other subtypes is admitted
+
 - **WHEN** a discovered asset carries only non-excluded subtype bits (for example panorama, HDR, live photo,
   or depth effect)
 - **THEN** it is admitted — those subtypes are all camera captures
+
+#### Scenario: An ordinary animated image is excluded by the resolution floor
+
+- **WHEN** a messenger or Giphy GIF (well below 3 megapixels, unedited) is discovered
+- **THEN** it is excluded by the image resolution floor, without any rule reading its resources
 
 ### Requirement: Resolution floors exclude compressed received media
 
@@ -656,97 +742,45 @@ library: it SHALL NOT be implemented as a per-asset membership test.
 
 ### Requirement: The policy scopes the join-time shareable-count preview
 
-The join-time **shareable-count preview** (capability `join-share-count`) SHALL apply the **same**
-selection policy — participation direction, capture-date **range** (`[from, until]`, both bounds), and
-origin exclusions, carried as `Contribution` — that gates the byte upload, the device manifest, and the
-own-device status total `N`. The preview count SHALL be derived from the **same admitted-set logic**,
-evaluated against the surface's **candidate** (uncommitted) range rather than the persisted one, so the
-preview, the upload set, the manifest, and `N` are **one universe**: the number a member sees before
-confirming equals the set that would upload and list for that range — bounded below by the candidate
-`from` **and** above by the candidate `until` (see *The event's end date is a ceiling…*). The policy logic
-SHALL NOT be forked or re-implemented for the preview.
+The join surface's shareable-count preview SHALL count exactly the assets the candidate membership's
+**admitted set** contains for the candidate capture-date range — the same admission every other consumer
+applies, computed purely locally with no backend call. It SHALL respect **both** capture-date bounds, the
+origin exclusions, the echo suppression, and the album denylist by deriving from that set. Because the
+preview evaluates a **candidate** range (the one the member is choosing, before commit), it constructs the
+policy over the candidate bounds; it SHALL NOT re-implement the rules — only supply the candidate bounds to
+the one admission.
 
-The preview MAY read the policy over **cheap `PHAsset` properties without the per-asset resource read**
-(the resource read builds upload keys, which a count does not need); this is an admissible optimisation of
-the **same** policy, exactly as the upload cycle permits a platform fetch to be narrowed as an
-optimisation without changing the admitted set — so the count over the cheap-property path SHALL be
-identical to the count of the set the cycle would admit for that cutoff.
+#### Scenario: The preview and the committed membership admit consistently
 
-Because the candidate cutoff is not yet clamped, the preview MAY show the count for a value the join-time
-`max(chosen, startsAt)` clamp would raise; the surface renders the resulting instant before confirm
-(existing requirement), so the count corresponds to the instant shown.
+- **WHEN** a member picks a capture-date range on the join surface and then confirms it unchanged
+- **THEN** the count the preview showed equals the size of the admitted own-device set the committed
+  membership produces (echo/album state permitting), because both apply the one admission
 
-#### Scenario: The preview counts the same set the cycle would upload
-- **WHEN** the shareable-count preview is computed for a candidate cutoff `C` and a contributing direction
-- **THEN** it counts exactly the assets the upload cycle would admit for `C` — at or after `C`, not
-  origin-excluded — using the same policy, with no separate or looser rule
-
-#### Scenario: A non-contributing candidate previews zero without a walk
-- **WHEN** the preview is computed for a candidate direction that excludes upload
-- **THEN** the count is `0` and no library enumeration is performed, exactly as `N` reports for
-  `Contribution.None`
-
-#### Scenario: The preview does not fork the policy
-- **WHEN** an origin exclusion (a screenshot, a sub-floor received image, a denylisted-album member) would
-  drop an asset from the upload set
-- **THEN** the preview count drops the same asset, the exclusions being the one shared policy rather than a
-  preview-specific copy
 ### Requirement: The event's end date is a ceiling on every membership's upper bound
 
-An event SHALL carry an **end date** (`endsAt`, capability `event-creation` / `event-limits`),
-creator-chosen at creation and immutable thereafter. It SHALL act as a **ceiling** on every membership's
-capture-date upper bound: a membership's **effective upper bound** SHALL be `min(chosen, endsAt)`.
+An event SHALL carry an **end date** (`endsAt`), creator-chosen at creation and immutable. It SHALL act as
+a **ceiling** on every membership's capture-date upper bound: a membership's effective upper bound SHALL be
+`min(chosen, endsAt)`, computed and persisted at join. The upper bound's default SHALL be `endsAt` (the
+full event window).
 
-The ceiling SHALL be applied **at join time** — `JoinEvent` SHALL compute `min(chosen, endsAt)` (mirroring
-the `max(chosen, startsAt)` floor) and persist **that** value as the membership's upper bound. Because
-`endsAt` is immutable, the clamped result is stable for the life of the membership. The upper bound's
-default SHALL be `endsAt` itself — the full event window — so a member who picks nothing contributes every
-in-window photo.
+The ceiling SHALL be a **required** value on a persisted membership — there is no unbounded ceiling. A
+membership always carries a concrete upper bound (persisted from `min(chosen, endsAt)` at join), and every
+consumer applies it via the admitted set. (The prior "absent upper bound treated as unbounded" allowance
+for pre-ceiling configs is removed; see `join-event` and `event-rejoin-reconciliation` — a pre-ceiling
+config is reconciled by `decouple-event-window-from-lifetime` before this change's strict decode.)
 
-The clamp SHALL apply to **every** upper bound that enters a membership, with **no exemption** — the
-**Custom** interactive pick, the **Event end** option (capability `join-event`), and the dev/test
-`maxPhotoDate` override carried on a decoded event link (capability `event-link`) alike. As with the floor
-clamp, the persisted `min(chosen, endsAt)` clamp is the **authoritative** ceiling; a join surface's picker
-MAY additionally enforce the ceiling at pick time (rendering post-ceiling days unselectable), but that UI
-enforcement mirrors the clamp and does not replace it.
+The ceiling SHALL apply to **every** admitting consumer with **no exemption**, because they all derive from
+the one admitted set — the byte upload, the device manifest, the status total `N`, and the preview alike.
+A host cannot cause any photo captured after `endsAt` to be uploaded, listed, counted, or previewed.
 
-The ceiling can only ever **narrow** a membership's scope, never widen it beyond the member's own pick: the
-member is always free to choose an **earlier** upper bound than the event's end, and the value being
-committed SHALL be visible on the join surface **before** the confirm. A host cannot cause any photo taken
-after `endsAt` to be uploaded, and cannot lower a member's upper bound below the member's own choice.
+#### Scenario: The chosen upper bound is clamped to the event end
 
-For memberships stored before this capability carried an upper bound, an absent upper bound SHALL be treated
-as **unbounded** (no ceiling) until reconcile backfills `min(default, endsAt) = endsAt` (capability
-`event-rejoin-reconciliation`), so nothing is silently dropped mid-upgrade.
+- **WHEN** a member joins an event and chooses an upper bound later than `endsAt`
+- **THEN** the persisted upper bound is `endsAt`, and photos captured after it are excluded from every
+  consumer
 
-#### Scenario: The chosen upper bound is clamped down to the event end
-- **WHEN** a member joins an event whose `endsAt` is `2026-07-21T23:00:00Z` and chooses an upper bound of
-  `2026-07-28T12:00:00Z`
-- **THEN** the persisted upper bound is `2026-07-21T23:00:00Z` — the ceiling — and the member's photos from
-  after the event ended are never uploaded
+#### Scenario: The ceiling is required, not unbounded
 
-#### Scenario: A chosen upper bound below the ceiling is honored unchanged
-- **WHEN** a member joins the same event and chooses an upper bound of `2026-07-20T21:00:00Z`
-- **THEN** the persisted upper bound is `2026-07-20T21:00:00Z`, the member freely choosing below the ceiling
-
-#### Scenario: The upper bound defaults to the full event window
-- **WHEN** a member joins an event whose `endsAt` is `2026-07-21T23:00:00Z` and picks no explicit upper bound
-- **THEN** the persisted upper bound is `2026-07-21T23:00:00Z` — the event's end — so every in-window photo is admitted
-
-#### Scenario: An event link's dev/test upper override is clamped too
-- **WHEN** an event link carrying `autoJoin = true` and an explicit `maxPhotoDate` later than the event's
-  `endsAt` is decoded
-- **THEN** the auto-fired confirm persists `min(maxPhotoDate, endsAt)` — the override cannot raise the
-  membership's upper bound above the event's end
-
-#### Scenario: A membership's photos are never later than the event
-- **WHEN** any joined membership's persisted upper bound is read, by the app process or the upload extension process
-- **THEN** it is at or before that event's `endsAt`, so no photo captured after the event ended can be
-  uploaded to it or listed in its manifest
-
-#### Scenario: An unbackfilled legacy membership is treated as unbounded above
-- **WHEN** a membership stored before this capability is read and carries no upper bound, and reconcile has
-  not yet backfilled it
-- **THEN** the upper bound is treated as unbounded (no ceiling), so no in-scope photo is silently dropped
-  before the backfill runs
+- **WHEN** a membership is persisted
+- **THEN** it carries a concrete capture-date upper bound; no membership is unbounded above
 
