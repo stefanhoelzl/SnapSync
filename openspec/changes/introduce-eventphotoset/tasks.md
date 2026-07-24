@@ -53,13 +53,10 @@
 
 - [x] 4.1 Define `EventPhotoSet { count(); assets() }` and `Asset { assetId; creationDate; resources() }` in
       `:domain`; admission applied at query, over an injected `CandidateSource`.
-- [~] 4.2 Candidate backings: `candidatesFromResources` (cycle-side + LIMITED snapshot) and
-      `candidatesFromFacts` (app-side facts walk) are in place, and the native narrowing is platform-owned
-      (§3 moved `EXCLUDED_SUBTYPE_MASK` into the iOS adapter alongside the predicate that inlines it). The
-      lower-bound push remains a source contract, honoured as today. **Not done:** having the iOS source
-      `when`-translate the sealed `SelectionRule` set instead of hardcoding the mask + a cutoff string —
-      a refinement of an optimization layer that can neither widen nor narrow the admitted set, so it is
-      separable from the correctness work above.
+- [x] 4.2 **Superseded by `introduce-candidate-source`.** This proposed threading the policy through the
+      seven-layer read relay so the iOS source could `when`-translate the sealed rules. That change removed
+      the relay instead: `RawAssetSource`/`PhotoLibrary`/`ResourceEnumerator` collapsed into one
+      policy-taking `CandidateSource`, and the translation landed there. Nothing to do here.
 - [x] 4.3 `Asset.resources()`: ONE lazy-fetch path for both grants — the device spike (task 7.1, DONE)
       measured zero alerts from off-flow `assetResourcesForAsset` on held refs under `.limited`. The LIMITED
       `Snapshot` source therefore carries **facts only** (cheaper capture), not pre-captured resources. Keep
