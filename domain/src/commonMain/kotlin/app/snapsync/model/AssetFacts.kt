@@ -10,9 +10,13 @@ package app.snapsync.model
  * platform produces the same facts from its own media model and the rules are unchanged.
  *
  * **Per asset, never per resource.** An asset's resources stand or fall together: dropping a Live Photo's
- * primary while keeping its paired video leaves an orphan whose bytes nothing uploads. Facts that live on
- * a *resource* (the GIF MIME) are therefore folded up across all of the asset's resources
- * ([factsFromResources]).
+ * primary while keeping its paired video leaves an orphan whose bytes nothing uploads.
+ *
+ * **Every field here is readable without a platform round-trip**, and that is a requirement rather than a
+ * happy accident (capability `photo-selection-policy`, *Admission is decidable on asset facts alone*). A
+ * fact that needed a resource read would force each consumer to choose between paying ~110 ms per asset
+ * for a decision and admitting on doubt — which is two different answers to "the admitted set" from one
+ * policy. The animated-image rule was exactly that fact, and it was removed for exactly that reason.
  *
  * **The defaults describe an ordinary camera photo, deliberately** — the same reasoning `RawAsset`
  * carried. Every default lands on the *admitted* side of every rule, so a facts value assembled from
@@ -26,7 +30,6 @@ class AssetFacts(
     val isScreenshot: Boolean = false,
     val isScreenRecording: Boolean = false,
     val isVideo: Boolean = false,
-    val isGif: Boolean = false,
     /**
      * The asset has been edited (`hasAdjustments`). A photo cropped in Photos renders at its *cropped*
      * size, so the resolution floors are **skipped** for it — otherwise a genuine capture is dropped for
@@ -66,9 +69,6 @@ fun factsFromResources(resources: List<Resource>): List<AssetFacts> =
             isScreenshot = meta[RESOURCE_META_IS_SCREENSHOT]?.toBooleanStrictOrNull() == true,
             isScreenRecording = meta[RESOURCE_META_IS_SCREEN_RECORDING]?.toBooleanStrictOrNull() == true,
             isVideo = meta[RESOURCE_META_IS_VIDEO]?.toBooleanStrictOrNull() == true,
-            // The one fact that lives on a RESOURCE, not the asset: whichever resource is the GIF, the
-            // asset is. Checked across all of them for that reason.
-            isGif = group.any { it.metadata[RESOURCE_META_MIME] == MIME_GIF },
             isEdited = meta[RESOURCE_META_IS_EDITED]?.toBooleanStrictOrNull() == true,
             pixelArea = meta[RESOURCE_META_PIXEL_AREA]?.toLongOrNull(),
         )

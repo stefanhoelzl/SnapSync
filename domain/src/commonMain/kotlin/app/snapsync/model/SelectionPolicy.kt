@@ -23,6 +23,22 @@ package app.snapsync.model
  * one edit and every consumer follows by construction. A `:test:architecture` guard pins that no consumer
  * compares a capture date itself.
  *
+ * ## Every rule decides on facts alone
+ *
+ * No rule may need an asset's *resources* to decide (capability `photo-selection-policy`). That is what
+ * makes the admitted set **one** set rather than a family of approximations: a rule requiring a ~110 ms
+ * per-asset resource read forces each consumer to choose between paying for it — pointless for a count —
+ * and admitting on doubt, so the same policy yields different answers at different consumers.
+ *
+ * The animated-image rule was the only such rule, and it is gone. It read a *resource's* MIME type, so the
+ * facts-only join preview could not see it and admitted a GIF on doubt while the eager status walk excluded
+ * one: the preview over-counted by exactly the GIFs in scope. The 3 MP image floor already excludes every
+ * ordinary GIF; what is no longer excluded is an edited one (the floor is skipped for `hasAdjustments`) or
+ * one at ≥3 MP, and both land on the admit-on-doubt side this policy declares acceptable.
+ *
+ * It also inverts the walk's cost: because admission settles before any resource is read, resources are
+ * fetched only for assets **already admitted**, rather than for every asset the walk returns.
+ *
  * ## What it can and cannot know
  *
  * **This can only subtract, never infer.** PhotoKit exposes no "this device's camera took this" flag on
@@ -114,7 +130,6 @@ sealed interface SelectionPolicy {
                     if (ceiling != null) add(SelectionRule.CaptureBefore(ceiling))
                     add(SelectionRule.ExcludeScreenshots)
                     add(SelectionRule.ExcludeScreenRecordings)
-                    add(SelectionRule.ExcludeGif)
                     add(SelectionRule.MinImageArea(MIN_IMAGE_PIXEL_AREA))
                     add(SelectionRule.MinVideoArea(MIN_VIDEO_PIXEL_AREA))
                 },
@@ -198,11 +213,6 @@ sealed interface SelectionRule {
         override fun admits(facts: AssetFacts): Boolean = !facts.isScreenRecording
     }
 
-    /** A GIF is never a camera capture — including one exported from a Live Photo, which is a re-encode. */
-    data object ExcludeGif : SelectionRule {
-        override fun admits(facts: AssetFacts): Boolean = !facts.isGif
-    }
-
     /**
      * The **image** resolution floor — compressed received media. Inert for a video (that is
      * [MinVideoArea]'s job), for an **edited** asset (see [SelectionRule]), and when the area is unknown
@@ -248,9 +258,6 @@ private fun admitsByArea(facts: AssetFacts, minArea: Long): Boolean {
     if (area <= 0L) return true
     return area >= minArea
 }
-
-/** A GIF is never a camera capture — including one exported from a Live Photo, which is a re-encode. */
-const val MIME_GIF: String = "image/gif"
 
 /**
  * Images below **3 MP** are excluded. WhatsApp caps received images at a 1600 long edge (~1.9 MP, at
