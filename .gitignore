@@ -7,7 +7,7 @@ local.properties
 .kotlin/
 
 # backend bundle output (built in CI, deployed; never committed)
-backend/dist/
+api/dist/
 
 # Local backend rig (dev infrastructure): the filesystem store the api runs against locally, plus the
 # tunnel host file and a downloaded cloudflared. Wiping api/.localstore is the reset — the deliberate
