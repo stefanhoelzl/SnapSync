@@ -8,6 +8,8 @@ import app.snapsync.ports.Discovery
 import co.touchlab.kermit.Logger
 import kotlinx.cinterop.BetaInteropApi
 import kotlinx.cinterop.ExperimentalForeignApi
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import platform.Foundation.NSKeyedArchiver
 import platform.Foundation.NSKeyedUnarchiver
 import platform.Foundation.NSMutableURLRequest
@@ -45,46 +47,65 @@ class IosDiscovery(
      * The **id-scoped** variant lives here rather than on [CandidateSource]: only this class has
      * identifiers to scope by, because only it reads the change feed. Putting it on the shared seam would
      * push an upload-only concern onto the port the status total and the join preview also hold.
+     *
+     * **The whole body hops to [Dispatchers.Default]** — Kotlin/Native has no `Dispatchers.IO` — for the
+     * same reason [PhotoKitCandidateSource] does, and it is this seam's own job to do it: a sync-I/O port
+     * impl owns its dispatcher hop, because only it knows the call blocks. Its app-process callers reach
+     * it from `SnapSyncRoot`'s `Dispatchers.Main` scope, and **every** PhotoKit touch below is a
+     * synchronous XPC round-trip into `assetsd` — the change fetch, each `changeDetailsForObjectType`,
+     * the identifier fetch, the per-asset `creationDate` read inside [PhotoKitCandidateSource.candidatesFrom]
+     * (which, unlike its sibling `candidates`, hops nowhere), and `currentChangeToken`. Any one of them
+     * blocking on main trips the 10 s scene-update watchdog and the OS kills the app (`0x8BADF00D`).
+     * Forcing proof: build 521 died exactly this way on 2026-07-26 (iPhone11,2 / iOS 18.7.9) with
+     * `assetsd` wedged inside `fetchPersistentChangesSinceToken` — 0.071 s of app CPU across the whole
+     * allowance, i.e. blocked, not busy. Expires only if PhotoKit gains an async change-feed API.
+     * In the extension the hop costs nothing: `process()` already runs on `Dispatchers.Default`, and
+     * `withContext` skips the re-dispatch when the interceptor is unchanged.
+     *
+     * The hop does not make a wedged `assetsd` return — that cycle still parks until it recovers. It
+     * parks off-main, which is the whole point. A timeout is no substitute: cancellation is cooperative
+     * and the thread is inside a synchronous XPC call, so it would free the coroutine and leak the thread.
      */
-    suspend fun discover(sinceToken: ByteArray?, policy: SelectionPolicy): Discovery {
-        val token = sinceToken?.let(::unarchiveToken)
-        val changes = token?.let { library.fetchPersistentChangesSinceToken(it, error = null) }
-        if (token == null || changes == null) {
-            // Full enumeration: every current IN-SCOPE candidate — the live set the cycle reconciles
-            // against. No change feed, so no incremental removals. The policy narrows the fetch so the
-            // walk does not touch every library asset; the cycle's own admission stays authoritative
-            // over what comes back.
-            return Discovery(
-                candidates = source.candidates(policy),
+    suspend fun discover(sinceToken: ByteArray?, policy: SelectionPolicy): Discovery =
+        withContext(Dispatchers.Default) {
+            val token = sinceToken?.let(::unarchiveToken)
+            val changes = token?.let { library.fetchPersistentChangesSinceToken(it, error = null) }
+            if (token == null || changes == null) {
+                // Full enumeration: every current IN-SCOPE candidate — the live set the cycle reconciles
+                // against. No change feed, so no incremental removals. The policy narrows the fetch so the
+                // walk does not touch every library asset; the cycle's own admission stays authoritative
+                // over what comes back.
+                return@withContext Discovery(
+                    candidates = source.candidates(policy),
+                    nextToken = archiveToken(library.currentChangeToken),
+                    fullEnumeration = true,
+                )
+            }
+            // Incremental: derive changed assets to (re)upload and removed assets to prune. Removed ids
+            // are normalized `/`→`_` so they match the `<localId>-…` key scheme.
+            //
+            // `fetchAssetsWithLocalIdentifiers` takes no predicate, so the policy cannot narrow this fetch.
+            // It does not need to: the candidates it returns carry facts only, and the cycle's admission
+            // rejects the out-of-scope ones BEFORE any of them is asked for its resources. A change feed says
+            // what CHANGED, not what is in SCOPE — an iCloud sync can hand back thousands of decades-old
+            // assets — and the expensive part is the per-asset resource read, which none of them now reaches.
+            val identifiers = linkedSetOf<String>()
+            val removed = linkedSetOf<String>()
+            changes.enumerateChangesWithBlock { change, _ ->
+                val details = change?.changeDetailsForObjectType(PHObjectTypeAsset, error = null)
+                    ?: return@enumerateChangesWithBlock
+                details.insertedLocalIdentifiers().forEach { identifiers.add(it as String) }
+                details.updatedLocalIdentifiers().forEach { identifiers.add(it as String) }
+                details.deletedLocalIdentifiers().forEach { removed.add((it as String).replace('/', '_')) }
+            }
+            Discovery(
+                candidates = source.candidatesFrom(
+                    PHAsset.fetchAssetsWithLocalIdentifiers(identifiers.toList(), null),
+                ),
                 nextToken = archiveToken(library.currentChangeToken),
-                fullEnumeration = true,
+                removedAssetIds = removed.toList(),
             )
         }
-        // Incremental: derive changed assets to (re)upload and removed assets to prune. Removed ids
-        // are normalized `/`→`_` so they match the `<localId>-…` key scheme.
-        //
-        // `fetchAssetsWithLocalIdentifiers` takes no predicate, so the policy cannot narrow this fetch.
-        // It does not need to: the candidates it returns carry facts only, and the cycle's admission
-        // rejects the out-of-scope ones BEFORE any of them is asked for its resources. A change feed says
-        // what CHANGED, not what is in SCOPE — an iCloud sync can hand back thousands of decades-old
-        // assets — and the expensive part is the per-asset resource read, which none of them now reaches.
-        val identifiers = linkedSetOf<String>()
-        val removed = linkedSetOf<String>()
-        changes.enumerateChangesWithBlock { change, _ ->
-            val details = change?.changeDetailsForObjectType(PHObjectTypeAsset, error = null)
-                ?: return@enumerateChangesWithBlock
-            details.insertedLocalIdentifiers().forEach { identifiers.add(it as String) }
-            details.updatedLocalIdentifiers().forEach { identifiers.add(it as String) }
-            details.deletedLocalIdentifiers().forEach { removed.add((it as String).replace('/', '_')) }
-        }
-        return Discovery(
-            candidates = source.candidatesFrom(
-                PHAsset.fetchAssetsWithLocalIdentifiers(identifiers.toList(), null),
-            ),
-            nextToken = archiveToken(library.currentChangeToken),
-            removedAssetIds = removed.toList(),
-        )
-    }
 
     /** Build the edge PUT request for [request] — HTTP/3 disabled (see below). Shared by both tiers. */
     fun buildRequest(url: NSURL, request: UploadRequest): NSMutableURLRequest {
