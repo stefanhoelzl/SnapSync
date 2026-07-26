@@ -53,8 +53,21 @@ const LIVE_STARTS = "2026-07-01T00:00:00Z";
 /**
  * In-memory bunny native-Storage fake: GET an object or (trailing slash) a directory LIST of direct
  * children with `LastChanged`; DELETE (idempotent). Seeded from `{ key: { json, lc } }`.
+ *
+ * [emptyDirs] seeds directories that EXIST WITH NO CHILDREN — which a pure key-value store cannot
+ * otherwise represent, and which is exactly the state this capability turns on: bunny keeps a directory
+ * after its last object is deleted (measured 2026-07-26; `events/<id>/` survives holding only an empty
+ * `devices/`). Without this the fake makes a swept event's directory vanish, and the husk the sweep must
+ * reclaim would be untestable.
+ *
+ * DELETE on a trailing-slash key is **RECURSIVE**, as bunny documents — it removes every object under the
+ * prefix and the directory entries themselves. Every DELETE is recorded in `deletes`, in order, so a test
+ * can assert both what was deleted and the SEQUENCE (manifests before the marker).
  */
-function fake(initial: Record<string, { json?: unknown; lc?: string; len?: number }>) {
+function fake(
+  initial: Record<string, { json?: unknown; lc?: string; len?: number }>,
+  emptyDirs: string[] = [],
+) {
   const store = new Map<string, { body: string; lc: string; len: number }>();
   for (const [k, v] of Object.entries(initial)) {
     store.set(k, {
@@ -63,12 +76,14 @@ function fake(initial: Record<string, { json?: unknown; lc?: string; len?: numbe
       len: v.len ?? 1,
     });
   }
+  const dirs = new Set(emptyDirs);
+  const deletes: string[] = [];
   const fetchImpl: FetchLike = (url, init) => {
     const key = url.split(`/${ZONE}/`)[1] ?? "";
     const method = init.method ?? "GET";
     if (method === "GET" && key.endsWith("/")) {
       const children = new Map<string, { name: string; dir: boolean; lc: string; len: number }>();
-      let any = false;
+      let any = dirs.has(key); // the directory itself exists → `200 []`, never a 404
       for (const [k, v] of store) {
         if (!k.startsWith(key)) continue;
         any = true;
@@ -78,6 +93,15 @@ function fake(initial: Record<string, { json?: unknown; lc?: string; len?: numbe
         else {
           const d = rest.slice(0, slash);
           if (!children.has(d)) children.set(d, { name: d, dir: true, lc: "", len: 0 });
+        }
+      }
+      // A seeded empty directory nested directly under `key` is a child directory of it.
+      for (const d of dirs) {
+        if (d === key || !d.startsWith(key)) continue;
+        any = true;
+        const name = d.slice(key.length).replace(/\/$/, "");
+        if (!name.includes("/") && !children.has(name)) {
+          children.set(name, { name, dir: true, lc: "", len: 0 });
         }
       }
       if (!any) return Promise.resolve(new Response("nf", { status: 404 }));
@@ -96,11 +120,19 @@ function fake(initial: Record<string, { json?: unknown; lc?: string; len?: numbe
       );
     }
     if (method === "DELETE") {
+      deletes.push(key);
+      if (key.endsWith("/")) {
+        // Recursive, per bunny's contract: the subtree AND the directory entries go.
+        let hit = dirs.delete(key);
+        for (const k of [...store.keys()]) if (k.startsWith(key)) hit = store.delete(k) || hit;
+        for (const d of [...dirs]) if (d.startsWith(key)) hit = dirs.delete(d) || hit;
+        return Promise.resolve(new Response(null, { status: hit ? 200 : 404 }));
+      }
       return Promise.resolve(new Response(null, { status: store.delete(key) ? 200 : 404 }));
     }
     return Promise.resolve(new Response(null, { status: 405 }));
   };
-  return { store, fetchImpl };
+  return { store, dirs, deletes, fetchImpl };
 }
 
 /** A sweep run against the fake, pinned clock. */
@@ -185,6 +217,118 @@ Deno.test("event phase → a MINTED-BUT-NEVER-JOINED event is not empty and surv
   assert(store.store.has(`events/${E}/metadata.json`));
   assertEquals(summary.events.kept, 1);
   assertEquals(summary.events.deleted, 0);
+});
+
+Deno.test("tombstone → a swept event's leftover directory is pruned and counted in NEITHER tier", async () => {
+  // The husk a previous run left behind: no marker, no manifest, just `events/<id>/` holding an empty
+  // `devices/`. Before this branch existed the sweep read the 404 marker, called it stale, and "deleted"
+  // and COUNTED it again every night — 40 ids re-reported across five consecutive production nights.
+  const GHOST = "0d553167-0000-4000-8000-00000000dead";
+  const E_LIVE = "bbbbbbbb-0000-4000-8000-000000000002";
+  const store = fake({
+    [`events/${E_LIVE}/metadata.json`]: { json: mkMarker(E_LIVE, LIVE_STARTS, LIVE_ENDS) },
+    [`events/${E_LIVE}/devices/${D2}.json`]: { json: mkManifest(D2, "l.heic") },
+  }, [`events/${GHOST}/`, `events/${GHOST}/devices/`]);
+
+  const { summary } = await run(store);
+
+  // ONE delete, of the event directory — which takes the nested `devices/` husk with it.
+  assertEquals(store.deletes.filter((k) => k.startsWith(`events/${GHOST}`)), [
+    `events/${GHOST}/`,
+  ]);
+  assert(!store.dirs.has(`events/${GHOST}/`));
+  assert(!store.dirs.has(`events/${GHOST}/devices/`));
+  // Neither tier: the events tier counts EVENTS, and a tombstone is not one. Only the live event is kept.
+  assertEquals(summary.events.deleted, 0);
+  assertEquals(summary.events.kept, 1);
+  assertEquals(summary.errors, 0);
+  assert(store.store.has(`events/${E_LIVE}/metadata.json`)); // the live event is untouched
+});
+
+Deno.test("tombstone → a marker-less directory that STILL HOLDS manifests is incomplete, not a tombstone", async () => {
+  // Same `marker === null` condition, different situation: objects remain, so this is the spec's
+  // INCOMPLETE case. It must take the careful object-by-object path — never the recursive delete.
+  const E = "c0c0c0c0-0000-4000-8000-0000000000c0";
+  const store = fake({
+    [`events/${E}/devices/${D}.json`]: { json: mkManifest(D, "a.heic") },
+    [`events/${E}/devices/${D2}.left.json`]: { json: mkManifest(D2, "b.heic") },
+  });
+
+  const { summary } = await run(store);
+
+  // No directory-shaped delete was issued for it…
+  assertEquals(store.deletes.filter((k) => k.endsWith("/")), []);
+  // …and its manifests went individually, with the (absent) marker attempted LAST.
+  assertEquals(store.deletes, [
+    `events/${E}/devices/${D}.json`,
+    `events/${E}/devices/${D2}.left.json`,
+    `events/${E}/metadata.json`,
+  ]);
+  assertEquals(summary.events.deleted, 1); // counted as a deleted EVENT, unlike a tombstone
+  assertEquals(summary.errors, 0); // the marker DELETE 404s, and that is success
+});
+
+Deno.test("tombstone → dry-run names each husk it would prune and deletes nothing", async () => {
+  const G1 = "0fe23ac3-0000-4000-8000-00000000dea1";
+  const G2 = "10816a75-0000-4000-8000-00000000dea2";
+  const lines: string[] = [];
+  const store = fake({}, [`events/${G1}/`, `events/${G1}/devices/`, `events/${G2}/`]);
+
+  const summary = await runSweep({
+    fetch: store.fetchImpl,
+    config: CONFIG,
+    now: () => NOW,
+    dryRun: true,
+    log: (m) => lines.push(m),
+  });
+
+  assertEquals(store.deletes, []); // dry-run deletes NOTHING
+  assert(store.dirs.has(`events/${G1}/`));
+  assert(store.dirs.has(`events/${G2}/`));
+  // Each husk is named individually, so the directories a real run would remove can be inspected first.
+  const pruneLines = lines.filter((l) => l.includes("would prune empty directory"));
+  assertEquals(pruneLines.length, 2);
+  assertStringIncludes(pruneLines.join("\n"), `events/${G1}/`);
+  assertStringIncludes(pruneLines.join("\n"), `events/${G2}/`);
+  assertEquals(summary.events.deleted, 0); // still neither tier, even in dry-run
+  assertEquals(summary.events.kept, 0);
+});
+
+Deno.test("tombstone → a real stale event deletes manifests BEFORE its marker, and no directory", async () => {
+  // The marker is what makes an event exist, so it goes LAST: an interrupted run leaves a still-existing
+  // event the next run reclaims cleanly. Pinned as an ORDER, because a recursive delete would hand the
+  // ordering to bunny, which documents no atomicity.
+  const E = "aaaaaaaa-0000-4000-8000-00000000aaaa";
+  const store = fake({
+    [`events/${E}/metadata.json`]: { json: mkMarker(E, "2026-06-10T00:00:00Z", STALE_ENDS) },
+    [`events/${E}/devices/${D}.json`]: { json: mkManifest(D, "s.heic") },
+  });
+
+  const { summary } = await run(store);
+
+  assertEquals(store.deletes, [
+    `events/${E}/devices/${D}.json`, // manifests first…
+    `events/${E}/metadata.json`, // …marker LAST
+  ]);
+  assertEquals(store.deletes.filter((k) => k.endsWith("/")), []); // never recursive
+  assertEquals(summary.events.deleted, 1);
+});
+
+Deno.test("tombstone → a fully-orphaned device's byte DIRECTORY is deliberately left in place", async () => {
+  // The byte upload is UNGATED, so a recursive delete of the partition could destroy an upload that
+  // landed after the listing and was therefore never seen — a photo the device's ledger already records
+  // as uploaded and will never send again. The husk is retained on purpose (design D3).
+  const store = fake({
+    [`files/devices/${ORPHAN}/old.heic`]: { lc: "2026-06-01T00:00:00.000Z", len: 10 },
+    [`devices/${ORPHAN}.json`]: { json: { pushToken: "t" } },
+  });
+
+  const { summary } = await run(store);
+
+  assert(!store.store.has(`files/devices/${ORPHAN}/old.heic`)); // the byte object IS collected
+  // …but no directory delete was issued anywhere, for the partition or above it.
+  assertEquals(store.deletes.filter((k) => k.endsWith("/")), []);
+  assertEquals(summary.files.deleted.count, 1);
 });
 
 Deno.test("event phase → the deadline anchors at max(createdAt, startsAt), both directions", async () => {

@@ -7,8 +7,8 @@
 //
 // WHAT THIS PROVES, AND WHAT IT DOES NOT. It proves the shim agrees with the same assumptions about bunny
 // that the mocks in `test/app.test.ts` encode, so a failure in the local device loop means YOUR change
-// broke rather than the rig. It does NOT prove either matches bunny — nothing in this repo does. Recorded
-// here rather than implied.
+// broke rather than the rig. It does NOT prove either matches bunny — nothing in this repo does, beyond the
+// directory-listing behaviour measured in `listDir`'s doc. Recorded here rather than implied.
 
 import { assert, assertEquals, assertRejects } from "@std/assert";
 import { storageConfig } from "../../src/config.ts";
@@ -63,9 +63,13 @@ Deno.test("a missing object reads as absent, not as a failure", async () => {
   });
 });
 
-Deno.test("an absent directory lists as null", async () => {
+Deno.test("an absent directory lists as no entries", async () => {
   await withStore(async (f) => {
-    assertEquals(await listDir(f, CONFIG, `files/devices/${D}/`), null);
+    // The shim answers an absent directory with a `404`, which `listDir` tolerates and maps to `[]`.
+    // MEASURED 2026-07-26: real bunny instead answers `200 []` here (see `listDir`'s doc) — a divergence
+    // no caller can observe, because the seam collapses both to the same empty array. Pinned so it stays
+    // unobservable: a caller that started distinguishing them would be reading the shim, not bunny.
+    assertEquals(await listDir(f, CONFIG, `files/devices/${D}/`), []);
   });
 });
 
@@ -74,8 +78,9 @@ Deno.test("a directory emptied by deletes lists as an empty array", async () => 
     const key = `files/devices/${D}/only.jpg`;
     await putObject(f, CONFIG, key, "x", "image/jpeg");
     await deleteObject(f, CONFIG, key);
-    // Distinct from the absent case above, and callers treat both as "no entries" — pinned so a change
-    // to either branch has to be deliberate.
+    // The shim reaches this through a different path than the absent case above — a real, empty directory
+    // rather than a `404` — and both surface as the same `[]`, which is what every caller relies on.
+    // Pinned so a change to either branch has to be deliberate.
     assertEquals(await listDir(f, CONFIG, `files/devices/${D}/`), []);
   });
 });

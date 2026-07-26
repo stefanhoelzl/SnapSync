@@ -976,12 +976,12 @@ export function createApp({ fetch: fetchImpl, config, now = Date.now }: Deps): H
             : deviceManifestKey(eventId, deviceId);
           const [manifest, fileEntries] = await Promise.all([
             readManifestObject(fetchImpl, config, manifestKey),
-            listDir(fetchImpl, config, deviceDir(deviceId)), // 404 → null → no bytes present
+            listDir(fetchImpl, config, deviceDir(deviceId)), // empty/absent dir → [] → no bytes
           ]);
 
           // The device's present object names → byte length (the completeness oracle + size source).
           const present = new Map<string, number>();
-          for (const e of (fileEntries ?? []).filter((e) => !e.IsDirectory)) {
+          for (const e of fileEntries.filter((e) => !e.IsDirectory)) {
             present.set(decodeObjectName(e.ObjectName), e.Length);
           }
 
@@ -1021,11 +1021,11 @@ export function createApp({ fetch: fetchImpl, config, now = Date.now }: Deps): H
       return c.text("invalid device", 400);
     }
     try {
-      // Single LIST of the device dir → its objects. 404/absent → no objects → []. Any other LIST
-      // failure throws → 502, so a partial list is never returned.
+      // Single LIST of the device dir → its objects. An empty or absent dir lists as `[]`, which maps
+      // to an empty array below. Any other LIST failure throws → 502, so a partial list is never
+      // returned.
       const entries = await listDir(fetchImpl, config, deviceDir(deviceId));
       c.header("Cache-Control", NO_CACHE); // each `url` is a time-limited presigned S3 URL
-      if (entries === null) return c.json([] as FileEntry[]);
 
       const files: FileEntry[] = await Promise.all(
         entries

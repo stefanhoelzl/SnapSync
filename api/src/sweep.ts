@@ -24,6 +24,7 @@ import {
   deviceLeftManifestKey,
   deviceManifestDir,
   deviceManifestKey,
+  eventDir,
   type FetchLike,
   listDir,
   MARKER_PREFIX,
@@ -89,9 +90,9 @@ export async function runSweep(deps: SweepDeps): Promise<SweepSummary> {
   // ── EVENT PHASE ─────────────────────────────────────────────────────────────────────────────────
   // Enumerate every event directory (systemic LIST — a failure here throws and fails the run).
   const eventEntries = await listDir(f, config, `${MARKER_PREFIX}/`);
-  const eventIds = (eventEntries ?? []).filter((e) => e.IsDirectory).map((e) => e.ObjectName);
+  const eventIds = eventEntries.filter((e) => e.IsDirectory).map((e) => e.ObjectName);
   // The events that SURVIVE this phase — the asset phase evaluates bytes against these.
-  const surviving: { eventId: string; startsAtMs: number; entries: BunnyEntry[] | null }[] = [];
+  const surviving: { eventId: string; startsAtMs: number; entries: BunnyEntry[] }[] = [];
 
   for (const eventId of eventIds) {
     try {
@@ -99,6 +100,31 @@ export async function runSweep(deps: SweepDeps): Promise<SweepSummary> {
       // The manifest listing is read FIRST because staleness now depends on it: an event whose every
       // enrolled device has departed is reclaimed early (capability `scheduled-cleanup`).
       const entries = await listDir(f, config, deviceManifestDir(eventId));
+      const manifestObjects = entries.filter((e) => !e.IsDirectory);
+
+      // TOMBSTONE — no marker AND nothing left under `devices/`: the husk of an event a PREVIOUS run
+      // already deleted. Bunny keeps a directory after its last object goes, so every deletion leaves one,
+      // and without this branch each husk falls through to `marker === null` → stale and is "deleted" and
+      // COUNTED again every night, forever (measured: 40 ids re-reported across five consecutive nights,
+      // 46 of 50 event directories husks, three of those nights reclaiming zero bytes).
+      //
+      // Reclaimed with ONE recursive delete of the event directory, which takes the nested empty
+      // `devices/` with it. Race-free, and only because the marker is absent: the manifest-write and leave
+      // routes both gate on event existence, so nothing can appear inside a marker-404 directory between
+      // this listing and the delete. That is why the recursion is confined HERE and never applied to an
+      // event that still holds objects — and never to a device byte partition, whose upload is ungated.
+      //
+      // Counted in NEITHER tier: the events tier counts events, and a tombstone is not one. Its own
+      // disappearance from the deleted count is the signal that this works.
+      if (marker === null && manifestObjects.length === 0) {
+        if (dryRun) {
+          log(`[dry-run] would prune empty directory ${eventDir(eventId)}`);
+          continue;
+        }
+        await deleteObject(f, config, eventDir(eventId));
+        continue;
+      }
+
       const stale = marker === null ||
         eventIsStale(marker, entries, now(), config.eventLifetimeSeconds);
       if (!stale) {
@@ -114,12 +140,12 @@ export async function runSweep(deps: SweepDeps): Promise<SweepSummary> {
       // `leave-event`), which is the only context where acting on it is safe.
       if (dryRun) {
         log(
-          `[dry-run] would delete event ${eventId} (${(entries ?? []).length} manifest object(s))`,
+          `[dry-run] would delete event ${eventId} (${manifestObjects.length} manifest object(s))`,
         );
         summary.events.deleted++;
         continue;
       }
-      for (const e of (entries ?? []).filter((e) => !e.IsDirectory)) {
+      for (const e of manifestObjects) {
         await deleteObject(f, config, `${deviceManifestDir(eventId)}${e.ObjectName}`);
       }
       await deleteObject(f, config, markerKey(eventId)); // marker LAST — retryable if interrupted
@@ -165,12 +191,12 @@ export async function runSweep(deps: SweepDeps): Promise<SweepSummary> {
 
   // Walk every device's byte partition and collect the unreferenced, below-floor bytes.
   const deviceDirEntries = await listDir(f, config, `files/devices/`);
-  const deviceIds = (deviceDirEntries ?? []).filter((e) => e.IsDirectory).map((e) => e.ObjectName);
+  const deviceIds = deviceDirEntries.filter((e) => e.IsDirectory).map((e) => e.ObjectName);
   for (const deviceId of deviceIds) {
     const floor = activeFloorMs.get(deviceId) ?? Infinity; // ∅ (no active surviving membership) → +∞
     try {
       const files = await listDir(f, config, deviceDir(deviceId));
-      for (const e of (files ?? []).filter((e) => !e.IsDirectory)) {
+      for (const e of files.filter((e) => !e.IsDirectory)) {
         // The manifest names the DECODED object name (same as the union's completeness check), so decode
         // the stored `ObjectName` before comparing — a percent-encoded filename must still match.
         if (referenced.has(`${deviceId}/${decodeObjectName(e.ObjectName)}`)) {
@@ -206,7 +232,7 @@ export async function runSweep(deps: SweepDeps): Promise<SweepSummary> {
   // a device is KEPT iff it appears in a surviving event, else its every record is collected.
   const configEntries = await listDir(f, config, `devices/`);
   const recordsByDevice = new Map<string, string[]>(); // deviceId → its record object name(s)
-  for (const e of (configEntries ?? []).filter((e) => !e.IsDirectory)) {
+  for (const e of configEntries.filter((e) => !e.IsDirectory)) {
     const name = e.ObjectName;
     // `<id>.attest.json` first (it also ends with `.json`), then `<id>.json`.
     const deviceId = name.endsWith(".attest.json")
