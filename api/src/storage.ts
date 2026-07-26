@@ -27,6 +27,20 @@ export function markerKey(eventId: string): string {
   return `${MARKER_PREFIX}/${encodeURIComponent(eventId)}/metadata.json`;
 }
 
+/**
+ * An event's own directory to DELETE: `events/<eventId>/` (trailing slash — that is what makes bunny treat
+ * it as a directory, and a directory DELETE is RECURSIVE; see {@link deleteObject}).
+ *
+ * Exists for exactly one caller: the nightly sweep's TOMBSTONE reclamation (capability
+ * `scheduled-cleanup`). Bunny keeps a directory after its last object is removed, so every event the sweep
+ * deletes leaves this husk behind — and the sweep would otherwise re-classify it stale and "delete" it
+ * again every night, forever. Only ever passed a directory already established to hold no marker and no
+ * manifest, so the recursion has nothing to recurse over.
+ */
+export function eventDir(eventId: string): string {
+  return `${MARKER_PREFIX}/${encodeURIComponent(eventId)}/`;
+}
+
 /** Storage key of a device's per-event manifest: `events/<eventId>/devices/<deviceId>.json`. */
 export function deviceManifestKey(eventId: string, deviceId: string): string {
   return `${MARKER_PREFIX}/${encodeURIComponent(eventId)}/devices/${
@@ -167,21 +181,35 @@ export function decodeObjectName(objectName: string): string {
 }
 
 /**
- * List one bunny native Storage directory (trailing slash required). Returns the parsed entries, or
- * `null` when the directory has nothing / does not exist (bunny `404`). Any other non-OK status, network
- * error, or abort THROWS.
+ * List one bunny native Storage directory (trailing slash required). Returns the parsed entries — an EMPTY
+ * ARRAY for a directory with no children — and THROWS on any non-OK status other than `404`, plus network
+ * errors and aborts.
+ *
+ * MEASURED 2026-07-26 against the live zone: a DIRECTORY listing returns `200 []` both for a path that is
+ * empty and for one that NEVER EXISTED — bunny `404`s neither. A **file** GET, by contrast, DOES `404`,
+ * which is why {@link readMarker}'s absent-marker branch is live and load-bearing while the `404` branch
+ * here has never once fired. Do not conflate the two: the previous version of this comment claimed bunny
+ * `404`s an empty directory, and that claim was wrong in both halves.
+ *
+ * The `404` branch is therefore kept as tolerance, not as a signal, and maps to `[]` rather than throwing —
+ * `bunny-list-endpoint` REQUIRES an absent or empty directory to read as "no contributors"/"no bytes" and a
+ * partition `404` to not be treated as a failure. Nothing distinguishes absent from empty anywhere in this
+ * backend, and nothing may start to without re-measuring.
+ *
+ * EXPIRY TRIGGER: re-verify if bunny changes the Edge Storage listing contract, or if any caller ever needs
+ * to tell an absent directory from an empty one.
  */
 export async function listDir(
   fetchImpl: FetchLike,
   config: Config,
   dirPath: string,
-): Promise<BunnyEntry[] | null> {
+): Promise<BunnyEntry[]> {
   const url = `https://${config.host}/${config.zone}/${dirPath}`;
   const res = await fetchImpl(url, {
     method: "GET",
     headers: { AccessKey: config.accessKey, Accept: "application/json" },
   });
-  if (res.status === 404) return null; // empty / unknown directory
+  if (res.status === 404) return []; // tolerated, never observed — see above
   if (!res.ok) throw new Error(`bunny LIST returned ${res.status} for ${dirPath}`);
   return await res.json() as BunnyEntry[];
 }
@@ -269,6 +297,13 @@ export async function putObject(
 /**
  * DELETE a storage object, idempotently: a `404` (already gone) is success. THROWS on any other non-OK
  * status. Deleting an absent object is a no-op, which keeps deletion cascades safe to re-run.
+ *
+ * ⚠️ A key ending in `/` names a DIRECTORY, and bunny deletes a directory **RECURSIVELY** — "in case the
+ * object is a directory all the data in it will be recursively deleted as well"
+ * (<https://docs.bunny.net/api-reference/storage/manage-files/delete-file>). One call can therefore destroy
+ * an arbitrary subtree, and this function cannot tell that from deleting one object. Pass a directory key
+ * ONLY when its emptiness has already been established — {@link eventDir} is the one such caller — and
+ * never a truncated or computed prefix.
  */
 export async function deleteObject(
   fetchImpl: FetchLike,

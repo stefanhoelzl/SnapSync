@@ -39,10 +39,10 @@ export function parseManifestObjectName(
  * and the sweep.
  */
 export function resolveMembership(
-  entries: BunnyEntry[] | null,
+  entries: BunnyEntry[],
 ): { deviceId: string; state: MemberState }[] {
   const byDevice = new Map<string, { active?: number; left?: number }>();
-  for (const e of entries ?? []) {
+  for (const e of entries) {
     if (e.IsDirectory) continue;
     const parsed = parseManifestObjectName(e.ObjectName);
     if (!parsed) continue;
@@ -146,7 +146,7 @@ export function deleteByMs(
  */
 export function eventIsStale(
   stored: StoredEventMarker,
-  entries: BunnyEntry[] | null,
+  entries: BunnyEntry[],
   nowMs: number,
   lifetimeFallbackSeconds: number,
 ): boolean {
