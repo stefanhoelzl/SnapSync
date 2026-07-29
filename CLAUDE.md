@@ -938,11 +938,28 @@ with the proxy task above).
   `ports/LogScope` seam. The iOS ambient prefix global (`IosLogScope`) and the consolidated
   device-log writers (`FileLogWriter`/`PublicNSLogWriter`) live in `:adapter:ios:ext-safe`.
 - **Device diagnostics** (capability `diagnostic-logging`): the app and extension are separate
-  processes, each writing its **own** verbatim, un-redacted `Documents/debug.log` (the App Group
-  container is not pullable — verified). Pull both:
-  `pymobiledevice3 apps pull app.snapsync Documents/debug.log` and
-  `… app.snapsync.BackgroundUpload Documents/debug.log`. `debug.log` is the **canonical un-redacted
-  channel** (os_log redacts `<private>`); it rolls to `debug.log.1` past 10 MB.
+  processes, each writing its **own** verbatim, un-redacted log. The **app** writes
+  `Documents/debug.log` — pull it unchanged with `pymobiledevice3 apps pull app.snapsync
+  Documents/debug.log`. The **extension** writes `ext-debug.log` into the **shared App Group**, so the
+  app process can read it for a diagnostic dump; an App Group container is **not** pullable, so
+  getting it over USB takes one extra launch:
+  ```
+  $P developer dvt launch app.snapsync --env SNAPSYNC_EXPORT_LOGS=1 --userspace
+  uvx pymobiledevice3 apps pull app.snapsync Documents/ext-debug.log
+  ```
+  ⚠️ `apps pull app.snapsync.BackgroundUpload Documents/debug.log` is **dead** — the extension deletes
+  that stale file on first launch of a build carrying this change, so the pull fails honestly instead
+  of returning months-old content. Each log is the **canonical un-redacted channel** (os_log redacts
+  `<private>`) and rolls to a `.1` sibling past 10 MB.
+- **Sending the logs off-device** (capability `diagnostic-logging`): **double-tap the "SnapSync" label**
+  at the top of any screen → a confirm dialog → one diagnostic dump reaches Bugsink (state + counts +
+  the tail of BOTH logs, ~700 KB total, sent **verbatim** — ids intact, unlike automatic crash
+  events). It is deliberately invisible: no button, no semantics, and on a build with no baked
+  `SENTRY_DSN` (every dev/sideload build) **no dialog opens at all**. To exercise it on device, inject
+  a DSN into the ssh-mac `xcodebuild` line. Measured against the hosted instance (2026-07-29):
+  Bugsink **drops attachments entirely**, caps events at `MAX_EVENT_SIZE` = 1 MiB (a `413` the SDK
+  swallows — an over-budget dump is silently lost), and stores 340 KB context strings **byte-identical**.
+  Dumps group as one issue (`diagnostic dump`); read them with `/bugsink`.
   ⚠️ **Do not reach for `NSLog` when debugging — not even "just this once", not even from Swift.** An
   interpolated `NSLog("x \(y)")` is a *dynamic format string*, which os_log redacts wholesale: your line
   never appears in `idevicesyslog` and the capture looks like "the code never ran". This is written

@@ -42,6 +42,32 @@ class LaunchDirectivesTest {
     }
 
     @Test
+    fun `SNAPSYNC_EXPORT_LOGS is triggered by presence whatever the value`() {
+        // Presence, like every sibling flag: `dvt launch --env SNAPSYNC_EXPORT_LOGS=` yields a blank
+        // string the OS still reports as present, so a value check would make the most natural
+        // invocation silently inert.
+        for (value in listOf("1", "", "0", "false", "anything")) {
+            assertTrue(
+                LaunchDirectives.from(env("SNAPSYNC_EXPORT_LOGS" to value)).exportLogs,
+                "a present SNAPSYNC_EXPORT_LOGS=$value must trigger the export",
+            )
+        }
+        assertFalse(LaunchDirectives.from { null }.exportLogs)
+    }
+
+    @Test
+    fun `the log export is independent of every membership trigger`() {
+        // It mutates no membership, so it takes no part in the reset -> leave -> create -> event-link
+        // ordering, and a launch that only exports must leave the membership exactly alone.
+        val directives = LaunchDirectives.from(env("SNAPSYNC_EXPORT_LOGS" to "1"))
+        assertTrue(directives.exportLogs)
+        assertFalse(directives.resetState)
+        assertFalse(directives.leave)
+        assertEquals(null, directives.createEvent)
+        assertEquals(null, directives.eventLink)
+    }
+
+    @Test
     fun `reset is independent of the other membership triggers`() {
         // Each trigger contributes only itself: a launch may set any subset, and the coordinator's
         // ordering is what composes them.

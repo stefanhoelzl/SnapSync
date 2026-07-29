@@ -128,6 +128,53 @@ The event detail (`$OUT/event.json`) has:
 Read `data.contexts` and `data.breadcrumbs.values` straight from `event.json` for the
 device context and log trail. For the stacktrace, prefer step 3.
 
+## 2b. Diagnostic dumps (operator-triggered, not crashes)
+
+Issue `Log Message: 'diagnostic dump'` is **not a crash**. It is a device log the operator asked for
+by double-tapping the "SnapSync" label in the app (capability `diagnostic-logging`) — every dump is
+another occurrence of that one issue, deliberately, so dumps never bury real crashes.
+
+Its payload lives in `data.contexts`, not in a stacktrace:
+
+| context   | what it holds |
+|-----------|---------------|
+| `state`   | app version + build, OS, device model, upload tier, permission, membership (real event id), baked upload base, reporter environment |
+| `ledger`  | five counts: `photos_pending` / `photos_completed` (photos, not rows) and `downloads_imported` / `downloads_assets` / `downloads_in_flight` |
+| `app_log` | `text`: the tail of the app process's `debug.log` |
+| `ext_log` | `text`: the tail of the extension's `ext-debug.log` |
+
+⚠️ **Never print the log contexts.** Each is up to ~350 KB — dumping one into the conversation floods
+the context window and buys nothing. **Write them to files and read selectively** (grep for the
+symptom, tail the end, …), with the same heredoc discipline as above:
+
+```bash
+python3 - "$OUT/event.json" "$OUT" <<'DUMP'
+import json, sys, pathlib
+e = json.load(open(sys.argv[1])); out = pathlib.Path(sys.argv[2])
+c = e.get("data", {}).get("contexts", {})
+for k in ("state", "ledger"):
+    if k in c:
+        print(f"== {k} ==")
+        for key, value in sorted(c[k].items()):
+            if key != "type":
+                print(f"  {key}: {value}")
+for k in ("app_log", "ext_log"):
+    text = (c.get(k) or {}).get("text")
+    if not text:
+        print(f"{k}: absent"); continue
+    p = out / f"{k}.txt"
+    p.write_text(text)
+    print(f"{k}: {len(text):,} bytes -> {p}")
+DUMP
+```
+
+Then work the files: `grep -n "enumeration:" "$OUT/app_log.txt" | tail`, `tail -50 "$OUT/ext_log.txt"`.
+
+- `ext_log: absent` means the extension has never run on that device — on iOS 18–26.0 there is no
+  extension at all, and uploads appear in `app_log` instead.
+- A dump has **no stacktrace and no `debug_meta`**, so symbolication (step 3) does not apply.
+- The two logs share a ~700 KB budget, so a dump is a **tail**, not the whole file. If the answer
+  rolled off, ask for a `SNAPSYNC_EXPORT_LOGS=1` launch plus a USB pull instead.
 ## 3. Symbolicate native crash frames (Linux, no Mac)
 
 Native cocoa frames arrive as raw addresses (Bugsink cannot symbolicate — tracker
@@ -157,9 +204,11 @@ a *different* build's dSYMs — that produces subtly-wrong frames.
 
 ## Notes & gotchas
 
-- **Privacy by construction:** every UUID-shaped token is scrubbed before an event leaves
-  the device (an eventId IS the upload capability). So a Bugsink event will NOT contain real
-  event/device ids — do not expect to correlate them back to a specific membership.
+- **Privacy by construction:** every UUID-shaped token is scrubbed before an **automatically
+  captured** event leaves the device (an eventId IS the upload capability). So a crash event will
+  NOT contain real event/device ids — do not expect to correlate them back to a specific
+  membership. **Diagnostic dumps are the deliberate exception** and DO carry real ids (see 2b):
+  they are operator-triggered and confirmed, and are worthless without them.
 - **Token scope:** the injected token is `org:ci` (broad — it *could* mutate). This skill's
   read-only guarantee is enforced by only ever issuing `GET`s, not by the token. If a
   narrower credential is wanted, mint a read-only Bugsink token and repoint the proton path.

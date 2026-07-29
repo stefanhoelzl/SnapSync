@@ -9,7 +9,14 @@ package app.snapsync.model
  * - [PHOTOKIT] — the OS-driven `PHBackgroundResourceUploadExtension` registration (iOS ≥26.1).
  * - [URL_SESSION] — the in-app background `URLSession` pump (iOS 18–26.0, or the dev force flag).
  */
-enum class UploadTier { PHOTOKIT, URL_SESSION }
+enum class UploadTier {
+    PHOTOKIT,
+    URL_SESSION,
+    ;
+
+    /** How a diagnostic dump names this tier (capability `diagnostic-logging`) — lowercase, stable. */
+    val diagnosticName: String get() = name.lowercase()
+}
 
 /**
  * OS facts the composition resolver reads (spec `module-architecture`, "One shared composition":
@@ -37,7 +44,17 @@ data class OsFacts(
  *   choice ([useBackgroundSession]) folded in.
  */
 sealed interface CompositionMode {
-    data class Forge(val state: String) : CompositionMode
+
+    /**
+     * How a diagnostic dump names the resolved composition (capability `diagnostic-logging`). Kept
+     * here so the shell transcribes one resolved fact instead of branching on the mode a second time
+     * (`module-architecture`, "Shells are wiring only").
+     */
+    val diagnosticTierName: String
+
+    data class Forge(val state: String) : CompositionMode {
+        override val diagnosticTierName: String get() = "forge"
+    }
 
     data class Live(
         val tier: UploadTier,
@@ -48,7 +65,9 @@ sealed interface CompositionMode {
          * fact rather than re-deriving `!isSimulator`.
          */
         val useBackgroundSession: Boolean,
-    ) : CompositionMode
+    ) : CompositionMode {
+        override val diagnosticTierName: String get() = tier.diagnosticName
+    }
 }
 
 /**

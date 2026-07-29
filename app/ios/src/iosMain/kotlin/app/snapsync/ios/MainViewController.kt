@@ -59,6 +59,7 @@ fun MainViewController() = ComposeUIViewController {
             host::onOpenSettings,
             onLeaveEvent = host::onLeaveEvent,
             onShareInvite = host::onShareInvite,
+            onSendDiagnostics = host.onSendDiagnostics,
             membership = membership,
             onReconfigure = host::onReconfigure,
             inviteUrl = inviteUrl,

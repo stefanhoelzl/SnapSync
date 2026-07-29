@@ -304,6 +304,15 @@ class StatusContainerHost(
     fun onShareInvite() = intent { inviteUrl.value?.let { commands.share(it) } }
 
     /**
+     * Send the diagnostic dump (capability `diagnostic-logging`), confirmed in the UI before this
+     * fires. `null` when this build carries no reporting channel — the screen then wires no gesture,
+     * so the affordance does not exist rather than existing and doing nothing. Fire-and-forget:
+     * `UiState` is unaffected, and no delivery claim is made (the channel may queue and retransmit).
+     */
+    val onSendDiagnostics: (() -> Unit)? =
+        commands.sendDiagnostics?.let { send -> { intent { send() } } }
+
+    /**
      * Apply a reconfigure of the joined membership (capability `reconfigure-membership`), confirmed on
      * the settings surface's Save. Delegates to the injected [UserCommands.reconfigure] with [eventId] —
      * the event the surface was opened for — so a switch that landed mid-edit makes the use-case a no-op

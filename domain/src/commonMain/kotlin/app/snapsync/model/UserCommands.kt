@@ -40,6 +40,13 @@ package app.snapsync.model
  *   album opt-in) without leaving (capability `reconfigure-membership`). [eventId] is the event the
  *   settings surface was opened for; the use-case no-ops if the current membership no longer matches.
  *   Fire-and-forget; the change lands via the config read-model on the next cycle.
+ * - [sendDiagnostics] — send this device's diagnostic dump to the operator's reporting channel
+ *   (capability `diagnostic-logging`), fired by the hidden double-tap after the operator confirms.
+ *   **Nullable, unlike every other command**: it is `null` on a build whose reporting channel is not
+ *   configured (every dev, sideload and simulator build, and every off-device composition), and the
+ *   screen must then wire no gesture at all — a build that can send nothing may not offer an
+ *   affordance suggesting it can. An inert lambda would not express that: the affordance would exist
+ *   and silently do nothing, which is the one outcome the contract forbids.
  */
 class UserCommands(
     val leave: suspend () -> Unit = {},
@@ -66,4 +73,5 @@ class UserCommands(
         maxPhotoDate: CaptureCeiling,
         saveToAlbum: Boolean,
     ) -> Unit = { _, _, _, _, _ -> },
+    val sendDiagnostics: (suspend () -> Unit)? = null,
 )

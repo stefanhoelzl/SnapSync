@@ -16,6 +16,11 @@ on drift; regenerate instead.
 - files: `CreateEvent.kt`, `CreationStatus.kt`, `HeadlessCreate.kt`, `LaunchEnvMembership.kt`
 - top-level types: `CreateEvent (class)`, `CreationFailureReason (class)`, `CreationStatus (interface)`, `CreationStatusSource (interface)`, `EventCreator (interface)`, `HeadlessCreate (class)`, `LaunchEnvMembership (class)`, `MutableCreationStatusSource (class)`, `NoOpEventCreator (object)`
 
+## `feature/diagnostics`
+
+- files: `CollectDiagnosticDump.kt`
+- top-level types: `CollectDiagnosticDump (class)`
+
 ## `feature/download`
 
 - files: `DownloadController.kt`, `DownloadPushReceiver.kt`, `DownloadStatusSource.kt`, `QueuedPhotoDownloadJobs.kt`, `StoreDownloadStatusSource.kt`

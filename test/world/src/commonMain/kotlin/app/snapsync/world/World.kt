@@ -8,7 +8,10 @@ import app.snapsync.compose.uploadCore
 import app.snapsync.download.HttpEventUnionSource
 import app.snapsync.eventcreation.HttpEventCreation
 import app.snapsync.fake.InMemoryAttestStore
-import app.snapsync.fake.InMemoryCrashReporting
+import app.snapsync.fake.InMemoryDeviceLogSource
+import app.snapsync.fake.InMemoryDiagnosticsReporter
+import app.snapsync.model.DiagnosticDump
+import app.snapsync.ports.DeviceLogSource
 import app.snapsync.fake.InMemoryPhotoSelectionChangeSource
 import app.snapsync.fake.InMemoryDeviceManifestStore
 import app.snapsync.fake.InMemoryDiscoveryStore
@@ -127,6 +130,15 @@ class World(
         private set
     val manifestStore: InMemoryDeviceManifestStore = InMemoryDeviceManifestStore()
     val permission: MutablePhotoAccessStatusSource = MutablePhotoAccessStatusSource()
+
+    /** Whether the composition started reporting — the `DiagnosticsReporter.start()` observation. */
+    val diagnosticsStarted: MutableStateFlow<Boolean> = MutableStateFlow(false)
+
+    /** Every diagnostic dump the composition transmitted, in order (capability `diagnostic-logging`). */
+    val diagnosticsSent: MutableStateFlow<List<DiagnosticDump>> = MutableStateFlow(emptyList())
+
+    /** The device logs a dump reads back. Seed one to give the world a log to carry. */
+    val deviceLogs: MutableStateFlow<Map<DeviceLogSource.Process, String>> = MutableStateFlow(emptyMap())
 
     // Selection snapshots under a partial grant (capability `limited-photo-access`): the honest fake
     // over an operator-held cell. Emitting IS the operator lever (see [changeSelection]); replay 0 —
@@ -261,7 +273,14 @@ class World(
     val core: AppCore = snapSyncApp(
         scope,
         AppPorts(
-            crashReporting = InMemoryCrashReporting(),
+            diagnosticsReporter = InMemoryDiagnosticsReporter(
+                started = diagnosticsStarted,
+                sent = diagnosticsSent,
+                isConfigured = true,
+            ),
+            // The device logs a dump reads back (capability `diagnostic-logging`) — empty until an
+            // operator seeds them, which is honest: a world has no device writing log files.
+            deviceLogSource = InMemoryDeviceLogSource(deviceLogs),
             configSource = configSource,
             configStore = configStore,
             photoAccess = permission,
@@ -555,7 +574,7 @@ class World(
         uploadCore(
             scope,
             UploadPorts(
-                crashReporting = InMemoryCrashReporting(),
+                diagnosticsReporter = InMemoryDiagnosticsReporter(),
                 config = configReader,
                 deviceId = { ownDeviceId },
                 host = { host },
