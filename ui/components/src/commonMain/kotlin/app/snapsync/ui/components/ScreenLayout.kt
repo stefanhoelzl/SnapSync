@@ -1,5 +1,6 @@
 package app.snapsync.ui.components
 
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -18,6 +19,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -48,6 +50,14 @@ fun ScreenLayout(
     // physical edge where no strip exists (home-button devices, the desktop harness). The inset
     // values stay owned here — screens only name the arrangement.
     contentPinsActionCluster: Boolean = false,
+    // The hidden operator affordance (capability `diagnostic-logging`): a double-tap on the app-name
+    // label. `null` — the default, and every build with no reporting channel — wires no gesture at all.
+    //
+    // Deliberately a raw pointer-input gesture rather than `combinedClickable`: that would add click
+    // semantics and a ripple, which is precisely what makes a control look like a control. This one
+    // must be invisible and absent from the accessibility tree, so it is discoverable only to someone
+    // told about it.
+    onTitleDoubleTap: (() -> Unit)? = null,
     content: @Composable ColumnScope.() -> Unit,
 ) {
     Surface(modifier = Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
@@ -77,7 +87,16 @@ fun ScreenLayout(
                 ),
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 textAlign = TextAlign.Center,
-                modifier = Modifier.fillMaxWidth().padding(bottom = if (heading == null) 12.dp else 4.dp),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(bottom = if (heading == null) 12.dp else 4.dp)
+                    .then(
+                        onTitleDoubleTap?.let { onDoubleTap ->
+                            Modifier.pointerInput(onDoubleTap) {
+                                detectTapGestures(onDoubleTap = { onDoubleTap() })
+                            }
+                        } ?: Modifier,
+                    ),
             )
             // The prominent heading (the joined event's name), directly beneath the nav label.
             if (heading != null) {

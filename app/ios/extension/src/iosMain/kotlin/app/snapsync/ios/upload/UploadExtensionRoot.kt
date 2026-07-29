@@ -31,7 +31,9 @@ import app.snapsync.membership.HttpDeviceFilesSource
 import app.snapsync.membership.IosJoinedEventMarker
 import app.snapsync.membership.darwinHttpClient
 import app.snapsync.logging.FileLogWriter
-import app.snapsync.logging.SentryCrashReporting
+import app.snapsync.logging.extensionLogDestination
+import app.snapsync.logging.removeStaleExtensionDocumentsLog
+import app.snapsync.logging.SentryDiagnosticsReporter
 import app.snapsync.logging.appBuildVersion
 import app.snapsync.logging.PublicNSLogWriter
 import app.snapsync.logging.invocation
@@ -66,12 +68,23 @@ object UploadExtensionRoot {
     init {
         // Route kermit through a public NSLog writer AND a file writer. NSLog turns out to be
         // redacted as `<private>` on current iOS (dynamic format strings are private), so the file
-        // writer (Documents/debug.log, pulled via `pymobiledevice3 apps pull`) is the reliable
-        // channel for reading the extension's logs on device.
-        Logger.setLogWriters(PublicNSLogWriter(), FileLogWriter())
+        // writer is the reliable channel for reading the extension's logs on device.
+        //
+        // This process writes into the SHARED App Group (`ext-debug.log`) rather than its own
+        // Documents, because the app cannot read another bundle's Documents and the app is what
+        // assembles a diagnostic dump (capability `diagnostic-logging`). The App Group is not
+        // USB-pullable, so `SNAPSYNC_EXPORT_LOGS` copies this file into the app's Documents.
+        val logDestination = extensionLogDestination()
+        Logger.setLogWriters(PublicNSLogWriter(), FileLogWriter(logDestination.path))
+        // The pre-relocation file at the old path would otherwise keep answering pulls with frozen
+        // content forever. Idempotent, and a no-op while the writer is itself falling back there.
+        removeStaleExtensionDocumentsLog(logDestination)
         // Boot banner (capability `diagnostic-logging`, D5) — the extension is a separate, short-lived
         // process; name it + the build version so its file is unambiguous. `log` isn't assigned yet.
         Logger.withTag("UploadExtension").i { "=== extension process start build=${appBuildVersion()} ===" }
+        // Where this run's log is going — including whether it fell back to this bundle's own
+        // Documents, in which case no dump will carry it (the sentence is the adapter's).
+        Logger.withTag("UploadExtension").i { logDestination.bannerLine }
         // The BAKED backend this build uploads to — the same diagnostic the app emits, and it matters
         // more here: this process IS the upload path, and pointing a build at a different backend
         // without `SNAPSYNC_RESET_STATE` leaves the ledger claiming everything is already COMPLETED, so
@@ -180,7 +193,7 @@ object UploadExtensionRoot {
         uploadCore(
             scope,
             UploadPorts(
-                crashReporting = SentryCrashReporting(),
+                diagnosticsReporter = SentryDiagnosticsReporter(),
                 config = configSource,
                 // The lazy caches the first success; a failure throws `KeychainUnavailable` and is
                 // retried next cycle — the gate's probe puts it on the unreadable side of the roll-up.

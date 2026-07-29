@@ -15,7 +15,7 @@ import io.sentry.kotlin.multiplatform.protocol.Breadcrumb
  *
  * Messages are redacted here (and again in `beforeSend`/`beforeBreadcrumb`, which also cover the
  * throwable's own message and the SDK's automatic breadcrumbs): no UUID-shaped token — eventId,
- * device id, membership id — ever leaves the device. Registered only by [SentryCrashReporting]'s
+ * device id, membership id — ever leaves the device. Registered only by [SentryDiagnosticsReporter]'s
  * `start()`, so a build without a DSN never constructs it; Sentry calls before/without init are
  * safe no-ops in the underlying SDK either way.
  */

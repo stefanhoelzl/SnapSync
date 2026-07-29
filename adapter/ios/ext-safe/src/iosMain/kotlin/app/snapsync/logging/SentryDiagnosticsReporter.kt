@@ -1,7 +1,8 @@
 package app.snapsync.logging
 
+import app.snapsync.model.DiagnosticDump
 import app.snapsync.model.redactUuids
-import app.snapsync.ports.CrashReporting
+import app.snapsync.ports.DiagnosticsReporter
 import co.touchlab.kermit.Logger
 import io.sentry.kotlin.multiplatform.Sentry
 import io.sentry.kotlin.multiplatform.SentryEvent
@@ -9,7 +10,7 @@ import io.sentry.kotlin.multiplatform.protocol.Breadcrumb
 import platform.Foundation.NSBundle
 
 /**
- * The Sentry seat of the [CrashReporting] port (capability `crash-reporting`) — a NO-OP unless this
+ * The Sentry seat of the [DiagnosticsReporter] port (capability `crash-reporting`) — a NO-OP unless this
  * process's bundle carries a `SENTRY_DSN`. Only CI Release archives bake the DSN (capability
  * `ios-testflight-delivery`), so dev-sideload/simulator builds never start the SDK and never open a
  * connection to the reporting host. `SENTRY_ENVIRONMENT` is baked beside it (`production` in CI;
@@ -40,7 +41,35 @@ import platform.Foundation.NSBundle
  *   hand-supplied identity that disagreed between them would silently lose a coin toss.
  * - `dist` is **deliberately not set** — see the comment at that spot in [start].
  */
-class SentryCrashReporting : CrashReporting {
+class SentryDiagnosticsReporter : DiagnosticsReporter {
+
+    override val isConfigured: Boolean get() = bundleValue("SENTRY_DSN") != null
+
+    /**
+     * The operator-initiated dump (capability `diagnostic-logging`): ONE event with a **constant**
+     * message, so every dump groups as an occurrence of a single issue instead of burying real
+     * crashes in the unresolved list, and the four sections as **contexts**.
+     *
+     * Contexts, not an attachment and not breadcrumbs, both for measured reasons (2026-07-29, against
+     * the real instance): the server drops the `attachment` envelope item entirely — the event would
+     * arrive and the log would not — while breadcrumbs are capped at ~100 by the SDK, some 2% of the
+     * budget. Context strings, by contrast, came back **byte-identical** at 340 KB each.
+     *
+     * The dump is NOT scrubbed. That is the narrow, deliberate carve-out from this channel's UUID
+     * redaction (capability `crash-reporting`): a dump is confirmed by the operator and worthless
+     * without its ids, while automatic events — sent without anyone's knowledge — stay redacted.
+     * `beforeSend` reaches message text, exception values and breadcrumbs, and must never be widened
+     * to contexts; `ScrubExemptionTest` pins that.
+     */
+    override fun send(dump: DiagnosticDump) {
+        if (!isConfigured) return
+        Sentry.captureMessage(DIAGNOSTIC_DUMP_MESSAGE) { scope ->
+            scope.setContext("state", dump.state)
+            scope.setContext("ledger", dump.ledger)
+            scope.setContext("app_log", mapOf("text" to dump.appLog))
+            scope.setContext("ext_log", mapOf("text" to dump.extensionLog))
+        }
+    }
 
     override fun start() {
         if (processStarted) return
@@ -79,6 +108,12 @@ class SentryCrashReporting : CrashReporting {
         Logger.addLogWriter(SentryLogWriter())
     }
 }
+
+/**
+ * The dump event's message. CONSTANT on purpose: grouping keys off it, so every dump is an
+ * occurrence of one issue (measured 2026-07-29 — the probe landed as `Log Message: '…'`).
+ */
+internal const val DIAGNOSTIC_DUMP_MESSAGE: String = "diagnostic dump"
 
 private var processStarted = false
 

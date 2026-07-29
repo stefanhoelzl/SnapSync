@@ -60,7 +60,11 @@ import app.snapsync.engine.iosLedgerStore
 import app.snapsync.model.forwardEventLink
 import app.snapsync.feature.upload.UploadProducer
 import app.snapsync.logging.FileLogWriter
-import app.snapsync.logging.SentryCrashReporting
+import app.snapsync.logging.appLogDestination
+import app.snapsync.logging.IosDeviceLogSource
+import app.snapsync.logging.exportExtensionLogToDocuments
+import app.snapsync.logging.deviceDiagnosticEnvironment
+import app.snapsync.logging.SentryDiagnosticsReporter
 import app.snapsync.logging.appBuildVersion
 import app.snapsync.logging.IosLogScope
 import app.snapsync.logging.PublicNSLogWriter
@@ -124,7 +128,9 @@ object SnapSyncRoot {
         // `<private>` on current iOS (dynamic format strings are private), so the file writer
         // (Documents/debug.log, pulled via `pymobiledevice3 apps pull`) is the reliable channel.
         // Both are consolidated in `:adapter:ios:ext-safe`; each line carries the ambient `[entryPoint]`.
-        Logger.setLogWriters(PublicNSLogWriter(), FileLogWriter())
+        // The app's log stays in its OWN Documents — it can read it without help, so relocating it
+        // would break every pull command and buy nothing (capability `diagnostic-logging`).
+        Logger.setLogWriters(PublicNSLogWriter(), FileLogWriter(appLogDestination().path))
         // Boot banner (capability `diagnostic-logging`, D5) — names the process + build version so a
         // reader who concatenates the app/extension files can tell runs apart. `log` isn't assigned
         // yet in this init block, so use a fresh tagged logger.
@@ -160,6 +166,19 @@ object SnapSyncRoot {
      *  (capability `ios-app-shell`). A production launch yields `LaunchDirectives.NONE`. */
     private val directives: LaunchDirectives =
         LaunchDirectives.from { name -> NSProcessInfo.processInfo.environment[name] as? String }
+
+    init {
+        // Dev/test: `SNAPSYNC_EXPORT_LOGS` copies the extension's App-Group log into THIS process's
+        // Documents, the only container a USB pull can reach (capability `diagnostic-logging`). A
+        // SEPARATE init block because it reads `directives`, which the first one runs before.
+        //
+        // Inert in production — a launch env var is only injectable by a developer launch — and
+        // independent of the membership triggers, so it neither waits on their ordering nor is
+        // skipped by a forge launch: copying a file reaches no live-stack seam.
+        Logger.withTag("SnapSyncRoot").i {
+            "[boot] exported logs = ${exportExtensionLogToDocuments(directives.exportLogs)}"
+        }
+    }
 
     /** OS facts the composition resolver reads — a simulator cannot run a background `URLSession`,
      *  and only iOS ≥26.1 carries the OS-driven background-upload API. */
@@ -300,7 +319,12 @@ object SnapSyncRoot {
         snapSyncApp(
             scope,
             AppPorts(
-                crashReporting = SentryCrashReporting(),
+                diagnosticsReporter = SentryDiagnosticsReporter(),
+                // The diagnostic dump's two device-side inputs (capability `diagnostic-logging`):
+                // the two log files (this process's own, and the extension's in the App Group) and
+                // the build/OS/device facts. Both are adapter-resolved; the shell only names them.
+                deviceLogSource = IosDeviceLogSource(),
+                diagnosticEnvironment = deviceDiagnosticEnvironment(mode.diagnosticTierName),
                 configSource = config,
                 configStore = config,
                 photoAccess = permission,

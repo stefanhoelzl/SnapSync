@@ -37,6 +37,7 @@ Roots found:
 | `IosAlbumMapStore` | x | x | |
 | `IosAttestKey` | x | | |
 | `IosBackgroundScheduler` | | | x |
+| `IosDeviceLogSource` | x | | |
 | `IosDeviceManifestStore` | x | x | x |
 | `IosDiscovery` | | x | x |
 | `IosDiscoveryStore` | x | x | x |
@@ -57,7 +58,7 @@ Roots found:
 | `PublicNSLogWriter` | x | x | |
 | `PushRegistration` | x | | |
 | `PushTokenSource` | x | | |
-| `SentryCrashReporting` | x | x | x |
+| `SentryDiagnosticsReporter` | x | x | x |
 | `StatusContainerHost` | x | | |
 | `UploadPorts` | | x | x |
 | `UploadPushReceiver` | | | x |

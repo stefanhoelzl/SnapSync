@@ -30,6 +30,12 @@ package app.snapsync.model
  *   screenshot (recognition is presentation's, applied by [resolveComposition]'s `isForgeState`).
  * - [forceUrlSessionUpload] — `SNAPSYNC_FORCE_URLSESSION_UPLOAD`: force the app-driven URLSession
  *   upload tier even on iOS ≥26.1 (device-testing lever; selects the TIER and nothing else).
+ * - [exportLogs] — `SNAPSYNC_EXPORT_LOGS`: presence (any value) copies the **extension's** log out of
+ *   the shared App Group into the app's own `Documents/`, where `pymobiledevice3 apps pull` can reach
+ *   it (capability `diagnostic-logging`). The extension can never see a launch env var — the OS
+ *   launches it — so the app is the only process that can do the copying. Mutates no membership, so
+ *   it takes no part in the `reset → leave → create → event-link` ordering, and it applies on a forge
+ *   launch too: copying a file reaches no live-stack seam.
  *
  * A non-positive or non-integer seed count parses to `null` (the shell already warned on the raw
  * value); an absent variable parses to `null` / `false`.
@@ -44,6 +50,7 @@ data class LaunchDirectives(
     val policyProbe: String?,
     val forgeState: String?,
     val forceUrlSessionUpload: Boolean,
+    val exportLogs: Boolean,
 ) {
     companion object {
         val NONE = LaunchDirectives(
@@ -56,6 +63,7 @@ data class LaunchDirectives(
             policyProbe = null,
             forgeState = null,
             forceUrlSessionUpload = false,
+            exportLogs = false,
         )
 
         /**
@@ -77,6 +85,8 @@ data class LaunchDirectives(
             forgeState = env("SNAPSYNC_FORGE_STATE"),
             // Presence — not a value — is the trigger, exactly as the shell's `!= null` read was.
             forceUrlSessionUpload = env("SNAPSYNC_FORCE_URLSESSION_UPLOAD") != null,
+            // Presence — not a value — is the trigger, like [leave] and [resetState].
+            exportLogs = env("SNAPSYNC_EXPORT_LOGS") != null,
         )
 
         private fun positiveInt(raw: String?): Int? = raw?.toIntOrNull()?.takeIf { it > 0 }

@@ -6,6 +6,7 @@ import app.snapsync.feature.creation.EventCreator
 import app.snapsync.feature.creation.HeadlessCreate
 import app.snapsync.feature.creation.LaunchEnvMembership
 import app.snapsync.feature.creation.MutableCreationStatusSource
+import app.snapsync.feature.diagnostics.CollectDiagnosticDump
 import app.snapsync.feature.download.DownloadController
 import app.snapsync.feature.download.DownloadPushReceiver
 import app.snapsync.feature.download.DownloadStatusSource
@@ -54,7 +55,9 @@ import app.snapsync.ports.AttestClient
 import app.snapsync.ports.AttestKey
 import app.snapsync.ports.AttestStore
 import app.snapsync.ports.ConfigSource
-import app.snapsync.ports.CrashReporting
+import app.snapsync.model.DiagnosticEnvironment
+import app.snapsync.ports.DeviceLogSource
+import app.snapsync.ports.DiagnosticsReporter
 import app.snapsync.ports.ConfigStore
 import app.snapsync.ports.DownloadStore
 import app.snapsync.ports.DownloadTransport
@@ -149,7 +152,14 @@ class AppPorts(
     val onEventMinted: suspend (eventId: String) -> Unit,
     /** Crash/error reporting (capability `crash-reporting`). Required — a tier that forgot it would
      *  fail invisibly, exactly like the reconcile this bundle also refuses to default. */
-    val crashReporting: CrashReporting,
+    val diagnosticsReporter: DiagnosticsReporter,
+    /** The device logs a diagnostic dump reads back (capability `diagnostic-logging`). The default
+     *  reads nothing: off-device compositions (world, harnesses) have no device logs, and a dump
+     *  assembled there is honestly empty rather than fabricated. */
+    val deviceLogSource: DeviceLogSource = DeviceLogSource.None,
+    /** Build/OS/tier facts the shell transcribes for a dump's state section — a value, like `OsFacts`,
+     *  because every field is a constant of the running build rather than a seam to be stubbed. */
+    val diagnosticEnvironment: DiagnosticEnvironment = DiagnosticEnvironment.UNKNOWN,
     // ── Shell/platform effect lambdas the `flow/` triggers coordinate over (migration step 8) ──
     // Each is a port/platform touch a flow may not make directly (law "flow/ never references ports/"):
     // the shell supplies it here and `compose/` passes it to the flow. All default to inert for the
@@ -204,7 +214,7 @@ class AppCore internal constructor(
     init {
         // First act, not lazy: the reporter must be live before any other wiring can fail. Reads
         // only this process's bundle config — safe on a locked background launch.
-        ports.crashReporting.start()
+        ports.diagnosticsReporter.start()
     }
 
     /**
@@ -668,6 +678,31 @@ class AppCore internal constructor(
             reconfigure = { eventId, direction, minPhotoDate, maxPhotoDate, saveToAlbum ->
                 reconfigureEvent.reconfigure(eventId, direction, minPhotoDate, maxPhotoDate, saveToAlbum)
             },
+            // The hidden diagnostic dump (capability `diagnostic-logging`), fired after the operator
+            // confirms. NULL on a build with no reporting configuration, so the screen wires no gesture
+            // and no dialog can open — a build that can send nothing must not offer an affordance
+            // suggesting it can. This is the ONE place that decision is made.
+            sendDiagnostics = if (ports.diagnosticsReporter.isConfigured) {
+                { ports.diagnosticsReporter.send(collectDiagnosticDump.collect()) }
+            } else {
+                null
+            },
+        )
+    }
+
+    /**
+     * The diagnostic dump assembly (capability `diagnostic-logging`) — reads only, and only what this
+     * graph already holds. Composed lazily like everything else here, so an unconfigured build (which
+     * never fires the command) never builds it.
+     */
+    private val collectDiagnosticDump: CollectDiagnosticDump by lazy {
+        CollectDiagnosticDump(
+            environment = ports.diagnosticEnvironment,
+            logs = ports.deviceLogSource,
+            ledger = ports.ledger,
+            downloads = ports.downloadStore,
+            config = ports.configSource,
+            permission = ports.photoAccess,
         )
     }
 

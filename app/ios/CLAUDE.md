@@ -228,9 +228,14 @@ exist at all.
 ## Gotchas
 
 - **Device logs:** both composition roots set `Logger.setLogWriters(PublicNSLogWriter(),
-  FileLogWriter())` — the writers live in `:adapter:ios:ext-safe` (capability `diagnostic-logging`).
-  `FileLogWriter` (verbatim `Documents/debug.log`, 10 MB roll) is the reliable channel; the os_log
-  `PublicNSLogWriter` is redacted `<private>` on current iOS. Each root emits a boot banner and wraps
+  FileLogWriter(<destination>))` — the writers live in `:adapter:ios:ext-safe` (capability
+  `diagnostic-logging`). The writer takes its **destination**: the app passes `appLogDestination()`
+  (its own `Documents/debug.log`, pullable as before), the extension `extensionLogDestination()`
+  (`ext-debug.log` in the **App Group**, so the app can read it for a diagnostic dump; it falls back
+  to its own Documents when the container is unavailable and says so in the boot banner). Verbatim,
+  10 MB roll. The os_log `PublicNSLogWriter` is redacted `<private>` on current iOS. To pull the
+  extension's log, relaunch the app with `SNAPSYNC_EXPORT_LOGS=1` (it copies the App-Group file into
+  the app's Documents) — the extension can never see a launch env var, since the OS launches it. Each root emits a boot banner and wraps
   its entry points with `Logger.invocation`, so every line carries a `[<entryPoint>]` prefix. Keep new
   entry points wrapped, or their downstream lines lose the trigger prefix.
 - **`-lsqlite3`:** required in each target's `OTHER_LDFLAGS` (above). A new linked target needs it.
