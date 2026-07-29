@@ -95,9 +95,15 @@ fun AppToggleSection(
 }
 
 /**
- * The **second level** of a section: a recessed well inside an [AppToggleSection] holding the section's
- * checkmark rows. Every section reads the same two-level grammar — the switch turns the section on, the
- * checkmark rows inside the well configure it — so the screen's two idioms are a hierarchy, not a mix.
+ * The **second level** of a section: a recessed well inside an [AppToggleSection] holding **a group of**
+ * the section's checkmark rows. Every section reads the same two-level grammar — the switch turns the
+ * section on, the checkmark rows inside the well configure it — so the screen's two idioms are a
+ * hierarchy, not a mix.
+ *
+ * A section may compose **more than one** well when its rows fall into distinct groups (the range preset
+ * selector's From and Until handles are two such groups, each with its own caption above its own well).
+ * Several wells stay the **same** second level: a group caption is a heading, never a third level of
+ * control, and the section's switch remains its only first-level one.
  *
  * Recessed by using the app *background* against the card's *surface*: the sub-level sits visually
  * "into" the card in both themes (lighter card, darker well in light; darker card, darker-still well in

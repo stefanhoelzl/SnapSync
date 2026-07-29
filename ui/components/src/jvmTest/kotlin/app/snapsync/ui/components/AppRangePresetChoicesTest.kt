@@ -9,6 +9,9 @@ import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.assertIsNotSelected
 import androidx.compose.ui.test.assertIsSelected
+import androidx.compose.ui.test.hasAnyAncestor
+import androidx.compose.ui.test.hasTestTag
+import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
@@ -78,6 +81,36 @@ class AppRangePresetChoicesTest {
         rule.onNodeWithTag("from-custom").assertIsRadio().assertIsNotSelected()
         rule.onNodeWithTag("until-event-end").assertIsRadio().assertIsSelected()
         rule.onNodeWithTag("until-custom").assertIsRadio().assertIsNotSelected()
+    }
+
+    /**
+     * The two handles are two SEPARATE grouped sub-lists, each with its caption above its own well. Asserted
+     * by CONTAINMENT only — a row is inside its own group and not inside the other's — never by counting
+     * intermediate nodes, so the well's internals stay free to change.
+     */
+    @Test
+    fun `each handle's rows and caption live in their own group`() {
+        setChoices()
+
+        for (row in listOf("from-event-start", "from-now", "from-custom")) {
+            rule.onNode(hasTestTag(row) and hasAnyAncestor(hasTestTag("from-group"))).assertExists()
+            rule.onNode(hasTestTag(row) and hasAnyAncestor(hasTestTag("until-group"))).assertDoesNotExist()
+        }
+        for (row in listOf("until-event-end", "until-custom")) {
+            rule.onNode(hasTestTag(row) and hasAnyAncestor(hasTestTag("until-group"))).assertExists()
+            rule.onNode(hasTestTag(row) and hasAnyAncestor(hasTestTag("from-group"))).assertDoesNotExist()
+        }
+
+        rule.onNode(hasText("Share from") and hasAnyAncestor(hasTestTag("from-group"))).assertExists()
+        rule.onNode(hasText("Share until") and hasAnyAncestor(hasTestTag("until-group"))).assertExists()
+    }
+
+    /** Each caption is a heading, so assistive tech can jump between the From and Until groups. */
+    @Test
+    fun `the group captions are accessibility headings`() {
+        setChoices()
+        rule.onNodeWithText("Share from").assertIsHeading()
+        rule.onNodeWithText("Share until").assertIsHeading()
     }
 
     @Test
@@ -158,3 +191,6 @@ class AppRangePresetChoicesTest {
 
 private fun androidx.compose.ui.test.SemanticsNodeInteraction.assertIsRadio() =
     assert(SemanticsMatcher.expectValue(SemanticsProperties.Role, Role.RadioButton))
+
+private fun androidx.compose.ui.test.SemanticsNodeInteraction.assertIsHeading() =
+    assert(SemanticsMatcher.keyIsDefined(SemanticsProperties.Heading))
