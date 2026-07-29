@@ -63,7 +63,6 @@ import app.snapsync.ui.components.AppEventHeaderCompact
 import app.snapsync.ui.components.AppQuestionHeading
 import app.snapsync.ui.components.AppSectionNote
 import app.snapsync.ui.components.AppMinorSection
-import app.snapsync.ui.components.AppSubSection
 import app.snapsync.ui.components.AppSectionValue
 import app.snapsync.ui.components.AppSummaryToggle
 import app.snapsync.ui.components.AppToggleSection
@@ -579,11 +578,13 @@ private fun ColumnScope.CenteredBody(content: @Composable () -> Unit) {
  * The two sections, top to bottom:
  *  1. **Share** ([AppToggleSection]) — the switch, the origin-exclusions note (what the app already
  *     filters out of a camera roll — new information no other state of this screen carries), the resulting
- *     cutoff instant in the heaviest type on the surface, and the cutoff choice rows ([AppRangePresetChoices]:
- *     Now / Event start / Custom) — one card, because "do I share" and "from when" are one decision.
- *     Custom opens the floored date+time picker dialog directly; only its OK commits the choice, and the
- *     chosen instant appears solely in the bold "Shared from …" line (never repeated in the row). When
- *     off, the card states that nothing of theirs leaves the phone and the rows are not shown.
+ *     range in the heaviest type on the surface, and the range choice rows ([AppRangePresetChoices]) as two
+ *     captioned sub-lists — **Share from** (Event start / Now / Custom) and **Share until** (Event end /
+ *     Custom), each in its own recessed well the component owns — all in one card, because "do I share" and
+ *     "from when / until when" are one decision. Custom opens the window-constrained date+time picker
+ *     directly; only its OK commits the choice, and the chosen instants appear solely in the bold
+ *     "Sharing …" line (never repeated in a row). When off, the card states that nothing of theirs leaves
+ *     the phone and the rows are not shown.
  *  2. **Receive** ([AppToggleSection]) — the switch and where arriving photos land.
  *  3. **Album** ([AppMinorSection] + [AppSummaryToggle]) — a standalone second-level checkmark row: per
  *     capability `event-album` the album mirrors what the membership syncs in its direction — foreign
@@ -685,34 +686,33 @@ private fun ReadyLayout(
                         shareableCount = shareableCount,
                         permissionKey = photoPermission,
                     )
-                    // Level 2: the From/Until range presets, in the section's recessed well. Switch = does
-                    // this section happen; checkmarks = how.
-                    AppSubSection {
-                        AppRangePresetChoices(
-                            fromSelected = fromPreset,
-                            onFromSelect = onFromPreset,
-                            fromCustomValue = fromCustom,
-                            // Only the picker's OK selects CUSTOM — a cancelled dialog leaves the previous
-                            // choice (and its instant) exactly as it was.
-                            onFromCustomPicked = {
-                                onFromCustom(it)
-                                onFromPreset(FromChoice.CUSTOM)
-                            },
-                            untilSelected = untilPreset,
-                            onUntilSelect = onUntilPreset,
-                            untilCustomValue = untilCustom,
-                            onUntilCustomPicked = {
-                                onUntilCustom(it)
-                                onUntilPreset(UntilChoice.CUSTOM)
-                            },
-                            // Pre-start (and post-end), "Now" would fall outside the window — offered disabled.
-                            nowAvailable = nowAvailable,
-                            windowStart = windowStart,
-                            windowEnd = windowEnd,
-                            fromFloorNote = "Can't be earlier than the event started, $floorLabel.",
-                            untilCeilingNote = "Can't be later than the event ends, $ceilingLabel.",
-                        )
-                    }
+                    // Level 2: the From/Until range presets, each its own captioned sub-list in its own
+                    // recessed well — the component owns those wells, so this section wraps it in none.
+                    // Switch = does this section happen; checkmarks = how.
+                    AppRangePresetChoices(
+                        fromSelected = fromPreset,
+                        onFromSelect = onFromPreset,
+                        fromCustomValue = fromCustom,
+                        // Only the picker's OK selects CUSTOM — a cancelled dialog leaves the previous
+                        // choice (and its instant) exactly as it was.
+                        onFromCustomPicked = {
+                            onFromCustom(it)
+                            onFromPreset(FromChoice.CUSTOM)
+                        },
+                        untilSelected = untilPreset,
+                        onUntilSelect = onUntilPreset,
+                        untilCustomValue = untilCustom,
+                        onUntilCustomPicked = {
+                            onUntilCustom(it)
+                            onUntilPreset(UntilChoice.CUSTOM)
+                        },
+                        // Pre-start (and post-end), "Now" would fall outside the window — offered disabled.
+                        nowAvailable = nowAvailable,
+                        windowStart = windowStart,
+                        windowEnd = windowEnd,
+                        fromFloorNote = "Can't be earlier than the event started, $floorLabel.",
+                        untilCeilingNote = "Can't be later than the event ends, $ceilingLabel.",
+                    )
                 } else {
                     AppSectionNote("Nothing of yours leaves this phone.")
                 }
@@ -983,37 +983,35 @@ private fun ReconfigureScreen(
                         shareableCount = shareableCount,
                         permissionKey = photoPermission,
                     )
-                    AppSubSection {
-                        AppRangePresetChoices(
-                            fromSelected = fromPreset,
-                            onFromSelect = { fromPreset = it },
-                            fromCustomValue = fromCustom,
-                            onFromCustomPicked = {
-                                fromCustom = it
-                                fromPreset = FromChoice.CUSTOM
-                            },
-                            untilSelected = untilPreset,
-                            onUntilSelect = { untilPreset = it },
-                            untilCustomValue = untilCustom,
-                            onUntilCustomPicked = {
-                                untilCustom = it
-                                untilPreset = UntilChoice.CUSTOM
-                            },
-                            nowAvailable = nowAvailable,
-                            windowStart = windowStart,
-                            windowEnd = windowEnd,
-                            fromFloorNote = "Can't be earlier than the event started, " +
-                                "${appDateTimeLabel(windowStart)}.",
-                            untilCeilingNote = if (membership.endsAt != null) {
-                                "Can't be later than the event ends, ${appDateTimeLabel(windowEnd)}."
-                            } else {
-                                // A legacy membership whose event `endsAt` has not been backfilled yet:
-                                // the picker still bounds against the member's own ceiling, but naming
-                                // an event end we do not know would be a guess.
-                                "Pick when to stop sharing."
-                            },
-                        )
-                    }
+                    AppRangePresetChoices(
+                        fromSelected = fromPreset,
+                        onFromSelect = { fromPreset = it },
+                        fromCustomValue = fromCustom,
+                        onFromCustomPicked = {
+                            fromCustom = it
+                            fromPreset = FromChoice.CUSTOM
+                        },
+                        untilSelected = untilPreset,
+                        onUntilSelect = { untilPreset = it },
+                        untilCustomValue = untilCustom,
+                        onUntilCustomPicked = {
+                            untilCustom = it
+                            untilPreset = UntilChoice.CUSTOM
+                        },
+                        nowAvailable = nowAvailable,
+                        windowStart = windowStart,
+                        windowEnd = windowEnd,
+                        fromFloorNote = "Can't be earlier than the event started, " +
+                            "${appDateTimeLabel(windowStart)}.",
+                        untilCeilingNote = if (membership.endsAt != null) {
+                            "Can't be later than the event ends, ${appDateTimeLabel(windowEnd)}."
+                        } else {
+                            // A legacy membership whose event `endsAt` has not been backfilled yet:
+                            // the picker still bounds against the member's own ceiling, but naming
+                            // an event end we do not know would be a guess.
+                            "Pick when to stop sharing."
+                        },
+                    )
                 } else {
                     AppSectionNote("Nothing of yours leaves this phone.")
                 }

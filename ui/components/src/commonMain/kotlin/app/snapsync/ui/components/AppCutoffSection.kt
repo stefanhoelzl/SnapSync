@@ -3,6 +3,7 @@ package app.snapsync.ui.components
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
@@ -24,6 +25,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import kotlinx.datetime.LocalDateTime
@@ -47,11 +50,16 @@ enum class FromChoice { EVENT_START, NOW, CUSTOM }
 enum class UntilChoice { EVENT_END, CUSTOM }
 
 /**
- * The capture-date **range** as two handles of stacked, embeddable choice rows — a **From** group
+ * The capture-date **range** as two **separate grouped sub-lists** — a **From** group
  * ([FromChoice.EVENT_START] / [FromChoice.NOW] / [FromChoice.CUSTOM]) and an **Until** group
- * ([UntilChoice.EVENT_END] / [UntilChoice.CUSTOM]) — each row with its option name, a one-line consequence,
- * and a trailing checkmark on the chosen one. **Not a card of its own**: the rows embed inside the Share
- * section's card, because "share my photos" and "from when / until when" are one decision surface.
+ * ([UntilChoice.EVENT_END] / [UntilChoice.CUSTOM]) — each in its own recessed [AppSubSection] well headed
+ * by a caption above it, each row with its option name, a one-line consequence, and a trailing checkmark on
+ * the chosen one. The two bounds are two decisions, so they are two containers: as one well with a caption
+ * between the groups, the seam *between* the handles was weaker than the dividers *inside* them.
+ *
+ * The component owns those wells — the embedding section does **not** wrap it in one. It is still **not a
+ * card of its own**: both groups embed inside the Share section's card, because "share my photos" and
+ * "from when / until when" are one decision surface.
  *
  * Selecting a **Custom** row opens the app's date+time picker dialog **directly**, constrained to the event
  * window `[windowStart, windowEnd]` — the row carries no inline field and never restates the chosen instant,
@@ -87,58 +95,60 @@ fun AppRangePresetChoices(
     var showUntilPicker by remember { mutableStateOf(false) }
 
     Column(modifier = Modifier.fillMaxWidth()) {
-        GroupCaption("Share from")
-        ChoiceRow(
-            tag = "from-event-start",
-            label = "Event start",
-            consequence = "Everything you've taken since the event began.",
-            selected = fromSelected == FromChoice.EVENT_START,
-            enabled = true,
-            onSelect = { onFromSelect(FromChoice.EVENT_START) },
-        )
-        RowDivider()
-        ChoiceRow(
-            tag = "from-now",
-            label = "Now",
-            consequence = if (nowAvailable) {
-                "Only photos you take from here on."
-            } else {
-                "Same as the event start until the event begins."
-            },
-            selected = fromSelected == FromChoice.NOW,
-            enabled = nowAvailable,
-            onSelect = { onFromSelect(FromChoice.NOW) },
-        )
-        RowDivider()
-        ChoiceRow(
-            tag = "from-custom",
-            label = "Custom",
-            // While selected the row states the CONSTRAINT (the floor), never the chosen date, which the
-            // section's value line already carries.
-            consequence = if (fromSelected == FromChoice.CUSTOM) fromFloorNote else "Pick your own start.",
-            selected = fromSelected == FromChoice.CUSTOM,
-            enabled = true,
-            onSelect = { showFromPicker = true },
-        )
+        HandleGroup(tag = "from-group", caption = "Share from") {
+            ChoiceRow(
+                tag = "from-event-start",
+                label = "Event start",
+                consequence = "Everything you've taken since the event began.",
+                selected = fromSelected == FromChoice.EVENT_START,
+                enabled = true,
+                onSelect = { onFromSelect(FromChoice.EVENT_START) },
+            )
+            RowDivider()
+            ChoiceRow(
+                tag = "from-now",
+                label = "Now",
+                consequence = if (nowAvailable) {
+                    "Only photos you take from here on."
+                } else {
+                    "Same as the event start until the event begins."
+                },
+                selected = fromSelected == FromChoice.NOW,
+                enabled = nowAvailable,
+                onSelect = { onFromSelect(FromChoice.NOW) },
+            )
+            RowDivider()
+            ChoiceRow(
+                tag = "from-custom",
+                label = "Custom",
+                // While selected the row states the CONSTRAINT (the floor), never the chosen date, which
+                // the section's value line already carries.
+                consequence = if (fromSelected == FromChoice.CUSTOM) fromFloorNote else "Pick your own start.",
+                selected = fromSelected == FromChoice.CUSTOM,
+                enabled = true,
+                onSelect = { showFromPicker = true },
+            )
+        }
 
-        GroupCaption("Share until")
-        ChoiceRow(
-            tag = "until-event-end",
-            label = "Event end",
-            consequence = "Everything up to when the event ends.",
-            selected = untilSelected == UntilChoice.EVENT_END,
-            enabled = true,
-            onSelect = { onUntilSelect(UntilChoice.EVENT_END) },
-        )
-        RowDivider()
-        ChoiceRow(
-            tag = "until-custom",
-            label = "Custom",
-            consequence = if (untilSelected == UntilChoice.CUSTOM) untilCeilingNote else "Pick your own end.",
-            selected = untilSelected == UntilChoice.CUSTOM,
-            enabled = true,
-            onSelect = { showUntilPicker = true },
-        )
+        HandleGroup(tag = "until-group", caption = "Share until") {
+            ChoiceRow(
+                tag = "until-event-end",
+                label = "Event end",
+                consequence = "Everything up to when the event ends.",
+                selected = untilSelected == UntilChoice.EVENT_END,
+                enabled = true,
+                onSelect = { onUntilSelect(UntilChoice.EVENT_END) },
+            )
+            RowDivider()
+            ChoiceRow(
+                tag = "until-custom",
+                label = "Custom",
+                consequence = if (untilSelected == UntilChoice.CUSTOM) untilCeilingNote else "Pick your own end.",
+                selected = untilSelected == UntilChoice.CUSTOM,
+                enabled = true,
+                onSelect = { showUntilPicker = true },
+            )
+        }
     }
 
     if (showFromPicker) {
@@ -170,14 +180,41 @@ fun AppRangePresetChoices(
     }
 }
 
-/** The small caption heading a handle's group of rows. */
+/**
+ * One handle as its own grouped sub-list: a [caption] above a recessed [AppSubSection] well holding that
+ * handle's rows. Two bounds are two decisions, so each gets its own container — a single well with a
+ * caption dropped between the groups makes the boundary between the handles the *weakest* seam in the
+ * control, weaker than the dividers inside each group.
+ *
+ * The [tag] addresses the whole group (caption + well), so a test can assert a handle's rows are inside
+ * their own group rather than merely present somewhere.
+ */
+@Composable
+private fun HandleGroup(tag: String, caption: String, rows: @Composable ColumnScope.() -> Unit) {
+    Column(modifier = Modifier.fillMaxWidth().testTag(tag)) {
+        GroupCaption(caption)
+        AppSubSection(content = rows)
+    }
+}
+
+/**
+ * The small caption heading a handle's group of rows, sitting **above** its well on the embedding card's
+ * surface at the card's own text inset — the inset-grouped-list idiom, aligned with the section's note and
+ * value lines. Inside the well it aligned with the row labels instead and read as a disabled first row.
+ *
+ * A [heading] in the semantics tree, so assistive technology can jump between the From and Until groups —
+ * the navigation the visual split creates. One type level quieter than the `bodyLarge` row labels it heads,
+ * within the existing scale (no new token).
+ */
 @Composable
 private fun GroupCaption(text: String) {
     Text(
         text = text,
-        style = MaterialTheme.typography.labelLarge,
+        style = MaterialTheme.typography.labelMedium,
         color = MaterialTheme.colorScheme.onSurfaceVariant,
-        modifier = Modifier.padding(start = 12.dp, top = 10.dp, bottom = 2.dp),
+        modifier = Modifier
+            .padding(start = 14.dp, end = 14.dp, top = 4.dp, bottom = 6.dp)
+            .semantics { heading() },
     )
 }
 
