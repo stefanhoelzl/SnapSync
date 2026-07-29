@@ -73,8 +73,12 @@ Useful issue fields: `friendly_id`, `id` (UUID), `calculated_type` / `calculated
 ## 2. Drill into one issue (full context)
 
 Resolve friendly id → UUID (from step 1), then fetch the issue, its latest event, and the
-event detail. Report: the crash type/value, **symbolicated stacktrace**, recent
-**breadcrumbs**, and **device/OS/app context**.
+event detail. Report: the crash type/value, **which build and which process** (release ·
+build number · `process` tag), the **symbolicated stacktrace**, recent **breadcrumbs**, and
+**device/OS/app context**.
+
+(Release and process live on the EVENT, not the issue — the issue object carries neither, so
+there is nothing to add to step 1's list.)
 
 ```bash
 proton-env -- bash -s <<'SH'
@@ -88,6 +92,16 @@ curl -sS -H "$H" "$B/issues/$ISSUE_UUID/" -o "$OUT/issue.json"
 EVID=$(curl -sS -H "$H" "$B/events/?issue=$ISSUE_UUID&order=desc" \
        | python3 -c 'import json,sys;print(json.load(sys.stdin)["results"][0]["id"])')
 curl -sS -H "$H" "$B/events/$EVID/" -o "$OUT/event.json"
+python3 - "$OUT/event.json" <<'PY'
+import json,sys
+d=json.load(open(sys.argv[1]))["data"]
+rel=d.get("release"); proc=(d.get("tags") or {}).get("process")
+print(f"release={rel or '«none»'}  build(dist)={d.get('dist')}  "
+      f"process={proc or '«untagged»'}  env={d.get('environment')}")
+if rel is None or (rel or '').startswith("app.snapsync@"):
+    print("  ^ pre-metadata build (release added in add-release-and-process-to-crash-reports) "
+          "— NOT a regression")
+PY
 echo "event.json + issue.json written to $OUT  (EVID=$EVID)"
 SH
 ```
@@ -103,6 +117,11 @@ The event detail (`$OUT/event.json`) has:
     up to ~100, oldest first — show the last ~20)
   - `data.contexts.{os,device,app}` — OS version, device model/arch/memory, foreground state
   - `data.level`, `data.environment`, `data.dist` (**the build number** → `dsyms-<dist>`)
+  - `data.release` — **the marketing version** the build carried. Set by the app since
+    `add-release-and-process-to-crash-reports`; `null` (or shaped `app.snapsync@<v>+<build>`,
+    the SDK's own fallback) on builds predating it — see the gotcha below
+  - `data.tags.process` — **which process reported**: `app.snapsync` (app) or
+    `app.snapsync.BackgroundUpload` (the background-upload extension). Absent on pre-change builds
 - `stacktrace_md` — Bugsink's own pre-rendered markdown stacktrace. Good for a quick look;
   **native frames in it are unsymbolicated addresses** — use symbolication (step 3) for those.
 
@@ -149,5 +168,18 @@ a *different* build's dSYMs — that produces subtly-wrong frames.
   `instruction_addr` field names in `symbolicate.py` are written to the standard Sentry-cocoa
   shape but unverified against a real native crash. Sanity-check on the first one; the payload
   shape is the only assumption.
-- **dev builds send nothing** (no baked DSN) — every issue here is from a TestFlight/App Store
-  build. `data.environment` is `production`.
+- **dev builds send nothing** (no baked DSN) — so practically every event here is from a
+  TestFlight/App Store build, carrying `data.environment = production`. The one exception is
+  deliberate: a dev build with a hand-injected DSN (the on-device verification path documented in
+  `Config.xcconfig`) reports honestly as `development`. Read `data.environment` rather than assuming.
+- **An event with no `data.release` is an OLD BUILD, not a regression.** Release and the `process`
+  tag arrived in `add-release-and-process-to-crash-reports`; a crash captured on an earlier build and
+  delivered later carries `release = null` or the SDK's own `app.snapsync@<v>+<build>` fallback (which
+  Bugsink renders truncated as `app.snapsync`, since it is not valid semver). This tail extinguishes
+  as the installed base updates.
+- **`data.dist` is CRASH-TIME on a real crash** — it comes from the crash report's own recorded build
+  number, not from whatever was installed when the report was finally delivered (a cached crash can
+  arrive days later; `SNAPSYNC-1` took three). That is what makes `dsyms-<dist>` the right artifact.
+  It holds *because* the app deliberately never sets the SDK's `dist` option — see the
+  `crash-reporting` spec requirement "The build number is the SDK's crash-time value and is never
+  overridden". Do not "fix" that omission.
