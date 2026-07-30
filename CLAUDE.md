@@ -303,10 +303,12 @@ non-gating, dispatch-only `.github/workflows/screenshots.yml` drives on a simula
 ### Refreshing the marketing screenshots (operator runbook)
 
 `screenshots/*.png` — 6 raws, 3 forge states × light/dark — are the **single source of truth for two
-surfaces**: `appstore-screenshots.yml` composites the App Store listing images from them, and the `site/`
-Astro build derives the landing page's WebP from them (`astro:assets`, shipped by `site-deploy.yml`). So
-**refreshing them is a commit**, and committing one is what ships both. Nothing regenerates automatically —
-the capture is dispatch-only.
+surfaces**, which consume them on **different schedules**: `ios-appstore-promote.yml` composites the App
+Store listing images from them **at release time** (only the three `-light` raws reach the store; see
+`compose_screenshots.sh`), and the `site/` Astro build derives the landing page's WebP from them
+(`astro:assets`, shipped by `site-deploy.yml`) **on merge**. So **refreshing them is a commit** — that
+commit ships the landing page immediately and is picked up by the next release. Nothing regenerates
+automatically — the capture is dispatch-only.
 
 Do this when the UI changes:
 
@@ -328,10 +330,16 @@ git add screenshots/ && git commit
   (`simctl` writes no timestamp) while `create` differs in a 90×32 px region and nowhere else. So a diff
   anywhere else means the UI really moved. Light and dark agree on the minute — both come from one launch,
   seconds apart.
-- **A headline or size change needs NO dispatch** — both consumers derive from the committed raws.
-  Edit `metadata/screenshots/en-US.json` (App Store copy) or the `site/` landing page and push.
-- The App Store upload fires only on `main` and only when `screenshots/**` or `metadata/**` changes; it
-  replaces the live set, behind the editable-version gate (never a version in review).
+- **A headline or size change needs NO re-capture** — both consumers derive from the committed raws.
+  Edit `metadata/screenshots/en-US.json` (App Store copy) or the `site/` landing page and push. The
+  landing page rebuilds on merge; the App Store copy waits for the next release, like the raws.
+- **The App Store upload happens ONLY inside a release** (`ios-appstore-promote.yml`, after the build is
+  attached and before the submit gate), replacing the set on the version being released, behind the
+  editable-version gate (never a version in review). ⚠️ **A merge to `main` uploads nothing to the store**
+  — pushing a raw or a headline does not change the listing on its own. There is deliberately **no**
+  push-triggered screenshot upload: a promote is single-shot per version (the `vX.Y` tag guard refuses a
+  re-run), so **correcting an already-promoted version's screenshots is a MANUAL console upload**. Decision
+  record: `changes/archive/…-upload-screenshots-on-promote`.
 
 ⚠️ **A "fresh event id" must be a real event you created — not an invented UUID.** The join gate loads
 the event's details first and **aborts on a miss**, leaving the *previous* membership untouched. The
