@@ -2,7 +2,16 @@
 # `ios-deliver` already uploaded to App Store Connect — it BUILDS NOTHING. `gh workflow run
 # ios-appstore-promote.yml -f build_number=N` picks build N (its CFBundleVersion), DERIVES the store
 # version from the build's own marketing version, finds-or-creates that App Store version record, attaches
-# the build, applies the App Review details, OPTIONALLY submits, and — last — creates the `vX.Y` tag.
+# the build, uploads the listing SCREENSHOTS to it, applies the App Review details, OPTIONALLY submits,
+# and — last — creates the `vX.Y` tag.
+#
+# WHY THIS UPLOADS SCREENSHOTS AT ALL (the long rationale is on the step itself): a screenshot upload can
+# only ever write to a version in an EDITABLE state, and concludes green when there is none. This workflow
+# is the only thing that BRINGS such a version into existence, so it is the only place that can guarantee
+# the committed raws reach the version that actually ships. The former push-triggered uploader
+# (`appstore-screenshots.yml`) could not: it fired on its inputs changing while its ability to act depended
+# on a version state it never observed, so it ran green and did nothing. It was deleted, not kept alongside
+# — correcting an ALREADY-promoted version's screenshots is a manual console upload, by decision.
 #
 # WHY PROMOTE, NOT BUILD: every main merge already uploads a signed, gated build to the internal TestFlight
 # group. Promoting one ships the EXACT bits you tested and reuses a build already in ASC, instead of
@@ -85,6 +94,20 @@ jobs:
       - name: Install the App Store Connect client
         run: pip install --quiet 'pyjwt[crypto]' requests
 
+      # For the screenshot composite below. Installed HERE, with the other tooling, so a missing package
+      # fails the run BEFORE any App Store Connect mutation rather than half-way through a release.
+      # Two lessons inherited from the retired push-triggered uploader, both still live: ubuntu's
+      # `imagemagick` is ImageMagick **6**, whose binary is `convert` (there is no `magick`); and the check
+      # must not be `... --version | head -1`, because a pipeline returns the LAST command's status, so
+      # `head` succeeds even when the binary does not exist.
+      - name: Install ImageMagick
+        run: |
+          set -euo pipefail
+          sudo apt-get -qq update
+          sudo apt-get -qq install -y imagemagick fonts-liberation
+          if command -v magick >/dev/null 2>&1; then magick --version; else convert --version; fi
+          fc-list | grep -qiE "liberation|dejavu" || { echo "::error::no bold sans font installed"; exit 1; }
+
       # DERIVE the store version from the build (no mutation). Fails fast if the build's marketing version
       # is not two-part X.Y (e.g. a pre-change 0.1.0 build cannot be promoted). Emits `version` output.
       - name: Resolve the store version from the build
@@ -134,6 +157,40 @@ jobs:
       # version is derived from the build itself, so no version argument is passed.
       - name: Attach the build to its App Store version record
         run: python .github/scripts/appstore_release.py release "$ASC_APP_ID" "$BUILD_NUMBER"
+
+      # The listing SCREENSHOTS for the version we just prepared (capability ios-appstore-metadata). This
+      # is the ONLY automated writer of the App Store screenshot set.
+      #
+      # WHY IT LIVES HERE, AND NOT ON A PUSH TRIGGER: the upload can only ever write to a version in
+      # PREPARE_FOR_SUBMISSION / DEVELOPER_REJECTED, and concludes GREEN when there is none. A push-driven
+      # uploader is therefore triggered by its INPUTS while its ability to act depends on a VERSION STATE
+      # it does not observe — so a capture refresh merged while the only version is READY_FOR_SALE upload-
+      # ed nothing, and nothing re-ran it once a release created the next record. The raws silently never
+      # reached the shipping version, with every run green. That uploader was deleted; this step replaces
+      # it, and cannot fail the same way: the step above just created the record, so the target provably
+      # exists.
+      #
+      # ORDERING IS LOAD-BEARING: after the attach (the record must exist to be resolved) and before the
+      # submit gate below (or an opt-in submit would send a version carrying the PREVIOUS release's
+      # screenshots).
+      #
+      # The script is REUSED UNCHANGED and is passed no version — it resolves the editable version itself.
+      # Its no-editable-version branch still matters here: if the attach somehow left none, this declines
+      # rather than inventing a target.
+      #
+      # ⚠️ A PROMOTE IS SINGLE-SHOT PER VERSION — the `vX.Y` tag is pushed on success and guard 1 above
+      # refuses a re-run — so this step cannot be used to CORRECT a version's screenshots afterwards.
+      # Fixing an already-promoted version (a bad headline, or a rejection) is a MANUAL console upload, by
+      # decision. Do not re-add a push-triggered uploader for it.
+      #
+      # NB `--replace` is destructive while this workflow keeps `cancel-in-progress: true`. Deliberate:
+      # the target is an editable version, which is NOT on the public storefront, so a cancelled run can
+      # only leave an UNPUBLISHED set partial, and the next run restores it. The concurrency group is per
+      # build_number, so only a concurrent re-promote of the same build can cancel at all.
+      - name: Upload the listing screenshots to that version
+        env:
+          ASC: ${{ runner.temp }}/asc
+        run: bash .github/scripts/asc_screenshots_upload.sh
 
       # App Review details, applied on EVERY release (not just when submitting), so a promote-only run
       # leaves the version submit-ready. Declarative: the committed notes win. The notes live OUTSIDE the
