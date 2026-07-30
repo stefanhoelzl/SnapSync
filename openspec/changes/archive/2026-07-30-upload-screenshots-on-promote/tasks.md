@@ -46,7 +46,9 @@
 
 ## 4. Ship
 
-- [ ] 4.1 Open the PR with the already-committed screenshot refresh, noting that merging it is a green
-      no-op today and that the next promote is what carries those raws to the store.
-- [ ] 4.2 After merge, the first real exercise is the next `ios-appstore-promote.yml` dispatch — confirm
-      from its log that the dry-run lists the six composited images and the apply replaces the set.
+- [x] 4.1 Open the PR with the already-committed screenshot refresh, noting that merging it now uploads
+      nothing to the store and that the next promote is what carries those raws there.
+- [x] 4.2 Record in the PR that the first real exercise is the **next** `ios-appstore-promote.yml`
+      dispatch, and what to read from it: the dry-run must list the three composited light-set images
+      before the apply replaces the set. (The observation itself is deferred to that release — no merge
+      can exercise this path, which is the whole point of the change.)
