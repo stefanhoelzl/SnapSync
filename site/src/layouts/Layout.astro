@@ -4,6 +4,11 @@
 // layout so they can never drift in brand, theme, or chrome. Nav links point at the landing's sections
 // (/#…) so they work from either page. Zero off-origin subresources — the web-site self-containment
 // invariant applies to everything defined here.
+//
+// EVERY off-site link on this site opens in a new tab (target=_blank + rel="noopener noreferrer") and
+// says so in its accessible name. The rule is uniform on purpose: the load-bearing case is the App Store
+// CTA on /join, where navigating away would discard the island's in-flight zip — a rule applied to only
+// the one link that needs it is the rule that rots.
 import "../styles/theme.css";
 import { getImage } from "astro:assets";
 import appIcon from "../../../iosApp/iosApp/Assets.xcassets/AppIcon.appiconset/Icon-1024.png";
@@ -52,7 +57,12 @@ const favicon = await getImage({ src: appIcon, width: 64, height: 64, format: "p
           <a class="hide-sm" href="/#how">How it works</a>
           <a class="hide-sm" href="/#privacy">Privacy</a>
           <a class="hide-sm" href="/#terms">Terms</a>
-          <a href="https://github.com/stefanhoelzl/SnapSync/issues">Support</a>
+          <a
+            href="https://github.com/stefanhoelzl/SnapSync/issues"
+            target="_blank"
+            rel="noopener noreferrer"
+            aria-label="Support (opens in a new tab)">Support</a
+          >
         </nav>
       </div>
     </header>
@@ -68,8 +78,18 @@ const favicon = await getImage({ src: appIcon, width: 64, height: 64, format: "p
           <a href="/#how">How it works</a>
           <a href="/#privacy">Privacy</a>
           <a href="/#terms">Terms</a>
-          <a href="https://github.com/stefanhoelzl/SnapSync/issues">Support</a>
-          <a href="mailto:stefanh+snapsync@posteo.de">Contact</a>
+          <a
+            href="https://github.com/stefanhoelzl/SnapSync/issues"
+            target="_blank"
+            rel="noopener noreferrer"
+            aria-label="Support (opens in a new tab)">Support</a
+          >
+          <a
+            href="mailto:stefanh+snapsync@posteo.de"
+            target="_blank"
+            rel="noopener noreferrer"
+            aria-label="Contact (opens in a new tab)">Contact</a
+          >
         </div>
         <p class="copy">
           © 2026 SnapSync · An independent project · Not affiliated with Apple Inc. "App Store" is a
