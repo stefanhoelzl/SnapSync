@@ -5,12 +5,18 @@
 // The href names the /de/ storefront EXPLICITLY because the app is released to Germany only: a
 // country-less apps.apple.com/app/id… resolves to the US storefront, which 404s for us. Drop the /de/
 // only once availability actually widens to the US.
+//
+// target=_blank so a tap from /join never discards the page's island state (a desktop click would
+// navigate away mid-zip); on iOS the App Store app claims the link as an app switch anyway. Every
+// off-site link on this site opens this way — see Layout.astro.
 ---
 
 <a
   class="appstore"
   href="https://apps.apple.com/de/app/id6781692480"
-  aria-label="Download SnapSync on the App Store"
+  target="_blank"
+  rel="noopener noreferrer"
+  aria-label="Download SnapSync on the App Store (opens in a new tab)"
 >
   <svg viewBox="0 0 384 512" aria-hidden="true">
     <path
