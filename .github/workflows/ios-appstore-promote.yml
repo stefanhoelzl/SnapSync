@@ -91,8 +91,10 @@ jobs:
       - name: Fetch pinned asc
         run: bash .github/scripts/asc_fetch.sh "$RUNNER_TEMP/asc"
 
+      # pyyaml is for release_notes.py, which reads `.github/release.yml` to learn which changelog
+      # headings the repo declares.
       - name: Install the App Store Connect client
-        run: pip install --quiet 'pyjwt[crypto]' requests
+        run: pip install --quiet 'pyjwt[crypto]' requests pyyaml
 
       # For the screenshot composite below. Installed HERE, with the other tooling, so a missing package
       # fails the run BEFORE any App Store Connect mutation rather than half-way through a release.
@@ -152,6 +154,46 @@ jobs:
           echo "ORIGIN_SHA=$sha" >> "$GITHUB_ENV"
           echo "resolved build ${BUILD_NUMBER} → origin commit $sha"
 
+      # DERIVE the version's release notes from the labelled PRs merged since the previous release
+      # (capability `changelog-labels`). Nothing writes them by hand: they are the one part of the
+      # listing whose content differs per release, and a hand-written field is a step no gate names —
+      # a missing `en-US: whatsNew` is what refused the 0.2 submission (run 30632785849).
+      #
+      # HERE, with the guards, BEFORE the first App Store Connect mutation: an unconfigured
+      # generation, an unparseable body, or a result over Apple's 4000-character limit then costs a
+      # red run and nothing else. The applied step is further down, after the attach.
+      #
+      # The range is the nearest ANCESTOR `vX.Y` tag of the origin commit → the origin commit. Both
+      # ends already exist in this run: the tag-as-receipt is created on that same commit, so
+      # consecutive releases delimit an exact range. `git describe` (not "newest tag in the repo")
+      # keeps an out-of-order promote honest — it reports what THAT build added over the release
+      # before it. No ancestor tag = the first release, where Apple requires no notes at all.
+      - name: Derive the release notes
+        env:
+          GH_TOKEN: ${{ github.token }}
+          NOTES_FILE: ${{ runner.temp }}/whats-new.txt
+        run: |
+          set -euo pipefail
+          prev="$(git describe --tags --abbrev=0 --match 'v[0-9]*' "$ORIGIN_SHA" 2>/dev/null || true)"
+          if [ -n "$prev" ]; then
+            echo "previous release: $prev — changelog covers $prev..$ORIGIN_SHA"
+          else
+            echo "no ancestor release tag — treating $ORIGIN_SHA as the first release"
+          fi
+          python .github/scripts/release_notes.py \
+            --repo "$GITHUB_REPOSITORY" --tag "$RELEASE_TAG" --target "$ORIGIN_SHA" \
+            ${prev:+--previous "$prev"} > "$NOTES_FILE"
+          # Echo what will be published: the operator reads the release notes in the run, not only in
+          # App Store Connect.
+          {
+            echo "### Release notes — $STORE_VERSION"
+            echo
+            echo '```'
+            cat "$NOTES_FILE"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+          cat "$NOTES_FILE"
+
       # Find-or-create the X.Y App Store version record and attach this EXISTING build. Waits for the build
       # to be VALID (an already-uploaded build is normally VALID immediately) and is idempotent. The store
       # version is derived from the build itself, so no version argument is passed.
@@ -191,6 +233,16 @@ jobs:
         env:
           ASC: ${{ runner.temp }}/asc
         run: bash .github/scripts/asc_screenshots_upload.sh
+
+      # The release notes derived above, written to the version's en-US localization. Applied on EVERY
+      # release like the review details below, so a promote-only run leaves the version submit-ready.
+      # AFTER the attach (the record must exist to be resolved) and BEFORE the submit gate — a
+      # submitted version must not carry the previous release's notes, and must not be missing them.
+      - name: Apply the release notes
+        env:
+          ASC: ${{ runner.temp }}/asc
+          NOTES_FILE: ${{ runner.temp }}/whats-new.txt
+        run: bash .github/scripts/asc_release_notes_apply.sh
 
       # App Review details, applied on EVERY release (not just when submitting), so a promote-only run
       # leaves the version submit-ready. Declarative: the committed notes win. The notes live OUTSIDE the

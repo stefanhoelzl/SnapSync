@@ -473,7 +473,24 @@ makes that version permanently un-releasable (the guard below refuses an existin
   hand-tag `vX.Y` at the right commit. A wrong resolution would be a wrong *tag*, never wrong bits (the
   attach identifies the build by number). Created **LAST, on success only**, so a failed run leaves none.
 - **Submit is opt-in and gated**: `-f submit=true` only submits if `asc review doctor` reports zero
-  blocking checks; otherwise the run refuses and prints them.
+  blocking checks; otherwise the run refuses and prints them. ⚠️ `doctor` is **not** the whole
+  preflight — it reported zero blockers on a version `asc review submit` then refused for a missing
+  `en-US: whatsNew` (run 30632785849). A green gate is not a promise the submit will pass.
+- **The release notes write themselves** (capability `changelog-labels`): the promote derives
+  `whatsNew` from the **labelled PRs** merged between the nearest ancestor `vX.Y` tag of the build's
+  origin commit and that commit — `/ship`'s `enhancement`/`bug`/`internal` label is what decides
+  whether a change is customer-visible, and `.github/release.yml` is the one place a label maps to a
+  heading (`New`/`Fixed`; `internal` excluded). Derived **before** any ASC mutation (an over-4000-char
+  result or an unconfigured generation costs a red run and nothing else), applied after the attach on
+  **every** promote, `en-US` only, and echoed into the run summary — read it there, not just in ASC.
+  A PR **must** carry one of the three labels: `check-label` is a required check, because GitHub's
+  generator silently drops what it cannot categorize and an unlabelled PR would be invisible in the
+  next release's notes. An all-`internal` release gets a committed fallback sentence.
+  ⚠️ The generator reads `.github/release.yml` from the **build's origin commit**, so a build predating
+  that file cannot be promoted — the heading guard refuses the ungrouped `What's Changed` fallback
+  (which would publish every `internal` PR to customers). Promote a build whose commit carries it.
+  Nothing publishes a **GitHub Release**, and there is no committed `CHANGELOG.md`: the tags plus the
+  labelled PRs are the history, and the store listing is the only rendering.
 - **Review details are repo-owned**: prose in `metadata/review/notes.md` (deliberately outside the
   metadata tool's canonical schema — an unknown key there fails a required check and freezes merges);
   contact from the `ASC_REVIEW_CONTACT_*` secrets (this repo is public, so they can be neither committed
@@ -1026,7 +1043,9 @@ string-building, no network or crypto.
 ## Workflow
 
 - **All changes** go through a branch → PR → **`/ship`** (branch protection forbids direct pushes
-  to `main`).
+  to `main`). Every PR carries exactly one changelog label — `enhancement` · `bug` · `internal` —
+  which `/ship` applies and the required `check-label` gate enforces; the App Store release notes are
+  derived from it (capability `changelog-labels`), so `internal` means "no customer sees this".
 - For changes that **add, alter, or remove behavior**, drive it through the **OpenSpec** flow
   (propose → apply → archive) so `openspec/specs/` stays the contract of record. Purely mechanical
   work — build/CI, dependency bumps, behavior-preserving refactors, docs — can skip OpenSpec and
