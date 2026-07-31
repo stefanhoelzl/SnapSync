@@ -33,10 +33,19 @@ class CollectDiagnosticDump(
     private val budgetBytes: Int = DIAGNOSTIC_LOG_BUDGET_BYTES,
 ) {
 
-    suspend fun collect(): DiagnosticDump {
+    /**
+     * @param note what the operator wrote — already trimmed and length-bounded by the sheet that
+     *   collected it. It is carried unchanged: this feature neither trims nor truncates, so the cap
+     *   has exactly one owner (the input component) rather than two that can disagree.
+     * @param screen what the operator was looking at, as an **opaque label supplied by the UI**. This
+     *   zone does not enumerate screens — naming them here would put presentation's vocabulary in a
+     *   feature — so whatever the caller passes is recorded verbatim.
+     */
+    suspend fun collect(note: String, screen: String): DiagnosticDump {
         val (appLog, extensionLog) = readLogsWithinBudget()
         return DiagnosticDump(
-            state = stateSection(config.config.value, permission.permission.value),
+            note = note,
+            state = stateSection(config.config.value, permission.permission.value, screen),
             ledger = ledgerSection(),
             appLog = appLog,
             extensionLog = extensionLog,
@@ -69,8 +78,17 @@ class CollectDiagnosticDump(
      * limited-access alert into an app-killing storm that survives process death (capability
      * `limited-photo-access`). A diagnostic must never be able to break the device it diagnoses.
      */
-    private fun stateSection(config: EventConfig?, permission: PermissionStatus): Map<String, String> =
+    private fun stateSection(
+        config: EventConfig?,
+        permission: PermissionStatus,
+        screen: String,
+    ): Map<String, String> =
         buildMap {
+            // What the operator was looking at. Most of it is inferable from the rest of the report —
+            // but not the surfaces that are screen-local BY DESIGN (the reconfigure sheet, a pending
+            // switch, which join phase): those touch no port, so they reach neither the ledger nor a
+            // single log line. This field is the only place they appear.
+            put("screen", screen)
             put("app_version", environment.appVersion)
             put("build", environment.buildNumber)
             put("os", environment.osVersion)

@@ -70,6 +70,13 @@ fun StatusPane(
     // (no count row), the full-stack world harness binds it to `world.core.loadShareableCount` so
     // `:app:desktop:run` shows the real count over the world gallery. Range-aware (`[cutoff, until]`).
     shareableCount: suspend (cutoff: CaptureCutoff, until: CaptureCeiling?) -> Int? = { _, _ -> null },
+    // The hidden bug-report affordance (capability `diagnostic-logging`): a double-tap on the app-name
+    // label opens the sheet, and sending hands over what was written. The forge passes a UI-only stub
+    // that echoes to the engine console (it composes no reporter); the full-stack world harness passes
+    // the REAL `world.core.userCommands.sendDiagnostics`, so the sheet assembles a real dump over real
+    // world state and the world's reporter records it. `null` — the default — wires no gesture at all,
+    // which is the same structural rule a build with no reporting channel relies on.
+    sendDiagnostics: (suspend (note: String, screen: String) -> Unit)? = null,
     // Attestation health (capability `device-attestation`): defaulted to always-attested so the
     // full-stack harness constructs unchanged; the forge harness injects a MutableAttestedSource so
     // `SyncHealth.Unattested` is forgeable.
@@ -111,6 +118,7 @@ fun StatusPane(
                 requestAccess = requester::request,
                 openSettings = requester::openSettings,
                 reconfigure = reconfigure,
+                sendDiagnostics = sendDiagnostics,
             ),
             loadJoinDetails = loadJoinDetails,
             cutoffFormatter = cutoffFormatter,
@@ -159,6 +167,7 @@ fun StatusPane(
             cutoff = cutoffFormatter,
             shareableCount = shareableCount,
             photoPermission = photoPermission,
+            onSendDiagnostics = host.onSendDiagnostics,
         )
         }
     }

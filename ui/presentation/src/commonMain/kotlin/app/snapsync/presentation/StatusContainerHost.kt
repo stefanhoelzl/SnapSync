@@ -304,13 +304,15 @@ class StatusContainerHost(
     fun onShareInvite() = intent { inviteUrl.value?.let { commands.share(it) } }
 
     /**
-     * Send the diagnostic dump (capability `diagnostic-logging`), confirmed in the UI before this
-     * fires. `null` when this build carries no reporting channel — the screen then wires no gesture,
-     * so the affordance does not exist rather than existing and doing nothing. Fire-and-forget:
-     * `UiState` is unaffected, and no delivery claim is made (the channel may queue and retransmit).
+     * Send the diagnostic dump (capability `diagnostic-logging`) with the operator's account of the
+     * problem — already trimmed and length-bounded by the sheet that collected it — and an opaque label
+     * for the surface it was sent from (the screen, which only the screen itself can name). `null` when this
+     * build carries no reporting channel — the screen then wires no gesture, so the affordance does not
+     * exist rather than existing and doing nothing. Fire-and-forget: `UiState` is unaffected, and no
+     * delivery claim is made (the channel may queue and retransmit).
      */
-    val onSendDiagnostics: (() -> Unit)? =
-        commands.sendDiagnostics?.let { send -> { intent { send() } } }
+    val onSendDiagnostics: ((String, String) -> Unit)? =
+        commands.sendDiagnostics?.let { send -> { note, screen -> intent { send(note, screen) } } }
 
     /**
      * Apply a reconfigure of the joined membership (capability `reconfigure-membership`), confirmed on

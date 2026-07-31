@@ -20,7 +20,7 @@ package app.snapsync.model
 const val DIAGNOSTIC_LOG_BUDGET_BYTES: Int = 700_000
 
 /**
- * One operator-initiated diagnostic dump (capability `diagnostic-logging`): four labelled sections,
+ * One operator-initiated diagnostic dump (capability `diagnostic-logging`): five labelled sections,
  * ready for a reporter to transmit as a single event.
  *
  * Deliberately plain strings and string maps: the transport renders them as structured sections, and
@@ -28,9 +28,18 @@ const val DIAGNOSTIC_LOG_BUDGET_BYTES: Int = 700_000
  *
  * Identifiers ride **verbatim** — a dump is a deliberate, confirmed act whose value is precisely the
  * event, asset and device ids a scrub would destroy (capability `crash-reporting` carves this out;
- * automatic events stay redacted).
+ * automatic events stay redacted). That now covers the [note] and the message built from it: a report
+ * reading "stuck on event ‹uuid›" has lost the one fact it carried.
  */
 class DiagnosticDump(
+    /**
+     * What the operator wrote: what went wrong, and what they were doing. Already trimmed and
+     * length-bounded by the sheet that collected it, so it arrives here ready to send.
+     *
+     * It is the one section a log tail can never supply, and the transport titles the report with it
+     * — so two reports about different problems read as different problems.
+     */
+    val note: String,
     /** Build, OS, device, membership, tier, permission, backend — the facts a log tail may not hold. */
     val state: Map<String, String>,
     /** Upload/download counts. Five integers; no row lists (see `CollectDiagnosticDump`). */
@@ -40,7 +49,13 @@ class DiagnosticDump(
     /** The extension process's log tail, line-aligned. Empty when the extension has never run. */
     val extensionLog: String,
 ) {
-    /** Bytes of log carried — what [DIAGNOSTIC_LOG_BUDGET_BYTES] bounds. */
+    /**
+     * Bytes of **log** carried — what [DIAGNOSTIC_LOG_BUDGET_BYTES] bounds.
+     *
+     * The [note] is deliberately excluded. It is bounded to a couple of hundred bytes against ~280 KB
+     * of measured headroom, so subtracting it would buy nothing and would couple a UI field's cap to
+     * a measured transport constant.
+     */
     val logBytes: Int
         get() = appLog.encodeToByteArray().size + extensionLog.encodeToByteArray().size
 }

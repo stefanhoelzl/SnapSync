@@ -678,12 +678,12 @@ class AppCore internal constructor(
             reconfigure = { eventId, direction, minPhotoDate, maxPhotoDate, saveToAlbum ->
                 reconfigureEvent.reconfigure(eventId, direction, minPhotoDate, maxPhotoDate, saveToAlbum)
             },
-            // The hidden diagnostic dump (capability `diagnostic-logging`), fired after the operator
-            // confirms. NULL on a build with no reporting configuration, so the screen wires no gesture
-            // and no dialog can open — a build that can send nothing must not offer an affordance
-            // suggesting it can. This is the ONE place that decision is made.
+            // The hidden diagnostic dump (capability `diagnostic-logging`), fired once the operator has
+            // written what went wrong. NULL on a build with no reporting configuration, so the screen
+            // wires no gesture and no sheet can open — a build that can send nothing must not offer an
+            // affordance suggesting it can. This is the ONE place that decision is made.
             sendDiagnostics = if (ports.diagnosticsReporter.isConfigured) {
-                { ports.diagnosticsReporter.send(collectDiagnosticDump.collect()) }
+                { note, screen -> ports.diagnosticsReporter.send(collectDiagnosticDump.collect(note, screen)) }
             } else {
                 null
             },

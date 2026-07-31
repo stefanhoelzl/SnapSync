@@ -11,11 +11,13 @@ import androidx.compose.ui.test.captureToImage
 import androidx.compose.ui.test.hasContentDescription
 import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.hasText
+import androidx.compose.ui.test.isRoot
 import androidx.compose.ui.test.onNodeWithTag
-import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performTextInput
+import androidx.compose.ui.test.performTouchInput
+import androidx.compose.ui.test.doubleClick
 import androidx.compose.ui.test.printToString
 import androidx.compose.ui.test.runDesktopComposeUiTest
 import app.snapsync.desktop.FORGE_HEIGHT
@@ -105,6 +107,26 @@ private fun DesktopComposeUiTest.select(q: Map<String, String>): SemanticsNodeIn
     return matches[index]
 }
 
+/**
+ * The window root, or a popup's.
+ *
+ * A `ModalBottomSheet` (and any dialog) composes into a **separate root**, so the moment one is open
+ * `onRoot()` stops working entirely — it throws "Expected exactly '1' node but found '2'", taking
+ * `/tree` and `/shot.png` down with it and making an open sheet look like a sheet that never opened.
+ * Roots are ordered with the window first and popups after, so `root=last` reaches whatever is on top.
+ */
+private fun DesktopComposeUiTest.rootNode(q: Map<String, String>): SemanticsNodeInteraction {
+    val roots = onAllNodes(isRoot())
+    val count = roots.fetchSemanticsNodes().size
+    val index = when (val requested = q["root"]) {
+        null -> 0
+        "last" -> count - 1
+        else -> requested.toIntOrNull() ?: error("root= must be an index or 'last'")
+    }
+    if (index >= count) error("root=$index out of range — the scene has $count root(s)")
+    return roots[index]
+}
+
 fun main() {
     val name = System.getProperty("harness.name") ?: "forge"
     val portFile = File(System.getProperty("harness.portFile") ?: "harness-driver.port")
@@ -142,7 +164,7 @@ fun main() {
     // caller already knows. `?scope=all` when you need to find a control's exact label.
     route("/tree") { q ->
         {
-            val node = if (q["scope"] == "all") onRoot() else onNodeWithTag(PHONE_TAG)
+            val node = if (q["scope"] == "all") rootNode(q) else onNodeWithTag(PHONE_TAG)
             Reply.text(node.printToString(maxDepth = Int.MAX_VALUE))
         }
     }
@@ -154,6 +176,20 @@ fun main() {
             // until scrolled to. Harmless where there is no scrollable ancestor.
             runCatching { node.performScrollTo() }
             node.performClick()
+            waitForIdle()
+            Reply.text("ok\n")
+        }
+    }
+
+    // Some affordances are deliberately NOT clicks. The bug-report gesture is a double-tap on the
+    // app-name label with no click semantics at all (capability `diagnostic-logging`: it must not read
+    // as a control, so `performClick` cannot reach it) — without this route the only hidden affordance
+    // in the app would be the one thing an agent cannot drive.
+    route("/doubletap") { q ->
+        {
+            val node = select(q)
+            runCatching { node.performScrollTo() }
+            node.performTouchInput { doubleClick() }
             waitForIdle()
             Reply.text("ok\n")
         }
@@ -171,7 +207,7 @@ fun main() {
     }
 
     route("/phone.png") { { Reply.png(onNodeWithTag(PHONE_TAG).captureToImage().toPng()) } }
-    route("/shot.png") { { Reply.png(onRoot().captureToImage().toPng()) } }
+    route("/shot.png") { q -> { Reply.png(rootNode(q).captureToImage().toPng()) } }
     route("/quit", quit = true) { { Reply.text("bye\n") } }
 
     runDesktopComposeUiTest(width, height) {

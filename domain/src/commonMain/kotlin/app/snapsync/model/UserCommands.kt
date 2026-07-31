@@ -41,7 +41,11 @@ package app.snapsync.model
  *   settings surface was opened for; the use-case no-ops if the current membership no longer matches.
  *   Fire-and-forget; the change lands via the config read-model on the next cycle.
  * - [sendDiagnostics] — send this device's diagnostic dump to the operator's reporting channel
- *   (capability `diagnostic-logging`), fired by the hidden double-tap after the operator confirms.
+ *   (capability `diagnostic-logging`), fired by the hidden double-tap once the operator has written
+ *   what went wrong. `note` is that description, already trimmed and length-bounded by the sheet — it
+ *   titles the report, so two reports about different problems arrive as different issues. `screen` is
+ *   an opaque label for the surface it was sent from, supplied by the UI (the domain enumerates no
+ *   screens); it is the only way a screen-local surface, which touches no port, reaches a report.
  *   **Nullable, unlike every other command**: it is `null` on a build whose reporting channel is not
  *   configured (every dev, sideload and simulator build, and every off-device composition), and the
  *   screen must then wire no gesture at all — a build that can send nothing may not offer an
@@ -73,5 +77,5 @@ class UserCommands(
         maxPhotoDate: CaptureCeiling,
         saveToAlbum: Boolean,
     ) -> Unit = { _, _, _, _, _ -> },
-    val sendDiagnostics: (suspend () -> Unit)? = null,
+    val sendDiagnostics: (suspend (note: String, screen: String) -> Unit)? = null,
 )

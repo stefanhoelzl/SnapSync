@@ -2,6 +2,8 @@ package app.snapsync.model
 
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
+import kotlin.test.assertTrue
 
 class RedactionTest {
 
@@ -63,4 +65,28 @@ class RedactionTest {
         "gallery: enumerated 12 resource(s) (3 origin-excluded) → N=9",
         redactUuids("gallery: enumerated 12 resource(s) (3 origin-excluded) → N=9"),
     )
+
+    // The exemption marker (capability `diagnostic-logging`): an event declares itself exempt, and
+    // the scrubbing step consults this predicate. Pinned here because the failure is silent at every
+    // other layer — a dump whose marker went missing arrives redacted, with no failing request.
+
+    @Test
+    fun anEventCarryingTheMarkerIsExempt(): Unit =
+        assertFalse(redactsMessages(mapOf(NON_REDACTED_TAG to "1")))
+
+    @Test
+    fun anEventWithNoTagsIsRedacted(): Unit = assertTrue(redactsMessages(emptyMap()))
+
+    @Test
+    fun unrelatedTagsDoNotExempt(): Unit =
+        assertTrue(redactsMessages(mapOf("process" to "app.snapsync", "release" to "0.2")))
+
+    @Test
+    fun theMarkerMustCarryItsExactValue() {
+        // A tag that is merely PRESENT does not exempt: the SDK and the operator both set tags, and
+        // an exemption that triggered on presence alone would widen every time a new tag appeared.
+        assertTrue(redactsMessages(mapOf(NON_REDACTED_TAG to "0")))
+        assertTrue(redactsMessages(mapOf(NON_REDACTED_TAG to "")))
+        assertTrue(redactsMessages(mapOf(NON_REDACTED_TAG to "true")))
+    }
 }
