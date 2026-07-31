@@ -22,7 +22,9 @@ Decision record: `changes/archive/2026-07-21-add-crash-reporting`; the event's b
 identity (and why `dist` is deliberately left to the SDK):
 `changes/archive/2026-07-29-add-release-and-process-to-crash-reports`; the port's rename to
 `DiagnosticsReporter`, its send operation, and the diagnostic dump's carve-out from the scrub:
-`changes/archive/2026-07-29-add-diagnostic-dump`.
+`changes/archive/2026-07-29-add-diagnostic-dump`; the carve-out's move onto an explicit
+`non-redacted` event tag (and the measurement that a scope tag reaches `beforeSend`):
+`changes/archive/2026-07-31-add-bug-report-description`.
 
 ## Requirements
 
@@ -186,13 +188,22 @@ nor any personal identity. It is the one identifier allowed through, and this ex
 do not "fix" it into the scrub rule.
 
 The **operator-initiated diagnostic dump** (capability `diagnostic-logging`) SHALL be exempt from this
-requirement and transmitted verbatim. The exemption is narrow and rests on the difference in consent:
-automatic events are sent without the user's knowledge, while a dump is a deliberate, confirmed act
-whose value is precisely the identifiers a scrub would destroy. Because a dump carries its payload in
-structured context sections rather than message text, the scrub as implemented does not reach it —
-that is a property to be **pinned by a test naming the exemption**, not an accident to be relied on:
-widening the scrub to cover context sections would empty every future dump with no failing test and no
-visible error.
+requirement and transmitted verbatim, **including its message text** — which carries the operator's
+written description of the problem, and with it any identifier they quoted. The exemption is narrow
+and rests on the difference in consent: automatic events are sent without the user's knowledge, while
+a dump is a deliberate, confirmed act whose value is precisely the identifiers a scrub would destroy.
+
+The exemption SHALL be carried by an **explicit marker set on the event** by the sender and consulted
+by the scrubbing step, named for the property it claims (that this event is not to be redacted) rather
+than for the feature claiming it. It SHALL NOT rest on the payload's placement: the exemption
+previously held only because the scrub reached message text but not structured context sections, an
+incidental property a later widening of the scrub would have destroyed silently. With an explicit
+marker, widening the scrub to cover context sections is safe, because an exempt event is skipped
+whatever the scrub covers.
+
+Both halves of the wiring SHALL be **pinned by tests naming the exemption** — that the sender sets the
+marker, and that the scrubbing step consults it. Either half missing empties or mangles every future
+dump with no failing test and no visible error.
 
 #### Scenario: An eventId in a log line never reaches Bugsink
 
@@ -209,8 +220,18 @@ visible error.
 #### Scenario: A dump is exempt
 
 - **WHEN** an operator-initiated dump containing event ids and asset ids is transmitted
-- **THEN** those identifiers arrive in full, while an error captured on the same build in the same
-  session still arrives redacted
+- **THEN** those identifiers arrive in full — in its context sections and in its message alike — while
+  an error captured on the same build in the same session still arrives redacted
+
+#### Scenario: The exemption is a marker, not a placement
+
+- **WHEN** an event carrying the exemption marker is scrubbed
+- **THEN** no part of it is redacted, regardless of which fields the scrubbing step covers
+
+#### Scenario: An automatic event carries no marker
+
+- **WHEN** an event is captured automatically through the logging seam
+- **THEN** it carries no exemption marker and is redacted as usual
 
 ### Requirement: The privacy policy discloses crash reporting before it ships
 
