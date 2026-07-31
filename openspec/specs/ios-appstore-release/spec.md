@@ -16,7 +16,7 @@ The trigger is a dispatch rather than a tag push because a release must be **re-
 
 **The release is also the only automated writer of the listing's screenshots** (capability `ios-appstore-metadata`). It uploads them to the version record it prepares — after attaching the build, so the target exists, and before the submit gate, so a submitted version is never carrying the previous release's images. Nothing else uploads them: an upload can only write to a version in an editable state, and this is the only workflow that creates one. The corollary is that a release is **single-shot per version** — the `vX.Y` tag it pushes on success makes the tag-absent guard refuse a re-run — so it cannot correct screenshots it has already uploaded; that is a manual console operation.
 
-**The release also writes the version's release notes, and nobody writes them by hand** (capability `changelog-labels`). `whatsNew` is the one part of the listing whose content differs per release, so it is *derived* — from the labelled pull requests merged between the nearest ancestor `vX.Y` tag of the build's origin commit and that commit — rather than committed. The derivation runs before the first App Store Connect mutation, so an unusable result costs a red run and nothing else; the application runs on every promote, so a promote-only run leaves the version submit-ready. This closes the gap that refused the 0.2 submission: `asc review doctor` reported no blocker on a version whose `en-US` notes were missing, and the submit's own preflight refused it.
+**The release also writes the version's release notes, and nobody writes them by hand** (capability `changelog-labels`). `whatsNew` is the one part of the listing whose content differs per release, so it is *derived* — from the labelled pull requests merged between the nearest ancestor `vX.Y` tag of the build's origin commit and that commit — rather than committed. The derivation runs before the first App Store Connect mutation, so an unusable result costs a red run and nothing else; it reads nothing out of the promoted commit, so **every** build App Store Connect holds stays promotable; and the application runs on every promote, so a promote-only run leaves the version submit-ready. This closes the gap that refused the 0.2 submission: `asc review doctor` reported no blocker on a version whose `en-US` notes were missing, and the submit's own preflight refused it.
 
 Decision record: `changes/archive/2026-07-15-add-appstore-release-pipeline` (the pipeline),
 `changes/archive/2026-07-16-close-appstore-submission-gaps` (the copyright — and why it is set at
@@ -30,9 +30,10 @@ fresh; the store version derived from the build; provenance as an upload-time gu
 writer of the listing's screenshots — why the upload sits between the attach and the submit gate,
 and why `cancel-in-progress` deliberately stays `true`),
 `changes/archive/2026-07-31-derive-release-notes-from-labels` (the release notes derived from the
-labelled pull requests — why the pull request is the unit rather than the commit, why the derivation
-refuses an unconfigured generation, and why the generator's config is read from the promoted build's
-own commit)
+labelled pull requests — why the pull request is the unit rather than the commit) and
+`changes/archive/2026-07-31-derive-release-notes-from-pull-requests` (why the derivation resolves
+those pull requests itself and reads nothing out of the promoted commit, so every uploaded build stays
+promotable)
 ## Requirements
 ### Requirement: A release promotes an already-gated build
 
@@ -289,10 +290,16 @@ The notes SHALL be **derived, never read from a committed file**: they are the o
 whose content differs for every release, and a hand-written field is a step no gate names (a missing
 `en-US: whatsNew` refused the 0.2 submission).
 
+The derivation SHALL NOT depend on the **contents** of the commit being promoted, so that **every**
+build App Store Connect holds is promotable: a build is chosen by number precisely because it is the
+one the operator validated, and a release process that could refuse a build for what its commit
+happened to contain would break that promise for bits that can no longer be changed.
+
 The derivation SHALL happen **before the first App Store Connect mutation of the run**, and the
 workflow SHALL fail there — mutating nothing — if the rendered notes exceed the field's 4000-character
-limit. The rendered notes SHALL be echoed into the run's output, so the operator can read exactly what
-was published.
+limit. The rendered notes SHALL be echoed into the run's **summary**, together with the derivation's
+reconciliation report (capability `changelog-labels`), so the operator reads what will be published
+and what was withheld from it in the same place, before deciding to submit.
 
 The notes SHALL be applied on **every** release run, whether or not the version is being submitted, so
 that a promote-only run leaves the version submit-ready; the application SHALL happen **after** the
@@ -310,6 +317,13 @@ missing.
 - **THEN** the version's `en-US` `whatsNew` holds the changelog derived from the labelled pull
   requests merged between `v0.1` and that origin commit
 
+#### Scenario: An older build is as promotable as a newer one
+
+- **WHEN** two builds carry the same marketing version and the older one's origin commit predates a
+  change to how release notes are derived
+- **THEN** promoting either produces the release notes its own range calls for, and neither is
+  refused for what its commit contains
+
 #### Scenario: Notes are applied without submitting
 
 - **WHEN** a release runs with the `submit` input false
@@ -321,6 +335,12 @@ missing.
 - **WHEN** the rendered notes exceed 4000 characters
 - **THEN** the run fails before any App Store Connect mutation and no version record is created,
   attached, or modified
+
+#### Scenario: The run summary accounts for what was left out
+
+- **WHEN** a release derives notes for a range whose pull requests are mostly labelled `internal`
+- **THEN** the run summary carries the rendered notes and the reconciliation report naming those
+  excluded pull requests, rather than the notes alone
 
 #### Scenario: A range with no user-facing pull request still produces notes
 
