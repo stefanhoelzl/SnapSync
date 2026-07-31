@@ -16,6 +16,8 @@ The trigger is a dispatch rather than a tag push because a release must be **re-
 
 **The release is also the only automated writer of the listing's screenshots** (capability `ios-appstore-metadata`). It uploads them to the version record it prepares — after attaching the build, so the target exists, and before the submit gate, so a submitted version is never carrying the previous release's images. Nothing else uploads them: an upload can only write to a version in an editable state, and this is the only workflow that creates one. The corollary is that a release is **single-shot per version** — the `vX.Y` tag it pushes on success makes the tag-absent guard refuse a re-run — so it cannot correct screenshots it has already uploaded; that is a manual console operation.
 
+**The release also writes the version's release notes, and nobody writes them by hand** (capability `changelog-labels`). `whatsNew` is the one part of the listing whose content differs per release, so it is *derived* — from the labelled pull requests merged between the nearest ancestor `vX.Y` tag of the build's origin commit and that commit — rather than committed. The derivation runs before the first App Store Connect mutation, so an unusable result costs a red run and nothing else; the application runs on every promote, so a promote-only run leaves the version submit-ready. This closes the gap that refused the 0.2 submission: `asc review doctor` reported no blocker on a version whose `en-US` notes were missing, and the submit's own preflight refused it.
+
 Decision record: `changes/archive/2026-07-15-add-appstore-release-pipeline` (the pipeline),
 `changes/archive/2026-07-16-close-appstore-submission-gaps` (the copyright — and why it is set at
 record creation rather than by the declarative metadata push),
@@ -26,7 +28,11 @@ while App Store Connect's "Private" is a one-way door to org-only distribution),
 fresh; the store version derived from the build; provenance as an upload-time guarantee),
 `changes/archive/2026-07-30-upload-screenshots-on-promote` (the release became the only automated
 writer of the listing's screenshots — why the upload sits between the attach and the submit gate,
-and why `cancel-in-progress` deliberately stays `true`)
+and why `cancel-in-progress` deliberately stays `true`),
+`changes/archive/2026-07-31-derive-release-notes-from-labels` (the release notes derived from the
+labelled pull requests — why the pull request is the unit rather than the commit, why the derivation
+refuses an unconfigured generation, and why the generator's config is read from the promoted build's
+own commit)
 ## Requirements
 ### Requirement: A release promotes an already-gated build
 
@@ -269,4 +275,66 @@ publicly visible set is ever partial, and a subsequent release or inputs-changed
 
 - **WHEN** a release is re-dispatched after a cancelled run left the set incomplete
 - **THEN** the upload replaces the set with the full committed set
+
+### Requirement: A release writes the version's release notes, derived from the changelog
+
+The release workflow SHALL write the promoted version's **release notes** (`whatsNew`) to its `en-US`
+version localization, from the changelog derived for the range between the **nearest ancestor `vX.Y`
+tag of the build's origin commit** and that origin commit (capability `changelog-labels`). Both
+endpoints already exist in the run: the origin commit is the one the release tags, so consecutive
+releases delimit an exact range. When the origin commit has **no** ancestor `vX.Y` tag the range is
+open-ended — that build is the first release, for which Apple requires no notes.
+
+The notes SHALL be **derived, never read from a committed file**: they are the one part of the listing
+whose content differs for every release, and a hand-written field is a step no gate names (a missing
+`en-US: whatsNew` refused the 0.2 submission).
+
+The derivation SHALL happen **before the first App Store Connect mutation of the run**, and the
+workflow SHALL fail there — mutating nothing — if the rendered notes exceed the field's 4000-character
+limit. The rendered notes SHALL be echoed into the run's output, so the operator can read exactly what
+was published.
+
+The notes SHALL be applied on **every** release run, whether or not the version is being submitted, so
+that a promote-only run leaves the version submit-ready; the application SHALL happen **after** the
+build is attached, so the version record exists, and **before** the submission readiness gate. The
+repo-derived value SHALL overwrite a value edited in the ASC web console, like the review details and
+the screenshots.
+
+Only the `en-US` localization SHALL be written. The derived changelog is English, and writing it into
+another locale's listing would be worse than the submission preflight naming that locale's notes as
+missing.
+
+#### Scenario: A promoted version carries notes nobody wrote at release time
+
+- **WHEN** a build whose origin commit is a descendant of `v0.1` is promoted
+- **THEN** the version's `en-US` `whatsNew` holds the changelog derived from the labelled pull
+  requests merged between `v0.1` and that origin commit
+
+#### Scenario: Notes are applied without submitting
+
+- **WHEN** a release runs with the `submit` input false
+- **THEN** the release notes are still applied, and the version's missing-`whatsNew` submission
+  blocker is cleared
+
+#### Scenario: Over-long notes fail before anything is mutated
+
+- **WHEN** the rendered notes exceed 4000 characters
+- **THEN** the run fails before any App Store Connect mutation and no version record is created,
+  attached, or modified
+
+#### Scenario: A range with no user-facing pull request still produces notes
+
+- **WHEN** every pull request since the previous release is labelled `internal`
+- **THEN** the version's `whatsNew` holds the committed fallback sentence rather than empty text, and
+  the release proceeds
+
+#### Scenario: A console hand-edit of the notes is overwritten
+
+- **WHEN** `whatsNew` was edited in the ASC web console and a release runs for that version
+- **THEN** the run overwrites it with the derived changelog
+
+#### Scenario: The first release needs no previous tag
+
+- **WHEN** the promoted build's origin commit has no ancestor `vX.Y` tag
+- **THEN** the derivation runs against an open-ended range rather than failing
 
