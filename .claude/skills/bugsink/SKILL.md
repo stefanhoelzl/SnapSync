@@ -128,16 +128,23 @@ The event detail (`$OUT/event.json`) has:
 Read `data.contexts` and `data.breadcrumbs.values` straight from `event.json` for the
 device context and log trail. For the stacktrace, prefer step 3.
 
-## 2b. Diagnostic dumps (operator-triggered, not crashes)
+## 2b. Bug reports / diagnostic dumps (operator-triggered, not crashes)
 
-Issue `Log Message: 'diagnostic dump'` is **not a crash**. It is a device log the operator asked for
-by double-tapping the "SnapSync" label in the app (capability `diagnostic-logging`) — every dump is
-another occurrence of that one issue, deliberately, so dumps never bury real crashes.
+Any issue whose message begins **`Bug Report:`** is **not a crash**. It is a device log someone asked
+to send by double-tapping the "SnapSync" label in the app and writing what went wrong (capability
+`diagnostic-logging`). The rest of the title is that description, verbatim.
+
+⚠️ **One issue per description, not one issue for all reports.** The message *is* the grouping key, so
+two reports worded differently arrive as two distinct issues — expect several `Bug Report: …` entries
+in an unresolved list, each self-describing, rather than one issue with many occurrences. (Builds from
+before this changed sent a constant `diagnostic dump` message and still group as that single issue;
+both shapes coexist.)
 
 Its payload lives in `data.contexts`, not in a stacktrace:
 
 | context   | what it holds |
 |-----------|---------------|
+| `note`    | `text`: what the operator wrote — the same text as the issue title, verbatim |
 | `state`   | app version + build, OS, device model, upload tier, permission, membership (real event id), baked upload base, reporter environment |
 | `ledger`  | five counts: `photos_pending` / `photos_completed` (photos, not rows) and `downloads_imported` / `downloads_assets` / `downloads_in_flight` |
 | `app_log` | `text`: the tail of the app process's `debug.log` |

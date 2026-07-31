@@ -107,6 +107,11 @@ fun WorldHarnessRoot() {
                         reconfigure = controller.reconfigure,
                         // The real shareable-count query over the world gallery (capability `join-share-count`).
                         shareableCount = controller::loadShareableCount,
+                        // The REAL bug-report command (capability `diagnostic-logging`): the world
+                        // composes a configured reporter, so sending assembles a genuine dump over the
+                        // world's ledger, download store, config and logs — and the world records it,
+                        // inspectable without a device.
+                        sendDiagnostics = controller.sendDiagnostics,
                         darkThemeOverride = dark,
                     )
                 }

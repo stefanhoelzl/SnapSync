@@ -120,6 +120,9 @@ curl -sS "$B/tree"                                      # phone-pane semantics (
 curl -sS "$B/tree?scope=all"                            # whole window (~9.7k tokens — mostly chrome)
 curl -sS --get --data-urlencode "text=▶ Invoke extension" "$B/click"
 curl -sS "$B/click?text=%E2%9C%93&index=0"              # per-row controls NEED index=
+curl -sS "$B/doubletap?text=SNAPSYNC"                   # the hidden bug-report gesture (no click semantics)
+curl -sS --get --data-urlencode "text=What went wrong, and what were you doing?" \
+     --data-urlencode "value=…" "$B/input"              # type into a field
 curl -sS -o shot.png "$B/phone.png"                     # the 390x844 pane; /shot.png = whole window
 curl -sS "$B/quit"
 ```
@@ -132,6 +135,11 @@ curl -sS "$B/quit"
   `Net` `Http` `Cxl` `Unk` — one row per job, so those labels are ambiguous by construction.
 - **`/click` settles before answering** (`waitForIdle()`), so a `200` means the state is stable. It also
   `performScrollTo()`s first, since both panels scroll and off-viewport controls are otherwise unclickable.
+- ⚠️ **`/tree` prints `onRoot()` — ONE root — so a popup is INVISIBLE in it.** A `ModalBottomSheet` or
+  dialog renders into its own root: the bug-report sheet is fully open and driveable (`/input`, `/click`
+  reach its field and buttons, which search every root) while `/tree`, even `?scope=all`, shows no trace
+  of it. An empty tree after opening a sheet is not evidence the sheet failed to open — address its
+  contents by label instead, and read `/phone.png` to see it.
 - **The operator plays the OS — including acknowledgement.** `✓` on a job does *not* complete it: it
   deposits the object store-direct and stages an ack that **the next `▶ Invoke extension` records as
   `COMPLETED`**. Completing every job and expecting "In sync" without a second invoke will look like a

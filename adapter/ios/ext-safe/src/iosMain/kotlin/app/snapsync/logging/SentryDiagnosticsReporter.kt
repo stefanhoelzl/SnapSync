@@ -1,7 +1,9 @@
 package app.snapsync.logging
 
 import app.snapsync.model.DiagnosticDump
+import app.snapsync.model.NON_REDACTED_TAG
 import app.snapsync.model.redactUuids
+import app.snapsync.model.redactsMessages
 import app.snapsync.ports.DiagnosticsReporter
 import co.touchlab.kermit.Logger
 import io.sentry.kotlin.multiplatform.Sentry
@@ -24,7 +26,8 @@ import platform.Foundation.NSBundle
  * plain flag suffices.
  *
  * What leaves the device is bounded here, not at call sites: every outgoing message field is
- * scrubbed of UUID-shaped tokens ([redactUuids]), the SDK's failed-HTTP-request capture is off
+ * scrubbed of UUID-shaped tokens ([redactUuids]) **unless the event declares itself exempt**
+ * ([NON_REDACTED_TAG] — only the operator-initiated dump does), the SDK's failed-HTTP-request capture is off
  * (request URLs embed eventIds; the Kermit seam already logs those failures — scrubbed), and
  * `sendDefaultPii` is off. The SDK's random per-install `user.id` is the one deliberate exception
  * (spec: powers affected-device counts, linked to nothing) — do not scrub it. Bugsink ingests
@@ -46,24 +49,36 @@ class SentryDiagnosticsReporter : DiagnosticsReporter {
     override val isConfigured: Boolean get() = bundleValue("SENTRY_DSN") != null
 
     /**
-     * The operator-initiated dump (capability `diagnostic-logging`): ONE event with a **constant**
-     * message, so every dump groups as an occurrence of a single issue instead of burying real
-     * crashes in the unresolved list, and the four sections as **contexts**.
+     * The operator-initiated dump (capability `diagnostic-logging`): ONE event titled by **what the
+     * operator wrote**, behind a fixed marker prefix, carrying the five sections as **contexts**.
+     *
+     * The message is the grouping key — Bugsink titles a non-exception issue from the first line of
+     * the log message — so reports group **by description**: two reports about the same problem in
+     * the same words collapse, two about different problems stay apart. That reverses the constant
+     * message this shipped with, and deliberately: a constant was right while the payload was only a
+     * log, because nothing distinguished two dumps; once a person writes what went wrong, collapsing
+     * them hides the only fact that does. The prefix keeps every report identifiable as an operator
+     * report rather than a thrown error sitting in the same unresolved list.
      *
      * Contexts, not an attachment and not breadcrumbs, both for measured reasons (2026-07-29, against
      * the real instance): the server drops the `attachment` envelope item entirely — the event would
      * arrive and the log would not — while breadcrumbs are capped at ~100 by the SDK, some 2% of the
      * budget. Context strings, by contrast, came back **byte-identical** at 340 KB each.
      *
-     * The dump is NOT scrubbed. That is the narrow, deliberate carve-out from this channel's UUID
-     * redaction (capability `crash-reporting`): a dump is confirmed by the operator and worthless
-     * without its ids, while automatic events — sent without anyone's knowledge — stay redacted.
-     * `beforeSend` reaches message text, exception values and breadcrumbs, and must never be widened
-     * to contexts; `ScrubExemptionTest` pins that.
+     * The dump is NOT scrubbed, and it says so **on the event**: [NON_REDACTED_TAG] is the narrow,
+     * deliberate carve-out from this channel's UUID redaction (capability `crash-reporting`). A dump
+     * is confirmed by the operator and worthless without its ids — including ids the operator quoted
+     * in the description, which now rides in the message the scrub would otherwise reach. Automatic
+     * events, sent without anyone's knowledge, carry no tag and stay redacted. `DumpScrubExemptionTest`
+     * pins BOTH halves: that this sets the tag, and that `scrubbedEvent` consults it.
      */
     override fun send(dump: DiagnosticDump) {
         if (!isConfigured) return
-        Sentry.captureMessage(DIAGNOSTIC_DUMP_MESSAGE) { scope ->
+        Sentry.captureMessage("$DIAGNOSTIC_DUMP_MESSAGE_PREFIX ${dump.note}") { scope ->
+            // The exemption, declared by the event itself rather than inferred from where the payload
+            // sits. Drop this line and every future report arrives mangled — with no failing request.
+            scope.setTag(NON_REDACTED_TAG, "1")
+            scope.setContext("note", mapOf("text" to dump.note))
             scope.setContext("state", dump.state)
             scope.setContext("ledger", dump.ledger)
             scope.setContext("app_log", mapOf("text" to dump.appLog))
@@ -110,10 +125,15 @@ class SentryDiagnosticsReporter : DiagnosticsReporter {
 }
 
 /**
- * The dump event's message. CONSTANT on purpose: grouping keys off it, so every dump is an
- * occurrence of one issue (measured 2026-07-29 — the probe landed as `Log Message: '…'`).
+ * The marker every operator-initiated report's message begins with, ahead of what the operator wrote.
+ *
+ * Grouping keys off the message (measured 2026-07-29 — the probe landed as `Log Message: '…'`), so
+ * the prefix does NOT collapse reports into one issue; the description after it is what separates
+ * them. What the prefix buys is that a report is recognisable as a report in a list it shares with
+ * real crashes — and greppable by the `/bugsink` triage skill, whose "this is not a crash" rule keys
+ * on it.
  */
-internal const val DIAGNOSTIC_DUMP_MESSAGE: String = "diagnostic dump"
+internal const val DIAGNOSTIC_DUMP_MESSAGE_PREFIX: String = "Bug Report:"
 
 private var processStarted = false
 
@@ -129,8 +149,17 @@ internal fun scrubbedBreadcrumb(crumb: Breadcrumb): Breadcrumb {
     return crumb
 }
 
-/** The last gate before transmission: message, exception values, and attached breadcrumbs. */
+/**
+ * The last gate before transmission: message, exception values, and attached breadcrumbs.
+ *
+ * An event that declares itself exempt ([NON_REDACTED_TAG], set by [SentryDiagnosticsReporter.send])
+ * passes through untouched. The exemption is read off the event on purpose: it used to hold only
+ * because this function reached message text and not context sections, so a well-meaning "we missed a
+ * field" change would have emptied every future dump with no failing test and no visible error. Now a
+ * widened scrub is safe — an exempt event is skipped whatever this covers.
+ */
 internal fun scrubbedEvent(event: SentryEvent): SentryEvent {
+    if (!redactsMessages(event.tags.orEmpty())) return event
     event.message = event.message?.let { m ->
         m.copy(
             message = m.message?.let(::redactUuids),

@@ -21,6 +21,12 @@ import kotlin.test.assertTrue
  */
 class DiagnosticDumpIntegrationTest {
 
+    /** What the operator wrote — the sheet trimmed and bounded it before the command ever fired. */
+    private val NOTE = "photos stopped arriving after I rejoined"
+
+    /** The surface it was written from, as the screen supplies it. */
+    private val SCREEN = "Joined"
+
     private fun logLine(prefix: String, n: Int) =
         (1..n).joinToString("") { "$prefix line $it ..............................................\n" }
 
@@ -43,9 +49,12 @@ class DiagnosticDumpIntegrationTest {
             w.core.userCommands.sendDiagnostics,
             "the world composes a configured reporter, so the command must exist",
         )
-        send()
+        send(NOTE, SCREEN)
 
         val dump = w.diagnosticsSent.value.single()
+        // The one section a log tail can never supply: what the operator was doing.
+        assertEquals(NOTE, dump.note)
+        assertEquals(SCREEN, dump.state["screen"])
         assertEquals("app: cycle finished\n", dump.appLog)
         assertEquals("ext: enumeration 1 seen\n", dump.extensionLog)
         // The five counts, read live off the same stores the cycle just wrote.
@@ -66,7 +75,7 @@ class DiagnosticDumpIntegrationTest {
             DeviceLogSource.Process.APP to "app: reconcile(eventId=$eventId) ok\n",
         )
 
-        assertNotNull(w.core.userCommands.sendDiagnostics).invoke()
+        assertNotNull(w.core.userCommands.sendDiagnostics).invoke(NOTE, SCREEN)
 
         val dump = w.diagnosticsSent.value.single()
         assertTrue(
@@ -85,7 +94,7 @@ class DiagnosticDumpIntegrationTest {
             DeviceLogSource.Process.EXTENSION to logLine("ext", 30_000),
         )
 
-        assertNotNull(w.core.userCommands.sendDiagnostics).invoke()
+        assertNotNull(w.core.userCommands.sendDiagnostics).invoke(NOTE, SCREEN)
 
         val dump = w.diagnosticsSent.value.single()
         assertTrue(
@@ -101,9 +110,29 @@ class DiagnosticDumpIntegrationTest {
         w.provision("11111111-2222-4333-8444-555555555555")
 
         val send = assertNotNull(w.core.userCommands.sendDiagnostics)
-        send()
-        send()
+        send("first report", SCREEN)
+        send("second report", SCREEN)
 
         assertEquals(2, w.diagnosticsSent.value.size, "no rate limit: each confirmed gesture sends one")
+        assertEquals(
+            listOf("first report", "second report"),
+            w.diagnosticsSent.value.map { it.note },
+            "each report carries its own account — they are distinct issues, not one repeated",
+        )
+    }
+
+    @Test
+    fun a_described_identifier_reaches_the_reporter_unredacted() = worldTest {
+        // The description rides in the event MESSAGE, which is the one field the scrub reaches. An
+        // operator quoting the event id they are stuck on is exactly the case worth protecting, and
+        // losing it would be invisible: the report still sends, and only a later reader finds `‹uuid›`.
+        val eventId = "11111111-2222-4333-8444-555555555555"
+        val w = World(this)
+        w.provision(eventId)
+
+        assertNotNull(w.core.userCommands.sendDiagnostics)
+            .invoke("stuck on $eventId since Tuesday", SCREEN)
+
+        assertEquals("stuck on $eventId since Tuesday", w.diagnosticsSent.value.single().note)
     }
 }

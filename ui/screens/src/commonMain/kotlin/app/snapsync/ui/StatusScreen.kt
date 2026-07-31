@@ -32,6 +32,7 @@ import app.snapsync.presentation.PendingSwitch
 import app.snapsync.presentation.SyncHealth
 import app.snapsync.presentation.UiState
 import app.snapsync.ui.components.AppAccessPoint
+import app.snapsync.ui.components.AppBugReportSheet
 import app.snapsync.ui.components.AppConfirmDialog
 import app.snapsync.ui.components.AppDestructiveConfirmDialog
 import app.snapsync.ui.components.AppErrorBanner
@@ -136,17 +137,18 @@ fun StatusScreen(
     // (the first-join dialog is answered a beat after Ready renders) must make the count appear.
     photoPermission: PermissionStatus = PermissionStatus.GRANTED,
     // The hidden diagnostic dump (capability `diagnostic-logging`): fired by a double-tap on the
-    // app-name label, after the operator confirms. `null` — the default, and every build with no
-    // reporting channel — wires no gesture and can open no dialog, so a build that can send nothing
-    // offers nothing that suggests it can.
-    onSendDiagnostics: (() -> Unit)? = null,
+    // app-name label, carrying what the operator wrote about the problem and the surface they wrote it
+    // from. `null` — the default, and every build with no reporting channel — wires no gesture and can
+    // open no sheet, so a build that can send nothing offers nothing that suggests it can.
+    onSendDiagnostics: ((note: String, screen: String) -> Unit)? = null,
 ) {
     AppTheme {
         // Local UI state only: the confirm dialog's visibility never enters UiState or the reduction.
         var confirmingLeave by remember { mutableStateOf(false) }
-        // The diagnostic-dump confirmation. Like [confirmingLeave] it is screen-local and never enters
-        // UiState — opening it is not a state of the sync, and the dump itself changes nothing.
-        var confirmingDiagnostics by remember { mutableStateOf(false) }
+        // The bug-report sheet's visibility. Like [confirmingLeave] it is screen-local and never enters
+        // UiState — opening it is not a state of the sync, and the dump itself changes nothing. What is
+        // typed into it stays inside the sheet; this screen learns it only on send.
+        var reportingBug by remember { mutableStateOf(false) }
         // The reconfigure surface's visibility is likewise screen-local navigation (capability
         // `reconfigure-membership`, design decision "local Compose navigation"): opening it touches no
         // port; only Save fires a command. Like [confirmingLeave], it never enters UiState.
@@ -187,7 +189,7 @@ fun StatusScreen(
             // bottom edge with no jump.
             contentPinsActionCluster = state is UiState.JoiningEvent || reconfigureActive,
             // Hidden, and only where there is a channel to send to.
-            onTitleDoubleTap = onSendDiagnostics?.let { { confirmingDiagnostics = true } },
+            onTitleDoubleTap = onSendDiagnostics?.let { { reportingBug = true } },
         ) {
             if (reconfigureActive) {
                 ReconfigureScreen(
@@ -235,24 +237,29 @@ fun StatusScreen(
             )
         }
 
-        // The diagnostic dump's confirmation — the only moment this feature is ever visible, and
-        // therefore the only place the operator learns what leaves the device. It names the payload
-        // rather than asking a bare yes/no, and claims nothing about identifiers being removed (they
-        // are not: a dump travels verbatim, capability `diagnostic-logging`). There is deliberately NO
-        // feedback afterwards — the reporting SDK may queue and retransmit later, so "sent" is a claim
-        // the app cannot honestly make.
-        if (confirmingDiagnostics && onSendDiagnostics != null) {
-            AppConfirmDialog(
-                title = "Send diagnostics?",
-                body = "Sends the app's recent activity log and sync state to the developer's " +
+        // The bug-report sheet — the only moment this feature is ever visible, and therefore the only
+        // place the operator learns what leaves the device. It names the payload rather than asking a
+        // bare yes/no, and claims nothing about identifiers being removed (they are not: a report
+        // travels verbatim, capability `diagnostic-logging`). Writing the description IS the
+        // confirmation, so there is no second dialog behind Send. There is deliberately NO feedback
+        // afterwards — the reporting SDK may queue and retransmit later, so "sent" is a claim the app
+        // cannot honestly make.
+        if (reportingBug && onSendDiagnostics != null) {
+            AppBugReportSheet(
+                title = "Report a problem",
+                body = "Sent with the app's recent activity log and sync state to the developer's " +
                     "error-tracking service.",
+                placeholder = "What went wrong, and what were you doing?",
+                // The description titles the report in the error-tracking service, so it is bounded to
+                // stay readable in a list of issues (capability `diagnostic-logging`).
+                maxLength = 200,
                 confirmLabel = "Send",
                 cancelLabel = "Cancel",
-                onConfirm = {
-                    confirmingDiagnostics = false
-                    onSendDiagnostics()
+                onConfirm = { note ->
+                    reportingBug = false
+                    onSendDiagnostics(note, screenLabel(state, reconfigureActive))
                 },
-                onDismiss = { confirmingDiagnostics = false },
+                onDismiss = { reportingBug = false },
             )
         }
 
@@ -1099,6 +1106,31 @@ private fun ReconfigureScreen(
 }
 
 /**
+ * What the operator was looking at when they wrote a report (capability `diagnostic-logging`).
+ *
+ * It is derived **here** rather than in the container because the two surfaces worth naming are
+ * screen-local: the reconfigure surface and, over the joined layer, a pending switch. Both are Compose
+ * state that touches no port by design, so they appear in no log line, no ledger row, and nowhere in
+ * `UiState` a container could read — this label is the only route by which they reach a report.
+ *
+ * Deliberately coarse: a surface name, plus the join phase where there is one (a gate stuck on
+ * `LoadFailed` is a different report from one parked on `Ready`). It carries no event id or user data —
+ * those are already in the state section, in a field that says what they are.
+ */
+private fun screenLabel(state: UiState, reconfigureActive: Boolean): String {
+    if (reconfigureActive) return "Reconfigure"
+    return when (state) {
+        is UiState.JoiningEvent -> "JoiningEvent:${state.phase::class.simpleName}"
+        is UiState.Joined -> state.pendingSwitch
+            ?.let { "Switch:${it.phase::class.simpleName}" }
+            ?: "Joined"
+        is UiState.CreateEvent -> "CreateEvent"
+        UiState.CreatingEvent -> "CreatingEvent"
+        else -> state::class.simpleName ?: "unknown"
+    }
+}
+
+/**
  * The switch confirmation (a different event scanned while joined) — the leave-style dialog. On confirm
  * it runs leave-then-join. Mirrors the join phases in a compact `AppConfirmDialog`: the loaded phase
  * offers Switch; a load/commit failure offers Retry; a missing event dismisses. Transient
@@ -1114,11 +1146,6 @@ private fun SwitchDialog(
     onRetryJoin: (CaptureCutoff, CaptureCeiling, Direction) -> Unit,
     shareableCount: suspend (cutoff: CaptureCutoff, until: CaptureCeiling?) -> Int? = { _, _ -> null },
     photoPermission: PermissionStatus = PermissionStatus.GRANTED,
-    // The hidden diagnostic dump (capability `diagnostic-logging`): fired by a double-tap on the
-    // app-name label, after the operator confirms. `null` — the default, and every build with no
-    // reporting channel — wires no gesture and can open no dialog, so a build that can send nothing
-    // offers nothing that suggests it can.
-    onSendDiagnostics: (() -> Unit)? = null,
 ) {
     val current = currentEventName ?: "this event"
     // The compact switch dialog has no picker: it uses the new event's default RANGE — the full window

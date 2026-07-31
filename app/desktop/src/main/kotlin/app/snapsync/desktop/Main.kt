@@ -68,6 +68,13 @@ fun ForgeHarnessRoot() {
                         }
                         println("share invite → $url")
                     },
+                    // Harness bug-report stub (test equipment): the forge composes no reporter, so a
+                    // sent report echoes to the console and goes nowhere. It exists so the hidden
+                    // double-tap, the sheet, and its disabled-until-written send are reviewable
+                    // offscreen (capability `diagnostic-logging`). This is the HARNESS's own wiring —
+                    // the shared forge host factory stays without a command, so the on-device forge
+                    // composition (no DSN) still offers no affordance at all.
+                    sendDiagnostics = { note, screen -> println("bug report [$screen] → $note") },
                     scope = scope,
                     darkThemeOverride = dark,
                     // The forge's join/switch and attestation cells, so the panel can forge the

@@ -107,6 +107,27 @@ class WorldInspectorController(private val scope: CoroutineScope) {
             afterMutation()
         }
 
+    // The real bug-report edge (capability `diagnostic-logging`): the world's REAL
+    // `userCommands.sendDiagnostics`, so the sheet assembles a genuine dump over world state and the
+    // world's reporter records it. Non-null here because the world composes a reporter that reports
+    // itself configured — the same `isConfigured` gate a device build runs through, answered the other
+    // way. Echoed to the console so a headless run can see that a report was sent, not just that a
+    // sheet closed.
+    // Stable across worlds, like the sources above: the lambda reads the CURRENT [world] on each send,
+    // so a preset rebuild does not leave the sheet reporting into the world it replaced. Whether the
+    // affordance exists at all is decided once, and can be — every world composes a reporter that
+    // reports itself configured, so a world whose command is absent is not a state this harness has.
+    val sendDiagnostics: (suspend (note: String, screen: String) -> Unit)? =
+        if (world.userCommands.sendDiagnostics != null) {
+            { note, screen ->
+                world.userCommands.sendDiagnostics?.invoke(note, screen)
+                appendConsole("bug report [$screen] → $note")
+                afterMutation()
+            }
+        } else {
+            null
+        }
+
     /** What the next gate-driven `request()` resolves to. */
     var armedGrants: Boolean by mutableStateOf(true)
         private set
