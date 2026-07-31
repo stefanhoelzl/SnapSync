@@ -17,3 +17,7 @@ api/.localstore/
 api/.localdev/
 
 # Derived from the committed raws in screenshots/ by `deno task shots` (capability marketing-site).
+
+# Python bytecode caches (e.g. .github/scripts/) — build output, never committed.
+__pycache__/
+*.py[cod]
