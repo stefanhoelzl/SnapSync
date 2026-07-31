@@ -59,6 +59,10 @@ on:
 permissions:
   contents: write # push the release tag
   actions: read # read ios.yml runs to resolve the build's origin commit
+  # The changelog derivation resolves the range's commits to their pull requests over GraphQL. The
+  # `generate-notes` REST endpoint it replaced was contents-scoped, so `contents` alone sufficed;
+  # reading pull requests is not, and without this the derivation fails (before any ASC mutation).
+  pull-requests: read
 
 # Per-build group: two promotions of the SAME build_number don't run concurrently; distinct builds do not
 # cancel one another.
@@ -91,10 +95,10 @@ jobs:
       - name: Fetch pinned asc
         run: bash .github/scripts/asc_fetch.sh "$RUNNER_TEMP/asc"
 
-      # pyyaml is for release_notes.py, which reads `.github/release.yml` to learn which changelog
-      # headings the repo declares.
+      # For appstore_release.py. release_notes.py needs nothing beyond the standard library: it
+      # carries its own label→heading table and speaks to GitHub over urllib.
       - name: Install the App Store Connect client
-        run: pip install --quiet 'pyjwt[crypto]' requests pyyaml
+        run: pip install --quiet 'pyjwt[crypto]' requests
 
       # For the screenshot composite below. Installed HERE, with the other tooling, so a missing package
       # fails the run BEFORE any App Store Connect mutation rather than half-way through a release.
@@ -159,15 +163,27 @@ jobs:
       # listing whose content differs per release, and a hand-written field is a step no gate names —
       # a missing `en-US: whatsNew` is what refused the 0.2 submission (run 30632785849).
       #
-      # HERE, with the guards, BEFORE the first App Store Connect mutation: an unconfigured
-      # generation, an unparseable body, or a result over Apple's 4000-character limit then costs a
-      # red run and nothing else. The applied step is further down, after the attach.
+      # HERE, with the guards, BEFORE the first App Store Connect mutation: an unresolvable range or
+      # a result over Apple's 4000-character limit then costs a red run and nothing else. The applied
+      # step is further down, after the attach.
       #
       # The range is the nearest ANCESTOR `vX.Y` tag of the origin commit → the origin commit. Both
       # ends already exist in this run: the tag-as-receipt is created on that same commit, so
       # consecutive releases delimit an exact range. `git describe` (not "newest tag in the repo")
       # keeps an out-of-order promote honest — it reports what THAT build added over the release
       # before it. No ancestor tag = the first release, where Apple requires no notes at all.
+      #
+      # THE DERIVATION READS NOTHING OUT OF THE PROMOTED COMMIT — that is the point, and it is why
+      # this replaced a call to GitHub's `generate-notes`, which reads `.github/release.yml` from the
+      # `target_commitish` and therefore rendered a build's changelog according to whatever that
+      # build happened to contain. Build 542 was permanently un-promotable that way. The script
+      # carries its own label→heading table, so every build ASC holds stays promotable.
+      #
+      # Its stdout IS the summary section (rendered notes, the range's reconciliation counts, the
+      # `internal` roster, and anything it could not categorize) — hence the redirect and the empty
+      # step log. Uncategorized work is REPORTED, not fatal: `check-label` is a required check, so
+      # anything uncategorized is history from before that gate, and refusing to release present work
+      # over it would block shipping while fixing nothing. Read the summary before submitting.
       - name: Derive the release notes
         env:
           GH_TOKEN: ${{ github.token }}
@@ -181,18 +197,8 @@ jobs:
             echo "no ancestor release tag — treating $ORIGIN_SHA as the first release"
           fi
           python .github/scripts/release_notes.py \
-            --repo "$GITHUB_REPOSITORY" --tag "$RELEASE_TAG" --target "$ORIGIN_SHA" \
-            ${prev:+--previous "$prev"} > "$NOTES_FILE"
-          # Echo what will be published: the operator reads the release notes in the run, not only in
-          # App Store Connect.
-          {
-            echo "### Release notes — $STORE_VERSION"
-            echo
-            echo '```'
-            cat "$NOTES_FILE"
-            echo '```'
-          } >> "$GITHUB_STEP_SUMMARY"
-          cat "$NOTES_FILE"
+            --repo "$GITHUB_REPOSITORY" --target "$ORIGIN_SHA" ${prev:+--previous "$prev"} \
+            --version "$STORE_VERSION" --changelog "$NOTES_FILE" >> "$GITHUB_STEP_SUMMARY"
 
       # Find-or-create the X.Y App Store version record and attach this EXISTING build. Waits for the build
       # to be VALID (an already-uploaded build is normally VALID immediately) and is idempotent. The store

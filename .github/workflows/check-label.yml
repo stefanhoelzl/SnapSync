@@ -1,8 +1,13 @@
 # The changelog-label gate (capability `changelog-labels`). Every PR must carry exactly one of
 # `enhancement` / `bug` / `internal`, because the App Store release notes are DERIVED from those
 # labels (capability `ios-appstore-release`) and the derivation drops what it cannot categorize: an
-# unlabelled PR is silently absent from the changelog, with no signal in the release run and no
-# residual heading to catch it (`.github/release.yml` deliberately declares no catch-all).
+# unlabelled PR reaches no heading, since the label→heading table in
+# `.github/scripts/release_notes.py` deliberately declares no catch-all.
+#
+# THIS GATE IS THE ONLY THING THAT PREVENTS AN UNCATEGORIZED CHANGE. The derivation reports what it
+# could not categorize but does not refuse it — a release must not be blocked by history from before
+# this gate existed — so an unlabelled PR that slipped through would surface, if at all, in the
+# summary of a release that already shipped without it.
 #
 # It is a REQUIRED status check (.github/rulesets/main.json). Safe to require for the same reason
 # `appstore-metadata-validate` is: it is triggered by pull-request events, so it always posts on a

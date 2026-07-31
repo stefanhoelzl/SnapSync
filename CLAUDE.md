@@ -479,16 +479,29 @@ makes that version permanently un-releasable (the guard below refuses an existin
 - **The release notes write themselves** (capability `changelog-labels`): the promote derives
   `whatsNew` from the **labelled PRs** merged between the nearest ancestor `vX.Y` tag of the build's
   origin commit and that commit — `/ship`'s `enhancement`/`bug`/`internal` label is what decides
-  whether a change is customer-visible, and `.github/release.yml` is the one place a label maps to a
-  heading (`New`/`Fixed`; `internal` excluded). Derived **before** any ASC mutation (an over-4000-char
-  result or an unconfigured generation costs a red run and nothing else), applied after the attach on
-  **every** promote, `en-US` only, and echoed into the run summary — read it there, not just in ASC.
-  A PR **must** carry one of the three labels: `check-label` is a required check, because GitHub's
-  generator silently drops what it cannot categorize and an unlabelled PR would be invisible in the
-  next release's notes. An all-`internal` release gets a committed fallback sentence.
-  ⚠️ The generator reads `.github/release.yml` from the **build's origin commit**, so a build predating
-  that file cannot be promoted — the heading guard refuses the ungrouped `What's Changed` fallback
-  (which would publish every `internal` PR to customers). Promote a build whose commit carries it.
+  whether a change is customer-visible, and the table at the top of `.github/scripts/release_notes.py`
+  is the one place a label maps to a heading (`New`/`Fixed`; `internal` excluded; no catch-all).
+  Derived **before** any ASC mutation (an unresolvable range or an over-4000-char result costs a red
+  run and nothing else), applied after the attach on **every** promote, `en-US` only. A PR **must**
+  carry one of the three labels: `check-label` is a required check, and it is the only thing that
+  *prevents* an uncategorized change — the derivation reports one but ships anyway. An all-`internal`
+  release gets a committed fallback sentence.
+  **The run summary is the thing to read**, not just ASC: the script's stdout *is* that summary —
+  rendered notes, the range's reconciliation counts (`N pull request(s) in range — P published,
+  I internal, U uncategorized`), the `internal` roster, and a ⚠️ block for anything it could not
+  categorize (unlabelled PRs, commits with no PR merged to the default branch). The ⚠️ block is absent
+  when there is nothing wrong. Preview any range locally before dispatching — a promote is
+  single-shot per version, so notes you dislike are a manual console fix:
+  ```
+  GH_TOKEN=$(gh auth token) python3 .github/scripts/release_notes.py \
+    --repo stefanhoelzl/SnapSync --target <origin-sha> --previous vX.Y   # omit --changelog to preview
+  ```
+  ⚠️ **Do NOT reintroduce GitHub's `releases/generate-notes`.** It reads `.github/release.yml` from the
+  **`target_commitish`**, so the changelog's shape became a property of the *released bits*: a build
+  whose commit predated that file rendered as one ungrouped section listing every `internal` PR, and
+  no edit to `main` could ever change it — build 542 was permanently un-promotable that way. The
+  derivation now resolves PRs itself (GraphQL `associatedPullRequests`, which handles rebased commits)
+  and reads **nothing** out of the commits it describes, so **any** build ASC holds is promotable.
   Nothing publishes a **GitHub Release**, and there is no committed `CHANGELOG.md`: the tags plus the
   labelled PRs are the history, and the store listing is the only rendering.
 - **Review details are repo-owned**: prose in `metadata/review/notes.md` (deliberately outside the
