@@ -87,13 +87,26 @@ The leading-`Fix` strip is applied to every item rather than only under a bug he
 keeps the renderer heading-agnostic; a PR titled "Fix …" and labeled `enhancement` is a mislabeled
 PR, not a case to preserve.
 
-### D5 — Guard: every heading must be one the committed config declares
+### D5 — Guard: any heading carrying items must be one the committed config declares
 
 The generator falls back to a **single ungrouped `What's Changed` section containing every PR** when
 it finds no configuration — which would put 23 `internal` PRs into the App Store listing. So the
-renderer reads `.github/release.yml` for the set of titles it declares and **fails** on any heading
-outside that set. This turns the one dangerous failure mode (config not found, or renamed) into a red
-run before any mutation, and it is the only reason the script reads the config at all.
+renderer reads `.github/release.yml` for the set of titles it declares and **fails** when items appear
+under any other heading. This turns the one dangerous failure mode (config not found, or renamed) into
+a red run before any mutation, and it is the only reason the script reads the config at all.
+
+The guard is on headings that **carry items**, not on headings, because of the shape the generator
+actually emits — measured against the live API on 2026-07-31:
+
+- **With** a configuration, the categories are wrapped: `## What's Changed` carries **no items of its
+  own** and each category is rendered beneath it as `### <title>`.
+- **Without** one, every PR is listed **directly** under `## What's Changed`.
+
+So "an unrecognized heading carrying items" is exactly, and only, the unconfigured case, while an
+empty unrecognized wrapper is what a purely-`internal` range looks like (D8's fallback). Both levels
+are therefore read as headings, and both branches are pinned by a check against the live API: the
+range at this branch's head renders the six-item changelog, and the same range targeted at build 542's
+origin commit — which predates the config — is refused.
 
 ### D6 — Write with `asc localizations update --whats-new`, resolving the version id by string
 
@@ -148,10 +161,13 @@ them.
   already written as user-visible statements ("events now have an end date"); an `internal` PR's
   title is never read by a customer. The trade-off is accepted deliberately: the alternative is a
   second hand-written field, which is the thing that broke.
-- **`generate-notes` may read `.github/release.yml` from the target commit rather than the default
-  branch** → then promoting a build whose origin commit predates this change produces the ungrouped
-  fallback and D5's guard fails the run. Verified during implementation and recorded; the migration
-  below promotes a build that carries the config either way.
+- **`generate-notes` reads `.github/release.yml` from the `target_commitish`, not from the default
+  branch** — measured 2026-07-31, and stated by the generator itself in a leading HTML comment
+  (`Release notes generated using configuration in .github/release.yml at <sha>`). A build whose
+  origin commit predates this change therefore produces the ungrouped fallback and is **refused** by
+  D5's guard. This is a real constraint, not a transient one: it applies to every future promote of a
+  build built before a change to the categories. Consequence for shipping 0.2 in the migration below —
+  build 542 cannot be promoted, and a build from after this merge must be used instead.
 - **A hand-edited `whatsNew` in the ASC console is overwritten** → same posture as the review details
   and the screenshots: the repo wins on every run.
 
@@ -161,7 +177,8 @@ them.
    `.github/release.yml` starts governing GitHub's "Generate release notes" button too.
 2. Release 0.2 by promoting a build whose origin commit **contains** `.github/release.yml` — the
    version stays `0.2` until `v0.2` is tagged, so the next `main` build after this merge carries it.
-   Build 542, whose origin commit predates the config, is superseded rather than retried.
+   Build 542, whose origin commit predates the config, **cannot** be promoted (the risk above is
+   measured, not hypothetical): its generation is the ungrouped fallback and the guard refuses it.
 3. The 0.2 version record already exists from the failed run, with the build attached, screenshots
    uploaded, and review details applied; the promote is idempotent over all of it, and no `v0.2` tag
    was created, so the tag-absent guard passes.

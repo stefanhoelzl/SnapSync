@@ -50,9 +50,11 @@ MAX_CHARS = 4000
 # improvements" fiction.
 FALLBACK = "Under-the-hood improvements and fixes."
 
-# Sections GitHub appends ITSELF, which are not categories and carry items of their own, so the
-# heading guard would fail on them. Keep this minimal — it is an exception to the guard, and the
-# guard is the point.
+# Sections GitHub emits ITSELF, which are not categories and carry items of their own, so the heading
+# guard would fail on them. Keep this minimal — it is an exception to the guard, and the guard is the
+# point. (`What's Changed` is NOT in here: it is the wrapper the configured generation puts the
+# categories under, and it carries items only when NO configuration was in effect — the one case that
+# must fail. See parse().)
 GENERATOR_SECTIONS = {"New Contributors"}
 
 # `* <title> by @<user> in <url>` — the generator's item shape. Stripped rather than parsed, so a
@@ -119,13 +121,20 @@ def generate_notes(repo: str, tag: str, target: str, previous: str | None) -> st
 
 
 def parse(body: str) -> dict[str, list[str]]:
-    """Group the generated body into {heading: [item line, ...]} — headings validated by the caller."""
+    """Group the generated body into {heading: [item line, ...]} — headings validated by the caller.
+
+    MEASURED SHAPE (2026-07-31, and the whole reason the guard works): with a configuration in
+    effect the generator wraps the categories in an `## What's Changed` heading that carries no items
+    of its own and renders each category beneath it as `### <title>`. WITHOUT one it lists every pull
+    request directly under `## What's Changed`. So both levels are read as headings here, and "an
+    unknown heading that carries items" is exactly, and only, the unconfigured case.
+    """
     sections: dict[str, list[str]] = {}
     current: str | None = None
     for raw in body.splitlines():
         line = raw.rstrip()
-        if line.startswith("## "):
-            current = line[3:].strip()
+        if re.match(r"^#{2,4}\s+\S", line):
+            current = line.lstrip("#").strip()
             sections.setdefault(current, [])
             continue
         if not line.startswith("* "):
