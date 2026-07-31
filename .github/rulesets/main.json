@@ -60,6 +60,10 @@
 					{
 						"context": "diagrams",
 						"integration_id": 15368
+					},
+					{
+						"context": "check-label",
+						"integration_id": 15368
 					}
 				]
 			}

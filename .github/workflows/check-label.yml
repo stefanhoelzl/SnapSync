@@ -1,0 +1,56 @@
+# The changelog-label gate (capability `changelog-labels`). Every PR must carry exactly one of
+# `enhancement` / `bug` / `internal`, because the App Store release notes are DERIVED from those
+# labels (capability `ios-appstore-release`) and the derivation drops what it cannot categorize: an
+# unlabelled PR is silently absent from the changelog, with no signal in the release run and no
+# residual heading to catch it (`.github/release.yml` deliberately declares no catch-all).
+#
+# It is a REQUIRED status check (.github/rulesets/main.json). Safe to require for the same reason
+# `appstore-metadata-validate` is: it is triggered by pull-request events, so it always posts on a
+# PR's head commit and can never freeze merges the way a main-only check would. It costs a shipped
+# change nothing — `/ship` applies the label as it opens the PR.
+name: check-label
+
+on:
+  pull_request:
+    types: [opened, labeled, unlabeled, synchronize]
+
+permissions:
+  pull-requests: write # to comment the hint on failure
+
+concurrency:
+  group: check-label-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check-label:
+    # This display name is the status-check context required by .github/rulesets/main.json.
+    # Changing it without updating the ruleset would freeze merges (the required check would never
+    # be posted).
+    name: check-label
+    runs-on: ubuntu-latest
+    steps:
+      - name: Require a changelog label
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR: ${{ github.event.pull_request.number }}
+        run: |
+          set -euo pipefail
+          # Query LIVE labels, not the event payload. `gh pr create --label` applies the label in a
+          # separate API call ~1s after creating the PR, so the `opened` webhook snapshot
+          # (github.event.pull_request.labels) races it and is intermittently empty.
+          labels="$(gh pr view "$PR" --repo "$GITHUB_REPOSITORY" --json labels --jq '.labels[].name')"
+          for label in enhancement bug internal; do
+            if printf '%s\n' "$labels" | grep -qx "$label"; then
+              echo "found changelog label: $label"
+              exit 0
+            fi
+          done
+          echo "::error::PR must carry one of these labels: enhancement, bug, internal"
+          gh pr comment "$PR" --repo "$GITHUB_REPOSITORY" --body \
+            "This PR needs a changelog label before it can merge. Add one of \`enhancement\`, \`bug\`, or \`internal\`.
+
+          The App Store release notes are derived from these labels, so an unlabelled PR would be
+          silently missing from the next release's \"What's New\".
+
+          Hint: \`/ship\` adds the label automatically."
+          exit 1
