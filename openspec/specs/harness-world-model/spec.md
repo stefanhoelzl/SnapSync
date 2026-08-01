@@ -214,9 +214,15 @@ assertion in the world becomes a race, which is the opposite of what an operator
 
 `PhotoLibraryImporter.import` SHALL import the asset into the in-memory gallery (so it enters gallery
 enumeration) and mark the download store imported, so the imported asset's id enters `suppressedLocalIds()`;
-a settable import-failure SHALL yield `ImportResult.Failed`. Because the real `UploadCycle.suppressedAssetIds`
-and `OwnDeviceGalleryStatusSource` consult that suppression set, a foreign asset that is downloaded and
-imported SHALL NOT be re-uploaded by the own-device cycle.
+a settable import-failure SHALL yield `ImportResult.Failed`. The fake importer SHALL name each
+imported resource through the **same** shared rule the iOS importer applies (`importFilename`,
+capability `photo-download`), so the world can never show a human filename where a device would show
+a storage object key. A fake that is *more* correct than production is the failure mode this clause
+exists to close: the fake applied the published name directly while the device let PhotoKit name the
+resource after its staged file, and that divergence hid the wrong name from `:test:integration`
+entirely. Because the real `UploadCycle.suppressedAssetIds` and `OwnDeviceGalleryStatusSource` consult
+that suppression set, a foreign asset that is downloaded and imported SHALL NOT be re-uploaded by the
+own-device cycle.
 
 #### Scenario: A downloaded-and-imported asset is suppressed from re-upload
 
@@ -229,6 +235,12 @@ imported SHALL NOT be re-uploaded by the own-device cycle.
 
 - **WHEN** an enqueued download is not staged by the operator
 - **THEN** its resource remains PENDING for retry and no terminal failure is recorded
+
+#### Scenario: An imported asset carries the naming production would give it
+
+- **WHEN** a foreign asset whose manifest publishes a human filename is staged and imported
+- **THEN** the gallery asset it creates carries that filename, derived through the same shared
+  rule the device applies
 
 #### Scenario: Import failure is surfaced without a terminal state
 
