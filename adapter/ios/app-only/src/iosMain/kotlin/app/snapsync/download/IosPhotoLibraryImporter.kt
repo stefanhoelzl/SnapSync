@@ -1,9 +1,9 @@
 package app.snapsync.download
 
+import app.snapsync.model.importFilename
+import app.snapsync.ports.AssetRef
 import app.snapsync.ports.ImportResult
 import app.snapsync.ports.PhotoLibraryImporter
-
-import app.snapsync.ports.AssetRef
 import app.snapsync.ports.StagedResource
 import co.touchlab.kermit.Logger
 import kotlinx.cinterop.BetaInteropApi
@@ -16,6 +16,7 @@ import platform.Photos.PHAsset
 import platform.Photos.PHAssetCollection
 import platform.Photos.PHAssetCollectionChangeRequest
 import platform.Photos.PHAssetCreationRequest
+import platform.Photos.PHAssetResourceCreationOptions
 import platform.Photos.PHPhotoLibrary
 import kotlin.coroutines.resume
 
@@ -25,6 +26,10 @@ import kotlin.coroutines.resume
  * `performChanges` commit — there is no API to append to an existing asset), landing in the camera
  * roll. Role→`PHAssetResourceType`: `live`→`pairedVideo`; `primary`→`photo`/`video`/`audio` by
  * `contentType`. An unrecognised type is logged and skipped.
+ *
+ * Naming: each resource is created with an explicit `originalFilename` — the capturing device's own
+ * name, carried through the manifest and the union (see `importFilename`). Left to PhotoKit, the
+ * resource would be named after the staged file, which is the storage object key.
  *
  * Echo-suppression: the created asset's local identifier (sanitized to the upload-key `assetId` form,
  * `/`→`_`, so the upload extension's discovery matches it) is recorded via [recordCreatedLocalId]
@@ -52,7 +57,7 @@ class IosPhotoLibraryImporter(
                 log.w { "skip resource ${r.resourceKey}: unmapped role=${r.role} contentType=${r.contentType}" }
                 null
             } else {
-                type to r.stagedPath
+                Triple(type, r.stagedPath, importFilename(r.originalFilename, r.resourceKey))
             }
         }
         if (typed.isEmpty()) return ImportResult.Failed("no importable resources for ${ref.sourceAssetId}")
@@ -63,8 +68,14 @@ class IosPhotoLibraryImporter(
             PHPhotoLibrary.sharedPhotoLibrary().performChanges(
                 {
                     val request = PHAssetCreationRequest.creationRequestForAsset()
-                    for ((type, path) in typed) {
-                        request.addResourceWithType(type, NSURL.fileURLWithPath(path), null)
+                    for ((type, path, filename) in typed) {
+                        // Name the resource EXPLICITLY. With a nil options argument PhotoKit names it
+                        // after the file we hand it — and that file is staged under its storage object
+                        // name, so the photo would land in the library called
+                        // "<assetId>-primary.heic". The name is decided in `:domain` model/
+                        // (`importFilename`), which is where its fallback is unit-tested.
+                        val options = PHAssetResourceCreationOptions().apply { originalFilename = filename }
+                        request.addResourceWithType(type, NSURL.fileURLWithPath(path), options)
                     }
                     // Preserve the ORIGINAL capture date so the imported photo sorts by when it was
                     // taken, not when it was downloaded (default would be import time).

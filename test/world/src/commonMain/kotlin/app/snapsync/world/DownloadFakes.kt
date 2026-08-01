@@ -11,6 +11,7 @@ import app.snapsync.ports.StagedResource
 import app.snapsync.model.RawAsset
 import app.snapsync.model.RawResource
 import app.snapsync.model.ResourceRole
+import app.snapsync.model.importFilename
 import app.snapsync.model.normalizeAssetId
 
 /**
@@ -107,7 +108,9 @@ class FakePhotoLibraryImporter(
                     type = if (staged.role == ResourceRole.LIVE.wire) 9L else 1L,
                     contentTypeUti = staged.contentType,
                     mimeContentType = staged.contentType,
-                    originalFilename = staged.originalFilename,
+                    // The SAME naming rule the iOS importer applies (`importFilename`), so the world
+                    // cannot show a human name where a device would show a storage key.
+                    originalFilename = importFilename(staged.originalFilename, staged.resourceKey),
                     handle = Unit,
                 )
             },

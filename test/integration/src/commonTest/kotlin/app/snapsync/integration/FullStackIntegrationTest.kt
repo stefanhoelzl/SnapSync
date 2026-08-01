@@ -197,6 +197,24 @@ class FullStackIntegrationTest {
     }
 
     @Test
+    fun an_imported_foreign_photo_carries_the_capturing_devices_filename() = worldTest {
+        val w = World(this)
+        w.provision("E")
+        w.addForeignDevice("DEV-F", "E", listOf(World.foreignAsset("FQ", filename = "IMG_4471.HEIC")))
+
+        w.downloadController.reconcile("E")
+        w.stageAllDownloads()
+
+        // The whole point of the fix: what lands in the library is what the capturing device called it,
+        // NOT the storage object key — which carries the assetId and the `-primary` role token and was
+        // what PhotoKit picked up off the staged file when nobody named the resource.
+        val ref = w.importer.imported.first()
+        val importedLocalId = normalizeAssetId("imported-${ref.sourceDeviceId}-${ref.sourceAssetId}")
+        val imported = w.gallery.current().first { it.assetId == importedLocalId }
+        assertEquals(listOf("IMG_4471.HEIC"), imported.rawResources.map { it.originalFilename })
+    }
+
+    @Test
     fun a_limited_grant_receives_foreign_photos_and_never_reads_needs_access() = worldTest {
         // Receive-only under a LIMITED grant is a valid resting state (capability
         // `limited-photo-access`): imports work, no upload work is created (the read discipline keeps
