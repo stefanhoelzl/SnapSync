@@ -201,23 +201,52 @@ A user who installs from this page SHALL reach their event by opening the origin
 ### Requirement: Config source and store seams
 
 The capability SHALL define a persisted, joined-event state type **`EventConfig { eventId: String,
-name: String, minPhotoDate: String?, direction: Direction, saveToAlbum: Boolean }`** (distinct from the
-event-link wire type `EventLinkPayload`): `eventId` is the joined event; `name` is the human-readable event
-name — a **required, non-null** value (the join gate only provisions from a loaded phase that carries a
-name, capability `join-event`; a legacy item persisted without a name decodes to an empty string and is
-refreshed on foreground, so the type is never null); `minPhotoDate` is this device's chosen capture-date
-cutoff for the event (capability `photo-selection-policy`), **nullable** (absent = whole-library scope);
-`direction` is this device's chosen participation direction — a `Direction` enum with values `Both`,
-`UploadOnly`, `DownloadOnly` — that **SHALL default to `Both`** when absent from persisted or decoded
-state; `saveToAlbum` is whether this membership gathers its synced photos into an event album (capability
-`event-album`) and **SHALL default to `false`** when absent (so an `EventConfig` persisted before this
-field existed reads as `false`, today's no-album behavior). The capability SHALL define a `ConfigSource`
+name: String, minPhotoDate: CaptureCutoff, startsAt: EventStart, endsAt: EventEnd?, maxPhotoDate:
+CaptureCeiling, deletesAt: DeletesAt?, direction: Direction, saveToAlbum: Boolean }`** (distinct from the
+event-link wire type `EventLinkPayload`). Each field's behavior when **absent from decoded state** is
+part of this contract, and the two categories are deliberate: a field whose absence is survivable
+defaults, and a field whose absence would silently move a bound or a scope does not.
+
+- `eventId` is the joined event — required, no default.
+- `name` is the human-readable event name — **required, with no default**. A persisted payload lacking
+  the key SHALL fail to decode. It SHALL NOT default to the empty string: the join gate only provisions
+  from a loaded phase that carries a name (capability `join-event`) and the backend enforces
+  name-required on create (capability `event-creation`), so a nameless membership is not a representable
+  state, and a default that can never fire is an invitation for each reader to decide separately what an
+  empty name means. Requiring it also makes `name` a required **constructor** parameter, so every present
+  and future construction site must supply one under compiler enforcement. Note that this requires the
+  key to be **present**, not its value to be **non-blank**: a blank name is guarded at the details-fetch
+  boundary and nowhere else (capability `join-event`).
+- `minPhotoDate` is this device's chosen capture-date cutoff for the event (capability
+  `photo-selection-policy`) — **required and non-null, with no default**. A membership with no cutoff is
+  not a representable state; an absent cutoff once meant whole-library scope, which under event photo
+  sharing uploads a guest's entire camera roll to another person's event.
+- `startsAt` is the event's start date and the floor of this membership's cutoff — it **SHALL default to
+  `minPhotoDate`** when absent, the only value guaranteed consistent with the floor invariant
+  `minPhotoDate >= startsAt`.
+- `endsAt` is the event's declared end date — **nullable, defaulting to `null`**, backfilled by the
+  membership refresh when absent (capability `event-rejoin-reconciliation`).
+- `maxPhotoDate` is this membership's capture-date ceiling — **required and non-null, with no default**,
+  like `minPhotoDate`.
+- `deletesAt` is when the backend deletes the event's shared data — **nullable, defaulting to `null`**,
+  where `null` means *deadline not yet learned*, backfilled by the membership refresh. The default fails
+  toward keeping the membership: the self-leave cannot fire on a membership that has not learned its
+  deadline (capability `leave-event`).
+- `direction` is this device's chosen participation direction — a `Direction` enum with values `Both`,
+  `UploadOnly`, `DownloadOnly` — that **SHALL default to `Both`** when absent from persisted or decoded
+  state.
+- `saveToAlbum` is whether this membership gathers its synced photos into an event album (capability
+  `event-album`) and **SHALL default to `false`** when absent (so an `EventConfig` persisted before this
+  field existed reads as `false`, today's no-album behavior).
+
+The capability SHALL define a `ConfigSource`
 state port exposing `config: StateFlow<EventConfig?>` — a level-triggered holder whose current value (the
 active config, or `null` when none) is always available synchronously — and a `ConfigStore` command port
 with `suspend fun save(config: EventConfig)` that persists the config and updates the source, and
-`suspend fun clear()` that removes it and updates the source to `null`. `save` of a config equal to the
-current one (same `eventId`, `name`, `minPhotoDate`, `direction`, **and** `saveToAlbum`) SHALL be an
-idempotent no-op; a `save` differing in any of those SHALL replace it and emit (a name-only change updates
+`suspend fun clear()` that removes it and updates the source to `null`. `save` of a config equal
+**field-for-field** to the
+current one SHALL be an
+idempotent no-op; a `save` differing in any field SHALL replace it and emit (a name-only change updates
 the title without any ledger effect; the switch-reset on an `eventId` change is orchestrated by the
 provision path, not this seam). `clear` SHALL remove the persisted config and set the source to `null`,
 and SHALL NOT touch the ledger, **and SHALL NOT clear the event-album map** (capability `event-album`,
@@ -226,18 +255,22 @@ SHALL be an idempotent no-op. Consumers SHALL depend on each port separately.
 
 #### Scenario: Source seeds the current config synchronously
 - **WHEN** a `ConfigSource` implementation is constructed while a config is already persisted
-- **THEN** `config.value` immediately reflects the persisted `EventConfig` (eventId, name, any minPhotoDate, its direction, and its saveToAlbum) without waiting for an emission
+- **THEN** `config.value` immediately reflects the persisted `EventConfig`, field for field, without waiting for an emission
 
 #### Scenario: A pre-existing config without saveToAlbum reads as false
 - **WHEN** a `ConfigSource` is constructed over a persisted `EventConfig` serialized before the `saveToAlbum` field existed
 - **THEN** `config.value.saveToAlbum` is `false` (the default), preserving today's no-album behavior
 
-#### Scenario: A pre-existing config without a name decodes non-null
-- **WHEN** a `ConfigSource` is constructed over a persisted `EventConfig` serialized without a name
-- **THEN** `config.value.name` is a non-null empty string (refreshed on the next foreground fetch), never a decode error
+#### Scenario: A config without a name does not decode
+- **WHEN** a persisted `EventConfig` payload carries no `name` key
+- **THEN** the decode fails, and the read reports the outcome its store defines for an undecodable payload — never a config with a substituted empty name
+
+#### Scenario: A config whose name is the empty string decodes
+- **WHEN** a persisted `EventConfig` payload carries `"name": ""`
+- **THEN** it decodes successfully with that value, because the type requires the key to be present and not its value to be non-blank — the blank-name guard lives at the details-fetch boundary (capability `join-event`)
 
 #### Scenario: Saving a name-only update emits without a switch
-- **WHEN** `save` is invoked with the same `eventId`, `minPhotoDate`, `direction`, and `saveToAlbum` and a newly-fetched `name`
+- **WHEN** `save` is invoked with every other field unchanged and a newly-fetched `name`
 - **THEN** the persisted config's name is updated and `config` emits, with no ledger reset
 
 #### Scenario: Saving a different event hot-swaps the source
@@ -245,13 +278,12 @@ SHALL be an idempotent no-op. Consumers SHALL depend on each port separately.
 - **THEN** the persisted config is replaced and `config` emits the new `EventConfig`
 
 #### Scenario: Saving an identical config is a no-op
-- **WHEN** `save` is invoked with a config equal to the current value (same eventId, name, minPhotoDate, direction, and saveToAlbum)
+- **WHEN** `save` is invoked with a config equal field-for-field to the current value
 - **THEN** no change and no redundant emission occur
 
 #### Scenario: Clearing removes the config but keeps the album map
 - **WHEN** `clear()` is invoked while a config is persisted
 - **THEN** the persisted config is removed and `config` emits `null`, with no change to the ledger and no change to the event-album map
-
 ### Requirement: An unreadable config is not an absent config
 
 The config seam SHALL distinguish three outcomes: a **readable** config, a **definitely absent**
@@ -385,7 +417,8 @@ link it) implementing `ConfigSource`, `ConfigStore`, and the three-state `Config
 **single file in the App-Group container root** — filename `eventconfig.json`, a pinned
 runtime-identity literal (capability `architecture-guards`) — holding a **versioned envelope**
 `{"v": 1, "payload": <serialized EventConfig>}`. The payload carries the whole `EventConfig` (its
-`eventId`, `name`, its **required, non-null** `minPhotoDate`, its `startsAt`, its `direction`, and
+`eventId`, its **required** `name`, its **required, non-null** `minPhotoDate`, its `startsAt`, its
+`endsAt`, its **required, non-null** `maxPhotoDate`, its `deletesAt`, its `direction`, and
 its `saveToAlbum`), so the background upload extension reads the `eventId`, the cutoff, and the
 album flag from the same file the app writes. The envelope codec and the read algorithm SHALL be
 pure `:domain` functions covered in `commonTest` (JVM **and** iOS simulator); the adapter SHALL
@@ -431,10 +464,11 @@ fallback deletion. Maintaining the item on save would be the write-through this 
 
 **Version handling.** Decoding SHALL ignore unknown keys on both the envelope and the payload (a
 same-version additive change needs no version bump, and the `EventConfig` legacy-field defaults
-apply exactly as before — an item without `saveToAlbum`/`direction` decodes to `false`/`Both`, a
-missing `name` to the empty string). A **current-version** payload lacking `minPhotoDate` SHALL
-fail to decode and read as **unreadable** — no default cutoff substituted, the failure logged, no
-upload until the user re-scans (a save overwrites the file). The Keychain legacy-item rule — an
+apply exactly as before — an item without `saveToAlbum`/`direction` decodes to `false`/`Both`, one
+without `endsAt`/`deletesAt` to `null`, one without `startsAt` to its `minPhotoDate`). A
+**current-version** payload lacking `minPhotoDate`, `maxPhotoDate`, **or `name`** SHALL
+fail to decode and read as **unreadable** — no default substituted, the failure logged, no
+upload until the user re-joins (a save overwrites the file). The Keychain legacy-item rule — an
 undecodable item reads as no config — deliberately does NOT transfer to the file: the adapter's
 own atomic writes make an unusable current-version file unreachable, so one is an unexplained
 state, and an unexplained state defers rather than driving a leave; the rule stays in force on
@@ -508,6 +542,13 @@ posture (decision record: `changes/archive/migrate-config-to-app-group-file`, D6
 - **THEN** the decode fails, the failure is logged, the read reports **unreadable** (never
   no-config — no marker is cleared), no default cutoff is substituted, and no upload occurs until
   the user re-joins
+
+#### Scenario: A current-version file without a name reads as unreadable
+
+- **WHEN** a read finds a current-version envelope whose payload lacks `name`
+- **THEN** the decode fails, the failure is logged, the read reports **unreadable** (never
+  no-config — the file is left intact, no marker is cleared, and no backend leave is issued), and
+  no empty name is substituted
 
 #### Scenario: A trigger-time reload retains the membership on a transient failure
 
