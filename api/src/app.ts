@@ -3,11 +3,9 @@
 // over the shared `backend-deployment`; pushes via `apns-push-sender`).
 //
 // VERSIONED PREFIX (capability `backend-deployment`): every device-API route below is served under the
-// canonical prefix `/api/v1` (e.g. `POST /api/v1/events`, `GET /api/v1/attest/challenge`) AND — for a
-// grace period — at the BARE path shown below as a DEPRECATED ALIAS, so already-installed apps (host baked
-// at compile time, not force-updatable) keep working. The paths documented here are written bare; read each
-// as also available under `/api/v1`. The web/link routes (`/`, `/join`, the AASA) stay at the ROOT only,
-// never under `/api/v1`. See `createApp` for the two mounts and how to end the grace period.
+// prefix `/api/v1` — the paths are written that way here, and that is the one shape they answer at. The
+// web/link routes (`/`, `/join`, the AASA) stay at the ROOT only, never under `/api/v1`. The routing is
+// version-parametric: a future `/api/v2` is one more mount in `createApp`.
 //
 // EVERY ROUTE BELOW REQUIRES A DEVICE TOKEN (capability `device-attestation`) — obtainable only by
 // completing App Attest, so the API is callable by a genuine, unmodified SnapSync on a genuine Apple
@@ -15,59 +13,59 @@
 // `/attest/*` routes (self-authenticating — they issue the token) and `OPTIONS` (the pull zone may answer
 // the preflight itself, so the script cannot gate it). See the middleware in `createApp`.
 //
-//   GET /attest/challenge
+//   GET /api/v1/attest/challenge
 //     → a stateless, HMAC-signed, time-bounded nonce. Writes NOTHING.
-//   POST /attest/token
+//   POST /api/v1/attest/token
 //     → verifies an App Attest attestation (chain → Apple's root, nonce, app-id hash, counter, aaguid),
 //       persists the attested public key at `devices/<id>.attest.json`, and mints a 30-day bearer token.
-//   POST /attest/renew
+//   POST /api/v1/attest/renew
 //     → verifies a local Secure-Enclave ASSERTION against that stored key and mints a fresh token — no
 //       Apple round-trip, because re-attestation is the throttled path.
 //
-//   POST /events
+//   POST /api/v1/events
 //     → mints an event: writes the marker `events/<id>/metadata.json` — stamping `capacity` and the
 //       `lifetimeSeconds` DURATION, and validating the creator's `endsAt` against the configured window
 //       maximum (capability `event-limits`) — and returns
 //       {eventId,name,createdAt,startsAt,endsAt,capacity,deletesAt}.
-//   GET /events/:eventId
+//   GET /api/v1/events/:eventId
 //     → returns the event (existence check) with the DERIVED `deletesAt`; 404 when absent OR `gone`
 //       (legacy/corrupt marker). Never deletes on touch, even past the deadline.
-//   PUT /devices/:deviceId
+//   PUT /api/v1/devices/:deviceId
 //     → streams a JSON device config (the push token) into `devices/<deviceId>.json`. UNGATED by
 //       event; DEVICE-ID is the capability. Faithful 201/502; last-write-wins. A flat sibling of the
 //       `files/devices/<deviceId>/` byte partition, so never listed as an asset.
-//   POST /events/:eventId/notify
+//   POST /api/v1/events/:eventId/notify
 //     → sends a fixed SILENT (content-available) push to every ACTIVE member device (a departed
 //       `<id>.left.json` member is skipped). GATED on the marker (404/502). Enumerate members
 //       (LIST `events/<id>/devices/`, resolve active via last-write-wins) → read each `devices/<id>.json`
 //       → best-effort fan-out via APNs. Bare 202 (no per-device results); 502 only if the member LIST
 //       fails. Authorized by a device token — the ONLY credential this backend accepts.
-//   PUT /files/devices/:deviceId/:filename
+//   PUT /api/v1/files/devices/:deviceId/:filename
 //     → streams the request body into ONE bunny native Storage PUT. Requires the token, but reads NO
 //       marker: bytes are device-partitioned and event-independent (`files/devices/<deviceId>/<filename>`),
 //       uploaded once and linked into events by reference. The device id remains self-asserted — the token
 //       proves a genuine app instance, NOT ownership of the partition (a stated non-goal; the UUID is the
 //       capability). The OS performs this PUT and DOES carry the header (verified on device). (There is no
 //       download GET on this path — the listing hands out a presigned S3 URL fetched directly from S3.)
-//   GET /files/devices/:deviceId
+//   GET /api/v1/files/devices/:deviceId
 //     → lists the device's RAW stored objects (a single LIST of `files/devices/<deviceId>/`); each is
 //       `{ filename, size, url }` where `url` is a presigned S3 GET URL. No manifest read, no
 //       completeness, no event gate. `Cache-Control: no-store, no-cache, max-age=0` (time-limited urls;
 //       see NO_CACHE — the pull zone honors `no-cache`, not `no-store`).
-//   PUT /events/:eventId/devices/:deviceId
+//   PUT /api/v1/events/:eventId/devices/:deviceId
 //     → streams a JSON device manifest into `events/<eventId>/devices/<deviceId>.json`. GATED on event
 //       existence (the marker read) so a manifest is never written under a non-existent event, AND on
 //       CAPACITY (capability `event-limits`): a device id never enrolled (no active or `.left` sibling)
 //       is refused 409 once `capacity` distinct device ids have ever enrolled (leaving frees no slot);
 //       a known device's writes always pass. Capacity is the ONLY refusal — enrollment is never closed
 //       by time, however long after `endsAt` it arrives.
-//   DELETE /events/:eventId/devices/:deviceId
+//   DELETE /api/v1/events/:eventId/devices/:deviceId
 //     → LEAVE (capability `event-leave-endpoint`): RENAME-ONLY. Renames the device's active manifest to
 //       `<deviceId>.left.json` (departed — still served by the union, skipped by notify) and returns 200
 //       regardless of remaining membership. NON-DESTRUCTIVE: no reap here, no leave-time GC. When this
 //       was the LAST active member the event becomes EMPTY, and the nightly sweep (capability
 //       `scheduled-cleanup`) reclaims it on its next run. GATED on the marker (404/502). Idempotent.
-//   GET /events/:eventId/files
+//   GET /api/v1/events/:eventId/files
 //     → the event-wide UNION: every contributing device's COMPLETE assets (an asset is complete iff
 //       every resource its device.json names is present in `files/devices/<deviceId>/`), flattened across
 //       devices, each tagged with its owning deviceId. GATED on event existence (marker read). Fans
@@ -496,11 +494,11 @@ export function createApp({ fetch: fetchImpl, config, now = Date.now }: Deps): H
   //     fallback the iOS uploader depends on.
   app.use("*", async (c, next) => {
     const method = c.req.method;
-    // Device-API routes are served under a versioned prefix (`/api/v1`, capability `backend-deployment`)
-    // AND — for the grace period — at the bare paths as a deprecated alias. Hono does NOT strip the mount
-    // prefix from the path accessors, so normalize a leading `/api/vN` away HERE, once, before the
-    // closed-list checks below. This is deliberately version-agnostic (`v\d+`): a future `/api/v2` mount is
-    // gated identically with no change here. `/api/v1` → `/`, `/api/v1/attest/x` → `/attest/x`.
+    // Device-API routes are served under a versioned prefix (`/api/v1`, capability `backend-deployment`),
+    // and Hono does NOT strip the mount prefix from the path accessors — so normalize a leading `/api/vN`
+    // away HERE, once, before the closed-list checks below, which are written in un-prefixed terms. This is
+    // deliberately version-agnostic (`v\d+`): a future `/api/v2` mount is gated identically with no change
+    // here. `/api/v1` → `/`, `/api/v1/attest/x` → `/attest/x`.
     const rawPath = new URL(c.req.url).pathname;
     const stripped = rawPath.replace(/^\/api\/v\d+(?=\/|$)/, "");
     const path = stripped === "" ? "/" : stripped;
@@ -511,8 +509,8 @@ export function createApp({ fetch: fetchImpl, config, now = Date.now }: Deps): H
     // attestation. These three (`/`, `/join`, the AASA) are exact-path and GET/HEAD-only — never a prefix,
     // never a mutating method — and read no storage, so serving them unauthenticated grows neither the bill
     // nor the storage this gate protects. They are served at the ROOT only, never under `/api/v1`; the
-    // normalization above matters for `/attest/*` (a device route reachable under the prefix) AND for the
-    // two event READS added below, which ARE device routes and so are matched on the normalized `path`.
+    // normalization above is what lets `/attest/*` (a device route, so it arrives prefixed) AND the two
+    // event READS added below — also device routes — be matched here on the normalized `path`.
     // `/` and the site's fingerprinted assets under `/_astro/*` are the browser-facing site (capability
     // `web-site`), proxied by the api from the PUBLIC storage `site/` prefix. Unlike the other public GETs
     // they DO read storage — but only the public `site/` prefix, never the bill-/photo-protected user data
@@ -613,15 +611,13 @@ export function createApp({ fetch: fetchImpl, config, now = Date.now }: Deps): H
 
   // ── THE DEVICE API (capability `backend-deployment`) ────────────────────────────────────────────
   //
-  // Every device-API route below is registered on this ONE sub-app, mounted twice: canonically under
-  // `/api/v1`, and — for a grace period — at the bare root paths as a DEPRECATED ALIAS so already-installed
-  // apps (whose device-facing host is baked at compile time and cannot be force-updated) keep working. The
-  // routing is version-parametric by construction: a future `/api/v2` is one more `app.route(...)` of a v2
-  // router, without touching v1. ENDING THE GRACE PERIOD is deleting the single bare-alias mount line at the
-  // end of `createApp` — nothing else. The web/link routes above stay at the ROOT, never under `/api/v1`.
+  // Every device-API route below is registered on this ONE sub-app, mounted under `/api/v1` at the end of
+  // `createApp`. Keeping the sub-app is what makes the routing version-parametric by construction: a future
+  // `/api/v2` is one more `app.route(...)` of a v2 router, without touching v1. The web/link routes above
+  // stay at the ROOT, never under `/api/v1`.
   //
-  // The gate (`app.use("*")`) runs for BOTH mounts (verified: Hono runs parent middleware for mounted
-  // sub-apps) and normalizes the `/api/vN` prefix, so the ungated `/attest/*` set holds under both forms.
+  // The gate (`app.use("*")`) runs for the mount (verified: Hono runs parent middleware for mounted
+  // sub-apps) and normalizes the `/api/vN` prefix, so the ungated `/attest/*` set holds under it.
   const deviceApi = new Hono();
 
   // Issue a challenge. Stateless and self-authenticating (an HMAC over its own expiry), so this writes
@@ -1131,10 +1127,9 @@ export function createApp({ fetch: fetchImpl, config, now = Date.now }: Deps): H
   // Mount the per-device byte object routes; any unmatched path or wrong method → Hono's 404.
   deviceApi.route("/files/devices/:deviceId/:filename", byteFile);
 
-  // Mount the device API under the canonical versioned prefix, and — for the grace period — at the bare
-  // root paths as a DEPRECATED ALIAS. Both are gated by the one `app.use("*")` above (which normalizes the
-  // `/api/vN` prefix). To END THE GRACE PERIOD, delete the bare-alias mount line below; nothing else changes.
-  app.route("/api/v1", deviceApi); // canonical
-  app.route("/", deviceApi); // deprecated bare alias — DELETE to end the grace period
+  // Mount the device API under the versioned prefix — the one shape it is served at. Gated by the one
+  // `app.use("*")` above, which normalizes the `/api/vN` prefix before its checks, so a future `/api/v2`
+  // is ONE MORE MOUNT LINE here and needs no change to the gate.
+  app.route("/api/v1", deviceApi);
   return app;
 }
