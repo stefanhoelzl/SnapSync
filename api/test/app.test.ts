@@ -726,6 +726,164 @@ Deno.test("GET /events/:id → 502 on non-404 marker read failure", async () => 
   assertEquals(res.status, 502);
 });
 
+// ── PATCH /events/:eventId (rename, capability `event-rename`) ──────────────────────────────────────
+//
+// The ONLY route that rewrites an existing marker. `name` is the single exception to the marker's
+// write-once rule; every other field must come back VERBATIM, which is what makes a race with the
+// nightly sweep self-defusing.
+
+const rename = (fetchImpl: FetchLike, body: unknown, id = E) =>
+  createApp({ config: CONFIG, fetch: fetchImpl }).request(`/api/v1/events/${id}`, {
+    method: "PATCH",
+    body: typeof body === "string" ? body : JSON.stringify(body),
+    headers: { "content-type": "application/json" },
+  });
+
+Deno.test("PATCH /events/:id → 200 echoing the stored name + one marker PUT rewriting only `name`", async () => {
+  const { store, calls, fetchImpl } = storageFake({
+    [`events/${E}/metadata.json`]: { json: MARKER_BODY },
+  });
+  const res = await rename(fetchImpl, { name: "Ana's 30th" });
+  assertEquals(res.status, 200);
+  // The wire shape is the metadata route's: the marker's fields plus the DERIVED delete-by.
+  assertEquals(await res.json(), { ...MARKER_BODY, name: "Ana's 30th", deletesAt: ENDS_AT });
+  // Exactly one read then one write, and the write lands on the marker key.
+  const puts = calls.filter((c) => (c.init.method ?? "GET") === "PUT");
+  assertEquals(puts.length, 1);
+  assertEquals(puts[0].url, MARKER_URL);
+  const h = new Headers(puts[0].init.headers);
+  assertEquals(h.get("AccessKey"), "zone-password");
+  assertEquals(h.get("Content-Type"), "application/json");
+  // THE INVARIANT: the stored marker differs from the original in `name` alone.
+  assertEquals(JSON.parse(store.get(`events/${E}/metadata.json`)!.body), {
+    ...MARKER_BODY,
+    name: "Ana's 30th",
+  });
+});
+
+Deno.test("PATCH /events/:id → name is trimmed before store and echo", async () => {
+  const { store, fetchImpl } = storageFake({
+    [`events/${E}/metadata.json`]: { json: MARKER_BODY },
+  });
+  const res = await rename(fetchImpl, { name: "  Ana's 30th  " });
+  assertEquals(res.status, 200);
+  assertEquals((await res.json()).name, "Ana's 30th");
+  assertEquals(JSON.parse(store.get(`events/${E}/metadata.json`)!.body).name, "Ana's 30th");
+});
+
+Deno.test("PATCH /events/:id → every other marker field survives VERBATIM (the sweep race self-defuses)", async () => {
+  // A marker carrying the STAMPED lifetime, so the rewrite has every field a live marker can hold —
+  // including the one whose restamping would resurrect a swept event for a fresh lifetime.
+  const stamped = { ...MARKER_BODY, lifetimeSeconds: 24 * 60 * 60 };
+  const { store, fetchImpl } = storageFake({
+    [`events/${E}/metadata.json`]: { json: stamped },
+  });
+  assertEquals((await rename(fetchImpl, { name: "Renamed" })).status, 200);
+  const after = JSON.parse(store.get(`events/${E}/metadata.json`)!.body);
+  // Field-by-field, so a future field added to the marker fails this test loudly rather than silently.
+  assertEquals(after.eventId, stamped.eventId);
+  assertEquals(after.createdAt, stamped.createdAt);
+  assertEquals(after.startsAt, stamped.startsAt);
+  assertEquals(after.endsAt, stamped.endsAt);
+  assertEquals(after.capacity, stamped.capacity);
+  assertEquals(after.lifetimeSeconds, stamped.lifetimeSeconds); // NOT restamped
+  assertEquals({ ...after, name: stamped.name }, stamped);
+});
+
+Deno.test("PATCH /events/:id → 100-char name accepted (boundary)", async () => {
+  const { fetchImpl } = storageFake({ [`events/${E}/metadata.json`]: { json: MARKER_BODY } });
+  const res = await rename(fetchImpl, { name: "x".repeat(100) });
+  assertEquals(res.status, 200);
+  assertEquals((await res.json()).name, "x".repeat(100));
+});
+
+Deno.test("PATCH /events/:id → empty / whitespace / over-long / missing / non-JSON name → 400, NO upstream", async () => {
+  for (const body of [{ name: "" }, { name: "   " }, { name: "x".repeat(101) }, {}, "not json"]) {
+    const { calls, fetchImpl } = storageFake({
+      [`events/${E}/metadata.json`]: { json: MARKER_BODY },
+    });
+    const res = await rename(fetchImpl, body);
+    assertEquals(res.status, 400);
+    assertEquals(calls.length, 0); // not even the marker READ — validation precedes the gate
+  }
+});
+
+Deno.test("PATCH /events/:id → 400 on non-UUID, no upstream", async () => {
+  const { calls, fetchImpl } = storageFake({});
+  const res = await rename(fetchImpl, { name: "Renamed" }, "not-a-uuid");
+  assertEquals(res.status, 400);
+  assertEquals(calls.length, 0);
+});
+
+Deno.test("PATCH /events/:id → 404 when the marker is absent, and nothing is written", async () => {
+  const { store, calls, fetchImpl } = storageFake({});
+  const res = await rename(fetchImpl, { name: "Renamed" });
+  assertEquals(res.status, 404);
+  assertEquals(store.size, 0); // a rename NEVER creates an event
+  assertEquals(calls.filter((c) => (c.init.method ?? "GET") === "PUT").length, 0);
+});
+
+Deno.test("PATCH /events/:id → a legacy (`gone`) marker is 404, and is NOT rewritten", async () => {
+  // Same reading as the metadata gate: an incomplete marker cannot be served, so it cannot be renamed
+  // either — a rewrite would resurrect a marker the sweep is about to reclaim.
+  const legacy = { eventId: E, name: "Party", createdAt: "2026-06-27T00:00:00.182Z" };
+  const { store, fetchImpl } = storageFake({ [`events/${E}/metadata.json`]: { json: legacy } });
+  const res = await rename(fetchImpl, { name: "Renamed" });
+  assertEquals(res.status, 404);
+  assertEquals(JSON.parse(store.get(`events/${E}/metadata.json`)!.body), legacy); // untouched
+});
+
+Deno.test("PATCH /events/:id → 502 on a non-404 marker read failure (never mistaken for absence)", async () => {
+  const { fetchImpl } = listFake({ [MARKER_URL]: { status: 500 } });
+  const res = await rename(fetchImpl, { name: "Renamed" });
+  assertEquals(res.status, 502);
+});
+
+Deno.test("PATCH /events/:id → marker PUT rejected (500) → 502 (faithful rename)", async () => {
+  const calls: Call[] = [];
+  const fetchImpl: FetchLike = (url, init) => {
+    calls.push({ url, init });
+    if ((init.method ?? "GET") === "PUT") {
+      return Promise.resolve(new Response("no", { status: 500 }));
+    }
+    return Promise.resolve(new Response(JSON.stringify(MARKER_BODY), { status: 200 }));
+  };
+  const res = await rename(fetchImpl, { name: "Renamed" });
+  assertEquals(res.status, 502); // the rename is only real once the store confirms it
+  assertEquals(calls.filter((c) => (c.init.method ?? "GET") === "PUT").length, 1);
+});
+
+Deno.test("PATCH /events/:id → marker PUT throws → 502", async () => {
+  const fetchImpl: FetchLike = (_url, init) => {
+    if ((init.method ?? "GET") === "PUT") return Promise.reject(new Error("boom"));
+    return Promise.resolve(new Response(JSON.stringify(MARKER_BODY), { status: 200 }));
+  };
+  assertEquals((await rename(fetchImpl, { name: "Renamed" })).status, 502);
+});
+
+Deno.test("PATCH /events/:id → any member may rename: no ownership check exists", async () => {
+  // The marker records no creator, and the route consults none — a second device holding the event id
+  // renames exactly as the first would. Possession of the id already authorizes far more than this.
+  const { store, fetchImpl } = storageFake({
+    [`events/${E}/metadata.json`]: { json: MARKER_BODY },
+  });
+  assertEquals((await rename(fetchImpl, { name: "By a guest" })).status, 200);
+  assertEquals(JSON.parse(store.get(`events/${E}/metadata.json`)!.body).name, "By a guest");
+});
+
+Deno.test("PUT /events/:id → 404 (only GET and PATCH are served on the event path)", async () => {
+  const { calls, fetchImpl } = storageFake({
+    [`events/${E}/metadata.json`]: { json: MARKER_BODY },
+  });
+  const res = await createApp({ config: CONFIG, fetch: fetchImpl }).request(`/api/v1/events/${E}`, {
+    method: "PUT",
+    body: JSON.stringify({ name: "Renamed" }),
+    headers: { "content-type": "application/json" },
+  });
+  assertEquals(res.status, 404);
+  assertEquals(calls.length, 0);
+});
+
 // ── GET /events/:eventId/files (event-wide UNION read, capability `bunny-list-endpoint`) ────────────
 
 const D2 = "22222222-0000-4000-8000-000000000003"; // a second contributing deviceId

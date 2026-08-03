@@ -11,8 +11,13 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawing
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.union
 import androidx.compose.foundation.layout.windowInsetsPadding
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -31,6 +36,11 @@ import androidx.compose.ui.unit.sp
  * body content (the screen is a glanceable status display), and a bottom action cluster centered
  * across the width. Screens supply one or more action composables; this container row-arranges them
  * centered with consistent spacing, so the screen never hardcodes anchor or row geometry (spec: design-system).
+ *
+ * [onEditHeading] is the heading's edit affordance (capability `event-rename`). It is the deliberate
+ * OPPOSITE of [onTitleDoubleTap]: a visible control with click semantics and an accessibility label,
+ * because renaming an event is something a member should be able to find. The two never collide — they
+ * sit on different slots (the app-name label and the heading), and only one of them is a control.
  *
  * The background `Surface` fills the whole screen (painting edge-to-edge under the iOS notch /
  * home indicator), while the content `Column` insets past the safe-area before applying the
@@ -58,6 +68,15 @@ fun ScreenLayout(
     // must be invisible and absent from the accessibility tree, so it is discoverable only to someone
     // told about it.
     onTitleDoubleTap: (() -> Unit)? = null,
+    // The heading's edit affordance (capability `event-rename`): a real control beside the event name.
+    // `null` — the default, and every screen that renders no heading — renders nothing at all, leaving
+    // the layout byte-identical to what it was before this parameter existed.
+    //
+    // Deliberately an `IconButton` rather than a raw gesture: unlike `onTitleDoubleTap` above, this one
+    // MUST read as a control and MUST appear in the accessibility tree. The pencil glyph and the flat
+    // treatment are the skin's, contained here.
+    onEditHeading: (() -> Unit)? = null,
+    editHeadingDescription: String = "Rename event",
     content: @Composable ColumnScope.() -> Unit,
 ) {
     Surface(modifier = Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
@@ -98,14 +117,37 @@ fun ScreenLayout(
                         } ?: Modifier,
                     ),
             )
-            // The prominent heading (the joined event's name), directly beneath the nav label.
+            // The prominent heading (the joined event's name), directly beneath the nav label. With an
+            // edit affordance it becomes a centered row: the name keeps its own centering (it is the
+            // thing being read) and the control sits beside it rather than displacing it.
             if (heading != null) {
-                Text(
-                    text = heading,
-                    style = MaterialTheme.typography.headlineSmall.copy(fontWeight = FontWeight.Bold),
-                    textAlign = TextAlign.Center,
-                    modifier = Modifier.fillMaxWidth().padding(bottom = 12.dp),
-                )
+                if (onEditHeading == null) {
+                    Text(
+                        text = heading,
+                        style = MaterialTheme.typography.headlineSmall.copy(fontWeight = FontWeight.Bold),
+                        textAlign = TextAlign.Center,
+                        modifier = Modifier.fillMaxWidth().padding(bottom = 12.dp),
+                    )
+                } else {
+                    Row(
+                        modifier = Modifier.fillMaxWidth().padding(bottom = 12.dp),
+                        horizontalArrangement = Arrangement.Center,
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Text(
+                            text = heading,
+                            style = MaterialTheme.typography.headlineSmall.copy(fontWeight = FontWeight.Bold),
+                            textAlign = TextAlign.Center,
+                        )
+                        IconButton(onClick = onEditHeading, modifier = Modifier.size(40.dp)) {
+                            Icon(
+                                imageVector = Icons.Filled.Edit,
+                                contentDescription = editHeadingDescription,
+                                modifier = Modifier.size(20.dp),
+                            )
+                        }
+                    }
+                }
             }
             Column(
                 modifier = Modifier.weight(1f).fillMaxWidth(),

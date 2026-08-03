@@ -7,6 +7,7 @@ import app.snapsync.compose.snapSyncApp
 import app.snapsync.compose.uploadCore
 import app.snapsync.download.HttpEventUnionSource
 import app.snapsync.eventcreation.HttpEventCreation
+import app.snapsync.eventcreation.HttpEventRename
 import app.snapsync.fake.InMemoryAttestStore
 import app.snapsync.fake.InMemoryDeviceLogSource
 import app.snapsync.fake.InMemoryDiagnosticsReporter
@@ -19,6 +20,7 @@ import app.snapsync.fake.InMemoryDownloadStore
 import app.snapsync.fake.InMemoryJoinedEventMarker
 import app.snapsync.fake.InMemoryLedgerStore
 import app.snapsync.feature.creation.MutableCreationStatusSource
+import app.snapsync.feature.membership.MutableRenameStatusSource
 import app.snapsync.feature.download.DownloadController
 import app.snapsync.feature.download.StoreDownloadStatusSource
 import app.snapsync.feature.membership.JoinEvent
@@ -305,6 +307,7 @@ class World(
             enrollment = manifestUploader,
             manifestStore = manifestStore,
             eventCreation = HttpEventCreation(client, host),
+            eventRename = HttpEventRename(client, host),
             attestKey = attestKey,
             attestClient = attestClient,
             attestStore = InMemoryAttestStore(),
@@ -332,6 +335,9 @@ class World(
     val ownGallery: OwnDeviceGalleryStatusSource get() = core.gallery
     val ledgerCounts: ReadingLedgerCountsSource get() = core.ledgerCounts
     val creationStatus: MutableCreationStatusSource get() = core.creationStatus
+
+    /** The rename status the real `RenameEvent` drives (capability `event-rename`). */
+    val renameStatus: MutableRenameStatusSource get() = core.renameStatus
     val downloadStatusSource: StoreDownloadStatusSource get() = core.downloadStatusSource
     val syncStatusSource: SyncStatusSource get() = core.syncStatusSource
     val userCommands: UserCommands get() = core.userCommands

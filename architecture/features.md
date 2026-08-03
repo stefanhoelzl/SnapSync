@@ -28,8 +28,8 @@ on drift; regenerate instead.
 
 ## `feature/membership`
 
-- files: `DeviceEnroller.kt`, `DeviceManifestProducer.kt`, `JoinDetails.kt`, `JoinEvent.kt`, `LeaveEvent.kt`, `MembershipRefresh.kt`, `ReconfigureEvent.kt`, `ResetDeviceState.kt`, `SwitchDecision.kt`
-- top-level types: `DeviceEnroller (interface)`, `DeviceManifestProducer (class)`, `JoinEvent (class)`, `JoinOutcome (class)`, `LeaveEvent (class)`, `ManifestDeviceEnroller (class)`, `MembershipRefresh (class)`, `ReconfigureEvent (class)`, `RefreshOutcome (class)`, `ResetDeviceState (class)`, `SwitchDecision (interface)`
+- files: `DeviceEnroller.kt`, `DeviceManifestProducer.kt`, `JoinDetails.kt`, `JoinEvent.kt`, `LeaveEvent.kt`, `MembershipRefresh.kt`, `ReconfigureEvent.kt`, `RenameEvent.kt`, `RenameStatus.kt`, `ResetDeviceState.kt`, `SwitchDecision.kt`
+- top-level types: `DeviceEnroller (interface)`, `DeviceManifestProducer (class)`, `EventRenamer (interface)`, `JoinEvent (class)`, `JoinOutcome (class)`, `LeaveEvent (class)`, `ManifestDeviceEnroller (class)`, `MembershipRefresh (class)`, `MutableRenameStatusSource (class)`, `NoOpEventRenamer (object)`, `NoOpResetRename (object)`, `ReconfigureEvent (class)`, `RefreshOutcome (class)`, `RenameEvent (class)`, `RenameFailureReason (class)`, `RenameStatus (interface)`, `RenameStatusSource (interface)`, `ResetDeviceState (class)`, `ResetRename (interface)`, `SwitchDecision (interface)`
 
 ## `feature/push`
 

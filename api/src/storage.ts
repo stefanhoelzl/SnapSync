@@ -108,8 +108,10 @@ export type AttestRecord = {
  * is measured from (`max(createdAt, startsAt)`) in `lifecycle.ts`, so the anchor policy can be corrected
  * without rewriting a single stored marker.
  *
- * Write-once — no route rewrites a marker; the lifecycle is recomputed from these fields on every read
- * (see `classifyEvent` / `deleteByMs`).
+ * Write-once EXCEPT for `name` — the rename route (capability `event-rename`) is the only route that
+ * rewrites a marker, and it replaces `name` alone, writing every other field back verbatim. No route
+ * changes `eventId`, `createdAt`, `startsAt`, `endsAt`, `capacity`, or `lifetimeSeconds`; the lifecycle
+ * is recomputed from those fields on every read (see `classifyEvent` / `deleteByMs`).
  */
 export type EventMarker = {
   eventId: string;

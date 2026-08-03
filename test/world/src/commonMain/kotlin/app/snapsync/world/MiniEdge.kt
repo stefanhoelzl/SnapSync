@@ -28,6 +28,7 @@ import kotlinx.serialization.json.jsonPrimitive
  * PUT  /devices/<id>                -> 201 ; store the device config doc (push-token registration)
  * GET  /events/<id>/files           -> 200 [ union ] | 404 (unregistered) (offline -> 502)
  * POST /events                      -> 201 { eventId, name, createdAt } + register marker
+ * PATCH /events/<id>                -> 200 { … } ; rename (name only) | 400 | 404 (unregistered)
  * PUT  /events/<id>/devices/<id>    -> 200 ; deposit the manifest into the store
  * DELETE /events/<id>/devices/<id>  -> 200 ; leave (rename-only: mark departed) | 404 (unregistered event)
  * (unmatched)                       -> 404
@@ -131,26 +132,32 @@ fun miniEdgeClient(store: BackendStore): HttpClient {
                         return@MockEngine respond("event not found", HttpStatusCode.NotFound)
                     }
                     respond(
-                        json.encodeToString(
-                            CreatedEventDto.serializer(),
-                            run {
-                                // A marker registered without a start date is a LEGACY one: synthesize
-                                // `startsAt` from `createdAt`, exactly as the real backend does on read.
-                                // Note that inherits createdAt's milliseconds — off-canonical on purpose,
-                                // so the app's normalization is exercised rather than assumed.
-                                val startsAt = store.startsAtOf(segments[1]) ?: CREATED_AT
-                                // `endsAt` likewise: stored when creator-supplied, else `startsAt + 30d`.
-                                val endsAt = store.endsAtOf(segments[1]) ?: plus30Days(startsAt)
-                                CreatedEventDto(
-                                    segments[1],
-                                    store.nameOf(segments[1]) ?: "",
-                                    CREATED_AT,
-                                    startsAt,
-                                    endsAt,
-                                    deletesAt = deleteBy(CREATED_AT, startsAt),
-                                )
-                            },
-                        ),
+                        json.encodeToString(CreatedEventDto.serializer(), eventDetails(store, segments[1])),
+                        HttpStatusCode.OK,
+                        jsonHeaders(),
+                    )
+                }
+
+                // PATCH /events/<id>  (rename, capability `event-rename`) — the ONE route that rewrites a
+                // registered event, and it rewrites `name` alone. Faithful to the real backend: the same
+                // name rule as create, a 404 for an unregistered event, and every other field left exactly
+                // as it was (`registerEvent` overwrites only its non-null arguments, so passing just the
+                // name is the verbatim rewrite).
+                method == HttpMethod.Patch && segments.size == 2 && segments[0] == "events" -> {
+                    if (store.offline) return@MockEngine respond("offline", HttpStatusCode.BadGateway)
+                    val obj = runCatching { json.parseToJsonElement(body).jsonObject }.getOrNull()
+                    val name = obj?.get("name")?.jsonPrimitive?.content
+                    if (name.isNullOrBlank() || name.trim().length > 100) {
+                        return@MockEngine respond("invalid name", HttpStatusCode.BadRequest)
+                    }
+                    // Existence is checked AFTER validation, matching the real route's order — so a bad
+                    // name against a missing event is a 400 in both places.
+                    if (!store.isRegistered(segments[1])) {
+                        return@MockEngine respond("event not found", HttpStatusCode.NotFound)
+                    }
+                    store.registerEvent(segments[1], name = name.trim())
+                    respond(
+                        json.encodeToString(CreatedEventDto.serializer(), eventDetails(store, segments[1])),
                         HttpStatusCode.OK,
                         jsonHeaders(),
                     )
@@ -218,4 +225,26 @@ private fun deleteBy(createdAt: String, startsAt: String): String {
 internal fun mintEventId(n: Long): String {
     val tail = n.toString(16).padStart(12, '0')
     return "00000000-0000-4000-8000-$tail"
+}
+
+/**
+ * The event-details wire shape `GET /events/<id>` and `PATCH /events/<id>` both serve — one builder, so a
+ * rename's response can never drift from the details fetch that follows it.
+ *
+ * A marker registered without a start date is a LEGACY one: `startsAt` is synthesized from `createdAt`,
+ * exactly as the real backend does on read. Note that inherits `createdAt`'s milliseconds — off-canonical
+ * on purpose, so the app's normalization is exercised rather than assumed. `endsAt` likewise: stored when
+ * creator-supplied, else `startsAt + 30d`.
+ */
+private fun eventDetails(store: BackendStore, eventId: String): CreatedEventDto {
+    val startsAt = store.startsAtOf(eventId) ?: CREATED_AT
+    val endsAt = store.endsAtOf(eventId) ?: plus30Days(startsAt)
+    return CreatedEventDto(
+        eventId,
+        store.nameOf(eventId) ?: "",
+        CREATED_AT,
+        startsAt,
+        endsAt,
+        deletesAt = deleteBy(CREATED_AT, startsAt),
+    )
 }

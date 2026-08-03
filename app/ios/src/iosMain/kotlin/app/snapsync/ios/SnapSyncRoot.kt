@@ -11,6 +11,7 @@ import app.snapsync.compose.AppPorts
 import app.snapsync.compose.snapSyncApp
 import app.snapsync.config.FileBackedConfigStore
 import app.snapsync.eventcreation.HttpEventCreation
+import app.snapsync.eventcreation.HttpEventRename
 import app.snapsync.attest.HttpAttestClient
 import app.snapsync.attest.IosAttestKey
 import app.snapsync.attest.KeychainAttestStore
@@ -372,6 +373,7 @@ object SnapSyncRoot {
                 // leave the extension believing the server still holds a projection the app just replaced.
                 manifestStore = IosDeviceManifestStore(),
                 eventCreation = HttpEventCreation(http, backendHost),
+                eventRename = HttpEventRename(http, backendHost),
                 attestKey = IosAttestKey(),
                 attestClient = HttpAttestClient(darwinHttpClient(), backendHost),
                 attestStore = KeychainAttestStore(),
@@ -551,6 +553,7 @@ object SnapSyncRoot {
         StatusContainerHost(
             syncSource, permission.permission, config.config, scope,
             creationStatusSource = app.creationStatus,
+            renameStatusSource = app.renameStatus,
             // The user-tap command bundle (leave / create / commitJoin / share / requestAccess /
             // openSettings), built and decorated only in `compose/` (`AppCore.userCommands`) —
             // presentation fires commands solely through it (spec `module-architecture`, "Commands

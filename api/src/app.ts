@@ -30,6 +30,11 @@
 //   GET /api/v1/events/:eventId
 //     → returns the event (existence check) with the DERIVED `deletesAt`; 404 when absent OR `gone`
 //       (legacy/corrupt marker). Never deletes on touch, even past the deadline.
+//   PATCH /api/v1/events/:eventId
+//     → renames the event (capability `event-rename`): the ONLY route that rewrites an existing marker,
+//       and it replaces `name` alone — every other field written back verbatim, so a race with the sweep
+//       self-defuses. No ownership check (there is no owner); the device-token gate is the whole
+//       authorization. 400 on a bad id/body/name, 404 when absent OR `gone`, 502 on any upstream failure.
 //   PUT /api/v1/devices/:deviceId
 //     → streams a JSON device config (the push token) into `devices/<deviceId>.json`. UNGATED by
 //       event; DEVICE-ID is the capability. Faithful 201/502; last-write-wins. A flat sibling of the
@@ -524,7 +529,10 @@ export function createApp({ fetch: fetchImpl, config, now = Date.now }: Deps): H
     // can fetch them. This narrows the gate's READ posture (attestation never proved who may read whose
     // photos, and the presigned bytes it fronts were always ungated); it does NOT open any WRITE. The match
     // is GET/HEAD-only and shape-anchored to exactly these two paths, so every mutating `/events/<id>/…`
-    // method (device manifest, leave, notify) and `POST /events` stay gated. Decision record:
+    // method (device manifest, leave, notify), `POST /events`, and — landing on the SAME path shape as
+    // the read below, which makes it the closest call here — `PATCH /events/<id>` (the rename, capability
+    // `event-rename`) all stay gated. The method check is the ONLY thing separating the rename from the
+    // ungated read; `attest.test.ts` pins both directions. Decision record:
     // `changes/web-event-download`. This is an accepted, eyes-open widening: a leaked eventId becomes a
     // perpetual read grant (no per-event opt-in, no rate limit).
     const publicRead = (method === "GET" || method === "HEAD") &&
@@ -810,6 +818,76 @@ export function createApp({ fetch: fetchImpl, config, now = Date.now }: Deps): H
       console.error(`metadata: marker read failed for ${eventId}: ${e}`);
       return c.text("upstream error", 502);
     }
+  });
+
+  // Rename an event (capability `event-rename`). The ONLY route that rewrites an existing marker, and
+  // it rewrites exactly ONE field. `name` is the single exception to the marker's write-once rule
+  // (capability `event-creation`) because it touches neither threat that rule names: a name cannot
+  // retroactively widen a joiner's capture scope and cannot extend an event's limits. It is cosmetic to
+  // the upload gate, cosmetic to the extension, and load-bearing for display alone.
+  //
+  // GATED by the device token like `POST /events`, and BEYOND that gate there is no ownership check —
+  // there is no owner field, and possession of the event id already authorizes uploading into the event
+  // and listing every photo in it, so a rename is strictly weaker than what a holder already has.
+  //
+  // ⚠️ Every other field is written back VERBATIM — never restamped, never recomputed. That is what
+  // makes a race with the nightly sweep (capability `scheduled-cleanup`) self-defusing: a rename that
+  // re-creates a marker the sweep has just deleted re-creates it carrying its ORIGINAL `createdAt`,
+  // `startsAt`, and `lifetimeSeconds`, so its derived delete-by is still in the past and the next sweep
+  // reaps it again. Restamping any of those would resurrect the event for a fresh lifetime.
+  //
+  // Concurrent renames are last-write-wins: bunny has no compare-and-set (the same constraint the
+  // device-manifest capacity gate reads and writes under). No ordering guarantee is available or claimed.
+  deviceApi.patch("/events/:eventId", async (c) => {
+    const eventId = c.req.param("eventId");
+    if (!validateUUID(eventId)) {
+      return c.text("invalid event", 400);
+    }
+    let body: unknown;
+    try {
+      body = await c.req.json();
+    } catch {
+      return c.text("invalid body", 400); // not JSON
+    }
+    // The SAME validator the create route uses — one rule for what an event may be called.
+    const name = validateEventName((body as { name?: unknown } | null)?.name);
+    if (name === null) {
+      return c.text("invalid name", 400); // missing/empty/whitespace/too long
+    }
+
+    // The same existence gate the metadata route serves from: absent or incomplete → 404 (never a
+    // partial rewrite of a marker the sweep is about to delete); a transport failure → 502, so a
+    // transient fault is never mistaken for absence.
+    let current: LiveEventMarker;
+    try {
+      const gate = await gateEvent(eventId);
+      if (gate.kind === "absent") return c.text("event not found", 404);
+      current = gate.marker;
+    } catch (e) {
+      console.error(`rename: marker read failed for ${eventId}: ${e}`);
+      return c.text("upstream error", 502);
+    }
+
+    // Spread-then-override: everything the stored marker carried survives, `name` alone is replaced.
+    const renamed: LiveEventMarker = { ...current, name };
+    const target = `https://${config.host}/${config.zone}/${markerKey(eventId)}`;
+    let upstream: Response;
+    try {
+      upstream = await fetchImpl(target, {
+        method: "PUT",
+        headers: { AccessKey: config.accessKey, "Content-Type": "application/json" },
+        body: JSON.stringify(renamed),
+      });
+    } catch (e) {
+      console.error(`rename: marker PUT errored for ${eventId}: ${e}`);
+      return c.text("upstream error", 502);
+    }
+    if (!upstream.ok) {
+      console.error(`rename: bunny returned ${upstream.status} for marker ${eventId}`);
+      return c.text("upstream rejected", 502);
+    }
+    // Bunny confirmed the rewrite — only now is the rename real.
+    return c.json(publicEvent(renamed));
   });
 
   // Write a device's per-event manifest (capability `bunny-upload-endpoint`, device-manifest route).

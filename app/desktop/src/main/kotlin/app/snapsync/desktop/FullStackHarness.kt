@@ -82,6 +82,7 @@ fun WorldHarnessRoot() {
                         requester = controller.requester,
                         configSource = controller.configSource,
             creationStatusSource = controller.creationStatusSource,
+            renameStatusSource = controller.renameStatusSource,
                         creator = controller.creator,
                         downloadSource = controller.downloadSource,
                         // The REAL join gate over the world: create + scan reach the JoiningEvent
@@ -105,6 +106,8 @@ fun WorldHarnessRoot() {
                         leave = controller.leave,
                         // The real in-place reconfigure edge (capability `reconfigure-membership`).
                         reconfigure = controller.reconfigure,
+                        rename = controller.rename,
+                        resetRename = controller.resetRename,
                         // The real shareable-count query over the world gallery (capability `join-share-count`).
                         shareableCount = controller::loadShareableCount,
                         // The REAL bug-report command (capability `diagnostic-logging`): the world

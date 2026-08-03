@@ -31,6 +31,7 @@ Roots found:
 | `HttpEnrollment` | x | x | x |
 | `HttpEventCreation` | x | | |
 | `HttpEventDirectory` | x | | |
+| `HttpEventRename` | x | | |
 | `HttpEventUnionSource` | x | | |
 | `HttpLeaveNotifier` | x | | |
 | `IosAlbumManager` | x | x | |
