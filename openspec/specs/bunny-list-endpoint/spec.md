@@ -3,7 +3,7 @@
 ## Purpose
 
 A read-only, **per-device** listing on the backend (Deno + Hono), served by the same app as
-`bunny-upload-endpoint`. `GET /files/devices/<deviceId>` returns a JSON array of the device's **raw
+`bunny-upload-endpoint`. `GET /api/v1/files/devices/<deviceId>` returns a JSON array of the device's **raw
 stored objects** under `files/devices/<deviceId>/` (each entry a `{filename, size, url}`) — a single bunny
 native Storage LIST, with **no** manifest reads and **no** server-side completeness computation.
 The byte store is device-partitioned and event-independent, so the listing is global to the device.
@@ -24,7 +24,8 @@ Decision record: `changes/archive/2026-06-26-add-bunny-list-endpoint` (the listi
 ## Requirements
 ### Requirement: Per-event file listing route
 
-The backend SHALL accept an HTTP `GET` at the path template `/files/devices/<deviceId>` (the literal
+The backend SHALL accept an HTTP `GET` at the path template `/api/v1/files/devices/<deviceId>` (the
+literal
 labels `files` and `devices` are required) and respond with a flat JSON array of the **raw stored
 objects** under that device's partition — one element per object, no manifest read, no completeness
 computation. `deviceId` MUST match a UUID pattern. A request whose path does not match this route
@@ -36,7 +37,7 @@ served by the same application as the upload endpoint.
 
 #### Scenario: Valid device id accepted
 
-- **WHEN** a `GET` to `/files/devices/<uuid>` arrives with a valid UUID
+- **WHEN** a `GET` to `/api/v1/files/devices/<uuid>` arrives with a valid UUID
 - **THEN** the endpoint responds `200` with a flat JSON array of the device's stored objects
 
 #### Scenario: Non-UUID device id rejected
@@ -46,7 +47,7 @@ served by the same application as the upload endpoint.
 
 #### Scenario: Unmatched path or wrong method rejected
 
-- **WHEN** the path does not match `/files/devices/<deviceId>`, or the method is not `GET`
+- **WHEN** the path does not match `/api/v1/files/devices/<deviceId>`, or the method is not `GET`
 - **THEN** the endpoint responds `404` and makes no upstream request
 
 #### Scenario: Empty or unknown partition yields empty array
@@ -178,12 +179,12 @@ access to those bytes can be controlled.
 
 #### Scenario: An unauthenticated listing is refused
 
-- **WHEN** a `GET /files/devices/<uuid>` carries a valid device id but no valid token
+- **WHEN** a `GET /api/v1/files/devices/<uuid>` carries a valid device id but no valid token
 - **THEN** the endpoint responds `401`, issues no `LIST`, and hands out no presigned URL
 
 #### Scenario: An attested listing is returned
 
-- **WHEN** a `GET /files/devices/<uuid>` carries a valid token and a valid device id
+- **WHEN** a `GET /api/v1/files/devices/<uuid>` carries a valid token and a valid device id
 - **THEN** the listing is returned as before (the device id selects the partition)
 
 #### Scenario: Account API key never exposed
@@ -206,7 +207,8 @@ same string the client uploaded — neither double-encoded nor left in an encode
 
 ### Requirement: Event-wide union read route
 
-The backend SHALL accept an HTTP `GET` at the path template `/events/<eventId>/files` (the literal
+The backend SHALL accept an HTTP `GET` at the path template `/api/v1/events/<eventId>/files` (the
+literal
 labels `events` and `files` are required) and respond with a flat JSON array of the event's
 **complete** assets aggregated across **all** contributing devices. `eventId` MUST match a UUID
 pattern. A request whose path does not match this route (missing a label, wrong depth) SHALL yield
@@ -421,13 +423,13 @@ key.
 
 #### Scenario: A tokenless union is served
 
-- **WHEN** a `GET /events/<uuid>/files` carries a valid event id but no token
+- **WHEN** a `GET /api/v1/events/<uuid>/files` carries a valid event id but no token
 - **THEN** the endpoint serves the union (or `404` if the event does not exist), not `401` — the event id
   is the capability
 
 #### Scenario: An attested union is returned
 
-- **WHEN** a `GET /events/<uuid>/files` carries a valid token and a valid event id
+- **WHEN** a `GET /api/v1/events/<uuid>/files` carries a valid token and a valid event id
 - **THEN** the union is returned (the event id is the capability)
 
 #### Scenario: Every contributing device is returned, tagged by id

@@ -113,7 +113,7 @@ manifest object is a **tombstone**, reclaimed under *Tombstone reclamation* and 
 only a marker-less directory that still holds manifests is the **incomplete** case deleted here.
 
 An event whose `devices/` listing is **empty of manifest objects entirely** SHALL NOT be treated as empty:
-it has been minted but never joined (`POST /events` always produces a zero-device event, because the
+it has been minted but never joined (`POST /api/v1/events` always produces a zero-device event, because the
 creator confirms through the same join gate a scanned QR uses), and it SHALL survive until its deadline
 like any other event.
 

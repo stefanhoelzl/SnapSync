@@ -7,11 +7,11 @@ Apple device**, and nothing else.
 
 Every route ships against a device-facing host baked in plaintext into every IPA, and the device id is
 self-asserted — so without a gate, anyone who reads the host out of the app can `PUT` arbitrary bytes into
-the bunny storage zone that holds every user's photos, or `POST /events` without bound, for the cost of a
+the bunny storage zone that holds every user's photos, or `POST /api/v1/events` without bound, for the cost of a
 guessed UUID. Apple's App Attest is the standing answer: the app proves, cryptographically and per device,
 that it is the real binary on real hardware, mints a bearer token from that proof, and carries the token on
 every request. The backend admits only requests bearing a valid token; a short closed list of routes
-(`/attest/*`, which issue the token, and `OPTIONS`) is necessarily ungated.
+(`/api/v1/attest/*`, which issue the token, and `OPTIONS`) is necessarily ungated.
 
 App Attest is the **iOS binding of a platform-neutral need** — prove the caller is a genuine,
 unmodified client build — not a commitment to Apple hardware. A future Android client would bind its
@@ -54,7 +54,7 @@ partition it writes to — partition ownership remains capability-based on the u
 
 ### Requirement: Attestation mints a device token
 
-The backend SHALL expose `POST /attest/token`, which accepts a `deviceId`, an App Attest `keyId`, and an
+The backend SHALL expose `POST /api/v1/attest/token`, which accepts a `deviceId`, an App Attest `keyId`, and an
 attestation object, and SHALL verify **all** of: the attestation's certificate chain to Apple's App
 Attest root CA; that the attestation's nonce matches the challenge it was issued for; that the app-id
 hash matches this app; that the signing counter is `0`; and that the `aaguid` names an accepted
@@ -69,7 +69,7 @@ signature alone, with no storage read and no call to Apple.
 
 #### Scenario: A valid attestation mints a token
 
-- **WHEN** `POST /attest/token` receives an attestation that passes every check above
+- **WHEN** `POST /api/v1/attest/token` receives an attestation that passes every check above
 - **THEN** the attested public key is stored at `devices/<deviceId>.attest.json` and a signed token for
   that `deviceId` is returned
 
@@ -102,11 +102,11 @@ our team can produce one.
 
 ### Requirement: Renewal is a local assertion, never a re-attestation
 
-The backend SHALL expose `POST /attest/renew`, which accepts a `deviceId`, an App Attest **assertion**,
+The backend SHALL expose `POST /api/v1/attest/renew`, which accepts a `deviceId`, an App Attest **assertion**,
 and the server-issued `challenge` the assertion is over; SHALL verify that assertion against the public
 key stored at `devices/<deviceId>.attest.json`; and SHALL mint a fresh token on success. It SHALL NOT
 accept a `keyId` — the stored key is found by `deviceId`, so renewal cannot be pointed at another key
-(unlike `/attest/token`, which takes a `keyId` because it is establishing which key to store).
+(unlike `/api/v1/attest/token`, which takes a `keyId` because it is establishing which key to store).
 
 Renewal SHALL NOT require a new attestation and SHALL NOT call Apple. (Apple's model attests a key
 **once**; repeatedly re-attesting — or minting a fresh key per renewal — is the throttled path. Making
@@ -118,12 +118,12 @@ token, which grants nothing the caller did not already hold.
 
 #### Scenario: A valid assertion renews the token
 
-- **WHEN** `POST /attest/renew` receives an assertion that verifies against the device's stored public key
+- **WHEN** `POST /api/v1/attest/renew` receives an assertion that verifies against the device's stored public key
 - **THEN** a fresh token is minted, with no call to Apple
 
 #### Scenario: A device with no stored key must attest
 
-- **WHEN** `POST /attest/renew` names a `deviceId` with no `devices/<deviceId>.attest.json`
+- **WHEN** `POST /api/v1/attest/renew` names a `deviceId` with no `devices/<deviceId>.attest.json`
 - **THEN** the endpoint responds `401`, and the device must complete a full attestation instead
 
 #### Scenario: A re-attestation after reinstall overwrites the stored key
@@ -134,14 +134,14 @@ token, which grants nothing the caller did not already hold.
 
 ### Requirement: Challenges are server-issued and time-bounded
 
-The backend SHALL expose `GET /attest/challenge`, returning a challenge that binds an attestation or
+The backend SHALL expose `GET /api/v1/attest/challenge`, returning a challenge that binds an attestation or
 assertion to a bounded window. A challenge SHALL be verifiable **without** server-side state (it carries
 its own authentication), so that issuing one performs no storage write. The backend SHALL reject an
 attestation or assertion whose challenge is unrecognised or outside its window.
 
 #### Scenario: Issuing a challenge writes nothing
 
-- **WHEN** `GET /attest/challenge` is called
+- **WHEN** `GET /api/v1/attest/challenge` is called
 - **THEN** a challenge is returned and no storage object is written
 
 #### Scenario: A stale challenge is refused
@@ -154,9 +154,9 @@ attestation or assertion whose challenge is unrecognised or outside its window.
 Exactly the routes named below SHALL be reachable without a token, and the list SHALL be closed — a route
 not named here SHALL require the token:
 
-1. `GET /attest/challenge` — it issues the input to attestation and touches no storage.
-2. `POST /attest/token` — self-authenticating (it carries the attestation).
-3. `POST /attest/renew` — self-authenticating (it carries the assertion).
+1. `GET /api/v1/attest/challenge` — it issues the input to attestation and touches no storage.
+2. `POST /api/v1/attest/token` — self-authenticating (it carries the attestation).
+3. `POST /api/v1/attest/renew` — self-authenticating (it carries the assertion).
 4. `OPTIONS` on any path — the pull zone is free to answer the preflight itself, so the script cannot
    gate it; and a `401` there would break the plain-`PUT` fallback the iOS uploader depends on.
 5. `GET /` and `HEAD /` — the public marketing/landing page (capability `marketing-site`). This exception
@@ -176,14 +176,14 @@ not named here SHALL require the token:
    terms as entry 5. The page is a static, source-owned constant: it reads no storage, holds no per-event
    state, and carries no side effect — and it cannot read the link's payload even in principle, because
    that payload is carried in the URL fragment, which a browser never transmits.
-8. `GET /events/<eventId>/files` and `HEAD` on the same path — the event photo **union read** (capability
+8. `GET /api/v1/events/<eventId>/files` and `HEAD` on the same path — the event photo **union read** (capability
    `bunny-list-endpoint`), which the no-app download page fetches from a browser that holds no attestation
    (capability `web-event-download`). This exception SHALL be **method-scoped**: it admits only `GET` and
-   `HEAD` on the union path; every non-`GET`/`HEAD` method on any `/events/<eventId>/…` path (device
+   `HEAD` on the union path; every non-`GET`/`HEAD` method on any `/api/v1/events/<eventId>/…` path (device
    manifest write, leave, notify) SHALL remain gated.
-9. `GET /events/<eventId>` and `HEAD` on the same path — the event **marker/metadata read** (capability
+9. `GET /api/v1/events/<eventId>` and `HEAD` on the same path — the event **marker/metadata read** (capability
    `event-creation`), which the download page fetches to show the event name. This exception SHALL be
-   **method-scoped**: it admits only `GET` and `HEAD`; `POST /events` (creation) SHALL remain gated.
+   **method-scoped**: it admits only `GET` and `HEAD`; `POST /api/v1/events` (creation) SHALL remain gated.
 
 Entries 8 and 9 restate the gate's posture rather than carve a hole in it: attestation was never a
 read-authorization mechanism (it "says nothing about which device may read whose photos", and the
@@ -230,18 +230,19 @@ no per-event opt-in and no rate limit. Decision record: `changes/archive/2026-07
 
 #### Scenario: The event union read is served without a token
 
-- **WHEN** a `GET /events/<uuid>/files` (or `HEAD`) request arrives without a valid token
+- **WHEN** a `GET /api/v1/events/<uuid>/files` (or `HEAD`) request arrives without a valid token
 - **THEN** it is answered by the union route (subject to that route's own existence gate), not `401`
 
 #### Scenario: The event marker read is served without a token
 
-- **WHEN** a `GET /events/<uuid>` (or `HEAD`) request arrives without a valid token
+- **WHEN** a `GET /api/v1/events/<uuid>` (or `HEAD`) request arrives without a valid token
 - **THEN** it is answered by the marker route (its metadata or `404`), not `401`
 
 #### Scenario: A write method on an ungated read path stays gated
 
-- **WHEN** a request without a valid token uses a non-`GET`/`HEAD` method on an `/events/<uuid>/…` path
-  (e.g. `PUT`/`DELETE` a device manifest, `POST …/notify`) or `POST /events`
+- **WHEN** a request without a valid token uses a non-`GET`/`HEAD` method on an `/api/v1/events/<uuid>/…`
+  path
+  (e.g. `PUT`/`DELETE` a device manifest, `POST …/notify`) or `POST /api/v1/events`
 - **THEN** it responds `401` — only the `GET`/`HEAD` reads are ungated
 
 #### Scenario: The static exceptions do not leak to other paths or methods
