@@ -69,7 +69,7 @@ class ReconfigureIntegrationTest {
         try {
             val w = World(this)
             w.permission.set(PermissionStatus.GRANTED) // ensureAlbum needs a usable grant
-            // A named membership — ensureAlbum is a no-op for a nameless one (capability `event-album`).
+            // Every membership carries a name (capability `event-link`); it titles the album.
             w.provision("E", name = "Anna's Birthday", saveToAlbum = false)
             w.addOwnAsset("A")
 

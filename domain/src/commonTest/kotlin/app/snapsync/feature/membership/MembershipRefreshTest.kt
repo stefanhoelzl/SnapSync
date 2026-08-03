@@ -45,10 +45,12 @@ private val AFTER_DEADLINE = CaptureDate("2026-08-06T00:00:00Z")
 class MembershipRefreshTest {
 
     // A NON-legacy membership: it already carries the event window, so a details refresh only touches the
-    // name (backfill is a no-op). This keeps the name-refresh assertions isolated from the backfill.
+    // name (backfill is a no-op). This keeps the name-convergence assertions isolated from the backfill.
+    // The name is a STALE one, never empty: a membership always carries a name (capability `event-link`),
+    // so convergence is what this fixture exercises.
     private val joined = EventConfig(
         eventId = "E",
-        name = "",
+        name = "Anna's Bithday",
         minPhotoDate = CUTOFF,
         startsAt = STARTS,
         endsAt = ENDS,
@@ -131,8 +133,10 @@ class MembershipRefreshTest {
     }
 
     @Test
-    fun `backfill and name refresh ride in one save`() = runTest {
-        val legacy = EventConfig(eventId = "E", name = "", minPhotoDate = CUTOFF, startsAt = STARTS, maxPhotoDate = CEILING)
+    fun `backfill and name convergence ride in one save`() = runTest {
+        // A STALE name, not a missing one: the name arm converges on the served value (a membership
+        // always carries a name), and the point of the test is that it rides in the backfill's save.
+        val legacy = EventConfig(eventId = "E", name = "Anna's Bithday", minPhotoDate = CUTOFF, startsAt = STARTS, maxPhotoDate = CEILING)
         val config = FakeConfig(legacy)
         refresh(config).refresh("E", found("Anna's Birthday"))
         assertEquals(
@@ -152,13 +156,6 @@ class MembershipRefreshTest {
         val config = FakeConfig(joined.copy(name = "Anna's Birthday", maxPhotoDate = CaptureCeiling(STARTS.at)))
         refresh(config).refresh("E", found("Anna's Birthday", endsAt = ENDS))
         assertNull(config.saved) // name unchanged AND endsAt already present → nothing to write
-    }
-
-    @Test
-    fun `fetchNeed is MISSING only for a nameless membership`() = runTest {
-        val rule = refresh(FakeConfig(null))
-        assertEquals(TitleNeed.MISSING, rule.fetchNeed(""))
-        assertEquals(TitleNeed.PRESENT, rule.fetchNeed("Anna's Birthday"))
     }
 
     // ── The two-witness absence verdict (capability `leave-event`) ───────────────────────────────────

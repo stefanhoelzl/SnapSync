@@ -108,6 +108,28 @@ class HttpEventDirectoryTest {
     }
 
     @Test
+    fun `a 200 with a blank name yields Failed — the ONLY guard against a blank persisted name`() = runTest {
+        // Load-bearing, not defensive tidiness. `EventConfig` requires the name KEY, not a non-blank
+        // VALUE (pinned in `EventConfigTest`), and `AlbumCoordinator` no longer re-checks. If this check
+        // is ever relaxed, a blank-named 200 lands straight in the persisted membership with nothing
+        // downstream to catch it. The backend trims and rejects blank on create, so a blank name here is
+        // malformed → retryable Failed, exactly like a missing one.
+        // The JSON literal for the name, so the empty and whitespace-only cases are both exact.
+        for (nameLiteral in listOf("\"\"", "\"   \"", "\"\\t\\n\"")) {
+            val engine = MockEngine {
+                respond(
+                    content = """{"eventId":"$eventId","name":$nameLiteral,""" +
+                        """"startsAt":"2026-07-14T18:00:00Z","endsAt":"2026-08-13T18:00:00Z",""" +
+                        """"deletesAt":"2026-08-13T18:00:00Z"}""",
+                    status = HttpStatusCode.OK,
+                    headers = headersOf(HttpHeaders.ContentType, "application/json"),
+                )
+            }
+            assertEquals(EventDetails.Failed, source(engine).fetch(eventId), "name=$nameLiteral")
+        }
+    }
+
+    @Test
     fun `a 200 without a startsAt yields Failed rather than an invented floor`() = runTest {
         // `startsAt` is a FLOOR on this membership's cutoff. A client that defaulted a missing one — to
         // now, to createdAt, to anything — would be silently LOWERING that floor, which is the one

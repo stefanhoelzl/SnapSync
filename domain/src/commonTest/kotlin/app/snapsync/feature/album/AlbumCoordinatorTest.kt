@@ -89,16 +89,6 @@ class AlbumCoordinatorTest {
     }
 
     @Test
-    fun `ensureAlbum is a no-op for an empty name`() = runTest {
-        // A nameless membership cannot title an album (the name arrives via the later fetch); same
-        // guard the shell helper held (`cfg.name.isNotEmpty()`).
-        val manager = FakeAlbumManager(createResult = "album-X")
-        val store = InMemoryAlbumMapStore()
-        assertNull(AlbumCoordinator(manager, store).ensureAlbum(event, "", saveToAlbum = true))
-        assertEquals(0, manager.createCount)
-    }
-
-    @Test
     fun `ensureAlbum without granted access is a no-op — the access fact is the coordinator's guard`() = runTest {
         // The Provision flow passes the fact; the rule (no album without full photo access) is
         // this feature's leading guard since the migration finale, so no caller can forget it.

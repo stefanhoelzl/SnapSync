@@ -713,12 +713,12 @@ object SnapSyncRoot {
     // before the Keychain save the extension reads. Named `cfg` to avoid shadowing the `config` store.
     private suspend fun provisionEvent(cfg: EventConfig) = log.invocation(
         "provisionEvent",
-        params = "eventId=${cfg.eventId} named=${cfg.name.isNotEmpty()} cutoff=${cfg.minPhotoDate}",
+        params = "eventId=${cfg.eventId} name=${cfg.name} cutoff=${cfg.minPhotoDate}",
     ) {
-        // The switch-leave → save → refresh → arm → album → reconcile → name coordination is the
+        // The switch-leave → save → refresh → arm → album → reconcile coordination is the
         // `flow/Provision` trigger's; this thin wrapper keeps only the entry-point log context (over
         // IosLogScope) so the flow's synchronous steps carry `[provisionEvent]` and its escaping launches
-        // (reconcile / name) self-label, exactly as before. Nothing here destructures the config (a
+        // (reconcile / push) self-label, exactly as before. Nothing here destructures the config (a
         // newly-added field must not be dropped before the save the extension reads).
         app.provisionFlow.run(cfg)
     }

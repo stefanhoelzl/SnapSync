@@ -46,18 +46,27 @@ internal fun EventLinkPayload.sameAs(other: EventLinkPayload): Boolean =
 /**
  * The **persisted, joined-event state** (distinct from the [EventLinkPayload] wire type): the joined
  * `eventId`, the human-readable event `name`, and this device's chosen capture-date [minPhotoDate]
- * cutoff for the event (capability `photo-selection-policy`). The name is a **required, non-null** value: the
- * join gate only provisions from a loaded phase that carries a name (capability `join-event`), and the
+ * cutoff for the event (capability `photo-selection-policy`). The name is **required, with no default**:
+ * the join gate only provisions from a loaded phase that carries a name (capability `join-event`), and the
  * backend enforces name-required on create (capability `event-creation`), so a nameless event cannot
- * exist. It defaults to `""` **only** so a legacy item persisted before the name was reliably set decodes
- * non-null (refreshed on the next foreground fetch), never a decode crash.
+ * exist.
+ *
+ * Carrying no default is what makes [name] a required *constructor* parameter, so every present and
+ * future construction site must supply one under compiler enforcement. That — not decode strictness — is
+ * why the former `""` default is gone; the decode side follows because the `@Serializable` plugin derives
+ * the decode default from the constructor default, and the two cannot be separated.
+ *
+ * ⚠️ This requires the **key**, not a non-blank **value**: `{"name":""}` decodes perfectly well (pinned
+ * by `EventConfigTest`, so the next reader is not misled by the declaration). The blank-name guard lives
+ * at `HttpEventDirectory`, and it is the ONLY one — nothing downstream re-checks.
+ * Decision record: `changes/archive/…-remove-nameless-config-fallback`.
  *
  * [minPhotoDate] is **required and non-null**, with **no default** (capability `photo-selection-policy`): the
  * per-device, per-membership capture-date cutoff, a UTC `…Z` string. A membership with no cutoff is not a
  * representable state — an absent cutoff once meant whole-library scope, which under event photo sharing
  * uploads a guest's entire camera roll to another person's event.
  *
- * It carries **no default on purpose**, unlike [name]/[direction]/[saveToAlbum]. A legacy item lacking the
+ * It carries **no default on purpose**, unlike [direction]/[saveToAlbum]. A legacy item lacking the
  * key therefore fails to decode and reads as *no config* (the config store adapters), so the device returns to
  * the setup gate and the user re-joins. Do **not** "fix" that by defaulting it to `""`: the cutoff compare
  * is `creationDate >= minPhotoDate`, and every string is `>= ""`, so an empty cutoff silently restores
@@ -138,7 +147,7 @@ internal fun EventLinkPayload.sameAs(other: EventLinkPayload): Boolean =
 @Serializable
 data class EventConfig(
     val eventId: String,
-    val name: String = "",
+    val name: String,
     val minPhotoDate: CaptureCutoff,
     val startsAt: EventStart = EventStart(minPhotoDate.at),
     val endsAt: EventEnd? = null,

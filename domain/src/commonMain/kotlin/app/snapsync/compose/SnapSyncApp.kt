@@ -420,8 +420,9 @@ class AppCore internal constructor(
 
     // The membership-refresh rule (capability `join-event`): what a fetched details result MEANS for the
     // persisted membership — seated in `feature/membership` because that config is the feature's durable
-    // state. The *fetch* it pairs with is [fetchEventDetails], coordinated by the Foreground/Provision
-    // flows. It reads the clock because the absence verdict needs a second, OFFLINE witness.
+    // state. The *fetch* it pairs with is [fetchEventDetails], coordinated by the Foreground flow — the
+    // sole trigger that refreshes. It reads the clock because the absence verdict needs a second,
+    // OFFLINE witness.
     val membershipRefresh: MembershipRefresh by lazy {
         MembershipRefresh(
             configSource = ports.configSource,
@@ -619,7 +620,6 @@ class AppCore internal constructor(
             uploadArm = uploadArm,
             downloadController = downloadController,
             albumCoordinator = albumCoordinator,
-            membershipRefresh = membershipRefresh,
             activeEventId = { ports.configSource.config.value?.eventId },
             notifyLeave = ports.notifyLeave,
             saveConfig = { cfg -> ports.configStore.save(cfg) },
@@ -628,7 +628,6 @@ class AppCore internal constructor(
             // parameter, and album creation works under a LIMITED grant (measured — capability
             // `limited-photo-access`).
             isGranted = { ports.photoAccess.permission.value.grantsPhotoAccess },
-            fetchEventDetails = fetchEventDetails,
             registerPush = ports.registerPush,
         )
     }

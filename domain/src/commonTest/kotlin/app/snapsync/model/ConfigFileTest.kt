@@ -41,9 +41,10 @@ class ConfigFileTest {
 
     @Test
     fun `defaulted fields round-trip through an omitting encode`() {
-        // encodeDefaults is off (matching the Keychain item's serialization posture), so a config at
-        // defaults must still decode to the same values via the payload's own defaults.
-        val minimal = EventConfig(eventId = "e2", minPhotoDate = captureCutoff("2026-07-01T00:00:00Z"), maxPhotoDate = FIXTURE_CEILING)
+        // encodeDefaults is off (matching the Keychain item's serialization posture), so a config whose
+        // DEFAULTABLE fields sit at their defaults must still decode to the same values via the payload's
+        // own defaults. (`name` is not among them — it carries no default — so it is always encoded.)
+        val minimal = EventConfig(eventId = "e2", name = "Anna's Birthday", minPhotoDate = captureCutoff("2026-07-01T00:00:00Z"), maxPhotoDate = FIXTURE_CEILING)
 
         assertEquals(ConfigFileDecode.Valid(minimal), decodeConfigFile(encodeConfigFile(minimal)))
     }
@@ -87,13 +88,14 @@ class ConfigFileTest {
     @Test
     fun `unknown keys are ignored on envelope and payload — additive change needs no version bump`() {
         val decoded = decodeConfigFile(
-            """{"v":1,"extra":"ignored","payload":{"eventId":"e1","minPhotoDate":"2026-07-01T00:00:00Z","maxPhotoDate":"2099-01-01T00:00:00Z","novel":"ignored"}}""",
+            """{"v":1,"extra":"ignored","payload":{"eventId":"e1","name":"Anna's Birthday","minPhotoDate":"2026-07-01T00:00:00Z","maxPhotoDate":"2099-01-01T00:00:00Z","novel":"ignored"}}""",
         )
 
         assertEquals(
             ConfigFileDecode.Valid(
                 EventConfig(
                     eventId = "e1",
+                    name = "Anna's Birthday",
                     minPhotoDate = captureCutoff("2026-07-01T00:00:00Z"),
                     maxPhotoDate = FIXTURE_CEILING,
                 ),

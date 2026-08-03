@@ -15,9 +15,11 @@ import app.snapsync.ports.ConfigStore
  * the window backfill, the retention backfill, and the absence verdict are the same operation seen from
  * three sides, so the name moved with the job.)
  *
- * The *fetch* stays coordination in the `flow/` triggers (`Foreground` keeps the membership current;
- * `Provision` fills a name a scan couldn't fetch while offline) over a `compose/`-built `EventDirectory`
- * effect; this feature owns the decision of what the fetched value means. [RefreshOutcome] is what the
+ * The *fetch* stays coordination in **one** `flow/` trigger — `Foreground`, which keeps the membership
+ * current — over a `compose/`-built `EventDirectory` effect; this feature owns the decision of what the
+ * fetched value means. (`Provision` once fetched too, to fill a name a scan couldn't fetch while
+ * offline. A membership can no longer arrive nameless, and every provision route has just loaded or
+ * minted its details, so that fetch was redundant by construction and is gone.) [RefreshOutcome] is what the
  * rule ANSWERS, not what the flows branch on: the one destructive consequence is performed here (see
  * [leaveEvent]), so no trigger can reach it by a different route.
  *
@@ -47,7 +49,7 @@ class MembershipRefresh(
      * Fold a freshly [fetched] details result into the persisted membership and return what it means.
      *
      * - [RefreshOutcome.REFRESHED] — the fetch resolved for the still-configured event. Two rewrites ride
-     *   together in **one** whole-config save: a **name refresh** (an unchanged name saves nothing), and
+     *   together in **one** whole-config save: **name convergence** (an unchanged name saves nothing), and
      *   the **window + retention backfill** (capability `event-rejoin-reconciliation`) filling the
      *   event's `endsAt` and `deletesAt` — each only when ABSENT. Doing them in one save is what stops
      *   the rewrites from losing each other's field. The membership's own `maxPhotoDate` is **not**
@@ -86,7 +88,11 @@ class MembershipRefresh(
                 }
             is JoinLoad.Found -> {
                 var next = current
-                // Name refresh: persist a changed name (an unchanged one saves nothing).
+                // Name CONVERGENCE on the served name — not a fill for a membership that lacks one:
+                // every membership carries a name (capability `event-link`, no decode default), so this
+                // arm exists so a diverged persisted name can still be repaired toward the backend's
+                // value. It is the only path by which that could ever happen. An unchanged name saves
+                // nothing.
                 if (current.name != fetched.name) next = next.copy(name = fetched.name)
                 // Event-window backfill (capability `event-rejoin-reconciliation`): a membership
                 // persisted before the event window existed carries a `null` `endsAt`; fill it from the
@@ -107,18 +113,7 @@ class MembershipRefresh(
         }
     }
 
-    /**
-     * Whether the membership's title still needs a directory fetch (capability `join-event`): a
-     * scan-path config arrives **nameless** (the QR payload carries only the event id; a
-     * create/interactive-join carries its loaded name), and only then is the network fetch worth
-     * firing. The rule moved here from the Provision flow's `if` at the migration finale — the
-     * flow now switches on this sealed answer (the transcriber grammar's sealed-result form).
-     */
-    fun fetchNeed(name: String): TitleNeed = if (name.isEmpty()) TitleNeed.MISSING else TitleNeed.PRESENT
 }
-
-/** The sealed answer of [MembershipRefresh.fetchNeed]: does this membership's title need a fetch? */
-enum class TitleNeed { MISSING, PRESENT }
 
 /**
  * The sealed answer of [MembershipRefresh.refresh] — what a fetched details result meant for the

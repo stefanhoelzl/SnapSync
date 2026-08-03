@@ -1,12 +1,8 @@
 package app.snapsync.flow
 
-import app.snapsync.model.JoinLoad
-
 import app.snapsync.feature.album.AlbumCoordinator
 import app.snapsync.feature.download.DownloadController
-import app.snapsync.feature.membership.MembershipRefresh
 import app.snapsync.feature.membership.SwitchDecision
-import app.snapsync.feature.membership.TitleNeed
 import app.snapsync.feature.membership.switchDecision
 import app.snapsync.feature.upload.UploadArm
 import app.snapsync.model.EventConfig
@@ -31,15 +27,18 @@ import kotlinx.coroutines.launch
  *  5. **Album** — ask the coordinator for the event album, unconditionally, passing the access fact
  *     along with the membership's: the granted/opt-in gate is [AlbumCoordinator.ensureAlbum]'s own
  *     leading guard (`event-album`; the grant subscription covers the grant-after-join case).
- *  6. **Reconcile** foreign downloads and **fetch the details** — each on its own escaping launch, so a
- *     slow one never blocks the join and each labels its own log lines. Whether the fetch is due is
- *     [MembershipRefresh.fetchNeed]'s sealed rule (only a nameless, scan-path config needs one), and what
- *     the result MEANS is [MembershipRefresh.fold]'s. Its sealed answer is routed exactly as the
- *     `Foreground` trigger routes it, so one verdict never means two things.
+ *  6. **Reconcile** foreign downloads and **re-register the push token** — each on its own escaping
+ *     launch, so a slow one never blocks the join and each labels its own log lines.
  *
- * Port touches ([activeEventId], [notifyLeave], [saveConfig], [refreshStatus], [isGranted],
- * [fetchEventDetails]) arrive as `model`-typed effect lambdas built in `compose/`; the album and
- * membership rules live in their features ([AlbumCoordinator], [MembershipRefresh]).
+ * This flow issues **no** event-details fetch. It once did, to fill a title a scan could not fetch
+ * while offline; a membership can no longer arrive nameless (capability `event-link`), and every
+ * provision route — interactive join, `autoJoin`, switch, headless create — has just loaded or minted
+ * the event's details, so the fetch was redundant by construction. `Foreground` is the sole trigger
+ * that refreshes the membership (capability `join-event`).
+ *
+ * Port touches ([activeEventId], [notifyLeave], [saveConfig], [refreshStatus], [isGranted]) arrive as
+ * `model`-typed effect lambdas built in `compose/`; the album rule lives in its feature
+ * ([AlbumCoordinator]).
  */
 class Provision(
     private val scope: CoroutineScope,
@@ -47,9 +46,6 @@ class Provision(
     private val downloadController: DownloadController,
     /** The event-album coordinator (capability `event-album`); its `ensureAlbum` owns the opt-in gate. */
     private val albumCoordinator: AlbumCoordinator,
-    /** The membership-refresh rule (capability `join-event`): folds a fetched result, backfills, and on
-     *  a CONFIRMED absence performs the teardown itself. */
-    private val membershipRefresh: MembershipRefresh,
     /** The currently-joined event id, or `null` — the config read (a port touch). */
     private val activeEventId: () -> String?,
     /** Best-effort backend leave of a previous event on a switch. */
@@ -60,10 +56,6 @@ class Provision(
     private val refreshStatus: suspend () -> Unit,
     /** Whether photo access is fully granted (a port touch). */
     private val isGranted: () -> Boolean,
-    /** Event-details fetch by id — the `EventDirectory` effect built in `compose/` (a port touch a flow
-     *  may not make directly). Carries the SEALED outcome so `NotFound` stays distinguishable from
-     *  `Failed`; the membership rule, not this flow, decides what either means. */
-    private val fetchEventDetails: suspend (eventId: String) -> JoinLoad,
     /** Re-register the device's APNs push token with the backend on join (capability
      *  `push-registration`). Beyond the launch/rotation registration, joining re-`PUT`s the token so a
      *  device whose config the nightly sweep collected (capability `scheduled-cleanup`) is pushable again
@@ -89,21 +81,12 @@ class Provision(
         //    forget it. (The grant subscription covers the grant-after-join case.)
         albumCoordinator.ensureAlbum(cfg.eventId, cfg.name, cfg.saveToAlbum, granted = isGranted())
         // 6. Auto-download the other contributors' photos (no-op under an upload-only direction, gated
-        //    inside the controller), and fill a scan-path title by id — each on its own escaping
-        //    launch. Whether a fetch is due is membership's sealed rule (a scan-path config arrives
-        //    nameless); what the result MEANS — including the teardown on a confirmed absence — is
-        //    [MembershipRefresh]'s. Sinking that consequence into the rule is what makes one verdict
-        //    mean the same thing here as under Foreground, by construction rather than by convention.
+        //    inside the controller), on its own escaping launch. No details fetch rides here: the
+        //    membership this flow just persisted came from details the route already loaded or minted.
         scope.launch { downloadController.reconcile(cfg.eventId) }
         // Re-register the push token on join (not on every foreground): closes the warm-rejoin window
         // the sweep's device-record collection opens (capability `push-registration`). Its own escaping
         // launch — a network PUT must never block the join — and best-effort.
         scope.launch { registerPush() }
-        when (membershipRefresh.fetchNeed(cfg.name)) {
-            TitleNeed.MISSING -> scope.launch {
-                membershipRefresh.refresh(cfg.eventId, fetchEventDetails(cfg.eventId))
-            }
-            TitleNeed.PRESENT -> Unit
-        }
     }
 }
