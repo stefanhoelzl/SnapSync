@@ -496,7 +496,7 @@ class World(
      */
     fun provision(
         eventId: String,
-        name: String? = null,
+        name: String = DEFAULT_EVENT_NAME,
         minPhotoDate: CaptureCutoff = captureCutoff(DEFAULT_CUTOFF),
         startsAt: EventStart = eventStart(DEFAULT_STARTS_AT),
         // The capture-date CEILING is REQUIRED on every membership (capability `join-event`), so the
@@ -511,7 +511,7 @@ class World(
         store.registerEvent(eventId, name, startsAt.at.iso)
         configCell.value = EventConfig(
             eventId = eventId,
-            name = name ?: "",
+            name = name,
             minPhotoDate = minPhotoDate,
             maxPhotoDate = maxPhotoDate,
             endsAt = endsAt,
@@ -651,6 +651,15 @@ class World(
          * start dates existed. Pass a future value to `provision` to model an event that has not begun.
          */
         const val DEFAULT_STARTS_AT: String = "2026-01-01T00:00:00Z"
+
+        /**
+         * The default event **name** of a provisioned membership. It exists because a membership without
+         * a name is not a representable state (capability `event-link`): `provision` used to take a
+         * nullable name and coerce `null` to `""`, which forged a config the real stack can no longer
+         * hold. The world may model a *backend* event whose details response lacks a name — that is what
+         * `BackendStore.registerEvent`'s nullable name is for — but never a joined membership without one.
+         */
+        const val DEFAULT_EVENT_NAME: String = "Anna's Birthday"
 
         /**
          * The default capture-date **ceiling** of a provisioned membership. Far enough out that it

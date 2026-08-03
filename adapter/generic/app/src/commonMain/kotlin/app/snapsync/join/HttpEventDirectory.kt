@@ -20,8 +20,10 @@ import kotlinx.serialization.json.Json
 /**
  * [EventDirectory] over an injected Ktor [HttpClient] and host (Darwin on iOS, `MockEngine` in
  * tests). `GET <host>/events/<eventId>`: `200 { eventId, name, createdAt, startsAt, endsAt, deletesAt }`
- * with a **non-null name, `startsAt`, `endsAt`, AND `deletesAt`** → [EventDetails.Found]; a `200` missing
- * **any** → [EventDetails.Failed] (malformed/transient, retryable); `404` → [EventDetails.NotFound]; any
+ * with a **non-blank name** and a **non-null `startsAt`, `endsAt`, AND `deletesAt`** →
+ * [EventDetails.Found]; a `200` missing
+ * **any** — or carrying an empty/whitespace-only name — → [EventDetails.Failed] (malformed/transient,
+ * retryable); `404` → [EventDetails.NotFound]; any
  * other status / transport / parse failure → [EventDetails.Failed].
  *
  * The `404` ↔ `Failed` split is load-bearing beyond the join gate: it is the ONLY place "the event is
@@ -46,7 +48,14 @@ class HttpEventDirectory(
                     // nameless Found (the event-album title needs a name), never a Found with an invented
                     // floor (that would silently LOWER it), and never one with an invented deadline (that
                     // would decide whether a membership is destroyed).
-                    val name = meta.name
+                    //
+                    // ⚠️ The name is rejected when BLANK, not merely when absent, and this check is the
+                    // ONLY guard against a blank one entering a membership: `EventConfig` requires the
+                    // name KEY, not a non-blank VALUE (so `{"name":""}` decodes), and the album
+                    // coordinator's former empty-name clause — the one place a blank title became a
+                    // permanent artifact — is gone. Nothing downstream re-checks.
+                    // Decision record: `changes/archive/…-remove-nameless-config-fallback`.
+                    val name = meta.name?.takeIf { it.isNotBlank() }
                     val startsAt = meta.startsAt?.let(::canonicalOrNull)
                     val endsAt = meta.endsAt?.let(::canonicalOrNull)
                     val deletesAt = meta.deletesAt?.let(::canonicalOrNull)

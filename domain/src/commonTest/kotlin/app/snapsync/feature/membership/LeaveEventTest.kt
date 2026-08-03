@@ -30,7 +30,7 @@ class LeaveEventTest {
     private class FakeConfigSource(eventId: String?) : ConfigSource {
         override val config: StateFlow<EventConfig?> =
             // A membership always carries a cutoff (capability `photo-selection-policy`); leave ignores it.
-            MutableStateFlow(eventId?.let { EventConfig(it, minPhotoDate = captureCutoff("2026-07-06T14:32:11Z"), maxPhotoDate = FIXTURE_CEILING) })
+            MutableStateFlow(eventId?.let { EventConfig(it, name = "Anna's Birthday", minPhotoDate = captureCutoff("2026-07-06T14:32:11Z"), maxPhotoDate = FIXTURE_CEILING) })
     }
 
     @Test

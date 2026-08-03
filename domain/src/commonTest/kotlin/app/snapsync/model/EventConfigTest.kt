@@ -173,10 +173,25 @@ class EventConfigTest {
     }
 
     @Test
-    fun `a legacy config JSON without a name decodes to a non-null empty name`() {
-        // The name was nullable before; a legacy item may lack it. It must decode non-null, not crash.
-        val legacy = """{"eventId":"11111111-1111-4111-8111-111111111111","minPhotoDate":"$cutoff","maxPhotoDate":"2099-01-01T00:00:00Z"}"""
-        val decoded = json.decodeFromString(EventConfig.serializer(), legacy)
+    fun `a config JSON without a name does not decode`() {
+        // `name` carries NO default, so the key is required. The point is not the decode failure itself
+        // but what having no default buys: `name` is a required CONSTRUCTOR parameter, so no construction
+        // site can omit it. The two are one knob — the @Serializable plugin derives the decode default
+        // from the constructor default.
+        val nameless = """{"eventId":"11111111-1111-4111-8111-111111111111","minPhotoDate":"$cutoff","maxPhotoDate":"2099-01-01T00:00:00Z"}"""
+        assertFailsWith<SerializationException> {
+            json.decodeFromString(EventConfig.serializer(), nameless)
+        }
+    }
+
+    @Test
+    fun `a config JSON whose name is the empty string DOES decode`() {
+        // Pinned deliberately, as a weakness rather than a strength: requiring the key is not requiring a
+        // non-blank value, so nothing in this type stops a blank name. The ONE guard is
+        // `HttpEventDirectory`, which maps a blank name to `EventDetails.Failed` — do not read the
+        // declaration above as though it made a blank name unrepresentable.
+        val blank = """{"eventId":"11111111-1111-4111-8111-111111111111","name":"","minPhotoDate":"$cutoff","maxPhotoDate":"2099-01-01T00:00:00Z"}"""
+        val decoded = json.decodeFromString(EventConfig.serializer(), blank)
         assertEquals("", decoded.name)
     }
 

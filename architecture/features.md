@@ -29,7 +29,7 @@ on drift; regenerate instead.
 ## `feature/membership`
 
 - files: `DeviceEnroller.kt`, `DeviceManifestProducer.kt`, `JoinDetails.kt`, `JoinEvent.kt`, `LeaveEvent.kt`, `MembershipRefresh.kt`, `ReconfigureEvent.kt`, `ResetDeviceState.kt`, `SwitchDecision.kt`
-- top-level types: `DeviceEnroller (interface)`, `DeviceManifestProducer (class)`, `JoinEvent (class)`, `JoinOutcome (class)`, `LeaveEvent (class)`, `ManifestDeviceEnroller (class)`, `MembershipRefresh (class)`, `ReconfigureEvent (class)`, `RefreshOutcome (class)`, `ResetDeviceState (class)`, `SwitchDecision (interface)`, `TitleNeed (class)`
+- top-level types: `DeviceEnroller (interface)`, `DeviceManifestProducer (class)`, `JoinEvent (class)`, `JoinOutcome (class)`, `LeaveEvent (class)`, `ManifestDeviceEnroller (class)`, `MembershipRefresh (class)`, `ReconfigureEvent (class)`, `RefreshOutcome (class)`, `ResetDeviceState (class)`, `SwitchDecision (interface)`
 
 ## `feature/push`
 

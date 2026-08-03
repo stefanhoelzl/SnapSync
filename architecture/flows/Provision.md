@@ -19,7 +19,6 @@ sequenceDiagram
   participant uploadArm
   participant albumCoordinator
   participant downloadController
-  participant membershipRefresh
   Trigger->>Provision: run(…)
   alt switchDecision(activeEventId(), cfg.eventId) = is SwitchDecision.LeavePrevious
     Provision->>effects: notifyLeave(…)
@@ -32,9 +31,4 @@ sequenceDiagram
   Provision->>albumCoordinator: ensureAlbum(…)
   Provision--)downloadController: reconcile(…)
   Provision--)effects: registerPush()
-  alt membershipRefresh.fetchNeed(cfg.name) = TitleNeed.MISSING
-    Provision--)membershipRefresh: refresh(…)
-  else membershipRefresh.fetchNeed(cfg.name) = TitleNeed.PRESENT
-    Note over Provision: nothing
-  end
 ```

@@ -24,9 +24,12 @@ class AlbumCoordinator(
     /**
      * Ensure [eventId]'s album exists and return its `localIdentifier` (or `null` on a creation failure
      * — or when the membership never asked for one). Callers call **unconditionally**: the membership's
-     * opt-in gate is the leading guard here, so no caller can forget it — [saveToAlbum] off (or an
-     * empty [name], which cannot title an album) is a silent no-op, exactly the rule the app shell's
-     * `ensureAlbumIfOptedIn` helper used to hold (migration step 8 C3). [granted] joined that guard at
+     * opt-in gate is the leading guard here, so no caller can forget it — [saveToAlbum] off is a silent
+     * no-op, exactly the rule the app shell's
+     * `ensureAlbumIfOptedIn` helper used to hold (migration step 8 C3). The guard does **not** test
+     * [name]: a membership's name is required and non-null (capability `event-link`), so a nameless one
+     * is not a representable state and a clause guarding against it would be an unreachable branch
+     * suggesting otherwise. [granted] joined that guard at
      * the migration finale: an album can only be ensured with photo access fully granted, so the
      * Provision flow passes the access fact instead of branching on it (the flow coordinates, the
      * feature decides); it defaults to `true` for the paths that run *because* access was granted
@@ -36,7 +39,7 @@ class AlbumCoordinator(
      * **App-only** — the sole-creator invariant that removes the cross-process create race (design D3).
      */
     suspend fun ensureAlbum(eventId: String, name: String, saveToAlbum: Boolean, granted: Boolean = true): String? {
-        if (!granted || !saveToAlbum || name.isEmpty()) return null
+        if (!granted || !saveToAlbum) return null
         store.get(eventId)?.let { existing ->
             if (manager.exists(existing)) {
                 log.i { "ensureAlbum: reused album=$existing for event=$eventId" }
