@@ -57,16 +57,22 @@ before offering the confirm action, showing a **loading** phase ("Loading event 
 SHALL open immediately on decode (the `eventId` is local) and the load SHALL gate only the confirm, per
 these outcomes:
 
-- **200 with a name** → a **loaded** phase showing the event **name** (a **required, non-null** value)
-  and carrying the event's **`startsAt`** (both read from the `{ eventId, name, createdAt, startsAt }`
+- **200 with a name** → a **loaded** phase showing the event **name** (a **required, non-null,
+  non-blank** value) and carrying the event's **`startsAt`** (both read from the
+  `{ eventId, name, createdAt, startsAt }`
   body), with the confirm action (Join) enabled. The loaded `startsAt` SHALL be the cutoff row's
   **default** *and* its **floor** (see capability `photo-selection-policy`). `startsAt` is **always present**
   on a 200 — the backend synthesizes it from `createdAt` for markers written before it existed
   (capability `event-creation`) — so the loaded phase SHALL carry it non-null and there is **no**
   seed-from-`createdAt` fallback and **no** seed-to-now fallback;
-- **200 without a name** → treated as a **failed** phase with a **Retry** action — a loaded event SHALL
-  always carry a name (the backend enforces name-required on create, capability `event-creation`), so a
-  nameless 200 is a malformed/transient response, never a loaded phase with a null name;
+- **200 without a name, or whose name is blank** → treated as a **failed** phase with a **Retry** action
+  — a loaded event SHALL
+  always carry a name (the backend enforces name-required on create, trimming and rejecting an empty or
+  whitespace-only value, capability `event-creation`), so a
+  nameless or blank-named 200 is a malformed/transient response, never a loaded phase with a null or
+  blank name. This is the **only** guard against a blank name entering the persisted membership: the
+  membership type requires the name to be present, not to be non-blank (capability `event-link`), and no
+  downstream consumer re-checks it;
 - **200 without a parseable `startsAt`** → likewise a **failed** phase with a **Retry** action. A loaded
   event SHALL always carry a `startsAt` (the backend rejects a non-canonical one on create and
   synthesizes one on read), so its absence is a malformed/transient response. It SHALL NOT be defaulted
@@ -100,6 +106,11 @@ provisioning and album titling (capability `event-album`) always have a name to 
 - **WHEN** `GET /events/:eventId` returns 200 whose body carries no name
 - **THEN** the join surface shows a load-failure message and a Retry action, and never enters the loaded phase with a null name
 
+#### Scenario: A blank-named 200 is retryable, not a blank-named load
+- **WHEN** `GET /events/:eventId` returns 200 whose body carries a name that is empty or whitespace-only
+- **THEN** the join surface shows a load-failure message and a Retry action, and no membership is ever
+  provisioned or refreshed with that blank name
+
 #### Scenario: A missing event blocks the join
 - **WHEN** `GET /events/:eventId` returns 404
 - **THEN** the join surface shows an invalid/expired-invite message and offers no Join action
@@ -107,7 +118,6 @@ provisioning and album titling (capability `event-album`) always have a name to 
 #### Scenario: A load failure is retryable
 - **WHEN** `GET /events/:eventId` fails on the network or returns a non-404 error
 - **THEN** the join surface shows a load-failure message and a Retry action that re-runs the fetch
-
 ### Requirement: Confirming enrolls the device, then provisions
 
 The `JoinEvent` use-case SHALL, on confirm, **first** enroll the device by writing a **register-only,
@@ -597,7 +607,7 @@ acceptable for the controlled installed base.
 The app SHALL have exactly one `GET /events/:eventId` client: the `EventDirectory` port (`:domain`
 `ports/`) and its `HttpEventDirectory` implementation in `:adapter:generic:app`. Every consumer of an
 event's details SHALL read through it — the join gate's details fetch AND the membership refresh (the
-scan-path fill and the foreground re-fetch, capability `event-link`). There SHALL be no second, looser
+foreground re-fetch, capability `event-link`). There SHALL be no second, looser
 event-fetch client: a duplicate client is how producer and consumer semantics drift (the deleted
 `EventMetadataSource` accepted responses the gate rejects).
 
@@ -615,27 +625,43 @@ SHALL answer a **sealed outcome** with exactly three arms:
 - **absent** — the fetch resolved to a definitive `NotFound` **and** the membership's own persisted
   deadline has passed: the membership is torn down (capability `leave-event`).
 
+The name arm SHALL be retained as **convergence on the served name**, not as a fill for a membership that
+lacks one: a membership always carries a name (capability `event-link`), so this arm exists so that a
+persisted name can still be repaired toward the backend's value, and it is the only path by which a
+diverged name could ever be corrected.
+
 The teardown on the **absent** arm SHALL be performed by the rule itself, not by a branch in the calling
 flow. Attaching the consequence to the verdict is what makes every trigger reach the same outcome by
 construction rather than by separate call sites agreeing. It is also what the flow transcriber's closed
 grammar requires: the fetch is network I/O and therefore sits inside an escaping launch, where no `when`
-is transcribable and an untranscribable flow fails generation (capability `architecture-diagrams`).
+is transcribable and an untranscribable flow fails generation (capability `architecture-diagrams`). This
+requirement SHALL hold independently of how many triggers call the rule: it is a property of where the
+consequence is attached, not of agreement between call sites.
 
 The distinction between *inconclusive* and *absent* SHALL be preserved end to end. The port already
 separates `NotFound` from `Failed`; the effect the flows are given SHALL carry that sealed outcome rather
 than collapsing it, because collapsing them is what makes "could not tell" and "definitively gone"
 indistinguishable at the only place the difference matters.
 
-The fetch itself SHALL remain coordination in the `flow/` triggers (`Foreground` unconditionally;
-`Provision` for a nameless config) through a `compose/`-built `EventDirectory` effect over this one
-client. Each trigger SHALL do no more than hand the fetched result to the rule, so one verdict cannot mean
-two different things depending on which trigger observed it.
+The fetch itself SHALL remain coordination in the `flow/` triggers — **`Foreground`, unconditionally, and
+no other** — through a `compose/`-built `EventDirectory` effect over this one
+client. The trigger SHALL do no more than hand the fetched result to the rule. The `Provision` trigger
+SHALL NOT fetch: every provision route (interactive join, `autoJoin`, switch, headless create) has just
+loaded or minted the event's details, so a fetch there is redundant by construction, and the membership
+it would refresh is current already.
 
 #### Scenario: The membership refresh reads through the details client
 
-- **WHEN** the foreground refresh (or the scan-path fill) fetches the configured event
+- **WHEN** the foreground refresh fetches the configured event
 - **THEN** it calls the same `EventDirectory` the join gate uses, and updates the stored membership only
   from a resolved outcome
+
+#### Scenario: Provisioning fetches no details
+
+- **WHEN** an event is provisioned by any route — an interactive join, an `autoJoin` link, a switch, or a
+  headless create
+- **THEN** no `GET /events/:eventId` is issued by the provision trigger, and the membership is persisted
+  from the details the route already carries
 
 #### Scenario: An inconclusive outcome changes nothing
 
@@ -655,12 +681,11 @@ two different things depending on which trigger observed it.
 - **THEN** the effect the trigger receives distinguishes that from a failed fetch, rather than presenting
   both as the same no-result
 
-#### Scenario: Both triggers reach the same consequence
+#### Scenario: The consequence is attached to the verdict, not to the caller
 
-- **WHEN** the same sealed answer is produced under the `Foreground` trigger and under the `Provision`
-  trigger
-- **THEN** the same action follows in each case, because the rule performs it rather than each trigger
-
+- **WHEN** the rule answers the absent verdict
+- **THEN** the teardown is performed by the rule itself, so no calling flow contains a branch that could
+  reach a different consequence from the same verdict
 ### Requirement: The join surface shows a live count of the photos that will be shared
 
 The join surface's **loaded** phase SHALL present, within the Share section and beneath the Share switch,
