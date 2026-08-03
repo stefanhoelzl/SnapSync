@@ -10,6 +10,7 @@ import app.snapsync.model.eventStart
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.semantics.SemanticsProperties
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.graphics.PixelMap
 import androidx.compose.ui.graphics.toPixelMap
 import androidx.compose.ui.test.SemanticsMatcher
@@ -25,6 +26,7 @@ import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performTextClearance
 import androidx.compose.ui.test.performTextInput
 import app.snapsync.model.PermissionStatus
 import app.snapsync.model.Direction
@@ -34,6 +36,8 @@ import app.snapsync.model.Arrow
 import app.snapsync.presentation.CutoffFormatter
 import app.snapsync.presentation.JoinPhase
 import app.snapsync.presentation.PendingSwitch
+import app.snapsync.feature.membership.RenameFailureReason
+import app.snapsync.feature.membership.RenameStatus
 import app.snapsync.presentation.SyncHealth
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
@@ -518,6 +522,203 @@ class StatusScreenTest {
         rule.setContent { StatusScreen(inSync, onShareInvite = { shares++ }, inviteUrl = SAMPLE_INVITE, cutoff = fixedCutoff()) }
         rule.onNodeWithContentDescription("Share invite link").performClick()
         assertEquals(1, shares)
+    }
+
+    // ---- the rename affordance + dialog (capability `event-rename`) ----
+
+    @Test
+    fun `joined with a membership shows the rename pen beside the heading`() {
+        rule.setContent {
+            StatusScreen(inSync, membership = MEMBERSHIP, eventName = "Anna's Birthday", cutoff = fixedCutoff())
+        }
+        rule.onNodeWithText("Anna's Birthday").assertExists()
+        rule.onNodeWithContentDescription("Rename event").assertExists()
+    }
+
+    @Test
+    fun `the rename pen is present in every joined health, including without photo access`() {
+        // Renaming needs neither photo access nor a started event, so no health value may hide it.
+        val health = mutableStateOf<SyncHealth>(SyncHealth.InSync)
+        rule.setContent {
+            StatusScreen(
+                joined(health.value),
+                membership = MEMBERSHIP,
+                eventName = "Anna's Birthday",
+                cutoff = fixedCutoff(),
+            )
+        }
+        for (value in listOf(
+            SyncHealth.InSync,
+            SyncHealth.Syncing(Arrow.PULSING, Arrow.HIDDEN),
+            SyncHealth.NeedsAccess(PermissionStatus.DENIED),
+            SyncHealth.NeedsAccess(PermissionStatus.NOT_DETERMINED),
+        )) {
+            health.value = value
+            rule.waitForIdle()
+            rule.onNodeWithContentDescription("Rename event").assertExists()
+        }
+    }
+
+    @Test
+    fun `the rename pen is suppressed during a pending switch`() {
+        // Same reason the settings gear is: a rename must not race the switch's config write.
+        rule.setContent {
+            StatusScreen(
+                UiState.Joined(
+                    SyncHealth.InSync,
+                    PendingSwitch(
+                        "22222222-2222-4222-8222-222222222222",
+                        JoinPhase.Ready(
+                            "New Event",
+                            eventStart("2026-07-06T00:00:00Z"),
+                            eventEnd("2026-07-16T00:00:00Z"),
+                            deletesAt("2026-08-05T00:00:00Z"),
+                        ),
+                    ),
+                ),
+                membership = MEMBERSHIP,
+                eventName = "Anna's Birthday",
+                cutoff = fixedCutoff(),
+            )
+        }
+        rule.onNodeWithContentDescription("Rename event").assertDoesNotExist()
+    }
+
+    @Test
+    fun `the rename pen is absent on the create screen — there is no heading to rename`() {
+        rule.setContent { StatusScreen(UiState.CreateEvent(), cutoff = fixedCutoff()) }
+        rule.onNodeWithContentDescription("Rename event").assertDoesNotExist()
+    }
+
+    @Test
+    fun `the rename pen is absent while the reconfigure surface is open`() {
+        rule.setContent {
+            StatusScreen(inSync, membership = MEMBERSHIP, eventName = "Anna's Birthday", cutoff = fixedCutoff())
+        }
+        rule.onNodeWithContentDescription("Event settings").performClick()
+        rule.onNodeWithContentDescription("Rename event").assertDoesNotExist()
+    }
+
+    @Test
+    fun `tapping the pen opens the dialog PRE-FILLED with the current name`() {
+        rule.setContent {
+            StatusScreen(inSync, membership = MEMBERSHIP, eventName = "Anna's Birthday", cutoff = fixedCutoff())
+        }
+        rule.onNodeWithContentDescription("Rename event").performClick()
+        // The field opens carrying the current name, ready to be corrected rather than retyped.
+        rule.onNode(hasSetTextAction()).assert(
+            SemanticsMatcher.expectValue(SemanticsProperties.EditableText, AnnotatedString("Anna's Birthday")),
+        )
+    }
+
+    @Test
+    fun `Save is inert while the name is unchanged, and enables once it differs`() {
+        rule.setContent {
+            StatusScreen(inSync, membership = MEMBERSHIP, eventName = "Anna's Birthday", cutoff = fixedCutoff())
+        }
+        rule.onNodeWithContentDescription("Rename event").performClick()
+        // A no-op rename must be unreachable, not merely rejected on a round trip.
+        rule.onNodeWithText("Save").assertIsNotEnabled()
+        rule.onNode(hasSetTextAction()).performTextInput("!")
+        rule.onNodeWithText("Save").assertIsEnabled()
+    }
+
+    @Test
+    fun `confirming submits the trimmed name with the membership's event id`() {
+        val submitted = mutableListOf<Pair<String, String>>()
+        rule.setContent {
+            StatusScreen(
+                inSync,
+                membership = MEMBERSHIP,
+                eventName = "Anna's Birthday",
+                onRenameEvent = { id, name -> submitted += id to name },
+                cutoff = fixedCutoff(),
+            )
+        }
+        rule.onNodeWithContentDescription("Rename event").performClick()
+        rule.onNode(hasSetTextAction()).performTextClearance()
+        rule.onNode(hasSetTextAction()).performTextInput("  Ana's 30th  ")
+        rule.onNodeWithText("Save").performClick()
+        // The id rides along so a switch landing mid-edit makes the use-case a no-op.
+        assertEquals(listOf("E1" to "Ana's 30th"), submitted)
+    }
+
+    @Test
+    fun `a failure keeps the dialog open with the typed value and an error BANNER`() {
+        rule.setContent {
+            StatusScreen(
+                inSync,
+                membership = MEMBERSHIP,
+                eventName = "Anna's Birthday",
+                renameStatus = RenameStatus.Failed(RenameFailureReason.INVALID_NAME),
+                cutoff = fixedCutoff(),
+            )
+        }
+        rule.onNodeWithContentDescription("Rename event").performClick()
+        // The sheet stays open — the failure is reported beside the field, never ON it: a server saying
+        // no must not read as a complaint about the host's typing.
+        rule.onNodeWithText("Save").assertExists()
+        rule.onNodeWithText("That name wasn't accepted. Try a shorter one.").assertExists()
+    }
+
+    @Test
+    fun `a server failure shows the generic copy — a swept event gets no special message`() {
+        // Deliberate: a 404 is ONE witness that the event is gone, and surfacing it would invite a future
+        // change to act on it (capability `leave-event`).
+        rule.setContent {
+            StatusScreen(
+                inSync,
+                membership = MEMBERSHIP,
+                eventName = "Anna's Birthday",
+                renameStatus = RenameStatus.Failed(RenameFailureReason.SERVER),
+                cutoff = fixedCutoff(),
+            )
+        }
+        rule.onNodeWithContentDescription("Rename event").performClick()
+        rule.onNodeWithText("Couldn't rename the event. Check your connection and try again.").assertExists()
+    }
+
+    @Test
+    fun `success closes the dialog and clears the latch`() {
+        var consumed = 0
+        val status = mutableStateOf<RenameStatus>(RenameStatus.Idle)
+        rule.setContent {
+            StatusScreen(
+                inSync,
+                membership = MEMBERSHIP,
+                eventName = "Anna's Birthday",
+                renameStatus = status.value,
+                onRenameStatusConsumed = { consumed++ },
+                cutoff = fixedCutoff(),
+            )
+        }
+        rule.onNodeWithContentDescription("Rename event").performClick()
+        rule.onNodeWithText("Save").assertExists()
+
+        status.value = RenameStatus.Succeeded
+        rule.waitForIdle()
+
+        rule.onNodeWithText("Save").assertDoesNotExist()
+        assertEquals(1, consumed, "the latch is cleared so a second rename starts clean")
+    }
+
+    @Test
+    fun `cancelling submits nothing`() {
+        var submits = 0
+        rule.setContent {
+            StatusScreen(
+                inSync,
+                membership = MEMBERSHIP,
+                eventName = "Anna's Birthday",
+                onRenameEvent = { _, _ -> submits++ },
+                cutoff = fixedCutoff(),
+            )
+        }
+        rule.onNodeWithContentDescription("Rename event").performClick()
+        rule.onNode(hasSetTextAction()).performTextInput("x")
+        rule.onNodeWithText("Cancel").performClick()
+        assertEquals(0, submits)
+        rule.onNodeWithText("Save").assertDoesNotExist()
     }
 
     // ---- the settings action + reconfigure surface (capability `reconfigure-membership`) ----

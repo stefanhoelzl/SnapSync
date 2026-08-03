@@ -23,12 +23,19 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 
 /**
- * The bug-report sheet — the app's first bottom sheet — which collects a written account of a problem
- * and offers a confirm and a cancel action (capability `diagnostic-logging`).
+ * The text-prompt sheet — the app's bottom sheet for collecting one piece of text, with a confirm and a
+ * cancel action.
  *
- * Semantic and appearance-free like every `App*` component: a [title], a [body] line naming what will
- * be sent, a [placeholder] for the input, a [maxLength], the two action labels, [onConfirm] receiving
- * what was written, and [onDismiss]. No colors, shapes, text styles, `Modifier`, or content slot in the
+ * **General, not purpose-named.** It serves the diagnostic dump's bug report (capability
+ * `diagnostic-logging`) and the event rename (capability `event-rename`) as ONE component. It was
+ * `AppBugReportSheet` while it had a single caller; the second caller wanted the same sheet with a
+ * pre-filled value, an error slot, and a busy state, and a second near-identical overlay would have been
+ * two components for one meaning. The inventory grows demand-driven with the screens that need it.
+ *
+ * Semantic and appearance-free like every `App*` component: a [title], an optional [body] line naming
+ * what the value is for, a [placeholder] for the input, an [initialValue] it opens carrying, a
+ * [maxLength], the two action labels, an optional [error], a [busy] flag, [onConfirm] receiving what was
+ * written, and [onDismiss]. No colors, shapes, text styles, `Modifier`, or content slot in the
  * signature, and no Material 3 type — the `ModalBottomSheet`, the input, and the action arrangement all
  * live inside (design-system containment rule).
  *
@@ -47,33 +54,54 @@ import androidx.compose.ui.unit.dp
  * Do not "simplify" this back to a wrap-height sheet on the grounds that `imePadding()` is already
  * there. That is precisely the combination that was measured failing.
  *
- * **The input is the component's own state.** The caller learns what was written only on [onConfirm],
- * because a half-typed sentence is not something any screen's state should have to carry — the same
- * reason the confirm dialogs keep their visibility local.
+ * **The input is the component's own state**, seeded from [initialValue]. The caller learns what was
+ * written only on [onConfirm], because a half-typed sentence is not something any screen's state should
+ * have to carry — the same reason the confirm dialogs keep their visibility local. The seed is keyed on
+ * [initialValue], so re-opening the sheet for a different value starts from that value rather than from
+ * a stale edit.
  *
  * [onConfirm] receives the **trimmed** text, and confirming is impossible while that trimmed text is
- * empty: the action is disabled rather than validated, so an invalid submit is unreachable and no error
- * message is ever needed. Cancel, the scrim, and the swipe-down gesture all route to [onDismiss] —
- * one dismissal, however it is spelled.
+ * empty **or equal to the trimmed [initialValue]** — so a caller editing an existing value cannot submit
+ * a no-op. Both are disabled rather than validated, so an invalid submit is unreachable and neither ever
+ * needs an error message. (For the always-empty [initialValue] of the bug report, the second rule
+ * collapses into the first and nothing about that caller changes.)
+ *
+ * [error] is for the failure a client-side rule CANNOT prevent — a rejection from a remote system. It
+ * renders as an [AppErrorBanner] above the actions, never as a styling of the input: a server saying no
+ * must not read as a complaint about what the person typed. (The create screen's spec makes the same
+ * call for the same reason.)
+ *
+ * While [busy] the sheet stays open, the confirm action states that it is running, and **every dismissal
+ * route is refused** — cancel, the scrim, and the swipe-down alike. An in-flight request must be neither
+ * double-submitted nor abandoned half-way, and the only honest thing a sheet can do while it waits is
+ * stay put. Otherwise cancel, the scrim, and the swipe-down gesture all route to [onDismiss] — one
+ * dismissal, however it is spelled.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun AppBugReportSheet(
+fun AppTextPromptSheet(
     title: String,
-    body: String,
     placeholder: String,
     confirmLabel: String,
     cancelLabel: String,
     onConfirm: (String) -> Unit,
     onDismiss: () -> Unit,
+    body: String? = null,
+    initialValue: String = "",
     maxLength: Int = Int.MAX_VALUE,
+    error: String? = null,
+    busy: Boolean = false,
 ) {
     val scheme = MaterialTheme.colorScheme
-    var text by remember { mutableStateOf("") }
+    var text by remember(initialValue) { mutableStateOf(initialValue) }
     val written = text.trim()
+    // A no-op submission is unreachable, not merely rejected. For an empty seed this IS the empty check.
+    val submittable = written.isNotEmpty() && written != initialValue.trim()
 
     ModalBottomSheet(
-        onDismissRequest = onDismiss,
+        // Busy refuses the scrim and the swipe-down as firmly as it refuses the cancel button: a request
+        // in flight has no honest cancellation, so there is one answer for every dismissal route.
+        onDismissRequest = { if (!busy) onDismiss() },
         // Full height, so the content is laid out from the top and the keyboard cannot reach the
         // actions. See the note above: this is the load-bearing half of keyboard avoidance, not a
         // presentation preference.
@@ -106,18 +134,25 @@ fun AppBugReportSheet(
                 placeholder = placeholder,
                 maxLength = maxLength,
                 singleLine = false,
+                enabled = !busy,
             )
-            Text(
-                text = body,
-                style = MaterialTheme.typography.bodySmall,
-                color = scheme.onSurfaceVariant,
-            )
+            if (body != null) {
+                Text(
+                    text = body,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = scheme.onSurfaceVariant,
+                )
+            }
+            // The remote rejection, above the actions and never on the field.
+            if (error != null) {
+                AppErrorBanner(text = error)
+            }
             PrimaryButton(
                 label = confirmLabel,
                 onClick = { onConfirm(written) },
-                enabled = written.isNotEmpty(),
+                enabled = submittable && !busy,
             )
-            SecondaryButton(label = cancelLabel, onClick = onDismiss)
+            SecondaryButton(label = cancelLabel, onClick = { if (!busy) onDismiss() })
         }
     }
 }

@@ -33,6 +33,8 @@ fun MainViewController() = ComposeUIViewController {
     val eventName by host.eventName.collectAsState()
     // The current membership settings for the reconfigure surface (capability `reconfigure-membership`).
     val membership by host.membership.collectAsState()
+    // The rename lifecycle for the heading's rename dialog (capability `event-rename`).
+    val renameStatus by host.renameStatus.collectAsState()
 
     // Dev/test: apply the membership-mutating launch-env triggers (leave → create → event-link) once
     // per process (no-op in production, where no such env vars exist). Runs after `host` is realized;
@@ -81,6 +83,11 @@ fun MainViewController() = ComposeUIViewController {
             // no-network query, plus the live grant as its recompute trigger.
             shareableCount = SnapSyncRoot.shareableCount,
             photoPermission = photoPermission,
+            // The heading rename (capability `event-rename`): the command, its lifecycle, and the latch
+            // reset the screen fires once it has acted on a terminal value.
+            onRenameEvent = host::onRenameEvent,
+            renameStatus = renameStatus,
+            onRenameStatusConsumed = host::onRenameStatusConsumed,
         )
     }
 }

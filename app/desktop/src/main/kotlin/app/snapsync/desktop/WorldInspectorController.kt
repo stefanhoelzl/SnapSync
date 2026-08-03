@@ -14,6 +14,7 @@ import app.snapsync.ports.TransferOutcome
 import app.snapsync.feature.download.StoreDownloadStatusSource
 import app.snapsync.model.UploadError
 import app.snapsync.feature.creation.CreationStatusSource
+import app.snapsync.feature.membership.RenameStatusSource
 import app.snapsync.feature.creation.EventCreator
 import app.snapsync.ports.EventDetails
 import app.snapsync.feature.membership.JoinEvent
@@ -92,6 +93,22 @@ class WorldInspectorController(private val scope: CoroutineScope) {
     val creationStatusSource: CreationStatusSource = object : CreationStatusSource {
         override val creationStatus get() = world.creationStatus.creationStatus
     }
+
+    /** The world's REAL rename status (capability `event-rename`) — never forged here. */
+    val renameStatusSource: RenameStatusSource = object : RenameStatusSource {
+        override val renameStatus get() = world.renameStatus.renameStatus
+    }
+
+    // The real rename edges: the world's own `UserCommands`, so the pen drives the actual use-case
+    // against the mini-edge's PATCH route rather than a harness stand-in.
+    // Fire-and-forget like the real command, so the inspector refresh rides its own launch: the rename
+    // completes asynchronously and an inline `afterMutation()` would snapshot the world BEFORE it landed.
+    val rename: (String, String) -> Unit = { eventId, name ->
+        world.userCommands.rename(eventId, name)
+        appendConsole("rename $eventId → \"$name\"")
+        scope.launch { afterMutation() }
+    }
+    val resetRename: () -> Unit = { world.userCommands.resetRename() }
     val configStore: ConfigStore = object : ConfigStore {
         override suspend fun save(config: EventConfig) = world.provision(config.eventId, config.name)
         override suspend fun clear() = world.leave()

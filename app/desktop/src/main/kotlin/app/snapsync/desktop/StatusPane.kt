@@ -22,6 +22,8 @@ import app.snapsync.presentation.AlwaysAttested
 import app.snapsync.presentation.AttestedSource
 import app.snapsync.presentation.CutoffFormatter
 import app.snapsync.presentation.MutablePendingJoinSource
+import app.snapsync.feature.membership.MutableRenameStatusSource
+import app.snapsync.feature.membership.RenameStatusSource
 import app.snapsync.presentation.StatusContainerHost
 import app.snapsync.feature.download.DownloadStatusSource
 import app.snapsync.feature.status.SyncStatusSource
@@ -66,6 +68,13 @@ fun StatusPane(
     // `world.core.userCommands.reconfigure` so `:app:desktop:run` drives the actual in-place rewrite.
     reconfigure: suspend (String, Direction, CaptureCutoff, CaptureCeiling, Boolean) -> Unit =
         { _, _, _, _, _ -> },
+    // The heading rename (capability `event-rename`): the forge leaves it inert (the dialog is
+    // reviewable, the command a no-op), the full-stack world harness binds the real
+    // `world.core.userCommands.rename`/`resetRename` so `:app:desktop:run` drives the actual rewrite
+    // against the world's mini-edge. The status source likewise defaults to an always-Idle instance.
+    rename: (String, String) -> Unit = { _, _ -> },
+    resetRename: () -> Unit = {},
+    renameStatusSource: RenameStatusSource = MutableRenameStatusSource(),
     // The join-time shareable-count preview (capability `join-share-count`): the forge leaves it inert
     // (no count row), the full-stack world harness binds it to `world.core.loadShareableCount` so
     // `:app:desktop:run` shows the real count over the world gallery. Range-aware (`[cutoff, until]`).
@@ -106,6 +115,7 @@ fun StatusPane(
             configSource.config,
             scope,
             creationStatusSource = creationStatusSource,
+            renameStatusSource = renameStatusSource,
             // The user-tap command bundle (spec `module-architecture`, "Commands cross one door"),
             // assembled from this pane's injected harness edges — the harness's stand-in for the
             // `compose/`-built production bundle (the world adopts `snapSyncApp` at step 10). The
@@ -118,6 +128,8 @@ fun StatusPane(
                 requestAccess = requester::request,
                 openSettings = requester::openSettings,
                 reconfigure = reconfigure,
+                rename = rename,
+                resetRename = resetRename,
                 sendDiagnostics = sendDiagnostics,
             ),
             loadJoinDetails = loadJoinDetails,
@@ -135,6 +147,8 @@ fun StatusPane(
     val eventName by host.eventName.collectAsState()
     // The current membership settings for the reconfigure surface (capability `reconfigure-membership`).
     val membership by host.membership.collectAsState()
+    // The rename lifecycle for the heading's rename dialog (capability `event-rename`).
+    val renameStatus by host.renameStatus.collectAsState()
 
     PhoneFrame {
         // `leave` is the injected edge: the forge leaves it defaulted (Confirm reviewable but inert),
@@ -167,6 +181,10 @@ fun StatusPane(
             cutoff = cutoffFormatter,
             shareableCount = shareableCount,
             photoPermission = photoPermission,
+            // The heading rename (capability `event-rename`).
+            onRenameEvent = host::onRenameEvent,
+            renameStatus = renameStatus,
+            onRenameStatusConsumed = host::onRenameStatusConsumed,
             onSendDiagnostics = host.onSendDiagnostics,
         )
         }

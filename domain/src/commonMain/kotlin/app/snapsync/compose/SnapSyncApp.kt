@@ -18,7 +18,9 @@ import app.snapsync.feature.membership.JoinEvent
 import app.snapsync.feature.membership.JoinOutcome
 import app.snapsync.feature.membership.LeaveEvent
 import app.snapsync.feature.membership.ManifestDeviceEnroller
+import app.snapsync.feature.membership.MutableRenameStatusSource
 import app.snapsync.feature.membership.ReconfigureEvent
+import app.snapsync.feature.membership.RenameEvent
 import app.snapsync.feature.membership.ResetDeviceState
 import app.snapsync.feature.status.LedgerBackedSyncStatusSource
 import app.snapsync.feature.status.LedgerCounts
@@ -63,6 +65,7 @@ import app.snapsync.ports.DownloadStore
 import app.snapsync.ports.DownloadTransport
 import app.snapsync.ports.DownloadTransportHost
 import app.snapsync.ports.EventCreation
+import app.snapsync.ports.EventRename
 import app.snapsync.ports.EventDetails
 import app.snapsync.ports.EventDirectory
 import app.snapsync.ports.EventUnionSource
@@ -126,6 +129,13 @@ class AppPorts(
      */
     val manifestStore: DeviceManifestStore,
     val eventCreation: EventCreation,
+    /**
+     * The event-rename seam (capability `event-rename`). **Required, not defaulted**: an inert default
+     * would leave the status screen's rename affordance visible and silently doing nothing — the one
+     * outcome [UserCommands.sendDiagnostics]'s contract forbids, and the reason that command is nullable
+     * rather than inert. A root that cannot rename must fail to compile, not ship a dead pen.
+     */
+    val eventRename: EventRename,
     val attestKey: AttestKey,
     val attestClient: AttestClient,
     val attestStore: AttestStore,
@@ -448,6 +458,23 @@ class AppCore internal constructor(
     /** The create-event status the use-case drives and the container reads (same instance). */
     val creationStatus: MutableCreationStatusSource = MutableCreationStatusSource()
 
+    /** The rename status the use-case drives and the container reads (same instance, capability
+     *  `event-rename`) — the create twin, but carrying a success value the screen must clear. */
+    val renameStatus: MutableRenameStatusSource = MutableRenameStatusSource()
+
+    // The rename use-case (capability `event-rename`): rewrite the shared event's name on the backend,
+    // then fold the ECHOED name into this membership's config. The fifth writer of that config, seated
+    // in `feature/membership` beside the reconfigure for exactly that reason.
+    val renameEvent: RenameEvent by lazy {
+        RenameEvent(
+            configSource = ports.configSource,
+            store = ports.configStore,
+            client = ports.eventRename,
+            status = renameStatus,
+            scope = scope,
+        )
+    }
+
     // The create-event use-case: mint via the backend, then route the minted event into the SAME
     // join gate a scanned QR takes (capability `photo-selection-policy`).
     val eventCreator: EventCreator by lazy {
@@ -677,6 +704,12 @@ class AppCore internal constructor(
             reconfigure = { eventId, direction, minPhotoDate, maxPhotoDate, saveToAlbum ->
                 reconfigureEvent.reconfigure(eventId, direction, minPhotoDate, maxPhotoDate, saveToAlbum)
             },
+            // Rename the joined event (capability `event-rename`): unlike `reconfigure`, which edits only
+            // this device's settings, this rewrites the SHARED event — every member picks the new name up
+            // on their next foreground refresh. Fire-and-forget; the outcome rides `renameStatus`.
+            rename = { eventId, name -> renameEvent.rename(eventId, name) },
+            // Clear the rename latch once the screen has consumed a terminal status.
+            resetRename = { renameEvent.reset() },
             // The hidden diagnostic dump (capability `diagnostic-logging`), fired once the operator has
             // written what went wrong. NULL on a build with no reporting configuration, so the screen
             // wires no gesture and no sheet can open — a build that can send nothing must not offer an

@@ -40,6 +40,14 @@ package app.snapsync.model
  *   album opt-in) without leaving (capability `reconfigure-membership`). [eventId] is the event the
  *   settings surface was opened for; the use-case no-ops if the current membership no longer matches.
  *   Fire-and-forget; the change lands via the config read-model on the next cycle.
+ * - [rename] — rename the joined event for **every** member (capability `event-rename`). [eventId] is
+ *   the event the heading affordance was opened for; the use-case no-ops if the current membership no
+ *   longer matches. Fire-and-forget; the outcome arrives via `RenameStatusSource`, and the new name
+ *   lands via the config read-model. Unlike [reconfigure], which changes only this device's settings,
+ *   this writes the shared event — but it is still just a command through the one door.
+ * - [resetRename] — clear the rename status latch back to `Idle` once the screen has consumed a
+ *   terminal value. Needed because `RenameStatus` carries a success value where `CreationStatus`
+ *   deliberately does not: a rename changes no layer, so nothing else would clear it.
  * - [sendDiagnostics] — send this device's diagnostic dump to the operator's reporting channel
  *   (capability `diagnostic-logging`), fired by the hidden double-tap once the operator has written
  *   what went wrong. `note` is that description, already trimmed and length-bounded by the sheet — it
@@ -77,5 +85,7 @@ class UserCommands(
         maxPhotoDate: CaptureCeiling,
         saveToAlbum: Boolean,
     ) -> Unit = { _, _, _, _, _ -> },
+    val rename: (eventId: String, name: String) -> Unit = { _, _ -> },
+    val resetRename: () -> Unit = {},
     val sendDiagnostics: (suspend (note: String, screen: String) -> Unit)? = null,
 )

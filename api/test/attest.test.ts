@@ -193,6 +193,10 @@ Deno.test("challenge: ours is valid inside its window, invalid outside it, and f
 // "served without a token" tests below. Every WRITE, and the per-device raw listing, stays gated.
 const GATED: [string, RequestInit][] = [
   ["/api/v1/events", { method: "POST", body: JSON.stringify({ name: "x" }) }],
+  // The rename (capability `event-rename`) lands on the SAME path shape as the ungated marker read, so
+  // it is the closest call in this list: only the `publicRead` method check separates them. Pinned here
+  // so relaxing that check can never silently open a write.
+  [`/api/v1/events/${E}`, { method: "PATCH", body: JSON.stringify({ name: "x" }) }],
   [`/api/v1/events/${E}/notify`, { method: "POST" }],
   [`/api/v1/events/${E}/devices/${D}`, { method: "PUT", body: "{}" }],
   [`/api/v1/events/${E}/devices/${D}`, { method: "DELETE" }],
@@ -260,6 +264,16 @@ Deno.test("gate: opening the reads opens no WRITE — mutating /events/<id>/… 
   // A POST to the ungated READ paths themselves is a mutating method → still gated.
   assertEquals((await a.request(`/api/v1/events/${E}`, { method: "POST" })).status, 401);
   assertEquals((await a.request(`/api/v1/events/${E}/files`, { method: "POST" })).status, 401);
+  // …and so is the rename, which is a real handler on exactly the ungated read's path (capability
+  // `event-rename`). Reading an event un-attested must never imply renaming it.
+  assertEquals(
+    (await a.request(`/api/v1/events/${E}`, {
+      method: "PATCH",
+      body: JSON.stringify({ name: "x" }),
+    }))
+      .status,
+    401,
+  );
   // The per-device RAW listing has no web consumer and stays gated (defense in depth).
   assertEquals((await a.request(`/api/v1/files/devices/${D}`)).status, 401);
 });

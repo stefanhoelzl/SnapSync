@@ -30,9 +30,11 @@ import app.snapsync.presentation.CutoffFormatter
 import app.snapsync.presentation.JoinPhase
 import app.snapsync.presentation.PendingSwitch
 import app.snapsync.presentation.SyncHealth
+import app.snapsync.feature.membership.RenameFailureReason
+import app.snapsync.feature.membership.RenameStatus
 import app.snapsync.presentation.UiState
 import app.snapsync.ui.components.AppAccessPoint
-import app.snapsync.ui.components.AppBugReportSheet
+import app.snapsync.ui.components.AppTextPromptSheet
 import app.snapsync.ui.components.AppConfirmDialog
 import app.snapsync.ui.components.AppDestructiveConfirmDialog
 import app.snapsync.ui.components.AppErrorBanner
@@ -141,6 +143,15 @@ fun StatusScreen(
     // from. `null` — the default, and every build with no reporting channel — wires no gesture and can
     // open no sheet, so a build that can send nothing offers nothing that suggests it can.
     onSendDiagnostics: ((note: String, screen: String) -> Unit)? = null,
+    // Rename the joined event (capability `event-rename`): the event the dialog was opened for and the
+    // new name. Fired by the pen beside the heading; the outcome arrives back via [renameStatus].
+    onRenameEvent: (String, String) -> Unit = { _, _ -> },
+    // The rename lifecycle. `InFlight` makes the dialog busy, `Succeeded` closes it, `Failed` keeps it
+    // open with an error banner. A screen param like [eventName] — it is NOT part of UiState.
+    renameStatus: RenameStatus = RenameStatus.Idle,
+    // Clear the rename latch once this screen has acted on a terminal status, so a second rename starts
+    // from a clean sequence rather than re-reading the previous outcome.
+    onRenameStatusConsumed: () -> Unit = {},
 ) {
     AppTheme {
         // Local UI state only: the confirm dialog's visibility never enters UiState or the reduction.
@@ -153,13 +164,21 @@ fun StatusScreen(
         // `reconfigure-membership`, design decision "local Compose navigation"): opening it touches no
         // port; only Save fires a command. Like [confirmingLeave], it never enters UiState.
         var reconfiguring by remember { mutableStateOf(false) }
+        // The rename dialog's visibility — screen-local like the three above. The typed name lives inside
+        // the sheet; this screen learns it only on confirm (capability `event-rename`).
+        var renaming by remember { mutableStateOf(false) }
 
         val joined = state is UiState.Joined
         val pendingSwitch = (state as? UiState.Joined)?.pendingSwitch != null
         // The reconfigure surface renders only while joined with a known membership; if the config drops
         // (a leave lands) the flag is reset so a later rejoin does not reopen it.
         val reconfigureActive = joined && reconfiguring && membership != null
-        LaunchedEffect(joined) { if (!joined) reconfiguring = false }
+        LaunchedEffect(joined) {
+            if (!joined) {
+                reconfiguring = false
+                renaming = false
+            }
+        }
 
         // The joined-layer action cluster: settings · share · leave. Settings is suppressed during a
         // pending switch (a reconfigure must not race the switch's config write) and needs a known
@@ -190,6 +209,16 @@ fun StatusScreen(
             contentPinsActionCluster = state is UiState.JoiningEvent || reconfigureActive,
             // Hidden, and only where there is a channel to send to.
             onTitleDoubleTap = onSendDiagnostics?.let { { reportingBug = true } },
+            // The rename pen, beside the heading — so only where a heading renders, which is the joined
+            // layer outside the reconfigure surface. Suppressed during a pending switch for the same
+            // reason the settings gear is: a rename must not race the switch's config write. Unlike the
+            // hidden double-tap above, this is a real control and appears in the accessibility tree.
+            onEditHeading =
+                if (joined && !reconfigureActive && !pendingSwitch && membership != null) {
+                    { renaming = true }
+                } else {
+                    null
+                },
         ) {
             if (reconfigureActive) {
                 ReconfigureScreen(
@@ -244,8 +273,48 @@ fun StatusScreen(
         // confirmation, so there is no second dialog behind Send. There is deliberately NO feedback
         // afterwards — the reporting SDK may queue and retransmit later, so "sent" is a claim the app
         // cannot honestly make.
+        // The rename dialog (capability `event-rename`), opened by the pen beside the heading. Pre-filled
+        // with the current name; the field is capped at the backend's own 100-character rule and confirm
+        // is inert while the trimmed value is empty or unchanged, so a no-op rename never reaches the
+        // network. A failure keeps the sheet open with the typed value and an error BANNER — never a
+        // reddened field: a server saying no must not read as a complaint about the host's typing
+        // (`event-creation-ui` makes the same call for the same reason).
+        if (renaming && joined && membership != null) {
+            // Success closes the sheet; either terminal value clears the latch, so the next rename starts
+            // from a clean sequence rather than re-reading this one's outcome.
+            LaunchedEffect(renameStatus) {
+                when (renameStatus) {
+                    RenameStatus.Succeeded -> {
+                        renaming = false
+                        onRenameStatusConsumed()
+                    }
+                    else -> Unit
+                }
+            }
+            AppTextPromptSheet(
+                title = "Rename event",
+                body = "Everyone in the event sees the new name.",
+                placeholder = "Event name",
+                initialValue = membership.name,
+                // The backend's own bound (capability `event-creation`), enforced by the input so an
+                // over-long name is unreachable rather than rejected on a round trip.
+                maxLength = 100,
+                confirmLabel = "Save",
+                cancelLabel = "Cancel",
+                busy = renameStatus == RenameStatus.InFlight,
+                error = (renameStatus as? RenameStatus.Failed)?.let { renameFailureText(it.reason) },
+                // The id rides with the name so a switch landing mid-edit makes the use-case a no-op
+                // rather than renaming a different event.
+                onConfirm = { newName -> onRenameEvent(membership.eventId, newName) },
+                onDismiss = {
+                    renaming = false
+                    onRenameStatusConsumed()
+                },
+            )
+        }
+
         if (reportingBug && onSendDiagnostics != null) {
-            AppBugReportSheet(
+            AppTextPromptSheet(
                 title = "Report a problem",
                 body = "Sent with the app's recent activity log and sync state to the developer's " +
                     "error-tracking service.",
@@ -1444,3 +1513,17 @@ private fun CreatingEventScreen() {
 
 // Mirrors the backend's name cap (trimmed, non-empty, ≤100) so a server 400 is near-unreachable.
 private const val EVENT_NAME_MAX_LENGTH = 100
+
+/**
+ * The rename dialog's failure copy (capability `event-rename`). Two reasons, because the port reports
+ * two: the backend rejected the name, or everything else.
+ *
+ * There is deliberately no "this event no longer exists" copy for the `404` that also arrives as
+ * [RenameFailureReason.SERVER]. A `404` here is a single witness that the event is gone, and the
+ * self-leave needs two (capability `leave-event`); giving it copy would give it a meaning, and a meaning
+ * invites acting on it. The standing foreground refresh reaches that verdict on its own terms.
+ */
+private fun renameFailureText(reason: RenameFailureReason): String = when (reason) {
+    RenameFailureReason.INVALID_NAME -> "That name wasn't accepted. Try a shorter one."
+    RenameFailureReason.SERVER -> "Couldn't rename the event. Check your connection and try again."
+}

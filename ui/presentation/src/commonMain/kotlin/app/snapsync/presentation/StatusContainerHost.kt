@@ -21,6 +21,9 @@ import app.snapsync.feature.creation.CreationFailureReason
 import app.snapsync.feature.creation.CreationStatus
 import app.snapsync.feature.creation.CreationStatusSource
 import app.snapsync.feature.creation.MutableCreationStatusSource
+import app.snapsync.feature.membership.MutableRenameStatusSource
+import app.snapsync.feature.membership.RenameStatus
+import app.snapsync.feature.membership.RenameStatusSource
 import app.snapsync.model.PermissionStatus
 import app.snapsync.model.grantsPhotoAccess
 import app.snapsync.feature.download.DownloadProgress
@@ -65,6 +68,10 @@ class StatusContainerHost(
     // non-iOS hosts and tests that don't exercise create construct unchanged; iOS injects the same
     // instance the create use-case drives.
     creationStatusSource: CreationStatusSource = MutableCreationStatusSource(),
+    // The rename-status read-model (capability `event-rename`), the create twin. Same inert default for
+    // the same reason. It is exposed as a SCREEN-LEVEL value below — never folded into `UiState` — so
+    // the reduction gains no branch for a dialog's in-flight and failure states.
+    renameStatusSource: RenameStatusSource = MutableRenameStatusSource(),
     // The user-tap **command bundle** (spec `module-architecture`, "Commands cross one door"):
     // leave / create / commitJoin / share / requestAccess / openSettings — `model/` vocabulary whose
     // live instance is built only in `compose/` (`AppCore.userCommands`) — this container fires
@@ -302,6 +309,28 @@ class StatusContainerHost(
      * event is configured (no URL) or no real share is bound (the no-op default).
      */
     fun onShareInvite() = intent { inviteUrl.value?.let { commands.share(it) } }
+
+    /**
+     * The rename lifecycle (capability `event-rename`) for the heading's rename dialog: in-flight while
+     * the request runs, then `Succeeded` (the dialog closes) or `Failed` (it stays open with a banner).
+     *
+     * A screen-level param like [inviteUrl]/[eventName]/[membership] — it does **not** enter `UiState`,
+     * so the reduction gains no branch. The rename changes no layer; it changes one string and a dialog's
+     * state, and neither is a status-screen family.
+     */
+    val renameStatus: StateFlow<RenameStatus> = renameStatusSource.renameStatus
+
+    /**
+     * Rename the joined event (capability `event-rename`), confirmed on the heading's rename dialog.
+     * Delegates to the injected [UserCommands.rename] with [eventId] — the event the dialog was opened
+     * for — so a switch that landed mid-edit makes the use-case a no-op rather than renaming a different
+     * event. Fire-and-forget; the outcome arrives via [renameStatus] and the new name via the config
+     * read-model. Unlike [onReconfigure], this writes the SHARED event, but it crosses the same one door.
+     */
+    fun onRenameEvent(eventId: String, name: String) = intent { commands.rename(eventId, name) }
+
+    /** Clear the [renameStatus] latch once the screen has consumed a terminal value. */
+    fun onRenameStatusConsumed() = intent { commands.resetRename() }
 
     /**
      * Send the diagnostic dump (capability `diagnostic-logging`) with the operator's account of the
