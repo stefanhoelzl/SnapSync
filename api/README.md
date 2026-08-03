@@ -69,51 +69,48 @@ landed keeps a manifest active, so an abandoned event may never empty). A marker
 ## Contract
 
 > **Versioned prefix (capability `backend-deployment`).** Every device-API route below is served
-> under the canonical prefix **`/api/v1`** (e.g. `POST /api/v1/events`,
-> `GET /api/v1/attest/challenge`) **and** — for a grace period — at the **bare** path shown here as
-> a **deprecated alias**, so already-installed apps (device-facing host baked at compile time, not
-> force-updatable) keep working. The paths are written bare below; read each as also available under
-> `/api/v1`. The gate normalizes the `/api/vN` prefix, so the ungated `/attest/*` set holds under
-> both forms. The **web/link** routes (`/`, `/join`, the AASA) stay at the **root**, never under
-> `/api/v1`. The routing is version-parametric: a future `/api/v2` is one more mount. Ending the
-> grace period is deleting the single bare-alias mount in `createApp`.
+> under the prefix **`/api/v1`** — written that way here, and the one shape it answers at. The gate
+> normalizes the `/api/vN` prefix before its closed-list checks, so the ungated `/api/v1/attest/*`
+> set holds under it. The **web/link** routes (`/`, `/join`, the AASA) stay at the **root**, never
+> under `/api/v1`. The routing is version-parametric: a future `/api/v2` is one more mount in
+> `createApp`.
 
 ```
-POST /events
+POST /api/v1/events
     body: {"name": "<name>", "startsAt": "<canonical instant>"}   (name trimmed, non-empty, ≤100 chars)
     body: … optional {"endsAt": "<canonical instant>"}  (strictly after startsAt, ≤30 days after it)
     →  bunny native PUT  events/<minted-uuid>/metadata.json   (stamps capacity + lifetimeSeconds)
     →  201 {eventId, name, createdAt, startsAt, endsAt, capacity, deletesAt}   | 400 | 502
 
-GET  /events/<eventId>
+GET  /api/v1/events/<eventId>
     →  200 {eventId, name, createdAt, startsAt, endsAt, capacity, deletesAt}
        (`deletesAt` DERIVED per response, never stored; a legacy/incomplete marker is never served)
        | 404 when never created OR already swept | 502 on a non-404 marker read failure
 
-PUT  /files/devices/<deviceId>/<filename>                 (byte upload — UNGATED, no marker read)
+PUT  /api/v1/files/devices/<deviceId>/<filename>          (byte upload — UNGATED, no marker read)
     body: raw resource bytes (streamed, never buffered)
     →  bunny native PUT  https://<host>/<zone>/files/devices/<deviceId>/<filename>
        header  AccessKey: <storage-zone password>
     →  201 on confirmed store | 502 on any upstream error/abort
     OPTIONS → 204 (no resumable-upload advertised → the iOS uploader falls back to a plain PUT)
 
-GET  /files/devices/<deviceId>                            (per-device raw listing — UNGATED)
+GET  /api/v1/files/devices/<deviceId>                     (per-device raw listing — UNGATED)
     →  single bunny native LIST of  files/devices/<deviceId>/
     →  200 [ {filename, size, url}, … ]  (200 [] for an empty/unknown partition) | 502 on LIST failure
        url = a presigned S3 GET URL (below);  Cache-Control: no-store, no-cache, max-age=0
 
-PUT  /devices/<deviceId>                           (device config / push token — UNGATED by event)
+PUT  /api/v1/devices/<deviceId>                    (device config / push token — UNGATED by event)
     body: { pushToken: { kind: "apns", token, env } }  (streamed)     DEVICE-ID is the capability
     →  bunny native PUT  devices/<deviceId>.json   → 201 | 502   (last-write-wins; not a listed file)
 
-POST /events/<eventId>/notify                              (silent push to members — GATED on event existence)
+POST /api/v1/events/<eventId>/notify                       (silent push to members — GATED on event existence)
     →  [gate] GET events/<eventId>/metadata.json  → absent? 404 | non-404 failure? 502
     →  LIST events/<eventId>/devices/  → per ACTIVE member (LWW): read devices/<id>.json → APNs silent push
     →  202 (bare)  |  502 only if the member LIST fails
        best-effort: members without a token are skipped; a per-token failure never fails the request
        fixed payload (content-available), ACTIVE members only (a departed <id>.left.json is skipped)
 
-PUT  /events/<eventId>/devices/<deviceId>          (device manifest — GATED on existence + event limits)
+PUT  /api/v1/events/<eventId>/devices/<deviceId>   (device manifest — GATED on existence + event limits)
     body: full-state JSON device manifest (streamed)
     →  [gate] GET events/<eventId>/metadata.json  → absent? 404 (stream nothing) | non-404 failure? 502
        then LIST events/<eventId>/devices/ (known-vs-new + the capacity count):
@@ -122,7 +119,7 @@ PUT  /events/<eventId>/devices/<deviceId>          (device manifest — GATED on
        (a KNOWN device — active or .left — always passes; leaving frees no slot; rejoin reuses its slot)
     →  bunny native PUT  events/<eventId>/devices/<deviceId>.json   → 201 | 502
 
-DELETE /events/<eventId>/devices/<deviceId>                 (LEAVE — GATED on event existence)
+DELETE /api/v1/events/<eventId>/devices/<deviceId>          (LEAVE — GATED on event existence)
     →  [gate] GET events/<eventId>/metadata.json  → absent? 404 | non-404 failure? 502
     →  (1) rename active manifest → events/<eventId>/devices/<deviceId>.left.json (copy → FRESH ts, then delete active)
        (2) if NO active member remains (last-write-wins over the devices/ listing): delete the events/<eventId>/ tree
@@ -131,7 +128,7 @@ DELETE /events/<eventId>/devices/<deviceId>                 (LEAVE — GATED on 
        idempotent + leak-safe (write .left.json BEFORE deleting .json; every delete of an absent object is a no-op)
        membership is last-write-wins: a departed <id>.left.json stays in the UNION but is skipped by NOTIFY & the reap
 
-GET  /events/<eventId>/files                               (event-wide UNION — GATED on event existence)
+GET  /api/v1/events/<eventId>/files                        (event-wide UNION — GATED on event existence)
     →  [gate] GET events/<eventId>/metadata.json  → absent? 404 | non-404 failure? 502
     →  LIST events/<eventId>/devices/  → per device: read device.json + LIST files/devices/<deviceId>/
     →  200 [ {deviceId, assetId, creationDate, resources:[{role,contentType,key,filename,size,url}]} ]
@@ -163,11 +160,11 @@ GET  /events/<eventId>/files                               (event-wide UNION —
   list/union response (never cached), so each read yields one valid for a further 7 days. Both the
   per-device list and the union use the same builder, so their `url`s agree by construction. The
   former download-proxy route is retired.
-- **Methods** — `POST /events`, `GET /events/<id>`, `GET /files/devices/<id>`, `PUT`/`OPTIONS` on
-  `/files/devices/<id>/<name>`, `PUT /events/<id>/devices/<id>`, `DELETE /events/<id>/devices/<id>`,
-  `GET /events/<id>/files` (plus the `/attest/*` issuers) — each served under both `/api/v1/…` and
-  the bare path (deprecated alias). Any other method or unmatched path → **`404`** (Hono's default —
-  no `405`). Bad UUID / unsafe filename / invalid name → `400`.
+- **Methods** — `POST /api/v1/events`, `GET /api/v1/events/<id>`, `GET /api/v1/files/devices/<id>`,
+  `PUT`/`OPTIONS` on `/api/v1/files/devices/<id>/<name>`, `PUT /api/v1/events/<id>/devices/<id>`,
+  `DELETE /api/v1/events/<id>/devices/<id>`, `GET /api/v1/events/<id>/files` (plus the
+  `/api/v1/attest/*` issuers). Any other method or unmatched path → **`404`** (Hono's default — no
+  `405`). Bad UUID / unsafe filename / invalid name → `400`.
 
 > **Deployment invariant.** The storage `HOST` constant MUST be the storage zone's **main** region
 > host (where writes land), never a replica endpoint. Bunny replicates asynchronously; reads from
@@ -322,7 +319,7 @@ is what let Deno Deploy be retired without a TestFlight round — keep it.
 
 > **No boot probe.** CI cannot tell a booting script from a dead one. Prevention (config in source)
 > replaces detection here; if you ever reintroduce platform-side _required_ config, reintroduce a
-> post-deploy probe with it (`GET /events/<uuid>` must answer `404`, not a bodyless `400`).
+> post-deploy probe with it (`GET /api/v1/events/<uuid>` must answer `404`, not a bodyless `400`).
 
 > **bunny is load-bearing.** There is no second runtime and no warm standby. A bunny outage is a
 > SnapSync outage; recovery means standing a runtime back up from this bundle and repointing DNS.

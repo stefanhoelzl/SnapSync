@@ -192,13 +192,13 @@ Deno.test("challenge: ours is valid inside its window, invalid outside it, and f
 // gate (capability `web-event-download`) so the no-app download page can read them un-attested — see the
 // "served without a token" tests below. Every WRITE, and the per-device raw listing, stays gated.
 const GATED: [string, RequestInit][] = [
-  ["/events", { method: "POST", body: JSON.stringify({ name: "x" }) }],
-  [`/events/${E}/notify`, { method: "POST" }],
-  [`/events/${E}/devices/${D}`, { method: "PUT", body: "{}" }],
-  [`/events/${E}/devices/${D}`, { method: "DELETE" }],
-  [`/files/devices/${D}`, {}],
-  [`/files/devices/${D}/IMG_0001-photo.jpg`, { method: "PUT", body: "bytes" }],
-  [`/devices/${D}`, { method: "PUT", body: "{}" }],
+  ["/api/v1/events", { method: "POST", body: JSON.stringify({ name: "x" }) }],
+  [`/api/v1/events/${E}/notify`, { method: "POST" }],
+  [`/api/v1/events/${E}/devices/${D}`, { method: "PUT", body: "{}" }],
+  [`/api/v1/events/${E}/devices/${D}`, { method: "DELETE" }],
+  [`/api/v1/files/devices/${D}`, {}],
+  [`/api/v1/files/devices/${D}/IMG_0001-photo.jpg`, { method: "PUT", body: "bytes" }],
+  [`/api/v1/devices/${D}`, { method: "PUT", body: "{}" }],
 ];
 
 Deno.test("gate: EVERY route refuses an unauthenticated request, and touches no storage", async () => {
@@ -227,7 +227,7 @@ Deno.test("gate: EVERY route accepts a valid token", async () => {
 Deno.test("gate: an expired token is refused like no token at all", async () => {
   const stale = await mintToken(CONFIG, D, NOW - 31 * DAY);
   const { calls, app: a } = app();
-  const res = await a.request(`/files/devices/${D}/x.jpg`, {
+  const res = await a.request(`/api/v1/files/devices/${D}/x.jpg`, {
     method: "PUT",
     body: "bytes",
     headers: { authorization: `Bearer ${stale}` },
@@ -241,24 +241,27 @@ Deno.test("gate: the event marker and union reads are served WITHOUT a token", a
   // no-app download page (a browser with no attestation) can fetch them. A missing event is a 404, not a
   // 401 — existence-probing by a tokenless caller is the accepted, eyes-open consequence of opening them.
   const { app: a } = app(); // no marker → the event does not exist
-  assertEquals((await a.request(`/events/${E}`)).status, 404); // NOT 401
-  assertEquals((await a.request(`/events/${E}/files`)).status, 404); // NOT 401
+  assertEquals((await a.request(`/api/v1/events/${E}`)).status, 404); // NOT 401
+  assertEquals((await a.request(`/api/v1/events/${E}/files`)).status, 404); // NOT 401
 });
 
 Deno.test("gate: opening the reads opens no WRITE — mutating /events/<id>/… stays gated", async () => {
   const { app: a } = app();
-  assertEquals((await a.request("/events", { method: "POST", body: "{}" })).status, 401);
-  assertEquals((await a.request(`/events/${E}/notify`, { method: "POST" })).status, 401);
+  assertEquals((await a.request("/api/v1/events", { method: "POST", body: "{}" })).status, 401);
+  assertEquals((await a.request(`/api/v1/events/${E}/notify`, { method: "POST" })).status, 401);
   assertEquals(
-    (await a.request(`/events/${E}/devices/${D}`, { method: "PUT", body: "{}" })).status,
+    (await a.request(`/api/v1/events/${E}/devices/${D}`, { method: "PUT", body: "{}" })).status,
     401,
   );
-  assertEquals((await a.request(`/events/${E}/devices/${D}`, { method: "DELETE" })).status, 401);
+  assertEquals(
+    (await a.request(`/api/v1/events/${E}/devices/${D}`, { method: "DELETE" })).status,
+    401,
+  );
   // A POST to the ungated READ paths themselves is a mutating method → still gated.
-  assertEquals((await a.request(`/events/${E}`, { method: "POST" })).status, 401);
-  assertEquals((await a.request(`/events/${E}/files`, { method: "POST" })).status, 401);
+  assertEquals((await a.request(`/api/v1/events/${E}`, { method: "POST" })).status, 401);
+  assertEquals((await a.request(`/api/v1/events/${E}/files`, { method: "POST" })).status, 401);
   // The per-device RAW listing has no web consumer and stays gated (defense in depth).
-  assertEquals((await a.request(`/files/devices/${D}`)).status, 401);
+  assertEquals((await a.request(`/api/v1/files/devices/${D}`)).status, 401);
 });
 
 // ── The retired notify admin key (capabilities `event-notify-endpoint`, `backend-deployment`) ─────────
@@ -270,7 +273,7 @@ Deno.test("gate: opening the reads opens no WRITE — mutating /events/<id>/… 
 
 Deno.test("gate: notify with no device token is refused 401, reading nothing", async () => {
   const { calls, app: a } = app();
-  const res = await a.request(`/events/${E}/notify`, { method: "POST" });
+  const res = await a.request(`/api/v1/events/${E}/notify`, { method: "POST" });
   assertEquals(res.status, 401);
   assertEquals(calls.length, 0); // no marker read, no member enumeration, no push
 });
@@ -280,17 +283,17 @@ Deno.test("gate: the retired admin key authorizes nothing — not even notify", 
   const stale = { authorization: "Bearer test-admin-key" };
   // The route it used to authorize…
   assertEquals(
-    (await a.request(`/events/${E}/notify`, { method: "POST", headers: stale })).status,
+    (await a.request(`/api/v1/events/${E}/notify`, { method: "POST", headers: stale })).status,
     401,
   );
   // …event creation…
   assertEquals(
-    (await a.request(`/events`, { method: "POST", body: "{}", headers: stale })).status,
+    (await a.request(`/api/v1/events`, { method: "POST", body: "{}", headers: stale })).status,
     401,
   );
   // …a device-manifest PUT (join)…
   assertEquals(
-    (await a.request(`/events/${E}/devices/${D}`, {
+    (await a.request(`/api/v1/events/${E}/devices/${D}`, {
       method: "PUT",
       body: "{}",
       headers: stale,
@@ -299,7 +302,8 @@ Deno.test("gate: the retired admin key authorizes nothing — not even notify", 
   );
   // …and a leave.
   assertEquals(
-    (await a.request(`/events/${E}/devices/${D}`, { method: "DELETE", headers: stale })).status,
+    (await a.request(`/api/v1/events/${E}/devices/${D}`, { method: "DELETE", headers: stale }))
+      .status,
     401,
   );
   assertEquals(calls.length, 0); // every one refused before any upstream read
@@ -307,7 +311,9 @@ Deno.test("gate: the retired admin key authorizes nothing — not even notify", 
 
 Deno.test("gate: OPTIONS is answered without a token (the pull zone may answer it anyway)", async () => {
   const { app: a } = app();
-  const res = await a.request(`/files/devices/${D}/IMG_0001-photo.jpg`, { method: "OPTIONS" });
+  const res = await a.request(`/api/v1/files/devices/${D}/IMG_0001-photo.jpg`, {
+    method: "OPTIONS",
+  });
   assertEquals(res.status, 204);
   assertEquals(res.headers.get("Allow"), "PUT, OPTIONS"); // still no resumable → plain PUT
 });
@@ -324,10 +330,10 @@ Deno.test("gate: the marketing page at / is served without a token", async () =>
 
 Deno.test("gate: the / exception is exact-path and GET/HEAD-only — it leaks to nothing else", async () => {
   const { app: a } = app();
-  // A non-root path is still gated, even for GET… (`/events/<id>` and `…/files` are ungated by their OWN
+  // A non-root path is still gated, even for GET… (`/api/v1/events/<id>` and `…/files` are ungated by their OWN
   // exception now, so use a GET route that is still gated — the per-device raw listing.)
-  assertEquals((await a.request("/events")).status, 401);
-  assertEquals((await a.request(`/files/devices/${D}`)).status, 401);
+  assertEquals((await a.request("/api/v1/events")).status, 401);
+  assertEquals((await a.request(`/api/v1/files/devices/${D}`)).status, 401);
   // …a path that merely begins with "/" but is not exactly "/" is not admitted…
   assertEquals((await a.request("/index.html")).status, 401);
   // …and a mutating method on "/" is gated, not served.
@@ -372,48 +378,15 @@ Deno.test("gate: a gated GET is never cacheable (the pull zone does not vary on 
   // Load-bearing for AUTHORIZATION, not just freshness: the CDN forwards `Authorization` but does not
   // key its cache on it, so a cacheable gated response would be served to a DIFFERENT device.
   const { app: a } = app();
-  const res = await a.request(`/files/devices/${D}`, { headers: bearer });
+  const res = await a.request(`/api/v1/files/devices/${D}`, { headers: bearer });
   assertEquals(res.headers.get("Cache-Control"), "no-store, no-cache, max-age=0");
 });
 
 // ── The versioned prefix (capability `backend-deployment`) ──────────────────────────────────────────
 //
-// Device-API routes are served under `/api/v1` (canonical) AND the bare paths (deprecated grace alias).
-// The gate normalizes the `/api/vN` prefix, so it must hold IDENTICALLY under both forms — including the
-// one ungated set that IS a device route reachable through the prefix, `/attest/*`. Web/link paths are
-// NOT served under `/api/v1`.
-
-Deno.test("gate: EVERY route refuses an unauthenticated request UNDER /api/v1, and touches no storage", async () => {
-  for (const [path, init] of GATED) {
-    const { calls, app: a } = app();
-    const res = await a.request(`/api/v1${path}`, init);
-    assertEquals(res.status, 401, `${init.method ?? "GET"} /api/v1${path} was not gated`);
-    assertEquals(
-      calls.length,
-      0,
-      `${init.method ?? "GET"} /api/v1${path} touched storage while unauthenticated`,
-    );
-  }
-});
-
-Deno.test("gate: EVERY route accepts a valid token UNDER /api/v1", async () => {
-  for (const [path, init] of GATED) {
-    const { app: a } = app({
-      [`events/${E}/metadata.json`]: JSON.stringify({ eventId: E, name: "x", createdAt: "t" }),
-    });
-    const res = await a.request(`/api/v1${path}`, { ...init, headers: bearer });
-    assert(res.status !== 401, `${init.method ?? "GET"} /api/v1${path} rejected a VALID token`);
-  }
-});
-
-Deno.test("gate: the /api/v1/attest/* issuers need no token (the ungated set holds under the prefix)", async () => {
-  const { calls, app: a } = app();
-  const res = await a.request("/api/v1/attest/challenge");
-  assertEquals(res.status, 200); // NOT 401 — else token issuance dead-locks under the prefix
-  const { challenge } = await res.json() as { challenge: string };
-  assert(await challengeIsValid(CONFIG, challenge, NOW));
-  assertEquals(calls.length, 0); // and, like the bare form, it writes nothing
-});
+// Device-API routes are served under `/api/v1` — the shape every gate test above already exercises. The
+// gate normalizes the `/api/vN` prefix before its closed-list checks, so the one ungated set that IS a
+// device route, `/api/v1/attest/*`, holds under it. Web/link paths are NOT served under the prefix.
 
 Deno.test("gate: web/link paths are NOT served under /api/v1 (they stay at the root)", async () => {
   const { app: a } = app();
@@ -429,7 +402,7 @@ Deno.test("gate: web/link paths are NOT served under /api/v1 (they stay at the r
 
 Deno.test("attest: the challenge route needs no token and writes nothing", async () => {
   const { calls, app: a } = app();
-  const res = await a.request("/attest/challenge");
+  const res = await a.request("/api/v1/attest/challenge");
   assertEquals(res.status, 200);
   const { challenge } = await res.json() as { challenge: string };
   assert(await challengeIsValid(CONFIG, challenge, NOW));
@@ -439,7 +412,7 @@ Deno.test("attest: the challenge route needs no token and writes nothing", async
 Deno.test("attest: a stale challenge mints no token and stores no key", async () => {
   const { calls, app: a } = app();
   const stale = await mintChallenge(CONFIG, NOW - 10 * 60 * 1000);
-  const res = await a.request("/attest/token", {
+  const res = await a.request("/api/v1/attest/token", {
     method: "POST",
     body: JSON.stringify({
       deviceId: D,
@@ -456,7 +429,7 @@ Deno.test("attest: a rejected attestation mints no token and stores no key", asy
   const { calls, app: a } = app();
   const challenge = await mintChallenge(CONFIG, NOW);
   // A real attestation, but for a different app and a different challenge — it must not be accepted.
-  const res = await a.request("/attest/token", {
+  const res = await a.request("/api/v1/attest/token", {
     method: "POST",
     body: JSON.stringify({
       deviceId: D,
@@ -471,7 +444,7 @@ Deno.test("attest: a rejected attestation mints no token and stores no key", asy
 
 Deno.test("renew: a device that never attested must attest, not renew", async () => {
   const { app: a } = app(); // no devices/<id>.attest.json
-  const res = await a.request("/attest/renew", {
+  const res = await a.request("/api/v1/attest/renew", {
     method: "POST",
     body: JSON.stringify({
       deviceId: D,
@@ -534,7 +507,7 @@ Deno.test("leave: the departing device's config + attestation record are RETAINE
   };
 
   const res = await createApp({ config: CONFIG, fetch: fetchImpl, now: () => NOW })
-    .request(`/events/${E}/devices/${D}`, { method: "DELETE", headers: bearer });
+    .request(`/api/v1/events/${E}/devices/${D}`, { method: "DELETE", headers: bearer });
   assertEquals(res.status, 200);
 
   const deleted = calls.filter((c) => c.init.method === "DELETE").map((c) =>
