@@ -29,7 +29,7 @@ per-device file listing or the event union.
 
 #### Scenario: Valid config write accepted
 
-- **WHEN** a `PUT /devices/<uuid>` arrives with a valid UUID and a JSON body
+- **WHEN** a `PUT /api/v1/devices/<uuid>` arrives with a valid UUID and a JSON body
 - **THEN** the endpoint writes the body to the storage key `devices/<uuid>.json` with
   `Content-Type: application/json`
 
@@ -46,7 +46,7 @@ per-device file listing or the event union.
 #### Scenario: Config object is not a listed file
 
 - **WHEN** a device has written `devices/<uuid>.json` and its byte partition is later listed
-- **THEN** the config object does not appear in `GET /files/devices/<uuid>` nor in any event union
+- **THEN** the config object does not appear in `GET /api/v1/files/devices/<uuid>` nor in any event union
   (it is outside the `files/devices/<uuid>/` partition)
 
 ### Requirement: Config document shape — push token
@@ -60,7 +60,7 @@ received (it is the device's self-asserted registration); it SHALL NOT mint or t
 
 #### Scenario: Push-token document persisted
 
-- **WHEN** a `PUT /devices/<uuid>` body is `{ "pushToken": { "kind": "apns", "token": "<hex>",
+- **WHEN** a `PUT /api/v1/devices/<uuid>` body is `{ "pushToken": { "kind": "apns", "token": "<hex>",
   "env": "sandbox" } }`
 - **THEN** the stored `devices/<uuid>.json` carries that `pushToken` object verbatim
 
@@ -74,12 +74,12 @@ caller may write it*. The endpoint SHALL NOT expose or forward the bunny account
 
 #### Scenario: A write without a token is rejected
 
-- **WHEN** a `PUT /devices/<uuid>` carries a valid device id and body but no authorization token
+- **WHEN** a `PUT /api/v1/devices/<uuid>` carries a valid device id and body but no authorization token
 - **THEN** it is rejected with `401` and nothing is written
 
 #### Scenario: The write consults no event
 
-- **WHEN** an authorized `PUT /devices/<uuid>` is accepted
+- **WHEN** an authorized `PUT /api/v1/devices/<uuid>` is accepted
 - **THEN** no event id or event marker is read — the config is event-independent
 
 #### Scenario: Account API key never exposed
@@ -129,7 +129,7 @@ destructive to a returning device.
 
 ### Requirement: The device-config write requires a device token
 
-`PUT /devices/<deviceId>` SHALL require a valid device token (capability `device-attestation`) in
+`PUT /api/v1/devices/<deviceId>` SHALL require a valid device token (capability `device-attestation`) in
 `Authorization: Bearer`. A request without one SHALL be rejected with `401` and SHALL NOT write
 `devices/<deviceId>.json`.
 
@@ -138,12 +138,12 @@ writer is a genuine app instance at all.
 
 #### Scenario: An unauthenticated config write is refused
 
-- **WHEN** `PUT /devices/<uuid>` arrives with no valid token
+- **WHEN** `PUT /api/v1/devices/<uuid>` arrives with no valid token
 - **THEN** the endpoint responds `401` and writes no object
 
 #### Scenario: An attested config write proceeds unchanged
 
-- **WHEN** `PUT /devices/<uuid>` carries a valid token
+- **WHEN** `PUT /api/v1/devices/<uuid>` carries a valid token
 - **THEN** the push token is streamed into `devices/<deviceId>.json` with the same faithful `201`/`502`
   outcome and last-write-wins semantics as before
 

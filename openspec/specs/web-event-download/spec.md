@@ -58,8 +58,8 @@ state rather than an empty or broken page or an attempted download.
 #### Scenario: A valid link resolves to the event
 
 - **WHEN** the page loads with a fragment carrying a valid `eventId` for an existing event
-- **THEN** the JavaScript decodes the `eventId`, fetches the event name (`GET /events/:id`) and union
-  (`GET /events/:id/files`), and enables the download control
+- **THEN** the JavaScript decodes the `eventId`, fetches the event name (`GET /api/v1/events/:id`) and union
+  (`GET /api/v1/events/:id/files`), and enables the download control
 
 #### Scenario: A missing or unknown event shows an invalid-link state
 

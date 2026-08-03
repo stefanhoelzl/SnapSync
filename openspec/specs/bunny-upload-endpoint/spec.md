@@ -27,9 +27,9 @@ body to bunny native Storage by **streaming** — piping the request body into a
 without materializing the whole body in memory (it SHALL NOT buffer the body, e.g. via
 `request.bytes()`/`arrayBuffer()`), and without hashing or transforming the body:
 
-- (a) the **photo-byte** route `PUT /files/devices/<deviceId>/<filename>`, whose body is opaque binary
+- (a) the **photo-byte** route `PUT /api/v1/files/devices/<deviceId>/<filename>`, whose body is opaque binary
   resource bytes; and
-- (b) the **device-manifest** route `PUT /events/<eventId>/devices/<deviceId>`, whose body is a JSON
+- (b) the **device-manifest** route `PUT /api/v1/events/<eventId>/devices/<deviceId>`, whose body is a JSON
   device manifest.
 
 The v1 byte routes `PUT /event/<eventId>/file/<filename>` and `PUT /files/device/<deviceId>/<filename>`
@@ -44,13 +44,13 @@ no upstream object `PUT` of the body follows. No route deletes anything on touch
 
 #### Scenario: Byte body streamed to bunny
 
-- **WHEN** a valid `PUT /files/devices/<deviceId>/<filename>` arrives with a body
+- **WHEN** a valid `PUT /api/v1/files/devices/<deviceId>/<filename>` arrives with a body
 - **THEN** the endpoint issues exactly one upstream `PUT` to bunny whose body is the request body
   passed through unchanged (byte-identical), and does not buffer the full body before forwarding
 
 #### Scenario: Manifest body streamed to bunny
 
-- **WHEN** a valid `PUT /events/<eventId>/devices/<deviceId>` arrives with a JSON body for an existing
+- **WHEN** a valid `PUT /api/v1/events/<eventId>/devices/<deviceId>` arrives with a JSON body for an existing
   event, from a device the limits gate admits
 - **THEN** the endpoint issues exactly one upstream `PUT` to bunny whose body is the request body
   passed through unchanged, and does not buffer the full body before forwarding
@@ -65,14 +65,15 @@ no upstream object `PUT` of the body follows. No route deletes anything on touch
 The endpoint SHALL derive each route's params from the decoded path and write each object at a bare
 storage key from which the URL labels are dropped:
 
-- **Byte route** `/files/devices/<deviceId>/<filename>` (the literal labels `files` and `devices` are
+- **Byte route** `/api/v1/files/devices/<deviceId>/<filename>` (the literal labels `files` and
+  `devices` are
   required): `deviceId` MUST match a UUID pattern; `filename` MUST be a single, non-empty segment
   containing no path separator (`/`, encoded `%2F`, or literal) and no `..`. The object SHALL be
   written at the bare key `files/devices/<deviceId>/<filename>` — the label ordering of the URL is
   preserved in the key — percent-encoding each segment when building the storage request URL so the
   key stays a single flat path.
-- **Device-manifest route** `/events/<eventId>/devices/<deviceId>` (the literal labels `events` and
-  `devices` are required): `eventId` and `deviceId` MUST each match a UUID pattern. The object SHALL be
+- **Device-manifest route** `/api/v1/events/<eventId>/devices/<deviceId>` (the literal labels `events`
+  and `devices` are required): `eventId` and `deviceId` MUST each match a UUID pattern. The object SHALL be
   written at the bare key `events/<eventId>/devices/<deviceId>.json` with `Content-Type:
   application/json`.
 
@@ -82,13 +83,13 @@ SHALL yield `400`. Neither case SHALL make an upstream request.
 
 #### Scenario: Valid byte path accepted, device-namespace key composed
 
-- **WHEN** the path is `/files/devices/<uuid>/IMG_0001-photo.jpg` with a valid UUID
+- **WHEN** the path is `/api/v1/files/devices/<uuid>/IMG_0001-photo.jpg` with a valid UUID
 - **THEN** the request is accepted and the storage key `files/devices/<uuid>/IMG_0001-photo.jpg` is
   composed for the upstream path
 
 #### Scenario: Valid manifest path accepted, json key composed
 
-- **WHEN** the path is `/events/<eventUuid>/devices/<deviceUuid>` with valid UUIDs
+- **WHEN** the path is `/api/v1/events/<eventUuid>/devices/<deviceUuid>` with valid UUIDs
 - **THEN** the request is accepted and the storage key `events/<eventUuid>/devices/<deviceUuid>.json`
   with `Content-Type: application/json` is composed for the upstream path
 
@@ -117,7 +118,8 @@ byte route, `events/<eventId>/devices/<deviceId>.json` for the device-manifest r
 the request's `Content-Type` to bunny, defaulting to `application/octet-stream` when absent (the
 device-manifest route carries `application/json`). The caller SHALL hold a valid App Attest device token
 (capability `device-attestation`); see the token requirement below, which is the authorization step.
-Beyond that token, addressing is self-asserted: a `/files/devices/<deviceId>/` write names its own device
+Beyond that token, addressing is self-asserted: a `/api/v1/files/devices/<deviceId>/` write names its
+own device
 id, and the device-manifest route consults the event marker for **existence** only (see the
 device-manifest gate requirement) — an existence check, not a second authorization step. The endpoint
 SHALL NOT expose or forward the bunny account API key.
@@ -217,7 +219,7 @@ the response the **device** receives from the device-facing origin.
 
 ### Requirement: Device manifest write gated on event existence
 
-Before streaming the body of a `PUT /events/<eventId>/devices/<deviceId>`, the endpoint SHALL
+Before streaming the body of a `PUT /api/v1/events/<eventId>/devices/<deviceId>`, the endpoint SHALL
 determine whether the event exists by reading the event marker `events/<eventId>/metadata.json` (a
 bunny native Storage `GET` carrying the configured `AccessKey`) and SHALL pass the event-limits
 capacity gate (capability `event-limits`), which additionally lists `events/<eventId>/devices/` to
@@ -240,36 +242,36 @@ nothing on touch.
 A genuine upstream failure reading the marker or the listing (any non-`404` error or timeout) SHALL
 be surfaced as `502` and SHALL NEVER be treated as "event absent" or "full" (never a `404`/`409` for a
 transient read failure). This gate applies **only** to the device-manifest route; the byte route
-`PUT /files/devices/<deviceId>/<filename>` reads no marker, makes no listing, and is ungated.
+`PUT /api/v1/files/devices/<deviceId>/<filename>` reads no marker, makes no listing, and is ungated.
 
 #### Scenario: Manifest write to a non-existent event rejected
 
-- **WHEN** a valid `PUT /events/<uuid>/devices/<deviceUuid>` arrives but the marker
+- **WHEN** a valid `PUT /api/v1/events/<uuid>/devices/<deviceUuid>` arrives but the marker
   `events/<uuid>/metadata.json` is absent
 - **THEN** the endpoint responds `404`, streams no body, and issues no upstream object `PUT`
 
 #### Scenario: Manifest write by a known device proceeds
 
-- **WHEN** a valid `PUT /events/<uuid>/devices/<deviceUuid>` arrives, the marker exists, and the
+- **WHEN** a valid `PUT /api/v1/events/<uuid>/devices/<deviceUuid>` arrives, the marker exists, and the
   device already has an active or departed manifest
 - **THEN** the endpoint streams the JSON body to the upstream object `PUT` as usual
 
 #### Scenario: First enrollment within capacity proceeds
 
-- **WHEN** a valid `PUT /events/<uuid>/devices/<deviceUuid>` arrives for an existing event from a
+- **WHEN** a valid `PUT /api/v1/events/<uuid>/devices/<deviceUuid>` arrives for an existing event from a
   device with no manifest in either form, and the ever-enrolled count is below the marker's `capacity`
 - **THEN** the endpoint streams the JSON body to the upstream object `PUT` as usual
 
 #### Scenario: A new device at capacity is rejected
 
-- **WHEN** a valid `PUT /events/<uuid>/devices/<deviceUuid>` arrives for an existing event from a
+- **WHEN** a valid `PUT /api/v1/events/<uuid>/devices/<deviceUuid>` arrives for an existing event from a
   device with no manifest in either form, and the ever-enrolled count (active plus departed) has
   reached the marker's `capacity`
 - **THEN** the endpoint responds `409`, streams no body, and issues no upstream object `PUT`
 
 #### Scenario: A new device enrolling after the event's window still proceeds
 
-- **WHEN** a valid `PUT /events/<uuid>/devices/<deviceUuid>` arrives from a device with no manifest in
+- **WHEN** a valid `PUT /api/v1/events/<uuid>/devices/<deviceUuid>` arrives from a device with no manifest in
   either form, long after the marker's `endsAt`, while the event still exists and is under capacity
 - **THEN** the endpoint streams the JSON body to the upstream object `PUT` as usual — the gate makes
   no time-based refusal
@@ -282,15 +284,15 @@ transient read failure). This gate applies **only** to the device-manifest route
 
 #### Scenario: Byte route makes no marker read
 
-- **WHEN** a valid `PUT /files/devices/<deviceId>/<filename>` arrives
+- **WHEN** a valid `PUT /api/v1/files/devices/<deviceId>/<filename>` arrives
 - **THEN** the endpoint streams the body without reading any event marker and without listing any
   devices (the byte route is ungated)
 
 ### Requirement: Writes require a device token
 
 Both write routes SHALL require a valid device token (capability `device-attestation`) in
-`Authorization: Bearer`: the byte route `PUT /files/devices/<deviceId>/<filename>` and the
-device-manifest route `PUT /events/<eventId>/devices/<deviceId>`. A request without one SHALL be rejected
+`Authorization: Bearer`: the byte route `PUT /api/v1/files/devices/<deviceId>/<filename>` and the
+device-manifest route `PUT /api/v1/events/<eventId>/devices/<deviceId>`. A request without one SHALL be rejected
 with `401`, and the endpoint SHALL NOT stream the body, SHALL NOT read the event marker, and SHALL NOT
 issue any upstream object `PUT`.
 
@@ -304,18 +306,18 @@ gains no round-trip.
 
 #### Scenario: An unauthenticated byte upload is refused before any streaming
 
-- **WHEN** a `PUT /files/devices/<uuid>/<name>` arrives with no valid token
+- **WHEN** a `PUT /api/v1/files/devices/<uuid>/<name>` arrives with no valid token
 - **THEN** the endpoint responds `401`, streams no body, and issues no upstream object `PUT`
 
 #### Scenario: An attested byte upload proceeds unchanged
 
-- **WHEN** a `PUT /files/devices/<uuid>/<name>` carries a valid token
+- **WHEN** a `PUT /api/v1/files/devices/<uuid>/<name>` carries a valid token
 - **THEN** the body is streamed into one bunny native `PUT` exactly as before, with the same faithful
   `201`/`502` outcome
 
 #### Scenario: An unauthenticated manifest write cannot probe event existence
 
-- **WHEN** a `PUT /events/<uuid>/devices/<uuid>` arrives with no valid token
+- **WHEN** a `PUT /api/v1/events/<uuid>/devices/<uuid>` arrives with no valid token
 - **THEN** the endpoint responds `401` without reading the event marker, so the response does not reveal
   whether the event exists
 

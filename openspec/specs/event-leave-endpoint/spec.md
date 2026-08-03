@@ -2,7 +2,7 @@
 
 ## Purpose
 
-The backend half of leaving: `DELETE /events/<eventId>/devices/<deviceId>` renames the departing device's
+The backend half of leaving: `DELETE /api/v1/events/<eventId>/devices/<deviceId>` renames the departing device's
 manifest to a departed `.left.json` sibling — its already-shared photos stay downloadable for the remaining
 members — and returns `200` regardless of remaining membership. It is **rename-only**: it reaps nothing and
 collects nothing.
@@ -28,7 +28,8 @@ Decision record: `changes/archive/2026-07-06-add-event-leave-lifecycle`;
 ## Requirements
 ### Requirement: Leave route and departed rename
 
-The backend SHALL accept an HTTP `DELETE` at the path template `/events/<eventId>/devices/<deviceId>`
+The backend SHALL accept an HTTP `DELETE` at the path template
+`/api/v1/events/<eventId>/devices/<deviceId>`
 (the literal labels `events` and `devices` are required); both ids MUST match a UUID pattern. A request
 whose path does not match (missing a label, wrong depth) SHALL yield `404`; a matched request with a
 non-UUID id SHALL yield `400`; neither case SHALL make an upstream request. The route SHALL be gated on
@@ -48,7 +49,7 @@ storage zone's `AccessKey` and never the account API key. A `DELETE` for a devic
 
 #### Scenario: Leave renames the active manifest to the departed sibling
 
-- **WHEN** a `DELETE /events/<uuid>/devices/<uuid>` arrives for an existing event where the device has an active manifest
+- **WHEN** a `DELETE /api/v1/events/<uuid>/devices/<uuid>` arrives for an existing event where the device has an active manifest
 - **THEN** the handler writes `events/<eventId>/devices/<deviceId>.left.json` (fresh timestamp) from the active manifest's content, then deletes `events/<eventId>/devices/<deviceId>.json`, and returns `200`
 
 #### Scenario: The last member leaving keeps the event
@@ -63,7 +64,7 @@ storage zone's `AccessKey` and never the account API key. A `DELETE` for a devic
 
 #### Scenario: Non-UUID ids and unmatched paths rejected without upstream
 
-- **WHEN** either id is not a UUID, or the path/method does not match `DELETE /events/<eventId>/devices/<deviceId>`
+- **WHEN** either id is not a UUID, or the path/method does not match `DELETE /api/v1/events/<eventId>/devices/<deviceId>`
 - **THEN** the endpoint responds `400` (non-UUID) or `404` (unmatched) and makes no upstream request
 
 #### Scenario: Leaving preserves the departed device's contributions
@@ -94,7 +95,7 @@ for correctness.
 
 ### Requirement: Leave requires a device token
 
-`DELETE /events/<eventId>/devices/<deviceId>` SHALL require a valid device token (capability
+`DELETE /api/v1/events/<eventId>/devices/<deviceId>` SHALL require a valid device token (capability
 `device-attestation`) in `Authorization: Bearer`. A request without one SHALL be rejected with `401`, and
 the endpoint SHALL NOT read the event marker and SHALL NOT rename any manifest.
 
@@ -103,11 +104,11 @@ probe which events exist or alter any membership.
 
 #### Scenario: An unauthenticated leave changes nothing
 
-- **WHEN** `DELETE /events/<uuid>/devices/<uuid>` arrives with no valid token
+- **WHEN** `DELETE /api/v1/events/<uuid>/devices/<uuid>` arrives with no valid token
 - **THEN** the endpoint responds `401`, reads no marker, and renames no manifest
 
 #### Scenario: An attested leave renames unchanged
 
-- **WHEN** `DELETE /events/<uuid>/devices/<uuid>` carries a valid token
+- **WHEN** `DELETE /api/v1/events/<uuid>/devices/<uuid>` carries a valid token
 - **THEN** the departed rename proceeds and the endpoint returns `200`, idempotently and leak-safely
 

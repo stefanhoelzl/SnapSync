@@ -17,7 +17,8 @@ Decision record: `changes/archive/2026-07-05-push-notification-infra`.
 ## Requirements
 ### Requirement: Event notify route
 
-The backend SHALL accept an HTTP `POST` at the path template `/events/<eventId>/notify` (the literal
+The backend SHALL accept an HTTP `POST` at the path template `/api/v1/events/<eventId>/notify` (the
+literal
 labels `events` and `notify` are required) and, for an existing event, dispatch a silent push to every
 member device, responding with a bare `202` and an empty body (no per-device results). `eventId` MUST
 match a UUID pattern. A request whose path does not match this route (missing a label, wrong depth)
@@ -33,7 +34,7 @@ supplies nothing beyond the path, and any device exclusion is a future use-case 
 
 #### Scenario: Valid event id accepted
 
-- **WHEN** a `POST /events/<uuid>/notify` arrives with a valid UUID for an existing event
+- **WHEN** a `POST /api/v1/events/<uuid>/notify` arrives with a valid UUID for an existing event
 - **THEN** the endpoint dispatches to the event's members a push carrying that `eventId` in its payload
   and responds `202` with an empty body
 
@@ -44,18 +45,18 @@ supplies nothing beyond the path, and any device exclusion is a future use-case 
 
 #### Scenario: Unmatched path or wrong method rejected
 
-- **WHEN** the path does not match `/events/<eventId>/notify`, or the method is not `POST`
+- **WHEN** the path does not match `/api/v1/events/<eventId>/notify`, or the method is not `POST`
 - **THEN** the endpoint responds `404` and makes no upstream request
 
 #### Scenario: A notify without any credential is rejected
 
-- **WHEN** a `POST /events/<uuid>/notify` carries a valid event id and no body, but neither a device token
+- **WHEN** a `POST /api/v1/events/<uuid>/notify` carries a valid event id and no body, but neither a device token
   nor the admin key
 - **THEN** it is rejected with `401` and no push is dispatched
 
 #### Scenario: The caller supplies nothing beyond the path
 
-- **WHEN** an authorized `POST /events/<uuid>/notify` is accepted
+- **WHEN** an authorized `POST /api/v1/events/<uuid>/notify` is accepted
 - **THEN** the push payload is server-chosen and carries the route's event id; no caller-supplied body or
   device-exclusion parameter is read
 
@@ -144,7 +145,7 @@ member directory SHALL yield `202` with no sends (an event with no members is no
 
 ### Requirement: Notify requires a device token
 
-`POST /events/<eventId>/notify` SHALL require a valid device token (capability `device-attestation`) in
+`POST /api/v1/events/<eventId>/notify` SHALL require a valid device token (capability `device-attestation`) in
 `Authorization: Bearer`. There SHALL be **no** second credential: no admin key, no shared secret, and no
 route-scoped bypass. A request presenting no valid device token SHALL be rejected with `401`, and the
 endpoint SHALL NOT read the event marker, SHALL NOT enumerate members, and SHALL NOT send any push.
@@ -158,15 +159,15 @@ remaining caller and is retired rather than left as an unused authorization path
 
 #### Scenario: An unauthorized notify sends no push
 
-- **WHEN** `POST /events/<uuid>/notify` arrives with no valid device token
+- **WHEN** `POST /api/v1/events/<uuid>/notify` arrives with no valid device token
 - **THEN** the endpoint responds `401`, reads no marker, enumerates no members, and sends no push
 
 #### Scenario: An attested notify fans out unchanged
 
-- **WHEN** `POST /events/<uuid>/notify` carries a valid device token for an existing event
+- **WHEN** `POST /api/v1/events/<uuid>/notify` carries a valid device token for an existing event
 - **THEN** the silent-push fan-out to active members proceeds exactly as before, returning a bare `202`
 
 #### Scenario: A retired admin key authorizes nothing
 
-- **WHEN** `POST /events/<uuid>/notify` presents the former admin-key secret instead of a device token
+- **WHEN** `POST /api/v1/events/<uuid>/notify` presents the former admin-key secret instead of a device token
 - **THEN** the endpoint responds `401` and sends no push — the notify route accepts device tokens only

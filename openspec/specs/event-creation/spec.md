@@ -2,7 +2,7 @@
 
 ## Purpose
 
-The backend's **event registry**: `POST /events` mints a server-side event (high-entropy id, name,
+The backend's **event registry**: `POST /api/v1/events` mints a server-side event (high-entropy id, name,
 creation time) and writes the marker object that makes the event *exist*, plus a metadata route that reports
 whether a given event id does.
 
@@ -18,11 +18,11 @@ Decision record: `changes/archive/2026-06-27-add-event-creation`.
 ## Requirements
 ### Requirement: Event creation route
 
-The backend SHALL accept an HTTP `POST` at the path `/events` whose body is a JSON object containing a
+The backend SHALL accept an HTTP `POST` at the path `/api/v1/events` whose body is a JSON object containing a
 `name` **and a `startsAt`**, optionally carrying an `endsAt`, and on success SHALL respond `201` with a
 JSON body `{ eventId, name, createdAt, startsAt, endsAt, capacity }`. The endpoint SHALL be served by the
 same Hono application as the upload and list endpoints, so it is available on every deployment target
-without separate configuration. A request using any method other than `POST` on `/events` (or a path
+without separate configuration. A request using any method other than `POST` on `/api/v1/events` (or a path
 that does not match) SHALL yield `404`.
 
 `createdAt` and `startsAt` are **distinct facts** and SHALL NOT be conflated: `createdAt` is
@@ -38,7 +38,7 @@ is the configured device capacity, resolved at mint time.
 
 #### Scenario: Valid create with a client endsAt returns the new event
 
-- **WHEN** a `POST /events` arrives with body `{ "name": "Birthday", "startsAt": "2026-07-14T18:00:00Z",
+- **WHEN** a `POST /api/v1/events` arrives with body `{ "name": "Birthday", "startsAt": "2026-07-14T18:00:00Z",
   "endsAt": "2026-07-21T23:00:00Z" }`
 - **THEN** the endpoint responds `201` with a JSON body containing `eventId`, `name` (`"Birthday"`),
   `createdAt`, `startsAt` (`"2026-07-14T18:00:00Z"`), `endsAt` (`"2026-07-21T23:00:00Z"`, the
@@ -46,26 +46,26 @@ is the configured device capacity, resolved at mint time.
 
 #### Scenario: Valid create without an endsAt falls back to +30d
 
-- **WHEN** a `POST /events` arrives with body `{ "name": "Birthday", "startsAt": "2026-07-14T18:00:00Z" }`
+- **WHEN** a `POST /api/v1/events` arrives with body `{ "name": "Birthday", "startsAt": "2026-07-14T18:00:00Z" }`
   and no `endsAt`
 - **THEN** the endpoint responds `201` with `endsAt` equal to `startsAt` plus the configured
   duration, and `capacity` the configured device capacity
 
 #### Scenario: createdAt and startsAt are independent
 
-- **WHEN** a `POST /events` supplies a `startsAt` that differs from the server's current time
+- **WHEN** a `POST /api/v1/events` supplies a `startsAt` that differs from the server's current time
 - **THEN** the response carries the server-minted `createdAt` **and** the client's `startsAt`
   unchanged, as two separate fields
 
 #### Scenario: Client-supplied capacity is ignored
 
-- **WHEN** a `POST /events` body includes a `capacity` field alongside `name`, `startsAt`, and any
+- **WHEN** a `POST /api/v1/events` body includes a `capacity` field alongside `name`, `startsAt`, and any
   `endsAt`
 - **THEN** the endpoint ignores `capacity` and stamps the server-resolved value
 
 #### Scenario: Wrong method on the create path
 
-- **WHEN** a `GET` (or any non-`POST`) is sent to `/events`
+- **WHEN** a `GET` (or any non-`POST`) is sent to `/api/v1/events`
 - **THEN** the endpoint responds `404` and makes no upstream request
 
 ### Requirement: Server-minted event id
@@ -77,12 +77,12 @@ routes validate.
 
 #### Scenario: Event id is server-generated and canonical
 
-- **WHEN** a valid `POST /events` is processed
+- **WHEN** a valid `POST /api/v1/events` is processed
 - **THEN** the returned `eventId` is a canonical UUID minted by the server
 
 #### Scenario: Client-supplied id is ignored
 
-- **WHEN** a `POST /events` body includes an `eventId` or `id` field alongside `name`
+- **WHEN** a `POST /api/v1/events` body includes an `eventId` or `id` field alongside `name`
 - **THEN** the endpoint ignores it and returns a freshly server-minted `eventId`
 
 ### Requirement: Event name validation
@@ -95,27 +95,27 @@ value SHALL be the name that is stored and returned.
 
 #### Scenario: Empty or whitespace-only name rejected
 
-- **WHEN** a `POST /events` body has `name` absent, empty, or only whitespace
+- **WHEN** a `POST /api/v1/events` body has `name` absent, empty, or only whitespace
 - **THEN** the endpoint responds `400` and writes nothing upstream
 
 #### Scenario: Over-long name rejected
 
-- **WHEN** a `POST /events` body has a `name` whose trimmed length exceeds 100 characters
+- **WHEN** a `POST /api/v1/events` body has a `name` whose trimmed length exceeds 100 characters
 - **THEN** the endpoint responds `400` and writes nothing upstream
 
 #### Scenario: Non-JSON body rejected
 
-- **WHEN** a `POST /events` body is not valid JSON
+- **WHEN** a `POST /api/v1/events` body is not valid JSON
 - **THEN** the endpoint responds `400` and writes nothing upstream
 
 #### Scenario: Surrounding whitespace trimmed
 
-- **WHEN** a `POST /events` body has `name` `"  Birthday  "`
+- **WHEN** a `POST /api/v1/events` body has `name` `"  Birthday  "`
 - **THEN** the stored and returned `name` is `"Birthday"`
 
 ### Requirement: Event start-date validation
 
-The endpoint SHALL require a `startsAt` field on the `POST /events` body and SHALL validate it against
+The endpoint SHALL require a `startsAt` field on the `POST /api/v1/events` body and SHALL validate it against
 the **canonical cutoff form** `yyyy-MM-dd'T'HH:mm:ss'Z'` — UTC (`Z`), second precision, no timezone
 offset, no fractional seconds. A request whose `startsAt` is absent, is not a string, is the empty
 string, or does not match that exact shape SHALL yield `400` and SHALL NOT make any upstream write.
@@ -142,31 +142,31 @@ re-examined when duration becomes creator-chosen under paid events.
 The value SHALL be stored and returned verbatim.
 
 #### Scenario: A canonical startsAt is accepted and echoed
-- **WHEN** a `POST /events` arrives with body `{ "name": "Party", "startsAt": "2026-07-14T18:00:00Z" }`
+- **WHEN** a `POST /api/v1/events` arrives with body `{ "name": "Party", "startsAt": "2026-07-14T18:00:00Z" }`
 - **THEN** the endpoint responds `201` and the stored and returned `startsAt` is exactly
   `2026-07-14T18:00:00Z`
 
 #### Scenario: A missing startsAt is rejected
-- **WHEN** a `POST /events` body carries a valid `name` but no `startsAt`
+- **WHEN** a `POST /api/v1/events` body carries a valid `name` but no `startsAt`
 - **THEN** the endpoint responds `400` and writes nothing upstream
 
 #### Scenario: A non-canonical startsAt is rejected
-- **WHEN** a `POST /events` body carries a `startsAt` bearing fractional seconds
+- **WHEN** a `POST /api/v1/events` body carries a `startsAt` bearing fractional seconds
   (`2026-07-14T18:00:00.000Z`), a timezone offset (`2026-07-14T18:00:00+02:00`), a missing `Z`, or a
   non-timestamp string
 - **THEN** the endpoint responds `400` and writes nothing upstream
 
 #### Scenario: An empty startsAt is rejected
-- **WHEN** a `POST /events` body carries `startsAt` as the empty string
+- **WHEN** a `POST /api/v1/events` body carries `startsAt` as the empty string
 - **THEN** the endpoint responds `400` and writes nothing upstream, because an empty cutoff admits every
   asset (`creationDate >= ""` holds for all) and would silently restore whole-library scope
 
 #### Scenario: A future startsAt is accepted
-- **WHEN** a `POST /events` carries a `startsAt` later than the server's current time
+- **WHEN** a `POST /api/v1/events` carries a `startsAt` later than the server's current time
 - **THEN** the endpoint responds `201` and stores it unchanged, the event being created ahead of time
 
 #### Scenario: A far-past startsAt is accepted
-- **WHEN** a `POST /events` carries a `startsAt` years in the past
+- **WHEN** a `POST /api/v1/events` carries a `startsAt` years in the past
 - **THEN** the endpoint responds `201` and stores it unchanged — the value is a floor on the event's
   contents, and bounding it is not the backend's concern
 
@@ -197,7 +197,7 @@ the stored fields on every read precisely so that no rewrite is ever needed.
 
 #### Scenario: Create writes the marker
 
-- **WHEN** a valid `POST /events` is processed
+- **WHEN** a valid `POST /api/v1/events` is processed
 - **THEN** the endpoint issues a bunny native Storage `PUT` to `/events/<eventId>/metadata.json`
   carrying the `AccessKey` header and a JSON body of
   `{ eventId, name, createdAt, startsAt, endsAt, capacity, lifetimeSeconds }`
@@ -241,7 +241,8 @@ exposed in any response.
 
 ### Requirement: Event metadata and existence route
 
-The backend SHALL accept an HTTP `GET` at the path `/events/<eventId>` (the literal label `events`
+The backend SHALL accept an HTTP `GET` at the path `/api/v1/events/<eventId>` (the literal label
+`events`
 required) and return the event's metadata. `eventId` MUST match a UUID pattern; a matched request
 whose `eventId` is not a UUID SHALL yield `400` and make no upstream request. The endpoint SHALL read
 the marker `/events/<eventId>/metadata.json` and, when present and complete, respond `200` with
@@ -264,37 +265,37 @@ so no client carries a nullable field and every downstream type stays total.
 
 #### Scenario: Existing event returns metadata including the derived delete-by
 
-- **WHEN** a `GET /events/<uuid>` arrives for an event whose marker exists and carries its limit fields
+- **WHEN** a `GET /api/v1/events/<uuid>` arrives for an event whose marker exists and carries its limit fields
 - **THEN** the endpoint reads `/events/<uuid>/metadata.json` and responds `200` with
   `{ eventId, name, createdAt, startsAt, endsAt, capacity, deletesAt }`, where `deletesAt` is
   `max(createdAt, startsAt) + lifetimeSeconds` in canonical cutoff form
 
 #### Scenario: An event past its window is served normally
 
-- **WHEN** a `GET /events/<uuid>` arrives after the event's `endsAt` has passed but before its
+- **WHEN** a `GET /api/v1/events/<uuid>` arrives after the event's `endsAt` has passed but before its
   `deletesAt`
 - **THEN** the endpoint responds `200` with the full metadata — the window is not a lifecycle input
 
 #### Scenario: An event past its delete-by is still served until the sweep runs
 
-- **WHEN** a `GET /events/<uuid>` arrives for an event whose derived `deletesAt` has passed, before the
+- **WHEN** a `GET /api/v1/events/<uuid>` arrives for an event whose derived `deletesAt` has passed, before the
   next scheduled cleanup
 - **THEN** the endpoint responds `200` and deletes nothing — deletion belongs solely to the sweep
 
 #### Scenario: An incomplete marker is 404, not patched
 
-- **WHEN** a `GET /events/<uuid>` reads a marker written before the limit fields existed
+- **WHEN** a `GET /api/v1/events/<uuid>` reads a marker written before the limit fields existed
 - **THEN** the endpoint responds `404` — no field is synthesized and the stored object is not patched
 
 #### Scenario: Unknown event yields 404
 
-- **WHEN** a `GET /events/<uuid>` arrives for an event whose marker `/events/<uuid>/metadata.json`
+- **WHEN** a `GET /api/v1/events/<uuid>` arrives for an event whose marker `/events/<uuid>/metadata.json`
   is absent
 - **THEN** the endpoint responds `404`
 
 #### Scenario: Non-UUID event id rejected
 
-- **WHEN** the `eventId` segment of `GET /events/<id>` is not a UUID
+- **WHEN** the `eventId` segment of `GET /api/v1/events/<id>` is not a UUID
 - **THEN** the endpoint responds `400` and makes no upstream request
 
 #### Scenario: Upstream failure surfaced
@@ -311,12 +312,12 @@ so no client carries a nullable field and every downstream type stays total.
 
 ### Requirement: Event routes require a device token
 
-`POST /events` SHALL require a valid device token (capability `device-attestation`) in
+`POST /api/v1/events` SHALL require a valid device token (capability `device-attestation`) in
 `Authorization: Bearer`. A request without one SHALL be rejected with `401`, and no event marker SHALL be
-written. Gating creation is the point: an ungated `POST /events` lets a stranger mint unbounded event
+written. Gating creation is the point: an ungated `POST /api/v1/events` lets a stranger mint unbounded event
 markers in the storage zone.
 
-`GET /events/<eventId>` (the metadata/existence read) SHALL **not** require a token: a request that
+`GET /api/v1/events/<eventId>` (the metadata/existence read) SHALL **not** require a token: a request that
 carries a valid token and a request that carries none SHALL both be served the marker's metadata (or
 `404`). The read is authorized by `eventId`-possession alone — the no-app download page (capability
 `web-event-download`) fetches the event name over this route from a browser that holds no attestation.
@@ -331,22 +332,22 @@ Nothing else in the API is shaped by payment.
 
 #### Scenario: Unauthenticated creation is refused
 
-- **WHEN** `POST /events` arrives with no valid token
+- **WHEN** `POST /api/v1/events` arrives with no valid token
 - **THEN** the endpoint responds `401` and writes no marker
 
 #### Scenario: Unauthenticated metadata read is served
 
-- **WHEN** `GET /events/<eventId>` arrives with no valid token
+- **WHEN** `GET /api/v1/events/<eventId>` arrives with no valid token
 - **THEN** the endpoint reads the marker and responds with its metadata (`200`) or `404` — not `401`
 
 #### Scenario: An attested device creates an event unchanged
 
-- **WHEN** `POST /events` carries a valid token and a valid name
+- **WHEN** `POST /api/v1/events` carries a valid token and a valid name
 - **THEN** an event is minted and returned exactly as before
 
 ### Requirement: Event end-date validation
 
-The endpoint SHALL accept an **optional** `endsAt` field on the `POST /events` body. When present it
+The endpoint SHALL accept an **optional** `endsAt` field on the `POST /api/v1/events` body. When present it
 SHALL be validated against the **canonical cutoff form** `yyyy-MM-dd'T'HH:mm:ss'Z'` — UTC (`Z`), second
 precision, no timezone offset, no fractional seconds — SHALL name a **real, round-tripping instant** (the
 same instant check `startsAt` receives, rejecting e.g. rolled-over components), SHALL be **strictly
@@ -372,42 +373,42 @@ returned verbatim.
 
 #### Scenario: A canonical endsAt within the cap is accepted and echoed
 
-- **WHEN** a `POST /events` arrives with body `{ "name": "Party", "startsAt": "2026-07-14T18:00:00Z",
+- **WHEN** a `POST /api/v1/events` arrives with body `{ "name": "Party", "startsAt": "2026-07-14T18:00:00Z",
   "endsAt": "2026-07-21T23:00:00Z" }`
 - **THEN** the endpoint responds `201` and the stored and returned `endsAt` is exactly
   `2026-07-21T23:00:00Z`
 
 #### Scenario: An absent endsAt is accepted and triggers the fallback
 
-- **WHEN** a `POST /events` body carries a valid `name` and `startsAt` but no `endsAt`
+- **WHEN** a `POST /api/v1/events` body carries a valid `name` and `startsAt` but no `endsAt`
 - **THEN** the endpoint responds `201` and stamps `endsAt = startsAt + windowMax`
 
 #### Scenario: A window longer than the maximum is rejected
 
-- **WHEN** a `POST /events` body carries an `endsAt` more than the configured window maximum after
+- **WHEN** a `POST /api/v1/events` body carries an `endsAt` more than the configured window maximum after
   `startsAt` (for example 31 days, against a 30-day maximum)
 - **THEN** the endpoint responds `400` and writes nothing upstream
 
 #### Scenario: A window exactly at the maximum is accepted
 
-- **WHEN** a `POST /events` body carries an `endsAt` exactly the configured window maximum after
+- **WHEN** a `POST /api/v1/events` body carries an `endsAt` exactly the configured window maximum after
   `startsAt`
 - **THEN** the endpoint responds `201` and stores it unchanged
 
 #### Scenario: A non-canonical endsAt is rejected
 
-- **WHEN** a `POST /events` body carries an `endsAt` bearing fractional seconds
+- **WHEN** a `POST /api/v1/events` body carries an `endsAt` bearing fractional seconds
   (`2026-07-21T23:00:00.000Z`), a timezone offset (`2026-07-21T23:00:00+02:00`), a missing `Z`, or a
   non-timestamp string
 - **THEN** the endpoint responds `400` and writes nothing upstream
 
 #### Scenario: An endsAt not after startsAt is rejected
 
-- **WHEN** a `POST /events` body carries an `endsAt` equal to or earlier than `startsAt`
+- **WHEN** a `POST /api/v1/events` body carries an `endsAt` equal to or earlier than `startsAt`
 - **THEN** the endpoint responds `400` and writes nothing upstream, because the event window must be
   non-empty (`startsAt < endsAt`)
 
 #### Scenario: An empty endsAt is rejected
 
-- **WHEN** a `POST /events` body carries `endsAt` as the empty string
+- **WHEN** a `POST /api/v1/events` body carries `endsAt` as the empty string
 - **THEN** the endpoint responds `400` and writes nothing upstream

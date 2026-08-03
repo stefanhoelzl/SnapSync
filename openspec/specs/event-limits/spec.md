@@ -48,10 +48,10 @@ the lifetime SHALL be **two distinct constants** even while they hold the same v
 different questions, only the lifetime is stamped, and collapsing them would make a future divergence a
 silent behavior change in two places. There SHALL be **no** grace-period constant.
 
-`POST /events` SHALL resolve `capacity` and `lifetimeSeconds` from this configuration **at mint time**
+`POST /api/v1/events` SHALL resolve `capacity` and `lifetimeSeconds` from this configuration **at mint time**
 and stamp both onto the marker (capability `event-creation`).
 
-`endsAt` SHALL be **creator-supplied at mint when present**: when the `POST /events` body carries a valid
+`endsAt` SHALL be **creator-supplied at mint when present**: when the `POST /api/v1/events` body carries a valid
 `endsAt` — canonical cutoff shape, a real round-tripping instant, strictly after `startsAt`
 (`startsAt < endsAt`), and no more than the configured window maximum after it
 (`endsAt - startsAt <= windowMax`) — the endpoint SHALL stamp that value as the marker's `endsAt`. When
@@ -78,20 +78,20 @@ of seconds.
 
 #### Scenario: A creator-supplied endsAt within the cap is stamped verbatim
 
-- **WHEN** a valid `POST /events` carries a valid `endsAt` (canonical shape, a real instant, strictly
+- **WHEN** a valid `POST /api/v1/events` carries a valid `endsAt` (canonical shape, a real instant, strictly
   after `startsAt`, and no more than the configured window maximum after it)
 - **THEN** the written marker carries that `endsAt` unchanged
 
 #### Scenario: An absent endsAt falls back to the maximum window
 
-- **WHEN** a valid `POST /events` carries no `endsAt` while the configured window maximum is 30 days and
+- **WHEN** a valid `POST /api/v1/events` carries no `endsAt` while the configured window maximum is 30 days and
   the configured capacity is 10
 - **THEN** the written marker carries `endsAt` equal to `startsAt` plus 30 days in canonical cutoff form,
   and `capacity` `10`
 
 #### Scenario: The lifetime is stamped at mint
 
-- **WHEN** a valid `POST /events` is processed while the configured lifetime is 30 days
+- **WHEN** a valid `POST /api/v1/events` is processed while the configured lifetime is 30 days
 - **THEN** the written marker carries `lifetimeSeconds` equal to 30 days in seconds
 
 #### Scenario: A configuration change does not reach existing events
