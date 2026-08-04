@@ -1059,10 +1059,18 @@ string-building, no network or crypto.
   to `main`). Every PR carries exactly one changelog label — `enhancement` · `bug` · `internal` —
   which `/ship` applies and the required `check-label` gate enforces; the App Store release notes are
   derived from it (capability `changelog-labels`), so `internal` means "no customer sees this".
-- For changes that **add, alter, or remove behavior**, drive it through the **OpenSpec** flow
-  (propose → apply → archive) so `openspec/specs/` stays the contract of record. Purely mechanical
-  work — build/CI, dependency bumps, behavior-preserving refactors, docs — can skip OpenSpec and
-  just branch → PR → `/ship`. Use judgment on the line between the two.
+- **The OpenSpec flow is user-driven — never entered on the agent's initiative.** Changes that
+  **add, alter, or remove behavior** go through it (propose → apply → sync/archive) so
+  `openspec/specs/` stays the contract of record — but *entering* the flow is the user's call, and so
+  is **every phase boundary** inside it. On a behavior-touching request: name the affected
+  capability, say it needs a change, and **stop** — no code, no `openspec/` file — until the user
+  picks the route (OpenSpec proposal or direct change). Then run **only the phase asked for**: after
+  `propose`, wait for the word before `apply`; after the tasks land, wait before `sync`/`archive`.
+  Never invoke an `opsx` skill or the `openspec` CLI unbidden. **Reading is the opposite, and is
+  mandatory**: read the capability's spec and its decision record before changing anything.
+- Purely mechanical work — build/CI, dependency bumps, behavior-preserving refactors, docs — skips
+  OpenSpec: branch → PR → `/ship`. Classify honestly and **ask when unsure**; a wrong "mechanical"
+  guess is exactly how behavior-changing work gets built with no spec behind it.
 - **The `openspec` CLI is not installed** — there is no global binary and no `package.json`. Invoke
   it via npx, pinned to the version CI uses: `npx --yes @fission-ai/openspec@1.5.0 <cmd>` (e.g.
   `… validate --specs --strict`, matching `.github/workflows/build.yml`). Do not run a bare
