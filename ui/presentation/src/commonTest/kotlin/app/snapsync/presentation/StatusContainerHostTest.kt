@@ -902,11 +902,18 @@ class StatusContainerHostTest {
         assertEquals(0, loads)
     }
 
+    /**
+     * The switch's confirm runs the **leave and nothing else** (capability `join-event`). It commits no
+     * join: once the leave clears the config, the surviving pending join reduces — through the reduction's
+     * config-absent rung — to the regular full-screen join surface, where the member makes the choices the
+     * old compact dialog made for them.
+     */
     @Test
-    fun `a switch scans a different event and confirming leaves then joins`() = runTest {
+    fun `confirming a switch leaves and opens the regular join surface`() = runTest {
         val other = "22222222-2222-4222-8222-222222222222"
         val configFake = FakeConfig(SAMPLE_CONFIG)
         val order = mutableListOf<String>()
+        val ready = JoinPhase.Ready("New Event", EventStart(CUTOFF.at), ENDS_AT, DELETES_AT)
         host(
             FakeSyncStatusSource(SyncStatus.Loading), backgroundScope,
             permission = FakePermissionSource(PermissionStatus.GRANTED), configFake = configFake,
@@ -916,14 +923,106 @@ class StatusContainerHostTest {
         ).test(this) {
             runOnCreate()
             containerHost.onOpenUrl(encodeEventUrl(EventLinkPayload(other)))
-            expectState(UiState.Joined(SyncHealth.Loading, PendingSwitch(other, JoinPhase.Ready("New Event", EventStart(CUTOFF.at), ENDS_AT, DELETES_AT))))
-            containerHost.onConfirmSwitch(CUTOFF, CEILING, Direction.Both)
-            // leave clears config + join saves the new one; conflated to the settled joined layer.
+            expectState(UiState.Joined(SyncHealth.Loading, PendingSwitch(other, ready)))
+            containerHost.onConfirmSwitch()
+            // The leave alone: config gone, the SAME pending join now full-screen for the new event.
+            expectState(UiState.JoiningEvent(other, ready))
+            cancelAndIgnoreRemainingItems()
+        }
+        // The leave ran; no join was committed by the confirm — that is the member's next act.
+        assertEquals(listOf("leave"), order)
+        assertEquals(null, configFake.config.value)
+    }
+
+    /**
+     * The member's choices now cross from the join surface a switch reveals — the whole point of the
+     * change. The old compact dialog could only ever produce `Direction.Both` with the album off.
+     */
+    @Test
+    fun `a switch joins with the member's chosen direction and album`() = runTest {
+        val other = "22222222-2222-4222-8222-222222222222"
+        val configFake = FakeConfig(SAMPLE_CONFIG)
+        var joinedDirection: Direction? = null
+        var joinedAlbum: Boolean? = null
+        host(
+            FakeSyncStatusSource(SyncStatus.Loading), backgroundScope,
+            permission = FakePermissionSource(PermissionStatus.GRANTED), configFake = configFake,
+            loadJoinDetails = { JoinLoad.Found("New Event", EventStart(CUTOFF.at), ENDS_AT, DELETES_AT) },
+            commitJoin = { id, name, _, _, _, _, _, direction, album ->
+                joinedDirection = direction
+                joinedAlbum = album
+                configFake.save(EventConfig(id, name, CUTOFF, maxPhotoDate = CEILING))
+                true
+            },
+            leave = { configFake.clear() },
+        ).test(this) {
+            runOnCreate()
+            containerHost.onOpenUrl(encodeEventUrl(EventLinkPayload(other)))
+            skipItems(1)
+            containerHost.onConfirmSwitch()
+            skipItems(1)
+            // On the join surface the leave revealed: receive-only, album on — unreachable before.
+            containerHost.onConfirmJoin(CUTOFF, CEILING, Direction.DownloadOnly, saveToAlbum = true)
             expectState(joinedLoading)
             cancelAndIgnoreRemainingItems()
         }
-        assertEquals(listOf("leave", "join"), order)
-        assertEquals(other, configFake.config.value?.eventId)
+        assertEquals(Direction.DownloadOnly, joinedDirection)
+        assertEquals(true, joinedAlbum)
+    }
+
+    /**
+     * `LeaveEvent` is best-effort: a failing `ConfigStore.clear()` is logged and swallowed. The phase is
+     * therefore re-derived only once the config is confirmed gone, so a failed clear leaves the
+     * confirmation exactly as it was and the member can simply confirm again. (Deriving BEFORE the leave
+     * would strand `Joined(pendingSwitch = ExplainAccess)`, whose dialog branch renders nothing.)
+     */
+    @Test
+    fun `a switch whose config clear fails keeps the confirmation presented`() = runTest {
+        val other = "22222222-2222-4222-8222-222222222222"
+        val ready = JoinPhase.Ready("New Event", EventStart(CUTOFF.at), ENDS_AT, DELETES_AT)
+        var commits = 0
+        host(
+            FakeSyncStatusSource(SyncStatus.Loading), backgroundScope,
+            permission = FakePermissionSource(PermissionStatus.GRANTED), configFake = FakeConfig(SAMPLE_CONFIG),
+            loadJoinDetails = { JoinLoad.Found("New Event", EventStart(CUTOFF.at), ENDS_AT, DELETES_AT) },
+            commitJoin = { _, _, _, _, _, _, _, _, _ -> commits++; true },
+            leave = { /* the clear failed: config stays present, as LeaveEvent's swallow leaves it */ },
+        ).test(this) {
+            runOnCreate()
+            containerHost.onOpenUrl(encodeEventUrl(EventLinkPayload(other)))
+            expectState(UiState.Joined(SyncHealth.Loading, PendingSwitch(other, ready)))
+            containerHost.onConfirmSwitch()
+            // Unchanged: still the joined layer with the same confirmation, ready to confirm again.
+            expectNoItems()
+            cancelAndIgnoreRemainingItems()
+        }
+        assertEquals(0, commits)
+    }
+
+    /** Cancelling on the surface the leave revealed ends with no event — the create layer. */
+    @Test
+    fun `cancelling after a switch's leave lands on the create layer`() = runTest {
+        val other = "22222222-2222-4222-8222-222222222222"
+        val configFake = FakeConfig(SAMPLE_CONFIG)
+        var commits = 0
+        host(
+            FakeSyncStatusSource(SyncStatus.Loading), backgroundScope,
+            permission = FakePermissionSource(PermissionStatus.GRANTED), configFake = configFake,
+            loadJoinDetails = { JoinLoad.Found("New Event", EventStart(CUTOFF.at), ENDS_AT, DELETES_AT) },
+            commitJoin = { _, _, _, _, _, _, _, _, _ -> commits++; true },
+            leave = { configFake.clear() },
+        ).test(this) {
+            runOnCreate()
+            containerHost.onOpenUrl(encodeEventUrl(EventLinkPayload(other)))
+            skipItems(1)
+            containerHost.onConfirmSwitch()
+            skipItems(1)
+            containerHost.onCancelJoin()
+            expectState(UiState.CreateEvent())
+            cancelAndIgnoreRemainingItems()
+        }
+        assertEquals(0, commits)
+        assertEquals(null, configFake.config.value)
     }
 
     @Test
@@ -1218,13 +1317,20 @@ class StatusContainerHostTest {
         commitJoin: suspend (
             String, String, EventStart, EventEnd, DeletesAt, CaptureCutoff, CaptureCeiling, Direction, Boolean,
         ) -> Boolean = { _, _, _, _, _, _, _, _, _ -> false },
+        // Counts details fetches — a switch's post-leave derivation must re-use the load, never re-run it.
+        onLoad: () -> Unit = {},
+        leave: suspend () -> Unit = {},
     ) = host(
         FakeSyncStatusSource(SyncStatus.Loading), backgroundScope,
         permission = FakePermissionSource(permission),
         requester = requester,
         configFake = configFake,
-        loadJoinDetails = { JoinLoad.Found("My Party", eventStart("2026-07-06T00:00:00Z"), ENDS_AT, DELETES_AT) },
+        loadJoinDetails = {
+            onLoad()
+            JoinLoad.Found("My Party", eventStart("2026-07-06T00:00:00Z"), ENDS_AT, DELETES_AT)
+        },
         commitJoin = commitJoin,
+        leave = leave,
     )
 
     @Test
@@ -1305,17 +1411,18 @@ class StatusContainerHostTest {
     }
 
     /**
-     * THE BRANCH-KEEPER. `readyOrExplain` gates the explainer on `config == null`, so a switch — which by
-     * definition has a config — can never produce it. This is what makes `SwitchDialog`'s
-     * `is JoinPhase.ExplainAccess -> Unit` branch provably dead rather than merely unreached.
+     * THE BRANCH-KEEPER, first half. The loaded-phase derivation selects the explainer only when NO event
+     * is configured, so while the switch confirmation is up — the previous event still configured — it
+     * yields the confirm phase. This is what makes `SwitchDialog`'s `is JoinPhase.ExplainAccess -> Unit`
+     * branch provably dead rather than merely unreached.
      */
     @Test
-    fun `a switch never explains even with permission never asked`() = runTest {
+    fun `a switch does not explain before its leave`() = runTest {
         val other = "22222222-2222-4222-8222-222222222222"
         val requester = SpyRequester()
         firstJoinGate(
             PermissionStatus.NOT_DETERMINED, requester,
-            configFake = FakeConfig(SAMPLE_CONFIG), // already in an event → a switch, not a first join
+            configFake = FakeConfig(SAMPLE_CONFIG), // still in the old event → the confirmation, not the explainer
         ).test(this) {
             runOnCreate()
             containerHost.onOpenUrl(encodeEventUrl(EventLinkPayload(other)))
@@ -1328,6 +1435,66 @@ class StatusContainerHostTest {
             cancelAndIgnoreRemainingItems()
         }
         assertEquals(0, requester.requests)
+    }
+
+    /**
+     * THE BRANCH-KEEPER, second half — and the reason the derivation runs at two points. Once the leave
+     * clears the config, the SAME rule over the SAME already-loaded details now sees no event configured,
+     * so a member who never granted photo access meets the explainer exactly as a first joiner would. No
+     * re-fetch happens: the details come from the load the confirmation already did.
+     */
+    @Test
+    fun `a switch explains after its leave when permission was never asked`() = runTest {
+        val other = "22222222-2222-4222-8222-222222222222"
+        val requester = SpyRequester()
+        val configFake = FakeConfig(SAMPLE_CONFIG)
+        var loads = 0
+        firstJoinGate(
+            PermissionStatus.NOT_DETERMINED, requester,
+            configFake = configFake,
+            onLoad = { loads++ },
+            leave = { configFake.clear() },
+        ).test(this) {
+            runOnCreate()
+            containerHost.onOpenUrl(encodeEventUrl(EventLinkPayload(other)))
+            skipItems(1)
+            containerHost.onConfirmSwitch()
+            expectState(
+                UiState.JoiningEvent(
+                    other,
+                    JoinPhase.ExplainAccess("My Party", eventStart("2026-07-06T00:00:00Z"), ENDS_AT, DELETES_AT),
+                ),
+            )
+            cancelAndIgnoreRemainingItems()
+        }
+        // Still CTA-only: reaching the explainer raises no system dialog on its own.
+        assertEquals(0, requester.requests)
+        // One fetch total — the post-leave derivation re-uses the details, it does not re-load them.
+        assertEquals(1, loads)
+    }
+
+    /**
+     * The second derivation is a no-op for every permission except `NOT_DETERMINED`: with access already
+     * granted, the post-leave phase is the same confirm phase the confirmation was showing.
+     */
+    @Test
+    fun `a granted switch re-derives to the same confirm phase`() = runTest {
+        val other = "22222222-2222-4222-8222-222222222222"
+        val configFake = FakeConfig(SAMPLE_CONFIG)
+        val ready = JoinPhase.Ready("New Event", EventStart(CUTOFF.at), ENDS_AT, DELETES_AT)
+        host(
+            FakeSyncStatusSource(SyncStatus.Loading), backgroundScope,
+            permission = FakePermissionSource(PermissionStatus.GRANTED), configFake = configFake,
+            loadJoinDetails = { JoinLoad.Found("New Event", EventStart(CUTOFF.at), ENDS_AT, DELETES_AT) },
+            leave = { configFake.clear() },
+        ).test(this) {
+            runOnCreate()
+            containerHost.onOpenUrl(encodeEventUrl(EventLinkPayload(other)))
+            expectState(UiState.Joined(SyncHealth.Loading, PendingSwitch(other, ready)))
+            containerHost.onConfirmSwitch()
+            expectState(UiState.JoiningEvent(other, ready))
+            cancelAndIgnoreRemainingItems()
+        }
     }
 
     @Test

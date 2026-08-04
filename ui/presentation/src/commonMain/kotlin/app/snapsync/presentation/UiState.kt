@@ -30,9 +30,12 @@ sealed interface UiState {
 
     /**
      * An interactive join confirmation is in progress for [eventId] (capability `join-event`), shown
-     * as a full-screen "Join event" surface. Only entered when no event is configured (a first join);
-     * a join while already configured is a switch, carried as [Joined.pendingSwitch] instead. [phase]
-     * drives the surface (loading details → ready/blocked/retry → committing → commit-failed).
+     * as a full-screen "Join event" surface. Entered whenever a join is pending and **no event is
+     * configured** — which covers a first join and, equally, a **switch after its leave**: the switch's
+     * confirmation ([Joined.pendingSwitch]) runs only the leave, and the same pending join lands here the
+     * moment the config clears, so the member configures the new membership on this surface like any
+     * other joiner. [phase] drives it (loading details → explain/ready/blocked/retry → committing →
+     * commit-failed).
      */
     data class JoiningEvent(val eventId: String, val phase: JoinPhase) : UiState
 
@@ -58,8 +61,11 @@ sealed interface UiState {
 
 /**
  * A leave-style switch confirmation over the joined screen: an event link for a **different** [eventId]
- * was scanned while already joined. [phase] mirrors a first join (details load then commit); on
- * confirm the container runs leave-then-join.
+ * was scanned while already joined. [phase] mirrors a first join's details load, and it is details-gated
+ * the same way (a 404 blocks). Its confirm runs the **leave alone** — it commits no join and chooses
+ * nothing; the join follows on the regular [UiState.JoiningEvent] surface, which the reduction reaches by
+ * itself once the leave clears the config. So this state covers only the phases before that hand-off:
+ * `Loading`, `Ready`, `NotFound`, `LoadFailed`.
  */
 data class PendingSwitch(val eventId: String, val phase: JoinPhase)
 
@@ -73,10 +79,11 @@ sealed interface JoinPhase {
 
     /**
      * The photo-access explainer (capability `join-event`): the consent surface shown **before** the
-     * system permission dialog is ever raised. Entered from the details fetch instead of [Ready], on a
-     * **first** join only (`config == null` — a switch never explains) and only while permission is
-     * `NOT_DETERMINED` (the sole state from which iOS can still raise the dialog; from `DENIED` a request
-     * is a silent no-op, so an explainer promising a dialog would be false).
+     * system permission dialog is ever raised. Chosen by the gate's loaded-phase derivation instead of
+     * [Ready] when **no event is configured** and permission is `NOT_DETERMINED` (the sole state from
+     * which iOS can still raise the dialog; from `DENIED` a request is a silent no-op, so an explainer
+     * promising a dialog would be false). That derivation runs at both of its points, so a **switch**
+     * reaches this phase too — after its leave, never while its confirmation is still up.
      *
      * Its confirm requests permission and advances to [Ready]; its cancel discards the pending join like
      * any other phase. [name], [startsAt], [endsAt] and [deletesAt] are carried **solely to hand off to [Ready]** —

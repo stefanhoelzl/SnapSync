@@ -5,7 +5,9 @@
 **How many of my photos will this share?** The join surface lets a member scope their contribution with a
 capture-date cutoff, but until this capability it said nothing about the consequence. This is the
 pre-commit **shareable-count preview** that answers the question live, as the member tunes the cutoff on
-the join, switch, and reconfigure surfaces: `XX photos from your gallery will be shared`.
+the join and reconfigure surfaces: `XX photos from your gallery will be shared`. (A switch reaches the
+join surface after its leave, so it inherits the count there; the confirmation that precedes the leave has
+no chosen range to count.)
 
 It exists because of the danger the mission names: a default inherited from the app's one-way-backup
 origins turns "back up everything of mine" into "upload a guest's whole camera roll to a stranger's

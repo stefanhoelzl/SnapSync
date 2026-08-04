@@ -541,11 +541,14 @@ class JoinScreenTest {
 
     // ---- the switch-events dialog (a different event scanned while joined) -----------------------------
 
+    /**
+     * The confirmation names both events and **promises no participation**: its confirm runs only the
+     * leave, and the member picks direction, cutoff and album on the join surface that follows. It renders
+     * no shareable count either — there is no chosen range to count yet (capability `join-share-count`).
+     */
     @Test
-    fun `switch dialog states the participation reset and confirms with the new window and Both`() {
-        var switchedDirection: Direction? = null
-        var switchedCutoff: CaptureCutoff? = null
-        var switchedUntil: CaptureCeiling? = null
+    fun `switch dialog names both events and confirms with no choices`() {
+        var confirms = 0
         setScreen {
             StatusScreen(
                 UiState.Joined(
@@ -556,20 +559,19 @@ class JoinScreenTest {
                     ),
                 ),
                 eventName = "Summer Trip",
-                onConfirmSwitch = { c, u, d -> switchedCutoff = c; switchedUntil = u; switchedDirection = d },
+                onConfirmSwitch = { confirms++ },
+                shareableCount = { _, _ -> 42 },
                 cutoff = fixedCutoff(),
             )
         }
         rule.onNodeWithText("Switch events?").assertExists()
-        rule.onNodeWithText(
-            "You'll leave \"Summer Trip\" and join \"New Event\". " +
-                "You'll share photos you take and receive everyone's.",
-        ).assertExists()
+        rule.onNodeWithText("You'll leave \"Summer Trip\" and join \"New Event\".").assertExists()
+        // No participation promise, and no count for a range the member has not chosen.
+        rule.onNodeWithText("You'll share photos you take and receive everyone's.").assertDoesNotExist()
+        rule.onNodeWithText("42 photos from your gallery will be shared.").assertDoesNotExist()
 
         rule.onNodeWithText("Switch").performClick()
-        assertEquals(Direction.Both, switchedDirection)
-        assertEquals(CaptureCutoff(CUTOFF.at), switchedCutoff)
-        assertEquals(CaptureCeiling(SWITCH_END.at), switchedUntil)
+        assertEquals(1, confirms)
     }
 
     @Test

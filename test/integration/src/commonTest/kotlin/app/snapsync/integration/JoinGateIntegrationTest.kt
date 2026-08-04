@@ -185,8 +185,15 @@ class JoinGateIntegrationTest {
         }
     }
 
+    /**
+     * The switch's confirm leaves and **nothing else**; the join that follows is the regular surface, so
+     * the member configures the new membership like any joiner. This is the regression the capability
+     * exists for: the old compact dialog could only ever produce `Direction.Both` with the album off, and
+     * re-scanning the joined event short-circuits as `AlreadyJoined`, so there was no route to any other
+     * shape at all. Here the switch lands a **receive-only, album-on** membership.
+     */
     @Test
-    fun a_switch_leaves_the_current_event_then_joins_the_new_one() = worldTest {
+    fun a_switch_leaves_the_current_event_then_joins_the_new_one_as_configured() = worldTest {
         val scope = CoroutineScope(coroutineContext + Job())
         try {
             val w = World(this)
@@ -197,11 +204,20 @@ class JoinGateIntegrationTest {
             host.onOpenUrl(deeplink(EVENT_F))
             host.await { (it as? UiState.Joined)?.pendingSwitch?.phase is JoinPhase.Ready }
 
-            host.onConfirmSwitch(CUTOFF, ENDS, Direction.Both)
-            host.await { it is UiState.Joined && it.pendingSwitch == null && w.configSource.config.value?.eventId == EVENT_F }
+            // Confirm = the leave alone. E is gone and the SAME pending join is now the full-screen
+            // surface for F, where the choices are made.
+            host.onConfirmSwitch()
+            host.await { it is UiState.JoiningEvent && w.configSource.config.value == null }
 
-            assertEquals(EVENT_F, w.configSource.config.value?.eventId) // switched
+            host.onConfirmJoin(CUTOFF, ENDS, Direction.DownloadOnly, saveToAlbum = true)
+            host.await { it is UiState.Joined && w.configSource.config.value?.eventId == EVENT_F }
+
+            val cfg = w.configSource.config.value
+            assertEquals(EVENT_F, cfg?.eventId)                            // switched
+            assertEquals(Direction.DownloadOnly, cfg?.direction)           // the member's direction, not Both
+            assertEquals(true, cfg?.saveToAlbum)                           // the member's album opt-in
             assertTrue(w.store.manifestOf(EVENT_F, w.ownDeviceId) != null) // enrolled in the new event
+            assertTrue(w.store.isDeparted(EVENT_E, w.ownDeviceId))        // and departed the old
         } finally {
             scope.cancel()
         }
@@ -229,14 +245,16 @@ class JoinGateIntegrationTest {
             host.onOpenUrl(deeplink(EVENT_F))
             host.await { (it as? UiState.Joined)?.pendingSwitch?.phase is JoinPhase.Ready }
 
-            host.onConfirmSwitch(CUTOFF, ENDS, Direction.Both)
-            // The new event's join completes even though E's DELETE is still pending — the switch never
-            // waits on the departed event's fire-and-forget backend notify.
-            host.await {
-                it is UiState.Joined && it.pendingSwitch == null && w.configSource.config.value?.eventId == EVENT_F
-            }
+            host.onConfirmSwitch()
+            // The join surface appears even though E's DELETE is still pending: the leave's local teardown
+            // never waits on the departed event's fire-and-forget backend notify.
+            host.await { it is UiState.JoiningEvent && w.configSource.config.value == null }
+
+            host.onConfirmJoin(CUTOFF, ENDS, Direction.Both, saveToAlbum = false)
+            // …and the new event's join completes with E's DELETE still hanging.
+            host.await { it is UiState.Joined && w.configSource.config.value?.eventId == EVENT_F }
             assertTrue(w.store.manifestOf(EVENT_F, w.ownDeviceId) != null) // enrolled in the new event
-            assertFalse(deleteGate.isCompleted)                            // E's DELETE never gated the join
+            assertFalse(deleteGate.isCompleted)                            // E's DELETE never gated either step
         } finally {
             scope.cancel()
         }
