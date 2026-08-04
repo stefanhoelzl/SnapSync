@@ -110,7 +110,6 @@ fun ControlPanel(controller: PanelController, dark: Boolean, onDarkChange: (Bool
             Button(onClick = { controller.showSwitchReady() }) { Text("Ready (switch?)") }
             Button(onClick = { controller.showSwitchNotFound() }) { Text("Not found") }
             Button(onClick = { controller.showSwitchLoadFailed() }) { Text("Load failed") }
-            Button(onClick = { controller.showSwitchCommitFailed() }) { Text("Commit failed") }
         }
 
         Text("Attestation (joined)")

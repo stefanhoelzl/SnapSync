@@ -403,21 +403,41 @@ class StatusContainerHost(
      */
     fun onConfirmJoin(cutoff: CaptureCutoff, until: CaptureCeiling, direction: Direction, saveToAlbum: Boolean) =
         intent {
-            commit(withLeave = false, cutoff = cutoff, until = until, direction = direction, saveToAlbum = saveToAlbum)
+            commit(cutoff = cutoff, until = until, direction = direction, saveToAlbum = saveToAlbum)
         }
 
     /**
-     * Confirm a switch: leave the current event, then enroll → provision the new one with [cutoff]. The
-     * compact switch dialog carries no direction/album picker, so the caller supplies [Direction.Both]
-     * and album-off.
+     * Confirm a switch (capability `join-event`): run the **leave and nothing else**, and choose nothing
+     * on the member's behalf. The pending join survives; once the leave has cleared the config, the
+     * reduction's config-absent rung renders the **regular full-screen join surface** for the new event,
+     * where the member picks direction, range and album exactly as on a first join. This is why the
+     * confirmation carries no pickers and this intent takes no arguments — the surface that follows owns
+     * every choice.
+     *
+     * The leave rides the same [UserCommands.leave] the joined layer's Leave action uses, so in-flight
+     * downloads are cancelled and non-terminal rows pruned before `LeaveEvent` stops the producer and
+     * clears the config.
+     *
+     * The phase is re-derived **after** the leave and only once the config is confirmed gone. `LeaveEvent`
+     * is best-effort — a failing `ConfigStore.clear()` is logged and swallowed — and on that path the
+     * phase must stay put so the confirmation re-renders and the member can simply confirm again.
+     * Deriving *before* the leave would avoid a possible one-frame Ready render, but a failed clear would
+     * then leave `Joined(pendingSwitch = ExplainAccess)`, whose dialog branch renders nothing: the
+     * confirmation would vanish with an invisible pending join behind it.
      */
-    fun onConfirmSwitch(cutoff: CaptureCutoff, until: CaptureCeiling, direction: Direction) =
-        intent { commit(withLeave = true, cutoff = cutoff, until = until, direction = direction, saveToAlbum = false) }
+    fun onConfirmSwitch() = intent {
+        val p = pending.state.value ?: return@intent
+        val ph = p.phase as? JoinPhase.Ready ?: return@intent
+        commands.leave()
+        if (config.value == null) {
+            pending.set(p.copy(phase = deriveLoadedPhase(ph.name, ph.startsAt, ph.endsAt, ph.deletesAt)))
+        }
+    }
 
     /** Retry a failed commit — the leave (if any) already succeeded, so this re-runs only the join. */
     fun onRetryJoin(cutoff: CaptureCutoff, until: CaptureCeiling, direction: Direction, saveToAlbum: Boolean) =
         intent {
-            commit(withLeave = false, cutoff = cutoff, until = until, direction = direction, saveToAlbum = saveToAlbum)
+            commit(cutoff = cutoff, until = until, direction = direction, saveToAlbum = saveToAlbum)
         }
 
     /**
@@ -438,10 +458,18 @@ class StatusContainerHost(
         pending.set(p.copy(phase = JoinPhase.Ready(ph.name, ph.startsAt, ph.endsAt, ph.deletesAt)))
     }
 
-    /** Discard the pending join/switch, returning to the base screen. */
+    /**
+     * Discard the pending join, returning to the base screen — the create layer when no event is
+     * configured. Reached through a **switch**, the leave has already run, so this lands the device in
+     * **no event**; the confirmation named the event being left, and rescanning an invite rejoins.
+     */
     fun onCancelJoin() = intent { pending.set(null) }
 
-    /** Discard the pending switch, staying in the current event. */
+    /**
+     * Dismiss the switch confirmation *before* its leave, staying in the current event untouched. The
+     * same one-line body as [onCancelJoin], deliberately kept distinct: after this change the two are
+     * genuinely different acts — this one keeps the membership, that one ends with none.
+     */
     fun onCancelSwitch() = intent { pending.set(null) }
 
     /**
@@ -489,8 +517,8 @@ class StatusContainerHost(
             // No seed-from-createdAt and no fallback-to-now any more: `startsAt` is ALWAYS present on a
             // successful load (the backend synthesizes one for legacy markers, and the details source
             // fails the load rather than invent one), so the default is simply the event's start. The
-            // photo-access explainer still gates the Ready phase on a first join.
-            is JoinLoad.Found -> readyOrExplain(load.name, load.startsAt, load.endsAt, load.deletesAt)
+            // first of the derivation's two points (the other is `onConfirmSwitch`, after the leave).
+            is JoinLoad.Found -> deriveLoadedPhase(load.name, load.startsAt, load.endsAt, load.deletesAt)
             JoinLoad.NotFound -> JoinPhase.NotFound
             JoinLoad.Failed -> JoinPhase.LoadFailed
         }
@@ -499,28 +527,38 @@ class StatusContainerHost(
     }
 
     /**
-     * The loaded-details phase: the confirm surface, or the **photo-access explainer** ahead of it
-     * (capability `join-event`). The explainer is entered on exactly two conditions, read as a snapshot
-     * here and never re-derived:
+     * The gate's **loaded-phase derivation** (capability `join-event`): the single rule deciding, for
+     * loaded event details, whether the gate presents the confirm surface or the **photo-access
+     * explainer** ahead of it. The explainer is chosen on exactly two conditions:
      *
-     * - **a first join** — `config == null`. A *switch* (config present) is confirmed over the joined
-     *   layer as a compact dialog, which is no place for an explanation, and anyone switching is already
-     *   sitting on the joined layer's `NeedsAccess` affordance. This is also what makes
-     *   `JoinPhase.ExplainAccess` unreachable from the switch surface.
+     * - **no event configured** — `config == null`. While a *switch*'s previous event is still
+     *   configured this yields the confirm phase, which is what the switch confirmation renders over the
+     *   joined layer; the explainer comes later, if at all.
      * - **permission never asked** — `NOT_DETERMINED`, the only state from which iOS will still raise the
      *   dialog. From `DENIED` a request is a silent no-op, so explaining and then producing no dialog
      *   would be a lie; `DENIED` goes straight to the confirm and meets the Settings affordance after
      *   joining. `GRANTED` needs no explanation.
+     *
+     * It runs at **every** point the gate resolves to a loaded phase, so no entry path can reach the
+     * confirm surface without having been offered the explainer. There are two such points: [loadInto]
+     * when the details fetch resolves, and [onConfirmSwitch] once a switch's leave has cleared the config
+     * — the second re-deriving from the details the first already loaded, never re-fetching them. That is
+     * why permission is a **snapshot at the moment the phase is chosen** rather than an observation: the
+     * phase advances only by user action, so a permission change while the explainer is on screen does
+     * not move it.
+     *
+     * For every permission except `NOT_DETERMINED` the second derivation is a no-op — `GRANTED`,
+     * `LIMITED` and `DENIED` all yield [JoinPhase.Ready] at both points.
      */
-    private fun readyOrExplain(
+    private fun deriveLoadedPhase(
         name: String,
         startsAt: EventStart,
         endsAt: EventEnd,
         deletesAt: DeletesAt,
     ): JoinPhase {
-        val firstJoin = config.value == null
+        val noEventConfigured = config.value == null
         val neverAsked = permission.value == PermissionStatus.NOT_DETERMINED
-        return if (firstJoin && neverAsked) {
+        return if (noEventConfigured && neverAsked) {
             JoinPhase.ExplainAccess(name, startsAt, endsAt, deletesAt)
         } else {
             JoinPhase.Ready(name, startsAt, endsAt, deletesAt)
@@ -536,7 +574,6 @@ class StatusContainerHost(
     )
 
     private suspend fun commit(
-        withLeave: Boolean,
         cutoff: CaptureCutoff,
         until: CaptureCeiling,
         direction: Direction,
@@ -554,7 +591,6 @@ class StatusContainerHost(
         }
         val (name, startsAt, endsAt, deletesAt) = loaded
         pending.set(p.copy(phase = JoinPhase.Committing(name, startsAt, endsAt, deletesAt)))
-        if (withLeave) commands.leave()
         if (commands.commitJoin(
                 p.eventId, name, startsAt, endsAt, deletesAt, cutoff, until, direction, saveToAlbum,
             )

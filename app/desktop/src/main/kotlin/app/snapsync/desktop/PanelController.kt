@@ -191,14 +191,15 @@ class PanelController {
     // config present + granted + a settled sync (so the joined layer underneath is coherent), then write
     // the phase; the reducer maps `pending != null` with config present to `pendingSwitch`. The new
     // event's name differs from the current config's so the dialog reads "Leave Anna's Birthday and join
-    // Bob's Wedding?". Only the four phases the switch dialog renders are offered.
+    // Bob's Wedding?". Only the three phases the switch dialog renders are offered: there is deliberately
+    // NO `CommitFailed` preset, because the confirmation's confirm runs only the leave, so no commit can
+    // fail while a config is still present — forging that pair would offer a state the reduction cannot
+    // reach. The post-leave commit failure is reachable through the full-screen JOIN presets above.
     fun showSwitchReady() = forgeSwitch(JoinPhase.Ready(JOIN_NAME, JOIN_STARTS_AT, JOIN_ENDS_AT, JOIN_DELETES_AT))
 
     fun showSwitchNotFound() = forgeSwitch(JoinPhase.NotFound)
 
     fun showSwitchLoadFailed() = forgeSwitch(JoinPhase.LoadFailed)
-
-    fun showSwitchCommitFailed() = forgeSwitch(JoinPhase.CommitFailed(JOIN_NAME, JOIN_STARTS_AT, JOIN_ENDS_AT, JOIN_DELETES_AT))
 
     private fun forgeSwitch(phase: JoinPhase) {
         permissionState.value = PermissionStatus.GRANTED

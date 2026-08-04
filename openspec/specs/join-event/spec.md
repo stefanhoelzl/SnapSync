@@ -12,9 +12,10 @@ accumulate: the capture-date cutoff (`photo-selection-policy`), the upload/downl
 (`add-join-direction-mode`), and the per-event album opt-in (`event-album`) are all rows on this screen. A
 dialog could not have grown them.
 
-Switching events composes leave-then-join, so provisioning a different event cleanly departs the previous
-one. `autoJoin` auto-confirms the gate for the device that just created the event, which has already
-expressed intent.
+Switching events composes leave-then-join as **two user-visible acts**: the confirmation's confirm departs
+the previous event, and the join that follows is this same surface, so a switching member configures the
+new membership exactly as any other joiner does. `autoJoin` auto-confirms the gate for the device that
+just created the event, which has already expressed intent.
 
 **One active membership at a time is the current contract, not a law of the product.** Joining a
 different event is a switch, and every joined surface renders *the* joined event. Concurrent
@@ -24,7 +25,9 @@ across surviving events, the ledger key is event-independent) — so new work SH
 single-membership assumption beyond what this spec already states, and a change that must lean on it
 names it.
 
-Decision record: `changes/archive/2026-07-06-add-event-join-confirmation`.
+Decision record: `changes/archive/2026-07-06-add-event-join-confirmation` (the gate itself);
+`changes/archive/2026-08-05-configure-membership-on-switch` (dissolving the switch into leave-then-join, so
+the switching member configures the new membership on this surface).
 ## Requirements
 ### Requirement: Joining is gated by an explicit confirmation
 The system SHALL NOT provision an event directly from a decoded interactive event link. When the
@@ -209,19 +212,19 @@ write and the producer enable) SHALL be injected so the use-case is pure `common
 ### Requirement: Enrollment fires only on a genuine new join
 
 The enrollment PUT (which writes an **empty** manifest) SHALL fire **only** when joining an event the
-device is not currently in — a first join (no config) or a switch **to a different** `eventId`. A
-re-scan or re-provision of the event the device is **already** joined to SHALL be a no-op that does
-**not** re-write the empty manifest, so a real asset manifest previously written by the upload cycle is
-never clobbered back to empty. This is consistent with `event-rejoin-reconciliation`'s no-op on
-re-provision of the already-joined event.
+device is not currently in — which, since a switch's leave clears the config before its join commits, is
+always a join taken with **no config**. A re-scan or re-provision of the event the device is **already**
+joined to SHALL be a no-op that does **not** re-write the empty manifest, so a real asset manifest
+previously written by the upload cycle is never clobbered back to empty. This is consistent with
+`event-rejoin-reconciliation`'s no-op on re-provision of the already-joined event.
 
 #### Scenario: Re-scanning the current event does not clobber the manifest
 - **WHEN** a deeplink for the event the device is already joined to is decoded
 - **THEN** no enrollment PUT is issued and the device's existing manifest is left untouched
 
 #### Scenario: Switching to a different event enrolls
-- **WHEN** the confirmed target `eventId` differs from the currently configured one
-- **THEN** the enrollment PUT for the new event is issued as part of the join
+- **WHEN** a switch's leave has cleared the config and the member confirms the join for the new event
+- **THEN** the enrollment PUT for the new event is issued as part of that join
 
 ### Requirement: Switching events composes leave then join
 
@@ -229,21 +232,61 @@ The system SHALL, when a deeplink for a **different** event is decoded while an 
 configured, present a leave-style confirmation (of the form "Switch events?") carried as a
 `pendingSwitch` on the `Joined` state, and this confirmation SHALL be details-gated like a first join
 (it shows the new event's fetched name and blocks on a 404). Its body SHALL name **both** the current
-and the new event and SHALL state the participation the switch resets to (the member shares the photos
-they take and receives everyone's), so the reset defaults (direction `Both`, cutoff = the new event's
-start, album off) are not a surprise. On confirm, the system SHALL run **`leaveEvent.leave()` then
-`joinEvent.join(newEventId)`** — composing the existing `LeaveEvent` use-case without modifying it, so
-the switch inherits any backend behavior `leave()` later gains. If the leave succeeds but the join then
-fails, the device is transiently in **no event**; the surface SHALL show an error and a **Retry** that
-re-runs **only** the join for the remembered target.
+and the new event, and SHALL state **nothing** about the participation that results: the member chooses
+the direction, the capture-date range, and the album opt-in on the join surface that follows, so a body
+promising a fixed participation would be false. For the same reason the confirmation SHALL NOT render a
+shareable count (capability `join-share-count`) — no range has been chosen for it to count.
 
-#### Scenario: Switch confirmation names both events and states the reset, then composes leave then join
-- **WHEN** a link for a different event is decoded while joined, its details load, and the user confirms the switch
-- **THEN** the confirmation body named both events and stated that the switch shares the member's photos and receives everyone's, and `leaveEvent.leave()` runs first and then `joinEvent.join(newEventId)`, leaving the device joined to the new event
+Its confirm SHALL run the **leave and nothing else** — `LeaveEvent.leave()` as-is, reached through the
+same leave command the joined layer's Leave action uses, so in-flight downloads are cancelled and
+non-terminal download rows pruned first, and so the switch inherits any backend behavior `leave()` later
+gains. The confirm SHALL NOT commit a join.
+
+The pending join SHALL survive the leave. Once the leave has cleared the config, the system SHALL
+present the **regular full-screen join surface** for the new event — the same surface a first join
+presents, with the Share and Receive switches, the capture-date cutoff choices, the album opt-in, the
+live shareable count, and the photo-access explainer where the gate's loaded-phase derivation calls for
+it — and the confirm there SHALL commit the join with the member's chosen direction, range, and album
+opt-in like any other join. A commit failure SHALL therefore be the join surface's ordinary
+commit-failure phase with its Retry, not a switch-specific error.
+
+Because the leave has already run when that surface is presented, **cancelling it SHALL leave the device
+in no event**, returning to the create layer per the surface's existing cancel rule; rescanning an invite
+rejoins. A leave whose local config clear fails SHALL leave the confirmation presented (the config is
+still there, so the state is unchanged), no error surface of its own being raised — matching the joined
+layer's Leave action, which reports a failed clear no differently.
+
+#### Scenario: The switch confirmation names both events and promises no participation
+- **WHEN** a link for a different event is decoded while joined and its details load
+- **THEN** the confirmation names both the current and the new event, states nothing about the resulting
+  participation, and renders no shareable count
+
+#### Scenario: Confirming the switch leaves, then opens the regular join surface
+- **WHEN** the user confirms the switch confirmation
+- **THEN** `LeaveEvent.leave()` runs (after the leave command's download cancellation and non-terminal row
+  prune), no join is committed, and once the config is cleared the pending join is presented as the
+  full-screen join surface for the new event
+
+#### Scenario: A switch configures the new membership
+- **WHEN** the member, on the join surface reached through a switch, turns the Share switch off, opts into
+  the album, and confirms
+- **THEN** the join commits with direction `DownloadOnly` and `saveToAlbum = true`, exactly as the same
+  choices on a first join would
 
 #### Scenario: A join that fails after a successful leave is retryable
-- **WHEN** the leave step succeeds but the subsequent join enrollment fails
-- **THEN** the device is in no event and the surface offers a Retry that re-runs only the join for the pending target
+- **WHEN** the leave has run and the subsequent join enrollment fails
+- **THEN** the device is in no event and the join surface shows its commit-failure phase, whose Retry
+  re-runs only the join for the pending target, carrying the choices the member already made
+
+#### Scenario: Cancelling after the leave leaves the device in no event
+- **WHEN** the member cancels on the join surface reached through a switch
+- **THEN** the pending join is discarded, no device is enrolled, and the UI returns to the create layer
+  with no event configured
+
+#### Scenario: A failed local clear keeps the confirmation presented
+- **WHEN** the user confirms the switch and the config clear step fails
+- **THEN** the event remains configured, the switch confirmation remains presented so the user can confirm
+  again, and no separate error surface is raised
 
 #### Scenario: The switch never edits the leave use-case
 - **WHEN** the switch path runs
@@ -388,12 +431,20 @@ dialog is ever raised, and the system dialog SHALL be reachable from that surfac
 confirm action.
 
 The explainer SHALL be a phase of the `JoiningEvent` family (not a dialog, not a separate `UiState`),
-entered from the details fetch: when the fetch resolves to a loaded event, the gate SHALL enter the
-**explain-access** phase instead of the loaded/confirm phase exactly when **both** hold:
+chosen by the gate's **loaded-phase derivation**: the single rule that decides, for loaded event details,
+whether the gate presents the **explain-access** phase or the loaded/confirm phase. The derivation SHALL
+select the explain-access phase exactly when **both** hold:
 
-- **no event is currently configured** (a *first* join — a switch, which is confirmed over the joined
-  layer, SHALL never explain), and
+- **no event is currently configured** (so a switch's confirmation, presented over the joined layer while
+  the old event is still configured, is never the explainer), and
 - photo permission is `NOT_DETERMINED`.
+
+The derivation SHALL run at **every** point the gate resolves to a loaded phase, so that no entry path
+can reach the confirm surface without having been offered the explainer. There are two such points: when
+the details fetch resolves, and when a switch's leave clears the config (capability `join-event`,
+"Switching events composes leave then join"), the second re-deriving from the details the first already
+loaded rather than re-fetching them. The derivation SHALL run only after the config is confirmed cleared,
+so a leave whose clear failed leaves the phase untouched.
 
 Permission SHALL be read as a **snapshot at the moment the phase is chosen**, not observed — the phase
 advances only by user action, so a permission change while the explainer is on screen SHALL NOT move it.
@@ -448,9 +499,13 @@ surface of its own.
 - **WHEN** the details fetch resolves to a loaded event and photo permission is `DENIED`
 - **THEN** the gate enters the loaded/confirm phase directly, no explainer is shown, and no permission request is made
 
-#### Scenario: A switch never explains
+#### Scenario: A switch does not explain before its leave
 - **WHEN** a deeplink for a different event is decoded while an event is already configured, and photo permission is `NOT_DETERMINED`
-- **THEN** the switch confirmation is presented in its existing form and the explain-access phase is never entered
+- **THEN** the derivation selects the loaded/confirm phase, so the switch confirmation is presented over the joined layer and the explain-access phase is not entered
+
+#### Scenario: A switch explains after its leave
+- **WHEN** the user confirms that switch confirmation and the leave clears the config, photo permission still being `NOT_DETERMINED`
+- **THEN** the derivation runs again over the already-loaded details and the gate enters the explain-access phase, naming the new event, before its confirm surface
 
 #### Scenario: A created event's first join explains too
 - **WHEN** a freshly created event is routed into the pending-join gate, no event is configured, and photo permission is `NOT_DETERMINED`
@@ -707,8 +762,9 @@ whenever the Share switch is toggled, so the number always reflects the pending 
   capability `join-share-count`), the row SHALL be omitted rather than showing a spinner that cannot
   resolve.
 
-The count SHALL be rendered on the **switch-event** confirmation surface on the same terms, since a switch
-establishes a fresh membership baseline for the new event.
+The count is rendered on this surface alone. A switch reaches this same surface after its leave, so it
+inherits the count against the range the member actually chooses; the switch confirmation that precedes
+the leave renders none.
 
 The count is **decision-support on a decision surface** and does not change what confirming does: it
 informs the cutoff choice, and confirming still crosses the chosen cutoff and derived direction to
@@ -738,11 +794,10 @@ informs the cutoff choice, and confirming still crosses the chosen cutoff and de
 - **WHEN** the loaded phase renders while photo access is `DENIED` or still unresolved
 - **THEN** no count row is shown, and no library read is attempted for it
 
-#### Scenario: The switch surface shows the count too
-- **WHEN** the switch-event confirmation is presented for a different event and photo access permits a
-  count
-- **THEN** it renders the same `XX photos from your gallery will be shared` row for the new event's
-  baseline
+#### Scenario: A switch's count arrives on the join surface, not the confirmation
+- **WHEN** a switch confirmation is presented for a different event and photo access permits a count
+- **THEN** the confirmation renders no count, and the join surface reached after its leave renders the row
+  for the member's chosen range like any other join
 
 ### Requirement: The join surface states how long the event's photos are kept
 

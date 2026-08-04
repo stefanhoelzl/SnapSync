@@ -17,7 +17,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -123,7 +122,9 @@ fun StatusScreen(
     onCancelJoin: () -> Unit = {},
     onRetryLoad: () -> Unit = {},
     onRetryJoin: (CaptureCutoff, CaptureCeiling, Direction, Boolean) -> Unit = { _, _, _, _ -> },
-    onConfirmSwitch: (CaptureCutoff, CaptureCeiling, Direction) -> Unit = { _, _, _ -> },
+    // The switch confirmation's confirm: it runs the leave and nothing else, so it carries no choices —
+    // the join surface the leave reveals owns every one of them (capability `join-event`).
+    onConfirmSwitch: () -> Unit = {},
     onCancelSwitch: () -> Unit = {},
     // Bridges the cutoff picker (local wall-clock) to the UTC `…Z` cutoff string. Required — with NO
     // system-reading default (migration step 9): the host binds the `Clock`/`TimeZoneSource` ports
@@ -340,10 +341,6 @@ fun StatusScreen(
                 onConfirmSwitch = onConfirmSwitch,
                 onCancelSwitch = onCancelSwitch,
                 onRetryLoad = onRetryLoad,
-                // The compact switch path has no album picker — a retry there is album-off.
-                onRetryJoin = { cutoff, until, direction -> onRetryJoin(cutoff, until, direction, false) },
-                shareableCount = shareableCount,
-                photoPermission = photoPermission,
             )
         }
     }
@@ -949,28 +946,6 @@ private fun ShareCountRow(
 }
 
 /**
- * The shareable count as a single sentence for the compact switch dialog (capability `join-share-count`):
- * empty until it resolves and whenever no count is available, so the dialog body reads cleanly meanwhile.
- */
-@Composable
-private fun shareCountSentence(
-    cutoffValue: CaptureCutoff,
-    untilValue: CaptureCeiling,
-    shareableCount: suspend (cutoff: CaptureCutoff, until: CaptureCeiling?) -> Int?,
-    permissionKey: PermissionStatus,
-): String {
-    val count by produceState<Int?>(initialValue = null, cutoffValue, untilValue, permissionKey) {
-        value = shareableCount(cutoffValue, untilValue)
-    }
-    return when (val c = count) {
-        null -> ""
-        0 -> "No photos from your gallery will be shared yet."
-        1 -> "1 photo from your gallery will be shared."
-        else -> "$c photos from your gallery will be shared."
-    }
-}
-
-/**
  * The **reconfigure** surface (capability `reconfigure-membership`): a joined member re-opens the three
  * participation settings they picked at join — the two switches (Share / Receive → direction), the
  * capture-date cutoff, and the album opt-in — and changes them **in place**, without leaving.
@@ -1200,69 +1175,45 @@ private fun screenLabel(state: UiState, reconfigureActive: Boolean): String {
 }
 
 /**
- * The switch confirmation (a different event scanned while joined) — the leave-style dialog. On confirm
- * it runs leave-then-join. Mirrors the join phases in a compact `AppConfirmDialog`: the loaded phase
- * offers Switch; a load/commit failure offers Retry; a missing event dismisses. Transient
- * loading/committing phases show nothing.
+ * The switch confirmation (a different event scanned while joined) — the leave-style dialog. Its confirm
+ * runs the **leave and nothing else** (capability `join-event`); the join that follows is the regular
+ * full-screen surface, which the reduction presents once the leave has cleared the config. So this dialog
+ * carries no pickers, decides nothing, and commits nothing.
+ *
+ * Mirrors the join phases in a compact `AppConfirmDialog`: the loaded phase offers Switch; a load failure
+ * offers Retry; a missing event dismisses. Transient loading/committing phases show nothing. There is no
+ * commit-failure branch: the leave precedes any commit, so a commit can never fail while a config is
+ * still present — that phase belongs to the full-screen surface now.
  */
 @Composable
 private fun SwitchDialog(
     switch: PendingSwitch,
     currentEventName: String?,
-    onConfirmSwitch: (CaptureCutoff, CaptureCeiling, Direction) -> Unit,
+    onConfirmSwitch: () -> Unit,
     onCancelSwitch: () -> Unit,
     onRetryLoad: () -> Unit,
-    onRetryJoin: (CaptureCutoff, CaptureCeiling, Direction) -> Unit,
-    shareableCount: suspend (cutoff: CaptureCutoff, until: CaptureCeiling?) -> Int? = { _, _ -> null },
-    photoPermission: PermissionStatus = PermissionStatus.GRANTED,
 ) {
     val current = currentEventName ?: "this event"
-    // The compact switch dialog has no picker: it uses the new event's default RANGE — the full window
-    // `[startsAt, endsAt]` (`startsAt` is also the FLOOR and `endsAt` the CEILING, so the switch lands on
-    // the whole event window; capability `photo-selection-policy`) — and the default participation direction
-    // ([Direction.Both]). Both bounds are remembered so a retry after a failed commit reuses them (the
-    // CommitFailed phase carries name + startsAt + endsAt).
-    var cutoff by remember { mutableStateOf<CaptureCutoff?>(null) }
-    var until by remember { mutableStateOf<CaptureCeiling?>(null) }
     when (val phase = switch.phase) {
-        // Unreachable. The photo-access explainer is a FIRST-join surface: `readyOrExplain` emits it only
-        // when `config == null`, and a switch by definition has a config. Anyone switching is already on the
-        // joined layer, where the `NeedsAccess` affordance handles a missing grant — so no explanation is
-        // lost. Kotlin's exhaustive `when` requires the branch; the container test "a switch never explains"
-        // is what keeps it dead (capability `join-event`).
+        // Unreachable, and required for exhaustiveness. The explainer is chosen by the gate's loaded-phase
+        // derivation only when NO event is configured — and while this dialog is up the previous event
+        // still is. A switch does reach the explainer, but only AFTER its leave, by which point the state
+        // is a full-screen `JoiningEvent` and not this overlay at all (capability `join-event`).
         is JoinPhase.ExplainAccess -> Unit
-        is JoinPhase.Ready -> {
-            cutoff = CaptureCutoff(phase.startsAt.at)
-            until = CaptureCeiling(phase.endsAt.at)
-            // The shareable count for the switch's fixed RANGE (the new event's full window). Appended to
-            // the body as a sentence — the compact dialog has no room for the join surface's own row. Empty
-            // until it resolves (and when no count is available), so the dialog reads cleanly meanwhile.
-            val countSentence = shareCountSentence(
-                CaptureCutoff(phase.startsAt.at),
-                CaptureCeiling(phase.endsAt.at),
-                shareableCount,
-                photoPermission,
-            )
+        is JoinPhase.Ready ->
             AppDestructiveConfirmDialog(
                 title = "Switch events?",
-                // The names carry the whole weight of the decision, so they lead the body line; the
-                // title is the crisp question. Destructive, because leaving is irreversible. The second
-                // sentence states the participation the switch silently resets to (spec-pinned: a switch
-                // joins with direction Both, cutoff = event start, album off) so it is not a surprise.
-                body = ("You'll leave \"$current\" and join \"${phase.name}\". " +
-                    "You'll share photos you take and receive everyone's. $countSentence").trim(),
+                // The names carry the whole weight of the decision, so they are the whole body; the title
+                // is the crisp question. Destructive, because the confirm leaves immediately. It promises
+                // NO participation — the member picks direction, cutoff and album on the join surface that
+                // follows — and shows no shareable count, there being no chosen range to count yet
+                // (capability `join-share-count`).
+                body = "You'll leave \"$current\" and join \"${phase.name}\".",
                 confirmLabel = "Switch",
                 cancelLabel = "Cancel",
-                onConfirm = {
-                    onConfirmSwitch(
-                        CaptureCutoff(phase.startsAt.at),
-                        CaptureCeiling(phase.endsAt.at),
-                        Direction.Both,
-                    )
-                },
+                onConfirm = onConfirmSwitch,
                 onDismiss = onCancelSwitch,
             )
-        }
         JoinPhase.NotFound ->
             AppConfirmDialog(
                 title = "Invite not found",
@@ -1281,22 +1232,11 @@ private fun SwitchDialog(
                 onConfirm = onRetryLoad,
                 onDismiss = onCancelSwitch,
             )
-        is JoinPhase.CommitFailed ->
-            AppConfirmDialog(
-                title = "Couldn't switch events",
-                body = "Something went wrong. Try again.",
-                confirmLabel = "Retry",
-                cancelLabel = "Cancel",
-                // The remembered range was set by the Ready phase this commit came from; a retry without
-                // one would join at whole-library scope, so it is inert rather than unbounded.
-                onConfirm = {
-                    val c = cutoff
-                    val u = until
-                    if (c != null && u != null) onRetryJoin(c, u, Direction.Both)
-                },
-                onDismiss = onCancelSwitch,
-            )
-        // Transient — no dialog while the details load or the switch commits.
+        // Unreachable alongside `ExplainAccess`, and required for exhaustiveness: this dialog's confirm
+        // runs only the leave, so no commit can fail while the previous event is still configured. A
+        // post-leave commit failure is the full-screen surface's own retryable phase.
+        is JoinPhase.CommitFailed -> Unit
+        // Transient — no dialog while the details load or a commit runs.
         JoinPhase.Loading, is JoinPhase.Committing -> Unit
     }
 }
