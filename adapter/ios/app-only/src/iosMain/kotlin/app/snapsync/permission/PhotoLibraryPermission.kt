@@ -18,6 +18,8 @@ import platform.Photos.PHAuthorizationStatusLimited
 import platform.Photos.PHAuthorizationStatusNotDetermined
 import platform.Photos.PHPhotoLibrary
 import platform.UIKit.UIApplication
+import platform.darwin.dispatch_async
+import platform.darwin.dispatch_get_main_queue
 import platform.UIKit.UIApplicationDidBecomeActiveNotification
 import platform.UIKit.UIApplicationOpenSettingsURLString
 import platform.darwin.NSObjectProtocol
@@ -72,7 +74,14 @@ class PhotoLibraryPermission : PhotoAccessStatusSource, PhotoAccessRequester {
 
     override fun openSettings() {
         val url = NSURL.URLWithString(UIApplicationOpenSettingsURLString) ?: return
-        UIApplication.sharedApplication.openURL(url, options = emptyMap<Any?, Any>(), completionHandler = null)
+        // `UIApplication` is main-thread-only and this adapter names the main lane itself rather than
+        // inheriting its caller's — the same shape `IosShareSheet` and `PresentLimitedLibraryPicker`
+        // already use, and the reason platform-UI adapters are the main lane's allowlist (law
+        // "Dispatcher lanes are fixed by the composition"). The command that calls this is on the main
+        // lane too; this makes the adapter correct for any caller rather than only that one.
+        dispatch_async(dispatch_get_main_queue()) {
+            UIApplication.sharedApplication.openURL(url, options = emptyMap<Any?, Any>(), completionHandler = null)
+        }
     }
 
     private fun read(): PermissionStatus =

@@ -47,10 +47,13 @@ import platform.UniformTypeIdentifiers.UTType
  * limited-access alert is armed once per **out-of-scope library change**, not per fetch — capability
  * `limited-photo-access`.)
  *
- * **Every read hops to [Dispatchers.Default]** — Kotlin/Native has no `Dispatchers.IO`. Both app-process
- * callers reach this from `SnapSyncRoot`'s `Dispatchers.Main` scope, where blocking trips the 10 s
- * scene-update watchdog and the OS kills the app (`0x8BADF00D`). The extension process calls it too, where
- * the hop is harmless (`process()` is already off-main).
+ * **Every read hops to [Dispatchers.Default], for concurrency rather than for safety.** Off-main is the
+ * composition's job now — the app scope is a dedicated non-UI lane (spec `module-architecture`, law
+ * "Dispatcher lanes are fixed by the composition") — so what this hop buys is that a resource read does
+ * not hold that **serial** lane while it waits on `assetsd`. `Default` rather than an I/O pool because
+ * Kotlin/Native exposes no **public** `Dispatchers.IO` (coroutines 1.10.2: present in the klib,
+ * `internal`; established by compile). Expiry: a release that publishes it. Blocking on main would still
+ * trip the 10 s scene-update watchdog (`0x8BADF00D`) — that is simply no longer reachable from here.
  *
  * Wiring-only and untestable (PhotoKit, device/simulator only); [PhotoKitSmokeTest] confirms the glue runs
  * on the simulator, the rule translation is pinned by [PhotoKitCandidateSourceTest], and the pure mapping

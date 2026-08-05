@@ -54,8 +54,10 @@ class PhotoSelectionSnapshotSource(
 
     override val snapshots: Flow<List<Resource>> = _snapshots
 
-    // Retained: PHPhotoLibrary holds observers weakly. Touched only on [scope] (serial main), so the
-    // register/unregister dance needs no lock.
+    // Retained: PHPhotoLibrary holds observers weakly. Touched only on [scope], which is serial —
+    // one dedicated thread since the composition lane replaced the main thread (spec
+    // `module-architecture`) — so the register/unregister dance still needs no lock. Seriality is
+    // the load-bearing half of that law precisely because assumptions like this one exist.
     private var observer: PhotoSelectionObserver? = null
     private var heldFetch: PHFetchResult? = null
 

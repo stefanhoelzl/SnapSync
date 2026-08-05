@@ -83,10 +83,14 @@ import app.snapsync.ports.PhotoSelectionChangeSource
 import app.snapsync.ports.invocation
 import co.touchlab.kermit.Logger
 import kotlin.time.Instant
+import kotlin.coroutines.CoroutineContext
+import kotlin.coroutines.EmptyCoroutineContext
+import kotlin.coroutines.ContinuationInterceptor
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 /**
  * The ports (and shell-supplied inputs) the app-graph composition consumes (spec
@@ -109,6 +113,18 @@ class AppPorts(
      *  `openSettings` user-tap commands (migration step 9: presentation fires them through the
      *  bundle and never names the port). */
     val photoAccessRequester: PhotoAccessRequester,
+    /**
+     * The **main lane** (spec `module-architecture`, law "Dispatcher lanes are fixed by the
+     * composition"): the dispatcher platform-UI commands run on — `share`, `requestAccess`,
+     * `openSettings`, `choosePhotos`, which present system UI and must not leave the main thread.
+     *
+     * A port rather than a constant because a dispatcher is a platform fact: `:domain` may not name the
+     * platform's main-thread dispatcher, which does not exist on every target this code compiles for and
+     * is what the main-lane containment gate confines to platform-UI adapters. **Required, not
+     * defaulted** — a default would silently put system UI on whatever lane the caller happened to
+     * be on, which is the class of defect this law exists to end.
+     */
+    val uiLane: CoroutineContext,
     val candidateSource: CandidateSource,
     /** The **facts-only** cutoff-bounded gallery read for the join-time shareable-count preview
      *  (capability `join-share-count`): a `RawAssetSource.factsSince` — cheap `PHAsset` facts, NO per-asset
@@ -512,7 +528,6 @@ class AppCore internal constructor(
             store = ports.configStore,
             client = ports.eventRename,
             status = renameStatus,
-            scope = scope,
         )
     }
 
@@ -522,7 +537,6 @@ class AppCore internal constructor(
         CreateEvent(
             client = ports.eventCreation,
             status = creationStatus,
-            scope = scope,
             onMinted = ports.onEventMinted,
         )
     }
@@ -714,6 +728,54 @@ class AppCore internal constructor(
      */
     private val tapLog = Logger.withTag("userTap")
 
+    /**
+     * The **composition lane** this graph's scope runs on, taken from the scope itself rather than
+     * named, so the two can never disagree (spec `module-architecture`, law "Dispatcher lanes are
+     * fixed by the composition").
+     *
+     * Commands need it explicitly because the composition scope does NOT govern them: the
+     * presentation container launches an `intent { }` on an unconfined dispatcher, so a command's
+     * synchronous prefix runs on whichever thread fired it — the main thread, for a tap. A `suspend`
+     * function that never actually suspends (synchronous PhotoKit XPC behind a `suspend` signature is
+     * exactly that shape) then runs to completion there.
+     */
+    private val coreLane: CoroutineContext =
+        scope.coroutineContext[ContinuationInterceptor] ?: EmptyCoroutineContext
+
+    /**
+     * A command the caller waits on, run on the composition lane. Used where the screen needs the
+     * outcome in hand — the join gate's `commitJoin` returns whether it joined.
+     */
+    private suspend fun <T> awaitingOnCoreLane(
+        name: String,
+        params: String = "",
+        result: (T) -> String = { "" },
+        block: suspend () -> T,
+    ): T = withContext(coreLane) {
+        tapLog.invocation(ports.logScope, name, params, result = result) { block() }
+    }
+
+    /**
+     * A fire-and-forget command, run on the composition lane. The tap returns at once and the outcome
+     * rides a status read-model.
+     *
+     * The `invocation` wrap sits INSIDE the launch deliberately: wrapping the launcher instead would
+     * time the hand-off rather than the work, which is how `← tap.create (1ms)` came to be logged
+     * against a multi-second backend mint — the same false duration `hold-os-receipts-until-work-completes`
+     * removed from the OS-callback side.
+     */
+    private fun detachedOnCoreLane(name: String, params: String = "", block: suspend () -> Unit) {
+        scope.launch(coreLane) { tapLog.invocation(ports.logScope, name, params) { block() } }
+    }
+
+    /**
+     * A command that presents platform UI, run on the main lane ([AppPorts.uiLane]). Fire-and-forget:
+     * the outcome of a system sheet or prompt arrives through a read-model, never as a return value.
+     */
+    private fun onUiLane(name: String, block: suspend () -> Unit) {
+        scope.launch(ports.uiLane) { tapLog.invocation(ports.logScope, name) { block() } }
+    }
+
     val userCommands: UserCommands by lazy {
         UserCommands(
             // Leave: cancel in-flight downloads and drop non-terminal rows (imported photos stay;
@@ -721,7 +783,7 @@ class AppCore internal constructor(
             // the backend it is leaving → clear config/producer). Imported foreign photos are never
             // touched.
             leave = {
-                tapLog.invocation(ports.logScope, "tap.leave") {
+                awaitingOnCoreLane<Unit>("tap.leave") {
                     downloadController.onLeaveOrSwitch()
                     leaveEvent.leave()
                 }
@@ -729,7 +791,7 @@ class AppCore internal constructor(
             // Create: mint via the backend; the use-case routes the minted event into the SAME join
             // gate a scanned QR takes (fire-and-forget; outcomes ride `creationStatus`).
             create = { name, startsAt, endsAt ->
-                tapLog.invocation(ports.logScope, "tap.create") {
+                detachedOnCoreLane("tap.create") {
                     eventCreator.create(name, startsAt.at.iso, endsAt.at.iso)
                 }
             },
@@ -739,8 +801,7 @@ class AppCore internal constructor(
                 eventId, name, startsAt, endsAt, deletesAt, minPhotoDate, maxPhotoDate, direction,
                 saveToAlbum,
                 ->
-                tapLog.invocation(
-                    ports.logScope,
+                awaitingOnCoreLane(
                     "tap.commitJoin",
                     params = "eventId=$eventId",
                     result = { joined: Boolean -> "joined=$joined" },
@@ -754,27 +815,19 @@ class AppCore internal constructor(
             // Share is pure platform (a system sheet over the top view controller). Decorated like the
             // rest: presenting the sheet is still a tap, and an unattributed line is the thing this
             // instrumentation exists to eliminate.
-            share = { url ->
-                tapLog.invocation(ports.logScope, "tap.share") { ports.share(url) }
-            },
+            share = { url -> onUiLane("tap.share") { ports.share(url) } },
             // The permission user-taps (capability `permission-gate`), bound to the requester port here
             // so presentation never names it (migration step 9). `requestAccess` returns nothing and
             // cannot suspend — the grant arrives only via the permission read-model StateFlow.
-            requestAccess = {
-                tapLog.invocation(ports.logScope, "tap.requestAccess") { ports.photoAccessRequester.request() }
-            },
-            openSettings = {
-                tapLog.invocation(ports.logScope, "tap.openSettings") { ports.photoAccessRequester.openSettings() }
-            },
+            requestAccess = { onUiLane("tap.requestAccess") { ports.photoAccessRequester.request() } },
+            openSettings = { onUiLane("tap.openSettings") { ports.photoAccessRequester.openSettings() } },
             // The picker presentation is platform surface; the selection outcome arrives only via
             // the selection-change seam (fire-and-forget, like every command here).
-            choosePhotos = {
-                tapLog.invocation(ports.logScope, "tap.choosePhotos") { ports.presentPhotoPicker() }
-            },
+            choosePhotos = { onUiLane("tap.choosePhotos") { ports.presentPhotoPicker() } },
             // In-place membership reconfigure (capability `reconfigure-membership`): edit direction/
             // cutoff/album without leaving. Distinct from `openSettings` (the iOS system settings page).
             reconfigure = { eventId, direction, minPhotoDate, maxPhotoDate, saveToAlbum ->
-                tapLog.invocation(ports.logScope, "tap.reconfigure", params = "eventId=$eventId") {
+                awaitingOnCoreLane<Unit>("tap.reconfigure", params = "eventId=$eventId") {
                     reconfigureEvent.reconfigure(eventId, direction, minPhotoDate, maxPhotoDate, saveToAlbum)
                 }
             },
@@ -782,7 +835,7 @@ class AppCore internal constructor(
             // this device's settings, this rewrites the SHARED event — every member picks the new name up
             // on their next foreground refresh. Fire-and-forget; the outcome rides `renameStatus`.
             rename = { eventId, name ->
-                tapLog.invocation(ports.logScope, "tap.rename", params = "eventId=$eventId") {
+                detachedOnCoreLane("tap.rename", params = "eventId=$eventId") {
                     renameEvent.rename(eventId, name)
                 }
             },
@@ -790,16 +843,17 @@ class AppCore internal constructor(
             // the taps even though it is a screen-fired acknowledgement rather than a tap: it mutates
             // the rename lifecycle, and an unattributed state change is the thing this trail exists to
             // eliminate.
-            resetRename = {
-                tapLog.invocation(ports.logScope, "tap.resetRename") { renameEvent.reset() }
-            },
+            resetRename = { awaitingOnCoreLane<Unit>("tap.resetRename") { renameEvent.reset() } },
             // The hidden diagnostic dump (capability `diagnostic-logging`), fired once the operator has
             // written what went wrong. NULL on a build with no reporting configuration, so the screen
             // wires no gesture and no sheet can open — a build that can send nothing must not offer an
             // affordance suggesting it can. This is the ONE place that decision is made.
             sendDiagnostics = if (ports.diagnosticsReporter.isConfigured) {
                 { note, screen ->
-                    tapLog.invocation(ports.logScope, "tap.sendDiagnostics", params = "screen=$screen") {
+                    // Core lane and awaited: the dump reads both device logs (~700 KB) before it sends,
+                    // which is exactly the blocking work the main lane must never see, and the sheet
+                    // waits on it.
+                    awaitingOnCoreLane<Unit>("tap.sendDiagnostics", params = "screen=$screen") {
                         ports.diagnosticsReporter.send(collectDiagnosticDump.collect(note, screen))
                     }
                 }

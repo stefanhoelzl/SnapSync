@@ -48,23 +48,31 @@ class IosDiscovery(
      * identifiers to scope by, because only it reads the change feed. Putting it on the shared seam would
      * push an upload-only concern onto the port the status total and the join preview also hold.
      *
-     * **The whole body hops to [Dispatchers.Default]** — Kotlin/Native has no `Dispatchers.IO` — for the
-     * same reason [PhotoKitCandidateSource] does, and it is this seam's own job to do it: a sync-I/O port
-     * impl owns its dispatcher hop, because only it knows the call blocks. Its app-process callers reach
-     * it from `SnapSyncRoot`'s `Dispatchers.Main` scope, and **every** PhotoKit touch below is a
-     * synchronous XPC round-trip into `assetsd` — the change fetch, each `changeDetailsForObjectType`,
-     * the identifier fetch, the per-asset `creationDate` read inside [PhotoKitCandidateSource.candidatesFrom]
-     * (which, unlike its sibling `candidates`, hops nowhere), and `currentChangeToken`. Any one of them
-     * blocking on main trips the 10 s scene-update watchdog and the OS kills the app (`0x8BADF00D`).
-     * Forcing proof: build 521 died exactly this way on 2026-07-26 (iPhone11,2 / iOS 18.7.9) with
-     * `assetsd` wedged inside `fetchPersistentChangesSinceToken` — 0.071 s of app CPU across the whole
-     * allowance, i.e. blocked, not busy. Expires only if PhotoKit gains an async change-feed API.
-     * In the extension the hop costs nothing: `process()` already runs on `Dispatchers.Default`, and
-     * `withContext` skips the re-dispatch when the interceptor is unchanged.
+     * **The whole body hops to [Dispatchers.Default], and that hop buys CONCURRENCY, not safety.**
+     * Keeping this off the main thread is no longer this seam's job: the app's composition scope is a
+     * dedicated non-UI lane, so every adapter is off-main whether it hops or not (spec
+     * `module-architecture`, law "Dispatcher lanes are fixed by the composition"). What the hop still
+     * buys is that this walk does not occupy that **serial** lane while it runs, so other app-scope work
+     * proceeds alongside it. `Dispatchers.Default` rather than an I/O pool because Kotlin/Native exposes
+     * no **public** `Dispatchers.IO` (coroutines 1.10.2: it exists in the klib and is `internal` —
+     * established by compile, not by reading the symbol table). Expiry: a coroutines release that
+     * publishes it.
+     *
+     * Why any of this matters: **every** PhotoKit touch below is a synchronous XPC round-trip into
+     * `assetsd` — the change fetch, each `changeDetailsForObjectType`, the identifier fetch, the
+     * per-asset `creationDate` read inside [PhotoKitCandidateSource.candidatesFrom] (which, unlike its
+     * sibling `candidates`, hops nowhere), and `currentChangeToken`. Any one of them blocking on main
+     * trips the 10 s scene-update watchdog and the OS kills the app (`0x8BADF00D`). Forcing proof:
+     * build 521 died exactly this way on 2026-07-26 (iPhone11,2 / iOS 18.7.9) with `assetsd` wedged
+     * inside `fetchPersistentChangesSinceToken` — 0.071 s of app CPU across the whole allowance, i.e.
+     * blocked, not busy. That proof is what the composition lane now answers for every adapter; it is
+     * kept here because this seam is where it was measured. Expires only if PhotoKit gains an async
+     * change-feed API.
      *
      * The hop does not make a wedged `assetsd` return — that cycle still parks until it recovers. It
-     * parks off-main, which is the whole point. A timeout is no substitute: cancellation is cooperative
-     * and the thread is inside a synchronous XPC call, so it would free the coroutine and leak the thread.
+     * parks somewhere harmless, which is the whole point. A timeout is no substitute: cancellation is
+     * cooperative and the thread is inside a synchronous XPC call, so it would free the coroutine and
+     * leak the thread.
      */
     suspend fun discover(sinceToken: ByteArray?, policy: SelectionPolicy): Discovery =
         withContext(Dispatchers.Default) {

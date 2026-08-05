@@ -70,6 +70,8 @@ import app.snapsync.ports.CandidateSource
 import app.snapsync.ports.TransferOutcome
 import app.snapsync.model.PermissionStatus
 import co.touchlab.kermit.Logger
+import kotlin.coroutines.ContinuationInterceptor
+import kotlin.coroutines.EmptyCoroutineContext
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.joinAll
@@ -316,6 +318,10 @@ class World(
     val core: AppCore = snapSyncApp(
         scope,
         AppPorts(
+            // The world's platform-UI ports are in-memory doubles, so there is no real main thread to
+            // reach. It takes the SAME lane as the composition scope rather than an unconfined default:
+            // a lane that means "wherever the caller happened to be" is precisely what this law ends.
+            uiLane = scope.coroutineContext[ContinuationInterceptor] ?: EmptyCoroutineContext,
             diagnosticsReporter = InMemoryDiagnosticsReporter(
                 started = diagnosticsStarted,
                 sent = diagnosticsSent,

@@ -6,8 +6,6 @@ import app.snapsync.ports.EventRename
 import app.snapsync.ports.RenameOutcome
 
 import co.touchlab.kermit.Logger
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.launch
 
 /**
  * The **rename** use-case (capability `event-rename`): change the event's name for **every** member,
@@ -40,7 +38,6 @@ class RenameEvent(
     private val store: ConfigStore,
     private val client: EventRename,
     private val status: MutableRenameStatusSource,
-    private val scope: CoroutineScope,
     private val log: Logger = Logger.withTag("RenameEvent"),
 ) : EventRenamer, ResetRename {
 
@@ -51,22 +48,23 @@ class RenameEvent(
      * sender), but what is **persisted** is the name the backend echoed, never this trimmed input. The
      * backend trims too, and echoing is the only way the two cannot disagree about whitespace.
      */
-    override fun rename(eventId: String, name: String) {
-        scope.launch {
-            status.set(RenameStatus.InFlight)
-            when (val outcome = client.rename(eventId, name.trim())) {
-                is RenameOutcome.Renamed -> {
-                    persist(eventId, outcome.name)
-                    status.set(RenameStatus.Succeeded)
-                }
-                RenameOutcome.InvalidName -> {
-                    log.i { "rename rejected: invalid name" }
-                    status.set(RenameStatus.Failed(RenameFailureReason.INVALID_NAME))
-                }
-                RenameOutcome.Transient -> {
-                    log.i { "rename failed: transient/server error" }
-                    status.set(RenameStatus.Failed(RenameFailureReason.SERVER))
-                }
+    // Suspending, and holding no scope: the composition launches this (law "Dispatcher lanes are
+    // fixed by the composition"), so the tap's `Logger.invocation` spans the real rename rather than
+    // the hand-off. Still fire-and-forget to the screen — the launch is the caller's, not this class's.
+    override suspend fun rename(eventId: String, name: String) {
+        status.set(RenameStatus.InFlight)
+        when (val outcome = client.rename(eventId, name.trim())) {
+            is RenameOutcome.Renamed -> {
+                persist(eventId, outcome.name)
+                status.set(RenameStatus.Succeeded)
+            }
+            RenameOutcome.InvalidName -> {
+                log.i { "rename rejected: invalid name" }
+                status.set(RenameStatus.Failed(RenameFailureReason.INVALID_NAME))
+            }
+            RenameOutcome.Transient -> {
+                log.i { "rename failed: transient/server error" }
+                status.set(RenameStatus.Failed(RenameFailureReason.SERVER))
             }
         }
     }

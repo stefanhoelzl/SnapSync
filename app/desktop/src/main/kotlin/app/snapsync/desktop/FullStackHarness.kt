@@ -21,6 +21,10 @@ import androidx.compose.ui.window.application
 import co.touchlab.kermit.LogWriter
 import co.touchlab.kermit.Logger
 import co.touchlab.kermit.Severity
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.DelicateCoroutinesApi
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.newSingleThreadContext
 import java.awt.Toolkit
 import java.awt.datatransfer.StringSelection
 
@@ -57,9 +61,18 @@ const val WORLD_HEIGHT: Int = 950
  * upload cycle. Keeping it one composable is what makes the driver drive the *shipped* harness rather
  * than a copy of it.
  */
+@OptIn(DelicateCoroutinesApi::class)
 @Composable
 fun WorldHarnessRoot() {
-    val scope = rememberCoroutineScope()
+    // NOT `rememberCoroutineScope()` (spec `full-stack-harness`, "The harness composes the live core on
+    // the shipped lane structure"). That scope is bound to the AWT event thread, which would compose the
+    // real core on the UI thread — the one shape the dispatcher-lane law forbids, and one no mechanical
+    // gate can see here because a UI-bound scope names no main-thread dispatcher. A serial, non-UI lane
+    // mirrors the device shell, so this harness exercises the threading it claims to reproduce: it is the
+    // only place presentation state produced off the UI thread meets the real graph without a device.
+    val scope = remember {
+        CoroutineScope(SupervisorJob() + newSingleThreadContext("harness-composition"))
+    }
     val controller = remember { WorldInspectorController(scope) }
     // Phone-pane theme override (test equipment): default Light, and held OUTSIDE the
     // `key(generation)` block below so a preset (fresh world) does not reset it.

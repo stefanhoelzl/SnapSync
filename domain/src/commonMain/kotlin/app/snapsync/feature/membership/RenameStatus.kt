@@ -57,7 +57,7 @@ enum class RenameFailureReason {
  * [name] is passed as typed; the use-case trims it (the same split `EventCreator`/`CreateEvent` use).
  */
 interface EventRenamer {
-    fun rename(eventId: String, name: String)
+    suspend fun rename(eventId: String, name: String)
 }
 
 /**
@@ -86,7 +86,7 @@ class MutableRenameStatusSource(initial: RenameStatus = RenameStatus.Idle) : Ren
 
 /** A no-op [EventRenamer] for hosts/tests that forge [RenameStatus] directly (e.g. the harness). */
 object NoOpEventRenamer : EventRenamer {
-    override fun rename(eventId: String, name: String) = Unit
+    override suspend fun rename(eventId: String, name: String) = Unit
 }
 
 /** A no-op [ResetRename], the twin of [NoOpEventRenamer]. */

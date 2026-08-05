@@ -22,8 +22,9 @@ import platform.Foundation.NSBundle
  * Idempotent across the whole process, not just this instance (the port contract): in the app
  * process both `snapSyncApp` and the app-driven tier's `uploadCore` start the port, and the roots
  * construct their adapters independently — a second [start] must not re-init the SDK or register a
- * duplicate writer (which would double every event). Composition runs on the main thread, so a
- * plain flag suffices.
+ * duplicate writer (which would double every event). Composition runs on the app's serial composition lane —
+ * one thread, though no longer the main one (spec `module-architecture`) — so a plain flag
+ * suffices.
  *
  * What leaves the device is bounded here, not at call sites: every outgoing message field is
  * scrubbed of UUID-shaped tokens ([redactUuids]) **unless the event declares itself exempt**

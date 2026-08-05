@@ -108,7 +108,7 @@ class WorldInspectorController(private val scope: CoroutineScope) {
         appendConsole("rename $eventId → \"$name\"")
         scope.launch { afterMutation() }
     }
-    val resetRename: () -> Unit = { world.userCommands.resetRename() }
+    val resetRename: suspend () -> Unit = { world.userCommands.resetRename() }
     val configStore: ConfigStore = object : ConfigStore {
         override suspend fun save(config: EventConfig) = world.provision(config.eventId, config.name)
         override suspend fun clear() = world.leave()

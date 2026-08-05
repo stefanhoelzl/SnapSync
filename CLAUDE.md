@@ -969,7 +969,18 @@ gated in `./gradlew build`; a violation is a red build, not a review note.
 - **State and authority** — no global mutable state in `:domain`, ever; instance state only as
   derived caches or coordination primitives; authority behind ports (kill-test: after
   kill+relaunch, every fact recoverable via ports, keyed by identifiers the external system
-  persisted); sync-I/O port impls own their dispatcher hop.
+  persisted). Which thread a port call runs on is NOT the impl's concern — see the lane law below.
+- **Dispatcher lanes are fixed by the composition** — three lanes, each with a purpose: **main** is
+  reserved for platform UI and carries nothing else; **`Dispatchers.Default`** carries presentation-state
+  reduction; the **composition lane** — a dispatcher of the composition's own, one dedicated thread —
+  carries the live core's scope, so a blocked platform call cannot eat the pool the UI reduces state on.
+  The live core's scope is never UI-bound in ANY binary that composes it (device shell or harness), and
+  is **serial**, because the main thread it replaced was single-threaded and core code relies on that for
+  mutual exclusion. User commands declare their lane where they are built (the container launches intents
+  unconfined, so the scope does not govern them) and no decorator supplies a default. An adapter's
+  dispatcher hop now buys **concurrency**, never safety. In the **extension** process there is no UI and
+  no main lane: `process()` is synchronous by the OS's contract and runs under `runBlocking` on the
+  OS-invoked thread. Gated by `MainLaneContainmentTest`, `CommandLaneTest`, `ConstructorBlockingTest`.
 - **Rules in features, order in flows** — flows coordinate, never decide; features are mutually
   blind and coordinate via one-writer durable state behind shared ports, written whole; no field
   encodes a request to another feature.
@@ -984,6 +995,10 @@ gated in `./gradlew build`; a violation is a red build, not a review note.
   wiring graph itself is smoke-tested, never unit-tested; DI is manual (decision D6).
 - **Shells are wiring only** — zero conditionals in `:app:*` Kotlin (detekt-gated); Swift is a
   transcriber (forwards raw ObjC-visible inputs whole, decides nothing; pinned exceptions only).
+- **A platform-capability claim is settled by a compile, not by a symbol table** — an artifact records
+  what ships, not what is callable. `Dispatchers.IO` is in the Kotlin/Native coroutines klib and is
+  `internal`; a design built on the symbol table's evidence was withdrawn at the first compile. State
+  absence precisely too — a *public* API, a target, a version — so a reader can tell what would falsify it.
 - **Necessity claims carry forcing proofs** — "the platform forces X" cites an API contract, a
   measurement, or a vendor doc — never the current code — and names its expiry trigger.
 - **Absence is never silent** — "nothing" and "couldn't tell" are different answers wherever their
