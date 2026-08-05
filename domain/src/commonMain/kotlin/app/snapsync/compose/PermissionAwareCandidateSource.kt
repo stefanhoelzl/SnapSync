@@ -22,7 +22,10 @@ import kotlinx.coroutines.flow.StateFlow
  *   would a walk. The snapshot arrives **already read, with resources**, from the sanctioned read points
  *   (the cold-launch baseline and the photo-selection-change observer). That eagerness is the mechanism
  *   keeping every library *fetch* in-flow: a deferred read would have to re-fetch by local identifier at
- *   upload time, which is the autonomous fetch the archived probe measured queueing app-killing alerts.
+ *   upload time, and holding the resources means no later library read is needed at all. (Not an alert
+ *   argument: iOS's limited-access alert is armed once per **out-of-scope library change** and merely
+ *   surfaced by the next read, so read count does not move it — `limited-photo-access`. The reason that
+ *   stands is that under a partial grant the selection *is* the scope, and this is fewer round-trips.)
  *   `candidatesFromResources` is therefore the honest adapter here — the resources genuinely are in hand.
  * - **`DENIED` / `NOT_DETERMINED`** → no candidates. Note this answers *"nothing is readable"*, not
  *   *"nothing qualifies"*; a consumer that must distinguish "no photos" from "no answer available" — the

@@ -350,10 +350,9 @@ description behind a **fixed marker prefix**, and SHALL carry exactly five struc
   surfaces worth naming — the reconfigure surface, a pending switch, which join phase is showing —
   are screen-local by design: they touch no port, so they appear in no log line and no ledger row, and
   this field is the only route by which they reach a report. It SHALL NOT
-  include the size of a partial photo-access selection: obtaining it would be an autonomous
-  `PHAsset` read under `LIMITED`, which queues the system's limited-access alert into an
-  app-killing storm surviving process death (capability `limited-photo-access`). A diagnostic must
-  not be able to break the device it diagnoses;
+  include the size of a partial photo-access selection: no shipped read makes that count available to
+  this feature, so reporting it would mean adding a seam for diagnostics alone — which the
+  reads-nothing-new rule below forbids;
 - **ledger** — five counts already read by shipped code: pending and completed **photos** from the
   ledger aggregates, and the download store's imported, total-asset, and in-flight counts. The
   section SHALL label its units, because the ledger counts photos while the log speaks of resource
@@ -387,6 +386,11 @@ port surface for diagnostics alone.
 #### Scenario: The state section names the surface the report came from
 - **WHEN** a report is sent from a screen-local surface such as the reconfigure screen
 - **THEN** the state section names that surface, which no other section of the report carries
+
+#### Scenario: The state section omits the partial-selection size
+- **WHEN** a dump is assembled while the app holds a partial photo grant
+- **THEN** the state section reports the permission status but not how many photos are selected,
+  because no shipped read makes that count available to this feature
 
 #### Scenario: The description titles the report
 - **WHEN** a report is sent with a description

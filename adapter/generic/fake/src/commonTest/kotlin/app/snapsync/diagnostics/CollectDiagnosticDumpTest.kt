@@ -146,9 +146,9 @@ class CollectDiagnosticDumpTest {
 
     @Test
     fun `a partial grant never reports a selection size`() = runTest {
-        // Obtaining it would be an autonomous PHAsset read under LIMITED — the alert storm that
-        // survives process death (capability `limited-photo-access`). A diagnostic must not be able
-        // to break the device it diagnoses.
+        // No shipped read makes that count available to this feature, so reporting it would mean
+        // adding a seam for diagnostics alone — which `diagnostic-logging` forbids: a dump reads no
+        // data the app does not already read.
         val dump = collector(permission = PermissionStatus.LIMITED).collect(NOTE, SCREEN)
 
         assertTrue(

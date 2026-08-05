@@ -74,9 +74,9 @@ class CollectDiagnosticDump(
      *
      * The membership is summarised, not dumped: which event, how it was configured, and what window
      * it shares. Under a partial photo grant the **size of the selection is deliberately absent** —
-     * reading it would be an autonomous `PHAsset` read under `LIMITED`, which queues iOS's
-     * limited-access alert into an app-killing storm that survives process death (capability
-     * `limited-photo-access`). A diagnostic must never be able to break the device it diagnoses.
+     * no shipped read makes that count available to this feature (the snapshot lives in `compose/`),
+     * so reporting it would mean adding a seam for diagnostics alone, which this capability forbids:
+     * a dump reads no data the app does not already read.
      */
     private fun stateSection(
         config: EventConfig?,
