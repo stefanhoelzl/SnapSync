@@ -52,8 +52,18 @@ the mechanism cannot do so, so a conforming implementation was broken — and no
 spec, because this module is untestable by rule. Pin a mechanism here only where the mechanism **is** the
 contract.
 
+Each delivery hook SHALL forward under a **distinct entry-point name**, so the device log names which
+hook the platform actually invoked (capability `diagnostic-logging`). Two hooks that are
+indistinguishable in the log would leave the OS-version question open exactly as it is today.
+
 Delivery SHALL be **exactly once** per opened link: a link that provisions twice is a bug, and stacking
-redundant delivery hooks is how that happens.
+redundant delivery hooks is how that happens. That constraint is not merely prudence — it is now
+measured. A second warm hook (SwiftUI's continuation modifier) was added and removed in one change: a
+scene has exactly ONE delegate, this app installs its own for the cold path, and SwiftUI's — which feeds
+that modifier — is therefore never created. On device it took 8 warm deliveries with 8 hits on the scene
+delegate and **zero** on the modifier. The hooks named in July's matrix are mutually exclusive
+configurations, not features that compose; a future reader tempted to "add a second warm path" SHALL
+re-derive that before doing so.
 
 The extension target SHALL NOT declare an associated domain: it never handles URLs.
 
@@ -85,6 +95,11 @@ The extension target SHALL NOT declare an associated domain: it never handles UR
 #### Scenario: A link is delivered exactly once
 - **WHEN** a single event link is opened, in either case
 - **THEN** `SnapSyncRoot.onOpenUrl(_:)` is invoked exactly once for it
+
+#### Scenario: The log names which hook the platform invoked
+- **WHEN** an event link is opened while the app is running
+- **THEN** the entry recorded for it names the specific hook that received it, so a warm-delivery gap on
+  one OS version is diagnosable from a dump rather than inferred
 
 #### Scenario: The app registers no custom URL scheme
 - **WHEN** the app's `Info.plist` is inspected
