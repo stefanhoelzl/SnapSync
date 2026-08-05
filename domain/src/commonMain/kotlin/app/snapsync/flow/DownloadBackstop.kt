@@ -2,7 +2,7 @@ package app.snapsync.flow
 
 import app.snapsync.feature.download.DownloadController
 import co.touchlab.kermit.Logger
-import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.launch
 
 /**
@@ -24,19 +24,19 @@ import kotlinx.coroutines.launch
  * shell.
  */
 class DownloadBackstop(
-    private val scope: CoroutineScope,
     private val downloadController: DownloadController,
     /** Re-read the persisted membership into the config StateFlow — the port touch, injected. */
-    private val reloadConfig: () -> Unit,
-    private val refreshAttestation: () -> Unit,
+    private val reloadConfig: suspend () -> Unit,
+    private val refreshAttestation: suspend () -> Unit,
     private val log: Logger = Logger.withTag("DownloadBackstop"),
 ) {
-    fun run() {
+    suspend fun run() {
         reloadConfig()
         refreshAttestation()
-        scope.launch {
-            runCatching { downloadController.importReady() }
-                .onFailure { log.w(it) { "download backstop import failed" } }
-        }
+        // Awaited, not launched (law "A trigger flow never outlives its own run"). This flow exists to
+        // drain the import tail, and its caller answers a `BGTask` when it returns — so returning while
+        // the drain is merely queued reported work that had not started.
+        runCatching { downloadController.importReady() }
+            .onFailure { log.w(it) { "download backstop import failed" } }
     }
 }

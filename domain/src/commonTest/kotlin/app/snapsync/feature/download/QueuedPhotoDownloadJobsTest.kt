@@ -61,6 +61,9 @@ class QueuedPhotoDownloadJobsTest {
             }
         }
 
+        /** The session delivered every event it had — `URLSessionDidFinishEventsForBackgroundURLSession`. */
+        fun eventsFinished() = host.onBackgroundEventsFinished()
+
         /** The system invalidated the session — the only way a transport ever dies. */
         fun systemInvalidates() {
             destroyed = true
@@ -313,6 +316,39 @@ class QueuedPhotoDownloadJobsTest {
             listOf(Triple(AssetRef("DEVICE-A", "A"), "a-primary.heic", "/root/DEVICE-A/a-primary.heic")),
             h.staged,
         )
+    }
+
+    /**
+     * The change's central behaviour (capability `photo-download`): the OS's background-events handler
+     * reports on the IMPORTS the session's events caused, not on the events themselves. Releasing it
+     * when the session drained — which is what this did — announced work that had only been queued, and
+     * iOS suspended the process on the strength of it. Field evidence (SNAPSYNC-6, 2026-08-01): five
+     * resources staged at 09:02:07, four imported, the fifth still un-imported when the process died.
+     */
+    @Test
+    fun the_os_handler_is_released_only_after_the_imports_its_events_caused() = runTest {
+        val h = Harness(this)
+        var released = false
+        val gate = kotlinx.coroutines.CompletableDeferred<Unit>()
+        val importsStarted = mutableListOf<String>()
+        h.jobs.onStaged = { _, key, _ ->
+            importsStarted += key
+            gate.await() // a slow import, exactly like a real PhotoKit commit
+        }
+        h.jobs.adoptBackgroundEvents { released = true }
+
+        // Two transfers land, then the session reports every event delivered.
+        h.transport.finish(encodeTag(AssetRef("DEVICE-A", "A"), "a-primary.heic"))
+        h.transport.finish(encodeTag(AssetRef("DEVICE-A", "B"), "b-primary.heic"))
+        h.transport.eventsFinished()
+        advanceUntilIdle()
+
+        assertEquals(listOf("a-primary.heic", "b-primary.heic"), importsStarted, "both imports started")
+        assertFalse(released, "the OS handler must NOT be released while its imports are still running")
+
+        gate.complete(Unit)
+        advanceUntilIdle()
+        assertTrue(released, "released once the imports it announced actually finished")
     }
 
     @Test

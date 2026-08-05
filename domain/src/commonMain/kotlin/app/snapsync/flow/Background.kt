@@ -17,9 +17,9 @@ import app.snapsync.feature.status.LedgerCountsPoller
  */
 class Background(
     private val statusPoller: LedgerCountsPoller,
-    private val scheduleBackstop: () -> Unit,
+    private val scheduleBackstop: suspend () -> Unit,
 ) {
-    fun run() {
+    suspend fun run() {
         statusPoller.stop()
         scheduleBackstop()
     }

@@ -369,22 +369,13 @@ class World(
         )
     }
 
-    /**
-     * Staging work the real jobs launched. `QueuedPhotoDownloadJobs.onStaged` is not a suspend seam — it
-     * hops into a coroutine — so [stageAllDownloads] must be able to await the launched imports or every
-     * download assertion would race. [AppCore] wires the identical hop at composition; the world re-installs
-     * it with the Job handle KEPT (same call, plus retention), which is the one seam it may touch: the
-     * operator drives the world synchronously, and production has no operator.
-     */
-    private val stagingWork = mutableListOf<Job>()
-
     init {
-        // Touch the controller first: its lazy construction installs the production `onStaged` hook,
-        // which the retention-keeping re-install below must come after (not before, or it is overwritten).
+        // Touch the controller so its lazy construction installs the production `onStaged` hook. The world
+        // used to RE-INSTALL that hook with the Job handles kept, because `onStaged` was not a suspend
+        // seam and [stageAllDownloads] had no other way to await the launched imports. It is one now, and
+        // the feature tracks its own launches (`awaitOutstandingImports`), so the world runs the
+        // production wiring unshadowed — one fewer place the harness could diverge from the app.
         core.downloadController
-        core.downloadJobs.onStaged = { ref, key, path ->
-            stagingWork += scope.launch { core.downloadController.onResourceStaged(ref, key, path) }
-        }
     }
 
     // ---- device model + operator gallery actions ------------------------------------------------
@@ -634,10 +625,9 @@ class World(
     suspend fun stageAllDownloads(outcome: TransferOutcome = FakeDownloadTransport.HEALTHY) {
         val transport = downloadTransport ?: return
         transport.inFlight().forEach { transport.finish(it.description, outcome) }
-        // Await the staging the jobs launched (see [stagingWork]) so this action is complete on return —
-        // the operator drives the world synchronously, and a racy stage would make every download
-        // assertion flaky.
-        stagingWork.toList().also { stagingWork.clear() }.joinAll()
+        // Await the imports the jobs launched so this action is complete on return — the operator drives
+        // the world synchronously, and a racy stage would make every download assertion flaky.
+        core.downloadJobs.awaitOutstandingImports()
     }
 
     companion object {

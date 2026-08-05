@@ -2,7 +2,7 @@ package app.snapsync.flow
 
 import app.snapsync.model.pushEventId
 import co.touchlab.kermit.Logger
-import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.launch
 
 /**
@@ -35,16 +35,15 @@ import kotlinx.coroutines.launch
  * shell.
  */
 class SilentPush(
-    private val scope: CoroutineScope,
     /** Re-read the persisted membership into the config StateFlow — the port touch, injected. */
-    private val reloadConfig: () -> Unit,
-    private val refreshAttestation: () -> Unit,
+    private val reloadConfig: suspend () -> Unit,
+    private val refreshAttestation: suspend () -> Unit,
     /** Each arm's receiver as a `suspend (eventId)` — the download arm's, plus the upload arm's on the
      *  app-driven tier. Order preserved from composition (download, then upload). */
     private val receivers: List<suspend (eventId: String) -> Unit>,
     private val log: Logger = Logger.withTag("SilentPush"),
 ) {
-    fun run(userInfo: Map<Any?, *>) {
+    suspend fun run(userInfo: Map<Any?, *>) {
         val eventId = pushEventId(userInfo)
         if (eventId == null) {
             log.i { "silent push carried no eventId — nothing to fan out" }
@@ -52,8 +51,13 @@ class SilentPush(
         }
         reloadConfig()
         // Wake point (capability `device-attestation`): a scarce background wake is a renewal chance.
+        // Awaited before the fan-out, so the receivers' requests carry the token this just renewed
+        // rather than racing it.
         refreshAttestation()
-        scope.launch { fanOut(eventId) }
+        // Awaited, not launched (law "A trigger flow never outlives its own run"): the caller is a shell
+        // that reports completion to the OS, and a push whose fan-out is merely queued when that report
+        // goes out is a push the system may suspend us in the middle of.
+        fanOut(eventId)
     }
 
     /** Fan one push out to every arm's receiver, isolated: one failure never robs the others. */

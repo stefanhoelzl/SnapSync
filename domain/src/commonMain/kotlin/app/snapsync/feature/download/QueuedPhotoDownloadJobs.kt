@@ -10,6 +10,7 @@ import app.snapsync.ports.AssetRef
 import app.snapsync.ports.PendingDownload
 import co.touchlab.kermit.Logger
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 
 /** Bounded in-flight window (Apple: keep background tasks in the low hundreds; we stay well under). */
@@ -85,11 +86,25 @@ class QueuedPhotoDownloadJobs(
     private val log: Logger = Logger.withTag("PhotoDownloadJobs"),
 ) : PhotoDownloadJobs {
 
-    /** Set by the composition root after the controller exists: deliver a staged resource. */
-    var onStaged: ((AssetRef, resourceKey: String, stagedPath: String) -> Unit)? = null
+    /**
+     * Set by the composition root after the controller exists: deliver a staged resource.
+     *
+     * `suspend`, and launched HERE rather than by the composition, so this class can track the import
+     * it starts. The composition's former `scope.launch { … }` handed the work to the app scope and kept
+     * no handle, which is why [onBackgroundEventsFinished] had nothing to wait for and released the OS
+     * handler while the imports it announced were merely queued.
+     */
+    var onStaged: (suspend (AssetRef, resourceKey: String, stagedPath: String) -> Unit)? = null
 
     /** Stored when the OS relaunches the app for background events; invoked when they drain. */
     private var backgroundCompletion: (() -> Unit)? = null
+
+    /**
+     * The imports started by [DownloadTransportHost.onStaged] since the last drain. Held so the OS's
+     * background-events handler can be released *after* them (capability `photo-download`) — the
+     * session reports its own events drained, which says nothing about the imports they caused.
+     */
+    private val outstandingImports = mutableListOf<Job>()
 
     private val queued = ArrayDeque<PendingDownload>()
 
@@ -130,7 +145,12 @@ class QueuedPhotoDownloadJobs(
 
         override fun onStaged(description: String, stagedPath: String) {
             val tag = decodeTag(description) ?: return
-            onStaged?.invoke(tag.ref, tag.resourceKey, stagedPath)
+            val deliver = onStaged ?: return
+            // Launched here, and REMEMBERED: this fires on the transport's delegate queue, which must
+            // not be blocked by an import, but the job has to remain reachable so the wake's OS handler
+            // can wait for it. Pruning completed jobs keeps the list from growing across a long session.
+            outstandingImports.removeAll { it.isCompleted }
+            outstandingImports += scope.launch { deliver(tag.ref, tag.resourceKey, stagedPath) }
         }
 
         override fun onCompleted(description: String, error: String?) {
@@ -152,11 +172,31 @@ class QueuedPhotoDownloadJobs(
             }
         }
 
+        /**
+         * The session has delivered every event it had. That is NOT the same as the app being done:
+         * each delivery started an import, and those are what the OS handler is really reporting on
+         * (capability `photo-download`). So join them first, then release.
+         */
         override fun onBackgroundEventsFinished() {
             val completion = backgroundCompletion ?: return
             backgroundCompletion = null
-            scope.launch { completion() }
+            scope.launch {
+                awaitOutstandingImports()
+                completion()
+            }
         }
+    }
+
+    /**
+     * Await every import started since the last drain. Public because two callers need it and neither may
+     * reach the list: the background-events handler above (so the OS handler is released after the
+     * imports, capability `photo-download`), and the world harness's `stageAllDownloads`, whose operator
+     * drives the world synchronously and would otherwise race every download assertion.
+     */
+    suspend fun awaitOutstandingImports() {
+        val pending = outstandingImports.toList()
+        outstandingImports.clear()
+        pending.forEach { it.join() }
     }
 
     private fun transport(): DownloadTransport = transport ?: newTransport(host).also { transport = it }

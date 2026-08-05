@@ -9,6 +9,7 @@ import co.touchlab.kermit.Logger
 import kotlinx.cinterop.BetaInteropApi
 import kotlinx.cinterop.ExperimentalForeignApi
 import kotlinx.coroutines.suspendCancellableCoroutine
+import kotlinx.coroutines.withTimeoutOrNull
 import platform.Foundation.NSISO8601DateFormatter
 import platform.Foundation.NSMutableArray
 import platform.Foundation.NSURL
@@ -19,6 +20,20 @@ import platform.Photos.PHAssetCreationRequest
 import platform.Photos.PHAssetResourceCreationOptions
 import platform.Photos.PHPhotoLibrary
 import kotlin.coroutines.resume
+import kotlin.time.Duration
+import kotlin.time.Duration.Companion.seconds
+
+/**
+ * How long one import may wait for the photo library's completion callback (capability `photo-download`).
+ *
+ * Measured on an iPhone11,2 / iOS 18.7.9: a healthy import — one 1.4–2.1 MB HEIC, including the in-block
+ * album add and the completion-handler read-back — takes **250–600 ms**, and a live-photo pair 596 ms.
+ * 5 s is ~8× the slowest healthy case, tight enough that a stalled library does not consume the wake,
+ * and loose enough that a merely-slow device is not abandoned into a possible duplicate.
+ *
+ * Provisional, like the receipt deadlines: re-set it from the first field dump carrying the timeout line.
+ */
+private val IMPORT_DEADLINE: Duration = 5.seconds
 
 /**
  * The iOS [PhotoLibraryImporter] (capability `photo-download`): rebuilds one foreign asset from its
@@ -64,9 +79,29 @@ class IosPhotoLibraryImporter(
 
         var createdLocalId: String? = null
         var rawLocalId: String? = null
-        return suspendCancellableCoroutine { cont ->
+        // The wait is bounded, the library call is NOT (capability `photo-download`).
+        //
+        // `performChanges` returns to its caller and only this coroutine suspends — measured, not
+        // assumed: in SNAPSYNC-6 one import never received its completion, yet the main thread went on
+        // running for three minutes (`← onSilentPush (38ms)`, the next reconcile, a later burst). So
+        // abandoning the wait frees a continuation, not a thread, and `withTimeoutOrNull` is safe here
+        // in a way it would NOT be around a blocking call like the change-feed fetch, which is exactly
+        // why `IosDiscovery` hops off-main instead of timing out.
+        //
+        // What this really rescues is the LOCK: the import runs under `DownloadController`'s mutex, and
+        // the field hang held it from 09:03:37 until the process died — every later reconcile, import,
+        // leave and switch in that process was queued behind it, permanently.
+        return withTimeoutOrNull(IMPORT_DEADLINE) {
+        suspendCancellableCoroutine { cont ->
             PHPhotoLibrary.sharedPhotoLibrary().performChanges(
                 {
+                    // Traced INSIDE the block, not before the call (capability `diagnostic-logging`).
+                    // The two say different things: the call returning proves only that we asked, while
+                    // this line proves `photolibraryd` actually began the transaction. That difference
+                    // decides whether an import we stop waiting for can still land — i.e. whether it
+                    // becomes a duplicate. Observed in SNAPSYNC-6: one import was still awaiting its
+                    // completion when the process ended, and the log could not say how far it had got.
+                    log.i { "import: change block running for ${ref.sourceAssetId} (${typed.size} resource(s))" }
                     val request = PHAssetCreationRequest.creationRequestForAsset()
                     for ((type, path, filename) in typed) {
                         // Name the resource EXPLICITLY. With a nil options argument PhotoKit names it
@@ -112,6 +147,10 @@ class IosPhotoLibraryImporter(
                     }
                 },
                 { success, error ->
+                    // The commit's own verdict, logged before it is interpreted (capability
+                    // `diagnostic-logging`): a failed commit and a missing placeholder both reduce to
+                    // one `Failed`, and only this line tells them apart after the fact.
+                    log.i { "import: commit for ${ref.sourceAssetId} success=$success error=${error?.localizedDescription}" }
                     val id = createdLocalId
                     if (success && id != null) {
                         logImportedDate(rawLocalId, creationDate)
@@ -122,6 +161,9 @@ class IosPhotoLibraryImporter(
                 },
             )
         }
+        } ?: ImportResult.TimedOut(
+            "no completion from the photo library within $IMPORT_DEADLINE for ${ref.sourceAssetId}",
+        )
     }
 
     /** Readback proof: fetch the created asset and log its actual creationDate vs the intended one. */

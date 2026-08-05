@@ -7,7 +7,7 @@ Transcribed against the closed flow grammar; a construct outside it FAILS genera
 (the hard gate, armed at the migration finale — an untranscribable flow is a law
 violation, spec `architecture-diagrams`). Bare calls target the flow's injected
 `compose/`-built effect lambdas, rendered as `effects`; `log.*` lines are diagnostics
-and omitted. Async arrows are escaping `scope.launch` work.
+and omitted. Async arrows are concurrent branches, awaited by the enclosing flow.
 
 ## `run` — the flow command
 
@@ -20,7 +20,7 @@ sequenceDiagram
   Note over SilentPush: guard — only when pushEventId(…) resolves eventId
   SilentPush->>effects: reloadConfig()
   SilentPush->>effects: refreshAttestation()
-  SilentPush--)SilentPush: fanOut(…)
+  SilentPush->>SilentPush: fanOut(…)
 ```
 
 ## `fanOut` — helper

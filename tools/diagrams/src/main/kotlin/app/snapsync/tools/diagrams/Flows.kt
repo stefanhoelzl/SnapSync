@@ -12,8 +12,11 @@ package app.snapsync.tools.diagrams
  * not a rendering problem. The closed grammar (spec `architecture-diagrams`):
  *
  *  - straight-line calls — features, and the `compose/`-built effect lambdas ("effects" below);
- *  - an escaping `scope.launch { … }` (the concurrent fan-out form), whose body is itself
- *    grammar-bound and may open with one guard;
+ *  - an AWAITED fan-out `coroutineScope { launch { … } … }` (the concurrent form), whose branch
+ *    bodies are themselves grammar-bound and may each open with one guard. An escaping
+ *    `scope.launch` is NO LONGER legal in a flow: flows hold no `CoroutineScope` (law "A trigger
+ *    flow never outlives its own run"), so the detaching form is not expressible here and the
+ *    transcriber refuses it rather than rendering it;
  *  - a `when` over a feature-returned sealed result, each branch a single call / launch / `Unit`;
  *  - a single **leading** guard clause (`val x = codec(...)` + `if (x == null) { log; return }`,
  *    or a sole `<call>?.let { … }` guarded region);
@@ -52,6 +55,8 @@ private data class Call(
 private data class Guard(val desc: String) : Step
 private data class Guarded(val desc: String, val steps: List<Step>) : Step
 private data class Launch(val steps: List<Step>) : Step
+/** `coroutineScope { … }` — its branches run concurrently and the flow AWAITS all of them. */
+private data class Awaited(val steps: List<Step>) : Step
 private data class Alt(val subject: String, val branches: List<Pair<String, List<Step>>>) : Step
 private data class FanOut(val collection: String, val steps: List<Step>) : Step
 
@@ -62,7 +67,7 @@ private fun violation(src: KtSource, offset: Int, kind: String, snippet: String)
         "flow transcriber: ${src.relPath}:${src.lineOf(offset)} — $kind outside the closed " +
             "grammar: `${snippet.take(120)}`. An untranscribable flow is a law violation (specs " +
             "`architecture-diagrams` / `module-architecture`): use a straight-line feature call, " +
-            "an escaping scope.launch, a `when` over a feature-returned sealed result, the single " +
+            "an awaited coroutineScope fan-out, a `when` over a feature-returned sealed result, the single " +
             "leading guard clause, a best-effort wrap, or a receiver-list fan-out — or sink the " +
             "rule into a feature.",
     )
@@ -168,7 +173,8 @@ private fun statements(src: KtSource, body: Body): List<Stmt> {
 // ---- the grammar ----------------------------------------------------------------------------
 
 private val CALL = Regex("""^(?:return@\w+\s+)?([A-Za-z_][A-Za-z0-9_]*(?:\.[A-Za-z_][A-Za-z0-9_]*)*)\((.*)\)$""", RegexOption.DOT_MATCHES_ALL)
-private val LAUNCH = Regex("""^scope\.launch \{ (.*) \}$""", RegexOption.DOT_MATCHES_ALL)
+private val LAUNCH = Regex("""^launch \{ (.*) \}$""", RegexOption.DOT_MATCHES_ALL)
+private val AWAITED = Regex("""^coroutineScope \{ (.*) \}$""", RegexOption.DOT_MATCHES_ALL)
 private val BEST_EFFORT = Regex("""^runCatching \{ (.*?) \}\s*\.onFailure \{ log\..*\}$""", RegexOption.DOT_MATCHES_ALL)
 private val GUARDED = Regex("""^([A-Za-z_][\w.]*\([^)]*\))\?\.let \{ (?:([A-Za-z_]\w*) -> )?(.*) \}$""", RegexOption.DOT_MATCHES_ALL)
 private val FAN_OUT = Regex("""^for \(([A-Za-z_]\w*) in ([A-Za-z_]\w*)\) \{ (.*) \}$""", RegexOption.DOT_MATCHES_ALL)
@@ -213,6 +219,15 @@ private fun transcribe(src: KtSource, body: Body, guardSlot: Boolean): List<Step
                 val m = GUARDED.find(text)!!
                 if (index != stmts.size - 1) violation(src, stmt.start, "a guarded region that is not the body's sole statement", text)
                 steps += Guarded("only when ${m.groupValues[1]} resolves", transcribeFragment(src, stmt, m.groupValues[3]))
+            }
+
+            AWAITED.matches(text) -> {
+                // A `coroutineScope { … }` region is a BODY, not a fragment: it holds several
+                // statements (one per concurrent branch), so it is re-split and transcribed like any
+                // other body rather than parsed as a single expression.
+                val open = src.stripped.indexOf('{', stmt.start)
+                val close = skipBalanced(src.stripped, open, '{', '}') - 1
+                steps += Awaited(transcribe(src, Body(open + 1, close), guardSlot = false))
             }
 
             LAUNCH.matches(text) -> {
@@ -317,7 +332,7 @@ private fun renderFlow(src: KtSource, name: String): String {
     sb.append("(the hard gate, armed at the migration finale — an untranscribable flow is a law\n")
     sb.append("violation, spec `architecture-diagrams`). Bare calls target the flow's injected\n")
     sb.append("`compose/`-built effect lambdas, rendered as `effects`; `log.*` lines are diagnostics\n")
-    sb.append("and omitted. Async arrows are escaping `scope.launch` work.\n")
+    sb.append("and omitted. Async arrows are concurrent branches, awaited by the enclosing flow.\n")
     val helperNames = functions(src).map { it.name }.toSet()
     for (fn in functions(src)) {
         val steps = transcribe(src, fn.body, guardSlot = true)
@@ -346,6 +361,7 @@ private fun collectCalls(steps: List<Step>): List<Call> = steps.flatMap {
     when (it) {
         is Call -> listOf(it)
         is Launch -> collectCalls(it.steps)
+        is Awaited -> collectCalls(it.steps)
         is Guarded -> collectCalls(it.steps)
         is Alt -> it.branches.flatMap { (_, s) -> collectCalls(s) }
         is FanOut -> collectCalls(it.steps)
@@ -396,6 +412,11 @@ private fun renderSteps(
                 sb.append(indent).append("end\n")
             }
             is Launch -> renderSteps(step.steps, flow, helpers, sb, indent, async = true)
+            is Awaited -> {
+                sb.append(indent).append("par concurrent — awaited before the flow returns\n")
+                renderSteps(step.steps, flow, helpers, sb, "$indent  ", async)
+                sb.append(indent).append("end\n")
+            }
             is Alt -> {
                 for ((i, branch) in step.branches.withIndex()) {
                     val (label, branchSteps) = branch

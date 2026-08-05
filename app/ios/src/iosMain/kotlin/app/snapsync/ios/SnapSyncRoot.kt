@@ -55,6 +55,8 @@ import app.snapsync.downloadstore.SqlDelightDownloadStore
 import app.snapsync.downloadstore.iosDownloadStore
 import platform.Foundation.NSFileManager
 import app.snapsync.engine.LEDGER_APP_GROUP
+import app.snapsync.ports.OsReceipt
+import app.snapsync.ports.ReceiptDeadlines
 import app.snapsync.ports.LedgerStore
 import app.snapsync.config.bakedUploadBase
 import app.snapsync.engine.iosLedgerStore
@@ -443,7 +445,10 @@ object SnapSyncRoot {
             // online (the backend just answered), so this is the best possible moment to recover.
             onRejected = {
                 app.attestation.onRejected()
-                refreshAttestation()
+                // Deliberately detached, unlike every wake path: this fires from inside this client's
+                // own response interceptor, so awaiting a refresh here would re-enter the interceptor
+                // from within itself. It carries no OS receipt, so nothing is being falsely reported.
+                scope.launch { refreshAttestation() }
             },
         )
     }
@@ -457,12 +462,15 @@ object SnapSyncRoot {
      *
      * Best-effort and non-throwing: a background wake must not die because attestation failed.
      */
-    private fun refreshAttestation() {
-        scope.launch {
-            // The whole surface-it-or-not rule (only when we both lack a usable token and could not
-            // get one) is the trust feature's `refreshOutcome` — this wiring just feeds the flag.
-            attested.set(app.attestation.refreshOutcome())
-        }
+    private suspend fun refreshAttestation() {
+        // Awaited, not launched (law "A trigger flow never outlives its own run"). The launch also made
+        // every trigger race its own credential: `refreshAttestation()` was fired alongside the fetches
+        // it exists to authorize, so a request could go out carrying the token being replaced.
+        // `refreshOutcome` short-circuits on a fresh token, so awaiting costs nothing in the common case.
+        //
+        // The whole surface-it-or-not rule (only when we both lack a usable token and could not
+        // get one) is the trust feature's `refreshOutcome` — this wiring just feeds the flag.
+        attested.set(app.attestation.refreshOutcome())
     }
 
     /** Drives `SyncHealth.Unattested` (capability `device-attestation`). See [refreshAttestation]. */
@@ -1119,11 +1127,11 @@ object SnapSyncRoot {
         /** The OS-driven mechanism where it exists (iOS ≥26.1; never under the tier-force flag). */
         val osUploadProducer: () -> UploadProducer?,
         /** Foreground pump (app-driven tier); `{}` on iOS ≥26.1 where the OS owns scheduling. */
-        val pumpForeground: () -> Unit,
+        val pumpForeground: suspend () -> Unit,
         /** The upload arm's silent-push receiver (app-driven tier); `{ null }` on iOS ≥26.1. */
         val uploadSilentPush: () -> (suspend (eventId: String) -> Unit)?,
         /** A selection change under a partial grant pumps the app-driven tier; `{}` where it is not composed. */
-        val pumpSelectionChanged: () -> Unit,
+        val pumpSelectionChanged: suspend () -> Unit,
         /** The BGProcessingTask heartbeat handler (app-driven tier); completes immediately on ≥26.1. */
         private val heartbeat: (onComplete: () -> Unit) -> Unit,
     ) : Shell {
@@ -1153,17 +1161,26 @@ object SnapSyncRoot {
         }
 
         override fun onForeground() {
-            host
-            // The whole foreground coordination — membership re-read, pump, the foreground-gated
-            // status poll's start (the ding's replacement, spec `sync-status`), refresh / reconcile /
-            // name / attestation, its launches escaping this entry's synchronous span — is the flow's.
-            app.foregroundFlow.run()
+            // `scope.launch` because the flow is `suspend` now (law "A trigger flow never outlives its
+            // own run"). The entry line is the PUBLIC wrapper's — logging again here would emit two
+            // `→ onForeground` lines — so this reports the dispatch, not the flow. Acceptable only
+            // because this entry point carries no OS completion handler: nothing is falsely reported
+            // to the system, unlike the receipt paths.
+            scope.launch {
+                host
+                // The whole foreground coordination — membership re-read, attestation, pump, the
+                // foreground-gated status poll's start (the ding's replacement, spec `sync-status`),
+                // refresh / reconcile / name — is the flow's, and it is awaited.
+                app.foregroundFlow.run()
+            }
         }
 
         override fun onBackground() {
-            // Stop the status poll + arm the backstop — the `flow/Background` trigger's coordination.
-            app.backgroundFlow.run()
-            log.i { "=== app entering background ===" }
+            scope.launch {
+                // Stop the status poll + arm the backstop — the `flow/Background` trigger's coordination.
+                app.backgroundFlow.run()
+                log.i { "=== app entering background ===" }
+            }
         }
 
         // Braces, not `=`: the container's intent returns a Job and the seam is Unit.
@@ -1185,18 +1202,21 @@ object SnapSyncRoot {
                 // membership re-read → attestation → cross-arm fan-out coordination is the
                 // `flow/SilentPush` trigger's (it absorbed FanOutPushReceiver); only the entry-point
                 // wrap and the OS completion handler stay shell-local.
-                try {
+                // The OS handler is released by the receipt, after the fan-out or on its deadline —
+                // never before (capability `ios-app-shell`). The former `finally { completion() }` was
+                // structurally sound and still wrong: the flow it wrapped detached its own work, so the
+                // handler went out against a fan-out that had not started.
+                OsReceipt(
+                    entryPoint = "onSilentPush",
+                    deadline = ReceiptDeadlines.SILENT_PUSH,
+                    release = completion,
+                ).heldFor {
                     log.invocation(
                         "onSilentPush.run",
                         params = "protectedData=${protectedDataAvailable()}",
                     ) {
                         app.silentPushFlow.run(userInfo)
                     }
-                } finally {
-                    // Always release the OS handler — structurally, on EVERY path including a throw
-                    // out of the wrap: iOS gives a silent push a short budget, and an unanswered
-                    // `content-available` push costs the app its future background wakes.
-                    completion()
                 }
             }
         }
@@ -1212,15 +1232,20 @@ object SnapSyncRoot {
                 // attestation / import coordination is the `flow/DownloadBackstop` trigger's; only
                 // the entry-point wrap and re-arm stay shell-local.
                 try {
-                    log.invocation("runDownloadBackstop.run", params = "protectedData=${protectedDataAvailable()}") {
-                        app.downloadBackstopFlow.run()
+                    OsReceipt(
+                        entryPoint = "runDownloadBackstop",
+                        deadline = ReceiptDeadlines.BACKGROUND_TASK,
+                        release = onComplete,
+                    ).heldFor {
+                        log.invocation("runDownloadBackstop.run", params = "protectedData=${protectedDataAvailable()}") {
+                            app.downloadBackstopFlow.run()
+                        }
                     }
                 } finally {
-                    // Re-arm for the next idle window and release the OS's task assertion —
-                    // structurally, on EVERY path including a throw out of the wrap: an unreleased
-                    // BGTask burns the budget, and a lost re-arm silently ends the backstop chain.
+                    // Re-arm for the next idle window on EVERY path including a throw: a lost re-arm
+                    // silently ends the backstop chain. The task assertion itself is the receipt's,
+                    // released after the drain rather than after the dispatch.
                     scheduleDownloadBackstop()
-                    onComplete()
                 }
             }
         }
