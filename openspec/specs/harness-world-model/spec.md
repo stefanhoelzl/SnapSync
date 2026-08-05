@@ -207,10 +207,17 @@ Because the transfer now runs through the real jobs, the world SHALL be construc
 leak staging work between worlds, and be unjoinable. The world SHALL NOT offer a scope-free fallback path,
 because two ways to drive downloads is a second one that can rot or lie.
 
-An operator action SHALL be complete when it returns. The real `onStaged` is not a suspend seam — in
-production it is invoked from the platform's delegate thread and must hop into a coroutine — so the world
-SHALL await the staging work it launched before the stage action returns. Otherwise every download
-assertion in the world becomes a race, which is the opposite of what an operator-driven harness is for.
+An operator action SHALL be complete when it returns. `onStaged` **is** a suspend seam: the delegate
+thread still must not be blocked by an import, so `QueuedPhotoDownloadJobs` owns the launch and tracks it,
+and the world SHALL await those tracked imports — via the feature's own `awaitOutstandingImports` — before
+the stage action returns. Otherwise every download assertion in the world becomes a race, which is the
+opposite of what an operator-driven harness is for.
+
+The world SHALL NOT re-install `onStaged` to obtain that guarantee. It previously did, because the seam was
+non-suspend and the composition's fire-and-forget launch left the work unreachable — the same
+unreachability that let the app's background-session handler be released while its imports were only queued
+(capability `ios-app-shell`). Now that the feature tracks its own launches, the harness runs the production
+wiring unshadowed: one fewer place it can diverge from the app.
 
 `PhotoLibraryImporter.import` SHALL import the asset into the in-memory gallery (so it enters gallery
 enumeration) and mark the download store imported, so the imported asset's id enters `suppressedLocalIds()`;
@@ -258,6 +265,12 @@ own-device cycle.
 - **WHEN** the operator stages a transfer with a non-2xx or short-read outcome
 - **THEN** the resource is not staged, no import is attempted against it, and it remains PENDING for retry
   rather than entering a terminal failure state
+
+
+#### Scenario: The harness does not shadow the composed staged-resource hook
+
+- **WHEN** the world is constructed
+- **THEN** `downloadJobs.onStaged` is the hook `snapSyncApp` installed, not a world-local replacement
 
 ### Requirement: Device model — one own device plus injectable foreign devices
 
@@ -346,11 +359,15 @@ The world's exposed download controller, status sources, creation status, join u
 user-tap command bundle SHALL be `AppCore`'s instances — never world-local rebuilds — so a wiring
 difference between the harness and the app shell is impossible rather than undetected.
 
-Two named deviations are permitted, each an operator-synchronicity concern and nothing else: the
-world MAY re-install the composed `downloadJobs.onStaged` hook with an **identical body plus Job
-retention** (so `stageAllDownloads` is complete on return), and the world's operator `leave()` MAY
-remain a synchronous faithful edge beside the bundle's production-ordered leave (whose backend
-notify is fire-and-forget by design); tests driving the bundle's leave await the backend outcome.
+**One** named deviation is permitted, an operator-synchronicity concern and nothing else: the world's
+operator `leave()` MAY remain a synchronous faithful edge beside the bundle's production-ordered leave
+(whose backend notify is fire-and-forget by design); tests driving the bundle's leave await the backend
+outcome.
+
+The former second deviation — re-installing the composed `downloadJobs.onStaged` hook with an identical
+body plus Job retention — is **withdrawn**. It existed only because the seam was non-suspend and the
+composition discarded the Job; the feature now tracks its own launches, so the harness has nothing left to
+re-install and the permission would only license a divergence nobody needs.
 
 #### Scenario: The harness's app graph is the production graph
 
