@@ -62,7 +62,7 @@ class RenameEventTest {
     )
 
     /** Drive the fire-and-forget command to completion on the test scheduler. */
-    private fun TestScope.drive(
+    private suspend fun TestScope.drive(
         source: ConfigSource,
         store: ConfigStore,
         client: EventRename,
@@ -70,7 +70,7 @@ class RenameEventTest {
         eventId: String = "E1",
         name: String = "Ana's 30th",
     ): RenameEvent {
-        val useCase = RenameEvent(source, store, client, status, this)
+        val useCase = RenameEvent(source, store, client, status)
         useCase.rename(eventId, name)
         runCurrent()
         return useCase

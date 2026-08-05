@@ -4,8 +4,6 @@ import app.snapsync.ports.CreateOutcome
 import app.snapsync.ports.EventCreation
 
 import co.touchlab.kermit.Logger
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.launch
 
 /**
  * The create-event use-case: mint an event, then route it into the **same** join gate a scanned QR
@@ -33,27 +31,27 @@ class CreateEvent(
     // `onEventCreated`). The `POST /events` already minted the event, so the gate holds a real id and
     // performs a real details load; provision (save config with name + cutoff) happens on confirm.
     private val onMinted: suspend (eventId: String) -> Unit,
-    private val scope: CoroutineScope,
 ) : EventCreator {
 
     private val log = Logger.withTag("CreateEvent")
 
-    override fun create(name: String, startsAt: String, endsAt: String) {
-        scope.launch {
-            status.set(CreationStatus.InFlight)
-            when (val outcome = client.create(name.trim(), startsAt, endsAt)) {
-                is CreateOutcome.Created -> {
-                    onMinted(outcome.eventId)
-                    status.set(CreationStatus.Idle)
-                }
-                CreateOutcome.InvalidName -> {
-                    log.i { "create rejected: invalid name" }
-                    status.set(CreationStatus.Failed(CreationFailureReason.INVALID_NAME))
-                }
-                CreateOutcome.Transient -> {
-                    log.i { "create failed: transient/server error" }
-                    status.set(CreationStatus.Failed(CreationFailureReason.SERVER))
-                }
+    // Suspending, and holding no scope: the composition launches this (law "Dispatcher lanes are
+    // fixed by the composition"), which is what lets the tap's `Logger.invocation` span the real work
+    // instead of timing the hand-off — `← tap.create (1ms)` against a multi-second mint.
+    override suspend fun create(name: String, startsAt: String, endsAt: String) {
+        status.set(CreationStatus.InFlight)
+        when (val outcome = client.create(name.trim(), startsAt, endsAt)) {
+            is CreateOutcome.Created -> {
+                onMinted(outcome.eventId)
+                status.set(CreationStatus.Idle)
+            }
+            CreateOutcome.InvalidName -> {
+                log.i { "create rejected: invalid name" }
+                status.set(CreationStatus.Failed(CreationFailureReason.INVALID_NAME))
+            }
+            CreateOutcome.Transient -> {
+                log.i { "create failed: transient/server error" }
+                status.set(CreationStatus.Failed(CreationFailureReason.SERVER))
             }
         }
     }

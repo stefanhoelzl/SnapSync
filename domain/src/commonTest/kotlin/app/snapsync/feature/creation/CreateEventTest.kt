@@ -39,8 +39,7 @@ class CreateEventTest {
         val client = FakeClient(CreateOutcome.Created(eventId))
         val status = MutableCreationStatusSource()
         var provisioned: String? = null
-        val scope = CoroutineScope(UnconfinedTestDispatcher(testScheduler))
-        val useCase = CreateEvent(client, status, onMinted = { eventId -> provisioned = eventId }, scope = scope)
+        val useCase = CreateEvent(client, status, onMinted = { eventId -> provisioned = eventId })
 
         useCase.create("  My Party  ", startsAt, endsAt)
 
@@ -55,9 +54,8 @@ class CreateEventTest {
     fun `an invalid name fails with the invalid-name reason and does not provision`() = runTest {
         val status = MutableCreationStatusSource()
         var provisioned: String? = null
-        val scope = CoroutineScope(UnconfinedTestDispatcher(testScheduler))
         val useCase = CreateEvent(
-            FakeClient(CreateOutcome.InvalidName), status, onMinted = { eventId -> provisioned = eventId }, scope = scope,
+            FakeClient(CreateOutcome.InvalidName), status, onMinted = { eventId -> provisioned = eventId },
         )
 
         useCase.create("x", startsAt, endsAt)
@@ -70,9 +68,8 @@ class CreateEventTest {
     fun `a transient failure fails with the server reason and does not provision`() = runTest {
         val status = MutableCreationStatusSource()
         var provisioned: String? = null
-        val scope = CoroutineScope(UnconfinedTestDispatcher(testScheduler))
         val useCase = CreateEvent(
-            FakeClient(CreateOutcome.Transient), status, onMinted = { eventId -> provisioned = eventId }, scope = scope,
+            FakeClient(CreateOutcome.Transient), status, onMinted = { eventId -> provisioned = eventId },
         )
 
         useCase.create("x", startsAt, endsAt)

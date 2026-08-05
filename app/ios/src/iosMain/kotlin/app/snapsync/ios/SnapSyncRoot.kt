@@ -85,11 +85,14 @@ import kotlinx.cinterop.ExperimentalForeignApi
 import kotlinx.cinterop.cValue
 import kotlinx.coroutines.CoroutineExceptionHandler
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.DelicateCoroutinesApi
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.newFixedThreadPoolContext
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import platform.BackgroundTasks.BGProcessingTaskRequest
 import platform.BackgroundTasks.BGTaskScheduler
 import platform.Foundation.NSBundle
@@ -162,7 +165,7 @@ object SnapSyncRoot {
     // process, honouring the rule that errors reduce into state and never crash the shell. Every feature
     // reduces its own domain errors into `UiState`; this catches only what nothing else did.
     private val scope = CoroutineScope(
-        SupervisorJob() + Dispatchers.Main +
+        SupervisorJob() + compositionLane +
             CoroutineExceptionHandler { _, t ->
                 log.e(t) { "uncaught in app scope — logged, not fatal" }
             },
@@ -273,7 +276,19 @@ object SnapSyncRoot {
      * (nothing mints, clears, or leaves) and converges at the next trigger, whose flow re-reads the
      * membership first (`AppPorts.reloadConfig`).
      */
-    private fun protectedDataAvailable(): Boolean =
+    private suspend fun protectedDataAvailable(): Boolean =
+        // `UIApplication` is main-thread-only, and this scope no longer runs there (law "Dispatcher
+        // lanes are fixed by the composition") — so this read names the main lane explicitly instead
+        // of inheriting it. It is a property read, not work: nothing blocking may follow it onto main.
+        withContext(Dispatchers.Main) { protectedDataAvailableOnMain() }
+
+    /**
+     * The same read for entry points the OS already delivers **on the main thread**
+     * (`handleBackgroundUrlSession`, invoked by the app delegate), where hopping would be a
+     * round-trip to the thread we are on. Its name states the precondition, so the two forms cannot
+     * be confused: everything reached from the composition lane takes the suspending one above.
+     */
+    private fun protectedDataAvailableOnMain(): Boolean =
         UIApplication.sharedApplication.isProtectedDataAvailable()
 
     // Event album (capability `event-album`): the shared leave-surviving `eventId → albumLocalId` map and
@@ -327,6 +342,10 @@ object SnapSyncRoot {
         snapSyncApp(
             scope,
             AppPorts(
+                // The main lane (law "Dispatcher lanes are fixed by the composition"). This shell is
+                // the only place in the app process that may name it: platform UI runs here, and
+                // nothing else does.
+                uiLane = Dispatchers.Main,
                 diagnosticsReporter = SentryDiagnosticsReporter(),
                 // The diagnostic dump's two device-side inputs (capability `diagnostic-logging`):
                 // the two log files (this process's own, and the extension's in the App Group) and
@@ -1271,7 +1290,7 @@ object SnapSyncRoot {
         @Suppress("CyclomaticComplexMethod")
         override fun handleBackgroundUrlSession(identifier: String, completionHandler: () -> Unit) = log.invocation(
             "handleBackgroundUrlSession.route",
-            params = "protectedData=${protectedDataAvailable()}",
+            params = "protectedData=${protectedDataAvailableOnMain()}",
         ) {
             // Route by session identifier: the app-driven UPLOAD session (18–26.0) vs the download
             // session. A wiring-forced routing decision: one OS callback serves two distinct sessions.
@@ -1286,3 +1305,32 @@ object SnapSyncRoot {
         }
     }
 }
+
+/**
+ * The **composition lane** (spec `module-architecture`, law "Dispatcher lanes are fixed by the
+ * composition"): the one thread every live-core coroutine in this process runs on.
+ *
+ * **Why not the main thread.** Whether a port call blocks *the main thread* is a property of the
+ * caller's dispatcher, not of the adapter — so it cannot be judged where the call is written, and it
+ * was not: 21 of 23 iOS adapter files touching a blocking platform API hop nowhere. Owning the
+ * decision here makes a blocking call off-main by construction. Forcing proof: build 521 died on an
+ * iPhone11,2 / iOS 18.7.9 with `assetsd` wedged inside `fetchPersistentChangesSinceToken`, 0.071 s of
+ * app CPU across the whole watchdog allowance — blocked, not busy (`IosDiscovery`).
+ *
+ * **Why exactly one thread.** `Dispatchers.Main` is single-threaded and core code relies on that for
+ * mutual exclusion — `PhotoSelectionSnapshotSource`'s lock-free register/unregister and
+ * `SentryDiagnosticsReporter`'s plain init flag both say so, and whatever else assumes it cannot be
+ * enumerated. One thread changes which thread and nothing else; a pool would silently turn every
+ * un-enumerated assumption into a race.
+ *
+ * **Why its own thread rather than a slice of [Dispatchers.Default].** Orbit's event loop reduces
+ * presentation state on `Default`. A blocked platform call parked in that pool would stall the UI's
+ * own updates — an OS kill traded for a frozen screen. `Dispatchers.IO` would be the obvious home and
+ * is **`internal`** on Kotlin/Native (coroutines 1.10.2): it is in the klib but not callable, measured
+ * by compile, not read off a symbol table. Expiry trigger: a coroutines release that publishes it.
+ *
+ * `@DelicateCoroutinesApi` flags contexts that are never closed. That is the requirement here, not the
+ * hazard: this scope lives as long as the process, and closing its dispatcher is what must not happen.
+ */
+@OptIn(DelicateCoroutinesApi::class)
+private val compositionLane = newFixedThreadPoolContext(nThreads = 1, name = "snapsync-composition")

@@ -35,6 +35,7 @@ import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 import kotlin.time.Duration
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.channels.Channel
 import kotlin.time.Clock
 import kotlin.time.Instant
@@ -118,7 +119,7 @@ private class SpyCreator : EventCreator {
     val created = mutableListOf<String>()
     val starts = mutableListOf<String>()
     val ends = mutableListOf<String>()
-    override fun create(name: String, startsAt: String, endsAt: String) {
+    override suspend fun create(name: String, startsAt: String, endsAt: String) {
         created += name
         starts += startsAt
         ends += endsAt
@@ -409,7 +410,7 @@ class StatusContainerHostTest {
         return StatusContainerHost(
             FakeSyncStatusSource(), permission.permission, config.config, scope,
             creationStatusSource = MutableCreationStatusSource(creation),
-            commands = UserCommands(create = { n, st, en -> creator.create(n, st.at.iso, en.at.iso) }),
+            commands = UserCommands(create = { n, st, en -> scope.launch { creator.create(n, st.at.iso, en.at.iso) } }),
             cutoffFormatter = fixedCutoffFormatter(),
         )
     }

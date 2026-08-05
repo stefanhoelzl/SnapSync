@@ -86,6 +86,12 @@ class UserCommands(
         saveToAlbum: Boolean,
     ) -> Unit = { _, _, _, _, _ -> },
     val rename: (eventId: String, name: String) -> Unit = { _, _ -> },
-    val resetRename: () -> Unit = {},
+    /**
+     * Suspending, unlike the other latch-driven commands: the screen fires this **after** consuming a
+     * terminal status and may start the next rename immediately, so the clear has to have happened by
+     * the time the call returns. Detaching it opened a window where a second rename began with the
+     * previous `Succeeded` still latched.
+     */
+    val resetRename: suspend () -> Unit = {},
     val sendDiagnostics: (suspend (note: String, screen: String) -> Unit)? = null,
 )

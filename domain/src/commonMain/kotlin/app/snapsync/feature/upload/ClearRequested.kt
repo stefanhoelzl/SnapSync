@@ -17,8 +17,10 @@ private const val DEFAULT_CLEAR_ATTEMPTS = 3
  * `scope.launch { clearRequested() }` on the main scope).
  *
  * The clear is a **synchronous SQLite `DELETE`**, so it runs on [dispatcher] — `Dispatchers.Default` by
- * default (Kotlin/Native has **no** `Dispatchers.IO`), never the caller's `Dispatchers.Main` scope where
- * it would risk a hang under cross-process WAL contention. Returns whether the clear ultimately
+ * default (Kotlin/Native exposes no **public** `Dispatchers.IO`: it is `internal` as of coroutines
+ * 1.10.2, established by compile; expiry is a release that publishes it). It therefore does not hold the
+ * caller's **serial** composition lane while it waits, and cannot hang under cross-process WAL
+ * contention on a lane other work is queued behind. Returns whether the clear ultimately
  * succeeded; a persistent failure is **logged, never thrown** — best-effort, matching the surrounding
  * disable/leave teardown, so a re-enable still proceeds rather than trapping the caller.
  *

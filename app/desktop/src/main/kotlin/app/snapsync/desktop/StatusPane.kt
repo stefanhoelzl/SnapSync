@@ -31,6 +31,7 @@ import app.snapsync.ui.StatusScreen
 import app.snapsync.ui.components.LocalDarkThemeOverride
 import kotlin.time.Clock
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.launch
 import kotlinx.datetime.TimeZone
 
 /**
@@ -73,7 +74,7 @@ fun StatusPane(
     // `world.core.userCommands.rename`/`resetRename` so `:app:desktop:run` drives the actual rewrite
     // against the world's mini-edge. The status source likewise defaults to an always-Idle instance.
     rename: (String, String) -> Unit = { _, _ -> },
-    resetRename: () -> Unit = {},
+    resetRename: suspend () -> Unit = {},
     renameStatusSource: RenameStatusSource = MutableRenameStatusSource(),
     // The join-time shareable-count preview (capability `join-share-count`): the forge leaves it inert
     // (no count row), the full-stack world harness binds it to `world.core.loadShareableCount` so
@@ -122,7 +123,13 @@ fun StatusPane(
             // permission taps bind the injected requester, mirroring `AppCore.userCommands`.
             commands = UserCommands(
                 leave = leave,
-                create = { name, startsAt, endsAt -> creator.create(name, startsAt.at.iso, endsAt.at.iso) },
+                // Launched, because the use-case is suspending now: the production bundle's
+                // `create` is fire-and-forget with its outcome on `creationStatus`, and this pane
+                // stands in for that bundle.
+                create = { name, startsAt, endsAt ->
+                    scope.launch { creator.create(name, startsAt.at.iso, endsAt.at.iso) }
+                    Unit
+                },
                 commitJoin = commitJoin,
                 share = share,
                 requestAccess = requester::request,
