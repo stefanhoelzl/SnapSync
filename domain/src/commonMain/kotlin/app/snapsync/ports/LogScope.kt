@@ -1,6 +1,7 @@
 package app.snapsync.ports
 
 import co.touchlab.kermit.Logger
+import co.touchlab.kermit.Severity
 import kotlin.time.TimeSource
 
 /**
@@ -47,6 +48,12 @@ interface LogScope {
  *   `✗ <name> threw (<ms>ms)` on throw (the throwable is re-thrown unchanged).
  * - [params] is an already-built short string and [result] a short-string renderer — the CALL SITE
  *   controls verbosity, so we never blanket-`toString()` a large or expensive object.
+ * - [severity] chooses the enter/exit level. `Info` is the default and is right for anything that
+ *   fires once per platform event. Entry points that fire once per ITEM — a per-asset library-change
+ *   callback, a per-task transfer callback — pass `Debug`: at `Info` a single large import would
+ *   flush the crash reporter's bounded breadcrumb window and roll the size-capped device log before
+ *   anyone read it (capability `crash-reporting`). A throw is always `Warn`, whatever [severity] is:
+ *   it is never the routine case.
  * - Not marked `suspend`: it is `inline`, so [block] is inlined into the caller and may suspend when
  *   the call site is a coroutine, while non-suspend entry points use the very same function.
  *
@@ -57,17 +64,18 @@ inline fun <T> Logger.invocation(
     scope: LogScope,
     name: String,
     params: String = "",
+    severity: Severity = Severity.Info,
     result: (T) -> String = { "" },
     block: () -> T,
 ): T {
     val owned = scope.enter(name)
     val start = TimeSource.Monotonic.markNow()
-    i { "→ $name" + if (params.isEmpty()) "" else "($params)" }
+    logAt(severity) { "→ $name" + if (params.isEmpty()) "" else "($params)" }
     try {
         val value = block()
         val ms = start.elapsedNow().inWholeMilliseconds
         val rendered = result(value)
-        i { "← $name" + (if (rendered.isEmpty()) "" else " = $rendered") + " (${ms}ms)" }
+        logAt(severity) { "← $name" + (if (rendered.isEmpty()) "" else " = $rendered") + " (${ms}ms)" }
         return value
     } catch (t: Throwable) {
         val ms = start.elapsedNow().inWholeMilliseconds
@@ -76,4 +84,17 @@ inline fun <T> Logger.invocation(
     } finally {
         scope.exit(owned)
     }
+}
+
+/**
+ * Emit [message] at [severity] — the level-dispatch [invocation] needs, kept here so an entry point
+ * chooses a level without holding a branch of its own (the `:app:*` complexity gate counts one).
+ */
+inline fun Logger.logAt(severity: Severity, message: () -> String) = when (severity) {
+    Severity.Verbose -> v { message() }
+    Severity.Debug -> d { message() }
+    Severity.Info -> i { message() }
+    Severity.Warn -> w { message() }
+    Severity.Error -> e { message() }
+    Severity.Assert -> a { message() }
 }

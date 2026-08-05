@@ -5,6 +5,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.window.ComposeUIViewController
+import app.snapsync.model.PlatformEntry
 import app.snapsync.ui.StatusScreen
 import app.snapsync.ui.components.LocalReduceMotion
 import platform.UIKit.UIAccessibilityIsReduceMotionEnabled
@@ -22,72 +23,75 @@ import platform.UIKit.UIAccessibilityIsReduceMotionEnabled
  * way the screen renders `container.stateFlow` live; the forge substitutes the container's inputs, not
  * a static `UiState`.
  */
+@PlatformEntry
 @Suppress("FunctionName", "unused")
-fun MainViewController() = ComposeUIViewController {
-    val host = SnapSyncRoot.renderHost
-    val state by host.container.stateFlow.collectAsState()
-    // The event's invite link (null until an event is configured) — rendered as the join QR in the
-    // joined layer and handed to the share sheet.
-    val inviteUrl by host.inviteUrl.collectAsState()
-    // The joined event's name for the screen title (fetched by id; null until fetched).
-    val eventName by host.eventName.collectAsState()
-    // The current membership settings for the reconfigure surface (capability `reconfigure-membership`).
-    val membership by host.membership.collectAsState()
-    // The rename lifecycle for the heading's rename dialog (capability `event-rename`).
-    val renameStatus by host.renameStatus.collectAsState()
+fun MainViewController() = SnapSyncRoot.platformEntry("MainViewController") {
+    ComposeUIViewController {
+        val host = SnapSyncRoot.renderHost
+        val state by host.container.stateFlow.collectAsState()
+        // The event's invite link (null until an event is configured) — rendered as the join QR in the
+        // joined layer and handed to the share sheet.
+        val inviteUrl by host.inviteUrl.collectAsState()
+        // The joined event's name for the screen title (fetched by id; null until fetched).
+        val eventName by host.eventName.collectAsState()
+        // The current membership settings for the reconfigure surface (capability `reconfigure-membership`).
+        val membership by host.membership.collectAsState()
+        // The rename lifecycle for the heading's rename dialog (capability `event-rename`).
+        val renameStatus by host.renameStatus.collectAsState()
 
-    // Dev/test: apply the membership-mutating launch-env triggers (leave → create → event-link) once
-    // per process (no-op in production, where no such env vars exist). Runs after `host` is realized;
-    // safe to repeat (guarded by a `by lazy`).
-    LaunchedEffect(Unit) { SnapSyncRoot.applyLaunchEnvMembership() }
-    // Dev/test: fill the library with `SNAPSYNC_SEED_PHOTOS` synthetic assets (no-op in production).
-    LaunchedEffect(Unit) { SnapSyncRoot.applyLaunchEnvSeed() }
+        // Dev/test: apply the membership-mutating launch-env triggers (leave → create → event-link) once
+        // per process (no-op in production, where no such env vars exist). Runs after `host` is realized;
+        // safe to repeat (guarded by a `by lazy`).
+        LaunchedEffect(Unit) { SnapSyncRoot.applyLaunchEnvMembership() }
+        // Dev/test: fill the library with `SNAPSYNC_SEED_PHOTOS` synthetic assets (no-op in production).
+        LaunchedEffect(Unit) { SnapSyncRoot.applyLaunchEnvSeed() }
 
-    // The transient invalid-link error — presentation-owned, self-clearing (see the host).
-    val transientError by host.transientError.collectAsState()
+        // The transient invalid-link error — presentation-owned, self-clearing (see the host).
+        val transientError by host.transientError.collectAsState()
 
-    // The photo grant — the shareable-count row's recompute trigger (a late first-join resolve makes the
-    // count appear); capability `join-share-count`.
-    val photoPermission by SnapSyncRoot.photoPermission.collectAsState()
+        // The photo grant — the shareable-count row's recompute trigger (a late first-join resolve makes the
+        // count appear); capability `join-share-count`.
+        val photoPermission by SnapSyncRoot.photoPermission.collectAsState()
 
-    // The platform's reduce-motion preference (capability `design-system`). Compose Multiplatform has no
-    // cross-platform accessor for it, so the composition root supplies it — this is the only place that
-    // knows. Read on each composition rather than `remember`ed: it is a cheap property read, and caching it
-    // for the process would ignore a user who turns it on while the app is open.
-    CompositionLocalProvider(LocalReduceMotion provides UIAccessibilityIsReduceMotionEnabled()) {
-        StatusScreen(
-            state,
-            host::onRequestPermission,
-            host::onOpenSettings,
-            onLeaveEvent = host::onLeaveEvent,
-            onShareInvite = host::onShareInvite,
-            onSendDiagnostics = host.onSendDiagnostics,
-            membership = membership,
-            onReconfigure = host::onReconfigure,
-            inviteUrl = inviteUrl,
-            eventName = eventName,
-            onCreateEvent = host::onCreateEvent,
-            transientError = transientError,
-            onConfirmJoin = host::onConfirmJoin,
-            onAcknowledgeAccess = host::onAcknowledgeAccess,
-            onChoosePhotos = host::onChoosePhotos,
-            onCancelJoin = host::onCancelJoin,
-            onRetryLoad = host::onRetryLoad,
-            onRetryJoin = host::onRetryJoin,
-            onConfirmSwitch = host::onConfirmSwitch,
-            onCancelSwitch = host::onCancelSwitch,
-            // The root's one system-bound formatter (migration step 9: the screen's default died with
-            // the through-ports repayment; forge and live share this same instance).
-            cutoff = SnapSyncRoot.cutoffFormatter,
-            // The join-time shareable-count preview (capability `join-share-count`): the permission-aware,
-            // no-network query, plus the live grant as its recompute trigger.
-            shareableCount = SnapSyncRoot.shareableCount,
-            photoPermission = photoPermission,
-            // The heading rename (capability `event-rename`): the command, its lifecycle, and the latch
-            // reset the screen fires once it has acted on a terminal value.
-            onRenameEvent = host::onRenameEvent,
-            renameStatus = renameStatus,
-            onRenameStatusConsumed = host::onRenameStatusConsumed,
-        )
+        // The platform's reduce-motion preference (capability `design-system`). Compose Multiplatform has no
+        // cross-platform accessor for it, so the composition root supplies it — this is the only place that
+        // knows. Read on each composition rather than `remember`ed: it is a cheap property read, and caching it
+        // for the process would ignore a user who turns it on while the app is open.
+        CompositionLocalProvider(LocalReduceMotion provides UIAccessibilityIsReduceMotionEnabled()) {
+            StatusScreen(
+                state,
+                host::onRequestPermission,
+                host::onOpenSettings,
+                onLeaveEvent = host::onLeaveEvent,
+                onShareInvite = host::onShareInvite,
+                onSendDiagnostics = host.onSendDiagnostics,
+                membership = membership,
+                onReconfigure = host::onReconfigure,
+                inviteUrl = inviteUrl,
+                eventName = eventName,
+                onCreateEvent = host::onCreateEvent,
+                transientError = transientError,
+                onConfirmJoin = host::onConfirmJoin,
+                onAcknowledgeAccess = host::onAcknowledgeAccess,
+                onChoosePhotos = host::onChoosePhotos,
+                onCancelJoin = host::onCancelJoin,
+                onRetryLoad = host::onRetryLoad,
+                onRetryJoin = host::onRetryJoin,
+                onConfirmSwitch = host::onConfirmSwitch,
+                onCancelSwitch = host::onCancelSwitch,
+                // The root's one system-bound formatter (migration step 9: the screen's default died with
+                // the through-ports repayment; forge and live share this same instance).
+                cutoff = SnapSyncRoot.cutoffFormatter,
+                // The join-time shareable-count preview (capability `join-share-count`): the permission-aware,
+                // no-network query, plus the live grant as its recompute trigger.
+                shareableCount = SnapSyncRoot.shareableCount,
+                photoPermission = photoPermission,
+                // The heading rename (capability `event-rename`): the command, its lifecycle, and the latch
+                // reset the screen fires once it has acted on a terminal value.
+                onRenameEvent = host::onRenameEvent,
+                renameStatus = renameStatus,
+                onRenameStatusConsumed = host::onRenameStatusConsumed,
+            )
+        }
     }
 }

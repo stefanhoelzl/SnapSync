@@ -45,6 +45,12 @@ tasks.test {
             include("capability/**/src/**/*.kt")
             include("app/**/src/**/*.kt")
             include("test/**/src/**/*.kt")
+            // The adapter tree. `PlatformEntryLoggingTest` derives the OS-callback population
+            // structurally from it (`: NSObject(), …Protocol` conformances), so without this an
+            // adapter-only edit — adding a delegate method, dropping an entry log — leaves this task
+            // UP-TO-DATE and the guard silently stops guarding. A guard that goes stale fails open,
+            // which is the one failure mode these tests may not have.
+            include("adapter/**/src/**/*.kt")
             include("iosApp/**/*.entitlements")
             // The event-link domain guard's subjects (capability `event-link`). Without these the task
             // reports UP-TO-DATE after a backend-only or xcconfig-only edit — and the domain drift it

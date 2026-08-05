@@ -26,6 +26,11 @@ enum class Direction(val wire: String) {
 
     companion object {
         /** Maps a dev/test deeplink [wire] token to a [Direction], or `null` if it is not a known token. */
-        fun fromWire(wire: String): Direction? = entries.firstOrNull { it.wire == wire }
+        /**
+     * Absence: null means the token is not a direction this build knows — an unrecognised or absent
+     * wire value are one answer, because the caller's response to either is the same (reject the
+     * link / fall back to the default). A pure lookup over a closed set has no failure mode to hide.
+     */
+    fun fromWire(wire: String): Direction? = entries.firstOrNull { it.wire == wire }
     }
 }

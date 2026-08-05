@@ -86,12 +86,15 @@ final class AppDelegate: NSObject, UIApplicationDelegate {
         SnapSyncRoot.shared.onPushToken(hex: hex)
     }
 
-    // Registration failed (e.g. no network / no APNs entitlement in this build) — log and carry on.
+    // Registration failed (e.g. no network / no APNs entitlement in this build). Forward it to Kotlin
+    // rather than NSLog it: os_log redacts an INTERPOLATED format string wholesale, so the old line
+    // reached neither idevicesyslog nor debug.log — a device that silently never receives a push, with
+    // nothing anywhere saying why. Rendering the error to a string is an encoding, not a decision.
     func application(
         _ application: UIApplication,
         didFailToRegisterForRemoteNotificationsWithError error: Error
     ) {
-        NSLog("registerForRemoteNotifications failed: \(error.localizedDescription)")
+        SnapSyncRoot.shared.onPushTokenFailure(description: error.localizedDescription)
     }
 
     // A silent (content-available) remote notification arrived. Forward the payload WHOLE plus the OS
@@ -120,14 +123,31 @@ final class AppDelegate: NSObject, UIApplicationDelegate {
 //     invite never has SnapSync running.
 //   * continue      → the app was running or suspended.
 //
-// Everything else was tried on device (2026-07-16) and does NOT work, however much the internet
-// recommends it:
-//   * `.onOpenURL` — the `application(_:open:options:)` path, which is what the retired `snapsync://`
-//     custom scheme used. Never fires for a universal link. THIS SHIPPED, and every link silently died.
-//   * `.onContinueUserActivity` — warm only; on a cold launch the activity is delivered before the view
-//     attaches, and SwiftUI does not replay it.
+// Everything else was tried on device (2026-07-16). Read this table before deleting anything — each
+// row is the reason some OTHER hook exists, and the two halves must both survive:
+//   * `.onOpenURL` — the `application(_:open:options:)` path the retired `snapsync://` scheme used.
+//     Never fires for a universal link, cold or warm. THIS SHIPPED, and every link silently died.
 //   * `AppDelegate.application(_:continue:restorationHandler:)` — never called at all: a SwiftUI app
 //     gets only `didFinishLaunchingWithOptions` and `applicationWillTerminate` on its app delegate.
+//   * `.onContinueUserActivity` — measured **warm YES / cold NO** in July, and it is TEMPTING to add
+//     it here as a second warm path. It was tried (2026-08-04) and it DOES NOT WORK, for a structural
+//     reason worth understanding before trying again:
+//
+//     A scene has exactly ONE delegate, and `configurationForConnecting` below makes it ours. That
+//     means SwiftUI's own scene delegate is never instantiated for this scene — and SwiftUI's
+//     `.onContinueUserActivity` is fed by that machinery. Measured on device: 8 warm deliveries, 8
+//     hits on `scene(_:continue:)`, ZERO on the modifier. The July row measured it with SwiftUI's
+//     delegate in place, because no custom one existed yet; the rows are mutually exclusive
+//     configurations, not features that compose. We cannot drop the scene delegate to make room,
+//     because `willConnectTo` is the only COLD path.
+//
+// THE OPEN QUESTION. On iOS 18.7.9 a warm-opened link reached NOTHING: the app came to the front and
+// the join gate never opened, so switching events required a force-quit (Bugsink SNAPSYNC-3, four
+// days of debug.log with not one warm delivery). Whether iOS 18 calls `scene(_:continue:)` at all is
+// STILL UNMEASURED — there is no iOS 18 device here, and a simulator cannot stand in (on an iOS 26.5
+// simulator, where the device shows 8/8, the app received zero: simulators do not route universal
+// links). The next thing to try is `scene(_:willContinueUserActivityWithType:)`, which UIKit offers
+// BEFORE `scene(_:continue:)` — see the change's Open Questions.
 //
 // Why this cost a whole device session to find: the failure is SILENT and looks like success. iOS still
 // matches the AASA and still foregrounds the app, so the link "works" — it just drops the URL. On an
@@ -146,12 +166,13 @@ final class SnapSyncSceneDelegate: NSObject, UIWindowSceneDelegate {
         willConnectTo session: UISceneSession,
         options connectionOptions: UIScene.ConnectionOptions
     ) {
-        connectionOptions.userActivities.forEach { SnapSyncRoot.shared.onUserActivity(activity: $0) }
+        connectionOptions.userActivities.forEach { SnapSyncRoot.shared.onLaunchActivity(activity: $0) }
     }
 
-    // WARM: the app was already running or suspended.
+    // WARM (1 of 2): the app was already running or suspended. Its own Kotlin entry name — the log
+    // must say WHICH hook the platform invoked, or the iOS-18 question stays exactly as open as it is.
     func scene(_ scene: UIScene, continue userActivity: NSUserActivity) {
-        SnapSyncRoot.shared.onUserActivity(activity: userActivity)
+        SnapSyncRoot.shared.onSceneContinueActivity(activity: userActivity)
     }
 }
 
@@ -167,10 +188,8 @@ struct iOSApp: App {
     var body: some Scene {
         WindowGroup {
             ContentView()
-                // NOTE: the event link does NOT arrive here. It is delivered as an NSUserActivity to
-                // the scene delegate above — see the long note there before reaching for
-                // `.onOpenURL`/`.onContinueUserActivity`; both were tried on device and neither is
-                // sufficient.
+                // NOTE: the event link does NOT arrive here, and `.onContinueUserActivity` CANNOT be
+                // added to make it — see the measured note on the scene delegate above.
         }
     }
 }

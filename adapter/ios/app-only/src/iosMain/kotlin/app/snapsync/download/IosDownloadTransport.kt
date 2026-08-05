@@ -5,7 +5,10 @@ import app.snapsync.ports.DownloadTransport
 import app.snapsync.ports.DownloadTransportHost
 import app.snapsync.ports.TransferOutcome
 
+import app.snapsync.logging.invocation
+import app.snapsync.model.PlatformEntry
 import co.touchlab.kermit.Logger
+import co.touchlab.kermit.Severity
 import kotlinx.cinterop.ExperimentalForeignApi
 import platform.Foundation.NSError
 import platform.Foundation.NSFileManager
@@ -133,29 +136,48 @@ class IosDownloadTransport(
      * protocol implementer) holding a back-reference to the [transport] it forwards to.
      */
     private class Delegate(private val transport: IosDownloadTransport) : NSObject(), NSURLSessionDownloadDelegateProtocol {
+        // PLATFORM ENTRY POINTS (spec `diagnostic-logging`): the OS calls these, so each records that
+        // it was called before doing anything. The two per-task callbacks log at DEBUG on purpose —
+        // they fire once per photo, and at INFO a 200-photo event would flush the crash reporter's
+        // bounded breadcrumb window and roll the size-capped device log before anyone read it.
+        @PlatformEntry
         override fun URLSession(
             session: NSURLSession,
             downloadTask: NSURLSessionDownloadTask,
             didFinishDownloadingToURL: NSURL,
-        ) = transport.onFinished(downloadTask, didFinishDownloadingToURL)
+        ) = transport.log.invocation("download.didFinishDownloading", severity = Severity.Debug) {
+            transport.onFinished(downloadTask, didFinishDownloadingToURL)
+        }
 
+        @PlatformEntry
         override fun URLSession(
             session: NSURLSession,
             task: NSURLSessionTask,
             didCompleteWithError: NSError?,
-        ) = transport.onComplete(task, didCompleteWithError)
+        ) = transport.log.invocation(
+            "download.didComplete",
+            params = "error=${didCompleteWithError?.localizedDescription ?: "«none»"}",
+            severity = Severity.Debug,
+        ) {
+            transport.onComplete(task, didCompleteWithError)
+        }
 
         /**
          * The session died and was **not** killed by us (we never invalidate). Tell the owner so it
          * discards this transport; reusing the session would create a task on a dead session, raising an
          * `NSException` Kotlin/Native cannot catch — an abort.
          */
+        @PlatformEntry
         override fun URLSession(session: NSURLSession, didBecomeInvalidWithError: NSError?) {
             transport.log.w { "background session invalidated by the system: ${didBecomeInvalidWithError?.localizedDescription}" }
             transport.host.onInvalidated()
         }
 
+        // Session-level, not per-task: INFO.
+        @PlatformEntry
         override fun URLSessionDidFinishEventsForBackgroundURLSession(session: NSURLSession) =
-            transport.host.onBackgroundEventsFinished()
+            transport.log.invocation("download.didFinishEvents") {
+                transport.host.onBackgroundEventsFinished()
+            }
     }
 }

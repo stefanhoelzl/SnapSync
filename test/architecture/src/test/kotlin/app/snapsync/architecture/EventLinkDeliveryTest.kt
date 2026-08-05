@@ -76,8 +76,14 @@ class EventLinkDeliveryTest {
         |  * .onOpenURL                                  — the application(_:open:options:) path a custom
         |                                                  scheme uses. NEVER fires for a universal link.
         |                                                  THIS SHIPPED, and every invite silently died.
-        |  * .onContinueUserActivity                     — WARM delivery only; on a cold launch the
-        |                                                  activity arrives before the view attaches.
+        |  * .onContinueUserActivity                     — WARM only in July's matrix, and it CANNOT
+        |                                                  be added alongside this delegate: a scene has
+        |                                                  ONE delegate, this is it, so SwiftUI's own —
+        |                                                  which feeds that modifier — is never created.
+        |                                                  Tried 2026-08-04: 8 warm deliveries, 8 hits
+        |                                                  here, ZERO on the modifier. July measured it
+        |                                                  with SwiftUI's delegate in place; the rows are
+        |                                                  exclusive configurations, not composable.
         |  * application(_:continue:restorationHandler:) — never called at all: a SwiftUI app gets only
         |                                                  didFinishLaunching + willTerminate.
         |The failure is SILENT and looks like success: iOS still matches the AASA and still foregrounds
@@ -128,13 +134,19 @@ class EventLinkDeliveryTest {
         // (fragment included; the fragment IS the payload) are Kotlin's tested `model/` codec
         // (`eventLinkFromUserActivity`), routed on to `onOpenUrl` in Kotlin. A Swift-side field read
         // would be an unpinned decision (SwiftShellGuardTest).
-        assertTrue(
-            code.contains("SnapSyncRoot.shared.onUserActivity"),
-            "$shellPath's scene delegate does not forward the delivered NSUserActivity whole to " +
-                "SnapSyncRoot.shared.onUserActivity. Extracting fields in Swift is an untested " +
-                "decision; trimming the URL drops the fragment — and the fragment IS the payload, " +
-                "so the event id would vanish.$whyItMatters",
-        )
+        // Each hook forwards under its OWN Kotlin entry name. That is not tidiness: it is the only
+        // way a device log can say WHICH hook the platform invoked, and the iOS-18 warm gap is
+        // currently unmeasured precisely because the old shared name could not.
+        listOf("onLaunchActivity", "onSceneContinueActivity").forEach { entry ->
+            assertTrue(
+                code.contains("SnapSyncRoot.shared.$entry"),
+                "$shellPath no longer forwards to SnapSyncRoot.shared.$entry. Each delivery hook " +
+                    "forwards the delivered NSUserActivity WHOLE, under its own entry name — " +
+                    "extracting fields in Swift is an untested decision, trimming the URL drops the " +
+                    "fragment (and the fragment IS the payload), and collapsing the names makes the " +
+                    "hooks indistinguishable in a dump.$whyItMatters",
+            )
+        }
     }
 
     /** Fail loudly rather than vacuously: if the shell moved, this guard is inspecting nothing. */

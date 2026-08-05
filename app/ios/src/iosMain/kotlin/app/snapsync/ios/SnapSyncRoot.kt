@@ -58,7 +58,10 @@ import app.snapsync.engine.LEDGER_APP_GROUP
 import app.snapsync.ports.LedgerStore
 import app.snapsync.config.bakedUploadBase
 import app.snapsync.engine.iosLedgerStore
+import app.snapsync.model.EventLinkDelivery
+import app.snapsync.model.PlatformEntry
 import app.snapsync.model.forwardEventLink
+import app.snapsync.model.userActivityParams
 import app.snapsync.feature.upload.UploadProducer
 import app.snapsync.logging.FileLogWriter
 import app.snapsync.logging.appLogDestination
@@ -591,7 +594,17 @@ object SnapSyncRoot {
      * through the one mode switch — every OS entry point below is a thin pass-through to [shell];
      * the forge/live decision was made once, at resolve time.
      */
-    fun onForeground() = shell.onForeground()
+    /**
+     * Wrap a platform entry point that lives outside this object — today only
+     * [app.snapsync.ios.MainViewController], the Compose door Swift's `ContentView` calls. The
+     * logger is private (one tag per process), so the wrap is offered rather than the logger
+     * exposed; it decides nothing and adds no branch.
+     */
+    internal fun <T> platformEntry(name: String, params: String = "", block: () -> T): T =
+        log.invocation(name, params = params) { block() }
+
+    @PlatformEntry
+    fun onForeground() = log.invocation("onForeground", params = foregroundParams()) { shell.onForeground() }
 
     /**
      * The app is leaving the active state (`UIApplicationWillResignActive` — see [onLaunch]): stop
@@ -599,7 +612,8 @@ object SnapSyncRoot {
      * import-tail backstop so any staged-but-unimported foreign assets get imported at the next
      * idle/charging window even if no further download wakes the app (capability `photo-download`, 5.4).
      */
-    fun onBackground() = shell.onBackground()
+    @PlatformEntry
+    fun onBackground() = log.invocation("onBackground") { shell.onBackground() }
 
     /**
      * Install the UIKit lifecycle observers and realize this object — called by the Swift
@@ -611,6 +625,7 @@ object SnapSyncRoot {
      * incoming call — which the old split also routed to background). Process-lifetime observers,
      * never removed; a background launch installs them too and simply never sees `didBecomeActive`.
      */
+    @PlatformEntry
     fun onLaunch() = log.invocation("onLaunch") {
         val center = NSNotificationCenter.defaultCenter
         center.addObserverForName(
@@ -634,8 +649,49 @@ object SnapSyncRoot {
      * with a URL and forwards the **complete** `absoluteString` — the fragment carries the whole
      * payload; this wiring transcribes the activity's fields and branches on nothing.
      */
-    fun onUserActivity(activity: NSUserActivity) {
-        forwardEventLink(activity.activityType, activity.webpageURL?.absoluteString, ::onOpenUrl)
+    @PlatformEntry
+    fun onLaunchActivity(activity: NSUserActivity) = deliverUserActivity("onLaunchActivity", activity)
+
+    /**
+     * WARM, via the scene delegate's `scene(_:continue:)` — the app's ONLY warm path.
+     *
+     * Measured working on iOS 26.5.2 twice: the 2026-07-16 session, and again on device
+     * 2026-08-04 (8 warm deliveries, 8 hits). On iOS 18.7.9 a warm-opened link reached nothing at
+     * all (Bugsink `SNAPSYNC-3`) and WHY is still unmeasured — there is no iOS 18 device here, and
+     * a simulator cannot stand in: on an iOS 26.5 SIMULATOR, where the device shows 8/8, the app
+     * received zero, so the simulator does not route universal links at all.
+     *
+     * Its name is distinct from the cold entry's for exactly that reason. The next dump from an
+     * iOS 18 device settles it outright: this line present means the platform does call the scene
+     * delegate there and the defect is downstream of delivery; absent means it does not.
+     */
+    @PlatformEntry
+    fun onSceneContinueActivity(activity: NSUserActivity) =
+        deliverUserActivity("onSceneContinueActivity", activity)
+
+    /**
+     * The instrumented delivery of one `NSUserActivity`, shared by every hook that can receive one
+     * (spec `diagnostic-logging`; spec `module-architecture`, "Absence is never silent").
+     *
+     * [hook] names the hook the platform actually invoked, so the device log distinguishes them —
+     * that naming is the whole diagnostic value, not decoration. The enter line records the raw
+     * fields **before** the filter tests them, and the exit line names the outcome even when nothing
+     * is forwarded: on Bugsink `SNAPSYNC-3` the silent discard and a link iOS never delivered were
+     * indistinguishable, and that ambiguity was the entire investigation.
+     *
+     * Straight-line by construction: the formatting and the filter-and-dispatch branch are the
+     * tested `model/` codec's, so this wiring decides nothing (the shell gate counts even an elvis).
+     */
+    private fun deliverUserActivity(hook: String, activity: NSUserActivity): EventLinkDelivery {
+        val activityType = activity.activityType
+        val url = activity.webpageURL?.absoluteString
+        return log.invocation(
+            hook,
+            params = userActivityParams(activityType, url),
+            result = { outcome: EventLinkDelivery -> outcome.summary },
+        ) {
+            forwardEventLink(activityType, url, ::onOpenUrl)
+        }
     }
 
     /**
@@ -645,7 +701,9 @@ object SnapSyncRoot {
      * Swift host's `BGTaskScheduler` registration; [onComplete] maps to `task.setTaskCompleted`.
      * Discovery stays foreground-only — this imports already-downloaded work, it does not re-read the union.
      */
-    fun runDownloadBackstop(onComplete: () -> Unit) = shell.runDownloadBackstop(onComplete)
+    @PlatformEntry
+    fun runDownloadBackstop(onComplete: () -> Unit) =
+        log.invocation("runDownloadBackstop") { shell.runDownloadBackstop(onComplete) }
 
     /** Queue a `BGProcessingTask` request so the OS runs [runDownloadBackstop] at a future idle moment. */
     @OptIn(ExperimentalForeignApi::class)
@@ -662,8 +720,11 @@ object SnapSyncRoot {
      * `handleEventsForBackgroundURLSession` seam): the app-driven upload session (iOS 18–26.0) or the
      * download session, routed by identifier inside the live shell.
      */
+    @PlatformEntry
     fun handleBackgroundUrlSession(identifier: String, completionHandler: () -> Unit) =
-        shell.handleBackgroundUrlSession(identifier, completionHandler)
+        log.invocation("handleBackgroundUrlSession", params = "identifier=$identifier") {
+            shell.handleBackgroundUrlSession(identifier, completionHandler)
+        }
 
     /**
      * An event link arrived (forwarded raw from the Swift entry point — the complete URL, fragment
@@ -673,7 +734,7 @@ object SnapSyncRoot {
      * auto-confirms when the link carries `autoJoin=true` (the dev/headless trigger), or flashes the
      * invalid-link error. The app no longer provisions directly on scan — the gate owns that.
      */
-    fun onOpenUrl(url: String) = shell.onOpenUrl(url)
+    fun onOpenUrl(url: String) = log.invocation("onOpenUrl", params = "url=$url") { shell.onOpenUrl(url) }
 
     /**
      * The OS delivered an APNs device token (capability `push-registration`), forwarded raw-hex from the
@@ -681,7 +742,26 @@ object SnapSyncRoot {
      * source; the registration collector PUTs `devices/<id>/config`. Idempotent across launches and
      * rotations. Touch [host] so the collector is running to observe it. No decision in Swift.
      */
-    fun onPushToken(hex: String) = shell.onPushToken(hex)
+    @PlatformEntry
+    fun onPushToken(hex: String) =
+        log.invocation("onPushToken", params = "hex=${hex.take(12)}…") { shell.onPushToken(hex) }
+
+    /**
+     * APNs registration **failed** (capability `push-registration`), forwarded from the Swift
+     * AppDelegate's `didFailToRegisterForRemoteNotificationsWithError` with the error already
+     * rendered to a string (an encoding, not a decision).
+     *
+     * It reaches Kotlin because the Swift side used to `NSLog` it — and os_log redacts an
+     * interpolated format string wholesale, so the line appeared **nowhere**: not in
+     * `idevicesyslog`, not in `debug.log`. A device with no push token silently never receives a
+     * silent push, and nothing said why. Warn, not error: registration failure is expected on a
+     * build with no APNs entitlement and on a device with no network, and the app runs on without it.
+     */
+    @PlatformEntry
+    fun onPushTokenFailure(description: String) =
+        log.invocation("onPushTokenFailure", params = "error=$description") {
+            log.w { "APNs registration failed — no silent pushes will arrive: $description" }
+        }
 
     /**
      * A silent (`content-available`) remote notification arrived (capability `push-registration`),
@@ -691,7 +771,9 @@ object SnapSyncRoot {
      * active event — reconcile downloads (union read + enqueue). Touch [host] so the download stack
      * is assembled on a background launch. Non-throwing: a failure still calls [completion].
      */
-    fun onSilentPush(userInfo: Map<Any?, *>, completion: () -> Unit) = shell.onSilentPush(userInfo, completion)
+    @PlatformEntry
+    fun onSilentPush(userInfo: Map<Any?, *>, completion: () -> Unit) =
+        log.invocation("onSilentPush") { shell.onSilentPush(userInfo, completion) }
 
     /**
      * Provision an event id — the shared path for both a scanned or typed event link and a freshly created
@@ -730,6 +812,7 @@ object SnapSyncRoot {
      * Realize [launchEnvMembershipApplied] once on first view creation (called from
      * [MainViewController]). Touching the `by lazy` runs the env reads exactly once per process.
      */
+    @PlatformEntry
     fun applyLaunchEnvMembership() = log.invocation("applyLaunchEnvMembership") {
         launchEnvMembershipApplied
     }
@@ -751,6 +834,7 @@ object SnapSyncRoot {
     /**
      * Realize [launchEnvSeedApplied] once on first view creation (called from [MainViewController]).
      */
+    @PlatformEntry
     fun applyLaunchEnvSeed() = log.invocation("applyLaunchEnvSeed") {
         launchEnvSeedApplied
     }
@@ -908,7 +992,9 @@ object SnapSyncRoot {
     }
 
     /** The upload heartbeat BGProcessingTask handler (app-driven tier). Registered in the Swift shell. */
-    fun runUploadHeartbeat(onComplete: () -> Unit) = shell.runUploadHeartbeat(onComplete)
+    @PlatformEntry
+    fun runUploadHeartbeat(onComplete: () -> Unit) =
+        log.invocation("runUploadHeartbeat") { shell.runUploadHeartbeat(onComplete) }
 
     /** Whether the iOS 26.1 background-upload API is present on this system. */
     @OptIn(ExperimentalForeignApi::class)
@@ -972,7 +1058,7 @@ object SnapSyncRoot {
         override val shareableCount: suspend (cutoff: CaptureCutoff, until: CaptureCeiling?) -> Int? = { _, _ -> null }
         override val photoPermission: StateFlow<PermissionStatus> = MutableStateFlow(PermissionStatus.GRANTED)
 
-        override fun applyLaunchEnvMembership() = log.invocation("applyLaunchEnvMembership") {
+        override fun applyLaunchEnvMembership() {
             // Forge wins over the membership triggers too — provisioning a real event (or leaving one,
             // or voiding this device's durable state) from a process rendering a forged frame is
             // incoherent. Structural: this shell holds no route to the live stack. The log line keeps
@@ -980,13 +1066,13 @@ object SnapSyncRoot {
             log.i { "forge mode: ignoring membership launch triggers (reset/leave/create/event-link)" }
         }
 
-        override fun onForeground() = log.invocation("onForeground", params = foregroundParams()) {
+        override fun onForeground() {
             log.i { "forge mode: skipping live foreground work" }
         }
 
-        override fun onBackground() = log.invocation("onBackground") {}
+        override fun onBackground() = Unit
 
-        override fun onOpenUrl(url: String) = log.invocation("onOpenUrl", params = "url=$url") {
+        override fun onOpenUrl(url: String) {
             // A screenshot run may also carry `SNAPSYNC_EVENT_LINK`; provisioning a real event from a
             // process rendering a forged frame is incoherent before it is a crash. The resolver's
             // precedence already excludes it (the forge×link bug, now a unit test); the log line keeps
@@ -994,7 +1080,7 @@ object SnapSyncRoot {
             log.i { "forge mode: ignoring event link" }
         }
 
-        override fun onPushToken(hex: String) = log.invocation("onPushToken", params = "hex=${hex.take(12)}…") {
+        override fun onPushToken(hex: String) {
             // `registerForRemoteNotifications()` is called unconditionally at launch, so this arrives
             // on a screenshot run too. Registering a token for a process that exists only to render
             // one frame buys nothing, so drop it.
@@ -1008,9 +1094,7 @@ object SnapSyncRoot {
             completion()
         }
 
-        override fun runUploadHeartbeat(onComplete: () -> Unit) = log.invocation("runUploadHeartbeat") {
-            onComplete()
-        }
+        override fun runUploadHeartbeat(onComplete: () -> Unit) = onComplete()
 
         override fun runDownloadBackstop(onComplete: () -> Unit) {
             log.i { "forge mode: ignoring download backstop" }
@@ -1050,7 +1134,7 @@ object SnapSyncRoot {
         override val shareableCount: suspend (cutoff: CaptureCutoff, until: CaptureCeiling?) -> Int? get() = app::loadShareableCount
         override val photoPermission: StateFlow<PermissionStatus> get() = app.photoPermission
 
-        override fun applyLaunchEnvMembership() = log.invocation("applyLaunchEnvMembership") {
+        override fun applyLaunchEnvMembership() {
             // The ordering (reset → leave → create → event-link) is the tested `feature/creation`
             // coordinator's — the shell may hold no branching or ordering (`architecture-guards`). This
             // is straight-line wiring: assemble the live stack (touch [host]), then hand the coordinator
@@ -1066,10 +1150,9 @@ object SnapSyncRoot {
                     resetRequested = directives.resetState,
                 )
             }
-            Unit
         }
 
-        override fun onForeground() = log.invocation("onForeground", params = foregroundParams()) {
+        override fun onForeground() {
             host
             // The whole foreground coordination — membership re-read, pump, the foreground-gated
             // status poll's start (the ding's replacement, spec `sync-status`), refresh / reconcile /
@@ -1077,19 +1160,18 @@ object SnapSyncRoot {
             app.foregroundFlow.run()
         }
 
-        override fun onBackground() = log.invocation("onBackground") {
+        override fun onBackground() {
             // Stop the status poll + arm the backstop — the `flow/Background` trigger's coordination.
             app.backgroundFlow.run()
             log.i { "=== app entering background ===" }
         }
 
+        // Braces, not `=`: the container's intent returns a Job and the seam is Unit.
         override fun onOpenUrl(url: String) {
-            log.invocation("onOpenUrl", params = "url=$url") {
-                host.onOpenUrl(url)
-            }
+            host.onOpenUrl(url)
         }
 
-        override fun onPushToken(hex: String) = log.invocation("onPushToken", params = "hex=${hex.take(12)}…") {
+        override fun onPushToken(hex: String) {
             // Touch [host] so the registration collector is running to observe it. No decision in Swift.
             host
             pushTokenSource.deliver(hex)
@@ -1105,7 +1187,7 @@ object SnapSyncRoot {
                 // wrap and the OS completion handler stay shell-local.
                 try {
                     log.invocation(
-                        "onSilentPush",
+                        "onSilentPush.run",
                         params = "protectedData=${protectedDataAvailable()}",
                     ) {
                         app.silentPushFlow.run(userInfo)
@@ -1119,9 +1201,7 @@ object SnapSyncRoot {
             }
         }
 
-        override fun runUploadHeartbeat(onComplete: () -> Unit) = log.invocation("runUploadHeartbeat") {
-            heartbeat(onComplete)
-        }
+        override fun runUploadHeartbeat(onComplete: () -> Unit) = heartbeat(onComplete)
 
         override fun runDownloadBackstop(onComplete: () -> Unit) {
             scope.launch {
@@ -1132,7 +1212,7 @@ object SnapSyncRoot {
                 // attestation / import coordination is the `flow/DownloadBackstop` trigger's; only
                 // the entry-point wrap and re-arm stay shell-local.
                 try {
-                    log.invocation("runDownloadBackstop", params = "protectedData=${protectedDataAvailable()}") {
+                    log.invocation("runDownloadBackstop.run", params = "protectedData=${protectedDataAvailable()}") {
                         app.downloadBackstopFlow.run()
                     }
                 } finally {
@@ -1156,8 +1236,8 @@ object SnapSyncRoot {
         // iOS 27 GM, ~Sept 2026, with the async extension protocol).
         @Suppress("CyclomaticComplexMethod")
         override fun handleBackgroundUrlSession(identifier: String, completionHandler: () -> Unit) = log.invocation(
-            "handleBackgroundUrlSession",
-            params = "identifier=$identifier protectedData=${protectedDataAvailable()}",
+            "handleBackgroundUrlSession.route",
+            params = "protectedData=${protectedDataAvailable()}",
         ) {
             // Route by session identifier: the app-driven UPLOAD session (18–26.0) vs the download
             // session. A wiring-forced routing decision: one OS callback serves two distinct sessions.

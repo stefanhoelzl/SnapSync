@@ -78,6 +78,7 @@ import app.snapsync.ports.PhotoAccessStatusSource
 import app.snapsync.ports.CandidateSource
 import app.snapsync.ports.PhotoLibraryImporter
 import app.snapsync.ports.PhotoSelectionChangeSource
+import app.snapsync.ports.invocation
 import co.touchlab.kermit.Logger
 import kotlin.time.Instant
 import kotlinx.coroutines.CoroutineScope
@@ -664,6 +665,19 @@ class AppCore internal constructor(
     // presentation never references a feature command directly. Each command's body is the exact
     // coordination the shell's individual lambdas used to carry (migration step 8 C3). ────────────────
 
+    /**
+     * Wrap a user tap as a **platform entry point** (spec `diagnostic-logging`; spec
+     * `module-architecture`, "Absence is never silent"). `compose/` is where this must live: it is
+     * where the door law already says command instances are decorated, and it is the only place that
+     * *can* — `:ui:presentation` may not reference `ports/`, so it cannot reach a `LogScope`.
+     *
+     * The `tap.` namespace is load-bearing, not cosmetic. Without it a device log cannot say whether
+     * work was started by the platform or by the person holding the phone: on Bugsink `SNAPSYNC-3`,
+     * proving that a leave was a manual tap rather than the switch path's backend notify took reading
+     * two source files, because both produce the same downstream lines.
+     */
+    private val tapLog = Logger.withTag("userTap")
+
     val userCommands: UserCommands by lazy {
         UserCommands(
             // Leave: cancel in-flight downloads and drop non-terminal rows (imported photos stay;
@@ -671,38 +685,62 @@ class AppCore internal constructor(
             // the backend it is leaving → clear config/producer). Imported foreign photos are never
             // touched.
             leave = {
-                downloadController.onLeaveOrSwitch()
-                leaveEvent.leave()
+                tapLog.invocation(ports.logScope, "tap.leave") {
+                    downloadController.onLeaveOrSwitch()
+                    leaveEvent.leave()
+                }
             },
             // Create: mint via the backend; the use-case routes the minted event into the SAME join
             // gate a scanned QR takes (fire-and-forget; outcomes ride `creationStatus`).
-            create = { name, startsAt, endsAt -> eventCreator.create(name, startsAt.at.iso, endsAt.at.iso) },
+            create = { name, startsAt, endsAt ->
+                tapLog.invocation(ports.logScope, "tap.create") {
+                    eventCreator.create(name, startsAt.at.iso, endsAt.at.iso)
+                }
+            },
             // The join gate's commit (capability `join-event`): enroll (register-only empty manifest)
             // then provision. `true` unless enrollment failed (the same-event no-op is a success).
             commitJoin = {
                 eventId, name, startsAt, endsAt, deletesAt, minPhotoDate, maxPhotoDate, direction,
                 saveToAlbum,
                 ->
-                joinEvent.join(
-                    eventId, name, startsAt, endsAt, deletesAt, minPhotoDate, maxPhotoDate, direction,
-                    saveToAlbum,
-                ) != JoinOutcome.EnrollFailed
+                tapLog.invocation(
+                    ports.logScope,
+                    "tap.commitJoin",
+                    params = "eventId=$eventId",
+                    result = { joined: Boolean -> "joined=$joined" },
+                ) {
+                    joinEvent.join(
+                        eventId, name, startsAt, endsAt, deletesAt, minPhotoDate, maxPhotoDate, direction,
+                        saveToAlbum,
+                    ) != JoinOutcome.EnrollFailed
+                }
             },
-            // Share is pure platform (a system sheet over the top view controller) — the shell's lambda,
-            // passed through undecorated.
-            share = ports.share,
+            // Share is pure platform (a system sheet over the top view controller). Decorated like the
+            // rest: presenting the sheet is still a tap, and an unattributed line is the thing this
+            // instrumentation exists to eliminate.
+            share = { url ->
+                tapLog.invocation(ports.logScope, "tap.share") { ports.share(url) }
+            },
             // The permission user-taps (capability `permission-gate`), bound to the requester port here
             // so presentation never names it (migration step 9). `requestAccess` returns nothing and
             // cannot suspend — the grant arrives only via the permission read-model StateFlow.
-            requestAccess = { ports.photoAccessRequester.request() },
-            openSettings = { ports.photoAccessRequester.openSettings() },
+            requestAccess = {
+                tapLog.invocation(ports.logScope, "tap.requestAccess") { ports.photoAccessRequester.request() }
+            },
+            openSettings = {
+                tapLog.invocation(ports.logScope, "tap.openSettings") { ports.photoAccessRequester.openSettings() }
+            },
             // The picker presentation is platform surface; the selection outcome arrives only via
             // the selection-change seam (fire-and-forget, like every command here).
-            choosePhotos = { ports.presentPhotoPicker() },
+            choosePhotos = {
+                tapLog.invocation(ports.logScope, "tap.choosePhotos") { ports.presentPhotoPicker() }
+            },
             // In-place membership reconfigure (capability `reconfigure-membership`): edit direction/
             // cutoff/album without leaving. Distinct from `openSettings` (the iOS system settings page).
             reconfigure = { eventId, direction, minPhotoDate, maxPhotoDate, saveToAlbum ->
-                reconfigureEvent.reconfigure(eventId, direction, minPhotoDate, maxPhotoDate, saveToAlbum)
+                tapLog.invocation(ports.logScope, "tap.reconfigure", params = "eventId=$eventId") {
+                    reconfigureEvent.reconfigure(eventId, direction, minPhotoDate, maxPhotoDate, saveToAlbum)
+                }
             },
             // Rename the joined event (capability `event-rename`): unlike `reconfigure`, which edits only
             // this device's settings, this rewrites the SHARED event — every member picks the new name up
@@ -715,7 +753,11 @@ class AppCore internal constructor(
             // wires no gesture and no sheet can open — a build that can send nothing must not offer an
             // affordance suggesting it can. This is the ONE place that decision is made.
             sendDiagnostics = if (ports.diagnosticsReporter.isConfigured) {
-                { note, screen -> ports.diagnosticsReporter.send(collectDiagnosticDump.collect(note, screen)) }
+                { note, screen ->
+                    tapLog.invocation(ports.logScope, "tap.sendDiagnostics", params = "screen=$screen") {
+                        ports.diagnosticsReporter.send(collectDiagnosticDump.collect(note, screen))
+                    }
+                }
             } else {
                 null
             },

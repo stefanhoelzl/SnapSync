@@ -7,6 +7,8 @@ import app.snapsync.ports.PhotoAccessStatusSource
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import platform.Foundation.NSNotification
+import app.snapsync.logging.invocation
+import co.touchlab.kermit.Logger
 import platform.Foundation.NSNotificationCenter
 import platform.Foundation.NSOperationQueue
 import platform.Foundation.NSURL
@@ -41,6 +43,8 @@ class PhotoLibraryPermission : PhotoAccessStatusSource, PhotoAccessRequester {
 
     private val state = MutableStateFlow(read())
 
+    private val log = Logger.withTag("photoPermission")
+
     override val permission: StateFlow<PermissionStatus> = state
 
     // Block-based observer kept for the app's lifetime; the center retains it until removeObserver,
@@ -51,7 +55,13 @@ class PhotoLibraryPermission : PhotoAccessStatusSource, PhotoAccessRequester {
             name = UIApplicationDidBecomeActiveNotification,
             `object` = null,
             queue = NSOperationQueue.mainQueue,
-        ) { _: NSNotification? -> state.value = read() }
+        ) { _: NSNotification? ->
+            // PLATFORM ENTRY POINT (spec `diagnostic-logging`): the OS calls this observer body, so
+            // it records that it was called and what it read. Once per foreground: INFO.
+            log.invocation("photoPermission.onDidBecomeActive", result = { status: PermissionStatus -> "$status" }) {
+                read().also { state.value = it }
+            }
+        }
 
     override fun request() {
         // Fire-and-forget: the result lands on the source via read(), per the port contract.

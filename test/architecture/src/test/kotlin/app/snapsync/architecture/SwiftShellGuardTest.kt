@@ -91,4 +91,75 @@ class SwiftShellGuardTest {
             )
         }
     }
+
+    /**
+     * **Every Swift shell function forwards to Kotlin** (spec `architecture-guards`, "The shell
+     * gates"; spec `module-architecture`, "Absence is never silent").
+     *
+     * A shell function that reaches no Kotlin is invisible by construction: this layer is
+     * wiring-only and untested by project rule, and os_log redacts an interpolated `NSLog`
+     * wholesale, so a Swift-side log line reaches neither `idevicesyslog` nor `debug.log`. Two such
+     * holes existed when this rule was written, and both were platform events nobody could see:
+     * `notifyTermination()` — the OS announcing it is KILLING the upload cycle — did nothing at all,
+     * and `didFailToRegisterForRemoteNotificationsWithError` only `NSLog`ged, so a device that
+     * silently never receives a push said so nowhere.
+     *
+     * "Does nothing" is not an exemption. A no-op may be the right BEHAVIOR — `notifyTermination`
+     * genuinely has nothing to persist — but it is never the right RECORD.
+     */
+    @Test
+    fun `every Swift shell function forwards to Kotlin`() {
+        val roots = listOf("SnapSyncRoot.shared", "UploadExtensionRoot.shared", "MainViewControllerKt")
+        var checked = 0
+        swiftFiles().forEach { file ->
+            val relative = file.toRelativeString(repoRoot)
+            val lines = file.readText().lines()
+            lines.forEachIndexed { index, line ->
+                if (!Regex("""^\s{4}(?:required |private |public )?func\s+\w+""").containsMatchIn(line)) return@forEachIndexed
+                val body = lines.drop(index).take(BODY_SCAN_LINES).joinToString("\n")
+                // Match exemptions against the whole SIGNATURE: several of these are named
+                // `application(...)` and are told apart only by a later argument label, and the
+                // signature may span lines.
+                val signature = body.substringBefore("{")
+                if (EXEMPT.any { signature.contains(it) }) return@forEachIndexed
+                checked++
+                assertTrue(
+                    roots.any { body.contains(it) },
+                    "$relative:${index + 1} — this Swift function reaches no Kotlin:\n    ${line.trim()}\n" +
+                        "A shell function either forwards to the composition root or does not exist. " +
+                        "Doing no WORK can be right; recording NOTHING never is — this layer is " +
+                        "untested by rule and os_log redacts an interpolated NSLog wholesale, so a " +
+                        "Swift-only log line lands nowhere at all. Forward the raw ObjC-visible input " +
+                        "whole and let Kotlin decide and record.",
+                )
+            }
+        }
+        // Non-vacuity twin: a changed `func` shape must fail here, never pass by matching nothing.
+        assertTrue(checked >= 8, "the forwarding rule matched only $checked functions — the scan is broken")
+    }
+
+    private companion object {
+        /** Enough lines to cover a shell function's body; they are all short by the transcriber law. */
+        const val BODY_SCAN_LINES = 14
+
+        /**
+         * Pinned exemptions, each with its forcing proof (spec `module-architecture`, "Necessity
+         * claims carry forcing proofs"). Add one only for a function the platform requires to EXIST
+         * but never uses to tell us anything — never for one that merely looks uninteresting.
+         *
+         * - `configurationForConnecting` — the OS asking WHICH scene configuration to use, answered
+         *   with a `UISceneConfiguration` (API contract). It is a question about our own wiring, not
+         *   a fact about the outside world, so it has nothing to record; and it is the hook that
+         *   installs the scene delegate, whose absence `EventLinkDeliveryTest` already fails on
+         *   loudly. Expiry: if it ever branches on `options` (an incoming activity, say), it becomes
+         *   a delivery path and the exemption dies.
+         * - `updateUIViewController` — a `UIViewControllerRepresentable` protocol requirement (API
+         *   contract). SwiftUI calls it to push new SwiftUI state into a wrapped controller; the
+         *   wrapped controller here is Compose, which owns its own state entirely and is handed
+         *   nothing from SwiftUI. It is a re-render hook, not a platform EVENT, so there is no fact
+         *   about the outside world for it to record. Expiry: if `ComposeView` ever gains a property
+         *   SwiftUI feeds it, this becomes a real update path and the exemption dies with it.
+         */
+        val EXEMPT = setOf("updateUIViewController", "configurationForConnecting")
+    }
 }

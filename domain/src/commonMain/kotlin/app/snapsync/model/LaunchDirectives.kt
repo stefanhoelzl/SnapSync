@@ -89,6 +89,11 @@ data class LaunchDirectives(
             exportLogs = env("SNAPSYNC_EXPORT_LOGS") != null,
         )
 
-        private fun positiveInt(raw: String?): Int? = raw?.toIntOrNull()?.takeIf { it > 0 }
+        /**
+     * Absence: null means "no usable positive count" — unset, non-numeric, and non-positive collapse
+     * on purpose, because a dev/test launch trigger treats all three as "not requested". Reading an
+     * already-materialised env map cannot fail, so no fourth cause is hiding here.
+     */
+    private fun positiveInt(raw: String?): Int? = raw?.toIntOrNull()?.takeIf { it > 0 }
     }
 }
