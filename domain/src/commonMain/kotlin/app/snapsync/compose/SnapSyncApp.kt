@@ -745,9 +745,18 @@ class AppCore internal constructor(
             // Rename the joined event (capability `event-rename`): unlike `reconfigure`, which edits only
             // this device's settings, this rewrites the SHARED event — every member picks the new name up
             // on their next foreground refresh. Fire-and-forget; the outcome rides `renameStatus`.
-            rename = { eventId, name -> renameEvent.rename(eventId, name) },
-            // Clear the rename latch once the screen has consumed a terminal status.
-            resetRename = { renameEvent.reset() },
+            rename = { eventId, name ->
+                tapLog.invocation(ports.logScope, "tap.rename", params = "eventId=$eventId") {
+                    renameEvent.rename(eventId, name)
+                }
+            },
+            // Clear the rename latch once the screen has consumed a terminal status. Instrumented like
+            // the taps even though it is a screen-fired acknowledgement rather than a tap: it mutates
+            // the rename lifecycle, and an unattributed state change is the thing this trail exists to
+            // eliminate.
+            resetRename = {
+                tapLog.invocation(ports.logScope, "tap.resetRename") { renameEvent.reset() }
+            },
             // The hidden diagnostic dump (capability `diagnostic-logging`), fired once the operator has
             // written what went wrong. NULL on a build with no reporting configuration, so the screen
             // wires no gesture and no sheet can open — a build that can send nothing must not offer an
