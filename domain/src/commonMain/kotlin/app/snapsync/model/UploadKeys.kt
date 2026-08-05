@@ -26,6 +26,11 @@ enum class ResourceRole(val wire: String) {
  * originals are kept, so an asset's resource set is fixed at capture and never grows: `photo`/`video`/
  * `audio` → [PRIMARY], `pairedVideo` → [LIVE].
  */
+/**
+ * Absence: null means "a PhotoKit resource type this policy carries no role for" — one answer for an
+ * unknown type and for one deliberately not carried, because the caller skips the resource either
+ * way. A pure mapping over an OS enum: nothing here can fail as opposed to not-match.
+ */
 fun resourceRole(resourceType: Long): ResourceRole? = when (resourceType) {
     1L, 2L, 3L -> ResourceRole.PRIMARY // photo, video, audio (the asset's single original primary)
     9L -> ResourceRole.LIVE // pairedVideo (the Live Photo's original paired video)

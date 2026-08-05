@@ -114,6 +114,11 @@ fun decodeEventUrl(raw: String): ConfigDecodeResult {
 
 private fun fail(reason: String) = ConfigDecodeResult.Failure(reason)
 
+/**
+ * Absence: null means "this fragment is not a link payload" — malformed, empty, and unrecognised are
+ * one answer because the decoder's caller shows the same invalid-link error for all of them. Pure
+ * string work over an in-memory value: there is no read that could fail separately.
+ */
 private fun parseFragment(fragment: String): Map<String, String>? {
     if (fragment.isEmpty()) return null
     val map = mutableMapOf<String, String>()

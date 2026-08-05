@@ -11,7 +11,9 @@ import app.snapsync.ports.PlatformJobState
 import app.snapsync.ports.PlatformUploadJob
 import app.snapsync.ports.BackgroundTransfer
 import app.snapsync.logging.invocation
+import app.snapsync.model.PlatformEntry
 import co.touchlab.kermit.Logger
+import co.touchlab.kermit.Severity
 import kotlinx.cinterop.ExperimentalForeignApi
 import kotlinx.coroutines.suspendCancellableCoroutine
 import platform.Foundation.NSError
@@ -278,10 +280,25 @@ class IosUrlSessionUploadPlatform(
 private class SessionDelegate(
     private val onComplete: (key: String, success: Boolean, error: UploadError?) -> Unit,
     private val onEventsFinished: () -> Unit,
+    private val log: Logger = Logger.withTag("urlSessionUpload"),
 ) : NSObject(), NSURLSessionTaskDelegateProtocol {
 
-    override fun URLSession(session: NSURLSession, task: NSURLSessionTask, didCompleteWithError: NSError?) {
-        val key = task.taskDescription ?: return
+    // PLATFORM ENTRY POINT (spec `diagnostic-logging`). DEBUG, not INFO: one per uploaded photo, so
+    // at INFO a large event would flush the bounded breadcrumb window and roll the device log.
+    // Note the early `return` below on a task with no description — that is an entry that decides to
+    // do nothing, which is exactly the shape that may not be silent, so the enter line precedes it.
+    @PlatformEntry
+    override fun URLSession(session: NSURLSession, task: NSURLSessionTask, didCompleteWithError: NSError?) =
+        log.invocation(
+            "upload.didComplete",
+            params = "error=${didCompleteWithError?.localizedDescription ?: "«none»"}",
+            severity = Severity.Debug,
+        ) {
+            onTaskComplete(task, didCompleteWithError)
+        }
+
+    private fun onTaskComplete(task: NSURLSessionTask, didCompleteWithError: NSError?) {
+        val key = task.taskDescription ?: return log.w { "upload task carried no description — nothing to record" }
         val status = (task.response as? NSHTTPURLResponse)?.statusCode ?: 0L
         val success = didCompleteWithError == null && status in 200L..299L
         val error = if (success) null
@@ -289,7 +306,8 @@ private class SessionDelegate(
         onComplete(key, success, error)
     }
 
-    override fun URLSessionDidFinishEventsForBackgroundURLSession(session: NSURLSession) {
-        onEventsFinished()
-    }
+    // Session-level, once per OS re-attach: INFO.
+    @PlatformEntry
+    override fun URLSessionDidFinishEventsForBackgroundURLSession(session: NSURLSession) =
+        log.invocation("upload.didFinishEvents") { onEventsFinished() }
 }

@@ -11,6 +11,11 @@ package app.snapsync.ports
  * the whole library, which the ledger makes harmless (everything in flight answers `AlreadyUploaded`).
  */
 interface DiscoveryStore {
+    /**
+     * Absence: null covers "never stored" and "could not read" alike. Both re-enumerate the whole
+     * library, which the ledger makes harmless (everything in flight answers `AlreadyUploaded`), so
+     * the two causes are indistinguishable in consequence as well as in value.
+     */
     fun loadToken(): ByteArray?
     fun saveToken(token: ByteArray)
 

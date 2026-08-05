@@ -36,10 +36,21 @@ interface AttestKey {
 /** The backend half: the three ungated `/attest/…` routes. */
 interface AttestClient {
 
-    /** `GET /attest/challenge` → the server-issued nonce, or null on any failure. */
+    /**
+     * `GET /attest/challenge` → the server-issued nonce, or null on any failure.
+     *
+     * Absence: null covers every cause — refusal, transport failure, a malformed body — and all of
+     * them mean the same thing to the only caller: no attestation this wake, so the device stays on
+     * its existing token and the next wake retries. A 401 is the visible, retryable consequence.
+     */
     suspend fun challenge(): String?
 
-    /** `POST /attest/token` → a fresh device token, or null if the backend refused. */
+    /**
+     * `POST /attest/token` → a fresh device token, or null if the backend refused.
+     *
+     * Absence: as [challenge] — refusal and transport failure are one answer here, because both
+     * leave the device unattested and both are retried at the next wake.
+     */
     suspend fun mintToken(
         deviceId: String,
         keyId: String,
@@ -47,7 +58,12 @@ interface AttestClient {
         challenge: String,
     ): String?
 
-    /** `POST /attest/renew` → a fresh device token from an assertion, or null if the backend refused. */
+    /**
+     * `POST /attest/renew` → a fresh device token from an assertion, or null if the backend refused.
+     *
+     * Absence: as [challenge] — one answer for refusal and transport failure alike, retried at the
+     * next wake.
+     */
     suspend fun renewToken(deviceId: String, assertion: ByteArray, challenge: String): String?
 }
 
@@ -61,11 +77,21 @@ interface AttestClient {
 interface AttestStore {
 
     /** The current token, or null if none was ever stored. MAY be expired — the reader decides. */
+    /**
+     * Absence: null means the token is **absent** and nothing else. An unreadable Keychain is NOT
+     * collapsed here — `readExisting` throws `KeychainUnavailable(status)` instead, and
+     * `KeychainRead` keeps `Absent` and `Unavailable(status)` apart on purpose ("never mistaken for
+     * absence"). That separation is what lets a caller treat null as "not attested yet" and mint.
+     */
     fun token(): String?
 
     fun setToken(token: String)
 
     /** The attested `keyId`, or null if this install has never attested. */
+    /**
+     * Absence: as [token] — absent only; unreadable throws. The distinction matters more here than
+     * anywhere: minting on a forged "absent" would burn a fresh Secure-Enclave attestation.
+     */
     fun keyId(): String?
 
     fun setKeyId(keyId: String)

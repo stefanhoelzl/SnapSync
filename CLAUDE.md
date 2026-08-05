@@ -972,6 +972,9 @@ gated in `./gradlew build`; a violation is a red build, not a review note.
   transcriber (forwards raw ObjC-visible inputs whole, decides nothing; pinned exceptions only).
 - **Necessity claims carry forcing proofs** — "the platform forces X" cites an API contract, a
   measurement, or a vendor doc — never the current code — and names its expiry trigger.
+- **Absence is never silent** — "nothing" and "couldn't tell" are different answers wherever their
+  consequences differ; a deliberate collapse names the consequence that makes it safe for EVERY
+  cause it absorbs; and an entry point never collapses into silence.
 
 Still true and not a law: because iOS targets are present, `commonMain` is limited to the common
 stdlib + each zone's allowlisted libraries — JVM-only APIs there break the iOS compile (verify

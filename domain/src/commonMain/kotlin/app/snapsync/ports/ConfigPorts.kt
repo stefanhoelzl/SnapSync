@@ -163,6 +163,10 @@ fun configReadViaFile(
  * repair). Pure so the one branch that matters is tested on JVM and the simulator:
  *
  * - a **conclusive** read ([ConfigRead.Joined] / [ConfigRead.None]) replaces the value;
+ * Absence: the returned null means "definitively not joined" and ONLY that — the three-state
+ * [ConfigRead] is precisely what keeps "could not tell" out of it, by retaining the last good value
+ * instead. This function is where that law is enforced for the membership.
+ *
  * - an **unreadable** read ([ConfigRead.Unavailable]) **retains** [current] — the same
  *   keep-the-last-good posture as the status counts. Under the old cadence (reload only at the
  *   unlock notification) an unreadable reload was unreachable; at trigger cadence a transient read

@@ -16,6 +16,12 @@ import kotlinx.coroutines.flow.Flow
  */
 interface LedgerStore {
     val changes: Flow<Unit>
+
+    /**
+     * Absence: null means "no such row", and ONLY that — a backend that cannot read throws rather
+     * than answering empty, so this seam never has to encode "could not tell". That is what lets a
+     * caller treat null as a fact about the ledger instead of a fact about the storage.
+     */
     suspend fun get(key: String): LedgerEntry?
     suspend fun put(entry: LedgerEntry)
     suspend fun aggregates(): LedgerAggregates

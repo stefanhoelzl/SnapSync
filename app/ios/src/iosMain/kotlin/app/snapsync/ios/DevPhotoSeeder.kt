@@ -192,6 +192,11 @@ fun seedPhotos(log: Logger, count: Int, policyProbe: Boolean = false) {
  */
 @Suppress("CyclomaticComplexMethod") // pinned — see the file's pin block above
 @OptIn(ExperimentalForeignApi::class)
+/**
+ * Absence: null means the image could not be rendered, and the seeder skips that asset. Dev/test
+ * only (`SNAPSYNC_SEED_PHOTOS`), never reached in production, and the consequence of any cause is
+ * the same: one fewer synthetic asset in a library being filled for a manual experiment.
+ */
 private fun solidColorImage(index: Int, aboveFloor: Boolean): UIImage? {
     val w = if (aboveFloor) SEED_ABOVE_FLOOR_WIDTH else SEED_IMAGE_SIDE
     val h = if (aboveFloor) SEED_ABOVE_FLOOR_HEIGHT else SEED_IMAGE_SIDE

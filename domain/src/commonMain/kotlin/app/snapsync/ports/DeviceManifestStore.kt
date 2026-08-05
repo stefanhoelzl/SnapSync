@@ -12,6 +12,13 @@ package app.snapsync.ports
  * library. Two durable structures tracking one set could only ever disagree.
  */
 interface DeviceManifestStore {
+    /**
+     * Absence: null covers "nothing uploaded yet" and "could not read the record" alike. Both skip
+     * the skip-if-unchanged optimisation and re-write the manifest — an idempotent PUT — so the
+     * collapse costs one redundant upload of a small JSON and never a wrong belief. (The dangerous
+     * direction here is the opposite one, a STALE non-null: that once suppressed the rewrite
+     * forever. Staleness is outside this law; see `LeaveEvent`'s note.)
+     */
     fun loadLastUploaded(): String?
     fun saveLastUploaded(json: String)
 

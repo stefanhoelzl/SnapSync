@@ -34,8 +34,12 @@ final class BackgroundUploadExtension: PHBackgroundResourceUploadExtension {
         ) ?? .failure
     }
 
+    // The OS is killing this cycle. There is nothing to interrupt or persist — the Kotlin cycle is
+    // synchronous (runBlocking) — but that justifies doing no WORK here, never recording NOTHING:
+    // a shell function that forwards nothing is invisible by construction, because this shell is
+    // wiring-only and untested by project rule and os_log redacts an interpolated NSLog wholesale.
+    // Left silent, a terminated cycle read as a `→ process` with no `← process` and no reason.
     func notifyTermination() {
-        // v1: the Kotlin cycle is synchronous (runBlocking), so there is nothing in flight to
-        // interrupt or persist here.
+        UploadExtensionRoot.shared.onTerminate()
     }
 }

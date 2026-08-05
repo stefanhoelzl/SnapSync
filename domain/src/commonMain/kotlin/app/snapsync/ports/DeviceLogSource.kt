@@ -20,7 +20,13 @@ interface DeviceLogSource {
     /** Which process's log to read. Both live on this device; only one is this process's own. */
     enum class Process { APP, EXTENSION }
 
-    /** The last [maxBytes]-ish bytes of [process]'s log, line-aligned; `null` if unreadable. */
+    /**
+     * The last [maxBytes]-ish bytes of [process]'s log, line-aligned; `null` if unreadable.
+     *
+     * Absence: null covers "no such log on this device" and "could not read it", and the two are
+     * identical downstream — the dump ships without that section and the reader sees it reported
+     * absent. Nothing branches on which, so the collapse costs no information anyone acts on.
+     */
     suspend fun tail(process: Process, maxBytes: Int): String?
 
     companion object {

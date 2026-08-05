@@ -13,6 +13,13 @@ interface AlbumManager {
     /**
      * Create a new album titled [name] and return its stable `localIdentifier`, or `null` if creation
      * failed. **Only the app** calls this (it is the sole creator; see [AlbumCoordinator]).
+     *
+     * Absence: null means creation failed, whatever the cause, and the membership then files nothing
+     * into an album the member explicitly opted into — silently. That is the ONE verdict in this
+     * inventory recorded as unsatisfying rather than safe: the causes share a consequence, so the
+     * collapse is legal, but whether the consequence itself is acceptable under an explicit
+     * `saveToAlbum` opt-in is an open product question (decision record:
+     * `changes/archive/…-absence-is-never-silent`, Open Questions).
      */
     suspend fun ensureCreated(name: String): String?
 
@@ -51,7 +58,13 @@ interface AlbumManager {
  * iOS impl is `IosAlbumMapStore`; a fake/in-memory impl backs the tests.
  */
 interface AlbumMapStore {
-    /** The stored album `localIdentifier` for [eventId], or `null` if none was ever created. */
+    /**
+     * The stored album `localIdentifier` for [eventId], or `null` if none was ever created.
+     *
+     * Absence: null covers "never created" and "map unreadable" alike — both send the coordinator
+     * down the ensure-then-remember path, which is why this map is described as a self-healing
+     * cache. A wrong null costs one redundant lookup, never a lost photo.
+     */
     fun get(eventId: String): String?
 
     /** Remember [albumLocalId] as [eventId]'s album (overwrites any prior mapping). */

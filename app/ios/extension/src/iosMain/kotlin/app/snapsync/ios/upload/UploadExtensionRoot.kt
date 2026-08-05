@@ -6,6 +6,7 @@ import app.snapsync.compose.UploadPorts
 import app.snapsync.compose.uploadCore
 import app.snapsync.feature.album.AlbumCoordinator
 import app.snapsync.model.DENYLISTED_ALBUM_TITLES
+import app.snapsync.model.PlatformEntry
 import app.snapsync.album.IosAlbumManager
 import app.snapsync.album.IosAlbumMapStore
 import app.snapsync.config.FileBackedConfigStore
@@ -147,13 +148,29 @@ object UploadExtensionRoot {
      * error-agnostic) and re-mints the request from the provider each attempt — so once the APP next wakes
      * and renews, the very same resources upload with no special-casing anywhere in this file.
      *
+     * Absence: null means "no usable token", collapsing absent and unreadable — see below for why
+     * that is kept and what it now costs.
+     *
      * Non-throwing: the Keychain is unreadable before the first unlock since boot, and this is called on a
      * background wake, which is exactly when that happens. A null token is a `401`, which is retryable; a
      * thrown error here would take down the cycle.
+     *
+     * The collapse is kept — but it is **no longer silent**, and the reason is the law (spec
+     * `module-architecture`, "Absence is never silent"). The justification above covers
+     * `errSecInteractionNotAllowed` (-25308, locked device, retryable). The same `runCatching`
+     * also absorbs `errSecMissingEntitlement` (-34018), which is **permanent**, not retryable, and
+     * produced the "dead in the water" mis-signing incident of 2026-07-21 — a cause with a materially
+     * different consequence that the stated reason never covered. `KeychainRead` deliberately carries
+     * the status apart from absence (`Unavailable(status)`, "never mistaken for absence") and
+     * `readExisting` throws rather than return null, so discarding it here without a word threw away
+     * the one fact that distinguishes the two. Whether the cycle should *stop* on -34018 instead of
+     * 401-looping is a separate question, deliberately left open.
      */
     private val attestStore: AttestStore by lazy { KeychainAttestStore() }
 
-    private fun attestToken(): String? = runCatching { attestStore.token() }.getOrNull()
+    private fun attestToken(): String? = runCatching { attestStore.token() }
+        .onFailure { log.w(it) { "attest token unreadable — proceeding unauthenticated (expect 401)" } }
+        .getOrNull()
 
     private val httpClient by lazy {
         darwinHttpClient(
@@ -260,5 +277,24 @@ object UploadExtensionRoot {
      * which case each [CycleResult] means — is the tested `processingResultRawValue` mapping in
      * `:domain` `ports/`). Wiring only: no branch here a second tier could answer differently.
      */
+    @PlatformEntry
     fun processRawValue(): Int = process().processingResultRawValue()
+
+    /**
+     * The OS is **terminating this cycle** — forwarded from the Swift principal's
+     * `notifyTermination()` (capability `diagnostic-logging`; spec `module-architecture`, "Absence is
+     * never silent").
+     *
+     * There is nothing to interrupt or persist: [process] is synchronous (`runBlocking`) and the
+     * process does not outlive it. That justifies doing no **work** here; it never justified
+     * recording **nothing**, which is what the Swift shell did before this entry existed. A
+     * terminated cycle then appeared in `ext-debug.log` as a `→ process` with no `← process` and no
+     * explanation — in the process that is hardest to read at all (an App-Group log needs a
+     * `SNAPSYNC_EXPORT_LOGS=1` launch and a USB pull). This line is the difference between "the OS
+     * killed us" and "we hung".
+     */
+    @PlatformEntry
+    fun onTerminate() = log.invocation("onTerminate") {
+        log.w { "the OS terminated this cycle — nothing in flight to persist (process() is synchronous)" }
+    }
 }

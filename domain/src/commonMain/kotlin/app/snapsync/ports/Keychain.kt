@@ -170,6 +170,12 @@ class DeviceIdentityAbsent :
  * Read an existing value without ever minting: `null` when the item is genuinely [KeychainRead.Absent],
  * throwing [KeychainUnavailable] when it could not be read. Used by stores (the event config) that have
  * nothing to mint — they persist only what a user action produced.
+ *
+ * Absence: null means **absent, and only absent**. This function is where that separation is
+ * enforced for every Keychain-backed store: an unreadable item throws rather than answering empty,
+ * so no caller can mistake "the device is locked" for "this device never had a token". It is the
+ * reference implementation of the rule, not an exception to it (spec `module-architecture`,
+ * "Absence is never silent").
  */
 fun readExisting(
     keychain: Keychain,

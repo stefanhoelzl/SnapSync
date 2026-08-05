@@ -8,6 +8,18 @@ package app.snapsync.ports
  * `NSUserDefaults` on iOS, exactly as the discovery cursor is.
  */
 interface JoinedEventMarker {
+    /**
+     * Absence: null means "no marker" — which this capability reads as **a reinstall**, a genuinely
+     * load-bearing meaning. The collapse is nonetheless **forced, not chosen**: the marker lives in
+     * a shared `NSUserDefaults` suite, and that API has no error channel at all — `stringForKey`
+     * answers nil for an absent key and offers no way to report a failed read, so there is no third
+     * state available to encode.
+     *
+     * What makes it safe is the bound on being wrong: a forged "reinstall" costs exactly one
+     * reconcile, and a reconcile seeds already-stored photos as `COMPLETED` rather than re-uploading
+     * them (capability `event-rejoin-reconciliation`). Expiry: if reconciliation ever stops being
+     * cheap and idempotent, this marker needs a store that can distinguish the two.
+     */
     fun read(): String?
     fun set(eventId: String)
     fun clear()

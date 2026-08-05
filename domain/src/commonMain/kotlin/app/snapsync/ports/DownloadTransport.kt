@@ -46,7 +46,13 @@ interface DownloadTransportHost {
      */
     fun accepts(description: String, outcome: TransferOutcome): Boolean
 
-    /** Where [description]'s finished bytes must be moved; `null` if the description is unattributable. */
+    /**
+     * Where [description]'s finished bytes must be moved; `null` if the description is unattributable.
+     *
+     * Absence: null leaves the transfer's bytes exactly where the OS put them — the caller returns
+     * without staging — so the resource stays un-staged and the next reconcile downloads it again.
+     * Every cause of an unattributable description shares that consequence: a retry, never a loss.
+     */
     fun destinationFor(description: String): String?
 
     /** [description]'s bytes finished and were moved to durable staging at [stagedPath]. */
@@ -82,6 +88,11 @@ interface DownloadTransport {
      * Begin fetching [url], tagging the transfer with [description]. Returns the handle, or `null` if the
      * transfer could not be started. It MUST NOT throw — an unusable [url] is the caller's to filter (it
      * does), and anything else is a `null`.
+     *
+     * Absence: null means "not started", for any reason, and the resource simply stays un-downloaded
+     * until the next reconcile — which is also what a started-then-failed transfer produces. The
+     * causes are deliberately collapsed BECAUSE they converge: distinguishing them would give the
+     * caller a choice it has no different action for.
      */
     fun start(url: String, description: String): DownloadTask?
 }

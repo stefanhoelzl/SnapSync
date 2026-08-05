@@ -3,6 +3,7 @@ package app.snapsync.logging
 import app.snapsync.ports.LogScope
 import app.snapsync.ports.invocation
 import co.touchlab.kermit.Logger
+import co.touchlab.kermit.Severity
 
 /**
  * The iOS binding of the `:domain` `LogScope` port (capability `diagnostic-logging`): drives the
@@ -25,6 +26,7 @@ object IosLogScope : LogScope {
 inline fun <T> Logger.invocation(
     name: String,
     params: String = "",
+    severity: Severity = Severity.Info,
     result: (T) -> String = { "" },
     block: () -> T,
-): T = invocation(IosLogScope, name, params, result, block)
+): T = invocation(IosLogScope, name, params, severity, result, block)
