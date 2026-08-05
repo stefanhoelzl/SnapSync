@@ -16,7 +16,11 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
+import app.snapsync.ports.OsReceipt
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.test.runTest
+import kotlinx.coroutines.withTimeoutOrNull
+import kotlin.time.Duration.Companion.seconds
 
 class DownloadControllerTest {
 
@@ -50,8 +54,15 @@ class DownloadControllerTest {
     /** Imports successfully, minting a deterministic created local id per asset; records nothing else. */
     private class FakeImporter : PhotoLibraryImporter {
         val imported = mutableListOf<AssetRef>()
+        val attempted = mutableListOf<AssetRef>()
         var failNext = false
+
+        /** Assets whose import reports [ImportResult.TimedOut] — the device-unhealthy answer. */
+        val timeOutFor = mutableSetOf<String>()
+
         override suspend fun import(ref: AssetRef, resources: List<StagedResource>, creationDate: String): ImportResult {
+            attempted += ref
+            if (ref.sourceAssetId in timeOutFor) return ImportResult.TimedOut("forced timeout")
             if (failNext) return ImportResult.Failed("forced")
             imported += ref
             return ImportResult.Imported("LOCAL-${ref.sourceAssetId}_L0_001")
@@ -164,6 +175,113 @@ class DownloadControllerTest {
         controller(FakeUnion(emptyList(), ok = false), store = store, jobs = jobs).reconcile("event")
         assertTrue(jobs.enqueued.isEmpty())
         assertEquals(0, store.importedCount())
+    }
+
+    /**
+     * A failed union fetch costs the wake its DISCOVERY, not its WORK: the drain reads only the store
+     * and bytes already on disk. This was inert while a failing fetch consumed the whole wake; with an
+     * explicit request timeout it returns in seconds, so skipping the drain would strand importable
+     * assets for no reason.
+     */
+    @Test
+    fun union_failure_still_drains_staged_imports() = runTest {
+        val store = InMemoryDownloadStore()
+        val jobs = RecordingJobs()
+        val importer = FakeImporter()
+        val union = FakeUnion(listOf(asset("DEVICE-A", "Q")))
+        val ref = AssetRef("DEVICE-A", "Q")
+
+        // A good wake plans the asset and stages one of its two resources — not yet importable.
+        val c = controller(union, store = store, jobs = jobs, importer = importer)
+        c.reconcile("event")
+        c.onResourceStaged(ref, "Q-primary.heic", "/stage/p")
+        assertTrue(importer.imported.isEmpty())
+
+        // The second resource lands, then the NEXT wake's union fetch times out. The asset is fully
+        // staged, so this wake must still import it.
+        store.markStaged(ref, "Q-live.mov", "/stage/l")
+        val enqueuedBefore = jobs.enqueued.size
+        controller(FakeUnion(emptyList(), ok = false), store = store, jobs = jobs, importer = importer)
+            .reconcile("event")
+
+        assertEquals(listOf(ref), importer.imported, "a fast union failure must not strand a staged asset")
+        assertTrue(store.isImported(ref))
+        assertEquals(enqueuedBefore, jobs.enqueued.size, "discovery is skipped: nothing new is enqueued")
+    }
+
+    /**
+     * A timeout says the DEVICE is not answering, not that this photo is bad — so the wake's drain
+     * stops rather than starting an import per remaining asset against a stalled library, each of which
+     * may still commit and become a duplicate. The stopped assets stay importable for the next wake.
+     */
+    @Test
+    fun an_import_timeout_stops_this_wakes_drain_and_leaves_the_rest_importable() = runTest {
+        val store = InMemoryDownloadStore()
+        val importer = FakeImporter()
+        val union = FakeUnion(listOf(asset("DEVICE-A", "AAA"), asset("DEVICE-A", "BBB")))
+        val c = controller(union, store = store, importer = importer)
+        c.reconcile("event")
+
+        // Both assets fully staged, so both are importable in one drain; the FIRST one times out.
+        for (id in listOf("AAA", "BBB")) {
+            val ref = AssetRef("DEVICE-A", id)
+            store.markStaged(ref, "$id-primary.heic", "/stage/$id/p")
+            store.markStaged(ref, "$id-live.mov", "/stage/$id/l")
+        }
+        importer.timeOutFor += store.importableAssets().first().ref.sourceAssetId
+
+        c.importReady()
+
+        assertEquals(1, importer.attempted.size, "the drain stopped at the timeout instead of continuing")
+        assertEquals(0, store.importedCount(), "nothing was imported in the stalled wake")
+        assertEquals(2, store.importableAssets().size, "both assets stay importable for the next wake")
+
+        // The next wake, with the library healthy again, drains both.
+        importer.timeOutFor.clear()
+        c.importReady()
+        assertEquals(2, store.importedCount())
+    }
+
+    /**
+     * The two bounds together, over real parts (capability `ios-app-shell` + `photo-download`): a wake
+     * whose import never answers must still release its OS handler, and must leave the photo importable.
+     * This is the SNAPSYNC-6 shape — an import suspended in `performChanges` holding the controller's
+     * mutex when the process died — with both bounds in place.
+     *
+     * The shell wiring that supplies the real handler is `:app:ios`, untested by rule; it is verified on
+     * device instead. What is testable here is that the pieces compose to the right outcome.
+     */
+    @Test
+    fun a_hung_import_still_releases_the_receipt_and_leaves_the_asset_importable() = runTest {
+        val store = InMemoryDownloadStore()
+        val hang = CompletableDeferred<Unit>()
+        var released = false
+        val ref = AssetRef("DEVICE-A", "Q")
+
+        val hangingImporter = object : PhotoLibraryImporter {
+            override suspend fun import(r: AssetRef, res: List<StagedResource>, creationDate: String): ImportResult {
+                // Exactly the production shape: bound the WAIT, never the library call.
+                return withTimeoutOrNull(5.seconds) { hang.await(); ImportResult.Imported("never") }
+                    ?: ImportResult.TimedOut("no completion within 5s")
+            }
+        }
+        val c = DownloadController(
+            FakeUnion(listOf(asset("DEVICE-A", "Q"))), store, RecordingJobs(),
+            hangingImporter, myDevice, { true },
+        )
+        c.reconcile("event")
+        store.markStaged(ref, "Q-primary.heic", "/p")
+        store.markStaged(ref, "Q-live.mov", "/l")
+
+        val receipt = OsReceipt("test-wake", 20.seconds, release = { released = true })
+        receipt.heldFor { c.importReady() }
+
+        assertTrue(released, "the OS handler must be released even though the import never answered")
+        assertFalse(store.isImported(ref), "a photo whose import was abandoned stays importable")
+        assertEquals(1, store.importableAssets().size)
+
+        // And the controller's lock was freed, so the next wake can drain at all.
+        c.onLeaveOrSwitch()
     }
 
     @Test

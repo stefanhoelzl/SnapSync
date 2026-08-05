@@ -7,6 +7,8 @@ import app.snapsync.config.FileBackedConfigStore
 import app.snapsync.engine.LEDGER_APP_GROUP
 import app.snapsync.feature.album.AlbumCoordinator
 import app.snapsync.model.SelectionScope
+import app.snapsync.ports.OsReceipt
+import app.snapsync.ports.ReceiptDeadlines
 import app.snapsync.ports.LedgerStore
 import app.snapsync.gallery.IosDeviceManifestStore
 import app.snapsync.gallery.PhotoKitCandidateSource
@@ -151,9 +153,22 @@ class UrlSessionUploadController(
 
     init {
         platform.onBackgroundEventsFinished = {
-            backgroundEventsCompletion?.invoke()
+            val completion = backgroundEventsCompletion
             backgroundEventsCompletion = null
-            scope.launch { pump.onSessionEvents() }
+            scope.launch {
+                // The session drained ITS events; the cycle those events feed has not run yet. Releasing
+                // the OS handler here — which is what this did — reported work that was merely queued
+                // (capability `ios-app-shell`). With no handler (a foreground drain) the pump still runs.
+                if (completion == null) {
+                    pump.onSessionEvents()
+                } else {
+                    OsReceipt(
+                        entryPoint = "url-session.onBackgroundSessionEvents",
+                        deadline = ReceiptDeadlines.URL_SESSION_EVENTS,
+                        release = completion,
+                    ).heldFor { pump.onSessionEvents() }
+                }
+            }
         }
     }
 
@@ -235,23 +250,34 @@ class UrlSessionUploadController(
         pump.onStart()
     }
 
-    /** Foreground entry — pump a cycle (completions drive the rest while open). */
-    fun onForeground() {
-        scope.launch { log.invocation("url-session.onForeground") { pump.onForeground() } }
+    /**
+     * Foreground entry — pump a cycle (completions drive the rest while open).
+     *
+     * Awaited, not launched: its caller is a `flow/` trigger whose own caller reports completion to the
+     * OS (law "A trigger flow never outlives its own run"). A `scope.launch` here made that report a
+     * statement about work that had not started.
+     */
+    suspend fun onForeground() {
+        log.invocation("url-session.onForeground") { pump.onForeground() }
     }
 
     /** The photo selection changed under a partial grant — pump a cycle over the new snapshot. */
-    fun onSelectionChanged() {
-        scope.launch { log.invocation("url-session.onSelectionChanged") { pump.onSelectionChanged() } }
+    suspend fun onSelectionChanged() {
+        log.invocation("url-session.onSelectionChanged") { pump.onSelectionChanged() }
     }
 
     /** The `BGProcessingTask` heartbeat handler fired — top up and re-arm. Call [done] when finished. */
     fun onBackgroundTask(done: () -> Unit) {
         scope.launch {
-            try {
+            // Already awaited its work before this change (the one receipt in the app that was correct);
+            // routed through [OsReceipt] anyway so every OS handler in the app is released by the same
+            // bounded, release-exactly-once path rather than by four hand-written `finally`s.
+            OsReceipt(
+                entryPoint = "url-session.onBackgroundTask",
+                deadline = ReceiptDeadlines.BACKGROUND_TASK,
+                release = done,
+            ).heldFor {
                 log.invocation("url-session.onBackgroundTask") { pump.onBackgroundTask() }
-            } finally {
-                done()
             }
         }
     }

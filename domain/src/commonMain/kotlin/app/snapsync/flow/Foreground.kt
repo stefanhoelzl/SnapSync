@@ -5,7 +5,7 @@ import app.snapsync.model.JoinLoad
 import app.snapsync.feature.download.DownloadController
 import app.snapsync.feature.membership.MembershipRefresh
 import app.snapsync.feature.status.LedgerCountsPoller
-import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.launch
 
 /**
@@ -51,7 +51,6 @@ import kotlinx.coroutines.launch
  * self-wrapping features label their own lines, and `refreshStatus` runs with no ambient prefix.
  */
 class Foreground(
-    private val scope: CoroutineScope,
     private val downloadController: DownloadController,
     /** The membership-refresh rule (capability `join-event`): folds a fetched result, backfills, and on
      *  a CONFIRMED absence performs the teardown itself. */
@@ -59,9 +58,9 @@ class Foreground(
     /** The foreground-gated ledger-counts poll (capability `sync-status`); stopped by the Background flow. */
     private val statusPoller: LedgerCountsPoller,
     /** Re-read the persisted membership into the config StateFlow — the port touch, injected. */
-    private val reloadConfig: () -> Unit,
+    private val reloadConfig: suspend () -> Unit,
     /** The app-driven tier's foreground pump; a no-op on iOS ≥26.1 where the OS owns scheduling. */
-    private val pumpForeground: () -> Unit,
+    private val pumpForeground: suspend () -> Unit,
     /** Re-read the own-device total + ledger counts + the foreign-download line. */
     private val refreshStatus: suspend () -> Unit,
     /** The active event id, or `null` when unjoined — the config read, injected (a port touch). */
@@ -72,25 +71,34 @@ class Foreground(
      *  only thing separating a real deletion from a transient fault. */
     private val fetchEventDetails: suspend (eventId: String) -> JoinLoad,
     /** Renew the attestation token if it is stale (a wake point; covers launch, the first foreground). */
-    private val refreshAttestation: () -> Unit,
+    private val refreshAttestation: suspend () -> Unit,
 ) {
-    fun run() {
+    suspend fun run() {
         // Membership first: every reader below (the pump's arm guards, reconcile, the title refresh)
         // acts on the StateFlow this repairs.
         reloadConfig()
+        // Wake point (capability `device-attestation`): renew the token if stale. Also covers launch.
+        // BEFORE the network-bearing work below, not after it: this used to be a fire-and-forget launch
+        // fired alongside them, so a refresh and the fetches it exists to authorize raced, and a fetch
+        // could go out carrying the very token being replaced. `refreshOutcome` short-circuits on a
+        // fresh token, so the sequencing costs nothing in the common case.
+        refreshAttestation()
         // App-driven upload tier (iOS 18–26.0): foreground entry pumps an upload cycle. No-op on ≥26.1.
         pumpForeground()
         // Keep the ledger counts live while the screen is visible (the first tick waits one cadence;
         // the refreshStatus launch below covers "now").
         statusPoller.start()
-        // Each escapes this trigger's synchronous span, labelling its own lines (or none).
-        scope.launch { refreshStatus() }
-        // Foreground-only discovery (capability `photo-download`): pick up foreign photos and import staged.
-        scope.launch { activeEventId()?.let { downloadController.reconcile(it) } }
-        // Keep the membership current: fetch, then let the membership rule decide what the result MEANS
-        // (name refresh, window/retention backfill, or — on a CONFIRMED absence — the teardown).
-        scope.launch { activeEventId()?.let { id -> membershipRefresh.refresh(id, fetchEventDetails(id)) } }
-        // Wake point (capability `device-attestation`): renew the token if stale. Also covers launch.
-        refreshAttestation()
+        // Still concurrent — but now AWAITED, so `run()` returns when they are done rather than when
+        // they are queued (law "A trigger flow never outlives its own run"). Each still labels its own
+        // log lines: `coroutineScope` children escape this trigger's synchronous span exactly as the
+        // former `scope.launch` bodies did.
+        coroutineScope {
+            launch { refreshStatus() }
+            // Foreground-only discovery (capability `photo-download`): pick up foreign photos and import staged.
+            launch { activeEventId()?.let { downloadController.reconcile(it) } }
+            // Keep the membership current: fetch, then let the membership rule decide what the result MEANS
+            // (name refresh, window/retention backfill, or — on a CONFIRMED absence — the teardown).
+            launch { activeEventId()?.let { id -> membershipRefresh.refresh(id, fetchEventDetails(id)) } }
+        }
     }
 }

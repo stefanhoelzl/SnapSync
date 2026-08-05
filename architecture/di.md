@@ -52,6 +52,7 @@ Roots found:
 | `KtorPushHttpClient` | x | x | x |
 | `MutableAttestedSource` | x | | |
 | `OsFacts` | x | | |
+| `OsReceipt` | x | | x |
 | `PhotoKitCandidateSource` | x | x | x |
 | `PhotoKitUploadProducer` | x | | |
 | `PhotoLibraryPermission` | x | | |

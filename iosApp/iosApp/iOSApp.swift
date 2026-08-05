@@ -23,14 +23,15 @@ final class AppDelegate: NSObject, UIApplicationDelegate {
         _ application: UIApplication,
         didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil
     ) -> Bool {
-        // Ask the OS for an APNs device token; it is delivered async to the two callbacks below. Silent
-        // pushes need no user-permission prompt, so no UNUserNotificationCenter authorization request.
+        // APNs token → delivered async to the callbacks below; silent pushes need no user prompt.
         application.registerForRemoteNotifications()
 
         BGTaskScheduler.shared.register(
             forTaskWithIdentifier: "app.snapsync.download.backstop",
             using: nil
         ) { task in
+            // Kotlin holds this task until the drain finishes; no expiry ⇒ the OS kills us instead.
+            task.expirationHandler = { task.setTaskCompleted(success: false) }
             SnapSyncRoot.shared.runDownloadBackstop {
                 task.setTaskCompleted(success: true)
             }

@@ -10,11 +10,13 @@ import platform.Foundation.NSDate
 import platform.Foundation.NSFileManager
 import platform.Foundation.NSFileSize
 import platform.Foundation.NSNumber
+import platform.Foundation.dateWithTimeIntervalSince1970
 import platform.posix.O_APPEND
 import platform.posix.O_WRONLY
 import platform.posix.close
 import platform.posix.open
 import platform.posix.write
+import kotlin.time.Clock
 
 /**
  * A Kermit writer that appends every log line to the file at [path] — the reliable, verbatim
@@ -43,7 +45,7 @@ class FileLogWriter(
         rollIfNeeded(p)
         val ctx = LogContext.current
         val line = buildString {
-            append(NSDate().description ?: "")
+            append(stamp())
             append(' ')
             if (ctx != null) append('[').append(ctx).append("] ")
             append('[').append(severity.name).append('/').append(tag).append("] ").append(message)
@@ -51,6 +53,37 @@ class FileLogWriter(
             append('\n')
         }
         appendAtomically(p, line)
+    }
+
+    /**
+     * The line's timestamp, at **millisecond** resolution (capability `diagnostic-logging`).
+     *
+     * `NSDate.description` is a fixed `yyyy-MM-dd HH:mm:ss +0000` in UTC — seconds only, and at that
+     * resolution the order of two lines written in the same second is unrecoverable. That ordering is
+     * exactly what separates "the platform call was slow" from "the process was frozen after it
+     * returned": diagnosing SNAPSYNC-6 required deducing it from durations because the stamps could not
+     * say. No `NSDateFormatter` — it would allocate one per line on a path that runs for every log line.
+     *
+     * ONE clock read, split into whole seconds and milliseconds. The `NSDate` is built from the floored
+     * seconds so its description sits exactly on a second boundary and cannot round away from the
+     * milliseconds printed beside it; reading the clock twice could straddle a boundary and stamp a line
+     * a full second wrong, which is the one error this change exists to remove.
+     */
+    private fun stamp(): String {
+        val epochMillis = Clock.System.now().toEpochMilliseconds()
+        val millis = (epochMillis % 1000).toInt()
+        val desc = NSDate.dateWithTimeIntervalSince1970((epochMillis / 1000).toDouble()).description
+            ?: return ""
+        val zone = desc.lastIndexOf(' ')
+        if (zone <= 0) return desc // not the documented shape — stamp it verbatim rather than guess
+        return buildString {
+            append(desc, 0, zone)
+            append('.')
+            if (millis < 100) append('0')
+            if (millis < 10) append('0')
+            append(millis)
+            append(desc, zone, desc.length)
+        }
     }
 
     /** Roll the log to its `.1` sibling (replacing any prior one) once it exceeds [maxBytes]. */

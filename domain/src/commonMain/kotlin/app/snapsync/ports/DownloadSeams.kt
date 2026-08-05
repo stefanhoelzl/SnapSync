@@ -22,6 +22,18 @@ sealed interface ImportResult {
 
     /** The import did not complete; the asset stays importable and is retried (no terminal failure). */
     data class Failed(val message: String) : ImportResult
+
+    /**
+     * The import was still waiting on the photo library when its deadline expired, so the wait was
+     * abandoned (capability `photo-download`). Distinct from [Failed] because it says something about the
+     * DEVICE, not the photo: the one hang observed in the field (SNAPSYNC-6) was environmental — the same
+     * asset, from the same staged bytes, imported in under a second three minutes later in a fresh
+     * process. So the drain stops for this wake rather than working through the remaining assets and
+     * abandoning a transaction for each.
+     *
+     * Like [Failed], the asset stays importable and is retried at a later wake.
+     */
+    data class TimedOut(val message: String) : ImportResult
 }
 
 /**

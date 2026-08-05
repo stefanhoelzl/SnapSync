@@ -64,8 +64,15 @@ class DownloadController(
             log.i { "reconcile skipped — this membership does not download" }
             return@invocation
         }
+        // A failed union fetch costs us this wake's DISCOVERY, not this wake's WORK. The import drain
+        // below reads only the store and the staged bytes already on disk — no network — so returning
+        // here would strand assets that are ready to import for no reason. That was harmless while a
+        // failing fetch took minutes (the wake was over regardless); once the client carries an explicit
+        // request timeout (capability `ios-app-shell`) a failure arrives in seconds with most of the
+        // wake budget unspent, and skipping the drain wastes it.
         val assets = union.union(eventId).getOrElse {
-            log.w(it) { "union fetch failed — keeping last state" }
+            log.w(it) { "union fetch failed — keeping last state, draining staged imports anyway" }
+            mutex.withLock { importReadyLocked() }
             return@invocation
         }
         mutex.withLock {
@@ -116,6 +123,16 @@ class DownloadController(
                 }
                 is ImportResult.Failed ->
                     log.w { "import deferred for ${ref.sourceAssetId}: ${result.message}" } // retried later
+                // A timeout is a statement about the DEVICE, not this photo (capability `photo-download`):
+                // the one hang observed in the field was environmental, and the same asset imported in
+                // under a second minutes later. Continuing would start an import per remaining asset
+                // against a library that is not answering, abandoning a transaction for each — and every
+                // abandoned transaction may still commit, which is a duplicate photo. Stop; the assets
+                // stay importable and the next wake drains them.
+                is ImportResult.TimedOut -> {
+                    log.w { "import timed out for ${ref.sourceAssetId}: ${result.message} — stopping this wake's drain" }
+                    return
+                }
             }
         }
     }

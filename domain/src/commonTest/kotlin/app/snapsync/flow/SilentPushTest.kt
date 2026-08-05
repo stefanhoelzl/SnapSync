@@ -1,6 +1,5 @@
 package app.snapsync.flow
 
-import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -23,11 +22,10 @@ class SilentPushTest {
         var attestations = 0
     }
 
-    private fun kotlinx.coroutines.CoroutineScope.flow(
+    private fun flow(
         recorder: Recorder,
         receivers: List<suspend (String) -> Unit>,
     ) = SilentPush(
-        scope = this,
         reloadConfig = { recorder.reloads++ },
         refreshAttestation = { recorder.attestations++ },
         receivers = receivers,
@@ -68,7 +66,6 @@ class SilentPushTest {
         val r = Recorder()
         flow(r, listOf({ eventId -> r.seen += "arm:$eventId" }))
             .run(mapOf<Any?, Any?>("eventId" to "E7"))
-        advanceUntilIdle()
 
         assertEquals(listOf("arm:E7"), r.seen)
         assertEquals(1, r.reloads, "the membership is re-read before the receivers' guards read it")
@@ -80,7 +77,6 @@ class SilentPushTest {
         val r = Recorder()
         flow(r, listOf({ eventId -> r.seen += "arm:$eventId" }))
             .run(mapOf<Any?, Any?>("aps" to "alert"))
-        advanceUntilIdle()
 
         assertTrue(r.seen.isEmpty(), "no receiver runs for a push with no usable eventId")
     }

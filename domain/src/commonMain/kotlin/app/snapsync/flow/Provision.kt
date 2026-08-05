@@ -6,7 +6,7 @@ import app.snapsync.feature.membership.SwitchDecision
 import app.snapsync.feature.membership.switchDecision
 import app.snapsync.feature.upload.UploadArm
 import app.snapsync.model.EventConfig
-import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.launch
 
 /**
@@ -27,8 +27,9 @@ import kotlinx.coroutines.launch
  *  5. **Album** — ask the coordinator for the event album, unconditionally, passing the access fact
  *     along with the membership's: the granted/opt-in gate is [AlbumCoordinator.ensureAlbum]'s own
  *     leading guard (`event-album`; the grant subscription covers the grant-after-join case).
- *  6. **Reconcile** foreign downloads and **re-register the push token** — each on its own escaping
- *     launch, so a slow one never blocks the join and each labels its own log lines.
+ *  6. **Reconcile** foreign downloads and **re-register the push token** — concurrently, so a slow
+ *     one never blocks the other and each labels its own log lines, but awaited before `run()`
+ *     returns (law "A trigger flow never outlives its own run").
  *
  * This flow issues **no** event-details fetch. It once did, to fill a title a scan could not fetch
  * while offline; a membership can no longer arrive nameless (capability `event-link`), and every
@@ -41,7 +42,6 @@ import kotlinx.coroutines.launch
  * ([AlbumCoordinator]).
  */
 class Provision(
-    private val scope: CoroutineScope,
     private val uploadArm: UploadArm,
     private val downloadController: DownloadController,
     /** The event-album coordinator (capability `event-album`); its `ensureAlbum` owns the opt-in gate. */
@@ -81,12 +81,17 @@ class Provision(
         //    forget it. (The grant subscription covers the grant-after-join case.)
         albumCoordinator.ensureAlbum(cfg.eventId, cfg.name, cfg.saveToAlbum, granted = isGranted())
         // 6. Auto-download the other contributors' photos (no-op under an upload-only direction, gated
-        //    inside the controller), on its own escaping launch. No details fetch rides here: the
-        //    membership this flow just persisted came from details the route already loaded or minted.
-        scope.launch { downloadController.reconcile(cfg.eventId) }
-        // Re-register the push token on join (not on every foreground): closes the warm-rejoin window
-        // the sweep's device-record collection opens (capability `push-registration`). Its own escaping
-        // launch — a network PUT must never block the join — and best-effort.
-        scope.launch { registerPush() }
+        //    inside the controller) and re-register the push token — the latter closes the warm-rejoin
+        //    window the sweep's device-record collection opens (capability `push-registration`). No
+        //    details fetch rides here: the membership this flow just persisted came from details the
+        //    route already loaded or minted.
+        //
+        //    Concurrent, so a slow network PUT never blocks the reconcile — but AWAITED (law "A trigger
+        //    flow never outlives its own run"): a join whose reconcile and registration are merely
+        //    queued when `run()` returns is a join the caller cannot truthfully report as finished.
+        coroutineScope {
+            launch { downloadController.reconcile(cfg.eventId) }
+            launch { registerPush() }
+        }
     }
 }

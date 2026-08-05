@@ -175,16 +175,21 @@ class AppPorts(
     // Each is a port/platform touch a flow may not make directly (law "flow/ never references ports/"):
     // the shell supplies it here and `compose/` passes it to the flow. All default to inert for the
     // world harness / tests, which drive the features directly and never mount a flow.
+    //
+    // Every Unit-returning one is `suspend` — law "A trigger flow never outlives its own run". Not
+    // because they all suspend (a `BGTaskScheduler` submit does not), but because a flow cannot see
+    // which of them the shell backed with a detached launch, and a non-suspend `() -> Unit` can only
+    // ever be fire-and-forget. Typing them `suspend` is what makes the flow's await mean something.
     /** Renew the attestation token if stale — a wake point (`device-attestation`). */
-    val refreshAttestation: () -> Unit = {},
+    val refreshAttestation: suspend () -> Unit = {},
     /** Re-read the persisted membership into the config StateFlow (migration step 12: every trigger
      *  flow re-reads before acting — cross-process writes and a pre-first-unlock seed never notify
      *  this process's StateFlow). The default is inert: world/tests hold their config in-process. */
-    val reloadConfig: () -> Unit = {},
+    val reloadConfig: suspend () -> Unit = {},
     /** Pump the app-driven upload tier on foreground; a no-op on iOS ≥26.1 (`ios-url-session-upload`). */
-    val pumpForeground: () -> Unit = {},
+    val pumpForeground: suspend () -> Unit = {},
     /** Queue the download import-tail backstop `BGProcessingTask` (`photo-download` 5.4). */
-    val scheduleBackstop: () -> Unit = {},
+    val scheduleBackstop: suspend () -> Unit = {},
     /** Present the platform share surface for the invite URL (`UIActivityViewController` on iOS) —
      *  the platform half of the [UserCommands.share] command; the default keeps it inert off-device. */
     val share: (String) -> Unit = {},
@@ -199,7 +204,7 @@ class AppPorts(
     val selectionChanges: PhotoSelectionChangeSource = PhotoSelectionChangeSource.None,
     /** Drive one app-driven upload cycle for a selection change (the pump's `onSelectionChanged`),
      *  wired by the shell to the tier controller; inert where no app-driven tier exists. */
-    val pumpSelectionChanged: () -> Unit = {},
+    val pumpSelectionChanged: suspend () -> Unit = {},
     /** Re-register the device's APNs push token on join (capability `push-registration`): the shell
      *  builds it from its `PushRegistration` + `PushTokenSource`. Inert by default (world/tests hold no
      *  push stack). Closes the warm-rejoin window the nightly sweep's config collection opens. */
@@ -336,7 +341,10 @@ class AppCore internal constructor(
         // Deliver each staged resource back to the controller off the transport delegate thread —
         // an adapter outbound callback satisfied by a compose-built lambda (law: "Commands cross one
         // door" — a compose-built single-command lambda is the sanctioned adapter-callback form).
-        downloadJobs.onStaged = { ref, key, path -> scope.launch { controller.onResourceStaged(ref, key, path) } }
+        // No launch here: `QueuedPhotoDownloadJobs` owns it, so it can join the imports before the
+        // background session's OS handler is released (capability `photo-download`). A fire-and-forget
+        // launch in a compose adapter callback is exactly the shape that left work unreachable.
+        downloadJobs.onStaged = { ref, key, path -> controller.onResourceStaged(ref, key, path) }
         controller
     }
 
@@ -384,8 +392,8 @@ class AppCore internal constructor(
             config = ports.configStore,
             configSource = ports.configSource,
             stopUploads = { uploadArm.onLeave() },
-            notifyLeave = ports.notifyLeave,
             scope = scope,
+            notifyLeave = ports.notifyLeave,
         )
     }
 
@@ -482,8 +490,8 @@ class AppCore internal constructor(
         CreateEvent(
             client = ports.eventCreation,
             status = creationStatus,
-            onMinted = ports.onEventMinted,
             scope = scope,
+            onMinted = ports.onEventMinted,
         )
     }
 
@@ -582,7 +590,6 @@ class AppCore internal constructor(
 
     val foregroundFlow: Foreground by lazy {
         Foreground(
-            scope = scope,
             downloadController = downloadController,
             membershipRefresh = membershipRefresh,
             statusPoller = ledgerCountsPoller,
@@ -614,7 +621,6 @@ class AppCore internal constructor(
 
     val silentPushFlow: SilentPush by lazy {
         SilentPush(
-            scope = scope,
             reloadConfig = ports.reloadConfig,
             refreshAttestation = ports.refreshAttestation,
             // Download arm first, then the upload arm on the app-driven tier (order preserved from the
@@ -635,7 +641,6 @@ class AppCore internal constructor(
 
     val downloadBackstopFlow: DownloadBackstop by lazy {
         DownloadBackstop(
-            scope = scope,
             downloadController = downloadController,
             reloadConfig = ports.reloadConfig,
             refreshAttestation = ports.refreshAttestation,
@@ -644,7 +649,6 @@ class AppCore internal constructor(
 
     val provisionFlow: Provision by lazy {
         Provision(
-            scope = scope,
             uploadArm = uploadArm,
             downloadController = downloadController,
             albumCoordinator = albumCoordinator,
