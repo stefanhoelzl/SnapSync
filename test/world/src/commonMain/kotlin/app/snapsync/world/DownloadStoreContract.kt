@@ -119,6 +119,70 @@ abstract class DownloadStoreContract {
         assertEquals(1, s.importedCount())
     }
 
+    /**
+     * The unconfirmed row — the state the duplicate-import defect lives in (capability `download-store`).
+     * The marker is written inside the platform's change block and the confirmation never arrives, so an
+     * asset exists that the row does not know about. Every property below is what stops that asset being
+     * imported a second time and then uploaded back into the event.
+     */
+    @Test
+    fun an_unconfirmed_row_is_adjudicated_not_imported_and_never_loses_its_marker() = runTest {
+        val s = createStore()
+        s.plan(ref, "2026-06-30T10:00:00Z", resources())
+        s.markStaged(ref, "ASSET-Q-primary.heic", "/stage/primary.heic")
+        s.markStaged(ref, "ASSET-Q-live.mov", "/stage/live.mov")
+        assertEquals(listOf(ref), s.importableAssets().map { it.ref }) // ordinary work, before the marker
+
+        s.recordCreatedLocalId(ref, "LOCAL-CREATED")
+
+        // Out of the ordinary import queue: importing it again is the duplicate.
+        assertTrue(s.importableAssets().isEmpty(), "a row carrying a marker is not ordinary import work")
+        // ...and into the adjudication queue instead.
+        assertEquals(listOf(ref to "LOCAL-CREATED"), s.unconfirmedImports().map { it.ref to it.createdLocalId })
+        // Suppressed from the moment the marker exists — the asset is observable before it is confirmed.
+        assertEquals(setOf("LOCAL-CREATED"), s.suppressedLocalIds())
+        assertFalse(s.isImported(ref), "still unconfirmed")
+
+        // The marker is the only record that this asset must not be uploaded: a prune must not take it.
+        s.pruneNonTerminal()
+        assertEquals(setOf("LOCAL-CREATED"), s.suppressedLocalIds(), "the marker survives a prune")
+        assertEquals(listOf(ref), s.unconfirmedImports().map { it.ref }, "and so does the row")
+        assertEquals(2, s.stagedResources(ref).size, "and its staged bytes stay reachable for the retry")
+
+        // Cleared (the library says the asset never existed) → ordinary work again.
+        s.clearCreatedLocalId(ref)
+        assertTrue(s.unconfirmedImports().isEmpty())
+        assertEquals(listOf(ref), s.importableAssets().map { it.ref })
+        assertTrue(s.suppressedLocalIds().isEmpty())
+    }
+
+    /** Staged bytes are released only once a row is settled — releasing earlier loses the photo. */
+    @Test
+    fun staged_paths_are_offered_only_for_settled_rows() = runTest {
+        val s = createStore()
+        s.plan(ref, "2026-06-30T10:00:00Z", resources())
+        s.markStaged(ref, "ASSET-Q-primary.heic", "/stage/primary.heic")
+        s.markStaged(ref, "ASSET-Q-live.mov", "/stage/live.mov")
+
+        // Unconfirmed: neither releasable as confirmed, nor as prunable — the retry needs these bytes.
+        s.recordCreatedLocalId(ref, "LOCAL-CREATED")
+        assertTrue(s.stagedPathsOfImportedAssets().isEmpty())
+        assertTrue(s.stagedPathsOfPrunableAssets().isEmpty(), "a marker-carrying row is never prunable")
+
+        s.markImported(ref, "LOCAL-CREATED")
+        assertEquals(
+            setOf("/stage/primary.heic", "/stage/live.mov"),
+            s.stagedPathsOfImportedAssets().toSet(),
+            "confirmed → the bytes are redundant",
+        )
+
+        // Dropping the resource rows is what makes a release pass self-extinguishing.
+        s.dropResources(ref)
+        assertTrue(s.stagedPathsOfImportedAssets().isEmpty(), "a second pass finds nothing")
+        assertTrue(s.isImported(ref), "while the row and its marker remain")
+        assertEquals(setOf("LOCAL-CREATED"), s.suppressedLocalIds())
+    }
+
     @Test
     fun prune_drops_non_terminal_keeps_imported() = runTest {
         val s = createStore()

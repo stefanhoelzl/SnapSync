@@ -3,12 +3,15 @@ package app.snapsync.feature.download
 import app.snapsync.ports.EventUnionSource
 import app.snapsync.ports.ImportResult
 import app.snapsync.ports.PhotoDownloadJobs
+import app.snapsync.ports.ImportedAssetPresence
 import app.snapsync.ports.PhotoLibraryImporter
 
+import app.snapsync.model.AssetPresence
 import app.snapsync.ports.AssetRef
 import app.snapsync.ports.DownloadStore
 import app.snapsync.ports.PlannedResource
 import app.snapsync.ports.LogScope
+import app.snapsync.ports.StagedBytes
 import app.snapsync.ports.invocation
 import co.touchlab.kermit.Logger
 import kotlinx.coroutines.sync.Mutex
@@ -26,6 +29,15 @@ class DownloadController(
     private val store: DownloadStore,
     private val jobs: PhotoDownloadJobs,
     private val importer: PhotoLibraryImporter,
+    // Adjudicates a row whose asset was created but whose import was never confirmed (capability
+    // `photo-download`). Required, with no default: a permissive stand-in would answer "absent" for
+    // assets that exist, clear their markers, and re-import them — which is the defect this guard is
+    // here to prevent, reintroduced by the thing meant to prevent it.
+    private val presence: ImportedAssetPresence,
+    // Releases the staged bytes of settled rows (capability `download-store`). Defaulted to a no-op
+    // because failing to free disk is harmless, unlike every other port here — and a composition with no
+    // staging of its own genuinely has nothing to release.
+    private val stagedBytes: StagedBytes = StagedBytes.None,
     private val myDeviceId: String,
     // The download arm runs only when the current membership's participation direction includes download
     // (capability `join-event`): an upload-only membership performs no reconcile at ANY trigger. Injected
@@ -64,6 +76,8 @@ class DownloadController(
             log.i { "reconcile skipped — this membership does not download" }
             return@invocation
         }
+        // Before any drain, and before the lock: settle rows whose asset was created but never confirmed.
+        adjudicateUnconfirmed()
         // A failed union fetch costs us this wake's DISCOVERY, not this wake's WORK. The import drain
         // below reads only the store and the staged bytes already on disk — no network — so returning
         // here would strand assets that are ready to import for no reason. That was harmless while a
@@ -104,6 +118,7 @@ class DownloadController(
      */
     suspend fun onResourceStaged(ref: AssetRef, resourceKey: String, stagedPath: String) =
         log.invocation(logScope, "onResourceStaged", params = "key=$resourceKey") {
+            adjudicateUnconfirmed() // outside the lock, per the guard's contract
             mutex.withLock {
                 store.markStaged(ref, resourceKey, stagedPath)
                 importReadyLocked()
@@ -111,7 +126,54 @@ class DownloadController(
         }
 
     /** Import every asset whose resources are all staged and that is not yet imported. */
-    suspend fun importReady() = log.invocation(logScope, "importReady") { mutex.withLock { importReadyLocked() } }
+    suspend fun importReady() = log.invocation(logScope, "importReady") {
+        adjudicateUnconfirmed()
+        mutex.withLock { importReadyLocked() }
+    }
+
+    /**
+     * Phase 1 of the guard (capability `photo-download`): settle the rows whose asset was created but
+     * whose import was never confirmed — a process death, or a wait abandoned on its deadline.
+     *
+     * **Runs OUTSIDE [mutex], deliberately.** The presence lookup is a synchronous, thread-blocking
+     * platform call that no timeout can abandon (cancellation is cooperative), so holding the lock across
+     * it would let a stalled photo library block every reconcile, import, leave and switch behind it —
+     * the exact pathology that bounding each import's wait exists to prevent. Off the lock it parks one
+     * background thread instead.
+     *
+     * Staleness between the phases is harmless: [DownloadStore.markImported] is idempotent, and a row
+     * settled in between is simply no longer importable.
+     *
+     * Costs nothing in the ordinary case — no row carries a marker, so this is one store read that
+     * returns nothing and no platform call at all.
+     */
+    private suspend fun adjudicateUnconfirmed() {
+        val unconfirmed = store.unconfirmedImports()
+        if (unconfirmed.isEmpty()) return
+
+        val verdicts = presence.presence(unconfirmed.mapTo(mutableSetOf()) { it.createdLocalId })
+        for (row in unconfirmed) {
+            when (verdicts[row.createdLocalId] ?: AssetPresence.UNKNOWN) {
+                // The asset is really there. Settle the row against the marker it already holds — never
+                // against a fresh one, which is what overwrote the first copy's handle and orphaned it.
+                AssetPresence.PRESENT -> mutex.withLock {
+                    store.markImported(row.ref, row.createdLocalId)
+                    log.i { "adjudicated ${row.ref.sourceAssetId}: asset ${row.createdLocalId} exists — settled, not re-imported" }
+                    releaseStagedBytes(row.ref) // settled by adjudication is still settled
+                }
+                // Nothing was created after all. Clear the marker FIRST: an import that fails before
+                // reaching the change block would otherwise leave it in place and skip the row forever.
+                AssetPresence.ABSENT -> mutex.withLock {
+                    store.clearCreatedLocalId(row.ref)
+                    log.i { "adjudicated ${row.ref.sourceAssetId}: asset ${row.createdLocalId} is gone — marker cleared, will re-import" }
+                }
+                // Not answerable from what this grant can see. Change nothing; a miss here is not
+                // absence, and treating it as absence is how a live marker gets cleared.
+                AssetPresence.UNKNOWN ->
+                    log.i { "adjudicated ${row.ref.sourceAssetId}: presence unknown — left unconfirmed, retried later" }
+            }
+        }
+    }
 
     private suspend fun importReadyLocked() {
         for (importable in store.importableAssets()) {
@@ -120,6 +182,9 @@ class DownloadController(
                 is ImportResult.Imported -> {
                     store.markImported(ref, result.createdLocalId)
                     log.i { "imported foreign asset ${ref.sourceAssetId} as ${result.createdLocalId}" }
+                    // AFTER the confirming write, never before: a crash between them must leave extra
+                    // bytes, not a row pointing at bytes that are gone (capability `download-store`).
+                    releaseStagedBytes(ref)
                 }
                 is ImportResult.Failed ->
                     log.w { "import deferred for ${ref.sourceAssetId}: ${result.message}" } // retried later
@@ -137,10 +202,44 @@ class DownloadController(
         }
     }
 
+    /**
+     * Free one settled asset's staged bytes and drop its resource rows, so the store never records a
+     * staged path for a file that no longer exists — which is also what makes [releaseSettledBytes]
+     * self-extinguishing. Best-effort: freeing disk is never worth failing an import over.
+     */
+    private suspend fun releaseStagedBytes(ref: AssetRef) {
+        runCatching {
+            val paths = store.stagedResources(ref).map { it.stagedPath }
+            if (paths.isNotEmpty()) stagedBytes.release(paths)
+            store.dropResources(ref)
+        }.onFailure { log.w(it) { "releasing staged bytes for ${ref.sourceAssetId} failed — retried later" } }
+    }
+
+    /**
+     * Reclaim the staged bytes of assets whose import is confirmed but whose files are still on disk —
+     * everything installs accumulated before bytes were ever released (capability `download-store`).
+     *
+     * **Self-extinguishing**: releasing also drops the resource rows that made the work findable, so a
+     * second run finds nothing. No flag, no migration, no run-once bookkeeping.
+     */
+    suspend fun releaseSettledBytes() = log.invocation(logScope, "releaseSettledBytes") {
+        val paths = runCatching { store.stagedPathsOfImportedAssets() }.getOrDefault(emptyList())
+        if (paths.isEmpty()) return@invocation
+        log.i { "releasing ${paths.size} staged file(s) of already-imported assets" }
+        runCatching {
+            stagedBytes.release(paths)
+            mutex.withLock { store.dropResourcesOfImportedAssets() }
+        }.onFailure { log.w(it) { "staged-byte reclaim failed — retried later" } }
+    }
+
     /** Leave/switch: cancel in-flight transfers and drop non-terminal rows (imported rows persist). */
     suspend fun onLeaveOrSwitch() = log.invocation(logScope, "onLeaveOrSwitch") {
         mutex.withLock {
             jobs.cancelAll()
+            // BEFORE the prune: afterwards the paths are gone with the rows and the files are stranded
+            // with nothing referencing them (capability `download-store`).
+            runCatching { stagedBytes.release(store.stagedPathsOfPrunableAssets()) }
+                .onFailure { log.w(it) { "releasing prunable staged bytes failed — files left behind" } }
             store.pruneNonTerminal()
         }
     }

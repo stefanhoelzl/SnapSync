@@ -59,6 +59,11 @@ private val IMPORT_DEADLINE: Duration = 5.seconds
 @OptIn(ExperimentalForeignApi::class, BetaInteropApi::class)
 class IosPhotoLibraryImporter(
     private val recordCreatedLocalId: (AssetRef, String) -> Unit,
+    /**
+     * The mirror of [recordCreatedLocalId], invoked when the library reports the change **failed**.
+     * Never on a timeout — see the `TimedOut` branch.
+     */
+    private val clearCreatedLocalId: (AssetRef) -> Unit,
     private val albumId: () -> String? = { null },
     private val log: Logger = Logger.withTag("PhotoImporter"),
 ) : PhotoLibraryImporter {
@@ -156,12 +161,27 @@ class IosPhotoLibraryImporter(
                         logImportedDate(rawLocalId, creationDate)
                         cont.resume(ImportResult.Imported(id))
                     } else {
+                        // THE MIRROR of the in-block write (capability `download-store`). The library has
+                        // stated that this change failed, so the marker points at an asset that does not
+                        // exist — clear it, or the row is skipped as "already created" on every future
+                        // pass and the photo never arrives.
+                        //
+                        // Runs even when the wait was already abandoned: `performChanges`' completion is
+                        // an ObjC block, not tied to this coroutine, so it still fires after a
+                        // `TimedOut` (only `cont.resume` becomes a no-op). That is what makes an
+                        // abandoned import self-correcting — a late success keeps its marker for the
+                        // guard to settle, a late failure clears it here.
+                        if (id != null) clearCreatedLocalId(ref)
                         cont.resume(ImportResult.Failed(error?.localizedDescription ?: "performChanges failed / no placeholder"))
                     }
                 },
             )
         }
         } ?: ImportResult.TimedOut(
+            // NO clear here, deliberately (capability `photo-download`): the transaction may still
+            // commit, and clearing a marker whose asset then appears is exactly what orphans it — the
+            // first copy loses its suppression and is uploaded back into the event. The row stays
+            // unconfirmed and the guard adjudicates it against the library on a later pass.
             "no completion from the photo library within $IMPORT_DEADLINE for ${ref.sourceAssetId}",
         )
     }

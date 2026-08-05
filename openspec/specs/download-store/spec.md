@@ -8,14 +8,28 @@ through a schema shared between the two processes.
 
 Two properties carry the weight. **The suppression marker is written before the imported asset becomes
 observable** to the photo library — otherwise discovery could see a freshly-imported foreign photo and queue
-it for upload, sending the event its own bytes back. And **terminal rows are permanent**: once a resource is
-recorded as imported (or deliberately deleted by the user), that verdict never reverts, which is what makes
-"a downloaded photo the user deleted is not re-imported" hold across relaunches.
+it for upload, sending the event its own bytes back. And **handle-carrying rows are permanent**: once a row
+records the identifier of an asset it created, that record never goes away, which is what makes "a
+downloaded photo the user deleted is not re-imported" hold across relaunches.
+
+That second property is deliberately about the **marker**, not the state. Because the marker is written
+inside the platform's change block — which always completes before the library commits — a created asset
+*always* has one, while its confirmation may never arrive: a process death or an abandoned wait leaves a row
+that holds the marker and still looks non-terminal. A rule phrased around terminal rows deletes exactly that
+row on the next leave, destroying the only record that its asset must not be uploaded; the asset is then
+sent back into the event, where every other member imports it as a photo they have never seen. That is not
+hypothetical — it is what the spec previously said, and what shipped.
+
+Staged bytes follow the same discipline from the other side: they are released only once a row is settled,
+because they are the sole source for a retry and a resource already recorded as staged is never
+re-downloaded.
 
 A pending resource's presigned URL is refreshed on re-plan, because download links expire and a stale one
 must self-heal rather than strand the transfer.
 
-Decision record: `changes/archive/2026-06-30-add-photo-download`.
+Decision record: `changes/archive/2026-06-30-add-photo-download`;
+`changes/archive/2026-08-06-fix-duplicate-import-on-restart` replaced "terminal rows are permanent" with the
+marker-based invariant above, and added the adjudication of unconfirmed rows and the staged-byte lifetime.
 
 ## Requirements
 ### Requirement: Unified download store, app-written
@@ -89,8 +103,30 @@ reach the extension's upload cycle.
 
 The `createdLocalId` SHALL be obtained from the import's `placeholderForCreatedAsset` and written into
 the store **inside the `performChanges` change block**, before the change commits — so the created
-asset is recorded as suppressed before it can be observed by the upload extension's discovery. A
-marker written for a change that ultimately fails SHALL be harmless (it matches no live asset).
+asset is recorded as suppressed before it can be observed by the upload extension's discovery.
+
+Because the block always runs to completion before the library commits, **a created asset always has a
+recorded marker**: there is no window in which an asset exists and its marker does not. The marker is
+therefore the store's record that an irreversible act was requested, and the pair
+`state = PENDING` + a non-null `createdLocalId` SHALL be read as **"an asset was created for this ref,
+and its import is unconfirmed"** — not as "not yet imported".
+
+When the change's completion reports **failure**, the importer SHALL **clear** the marker it wrote — the
+exact mirror of the in-block write, in the same callback — so an observed failure never leaves an
+unconfirmed row behind. A marker SHALL NOT be cleared when the import's wait is abandoned on its
+deadline (`ImportResult.TimedOut`, capability `photo-download`): that transaction may still commit, and
+clearing it is what orphans the created asset.
+
+Both the marker write and its mirror SHALL be part of the **store's port**, not of one implementation, so
+every store honours them and the pair is exercisable against each. They SHALL be non-suspending — alone
+on that interface — because the platform's change block cannot call a suspending function and the write
+must happen inside it; the constraint that creates the method shapes its signature.
+
+#### Scenario: The marker write is available through the port
+
+- **WHEN** any download store implementation is used
+- **THEN** the created-asset marker can be recorded and cleared through the store's own interface,
+  without reaching for a particular implementation
 
 #### Scenario: Marker precedes discoverability
 
@@ -98,18 +134,44 @@ marker written for a change that ultimately fails SHALL be harmless (it matches 
 - **THEN** its created `localIdentifier` is persisted to the store within the same change block that
   creates the asset, before the commit is observable
 
-### Requirement: Terminal rows are permanent
+#### Scenario: An observed failure undoes its own marker
 
-A terminal (imported) row SHALL NOT be cleared by leave or by an event switch, and the store SHALL NOT
-be wiped on those transitions. This makes a downloaded asset permanently recognized — never
-re-downloaded after deletion and deduplicated across events. Non-terminal rows (pending/in-flight)
-MAY be dropped on leave/switch to be re-enqueued later.
+- **WHEN** the photo library reports the change failed after the block had already written a marker
+- **THEN** the marker is cleared and the asset stays importable, leaving no unconfirmed row
+
+#### Scenario: An abandoned wait keeps its marker
+
+- **WHEN** an import's wait is abandoned on its deadline
+- **THEN** the marker is retained, because the transaction may still commit — and if it does, the asset
+  it created remains suppressed
+
+### Requirement: Handle-carrying rows are permanent
+
+A row carrying a `createdLocalId` SHALL NOT be cleared by leave, by an event switch, or by a durable
+state reset, and the store SHALL NOT be wiped on those transitions — **whether or not that row has
+reached a terminal state**. The marker, not the state, is the record that an asset was created; deleting
+a row that still carries one destroys the only evidence that the created asset must never be uploaded,
+and the asset then echoes back into the event.
+
+This makes a downloaded asset permanently recognized — never re-downloaded after deletion, and
+deduplicated across events. Non-terminal rows that carry **no** marker MAY be dropped on leave, switch,
+or reset, to be re-enqueued later.
 
 #### Scenario: Leave and switch preserve terminal rows
 
 - **WHEN** the user leaves the event or switches to another event
-- **THEN** terminal imported rows (and thus the suppression set) are preserved, while non-terminal
-  rows may be discarded
+- **THEN** terminal imported rows (and thus the suppression set) are preserved, while non-terminal rows
+  carrying no marker may be discarded
+
+#### Scenario: Leave preserves an unconfirmed row's marker
+
+- **WHEN** the user leaves or switches while a row is `PENDING` and carries a `createdLocalId`
+- **THEN** that row and its marker survive, so the asset it created is still suppressed from upload
+
+#### Scenario: A durable state reset preserves markers
+
+- **WHEN** this device's durable sync state is reset
+- **THEN** every row carrying a `createdLocalId` is retained, on the same reasoning as leave
 
 ### Requirement: Pending resource URL is refreshed on re-plan
 
@@ -138,4 +200,56 @@ bytes.
 
 - **WHEN** an imported asset is re-planned
 - **THEN** none of its resources' urls change and the asset stays terminal (never downgraded)
+
+### Requirement: An asset already created for a ref is never created again
+
+The store SHALL expose the unconfirmed rows — those whose `state` is not terminal and whose
+`createdLocalId` is non-null — so the import path can adjudicate them before creating a second asset for
+the same `(sourceDeviceId, sourceAssetId)`. Selecting work to import SHALL NOT treat a row carrying a
+marker as ordinary pending work.
+
+The store SHALL hold at most one `createdLocalId` per ref, and recording a confirmed import MAY
+overwrite it — but only for a ref whose prior marker has been adjudicated, never as a way of discarding
+one. A marker overwritten while its asset still exists removes that asset from the suppression set,
+which is the defect this requirement exists to prevent.
+
+#### Scenario: An unconfirmed row is not offered as ordinary import work
+
+- **WHEN** the import path selects assets whose resources are all staged
+- **THEN** a row carrying a `createdLocalId` is adjudicated rather than imported outright
+
+#### Scenario: The suppression set includes unconfirmed markers
+
+- **WHEN** a row is `PENDING` and carries a `createdLocalId`
+- **THEN** that identifier appears in the suppression projection the upload side reads, so the created
+  asset is never uploaded
+
+### Requirement: Staged bytes are released only once their row is settled
+
+The store SHALL expose the staged paths of an asset's resources, of all assets whose import is
+confirmed, and of all rows about to be dropped — so the download side can release those bytes. Releasing
+an asset's bytes SHALL also drop that asset's resource rows, so the store never records a staged path
+for a file that no longer exists, and so a backlog pass over already-imported assets is
+**self-extinguishing**.
+
+Staged bytes SHALL be released **only** after the confirming write has committed, or immediately before
+the rows referencing them are dropped. They SHALL NOT be released while an import is unconfirmed,
+failed, or abandoned on its deadline: those bytes are the only source for the retry, and a resource
+already recorded as staged is never re-downloaded, so releasing early loses the photo permanently.
+
+#### Scenario: Bytes survive a failed or abandoned import
+
+- **WHEN** an import reports failure, or its wait is abandoned on its deadline
+- **THEN** the asset's staged bytes are retained and the retry imports from them
+
+#### Scenario: Bytes are released once the import is confirmed
+
+- **WHEN** an asset's import is confirmed
+- **THEN** its staged bytes are released and its resource rows dropped, while the asset row and its
+  marker are retained
+
+#### Scenario: A backlog pass runs once and finds nothing thereafter
+
+- **WHEN** a release pass runs over assets whose import is confirmed but whose resource rows remain
+- **THEN** their bytes are released and their rows dropped, so a second pass finds no work
 

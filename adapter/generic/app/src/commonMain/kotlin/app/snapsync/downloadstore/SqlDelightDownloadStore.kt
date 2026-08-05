@@ -7,6 +7,7 @@ import app.snapsync.ports.ImportableAsset
 import app.snapsync.ports.PendingDownload
 import app.snapsync.ports.PlannedResource
 import app.snapsync.ports.StagedResource
+import app.snapsync.ports.UnconfirmedImport
 
 import app.cash.sqldelight.EnumColumnAdapter
 import app.cash.sqldelight.db.SqlDriver
@@ -54,6 +55,14 @@ class SqlDelightDownloadStore(database: DownloadDatabase) : DownloadStore {
             ImportableAsset(AssetRef(device, asset), creationDate)
         }.executeAsList()
 
+    override suspend fun unconfirmedImports(): List<UnconfirmedImport> =
+        // The marker is non-null by the query's own `IS NOT NULL`, but the generated column type is
+        // nullable, and the row mapper may not return null — so the mapper stays total and the narrowing
+        // happens here, without an assertion that would outlive the query it depends on.
+        q.selectUnconfirmedAssets { device, asset, createdLocalId ->
+            AssetRef(device, asset) to createdLocalId
+        }.executeAsList().mapNotNull { (ref, id) -> id?.let { UnconfirmedImport(ref, it) } }
+
     override suspend fun stagedResources(ref: AssetRef): List<StagedResource> =
         q.selectResourcesForAsset(ref.sourceDeviceId, ref.sourceAssetId) { key, _, role, contentType, original, staged ->
             StagedResource(key, role, contentType, original, staged ?: "")
@@ -68,8 +77,13 @@ class SqlDelightDownloadStore(database: DownloadDatabase) : DownloadStore {
      * `performChanges` change block (which cannot call suspend funcs) so the asset is suppressed before
      * its creation commits. The native SQLite write is synchronous; the later [markImported] sets state.
      */
-    fun recordCreatedLocalId(ref: AssetRef, createdLocalId: String) {
+    override fun recordCreatedLocalId(ref: AssetRef, createdLocalId: String) {
         q.recordCreatedLocalId(createdLocalId, ref.sourceDeviceId, ref.sourceAssetId)
+    }
+
+    /** The mirror of [recordCreatedLocalId], for a change the library reported as failed. */
+    override fun clearCreatedLocalId(ref: AssetRef) {
+        q.clearCreatedLocalId(ref.sourceDeviceId, ref.sourceAssetId)
     }
 
     override suspend fun importedCount(): Int = q.countImported().executeAsOne().toInt()
@@ -83,6 +97,20 @@ class SqlDelightDownloadStore(database: DownloadDatabase) : DownloadStore {
             q.deleteNonTerminalAssets()
             q.deleteNonTerminalResources()
         }
+    }
+
+    override suspend fun stagedPathsOfImportedAssets(): List<String> =
+        q.selectStagedPathsOfImportedAssets().executeAsList().filterNotNull()
+
+    override suspend fun stagedPathsOfPrunableAssets(): List<String> =
+        q.selectStagedPathsOfPrunableAssets().executeAsList().filterNotNull()
+
+    override suspend fun dropResources(ref: AssetRef) {
+        q.deleteResourcesForAsset(ref.sourceDeviceId, ref.sourceAssetId)
+    }
+
+    override suspend fun dropResourcesOfImportedAssets() {
+        q.deleteResourcesOfImportedAssets()
     }
 }
 

@@ -3,6 +3,7 @@ package app.snapsync.feature.membership
 import app.snapsync.ports.ConfigStore
 import app.snapsync.ports.DownloadStore
 import app.snapsync.ports.LedgerStore
+import app.snapsync.ports.StagedBytes
 import co.touchlab.kermit.Logger
 
 /**
@@ -37,9 +38,15 @@ import co.touchlab.kermit.Logger
  * unjoined, so a leave in the same launch is a no-op instead of a `DELETE` aimed at the wrong backend.
  *
  * Download rows are dropped **non-terminally only** ([DownloadStore.pruneNonTerminal], the same verb
- * leave/switch use). Imported rows are **retained**: each carries the `createdLocalId` the upload path
- * reads to suppress re-uploading a downloaded asset, so discarding them would make the device re-upload
- * every photo it imported — the echo the download store exists to prevent.
+ * leave/switch use). Rows carrying a `createdLocalId` are **retained** — whether or not they reached a
+ * terminal state. That marker is what the upload path reads to suppress re-uploading a downloaded asset,
+ * so discarding a row that holds one makes the device re-upload the photo it imported: the echo the
+ * download store exists to prevent. The invariant is *handle-carrying* rows are permanent, not *terminal*
+ * rows — an import interrupted between its commit and its confirmation holds a marker while still
+ * looking non-terminal, and it is exactly the row a state-based prune would destroy.
+ *
+ * The staged bytes of the rows it does drop are released first: after the prune their paths are gone with
+ * the rows, and the files are stranded with nothing referencing them.
  *
  * The attestation credential is **untouched**. A token minted by another backend is rejected there with
  * a `401`, and `DeviceAttestation.rejected()` already drops it and re-attests — so crossing backends
@@ -52,6 +59,7 @@ class ResetDeviceState(
     private val config: ConfigStore,
     private val ledger: LedgerStore,
     private val downloads: DownloadStore,
+    private val stagedBytes: StagedBytes = StagedBytes.None,
     private val clearDiscoveryCursor: () -> Unit,
 ) {
     private val log = Logger.withTag("ResetDeviceState")
@@ -64,6 +72,7 @@ class ResetDeviceState(
         step("clear ledger") { ledger.clear() }
         // Without this the ledger clear achieves nothing: no change token means no enumeration.
         step("clear discovery cursor") { clearDiscoveryCursor() }
+        step("release prunable staged bytes") { stagedBytes.release(downloads.stagedPathsOfPrunableAssets()) }
         step("prune non-terminal downloads") { downloads.pruneNonTerminal() }
         // Local only — no backend is notified. See the class doc.
         step("clear config") { config.clear() }

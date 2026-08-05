@@ -50,6 +50,8 @@ import app.snapsync.model.DENYLISTED_ALBUM_TITLES
 import app.snapsync.album.IosAlbumManager
 import app.snapsync.album.IosAlbumMapStore
 import app.snapsync.download.IosPhotoLibraryImporter
+import app.snapsync.download.IosStagedBytes
+import app.snapsync.download.PhotoKitAssetPresence
 import app.snapsync.share.presentShareSheet
 import app.snapsync.downloadstore.SqlDelightDownloadStore
 import app.snapsync.downloadstore.iosDownloadStore
@@ -349,10 +351,17 @@ object SnapSyncRoot {
                 pumpSelectionChanged = live.pumpSelectionChanged,
                 ledger = ledgerStore,
                 downloadStore = downloadStore,
+                // Full-access presence for the import guard; composition wraps it so a partial or
+                // revoked grant never reports an asset as absent (capability `photo-download`).
+                assetPresence = PhotoKitAssetPresence(),
+                // Frees the App-Group staging files of settled rows (capability `download-store`).
+                stagedBytes = IosStagedBytes(),
                 // The importer writes createdLocalId synchronously from inside a PhotoKit change
                 // block (concrete store, not the port) and borrows the atomic album-add lookup.
                 importer = IosPhotoLibraryImporter(
                     recordCreatedLocalId = { ref, id -> downloadStore.recordCreatedLocalId(ref, id) },
+                    // The mirror, for a commit the library reports as failed (capability `download-store`).
+                    clearCreatedLocalId = { ref -> downloadStore.clearCreatedLocalId(ref) },
                     // The atomic import-time album lookup: the membership's opt-in gate is the
                     // coordinator's rule (capability `event-album`); this thunk only reads the
                     // current membership's facts. Deferred — it runs inside a PhotoKit change block,
