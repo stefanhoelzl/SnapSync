@@ -962,6 +962,9 @@ gated in `./gradlew build`; a violation is a red build, not a review note.
 - **Rules in features, order in flows** — flows coordinate, never decide; features are mutually
   blind and coordinate via one-writer durable state behind shared ports, written whole; no field
   encodes a request to another feature.
+- **A trigger flow never outlives its own run** — a `flow/` class declares no `CoroutineScope` and
+  every `Unit`-returning lambda it accepts is `suspend`; `run()` is `suspend` and returns only when
+  the work it coordinates has finished, so a shell can report completion to the OS truthfully.
 - **Commands cross one door** — user taps, OS callbacks, and port-state transitions all enter
   through `flow/` commands (built/decorated only in `compose/`, injected into presentation);
   reads do NOT cross flow — presentation observes feature read-model StateFlows directly.
