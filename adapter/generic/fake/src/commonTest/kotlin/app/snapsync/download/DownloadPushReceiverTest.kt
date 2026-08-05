@@ -9,6 +9,7 @@ import app.snapsync.ports.PhotoLibraryImporter
 import app.snapsync.ports.UnionAsset
 
 import app.snapsync.ports.AssetRef
+import app.snapsync.fake.InMemoryAssetPresence
 import app.snapsync.fake.InMemoryDownloadStore
 import app.snapsync.ports.PendingDownload
 import app.snapsync.ports.StagedResource
@@ -44,7 +45,8 @@ class DownloadPushReceiverTest {
 
     private fun receiver(union: RecordingUnion, active: String?): DownloadPushReceiver {
         val controller = DownloadController(
-            union, InMemoryDownloadStore(), NoopJobs(), NoopImporter(), myDevice,
+            union, InMemoryDownloadStore(), NoopJobs(), NoopImporter(), InMemoryAssetPresence(),
+            myDeviceId = myDevice,
             // These tests exercise the ACTIVE-EVENT guard, which is orthogonal to the direction gate
             // (capability `photo-download`) — so state a downloading membership explicitly. The gate no
             // longer defaults: a permissive default is what let "no membership" mean "download freely".

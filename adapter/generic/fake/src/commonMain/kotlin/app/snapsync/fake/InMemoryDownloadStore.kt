@@ -7,6 +7,7 @@ import app.snapsync.ports.ImportableAsset
 import app.snapsync.ports.PendingDownload
 import app.snapsync.ports.PlannedResource
 import app.snapsync.ports.StagedResource
+import app.snapsync.ports.UnconfirmedImport
 
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -73,9 +74,19 @@ class InMemoryDownloadStore : DownloadStore {
     override suspend fun importableAssets(): List<ImportableAsset> = lock.withLock {
         assets.filter { (ref, row) ->
             row.state != DownloadState.IMPORTED &&
+                // A row carrying a marker already has an asset in the library: adjudicated, not imported.
+                row.createdLocalId == null &&
                 resources[ref]?.isNotEmpty() == true &&
                 resources[ref]!!.values.all { it.second != null }
         }.map { (ref, row) -> ImportableAsset(ref, row.creationDate) }
+    }
+
+    override suspend fun unconfirmedImports(): List<UnconfirmedImport> = lock.withLock {
+        assets.mapNotNull { (ref, row) ->
+            row.createdLocalId
+                ?.takeIf { row.state != DownloadState.IMPORTED }
+                ?.let { UnconfirmedImport(ref, it) }
+        }
     }
 
     override suspend fun stagedResources(ref: AssetRef): List<StagedResource> = lock.withLock {
@@ -89,6 +100,21 @@ class InMemoryDownloadStore : DownloadStore {
     override suspend fun markImported(ref: AssetRef, createdLocalId: String) = lock.withLock {
         assets[ref]?.let { it.state = DownloadState.IMPORTED; it.createdLocalId = createdLocalId }
         Unit
+    }
+
+    /**
+     * Lock-free on purpose, mirroring the real store: the port declares this non-`suspend` because the
+     * platform's change block cannot suspend, so it cannot take [lock] either. The real impl is a single
+     * synchronous SQLite write; this is a single field write, and the fake's consumers are tests driving
+     * one dispatcher.
+     */
+    override fun recordCreatedLocalId(ref: AssetRef, createdLocalId: String) {
+        assets[ref]?.createdLocalId = createdLocalId
+    }
+
+    /** The mirror of [recordCreatedLocalId], lock-free for the same reason. */
+    override fun clearCreatedLocalId(ref: AssetRef) {
+        assets[ref]?.createdLocalId = null
     }
 
     override suspend fun importedCount(): Int = lock.withLock {
@@ -105,7 +131,35 @@ class InMemoryDownloadStore : DownloadStore {
     }
 
     override suspend fun pruneNonTerminal() = lock.withLock {
-        val drop = assets.filter { it.value.state != DownloadState.IMPORTED }.keys.toList()
+        // A row carrying a marker is NEVER dropped: the marker is the only record that its asset must
+        // not be uploaded, and deleting it is what sends someone else's photo back into the event.
+        val drop = assets
+            .filter { it.value.state != DownloadState.IMPORTED && it.value.createdLocalId == null }
+            .keys.toList()
         drop.forEach { assets.remove(it); resources.remove(it); enqueued.remove(it) }
+    }
+
+    override suspend fun stagedPathsOfImportedAssets(): List<String> = lock.withLock {
+        assets.filter { it.value.state == DownloadState.IMPORTED }
+            .keys
+            .flatMap { ref -> resources[ref].orEmpty().values.mapNotNull { it.second } }
+    }
+
+    override suspend fun stagedPathsOfPrunableAssets(): List<String> = lock.withLock {
+        assets.filter { it.value.state != DownloadState.IMPORTED && it.value.createdLocalId == null }
+            .keys
+            .flatMap { ref -> resources[ref].orEmpty().values.mapNotNull { it.second } }
+    }
+
+    override suspend fun dropResources(ref: AssetRef) = lock.withLock {
+        resources.remove(ref)
+        enqueued.remove(ref)
+        Unit
+    }
+
+    override suspend fun dropResourcesOfImportedAssets() = lock.withLock {
+        assets.filter { it.value.state == DownloadState.IMPORTED }.keys.forEach {
+            resources.remove(it); enqueued.remove(it)
+        }
     }
 }

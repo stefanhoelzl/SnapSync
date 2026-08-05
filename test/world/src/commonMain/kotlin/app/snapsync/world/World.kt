@@ -18,6 +18,7 @@ import app.snapsync.fake.InMemoryDeviceManifestStore
 import app.snapsync.fake.InMemoryDiscoveryStore
 import app.snapsync.fake.InMemoryDownloadStore
 import app.snapsync.fake.InMemoryJoinedEventMarker
+import app.snapsync.fake.InMemoryStagedBytes
 import app.snapsync.fake.InMemoryLedgerStore
 import app.snapsync.feature.creation.MutableCreationStatusSource
 import app.snapsync.feature.membership.MutableRenameStatusSource
@@ -123,7 +124,28 @@ class World(
     var downloadTransport: FakeDownloadTransport? = null
         private set
 
-    val importer: FakePhotoLibraryImporter = FakePhotoLibraryImporter(gallery)
+    // Wired to the store exactly as the iOS shell wires the real importer: the marker is written from
+    // inside the "change block", before the created asset is observable. Without this the world cannot
+    // reach an unconfirmed row — a marker written, the confirmation never arriving — which is the state
+    // the duplicate-import defect lives in (capability `download-store`).
+    val importer: FakePhotoLibraryImporter = FakePhotoLibraryImporter(
+        gallery = gallery,
+        recordCreatedLocalId = { ref, id -> downloadStore.recordCreatedLocalId(ref, id) },
+        clearCreatedLocalId = { ref -> downloadStore.clearCreatedLocalId(ref) },
+    )
+    /**
+     * Presence over the world's own gallery: an asset the importer created is visible here for exactly
+     * the same reason it is visible to upload discovery, so a test cannot assert against an answer the
+     * rest of the world disagrees with (capability `harness-world-model`).
+     */
+    val assetPresence: WorldAssetPresence = WorldAssetPresence(gallery)
+
+    /**
+     * The world's "disk" for staged download bytes (capability `download-store`). Real enough to assert
+     * the property that matters — bytes SURVIVE a failed, abandoned or unconfirmed import and vanish only
+     * once the row is settled — rather than merely that a release call happened.
+     */
+    val stagedBytes: InMemoryStagedBytes = InMemoryStagedBytes()
     val marker: InMemoryJoinedEventMarker = InMemoryJoinedEventMarker()
 
     /** Counts the real `Provision` flow's on-join push re-registration (capability `push-registration`):
@@ -189,9 +211,28 @@ class World(
             platform.jobLimit = value
         }
 
-    /** Arm the next foreign import to fail (`ImportResult.Failed`, non-terminal). */
+    /** Arm the next foreign import to fail (`ImportResult.Failed`, non-terminal) before creating anything. */
     fun failNextImport() {
         importer.failNextImport = true
+    }
+
+    /**
+     * Arm the next foreign import to create its asset and write its marker, and only THEN report failure
+     * — the real adapter's "commit reported failure after the change block ran" path, where the mirror
+     * clears the marker again (capability `download-store`).
+     */
+    fun failNextImportAfterCreating() {
+        importer.failNextImportAfterCreating = true
+    }
+
+    /**
+     * Arm the next foreign import to create its asset and write its marker, then never confirm it
+     * (`ImportResult.TimedOut`) — the shape a process death or an abandoned wait leaves behind. The asset
+     * exists in the gallery; the store row stays **unconfirmed**. This is the state the duplicate-import
+     * defect is reached through, and the only way for a test to get there.
+     */
+    fun abandonNextImport() {
+        importer.abandonNextImport = true
     }
 
     /**
@@ -297,10 +338,12 @@ class World(
             clearDiscoveryCursor = discoveryStore::clearToken,
             ledger = ledgerBackend,
             downloadStore = downloadStore,
+            assetPresence = assetPresence,
+            stagedBytes = stagedBytes,
             importer = importer,
             downloadStagingRoot = { "staged:/" },
             newDownloadTransport = { transportHost ->
-                FakeDownloadTransport(transportHost).also { downloadTransport = it }
+                FakeDownloadTransport(transportHost, stagedBytes.files).also { downloadTransport = it }
             },
             union = unionSource,
             directory = HttpEventDirectory(client, host),

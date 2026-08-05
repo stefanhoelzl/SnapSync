@@ -76,6 +76,8 @@ import app.snapsync.ports.LogScope
 import app.snapsync.ports.PhotoAccessRequester
 import app.snapsync.ports.PhotoAccessStatusSource
 import app.snapsync.ports.CandidateSource
+import app.snapsync.ports.ImportedAssetPresence
+import app.snapsync.ports.StagedBytes
 import app.snapsync.ports.PhotoLibraryImporter
 import app.snapsync.ports.PhotoSelectionChangeSource
 import app.snapsync.ports.invocation
@@ -115,6 +117,20 @@ class AppPorts(
     val ledger: LedgerStore,
     val downloadStore: DownloadStore,
     val importer: PhotoLibraryImporter,
+    /**
+     * Whether an asset this device created still exists — the **full-access** source only (capability
+     * `photo-download`). Composition wraps it in [PermissionAwareAssetPresence] below, which is what
+     * decides whether a miss may be reported as absence at all; a partial or revoked grant answers from
+     * the held selection instead and never reaches this. Defaults to unanswerable so a composition that
+     * cannot look never claims an asset is gone — the one wrong answer that re-creates the defect.
+     */
+    val assetPresence: ImportedAssetPresence = ImportedAssetPresence.Unanswerable,
+    /**
+     * Releases the staged bytes of settled rows (capability `download-store`). Defaults to a no-op: a
+     * composition with no staging of its own has nothing to release, and failing to free disk is the one
+     * harmless failure among these ports.
+     */
+    val stagedBytes: StagedBytes = StagedBytes.None,
     /** The durable download-staging directory — read lazily (an App-Group container lookup on iOS). */
     val downloadStagingRoot: () -> String,
     val newDownloadTransport: (DownloadTransportHost) -> DownloadTransport,
@@ -274,6 +290,20 @@ class AppCore internal constructor(
         )
     }
 
+    /**
+     * The one presence source the download guard holds: full access queries the library, a partial grant
+     * answers from the snapshot and never says "absent", no grant answers unknown (capability
+     * `photo-download`). Built here for the same reason as [candidates] — choosing a source by the
+     * grant is composition, and both halves are available here.
+     */
+    private val assetPresence: ImportedAssetPresence by lazy {
+        PermissionAwareAssetPresence(
+            permission = ports.photoAccess.permission,
+            library = ports.assetPresence,
+            selection = latestSelectionSnapshot,
+        )
+    }
+
     val gallery: OwnDeviceGalleryStatusSource by lazy {
         OwnDeviceGalleryStatusSource(
             candidates,
@@ -333,6 +363,8 @@ class AppCore internal constructor(
             store = ports.downloadStore,
             jobs = downloadJobs,
             importer = ports.importer,
+            presence = assetPresence,
+            stagedBytes = ports.stagedBytes,
             myDeviceId = ports.deviceId(),
             // Three-valued, no fallback (capability `photo-download`): no membership → `null` → no arm.
             downloadEnabled = { ports.configSource.config.value?.direction?.includesDownload },

@@ -2,6 +2,7 @@ package app.snapsync.download
 
 import app.snapsync.feature.download.DownloadController
 import app.snapsync.ports.EventUnionSource
+import app.snapsync.ports.ImportedAssetPresence
 import app.snapsync.ports.ImportResult
 import app.snapsync.ports.PhotoDownloadJobs
 import app.snapsync.ports.PhotoLibraryImporter
@@ -9,6 +10,7 @@ import app.snapsync.ports.UnionAsset
 import app.snapsync.ports.UnionResource
 
 import app.snapsync.ports.AssetRef
+import app.snapsync.fake.InMemoryAssetPresence
 import app.snapsync.fake.InMemoryDownloadStore
 import app.snapsync.ports.PendingDownload
 import app.snapsync.ports.StagedResource
@@ -74,8 +76,14 @@ class DownloadControllerTest {
         store: InMemoryDownloadStore = InMemoryDownloadStore(),
         jobs: RecordingJobs = RecordingJobs(),
         importer: FakeImporter = FakeImporter(),
+        presence: ImportedAssetPresence = InMemoryAssetPresence(),
         downloadEnabled: () -> Boolean? = { true },
-    ) = DownloadController(union, store, jobs, importer, myDevice, downloadEnabled)
+    ) = DownloadController(
+        union, store, jobs, importer, presence,
+        // Named from here on: this constructor has grown twice mid-change, and positional
+        // arguments silently re-bind when it does.
+        myDeviceId = myDevice, downloadEnabled = downloadEnabled,
+    )
 
     @Test
     fun reconcile_skips_own_device_and_plans_only_foreign() = runTest {
@@ -267,7 +275,8 @@ class DownloadControllerTest {
         }
         val c = DownloadController(
             FakeUnion(listOf(asset("DEVICE-A", "Q"))), store, RecordingJobs(),
-            hangingImporter, myDevice, { true },
+            hangingImporter, InMemoryAssetPresence(),
+            myDeviceId = myDevice, downloadEnabled = { true },
         )
         c.reconcile("event")
         store.markStaged(ref, "Q-primary.heic", "/p")

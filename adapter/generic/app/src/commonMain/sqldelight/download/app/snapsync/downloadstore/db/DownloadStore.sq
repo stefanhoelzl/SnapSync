@@ -59,6 +59,14 @@ UPDATE downloadAsset
 SET createdLocalId = :createdLocalId
 WHERE sourceDeviceId = :sourceDeviceId AND sourceAssetId = :sourceAssetId;
 
+-- The mirror of `recordCreatedLocalId`, for a change the library reported as FAILED. Never used when an
+-- import's wait is abandoned on its deadline: that transaction may still commit, and clearing the marker
+-- is exactly what orphans the asset it creates.
+clearCreatedLocalId:
+UPDATE downloadAsset
+SET createdLocalId = NULL
+WHERE sourceDeviceId = :sourceDeviceId AND sourceAssetId = :sourceAssetId;
+
 isImported:
 SELECT EXISTS(
     SELECT 1 FROM downloadAsset
@@ -79,9 +87,21 @@ SELECT COUNT(*) FROM downloadAsset WHERE state = 'IMPORTED';
 countAssets:
 SELECT COUNT(*) FROM downloadAsset;
 
--- Drop non-terminal rows (and their resources) on leave/switch; imported rows are permanent.
+-- Drop non-terminal rows (and their resources) on leave/switch — but NEVER a row that carries a
+-- `createdLocalId`. The marker is the record that an asset was created for this ref, and it is the only
+-- thing keeping that asset out of the upload universe; deleting the row destroys it, and the created
+-- asset is then uploaded back into the event. The invariant is "handle-carrying rows are permanent",
+-- not "terminal rows are permanent" (capability `download-store`).
 deleteNonTerminalAssets:
-DELETE FROM downloadAsset WHERE state != 'IMPORTED';
+DELETE FROM downloadAsset WHERE state != 'IMPORTED' AND createdLocalId IS NULL;
+
+-- The rows whose import was never confirmed: an asset WAS created for them (the marker was written
+-- inside the change block, which always completes before the library commits) but the confirmation
+-- never arrived — a process death, or a wait abandoned on its deadline. The import path adjudicates
+-- these against the photo library instead of importing them again.
+selectUnconfirmedAssets:
+SELECT sourceDeviceId, sourceAssetId, createdLocalId FROM downloadAsset
+WHERE state != 'IMPORTED' AND createdLocalId IS NOT NULL;
 
 deleteNonTerminalResources:
 DELETE FROM downloadResource
@@ -141,10 +161,16 @@ JOIN downloadAsset a
 WHERE r.stagedPath IS NULL AND a.state != 'IMPORTED';
 
 -- Assets whose every expected resource is staged but not yet imported — ready to import.
+--
+-- `createdLocalId IS NULL` is part of the gate, not a refinement of it: a row carrying a marker already
+-- has an asset in the library, and importing it again is precisely the duplicate this capability exists
+-- to prevent. Those rows leave through `selectUnconfirmedAssets` to be adjudicated, and re-enter here
+-- only once their marker has been cleared (capability `photo-download`).
 selectImportableAssets:
 SELECT a.sourceDeviceId, a.sourceAssetId, a.creationDate
 FROM downloadAsset a
 WHERE a.state != 'IMPORTED'
+  AND a.createdLocalId IS NULL
   AND NOT EXISTS (
       SELECT 1 FROM downloadResource r
       WHERE r.sourceDeviceId = a.sourceDeviceId AND r.sourceAssetId = a.sourceAssetId
@@ -154,3 +180,41 @@ WHERE a.state != 'IMPORTED'
       SELECT 1 FROM downloadResource r
       WHERE r.sourceDeviceId = a.sourceDeviceId AND r.sourceAssetId = a.sourceAssetId
   );
+
+-- --- staged-byte lifetime ---
+
+-- The staged files of assets whose import is CONFIRMED. Their bytes are redundant: the photo is in the
+-- library, and nothing reads an imported row's resources. Feeds the release pass, which also drops the
+-- rows below — so a second pass finds nothing and the pass is self-extinguishing.
+selectStagedPathsOfImportedAssets:
+SELECT r.stagedPath FROM downloadResource r
+JOIN downloadAsset a ON a.sourceDeviceId = r.sourceDeviceId AND a.sourceAssetId = r.sourceAssetId
+WHERE a.state = 'IMPORTED' AND r.stagedPath IS NOT NULL;
+
+-- The staged files of the rows a prune is about to drop. Read BEFORE the delete, or the paths are gone
+-- with the rows and the files are stranded with nothing referencing them.
+selectStagedPathsOfPrunableAssets:
+SELECT r.stagedPath FROM downloadResource r
+JOIN downloadAsset a ON a.sourceDeviceId = r.sourceDeviceId AND a.sourceAssetId = r.sourceAssetId
+WHERE a.state != 'IMPORTED' AND a.createdLocalId IS NULL AND r.stagedPath IS NOT NULL;
+
+-- (A per-asset path read needs no query of its own: `selectResourcesForAsset` already carries
+-- `stagedPath`, and the store's `stagedResources` projection filters it.)
+
+-- Drop one asset's resource rows once its bytes are released, so the store never records a staged path
+-- for a file that no longer exists. Safe because no read consults an IMPORTED row's resources.
+deleteResourcesForAsset:
+DELETE FROM downloadResource
+WHERE sourceDeviceId = :sourceDeviceId AND sourceAssetId = :sourceAssetId;
+
+-- The bulk half of the reclaim: drop the resource rows of every confirmed asset at once. Paired with
+-- `selectStagedPathsOfImportedAssets`, this is what makes the reclaim self-extinguishing — the rows that
+-- made the work findable are gone, so a second pass selects nothing.
+deleteResourcesOfImportedAssets:
+DELETE FROM downloadResource
+WHERE EXISTS (
+    SELECT 1 FROM downloadAsset a
+    WHERE a.sourceDeviceId = downloadResource.sourceDeviceId
+      AND a.sourceAssetId = downloadResource.sourceAssetId
+      AND a.state = 'IMPORTED'
+);

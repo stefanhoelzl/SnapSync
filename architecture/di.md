@@ -46,6 +46,7 @@ Roots found:
 | `IosJoinedEventMarker` | | x | x |
 | `IosPhotoKitUploadPlatform` | | x | |
 | `IosPhotoLibraryImporter` | x | | |
+| `IosStagedBytes` | x | | |
 | `IosUrlSessionUploadPlatform` | | | x |
 | `KeychainAttestStore` | x | x | |
 | `KeychainDeviceIdentity` | x | x | |
@@ -53,6 +54,7 @@ Roots found:
 | `MutableAttestedSource` | x | | |
 | `OsFacts` | x | | |
 | `OsReceipt` | x | | x |
+| `PhotoKitAssetPresence` | x | | |
 | `PhotoKitCandidateSource` | x | x | x |
 | `PhotoKitUploadProducer` | x | | |
 | `PhotoLibraryPermission` | x | | |
