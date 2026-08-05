@@ -36,10 +36,21 @@ upload, the device manifest (or an excluded photo leaks into the event union), *
 `PermissionStatus.LIMITED`): the user's hand-picked selection IS the membership's own-photo scope — the
 policy then filters the selection exactly as it would a library. Three measured platform facts shape the
 implementation, and violating any of them reads as "mysteriously broken" with no error anywhere:
-① **never add an autonomous `PHAsset` read under `LIMITED`** — off-flow reads queue iOS's limited-access
-alert into an app-killing storm that survives process death; reads happen ONLY on the cold-launch baseline
-and the `PhotoSelectionChangeSource` observer emissions, and every upload cycle's discovery is fed the
-in-memory snapshot (`SelectionScopedTransfer` in `uploadCore`), never a walk; ② **the ≥26.1 PhotoKit
+① **the limited-access alert is armed by the LIBRARY CHANGING, not by reading** — measured on device
+(SE2, iOS 26.5.2; record: `changes/archive/2026-08-06-correct-limited-access-read-premise/PROBE-FINDINGS.md`, superseding
+the storm claim in the 2026-07-20 probe): a `PHAsset` fetch under `.limited` surfaces iOS's alert **iff
+the library gained content outside the app's selection since the app last looked** — armed **once per
+change**, not once per fetch, and merely surfaced by the first fetch after it. ~15 hammered walks against
+an unchanged library queued **zero**; one camera capture then a single read queued one, which survived
+SIGKILL onto the home screen. App-created assets join the selection at creation, so **an import, and any
+fetch resolving what it created, never arms it**. Consequences: read volume does NOT reduce the alert
+count, so do not justify anything as alert suppression (the read discipline is kept because under a
+partial grant the selection IS the scope, and it saves round-trips); and **every photo the member takes
+costs one system prompt**, which no read strategy avoids — only the full-access upgrade does. Reads still
+happen ONLY on the cold-launch baseline and the `PhotoSelectionChangeSource` observer emissions, and every
+upload cycle's discovery is fed the in-memory snapshot (`SelectionScopedTransfer` in `uploadCore`), never a
+walk. ⏰ Re-measure at the next iOS major; evidence is one device, one point release, n=1 change.
+② **the ≥26.1 PhotoKit
 extension is never invoked by the OS under `.limited`** (registration succeeds and lies) — both producers
 are composed there and the permission-aware `UploadArm` starts exactly one (guarded by
 `ProducerExclusivityTest`); ③ asset/album **creation is unrestricted** under `.limited`, so downloads and

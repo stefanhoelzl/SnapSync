@@ -42,9 +42,10 @@ import platform.UniformTypeIdentifiers.UTType
  * excluded ones.
  *
  * **The candidate closes over the `PHAsset`, never over its identifier.** Re-fetching by
- * `localIdentifier` at read time would be an autonomous library fetch, which under a partial grant queues
- * iOS's limited-access alert into an app-killing storm that survives process death (capability
- * `limited-photo-access`). Holding the object keeps the deferred read off the fetch path entirely.
+ * `localIdentifier` at read time would be a second round-trip for something already in hand; holding the
+ * object keeps the deferred read off the fetch path entirely. (Not an alert argument: iOS's
+ * limited-access alert is armed once per **out-of-scope library change**, not per fetch — capability
+ * `limited-photo-access`.)
  *
  * **Every read hops to [Dispatchers.Default]** — Kotlin/Native has no `Dispatchers.IO`. Both app-process
  * callers reach this from `SnapSyncRoot`'s `Dispatchers.Main` scope, where blocking trips the 10 s
@@ -83,8 +84,8 @@ class PhotoKitCandidateSource(private val log: Logger = Logger.withTag("gallery"
      * Two callers need this, and both for the same reason: they already hold a `PHFetchResult` and must
      * not issue another fetch to reach its assets. The incremental change-feed walk fetches by identifier
      * (which takes no predicate), and the `LIMITED` selection observer holds the baseline/change result
-     * whose re-fetch would be an autonomous library read — the measured alert storm (capability
-     * `limited-photo-access`).
+     * whose re-fetch would repeat a read already paid for (capability `limited-photo-access`, whose read
+     * discipline is about reading the right source under a partial grant — not about alert suppression).
      */
     fun candidatesFrom(assets: PHFetchResult): List<Candidate> {
         val out = mutableListOf<Candidate>()

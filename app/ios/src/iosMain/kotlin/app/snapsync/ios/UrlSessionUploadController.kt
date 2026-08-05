@@ -84,7 +84,8 @@ class UrlSessionUploadController(
     // What upload discovery may read (capability `limited-photo-access`): the app graph's derived
     // walk-vs-snapshot decision. **No default** for the same reason as the album lookup above — this
     // tier serves LIMITED memberships, and a composition that forgot the scope would walk the library
-    // under a partial grant (the alert-storm bug, measured).
+    // under a partial grant, where the selection IS the scope: it would discover photos the member never
+    // chose to share. (Not the alert: that is armed per out-of-scope library change, not per read.)
     private val selectionScope: () -> SelectionScope,
     // False on the dev/test-forced (simulator) path — the sim can't run a background NSURLSession.
     private val useBackgroundSession: Boolean = true,

@@ -76,9 +76,10 @@ class PermissionAwareCandidateSourceTest {
 
     @Test
     fun `LIMITED reads the snapshot and never walks`() = runTest {
-        // The load-bearing half. An autonomous library read under a partial grant queues iOS's
-        // limited-access alert into an app-killing storm that survives process death — so a source that
-        // merely *happened* to return the right ids while also walking would be a latent app-killer.
+        // The load-bearing half. Under a partial grant the selection IS the membership's scope, so a
+        // source that merely *happened* to return the right ids while also walking would be reading the
+        // wrong universe — it could surface photos the member never chose to share. (Not an alert
+        // argument: iOS's limited-access alert is armed per out-of-scope library change, not per read.)
         val (walk, source) = source(PermissionStatus.LIMITED, snapshot = snapshotOf("S1", "S2"))
         assertEquals(listOf("S1", "S2"), source.candidates(policy).map { it.facts.assetId })
         assertEquals(0, walk.walks, "no autonomous library read under a partial grant")
