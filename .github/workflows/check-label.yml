@@ -22,10 +22,6 @@ on:
 permissions:
   pull-requests: write # to comment the hint on failure
 
-concurrency:
-  group: check-label-${{ github.ref }}
-  cancel-in-progress: true
-
 jobs:
   check-label:
     # This display name is the status-check context required by .github/rulesets/main.json.
