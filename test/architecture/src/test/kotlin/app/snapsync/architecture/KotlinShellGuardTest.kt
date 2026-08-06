@@ -28,6 +28,10 @@ import kotlin.test.fail
  *    graph from a launch-env trigger; inert in production).
  *  - `DevPhotoSeeder.kt` ×3 — dev equipment writing the real photo library from a launch-env
  *    trigger; operator-input validation plus platform-forced chunking.
+ *  - `MainViewController.kt` ×1 — the one switch on the resolved `SceneMode`, which decides whether a
+ *    Compose scene is composed at all (capability `ios-app-shell`). The DECIDING is `resolveScene`, pure
+ *    and `commonTest`-covered; the sealed type exists so a third mode fails the compile. Expiry: dies
+ *    with the deferral, when CMP-5978 is fixed upstream and the mitigation can be deleted.
  */
 class KotlinShellGuardTest {
 
@@ -42,6 +46,7 @@ class KotlinShellGuardTest {
     private val pins: Map<String, Int> = mapOf(
         "app/ios/src/iosMain/kotlin/app/snapsync/ios/SnapSyncRoot.kt" to 2,
         "app/ios/src/iosMain/kotlin/app/snapsync/ios/DevPhotoSeeder.kt" to 3,
+        "app/ios/src/iosMain/kotlin/app/snapsync/ios/MainViewController.kt" to 1,
     )
 
     private val suppression = Regex("""@Suppress\("CyclomaticComplexMethod"\)""")

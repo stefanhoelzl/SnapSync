@@ -4,8 +4,11 @@ import app.snapsync.model.CompositionMode
 import app.snapsync.model.EventConfig
 import app.snapsync.model.LaunchDirectives
 import app.snapsync.model.OsFacts
+import app.snapsync.model.SceneMode
 import app.snapsync.model.UploadTier
+import app.snapsync.model.appVisibilityFrom
 import app.snapsync.model.resolveComposition
+import app.snapsync.model.resolveScene
 import app.snapsync.compose.AppCore
 import app.snapsync.compose.AppPorts
 import app.snapsync.compose.snapSyncApp
@@ -639,8 +642,53 @@ object SnapSyncRoot {
     internal fun <T> platformEntry(name: String, params: String = "", block: () -> T): T =
         log.invocation(name, params = params) { block() }
 
+    /**
+     * Whether this **process** has ever been active — the input `UIApplication` cannot supply, because it
+     * reports the current state only, and "has been active at least once" is precisely what separates a
+     * background-woken process from an ordinary backgrounded one (capability `ios-app-shell`). Written by
+     * [onForeground], which is the `didBecomeActive` observer; never reset, because a scene once composed
+     * is kept.
+     */
+    private var everActive: Boolean = false
+
+    /**
+     * Whether the shell composes a Compose scene right now (capability `ios-app-shell`), resolved by the
+     * pure, tested [resolveScene] from two inputs this object transcribes and does not interpret: the
+     * platform's current application state and [everActive].
+     */
+    internal fun sceneMode(): SceneMode = resolveScene(
+        appVisibilityFrom(UIApplication.sharedApplication.applicationState.value),
+        everActive,
+    )
+
+    /**
+     * The app became active — record it, and answer with the **scene generation** the SwiftUI shell binds
+     * to `.id(…)` (capability `ios-app-shell`).
+     *
+     * The generation is `0` before any activation and `1` afterwards: it changes **exactly once per
+     * process**, so the Compose view is built once — at the moment the deferred placeholder must become
+     * the live scene — and never rebuilt again, however many times the app is foregrounded. Rebuilding on
+     * every foreground would discard screen-local Compose state (an open settings surface, a half-typed
+     * report, a scroll position) on every ordinary app switch, which is the option this change
+     * deliberately did not take.
+     *
+     * It is a **value the shell binds**, not a command it obeys: SwiftUI needs something whose change it
+     * can observe, and returning it here keeps the "when does the scene exist" rule in tested Kotlin
+     * rather than in a Swift conditional.
+     *
+     * Distinct from [onForeground], which drives the foreground flow. This one only records.
+     */
     @PlatformEntry
-    fun onForeground() = log.invocation("onForeground", params = foregroundParams()) { shell.onForeground() }
+    fun onSceneActive(): Int = log.invocation("onSceneActive") {
+        everActive = true
+        SCENE_GENERATION_ACTIVE
+    }
+
+    @PlatformEntry
+    fun onForeground() = log.invocation("onForeground", params = foregroundParams()) {
+        everActive = true
+        shell.onForeground()
+    }
 
     /**
      * The app is leaving the active state (`UIApplicationWillResignActive` — see [onLaunch]): stop
@@ -1334,3 +1382,11 @@ object SnapSyncRoot {
  */
 @OptIn(DelicateCoroutinesApi::class)
 private val compositionLane = newFixedThreadPoolContext(nThreads = 1, name = "snapsync-composition")
+
+/**
+ * The scene generation once the app has been active (capability `ios-app-shell`). `0` is the
+ * never-activated value the shell starts from; this is the only other value it ever takes, so SwiftUI's
+ * `.id(…)` changes exactly once per process — rebuilding the Compose view at the first activation and
+ * never again.
+ */
+private const val SCENE_GENERATION_ACTIVE: Int = 1
