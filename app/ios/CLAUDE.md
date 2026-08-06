@@ -48,15 +48,25 @@ You cannot build or run any of this on Linux. Use the proxy:
 Swift shells forward raw, ObjC-visible OS inputs **whole**; every decision is Kotlin (migration
 step 12; `SwiftShellGuardTest` pins the decision keywords — `if`/`guard`/`switch` at zero, one `??`).
 
-- **App entry** (`iosApp/iosApp/iOSApp.swift`): SwiftUI `@main` scene. The scene delegate forwards
-  every delivered `NSUserActivity` whole to `SnapSyncRoot.shared.onUserActivity(...)` — the
-  browsing-web filter and the raw `absoluteString` (fragment included) are Kotlin's tested `model/`
-  codec, routed on to `onOpenUrl`. A silent push forwards its `userInfo` dictionary whole
+- **App entry** (`iosApp/iosApp/iOSApp.swift`): UIKit `@main` app delegate + scene delegate. The scene
+  delegate forwards every delivered `NSUserActivity` whole, under its own entry name per half —
+  `onLaunchActivity` (cold) / `onSceneContinueActivity` (warm), so a dump says WHICH hook the platform
+  invoked — the browsing-web filter and the raw `absoluteString` (fragment included) are Kotlin's tested
+  `model/` codec, routed on to `onOpenUrl`. A silent push forwards its `userInfo` dictionary whole
   (`onSilentPush(userInfo:completion:)`; the `eventId` extraction is the tested payload codec).
   Foreground/background are **not** a Swift split any more: `SnapSyncRoot.onLaunch()` (called from
   `didFinishLaunchingWithOptions`) installs Kotlin-side `NSNotificationCenter` observers for
   `didBecomeActive`/`willResignActive`. `ContentView.swift` bridges
-  `MainViewControllerKt.MainViewController()` (Compose) into SwiftUI.
+  `MainViewControllerKt.MainViewController()` (Compose) into SwiftUI — **gated on activation**: it binds
+  Kotlin's scene generation (0 before any activation, 1 after) to `.id(…)`, so the Compose view is built
+  once, at the first `didBecomeActive`, and never rebuilt. Until then `MainViewController()` returns a bare
+  placeholder. WHICH it returns is Kotlin's tested decision (`resolveScene`), never Swift's. Why: iOS
+  connects UI scenes in the BACKGROUND, so a silent-push wake would otherwise stand up a Compose runtime
+  and Metal renderer in a process that cannot draw and present it hours later drawing dead textures
+  (capability `ios-app-shell`; mitigation for CMP-5978 — delete when fixed upstream). ⚠️ Key on the
+  APP-level notification, not `sceneDidBecomeActive`: `dvt launch` foregrounds the process WITHOUT
+  connecting a scene session, so a scene-level hook gives a black screen and kills the headless
+  screenshot loop (measured 2026-08-06).
 - **Extension principal** (`iosApp/BackgroundUploadExtension/BackgroundUploadExtension.swift`):
   `@main` class conforming to the iOS 26.1 `PHBackgroundResourceUploadExtension`; its `process()`
   constructs `PHBackgroundResourceUploadProcessingResult(rawValue:)` from the raw `Int` Kotlin's

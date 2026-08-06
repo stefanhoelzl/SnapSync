@@ -26,6 +26,34 @@ The system SHALL provide an iOS application built with Compose Multiplatform who
 SHALL render **live** `UiState` observed from an assembled real stack —
 `StatusContainerHost.container.stateFlow` — not a static `UiState`. The Swift entry point (`iosApp/`)
 SHALL remain a trivial pass-through that obtains the root view controller from `MainViewController()`.
+
+That view controller SHALL be obtained **only while the app is active**. A process launched or woken into
+the background — by a silent push, a `BGTask`, or a background `URLSession` event — SHALL compose **no**
+scene: no `ComposeUIViewController`, no Compose runtime, and no renderer. The scene SHALL be composed at
+the first activation and not before.
+
+This is a **mitigation for a renderer defect, not an architectural preference**, and SHALL be described as
+such wherever it is documented. Apple's contract is that a backgrounded app must not submit GPU work
+(`kIOGPUCommandBufferCallbackErrorBackgroundExecutionNotPermitted`) and that a backgrounded app's GPU
+resources are reclaimed; a Metal-backed renderer is expected to free them on background and rebuild them on
+foreground. Compose Multiplatform 1.11.1 does not, and the observable consequence is a scene composed while
+invisible, kept for hours, and then presented drawing its texture-backed content — glyph atlas, cached
+`ImageBitmap`s, cached vector layers — blank or corrupted, while plain geometry still draws. Two production
+reports on different devices, OS majors and upload tiers exhibited exactly that, with no hang, no crash and
+no memory signature. **Expiry trigger:** the upstream defect
+([CMP-5978](https://youtrack.jetbrains.com/issue/CMP-5978)) fixed in a Compose Multiplatform release this
+project adopts — at which point this condition SHALL be re-evaluated and removed if the renderer honours the
+contract.
+
+Deferring the scene SHALL NOT defer any other work. Every background trigger runs off the composition root's
+`AppCore`, which is independent of the UI container; nothing outside `MainViewController` observes
+`renderHost`. A background wake SHALL therefore behave exactly as before, minus the scene.
+
+The decision of whether to compose SHALL be a **pure, tested resolver** consumed by a single `when` in
+`:app:ios`, following the sealed-mode pattern the composition-mode resolver already establishes. Swift SHALL
+express it as wiring — an assignment or a bound value — and SHALL contain no conditional, so the
+transcriber law continues to hold at zero decisions.
+
 The app SHALL declare the **associated domain** `applinks:<link domain>` in `iosApp.entitlements`
 (capability `event-link`), registering it as the handler for the event link's Universal Link, and SHALL
 register **no** custom URL scheme (`CFBundleURLTypes` SHALL be absent — the `snapsync` scheme is
@@ -40,6 +68,9 @@ in Swift, in **both** of these cases:
 Cold launch is the case that matters most and SHALL NOT be treated as the incidental one: a recipient
 tapping an invite for the first time never has the app running, and bootstrapping that recipient is why
 the event link exists (capability `event-link`).
+
+Link delivery SHALL be independent of scene composition: a link SHALL reach `onOpenUrl` whether or not a
+scene has been composed, because the delivery hooks are the scene delegate's and not the scene's.
 
 The string forwarded SHALL be the **complete** URL including its fragment, which carries the entire
 payload (capability `event-link`) — a truncated URL is an empty invite.
@@ -65,12 +96,46 @@ delegate and **zero** on the modifier. The hooks named in July's matrix are mutu
 configurations, not features that compose; a future reader tempted to "add a second warm path" SHALL
 re-derive that before doing so.
 
+The mechanism by which the shell re-asks for the root view controller at activation is an
+implementation decision, not part of this contract — but it SHALL key on a signal that fires however the
+app is opened, **including a headless developer launch** that foregrounds the process without connecting
+a scene session. A scene-level callback does not satisfy that (measured 2026-08-06: a `dvt launch` app
+never received `sceneDidBecomeActive` and showed a black screen), and losing the headless path would cost
+this project the only way an agent can see the app at all.
+
+The **resolved mode** SHALL be recorded in the device log under the shell's platform-invocation logging
+(capability `diagnostic-logging`) — not merely the fact that the entry point ran. The entry point runs in
+both cases; what distinguishes them is what it returned, so the log SHALL name it. That line is the
+verification of this requirement, and no additional instrumentation is required for it: a report can then be
+read for whether a scene was composed before the process was ever active.
+
 The extension target SHALL NOT declare an associated domain: it never handles URLs.
 
-#### Scenario: Launching the app shows live status
-- **WHEN** the iOS app is launched
+#### Scenario: Launching the app into the foreground shows live status
+- **WHEN** the iOS app is launched and becomes active
 - **THEN** a `ComposeUIViewController` presents the shared `StatusScreen` rendering the current
   `UiState` from the live container, updating as config, permission, and ledger state change
+
+#### Scenario: A background-launched process composes no scene
+- **WHEN** the process is launched or woken by a silent push, a `BGTask`, or a background `URLSession`
+  event, and never becomes active
+- **THEN** no `ComposeUIViewController` is created, and every scene-mode the device log records for that
+  process is the deferred one
+
+#### Scenario: The first activation composes the scene
+- **WHEN** a process that was launched into the background is later brought to the foreground
+- **THEN** the scene is composed at that activation, and the log records the live mode only at or after
+  activation, never before it (the app-level foreground entry and the scene composition ride the same
+  notification, so their relative order is not contracted)
+
+#### Scenario: A later activation does not rebuild the scene
+- **WHEN** an app whose scene is already composed is backgrounded and brought forward again
+- **THEN** the same scene is presented, and screen-local state such as an open settings surface or a
+  half-typed report survives
+
+#### Scenario: A background wake still does its work without a scene
+- **WHEN** a silent push wakes a process that composes no scene
+- **THEN** the wake's reconcile, upload-cycle and download work run exactly as they would with a scene
 
 #### Scenario: UI is the real shared screen, not a placeholder
 - **WHEN** the status screen is displayed
@@ -91,6 +156,11 @@ The extension target SHALL NOT declare an associated domain: it never handles UR
 #### Scenario: An event link opened while the app is running is forwarded too
 - **WHEN** an event link is opened while the app is running or suspended in memory
 - **THEN** the raw URL string — fragment included — reaches `SnapSyncRoot.onOpenUrl(_:)`
+
+#### Scenario: A link arriving at a process with no scene is still forwarded
+- **WHEN** an event link is opened against a process that was woken into the background and has composed
+  no scene
+- **THEN** the raw URL string still reaches `SnapSyncRoot.onOpenUrl(_:)` exactly once
 
 #### Scenario: A link is delivered exactly once
 - **WHEN** a single event link is opened, in either case
