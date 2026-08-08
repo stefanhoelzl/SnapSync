@@ -221,6 +221,12 @@ class DownloadController(
      *
      * **Self-extinguishing**: releasing also drops the resource rows that made the work findable, so a
      * second run finds nothing. No flag, no migration, no run-once bookkeeping.
+     *
+     * Driven by the `flow/Foreground` trigger, unconditionally — the backlog belongs to the device, not
+     * to a membership, so it is reclaimed while unjoined and under an upload-only one too. That call is
+     * what makes it a reclaim rather than a capability; it shipped without one, and every install that
+     * predates per-asset release kept its orphaned files. See the trigger's own note for why foreground
+     * and not the download backstop.
      */
     suspend fun releaseSettledBytes() = log.invocation(logScope, "releaseSettledBytes") {
         val paths = runCatching { store.stagedPathsOfImportedAssets() }.getOrDefault(emptyList())

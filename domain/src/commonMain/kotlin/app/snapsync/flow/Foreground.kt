@@ -13,8 +13,8 @@ import kotlinx.coroutines.launch
  * in flows"; capability `sync-status` liveness). The scene returned to the foreground: re-read the
  * persisted membership (below), pump the app-driven upload tier (a no-op on the OS-driven tier),
  * start the foreground status poll, then — each on its own launch, so a slow one never blocks the
- * others — re-read the status sources, reconcile foreign downloads, refresh the event title, and
- * renew a stale attestation token.
+ * others — re-read the status sources, reconcile foreign downloads, reclaim the staged bytes of
+ * already-imported downloads, refresh the event title, and renew a stale attestation token.
  *
  * This flow **coordinates** (ordering + fan-out of the escaping launches); it **decides** nothing. The
  * stack-assembly touch and the entry-point log wrap stay in the shell (platform surfaces `flow/`
@@ -96,6 +96,31 @@ class Foreground(
             launch { refreshStatus() }
             // Foreground-only discovery (capability `photo-download`): pick up foreign photos and import staged.
             launch { activeEventId()?.let { downloadController.reconcile(it) } }
+            // The staged-byte backlog reclaim (capability `download-store`): free the files of assets
+            // whose import is confirmed but whose resource rows predate per-asset release, so a received
+            // photo is not stored twice — as a library asset and as a staged file — forever.
+            //
+            // HERE and not on `DownloadBackstop`, which is the thematically closer trigger (it already
+            // owns the import tail). The reclaim is a ONE-SHOT backlog whose whole value is that it
+            // eventually runs on every affected install; the backstop is a `BGProcessingTask` the OS may
+            // defer indefinitely and, on a device that never charges while idle, may never schedule at
+            // all. Foreground entry is the one trigger a user reaching the app cannot avoid. It is
+            // self-extinguishing — releasing drops the very rows that made the work findable — so the
+            // cost from the second foreground onward is one store query that returns nothing, with no
+            // flag, no migration marker and no run-once bookkeeping to get wrong.
+            //
+            // UNCONDITIONAL, unlike `reconcile`: the backlog belongs to the DEVICE, not to a membership.
+            // A device that has left, or has since joined an upload-only event, still holds the orphaned
+            // files of everything it imported before — and nothing else reaches them (`onLeaveOrSwitch`
+            // releases only the NON-terminal rows it is about to prune; an imported row is terminal by
+            // construction). Behind the `activeEventId()` guard the leak would simply survive.
+            //
+            // Concurrent with the reconcile above, and that is safe: both act only on rows whose
+            // confirming write has already committed, and every path that commits one releases that
+            // row's bytes and drops its resource rows INLINE under the controller's mutex before
+            // returning. So this pass can neither observe a row mid-import nor drop resource rows whose
+            // paths it did not read.
+            launch { downloadController.releaseSettledBytes() }
             // Keep the membership current: fetch, then let the membership rule decide what the result MEANS
             // (name refresh, window/retention backfill, or — on a CONFIRMED absence — the teardown).
             launch { activeEventId()?.let { id -> membershipRefresh.refresh(id, fetchEventDetails(id)) } }
