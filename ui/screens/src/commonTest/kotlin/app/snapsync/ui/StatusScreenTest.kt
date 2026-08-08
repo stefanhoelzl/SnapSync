@@ -1,3 +1,5 @@
+@file:OptIn(ExperimentalTestApi::class)
+
 package app.snapsync.ui
 
 import app.snapsync.model.eventEnd
@@ -13,7 +15,9 @@ import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.graphics.PixelMap
 import androidx.compose.ui.graphics.toPixelMap
+import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.SemanticsMatcher
+import androidx.compose.ui.test.v2.runComposeUiTest
 import androidx.compose.ui.test.assert
 import androidx.compose.ui.test.captureToImage
 import androidx.compose.ui.test.onRoot
@@ -21,7 +25,6 @@ import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.assertIsSelected
 import androidx.compose.ui.test.hasSetTextAction
-import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
@@ -48,7 +51,6 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlinx.datetime.LocalDateTime
 import kotlinx.datetime.TimeZone
-import org.junit.Rule
 
 // A representative invite link — any string renders a QR; the encoding is pinned in capability:config.
 private const val SAMPLE_INVITE = "https://snapsync.stho.net/join#v=3&d=eyJldmVudElkIjoiMSJ9"
@@ -71,14 +73,11 @@ private fun fixedCutoff() = CutoffFormatter(
 
 class StatusScreenTest {
 
-    @get:Rule
-    val rule = createComposeRule()
-
     // ---- the not-started clock line ----
 
     @Test
-    fun `the not-started health renders a clock line naming the start, below the QR`() {
-        rule.setContent {
+    fun `the not-started health renders a clock line naming the start — below the QR`() = runComposeUiTest {
+        setContent {
             StatusScreen(
                 joined(SyncHealth.NotStarted(eventStart("2026-07-04T18:00:00Z"))),
                 inviteUrl = "https://snapsync.stho.net/join#v=3&d=abc",
@@ -87,82 +86,82 @@ class StatusScreenTest {
         }
         // Rendered in the DEVICE's local zone (UTC here), in the same one-line slot every other status
         // uses — the joined layer never grows a second line.
-        rule.onNodeWithText("Starts 4 Jul, 18:00").assertExists()
+        onNodeWithText("Starts 4 Jul, 18:00").assertExists()
         // It is information, not an action: no sync arrows, no "In sync".
-        rule.onNodeWithText("In sync").assertDoesNotExist()
-        rule.onNodeWithText("Synchronization pending …").assertDoesNotExist()
+        onNodeWithText("In sync").assertDoesNotExist()
+        onNodeWithText("Synchronization pending …").assertDoesNotExist()
     }
 
     // ---- create layer ----
 
     @Test
-    fun `create screen shows the name input and the scan-to-join hint`() {
-        rule.setContent { StatusScreen(UiState.CreateEvent(), cutoff = fixedCutoff()) }
+    fun `create screen shows the name input and the scan-to-join hint`() = runComposeUiTest {
+        setContent { StatusScreen(UiState.CreateEvent(), cutoff = fixedCutoff()) }
 
-        rule.onNodeWithText("Start an event").assertExists()
-        rule.onNodeWithText("Or scan a QR code in the Camera app to join one.").assertExists()
-        rule.onNodeWithText("Event name").assertExists()
-        rule.onNodeWithText("Create event").assertExists()
+        onNodeWithText("Start an event").assertExists()
+        onNodeWithText("Or scan a QR code in the Camera app to join one.").assertExists()
+        onNodeWithText("Event name").assertExists()
+        onNodeWithText("Create event").assertExists()
     }
 
     @Test
-    fun `invalid deeplink error shows on the create screen`() {
-        rule.setContent {
+    fun `invalid deeplink error shows on the create screen`() = runComposeUiTest {
+        setContent {
             StatusScreen(UiState.CreateEvent(), transientError = "That QR code wasn't valid.", cutoff = fixedCutoff())
         }
-        rule.onNodeWithText("That QR code wasn't valid.").assertExists()
+        onNodeWithText("That QR code wasn't valid.").assertExists()
     }
 
     @Test
-    fun `a create failure shows its inline error on the create screen`() {
-        rule.setContent { StatusScreen(UiState.CreateEvent(error = "Couldn't reach the server."), cutoff = fixedCutoff()) }
-        rule.onNodeWithText("Couldn't reach the server.").assertExists()
+    fun `a create failure shows its inline error on the create screen`() = runComposeUiTest {
+        setContent { StatusScreen(UiState.CreateEvent(error = "Couldn't reach the server."), cutoff = fixedCutoff()) }
+        onNodeWithText("Couldn't reach the server.").assertExists()
     }
 
     @Test
-    fun `create is disabled until a name is typed`() {
-        rule.setContent { StatusScreen(UiState.CreateEvent(), cutoff = fixedCutoff()) }
+    fun `create is disabled until a name is typed`() = runComposeUiTest {
+        setContent { StatusScreen(UiState.CreateEvent(), cutoff = fixedCutoff()) }
 
-        rule.onNodeWithText("Create event").assertIsNotEnabled()
-        rule.onNode(hasSetTextAction()).performTextInput("My Party")
-        rule.onNodeWithText("Create event").assertIsEnabled()
+        onNodeWithText("Create event").assertIsNotEnabled()
+        onNode(hasSetTextAction()).performTextInput("My Party")
+        onNodeWithText("Create event").assertIsEnabled()
     }
 
     @Test
-    fun `tapping create submits the typed name`() {
+    fun `tapping create submits the typed name`() = runComposeUiTest {
         var created: String? = null
-        rule.setContent { StatusScreen(UiState.CreateEvent(), onCreateEvent = { n, _, _ -> created = n }, cutoff = fixedCutoff()) }
+        setContent { StatusScreen(UiState.CreateEvent(), onCreateEvent = { n, _, _ -> created = n }, cutoff = fixedCutoff()) }
 
-        rule.onNode(hasSetTextAction()).performTextInput("My Party")
-        rule.onNodeWithText("Create event").performClick()
+        onNode(hasSetTextAction()).performTextInput("My Party")
+        onNodeWithText("Create event").performClick()
         assertEquals("My Party", created)
     }
 
     @Test
-    fun `the create screen shows the date range defaulting to now to now plus 1d with a duration hint`() {
-        rule.setContent {
+    fun `the create screen shows the date range defaulting to now to now plus 1d with a duration hint`() = runComposeUiTest {
+        setContent {
             StatusScreen(UiState.CreateEvent(), cutoff = fixedCutoff())
         }
         // now = 6 Jul 12:00 (UTC) → default window [6 Jul 12:00, 7 Jul 12:00], the compact adaptive label.
-        rule.onNodeWithText("6 Jul 12:00 – 7 Jul 12:00").assertExists()
-        rule.onNodeWithText("Event lasts 1 day").assertExists()
-        rule.onNodeWithContentDescription("Edit event dates").assertExists()
+        onNodeWithText("6 Jul 12:00 – 7 Jul 12:00").assertExists()
+        onNodeWithText("Event lasts 1 day").assertExists()
+        onNodeWithContentDescription("Edit event dates").assertExists()
     }
 
     @Test
-    fun `tapping create submits the typed name AND the chosen date range`() {
+    fun `tapping create submits the typed name AND the chosen date range`() = runComposeUiTest {
         var createdName: String? = null
         var createdFrom: LocalDateTime? = null
         var createdUntil: LocalDateTime? = null
-        rule.setContent {
+        setContent {
             StatusScreen(
                 UiState.CreateEvent(),
                 onCreateEvent = { n, f, u -> createdName = n; createdFrom = f; createdUntil = u },
                 cutoff = fixedCutoff(),
             )
         }
-        rule.onNode(hasSetTextAction()).performTextInput("My Party")
-        rule.onNodeWithText("Create event").performClick()
+        onNode(hasSetTextAction()).performTextInput("My Party")
+        onNodeWithText("Create event").performClick()
 
         assertEquals("My Party", createdName)
         // The default window is [now, now + 1 day] as LOCAL wall-clock values. The container converts each;
@@ -172,77 +171,77 @@ class StatusScreenTest {
     }
 
     @Test
-    fun `the range default is frozen at first composition, not re-derived at submit`() {
+    fun `the range default is frozen at first composition and not re-derived at submit`() = runComposeUiTest {
         // The label is the screen's whole statement about what will be sent. A range that silently drifted
         // between being displayed and being posted would make the screen lie.
         val clock = MovableClock(Instant.parse("2026-07-06T12:00:00Z"))
         var createdFrom: LocalDateTime? = null
-        rule.setContent {
+        setContent {
             StatusScreen(
                 UiState.CreateEvent(),
                 onCreateEvent = { _, f, _ -> createdFrom = f },
                 cutoff = CutoffFormatter(now = clock::now, zone = TimeZone.UTC),
             )
         }
-        rule.onNodeWithText("6 Jul 12:00 – 7 Jul 12:00").assertExists()
+        onNodeWithText("6 Jul 12:00 – 7 Jul 12:00").assertExists()
 
         // Ten minutes pass while the user types.
         clock.instant = Instant.parse("2026-07-06T12:10:00Z")
-        rule.onNode(hasSetTextAction()).performTextInput("My Party")
-        rule.onNodeWithText("Create event").performClick()
+        onNode(hasSetTextAction()).performTextInput("My Party")
+        onNodeWithText("Create event").performClick()
 
         // The label said 12:00 and 12:00 is what was sent — NOT the instant Create was tapped.
-        rule.onNodeWithText("6 Jul 12:00 – 7 Jul 12:00").assertExists()
+        onNodeWithText("6 Jul 12:00 – 7 Jul 12:00").assertExists()
         assertEquals(LocalDateTime(2026, 7, 6, 12, 0), createdFrom)
     }
 
     @Test
-    fun `the edit affordance opens ONE range dialog showing the calendar and both time wheels together`() {
+    fun `the edit affordance opens ONE range dialog showing the calendar and both time wheels together`() = runComposeUiTest {
         // The picker is a single dialog: a hand-drawn month calendar AND both HH:MM time-wheel pairs (From
         // and Until) visible at once. One OK commits the whole span.
         //
         // Reduce motion is REQUIRED: the picker's time wheels animate on open (a LazyColumn settle), and an
         // animating scene never reaches idle — without this flag `waitForIdle` stalls for ~16 min.
-        rule.setContent {
+        setContent {
             CompositionLocalProvider(LocalReduceMotion provides true) { StatusScreen(UiState.CreateEvent(), cutoff = fixedCutoff()) }
         }
-        rule.onNodeWithText("Date & time").assertDoesNotExist() // no dialog yet
+        onNodeWithText("Date & time").assertDoesNotExist() // no dialog yet
 
-        rule.onNodeWithContentDescription("Edit event dates").performClick()
+        onNodeWithContentDescription("Edit event dates").performClick()
 
-        rule.onNodeWithText("Date & time").assertExists()
-        rule.onNodeWithText("OK").assertExists()
-        rule.onNodeWithText("Cancel").assertExists()
+        onNodeWithText("Date & time").assertExists()
+        onNodeWithText("OK").assertExists()
+        onNodeWithText("Cancel").assertExists()
         // Calendar pane present (the visible month) AND both time panes present (all four wheels).
-        rule.onNodeWithText("July 2026").assertExists()
-        rule.onNodeWithContentDescription("From hour", useUnmergedTree = true).assertExists()
-        rule.onNodeWithContentDescription("From minute", useUnmergedTree = true).assertExists()
-        rule.onNodeWithContentDescription("Until hour", useUnmergedTree = true).assertExists()
-        rule.onNodeWithContentDescription("Until minute", useUnmergedTree = true).assertExists()
+        onNodeWithText("July 2026").assertExists()
+        onNodeWithContentDescription("From hour", useUnmergedTree = true).assertExists()
+        onNodeWithContentDescription("From minute", useUnmergedTree = true).assertExists()
+        onNodeWithContentDescription("Until hour", useUnmergedTree = true).assertExists()
+        onNodeWithContentDescription("Until minute", useUnmergedTree = true).assertExists()
     }
 
     @Test
-    fun `the range picker time wheels expose the current window bounds`() {
+    fun `the range picker time wheels expose the current window bounds`() = runComposeUiTest {
         // The default window is [6 Jul 12:00, 7 Jul 12:00], so both wheel pairs open on 12 and 00. Reduce
         // motion is required so the wheels snap (an animating scene never idles — see the dialog test above).
-        rule.setContent {
+        setContent {
             CompositionLocalProvider(LocalReduceMotion provides true) { StatusScreen(UiState.CreateEvent(), cutoff = fixedCutoff()) }
         }
-        rule.onNodeWithContentDescription("Edit event dates").performClick()
+        onNodeWithContentDescription("Edit event dates").performClick()
 
-        rule.onNodeWithContentDescription("From hour", useUnmergedTree = true)
+        onNodeWithContentDescription("From hour", useUnmergedTree = true)
             .assert(SemanticsMatcher.expectValue(SemanticsProperties.StateDescription, "12"))
-        rule.onNodeWithContentDescription("Until hour", useUnmergedTree = true)
+        onNodeWithContentDescription("Until hour", useUnmergedTree = true)
             .assert(SemanticsMatcher.expectValue(SemanticsProperties.StateDescription, "12"))
-        rule.onNodeWithContentDescription("From minute", useUnmergedTree = true)
+        onNodeWithContentDescription("From minute", useUnmergedTree = true)
             .assert(SemanticsMatcher.expectValue(SemanticsProperties.StateDescription, "00"))
     }
 
     @Test
-    fun `the name field caps at 100 characters`() {
-        rule.setContent { StatusScreen(UiState.CreateEvent(), cutoff = fixedCutoff()) }
+    fun `the name field caps at 100 characters`() = runComposeUiTest {
+        setContent { StatusScreen(UiState.CreateEvent(), cutoff = fixedCutoff()) }
 
-        val field = rule.onNode(hasSetTextAction())
+        val field = onNode(hasSetTextAction())
         field.performTextInput("a".repeat(100))
         field.performTextInput("b")
         val text = field.fetchSemanticsNode().config[SemanticsProperties.EditableText].text
@@ -250,48 +249,48 @@ class StatusScreenTest {
     }
 
     @Test
-    fun `create layer shows no sync line, leave, or invite`() {
-        rule.setContent { StatusScreen(UiState.CreateEvent(), inviteUrl = SAMPLE_INVITE, cutoff = fixedCutoff()) }
+    fun `create layer shows no sync line and no leave and no invite`() = runComposeUiTest {
+        setContent { StatusScreen(UiState.CreateEvent(), inviteUrl = SAMPLE_INVITE, cutoff = fixedCutoff()) }
 
-        rule.onNodeWithText("In sync").assertDoesNotExist()
-        rule.onNodeWithText("Synchronization", substring = true).assertDoesNotExist()
-        rule.onNodeWithContentDescription("Leave event").assertDoesNotExist()
-        rule.onNodeWithText("Scan to join this event").assertDoesNotExist()
+        onNodeWithText("In sync").assertDoesNotExist()
+        onNodeWithText("Synchronization", substring = true).assertDoesNotExist()
+        onNodeWithContentDescription("Leave event").assertDoesNotExist()
+        onNodeWithText("Scan to join this event").assertDoesNotExist()
     }
 
     @Test
-    fun `creating event shows a preparing indicator and no input`() {
-        rule.setContent { StatusScreen(UiState.CreatingEvent, cutoff = fixedCutoff()) }
+    fun `creating event shows a preparing indicator and no input`() = runComposeUiTest {
+        setContent { StatusScreen(UiState.CreatingEvent, cutoff = fixedCutoff()) }
 
-        rule.onNodeWithText("Creating your event …").assertExists()
-        rule.onNode(hasAnyProgressIndication()).assertExists()
-        rule.onNodeWithText("Event name").assertDoesNotExist()
+        onNodeWithText("Creating your event …").assertExists()
+        onNode(hasAnyProgressIndication()).assertExists()
+        onNodeWithText("Event name").assertDoesNotExist()
     }
 
     // ---- joined layer: status line ----
 
     @Test
-    fun `in sync shows the settled line and no counts`() {
-        rule.setContent { StatusScreen(inSync, cutoff = fixedCutoff()) }
+    fun `in sync shows the settled line and no counts`() = runComposeUiTest {
+        setContent { StatusScreen(inSync, cutoff = fixedCutoff()) }
 
-        rule.onNodeWithText("In sync").assertExists()
-        rule.onNodeWithText("images synced", substring = true).assertDoesNotExist()
+        onNodeWithText("In sync").assertExists()
+        onNodeWithText("images synced", substring = true).assertDoesNotExist()
     }
 
     @Test
-    fun `syncing with an in-flight arrow reads ongoing`() {
-        rule.setContent { StatusScreen(syncing, cutoff = fixedCutoff()) }
+    fun `syncing with an in-flight arrow reads ongoing`() = runComposeUiTest {
+        setContent { StatusScreen(syncing, cutoff = fixedCutoff()) }
 
-        rule.onNodeWithText("Synchronization ongoing…").assertExists()
-        rule.onNodeWithText("images synced", substring = true).assertDoesNotExist()
+        onNodeWithText("Synchronization ongoing…").assertExists()
+        onNodeWithText("images synced", substring = true).assertDoesNotExist()
     }
 
     @Test
-    fun `syncing with a static arrow reads pending`() {
-        rule.setContent { StatusScreen(syncPending, cutoff = fixedCutoff()) }
+    fun `syncing with a static arrow reads pending`() = runComposeUiTest {
+        setContent { StatusScreen(syncPending, cutoff = fixedCutoff()) }
 
-        rule.onNodeWithText("Synchronization pending…").assertExists()
-        rule.onNodeWithText("Synchronization ongoing…").assertDoesNotExist()
+        onNodeWithText("Synchronization pending…").assertExists()
+        onNodeWithText("Synchronization ongoing…").assertDoesNotExist()
     }
 
     // ---- reduce motion (capability `design-system`) ----
@@ -302,86 +301,86 @@ class StatusScreenTest {
      * property itself, not a proxy for it. The control below is what makes it mean anything.
      */
     @Test
-    fun `reduce motion leaves the pulsing arrow un-animated`() {
-        rule.mainClock.autoAdvance = false
-        rule.setContent {
+    fun `reduce motion leaves the pulsing arrow un-animated`() = runComposeUiTest {
+        mainClock.autoAdvance = false
+        setContent {
             CompositionLocalProvider(LocalReduceMotion provides true) { StatusScreen(syncing, cutoff = fixedCutoff()) }
         }
-        rule.onNodeWithText("Synchronization ongoing…").assertExists()
+        onNodeWithText("Synchronization ongoing…").assertExists()
 
-        val first = rule.onRoot().captureToImage().toPixelMap()
-        rule.mainClock.advanceTimeBy(350)
-        val second = rule.onRoot().captureToImage().toPixelMap()
+        val first = onRoot().captureToImage().toPixelMap()
+        mainClock.advanceTimeBy(350)
+        val second = onRoot().captureToImage().toPixelMap()
 
         assertTrue(samePixels(first, second), "reduce motion must leave the frame unchanged over time")
     }
 
     /** The control: without the preference the same state DOES move — or the test above proves nothing. */
     @Test
-    fun `without reduce motion the pulsing arrow animates`() {
-        rule.mainClock.autoAdvance = false
-        rule.setContent {
+    fun `without reduce motion the pulsing arrow animates`() = runComposeUiTest {
+        mainClock.autoAdvance = false
+        setContent {
             CompositionLocalProvider(LocalReduceMotion provides false) { StatusScreen(syncing, cutoff = fixedCutoff()) }
         }
-        rule.onNodeWithText("Synchronization ongoing…").assertExists()
+        onNodeWithText("Synchronization ongoing…").assertExists()
 
-        val first = rule.onRoot().captureToImage().toPixelMap()
-        rule.mainClock.advanceTimeBy(350) // half the 700ms fade — the alpha cannot be back where it started
-        val second = rule.onRoot().captureToImage().toPixelMap()
+        val first = onRoot().captureToImage().toPixelMap()
+        mainClock.advanceTimeBy(350) // half the 700ms fade — the alpha cannot be back where it started
+        val second = onRoot().captureToImage().toPixelMap()
 
         assertFalse(samePixels(first, second), "a pulsing arrow animates when motion is allowed")
     }
 
     /** Reduce motion changes no meaning: the label still distinguishes in-flight from merely pending. */
     @Test
-    fun `reduce motion keeps the ongoing-vs-pending distinction`() {
-        rule.setContent {
+    fun `reduce motion keeps the ongoing-vs-pending distinction`() = runComposeUiTest {
+        setContent {
             CompositionLocalProvider(LocalReduceMotion provides true) { StatusScreen(syncPending, cutoff = fixedCutoff()) }
         }
 
-        rule.onNodeWithText("Synchronization pending…").assertExists()
-        rule.onNodeWithText("Synchronization ongoing…").assertDoesNotExist()
+        onNodeWithText("Synchronization pending…").assertExists()
+        onNodeWithText("Synchronization ongoing…").assertDoesNotExist()
     }
 
     @Test
-    fun `needs-access not-determined shows the allow copy and taps request permission`() {
+    fun `needs-access not-determined shows the allow copy and taps request permission`() = runComposeUiTest {
         var requests = 0
-        rule.setContent {
+        setContent {
             StatusScreen(
                 joined(SyncHealth.NeedsAccess(PermissionStatus.NOT_DETERMINED)),
                 onRequestPermission = { requests++ },
              cutoff = fixedCutoff())
         }
 
-        rule.onNodeWithText("Allow photo access").assertExists()
-        rule.onNodeWithText("Allow photo access").performClick()
+        onNodeWithText("Allow photo access").assertExists()
+        onNodeWithText("Allow photo access").performClick()
         assertEquals(1, requests)
     }
 
     @Test
-    fun `needs-access denied shows the settings copy and taps open settings`() {
+    fun `needs-access denied shows the settings copy and taps open settings`() = runComposeUiTest {
         var settingsOpens = 0
-        rule.setContent {
+        setContent {
             StatusScreen(
                 joined(SyncHealth.NeedsAccess(PermissionStatus.DENIED)),
                 onOpenSettings = { settingsOpens++ },
              cutoff = fixedCutoff())
         }
 
-        rule.onNodeWithText("Turn on full access in Settings").assertExists()
-        rule.onNodeWithText("Turn on full access in Settings").performClick()
+        onNodeWithText("Turn on full access in Settings").assertExists()
+        onNodeWithText("Turn on full access in Settings").performClick()
         assertEquals(1, settingsOpens)
     }
 
     // ---- joined layer: partial-grant resting affordances (capability `limited-photo-access`) ----
 
     @Test
-    fun `limited grant shows both affordances in order, in every health`() {
+    fun `limited grant shows both affordances in order — in every health`() = runComposeUiTest {
         // One recomposing scene walks the healths — the affordances are resting offers, present
         // regardless of the current health value, with the grant switch always BELOW the selection
         // widening (the cheaper step leads).
         val state = mutableStateOf<UiState>(UiState.Joined(SyncHealth.InSync, canChoosePhotos = true))
-        rule.setContent { StatusScreen(state.value, cutoff = fixedCutoff()) }
+        setContent { StatusScreen(state.value, cutoff = fixedCutoff()) }
 
         val healths = listOf(
             SyncHealth.InSync,
@@ -390,19 +389,19 @@ class StatusScreenTest {
         )
         for (health in healths) {
             state.value = UiState.Joined(health, canChoosePhotos = true)
-            rule.waitForIdle()
-            val chooseY = rule.onNodeWithText("Choose more photos").fetchSemanticsNode().positionInRoot.y
-            val allowY = rule.onNodeWithText("Allow full access").fetchSemanticsNode().positionInRoot.y
+            waitForIdle()
+            val chooseY = onNodeWithText("Choose more photos").fetchSemanticsNode().positionInRoot.y
+            val allowY = onNodeWithText("Allow full access").fetchSemanticsNode().positionInRoot.y
             assertTrue(allowY > chooseY, "Allow full access must sit below Choose more photos ($health)")
         }
     }
 
     @Test
-    fun `allow full access taps open settings and nothing else`() {
+    fun `allow full access taps open settings and nothing else`() = runComposeUiTest {
         var settingsOpens = 0
         var pickerOpens = 0
         var requests = 0
-        rule.setContent {
+        setContent {
             StatusScreen(
                 UiState.Joined(SyncHealth.InSync, canChoosePhotos = true),
                 onOpenSettings = { settingsOpens++ },
@@ -412,17 +411,17 @@ class StatusScreenTest {
             )
         }
 
-        rule.onNodeWithText("Allow full access").performClick()
+        onNodeWithText("Allow full access").performClick()
         assertEquals(1, settingsOpens)
         assertEquals(0, pickerOpens)
         assertEquals(0, requests)
     }
 
     @Test
-    fun `choose more photos taps the picker callback, not settings`() {
+    fun `choose more photos taps the picker callback and not settings`() = runComposeUiTest {
         var settingsOpens = 0
         var pickerOpens = 0
-        rule.setContent {
+        setContent {
             StatusScreen(
                 UiState.Joined(SyncHealth.InSync, canChoosePhotos = true),
                 onOpenSettings = { settingsOpens++ },
@@ -431,115 +430,115 @@ class StatusScreenTest {
             )
         }
 
-        rule.onNodeWithText("Choose more photos").performClick()
+        onNodeWithText("Choose more photos").performClick()
         assertEquals(1, pickerOpens)
         assertEquals(0, settingsOpens)
     }
 
     @Test
-    fun `no partial-grant affordances under a full grant`() {
+    fun `no partial-grant affordances under a full grant`() = runComposeUiTest {
         // canChoosePhotos defaults false (permission != LIMITED) — neither offer renders.
-        rule.setContent { StatusScreen(inSync, cutoff = fixedCutoff()) }
+        setContent { StatusScreen(inSync, cutoff = fixedCutoff()) }
 
-        rule.onNodeWithText("Choose more photos").assertDoesNotExist()
-        rule.onNodeWithText("Allow full access").assertDoesNotExist()
+        onNodeWithText("Choose more photos").assertDoesNotExist()
+        onNodeWithText("Allow full access").assertDoesNotExist()
     }
 
     // ---- joined layer: name, leave, invite ----
 
     @Test
-    fun `joined shows the event name as the title`() {
-        rule.setContent { StatusScreen(inSync, eventName = "Anna's Birthday", cutoff = fixedCutoff()) }
-        rule.onNodeWithText("Anna's Birthday").assertExists()
+    fun `joined shows the event name as the title`() = runComposeUiTest {
+        setContent { StatusScreen(inSync, eventName = "Anna's Birthday", cutoff = fixedCutoff()) }
+        onNodeWithText("Anna's Birthday").assertExists()
     }
 
     @Test
-    fun `joined shows the leave action`() {
-        rule.setContent { StatusScreen(inSync, cutoff = fixedCutoff()) }
-        rule.onNodeWithContentDescription("Leave event").assertExists()
+    fun `joined shows the leave action`() = runComposeUiTest {
+        setContent { StatusScreen(inSync, cutoff = fixedCutoff()) }
+        onNodeWithContentDescription("Leave event").assertExists()
     }
 
     @Test
-    fun `needs-access still shows leave and invite (sharing needs no access)`() {
-        rule.setContent {
+    fun `needs-access still shows leave and invite — sharing needs no access`() = runComposeUiTest {
+        setContent {
             StatusScreen(
                 joined(SyncHealth.NeedsAccess(PermissionStatus.DENIED)),
                 inviteUrl = SAMPLE_INVITE,
              cutoff = fixedCutoff())
         }
-        rule.onNodeWithContentDescription("Leave event").assertExists()
-        rule.onNodeWithText("Scan to join this event").assertExists()
-        rule.onNodeWithContentDescription("Share invite link").assertExists()
+        onNodeWithContentDescription("Leave event").assertExists()
+        onNodeWithText("Scan to join this event").assertExists()
+        onNodeWithContentDescription("Share invite link").assertExists()
     }
 
     @Test
-    fun `activating leave shows the leave-this-event dialog`() {
-        rule.setContent { StatusScreen(inSync, cutoff = fixedCutoff()) }
+    fun `activating leave shows the leave-this-event dialog`() = runComposeUiTest {
+        setContent { StatusScreen(inSync, cutoff = fixedCutoff()) }
 
-        rule.onNodeWithText("Leave this event?").assertDoesNotExist()
-        rule.onNodeWithContentDescription("Leave event").performClick()
-        rule.onNodeWithText("Leave this event?").assertExists()
+        onNodeWithText("Leave this event?").assertDoesNotExist()
+        onNodeWithContentDescription("Leave event").performClick()
+        onNodeWithText("Leave this event?").assertExists()
     }
 
     @Test
-    fun `confirming leave invokes the callback`() {
+    fun `confirming leave invokes the callback`() = runComposeUiTest {
         var leaves = 0
-        rule.setContent { StatusScreen(inSync, onLeaveEvent = { leaves++ }, cutoff = fixedCutoff()) }
+        setContent { StatusScreen(inSync, onLeaveEvent = { leaves++ }, cutoff = fixedCutoff()) }
 
-        rule.onNodeWithContentDescription("Leave event").performClick()
-        rule.onNodeWithText("Leave").performClick()
+        onNodeWithContentDescription("Leave event").performClick()
+        onNodeWithText("Leave").performClick()
         assertEquals(1, leaves)
     }
 
     @Test
-    fun `staying does not invoke leave and dismisses the dialog`() {
+    fun `staying does not invoke leave and dismisses the dialog`() = runComposeUiTest {
         var leaves = 0
-        rule.setContent { StatusScreen(inSync, onLeaveEvent = { leaves++ }, cutoff = fixedCutoff()) }
+        setContent { StatusScreen(inSync, onLeaveEvent = { leaves++ }, cutoff = fixedCutoff()) }
 
-        rule.onNodeWithContentDescription("Leave event").performClick()
-        rule.onNodeWithText("Stay").performClick()
+        onNodeWithContentDescription("Leave event").performClick()
+        onNodeWithText("Stay").performClick()
         assertEquals(0, leaves)
-        rule.onNodeWithText("Leave this event?").assertDoesNotExist()
+        onNodeWithText("Leave this event?").assertDoesNotExist()
     }
 
     @Test
-    fun `joined shows the invite QR and share action`() {
-        rule.setContent { StatusScreen(inSync, inviteUrl = SAMPLE_INVITE, cutoff = fixedCutoff()) }
-        rule.onNodeWithText("Scan to join this event").assertExists()
-        rule.onNodeWithContentDescription("Share invite link").assertExists()
+    fun `joined shows the invite QR and share action`() = runComposeUiTest {
+        setContent { StatusScreen(inSync, inviteUrl = SAMPLE_INVITE, cutoff = fixedCutoff()) }
+        onNodeWithText("Scan to join this event").assertExists()
+        onNodeWithContentDescription("Share invite link").assertExists()
     }
 
     @Test
-    fun `joined without an invite url hides the invite affordances`() {
-        rule.setContent { StatusScreen(inSync, inviteUrl = null, cutoff = fixedCutoff()) }
-        rule.onNodeWithText("Scan to join this event").assertDoesNotExist()
-        rule.onNodeWithContentDescription("Share invite link").assertDoesNotExist()
+    fun `joined without an invite url hides the invite affordances`() = runComposeUiTest {
+        setContent { StatusScreen(inSync, inviteUrl = null, cutoff = fixedCutoff()) }
+        onNodeWithText("Scan to join this event").assertDoesNotExist()
+        onNodeWithContentDescription("Share invite link").assertDoesNotExist()
     }
 
     @Test
-    fun `activating share invokes the callback`() {
+    fun `activating share invokes the callback`() = runComposeUiTest {
         var shares = 0
-        rule.setContent { StatusScreen(inSync, onShareInvite = { shares++ }, inviteUrl = SAMPLE_INVITE, cutoff = fixedCutoff()) }
-        rule.onNodeWithContentDescription("Share invite link").performClick()
+        setContent { StatusScreen(inSync, onShareInvite = { shares++ }, inviteUrl = SAMPLE_INVITE, cutoff = fixedCutoff()) }
+        onNodeWithContentDescription("Share invite link").performClick()
         assertEquals(1, shares)
     }
 
     // ---- the rename affordance + dialog (capability `event-rename`) ----
 
     @Test
-    fun `joined with a membership shows the rename pen beside the heading`() {
-        rule.setContent {
+    fun `joined with a membership shows the rename pen beside the heading`() = runComposeUiTest {
+        setContent {
             StatusScreen(inSync, membership = MEMBERSHIP, eventName = "Anna's Birthday", cutoff = fixedCutoff())
         }
-        rule.onNodeWithText("Anna's Birthday").assertExists()
-        rule.onNodeWithContentDescription("Rename event").assertExists()
+        onNodeWithText("Anna's Birthday").assertExists()
+        onNodeWithContentDescription("Rename event").assertExists()
     }
 
     @Test
-    fun `the rename pen is present in every joined health, including without photo access`() {
+    fun `the rename pen is present in every joined health — including without photo access`() = runComposeUiTest {
         // Renaming needs neither photo access nor a started event, so no health value may hide it.
         val health = mutableStateOf<SyncHealth>(SyncHealth.InSync)
-        rule.setContent {
+        setContent {
             StatusScreen(
                 joined(health.value),
                 membership = MEMBERSHIP,
@@ -554,15 +553,15 @@ class StatusScreenTest {
             SyncHealth.NeedsAccess(PermissionStatus.NOT_DETERMINED),
         )) {
             health.value = value
-            rule.waitForIdle()
-            rule.onNodeWithContentDescription("Rename event").assertExists()
+            waitForIdle()
+            onNodeWithContentDescription("Rename event").assertExists()
         }
     }
 
     @Test
-    fun `the rename pen is suppressed during a pending switch`() {
+    fun `the rename pen is suppressed during a pending switch`() = runComposeUiTest {
         // Same reason the settings gear is: a rename must not race the switch's config write.
-        rule.setContent {
+        setContent {
             StatusScreen(
                 UiState.Joined(
                     SyncHealth.InSync,
@@ -581,52 +580,52 @@ class StatusScreenTest {
                 cutoff = fixedCutoff(),
             )
         }
-        rule.onNodeWithContentDescription("Rename event").assertDoesNotExist()
+        onNodeWithContentDescription("Rename event").assertDoesNotExist()
     }
 
     @Test
-    fun `the rename pen is absent on the create screen — there is no heading to rename`() {
-        rule.setContent { StatusScreen(UiState.CreateEvent(), cutoff = fixedCutoff()) }
-        rule.onNodeWithContentDescription("Rename event").assertDoesNotExist()
+    fun `the rename pen is absent on the create screen — there is no heading to rename`() = runComposeUiTest {
+        setContent { StatusScreen(UiState.CreateEvent(), cutoff = fixedCutoff()) }
+        onNodeWithContentDescription("Rename event").assertDoesNotExist()
     }
 
     @Test
-    fun `the rename pen is absent while the reconfigure surface is open`() {
-        rule.setContent {
+    fun `the rename pen is absent while the reconfigure surface is open`() = runComposeUiTest {
+        setContent {
             StatusScreen(inSync, membership = MEMBERSHIP, eventName = "Anna's Birthday", cutoff = fixedCutoff())
         }
-        rule.onNodeWithContentDescription("Event settings").performClick()
-        rule.onNodeWithContentDescription("Rename event").assertDoesNotExist()
+        onNodeWithContentDescription("Event settings").performClick()
+        onNodeWithContentDescription("Rename event").assertDoesNotExist()
     }
 
     @Test
-    fun `tapping the pen opens the dialog PRE-FILLED with the current name`() {
-        rule.setContent {
+    fun `tapping the pen opens the dialog PRE-FILLED with the current name`() = runComposeUiTest {
+        setContent {
             StatusScreen(inSync, membership = MEMBERSHIP, eventName = "Anna's Birthday", cutoff = fixedCutoff())
         }
-        rule.onNodeWithContentDescription("Rename event").performClick()
+        onNodeWithContentDescription("Rename event").performClick()
         // The field opens carrying the current name, ready to be corrected rather than retyped.
-        rule.onNode(hasSetTextAction()).assert(
+        onNode(hasSetTextAction()).assert(
             SemanticsMatcher.expectValue(SemanticsProperties.EditableText, AnnotatedString("Anna's Birthday")),
         )
     }
 
     @Test
-    fun `Save is inert while the name is unchanged, and enables once it differs`() {
-        rule.setContent {
+    fun `Save is inert while the name is unchanged and enables once it differs`() = runComposeUiTest {
+        setContent {
             StatusScreen(inSync, membership = MEMBERSHIP, eventName = "Anna's Birthday", cutoff = fixedCutoff())
         }
-        rule.onNodeWithContentDescription("Rename event").performClick()
+        onNodeWithContentDescription("Rename event").performClick()
         // A no-op rename must be unreachable, not merely rejected on a round trip.
-        rule.onNodeWithText("Save").assertIsNotEnabled()
-        rule.onNode(hasSetTextAction()).performTextInput("!")
-        rule.onNodeWithText("Save").assertIsEnabled()
+        onNodeWithText("Save").assertIsNotEnabled()
+        onNode(hasSetTextAction()).performTextInput("!")
+        onNodeWithText("Save").assertIsEnabled()
     }
 
     @Test
-    fun `confirming submits the trimmed name with the membership's event id`() {
+    fun `confirming submits the trimmed name with the membership's event id`() = runComposeUiTest {
         val submitted = mutableListOf<Pair<String, String>>()
-        rule.setContent {
+        setContent {
             StatusScreen(
                 inSync,
                 membership = MEMBERSHIP,
@@ -635,17 +634,17 @@ class StatusScreenTest {
                 cutoff = fixedCutoff(),
             )
         }
-        rule.onNodeWithContentDescription("Rename event").performClick()
-        rule.onNode(hasSetTextAction()).performTextClearance()
-        rule.onNode(hasSetTextAction()).performTextInput("  Ana's 30th  ")
-        rule.onNodeWithText("Save").performClick()
+        onNodeWithContentDescription("Rename event").performClick()
+        onNode(hasSetTextAction()).performTextClearance()
+        onNode(hasSetTextAction()).performTextInput("  Ana's 30th  ")
+        onNodeWithText("Save").performClick()
         // The id rides along so a switch landing mid-edit makes the use-case a no-op.
         assertEquals(listOf("E1" to "Ana's 30th"), submitted)
     }
 
     @Test
-    fun `a failure keeps the dialog open with the typed value and an error BANNER`() {
-        rule.setContent {
+    fun `a failure keeps the dialog open with the typed value and an error BANNER`() = runComposeUiTest {
+        setContent {
             StatusScreen(
                 inSync,
                 membership = MEMBERSHIP,
@@ -654,18 +653,18 @@ class StatusScreenTest {
                 cutoff = fixedCutoff(),
             )
         }
-        rule.onNodeWithContentDescription("Rename event").performClick()
+        onNodeWithContentDescription("Rename event").performClick()
         // The sheet stays open — the failure is reported beside the field, never ON it: a server saying
         // no must not read as a complaint about the host's typing.
-        rule.onNodeWithText("Save").assertExists()
-        rule.onNodeWithText("That name wasn't accepted. Try a shorter one.").assertExists()
+        onNodeWithText("Save").assertExists()
+        onNodeWithText("That name wasn't accepted. Try a shorter one.").assertExists()
     }
 
     @Test
-    fun `a server failure shows the generic copy — a swept event gets no special message`() {
+    fun `a server failure shows the generic copy — a swept event gets no special message`() = runComposeUiTest {
         // Deliberate: a 404 is ONE witness that the event is gone, and surfacing it would invite a future
         // change to act on it (capability `leave-event`).
-        rule.setContent {
+        setContent {
             StatusScreen(
                 inSync,
                 membership = MEMBERSHIP,
@@ -674,15 +673,15 @@ class StatusScreenTest {
                 cutoff = fixedCutoff(),
             )
         }
-        rule.onNodeWithContentDescription("Rename event").performClick()
-        rule.onNodeWithText("Couldn't rename the event. Check your connection and try again.").assertExists()
+        onNodeWithContentDescription("Rename event").performClick()
+        onNodeWithText("Couldn't rename the event. Check your connection and try again.").assertExists()
     }
 
     @Test
-    fun `success closes the dialog and clears the latch`() {
+    fun `success closes the dialog and clears the latch`() = runComposeUiTest {
         var consumed = 0
         val status = mutableStateOf<RenameStatus>(RenameStatus.Idle)
-        rule.setContent {
+        setContent {
             StatusScreen(
                 inSync,
                 membership = MEMBERSHIP,
@@ -692,20 +691,20 @@ class StatusScreenTest {
                 cutoff = fixedCutoff(),
             )
         }
-        rule.onNodeWithContentDescription("Rename event").performClick()
-        rule.onNodeWithText("Save").assertExists()
+        onNodeWithContentDescription("Rename event").performClick()
+        onNodeWithText("Save").assertExists()
 
         status.value = RenameStatus.Succeeded
-        rule.waitForIdle()
+        waitForIdle()
 
-        rule.onNodeWithText("Save").assertDoesNotExist()
+        onNodeWithText("Save").assertDoesNotExist()
         assertEquals(1, consumed, "the latch is cleared so a second rename starts clean")
     }
 
     @Test
-    fun `cancelling submits nothing`() {
+    fun `cancelling submits nothing`() = runComposeUiTest {
         var submits = 0
-        rule.setContent {
+        setContent {
             StatusScreen(
                 inSync,
                 membership = MEMBERSHIP,
@@ -714,38 +713,38 @@ class StatusScreenTest {
                 cutoff = fixedCutoff(),
             )
         }
-        rule.onNodeWithContentDescription("Rename event").performClick()
-        rule.onNode(hasSetTextAction()).performTextInput("x")
-        rule.onNodeWithText("Cancel").performClick()
+        onNodeWithContentDescription("Rename event").performClick()
+        onNode(hasSetTextAction()).performTextInput("x")
+        onNodeWithText("Cancel").performClick()
         assertEquals(0, submits)
-        rule.onNodeWithText("Save").assertDoesNotExist()
+        onNodeWithText("Save").assertDoesNotExist()
     }
 
     // ---- the settings action + reconfigure surface (capability `reconfigure-membership`) ----
 
     @Test
-    fun `joined with a membership shows the settings action next to share and leave`() {
-        rule.setContent { StatusScreen(inSync, membership = MEMBERSHIP, inviteUrl = SAMPLE_INVITE, cutoff = fixedCutoff()) }
-        rule.onNodeWithContentDescription("Event settings").assertExists()
-        rule.onNodeWithContentDescription("Share invite link").assertExists()
-        rule.onNodeWithContentDescription("Leave event").assertExists()
+    fun `joined with a membership shows the settings action next to share and leave`() = runComposeUiTest {
+        setContent { StatusScreen(inSync, membership = MEMBERSHIP, inviteUrl = SAMPLE_INVITE, cutoff = fixedCutoff()) }
+        onNodeWithContentDescription("Event settings").assertExists()
+        onNodeWithContentDescription("Share invite link").assertExists()
+        onNodeWithContentDescription("Leave event").assertExists()
     }
 
     @Test
-    fun `the settings action is present under needs-access (no photo access required)`() {
-        rule.setContent {
+    fun `the settings action is present under needs-access — no photo access required`() = runComposeUiTest {
+        setContent {
             StatusScreen(
                 joined(SyncHealth.NeedsAccess(PermissionStatus.DENIED)),
                 membership = MEMBERSHIP,
                 cutoff = fixedCutoff(),
             )
         }
-        rule.onNodeWithContentDescription("Event settings").assertExists()
+        onNodeWithContentDescription("Event settings").assertExists()
     }
 
     @Test
-    fun `the settings action is suppressed during a pending switch`() {
-        rule.setContent {
+    fun `the settings action is suppressed during a pending switch`() = runComposeUiTest {
+        setContent {
             StatusScreen(
                 UiState.Joined(
                     SyncHealth.InSync,
@@ -763,64 +762,64 @@ class StatusScreenTest {
                 cutoff = fixedCutoff(),
             )
         }
-        rule.onNodeWithContentDescription("Event settings").assertDoesNotExist()
+        onNodeWithContentDescription("Event settings").assertDoesNotExist()
     }
 
     @Test
-    fun `tapping settings opens the reconfigure surface`() {
-        rule.setContent { StatusScreen(inSync, membership = MEMBERSHIP, cutoff = fixedCutoff()) }
-        rule.onNodeWithText("Save").assertDoesNotExist()
-        rule.onNodeWithContentDescription("Event settings").performClick()
-        rule.onNodeWithText("Save").assertExists()
-        rule.onNodeWithText("Share my photos").assertExists()
-        rule.onNodeWithText("Cancel").assertExists()
+    fun `tapping settings opens the reconfigure surface`() = runComposeUiTest {
+        setContent { StatusScreen(inSync, membership = MEMBERSHIP, cutoff = fixedCutoff()) }
+        onNodeWithText("Save").assertDoesNotExist()
+        onNodeWithContentDescription("Event settings").performClick()
+        onNodeWithText("Save").assertExists()
+        onNodeWithText("Share my photos").assertExists()
+        onNodeWithText("Cancel").assertExists()
     }
 
     @Test
-    fun `the reconfigure surface seeds the Event-start lower bound when the cutoff is at the floor`() {
+    fun `the reconfigure surface seeds the Event-start lower bound when the cutoff is at the floor`() = runComposeUiTest {
         // minPhotoDate == startsAt → Event-start preset; maxPhotoDate == endsAt → Event-end preset. The
         // value line states the full window as the compact adaptive range.
-        rule.setContent { StatusScreen(inSync, membership = MEMBERSHIP, cutoff = fixedCutoff()) }
-        rule.onNodeWithContentDescription("Event settings").performClick()
-        rule.onNodeWithTag("from-event-start").assertIsSelected()
-        rule.onNodeWithTag("until-event-end").assertIsSelected()
-        rule.onNodeWithText("Sharing 6 Jul 12:00 – 10 Jul 12:00").assertExists()
+        setContent { StatusScreen(inSync, membership = MEMBERSHIP, cutoff = fixedCutoff()) }
+        onNodeWithContentDescription("Event settings").performClick()
+        onNodeWithTag("from-event-start").assertIsSelected()
+        onNodeWithTag("until-event-end").assertIsSelected()
+        onNodeWithText("Sharing 6 Jul 12:00 – 10 Jul 12:00").assertExists()
     }
 
     @Test
-    fun `the reconfigure surface seeds a Custom lower bound when the cutoff is above the floor`() {
+    fun `the reconfigure surface seeds a Custom lower bound when the cutoff is above the floor`() = runComposeUiTest {
         val above = MEMBERSHIP.copy(minPhotoDate = captureCutoff("2026-07-06T18:00:00Z"))
-        rule.setContent { StatusScreen(inSync, membership = above, cutoff = fixedCutoff()) }
-        rule.onNodeWithContentDescription("Event settings").performClick()
-        rule.onNodeWithTag("from-custom").assertIsSelected()
-        rule.onNodeWithText("Sharing 6 Jul 18:00 – 10 Jul 12:00").assertExists()
+        setContent { StatusScreen(inSync, membership = above, cutoff = fixedCutoff()) }
+        onNodeWithContentDescription("Event settings").performClick()
+        onNodeWithTag("from-custom").assertIsSelected()
+        onNodeWithText("Sharing 6 Jul 18:00 – 10 Jul 12:00").assertExists()
     }
 
     @Test
-    fun `the reconfigure surface seeds a Custom upper bound when the ceiling is below the event end`() {
+    fun `the reconfigure surface seeds a Custom upper bound when the ceiling is below the event end`() = runComposeUiTest {
         val below = MEMBERSHIP.copy(maxPhotoDate = captureCeiling("2026-07-09T12:00:00Z"))
-        rule.setContent { StatusScreen(inSync, membership = below, cutoff = fixedCutoff()) }
-        rule.onNodeWithContentDescription("Event settings").performClick()
-        rule.onNodeWithTag("until-custom").assertIsSelected()
-        rule.onNodeWithText("Sharing 6 Jul 12:00 – 9 Jul 12:00").assertExists()
+        setContent { StatusScreen(inSync, membership = below, cutoff = fixedCutoff()) }
+        onNodeWithContentDescription("Event settings").performClick()
+        onNodeWithTag("until-custom").assertIsSelected()
+        onNodeWithText("Sharing 6 Jul 12:00 – 9 Jul 12:00").assertExists()
     }
 
     @Test
-    fun `turning the album on shows the forward-only helper text`() {
+    fun `turning the album on shows the forward-only helper text`() = runComposeUiTest {
         val withAlbum = MEMBERSHIP.copy(saveToAlbum = true)
-        rule.setContent { StatusScreen(inSync, membership = withAlbum, cutoff = fixedCutoff()) }
-        rule.onNodeWithContentDescription("Event settings").performClick()
-        rule.onNodeWithText("Only photos synced from now on are added.", substring = true).assertExists()
+        setContent { StatusScreen(inSync, membership = withAlbum, cutoff = fixedCutoff()) }
+        onNodeWithContentDescription("Event settings").performClick()
+        onNodeWithText("Only photos synced from now on are added.", substring = true).assertExists()
     }
 
     @Test
-    fun `saving invokes the reconfigure callback with the membership's values and closes the surface`() {
+    fun `saving invokes the reconfigure callback with the membership's values and closes the surface`() = runComposeUiTest {
         var savedEventId: String? = null
         var savedDirection: Direction? = null
         var savedMin: CaptureCutoff? = null
         var savedMax: CaptureCeiling? = captureCeiling("unset")
         var savedAlbum: Boolean? = null
-        rule.setContent {
+        setContent {
             StatusScreen(
                 inSync,
                 membership = MEMBERSHIP,
@@ -830,8 +829,8 @@ class StatusScreenTest {
                 cutoff = fixedCutoff(),
             )
         }
-        rule.onNodeWithContentDescription("Event settings").performClick()
-        rule.onNodeWithText("Save").performClick()
+        onNodeWithContentDescription("Event settings").performClick()
+        onNodeWithText("Save").performClick()
 
         assertEquals("E1", savedEventId)
         assertEquals(Direction.Both, savedDirection)
@@ -840,42 +839,42 @@ class StatusScreenTest {
         assertEquals(captureCeiling("2026-07-10T12:00:00Z"), savedMax)
         assertEquals(false, savedAlbum)
         // Save closes the surface (back to the joined layer's action row).
-        rule.onNodeWithText("Save").assertDoesNotExist()
-        rule.onNodeWithContentDescription("Event settings").assertExists()
+        onNodeWithText("Save").assertDoesNotExist()
+        onNodeWithContentDescription("Event settings").assertExists()
     }
 
     // ---- joined layer: the "Event ended" marker (capability `sync-status-screen`) ----
 
     @Test
-    fun `an ended event marks the health line on its own line`() {
-        rule.setContent { StatusScreen(UiState.Joined(SyncHealth.InSync, ended = true), cutoff = fixedCutoff()) }
+    fun `an ended event marks the health line on its own line`() = runComposeUiTest {
+        setContent { StatusScreen(UiState.Joined(SyncHealth.InSync, ended = true), cutoff = fixedCutoff()) }
         // The marker is its OWN line above the status, not an inline prefix. Asserting the EXACT text is
         // the point: an inline `Event ended · In sync` would satisfy a substring match, and reading as one
         // sentence is exactly the failure this layout exists to prevent — the two are unrelated facts (the
         // capture window closed; the transfer is still going).
-        rule.onNodeWithText("Event ended").assertExists()
-        rule.onNodeWithText("Event ended ·", substring = true).assertDoesNotExist()
+        onNodeWithText("Event ended").assertExists()
+        onNodeWithText("Event ended ·", substring = true).assertDoesNotExist()
         // The status itself is untouched — same value, same slot, full width.
-        rule.onNodeWithText("In sync").assertExists()
+        onNodeWithText("In sync").assertExists()
     }
 
     @Test
-    fun `the ended marker never merges into the status text`() {
+    fun `the ended marker never merges into the status text`() = runComposeUiTest {
         // A syncing health is the case that produced the original complaint: `Event ended ·
         // Synchronization pending…` parses as a claim ABOUT the syncing and wraps mid-phrase on a phone.
-        rule.setContent { StatusScreen(
+        setContent { StatusScreen(
                 UiState.Joined(SyncHealth.Syncing(Arrow.STATIC, Arrow.HIDDEN), ended = true),
                 cutoff = fixedCutoff(),
             ) }
-        rule.onNodeWithText("Event ended").assertExists()
-        rule.onNodeWithText("Event ended ·", substring = true).assertDoesNotExist()
+        onNodeWithText("Event ended").assertExists()
+        onNodeWithText("Event ended ·", substring = true).assertDoesNotExist()
     }
 
     @Test
-    fun `a non-ended event shows no Event ended marker`() {
-        rule.setContent { StatusScreen(inSync, cutoff = fixedCutoff()) }
-        rule.onNodeWithText("Event ended", substring = true).assertDoesNotExist()
-        rule.onNodeWithText("In sync").assertExists()
+    fun `a non-ended event shows no Event ended marker`() = runComposeUiTest {
+        setContent { StatusScreen(inSync, cutoff = fixedCutoff()) }
+        onNodeWithText("Event ended", substring = true).assertDoesNotExist()
+        onNodeWithText("In sync").assertExists()
     }
 
     private fun hasAnyProgressIndication(): SemanticsMatcher =

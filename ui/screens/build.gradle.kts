@@ -25,9 +25,19 @@ kotlin {
             implementation(compose.runtime)
             implementation(compose.foundation)
         }
-        jvmTest.dependencies {
+        // The screen tests live in commonTest, so they run on BOTH the JVM (fast loop, offscreen —
+        // see the jvm block above) and iosSimulatorArm64 (`ios-test` in CI). That is the standing rule
+        // — "every unit test runs on the iOS simulator too" — and it bites hardest here: iOS renders
+        // these screens through a different Compose backend than the desktop one, so a JVM-only suite
+        // never sees the target that ships.
+        commonTest.dependencies {
             implementation(kotlin("test"))
-            implementation(compose.desktop.uiTestJUnit4)
+            // The multiplatform `runComposeUiTest` API (no JUnit4 rule — that artifact is JVM-only).
+            @OptIn(org.jetbrains.compose.ExperimentalComposeLibrary::class)
+            implementation(compose.uiTest)
+        }
+        jvmTest.dependencies {
+            // Skiko's desktop native binaries — the JVM renderer the offscreen scene draws into.
             implementation(compose.desktop.currentOs)
         }
     }

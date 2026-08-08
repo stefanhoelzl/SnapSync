@@ -1,8 +1,11 @@
+@file:OptIn(ExperimentalTestApi::class)
+
 package app.snapsync.ui
 
 import androidx.compose.ui.semantics.SemanticsActions
+import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.SemanticsMatcher
-import androidx.compose.ui.test.junit4.v2.createComposeRule
+import androidx.compose.ui.test.v2.runComposeUiTest
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.assert
 import androidx.compose.ui.test.assertIsNotEnabled
@@ -18,7 +21,6 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlinx.datetime.TimeZone
 import kotlin.time.Instant
-import org.junit.Rule
 
 /**
  * The hidden bug-report affordance (capability `diagnostic-logging`).
@@ -27,13 +29,11 @@ import org.junit.Rule
  * reached by an accessibility traversal, and does not exist at all on a build with nothing to send.
  * The *required-description* half: a report cannot be sent without an account of the problem, and what
  * is sent is trimmed — the description titles the issue in the reporting channel, so whitespace must
- * never become a title. Both are only observable from a test like this one. Headless:
- * `:ui:screens:jvmTest` renders offscreen (no display needed).
+ * never become a title. Both are only observable from a test like this one. Headless on both targets:
+ * `:ui:screens:jvmTest` renders offscreen (no display needed) and `:ui:screens:iosSimulatorArm64Test`
+ * renders into the simulator's own offscreen scene.
  */
 class DiagnosticDumpGestureTest {
-
-    @get:Rule
-    val rule = createComposeRule()
 
     private fun fixedCutoff() = CutoffFormatter(
         now = { Instant.parse("2026-07-06T12:00:00Z") },
@@ -49,52 +49,52 @@ class DiagnosticDumpGestureTest {
     private val placeholder = "What went wrong, and what were you doing?"
 
     @Test
-    fun `double-tapping the app name opens the bug-report sheet`() {
-        rule.setContent {
+    fun `double-tapping the app name opens the bug-report sheet`() = runComposeUiTest {
+        setContent {
             StatusScreen(UiState.CreateEvent(), cutoff = fixedCutoff(), onSendDiagnostics = { _, _ -> })
         }
 
-        rule.onNodeWithText(sheetTitle).assertDoesNotExist()
-        rule.onNodeWithText(navLabel).performTouchInput { doubleClick() }
+        onNodeWithText(sheetTitle).assertDoesNotExist()
+        onNodeWithText(navLabel).performTouchInput { doubleClick() }
 
-        rule.onNodeWithText(sheetTitle).assertExists()
+        onNodeWithText(sheetTitle).assertExists()
     }
 
     @Test
-    fun `sending is refused until something is written`() {
+    fun `sending is refused until something is written`() = runComposeUiTest {
         // The description is required, and the refusal is a disabled action rather than an error
         // message: an invalid submit is unreachable, so nothing needs to explain it.
         var sent = 0
-        rule.setContent {
+        setContent {
             StatusScreen(UiState.CreateEvent(), cutoff = fixedCutoff(), onSendDiagnostics = { _, _ -> sent++ })
         }
 
-        rule.onNodeWithText(navLabel).performTouchInput { doubleClick() }
-        rule.onNodeWithText("Send").assertIsNotEnabled()
-        rule.onNodeWithText("Send").performClick()
+        onNodeWithText(navLabel).performTouchInput { doubleClick() }
+        onNodeWithText("Send").assertIsNotEnabled()
+        onNodeWithText("Send").performClick()
 
         assertEquals(0, sent, "an empty description must not be sendable")
-        rule.onNodeWithText(sheetTitle).assertExists()
+        onNodeWithText(sheetTitle).assertExists()
     }
 
     @Test
-    fun `whitespace alone is not a description`() {
+    fun `whitespace alone is not a description`() = runComposeUiTest {
         var sent = 0
-        rule.setContent {
+        setContent {
             StatusScreen(UiState.CreateEvent(), cutoff = fixedCutoff(), onSendDiagnostics = { _, _ -> sent++ })
         }
 
-        rule.onNodeWithText(navLabel).performTouchInput { doubleClick() }
-        rule.onNodeWithText(placeholder).performTextInput("   ")
+        onNodeWithText(navLabel).performTouchInput { doubleClick() }
+        onNodeWithText(placeholder).performTextInput("   ")
 
-        rule.onNodeWithText("Send").assertIsNotEnabled()
+        onNodeWithText("Send").assertIsNotEnabled()
         assertEquals(0, sent)
     }
 
     @Test
-    fun `sending fires the command once with the trimmed description`() {
+    fun `sending fires the command once with the trimmed description`() = runComposeUiTest {
         val sent = mutableListOf<Pair<String, String>>()
-        rule.setContent {
+        setContent {
             StatusScreen(
                 UiState.CreateEvent(),
                 cutoff = fixedCutoff(),
@@ -102,53 +102,53 @@ class DiagnosticDumpGestureTest {
             )
         }
 
-        rule.onNodeWithText(navLabel).performTouchInput { doubleClick() }
-        rule.onNodeWithText(placeholder).performTextInput("  photos stopped arriving  ")
-        rule.onNodeWithText("Send").performClick()
+        onNodeWithText(navLabel).performTouchInput { doubleClick() }
+        onNodeWithText(placeholder).performTextInput("  photos stopped arriving  ")
+        onNodeWithText("Send").performClick()
 
         assertEquals(
             listOf("photos stopped arriving" to "CreateEvent"),
             sent,
             "one report, trimmed, labelled with the surface it was written from",
         )
-        rule.onNodeWithText(sheetTitle).assertDoesNotExist()
+        onNodeWithText(sheetTitle).assertDoesNotExist()
     }
 
     @Test
-    fun `cancelling sends nothing`() {
+    fun `cancelling sends nothing`() = runComposeUiTest {
         var sent = 0
-        rule.setContent {
+        setContent {
             StatusScreen(UiState.CreateEvent(), cutoff = fixedCutoff(), onSendDiagnostics = { _, _ -> sent++ })
         }
 
-        rule.onNodeWithText(navLabel).performTouchInput { doubleClick() }
-        rule.onNodeWithText(placeholder).performTextInput("never mind")
-        rule.onNodeWithText("Cancel").performClick()
+        onNodeWithText(navLabel).performTouchInput { doubleClick() }
+        onNodeWithText(placeholder).performTextInput("never mind")
+        onNodeWithText("Cancel").performClick()
 
         assertEquals(0, sent)
-        rule.onNodeWithText(sheetTitle).assertDoesNotExist()
+        onNodeWithText(sheetTitle).assertDoesNotExist()
     }
 
     @Test
-    fun `a build with no reporting channel opens no sheet at all`() {
+    fun `a build with no reporting channel opens no sheet at all`() = runComposeUiTest {
         // The command is null — every dev, sideload and simulator build. The gesture must be absent,
         // not inert: an affordance that exists and silently does nothing is the one outcome forbidden,
         // because it is indistinguishable from a report that failed to send.
-        rule.setContent {
+        setContent {
             StatusScreen(UiState.CreateEvent(), cutoff = fixedCutoff(), onSendDiagnostics = null)
         }
 
-        rule.onNodeWithText(navLabel).performTouchInput { doubleClick() }
+        onNodeWithText(navLabel).performTouchInput { doubleClick() }
 
-        rule.onNodeWithText(sheetTitle).assertDoesNotExist()
+        onNodeWithText(sheetTitle).assertDoesNotExist()
     }
 
     @Test
-    fun `the label names the join phase, not just the screen`() {
+    fun `the label names the join phase and not just the screen`() = runComposeUiTest {
         // A gate stuck on a failed load is a different report from one parked on Ready, and neither
         // distinction reaches a log line — the join phase is screen state.
         val sent = mutableListOf<String>()
-        rule.setContent {
+        setContent {
             StatusScreen(
                 UiState.JoiningEvent("11111111-2222-4333-8444-555555555555", JoinPhase.LoadFailed),
                 cutoff = fixedCutoff(),
@@ -156,32 +156,32 @@ class DiagnosticDumpGestureTest {
             )
         }
 
-        rule.onNodeWithText(navLabel).performTouchInput { doubleClick() }
-        rule.onNodeWithText(placeholder).performTextInput("gate is stuck")
-        rule.onNodeWithText("Send").performClick()
+        onNodeWithText(navLabel).performTouchInput { doubleClick() }
+        onNodeWithText(placeholder).performTextInput("gate is stuck")
+        onNodeWithText("Send").performClick()
 
         assertEquals(listOf("JoiningEvent:LoadFailed"), sent)
     }
 
     @Test
-    fun `the app-name label exposes no click action to accessibility`() {
+    fun `the app-name label exposes no click action to accessibility`() = runComposeUiTest {
         // The gesture is a raw pointer input on purpose. `combinedClickable` would publish an
         // OnClick semantics action and a ripple — which is exactly what makes a control read as a
         // control, and would put the hidden affordance into the accessibility tree.
-        rule.setContent {
+        setContent {
             StatusScreen(UiState.CreateEvent(), cutoff = fixedCutoff(), onSendDiagnostics = { _, _ -> })
         }
 
-        rule.onNodeWithText(navLabel).assert(
+        onNodeWithText(navLabel).assert(
             SemanticsMatcher.keyNotDefined(SemanticsActions.OnClick),
         )
     }
 
     @Test
-    fun `the affordance exists on the joined surface too`() {
+    fun `the affordance exists on the joined surface too`() = runComposeUiTest {
         // A stuck sync is exactly when a report is wanted, and the label is the one element every state
         // renders — that is why the gesture lives on it.
-        rule.setContent {
+        setContent {
             StatusScreen(
                 UiState.Joined(SyncHealth.InSync),
                 cutoff = fixedCutoff(),
@@ -190,8 +190,8 @@ class DiagnosticDumpGestureTest {
             )
         }
 
-        rule.onNodeWithText(navLabel).performTouchInput { doubleClick() }
+        onNodeWithText(navLabel).performTouchInput { doubleClick() }
 
-        rule.onNodeWithText(sheetTitle).assertExists()
+        onNodeWithText(sheetTitle).assertExists()
     }
 }
