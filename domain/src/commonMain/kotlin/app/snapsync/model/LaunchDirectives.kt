@@ -21,6 +21,10 @@ package app.snapsync.model
  *   backends fails silently in both directions: the ledger key is event-independent and a leave
  *   deliberately keeps it, so `COMPLETED` rows suppress every upload against a backend that does not
  *   hold those bytes — and the discovery cursor suppresses re-enumeration even after a ledger wipe.
+ * - [wipeGallery] — `SNAPSYNC_WIPE_GALLERY=all|assets|albums`: delete this device's photo library
+ *   content — the assets, the user-created albums/folders, or both. The **irreversible** trigger, so
+ *   unlike its presence-triggered siblings it demands a recognized token and refuses anything else
+ *   ([WipeRequest]); the platform's own delete confirmation is what actually arms it.
  * - [seedPhotos] — `SNAPSYNC_SEED_PHOTOS`: how many tiny 2001-dated assets to seed (walk-cost test).
  * - [seedPolicy] — `SNAPSYNC_SEED_POLICY`: how many hour-ahead assets straddling the 3 MP floor to
  *   seed (selection-policy probe).
@@ -45,6 +49,7 @@ data class LaunchDirectives(
     val createEvent: String?,
     val leave: Boolean,
     val resetState: Boolean,
+    val wipeGallery: WipeRequest,
     val seedPhotos: Int?,
     val seedPolicy: Int?,
     val policyProbe: String?,
@@ -58,6 +63,7 @@ data class LaunchDirectives(
             createEvent = null,
             leave = false,
             resetState = false,
+            wipeGallery = WipeRequest.None,
             seedPhotos = null,
             seedPolicy = null,
             policyProbe = null,
@@ -79,6 +85,9 @@ data class LaunchDirectives(
             leave = env("SNAPSYNC_LEAVE") != null,
             // Presence — not a value — is the trigger, like [leave].
             resetState = env("SNAPSYNC_RESET_STATE") != null,
+            // A VALUE — not presence — is the trigger, alone among these: the wipe cannot be undone, so
+            // a stale or mistyped variable must refuse rather than delete (`wipeRequest`).
+            wipeGallery = wipeRequest(env("SNAPSYNC_WIPE_GALLERY")),
             seedPhotos = positiveInt(env("SNAPSYNC_SEED_PHOTOS")),
             seedPolicy = positiveInt(env("SNAPSYNC_SEED_POLICY")),
             policyProbe = env("SNAPSYNC_POLICY_PROBE"),

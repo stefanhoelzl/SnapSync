@@ -214,9 +214,9 @@ uvx pymobiledevice3 apps pull app.snapsync Documents/debug.log   # pull the file
 2001-01-01 forward, one minute apart, so the capture-date-bounded walk can be exercised against a large
 library on device. ~85 s for 4000 assets on an SE2. Inert in production for the same reason as
 `SNAPSYNC_EVENT_LINK` (a launch env var is only injectable via a developer launch).
-**It writes to the real photo library** — deleting the assets again needs taps (`deleteAssets` always
-raises a system confirmation), which is why they are parked in one year of the Photos timeline. Use it on
-a dev device only.
+**It writes to the real photo library** — clear them again with `SNAPSYNC_WIPE_GALLERY` (below), which
+still costs one tap (`deleteAssets` always raises a system confirmation); they are parked in one year of
+the Photos timeline so hand-deleting stays a two-tap job too. Use it on a dev device only.
 ```
 $P developer dvt launch app.snapsync --env SNAPSYNC_SEED_PHOTOS=4000 --userspace
 ```
@@ -243,6 +243,38 @@ Read the outcome from the two log lines the policy emits **before any HTTP call*
 can never be mistaken for an exclusion:
 - app: `gallery: enumerated N resource(s) … (M origin-excluded) → N=…`
 - extension: `origin policy dropped N resource(s)`
+
+**Emptying the library again.** `SNAPSYNC_WIPE_GALLERY=all|assets|albums` (`app/ios/.../DevGalleryWiper.kt`)
+deletes this device's photo-library content — `assets` every asset the fetch returns (photos *and* videos),
+`albums` every user-created album and folder, `all` both in one change block. Dev/test only, read **once
+per process**, inert in production for the same reason as every other launch env var.
+```
+$P developer dvt launch app.snapsync --env SNAPSYNC_WIPE_GALLERY=all --userspace
+```
+⚠️ **It is irreversible and it is NOT headless.** iOS raises its own *"Delete N Photos?"* confirmation —
+someone must tap **Delete on the device**, and that alert (which shows the real count) is the only guard
+there is. So: dev device only, and the run parks until it is answered. **One prompt per kind, not per
+transaction**: measured on the SE2 (iOS 26.6, 2026-08-08), an `all` wipe of 9525 assets + 5 albums in a
+single change block raised **two** alerts — so `albums` prompts too, and batching does not collapse them.
+An `albums` wipe still deletes **no** photos: removing an album never removes its members.
+
+- **A value, not presence** — alone among these triggers, because it cannot be undone. Anything that is
+  not `all`/`assets`/`albums` (a typo, a leftover `=1`, the blank string a bare `--env X=` produces)
+  refuses and deletes nothing, saying so: `wipe: SNAPSYNC_WIPE_GALLERY=<x> is not all|assets|albums`.
+- **It requests photo access first**, so a fresh install does not silently wipe nothing. Under a
+  **LIMITED** grant it deletes exactly the hand-picked selection — all PhotoKit will return — and the log
+  names the grant so the line says which set was wiped.
+- **iCloud Shared Albums are never touched** (deleting one removes it for every subscriber, off this
+  phone), and smart albums (Recents, Screenshots, Favourites) cannot be deleted at all.
+- **Ordering:** the photo-library triggers run as one chain — `wipe → SEED_PHOTOS → SEED_POLICY →
+  POLICY_PROBE` — and the whole chain completes **before** the membership triggers
+  (`reset → leave → create → event-link`), so `WIPE_GALLERY` + `SEED_POLICY` + `EVENT_LINK` in one launch
+  wipes, re-seeds, then joins against the final library. A wipe left unconfirmed therefore stalls the join
+  too — that is the trade, not a hang.
+- **It touches no SnapSync state**: the ledger keeps its `COMPLETED` rows (true — the bytes are on the
+  backend, so nothing re-uploads) and imported download rows keep their `createdLocalId` (so deleted
+  foreign photos are not re-imported). Pair it with `SNAPSYNC_RESET_STATE` when you want a device that
+  both holds no photos and remembers nothing.
 
 `SNAPSYNC_EVENT_LINK` is a **dev/test trigger** (capability `ios-app-shell`): on launch the app
 forwards it through the same path as a scanned QR, (re)provisioning the event. It is read **once per

@@ -68,6 +68,69 @@ class LaunchDirectivesTest {
     }
 
     @Test
+    fun `each SNAPSYNC_WIPE_GALLERY scope selects exactly what it names`() {
+        // The scope IS the whole decision — the shell reads these two booleans and switches on nothing.
+        // `albums` deleting no asset is the load-bearing half: deleting a collection never deletes its
+        // members, so that scope must leave every photo in place.
+        val all = LaunchDirectives.from(env("SNAPSYNC_WIPE_GALLERY" to "all")).wipeGallery
+        assertTrue(all.includesAssets)
+        assertTrue(all.includesAlbums)
+
+        val assets = LaunchDirectives.from(env("SNAPSYNC_WIPE_GALLERY" to "assets")).wipeGallery
+        assertTrue(assets.includesAssets)
+        assertFalse(assets.includesAlbums)
+
+        val albums = LaunchDirectives.from(env("SNAPSYNC_WIPE_GALLERY" to "albums")).wipeGallery
+        assertFalse(albums.includesAssets)
+        assertTrue(albums.includesAlbums)
+    }
+
+    @Test
+    fun `a scope token is matched trimmed and case-insensitively`() {
+        for (value in listOf("ALL", " all", "all ", "All")) {
+            assertEquals(
+                WipeRequest.Wipe(WipeScope.ALL),
+                LaunchDirectives.from(env("SNAPSYNC_WIPE_GALLERY" to value)).wipeGallery,
+                "a shell-quoted or capitalized `$value` names the same scope",
+            )
+        }
+    }
+
+    @Test
+    fun `an unrecognized SNAPSYNC_WIPE_GALLERY value wipes nothing and says so`() {
+        // The trigger is irreversible, so — alone among these variables — presence is NOT the trigger:
+        // a typo (`asset`), a leftover `1`, and the blank string `--env SNAPSYNC_WIPE_GALLERY=` produces
+        // must all refuse rather than pick a scope on the operator's behalf.
+        for (value in listOf("", " ", "1", "true", "asset", "everything")) {
+            val request = LaunchDirectives.from(env("SNAPSYNC_WIPE_GALLERY" to value)).wipeGallery
+            assertEquals(WipeRequest.Unrecognized(value), request, "`$value` is not a scope")
+            assertFalse(request.wipesAnything, "`$value` must delete nothing")
+            // "Set but unusable" and "unset" are different answers, and the log line is where the
+            // difference lands — an operator who typed a scope must not read silence as success.
+            assertTrue(value in request.plan && "wiping nothing" in request.plan, request.plan)
+        }
+    }
+
+    @Test
+    fun `an absent SNAPSYNC_WIPE_GALLERY wipes nothing`() {
+        val request = LaunchDirectives.from { null }.wipeGallery
+        assertEquals(WipeRequest.None, request)
+        assertFalse(request.wipesAnything)
+    }
+
+    @Test
+    fun `the wipe is independent of every membership trigger`() {
+        // It mutates no membership; it is ordered against the membership triggers by the shell (the whole
+        // photo-library path completes before they run), not by anything parsed here.
+        val directives = LaunchDirectives.from(env("SNAPSYNC_WIPE_GALLERY" to "all"))
+        assertTrue(directives.wipeGallery.wipesAnything)
+        assertFalse(directives.resetState)
+        assertFalse(directives.leave)
+        assertEquals(null, directives.createEvent)
+        assertEquals(null, directives.eventLink)
+    }
+
+    @Test
     fun `reset is independent of the other membership triggers`() {
         // Each trigger contributes only itself: a launch may set any subset, and the coordinator's
         // ordering is what composes them.

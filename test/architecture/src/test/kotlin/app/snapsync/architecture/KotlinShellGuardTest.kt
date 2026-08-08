@@ -28,6 +28,12 @@ import kotlin.test.fail
  *    graph from a launch-env trigger; inert in production).
  *  - `DevPhotoSeeder.kt` ×3 — dev equipment writing the real photo library from a launch-env
  *    trigger; operator-input validation plus platform-forced chunking.
+ *  - `DevGalleryWiper.kt` ×2 — the same dev equipment DELETING from the real photo library
+ *    (`SNAPSYNC_WIPE_GALLERY`): the gate in front of `access.request()`, which raises the system
+ *    photo-access alert and so must not run on an unasked (production) launch; and the change block,
+ *    where each fetch result is guarded on in-scope AND non-empty before a change request may take it
+ *    (the non-empty half defensive — an empty deletion argument is not documented as a no-op). The
+ *    scope decision is NOT pinned here — it is the tested `WipeRequest`, arriving as two booleans.
  *  - `MainViewController.kt` ×1 — the one switch on the resolved `SceneMode`, which decides whether a
  *    Compose scene is composed at all (capability `ios-app-shell`). The DECIDING is `resolveScene`, pure
  *    and `commonTest`-covered; the sealed type exists so a third mode fails the compile. Expiry: dies
@@ -46,6 +52,7 @@ class KotlinShellGuardTest {
     private val pins: Map<String, Int> = mapOf(
         "app/ios/src/iosMain/kotlin/app/snapsync/ios/SnapSyncRoot.kt" to 2,
         "app/ios/src/iosMain/kotlin/app/snapsync/ios/DevPhotoSeeder.kt" to 3,
+        "app/ios/src/iosMain/kotlin/app/snapsync/ios/DevGalleryWiper.kt" to 2,
         "app/ios/src/iosMain/kotlin/app/snapsync/ios/MainViewController.kt" to 1,
     )
 
