@@ -5,8 +5,6 @@ import kotlinx.cinterop.ExperimentalForeignApi
 import kotlinx.cinterop.addressOf
 import kotlinx.cinterop.convert
 import kotlinx.cinterop.usePinned
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.withContext
 import platform.posix.O_RDONLY
 import platform.posix.SEEK_END
 import platform.posix.SEEK_SET
@@ -24,8 +22,21 @@ import platform.posix.read
  *
  * Constructed in the **app** process (the only one that assembles a dump), where
  * `extensionLogDestination()` resolves the shared App-Group file the extension writes and
- * `appLogDestination()` resolves this process's own `Documents/debug.log`. The dispatcher hop is the
- * port impl's own, per `module-architecture` ("sync-I/O port impls own their dispatcher hop").
+ * `appLogDestination()` resolves this process's own `Documents/debug.log`.
+ *
+ * **It hops nowhere, and that is deliberate.** The `open`/`lseek`/`read` sequence below blocks, but
+ * where blocking work runs is the composition's decision rather than this seam's (spec
+ * `module-architecture`, law "Dispatcher lanes are fixed by the composition"): the app's core scope is
+ * a dedicated non-UI lane, so this is off main whether it hops or not. The only thing a hop could
+ * still buy on that **serial** lane is throughput, and there is none here to buy. `CollectDiagnosticDump`
+ * reads the two tails one after the other and data-dependently — the app's share of the budget is
+ * whatever the extension's tail left — inside a single `tap.sendDiagnostics` command the operator's
+ * sheet is waiting on, and each read is a few hundred KB from a local file. Nothing runs alongside
+ * them that releasing the lane would let proceed.
+ *
+ * An earlier revision hopped to `Dispatchers.Default` and cited `module-architecture` for it, under a
+ * rule ("sync-I/O port impls own their dispatcher hop") that same spec had already withdrawn — so a
+ * reader who followed the citation arrived at a document contradicting the comment.
  */
 @OptIn(ExperimentalForeignApi::class)
 class IosDeviceLogSource(
@@ -33,14 +44,13 @@ class IosDeviceLogSource(
     private val extensionLogPath: String? = extensionLogDestination().path,
 ) : DeviceLogSource {
 
-    override suspend fun tail(process: DeviceLogSource.Process, maxBytes: Int): String? =
-        withContext(Dispatchers.Default) {
-            val path = when (process) {
-                DeviceLogSource.Process.APP -> appLogPath
-                DeviceLogSource.Process.EXTENSION -> extensionLogPath
-            } ?: return@withContext null
-            readTail(path, maxBytes)?.let(::fromFirstWholeLine)
-        }
+    override suspend fun tail(process: DeviceLogSource.Process, maxBytes: Int): String? {
+        val path = when (process) {
+            DeviceLogSource.Process.APP -> appLogPath
+            DeviceLogSource.Process.EXTENSION -> extensionLogPath
+        } ?: return null
+        return readTail(path, maxBytes)?.let(::fromFirstWholeLine)
+    }
 
     /** Read at most [maxBytes] from the end of [path]; `null` if it cannot be opened or read. */
     private fun readTail(path: String, maxBytes: Int): String? {

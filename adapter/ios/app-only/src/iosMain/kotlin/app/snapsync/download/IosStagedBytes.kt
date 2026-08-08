@@ -3,8 +3,6 @@ package app.snapsync.download
 import app.snapsync.engine.LEDGER_APP_GROUP
 import app.snapsync.ports.StagedBytes
 import kotlinx.cinterop.ExperimentalForeignApi
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.withContext
 import platform.Foundation.NSFileManager
 
 /**
@@ -26,10 +24,19 @@ import platform.Foundation.NSFileManager
  * (spec `module-architecture`, "Absence is never silent"). Resolved at first download, never at
  * composition, so a locked background launch is not forced into it.
  *
- * `release` owns its dispatcher hop: file removal is synchronous I/O, and a sync-I/O port impl hops
- * because only it knows the call blocks. A missing file is not an error — `removeItemAtPath` simply
- * reports failure, which this ignores, so the operation is idempotent and a partially-completed release
- * costs nothing. `stagingRoot` does not hop: a container-URL lookup is a path resolve, not I/O.
+ * **Neither member hops.** `stagingRoot` has nothing to hop for — a container-URL lookup is a path
+ * resolve, not I/O. `release` does block, one synchronous unlink per path, but where blocking work runs
+ * is the composition's decision rather than this seam's (spec `module-architecture`, law "Dispatcher
+ * lanes are fixed by the composition"), so it is off main either way; on that **serial** lane a hop
+ * could only buy throughput, and no call site has any to gain. The two settle paths and the
+ * leave/switch prune hold `DownloadController`'s mutex across the call, so what a released lane would
+ * let proceed is blocked by the lock anyway; `ResetDeviceState`'s release is one awaited step of a
+ * sequential teardown; and the backlog reclaim is a one-shot with nothing running beside it. Local
+ * unlinks are also not the shape that makes a hop worth it — no daemon to wedge, no XPC round-trip,
+ * unlike the PhotoKit seams next door.
+ *
+ * A missing file is not an error — `removeItemAtPath` simply reports failure, which this ignores, so
+ * the operation is idempotent and a partially-completed release costs nothing.
  */
 @OptIn(ExperimentalForeignApi::class)
 class IosStagedBytes : StagedBytes {
@@ -43,9 +50,7 @@ class IosStagedBytes : StagedBytes {
 
     override suspend fun release(paths: List<String>) {
         if (paths.isEmpty()) return
-        withContext(Dispatchers.Default) {
-            val fm = NSFileManager.defaultManager
-            paths.forEach { fm.removeItemAtPath(it, error = null) }
-        }
+        val fm = NSFileManager.defaultManager
+        paths.forEach { fm.removeItemAtPath(it, error = null) }
     }
 }

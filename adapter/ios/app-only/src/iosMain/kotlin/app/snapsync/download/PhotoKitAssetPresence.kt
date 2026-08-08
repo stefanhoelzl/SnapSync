@@ -19,12 +19,18 @@ import platform.Photos.PHAsset
  * the selection-backed source there instead; this class simply never runs. It therefore reports
  * [AssetPresence.ABSENT] freely, which is exactly what a whole-library view is allowed to do.
  *
- * **The hop is not tidiness.** `fetchAssetsWithLocalIdentifiers` is a synchronous XPC round-trip into
- * `photolibraryd` — it blocks the calling thread, and `withTimeoutOrNull` cannot rescue it, because
- * cancellation is cooperative and the thread is inside the call. That is the same reason `IosDiscovery`
- * hops rather than bounds (its forcing proof: build 521 died on main inside
- * `fetchPersistentChangesSinceToken`, 2026-07-26), and it is why the caller also keeps this off the
- * download controller's lock. Kotlin/Native has no `Dispatchers.IO`, hence [Dispatchers.Default].
+ * **The hop buys CONCURRENCY, not safety.** Keeping this off the main thread is not this seam's job:
+ * the app's composition scope is a dedicated non-UI lane, so every adapter is off main whether it hops
+ * or not (spec `module-architecture`, law "Dispatcher lanes are fixed by the composition"). What the
+ * hop buys is that a stalled `photolibraryd` parks one `Dispatchers.Default` thread rather than the
+ * **serial** composition lane — and that is what makes the caller's deliberate choice to adjudicate
+ * outside the download controller's mutex mean anything. With the lane itself blocked, being off the
+ * lock would buy nothing: no reconcile, import, leave or switch could run to want the lock in the
+ * first place. Parking *some* thread is the only outcome on offer — `fetchAssetsWithLocalIdentifiers`
+ * is a synchronous XPC round-trip that no timeout can abandon, because cancellation is cooperative and
+ * the thread is inside the call — so the hop chooses which one it is. [Dispatchers.Default] rather
+ * than an I/O pool because Kotlin/Native exposes no **public** `Dispatchers.IO` (established by
+ * compile, not by reading the symbol table); expiry: a coroutines release that publishes it.
  *
  * Identifier form: the store speaks the normalized `/`→`_` id; PhotoKit speaks the raw
  * `{UUID}/L0/NNN`. The conversion is exact in both directions (a `localIdentifier` never contains `_`),
