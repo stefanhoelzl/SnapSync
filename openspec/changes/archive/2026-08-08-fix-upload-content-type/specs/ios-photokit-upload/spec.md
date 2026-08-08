@@ -69,3 +69,12 @@ recoverable. It SHALL NOT write a `COMPLETED` (or other) row carrying a phantom 
   is unavailable
 - **THEN** the job is still acknowledged (no `COMPLETED`/`UploadStarted` recorded), so the system
   never reports error 50008
+
+#### Scenario: Already-completed re-handed job is a no-op
+- **WHEN** a returned job maps to a key the ledger already holds as `COMPLETED`
+- **THEN** the job is acknowledged and nothing is written or re-created
+
+#### Scenario: A pruned-row completion derives assetId from the key
+- **WHEN** a succeeded job is completed but its ledger row was already pruned (no entry)
+- **THEN** the reconstructed resource carries the `assetId` parsed from the job key by
+  `assetIdFromUploadKey` (not an empty string), and no phantom `assetId=""` row is recorded

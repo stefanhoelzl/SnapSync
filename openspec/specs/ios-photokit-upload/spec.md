@@ -249,7 +249,16 @@ The extension SHALL adjudicate the system's returned upload jobs each cycle, **b
 new work (so completed/failed slots are freed first), and reduce each outcome into the engine. It
 SHALL recover a returned `PHAssetResourceUploadJob`'s ledger key from the job's **destination URL**
 (the last path segment) — the only field reliably present for every job state, since `resource` is
-**nil for succeeded jobs** (the system releases it after upload). Version/attempt come from the
+**nil for succeeded jobs** (the system releases it after upload). It SHALL likewise recover the job's
+**content type** from that same destination's `Content-Type` header (matched case-insensitively, a blank
+value treated as absent), falling back to the `resource`'s uniform type identifier and then to
+`application/octet-stream`. Deriving the content type from `resource` alone is silently wrong for the
+same reason the key is not taken from it: a succeeded job has none, so a retried upload rebuilt its
+request as `application/octet-stream` and every object that had ever failed once was stored with that
+type. That the destination's headers survive the system's job store — not merely its URL — is measured on
+device (SE2 / iOS 26.6), on both the `.retry` and `.acknowledge` sets; re-measure if the tier moves to
+the iOS 27 `PHBackgroundResourceUploadJobExtension`.
+Version/attempt come from the
 ledger (the `LedgerWriter`'s per-key `entry` read); the `resource`, when still present, is reused
 only to re-create a
 retry-spent job. **Every presented job SHALL be acknowledged** — including one whose key is
@@ -279,6 +288,12 @@ recoverable. It SHALL NOT write a `COMPLETED` (or other) row carrying a phantom 
 - **WHEN** a job in the `.acknowledge` set has `state == Succeeded`
 - **THEN** the extension reads its key from the job's destination URL, reports `UploadCompleted`
   (the ledger becomes `COMPLETED`), and acknowledges the job
+
+#### Scenario: A retried upload keeps its original content type
+- **WHEN** a job is returned for retry or re-creation, so its `Resource` is rebuilt from the key alone
+  with no metadata, and `resource` may be nil
+- **THEN** the rebuilt request's `Content-Type` is the one read back from the job's stored destination
+  header — not `application/octet-stream` — so the object is stored with the type it was uploaded under
 
 #### Scenario: First failure retries with a rebuilt URL
 - **WHEN** a job is returned in the `.retry` set
