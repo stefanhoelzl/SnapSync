@@ -86,6 +86,7 @@ import co.touchlab.kermit.Logger
 import io.ktor.client.HttpClient
 import kotlinx.cinterop.ExperimentalForeignApi
 import kotlinx.cinterop.cValue
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineExceptionHandler
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.DelicateCoroutinesApi
@@ -898,6 +899,10 @@ object SnapSyncRoot {
      */
     @PlatformEntry
     fun applyLaunchEnvMembership() = log.invocation("applyLaunchEnvMembership") {
+        // The photo-library chain GATES this one (see [launchEnvPhotoLibraryApplied]), so realize it from
+        // here too: a membership trigger must never run ahead of — or, worse, wait forever on — a chain
+        // whose only other realization is a separate view effect.
+        launchEnvPhotoLibraryApplied
         launchEnvMembershipApplied
     }
 
@@ -916,34 +921,59 @@ object SnapSyncRoot {
     }
 
     /**
-     * Realize [launchEnvSeedApplied] once on first view creation (called from [MainViewController]).
+     * Realize [launchEnvPhotoLibraryApplied] once on first view creation (called from
+     * [MainViewController]).
      */
     @PlatformEntry
-    fun applyLaunchEnvSeed() = log.invocation("applyLaunchEnvSeed") {
-        launchEnvSeedApplied
+    fun applyLaunchEnvPhotoLibrary() = log.invocation("applyLaunchEnvPhotoLibrary") {
+        launchEnvPhotoLibraryApplied
     }
 
     /**
-     * Dev/test trigger: if `SNAPSYNC_SEED_PHOTOS` is present, fill the photo library with that many
-     * synthetic assets (see [seedPhotoLibraryFromLaunchEnv]) so the capture-date-bounded walk can be
-     * exercised against a large library on device. Like `SNAPSYNC_EVENT_LINK`, the variable is only
-     * injectable via a developer launch, so this is inert in production.
+     * Dev/test triggers that touch the device's **photo library**, applied in the fixed order
+     * `wipe → SNAPSYNC_SEED_PHOTOS → SNAPSYNC_SEED_POLICY → SNAPSYNC_POLICY_PROBE`, sequentially inside
+     * one coroutine (capability `ios-app-shell`):
      *
-     * Seeding is a **blocking** `performChangesAndWait` loop, so it runs on `Dispatchers.Default`, never
-     * this scope's `Dispatchers.Main` — the same reason the gallery walk hops off the main thread. The
-     * `Logger.invocation` wrap is *inside* the launch so its context spans the async body.
+     * - `SNAPSYNC_WIPE_GALLERY=all|assets|albums` empties the library (see [wipeGalleryFromLaunchEnv]) —
+     *   first, so one launch can wipe and then seed a known set;
+     * - `SNAPSYNC_SEED_PHOTOS` / `SNAPSYNC_SEED_POLICY` fill it with synthetic assets (see
+     *   [seedPhotoLibraryFromLaunchEnv]) so the capture-date-bounded walk and the selection policy can be
+     *   exercised on device;
+     * - `SNAPSYNC_POLICY_PROBE` then measures the resulting library.
+     *
+     * Like `SNAPSYNC_EVENT_LINK`, each variable is only injectable via a developer launch, so this is
+     * inert in production. Every step is a **blocking** `performChangesAndWait`, so the whole chain runs
+     * on `Dispatchers.Default`, never this scope's UI lane — the same reason the gallery walk hops off the
+     * main thread. The `Logger.invocation` wrap is *inside* the launch so its context spans the async body.
+     *
+     * The chain completes [photoLibraryTriggersDone], which the membership triggers await: a join must not
+     * enumerate a library that is being deleted or filled underneath it, and the wipe's system alert can
+     * sit unanswered for minutes. Completed in a `finally`, so a failure releases the gate rather than
+     * stranding the membership triggers behind it.
      */
-    private val launchEnvSeedApplied: Boolean by lazy {
+    private val launchEnvPhotoLibraryApplied: Boolean by lazy {
         scope.launch(Dispatchers.Default) {
-            log.invocation("seedPhotoLibrary") {
-                seedPhotoLibraryFromLaunchEnv(log)
-                // Seeding is blocking, so the probe below is sequenced INSIDE this launch — it must read a
-                // library the seed has already committed, or it measures the wrong thing.
-                runLaunchEnvPolicyProbe()
+            log.invocation("photoLibraryTriggers") {
+                try {
+                    wipeGalleryFromLaunchEnv(log, directives.wipeGallery, permission)
+                    seedPhotoLibraryFromLaunchEnv(log)
+                    // Seeding is blocking, so the probe below is sequenced INSIDE this launch — it must read a
+                    // library the seed has already committed, or it measures the wrong thing.
+                    runLaunchEnvPolicyProbe()
+                } finally {
+                    photoLibraryTriggersDone.complete(Unit)
+                }
             }
         }
         true
     }
+
+    /**
+     * The gate the membership triggers await (see [launchEnvPhotoLibraryApplied]). A `CompletableDeferred`
+     * rather than a flag: the membership path awaits it unconditionally, so the shell carries no branch —
+     * and on a launch that requests no photo-library work the chain completes it immediately anyway.
+     */
+    private val photoLibraryTriggersDone = CompletableDeferred<Unit>()
 
     /**
      * Dev/test trigger: `SNAPSYNC_POLICY_PROBE=<cutoff>` runs the **real** own-device status refresh against
@@ -1226,6 +1256,11 @@ object SnapSyncRoot {
             // observes the state the prior produced.
             host
             scope.launch {
+                // The photo-library chain first, always (capability `ios-app-shell`): a wipe deletes and a
+                // seed fills the very library a join would enumerate, and the wipe's system confirmation can
+                // sit unanswered for minutes. Awaited unconditionally — the gate is pre-completed when
+                // nothing was requested — so this stays a statement rather than a branch.
+                photoLibraryTriggersDone.await()
                 app.launchEnvMembership.run(
                     leaveRequested = directives.leave,
                     createEvent = directives.createEvent,
