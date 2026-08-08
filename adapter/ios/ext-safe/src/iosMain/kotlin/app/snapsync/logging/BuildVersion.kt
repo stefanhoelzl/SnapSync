@@ -11,7 +11,21 @@ import platform.Foundation.NSBundle
  */
 fun appBuildVersion(): String {
     val bundle = NSBundle.mainBundle
-    val short = bundle.objectForInfoDictionaryKey("CFBundleShortVersionString") as? String ?: "?"
-    val build = bundle.objectForInfoDictionaryKey("CFBundleVersion") as? String ?: "?"
-    return "$short($build)"
+    return formatBuildVersion(
+        short = bundle.objectForInfoDictionaryKey("CFBundleShortVersionString") as? String,
+        build = bundle.objectForInfoDictionaryKey("CFBundleVersion") as? String,
+    )
 }
+
+/**
+ * The banner's version string, with the absent-key decision made **here** rather than at the two
+ * `NSBundle` reads.
+ *
+ * `internal` because it is the only part of [appBuildVersion] a test can pin: the process's own
+ * `NSBundle` is whatever the running binary happens to carry, so the read cannot be controlled, but
+ * what an *absent* key becomes can — and it matters. A missing key must print `?`, never Kotlin's
+ * `"null"`: a banner reading `null(null)` looks like a value that was read and found to be null,
+ * where `?(?)` says the key was not there at all.
+ */
+internal fun formatBuildVersion(short: String?, build: String?): String =
+    "${short ?: "?"}(${build ?: "?"})"

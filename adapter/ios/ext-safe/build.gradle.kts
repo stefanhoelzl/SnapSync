@@ -60,7 +60,14 @@ kotlin {
     iosSimulatorArm64().binaries.all {
         if (this is org.jetbrains.kotlin.gradle.plugin.mpp.TestExecutable) {
             linkTaskProvider.configure { dependsOn(provisionSentryCocoa) }
-            linkerOpts("-F$sentrySimulatorSlice", "-rpath", sentrySimulatorSlice)
+            // `-lsqlite3`: the sqliter cinterop that backs `NativeSqliteDriver` declares this
+            // itself, but only for a compilation that depends on the driver DIRECTLY — here it is
+            // an `implementation` dep of commonMain, and the option does not reach the test
+            // executable's own link. It goes unnoticed until a test actually opens a database
+            // (`IosLedgerStoreTest`, `IosDownloadStoreTest`), at which point the link fails with a
+            // wall of undefined `_sqlite3_*` symbols. The system library is present on every Apple
+            // platform; this only tells the linker to use it.
+            linkerOpts("-F$sentrySimulatorSlice", "-rpath", sentrySimulatorSlice, "-lsqlite3")
         }
     }
     sourceSets {
@@ -86,5 +93,18 @@ kotlin {
         commonTest.dependencies {
             implementation(kotlin("test"))
         }
+    }
+}
+
+// Full failure messages in CI (same configuration as `:adapter:generic:app`): the Kotlin/Native
+// simulator runner otherwise prints a terse "AssertionError at null:-1" with no message and no
+// line, which makes a red iOS-only test unreadable from Linux — the one place these tests cannot
+// be re-run.
+tasks.withType<org.jetbrains.kotlin.gradle.targets.native.tasks.KotlinNativeSimulatorTest>().configureEach {
+    testLogging {
+        exceptionFormat = org.gradle.api.tasks.testing.logging.TestExceptionFormat.FULL
+        // Standard streams stay OFF, unlike `:adapter:generic:app`: `DarwinHttpClientTest` aims
+        // requests at a closed port on purpose, and the client's own failure logging would then
+        // print a multi-line NSError with a stack trace for each one — burying real output.
     }
 }

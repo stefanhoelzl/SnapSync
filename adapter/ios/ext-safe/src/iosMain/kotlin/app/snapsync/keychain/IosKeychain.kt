@@ -145,6 +145,26 @@ class IosKeychain(
     internal fun writtenAttributes(): Map<String, String> =
         mapOf(KEY_ACCESSIBLE to ACCESSIBLE_AFTER_FIRST_UNLOCK)
 
+    /**
+     * The item's **address** — the service, account and access group that [baseQuery] stamps on every
+     * operation — keyed by the raw attribute names Security itself uses (`"svce"`, `"acct"`, `"agrp"`).
+     *
+     * Same argument as [writtenAttributes], for the other half of the item's identity: no test can ask
+     * `securityd` where an item landed (a Kotlin/Native test binary is refused Keychain access
+     * outright), so the only mechanical way to prove a seat still addresses the item the installed base
+     * holds is to read back the fields the query is built from. Both this and [baseQuery] read the same
+     * three properties, so they cannot drift.
+     *
+     * `null` under `"agrp"` is meaningful and is not the same as a missing entry: it is the unscoped
+     * search — "wherever this process is entitled to look" — which is a legitimate but *inventoried*
+     * choice (capability `architecture-guards`).
+     */
+    internal fun itemAddress(): Map<String, String?> = mapOf(
+        KEY_SERVICE to service,
+        KEY_ACCOUNT to account,
+        KEY_ACCESS_GROUP to accessGroup,
+    )
+
     /** Apply [writtenAttributes] to a CF dictionary. Keys and values are compared by value by Security. */
     private fun applyWrittenAttributes(dict: CFMutableDictionaryRef) {
         writtenAttributes().forEach { (key, value) ->
@@ -222,6 +242,11 @@ class IosKeychain(
          *  from the constants themselves rather than hardcoded. */
         val KEY_VALUE_DATA: String = CFBridgingRelease(CFRetain(kSecValueData)) as String
         val KEY_ACCESSIBLE: String = CFBridgingRelease(CFRetain(kSecAttrAccessible)) as String
+
+        /** The address keys, likewise derived from the constants rather than hardcoded. */
+        val KEY_SERVICE: String = CFBridgingRelease(CFRetain(kSecAttrService)) as String
+        val KEY_ACCOUNT: String = CFBridgingRelease(CFRetain(kSecAttrAccount)) as String
+        val KEY_ACCESS_GROUP: String = CFBridgingRelease(CFRetain(kSecAttrAccessGroup)) as String
     }
 }
 

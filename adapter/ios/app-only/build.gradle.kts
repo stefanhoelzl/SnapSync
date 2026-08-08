@@ -41,3 +41,16 @@ kotlin {
         }
     }
 }
+
+// Full failure messages in CI (same configuration as `:adapter:generic:app`): the Kotlin/Native
+// simulator runner otherwise prints a terse "AssertionError at null:-1" with no message and no
+// line, which makes a red iOS-only test unreadable from Linux — the one place these tests cannot
+// be re-run.
+tasks.withType<org.jetbrains.kotlin.gradle.targets.native.tasks.KotlinNativeSimulatorTest>().configureEach {
+    testLogging {
+        exceptionFormat = org.gradle.api.tasks.testing.logging.TestExceptionFormat.FULL
+        // Standard streams stay OFF, unlike `:adapter:generic:app`: `DarwinHttpClientTest` aims
+        // requests at a closed port on purpose, and the client's own failure logging would then
+        // print a multi-line NSError with a stack trace for each one — burying real output.
+    }
+}

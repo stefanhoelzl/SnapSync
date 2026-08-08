@@ -36,11 +36,20 @@ class SentryLogWriter : LogWriter() {
             )
         }
     }
+}
 
-    private fun Severity.toSentryLevel(): SentryLevel = when (this) {
-        Severity.Verbose, Severity.Debug -> SentryLevel.DEBUG
-        Severity.Info -> SentryLevel.INFO
-        Severity.Warn -> SentryLevel.WARNING
-        Severity.Error, Severity.Assert -> SentryLevel.ERROR
-    }
+/**
+ * Kermit severity → Sentry level, the whole mapping in one place.
+ *
+ * Top-level and `internal` so it can be asserted directly: the split above it — `Error`/`Assert`
+ * become *events*, everything else a *breadcrumb* — decides whether a failure is reported at all, and
+ * a breadcrumb attached to no event is never sent anywhere. A mapping that quietly demoted `Error`
+ * would leave the operator's instance looking healthy while the fleet failed, which is precisely the
+ * silence this capability exists to break.
+ */
+internal fun Severity.toSentryLevel(): SentryLevel = when (this) {
+    Severity.Verbose, Severity.Debug -> SentryLevel.DEBUG
+    Severity.Info -> SentryLevel.INFO
+    Severity.Warn -> SentryLevel.WARNING
+    Severity.Error, Severity.Assert -> SentryLevel.ERROR
 }
