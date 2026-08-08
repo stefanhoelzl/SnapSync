@@ -92,7 +92,7 @@ class IosPhotoKitUploadPlatform(
                 }
                 is FetchedJob.Emit -> out += PlatformUploadJob(
                     key = classified.key,
-                    contentType = photoKitContentType(resource),
+                    contentType = photoKitContentType(destination, resource),
                     state = classified.state,
                     error = classified.error,
                     data = resource,

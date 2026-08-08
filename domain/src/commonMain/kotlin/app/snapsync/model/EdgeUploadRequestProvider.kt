@@ -49,9 +49,27 @@ class EdgeUploadRequestProvider(
     override suspend fun provide(resource: Resource): UploadRequest {
         val url = "$base/files/devices/$deviceId/${encodeFilenameSegment(resource.filename)}"
         val headers = buildMap {
-            put("Content-Type", resource.contentType)
+            put("Content-Type", contentTypeOf(resource))
             token()?.let { put("Authorization", "Bearer $it") }
         }
         return UploadRequest(url = url, headers = headers, resource = resource)
     }
+
+    /**
+     * The **MIME type** for the `Content-Type` header — not [Resource.contentType], which on iOS is the
+     * PhotoKit **UTI** (`public.jpeg`), a value no HTTP client, CDN or browser understands.
+     *
+     * The MIME rides in the resource's metadata, resolved iOS-side by `UTType.preferredMIMEType`
+     * (`RawAssetMapping`), and every other consumer already prefers it the same way — `toLedgerRow` does
+     * `metadata[RESOURCE_META_MIME] ?: contentType`, so the device manifest and the event union have
+     * always carried the MIME. Only this header did not, so every stored object was typed with a UTI.
+     * Measured on device 2026-08-07: `content-type: public.jpeg` at the origin.
+     *
+     * The fallback is [Resource.contentType] and is load-bearing for the **retry** path, where the cycle
+     * rebuilds a `Resource` from the job key alone with empty metadata: the platform recovers the type
+     * from the job's stored destination header (which this method wrote), so the value round-trips
+     * instead of degrading.
+     */
+    private fun contentTypeOf(resource: Resource): String =
+        resource.metadata[RESOURCE_META_MIME]?.takeIf { it.isNotBlank() } ?: resource.contentType
 }
