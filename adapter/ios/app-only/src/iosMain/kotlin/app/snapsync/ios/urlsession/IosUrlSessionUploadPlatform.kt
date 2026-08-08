@@ -87,8 +87,27 @@ class IosUrlSessionUploadPlatform(
     private val onEventsFinished: () -> Unit,
 ) : BackgroundTransfer {
 
-    private class InFlight(val task: NSURLSessionUploadTask, val resource: PHAssetResource?, val fileUrl: NSURL)
-    private class Terminal(val key: String, val success: Boolean, val error: UploadError?, val resource: PHAssetResource?)
+    // `contentType` is the media type the task's own request was created with. It is carried because
+    // `UploadCycle` rebuilds a retried job's `Resource` from the key alone, with empty metadata — so
+    // whatever a surfaced job reports becomes the type the recreated upload is stored under. Reporting a
+    // fixed placeholder here is not inert: it mistypes the object for the rest of its life (the PhotoKit
+    // tier had exactly that defect, where every object that failed once was stored as
+    // `application/octet-stream`). That tier recovers the value from the OS's stored request; this one
+    // never hands the request away, so it simply keeps it.
+    private class InFlight(
+        val task: NSURLSessionUploadTask,
+        val resource: PHAssetResource?,
+        val fileUrl: NSURL,
+        val contentType: String,
+    )
+
+    private class Terminal(
+        val key: String,
+        val success: Boolean,
+        val error: UploadError?,
+        val resource: PHAssetResource?,
+        val contentType: String,
+    )
 
     private val lock = NSLock()
     private val inFlight = HashMap<String, InFlight>()
@@ -166,7 +185,9 @@ class IosUrlSessionUploadPlatform(
         val urlRequest = discovery.buildRequest(url, request)
         val task = session.uploadTaskWithRequest(urlRequest, fromFile = fileUrl)
         task.taskDescription = resource.filename // the ledger key — the only field present across the lifecycle
-        locked { inFlight[resource.filename] = InFlight(task, phResource, fileUrl) }
+        locked {
+            inFlight[resource.filename] = InFlight(task, phResource, fileUrl, request.contentTypeHeader())
+        }
         task.resume()
         return@invocation CreateResult.CREATED
     }
@@ -186,7 +207,7 @@ class IosUrlSessionUploadPlatform(
         val terminalJobs = drained.map {
             PlatformUploadJob(
                 key = it.key,
-                contentType = "application/octet-stream",
+                contentType = it.contentType,
                 state = if (it.success) PlatformJobState.SUCCEEDED else PlatformJobState.FAILED,
                 error = it.error,
                 data = it.resource, // present → UploadCycle can recreate a failed job in-cycle
@@ -201,7 +222,13 @@ class IosUrlSessionUploadPlatform(
         val stranded = strandedKeys(pending = pendingKeys(), live = live, drained = drainedKeys)
         val strandedJobs = stranded.map {
             log.i { "reconcile: stranded REQUESTED $it (no live task) — surfacing FAILED to re-upload" }
-            PlatformUploadJob(it, "application/octet-stream", PlatformJobState.FAILED, UploadError.Unknown("stranded"), data = null, handle = Unit)
+            // A stranded key has NO surviving request — the process that created it is gone, which is what
+            // made it stranded — so there is no recorded media type to report, and the generic default is
+            // the honest answer rather than a guess. It is also never used to build an upload: this job
+            // carries `data = null`, so `UploadCycle` records FAILED and creates nothing, and the key is
+            // re-uploaded later from a fresh discovery that carries the real MIME. Stated here because the
+            // same placeholder one line above WAS load-bearing and silently mistyped every retried object.
+            PlatformUploadJob(it, STRANDED_CONTENT_TYPE, PlatformJobState.FAILED, UploadError.Unknown("stranded"), data = null, handle = Unit)
         }
         terminalJobs + strandedJobs
     }
@@ -255,7 +282,9 @@ class IosUrlSessionUploadPlatform(
     private fun recordTerminal(key: String, success: Boolean, error: UploadError?) {
         val entry = locked {
             val e = inFlight.remove(key)
-            terminal += Terminal(key, success, error, e?.resource)
+            // A completion with no in-flight record (a relaunch delivered it) has no recorded type either;
+            // same reasoning as the stranded case.
+            terminal += Terminal(key, success, error, e?.resource, e?.contentType ?: STRANDED_CONTENT_TYPE)
             e
         }
         entry?.let { deleteFile(it.fileUrl) }
@@ -298,6 +327,23 @@ class IosUrlSessionUploadPlatform(
         }
     }
 }
+
+/**
+ * What a job reports when no media type was recorded for it — a stranded key, or a completion delivered
+ * after the record was lost. It is the generic default because there genuinely is nothing to report, not
+ * because a type was unavailable to look up.
+ */
+private const val STRANDED_CONTENT_TYPE = "application/octet-stream"
+
+/**
+ * The request's `Content-Type`, matched case-insensitively (HTTP header names are), falling back to the
+ * generic default when the caller set none.
+ */
+private fun UploadRequest.contentTypeHeader(): String =
+    headers.entries.firstOrNull { it.key.equals("Content-Type", ignoreCase = true) }
+        ?.value
+        ?.takeIf { it.isNotBlank() }
+        ?: STRANDED_CONTENT_TYPE
 
 /**
  * The `NSURLSession` background-session delegate — a plain `NSObject` (kept separate from
