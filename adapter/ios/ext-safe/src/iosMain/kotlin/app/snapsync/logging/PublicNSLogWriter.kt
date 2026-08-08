@@ -15,13 +15,32 @@ import platform.Foundation.NSLog
  * D1); each line carries the ambient `[LogContext.current]` prefix for consistency with the file.
  */
 class PublicNSLogWriter : LogWriter() {
-    override fun log(severity: Severity, message: String, tag: String, throwable: Throwable?) {
-        val ctx = LogContext.current
-        val line = buildString {
-            if (ctx != null) append('[').append(ctx).append("] ")
-            append('[').append(severity.name).append('/').append(tag).append("] ").append(message)
-            if (throwable != null) append('\n').append(throwable.stackTraceToString())
-        }
-        NSLog(line.replace("%", "%%"))
+    override fun log(severity: Severity, message: String, tag: String, throwable: Throwable?) =
+        NSLog(publicNSLogFormatString(severity, message, tag, throwable))
+}
+
+/**
+ * The exact string handed to `NSLog` as its **format string**.
+ *
+ * Split out of [PublicNSLogWriter.log] so it is observable: `NSLog` writes to the unified log, which
+ * no test can read back, and the `%` doubling is not cosmetic. `NSLog` reads its first argument as a
+ * printf format, and this writer deliberately puts arbitrary already-formatted log text there — so a
+ * message that happens to contain `%s` or `%@` (a URL with an escape, a serialized payload) would make
+ * `NSLog` consume a variadic argument that was never passed, printing garbage or faulting. Doubling
+ * every literal `%` is what makes putting the message in that position safe, and it is the only reason
+ * this class can bypass os_log's `<private>` redaction at all.
+ */
+internal fun publicNSLogFormatString(
+    severity: Severity,
+    message: String,
+    tag: String,
+    throwable: Throwable?,
+): String {
+    val ctx = LogContext.current
+    val line = buildString {
+        if (ctx != null) append('[').append(ctx).append("] ")
+        append('[').append(severity.name).append('/').append(tag).append("] ").append(message)
+        if (throwable != null) append('\n').append(throwable.stackTraceToString())
     }
+    return line.replace("%", "%%")
 }

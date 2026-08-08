@@ -19,10 +19,13 @@ private const val DOWNLOAD_DB_NAME: String = "downloads.db"
  * the suppression projection) see one store. A distinct file from `ledger.db`, so each store keeps a
  * single writer per file (the ledger is extension-written; this is app-written) — WAL allows the
  * extension's concurrent read.
+ *
+ * [basePath] is a parameter for the same reason as [app.snapsync.engine.iosLedgerStore]'s: the
+ * container's location belongs to the composition, and injecting it is what lets a test open a real
+ * database at all (a bundle-less test binary can never resolve the App Group).
  */
 @OptIn(ExperimentalForeignApi::class)
-fun iosDownloadStore(): SqlDelightDownloadStore {
-    val basePath = appGroupContainerPath(LEDGER_APP_GROUP)
+fun iosDownloadStore(basePath: String = appGroupContainerPath(LEDGER_APP_GROUP)): SqlDelightDownloadStore {
     val driver = NativeSqliteDriver(
         schema = DownloadDatabase.Schema,
         name = DOWNLOAD_DB_NAME,
@@ -43,7 +46,8 @@ fun iosDownloadStore(): SqlDelightDownloadStore {
  * or reading anything beyond the suppression set (capability `download-store`). Backed by the same
  * App-Group store the app writes; the extension reads it over WAL.
  */
-fun iosSuppressionSource(): SuppressionSource = iosDownloadStore()
+fun iosSuppressionSource(basePath: String = appGroupContainerPath(LEDGER_APP_GROUP)): SuppressionSource =
+    iosDownloadStore(basePath)
 
 @OptIn(ExperimentalForeignApi::class)
 private fun protectDownloadFiles(basePath: String) {

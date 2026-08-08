@@ -36,14 +36,21 @@ private const val LEDGER_DB_NAME: String = "ledger.db"
  * host app and the background-upload extension (the single writer), and survives process death. WAL
  * is the native driver's default journal mode — one cross-process writer plus concurrent readers.
  *
- * This factory is the single site that names the database location. The ledger is the extension's
+ * This factory is the single site that names the database *file*. The ledger is the extension's
  * private upload memory — the app no longer watches it for status (status derives from storage
  * truth) — so there is no cross-process change notification: the in-process [LedgerStore.changes]
  * ding the extension's own cycle uses is all that is needed.
+ *
+ * **[basePath] is a parameter, defaulting to the shared container.** Deciding *where* the container
+ * lives is the composition's business, not this adapter's — the same category as deciding which
+ * thread it runs on (spec `module-architecture`, law "Dispatcher lanes are fixed by the
+ * composition"). Both shells omit it and get the App Group, unchanged. What it buys is that the
+ * plumbing below — the driver's `extendedConfig.basePath`, which is the one thing here that could
+ * silently open a database somewhere else entirely — becomes reachable from a test, since a
+ * bundle-less test binary has no App-Group entitlement and so can never resolve the real container.
  */
 @OptIn(ExperimentalForeignApi::class)
-fun iosLedgerStore(): LedgerStore {
-    val basePath = appGroupContainerPath(LEDGER_APP_GROUP)
+fun iosLedgerStore(basePath: String = appGroupContainerPath(LEDGER_APP_GROUP)): LedgerStore {
     val driver = NativeSqliteDriver(
         schema = LedgerDatabase.Schema,
         name = LEDGER_DB_NAME,

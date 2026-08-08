@@ -103,4 +103,34 @@ class IosKeychainTest {
     fun `readExisting on an inaccessible keychain raises rather than reporting no value`() {
         assertFailsWith<KeychainUnavailable> { readExisting(keychain, ACCESSIBLE_AFTER_FIRST_UNLOCK) }
     }
+
+    /**
+     * The other structural fact `securityd` is not needed for: the **address** every operation
+     * carries. It is asserted against the raw attribute names Security itself uses, derived from the
+     * platform constants rather than from a copy of them — so this fails if Apple ever re-bridges
+     * them, instead of silently comparing our spelling to our spelling.
+     */
+    @Test
+    fun `the address keys are the raw attribute names Security uses`() {
+        val address = IosKeychain(service = "svc", account = "acct-name", accessGroup = "grp").itemAddress()
+
+        assertEquals(setOf("svce", "acct", "agrp"), address.keys, "the CF attribute keys moved")
+        assertEquals("svc", address["svce"])
+        assertEquals("acct-name", address["acct"])
+        assertEquals("grp", address["agrp"])
+    }
+
+    /**
+     * An unscoped item reports `null` rather than dropping the entry. The distinction is the whole
+     * subject of the unscoped-seat inventory (capability `architecture-guards`): "search wherever
+     * this process is entitled to look" is a real, inventoried choice, and a map that simply omitted
+     * it would read identically to one that had never been asked.
+     */
+    @Test
+    fun `an unscoped item reports a null access group rather than omitting it`() {
+        val address = IosKeychain(service = "svc", account = "acct-name").itemAddress()
+
+        assertTrue("agrp" in address, "the access group must be reported even when there is none")
+        assertEquals(null, address["agrp"])
+    }
 }

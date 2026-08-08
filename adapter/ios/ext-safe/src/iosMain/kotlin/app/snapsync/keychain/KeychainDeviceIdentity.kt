@@ -144,8 +144,13 @@ class KeychainDeviceIdentity(
          * stays single-sited (capability `architecture-guards`) even though the identity is now read
          * through two views of it — the addressed one and the unscoped legacy one. [accessGroup]
          * `null` means "search wherever this process is entitled to look".
+         *
+         * `internal` (and typed as the impl) so `iosTest` can read back the address it builds — the
+         * only mechanical check that this seat still names the group and the (service, account) pair
+         * the installed base's item is filed under. That check cannot be made through the port type,
+         * and it cannot be made through `securityd` either (see [IosKeychain.itemAddress]).
          */
-        private fun deviceIdItem(accessGroup: String?): Keychain =
+        internal fun deviceIdItem(accessGroup: String?): IosKeychain =
             IosKeychain(service = "app.snapsync.deviceid", account = "deviceid", accessGroup = accessGroup)
 
         private val log = co.touchlab.kermit.Logger.withTag("deviceIdentity")
