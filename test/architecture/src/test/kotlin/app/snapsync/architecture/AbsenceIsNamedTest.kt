@@ -126,7 +126,7 @@ class AbsenceIsNamedTest {
                 appendLine()
                 appendLine("Add a `$verdictMarker …` line to the declaration's KDoc naming the consequence that")
                 appendLine("makes the collapse safe FOR EVERY CAUSE IT ABSORBS — or return a type that keeps")
-                appendLine("\"nothing\" and \"could not tell\" apart (ConfigRead, KeychainRead, JoinLoad all do).")
+                appendLine("\"nothing\" and \"could not tell\" apart (ConfigRead, SecureStoreRead, JoinLoad all do).")
                 appendLine()
                 appendLine("This is not paperwork. `eventLinkFromUserActivity` returned String? because the")
                 appendLine("question was never asked, and a discarded event link then looked exactly like one")

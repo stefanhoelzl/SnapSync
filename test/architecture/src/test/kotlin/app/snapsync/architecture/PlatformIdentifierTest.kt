@@ -23,7 +23,8 @@ import kotlin.test.assertTrue
  * flags **48** files — an allowlist that size *is* the codebase, and nobody reads it; scanning with
  * comments **stripped** flags **5**, every one of them a real identifier in real code. (The audit in
  * the decision record measured 37 and 6 with a looser token set; the ratio is the finding, not the
- * exact counts.) The exemption will read like an oversight to a future
+ * exact counts. Three of those five have since been paid off — see [deferred] — leaving a pinned
+ * baseline of two files.) The exemption will read like an oversight to a future
  * reader ("shouldn't we check the docs too?"), so it is normative in the spec, not folklore here: a
  * KDoc recording that an opaque payload is a `PHAssetResource` on iOS is a binding note, which is the
  * kind of documentation a second implementer needs, and a gate that policed it would be answered by
@@ -112,22 +113,8 @@ class PlatformIdentifierTest {
 
     /**
      * **Deferred debt**, kept separate from [accepted] on purpose: these are real violations of the
-     * law that this change did not fix, and reading them as "accepted" would launder them.
+     * law, left standing deliberately, and reading them as "accepted" would launder them.
      *
-     * - `ports/Keychain.kt`, `feature/album/AlbumMapMigration.kt` — the
-     *   `Keychain` port family is the same violation (a port named for Apple technology), deferred
-     *   with reasons in design D6: it touches `KeychainDeviceIdentity`, whose stored value is written
-     *   once and **never rewritten**, so a wrong group or key name freezes permanently on a value
-     *   whose loss is unrecoverable — that exact failure has already happened once (2026-07-20: two
-     *   device ids across two processes, and the app re-imported every photo it had uploaded) — and
-     *   the simulator coverage that would make the reshape verifiable does not exist yet.
-     *   **Expiry:** these pins are deleted by D6's value-preserving reshape.
-     *   `ports/ConfigPorts.kt` was a third entry in this family until the Stage-2 change deleted
-     *   `configReadFrom` — its only `KeychainRead`-typed function — with the read-only legacy
-     *   fallback it served (capability `event-rejoin-reconciliation`). The debt was discharged by
-     *   the code's removal rather than by the reshape: an expiry trigger is a floor, not a schedule,
-     *   and the exact-in-both-directions pin is what made the discharge visible (this gate failed on
-     *   the stale pin the moment the code went).
      * - `ports/OsReceipt.kt` — `ReceiptDeadlines.URL_SESSION_EVENTS` names the OS entry point whose
      *   handler budget it holds. `OsReceipt` is the port *for* OS entry points, and its two siblings
      *   (`SILENT_PUSH`, `BACKGROUND_TASK`) are already neutral, so this is a naming slip rather than a
@@ -135,10 +122,31 @@ class PlatformIdentifierTest {
      *
      * A pin here is not permission. It is a receipt, exact in both directions (below), so the debt
      * cannot quietly outlive the code that owes it.
+     *
+     * ## The three `Keychain` pins this map used to hold, and how each was discharged
+     *
+     * The gate shipped with a `Keychain` family pinned here — `ports/Keychain.kt`,
+     * `ports/ConfigPorts.kt`, `feature/album/AlbumMapMigration.kt` — a port named for Apple
+     * technology, carrying an `OSStatus` and an accessibility class into a platform-free zone. It was
+     * deferred because it touches `KeychainDeviceIdentity`, whose stored value is written once and
+     * **never rewritten** (2026-07-20: two device ids across two processes, and the app re-imported
+     * every photo it had uploaded), and because the simulator coverage that would make a reshape
+     * verifiable did not exist. All three are gone:
+     *
+     * - `ports/ConfigPorts.kt` — **incidentally**, when the Stage-2 change deleted `configReadFrom`,
+     *   its only `KeychainRead`-typed function, with the read-only legacy fallback it served
+     *   (capability `event-rejoin-reconciliation`). An expiry trigger is a floor, not a schedule.
+     * - `ports/Keychain.kt` and `feature/album/AlbumMapMigration.kt` — **by the trigger they were
+     *   filed under**: the port became `ports/SecureStore.kt`, its two platform encodings moved into
+     *   `IosKeychain`, and the feature took the neutral read type (decision record:
+     *   `changes/…/reshape-keychain-port`).
+     *
+     * That is what the exact-in-both-directions inventory buys, and it fired in both directions: the
+     * gate went red on a stale pin the moment `configReadFrom` went, and it went red again on all
+     * three the moment the reshape landed. The `Keychain` token stays in [appleForms] with no pin
+     * naming it, so a reintroduction fails rather than arriving unpinned.
      */
     private val deferred: Map<String, Set<String>> = mapOf(
-        "domain/src/commonMain/kotlin/app/snapsync/ports/Keychain.kt" to setOf("Keychain"),
-        "domain/src/commonMain/kotlin/app/snapsync/feature/album/AlbumMapMigration.kt" to setOf("Keychain"),
         "domain/src/commonMain/kotlin/app/snapsync/ports/OsReceipt.kt" to setOf("URL_SESSION"),
     )
 

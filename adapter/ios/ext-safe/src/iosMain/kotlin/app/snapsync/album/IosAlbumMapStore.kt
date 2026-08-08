@@ -5,7 +5,7 @@ import app.snapsync.feature.album.AlbumMapSource
 import app.snapsync.feature.album.albumMapSource
 import app.snapsync.keychain.IosKeychain
 import app.snapsync.ports.AlbumMapStore
-import app.snapsync.ports.Keychain
+import app.snapsync.ports.SecureStore
 import co.touchlab.kermit.Logger
 import kotlinx.serialization.builtins.MapSerializer
 import kotlinx.serialization.builtins.serializer
@@ -37,7 +37,7 @@ private const val ALBUM_MAP_KEY = "app.snapsync.album.map"
  */
 class IosAlbumMapStore(
     suiteName: String = LEDGER_APP_GROUP,
-    private val legacyKeychain: Keychain =
+    private val legacyKeychain: SecureStore =
         IosKeychain(service = "app.snapsync.album", account = "albummap"),
     private val log: Logger = Logger.withTag("AlbumMap"),
 ) : AlbumMapStore {

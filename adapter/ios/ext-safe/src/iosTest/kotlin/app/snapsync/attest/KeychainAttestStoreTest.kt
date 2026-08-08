@@ -1,9 +1,9 @@
 package app.snapsync.attest
 
-import app.snapsync.keychain.ACCESSIBLE_AFTER_FIRST_UNLOCK
-import app.snapsync.keychain.StubKeychain
-import app.snapsync.ports.KeychainRead
-import app.snapsync.ports.KeychainUnavailable
+import app.snapsync.keychain.StubSecureStore
+import app.snapsync.ports.SecureStoreRead
+import app.snapsync.ports.SecureStoreUnavailable
+import app.snapsync.ports.StoredProtection
 
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -28,8 +28,8 @@ import kotlin.test.assertTrue
  */
 class KeychainAttestStoreTest {
 
-    private val token = StubKeychain()
-    private val keyId = StubKeychain()
+    private val token = StubSecureStore()
+    private val keyId = StubSecureStore()
     private val store = KeychainAttestStore(tokenItem = token, keyIdItem = keyId)
 
     @Test
@@ -50,21 +50,21 @@ class KeychainAttestStoreTest {
     @Test
     fun `an unreadable token raises rather than reporting that this device never attested`() {
         val locked = KeychainAttestStore(
-            tokenItem = StubKeychain(KeychainRead.Unavailable(-25308)),
+            tokenItem = StubSecureStore(SecureStoreRead.Unavailable("OSStatus -25308")),
             keyIdItem = keyId,
         )
 
-        assertFailsWith<KeychainUnavailable> { locked.token() }
+        assertFailsWith<SecureStoreUnavailable> { locked.token() }
     }
 
     @Test
     fun `an unreadable keyId raises for the same reason as the token`() {
         val locked = KeychainAttestStore(
             tokenItem = token,
-            keyIdItem = StubKeychain(KeychainRead.Unavailable(-25308)),
+            keyIdItem = StubSecureStore(SecureStoreRead.Unavailable("OSStatus -25308")),
         )
 
-        assertFailsWith<KeychainUnavailable> { locked.keyId() }
+        assertFailsWith<SecureStoreUnavailable> { locked.keyId() }
     }
 
     /** The asymmetry. Clearing both would force a throttled re-attestation on every rejection. */
@@ -87,7 +87,7 @@ class KeychainAttestStoreTest {
      */
     @Test
     fun `a legacy-accessibility token is upgraded in place on read`() {
-        val old = StubKeychain(KeychainRead.Found("bearer-from-june", "ak")) // ak = WhenUnlocked
+        val old = StubSecureStore(SecureStoreRead.Found("bearer-from-june", StoredProtection.RESTRICTED))
         val legacyStore = KeychainAttestStore(tokenItem = old, keyIdItem = keyId)
 
         assertEquals("bearer-from-june", legacyStore.token())
@@ -101,7 +101,7 @@ class KeychainAttestStoreTest {
         store.setToken("bearer-abc")
 
         assertEquals(
-            KeychainRead.Found("bearer-abc", ACCESSIBLE_AFTER_FIRST_UNLOCK),
+            SecureStoreRead.Found("bearer-abc", StoredProtection.BACKGROUND_READABLE),
             token.read(),
             "the OS invokes the upload extension when the device is idle — which usually means locked",
         )

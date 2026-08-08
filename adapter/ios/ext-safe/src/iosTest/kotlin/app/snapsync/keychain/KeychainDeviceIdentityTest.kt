@@ -1,13 +1,16 @@
 package app.snapsync.keychain
 
 import app.snapsync.ports.DeviceIdentityAbsent
-import app.snapsync.ports.KeychainRead
-import app.snapsync.ports.KeychainUnavailable
+import app.snapsync.ports.SecureStoreRead
+import app.snapsync.ports.SecureStoreUnavailable
+import app.snapsync.ports.StoredProtection
 
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertTrue
+
+private const val LOCKED = "OSStatus -25308" // errSecInteractionNotAllowed, as IosKeychain formats it
 
 /**
  * The device identity, on the two axes that have actually failed in the field (capability
@@ -28,15 +31,15 @@ import kotlin.test.assertTrue
  * not, and whether the group named is the shared one rather than some other string. Those are the
  * assertions below.
  *
- * They run against [StubKeychain] rather than `securityd`, and that is not a compromise: a
+ * They run against [StubSecureStore] rather than `securityd`, and that is not a compromise: a
  * Kotlin/Native test binary is refused Keychain access outright (see [IosKeychainTest]), so no
  * environment exists in which the real item can be exercised. The address assertions close the gap
  * from the other side, by reading back the query the adapter would have issued.
  */
 class KeychainDeviceIdentityTest {
 
-    private val shared = StubKeychain()
-    private val legacy = StubKeychain()
+    private val shared = StubSecureStore()
+    private val legacy = StubSecureStore()
 
     private fun identity(role: DeviceIdentityRole, mint: () -> String = { "minted-id" }) =
         KeychainDeviceIdentity(role = role, shared = shared, legacy = legacy, mint = mint)
@@ -87,7 +90,7 @@ class KeychainDeviceIdentityTest {
 
     @Test
     fun `the extension reads the shared item and returns its value verbatim`() {
-        val stored = StubKeychain(KeychainRead.Found("device-42", ACCESSIBLE_AFTER_FIRST_UNLOCK))
+        val stored = StubSecureStore(SecureStoreRead.Found("device-42", StoredProtection.BACKGROUND_READABLE))
         val identity = KeychainDeviceIdentity(DeviceIdentityRole.READ_ONLY, stored, legacy) { "minted-id" }
 
         assertEquals("device-42", identity.deviceId())
@@ -110,11 +113,11 @@ class KeychainDeviceIdentityTest {
 
     @Test
     fun `an unreadable shared item defers the extension rather than inventing an identity`() {
-        val locked = StubKeychain(KeychainRead.Unavailable(-25308))
+        val locked = StubSecureStore(SecureStoreRead.Unavailable(LOCKED))
         val identity = KeychainDeviceIdentity(DeviceIdentityRole.READ_ONLY, locked, legacy) { "minted-id" }
 
-        val failure = assertFailsWith<KeychainUnavailable> { identity.deviceId() }
-        assertEquals(-25308, failure.status, "the OSStatus must survive to the device log")
+        val failure = assertFailsWith<SecureStoreUnavailable> { identity.deviceId() }
+        assertEquals(LOCKED, failure.detail, "the adapter's diagnostic must survive to the device log")
         assertTrue(locked.untouched())
     }
 
@@ -122,7 +125,7 @@ class KeychainDeviceIdentityTest {
 
     @Test
     fun `the app adopts an out-of-group id instead of minting a second one`() {
-        val legacyHolder = StubKeychain(KeychainRead.Found("provisioned-in-july", null))
+        val legacyHolder = StubSecureStore(SecureStoreRead.Found("provisioned-in-july", StoredProtection.UNREPORTED))
         var minted = false
         val identity = KeychainDeviceIdentity(DeviceIdentityRole.MINTING, shared, legacyHolder) {
             minted = true
@@ -155,14 +158,14 @@ class KeychainDeviceIdentityTest {
      */
     @Test
     fun `an unreadable legacy view blocks the mint rather than being treated as absence`() {
-        val unreadableLegacy = StubKeychain(KeychainRead.Unavailable(-25308))
+        val unreadableLegacy = StubSecureStore(SecureStoreRead.Unavailable(LOCKED))
         var minted = false
         val identity = KeychainDeviceIdentity(DeviceIdentityRole.MINTING, shared, unreadableLegacy) {
             minted = true
             "minted-id"
         }
 
-        assertFailsWith<KeychainUnavailable> { identity.deviceId() }
+        assertFailsWith<SecureStoreUnavailable> { identity.deviceId() }
         assertTrue(!minted, "a locked device must wait for the next launch, not acquire a new identity")
         assertTrue(shared.writes.isEmpty())
     }
@@ -173,7 +176,7 @@ class KeychainDeviceIdentityTest {
      */
     @Test
     fun `a legacy-accessibility item is upgraded in place with its value untouched`() {
-        val old = StubKeychain(KeychainRead.Found("provisioned-in-june", "ak")) // ak = WhenUnlocked
+        val old = StubSecureStore(SecureStoreRead.Found("provisioned-in-june", StoredProtection.RESTRICTED))
         val identity = KeychainDeviceIdentity(DeviceIdentityRole.MINTING, old, legacy) { "minted-id" }
 
         assertEquals("provisioned-in-june", identity.deviceId())
@@ -184,7 +187,7 @@ class KeychainDeviceIdentityTest {
 
     @Test
     fun `an item already stored background-readable is left completely alone`() {
-        val healthy = StubKeychain(KeychainRead.Found("device-42", ACCESSIBLE_AFTER_FIRST_UNLOCK))
+        val healthy = StubSecureStore(SecureStoreRead.Found("device-42", StoredProtection.BACKGROUND_READABLE))
         val identity = KeychainDeviceIdentity(DeviceIdentityRole.MINTING, healthy, legacy) { "minted-id" }
 
         assertEquals("device-42", identity.deviceId())

@@ -25,7 +25,7 @@ import app.snapsync.ports.DeviceManifestStore
 import app.snapsync.ports.DiscoveryStore
 import app.snapsync.ports.Enrollment
 import app.snapsync.ports.JoinedEventMarker
-import app.snapsync.ports.KeychainUnavailable
+import app.snapsync.ports.SecureStoreUnavailable
 import app.snapsync.ports.LedgerStore
 import app.snapsync.ports.SuppressionSource
 import co.touchlab.kermit.Logger
@@ -43,7 +43,7 @@ class UploadPorts(
     /** The three-state membership read (capability `event-link`). Read fresh once per cycle. */
     val config: ConfigReader,
     /**
-     * The device-identity resolve. MUST throw [KeychainUnavailable] while protected data is
+     * The device-identity resolve. MUST throw [SecureStoreUnavailable] while protected data is
      * unavailable (never mint, never return a placeholder); each root keeps its own caching (a
      * `lazy` caches the first success, so this is one Keychain read per process in practice).
      */
@@ -191,14 +191,14 @@ private fun readGate(ports: UploadPorts): CycleGate {
     // on the unreadable side of the roll-up. Every outcome needs the id: the reconciler and the
     // manifest producer each close over it, so even the leave-side branch touches it.
     //
-    // `DeviceIdentityAbsent` joins `KeychainUnavailable` here, and the two are handled identically on
+    // `DeviceIdentityAbsent` joins `SecureStoreUnavailable` here, and the two are handled identically on
     // purpose. It means the lookup succeeded, found nothing, and this process may not mint (the upload
     // extension — capability `device-identity`). Both are "proceed with no identity", and proceeding
     // is exactly what must not happen: an invented id partitions this device's bytes away from its own
     // manifest. Anything else still propagates — a genuine fault must not be silently downgraded to a
     // skipped cycle.
     val identityFailure = runCatching { ports.deviceId() }
-        .onFailure { if (it !is KeychainUnavailable && it !is DeviceIdentityAbsent) throw it }
+        .onFailure { if (it !is SecureStoreUnavailable && it !is DeviceIdentityAbsent) throw it }
         .exceptionOrNull()
     val idReadable = identityFailure == null
     val payload = (read as? ConfigRead.Joined)?.config
@@ -221,7 +221,7 @@ private fun readGate(ports: UploadPorts): CycleGate {
             // opposite reactions from whoever reads the log.
             when (identityFailure) {
                 is DeviceIdentityAbsent -> ", deviceId absent and unmintable here"
-                is KeychainUnavailable -> ", deviceId unreadable (status=${identityFailure.status})"
+                is SecureStoreUnavailable -> ", deviceId unreadable (${identityFailure.detail})"
                 else -> ""
             } + ")",
     )

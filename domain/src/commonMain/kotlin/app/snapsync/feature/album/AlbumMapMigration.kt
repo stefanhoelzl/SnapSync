@@ -1,6 +1,6 @@
 package app.snapsync.feature.album
 
-import app.snapsync.ports.KeychainRead
+import app.snapsync.ports.SecureStoreRead
 
 /**
  * Where the `eventId → albumLocalId` map should be read from, and whether the legacy Keychain item
@@ -41,10 +41,16 @@ sealed interface AlbumMapSource {
  *
  * The App Group wins whenever it holds anything: migration is one-shot, and a second read must not
  * re-migrate (the Keychain item is gone by then anyway).
+ *
+ * It takes the port's own [SecureStoreRead] rather than a bespoke three-outcome type of its own,
+ * because it never needed a platform one: the rule is entirely about the **three states** — a value
+ * to migrate, an unreadable store to retry, or nothing anywhere — and those are exactly what the
+ * neutral read preserves. A private copy would have the adapter translate one three-state type into
+ * an identical one. Decision record: `changes/…/reshape-keychain-port` (D5).
  */
-fun albumMapSource(stored: String?, legacy: KeychainRead): AlbumMapSource = when {
+fun albumMapSource(stored: String?, legacy: SecureStoreRead): AlbumMapSource = when {
     stored != null -> AlbumMapSource.Current(stored)
-    legacy is KeychainRead.Found -> AlbumMapSource.Migrate(legacy.value)
-    legacy is KeychainRead.Unavailable -> AlbumMapSource.Retry
+    legacy is SecureStoreRead.Found -> AlbumMapSource.Migrate(legacy.value)
+    legacy is SecureStoreRead.Unavailable -> AlbumMapSource.Retry
     else -> AlbumMapSource.Current(null) // genuinely nothing anywhere: a fresh install
 }

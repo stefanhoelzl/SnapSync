@@ -1,9 +1,8 @@
 package app.snapsync.keychain
 
 import app.snapsync.ports.DeviceIdentityAbsent
-import app.snapsync.ports.Keychain
-import app.snapsync.ports.KeychainRead
-import app.snapsync.ports.KeychainResolution
+import app.snapsync.ports.SecureStore
+import app.snapsync.ports.SecureStoreResolution
 import app.snapsync.ports.readExisting
 import app.snapsync.ports.resolveOrMint
 
@@ -69,7 +68,7 @@ enum class DeviceIdentityRole {
  *   (`WhenUnlocked`) it did not — and background work is precisely when this is read.
  * - **A read error never mints.** Only a genuine `errSecItemNotFound` may mint. Previously *any* failed
  *   read was mapped to "no id stored", so a locked read minted a fresh UUID and then aborted the
- *   process trying to persist it. An unreadable Keychain now raises `KeychainUnavailable`, which the
+ *   process trying to persist it. An unreadable Keychain now raises `SecureStoreUnavailable`, which the
  *   composition roots handle (the app defers; the extension skips its cycle).
  * - **Legacy items heal.** An id written by an older build under the weaker class is upgraded in place
  *   with its **value preserved** — never re-minted, so the partition and ledger stay valid.
@@ -96,25 +95,25 @@ enum class DeviceIdentityRole {
  */
 class KeychainDeviceIdentity(
     private val role: DeviceIdentityRole,
-    private val shared: Keychain = deviceIdItem(SHARED_KEYCHAIN_ACCESS_GROUP),
+    private val shared: SecureStore = deviceIdItem(SHARED_KEYCHAIN_ACCESS_GROUP),
     /**
      * The unscoped view of the same item, consulted **only** by [DeviceIdentityRole.MINTING] and only
      * when [shared] reports absence: it spans every group this process is entitled to and so can still
      * see an id an older build placed in the process's own `application-identifier` group.
      */
-    private val legacy: Keychain = deviceIdItem(accessGroup = null),
+    private val legacy: SecureStore = deviceIdItem(accessGroup = null),
     private val mint: () -> String = { NSUUID().UUIDString() },
 ) {
 
     private val cached: String by lazy {
-        var resolution: KeychainResolution? = null
+        var resolution: SecureStoreResolution? = null
 
         val id = when (role) {
             // Asks the shared group and accepts its answer — no legacy read, because adopting from an
             // unscoped search here would find this process's OWN stale item and re-create the very
             // split this class exists to close.
             DeviceIdentityRole.READ_ONLY ->
-                readExisting(shared, ACCESSIBLE_AFTER_FIRST_UNLOCK, onResolution = { resolution = it })
+                readExisting(shared, onResolution = { resolution = it })
                     ?: run {
                         log.i { "device identity: absent in the shared group and this process may not mint" }
                         throw DeviceIdentityAbsent()
@@ -122,7 +121,6 @@ class KeychainDeviceIdentity(
 
             DeviceIdentityRole.MINTING -> resolveOrMint(
                 shared,
-                ACCESSIBLE_AFTER_FIRST_UNLOCK,
                 onResolution = { resolution = it },
                 readLegacy = { legacy.read() },
                 generate = mint,
@@ -155,11 +153,11 @@ class KeychainDeviceIdentity(
 
         private val log = co.touchlab.kermit.Logger.withTag("deviceIdentity")
 
-        private fun KeychainResolution?.describe(): String = when (this) {
-            is KeychainResolution.Found ->
-                "read(accessibility=$accessibility${if (migrated) ", migrated" else ""})"
-            KeychainResolution.Adopted -> "adopted(from an out-of-group item)"
-            KeychainResolution.Minted -> "minted"
+        private fun SecureStoreResolution?.describe(): String = when (this) {
+            is SecureStoreResolution.Found ->
+                "read(protection=$protection${if (migrated) ", migrated" else ""})"
+            SecureStoreResolution.Adopted -> "adopted(from an out-of-group item)"
+            SecureStoreResolution.Minted -> "minted"
             null -> "unreported"
         }
     }

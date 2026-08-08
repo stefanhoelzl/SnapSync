@@ -68,20 +68,21 @@ interface AttestClient {
 }
 
 /**
- * Where the device token and its `keyId` live.
+ * Where the device token and its `keyId` live: a store that outlives the app install and stays
+ * readable while the device is locked, addressable by **both** processes — the upload extension must
+ * read the token, and the OS invokes it when the device is idle, which usually means locked.
  *
- * On iOS this is the **shared Keychain access group** — the same one holding the device id — because the
- * upload extension must read the token, and it must be able to do so on a **locked** device (the OS
- * invokes the extension when the device is idle, which usually means locked).
+ * Binding note: on iOS both are [SecureStore] items in the **shared Keychain access group**, the same
+ * one holding the device id.
  */
 interface AttestStore {
 
     /** The current token, or null if none was ever stored. MAY be expired — the reader decides. */
     /**
-     * Absence: null means the token is **absent** and nothing else. An unreadable Keychain is NOT
-     * collapsed here — `readExisting` throws `KeychainUnavailable(status)` instead, and
-     * `KeychainRead` keeps `Absent` and `Unavailable(status)` apart on purpose ("never mistaken for
-     * absence"). That separation is what lets a caller treat null as "not attested yet" and mint.
+     * Absence: null means the token is **absent** and nothing else. An unreadable store is NOT
+     * collapsed here — [readExisting] throws [SecureStoreUnavailable] instead, and [SecureStoreRead]
+     * keeps `Absent` and `Unavailable` apart on purpose ("never mistaken for absence"). That
+     * separation is what lets a caller treat null as "not attested yet" and mint.
      */
     fun token(): String?
 

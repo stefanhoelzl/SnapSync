@@ -2,9 +2,10 @@
 
 package app.snapsync.keychain
 
-import app.snapsync.ports.Keychain
-import app.snapsync.ports.KeychainRead
-import app.snapsync.ports.KeychainUnavailable
+import app.snapsync.ports.SecureStore
+import app.snapsync.ports.SecureStoreRead
+import app.snapsync.ports.SecureStoreUnavailable
+import app.snapsync.ports.StoredProtection
 
 import kotlinx.cinterop.BetaInteropApi
 import kotlinx.cinterop.ExperimentalForeignApi
@@ -68,9 +69,14 @@ val ACCESSIBLE_AFTER_FIRST_UNLOCK: String =
     CFBridgingRelease(CFRetain(kSecAttrAccessibleAfterFirstUnlock)) as String
 
 /**
- * The one and only Keychain implementation in the repo (capability `architecture-guards` forbids
- * `SecItem*` outside this module, so that "every Keychain item is background-readable" is provable
- * rather than merely intended).
+ * The one and only Keychain implementation in the repo — the iOS binding of the platform-free
+ * [SecureStore] port (capability `architecture-guards` forbids `SecItem*` outside this module, so
+ * that "every Keychain item is background-readable" is provable rather than merely intended).
+ *
+ * **This class owns both platform encodings the port refuses to carry.** An `OSStatus` becomes an
+ * opaque diagnostic string, and `kSecAttrAccessible`'s value becomes a [StoredProtection] — resolved
+ * against [ACCESSIBLE_AFTER_FIRST_UNLOCK], which is the single place the required class is named.
+ * Decision record: `changes/…/reshape-keychain-port` (D3, D4).
  *
  * [accessGroup] names the Keychain access group **explicitly**, and every operation this class
  * performs carries it — read, write, delete, and the accessibility migration alike. A partially
@@ -99,13 +105,13 @@ class IosKeychain(
     private val service: String,
     private val account: String,
     private val accessGroup: String? = null,
-) : Keychain {
+) : SecureStore {
 
     /**
      * One query returns **both** the value and its accessibility class, so detecting a legacy item
      * costs nothing: an already-correct item is read, compared, and left alone (no write).
      */
-    override fun read(): KeychainRead = memScoped {
+    override fun read(): SecureStoreRead = memScoped {
         val query = baseQuery()
         CFDictionaryAddValue(query, kSecReturnData, kCFBooleanTrue)
         CFDictionaryAddValue(query, kSecReturnAttributes, kCFBooleanTrue)
@@ -117,8 +123,8 @@ class IosKeychain(
         // The load-bearing distinction: ONLY item-not-found means "there is no value". Every other
         // status means "I could not look" — most often errSecInteractionNotAllowed (-25308) on a
         // locked device — and must never be mistaken for absence.
-        if (status == errSecItemNotFound) return@memScoped KeychainRead.Absent
-        if (status != errSecSuccess) return@memScoped KeychainRead.Unavailable(status)
+        if (status == errSecItemNotFound) return@memScoped SecureStoreRead.Absent
+        if (status != errSecSuccess) return@memScoped SecureStoreRead.Unavailable(diagnostic(status))
 
         // `SecItemCopyMatching` returns a +1 dictionary; `CFBridgingRelease` takes that ownership over
         // and bridges it to a Kotlin Map, so the keys arrive as the plain strings the CF constants
@@ -129,7 +135,30 @@ class IosKeychain(
         val accessibility = attributes?.get(KEY_ACCESSIBLE) as? String
 
         // A matched item whose data will not decode is not an absence either — refuse to mint over it.
-        value?.let { KeychainRead.Found(it, accessibility) } ?: KeychainRead.Unavailable(errSecSuccess)
+        value?.let { SecureStoreRead.Found(it, protectionOf(accessibility)) }
+            ?: SecureStoreRead.Unavailable("matched item did not decode")
+    }
+
+    /**
+     * `kSecAttrAccessible`'s raw value → the port's platform-free [StoredProtection]. The comparison
+     * is against [ACCESSIBLE_AFTER_FIRST_UNLOCK] itself, so the class this adapter *requires* and the
+     * class it *recognises* cannot drift apart.
+     *
+     * The observed class is **logged** when it is not the required one. [StoredProtection.RESTRICTED]
+     * deliberately does not say which class an item was filed under (the port would be carrying an
+     * `kSecAttrAccessible` value inward only to be printed), so the detail is recorded here, where it
+     * was read — once per legacy item per process, and never for a healthy one.
+     */
+    private fun protectionOf(accessibility: String?): StoredProtection = when (accessibility) {
+        ACCESSIBLE_AFTER_FIRST_UNLOCK -> StoredProtection.BACKGROUND_READABLE
+        null -> {
+            log.i { "$service/$account reports no accessibility class; it will be upgraded in place" }
+            StoredProtection.UNREPORTED
+        }
+        else -> {
+            log.i { "$service/$account is stored `$accessibility`, not the required class — upgrading in place" }
+            StoredProtection.RESTRICTED
+        }
     }
 
     /**
@@ -182,7 +211,7 @@ class IosKeychain(
         val status = SecItemAdd(addQuery, null)
         CFRelease(addQuery)
         CFBridgingRelease(cfData)
-        if (status != errSecSuccess) throw KeychainUnavailable(status)
+        if (status != errSecSuccess) throw SecureStoreUnavailable(diagnostic(status))
     }
 
     /**
@@ -190,7 +219,7 @@ class IosKeychain(
      * supplied, so it cannot be altered. This is what lets an already-provisioned device heal without
      * its device id changing (a new id would orphan its byte partition and its ledger).
      */
-    override fun migrateAccessibility() {
+    override fun migrateProtection() {
         val query = baseQuery()
         val attributes = newDictionary()
         applyWrittenAttributes(attributes)
@@ -237,6 +266,15 @@ class IosKeychain(
 
     private companion object {
         val log = co.touchlab.kermit.Logger.withTag("Keychain")
+
+        /**
+         * An `OSStatus` as the port's opaque diagnostic. It reaches a device log and an exception
+         * message and nothing else — `SecureStoreRead.Unavailable` carries a `String` precisely so
+         * that no caller can branch on Apple's numbering (decision record:
+         * `changes/…/reshape-keychain-port`, D3). The raw number stays in the text, because
+         * `-25308` is what a reader greps for.
+         */
+        fun diagnostic(status: Int): String = "OSStatus $status"
 
         /** The plain strings the CF attribute-key constants bridge to (`"v_Data"`, `"pdmn"`) — derived
          *  from the constants themselves rather than hardcoded. */
