@@ -52,6 +52,38 @@ class EdgeUploadRequestProviderTest {
     }
 
     @Test
+    fun content_type_is_the_mime_type_not_the_photokit_uti() = runTest {
+        // On iOS `Resource.contentType` is the PhotoKit UTI (`public.jpeg`) — a value no HTTP client,
+        // CDN or browser understands, and one that was reaching the origin verbatim (measured on device
+        // 2026-08-07). The MIME rides in the resource metadata, resolved by `UTType.preferredMIMEType`,
+        // and every other consumer already prefers it (`toLedgerRow`). So does this header.
+        val req = provider().provide(
+            Resource(
+                filename = "x.jpg",
+                assetId = "asset-1",
+                contentType = "public.jpeg",
+                metadata = mapOf(RESOURCE_META_MIME to "image/jpeg"),
+                data = ByteArray(0),
+            ),
+        )
+        assertEquals("image/jpeg", req.headers["Content-Type"])
+    }
+
+    @Test
+    fun falls_back_to_the_resource_type_when_no_mime_metadata_is_carried() = runTest {
+        // The retry path rebuilds a `Resource` from the job key alone, with EMPTY metadata — the platform
+        // recovers the type from the job's stored destination header instead, and it arrives here as
+        // `contentType`. A blank metadata value is treated as absent for the same reason.
+        val rebuilt = provider().provide(resource("x.jpg", contentType = "image/heic"))
+        assertEquals("image/heic", rebuilt.headers["Content-Type"])
+
+        val blank = provider().provide(
+            Resource("x.jpg", "asset-1", "image/heic", mapOf(RESOURCE_META_MIME to "  "), ByteArray(0)),
+        )
+        assertEquals("image/heic", blank.headers["Content-Type"])
+    }
+
+    @Test
     fun the_token_is_read_per_call_so_a_retry_picks_up_a_refreshed_one() = runTest {
         // This is what heals an expired token with no special-casing anywhere: the engine re-mints the
         // request from this provider on every retry. A provider that captured the token at construction

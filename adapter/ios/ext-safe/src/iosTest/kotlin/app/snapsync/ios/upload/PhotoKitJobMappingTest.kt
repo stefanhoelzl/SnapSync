@@ -3,10 +3,13 @@ package app.snapsync.ios.upload
 import app.snapsync.model.UploadError
 import app.snapsync.ports.CreateResult
 import app.snapsync.ports.PlatformJobState
+import kotlinx.cinterop.BetaInteropApi
 import kotlinx.cinterop.ExperimentalForeignApi
 import platform.Foundation.NSError
 import platform.Foundation.NSURL
+import platform.Foundation.NSMutableURLRequest
 import platform.Foundation.NSURLRequest
+import platform.Foundation.setValue
 import platform.Photos.PHAssetResourceUploadJobStateCancelled
 import platform.Photos.PHAssetResourceUploadJobStateFailed
 import platform.Photos.PHAssetResourceUploadJobStatePending
@@ -31,11 +34,16 @@ import kotlin.test.assertIs
  * narrowing either parameter back to the type cinterop claims **stops compiling** — that compile error
  * is the real guard, and this file is what holds it in place.
  */
-@OptIn(ExperimentalForeignApi::class)
+@OptIn(ExperimentalForeignApi::class, BetaInteropApi::class)
 class PhotoKitJobMappingTest {
 
     private fun request(url: String): NSURLRequest =
         NSURLRequest.requestWithURL(NSURL.URLWithString(url)!!)
+
+    private fun request(url: String, contentType: String): NSURLRequest =
+        NSMutableURLRequest(uRL = NSURL.URLWithString(url)!!).apply {
+            setValue(contentType, forHTTPHeaderField = "Content-Type")
+        }
 
     private fun nsError(domain: String, code: Long): NSError =
         NSError.errorWithDomain(domain, code, userInfo = null)
@@ -113,16 +121,47 @@ class PhotoKitJobMappingTest {
     // ---- photoKitContentType ---------------------------------------------------------------------
 
     /**
+     * The type the job was created with, recovered from the destination the system stored — which is why
+     * a **retried** upload keeps it. Before this, the type came from `resource` alone, which is nil once
+     * a job succeeds, so every object that had ever failed once was stored `application/octet-stream`.
+     */
+    @Test
+    fun `the content type is the one the job's stored destination carries`() {
+        assertEquals(
+            "image/heic",
+            photoKitContentType(request("https://edge.example/f/k-primary.heic", "image/heic"), null),
+        )
+    }
+
+    /** HTTP header names are case-insensitive, and the OS returns them as it stored them, not as we spelled them. */
+    @Test
+    fun `the destination header is matched case-insensitively`() {
+        val destination = NSMutableURLRequest(
+            uRL = NSURL.URLWithString("https://edge.example/f/k-primary.heic")!!,
+        ).apply { setValue("image/jpeg", forHTTPHeaderField = "content-type") }
+        assertEquals("image/jpeg", photoKitContentType(destination, null))
+    }
+
+    /**
      * THE OTHER GUARD. `resource` is nil for every succeeded job (the system releases it after upload),
      * and dereferencing it crash-looped the extension in `05435ff9`.
      *
      * Only this arm is reachable off-device: `PHAssetResource` has no public initializer, and an
-     * unauthorised simulator has no asset to fetch one from. The non-null arm — `uniformTypeIdentifier`,
+     * unauthorised simulator has no asset to fetch one from. The middle arm — `uniformTypeIdentifier`,
      * which is honestly non-null — is verified on device.
      */
     @Test
-    fun `a released resource yields the octet-stream fallback`() {
-        assertEquals("application/octet-stream", photoKitContentType(null))
+    fun `a job with neither a typed destination nor a resource yields the octet-stream fallback`() {
+        assertEquals("application/octet-stream", photoKitContentType(null, null))
+        // A destination carrying no Content-Type, and one carrying a blank value, are both "no answer".
+        assertEquals(
+            "application/octet-stream",
+            photoKitContentType(request("https://edge.example/f/k-primary.heic"), null),
+        )
+        assertEquals(
+            "application/octet-stream",
+            photoKitContentType(request("https://edge.example/f/k-primary.heic", "  "), null),
+        )
     }
 
     // ---- createResultFor -------------------------------------------------------------------------

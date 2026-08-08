@@ -6,6 +6,9 @@ import app.snapsync.ports.PlatformJobState
 import kotlinx.cinterop.ExperimentalForeignApi
 import platform.Foundation.NSError
 import platform.Foundation.NSURLRequest
+// Kotlin/Native exposes this ObjC member as an extension, so it needs an explicit import (the same
+// shape as `platform.Foundation.setValue` in IosDiscovery).
+import platform.Foundation.allHTTPHeaderFields
 import platform.Photos.PHAssetResource
 import platform.Photos.PHAssetResourceUploadJobState
 import platform.Photos.PHAssetResourceUploadJobStateCancelled
@@ -107,17 +110,43 @@ fun photoKitJobState(state: PHAssetResourceUploadJobState): PlatformJobState = w
 }
 
 /**
- * The content type to report for a fetched job's resource.
+ * The content type to report for a fetched job — the type the job was **created with**, read back from
+ * its own stored destination header. That is the same field [classifyPhotoKitJob] recovers the ledger
+ * key from, and for the same reason: it is the one field present in every job state.
  *
- * [resource] is nullable on purpose (see this file's KDoc): it is nil for every succeeded job, and
- * dereferencing it is what crash-looped the extension in `05435ff9`. `uniformTypeIdentifier` itself is
- * honestly non-null, so this `?:` collapses exactly one cause — "the system already released the
- * resource" — for which `application/octet-stream` is the correct answer: the bytes are already
- * uploaded and the value is only carried alongside a terminal outcome.
+ * Deriving it from [resource] alone was silently wrong. [resource] is nullable on purpose (see this
+ * file's KDoc) — it is nil for every succeeded job, and dereferencing it is what crash-looped the
+ * extension in `05435ff9` — so a retried upload, whose `Resource` the cycle rebuilds from the key alone,
+ * fell through to `application/octet-stream`, and every object that had ever failed once was stored with
+ * that type. Measured on device (2026-08-07, SE2 / iOS 26.6) that the destination's headers survive the
+ * system's job store on both the `.retry` and `.acknowledge` sets; re-measure if the tier moves to the
+ * iOS 27 `PHBackgroundResourceUploadJobExtension`.
+ *
+ * The resource's own identifier remains the second answer, and `application/octet-stream` the third —
+ * reached only when neither source carries one, for which it is the correct answer: the bytes are
+ * already uploaded and the value is only carried alongside a terminal outcome.
  */
 @OptIn(ExperimentalForeignApi::class)
-fun photoKitContentType(resource: PHAssetResource?): String =
-    resource?.uniformTypeIdentifier ?: "application/octet-stream"
+fun photoKitContentType(destination: NSURLRequest?, resource: PHAssetResource?): String =
+    destination.contentTypeHeader()
+        ?: resource?.uniformTypeIdentifier
+        ?: "application/octet-stream"
+
+/**
+ * The `Content-Type` a stored destination carries, or null when it carries none.
+ *
+ * Case-insensitive because HTTP header names are, and `allHTTPHeaderFields` returns them as the OS
+ * stored them rather than as we spelled them. Blank is treated as absent — a header that says nothing is
+ * not an answer, and the caller has real fallbacks.
+ */
+@OptIn(ExperimentalForeignApi::class)
+private fun NSURLRequest?.contentTypeHeader(): String? {
+    val headers = this?.allHTTPHeaderFields ?: return null
+    val value = headers.entries
+        .firstOrNull { (it.key as? String)?.equals("Content-Type", ignoreCase = true) == true }
+        ?.value as? String
+    return value?.takeIf { it.isNotBlank() }
+}
 
 /**
  * The outcome of `creationRequestForJobWithDestination`, from the error it reported (`null` = created).
