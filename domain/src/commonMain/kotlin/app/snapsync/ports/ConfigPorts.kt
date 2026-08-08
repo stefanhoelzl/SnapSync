@@ -26,10 +26,10 @@ sealed interface ConfigRead {
     data class Joined(val config: EventConfig) : ConfigRead
 
     /**
-     * There is definitively no usable config: the item is absent, **or** it is a legacy item that does
-     * not decode (e.g. one written before `minPhotoDate` existed — capability `photo-selection-policy`,
-     * where reading as no-config is the deliberate safe outcome). This is the only outcome that may
-     * drive the leave-side reconciliation.
+     * There is definitively no usable config: the config file is genuinely missing. This is the only
+     * outcome that may drive the leave-side reconciliation, and since the Stage-2 fallback deletion
+     * it is reached from **one** fact — the file's not-found error class — with no second store
+     * consulted (capability `event-rejoin-reconciliation`).
      */
     data object None : ConfigRead
 
@@ -47,27 +47,20 @@ interface ConfigReader {
 }
 
 /**
- * Map a raw Keychain read to a [ConfigRead]. Pure, so the branch that matters — *unreadable is not
- * absent* — is tested on JVM **and** the iOS simulator. [decode] returns `null` for an item that does
- * not decode, which is a [ConfigRead.None] (an undecodable item is genuinely unusable), never an
- * [ConfigRead.Unavailable] (which would mean "try again later"). Since the migration finale this
- * serves only the READ-ONLY legacy-Keychain fallback ([configReadViaFile]'s `fallback`); the
- * write-through is ended.
- */
-fun configReadFrom(read: KeychainRead, decode: (String) -> EventConfig?): ConfigRead = when (read) {
-    is KeychainRead.Found -> decode(read.value)?.let(ConfigRead::Joined) ?: ConfigRead.None
-    KeychainRead.Absent -> ConfigRead.None
-    is KeychainRead.Unavailable -> ConfigRead.Unavailable(read.status)
-}
-
-/**
- * The three answers a raw config-**file** read can give (migration step 11a: the config's storage of
- * record is an App-Group file; since the migration finale, saves and clears touch the file ALONE —
- * the Keychain write-through is ended — while the READ keeps a read-only legacy-Keychain fallback
- * until the post-ship Stage-2 change, capability `event-rejoin-reconciliation`). The platform
- * adapter maps its file-IO errors onto these — using the pure absence classifier
- * (`isConfigFileAbsence`, `model/`) so "genuinely missing" admits **only** the not-found error
+ * The three answers a raw config-**file** read can give. The App-Group file is the config's **only**
+ * storage: migration step 11a made it the storage of record, the finale ended the Keychain
+ * write-through, and the Stage-2 change (`changes/archive/…-retire-legacy-config-fallback`) deleted
+ * the read-only legacy-Keychain fallback that stood behind [Missing]. The platform adapter maps its
+ * file-IO errors onto these using the pure absence classifier (`isConfigFileAbsence`, in
+ * `:adapter:ios:ext-safe` — its inputs are an `NSError` domain and code, a platform encoding, so
+ * translating them is an adapter's job) so "genuinely missing" admits **only** the not-found error
  * class and every other failure stays on the unreadable side.
+ *
+ * **That classifier is now solely load-bearing.** While the fallback existed, a wrong [Missing] was
+ * caught downstream: the fallback found the legacy item, answered joined, and the device stayed
+ * joined. There is no second opinion any more — a misclassified read error is an uncaught logout
+ * (marker cleared, ledger clear-and-seeded, cursor reset), so widening the not-found whitelist is a
+ * change to the leave decision, not an error-handling detail.
  */
 sealed interface ConfigFileRead {
 
@@ -75,11 +68,10 @@ sealed interface ConfigFileRead {
     data class Content(val text: String) : ConfigFileRead
 
     /**
-     * The file genuinely does not exist (not-found error class **only**) — the only outcome that
-     * may consult the read-only legacy-Keychain fallback, and — with the fallback also definitively
-     * empty — the only road to "this device left the event". (The Stage-2 flip — reinstall = left,
-     * the fallback deleted — is a designated POST-SHIP change gated on production soak; capability
-     * `event-rejoin-reconciliation` records the staging.)
+     * The file genuinely does not exist (not-found error class **only**) — **definitively not
+     * joined**, the sole road to "this device left the event", reached with nothing else consulted.
+     * An App-Group container dies with the install, so this is also what makes a reinstall a leave
+     * (capability `event-rejoin-reconciliation`).
      */
     data object Missing : ConfigFileRead
 
@@ -97,8 +89,8 @@ const val CONFIG_FILE_FOREIGN_STATUS: Int = -1
 
 /**
  * `ConfigRead.Unavailable.status` sentinel for a **current-version** envelope whose payload does
- * not decode ([ConfigFileDecode.Unusable]). Unreadable, not a leave: unlike the Keychain legacy
- * item (whose undecodability was a known, deliberate re-join path), an unusable file this
+ * not decode ([ConfigFileDecode.Unusable]). Unreadable, not a leave: unlike the retired Keychain
+ * legacy item (whose undecodability was a known, deliberate re-join path), an unusable file this
  * adapter's own atomic writes should make unreachable is evidence of something unexplained —
  * and an unexplained state must defer, never clear the join marker. Distinct from
  * [CONFIG_FILE_FOREIGN_STATUS] so a device log can tell the two apart.
@@ -107,53 +99,33 @@ const val CONFIG_FILE_UNUSABLE_STATUS: Int = -2
 
 /**
  * The file-backed config read, pure so every branch runs on JVM **and** the iOS simulator
- * (capability `event-link`; the file-store sibling of [configReadFrom]):
+ * (capability `event-link`):
  *
  * - [ConfigFileRead.Content] → decode via the versioned envelope (`decodeConfigFile`, `model/`):
  *   valid → [ConfigRead.Joined]; same-version-but-unusable → [ConfigRead.Unavailable] with
- *   [CONFIG_FILE_UNUSABLE_STATUS] (the Keychain-side legacy rule does NOT transfer — see the
- *   sentinel's doc); foreign → [ConfigRead.Unavailable] with [CONFIG_FILE_FOREIGN_STATUS] (a
- *   future build's file must never read as a leave).
- * - [ConfigFileRead.Missing] → consult [fallback] (the READ-ONLY legacy-Keychain reader — the
- *   write-through is ended, but this branch ships to the installed base as ONE merge, so at ship
- *   time every joined production device is a pre-11a device whose file never existed; without the
- *   fallback the flip would silently log out the entire installed base on update): a `Joined`
- *   answer is **migrated** into the file via [migrate] — best-effort, the answer is returned
- *   regardless so a failed write retries on the next read. After the migrate, [fallback] is
- *   consulted **again** (compare-and-repair): if the Keychain no longer holds the value just
- *   migrated — a concurrent save/clear in the other process landed between the read and the write,
- *   observable because a save/clear that runs while a legacy item still exists leaves the file
- *   newer than the item this read is holding — the file now holds a stale clobber, so [repair] is
- *   invoked with the fresh state and the **fresh** state is returned.
- *   `None` stays `None` (definitively not joined — no file **and** no legacy item) and
- *   `Unavailable` stays `Unavailable` (a locked-device Keychain probe proves nothing). The
- *   fallback's deletion — the true **reinstall = left** flip — is a designated post-ship change
- *   gated on production soak (capability `event-rejoin-reconciliation`).
- * - [ConfigFileRead.Failed] → [ConfigRead.Unavailable] with the platform's status. The fallback is
- *   deliberately NOT consulted: the file exists-or-unknowable, so answering from the Keychain could
- *   contradict it (e.g. a stale legacy copy after the file superseded it).
+ *   [CONFIG_FILE_UNUSABLE_STATUS] (an unexplained state defers — see the sentinel's doc); foreign →
+ *   [ConfigRead.Unavailable] with [CONFIG_FILE_FOREIGN_STATUS] (a future build's file must never
+ *   read as a leave).
+ * - [ConfigFileRead.Missing] → [ConfigRead.None], **definitively not joined**, consulting nothing.
+ *   Until the Stage-2 change this branch consulted a read-only legacy-Keychain fallback, migrated
+ *   any membership it found into the file, and re-checked it (compare-and-repair) — the whole
+ *   installed base's update path under the migration's ship-at-once model. That population is
+ *   gone: the fallback shipped in 11a, and both it and the finale are ancestors of `v0.1`, the
+ *   first App Store release (decision record: `changes/archive/…-retire-legacy-config-fallback` D1).
+ * - [ConfigFileRead.Failed] → [ConfigRead.Unavailable] with the platform's status: the file
+ *   exists-or-unknowable, which is never evidence of a leave.
+ *
+ * It stays a `:domain` function rather than collapsing into the adapter (`event-link` requires the
+ * read algorithm be pure and `commonTest`-covered on both targets): the one decision in the app
+ * that can silently log a user out must not be testable on macOS only.
  */
-fun configReadViaFile(
-    file: ConfigFileRead,
-    fallback: () -> ConfigRead,
-    migrate: (EventConfig) -> Unit,
-    repair: (ConfigRead) -> Unit,
-): ConfigRead = when (file) {
+fun configReadViaFile(file: ConfigFileRead): ConfigRead = when (file) {
     is ConfigFileRead.Content -> when (val decoded = decodeConfigFile(file.text)) {
         is ConfigFileDecode.Valid -> ConfigRead.Joined(decoded.config)
         ConfigFileDecode.Unusable -> ConfigRead.Unavailable(CONFIG_FILE_UNUSABLE_STATUS)
         is ConfigFileDecode.Foreign -> ConfigRead.Unavailable(CONFIG_FILE_FOREIGN_STATUS)
     }
-    ConfigFileRead.Missing -> {
-        val first = fallback()
-        if (first !is ConfigRead.Joined) {
-            first
-        } else {
-            migrate(first.config)
-            val recheck = fallback()
-            if (recheck == first) first else recheck.also(repair)
-        }
-    }
+    ConfigFileRead.Missing -> ConfigRead.None
     is ConfigFileRead.Failed -> ConfigRead.Unavailable(file.status)
 }
 

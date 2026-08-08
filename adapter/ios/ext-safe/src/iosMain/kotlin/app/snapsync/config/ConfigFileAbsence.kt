@@ -12,6 +12,17 @@ private const val POSIX_ENOENT: Long = 2L
  * Whether a file-read error means the file is **genuinely absent** — the only error class that may
  * read as "no config" (settle-list ⑥, decision record: `changes/archive/…-migrate-config-to-app-group-file`).
  *
+ * ⚠️ **This is now solely load-bearing for the leave decision, and it did not used to be.** Until
+ * the Stage-2 change deleted the read-only legacy-Keychain fallback
+ * (`changes/archive/…-retire-legacy-config-fallback`, D2), a *wrong* `true` here was caught
+ * downstream: `configReadViaFile` consulted the fallback on a missing file, the legacy item was
+ * found, the read answered `Joined`, and the device stayed joined. There is no second opinion any
+ * more. A read failure misclassified into the not-found class now **logs the device out** — the
+ * `joinedEventId` marker is cleared, the ledger is clear-and-seeded, the discovery cursor is reset
+ * and the screen returns to the setup gate — with no error raised anywhere and nothing to undo it.
+ * So **widening the whitelist below is a change to the leave decision**, not an error-handling
+ * tidy-up: it is a behaviour change to `event-rejoin-reconciliation` and belongs in a spec delta.
+ *
  * Grounded on Apple's data-protection contract: reading a **protected** file before first unlock
  * fails with a permission-class error (`NSFileReadNoPermissionError` 257 / POSIX `EPERM`), never
  * with not-found — so not-found is definitive absence, and **any other error whatsoever** is
