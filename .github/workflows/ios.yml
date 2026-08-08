@@ -375,12 +375,46 @@ jobs:
           distribution: temurin
           java-version: 25
       - uses: gradle/actions/setup-gradle@v5
-      - name: Cache Kotlin/Native (~/.konan)
-        uses: actions/cache@v5
+      # ~/.konan holds the Kotlin/Native toolchain AND the per-dependency library caches the compiler
+      # builds on first use (Compose, Skiko, coroutines, … — ~20 klibs, ~200 MB, under
+      # klib/cache/ios_simulator_arm64-gSTATIC-user-pl, populated since :ui:screens' Compose tests
+      # joined this target). Measured on macos-26: with those caches present iosSimulatorArm64Test
+      # takes ~25 s; without them it costs ~2m56s more (2m01s → 4m57s). ios-test is a REQUIRED merge
+      # gate, so that delta sits on the critical path of every PR.
+      #
+      # RESTORE AND SAVE ARE SPLIT ON PURPOSE — do NOT "simplify" this back into one actions/cache
+      # step with a stable key. actions/cache writes its post-step entry ONLY when the primary key
+      # MISSED. The old key was `konan-<os>-<hash(libs.versions.toml)>`, which rotates only on a
+      # dependency bump, so on every ordinary run it HIT and the post-step logged "Cache hit occurred
+      # on the primary key …, not saving cache" — silently discarding everything the run had newly
+      # compiled into ~/.konan. Both konan entries were observed frozen at 2026-07-21, 18 days stale.
+      # A libs.versions.toml hash is also blind to the thing that actually changed here: a NEW MODULE
+      # joining the simulator target adds library caches without touching any version. Hence a run id
+      # in the primary key: it never hits, so the restore always falls through to restore-keys (newest
+      # matching entry wins) and every save writes a fresh entry.
+      #
+      # SAVING IS GATED TO main because per-run entries are not free. The repo cache budget is 10 GB
+      # and is ALREADY FULL (241 entries / 10.55 GB when this was written — GitHub is evicting LRU
+      # continuously), and this entry is ~416 MB compressed. Saving on every branch push would spend
+      # ~416 MB of budget plus the upload time, per push, to publish content main already has — a
+      # branch runs the SAME task. So main OWNS the entry and every branch/PR run is a pure consumer.
+      # A branch that legitimately grows ~/.konan (new dependency, new module on this target) pays
+      # cold until it merges — exactly today's cost, bounded to that branch. Superseded entries stop
+      # being restored the moment a newer one exists, which makes them precisely the LRU eviction
+      # victims; entries touched every run (gradle-dependencies, wrapper-zips, the newest konan)
+      # survive.
+      - name: Restore Kotlin/Native (~/.konan)
+        id: konan
+        uses: actions/cache/restore@v5
         with:
           path: ~/.konan
-          key: konan-${{ runner.os }}-${{ hashFiles('gradle/libs.versions.toml') }}
+          # Narrow → broad: first this family (main's newest run-id entry), then any konan entry at
+          # all — the pre-run-id shape and ios-archive's `konan-<os>-<config>-…` families included —
+          # so a cold runner or a brand-new branch still lands on a toolchain instead of downloading
+          # one.
+          key: konan-${{ runner.os }}-${{ hashFiles('gradle/libs.versions.toml') }}-${{ github.run_id }}
           restore-keys: |
+            konan-${{ runner.os }}-${{ hashFiles('gradle/libs.versions.toml') }}-
             konan-${{ runner.os }}-
       - name: Run Kotlin/Native unit tests on the iOS simulator
         run: |
@@ -405,3 +439,15 @@ jobs:
           # Kotlin auto-selects a standalone simulator; if a run fails with "no matching device", pin
           # testRuns["test"].deviceId.
           ./gradlew iosSimulatorArm64Test
+
+      # Refresh main's entry with whatever this run compiled (rationale on the restore step above).
+      # `key` is read back from the restore step so the two can never drift apart. The default `if`
+      # semantics — success only — are deliberate on top of the branch gate: a failed or cancelled
+      # run can leave a half-written library cache in ~/.konan, and a poisoned konan entry on main
+      # would have to be deleted by hand. actions/cache's post-step had no such protection.
+      - name: Save Kotlin/Native (~/.konan)
+        if: github.ref == 'refs/heads/main'
+        uses: actions/cache/save@v5
+        with:
+          path: ~/.konan
+          key: ${{ steps.konan.outputs.cache-primary-key }}

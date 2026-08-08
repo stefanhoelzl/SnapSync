@@ -85,14 +85,22 @@ jobs:
           java-version: 25
       - uses: gradle/actions/setup-gradle@v5
 
-      # Warm the same Kotlin/Native toolchain cache as ios.yml (identical key), so the first in-session
-      # build is not cold.
-      - name: Cache Kotlin/Native (~/.konan)
-        uses: actions/cache@v5
+      # Warm from the same Kotlin/Native entry as ios.yml, so the first in-session build is not cold.
+      # RESTORE-ONLY: main owns that entry (ios.yml writes it) and an interactive session is a pure
+      # consumer — which is also what this already did, just accidentally: the old key rotated only
+      # with libs.versions.toml, so the primary key always HIT and actions/cache's post-step logged
+      # "not saving cache". Saying so outright also fixes the harmful half of that accident — a hit
+      # means restore-keys are never consulted, pinning the session to a possibly ancient entry. The
+      # run id guarantees a miss, so the restore falls through to the NEWEST konan entry. Uploading a
+      # ~500 MB session-end entry into an already-full 10 GB budget would not pay for itself here:
+      # sessions are rare, hand-dispatched, and branch-scoped.
+      - name: Restore Kotlin/Native (~/.konan)
+        uses: actions/cache/restore@v5
         with:
           path: ~/.konan
-          key: konan-${{ runner.os }}-${{ hashFiles('gradle/libs.versions.toml') }}
+          key: konan-${{ runner.os }}-${{ hashFiles('gradle/libs.versions.toml') }}-${{ github.run_id }}
           restore-keys: |
+            konan-${{ runner.os }}-${{ hashFiles('gradle/libs.versions.toml') }}-
             konan-${{ runner.os }}-
 
       # Import ONLY the Apple Development cert (dev signing needs no Distribution cert). Ephemeral keychain
