@@ -14,14 +14,16 @@ import kotlin.test.assertIs
 
 /**
  * The file-backed three-state read (capability `event-link`; migration step 11a made the App-Group
- * file the storage of record): the pure `configReadViaFile` algorithm the iOS adapter runs — file
- * first, the READ-ONLY legacy-Keychain fallback **only** on a definitively missing file, with a
- * found fallback migrated forward into the file. Since the migration finale the write-through is
- * ended (saves/clears are file-only), but the read fallback stays until the post-ship Stage-2
- * change: this branch ships to the installed base as one merge, so at ship time every joined
- * device is a pre-11a device whose file never existed — the fallback IS the update path. The
- * branch that matters is unchanged from the Keychain era: *unreadable is not absent*, grounded on
- * file errors instead of `OSStatus`.
+ * file the storage of record): the pure `configReadViaFile` algorithm the iOS adapter runs — the
+ * file and **nothing else**. The read-only legacy-Keychain fallback that used to sit behind a
+ * missing file was the whole installed base's update path under the migration's ship-at-once
+ * model, and the Stage-2 change deleted it once that population was gone (both the fallback's own
+ * step 11a and the finale are ancestors of `v0.1`, the first App Store release). So a missing file
+ * is now **definitively not joined**, which is what makes a reinstall a leave.
+ *
+ * The branch that matters is unchanged from the Keychain era: *unreadable is not absent*, grounded
+ * on file errors instead of `OSStatus`. It matters more now, not less — with the fallback gone,
+ * nothing downstream catches a wrong `Missing`.
  */
 
 /** Every membership carries a concrete capture-date ceiling (capability `join-event`). */
@@ -36,36 +38,19 @@ class ConfigFileReadTest {
         maxPhotoDate = FIXTURE_CEILING,
     )
 
-    private fun noFallback(): ConfigRead = throw AssertionError("fallback must not be consulted")
-
-    private fun noMigrate(config: EventConfig): Unit = throw AssertionError("migrate must not run")
-
-    private fun noRepair(read: ConfigRead): Unit = throw AssertionError("repair must not run")
-
     @Test
-    fun `a valid file answers Joined without consulting the Keychain`() {
-        val read = configReadViaFile(
-            ConfigFileRead.Content(encodeConfigFile(config)),
-            fallback = ::noFallback,
-            migrate = ::noMigrate,
-            repair = ::noRepair,
-        )
+    fun `a valid file answers Joined`() {
+        val read = configReadViaFile(ConfigFileRead.Content(encodeConfigFile(config)))
 
         assertEquals(ConfigRead.Joined(config), read)
     }
 
     @Test
-    fun `an unusable current-version file is Unavailable never None with no fallback`() {
+    fun `an unusable current-version file is Unavailable never None`() {
         // Same-version-but-undecodable is an UNEXPLAINED state (this adapter's own atomic writes
-        // should make it unreachable), so it defers — the Keychain legacy-item rule (undecodable
-        // reads as no config) deliberately does not transfer to the file. The Keychain is NOT
-        // consulted: the file is the storage of record, and it answered.
-        val read = configReadViaFile(
-            ConfigFileRead.Content("""{"v":1,"payload":{"eventId":"e1"}}"""),
-            fallback = ::noFallback,
-            migrate = ::noMigrate,
-            repair = ::noRepair,
-        )
+        // should make it unreachable), so it defers — the retired Keychain legacy-item rule
+        // (undecodable reads as no config) deliberately never transferred to the file.
+        val read = configReadViaFile(ConfigFileRead.Content("""{"v":1,"payload":{"eventId":"e1"}}"""))
 
         assertIs<ConfigRead.Unavailable>(read)
         assertEquals(CONFIG_FILE_UNUSABLE_STATUS, read.status)
@@ -73,12 +58,7 @@ class ConfigFileReadTest {
 
     @Test
     fun `a foreign file is Unavailable with the sentinel status — never None`() {
-        val read = configReadViaFile(
-            ConfigFileRead.Content("""{"v":99}"""),
-            fallback = ::noFallback,
-            migrate = ::noMigrate,
-            repair = ::noRepair,
-        )
+        val read = configReadViaFile(ConfigFileRead.Content("""{"v":99}"""))
 
         assertIs<ConfigRead.Unavailable>(read)
         assertEquals(CONFIG_FILE_FOREIGN_STATUS, read.status)
@@ -88,124 +68,21 @@ class ConfigFileReadTest {
     // read fails permission-class. Reported as None, the cycle reads it as a LEAVE and clears the
     // join marker — every locked wake, for ever.
     @Test
-    fun `a failed read is Unavailable with the platform status and consults nothing`() {
-        val read = configReadViaFile(
-            ConfigFileRead.Failed(status = 257, detail = "NSFileReadNoPermissionError"),
-            fallback = ::noFallback,
-            migrate = ::noMigrate,
-            repair = ::noRepair,
-        )
+    fun `a failed read is Unavailable with the platform status`() {
+        val read = configReadViaFile(ConfigFileRead.Failed(status = 257, detail = "NSFileReadNoPermissionError"))
 
         assertIs<ConfigRead.Unavailable>(read)
         assertEquals(257, read.status)
     }
 
     /**
-     * THE update path for the ship-at-once model: at ship time every joined production device is a
-     * pre-11a device (its file never existed), so the first ≥13b read — in WHICHEVER process, the
-     * OS may run the extension first — must answer Joined from the legacy item (never a false
-     * leave) and write the file forward. The post-migrate recheck sees the same value, so no
-     * repair runs.
+     * The Stage-2 end state: a missing file is the leave, decided from one fact. Nothing else is
+     * consulted — there is no longer anything else *to* consult, which is why
+     * `isConfigFileAbsence`'s classification is now solely load-bearing (a wrong `Missing` is an
+     * uncaught logout, not a caught one).
      */
     @Test
-    fun `a missing file with a Joined legacy Keychain migrates and returns its config`() {
-        var migrated: EventConfig? = null
-
-        val read = configReadViaFile(
-            ConfigFileRead.Missing,
-            fallback = { ConfigRead.Joined(config) },
-            migrate = { migrated = it },
-            repair = ::noRepair,
-        )
-
-        assertEquals(ConfigRead.Joined(config), read)
-        assertEquals(config, migrated)
-    }
-
-    @Test
-    fun `a missing file with an absent legacy Keychain is None — definitively not joined`() {
-        var migrated = false
-
-        val read = configReadViaFile(
-            ConfigFileRead.Missing,
-            fallback = { ConfigRead.None },
-            migrate = { migrated = true },
-            repair = ::noRepair,
-        )
-
-        assertEquals(ConfigRead.None, read)
-        assertEquals(false, migrated)
-    }
-
-    @Test
-    fun `a missing file with an unreadable legacy Keychain is Unavailable — absence unproven`() {
-        // A genuinely missing file proves nothing while the legacy item is unreadable: the device
-        // may be a pre-11a joined install on a locked device. Only file-missing AND
-        // Keychain-absent may read as a leave (until the post-ship Stage-2 change deletes the
-        // fallback entirely).
-        val read = configReadViaFile(
-            ConfigFileRead.Missing,
-            fallback = { ConfigRead.Unavailable(-25308) },
-            migrate = { throw AssertionError("migrate must not run") },
-            repair = ::noRepair,
-        )
-
-        assertIs<ConfigRead.Unavailable>(read)
-        assertEquals(-25308, read.status)
-    }
-
-    @Test
-    fun `a failed migration write does not fail the read`() {
-        // Migration is best-effort: the answer is the legacy item's Joined either way; a failed
-        // write simply retries on the next read. (The adapter catches its own write errors; here
-        // the algorithm's contract is that migrate's result is not consulted.)
-        val read = configReadViaFile(
-            ConfigFileRead.Missing,
-            fallback = { ConfigRead.Joined(config) },
-            migrate = { /* swallowed write failure */ },
-            repair = ::noRepair,
-        )
-
-        assertEquals(ConfigRead.Joined(config), read)
-    }
-
-    // ---- compare-and-repair: the post-migrate recheck catches a concurrent writer ----
-
-    @Test
-    fun `a concurrent clear during the migrate is repaired and the fresh state wins`() {
-        // The other process cleared between the fallback read and the migrate write: the file now
-        // holds a stale clobber of a leave. The recheck sees it, repair runs with the fresh state
-        // (the adapter deletes the file), and the FRESH state — not the stale Joined — is returned.
-        val answers = ArrayDeque(listOf(ConfigRead.Joined(config), ConfigRead.None))
-        var migrated: EventConfig? = null
-        var repaired: ConfigRead? = null
-
-        val read = configReadViaFile(
-            ConfigFileRead.Missing,
-            fallback = { answers.removeFirst() },
-            migrate = { migrated = it },
-            repair = { repaired = it },
-        )
-
-        assertEquals(ConfigRead.None, read)
-        assertEquals(config, migrated)
-        assertEquals(ConfigRead.None, repaired)
-    }
-
-    @Test
-    fun `a concurrent save during the migrate is repaired to the newer config`() {
-        val newer = config.copy(eventId = "e2")
-        val answers = ArrayDeque(listOf(ConfigRead.Joined(config), ConfigRead.Joined(newer)))
-        var repaired: ConfigRead? = null
-
-        val read = configReadViaFile(
-            ConfigFileRead.Missing,
-            fallback = { answers.removeFirst() },
-            migrate = { },
-            repair = { repaired = it },
-        )
-
-        assertEquals(ConfigRead.Joined(newer), read)
-        assertEquals(ConfigRead.Joined(newer), repaired)
+    fun `a missing file is None — definitively not joined`() {
+        assertEquals(ConfigRead.None, configReadViaFile(ConfigFileRead.Missing))
     }
 }

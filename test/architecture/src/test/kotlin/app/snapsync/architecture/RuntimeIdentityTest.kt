@@ -97,16 +97,22 @@ class RuntimeIdentityTest {
      * Keychain seats that legitimately search **without** naming an access group, pinned as an exact
      * inventory.
      *
-     * Unscoped search is not forbidden — it is *bounded*. `KeychainConfigReader` needs it (its job is
-     * finding an item an older build left anywhere), and the attest pair and album map are left
+     * Unscoped search is not forbidden — it is *bounded*. The attest pair and album map are left
      * unscoped deliberately: the attest token demonstrably works cross-process today, and the album
      * map is a self-healing cache. What must not happen is a *new* unscoped seat appearing by
      * default, which is how implicit placement spread in the first place.
      *
+     * The config seat (`app.snapsync.config`/`eventconfig`) left this set with `KeychainConfigReader`
+     * — the Stage-2 change deleted the read-only legacy fallback that was its only justification for
+     * searching unscoped (capability `event-rejoin-reconciliation`). Because the set is exact in both
+     * directions, reconstructing that seat **unscoped** fails this gate. Stated blind spot:
+     * reconstructing it **scoped** would not — scoped sites are only checked for the device-id seat's
+     * presence, never pinned as a set — which is narrow, since a scoped read cannot find the unscoped
+     * items pre-11a builds wrote, the only thing such a seat could be after.
+     *
      * Adding, removing, or re-scoping an entry here is a spec delta to `architecture-guards`.
      */
     private val unscopedKeychainSeats = setOf(
-        "app.snapsync.config" to "eventconfig",
         "app.snapsync.attest" to "token",
         "app.snapsync.attest" to "keyid",
         "app.snapsync.album" to "albummap",
@@ -118,12 +124,12 @@ class RuntimeIdentityTest {
      */
     private val keychainPairs = listOf(
         "app.snapsync.deviceid" to "deviceid",
-        // The config pair survives as a READ-ONLY seat (KeychainConfigReader): the finale ended
-        // the 11a write-through — save/clear are file-only — but the read fallback is the entire
-        // installed base's update path (the branch ships as one merge, so at ship time every
-        // joined device is pre-11a). The pair dies with the post-ship Stage-2 change that deletes
-        // the fallback (capability event-rejoin-reconciliation).
-        "app.snapsync.config" to "eventconfig",
+        // NB the config pair (app.snapsync.config, eventconfig) was pinned here until the Stage-2
+        // change deleted the read-only legacy fallback (KeychainConfigReader), which was its one
+        // seat. It now appears in production Kotlin NOWHERE, which an exactly-once pin cannot
+        // express — pinning it would fail the "nowhere" arm for ever. The config's runtime identity
+        // is carried by the "eventconfig.json" literal above; a reconstructed unscoped seat is
+        // caught by the unscoped inventory (capability event-rejoin-reconciliation).
         "app.snapsync.attest" to "token",
         "app.snapsync.attest" to "keyid",
         "app.snapsync.album" to "albummap",

@@ -114,14 +114,20 @@ class PlatformIdentifierTest {
      * **Deferred debt**, kept separate from [accepted] on purpose: these are real violations of the
      * law that this change did not fix, and reading them as "accepted" would launder them.
      *
-     * - `ports/Keychain.kt`, `ports/ConfigPorts.kt`, `feature/album/AlbumMapMigration.kt` — the
+     * - `ports/Keychain.kt`, `feature/album/AlbumMapMigration.kt` — the
      *   `Keychain` port family is the same violation (a port named for Apple technology), deferred
      *   with reasons in design D6: it touches `KeychainDeviceIdentity`, whose stored value is written
      *   once and **never rewritten**, so a wrong group or key name freezes permanently on a value
      *   whose loss is unrecoverable — that exact failure has already happened once (2026-07-20: two
      *   device ids across two processes, and the app re-imported every photo it had uploaded) — and
      *   the simulator coverage that would make the reshape verifiable does not exist yet.
-     *   **Expiry:** these three pins are deleted by D6's value-preserving reshape.
+     *   **Expiry:** these pins are deleted by D6's value-preserving reshape.
+     *   `ports/ConfigPorts.kt` was a third entry in this family until the Stage-2 change deleted
+     *   `configReadFrom` — its only `KeychainRead`-typed function — with the read-only legacy
+     *   fallback it served (capability `event-rejoin-reconciliation`). The debt was discharged by
+     *   the code's removal rather than by the reshape: an expiry trigger is a floor, not a schedule,
+     *   and the exact-in-both-directions pin is what made the discharge visible (this gate failed on
+     *   the stale pin the moment the code went).
      * - `ports/OsReceipt.kt` — `ReceiptDeadlines.URL_SESSION_EVENTS` names the OS entry point whose
      *   handler budget it holds. `OsReceipt` is the port *for* OS entry points, and its two siblings
      *   (`SILENT_PUSH`, `BACKGROUND_TASK`) are already neutral, so this is a naming slip rather than a
@@ -132,7 +138,6 @@ class PlatformIdentifierTest {
      */
     private val deferred: Map<String, Set<String>> = mapOf(
         "domain/src/commonMain/kotlin/app/snapsync/ports/Keychain.kt" to setOf("Keychain"),
-        "domain/src/commonMain/kotlin/app/snapsync/ports/ConfigPorts.kt" to setOf("Keychain"),
         "domain/src/commonMain/kotlin/app/snapsync/feature/album/AlbumMapMigration.kt" to setOf("Keychain"),
         "domain/src/commonMain/kotlin/app/snapsync/ports/OsReceipt.kt" to setOf("URL_SESSION"),
     )

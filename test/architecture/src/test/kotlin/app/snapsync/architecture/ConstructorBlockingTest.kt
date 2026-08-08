@@ -41,8 +41,8 @@ class ConstructorBlockingTest {
     )
 
     /**
-     * Grandfathered, not forgiven. `FileBackedConfigStore` reads the App-Group file (with a Keychain
-     * fallback) in its constructor because the status container's first state is built from seams that
+     * Grandfathered, not forgiven. `FileBackedConfigStore` reads the App-Group file in its
+     * constructor because the status container's first state is built from seams that
      * "hold their current truth synchronously…never a guess or a placeholder" — so removing the read
      * means either a placeholder first frame or reordering launch against first render across the Swift
      * boundary. That is a change of its own, with no test that could prove it; this entry records the

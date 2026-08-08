@@ -38,28 +38,35 @@ import platform.Foundation.writeToFile
 /**
  * The config file in the App-Group container root (a runtime-identity pin, capability
  * `architecture-guards`): the **storage of record** for the persisted [EventConfig] since migration
- * step 11a. Both processes read and (via migration) write it; the path derives from the same
- * [LEDGER_APP_GROUP] container every other shared store uses.
+ * step 11a, and its only storage since the Stage-2 fallback deletion. Both processes read and write
+ * it; the path derives from the same [LEDGER_APP_GROUP] container every other shared store uses.
  */
 private const val CONFIG_FILE_NAME: String = "eventconfig.json"
 
 /**
  * The iOS [ConfigSource]/[ConfigStore]/[ConfigReader] since migration step 11a: persists the
  * serialized [EventConfig] in a **versioned-envelope file in the App-Group container**
- * ([CONFIG_FILE_NAME]). Since the migration finale the file is the only storage a WRITE ever
- * touches — the 11a Keychain **write-through is ended** (save/clear are file-only; the revert
- * direction is sacrificed, consistent with fix-forward) — while the READ keeps the
- * adapter-resident migration fallback through the read-only [KeychainConfigReader]: this branch
- * ships to the installed base as ONE merge, so at ship time every joined production device is a
- * pre-11a device whose file never existed, and a fallback-less missing-file read would silently
- * log the entire installed base out on update. The fallback's deletion — the true
- * **reinstall = left the event** flip — is a designated post-ship change gated on production soak
- * (capability `event-rejoin-reconciliation` records the staging; decision record: the
- * migration-finale change's design.md, D4).
+ * ([CONFIG_FILE_NAME]) — and, since the Stage-2 change, in **nothing else**. The migration finale
+ * ended the 11a Keychain **write-through** (the revert direction is sacrificed, consistent with
+ * fix-forward), and Stage 2 deleted the read-only legacy-Keychain fallback that stood behind a
+ * missing file: save, clear, and read all touch the file alone, and no Keychain item is addressed
+ * from here at all.
+ *
+ * That makes **reinstall = left the event** the real behaviour rather than a staged one: an
+ * App-Group container dies with the install, so a reinstalled device reads definitively not joined,
+ * runs the leave-side reconciliation, and rejoins only by re-scanning the invite (capability
+ * `event-rejoin-reconciliation`). The fallback existed because the migration reached the whole
+ * installed base as ONE merge, which made every joined device pre-11a at update time; that
+ * population is gone — the fallback shipped in step 11a and both it and the finale are ancestors of
+ * `v0.1`, the first App Store release (decision record:
+ * `changes/archive/…-retire-legacy-config-fallback`, D1).
+ *
+ * ⚠️ With the fallback gone, [isConfigFileAbsence] is **solely load-bearing** for the leave
+ * decision: a read error misclassified as not-found is an uncaught logout. See its own doc.
  *
  * All decode/decision intelligence is pure and `commonTest`-covered (`configReadViaFile` in
- * `ports/`, the envelope codec + absence classifier in `model/`); this class only performs the
- * file IO and maps its `NSError`s onto [ConfigFileRead]. Writes are **atomic** ([NSDataWritingAtomic]:
+ * `ports/`, the envelope codec in `model/`, the absence classifier beside this file); this class
+ * only performs the file IO and maps its `NSError`s onto [ConfigFileRead]. Writes are **atomic** ([NSDataWritingAtomic]:
  * temp file + rename) under [NSDataWritingFileProtectionCompleteUntilFirstUserAuthentication] —
  * the same protection class as the ledger and download DBs, readable while locked after first
  * unlock, which the OS-scheduled (usually-locked) extension cycle requires.
@@ -71,7 +78,6 @@ private const val CONFIG_FILE_NAME: String = "eventconfig.json"
  * **Readers that act on the absence of a config must use [read], not [config]** — see [ConfigRead].
  */
 class FileBackedConfigStore(
-    private val keychainReader: KeychainConfigReader = KeychainConfigReader(),
     private val log: Logger = Logger.withTag("fileConfig"),
 ) : ConfigSource, ConfigStore, ConfigReader {
 
@@ -88,50 +94,25 @@ class FileBackedConfigStore(
     }
 
     override suspend fun clear() {
-        // Legacy item FIRST, file second — the 11a clear ordering's surviving half: while the
-        // read fallback lasts, a file-only clear would leave exactly the missing-file +
-        // item-present state the fallback resurrects, silently undoing the leave on every
-        // migrated device. Cleared this way, a crash between the two leaves the file present —
-        // this build stays joined and the leave simply retries. Both halves are idempotent; no
-        // config VALUE is ever written to the Keychain (the write-through stays ended).
-        // A throw here propagates (the 11a posture): the file stays, this build stays joined, and
-        // the leave retries visibly — swallowing it would proceed to the file delete and mint the
-        // resurrection state. (IosKeychain.delete already swallows SecItemDelete statuses; only an
-        // allocation failure can throw.)
-        keychainReader.deleteLegacyItem()
+        // File only. Until the Stage-2 fallback deletion this had to delete the legacy Keychain
+        // item FIRST, because a file-only clear left exactly the missing-file + item-present state
+        // the read fallback resurrected — silently undoing the leave on every migrated device.
+        // With nothing left to resurrect from, the ordering has no second half to order against.
+        // A throw still propagates (the 11a posture): the file stays, this build stays joined, and
+        // the leave retries visibly rather than half-completing.
         deleteFile()
         state.value = null
     }
 
     /**
      * The three-state read (capability `event-link`): the pure `configReadViaFile` over this
-     * process's file IO, consulting the READ-ONLY legacy-Keychain fallback **only** on a
-     * definitively missing file — and migrating a found membership into the file (with the 11a
-     * compare-and-repair) so the next read answers from the file alone. See the class doc for why
-     * the read fallback outlives the write-through until the post-ship Stage-2 change.
+     * process's file IO, and nothing else. A definitively missing file is **definitively not
+     * joined** — no Keychain item is consulted, no membership is migrated forward, and no
+     * compare-and-repair runs. See the class doc for why the fallback that used to sit here is
+     * gone, and [isConfigFileAbsence] for what now rests on the error classification alone.
      */
     override fun read(): ConfigRead {
-        val read = configReadViaFile(
-            file = readFileRaw(),
-            fallback = { keychainReader.read() },
-            migrate = { cfg ->
-                runCatching { writeFile(encodeConfigFile(cfg)) }
-                    .onSuccess { log.i { "config migrated: legacy Keychain → App-Group file" } }
-                    .onFailure { log.w(it) { "config migration write failed — the next read retries" } }
-            },
-            // Compare-and-repair (the pure algorithm re-reads the fallback after the migrate): a
-            // concurrent save/clear in the other process superseded what was just migrated, so the
-            // file holds a stale clobber. Best-effort, like the migrate itself.
-            repair = { fresh ->
-                runCatching {
-                    when (fresh) {
-                        is ConfigRead.Joined -> writeFile(encodeConfigFile(fresh.config))
-                        else -> deleteFile()
-                    }
-                }.onFailure { log.w(it) { "config migrate repair failed — the next read retries" } }
-                log.w { "config migrate raced a concurrent write — repaired to the fresh state" }
-            },
-        )
+        val read = configReadViaFile(readFileRaw())
         if (read is ConfigRead.Unavailable) {
             log.w { "config file unreadable (status=${read.status}) — NOT 'no config'; caller must defer" }
         }
