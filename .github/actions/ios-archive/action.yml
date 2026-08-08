@@ -94,11 +94,24 @@ runs:
     # so the FIRST push of each branch pays the cold build and saves; later pushes restore warm.
     # restore-keys fall back to the same-config family, then any konan entry (ios-test's plain
     # `konan-<os>-…` key included), so a cold start still reuses the toolchain + klibs.
+    #
+    # THE RUN ID IS APPENDED ON main ONLY, and the asymmetry is the whole point — leave it. Because
+    # actions/cache saves in its post-step only when the primary key MISSED, a key that rotates just
+    # with libs.versions.toml stops being written as soon as it exists: the Release entry main owns
+    # was observed frozen at its last dependency bump (2026-07-21, 18 days stale), every later run
+    # logging "Cache hit occurred on the primary key …, not saving cache". That hash is also blind to
+    # a new module joining the iosArm64 closure, which grows ~/.konan with no version change. On main
+    # the run id makes the key unique, so every archive refreshes the Release family.
+    #   On a BRANCH the key deliberately stays stable: the Debug family is seeded ONCE per branch by
+    # its first push (that is the 6 min → 1 min win measured above) and later pushes MUST keep hitting
+    # it. Rotating it there would upload a ~510 MB entry on every push into a cache budget that is
+    # already at its 10 GB ceiling — buying nothing, since the first push already captured the Debug
+    # device caches. Same reason ios.yml's ios-test saves on main only; see its restore step.
     - name: Cache Kotlin/Native (~/.konan)
       uses: actions/cache@v5
       with:
         path: ~/.konan
-        key: konan-${{ runner.os }}-${{ inputs.build-config }}-${{ hashFiles('gradle/libs.versions.toml') }}
+        key: konan-${{ runner.os }}-${{ inputs.build-config }}-${{ hashFiles('gradle/libs.versions.toml') }}${{ github.ref == 'refs/heads/main' && format('-{0}', github.run_id) || '' }}
         restore-keys: |
           konan-${{ runner.os }}-${{ inputs.build-config }}-
           konan-${{ runner.os }}-
