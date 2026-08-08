@@ -205,9 +205,14 @@ owns an app-lifetime `CoroutineScope` (a `SupervisorJob` on the main dispatcher)
 live stack **through the shared composition** `snapSyncApp` (`:domain` `compose/`, spec
 `module-architecture` "One shared composition"): the root constructs the platform adapters and
 supplies them as `AppPorts` — platform effect lambdas included (the trigger-time membership
-re-read `reloadConfig` (bound to the config adapter's `reload()`), the backstop scheduling, the
-share-sheet presentation, and the resolved
-tier's mechanism thunks) — and `snapSyncApp` composes the feature graph: the **ledger-backed**
+re-read `reloadConfig` (bound to the config adapter's `reload()`), the backstop scheduling, and the
+resolved
+tier's mechanism thunks). Every platform touch the root once supplied as an inline lambda SHALL be a
+port instead: the share sheet (`SharePresenter`), the limited-library picker
+(`PhotoAccessRequester.choosePhotos`), the download-staging root (`StagedBytes.stagingRoot`), the
+wall clock (`Clock`), and the backend leave (`LeaveNotifier`) — a lambda in any of those places is an
+adapter written in the composition root (spec `module-architecture`, "Ports are the I/O boundary
+named for the need"). Given those ports, `snapSyncApp` composes the feature graph: the **ledger-backed**
 `SyncStatusSource` (built from a `LedgerCountsSource`, the permission source, and the gallery
 source — see `sync-status`), the **foreground-gated ledger-counts poll** (`LedgerCountsPoller`,
 started/stopped by the Foreground/Background flows — see `sync-status`), the attestation,
@@ -222,8 +227,8 @@ only through the bundle and references no feature command, port, or flow callabl
 root passes the PhotoKit permission adapter's **permission StateFlow** and the file-backed config
 adapter's **config StateFlow** into the host (since step 9 the host's read-model inputs are bare
 StateFlows — presentation names no `ports/` type), supplies the same permission adapter as
-`AppPorts.photoAccessRequester` (the port the bundle's `requestAccess`/`openSettings` commands are
-bound to in `compose/`), and passes the file-backed config adapter (the App-Group config store of
+`AppPorts.photoAccessRequester` (the port the bundle's
+`requestAccess`/`openSettings`/`choosePhotos` commands are bound to in `compose/`), and passes the file-backed config adapter (the App-Group config store of
 record — capability `event-link`)
 as both the `ConfigSource` and
 `ConfigStore` in `AppPorts`. The root SHALL bind the `Clock`/`TimeZoneSource` ports' system
@@ -333,10 +338,17 @@ reaches the container's `onOpenUrl` intent (through the live delegate).
 
 - **WHEN** the user activates the share action in the joined layer
 - **THEN** `MainViewController` invokes `host.onShareInvite`, which fires the bundle's `share`
-  command with the invite link, and the shell-supplied lambda — `:adapter:ios:app-only`'s
-  `presentShareSheet`, whose presenter walk is adapter technology mechanics — presents a
-  `UIActivityViewController` carrying that link; the UI never constructs UIKit directly and
-  observes no result
+  command with the invite link, and the `SharePresenter` port the root supplied —
+  `:adapter:ios:app-only`'s `IosShareSheet`, whose presenter walk is adapter technology mechanics —
+  presents a `UIActivityViewController` carrying that link; the UI never constructs UIKit directly
+  and observes no result
+
+#### Scenario: The picker reaches the platform through the permission port
+
+- **WHEN** the user activates "Choose more photos" under a partial grant
+- **THEN** the bundle's `choosePhotos` command calls `PhotoAccessRequester.choosePhotos()` on the
+  main lane, and the resulting selection arrives only through the selection-change seam — the root
+  supplies no separate picker lambda
 
 #### Scenario: A cold background wake installs no grant subscription
 
