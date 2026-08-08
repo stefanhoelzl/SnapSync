@@ -29,6 +29,7 @@ sequenceDiagram
     opt only when activeEventId() resolves
       Foreground--)downloadController: reconcile(…)
     end
+    Foreground--)downloadController: releaseSettledBytes()
     opt only when activeEventId() resolves
       Foreground--)membershipRefresh: refresh(…)
     end
