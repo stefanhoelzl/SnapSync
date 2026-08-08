@@ -72,6 +72,21 @@ shipped app **and** extension binaries; `fake` never ships) — each axis names 
 discriminates its own leaves. Adapters MAY branch on technology vocabulary. Pure logic SHALL NOT
 be a port. Backend access SHALL be split into need-named ports (one adapter may implement many).
 
+The composition bundles (`AppPorts`, `UploadPorts`) MAY carry **function-typed** fields, but only
+for coordination **within** the core — a call back into the core's own machinery, which is how
+`compose/` hands `flow/` its collaborators without `flow/` naming a port (see "Zones inside the
+core"). A field whose invocation reaches **out of the process** SHALL be a port type, never a
+function type, however short its implementation. An inline lambda in a composition root that reads
+a platform value or performs a platform effect is an adapter written in the wrong place, and is a
+violation even where a port for the same need already exists.
+
+An adapter may be platform-specific; the port it implements SHALL NOT be. An adapter is therefore
+free to name platform types, constants and error codes internally, and SHALL do so rather than
+hoisting them inward: a platform's magic values, ABI integers, identifier grammars and error-domain
+tables SHALL NOT appear in `model/`, `ports/` or `feature/`, even where they cross no port and even
+where the platform-free zones are the cheaper place to unit-test them. Where an adapter can report a
+platform-independent fact, it SHALL report that fact rather than the platform's encoding of it.
+
 #### Scenario: Naming survives a second platform
 - **WHEN** a port is proposed whose name describes an Apple technology rather than the
   application's need
@@ -81,6 +96,30 @@ be a port. Backend access SHALL be split into need-named ports (one adapter may 
 - **WHEN** a new technology library is used anywhere in `:domain` or `:ui:presentation`
 - **THEN** the per-zone allowlist gate fails until the library is consciously allowlisted, with
   no per-technology gate edits required
+
+#### Scenario: A composition bundle gains a function-typed field that leaves the process
+- **WHEN** a field is added to `AppPorts` or `UploadPorts` whose invocation reads a platform value,
+  performs a platform effect, or crosses the network
+- **THEN** the seam gate fails until the field is either given a port type or added to the pinned
+  inventory with a stated reason it is not a port
+
+#### Scenario: A port exists and the composition reaches past it
+- **WHEN** a composition root supplies a value inline from a platform API for which a port and an
+  adapter already exist
+- **THEN** the composition is corrected to inject the existing port, because a bypassed seam is
+  indistinguishable from an absent one to everything downstream
+
+#### Scenario: A platform constant is named inside a platform-free zone
+- **WHEN** an Apple identifier, error-domain string, or platform enum's raw value appears in the
+  code (not the documentation) of `model/`, `ports/` or `feature/`
+- **THEN** the platform-identifier gate fails, and the declaration moves into the adapter that
+  already holds the platform object
+
+#### Scenario: A translation is hoisted inward to reach the faster test loop
+- **WHEN** a platform-to-neutral translation is placed in `model/` so it can be exercised in
+  `commonTest` rather than in the adapter that owns its inputs
+- **THEN** the placement is rejected: the translation belongs beside its inputs, where a test can
+  assert against the platform's own symbols instead of against a copy of the constant
 
 ### Requirement: State and authority
 `:domain` SHALL contain no top-level or global mutable state (no allowlist). Instance state in
@@ -246,11 +285,18 @@ unfixable while a spurious log line is harmless and visible (the same asymmetry 
 
 This law describes existing practice. `ConfigFileRead` admits only the not-found error class as
 absence and defers on every other failure; `ConfigRead` carries distinct sentinels so a device log
-can tell two unreadables apart; `KeychainRead` separates `Absent` from `Unavailable(status)` and
+can tell two unreadables apart; `SecureStoreRead` separates `Absent` from `Unavailable` and
 `readExisting` throws on the latter rather than returning null; `JoinLoad` keeps `NotFound`
 distinguishable from `Failed`; `SwitchDecision` returns a named answer where a null would do. The
 law names the rule those seams already follow so that a violation is a defect rather than a
 discovery.
+
+Separating the two answers is a requirement on the seam's **shape**, not on what it carries with
+them. `SecureStoreRead.Unavailable` carries an opaque adapter-formatted diagnostic rather than the
+platform's error code, precisely so that no caller can classify it: the three-state shape is what
+every decision reads, and the diagnostic exists only to reach a device log. A seam SHALL NOT be
+read as satisfying this law by carrying a rich failure payload while collapsing the answers, nor as
+violating it by carrying a poor one while keeping them apart.
 
 The test is **consequence asymmetry, not nullability**. A nullable return is not itself a
 violation: `DiscoveryStore.loadToken` collapses absent and unreadable correctly, because a cold
@@ -288,6 +334,12 @@ is a different defect and is out of its scope.
 - **THEN** the collapse is legitimate, and the requirement on it is that the shared consequence is
   stated
 
+#### Scenario: A three-state read is narrowed to a platform-free failure payload
+- **WHEN** a port's "could not tell" answer stops carrying the platform's error code and carries an
+  opaque diagnostic instead
+- **THEN** the law is still satisfied, because the separation the law requires is between the
+  answers, not in what the failing one reports
+
 ### Requirement: Dispatcher lanes are fixed by the composition
 
 Which thread work runs on SHALL be a property of the composition root, not of the adapter that
@@ -321,6 +373,23 @@ work to proceed concurrently with other work on the serial composition scope —
 A hop SHALL NOT be justified by keeping work off the main thread, because the composition already
 does that.
 
+This law accepts a cost it did not previously state: **correctness became non-local.** Whether
+calling an adapter is safe is no longer readable from the adapter — it is a property of where the
+adapter was composed. The main-lane containment gate bounds that cost (the main lane is unreachable
+by default and reachable only through a reviewed allowlist), but a reader's default assumption will
+be main-safety, and nothing corrects them at the point of reading. The law is nonetheless preferred
+to per-adapter main-safety, whose enforcement mechanism was code review and which code review
+demonstrably did not enforce.
+
+**Expiry trigger.** The reasoning above is iOS-shaped in two ways that a second platform would not
+inherit: the "2 of 23" measurement is of this codebase's iOS adapters, and the argument that the
+compliance test "lives in another process" depends on there being two processes (the app and the
+upload extension). A platform whose background work runs in the app's own process — an Android
+`WorkManager` worker, for instance — SHALL have this law re-derived rather than inherited. The
+absence of a public `Dispatchers.IO` on Kotlin/Native, which is why the composition lane is a
+dedicated thread rather than a slice of the CPU lane, carries its own expiry trigger already: a
+coroutines release that publishes it.
+
 #### Scenario: A blocking adapter is written with no dispatcher hop
 - **WHEN** a new adapter performs a synchronous platform call and hops nowhere
 - **THEN** it runs on the composition's I/O lane, off the main thread, because of where it was
@@ -338,6 +407,18 @@ does that.
 - **WHEN** an adapter's dispatcher hop is documented as keeping work off the main thread
 - **THEN** the justification is wrong and is corrected to name the concurrency it buys, or the hop
   is removed
+
+#### Scenario: A hop cites the withdrawn per-adapter rule
+- **WHEN** an adapter's dispatcher hop is justified as the port implementation "owning" its hop
+  because only it knows the call blocks
+- **THEN** the justification cites a rule this requirement withdrew, and is corrected or the hop is
+  removed — a comment claiming this spec's authority for the withdrawn rule is the worst form,
+  because a reader who follows the citation finds a document that contradicts it
+
+#### Scenario: A second platform inherits the lane reasoning
+- **WHEN** a platform is added whose background work runs in the app's own process
+- **THEN** the three-lane arrangement is re-derived against that platform's facts rather than
+  carried over, because the measurement and the two-process argument behind it are iOS-shaped
 
 ### Requirement: A platform-capability claim is settled by a compile, not by a symbol table
 

@@ -321,14 +321,14 @@ is a spec change to this requirement, deliberately):
   entitlements files (`iosApp.entitlements`, `BackgroundUploadExtension.entitlements`).
 - **Keychain entries**, pinned as (service, account) **pairs** — the pair is the unit of
   identity, so a cross-swap of accounts between services fails even though every individual
-  string survives: (`app.snapsync.deviceid`, `deviceid`), (`app.snapsync.config`, `eventconfig`),
+  string survives: (`app.snapsync.deviceid`, `deviceid`),
   (`app.snapsync.attest`, `token`), (`app.snapsync.attest`, `keyid`),
   (`app.snapsync.album`, `albummap`). Each pair SHALL match exactly once in production Kotlin.
-  The config pair's one seat is the legacy fallback seat (`KeychainConfigReader` — read + the
-  leave-path delete only; the migration finale ended the 11a write-through, so no config value is
-  ever written to the Keychain again): the fallback is the installed base's update path under the
-  ship-at-once model, and the pair's pin dies with the designated post-ship Stage-2 change that
-  deletes the fallback (capability `event-rejoin-reconciliation`).
+  The config pair (`app.snapsync.config`, `eventconfig`) was **retired from this inventory** by the
+  Stage-2 change that deleted the read-only legacy-Keychain fallback (capability
+  `event-rejoin-reconciliation`): its one seat was that fallback, and with it gone the pair appears
+  in production Kotlin **nowhere**, which an exactly-once pin cannot express. The config's runtime
+  identity is now carried entirely by the `eventconfig.json` pin below.
 - **Keychain access group** — the shared group the device-id item is addressed with (capability
   `device-identity`). Pinned once in production Kotlin, and cross-checked against the **suffix**
   declared in each of the two entitlements files together with `TEAM_ID` from `Config.xcconfig`:
@@ -339,15 +339,18 @@ is a spec change to this requirement, deliberately):
   is invisible to every existing gate and unrecoverable once written.
 - **The unscoped-Keychain inventory** — the guard SHALL pin, as an exact set, which Keychain seats
   search **without** naming an access group. That set SHALL be
-  (`app.snapsync.config`, `eventconfig`), (`app.snapsync.attest`, `token`),
-  (`app.snapsync.attest`, `keyid`), (`app.snapsync.album`, `albummap`); and the device-id seat
-  SHALL NOT be in it. Unscoped search is bounded, not forbidden: the config reader requires it
-  (its job is finding an item an older build placed anywhere), while the attest pair and album map
+  (`app.snapsync.attest`, `token`), (`app.snapsync.attest`, `keyid`),
+  (`app.snapsync.album`, `albummap`); and the device-id seat
+  SHALL NOT be in it. Unscoped search is bounded, not forbidden: the attest pair and album map
   remain unscoped deliberately — the attest token is demonstrably read cross-process today, and the
   album map is a self-healing cache. What the pin forbids is a **new** unscoped seat appearing by
   default, which is how implicit placement spread. Adding, removing, or re-scoping an entry is a
-  spec delta to this requirement. The config entry dies with the same Stage-2 change that deletes
-  the fallback.
+  spec delta to this requirement. The config seat left this set with the Stage-2 fallback deletion,
+  and because the set is exact in both directions, a *reconstructed* unscoped config seat SHALL fail
+  the build. **Stated blind spot:** a config seat reconstructed **scoped** would not — scoped sites
+  are checked only for the device-id seat's presence, not pinned as a set. That gap is narrow by
+  construction (a scoped read cannot find the unscoped items pre-11a builds wrote, which is the only
+  thing such a seat could be after) and is named here rather than left to be discovered.
 - **App-Group `NSUserDefaults` keys** `discovery.changeToken`, `rejoin.joinedEventId`,
   `app.snapsync.album.map`.
 - **Database filenames** `ledger.db`, `downloads.db`.
@@ -406,6 +409,13 @@ files.
   access group, or a pinned unscoped seat is silently re-scoped
 - **THEN** the guard fails, listing the expected and found inventories — implicit placement may only
   change deliberately
+
+#### Scenario: The retired config seat is reconstructed unscoped
+
+- **WHEN** production Kotlin again constructs an unscoped Keychain seat for
+  (`app.snapsync.config`, `eventconfig`)
+- **THEN** the unscoped-inventory pin fails, because the expected set no longer contains it — the
+  retired legacy fallback cannot return silently
 
 #### Scenario: The device id names its group
 
@@ -479,11 +489,16 @@ finale and was deleted, per its own contract.) The promoted gates:
   the seed of the pre-migration shape.
 - **Deletion ledger**: the migration's retired dead weight SHALL stay dead — the zxing and
   kotlincrypto catalog entries, the `capability/` tree, `LedgerReader`, `LoggingPushReceiver`,
-  `EventMetadataSource`, the `LeaveNotifier` interface ceremony, the Arrow/ArrowLevel duplicate
+  `EventMetadataSource`, the Arrow/ArrowLevel duplicate
   enum, and any second `*Enrollment` uploader. Resurrection is not forbidden forever; it is
   forbidden **silently** — bringing an item back means deleting its guard row in the same commit,
   with the argument in the PR. The guard SHALL assemble its patterns so its own source never
   matches them (the beacon's self-match lesson).
+  The `LeaveNotifier` interface, retired as single-implementation ceremony ("the class is the
+  seam"), has been brought back under exactly that clause and its row deleted: a **port** is not an
+  interface justified by a second implementation, it is the declared boundary where the core stops
+  and an external system begins, and with the interface gone the composition carried the crossing as
+  an opaque closure instead — invisible to every gate that reads types.
 - **Shells** and **zones** are gated by their own standing requirements (the shell gates; the zone
   gates), now all armed and gating.
 
@@ -500,6 +515,12 @@ canonical build.
 - **WHEN** a retired declaration (or catalog entry, or the `capability/` tree) reappears anywhere
   in the scanned roots
 - **THEN** the deletion-ledger gate fails, naming the resurrected item and its rationale
+
+#### Scenario: A retired name comes back as a port
+- **WHEN** a declaration the ledger retired is reintroduced because the judgement that retired it is
+  overturned
+- **THEN** its ledger row is deleted in the same commit and the reversal is argued in the change's
+  decision record, so the resurrection is loud rather than silent
 
 ### Requirement: Dead-edge analysis is scoped honestly
 The build SHALL run dependency-analysis `buildHealth` warn-only for jvm/common declared-unused
@@ -673,3 +694,121 @@ that reason, so the exemption is a decision rather than an oversight.
 - **WHEN** a reader asks why the config store is exempt
 - **THEN** the allowlist entry states the constraint that makes fixing it a separate change
 
+### Requirement: The composition seam gate
+The build SHALL fail when the function-typed field inventory of `AppPorts` or `UploadPorts` differs
+from a pinned list held in `:test:architecture`, exact in **both** directions. A new function-typed
+field fails until it is pinned with a stated reason it is not a port; a removed one fails until the
+pin is deleted, so the inventory cannot outlive what it describes.
+
+The gate pins an inventory rather than inspecting call targets, deliberately: whether a lambda
+reaches out of the process is not decidable from its declared type — `downloadStagingRoot: () ->
+String` and `deviceId: () -> String` are type-identical while one resolves a platform container and
+the other returns a value the composition already holds. The pin records a human judgement once,
+which is the same mechanism the shell gates use for complexity suppressions.
+
+**What it does not cover, stated so a green run is not over-read:** it constrains what the
+composition hands the core. It says nothing about what the OS hands the shell — registering an
+`NSNotificationCenter` observer or submitting a `BGProcessingTaskRequest` is the shell being called
+by the platform, not accessing it, and is out of scope.
+
+#### Scenario: A function-typed field is added to a composition bundle
+- **WHEN** `AppPorts` or `UploadPorts` gains a function-typed field that is not in the pinned
+  inventory
+- **THEN** the gate fails, naming the field, until it is given a port type or pinned with its reason
+
+#### Scenario: A pinned seam is converted to a port
+- **WHEN** a pinned function-typed field is replaced by a port type
+- **THEN** the gate fails until its pin is removed, so the inventory shrinks with the code
+
+#### Scenario: The gate is pointed at a bundle that no longer exists
+- **WHEN** the scanned declarations resolve to zero fields
+- **THEN** the gate fails as vacuous rather than passing, per "Gates fail closed on novelty"
+
+#### Scenario: A third composition bundle appears
+- **WHEN** a new `*Ports` bundle is declared in `compose/`
+- **THEN** the gate fails until that bundle is listed with its file, because a bundle it does not
+  know about is a third place the composition can hand the core a lambda unseen
+
+### Requirement: The platform-identifier gate
+The build SHALL fail when an Apple identifier appears in the **code** of `:domain`'s `model/`,
+`ports/` or `feature/` zones. Comments and KDoc are **exempt**, and that exemption is what gives the
+gate its signal: measured when the gate was introduced, scanning those zones including comments
+flagged 48 files while scanning with comments stripped flagged 5 — and all 5 were genuine. Three
+have since been paid off (below), leaving a baseline of 2. Every remaining site SHALL be
+pinned, exactly in both directions, and every pin SHALL state its reason.
+
+The pinned baseline is **not zero**, and the pins SHALL be split into two kinds, because reading them
+as one launders debt into design:
+
+- **accepted** — a judgement the owner stands behind, with no expiry. `CompositionMode`'s tier
+  members (`PHOTOKIT`, `URL_SESSION`) are the only entry: they name upload tiers the pure resolver
+  selects, not platform APIs the core calls, and a second tier is a new member rather than a new
+  coupling.
+- **deferred** — a real violation of the port law, left standing deliberately, which SHALL carry an
+  expiry trigger. Today there is exactly one: `ports/OsReceipt.kt`'s
+  `ReceiptDeadlines.URL_SESSION_EVENTS`, a naming slip whose two sibling deadlines are already
+  neutral; it expires with the iOS 18–26.0 app-driven tier.
+
+Both `Keychain`-token entries in that list have now been discharged, by two different routes, and
+recording which is the point of the split:
+
+- `ports/ConfigPorts.kt` was discharged **incidentally** — the Stage-2 change deleted
+  `configReadFrom`, the file's only `KeychainRead`-typed function, with the legacy fallback it
+  served (capability `event-rejoin-reconciliation`), well before the family's reshape.
+- `ports/Keychain.kt` and `feature/album/AlbumMapMigration.kt` were discharged **by the expiry
+  trigger they were filed under**: the port was renamed for its need (`SecureStore`), its `OSStatus`
+  and accessibility-class vocabulary moved into the iOS adapter, and the feature took the neutral
+  read type.
+
+A deferred pin may therefore be discharged by whatever removes the code; the expiry trigger is a
+floor, not a schedule.
+
+The scanned vocabulary SHALL keep the `Keychain` token even though no pin now names it. Its original
+purpose is served — because the pin list is exact in both directions, retaining the token is what
+made the reshape unable to land without deleting those pins, and what made the `ConfigPorts`
+discharge visible the moment the code went. Its remaining purpose is ordinary: a port or feature that
+reintroduces the token SHALL fail the gate rather than arrive unpinned.
+
+**What it does not cover, stated so a green run is not over-read:** the gate is lexical. A decoder
+over another system's values written in bare integers — a `when` over `0L`, `1L`, `2L` that is in
+fact a `UIApplicationState` table — is indistinguishable from arithmetic and SHALL NOT be assumed
+caught. The gate's hits are therefore not ranked by risk: it fires on named constants, which are the
+safer kind, and is silent on unnamespaced integer tables, which are the kind that can return a wrong
+answer to a second platform rather than a safe default. It is likewise blind to a platform encoding
+carried in a neutral type — an `Int` that is really an `OSStatus`, or a `String` that is really an
+accessibility class — which is how `ports/Keychain.kt`'s pin understated what that file actually
+owed.
+
+#### Scenario: An Apple constant is introduced into a platform-free zone
+- **WHEN** an `NS*`, `PH*`, `kSec*`, `UI*`, `AV*` identifier or an Apple product name appears
+  outside a comment in `model/`, `ports/` or `feature/`
+- **THEN** the gate fails, naming the file and the token
+
+#### Scenario: A documented binding note is written
+- **WHEN** a KDoc records how a neutral type is bound on iOS (for example, that an opaque payload is
+  a `PHAssetResource` there, or that a legacy item physically lived in the Keychain)
+- **THEN** the gate does not fire, because comments are exempt by design
+
+#### Scenario: A pinned exception is removed from the code
+- **WHEN** a pinned Apple identifier is deleted or moved into an adapter
+- **THEN** the gate fails until its pin is removed, so the pin list cannot describe absent code
+
+#### Scenario: A deferred pin's code is deleted before its expiry trigger fires
+- **WHEN** unrelated work removes the code a deferred pin describes — as the Stage-2 fallback
+  deletion removed `ports/ConfigPorts.kt`'s `KeychainRead` use ahead of the port family's reshape
+- **THEN** the gate fails on the stale pin, and the pin is deleted with that work rather than
+  waiting for the trigger it was filed under
+
+#### Scenario: A deferred pin's expiry trigger fires
+- **WHEN** the reshape a deferred pin named as its expiry lands, and the token leaves the code
+- **THEN** the gate fails on every pin that reshape cleared, and each is deleted in the same commit,
+  so the receipt and the debt end together
+
+#### Scenario: A retired token is reintroduced
+- **WHEN** a platform token that no pin names any more reappears in the code of a scanned zone
+- **THEN** the gate fails, because the vocabulary is not narrowed when a pin is discharged
+
+#### Scenario: Deferred debt is filed as accepted
+- **WHEN** a pin is added for an identifier the owner intends to remove later
+- **THEN** it belongs in the deferred list with an expiry trigger, not in the accepted list, so the
+  pin inventory never reads as if the law had no outstanding violations
