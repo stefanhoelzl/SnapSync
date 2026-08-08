@@ -104,28 +104,7 @@ class ConfigFileTest {
         )
     }
 
-    // ---- the ⑥ classifier: absent is the not-found error class ONLY ----
-
-    @Test
-    fun `not-found errors are the only absence`() {
-        assertTrue(isConfigFileAbsence("NSCocoaErrorDomain", 260)) // NSFileReadNoSuchFileError
-        assertTrue(isConfigFileAbsence("NSCocoaErrorDomain", 4)) // NSFileNoSuchFileError (delete path)
-        assertTrue(isConfigFileAbsence("NSPOSIXErrorDomain", 2)) // ENOENT
-    }
-
-    @Test
-    fun `a pre-first-unlock protected read is NOT absence`() {
-        // Apple's data-protection contract: a protected file read before first unlock fails
-        // permission-class (NSFileReadNoPermissionError 257 / EPERM 1) — mapping it to absence
-        // would turn every locked background wake into a false leave.
-        assertFalse(isConfigFileAbsence("NSCocoaErrorDomain", 257))
-        assertFalse(isConfigFileAbsence("NSPOSIXErrorDomain", 1))
-    }
-
-    @Test
-    fun `any unknown error stays on the unreadable side`() {
-        assertFalse(isConfigFileAbsence("NSCocoaErrorDomain", 256)) // NSFileReadUnknownError
-        assertFalse(isConfigFileAbsence("SomeOtherDomain", 260)) // the code alone is not enough
-        assertFalse(isConfigFileAbsence(null, 2))
-    }
+    // The ⑥ classifier (`isConfigFileAbsence`) moved to `:adapter:ios:ext-safe` with the platform
+    // errors it reads; its tests moved with it and now assert against the real Cocoa and POSIX
+    // constants rather than integer literals, which on the JVM could only be compared to themselves.
 }

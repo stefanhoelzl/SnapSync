@@ -46,6 +46,7 @@ Roots found:
 | `IosJoinedEventMarker` | | x | x |
 | `IosPhotoKitUploadPlatform` | | x | |
 | `IosPhotoLibraryImporter` | x | | |
+| `IosShareSheet` | x | | |
 | `IosStagedBytes` | x | | |
 | `IosUrlSessionUploadPlatform` | | | x |
 | `KeychainAttestStore` | x | x | |

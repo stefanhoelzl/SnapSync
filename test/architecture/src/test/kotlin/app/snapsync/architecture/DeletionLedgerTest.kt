@@ -46,7 +46,15 @@ class DeletionLedgerTest {
             declared(files, "interface Ledger" + "Reader").forEach { add("LedgerReader in $it (interface ceremony — readers use LedgerStore)") }
             declared(files, "class Logging" + "PushReceiver").forEach { add("LoggingPushReceiver in $it (log in the receiver that acts)") }
             declared(files, "interface Event" + "MetadataSource").forEach { add("EventMetadataSource in $it (one GET /events client: EventDirectory)") }
-            declared(files, "interface Leave" + "Notifier").forEach { add("LeaveNotifier interface in $it (the class is the seam)") }
+            // RETIRED ROW — `interface LeaveNotifier` ("the class is the seam", delete-dead-weight).
+            // Deliberately resurrected by `enforce-port-boundary`, per this gate's own contract: the
+            // 2026-07-17 judgement was that a single-implementation interface is ceremony, and that
+            // reasoning does not survive the law it collides with. A port is not justified by a second
+            // implementation — it is the declared boundary where the core stops and an external system
+            // begins (`module-architecture`, "Ports are the I/O boundary named for the need"). With the
+            // interface gone, the composition handed the core a `suspend (eventId) -> Unit` closure over
+            // the adapter instead, which is the same crossing made invisible to every gate that reads
+            // types. The row is deleted rather than narrowed because there is nothing left to keep dead.
             if (declared(files, "enum class Arrow" + "Level").isNotEmpty() &&
                 declared(files, "enum class Arrow" + """\b""").isNotEmpty()
             ) {

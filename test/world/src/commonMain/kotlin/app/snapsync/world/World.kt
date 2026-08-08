@@ -179,7 +179,14 @@ class World(
     /** The `:adapter:generic:app` enrollment PUT over the mini-edge — the ONE `Enrollment` impl (the
      *  world's byte-identical copy died at step 10, closing the deletion ledger's last row). */
     val manifestUploader: HttpEnrollment = HttpEnrollment(client, host)
-    private val leaveNotifier = HttpLeaveNotifier(client, host)
+    /**
+     * The REAL backend-leave seam (the `:adapter:generic:app` [HttpLeaveNotifier] over the mini-edge),
+     * bound to this world's own device — which is what the port means (see
+     * [app.snapsync.ports.LeaveNotifier]): "this device is leaving". A test that must speak for a
+     * DIFFERENT member binds its own instance to that id, so the substitution is visible where it is
+     * made rather than hidden in an argument at a call site.
+     */
+    private val leaveNotifier = HttpLeaveNotifier(client, host) { ownDeviceId }
 
     private val configCell = MutableStateFlow<EventConfig?>(null)
     val configSource: ConfigSource = object : ConfigSource {
@@ -276,6 +283,10 @@ class World(
             permission.set(PermissionStatus.GRANTED)
         }
         override fun openSettings() {}
+
+        // No limited-library picker exists off device; the selection is changed by the operator lever
+        // [changeSelection] instead, which is the same thing the real picker's outcome amounts to.
+        override fun choosePhotos() {}
     }
 
     // Attestation is composed (AppPorts requires the seams) but never exercised: the mini-edge is
@@ -345,9 +356,10 @@ class World(
             ledger = ledgerBackend,
             downloadStore = downloadStore,
             assetPresence = assetPresence,
+            // Staging root AND release, one port: the world's staged paths are built from the same
+            // root the fake reports, exactly as the App-Group container is on device.
             stagedBytes = stagedBytes,
             importer = importer,
-            downloadStagingRoot = { "staged:/" },
             newDownloadTransport = { transportHost ->
                 FakeDownloadTransport(transportHost, stagedBytes.files).also { downloadTransport = it }
             },
@@ -361,7 +373,7 @@ class World(
             attestClient = attestClient,
             attestStore = InMemoryAttestStore(),
             deviceId = { ownDeviceId },
-            now = { nowMillis },
+            clock = { kotlin.time.Instant.fromEpochMilliseconds(nowMillis) },
             // The operator IS the producer: nothing auto-runs; a cycle happens when invoked by hand.
             uploadProducer = { OperatorUploadProducer() },
             albumManager = albumManager,
@@ -369,7 +381,7 @@ class World(
             // Denylisted-album membership (capability `photo-selection-policy`) — the REAL policy
             // constant over the world's forgeable album membership, exactly as the shell wires it.
             albumExcludedAssetIds = { cutoff -> albumManager.assetIdsInAlbums(DENYLISTED_ALBUM_TITLES, cutoff.at.iso) },
-            notifyLeave = { eventId -> leaveNotifier.leave(eventId, ownDeviceId) },
+            leaveNotifier = leaveNotifier,
             provision = { cfg -> configCell.value = cfg },
             // Spy the real Provision flow's on-join push re-registration (capability `push-registration`).
             registerPush = { registerPushCount++ },
@@ -584,7 +596,7 @@ class World(
      */
     suspend fun leave() {
         core.downloadController.onLeaveOrSwitch()
-        configCell.value?.eventId?.let { leaveNotifier.leave(it, ownDeviceId) }
+        configCell.value?.eventId?.let { leaveNotifier.notifyLeaving(it) }
         configCell.value = null
         marker.clear()
     }
@@ -714,13 +726,12 @@ class World(
          */
         const val DEFAULT_FAR_CEILING: String = "2099-01-01T00:00:00Z"
 
-        /** A single primary raw resource (`PHAssetResourceType.photo` == 1). */
+        /** A single primary raw resource. */
         fun primaryResource(
             filename: String = "IMG.JPG",
             contentType: String = "image/jpeg",
         ): RawResource = RawResource(
-            type = 1L,
-            contentTypeUti = contentType,
+            role = ResourceRole.PRIMARY,
             mimeContentType = contentType,
             originalFilename = filename,
             handle = Unit,

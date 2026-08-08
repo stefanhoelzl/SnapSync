@@ -97,6 +97,56 @@ internal object ZoneGates {
     /** The zone a reference lands in: its first zone-named segment, or null for zone-less (legacy) code. */
     fun zoneOf(ref: String): String? = ref.split('.').firstOrNull { it in zoneTokens }
 
+    /**
+     * Kotlin source with comments blanked out, newlines preserved so line numbers survive. Shared by
+     * the two gates that must read **code only**: [PlatformIdentifierTest] (whose exemption for prose
+     * is its whole design) and [CompositionSeamTest] (whose subject, `AppPorts`, documents the
+     * function-typed fields it no longer has — `presentPhotoPicker: () -> Unit` appears verbatim in a
+     * KDoc there, and a scanner that read comments would report a field that does not exist).
+     *
+     * Written by hand rather than by regex because none of the three cases is regular: Kotlin block
+     * comments **nest**, a `//` inside a string literal (`"https://…"`) is not a comment, and a raw
+     * `"""…"""` string may contain both. Blanking rather than deleting keeps the offset→line mapping
+     * honest, so a violation report points at the line a reader can open.
+     *
+     * String literals are deliberately **kept**: a literal is code. A log line or a JSON key naming a
+     * platform API in the core is exactly the leak the identifier gate is for — the exemption is for
+     * prose *about* the code, not for values inside it.
+     */
+    fun stripComments(source: String): String {
+        val out = StringBuilder(source.length)
+        var i = 0
+        var blockDepth = 0
+        fun blank(c: Char) = out.append(if (c == '\n') '\n' else ' ')
+        while (i < source.length) {
+            val c = source[i]
+            when {
+                blockDepth > 0 -> when {
+                    source.startsWith("/*", i) -> { blockDepth++; blank(' '); blank(' '); i += 2 }
+                    source.startsWith("*/", i) -> { blockDepth--; blank(' '); blank(' '); i += 2 }
+                    else -> { blank(c); i++ }
+                }
+                source.startsWith("/*", i) -> { blockDepth = 1; blank(' '); blank(' '); i += 2 }
+                source.startsWith("//", i) -> while (i < source.length && source[i] != '\n') { blank(' '); i++ }
+                source.startsWith("\"\"\"", i) -> {
+                    out.append("\"\"\""); i += 3
+                    while (i < source.length && !source.startsWith("\"\"\"", i)) { out.append(source[i]); i++ }
+                    if (i < source.length) { out.append("\"\"\""); i += 3 }
+                }
+                c == '"' -> {
+                    out.append(c); i++
+                    while (i < source.length && source[i] != '"') {
+                        if (source[i] == '\\' && i + 1 < source.length) { out.append(source[i]); i++ }
+                        out.append(source[i]); i++
+                    }
+                    if (i < source.length) { out.append('"'); i++ }
+                }
+                else -> { out.append(c); i++ }
+            }
+        }
+        return out.toString()
+    }
+
     /** The feature a reference or path names: the segment after the first `feature` segment. */
     fun featureOf(segments: List<String>): String? {
         val idx = segments.indexOf("feature")

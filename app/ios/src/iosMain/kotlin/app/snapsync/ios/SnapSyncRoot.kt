@@ -32,7 +32,6 @@ import app.snapsync.ios.discovery.IosDiscoveryStore
 import app.snapsync.model.PermissionStatus
 import app.snapsync.permission.PhotoLibraryPermission
 import app.snapsync.permission.PhotoSelectionSnapshotSource
-import app.snapsync.permission.presentLimitedLibraryPicker
 import app.snapsync.presentation.CutoffFormatter
 import app.snapsync.presentation.MutableAttestedSource
 import app.snapsync.presentation.StatusContainerHost
@@ -55,11 +54,9 @@ import app.snapsync.album.IosAlbumMapStore
 import app.snapsync.download.IosPhotoLibraryImporter
 import app.snapsync.download.IosStagedBytes
 import app.snapsync.download.PhotoKitAssetPresence
-import app.snapsync.share.presentShareSheet
+import app.snapsync.share.IosShareSheet
 import app.snapsync.downloadstore.SqlDelightDownloadStore
 import app.snapsync.downloadstore.iosDownloadStore
-import platform.Foundation.NSFileManager
-import app.snapsync.engine.LEDGER_APP_GROUP
 import app.snapsync.ports.OsReceipt
 import app.snapsync.ports.ReceiptDeadlines
 import app.snapsync.ports.LedgerStore
@@ -67,6 +64,7 @@ import app.snapsync.config.bakedUploadBase
 import app.snapsync.engine.iosLedgerStore
 import app.snapsync.model.EventLinkDelivery
 import app.snapsync.model.PlatformEntry
+import app.snapsync.link.isWebLinkActivity
 import app.snapsync.model.forwardEventLink
 import app.snapsync.model.userActivityParams
 import app.snapsync.feature.upload.UploadProducer
@@ -359,9 +357,14 @@ object SnapSyncRoot {
                 configSource = config,
                 configStore = config,
                 photoAccess = permission,
-                // The same adapter serves the status source and the request/Settings surface — the
-                // bundle's requestAccess/openSettings commands bind to it in `compose/`.
+                // The same adapter serves the status source and the request/Settings/picker surface —
+                // the bundle's requestAccess/openSettings/choosePhotos commands bind to it in
+                // `compose/`. The limited-library picker (capability `limited-photo-access`) is a
+                // member of that port now, not a separate lambda this shell had to remember to pass.
                 photoAccessRequester = permission,
+                // The platform half of the share command: a system sheet over the top view controller
+                // (:adapter:ios:app-only).
+                sharePresenter = IosShareSheet(),
                 candidateSource = candidateSource,
                 // A cutoff-lowering reconfigure invalidates the shared discovery cursor so both tiers
                 // re-enumerate and back-share the newly-in-scope older photos (capability
@@ -377,7 +380,8 @@ object SnapSyncRoot {
                 // Full-access presence for the import guard; composition wraps it so a partial or
                 // revoked grant never reports an asset as absent (capability `photo-download`).
                 assetPresence = PhotoKitAssetPresence(),
-                // Frees the App-Group staging files of settled rows (capability `download-store`).
+                // Names the App-Group staging directory and frees the files of settled rows
+                // (capability `download-store`) — one port owns both halves.
                 stagedBytes = IosStagedBytes(),
                 // The importer writes createdLocalId synchronously from inside a PhotoKit change
                 // block (concrete store, not the port) and borrows the atomic album-add lookup.
@@ -395,12 +399,6 @@ object SnapSyncRoot {
                         }
                     },
                 ),
-                downloadStagingRoot = {
-                    val container = NSFileManager.defaultManager
-                        .containerURLForSecurityApplicationGroupIdentifier(LEDGER_APP_GROUP)?.path
-                        ?: error("App Group container '$LEDGER_APP_GROUP' unavailable")
-                    "$container/download-staging"
-                },
                 newDownloadTransport = { host -> IosDownloadTransport(host) },
                 union = HttpEventUnionSource(http, backendHost),
                 directory = detailsSource,
@@ -415,7 +413,7 @@ object SnapSyncRoot {
                 attestClient = HttpAttestClient(darwinHttpClient(), backendHost),
                 attestStore = KeychainAttestStore(),
                 deviceId = { deviceId },
-                now = { (NSDate().timeIntervalSince1970 * 1000).toLong() },
+                clock = SystemClock,
                 // The tier's mechanism, selected ONCE per process by the mode switch above
                 // (capability `upload-lifecycle`): exactly one producer, the other never constructed.
                 uploadProducer = live.uploadProducer,
@@ -423,7 +421,7 @@ object SnapSyncRoot {
                 albumManager = albumManager,
                 albumMapStore = albumMapStore,
                 albumExcludedAssetIds = { cutoff -> albumExcludedAssetIds(cutoff) },
-                notifyLeave = { eventId -> leaveNotifier.leave(eventId, deviceId) },
+                leaveNotifier = leaveNotifier,
                 // Coordination is the `flow/` zone's (step 8); this root supplies the provision flow's
                 // entry (a thin log-wrapped delegator) and the shell/platform effect lambdas the flows
                 // coordinate over — each a port/platform touch a flow may not make directly.
@@ -437,12 +435,6 @@ object SnapSyncRoot {
                 reloadConfig = { config.reload() },
                 pumpForeground = live.pumpForeground,
                 scheduleBackstop = ::scheduleDownloadBackstop,
-                // The platform half of the share command (a system sheet over the top view
-                // controller) — the UIKit adapter `presentShareSheet` (:adapter:ios:app-only).
-                share = ::presentShareSheet,
-                // The platform half of the choose-photos command (capability `limited-photo-access`):
-                // the PhotosUI limited-library picker over the top view controller.
-                presentPhotoPicker = ::presentLimitedLibraryPicker,
                 // Re-register the APNs token on join (capability `push-registration`): re-`PUT`s the
                 // current OS-delivered token so a device whose config the nightly sweep collected
                 // (capability `scheduled-cleanup`) is pushable again the instant it rejoins warm. The
@@ -521,11 +513,17 @@ object SnapSyncRoot {
     // synchronously from inside a PhotoKit change block.
     private val downloadStore: SqlDelightDownloadStore by lazy { iosDownloadStore() }
 
-    // The seam that tells the backend this device is leaving (DELETE /events/<id>/devices/<id>,
-    // capability `event-leave-endpoint`) — the backend renames the manifest to its departed
-    // `.left.json` sibling and reaps/GCs the event when the last member leaves. Best-effort (a failed
-    // call never blocks leaving). Used by BOTH the explicit Leave and a switch (see [provisionEvent]).
-    private val leaveNotifier: HttpLeaveNotifier by lazy { HttpLeaveNotifier(http, backendHost) }
+    // The `LeaveNotifier` port that tells the backend this device is leaving (DELETE
+    // /events/<id>/devices/<id>, capability `event-leave-endpoint`) — the backend renames the manifest
+    // to its departed `.left.json` sibling and reaps/GCs the event when the last member leaves.
+    // Best-effort (a failed call never blocks leaving). Used by BOTH the explicit Leave and a switch,
+    // through the effect `compose/` builds from it.
+    //
+    // The device id goes in as a THUNK, not a value: resolving it reads the Keychain, and this adapter
+    // is constructed while the graph is composed — which a locked background launch reaches before
+    // first unlock. It is read per call, exactly as the composition's former closure over `deviceId`
+    // did.
+    private val leaveNotifier: HttpLeaveNotifier by lazy { HttpLeaveNotifier(http, backendHost) { deviceId } }
 
     // The device-facing backend host (baked at compile time); shared by every generic HTTP adapter
     // handed to the composed graph and the event-metadata (name) fetch. Reads through
@@ -775,7 +773,7 @@ object SnapSyncRoot {
             params = userActivityParams(activityType, url),
             result = { outcome: EventLinkDelivery -> outcome.summary },
         ) {
-            forwardEventLink(activityType, url, ::onOpenUrl)
+            forwardEventLink(isWebLinkActivity(activityType), activityType, url, ::onOpenUrl)
         }
     }
 

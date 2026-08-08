@@ -78,7 +78,7 @@ private fun attestation(
     client: FakeClient = FakeClient(),
     store: AttestStore = InMemoryAttestStore(),
 ) = Triple(
-    DeviceAttestation(key, client, store, { DEVICE }, now = { NOW_SECONDS * 1000 }),
+    DeviceAttestation(key, client, store, { DEVICE }, clock = { kotlin.time.Instant.fromEpochSeconds(NOW_SECONDS) }),
     client,
     store,
 )

@@ -115,6 +115,12 @@ class PanelController {
             // permission presets instead.
             println("openSettings() — simulate the Settings visit via the Permission presets")
         }
+
+        override fun choosePhotos() {
+            // Same shape as openSettings: there is no limited-library picker off device. The forge
+            // renders state, so the picker's only observable effect here is that the tap happened.
+            println("choosePhotos() — no limited-library picker off device; forge the outcome via the presets")
+        }
     }
 
     /** What the next gate-driven request() resolves to. */

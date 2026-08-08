@@ -17,6 +17,7 @@ import platform.Photos.PHAuthorizationStatusAuthorized
 import platform.Photos.PHAuthorizationStatusLimited
 import platform.Photos.PHAuthorizationStatusNotDetermined
 import platform.Photos.PHPhotoLibrary
+import platform.PhotosUI.presentLimitedLibraryPickerFromViewController
 import platform.UIKit.UIApplication
 import platform.darwin.dispatch_async
 import platform.darwin.dispatch_get_main_queue
@@ -69,6 +70,45 @@ class PhotoLibraryPermission : PhotoAccessStatusSource, PhotoAccessRequester {
         // Fire-and-forget: the result lands on the source via read(), per the port contract.
         PHPhotoLibrary.requestAuthorizationForAccessLevel(PHAccessLevelReadWrite) { _ ->
             state.value = read()
+        }
+    }
+
+    /**
+     * PhotoKit's limited-library picker — the system sheet that lets a user with a **partial** grant
+     * widen (or narrow) the set of photos this app can see (capability `limited-photo-access`).
+     *
+     * This is the other half of `PHPhotoLibraryPreventAutomaticLimitedAccessAlert` in the app's
+     * Info.plist: that key stops iOS auto-presenting its own "Select More Photos" alert on every
+     * library touch (which, given SnapSync re-fetches per foreground and per reconcile, is an unusable
+     * storm — observed on device 2026-07-20), and hands the app the duty of offering the picker itself.
+     * Suppressing the alert WITHOUT this call would strand a limited user with no way to widen their
+     * selection from inside the app.
+     *
+     * It lived beside this class as a top-level `presentLimitedLibraryPicker()` the composition root
+     * passed as `AppPorts.presentPhotoPicker: () -> Unit` — a platform presentation handed to the core
+     * behind a type that said nothing, and defaulted inert, so a composition that never wired it looked
+     * exactly like one that had (spec `module-architecture`, "Ports are the I/O boundary named for the
+     * need"). It is folded into this adapter because [PhotoAccessRequester] is where it belongs: the
+     * same object already presents the permission dialog and the Settings page, and the picker is the
+     * third face of that one need.
+     *
+     * Fire-and-forget, like the rest of this port: PhotoKit reports the resulting selection through the
+     * library change observer, never through a completion handler here.
+     */
+    override fun choosePhotos() {
+        // Same main-queue hop and presenter walk as `openSettings`/`IosShareSheet`, for the same two
+        // reasons: UIKit rejects presentation from a covered controller, and presentation asserts the
+        // main queue (presenting off-main traps with SIGTRAP) while commands can arrive on any lane.
+        dispatch_async(dispatch_get_main_queue()) {
+            var presenter = UIApplication.sharedApplication.keyWindow?.rootViewController
+            while (presenter?.presentedViewController != null) {
+                presenter = presenter.presentedViewController
+            }
+            // Kotlin/Native exposes the ObjC selector `presentLimitedLibraryPickerFromViewController:`
+            // (not Swift's `presentLimitedLibraryPicker(from:)`), and it lives in **PhotosUI** as a
+            // category on PHPhotoLibrary — not in Photos, which is why PhotosUI is imported above and
+            // why this can only ever be an app-only adapter.
+            presenter?.let { PHPhotoLibrary.sharedPhotoLibrary().presentLimitedLibraryPickerFromViewController(it) }
         }
     }
 

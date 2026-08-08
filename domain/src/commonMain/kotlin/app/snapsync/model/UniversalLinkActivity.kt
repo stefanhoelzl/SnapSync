@@ -1,12 +1,10 @@
 package app.snapsync.model
 
-/**
- * The stable string value of `NSUserActivityTypeBrowsingWeb` (Apple ABI: the constant's value is its
- * own name, and it is what iOS stamps on every Universal-Link delivery). Pinned here so the filter
- * below is testable off-device; the Swift shell forwards the raw `NSUserActivity` fields and holds
- * no constant of its own.
- */
-const val BROWSING_WEB_ACTIVITY_TYPE: String = "NSUserActivityTypeBrowsingWeb"
+// The platform constant this filter used to compare against (`NSUserActivityTypeBrowsingWeb`) now
+// lives with the platform, in `:adapter:ios:app-only`'s `WebLinkActivity.kt`. The adapter answers the
+// platform-independent question — "was this delivery a web link?" — and the filter below decides what
+// that means, which is the split the port law asks for (spec `module-architecture`). The filter
+// itself is unchanged and still the tested `model/` codec's, as `architecture-guards` requires.
 
 /**
  * What became of a delivered `NSUserActivity` (capability `event-link`; spec `module-architecture`,
@@ -69,15 +67,23 @@ fun userActivityParams(activityType: String?, url: String?): String {
 }
 
 /**
- * The event-link filter over a delivered `NSUserActivity` (capability `event-link`; migration step
- * 12). The shell forwards `activityType` and `webpageURL?.absoluteString` raw and this decides — the
- * browsing-web test used to be a Swift `guard`, untestable by project rule.
+ * The event-link filter over a delivered activity (capability `event-link`; migration step 12). The
+ * shell forwards the platform's answer to "is this a web link?" together with the raw
+ * `activityType` and `webpageURL?.absoluteString`, and this decides — the browsing-web test used to
+ * be a Swift `guard`, untestable by project rule.
+ *
+ * [isWebLink] is the platform-independent fact the adapter reports; [activityType] is carried for
+ * the **log line only** and is never compared here, so no platform constant is needed to run this.
  *
  * The URL is carried **complete**: the entire payload rides in the fragment, so any trimming here
  * would empty every invite.
  */
-fun eventLinkFromUserActivity(activityType: String?, url: String?): EventLinkDelivery = when {
-    activityType != BROWSING_WEB_ACTIVITY_TYPE -> EventLinkDelivery.NotBrowsingWeb(activityType)
+fun eventLinkFromUserActivity(
+    isWebLink: Boolean,
+    activityType: String?,
+    url: String?,
+): EventLinkDelivery = when {
+    !isWebLink -> EventLinkDelivery.NotBrowsingWeb(activityType)
     url == null -> EventLinkDelivery.NoWebpageUrl
     else -> EventLinkDelivery.Forwarded(url)
 }
@@ -90,8 +96,9 @@ fun eventLinkFromUserActivity(activityType: String?, url: String?): EventLinkDel
  * counts even a `?.let` as a decision, and it is one).
  */
 fun forwardEventLink(
+    isWebLink: Boolean,
     activityType: String?,
     url: String?,
     forward: (String) -> Unit,
-): EventLinkDelivery = eventLinkFromUserActivity(activityType, url)
+): EventLinkDelivery = eventLinkFromUserActivity(isWebLink, activityType, url)
     .also { outcome -> if (outcome is EventLinkDelivery.Forwarded) forward(outcome.url) }

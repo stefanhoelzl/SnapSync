@@ -70,8 +70,10 @@ class LeaveCascadeWorldTest {
         w.addForeignDevice(x, e, listOf(World.foreignAsset("Q1")))
         w.addForeignDevice(x, f, listOf(World.foreignAsset("Q1")))
 
-        // X leaves E through the REAL DELETE seam over the mini-edge.
-        HttpLeaveNotifier(w.client, w.host).leave(e, x)
+        // X leaves E through the REAL DELETE seam over the mini-edge. The notifier is bound to X at
+        // construction because the port says "THIS device is leaving" — standing in for another member
+        // is a second instance, named here, rather than an argument at the call site.
+        HttpLeaveNotifier(w.client, w.host) { x }.notifyLeaving(e)
 
         assertTrue(w.store.isRegistered(e)) // E NOT reaped — leaving is non-destructive now
         assertTrue(w.store.isDeparted(e, x)) // X is departed in E

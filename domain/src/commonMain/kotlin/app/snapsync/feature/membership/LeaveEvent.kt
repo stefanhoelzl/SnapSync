@@ -12,7 +12,7 @@ import kotlinx.coroutines.launch
  * `leave-event`).
  *
  * It does three things, in order: (1) **stop** the upload producer, (2) **clear the persisted config**,
- * then (3) **notify the backend** this device is leaving (via [HttpLeaveNotifier] — the backend renames the
+ * then (3) **notify the backend** this device is leaving (via the `LeaveNotifier` port — the backend renames the
  * device's manifest to its departed `.left.json` sibling and reaps/GCs the event when the last member
  * leaves). The `eventId` is snapshotted **synchronously before** the clear (from [ConfigSource]) and
  * passed into the notify, so the notify still targets the correct event even though the config is
@@ -37,7 +37,9 @@ import kotlinx.coroutines.launch
  *
  * The platform side-effects — stopping the producer and the backend notify — are injected as suspend
  * lambdas (the notify as `suspend (eventId) -> Unit`), so this stays pure `commonMain` logic and the
- * app shell stays wiring-only; the use-case constructs no ledger type.
+ * app shell stays wiring-only; the use-case constructs no ledger type. The notify lambda is built in
+ * `compose/` over the `LeaveNotifier` port — the same one `flow/Provision` gets for the switch path, so
+ * the two routes to "this device left" cannot diverge, and neither zone names the port itself.
  *
  * **Best-effort, no rollback:** each step runs independently; a failing step is logged and the rest
  * still run. The order is chosen so the worst partial outcome self-heals — a failed backend notify

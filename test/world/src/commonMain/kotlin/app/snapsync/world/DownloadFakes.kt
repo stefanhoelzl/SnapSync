@@ -159,8 +159,7 @@ class FakePhotoLibraryImporter(
             creationDate = creationDate,
             rawResources = resources.map { staged ->
                 RawResource(
-                    type = if (staged.role == ResourceRole.LIVE.wire) 9L else 1L,
-                    contentTypeUti = staged.contentType,
+                    role = if (staged.role == ResourceRole.LIVE.wire) ResourceRole.LIVE else ResourceRole.PRIMARY,
                     mimeContentType = staged.contentType,
                     // The SAME naming rule the iOS importer applies (`importFilename`), so the world
                     // cannot show a human name where a device would show a storage key.

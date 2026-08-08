@@ -9,6 +9,7 @@ import app.snapsync.model.RESOURCE_META_IS_SCREEN_RECORDING
 import app.snapsync.model.RESOURCE_META_IS_VIDEO
 import app.snapsync.model.RESOURCE_META_PIXEL_AREA
 import app.snapsync.model.RESOURCE_META_CREATION_DATE
+import app.snapsync.model.ResourceRole
 import app.snapsync.model.RESOURCE_META_MIME
 import app.snapsync.model.RESOURCE_META_ORIGINAL_FILENAME
 import app.snapsync.model.RawAsset
@@ -40,13 +41,15 @@ private suspend fun InMemoryCandidateSource.resourcesFor(cutoff: String) =
 
 class RawAssetMappingTest {
 
+    // `role = null` is what the platform adapter reports for a resource it carries no role for
+    // (an edit artifact, a RAW alternate, a proxy) — the drop decision is made platform-side now,
+    // so this helper takes the neutral answer rather than a PHAssetResourceType integer.
     private fun raw(
-        type: Long,
-        uti: String = "public.jpeg",
+        role: ResourceRole?,
         mime: String = "image/jpeg",
         name: String = "IMG.JPG",
         handle: Any = Unit,
-    ) = RawResource(type = type, contentTypeUti = uti, mimeContentType = mime, originalFilename = name, handle = handle)
+    ) = RawResource(role = role, mimeContentType = mime, originalFilename = name, handle = handle)
 
     @Test
     fun maps_originals_only_with_role_keys_normalization_and_metadata() {
@@ -54,10 +57,10 @@ class RawAssetMappingTest {
             assetId = "ABC/L0/001", // raw localIdentifier with '/'
             creationDate = "2026-07-01T00:00:00Z",
             rawResources = listOf(
-                raw(1L, uti = "public.heic", mime = "image/heic", name = "IMG_0001.HEIC"), // photo -> primary
-                raw(9L, uti = "com.apple.quicktime-movie", mime = "video/quicktime", name = "IMG_0001.MOV"), // pairedVideo -> live
-                raw(5L), // fullSizePhoto -> dropped (edit artifact)
-                raw(7L), // adjustmentData -> dropped
+                raw(ResourceRole.PRIMARY, mime = "image/heic", name = "IMG_0001.HEIC"), // photo -> primary
+                raw(ResourceRole.LIVE, mime = "video/quicktime", name = "IMG_0001.MOV"), // pairedVideo -> live
+                raw(null), // fullSizePhoto -> dropped (edit artifact)
+                raw(null), // adjustmentData -> dropped
             ),
         )
 
@@ -67,7 +70,11 @@ class RawAssetMappingTest {
         val primary = resources.first { it.filename.endsWith("-primary.heic") }
         assertEquals("ABC_L0_001", primary.assetId, "assetId normalized '/'->'_'")
         assertEquals("ABC_L0_001-primary.heic", primary.filename)
-        assertEquals("public.heic", primary.contentType)
+        // The resolved MIME, not a platform type identifier: `contentType` is what the upload
+        // provider sends as the `Content-Type` header, and it used to carry a UTI while the correct
+        // MIME sat unused in metadata (spec `gallery-status`).
+        assertEquals("image/heic", primary.contentType)
+        assertEquals(primary.metadata[RESOURCE_META_MIME], primary.contentType, "one content type, not two")
         assertEquals("2026-07-01T00:00:00Z", primary.metadata[RESOURCE_META_CREATION_DATE])
         assertEquals("IMG_0001.HEIC", primary.metadata[RESOURCE_META_ORIGINAL_FILENAME])
         assertEquals("image/heic", primary.metadata[RESOURCE_META_MIME])
@@ -82,8 +89,8 @@ class RawAssetMappingTest {
             assetId = "ABC/L0/001",
             creationDate = "2026-07-01T00:00:00Z",
             rawResources = listOf(
-                raw(1L, uti = "public.heic", mime = "image/heic", name = "IMG_0001.HEIC"),
-                raw(9L, uti = "com.apple.quicktime-movie", mime = "video/quicktime", name = "IMG_0001.MOV"),
+                raw(ResourceRole.PRIMARY, mime = "image/heic", name = "IMG_0001.HEIC"),
+                raw(ResourceRole.LIVE, mime = "video/quicktime", name = "IMG_0001.MOV"),
             ),
             facts = AssetFacts(
                 assetId = "ABC/L0/001",
@@ -116,7 +123,7 @@ class RawAssetMappingTest {
         val screenshot = RawAsset(
             assetId = "S1",
             creationDate = "2026-07-01T00:00:00Z",
-            rawResources = listOf(raw(1L, uti = "public.png", mime = "image/png", name = "IMG_0002.PNG")),
+            rawResources = listOf(raw(ResourceRole.PRIMARY, mime = "image/png", name = "IMG_0002.PNG")),
             facts = AssetFacts(
                 assetId = "S1",
                 creationDate = CaptureDate("2026-07-01T00:00:00Z"),
@@ -135,14 +142,14 @@ class RawAssetMappingTest {
     @Test
     fun opaque_handle_rides_into_resource_data_uninterpreted() {
         val marker = Any()
-        val resources = resourcesFrom(listOf(RawAsset("A", "", listOf(raw(1L, handle = marker)))))
+        val resources = resourcesFrom(listOf(RawAsset("A", "", listOf(raw(ResourceRole.PRIMARY, handle = marker)))))
         assertEquals(marker, resources.single().data, "the PHAssetResource handle crosses uninterpreted")
     }
 
     @Test
     fun mapped_filename_round_trips_to_the_normalized_assetid() {
         // The discovery->key->parse identity echo-suppression + reconstruct rely on (change 1's parser).
-        val resources = resourcesFrom(listOf(RawAsset("ABC/L0/001", "", listOf(raw(1L, name = "x.JPG")))))
+        val resources = resourcesFrom(listOf(RawAsset("ABC/L0/001", "", listOf(raw(ResourceRole.PRIMARY, name = "x.JPG")))))
         assertEquals("ABC_L0_001", assetIdFromUploadKey(resources.single().filename))
     }
 
@@ -150,8 +157,8 @@ class RawAssetMappingTest {
     fun the_source_composes_walk_then_map_per_candidate() = runTest {
         val source = InMemoryCandidateSource(
             listOf(
-                RawAsset("A", IN_SCOPE, listOf(raw(1L, name = "a.JPG"))),
-                RawAsset("B", IN_SCOPE, listOf(raw(1L, name = "b.JPG"))),
+                RawAsset("A", IN_SCOPE, listOf(raw(ResourceRole.PRIMARY, name = "a.JPG"))),
+                RawAsset("B", IN_SCOPE, listOf(raw(ResourceRole.PRIMARY, name = "b.JPG"))),
             ),
         )
 
@@ -164,8 +171,8 @@ class RawAssetMappingTest {
         // one synchronous PhotoKit round-trip per asset, and a membership always has a cutoff to scope it.
         val source = InMemoryCandidateSource(
             listOf(
-                RawAsset("OLD", "2000-01-01T00:00:00Z", listOf(raw(1L, name = "old.JPG"))),
-                RawAsset("NEW", IN_SCOPE, listOf(raw(1L, name = "new.JPG"))),
+                RawAsset("OLD", "2000-01-01T00:00:00Z", listOf(raw(ResourceRole.PRIMARY, name = "old.JPG"))),
+                RawAsset("NEW", IN_SCOPE, listOf(raw(ResourceRole.PRIMARY, name = "new.JPG"))),
             ),
         )
 
@@ -180,8 +187,8 @@ class RawAssetMappingTest {
         // only it has identifiers to scope by, because only it reads the change feed.
         val source = InMemoryCandidateSource(
             listOf(
-                RawAsset("OLD", "2000-01-01T00:00:00Z", listOf(raw(1L, name = "old.JPG"))),
-                RawAsset("NEW", IN_SCOPE, listOf(raw(1L, name = "new.JPG"))),
+                RawAsset("OLD", "2000-01-01T00:00:00Z", listOf(raw(ResourceRole.PRIMARY, name = "old.JPG"))),
+                RawAsset("NEW", IN_SCOPE, listOf(raw(ResourceRole.PRIMARY, name = "new.JPG"))),
             ),
         )
 
@@ -193,7 +200,7 @@ class RawAssetMappingTest {
     @Test
     fun an_undated_asset_is_before_every_bound() = runTest {
         // An empty `creationDate` sorts before any non-empty cutoff, so an undated asset is never in scope.
-        val source = InMemoryCandidateSource(listOf(RawAsset("U", "", listOf(raw(1L, name = "u.JPG")))))
+        val source = InMemoryCandidateSource(listOf(RawAsset("U", "", listOf(raw(ResourceRole.PRIMARY, name = "u.JPG")))))
 
         assertEquals(emptyList(), source.resourcesFor(CUTOFF))
     }
