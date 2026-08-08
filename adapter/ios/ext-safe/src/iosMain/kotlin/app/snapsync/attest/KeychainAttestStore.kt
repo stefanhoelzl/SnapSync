@@ -2,9 +2,8 @@ package app.snapsync.attest
 
 import app.snapsync.ports.AttestStore
 
-import app.snapsync.keychain.ACCESSIBLE_AFTER_FIRST_UNLOCK
 import app.snapsync.keychain.IosKeychain
-import app.snapsync.ports.Keychain
+import app.snapsync.ports.SecureStore
 import app.snapsync.ports.readExisting
 
 /**
@@ -27,15 +26,15 @@ import app.snapsync.ports.readExisting
  * only bound on that — which is a reason never to lengthen it.
  */
 class KeychainAttestStore(
-    private val tokenItem: Keychain = IosKeychain(service = "app.snapsync.attest", account = "token"),
-    private val keyIdItem: Keychain = IosKeychain(service = "app.snapsync.attest", account = "keyid"),
+    private val tokenItem: SecureStore = IosKeychain(service = "app.snapsync.attest", account = "token"),
+    private val keyIdItem: SecureStore = IosKeychain(service = "app.snapsync.attest", account = "keyid"),
 ) : AttestStore {
 
-    override fun token(): String? = readExisting(tokenItem, ACCESSIBLE_AFTER_FIRST_UNLOCK)
+    override fun token(): String? = readExisting(tokenItem)
 
     override fun setToken(token: String) = tokenItem.write(token)
 
-    override fun keyId(): String? = readExisting(keyIdItem, ACCESSIBLE_AFTER_FIRST_UNLOCK)
+    override fun keyId(): String? = readExisting(keyIdItem)
 
     override fun setKeyId(keyId: String) = keyIdItem.write(keyId)
 

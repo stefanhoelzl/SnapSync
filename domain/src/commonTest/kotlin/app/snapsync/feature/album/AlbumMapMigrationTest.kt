@@ -1,6 +1,7 @@
 package app.snapsync.feature.album
 
-import app.snapsync.ports.KeychainRead
+import app.snapsync.ports.SecureStoreRead
+import app.snapsync.ports.StoredProtection
 import kotlin.test.Test
 import kotlin.test.assertEquals
 
@@ -12,7 +13,7 @@ class AlbumMapMigrationTest {
 
     @Test
     fun `a legacy keychain map is migrated`() {
-        val source = albumMapSource(stored = null, legacy = KeychainRead.Found(legacyMap, "WhenUnlocked"))
+        val source = albumMapSource(stored = null, legacy = SecureStoreRead.Found(legacyMap, StoredProtection.RESTRICTED))
 
         assertEquals(AlbumMapSource.Migrate(legacyMap), source)
     }
@@ -21,14 +22,14 @@ class AlbumMapMigrationTest {
     fun `once migrated the app group wins and the keychain is never consulted again`() {
         // Even if a legacy item somehow still existed, an App-Group value takes precedence — so a second
         // read cannot re-migrate (and cannot resurrect a stale map over a newer one).
-        val source = albumMapSource(stored = migratedMap, legacy = KeychainRead.Found(legacyMap, "WhenUnlocked"))
+        val source = albumMapSource(stored = migratedMap, legacy = SecureStoreRead.Found(legacyMap, StoredProtection.RESTRICTED))
 
         assertEquals(AlbumMapSource.Current(migratedMap), source)
     }
 
     @Test
     fun `a fresh install has nothing anywhere`() {
-        assertEquals(AlbumMapSource.Current(null), albumMapSource(stored = null, legacy = KeychainRead.Absent))
+        assertEquals(AlbumMapSource.Current(null), albumMapSource(stored = null, legacy = SecureStoreRead.Absent))
     }
 
     // An unreadable legacy item must not be mistaken for "no album map": concluding the map is empty
@@ -36,7 +37,7 @@ class AlbumMapMigrationTest {
     // and deleting the item would lose the mapping for good.
     @Test
     fun `an unreadable legacy item defers rather than deleting or emptying`() {
-        val source = albumMapSource(stored = null, legacy = KeychainRead.Unavailable(-25308))
+        val source = albumMapSource(stored = null, legacy = SecureStoreRead.Unavailable("OSStatus -25308"))
 
         assertEquals(AlbumMapSource.Retry, source)
     }

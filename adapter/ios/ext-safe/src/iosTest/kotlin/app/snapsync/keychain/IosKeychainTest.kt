@@ -1,7 +1,7 @@
 package app.snapsync.keychain
 
-import app.snapsync.ports.KeychainRead
-import app.snapsync.ports.KeychainUnavailable
+import app.snapsync.ports.SecureStoreRead
+import app.snapsync.ports.SecureStoreUnavailable
 import app.snapsync.ports.readExisting
 import app.snapsync.ports.resolveOrMint
 
@@ -43,7 +43,7 @@ class IosKeychainTest {
      * The half of capability `architecture-guards`'s argument that containment cannot supply: Konsist
      * proves all Keychain code lives in this module; this proves this module always writes items a
      * locked device can read. [IosKeychain.writtenAttributes] is the single source that both `write` and
-     * `migrateAccessibility` build their dictionaries from, so it cannot drift from what is applied.
+     * `migrateProtection` build their dictionaries from, so it cannot drift from what is applied.
      */
     @Test
     fun `every written item carries AfterFirstUnlock`() {
@@ -70,12 +70,15 @@ class IosKeychainTest {
     fun `an inaccessible keychain reads as Unavailable and never as Absent`() {
         val read = keychain.read()
 
-        assertIs<KeychainRead.Unavailable>(
+        assertIs<SecureStoreRead.Unavailable>(
             read,
             "a refusal is 'I could not look', never 'there is nothing there' — conflating the two minted " +
                 "a new device id on a locked phone and aborted the process",
         )
-        assertTrue(read.status != 0, "an unavailable read must carry the OSStatus, for the device log")
+        assertTrue(
+            read.detail.isNotBlank(),
+            "an unavailable read must carry the adapter's diagnostic, for the device log",
+        )
     }
 
     /** The never-mint invariant, end to end, through the real adapter. */
@@ -83,8 +86,8 @@ class IosKeychainTest {
     fun `resolving against an inaccessible keychain mints nothing and writes nothing`() {
         var generated = false
 
-        val failure = assertFailsWith<KeychainUnavailable> {
-            resolveOrMint(keychain, ACCESSIBLE_AFTER_FIRST_UNLOCK) {
+        val failure = assertFailsWith<SecureStoreUnavailable> {
+            resolveOrMint(keychain) {
                 generated = true
                 "a-brand-new-identity"
             }
@@ -94,14 +97,14 @@ class IosKeychainTest {
             !generated,
             "minting here is what orphans a device's byte partition and ledger, and re-uploads its library",
         )
-        assertTrue(failure.status != 0)
-        assertIs<KeychainRead.Unavailable>(keychain.read(), "the failed resolve must leave nothing behind")
+        assertTrue(failure.detail.isNotBlank())
+        assertIs<SecureStoreRead.Unavailable>(keychain.read(), "the failed resolve must leave nothing behind")
     }
 
     /** `readExisting` (the config path) must draw the same line: unreadable is not absent. */
     @Test
     fun `readExisting on an inaccessible keychain raises rather than reporting no value`() {
-        assertFailsWith<KeychainUnavailable> { readExisting(keychain, ACCESSIBLE_AFTER_FIRST_UNLOCK) }
+        assertFailsWith<SecureStoreUnavailable> { readExisting(keychain) }
     }
 
     /**
