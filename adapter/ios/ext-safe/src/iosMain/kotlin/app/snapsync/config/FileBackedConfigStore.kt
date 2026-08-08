@@ -4,7 +4,6 @@ package app.snapsync.config
 
 import app.snapsync.model.EventConfig
 import app.snapsync.model.encodeConfigFile
-import app.snapsync.model.isConfigFileAbsence
 import app.snapsync.ports.ConfigFileRead
 import app.snapsync.ports.ConfigRead
 import app.snapsync.ports.ConfigReader

@@ -20,30 +20,11 @@ class UploadKeysTest {
         assertEquals("X-live.mov", live)
     }
 
-    @Test
-    fun original_resource_types_map_to_roles() {
-        assertEquals(ResourceRole.PRIMARY, resourceRole(1L)) // photo
-        assertEquals(ResourceRole.PRIMARY, resourceRole(2L)) // video
-        assertEquals(ResourceRole.PRIMARY, resourceRole(3L)) // audio
-        assertEquals(ResourceRole.LIVE, resourceRole(9L)) // pairedVideo
-    }
-
-    @Test
-    fun edit_artifacts_raw_alternate_and_unknown_types_are_dropped() {
-        // 4 alternatePhoto (RAW), 5 fullSizePhoto, 6 fullSizeVideo, 7 adjustmentData,
-        // 8 adjustmentBasePhoto, 10 fullSizePairedVideo, and any future/unknown type.
-        for (type in listOf(4L, 5L, 6L, 7L, 8L, 10L, 99L)) {
-            assertNull(resourceRole(type), "type $type should be dropped")
-        }
-    }
-
-    @Test
-    fun an_edited_live_photo_yields_only_its_originals() {
-        // An edited Live Photo exposes its originals (photo + pairedVideo) alongside edit artifacts
-        // (a full-size render, adjustment data, a full-size paired video). Only the originals survive.
-        val exposed = listOf(1L, 9L, 5L, 7L, 10L)
-        assertEquals(listOf(ResourceRole.PRIMARY, ResourceRole.LIVE), exposed.mapNotNull { resourceRole(it) })
-    }
+    // The platform resource-type → role table moved to `:adapter:ios:ext-safe`
+    // (`photoKitResourceRole`) with the `PHAssetResourceType` constants it reads. Asserting it here
+    // meant asserting bare integers against bare integers: nothing in a JVM run could disagree, and
+    // an ABI table written in literals is invisible to every gate. Its tests moved with it and now
+    // name Apple's constants, including the edited-Live-Photo case.
 
     @Test
     fun missing_extension_falls_back_to_bin() {

@@ -36,5 +36,8 @@ kotlin {
             implementation(libs.coroutines.core)
             implementation(libs.kermit)
         }
+        commonTest.dependencies {
+            implementation(kotlin("test"))
+        }
     }
 }

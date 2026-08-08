@@ -14,11 +14,14 @@ fun resourcesFrom(rawAssets: List<RawAsset>): List<Resource> =
     rawAssets.flatMap { asset ->
         val assetId = normalizeAssetId(asset.assetId)
         asset.rawResources.mapNotNull { raw ->
-            val role = resourceRole(raw.type) ?: return@mapNotNull null
+            val role = raw.role ?: return@mapNotNull null
             Resource(
                 filename = uploadKey(assetId, role, raw.originalFilename),
                 assetId = assetId,
-                contentType = raw.contentTypeUti,
+                // The resolved MIME, not the platform's own type identifier: this is what the upload
+                // provider sends as `Content-Type`, and what the ledger row has always preferred
+                // (spec `gallery-status`). The two used to disagree, with the UTI on the wire.
+                contentType = raw.mimeContentType,
                 metadata = mapOf(
                     RESOURCE_META_CREATION_DATE to asset.creationDate,
                     RESOURCE_META_ORIGINAL_FILENAME to raw.originalFilename,

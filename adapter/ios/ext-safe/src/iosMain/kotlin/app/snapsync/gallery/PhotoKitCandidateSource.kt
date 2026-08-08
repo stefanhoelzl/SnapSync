@@ -127,9 +127,12 @@ private class PhotoKitCandidate(
         val rawResources = PHAssetResource.assetResourcesForAsset(asset).map { any ->
             val resource = any as PHAssetResource
             RawResource(
-                type = resource.type, // raw PHAssetResourceType value — un-mapped
-                contentTypeUti = resource.uniformTypeIdentifier,
-                // Apple's UTI→MIME table stays iOS-only; commonMain must not reimplement it.
+                // The role, not the raw PHAssetResourceType: the ABI table is this module's
+                // (`photoKitResourceRole`), so no platform value crosses the seam.
+                role = photoKitResourceRole(resource.type),
+                // Apple's UTI→MIME table stays iOS-only; commonMain must not reimplement it — and
+                // the resolved MIME is now the ONLY content type reported, so the UTI never reaches
+                // `Resource.contentType` or the wire.
                 mimeContentType = UTType.typeWithIdentifier(resource.uniformTypeIdentifier)?.preferredMIMEType
                     ?: "application/octet-stream",
                 originalFilename = resource.originalFilename,

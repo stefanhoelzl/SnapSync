@@ -154,6 +154,12 @@ class WorldInspectorController(private val scope: CoroutineScope) {
             world.permission.set(if (armedGrants) PermissionStatus.GRANTED else PermissionStatus.DENIED)
         }
         override fun openSettings() = appendConsole("openSettings() — use the Permission segment instead")
+
+        // No limited-library picker exists off device. The outcome a real picker produces — a new
+        // selection snapshot — is the world's `changeSelection` lever, so the console says where to
+        // reach for it rather than pretending the sheet opened.
+        override fun choosePhotos() =
+            appendConsole("choosePhotos() — no picker off device; drive World.changeSelection(...) for the outcome")
     }
 
     // ---- engine console -------------------------------------------------------------------------

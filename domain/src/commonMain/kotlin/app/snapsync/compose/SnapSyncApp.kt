@@ -51,6 +51,7 @@ import app.snapsync.model.Resource
 import app.snapsync.model.SelectionScope
 import app.snapsync.model.grantsPhotoAccess
 import app.snapsync.model.UserCommands
+import app.snapsync.ports.Clock
 import app.snapsync.ports.AlbumManager
 import app.snapsync.ports.AlbumMapStore
 import app.snapsync.ports.AttestClient
@@ -71,12 +72,14 @@ import app.snapsync.ports.EventDirectory
 import app.snapsync.ports.EventUnionSource
 import app.snapsync.ports.DeviceManifestStore
 import app.snapsync.ports.Enrollment
+import app.snapsync.ports.LeaveNotifier
 import app.snapsync.ports.LedgerStore
 import app.snapsync.ports.LogScope
 import app.snapsync.ports.PhotoAccessRequester
 import app.snapsync.ports.PhotoAccessStatusSource
 import app.snapsync.ports.CandidateSource
 import app.snapsync.ports.ImportedAssetPresence
+import app.snapsync.ports.SharePresenter
 import app.snapsync.ports.StagedBytes
 import app.snapsync.ports.PhotoLibraryImporter
 import app.snapsync.ports.PhotoSelectionChangeSource
@@ -98,7 +101,7 @@ import kotlinx.coroutines.withContext
  * supplies them here; [snapSyncApp] composes the feature graph.
  *
  * Some inputs are deliberately **lambdas built by the shell**: the coordination hooks ([provision],
- * [onEventMinted], [notifyLeave]) bridge into the shell's entry surfaces; [uploadProducer] is the
+ * [onEventMinted]) bridge into the shell's entry surfaces; [uploadProducer] is the
  * resolved tier's *mechanism* thunk — since step 8 C3 the shell selects it via the pure sealed
  * `resolveComposition` switch (spec `module-architecture`, "One shared composition"), so only the
  * selected tier's mechanism is ever constructed; [albumExcludedAssetIds]
@@ -109,10 +112,16 @@ class AppPorts(
     val configSource: ConfigSource,
     val configStore: ConfigStore,
     val photoAccess: PhotoAccessStatusSource,
-    /** The photo-access request/Settings surface — the port behind the bundle's `requestAccess` /
-     *  `openSettings` user-tap commands (migration step 9: presentation fires them through the
-     *  bundle and never names the port). */
+    /** The photo-access request/Settings/picker surface — the port behind the bundle's `requestAccess` /
+     *  `openSettings` / `choosePhotos` user-tap commands (migration step 9: presentation fires them
+     *  through the bundle and never names the port). `choosePhotos` was a separate
+     *  `presentPhotoPicker: () -> Unit` field until this port absorbed it: it is the same need — hand the
+     *  user back to the system to widen what this app may see — answered through the same read-models. */
     val photoAccessRequester: PhotoAccessRequester,
+    /** The platform share surface for the invite URL — the platform half of the [UserCommands.share]
+     *  command, and a port rather than the `(String) -> Unit` the shell used to fill with a UIKit
+     *  presenter. [SharePresenter.None] keeps it inert off-device, where there is no surface to reach. */
+    val sharePresenter: SharePresenter = SharePresenter.None,
     /**
      * The **main lane** (spec `module-architecture`, law "Dispatcher lanes are fixed by the
      * composition"): the dispatcher platform-UI commands run on — `share`, `requestAccess`,
@@ -142,13 +151,16 @@ class AppPorts(
      */
     val assetPresence: ImportedAssetPresence = ImportedAssetPresence.Unanswerable,
     /**
-     * Releases the staged bytes of settled rows (capability `download-store`). Defaults to a no-op: a
-     * composition with no staging of its own has nothing to release, and failing to free disk is the one
-     * harmless failure among these ports.
+     * Where downloaded bytes are staged, and who releases them once their row settles (capability
+     * `download-store`).
+     *
+     * **Required, no longer defaulted.** It used to default to [StagedBytes.None] on the reasoning that
+     * failing to free disk is the one harmless failure among these ports — true of releasing, and false
+     * of the staging root this port now also owns (previously the separate `downloadStagingRoot: () ->
+     * String` lambda, which had no default for exactly that reason). A composition that cannot say where
+     * bytes land must not be able to download at all.
      */
-    val stagedBytes: StagedBytes = StagedBytes.None,
-    /** The durable download-staging directory — read lazily (an App-Group container lookup on iOS). */
-    val downloadStagingRoot: () -> String,
+    val stagedBytes: StagedBytes,
     val newDownloadTransport: (DownloadTransportHost) -> DownloadTransport,
     val union: EventUnionSource,
     val directory: EventDirectory,
@@ -175,7 +187,12 @@ class AppPorts(
     /** The device-identity resolve; throws while protected data is unavailable. Kept a thunk so no
      *  composition-time resolve can abort a locked background launch. */
     val deviceId: () -> String,
-    val now: () -> Long,
+    /** Wall-clock now, through the port that has always existed for it (`ports/Time.kt`). This was a
+     *  `() -> Long` lambda the shell filled with an inline `NSDate()` call — a platform read supplied
+     *  to the core past a seam built for exactly this (spec `module-architecture`). Two clocks were
+     *  therefore live in one composition: this one for the domain, `SystemClock` for the UI
+     *  formatter, and a test could pin one and leave the other running. */
+    val clock: Clock,
     /** The **app-driven** upload mechanism — always composed (it serves iOS 18–26.0 fully and every
      *  OS under a partial grant); a thunk so it resolves lazily. Which composed producer RUNS is the
      *  tested arm's decision, by current permission (`upload-lifecycle`). */
@@ -190,7 +207,13 @@ class AppPorts(
      *  calls it on a cutoff-lowering so the next cycle re-enumerates and back-shares the newly-in-scope
      *  older photos on both tiers. Default no-op keeps other compositions unaffected. */
     val clearDiscoveryCursor: () -> Unit = {},
-    val notifyLeave: suspend (eventId: String) -> Unit,
+    /** Tells the shared event this device is leaving (capability `leave-event`). This was
+     *  `notifyLeave: suspend (eventId) -> Unit`, a lambda the shell built by closing over the adapter
+     *  AND this device's id — a backend call reaching out of the process behind a type indistinguishable
+     *  from in-core coordination. The id now lives where it is a constant: in the adapter (see
+     *  [LeaveNotifier]). The `flow/` and `feature/` consumers still take a lambda, which `compose/`
+     *  builds from this port — they may not name a port at all (law "flow/ never references ports/"). */
+    val leaveNotifier: LeaveNotifier,
     val provision: suspend (EventConfig) -> Unit,
     val onEventMinted: suspend (eventId: String) -> Unit,
     /** Crash/error reporting (capability `crash-reporting`). Required — a tier that forgot it would
@@ -222,12 +245,6 @@ class AppPorts(
     val pumpForeground: suspend () -> Unit = {},
     /** Queue the download import-tail backstop `BGProcessingTask` (`photo-download` 5.4). */
     val scheduleBackstop: suspend () -> Unit = {},
-    /** Present the platform share surface for the invite URL (`UIActivityViewController` on iOS) —
-     *  the platform half of the [UserCommands.share] command; the default keeps it inert off-device. */
-    val share: (String) -> Unit = {},
-    /** Present the platform's limited-library picker — the platform half of the
-     *  [UserCommands.choosePhotos] command (capability `limited-photo-access`); inert off-device. */
-    val presentPhotoPicker: () -> Unit = {},
     /** The upload arm's silent-push receiver on the app-driven tier, or `null` on iOS ≥26.1. A thunk so
      *  the tier controller (which depends on this graph) resolves lazily, never at composition time. */
     val uploadSilentPush: () -> (suspend (eventId: String) -> Unit)? = { null },
@@ -276,7 +293,7 @@ class AppCore internal constructor(
             client = ports.attestClient,
             store = ports.attestStore,
             deviceId = ports.deviceId,
-            now = ports.now,
+            clock = ports.clock,
         )
     }
 
@@ -369,7 +386,9 @@ class AppCore internal constructor(
     // Background byte transfers → durable staging. The queue, bounded window, and cancellation
     // lifecycle live in the tested feature; the transport is the shell's adapter thunk.
     val downloadJobs: QueuedPhotoDownloadJobs by lazy {
-        QueuedPhotoDownloadJobs(scope, ports.downloadStagingRoot(), ports.newDownloadTransport)
+        // The staging root is read from the port that also releases those bytes, at first use rather
+        // than at composition — on iOS it is an App-Group container lookup (capability `download-store`).
+        QueuedPhotoDownloadJobs(scope, ports.stagedBytes.stagingRoot(), ports.newDownloadTransport)
     }
 
     // The download orchestrator: union → foreign selection → download → import → suppression.
@@ -433,6 +452,28 @@ class AppCore internal constructor(
         )
     }
 
+    /**
+     * The backend-leave effect the leave use-case and the switch path both fire (capability
+     * `leave-event`) — the [LeaveNotifier] port wrapped as the `suspend (eventId) -> Unit` its two
+     * consumers take. Built here because `flow/Provision` may not name a port at all (law "flow/ never
+     * references ports/"), and `LeaveEvent` takes the same shape so the two paths cannot diverge.
+     *
+     * The port's failed [Result] is **logged, not propagated**: leaving is best-effort by contract and
+     * the local teardown has already completed by the time this runs, so there is nothing to roll back.
+     * Logging it is what keeps the accepted abandon-leak (a backend membership left in place) from being
+     * silent — the drop used to be invisible at every layer (spec `module-architecture`, "Absence is
+     * never silent").
+     */
+    private val notifyLeave: suspend (eventId: String) -> Unit = { eventId ->
+        ports.leaveNotifier.notifyLeaving(eventId).onFailure { failure ->
+            ports.log.w(failure) {
+                "leave notify failed for $eventId — this device is gone locally; the backend membership " +
+                    "remains until the sweep (the accepted abandon-leak)"
+            }
+        }
+        Unit
+    }
+
     // The leave use-case: stop the producer, clear the config (which flips the screen off the joined
     // layer), then notify the backend fire-and-forget. It destroys no dedup state.
     val leaveEvent: LeaveEvent by lazy {
@@ -441,7 +482,7 @@ class AppCore internal constructor(
             configSource = ports.configSource,
             stopUploads = { uploadArm.onLeave() },
             scope = scope,
-            notifyLeave = ports.notifyLeave,
+            notifyLeave = notifyLeave,
         )
     }
 
@@ -494,7 +535,7 @@ class AppCore internal constructor(
         MembershipRefresh(
             configSource = ports.configSource,
             store = ports.configStore,
-            now = { instantToCutoff(Instant.fromEpochMilliseconds(ports.now())) },
+            now = { instantToCutoff(ports.clock.now()) },
             leaveEvent = leaveEvent,
         )
     }
@@ -546,13 +587,13 @@ class AppCore internal constructor(
      * event and either report its id (mint-only) or forward a synthesized `autoJoin` link the shell wires
      * to `onOpenUrl`. Distinct from [eventCreator] (which routes into the interactive, tap-gated join
      * gate). `now` supplies the canonical `…Z` default for a payload with no `startsAt`, derived from the
-     * same `ports.now` epoch-millis clock every other seam uses.
+     * same `ports.clock` every other seam uses.
      */
     val headlessCreate: HeadlessCreate by lazy {
         HeadlessCreate(
             client = ports.eventCreation,
             log = ports.log,
-            now = { instantToCutoff(Instant.fromEpochMilliseconds(ports.now())) },
+            now = { instantToCutoff(ports.clock.now()) },
         )
     }
 
@@ -699,7 +740,7 @@ class AppCore internal constructor(
             downloadController = downloadController,
             albumCoordinator = albumCoordinator,
             activeEventId = { ports.configSource.config.value?.eventId },
-            notifyLeave = ports.notifyLeave,
+            notifyLeave = notifyLeave,
             saveConfig = { cfg -> ports.configStore.save(cfg) },
             refreshStatus = { refreshStatusSources() },
             // Usable access (`grantsPhotoAccess`): this gate feeds only ensureAlbum's granted
@@ -815,7 +856,7 @@ class AppCore internal constructor(
             // Share is pure platform (a system sheet over the top view controller). Decorated like the
             // rest: presenting the sheet is still a tap, and an unattributed line is the thing this
             // instrumentation exists to eliminate.
-            share = { url -> onUiLane("tap.share") { ports.share(url) } },
+            share = { url -> onUiLane("tap.share") { ports.sharePresenter.share(url) } },
             // The permission user-taps (capability `permission-gate`), bound to the requester port here
             // so presentation never names it (migration step 9). `requestAccess` returns nothing and
             // cannot suspend — the grant arrives only via the permission read-model StateFlow.
@@ -823,7 +864,7 @@ class AppCore internal constructor(
             openSettings = { onUiLane("tap.openSettings") { ports.photoAccessRequester.openSettings() } },
             // The picker presentation is platform surface; the selection outcome arrives only via
             // the selection-change seam (fire-and-forget, like every command here).
-            choosePhotos = { onUiLane("tap.choosePhotos") { ports.presentPhotoPicker() } },
+            choosePhotos = { onUiLane("tap.choosePhotos") { ports.photoAccessRequester.choosePhotos() } },
             // In-place membership reconfigure (capability `reconfigure-membership`): edit direction/
             // cutoff/album without leaving. Distinct from `openSettings` (the iOS system settings page).
             reconfigure = { eventId, direction, minPhotoDate, maxPhotoDate, saveToAlbum ->

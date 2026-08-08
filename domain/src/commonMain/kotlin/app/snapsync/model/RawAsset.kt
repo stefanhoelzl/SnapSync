@@ -2,19 +2,26 @@ package app.snapsync.model
 
 /**
  * A single platform resource as **raw facts**, before any sync/fan-out decision (capability
- * `gallery-status`, the Move A walk seam). The decision-free walk ([RawAssetSource]) emits these; the
- * pure [resourcesFrom] mapping turns them into engine `Resource`s. No role filter, no key derivation,
- * no normalization is applied here.
+ * `gallery-status`, the Move A walk seam). The decision-free walk emits these; the pure
+ * [resourcesFrom] mapping turns them into engine `Resource`s. No key derivation and no normalization
+ * is applied here.
  *
- * - [type] is the **raw** `PHAssetResourceType` value (a stable ABI integer), un-mapped to any role.
- * - [mimeContentType] is resolved **iOS-side** (via `UTType.preferredMIMEType`) and carried out as a
- *   raw fact — `commonMain` must not reimplement Apple's UTI→MIME table (see the gallery-status spec).
- * - [handle] is the opaque `PHAssetResource`; it rides through `commonMain` uninterpreted into
+ * Every field is a **platform-independent fact**: the adapter resolves the platform's own encodings
+ * before reporting, rather than reporting both forms and leaving the core to pick (spec
+ * `module-architecture`). It previously carried a raw `PHAssetResourceType` integer *beside* the
+ * role, and an Apple UTI *beside* the resolved MIME — and the core reached for the platform one in
+ * both cases.
+ *
+ * - [role] is the resource's neutral place in its asset, resolved platform-side; `null` means the
+ *   resource carries no role we upload and [resourcesFrom] drops it.
+ * - [mimeContentType] is resolved **iOS-side** (via `UTType.preferredMIMEType`, falling back to
+ *   `application/octet-stream`) — `commonMain` must not reimplement Apple's UTI→MIME table (see the
+ *   gallery-status spec).
+ * - [handle] is the opaque platform resource; it rides through `commonMain` uninterpreted into
  *   `Resource.data` (a JVM stand-in is valid), exactly as `Resource.data`/`PlatformUploadJob.handle` do.
  */
 class RawResource(
-    val type: Long,
-    val contentTypeUti: String,
+    val role: ResourceRole?,
     val mimeContentType: String,
     val originalFilename: String,
     val handle: Any,

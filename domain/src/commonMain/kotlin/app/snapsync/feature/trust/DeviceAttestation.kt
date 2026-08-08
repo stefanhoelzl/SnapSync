@@ -1,6 +1,7 @@
 package app.snapsync.feature.trust
 
 import app.snapsync.ports.AttestClient
+import app.snapsync.ports.Clock
 import app.snapsync.ports.AttestKey
 import app.snapsync.ports.AttestStore
 
@@ -55,7 +56,7 @@ class DeviceAttestation(
     private val client: AttestClient,
     private val store: AttestStore,
     private val deviceId: () -> String,
-    private val now: () -> Long,
+    private val clock: Clock,
     private val log: Logger = Logger.withTag("DeviceAttestation"),
 ) {
 
@@ -107,7 +108,7 @@ class DeviceAttestation(
     /** Whether [token] is missing, expired, or close enough to expiry to renew now. */
     fun isStale(token: String?): Boolean {
         val expiry = token?.let(::tokenExpirySeconds) ?: return true
-        return expiry - (now() / 1000) < RENEW_WHEN_REMAINING_SECONDS
+        return expiry - clock.now().epochSeconds < RENEW_WHEN_REMAINING_SECONDS
     }
 
     /**

@@ -19,23 +19,15 @@ enum class ResourceRole(val wire: String) {
     LIVE("live"),
 }
 
-/**
- * Map a `PHAssetResourceType` raw value (its raw values are a stable ABI) to the generic [ResourceRole]
- * we upload, or `null` when the resource is **dropped** — a non-original edit artifact (full-size
- * renders, adjustment data, adjustment-base media), the RAW `alternatePhoto`, or a proxy. Only the
- * originals are kept, so an asset's resource set is fixed at capture and never grows: `photo`/`video`/
- * `audio` → [PRIMARY], `pairedVideo` → [LIVE].
- */
-/**
- * Absence: null means "a PhotoKit resource type this policy carries no role for" — one answer for an
- * unknown type and for one deliberately not carried, because the caller skips the resource either
- * way. A pure mapping over an OS enum: nothing here can fail as opposed to not-match.
- */
-fun resourceRole(resourceType: Long): ResourceRole? = when (resourceType) {
-    1L, 2L, 3L -> ResourceRole.PRIMARY // photo, video, audio (the asset's single original primary)
-    9L -> ResourceRole.LIVE // pairedVideo (the Live Photo's original paired video)
-    else -> null // 4 alternatePhoto(RAW), 5/6 fullSize*, 7 adjustmentData, 8 adjustmentBase*, 10 …, proxies
-}
+// The mapping from a platform resource-type value to [ResourceRole] lives with the platform, in
+// `:adapter:ios:ext-safe`'s `PhotoKitResourceRole.kt`. It used to sit here as a `when` over the raw
+// `PHAssetResourceType` integers — an ABI table written in bare literals, which no import- or
+// token-based gate can see and which a second platform's integers would silently collide with. The
+// adapter now reports the role itself, which is the platform-independent fact (spec
+// `module-architecture`, "Ports are the I/O boundary named for the need").
+//
+// [ResourceRole] itself stays here: it is the neutral vocabulary, and it was already neutral — the
+// adapter was reporting the raw type *beside* it rather than instead of it.
 
 /**
  * Normalize a raw PHAsset `localIdentifier` into the `assetId` used in keys and the suppression match:

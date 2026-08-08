@@ -38,12 +38,11 @@ class MainLaneContainmentTest {
         // Presents the system share sheet over the top view controller; UIKit is main-thread-only.
         "/adapter/ios/app-only/src/iosMain/kotlin/app/snapsync/share/IosShareSheet.kt" to
             "presents UIActivityViewController",
-        // Presents the limited-library picker; same reason.
-        "/adapter/ios/app-only/src/iosMain/kotlin/app/snapsync/permission/PresentLimitedLibraryPicker.kt" to
-            "presents PHPicker",
-        // Opens the Settings URL and observes UIApplication notifications; both are main-thread-only.
+        // Opens the Settings URL, presents the limited-library picker (`choosePhotos`, absorbed from
+        // the former top-level PresentLimitedLibraryPicker.kt), and observes UIApplication
+        // notifications; all three are main-thread-only.
         "/adapter/ios/app-only/src/iosMain/kotlin/app/snapsync/permission/PhotoLibraryPermission.kt" to
-            "UIApplication.openURL + a UIApplication notification observer",
+            "UIApplication.openURL + presentLimitedLibraryPicker + a UIApplication notification observer",
         // The app shell: injects the lane into the composition (`AppPorts.uiLane`), reads the
         // main-thread-only `isProtectedDataAvailable`, and observes UIApplication lifecycle
         // notifications. The ONE place in the app process that may name the lane.

@@ -81,19 +81,13 @@ fun decodeConfigFile(text: String): ConfigFileDecode {
         .fold(onSuccess = ConfigFileDecode::Valid, onFailure = { ConfigFileDecode.Unusable })
 }
 
-/**
- * Whether a file-read error means the file is **genuinely absent** — the only error class that may
- * read as "no config" (settle-list ⑥, decision record: `changes/archive/…-migrate-config-to-app-group-file`).
- *
- * Grounded on Apple's data-protection contract: reading a **protected** file before first unlock
- * fails with a permission-class error (`NSFileReadNoPermissionError` 257 / POSIX `EPERM`), never
- * with not-found — so not-found (`NSFileReadNoSuchFileError` 260, `NSFileNoSuchFileError` 4, POSIX
- * `ENOENT` 2) is definitive absence, and **any other error whatsoever** is *unreadable*: the
- * caller must defer, exactly as an unreadable Keychain item defers. Admitting an unknown error
- * into the absent class would recreate the false-leave bug this whole seam exists to prevent.
- */
-fun isConfigFileAbsence(domain: String?, code: Long): Boolean = when (domain) {
-    "NSCocoaErrorDomain" -> code == 260L || code == 4L
-    "NSPOSIXErrorDomain" -> code == 2L
-    else -> false
-}
+// The classifier that decides whether a file-read error means genuine absence lives beside the
+// platform errors it reads, in the iOS adapter (`ConfigFileAbsence.kt` in `:adapter:ios:ext-safe`).
+// It used to sit here so it could be exercised in `commonTest` on both targets — but its inputs are
+// an `NSError` domain and code, so a JVM run asserted integer literals against themselves and could
+// not fail. Beside its inputs it can assert against the real Cocoa and POSIX constants instead
+// (spec `module-architecture`, "Ports are the I/O boundary named for the need").
+//
+// What stays here is the neutral vocabulary the adapter reports into: [ConfigFileRead] in `ports/`,
+// whose three cases are the platform-independent fact, and the rule that turns a `Missing` into a
+// leave, which lives in `configReadViaFile`.
