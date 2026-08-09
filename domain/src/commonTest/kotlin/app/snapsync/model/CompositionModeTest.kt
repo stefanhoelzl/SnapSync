@@ -17,7 +17,9 @@ class CompositionModeTest {
     // model/'s to make): only "in_sync" is recognized here.
     private val recognizes: (String) -> Boolean = { it == "in_sync" }
 
-    private val device = OsFacts(backgroundUploadSupported = true, isSimulator = false)
+    // The only OS input the resolver takes: whether the ≥26.1 background-upload API is present.
+    private val modernOs = true
+    private val oldOs = false
 
     @Test
     fun `forge wins over a co-present event link - the shipped forge×link bug`() {
@@ -26,7 +28,7 @@ class CompositionModeTest {
             eventLink = "https://snapsync.stho.net/join#v=3&d=abc",
         )
 
-        val mode = resolveComposition(directives, device, recognizes)
+        val mode = resolveComposition(directives, modernOs, recognizes)
 
         // Forge, not Live — the event link is ignored while forging, so the live stack is never booted.
         assertEquals(CompositionMode.Forge("in_sync"), mode)
@@ -36,7 +38,7 @@ class CompositionModeTest {
     fun `an unrecognized forge state falls through to the live stack`() {
         val directives = LaunchDirectives.NONE.copy(forgeState = "nonsense")
 
-        val mode = resolveComposition(directives, device, recognizes)
+        val mode = resolveComposition(directives, modernOs, recognizes)
 
         // Exactly as `SNAPSYNC_FORGE_STATE=nonsense` renders the live production stack today.
         assertIs<CompositionMode.Live>(mode)
@@ -44,36 +46,25 @@ class CompositionModeTest {
 
     @Test
     fun `no directives on a modern device resolves to the PhotoKit tier`() {
-        val mode = resolveComposition(LaunchDirectives.NONE, device, recognizes)
+        val mode = resolveComposition(LaunchDirectives.NONE, modernOs, recognizes)
 
-        assertEquals(CompositionMode.Live(UploadTier.PHOTOKIT, useBackgroundSession = true), mode)
+        assertEquals(CompositionMode.Live(UploadTier.PHOTOKIT), mode)
     }
 
     @Test
     fun `an old OS resolves to the URLSession tier`() {
-        val old = OsFacts(backgroundUploadSupported = false, isSimulator = false)
+        val mode = resolveComposition(LaunchDirectives.NONE, oldOs, recognizes)
 
-        val mode = resolveComposition(LaunchDirectives.NONE, old, recognizes)
-
-        assertEquals(CompositionMode.Live(UploadTier.URL_SESSION, useBackgroundSession = true), mode)
+        assertEquals(CompositionMode.Live(UploadTier.URL_SESSION), mode)
     }
 
     @Test
     fun `the force flag selects the URLSession tier even on a modern OS`() {
         val directives = LaunchDirectives.NONE.copy(forceUrlSessionUpload = true)
 
-        val mode = resolveComposition(directives, device, recognizes)
+        val mode = resolveComposition(directives, modernOs, recognizes)
 
-        assertEquals(CompositionMode.Live(UploadTier.URL_SESSION, useBackgroundSession = true), mode)
-    }
-
-    @Test
-    fun `a simulator downgrades off the background session`() {
-        val simulator = OsFacts(backgroundUploadSupported = false, isSimulator = true)
-
-        val mode = resolveComposition(LaunchDirectives.NONE, simulator, recognizes)
-
-        assertEquals(CompositionMode.Live(UploadTier.URL_SESSION, useBackgroundSession = false), mode)
+        assertEquals(CompositionMode.Live(UploadTier.URL_SESSION), mode)
     }
 
     @Test

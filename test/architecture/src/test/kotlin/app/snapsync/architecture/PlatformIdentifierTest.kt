@@ -107,7 +107,8 @@ class PlatformIdentifierTest {
     private val accepted: Map<String, Set<String>> = mapOf(
         // The `UploadTier` members the pure `resolveComposition` selects. They name upload *tiers*
         // this app defines — not platform APIs the core calls — and the resolver is a total function
-        // over `OsFacts`, so a second tier is a new member, not a new coupling. Accepted, not deferred.
+        // over its inputs (the parsed directives plus one `backgroundUploadSupported` boolean), so a
+        // second tier is a new member, not a new coupling. Accepted, not deferred.
         "domain/src/commonMain/kotlin/app/snapsync/model/CompositionMode.kt" to setOf("PHOTOKIT", "URL_SESSION"),
     )
 

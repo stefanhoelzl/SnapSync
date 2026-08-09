@@ -68,11 +68,6 @@ class IosUrlSessionUploadPlatform(
     private val appGroup: String,
     sessionIdentifier: String,
     private val cap: Int = 4,
-    // Background session (transfers survive suspension) on real devices. The iOS **simulator** does not
-    // support background NSURLSession — getAllTasks never calls back and transfers never run — so the
-    // dev/test-forced path uses a default (foreground) session, letting the sim exercise the real
-    // staging → PUT → delegate → ledger flow (only the "continues while suspended" property is lost).
-    useBackgroundSession: Boolean = true,
     // The ledger's current REQUESTED keys — used to reconcile stranded rows (a task lost across process
     // death) precisely, instead of a blanket clear. Supplied by the composition root (which reads it).
     private val pendingKeys: suspend () -> Set<String>,
@@ -96,15 +91,33 @@ class IosUrlSessionUploadPlatform(
         onEventsFinished = { onBackgroundEventsFinished?.invoke() },
     )
 
-    private val useBackground = useBackgroundSession
     private val sessionId = sessionIdentifier
+
+    /**
+     * One transport, every host — a **background** session, so transfers survive suspension
+     * (`ios-url-session-upload`).
+     *
+     * This used to be a choice: the simulator was downgraded to a foreground session on the belief that
+     * "the iOS simulator does not support background NSURLSession — `getAllTasks` never calls back and
+     * transfers never run". **That was never measured, and it is false.** Measured 2026-08-09 on
+     * `iosSimulatorArm64` (macOS 26.5.2 / Xcode 26.6): a session built from
+     * `backgroundSessionConfigurationWithIdentifier` answered `getAllTasksWithCompletionHandler`, and an
+     * `uploadTaskWithRequest(…, fromFile:)` executed through to `didCompleteWithError` with the task
+     * ending `NSURLSessionTaskStateCompleted`. The spec had said so in two places the whole time.
+     *
+     * ⚠️ What that measurement covers is the **transport**. Whether the OS relaunches a terminated app to
+     * deliver `handleEventsForBackgroundURLSession` on a simulator is **NOT** evidenced by it — the probe
+     * ran in an `xctest` host that stayed alive and had no app bundle — and remains unproven. Do not read
+     * this note as "background `URLSession` works on the simulator, full stop".
+     *
+     * Decision record: `changes/archive/…-delete-simulator-session-downgrade`.
+     */
     private val session: NSURLSession by lazy {
-        val config = if (useBackground) {
-            NSURLSessionConfiguration.backgroundSessionConfigurationWithIdentifier(sessionId)
-        } else {
-            NSURLSessionConfiguration.defaultSessionConfiguration()
-        }
-        NSURLSession.sessionWithConfiguration(config, delegate = delegate, delegateQueue = null)
+        NSURLSession.sessionWithConfiguration(
+            NSURLSessionConfiguration.backgroundSessionConfigurationWithIdentifier(sessionId),
+            delegate = delegate,
+            delegateQueue = null,
+        )
     }
 
     private val stagingDir: NSURL? by lazy {
