@@ -245,7 +245,8 @@ and **no `EventStatusSource`** (the ledger is private to the extension, which al
 reconciliation — see `event-rejoin-reconciliation`).
 
 The root SHALL resolve its composition **once per process** through the pure sealed resolver
-(`model/`'s `resolveComposition` over the parsed `LaunchDirectives` and `OsFacts`) and SHALL switch
+(`model/`'s `resolveComposition` over the parsed `LaunchDirectives` and the one OS capability fact,
+whether the ≥26.1 background-upload API is present) and SHALL switch
 on the resolved `CompositionMode` in exactly **one** place, selecting a per-mode shell delegate
 (forge or live, with the live tier's mechanism thunks bound in the same switch). Every OS entry
 point (`onForeground` / `onBackground` / `onOpenUrl` / `onPushToken` / `onSilentPush` /
