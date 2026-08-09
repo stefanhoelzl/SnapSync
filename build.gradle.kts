@@ -66,6 +66,14 @@ dependencyAnalysis {
 val appShellSources = files(
     "app/ios/src",
     "app/ios/extension/src",
+    // Compiled INTO `:app:ios` under `-Psnapsync.rig=true`, so it is shell source for gate purposes
+    // even though it lives in `:test:rig`'s tree (capability `architecture-guards`, "Source contributed
+    // into a shell's source set is shell source for the gates"). Listed rather than exempted: the gates
+    // select by PATH, so an unlisted contributed directory would make the shells' decision-free
+    // guarantee true only of the part someone remembered — and a rule a reader must remember is the
+    // failure mode these gates exist to remove. `KotlinShellGuardTest.shellSourceRoots` mirrors this
+    // list and must move with it.
+    "test/rig/src/hook",
 )
 
 // The detekt plugin registers its own `detekt` task against the ROOT project's Kotlin source set —

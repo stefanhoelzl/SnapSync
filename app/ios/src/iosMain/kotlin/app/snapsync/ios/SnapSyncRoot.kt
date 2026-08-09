@@ -198,7 +198,11 @@ object SnapSyncRoot {
      * (`model/CompositionMode.kt`). Forge excludes the live-stack boot — including an event link
      * (the shipped forge×link bug is now a resolver precedence test, not a shell guard).
      */
-    private val mode: CompositionMode =
+    // `internal` (not `private`) for the same single reason as [app]: the rig's contributed hook reports
+    // the resolved composition on `/health`, and reading the value the app actually resolved is the only
+    // way to report it without a second resolution that could disagree. `internal` is module-wide and is
+    // not exported to the `SnapSyncKit` ObjC header.
+    internal val mode: CompositionMode =
         resolveComposition(directives, backgroundUploadSupported(), ::isForgeState)
 
     /**
@@ -342,7 +346,11 @@ object SnapSyncRoot {
      */
     private val unreportedImports = UnreportedImports()
 
-    private val app: AppCore by lazy {
+    // `internal`, not `private`, solely so the rig's contributed hook — compiled INTO this module under
+    // `-Psnapsync.rig=true` — can pass it as a thunk without anything being widened to `public`.
+    // `internal` is module-wide and is NOT exported to the `SnapSyncKit` ObjC header, so no framework
+    // surface changes and no production build can reach it from outside this module.
+    internal val app: AppCore by lazy {
         // Only [LiveShell] entry points ever reach this graph — [ForgeShell] has no route here — so
         // the tier thunks resolve through the one mode switch; the cast documents (and enforces,
         // loudly) that a forge launch composes no live core.

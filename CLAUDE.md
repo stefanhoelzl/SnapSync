@@ -94,6 +94,9 @@ tools/ config/ gradle/            more build tooling
   `iosSimulatorArm64Test`s -> load **`ssh-mac-build`**. (`xcodebuild`, `ssh-mac.yml`)
 - **Testing a backend change against a real device** -> load **`local-backend`** first; it owns the
   three-hop chain and the one step whose omission is silent. (`deno task dev:local|dev:tunnel`)
+- **Forcing an OS callback on device, or reading live app state over HTTP** — the build-time-only
+  control channel (`-Psnapsync.rig=true`, `/state`, `/logs`, `/trigger/…`) -> load **`rig-channel`**.
+  It needs the same device lease as `ios-device`. (`:test:rig`, `usbmux forward`)
 - **Apple portal chores** - certificates, device UDIDs, provisioning profiles, bundle-id
   capabilities, App Store / TestFlight text metadata -> load **`asc-portal`**. (`app-store-connect`)
 
@@ -302,6 +305,7 @@ git add screenshots/ && git commit
 :test:architecture     test-only JVM guards for invariants the compiler cannot express (capability architecture-guards), all gating ./gradlew build: the zone gates (model-purity, ports→model, feature-blindness, flow-no-ports, presentation-imports), KeychainContainmentTest (no SecItem* outside :adapter:ios:ext-safe — catches fully-qualified calls, which no linter can see on iosMain), the extension-safety gate (no platform.UIKit/BackgroundTasks in extension-linked source), RuntimeIdentityTest (every OS-held literal exactly once), the entitlements guard (never raise default-data-protection to NSFileProtectionComplete — it would make every App-Group file unreadable while locked, killing the background tier), SwiftShellGuardTest + KotlinShellGuardTest (the shell decision pins, exact in both directions; detektAppShell itself gates inside check), ModuleSetTest (settings == the target module set), MixedPortImplTest (no port interface beside a technology impl), DeletionLedgerTest (the migration's retired dead weight stays dead), FakeHonestyTest, LawsDigestTest, RunbookSkillsTest (every skill CLAUDE.md's Runbooks block points at exists, and the ios-device skill's SNAPSYNC_* launch-trigger index equals the literals in production Kotlin - the two duplicates the runbook split deliberately keeps, held loud-when-stale), EventLink guards
 :test:integration      test-only: seam → UI-state integration over :test:world — asserts UiState AND world outcomes (objects landed, ledger COMPLETED, foreign photos imported)
 :test:harness-driver   test-only dev infra (non-gating, no spec): serves EITHER desktop harness over HTTP with no window — composes the shipped ForgeHarnessRoot/WorldHarnessRoot into an offscreen Compose scene (CPU raster Skia; no X server, no screen-capture portal) so an agent can click the real buttons and read back the real pixels + semantics tree. Runbook above; rationale in Driver.kt
+:test:rig              test-only dev infra (non-gating, no spec): the CONTROL CHANNEL — a Ktor CIO server linked into :app:ios ONLY under -Psnapsync.rig=true, so an agent can force OS-callback entry points and read live state over usbmux forward. Contained at COMPILE TIME (a production build contains none of it); it contributes its own call site into :app:ios rather than making the shell carry a seam. The one module that may depend on ktor-server-*. Runbook: load the `rig-channel` skill
 iosApp/                Xcode project (app + upload-extension targets) — not Gradle
 ```
 
@@ -325,6 +329,10 @@ gated in `./gradlew build`; a violation is a red build, not a review note.
 - **The module set withholds; packages organize** — a module exists only to withhold a
   third-party/platform dep by compile error (platform-free `:domain`, M3 in `:ui:components`,
   extension-safety adapter split); everything finer is a package with a derived text gate.
+- **A build-time-only module is contained by compilation, not by a runtime check** — a test-only
+  module may link into a shipped-format binary only under a build property; without it the build
+  contains NO source of that module (no stub, no inert branch), and it contributes its own call
+  site rather than making a shell carry a permanent seam.
 - **Zones inside the core** — `:domain` is `model/` ← `ports/` ← `feature/` ← `flow/` ←
   `compose/`; features never reference a sibling feature; `flow/` never references `ports/`.
 - **Ports are the I/O boundary named for the need** — anything touching an external system (time,

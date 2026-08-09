@@ -30,8 +30,28 @@ kotlin {
         }
     }
 
+    // ---- The dev/test control channel (`:test:rig`), contained at COMPILE TIME ------------------
+    //
+    // `-Psnapsync.rig=true` adds BOTH the module and the source directory it contributes; without the
+    // property it adds NEITHER, so a production build contains no rig source at all — not a stub, not an
+    // inert branch (spec `module-architecture`, "A build-time-only module is contained by compilation").
+    // That is why this change alters no `ios-app-shell` requirement: nothing shipped can observe the rig
+    // or the env var its hook reads.
+    //
+    // The contributed directory compiles INTO this module, which is what lets it reach
+    // `SnapSyncRoot.app` at `internal` visibility without widening anything to `public`. It is listed in
+    // the root build's `appShellSources`, so it is gated like any other shell source.
+    val rigEnabled = providers.gradleProperty("snapsync.rig").map(String::toBoolean).getOrElse(false)
+
     sourceSets {
+        // Both together, or neither: the contributed call site and the module it names cannot be
+        // half-present. Inside `sourceSets { }` because `iosMain` is created by the hierarchy template
+        // and does not exist as a named source set before this block runs.
+        if (rigEnabled) {
+            iosMain { kotlin.srcDir("../../test/rig/src/hook/kotlin") }
+        }
         iosMain.dependencies {
+            if (rigEnabled) implementation(project(":test:rig"))
             api(project(":domain"))
             implementation(project(":ui:screens"))
             implementation(project(":ui:presentation"))
