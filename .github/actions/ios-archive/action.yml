@@ -82,38 +82,48 @@ runs:
         java-version: 25
     - uses: gradle/actions/setup-gradle@v5
 
-    # Cache the Kotlin/Native toolchain + compiled klibs. Keyed on libs.versions.toml so a
-    # Kotlin/Native bump invalidates the cache — and on the BUILD CONFIGURATION, because a Debug
-    # link builds per-dependency compiler caches (Compose, Skiko, …) into ~/.konan on first use:
-    # a Debug-family entry saved WITH those caches is what turns the branch gate's link from ~6 min
-    # (cold cache build, measured run 29819814274) into ~1 min (warm, matching the ssh-mac 57 s
-    # measurement). Without the config in the key, the shared entry is saved by whichever job runs
-    # first after a libs bump — typically a Release archive or ios-test, neither of which builds the
-    # Debug device caches — and every branch push then rebuilds them from scratch. GitHub cache
-    # scoping still applies: a Debug-family entry saved on a branch is visible only to that branch,
-    # so the FIRST push of each branch pays the cold build and saves; later pushes restore warm.
-    # restore-keys fall back to the same-config family, then any konan entry (ios-test's plain
-    # `konan-<os>-…` key included), so a cold start still reuses the toolchain + klibs.
+    # Cache the Kotlin/Native TOOLCHAIN (~/.konan = the 1.6 GB prebuilt compiler + 497 MB of
+    # dependencies). That is ALL this entry holds, and the distinction is load-bearing.
     #
-    # THE RUN ID IS APPENDED ON main ONLY, and the asymmetry is the whole point — leave it. Because
-    # actions/cache saves in its post-step only when the primary key MISSED, a key that rotates just
-    # with libs.versions.toml stops being written as soon as it exists: the Release entry main owns
-    # was observed frozen at its last dependency bump (2026-07-21, 18 days stale), every later run
-    # logging "Cache hit occurred on the primary key …, not saving cache". That hash is also blind to
-    # a new module joining the iosArm64 closure, which grows ~/.konan with no version change. On main
-    # the run id makes the key unique, so every archive refreshes the Release family.
-    #   On a BRANCH the key deliberately stays stable: the Debug family is seeded ONCE per branch by
-    # its first push (that is the 6 min → 1 min win measured above) and later pushes MUST keep hitting
-    # it. Rotating it there would upload a ~510 MB entry on every push into a cache budget that is
-    # already at its 10 GB ceiling — buying nothing, since the first push already captured the Debug
-    # device caches. Same reason ios.yml's ios-test saves on main only; see its restore step.
-    - name: Cache Kotlin/Native (~/.konan)
-      uses: actions/cache@v5
+    # ⚠️ This step used to be keyed on the BUILD CONFIGURATION, on the premise that "a Debug link
+    # builds per-dependency compiler caches (Compose, Skiko, …) into ~/.konan", making a Debug-family
+    # entry worth ~6 min → ~1 min on the branch gate. THAT PREMISE IS FALSE — measured 2026-08-09 on
+    # macos-26 / Kotlin 2.4.0: a Debug device link writes NOTHING to ~/.konan. There is no
+    # ~/.konan/cache directory at all (~/.konan/dependencies/cache is 0 B, untouched since the runner
+    # image was built), and no file anywhere under ~/.konan is modified by a build. Kotlin/Native does
+    # not build per-dependency compiler caches for an iOS DEVICE target — corroborated independently
+    # by `-Pkotlin.native.cacheKind.iosArm64=none` being a measured no-op (paired runs: 24 s / 28 s
+    # static vs 28 s none). So a per-configuration key partitioned the cache for no benefit.
+    #
+    # What the archive actually costs, profiled in CI via a Gradle init script (run 31329437059,
+    # 6.9 min archive): `:app:ios:linkDebugFrameworkIosArm64` 248.8 s and
+    # `:app:ios:extension:linkDebugFrameworkIosArm64` 44.8 s — 71% of the step — against ~1 s of
+    # Gradle configuration. That is CPU-bound linking of the Compose/Skiko closure on a 3-core runner.
+    # No ~/.konan entry can shorten it. Do not re-add a configuration-keyed key expecting to.
+    #
+    # RESTORE AND SAVE ARE SPLIT, and saving is GATED TO main — the same pattern, for the same
+    # reasons, as ios.yml's ios-test (see its comment). Two things forced it here:
+    #   * actions/cache writes its post-step entry only when the primary key MISSED. With the old
+    #     branch key (stable, no run id) a branch MISSED every time and therefore SAVED every time —
+    #     a ~510 MB entry per push, into a 10 GB budget that was already over (10.92 GB, evicting).
+    #   * GitHub cache scoping means a branch's entry is visible ONLY to that branch. Branches here
+    #     are one-ship-and-deleted (across 40 consecutive ios.yml runs, every branch appeared exactly
+    #     once), so those entries were never restorable by anything: 1.53 GB of the budget was pure
+    #     orphan, evicting main's live entries. main OWNS the entry; every branch run is a consumer.
+    # The run id in the primary key makes it never hit, so the restore always falls through to
+    # restore-keys (newest match wins) and main's save always writes a fresh entry — the same
+    # stale-entry trap ios-test documents (both konan families were once frozen 18 days).
+    - name: Restore Kotlin/Native (~/.konan)
+      id: konan
+      uses: actions/cache/restore@v5
       with:
         path: ~/.konan
-        key: konan-${{ runner.os }}-${{ inputs.build-config }}-${{ hashFiles('gradle/libs.versions.toml') }}${{ github.ref == 'refs/heads/main' && format('-{0}', github.run_id) || '' }}
+        # Narrow → broad: this family's newest entry, then any konan entry at all (ios-test's plain
+        # `konan-<os>-…` family included), so a cold runner still lands on a toolchain rather than
+        # downloading 1.6 GB.
+        key: konan-${{ runner.os }}-${{ hashFiles('gradle/libs.versions.toml') }}-${{ github.run_id }}
         restore-keys: |
-          konan-${{ runner.os }}-${{ inputs.build-config }}-
+          konan-${{ runner.os }}-${{ hashFiles('gradle/libs.versions.toml') }}-
           konan-${{ runner.os }}-
 
     # Compile the background-upload extension's Kotlin core (the shipping iosArm64 framework). The
@@ -207,3 +217,14 @@ runs:
           CURRENT_PROJECT_VERSION="$CPV" \
           $XCB_OVERRIDES \
           archive
+
+    # main OWNS the ~/.konan entry; branch runs are pure consumers (see the restore step). Deliberately
+    # last and deliberately un-`always()`-ed: a failed archive can leave ~/.konan half-written, and a
+    # poisoned entry on main would have to be deleted by hand. actions/cache's post-step had no such
+    # protection — which is the other half of why the combined step was split.
+    - name: Save Kotlin/Native (~/.konan)
+      if: github.ref == 'refs/heads/main'
+      uses: actions/cache/save@v5
+      with:
+        path: ~/.konan
+        key: ${{ steps.konan.outputs.cache-primary-key }}
