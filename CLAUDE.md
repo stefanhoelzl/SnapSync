@@ -169,6 +169,42 @@ measured across July–August). `cd` into a **sub**directory is a different thin
 `.claude/settings.json` rather than exported per call, and why a `P=…` shorthand must be defined in
 the same call that uses it.
 
+### Reading the Apple SDK from Linux (`klib dump-metadata`)
+
+**"I'd need a Mac to check that" is wrong for a whole class of questions.** The Kotlin/Native
+distribution ships **prebuilt platform klibs**, and they are the compiler's own input — so what an
+Apple API *declares* is readable here, in under a second, with no Xcode:
+
+```
+K=~/.konan/kotlin-native-prebuilt-linux-x86_64-$(grep -oP '^kotlin = "\K[^"]+' gradle/libs.versions.toml)
+$K/bin/klib dump-metadata $K/klib/platform/ios_arm64/org.jetbrains.kotlin.native.platform.Photos
+```
+
+Answers **enum case sets and their values**, **property nullability**, selector encodings, and
+deprecations. It settled three things in one sitting (2026-08-09) that had each been treated as
+device-only: `PHAssetResourceUploadJobState` declares exactly five cases (so a table's `else` was
+absorbing a *known* state, not just hypothetical ones); `PHAssetResourceUploadJob.destination` and
+`.resource` are declared **non-null** and are nil at runtime (the two widenings in
+`IosPhotoKitUploadPlatform` are load-bearing, not redundant `?`); and `PHAssetResourceUploadJob` has
+no `statusCode`, so its `responseHeaderFields` cannot yield one. `:test:architecture`'s
+`PlatformVocabularyPinTest` pins the declared sets from this same source, so a case Apple adds fails
+the Kotlin bump rather than reaching a device untaught.
+
+⚠️ **This does not contradict the law "a platform-capability claim is settled by a compile, not by a
+symbol table"** — they answer different questions, and conflating them is how `Dispatchers.IO` was
+misread:
+
+| question | authority |
+|---|---|
+| *can I **call** this?* | the symbol table over-promises (visible but `internal`, present but unlinkable) — **settle it with a compile** |
+| *what does this **declare**?* | the klib **is** the compile's input — authoritative by construction |
+| *what does the **device** do?* | neither — only a measurement |
+
+The third row is the one that keeps this honest: the runtime may return a value no header carries, and
+the prebuilt klib reflects the SDK **Kotlin/Native** was built against, not the iOS version on the
+phone. So the declared vocabulary tracks the **Kotlin version** in `libs.versions.toml`, not the
+locally installed Xcode — which is why the pin fires on a Kotlin bump.
+
 ## Test UI (review/exercise every UI state)
 
 `./gradlew :app:desktop:runForge` launches the forge harness (module `:app:desktop`, which hosts BOTH
