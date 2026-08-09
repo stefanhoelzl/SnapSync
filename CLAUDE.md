@@ -206,8 +206,40 @@ $P developer dvt launch app.snapsync \                           # subscribe to 
   --env SNAPSYNC_EVENT_LINK="https://snapsync.stho.net/join#v=3&d=<base64url({\"eventId\":\"<uuid>\",\"autoJoin\":true})>" --userspace
 # ⚠️ `"autoJoin":true` is REQUIRED for a headless join: without it the link opens the interactive
 # join gate — a confirmation dialog awaiting a tap no headless run can give (spec `ios-app-shell`).
+$P developer dvt process-id-for-bundle-id app.snapsync --userspace # the app's pid, or `0` when not running
 uvx pymobiledevice3 apps pull app.snapsync Documents/debug.log   # pull the file logger (re-provision line, etc.)
 ```
+(`--userspace` is applied **automatically** for developer commands on iOS 17+ — without it you get one
+failed lockdown attempt, a `WARNING Trying again over a no-root userspace tunnel`, then the same result.
+Passing it explicitly just skips that first attempt.)
+
+⚠️ **There is no `dvt ps`.** The process-listing commands are `proclist` (full JSON) and
+`process-id-for-bundle-id <bundle>` (the pid alone). A `dvt ps` invocation is a **click usage error,
+exit 2, that never reaches the device** — so with stderr discarded it prints nothing, which reads
+exactly like *"the app isn't running"*. That is how a kill-before-install guard sat inert across ten
+invocations and two days (2026-08-09), costing two wedged installers and ~2 h. Absence collapsed into
+silence, in the one place the two causes have opposite consequences.
+
+**Device-op timeouts — measured, ≤3× headroom.** These are all 1–9 s operations. The 30–300× budgets an
+agent reaches for by default do not buy safety; they convert a wedge into a ten-minute stall instead of
+an immediate, diagnosable error. Measured on the SE2 (iOS 26.6, 2026-08-09; 3–5 samples each, warm
+`uvx` cache):
+
+| op | measured | use |
+|---|---|---|
+| `usbmux list` | 0.5 s | `timeout 3` |
+| `dvt process-id-for-bundle-id` | 1.1 s | `timeout 3` |
+| `dvt signal <pid> <sig>` | 1.3 s | `timeout 4` |
+| `dvt proclist` | 1.9 s | `timeout 5` |
+| `apps pull` `debug.log` | 1.8 s at 2.3 MB (≈5 s at the 10 MB roll cap) | `timeout 15` |
+| `dvt launch` | 3.5–4.7 s | `timeout 15` |
+| `apps install` (25 MB IPA, app **not** running) | 8.4–9.0 s | `timeout 30` |
+
+Pay the **cold `uvx` resolve once** — 12.9 s on an empty cache, which would blow every budget above:
+`timeout 40 uvx --python 3.14 pymobiledevice3 --version >/dev/null`. Set the **Bash tool's** timeout to
+the sum of the inner budgets + 5 s. It is **capped at 600 s**, so a larger request is silently clamped
+(ask for 900 s, get 600 s) — and an inner `timeout 600` then can never fire first, leaving you a bare
+`Exit code 143` instead of the command's own output.
 
 **Seeding a large photo library.** `SNAPSYNC_SEED_PHOTOS=<n>` is a second dev/test launch-env trigger
 (`app/ios/.../DevPhotoSeeder.kt`): on launch the app creates `<n>` synthetic `PHAsset`s dated from
@@ -431,7 +463,9 @@ event.
 only send **SIGTERM**, which SnapSync ignores; a relaunch then layers a new instance on the
 still-alive old one and the app sticks on a **black launch screen** (status bar visible, content
 black). To truly restart: `dvt signal <pid> 9` (SIGKILL) **then** `dvt launch` (verified recovery).
-Take the screenshot promptly after a single launch; avoid rapid relaunch cycles.
+Get `<pid>` from the last `dvt launch` (it prints it), or — when you don't have it, which is every fresh
+session — from `dvt process-id-for-bundle-id app.snapsync`, **never** `dvt ps` (see above: it does not
+exist and fails silently). Take the screenshot promptly after a single launch; avoid rapid relaunch cycles.
 
 **The headless per-build loop:** the ssh-mac loop builds the dev IPA (below) → `apps install` → `dvt launch --env
 SNAPSYNC_EVENT_LINK=…` (use a **fresh event id**, per the note above, or the reconcile will seed
@@ -584,14 +618,30 @@ Install a dev IPA you already have (run Python tools via `uvx`, never a global i
 wants the **bare** socket path, no `UNIX:` prefix):
 ```
 export USBMUXD_SOCKET_ADDRESS=/run/host/run/usbmuxd
-uvx pymobiledevice3 apps install <path>/SnapSync.ipa
+uvx pymobiledevice3 apps install <path>/SnapSync.ipa   # ⚠️ only when the app is NOT running — see below
 ```
 (Install goes over `installation_proxy`/lockdownd — no developer tunnel needed. Launch, screenshot,
 and other DVT services do need the tunnel + DDI, reached headless via `--userspace` above.)
 **Reinstall hangs if the app is running** — `installation_proxy` stalls at "…% Complete" forever when
 replacing a **running** app (the first install of a fresh session is fine because nothing is running
-yet). SnapSync ignores SIGTERM (see the black-screen trap), so **SIGKILL it first**: `dvt signal <pid>
-9 --userspace`, then install. Get `<pid>` from the last `dvt launch` (it prints it).
+yet). SnapSync ignores SIGTERM (see the black-screen trap), so **SIGKILL it first**. The lookup has
+**three** answers, not two — running, not running, and *couldn't tell* — and collapsing the third into
+the second is precisely what let a dead guard pass for a clean device:
+```
+export USBMUXD_SOCKET_ADDRESS=/run/host/run/usbmuxd
+P="uvx --python 3.14 pymobiledevice3"
+OUT=$(timeout 3 $P developer dvt process-id-for-bundle-id app.snapsync 2>&1)
+PID=$(printf '%s\n' "$OUT" | grep -oE '^[0-9]+$' | tail -1)   # a pid, `0`, or NOTHING (= it failed)
+if [ "$PID" = "0" ]; then echo "app not running"
+elif [ -n "$PID" ]; then timeout 4 $P developer dvt signal "$PID" 9 >/dev/null && echo "SIGKILLed $PID"
+else echo "LOOKUP FAILED — do not install:"; printf '%s\n' "$OUT" | tail -5; exit 1
+fi
+timeout 30 uvx pymobiledevice3 apps install <path>/SnapSync.ipa 2>&1 | tail -1
+```
+A clean install of the 25 MB IPA is **~9 s**. Past ~30 s it is a **wedged installer**, not a slow
+transfer: iOS answers `IXErrorDomain Code=32 "Coordinator superseded"`, and retrying immediately stacks
+another coordinator and makes it worse (measured 2026-08-09: five concurrent installers, ~2 h before
+anything installed again). SIGKILL the app, wait a minute, retry **once** — never loop.
 
 ### Headless macOS build loop (ssh-mac)
 
@@ -738,7 +788,8 @@ codesign -v "$EXT" && codesign -v "$APP"
 rm -rf Payload && mkdir Payload && cp -R "$APP" Payload/ && zip -qry SnapSync.ipa Payload
 SIGN
 scp -o ProxyCommand=... runner@<HOST>:artifacts/SnapSync.ipa "$S/"
-uvx pymobiledevice3 apps install "$S/SnapSync.ipa"                          # over usbmuxd, as above
+uvx pymobiledevice3 apps install "$S/SnapSync.ipa"                          # SIGKILL THE APP FIRST — see
+                                                                           # *Sideload a dev IPA* above
 sshmac 'touch /tmp/ssh-mac-stop'                                            # end the session
 ```
 Same one-time device prerequisites as *Sideload a dev IPA* (registered UDID + Developer Mode). The
