@@ -30,18 +30,31 @@ while it holds the phone):
 ch-bg scripts/device-lease "<why you need the phone>"      # blocks; THIS process is the lease
 ```
 
-You are asked to confirm once, at the acquire — then every device command in this workspace runs
-without further prompting. **Release by killing that shell** (session death releases it too; a
-`SIGKILL`ed lease is reclaimed automatically, since liveness is checked by pid, not by a timeout).
-`scripts/device-guard` (a `PreToolUse` hook wired in `.claude/settings.json`) **denies** device
-commands with no lease, and denies them while **another** workspace holds one — naming the holder,
-its reason and its age, so you report and wait instead of racing it (two concurrent installers wedge
-`installation_proxy` for both of you). Take it from a live holder only deliberately:
-`ch-bg scripts/device-lease --steal "<why>"`.
+**Nothing asks you to confirm a free phone** — "is it taken?" is a fact `scripts/device-guard` reads
+off the lock file. Every device command in this workspace then runs without prompting. **Release by
+killing that shell** (session death releases it too; a `SIGKILL`ed lease is reclaimed automatically,
+since liveness is checked by pid, not by a timeout).
+
+**If another workspace holds it, queue — never race** (two concurrent installers wedge
+`installation_proxy` for both of you). The wait is a **second, separate invocation**, backgrounded
+and **NOT** under `ch-bg`, because waiting *is* this workspace being busy:
+
+```
+scripts/device-lease --wait          # exits when the phone is free: DEVICE-LEASE WAIT RESULT: free (…)
+ch-bg scripts/device-lease "<why>"   # then claim it — the acquire is always its own call
+```
+
+It waits **unbounded**, printing the holder, its reason and its **age** every 60s; that growing age
+is the signal that a session was abandoned. The gap between the two calls is real — if someone else
+claims first, the acquire exits 1 and tells you to `--wait` again. Taking it from a **live** holder
+is the one thing you are asked to confirm, because it kills that workspace's session mid-run:
+`ch-bg scripts/device-lease --steal "<why>"` (the guard denies a steal when there is nothing live to
+steal from — use the plain acquire).
 
 **Outside the fence** — no lease needed, because they mutate nothing and never race: `usbmux list`,
-`idevice_id`, `ideviceinfo`. The lease runs one itself before claiming anything, so a missing phone is
-reported as *"no device connected"* rather than leased as if present. Everything else that speaks to
+`idevice_id`, `ideviceinfo`. The **acquire** runs one itself before claiming anything, so a missing
+phone is reported as *"no device connected"* rather than leased as if present (`--wait` runs none — it
+watches the lock file, not the phone). Everything else that speaks to
 the phone — `apps install`/`pull`/`list`/`uninstall`, every `developer` subcommand, the syslog and
 crash-report tools — is inside.
 
