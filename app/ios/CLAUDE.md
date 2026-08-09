@@ -2,9 +2,11 @@
 
 The iOS platform layer. **Wiring-only and untested** (root `CLAUDE.md` hard rule): all testable
 logic — shared *or* iOS-specific — lives in `domain`/`capability` modules under test; nothing
-testable is parked here. This doc covers what is specific to the iOS surface. For on-device
-testing, sideloading, and App Store Connect chores see the **root `CLAUDE.md`**; for architecture
-and resolved decisions see the `openspec/specs/` contracts and their `Decision record:` pointers into `openspec/changes/archive/`.
+testable is parked here. This doc covers what is specific to the iOS surface — the **structure**, not
+the operator procedure. For on-device testing load the **`ios-device`** skill, for builds and signing
+**`ssh-mac-build`**, for portal chores **`asc-portal`** (root `CLAUDE.md` → *Runbooks*); for
+architecture and resolved decisions see the `openspec/specs/` contracts and their `Decision record:`
+pointers into `openspec/changes/archive/`.
 
 ## Two processes, two frameworks
 
@@ -203,39 +205,19 @@ the tier's mechanism thunks; no entry point re-checks a flag:
   same `:domain` feature/upload `UploadCycle` through the `BackgroundUploadPump`. On this tier the **app**
   is the single `LedgerWriter` (no extension process exists).
 
-**Forcing the app-driven tier on a device** (`SNAPSYNC_FORCE_URLSESSION_UPLOAD=1` as a launch env var, as
-with `SNAPSYNC_EVENT_LINK`) is the **only way to exercise the 18–26.0 tier on the agent-driveable SE2**,
-which runs iOS 26.5 and would otherwise take the PhotoKit path. It selects the **tier and nothing else**:
-the transport stays a background `URLSession` (simulator-ness is read from `SIMULATOR_DEVICE_NAME`, not
-inferred from this flag), and the PhotoKit extension is never registered. It previously did all three
-wrong — foreground transport, *and* it still enabled the extension, giving two `LedgerWriter`s over one
-App-Group ledger — which made the SE2 an unfaithful proxy that masked bugs rather than exposing them.
+**Forcing the app-driven tier on a device** (`SNAPSYNC_FORCE_URLSESSION_UPLOAD=1`) is the only way to
+exercise the 18–26.0 tier on the agent-driveable SE2, which runs iOS 26.5. It selects the **tier and
+nothing else** — the transport stays a background `URLSession` (simulator-ness is read from
+`SIMULATOR_DEVICE_NAME`, not inferred from this flag), and the PhotoKit extension is never registered.
+It previously did all three wrong — foreground transport, *and* it still enabled the extension, giving
+two `LedgerWriter`s over one App-Group ledger — which made the SE2 an unfaithful proxy that masked bugs
+rather than exposing them.
 
-**Deregister the extension first** (≥26.1 devices only). The OS's upload-job registration record lives in
-the **system**, not the app, and survives app relaunch/reinstall. So once a device has run the PhotoKit
-tier, the OS keeps invoking the extension even under the force flag — the flag stops the app from
-*registering* it, but nothing *de*registers it — and the extension will happily upload behind the
-app-driven tier's back (two `LedgerWriter`s again, and it silently does the work you think you are
-testing). Turn it off headlessly with a **download-only** join on the PhotoKit tier (no force flag), which
-drives `arm.onProvision → photokit.stop → setUploadJobExtensionEnabled(false)`:
-
-```
-d=$(python3 -c "import json,base64;print(base64.urlsafe_b64encode(json.dumps(
-  {'eventId':'<uuid>','autoJoin':True,'minPhotoDate':'2001-01-01T00:00:00Z','direction':'download'}
-).encode()).decode().rstrip('='))")
-$P developer dvt launch app.snapsync --env SNAPSYNC_EVENT_LINK="https://snapsync.stho.net/join#v=3&d=$d" --userspace
-```
-
-Then relaunch with the force flag **and a fresh deeplink for whatever you are actually testing** — the
-download-only config above persists otherwise, and the app-driven tier will then correctly decline every
-cycle (`cycle skipped — this membership contributes nothing`), which looks exactly like a broken test rig.
-That decline is new: before the direction gate landed, this same sequence — deregister via a download-only
-join, then relaunch forced — uploaded the device's whole post-cutoff library, because the app-driven tier
-honoured no direction at all. If you are chasing a historical report from that era, that is the explanation.
-
-Verify with `grep -c 'photokit\.'` on the app log (expect 0) and by checking the **extension's**
-`debug.log` stops gaining `cycle finished` lines. Irrelevant on a real 18–26.0 device, where no appex can
-exist at all.
+⚠️ The OS's upload-job registration lives in the **system**, not the app, and survives relaunch and
+reinstall — so on a ≥26.1 device the extension must be **deregistered first** or it uploads behind the
+app-driven tier's back. That procedure, its verification, and the rest of the on-device loop are in the
+**`ios-device`** skill (root `CLAUDE.md` → *Runbooks*). Irrelevant on a real 18–26.0 device, where no
+appex can exist at all.
 
 ## Gotchas
 

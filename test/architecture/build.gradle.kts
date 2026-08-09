@@ -63,6 +63,12 @@ tasks.test {
             // alone leaves the task UP-TO-DATE — the precise staleness the guard exists to catch.
             include("CLAUDE.md")
             include("openspec/specs/module-architecture/spec.md")
+            // `RunbookSkillsTest`'s subjects (capability `architecture-guards`): CLAUDE.md's runbook
+            // pointers must resolve to these files, and `ios-device`'s launch-trigger index must equal
+            // the `SNAPSYNC_*` literals in production Kotlin. Without them declared, renaming or
+            // deleting a skill leaves this task UP-TO-DATE — a dangling pointer is invisible by
+            // construction, so a guard that stops re-running is the same as no guard at all.
+            include(".claude/skills/*/SKILL.md")
             include("iosApp/Configuration/Config.xcconfig")
             include("iosApp/iosApp/Info.plist")
             // The Swift shell. It is wiring-only and UNTESTED by the project's hard rule — which is
