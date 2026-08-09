@@ -86,6 +86,17 @@ class SqlDelightDownloadStore(database: DownloadDatabase) : DownloadStore {
         q.clearCreatedLocalId(ref.sourceDeviceId, ref.sourceAssetId)
     }
 
+    /**
+     * The success mirror. The marker guard is in the SQL, so a completion whose marker has moved on
+     * updates no row rather than settling one it no longer describes.
+     */
+    override fun confirmCreatedLocalId(ref: AssetRef, createdLocalId: String) {
+        q.confirmCreatedLocalId(ref.sourceDeviceId, ref.sourceAssetId, createdLocalId)
+    }
+
+    override suspend fun isUnconfirmedWith(ref: AssetRef, createdLocalId: String): Boolean =
+        q.isUnconfirmedWith(ref.sourceDeviceId, ref.sourceAssetId, createdLocalId).executeAsOne()
+
     override suspend fun importedCount(): Int = q.countImported().executeAsOne().toInt()
 
     override suspend fun assetCount(): Int = q.countAssets().executeAsOne().toInt()

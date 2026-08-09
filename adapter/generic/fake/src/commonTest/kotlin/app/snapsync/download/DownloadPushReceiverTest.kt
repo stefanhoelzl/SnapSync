@@ -1,6 +1,7 @@
 package app.snapsync.download
 
 import app.snapsync.feature.download.DownloadController
+import app.snapsync.feature.download.UnreportedImports
 import app.snapsync.feature.download.DownloadPushReceiver
 import app.snapsync.ports.EventUnionSource
 import app.snapsync.ports.ImportResult
@@ -46,6 +47,7 @@ class DownloadPushReceiverTest {
     private fun receiver(union: RecordingUnion, active: String?): DownloadPushReceiver {
         val controller = DownloadController(
             union, InMemoryDownloadStore(), NoopJobs(), NoopImporter(), InMemoryAssetPresence(),
+            unreported = UnreportedImports(),
             myDeviceId = myDevice,
             // These tests exercise the ACTIVE-EVENT guard, which is orthogonal to the direction gate
             // (capability `photo-download`) — so state a downloading membership explicitly. The gate no

@@ -104,6 +104,10 @@ class FakePhotoLibraryImporter(
     private val recordCreatedLocalId: (AssetRef, String) -> Unit = { _, _ -> },
     /** The mirror, invoked when a change is reported as failed *after* the marker was written. */
     private val clearCreatedLocalId: (AssetRef) -> Unit = { },
+    /** The success mirror: the completion settles the row itself (capability `download-store`). */
+    private val confirmCreatedLocalId: (AssetRef, String) -> Unit = { _, _ -> },
+    /** The library reported, so absence is trustworthy about this ref again (capability `photo-download`). */
+    private val forgetUnreported: (AssetRef) -> Unit = { },
 ) : PhotoLibraryImporter {
 
     /** Inspection: the source refs imported, one entry per created asset (so a repeat shows up twice). */
@@ -129,13 +133,40 @@ class FakePhotoLibraryImporter(
      */
     var abandonNextImport: Boolean = false
 
+    /**
+     * Crash lever, and the one the `SNAPSYNC-9` guard is about: the marker is written — the change block
+     * ran — but the **commit has not landed**, so the gallery does not hold the asset yet, and the wait is
+     * abandoned. The photo library then answers *absent* about an asset whose transaction is still open,
+     * which is honest and catastrophic to act on.
+     *
+     * Distinct from [abandonNextImport], where the asset IS created and presence answers *present*. Both
+     * leave an unconfirmed row; only this one makes the library lie by omission. Cleared after one firing.
+     */
+    var abandonNextImportBeforeCommit: Boolean = false
+
     override suspend fun import(
         ref: AssetRef,
         resources: List<StagedResource>,
         creationDate: String,
     ): ImportResult {
+        // COUNTED FIRST, before any early return, so a failed attempt still consumes an identifier.
+        //
+        // This ordering is the fix for a test that lied. When the counter sat below the `failNextImport`
+        // return, a failed import left it at zero, so the RE-import that followed a wrongly-cleared marker
+        // minted `imported-<device>-<asset>` — byte-identical to the marker a test had planted by hand.
+        // The assertion "the marker survived" then passed just as happily when the marker had been
+        // destroyed and a SECOND asset created under the same identifier, which is precisely the duplicate
+        // the capability exists to prevent. A test cannot observe a duplicate through an identifier that
+        // repeats, so no identifier here may repeat.
+        //
+        // Identifiers alone are still not the whole defence: assert on the NUMBER of assets created
+        // ([imported], or the gallery) rather than only on a marker's value, because creating the second
+        // asset IS the harm.
+        val attempt = attempts.getOrElse(ref) { 0 } + 1
+        attempts[ref] = attempt
         if (failNextImport) {
             failNextImport = false
+            forgetUnreported(ref) // the library reported — a failure is an outcome
             return ImportResult.Failed("forced")
         }
         // The suppression handle: byte-identical to the enumerator's normalized `assetId` form, so the
@@ -146,12 +177,17 @@ class FakePhotoLibraryImporter(
         // second import would land on the first one's handle and the orphaning this capability exists to
         // prevent would be unreproducible in the world. The first import keeps the bare, readable form so
         // existing expectations still read `imported-<device>-<asset>`.
-        val attempt = attempts.getOrElse(ref) { 0 } + 1
-        attempts[ref] = attempt
         val suffix = if (attempt == 1) "" else "-$attempt"
         val createdLocalId = normalizeAssetId("imported-${ref.sourceDeviceId}-${ref.sourceAssetId}$suffix")
         // INSIDE the change block, before anything is observable — the real adapter's ordering.
         recordCreatedLocalId(ref, createdLocalId)
+        if (abandonNextImportBeforeCommit) {
+            abandonNextImportBeforeCommit = false
+            // The marker is written and nothing else is: no gallery asset (the commit has not landed), no
+            // clear (it may still land), no confirm and no forget (nothing reported). Exactly the state
+            // the field defect was adjudicated in.
+            return ImportResult.TimedOut("forced abandonment before the commit landed")
+        }
         // Import into the gallery so the asset becomes enumerable (and thus visible to — but suppressed
         // from — the upload cycle).
         val newAsset = RawAsset(
@@ -173,6 +209,7 @@ class FakePhotoLibraryImporter(
         // The commit landed. What the platform reports about it is the lever's business.
         if (failNextImportAfterCreating) {
             failNextImportAfterCreating = false
+            forgetUnreported(ref) // reported, even though it reported failure
             // The mirror: an OBSERVED failure undoes the marker it wrote. (The gallery keeps the asset,
             // which is the honest shape — `performChanges` reporting failure after the block ran is
             // exactly the case where the store must not keep pointing at something that may not exist.)
@@ -183,8 +220,18 @@ class FakePhotoLibraryImporter(
             abandonNextImport = false
             // Marker written, asset created, confirmation never delivered — and deliberately NO clear:
             // the transaction may still commit, so clearing here is what orphans the created asset.
+            //
+            // Deliberately NO `confirmCreatedLocalId` and NO `forgetUnreported` either: this lever models
+            // a completion that never arrives, and both of those are things the completion does. Calling
+            // either would settle the very state the guard exists to reason about, and the world could no
+            // longer reach it.
             return ImportResult.TimedOut("forced abandonment")
         }
+        // The completion's own writes, mirroring the real adapter: settle the row against the marker it
+        // holds, then stop distrusting absence about this ref — both BEFORE returning, because on device
+        // they run in a callback that fires whether or not anything is still awaiting it.
+        confirmCreatedLocalId(ref, createdLocalId)
+        forgetUnreported(ref)
         return ImportResult.Imported(createdLocalId)
     }
 }

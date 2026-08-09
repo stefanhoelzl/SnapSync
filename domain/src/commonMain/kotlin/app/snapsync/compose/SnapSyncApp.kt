@@ -12,6 +12,7 @@ import app.snapsync.feature.download.DownloadPushReceiver
 import app.snapsync.feature.download.DownloadStatusSource
 import app.snapsync.feature.download.QueuedPhotoDownloadJobs
 import app.snapsync.feature.download.StoreDownloadStatusSource
+import app.snapsync.feature.download.UnreportedImports
 import app.snapsync.feature.membership.MembershipRefresh
 import app.snapsync.feature.membership.toJoinLoad
 import app.snapsync.feature.membership.JoinEvent
@@ -274,6 +275,22 @@ class AppPorts(
 class AppCore internal constructor(
     private val scope: CoroutineScope,
     private val ports: AppPorts,
+    /**
+     * The refs whose import outcome the photo library has not reported (capability `photo-download`).
+     *
+     * Taken as a parameter rather than built here because **two parties must share one instance**: the
+     * download controller reads it when adjudicating, and the platform importer's completion callback
+     * clears it — and that importer is constructed before this graph exists, so it cannot be handed an
+     * instance this class owns. A composition root builds one and passes it to both.
+     *
+     * Required, with no default: a default would let a root silently end up with two, and that failure is
+     * invisible to the shell, which is wiring-only and untested by rule — so the compiler is made to ask
+     * instead. The damage runs the *cautious* way, not the dangerous one: the controller both records and
+     * reads, so its gate still fires on every timeout it saw; what is lost is the importer's `forget`, so
+     * a ref stays distrusted for the life of the process and its photo is not re-imported until the next
+     * launch. Over-caution, not a re-upload.
+     */
+    val unreportedImports: UnreportedImports,
 ) {
 
     init {
@@ -399,6 +416,7 @@ class AppCore internal constructor(
             jobs = downloadJobs,
             importer = ports.importer,
             presence = assetPresence,
+            unreported = unreportedImports,
             stagedBytes = ports.stagedBytes,
             myDeviceId = ports.deviceId(),
             // Three-valued, no fallback (capability `photo-download`): no membership → `null` → no arm.
@@ -977,4 +995,9 @@ class AppCore internal constructor(
  * between binaries is impossible rather than undetected. Manual DI (decision D6 of
  * `establish-target-architecture`): plain constructors, no framework.
  */
-fun snapSyncApp(scope: CoroutineScope, ports: AppPorts): AppCore = AppCore(scope, ports)
+fun snapSyncApp(
+    scope: CoroutineScope,
+    ports: AppPorts,
+    /** Shared with the platform importer's completion callback — see [AppCore.unreportedImports]. */
+    unreportedImports: UnreportedImports,
+): AppCore = AppCore(scope, ports, unreportedImports)

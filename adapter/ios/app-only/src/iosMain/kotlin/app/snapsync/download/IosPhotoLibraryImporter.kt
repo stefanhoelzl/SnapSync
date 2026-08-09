@@ -26,14 +26,35 @@ import kotlin.time.Duration.Companion.seconds
 /**
  * How long one import may wait for the photo library's completion callback (capability `photo-download`).
  *
- * Measured on an iPhone11,2 / iOS 18.7.9: a healthy import — one 1.4–2.1 MB HEIC, including the in-block
- * album add and the completion-handler read-back — takes **250–600 ms**, and a live-photo pair 596 ms.
- * 5 s is ~8× the slowest healthy case, tight enough that a stalled library does not consume the wake,
- * and loose enough that a merely-slow device is not abandoned into a possible duplicate.
+ * **What this really bounds is the LOCK.** The import runs under `DownloadController`'s mutex, so this is
+ * how long a stalled photo library may block every other reconcile, import, leave, switch **and
+ * `onResourceStaged`** in the process. That last one is the sharp edge: it is called from the background
+ * `URLSession` delegate, inside an OS-granted wake, so blocking it can cost that wake its staging work. At
+ * 30 s the exposure is six times what it was — accepted deliberately, because the alternative is worse
+ * (below), and removing the lock from around the platform call is a separate change.
  *
- * Provisional, like the receipt deadlines: re-set it from the first field dump carrying the timeout line.
+ * ⚠️ **30 s now exceeds two of the three receipt budgets** (`ReceiptDeadlines.SILENT_PUSH` and
+ * `URL_SESSION_EVENTS` are 20 s). At 5 s a stalled import was abandoned *inside* the wake with budget left
+ * to make progress; at 30 s a stall is structurally guaranteed to outlive its receipt, so the OS handler
+ * goes out while the transaction is still open. That is safe *because of this capability's guard* — the
+ * ref is recorded as unreported, so nothing acts on the library's absent answer — and it would not have
+ * been before it. Stated rather than left to be discovered: it is a real consequence of raising the bound.
+ *
+ * **Set from measurement of HEALTHY imports, not from the wake budget.** On an SE2 a single import takes
+ * **1.0 s at 49 MB** and **5.2 s at 197 MB** — cost scales with resource size and library size — and the
+ * device that reported `SNAPSYNC-9` (iPhone11,2 / iOS 18.7.9) runs roughly twice as slow, so ~10 s is a
+ * legitimate worst case. 30 s is ~3× that.
+ *
+ * The previous value was **5 s**, derived from 250–600 ms single-HEIC imports, and it was firing on
+ * healthy work: every expiry leaves an unconfirmed row, and unconfirmed rows are the entire population the
+ * adjudication guard has to reason about. A bound that manufactures them is not a safety measure — it is
+ * the supply line for `SNAPSYNC-9`, where 19 live markers were cleared because the library was asked about
+ * transactions that were still open.
+ *
+ * ⏰ Re-set from the first field dump carrying the timeout line. Evidence is two devices and a synthetic
+ * bench; if 197 MB imports get slower on a future iOS, this is the value to revisit.
  */
-private val IMPORT_DEADLINE: Duration = 5.seconds
+private val IMPORT_DEADLINE: Duration = 30.seconds
 
 /**
  * The iOS [PhotoLibraryImporter] (capability `photo-download`): rebuilds one foreign asset from its
@@ -64,6 +85,22 @@ class IosPhotoLibraryImporter(
      * Never on a timeout — see the `TimedOut` branch.
      */
     private val clearCreatedLocalId: (AssetRef) -> Unit,
+    /**
+     * The **success** mirror: settle the row against the marker it already holds, from the completion
+     * itself (capability `download-store`). Written here rather than left to the caller because a
+     * completion that arrives after its requester is gone still records the import.
+     */
+    private val confirmCreatedLocalId: (AssetRef, String) -> Unit,
+    /**
+     * The library has reported this import's outcome, so an *absent* answer about its asset is
+     * trustworthy again (capability `photo-download`).
+     *
+     * Invoked on **both** completion paths, success and reported failure. It matters most on failure:
+     * the marker is cleared, the row becomes importable, and a later import of the same ref mints a NEW
+     * marker — and a leftover entry here would gate that new import's own adjudication, stranding the
+     * photo.
+     */
+    private val forgetUnreported: (AssetRef) -> Unit,
     private val albumId: () -> String? = { null },
     private val log: Logger = Logger.withTag("PhotoImporter"),
 ) : PhotoLibraryImporter {
@@ -157,7 +194,23 @@ class IosPhotoLibraryImporter(
                     // one `Failed`, and only this line tells them apart after the fact.
                     log.i { "import: commit for ${ref.sourceAssetId} success=$success error=${error?.localizedDescription}" }
                     val id = createdLocalId
+                    // ORDER MATTERS, and it is store-write FIRST, forget SECOND, on both branches.
+                    //
+                    // Forgetting is what re-enables the adjudicator's absent branch for this ref, so it
+                    // must not happen while the row still looks unconfirmed: a concurrent adjudication
+                    // holding an ABSENT verdict would then see `holds` go false and strip the marker off a
+                    // row whose asset exists. The row's own state is the interlock — settle (or clear) it
+                    // first, and the adjudicator's under-lock re-check sees a row that has moved on and
+                    // discards the verdict. Forget first and that re-check is the only thing standing
+                    // between us and SNAPSYNC-9; this ordering means it is a second line, not the only one.
                     if (success && id != null) {
+                        // The row is settled by the party that LEARNED the outcome, before anyone is
+                        // resumed (capability `download-store`). This block is an ObjC block untied to
+                        // the awaiting coroutine, so it still runs when the wait was abandoned minutes
+                        // ago — which is what makes an abandoned import settle itself instead of waiting
+                        // for a later pass to ask the library what this callback already knew.
+                        confirmCreatedLocalId(ref, id)
+                        forgetUnreported(ref) // reported, and the row is terminal before we say so
                         logImportedDate(rawLocalId, creationDate)
                         cont.resume(ImportResult.Imported(id))
                     } else {
@@ -172,6 +225,7 @@ class IosPhotoLibraryImporter(
                         // abandoned import self-correcting — a late success keeps its marker for the
                         // guard to settle, a late failure clears it here.
                         if (id != null) clearCreatedLocalId(ref)
+                        forgetUnreported(ref) // reported, and the marker is gone before we say so
                         cont.resume(ImportResult.Failed(error?.localizedDescription ?: "performChanges failed / no placeholder"))
                     }
                 },
