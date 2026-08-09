@@ -1,0 +1,136 @@
+#!/bin/sh
+# PreToolUse(Bash) guard for the one physically-connected iPhone.
+#
+# Dev infrastructure: non-gating, no spec — same posture as ssh-mac.yml, :test:harness-driver
+# and the local backend rig. Wired from .claude/settings.json.
+#
+# Why it exists: up to a dozen CodeHydra workspaces run in parallel against ONE SE2. Two of them
+# installing at once wedges the installer ("Coordinator superseded"), which cost ~2 h on
+# 2026-08-09. And device work needs the operator present anyway — the phone must be plugged in,
+# unlocked, and sometimes tapped. Both facts want the same object: a lease.
+#
+# It answers every Bash call with one of:
+#   defer  — not a device command, or a pure connectivity probe            (the overwhelming case)
+#   ask    — the lease acquisition itself; this is the ONE confirmation
+#   allow  — a device command while THIS workspace holds the lease (skips the classifier too)
+#   deny   — no lease, a foreign live lease, a malformed acquire, or an idevice* call whose
+#            USBMUXD_SOCKET_ADDRESS lacks the UNIX: prefix
+#
+# Default-deny by construction: the fence is decided by REDUCING the command — probe forms are
+# stripped, and anything that still names a device tool is fenced. A pymobiledevice3 subcommand
+# nobody anticipated is therefore fenced, not silently exempt.
+set -u
+
+LOCK="${SNAPSYNC_DEVICE_LOCK:-$HOME/.snapsync-device.lock}"
+
+input=$(cat)
+
+# Fast path: ~99% of Bash calls never mention a device tool. Bail before spawning jq.
+case "$input" in
+  *pymobiledevice3* | *idevice* | *device-lease*) ;;
+  *) exit 0 ;;
+esac
+
+if ! command -v jq >/dev/null 2>&1; then
+  printf '%s\n' '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":"device-guard needs jq to read the hook payload and jq is not on PATH. Refusing rather than waving a device command through unchecked."}}'
+  exit 0
+fi
+
+decide() { # $1 = allow|deny|ask, $2 = reason
+  jq -n --arg d "$1" --arg r "$2" \
+    '{hookSpecificOutput:{hookEventName:"PreToolUse",permissionDecision:$d,permissionDecisionReason:$r}}'
+  exit 0
+}
+
+cmd=$(printf '%s' "$input" | jq -r '.tool_input.command // ""')
+bg=$(printf '%s' "$input" | jq -r '.tool_input.run_in_background // false')
+hook_cwd=$(printf '%s' "$input" | jq -r '.cwd // ""')
+ws="${_CH_WORKSPACE_PATH:-$hook_cwd}"
+
+# ---------------------------------------------------------------- acquiring the lease
+# Only when the script is actually INVOKED — in command position, after stripping env assignments
+# and wrappers. `git add scripts/device-lease`, `cat`, `chmod` and friends merely name the path and
+# must fall straight through; matching the bare substring would fence editing the guard's own repo.
+lease=$(printf '%s' "$cmd" \
+  | sed -e 's/&&/\n/g' -e 's/||/\n/g' -e 's/[;|]/\n/g' \
+  | awk '
+      BEGIN { found = 0; wrapped = 0 }
+      {
+        seg = $0; chbg = 0
+        sub(/^[ \t]+/, "", seg)
+        while (1) {
+          if (match(seg, /^[A-Za-z_][A-Za-z0-9_]*=[^ \t]*[ \t]+/)) { seg = substr(seg, RSTART + RLENGTH); continue }
+          if (match(seg, /^ch-bg[ \t]+/))                          { chbg = 1; seg = substr(seg, RSTART + RLENGTH); continue }
+          if (match(seg, /^(timeout[ \t]+[0-9.]+|time|nice|nohup|stdbuf|env|sh|bash)[ \t]+/)) { seg = substr(seg, RSTART + RLENGTH); continue }
+          break
+        }
+        tok = seg; sub(/[ \t].*$/, "", tok)
+        if (tok ~ /device-lease$/) { found = 1; if (chbg) wrapped = 1 }
+      }
+      END { print found "," wrapped }')
+
+case "$lease" in
+  1,*)
+    case "$lease" in
+      1,1) ;;
+      *) decide deny "Run the lease under ch-bg: \`ch-bg scripts/device-lease \"<why>\"\`. The ch-bg marker is what keeps this workspace able to go idle while it holds the phone; without it the workspace reads as busy for the whole device session." ;;
+    esac
+    if [ "$bg" != "true" ]; then
+      decide deny "Run the lease as a BACKGROUND Bash call (run_in_background: true). It blocks until killed by design — in the foreground it would hang this turn until the tool timeout, and the lease would evaporate with it."
+    fi
+    decide ask "About to take the connected iPhone for this workspace. Nothing has touched it yet."
+    ;;
+esac
+
+# ---------------------------------------------------------------- the UNIX: prefix trap
+# libimobiledevice parses a bare path as host:port, fails to connect, and reports "No device
+# found" — indistinguishable from the phone being unplugged. The env default is the bare path
+# (which serves pymobiledevice3, ~10x the traffic), so catch the mismatch loudly here.
+case "$cmd" in
+  *idevice*)
+    case "$cmd" in
+      *UNIX:*) ;;
+      *) decide deny "libimobiledevice needs the UNIX:-prefixed socket, but this command carries none. The project env sets USBMUXD_SOCKET_ADDRESS to the BARE path for pymobiledevice3; a bare path makes ideviceinfo/idevice_id report \"No device found\" rather than an error, so the failure would look like an unplugged phone. Prefix it: USBMUXD_SOCKET_ADDRESS=UNIX:\$USBMUXD_SOCKET_ADDRESS <cmd>" ;;
+    esac
+    ;;
+esac
+
+# ---------------------------------------------------------------- is this inside the fence?
+# Reduce away the probe forms, then see whether a device tool still stands.
+#   outside the fence: usbmux list · idevice_id · ideviceinfo   (mutate nothing, never race)
+#   inside:            everything else that speaks to the phone
+norm=$(printf '%s' "$cmd" \
+  | sed -e 's/[A-Za-z_][A-Za-z0-9_]*="[^"]*pymobiledevice3[^"]*"//g' \
+        -e 's/\$P\b/pymobiledevice3/g' \
+        -e 's/\${P}/pymobiledevice3/g' \
+        -e 's/pymobiledevice3 *usbmux *list//g' \
+        -e 's/pymobiledevice3 *--version//g' \
+        -e 's/pymobiledevice3 *version//g' \
+        -e 's/idevice_id//g' \
+        -e 's/ideviceinfo//g')
+
+case "$norm" in
+  *pymobiledevice3* | *idevice*) ;;
+  *) exit 0 ;;   # probe-only, or the tokens were prose — defer to the normal flow
+esac
+
+# ---------------------------------------------------------------- the lease
+if [ ! -f "$LOCK" ]; then
+  decide deny "The connected iPhone is leased, and this workspace holds no lease. Take it first, as a BACKGROUND call:  ch-bg scripts/device-lease \"<why you need the phone>\"  — you will be asked to confirm once, then every device command in this workspace runs without further prompting until you kill that shell."
+fi
+
+lock_get() { sed -n "s/^$1=//p" "$LOCK" | head -1; }
+h_ws=$(lock_get workspace)
+h_pid=$(lock_get pid)
+h_reason=$(lock_get reason)
+h_when=$(lock_get acquired_human)
+
+if [ -z "$h_pid" ] || ! kill -0 "$h_pid" 2>/dev/null; then
+  decide deny "A lease file exists but its holder (pid ${h_pid:-?}, workspace ${h_ws:-?}) is dead — the lease shell was SIGKILLed without releasing. It is safe to reclaim:  ch-bg scripts/device-lease \"<why>\"  will take over a dead lease automatically."
+fi
+
+if [ "$h_ws" != "$ws" ]; then
+  decide deny "The SE2 is held by workspace '$(basename "${h_ws:-unknown}")' since ${h_when:-?} — reason: \"${h_reason:-none given}\" (lease pid $h_pid, alive). Do NOT race it: a concurrent install wedges the installer for both of you. Either wait and tell the operator, or steal it deliberately:  ch-bg scripts/device-lease --steal \"<why>\""
+fi
+
+decide allow "Lease held by this workspace since ${h_when:-?} — \"${h_reason:-none given}\"."
