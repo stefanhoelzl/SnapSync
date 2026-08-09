@@ -61,8 +61,8 @@ class DiagnosticDump(
 }
 
 /**
- * The platform facts the shell knows and `:domain` cannot read for itself — supplied like `OsFacts`,
- * as a transcribed value rather than a port, because every field is a constant of the running build.
+ * The platform facts the shell knows and `:domain` cannot read for itself — supplied as a transcribed
+ * value rather than a port, because every field is a constant of the running build.
  *
  * [uploadBase] is the same baked host the boot banner names, and [reporterEnvironment] distinguishes
  * a deliberately DSN-injected dev build from a production one — without it, a dump from the

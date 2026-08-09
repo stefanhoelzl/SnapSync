@@ -224,8 +224,9 @@ class AppPorts(
      *  reads nothing: off-device compositions (world, harnesses) have no device logs, and a dump
      *  assembled there is honestly empty rather than fabricated. */
     val deviceLogSource: DeviceLogSource = DeviceLogSource.None,
-    /** Build/OS/tier facts the shell transcribes for a dump's state section — a value, like `OsFacts`,
-     *  because every field is a constant of the running build rather than a seam to be stubbed. */
+    /** Build/OS/tier facts the shell transcribes for a dump's state section — a transcribed value rather
+     *  than a port, because every field is a constant of the running build rather than a seam to be
+     *  stubbed. */
     val diagnosticEnvironment: DiagnosticEnvironment = DiagnosticEnvironment.UNKNOWN,
     // ── Shell/platform effect lambdas the `flow/` triggers coordinate over (migration step 8) ──
     // Each is a port/platform touch a flow may not make directly (law "flow/ never references ports/"):

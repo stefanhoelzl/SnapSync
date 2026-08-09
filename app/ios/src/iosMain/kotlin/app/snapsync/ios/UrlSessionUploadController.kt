@@ -87,8 +87,6 @@ class UrlSessionUploadController(
     // under a partial grant, where the selection IS the scope: it would discover photos the member never
     // chose to share. (Not the alert: that is armed per out-of-scope library change, not per read.)
     private val selectionScope: () -> SelectionScope,
-    // False on the dev/test-forced (simulator) path — the sim can't run a background NSURLSession.
-    private val useBackgroundSession: Boolean = true,
     // Fired after each in-process pump cycle so foreground upload status refreshes live (the app-driven
     // analogue of the PhotoKit extension's cross-process liveness ding — here an in-process re-read).
     private val onCycleComplete: suspend () -> Unit = {},
@@ -117,7 +115,6 @@ class UrlSessionUploadController(
         discovery = discovery,
         appGroup = LEDGER_APP_GROUP,
         sessionIdentifier = SESSION_IDENTIFIER,
-        useBackgroundSession = useBackgroundSession,
         // Precise stranded-row reconciliation: the ledger's current REQUESTED keys.
         pendingKeys = { ledgerStore.pendingResources().map { it.key }.toSet() },
         // A slot just freed → top up (single-flight in the pump serialises it).

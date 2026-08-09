@@ -3,7 +3,6 @@ package app.snapsync.ios
 import app.snapsync.model.CompositionMode
 import app.snapsync.model.EventConfig
 import app.snapsync.model.LaunchDirectives
-import app.snapsync.model.OsFacts
 import app.snapsync.model.SceneMode
 import app.snapsync.model.UploadTier
 import app.snapsync.model.appVisibilityFrom
@@ -194,19 +193,13 @@ object SnapSyncRoot {
         }
     }
 
-    /** OS facts the composition resolver reads — a simulator cannot run a background `URLSession`,
-     *  and only iOS ≥26.1 carries the OS-driven background-upload API. */
-    private val osFacts: OsFacts = OsFacts(
-        backgroundUploadSupported = backgroundUploadSupported(),
-        isSimulator = NSProcessInfo.processInfo.environment["SIMULATOR_DEVICE_NAME"] != null,
-    )
-
     /**
      * The composition mode, resolved **once per process** by the pure, unit-tested resolver
      * (`model/CompositionMode.kt`). Forge excludes the live-stack boot — including an event link
      * (the shipped forge×link bug is now a resolver precedence test, not a shell guard).
      */
-    private val mode: CompositionMode = resolveComposition(directives, osFacts, ::isForgeState)
+    private val mode: CompositionMode =
+        resolveComposition(directives, backgroundUploadSupported(), ::isForgeState)
 
     /**
      * **THE one switch on the resolved mode** (spec `module-architecture`, "One shared composition":
@@ -1105,12 +1098,6 @@ object SnapSyncRoot {
             // both tiers funnel through the shared UploadCycle, and a policy wired on only one of them is
             // exactly the class of bug that shipped the app-driven tier without a re-join reconciler.
             albumExcludedAssetIds = { cutoff -> albumExcludedAssetIds(cutoff) },
-            // A background session on any DEVICE — including a force-flagged one, which must be a faithful
-            // proxy for the tier real 18–26.0 users run. Only the simulator is downgraded — the fact is
-            // resolved once on [CompositionMode.Live], never re-derived (`ios-url-session-upload`). The
-            // cast holds on both live tiers (a PhotoKit-tier process can still be relaunched to drain an
-            // old upload session); in forge mode this controller is unreachable.
-            useBackgroundSession = (mode as CompositionMode.Live).useBackgroundSession,
             // In-process liveness: after each pump cycle, re-read the ledger counts so status moves live.
             onCycleComplete = { app.ledgerCounts.refresh() },
             // Event album (capability `event-album`): the composed coordinator; the cycle applies the
@@ -1144,7 +1131,7 @@ object SnapSyncRoot {
     private fun foregroundParams(): String {
         val appDriven = (mode as? CompositionMode.Live)?.tier == UploadTier.URL_SESSION
         return "useAppDrivenUpload=$appDriven force=${directives.forceUrlSessionUpload} " +
-            "osSupported=${osFacts.backgroundUploadSupported}"
+            "osSupported=${backgroundUploadSupported()}"
     }
 
     // ── The mode-resolved shell delegate (the target of THE one switch above) ────────────────────

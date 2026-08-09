@@ -189,7 +189,7 @@ constructs no writer.
 ## iOS-version deviation & the two upload tiers
 
 App deploys **min iOS 18**. Upload runs on one of two tiers, selected **once per process** by the
-pure sealed resolver (`model/`'s `resolveComposition` over `LaunchDirectives` + `OsFacts`; the OS
+pure sealed resolver (`model/`'s `resolveComposition` over `LaunchDirectives` + one OS fact; that
 fact is `isOperatingSystemAtLeastVersion(26.1)`) — `SnapSyncRoot`'s one `when (mode)` switch picks
 the tier's mechanism thunks; no entry point re-checks a flag:
 
@@ -207,11 +207,17 @@ the tier's mechanism thunks; no entry point re-checks a flag:
 
 **Forcing the app-driven tier on a device** (`SNAPSYNC_FORCE_URLSESSION_UPLOAD=1`) is the only way to
 exercise the 18–26.0 tier on the agent-driveable SE2, which runs iOS 26.5. It selects the **tier and
-nothing else** — the transport stays a background `URLSession` (simulator-ness is read from
-`SIMULATOR_DEVICE_NAME`, not inferred from this flag), and the PhotoKit extension is never registered.
-It previously did all three wrong — foreground transport, *and* it still enabled the extension, giving
-two `LedgerWriter`s over one App-Group ledger — which made the SE2 an unfaithful proxy that masked bugs
-rather than exposing them.
+nothing else** — the transport is a background `URLSession` on every host, and the PhotoKit extension is
+never registered. It previously did both wrong — foreground transport, *and* it still enabled the
+extension, giving two `LedgerWriter`s over one App-Group ledger — which made the SE2 an unfaithful proxy
+that masked bugs rather than exposing them.
+
+There is **no host axis** any more: nothing reads `SIMULATOR_DEVICE_NAME`, and there is no
+simulator-specific session. The transport used to be downgraded to a foreground session on the
+simulator, on an unmeasured belief that a background one could not run there; measured 2026-08-09 on
+`iosSimulatorArm64`, it runs — `getAllTasks` answers and an upload task completes. ⚠️ That covers the
+**transport** only: whether the OS relaunches a terminated app to deliver
+`handleEventsForBackgroundURLSession` on a simulator is still unproven.
 
 ⚠️ The OS's upload-job registration lives in the **system**, not the app, and survives relaunch and
 reinstall — so on a ≥26.1 device the extension must be **deregistered first** or it uploads behind the

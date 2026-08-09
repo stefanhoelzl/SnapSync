@@ -19,20 +19,6 @@ enum class UploadTier {
 }
 
 /**
- * OS facts the composition resolver reads (spec `module-architecture`, "One shared composition":
- * "a pure, unit-tested function from parsed launch directives and OS facts to a sealed composition
- * mode"). Kept a value so the resolver is testable off-device.
- *
- * - [backgroundUploadSupported] — the iOS 26.1 background-upload API is present.
- * - [isSimulator] — this process is a simulator (the only place the URLSession transport is
- *   downgraded off a background session; a device — including a force-flagged one — is not).
- */
-data class OsFacts(
-    val backgroundUploadSupported: Boolean,
-    val isSimulator: Boolean,
-)
-
-/**
  * The resolved composition mode (spec `module-architecture`, "One shared composition"): a **sealed**
  * type so `composeRoot` switches once on it and the compiler fails closed when a new mode is added —
  * a data-class field would not. There are exactly two:
@@ -40,8 +26,7 @@ data class OsFacts(
  * - [Forge] — render the shared `StatusScreen` over forged sources for a marketing screenshot; the
  *   live stack is **not** assembled (no ledger, App Attest, PhotoKit, or backend). Carries the
  *   recognized state name.
- * - [Live] — the real stack, on the resolved [UploadTier], with the app-driven URLSession transport
- *   choice ([useBackgroundSession]) folded in.
+ * - [Live] — the real stack, on the resolved [UploadTier].
  */
 sealed interface CompositionMode {
 
@@ -56,16 +41,7 @@ sealed interface CompositionMode {
         override val diagnosticTierName: String get() = "forge"
     }
 
-    data class Live(
-        val tier: UploadTier,
-        /**
-         * Whether the app-driven tier runs over a real background `URLSession` (true on any device,
-         * including a force-flagged one; false only on a simulator, which cannot). Meaningful only
-         * when [tier] is [UploadTier.URL_SESSION]; carried on [Live] so the shell reads one resolved
-         * fact rather than re-deriving `!isSimulator`.
-         */
-        val useBackgroundSession: Boolean,
-    ) : CompositionMode {
+    data class Live(val tier: UploadTier) : CompositionMode {
         override val diagnosticTierName: String get() = tier.diagnosticName
     }
 }
@@ -86,20 +62,28 @@ sealed interface CompositionMode {
  * is presentation's, unreachable from `model/`; the shell passes `presentation::isForgeState`, and the
  * precedence test passes a stub. Tier selection folds in here per the one-composition law: the
  * app-driven tier is chosen when the OS lacks the ≥26.1 API **or** the force flag is set.
+ *
+ * [backgroundUploadSupported] is the **only** OS input, and it is genuinely a runtime one: one binary
+ * ships to iOS 18 and iOS 26 devices alike, so the tier cannot be known before launch. It arrives as a
+ * bare `Boolean` rather than wrapped, an `OsFacts` value having been deleted once its second field went.
+ * That second field was `isSimulator`, read from `SIMULATOR_DEVICE_NAME` to downgrade the URLSession
+ * transport — a fact the **compilation target already fixes**, re-derived at runtime to serve a platform
+ * claim that turned out to be false (`ios-url-session-upload`; decision record
+ * `changes/archive/…-delete-simulator-session-downgrade`). A target-fixed fact does not belong here.
  */
 fun resolveComposition(
     directives: LaunchDirectives,
-    osFacts: OsFacts,
+    backgroundUploadSupported: Boolean,
     isForgeState: (String) -> Boolean,
 ): CompositionMode {
     // Forge excludes the live-stack boot — and it excludes an event link too (the forge×link bug).
     if (directives.forgeState != null && isForgeState(directives.forgeState)) {
         return CompositionMode.Forge(directives.forgeState)
     }
-    val tier = if (!osFacts.backgroundUploadSupported || directives.forceUrlSessionUpload) {
+    val tier = if (!backgroundUploadSupported || directives.forceUrlSessionUpload) {
         UploadTier.URL_SESSION
     } else {
         UploadTier.PHOTOKIT
     }
-    return CompositionMode.Live(tier = tier, useBackgroundSession = !osFacts.isSimulator)
+    return CompositionMode.Live(tier = tier)
 }
