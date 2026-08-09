@@ -1,0 +1,150 @@
+@file:OptIn(ExperimentalStdlibApi::class)
+
+package app.snapsync.rig.hook
+
+import app.snapsync.config.bakedUploadBase
+import app.snapsync.ios.SnapSyncRoot
+import app.snapsync.logging.IosDeviceLogSource
+import app.snapsync.ports.ReceiptDeadlines
+import app.snapsync.rig.RigHooks
+import app.snapsync.rig.RigServer
+import app.snapsync.rig.RigTrigger
+import app.snapsync.rig.rigPort
+import app.snapsync.rig.tierName
+import kotlin.native.EagerInitialization
+import kotlinx.coroutines.Dispatchers
+import platform.Foundation.NSDate
+import platform.Foundation.NSProcessInfo
+import platform.Foundation.NSURL
+import platform.Foundation.NSUserActivity
+import platform.Foundation.NSUserActivityTypeBrowsingWeb
+
+/**
+ * The rig's **entire footprint inside `:app:ios`** — and it lives in `:test:rig`'s tree, not the shell's.
+ *
+ * `app/ios/build.gradle.kts` adds this directory to `:app:ios`'s `iosMain` source set, and the
+ * `:test:rig` dependency, ONLY under `-Psnapsync.rig=true`. Without the property it adds neither, so a
+ * production build contains no rig source at all: not a stub, not an inert branch, nothing to read as an
+ * exemption. `SnapSyncRoot` itself is untouched apart from two fields widened `private` → `internal`
+ * (module-wide, and NOT exported to the ObjC framework header — verified on device).
+ *
+ * Being compiled INTO `:app:ios` is what lets this file reach those fields without widening anything to
+ * `public`. It also means this directory is listed in the shell gate's scanned roots (`appShellSources`)
+ * rather than exempted from them — so this file may hold **no decisions**. Every default, cast, fallback
+ * and rendering lives on the far side of [RigHooks] / [rigPort] / [tierName], in `:test:rig`, where it is
+ * ordinary ungated code. Keep it that way: if this file ever needs a branch, failing the build loudly is
+ * the correct outcome. (It already caught two: an env-var parse and a fallback, on the first attempt.)
+ *
+ * ## Why an eager initializer rather than a call in `SnapSyncRoot`
+ * So the shell gains no line at all. Measured on device (SE2, iOS 26.6): it fires, binds, and serves.
+ *
+ * ## Nothing is forced here, including `SnapSyncRoot` itself
+ * `SnapSyncRoot.app` and `.host` are passed as **thunks**. Both are `by lazy`, and touching `host` installs
+ * the permission-grant subscriptions, which `ios-app-shell` forbids on a cold background wake. This file
+ * captures lambdas and binds a socket; the graph is forced by the first request that needs it, which forces
+ * exactly what a real entry point would.
+ */
+@EagerInitialization
+@Suppress("unused")
+private val rigBoot: Unit = startRig()
+
+private fun startRig() = RigServer(
+    core = { SnapSyncRoot.app },
+    host = { SnapSyncRoot.host },
+    hooks = iosHooks(),
+    port = rigPort(NSProcessInfo.processInfo.environment["SNAPSYNC_RIG_PORT"]),
+).start()
+
+/**
+ * The platform verbs, bound to this shell's **real** entry points — the same members the Swift shell calls,
+ * invoked on the same (main) lane, so a rig-driven trigger is indistinguishable in `debug.log` from an
+ * OS-driven one.
+ *
+ * `SNAPSYNC_RIG_PORT` is read above rather than through `LaunchDirectives`: unlike every `SNAPSYNC_*`
+ * launch trigger, this variable is observable by **no shipped code** — the file reading it does not exist in
+ * a production build — so it is inert by construction rather than by a runtime check, and the one typed
+ * surface every production launch parses stays free of rig configuration.
+ */
+private fun iosHooks() = RigHooks(
+    bootedAt = NSDate().description,
+    compositionMode = SnapSyncRoot.mode.toString(),
+    uploadTier = tierName(SnapSyncRoot.mode),
+    uploadBase = bakedUploadBase(),
+    // Swift calls entry points from the main thread; so does the rig. A trigger invoked on another lane
+    // would not be the call the OS makes, which is the whole reason triggers are entry points.
+    mainLane = Dispatchers.Main,
+    deviceLog = IosDeviceLogSource(),
+    triggers = triggers(),
+    excludedTriggers = excludedTriggers(),
+)
+
+/**
+ * WIRED entry points. Deadlines come from [ReceiptDeadlines] rather than literals, so the number the rig
+ * reports is the number the receipt actually enforces.
+ */
+private fun triggers(): Map<String, RigTrigger> = mapOf(
+    // ── The platform hands these no completion handler: it does not wait, so neither do we ──────────
+    "onForeground" to RigTrigger.Fire { SnapSyncRoot.onForeground() },
+    "onBackground" to RigTrigger.Fire { SnapSyncRoot.onBackground() },
+    "onPushToken" to RigTrigger.Fire { arg -> SnapSyncRoot.onPushToken(arg.orEmpty()) },
+    "onPushTokenFailure" to RigTrigger.Fire { arg -> SnapSyncRoot.onPushTokenFailure(arg.orEmpty()) },
+    // The WARM universal link — the SNAPSYNC-6 path, otherwise reachable only by scanning a QR by hand.
+    // iOS delivers exactly this object shape to `scene(_:continue:)`.
+    "onSceneContinueActivity" to RigTrigger.Fire { arg ->
+        SnapSyncRoot.onSceneContinueActivity(browsingWebActivity(arg.orEmpty()))
+    },
+
+    // ── The platform hands these an OS completion handler, already wrapped in `OsReceipt`. The rig
+    //    supplies that handler, so it RECEIVES completion on the same channel the OS does. ───────────
+    "onSilentPush" to RigTrigger.Receipted(ReceiptDeadlines.SILENT_PUSH.inWholeMilliseconds) { arg, done ->
+        SnapSyncRoot.onSilentPush(mapOf("eventId" to arg), done)
+    },
+    "runDownloadBackstop" to
+        RigTrigger.Receipted(ReceiptDeadlines.BACKGROUND_TASK.inWholeMilliseconds) { _, done ->
+            SnapSyncRoot.runDownloadBackstop(done)
+        },
+    "runUploadHeartbeat" to
+        RigTrigger.Receipted(ReceiptDeadlines.BACKGROUND_TASK.inWholeMilliseconds) { _, done ->
+            SnapSyncRoot.runUploadHeartbeat(done)
+        },
+    // Exercises the session-identifier ROUTING — one of only two pinned complexity suppressions in
+    // `SnapSyncRoot`, and untestable by any other means.
+    "handleBackgroundUrlSession" to
+        RigTrigger.Receipted(ReceiptDeadlines.URL_SESSION_EVENTS.inWholeMilliseconds) { arg, done ->
+            SnapSyncRoot.handleBackgroundUrlSession(arg.orEmpty(), done)
+        },
+)
+
+/**
+ * EXCLUDED entry points, each with the consequence that makes the omission safe rather than an oversight.
+ * The coverage guard asserts wired + excluded equals the derived `@PlatformEntry` population, exactly.
+ */
+private fun excludedTriggers(): Map<String, String> = mapOf(
+    "onLaunch" to
+        "registers NSNotificationCenter observers documented as never removed — re-invoking " +
+        "double-registers them and corrupts the process under test. Reset is a relaunch.",
+    "onLaunchActivity" to
+        "the COLD universal-link delivery, which no in-process call can recreate; relaunch with " +
+        "SNAPSYNC_EVENT_LINK instead. Its warm twin onSceneContinueActivity is wired and exercises " +
+        "the same decode -> gate -> join path.",
+    "onSceneActive" to
+        "a launch-shape query, not a trigger: it returns the resolved scene mode and nothing " +
+        "downstream changes on a second call. /health reports the composition facts directly.",
+    "applyLaunchEnvMembership" to
+        "reads the process environment, which is fixed for the life of the process — re-invoking " +
+        "either no-ops or re-applies stale directives. Relaunch with new --env instead.",
+    "applyLaunchEnvPhotoLibrary" to
+        "same as applyLaunchEnvMembership: the environment it reads cannot change in-process.",
+)
+
+/**
+ * The `NSUserActivity` iOS delivers to `scene(_:continue:)` for a universal link.
+ *
+ * Written as plain statements rather than `.apply { }` on purpose: a scope function's lambda counts as a
+ * decision to the shell gate, which this file is scanned by.
+ */
+private fun browsingWebActivity(url: String): NSUserActivity {
+    val activity = NSUserActivity(NSUserActivityTypeBrowsingWeb)
+    activity.webpageURL = NSURL(string = url)
+    return activity
+}

@@ -45,8 +45,15 @@ class KotlinShellGuardTest {
         .firstOrNull { File(it, "settings.gradle.kts").isFile }
         ?: fail("could not locate the repository root")
 
-    /** MUST mirror the root build's `appShellSources` — the detekt gate's scanned roots. */
-    private val shellSourceRoots = listOf("app/ios/src", "app/ios/extension/src")
+    /**
+     * MUST mirror the root build's `appShellSources` — the detekt gate's scanned roots.
+     *
+     * `test/rig/src/hook` lives in `:test:rig`'s tree but is compiled INTO `:app:ios` under
+     * `-Psnapsync.rig=true`, so it is shell source and is gated as such rather than exempted
+     * (capability `architecture-guards`, "Source contributed into a shell's source set is shell
+     * source for the gates").
+     */
+    private val shellSourceRoots = listOf("app/ios/src", "app/ios/extension/src", "test/rig/src/hook")
 
     /** file (relative) → pinned `@Suppress("CyclomaticComplexMethod")` count. Exact, both directions. */
     private val pins: Map<String, Int> = mapOf(

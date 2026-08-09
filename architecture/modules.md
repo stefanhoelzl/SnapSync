@@ -17,6 +17,7 @@ flowchart LR
   test_architecture[":test:architecture"]
   test_harness_driver[":test:harness-driver"]
   test_integration[":test:integration"]
+  test_rig[":test:rig"]
   test_world[":test:world"]
   tools_diagrams[":tools:diagrams"]
   ui_components[":ui:components"]
@@ -50,6 +51,8 @@ flowchart LR
   test_integration --> domain
   test_integration --> test_world
   test_integration --> ui_presentation
+  test_rig --> domain
+  test_rig --> ui_presentation
   test_world --> adapter_generic_app
   test_world --> adapter_generic_fake
   test_world --> domain

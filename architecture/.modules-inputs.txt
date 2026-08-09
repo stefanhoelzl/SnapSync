@@ -12,6 +12,7 @@ module :domain
 module :test:architecture
 module :test:harness-driver
 module :test:integration
+module :test:rig
 module :test:world
 module :tools:diagrams
 module :ui:components
@@ -45,6 +46,8 @@ edge :test:integration :adapter:generic:app
 edge :test:integration :domain
 edge :test:integration :test:world
 edge :test:integration :ui:presentation
+edge :test:rig :domain
+edge :test:rig :ui:presentation
 edge :test:world :adapter:generic:app
 edge :test:world :adapter:generic:fake
 edge :test:world :domain

@@ -5,6 +5,7 @@ import app.snapsync.model.EventEnd
 import app.snapsync.model.DeletesAt
 import app.snapsync.model.Arrow
 import app.snapsync.model.PermissionStatus
+import kotlinx.serialization.Serializable
 
 /**
  * Display-ready projection of config presence, permission, and the latest sync snapshot. Once an
@@ -12,6 +13,7 @@ import app.snapsync.model.PermissionStatus
  * and sync activity are just moods of the one-line status ([SyncHealth]). No counts are carried — the
  * screen answers "is it healthy?", not "how many of N".
  */
+@Serializable
 sealed interface UiState {
     /**
      * The create-event landing layer (event-creation-ui), shown while no event is connected
@@ -19,6 +21,7 @@ sealed interface UiState {
      * [error] — the last create failure's copy (sticky until the next attempt) or a transient
      * invalid-link message. Config-absent outranks everything, so this is the top reduction rung.
      */
+    @Serializable
     data class CreateEvent(val error: String? = null) : UiState
 
     /**
@@ -26,6 +29,7 @@ sealed interface UiState {
      * preparing spinner with no input. Auto-resolves — success provisions config (off this layer),
      * failure returns to [CreateEvent] with an inline error.
      */
+    @Serializable
     data object CreatingEvent : UiState
 
     /**
@@ -37,6 +41,7 @@ sealed interface UiState {
      * other joiner. [phase] drives it (loading details → explain/ready/blocked/retry → committing →
      * commit-failed).
      */
+    @Serializable
     data class JoiningEvent(val eventId: String, val phase: JoinPhase) : UiState
 
     /**
@@ -45,6 +50,7 @@ sealed interface UiState {
      * [pendingSwitch] overlays a leave-style switch confirmation when an event link for a **different**
      * event was scanned while joined (capability `join-event`).
      */
+    @Serializable
     data class Joined(
         val health: SyncHealth,
         val pendingSwitch: PendingSwitch? = null,
@@ -67,14 +73,17 @@ sealed interface UiState {
  * itself once the leave clears the config. So this state covers only the phases before that hand-off:
  * `Loading`, `Ready`, `NotFound`, `LoadFailed`.
  */
+@Serializable
 data class PendingSwitch(val eventId: String, val phase: JoinPhase)
 
 /**
  * The phase of a join/switch confirmation surface (capability `join-event`). The details fetch gates
  * the confirm; the commit (enroll → provision) follows on confirm.
  */
+@Serializable
 sealed interface JoinPhase {
     /** Fetching `GET /event/:id` details ("Loading event details…"). */
+    @Serializable
     data object Loading : JoinPhase
 
     /**
@@ -90,6 +99,7 @@ sealed interface JoinPhase {
      * this phase renders none of them. Permission is a snapshot taken when the phase is chosen, not an
      * observation: the phase advances only by user action.
      */
+    @Serializable
     data class ExplainAccess(
         val name: String,
         val startsAt: EventStart,
@@ -118,6 +128,7 @@ sealed interface JoinPhase {
      * the self-leave (capability `leave-event`). It is never computed on the device: a client-side copy of
      * the retention constant would promise a date the backend will not honour, silently.
      */
+    @Serializable
     data class Ready(
         val name: String,
         val startsAt: EventStart,
@@ -126,12 +137,15 @@ sealed interface JoinPhase {
     ) : JoinPhase
 
     /** The event does not exist (404) — an invalid/expired invite; no confirm offered. */
+    @Serializable
     data object NotFound : JoinPhase
 
     /** The details fetch failed transiently (network/5xx); a Retry re-runs it. */
+    @Serializable
     data object LoadFailed : JoinPhase
 
     /** The confirm was taken; enroll + provision are in flight. [name] carries the loaded name. */
+    @Serializable
     data class Committing(
         val name: String,
         val startsAt: EventStart,
@@ -146,6 +160,7 @@ sealed interface JoinPhase {
      * **without** passing back through the loaded phase, so the floor, the ceiling, and the retention
      * deadline have to still be here or the retry would join unclamped and without a deadline.
      */
+    @Serializable
     data class CommitFailed(
         val name: String,
         val startsAt: EventStart,
@@ -159,12 +174,14 @@ sealed interface JoinPhase {
  * "not syncing" state — the only reason contribution cannot run is missing permission ([NeedsAccess]),
  * the sole attention state (spec: sync-status-screen).
  */
+@Serializable
 sealed interface SyncHealth {
     /**
      * Permission is not `GRANTED` while an event is connected. [permission] is `NOT_DETERMINED`
      * (never asked → tapping the status line requests it) or `DENIED` (tapping opens Settings). The
      * only health that carries a background. Sharing the invite still works with no access.
      */
+    @Serializable
     data class NeedsAccess(val permission: PermissionStatus) : SyncHealth
 
     /**
@@ -182,6 +199,7 @@ sealed interface SyncHealth {
      * Unlike every other health, this one depends on **wall-clock time** rather than the ledger, so no
      * snapshot emission retires it — `StatusContainerHost` runs a foreground tick for that.
      */
+    @Serializable
     data class NotStarted(val startsAt: EventStart) : SyncHealth
 
     /**
@@ -202,12 +220,15 @@ sealed interface SyncHealth {
      * begins, nothing of this member's **can** be uploading, so an unusable token is not yet their problem
      * — and two attention lines at once would only compete.
      */
+    @Serializable
     data object Unattested : SyncHealth
 
     /** Joined, permission granted, but persisted state has not been read yet — a neutral first frame. */
+    @Serializable
     data object Loading : SyncHealth
 
     /** Everything shared and received — the settled state (no arrows). */
+    @Serializable
     data object InSync : SyncHealth
 
     /**
@@ -215,5 +236,6 @@ sealed interface SyncHealth {
      * activity (spec: sync-status-screen): [upload] from `synced < total` (shown) × `pending > 0` (pulse),
      * [download] from `downloaded < total` (shown) × `inFlight > 0` (pulse).
      */
+    @Serializable
     data class Syncing(val upload: Arrow, val download: Arrow) : SyncHealth
 }
