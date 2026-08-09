@@ -21,3 +21,7 @@ api/.localdev/
 # Python bytecode caches (e.g. .github/scripts/) — build output, never committed.
 __pycache__/
 *.py[cod]
+
+# Per-machine Claude Code overrides. `.claude/settings.json` IS committed: every CodeHydra workspace
+# is a fresh worktree, so anything left untracked exists in none of them.
+.claude/settings.local.json

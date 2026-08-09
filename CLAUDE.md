@@ -116,6 +116,14 @@ Two harness facts that are invisible until they bite, and that no amount of loca
   iOS-only breakage here. The actual iOS tests (`iosSimulatorArm64Test`, etc.) are **macOS-only**
   and run on GitHub Actions `macos-26`.
 
+**Don't prefix commands with `cd <workspace root>`.** Every Bash call *starts* at the workspace
+root and is reset back to it afterwards — shell state (cwd, env vars, functions) does not persist
+between calls — so that leading `cd` is always a no-op. It was on 45% of commands (6,517 of 14,340
+measured across July–August). `cd` into a **sub**directory is a different thing and still correct:
+`cd api && deno task dev:local`. The non-persistence is why `USBMUXD_SOCKET_ADDRESS` is set in
+`.claude/settings.json` rather than exported per call, and why a `P=…` shorthand must be defined in
+the same call that uses it.
+
 ## Test UI (review/exercise every UI state)
 
 `./gradlew :app:desktop:runForge` launches the forge harness (module `:app:desktop`, which hosts BOTH
@@ -185,6 +193,34 @@ curl -sS "$B/quit"
 
 ## On-device iOS (agent-driveable over USB)
 
+⚠️ **There is ONE phone and up to a dozen workspaces. Take the lease before any command below**
+— as a **background** call, **always** under `ch-bg` (its marker is what lets this workspace still
+go idle while it holds the phone):
+
+```
+ch-bg scripts/device-lease "<why you need the phone>"      # blocks; THIS process is the lease
+```
+
+You are asked to confirm once, at the acquire — then every device command in this workspace runs
+without further prompting. **Release by killing that shell** (session death releases it too; a
+`SIGKILL`ed lease is reclaimed automatically, since liveness is checked by pid, not by a timeout).
+A `PreToolUse` guard (`scripts/device-guard`, wired in `.claude/settings.json`) **denies** device
+commands with no lease, and denies them while **another** workspace holds one — naming the holder,
+its reason and its age, so you report and wait instead of racing it (two concurrent installers
+wedge `installation_proxy` for both of you). Take it from a live holder only deliberately:
+`ch-bg scripts/device-lease --steal "<why>"`.
+
+**Outside the fence** — no lease needed, because they mutate nothing and never race:
+`usbmux list`, `idevice_id`, `ideviceinfo`. The lease runs one itself before claiming anything, so
+a missing phone is reported as *"no device connected"* rather than leased as if present. Everything
+else that speaks to the phone — `apps install`/`pull`/`list`/`uninstall`, every `developer`
+subcommand, `idevicesyslog`, `idevicecrashreport` — is inside.
+
+The fence matches these tool names as **substrings**, deliberately: over-matching costs one denied
+call, under-matching costs a wedged installer. So a command that merely *writes* one of them —
+a heredoc editing this file, a `git commit -m` describing device work — is denied too. Don't fight
+it: use the Edit tool, or `git commit -F <file>` with the message written out first.
+
 The iOS PhotoKit upload extension is **physical-device-only** (no simulator support; spec
 `ios-photokit-upload`). It ships against the **deprecated iOS 26.1** `PHBackgroundResourceUploadExtension`
 — the only protocol runnable on current GM devices (⏰ **re-evaluate at iOS 27 GM, ~Sept 2026**:
@@ -207,10 +243,18 @@ it — install, **launch**, **screenshot**, event-subscribe, logs — is **scrip
 USB, no root and no Mac**. Reach a connected iPhone through the host's usbmuxd — **this is specific
 to the codehydra sandbox** (the host socket is bridged at `/run/host/run/usbmuxd`).
 
-Lockdown-level tools (no developer tunnel needed):
+**`USBMUXD_SOCKET_ADDRESS` is already set for you** — to the **bare** path, in
+`.claude/settings.json`, because that is the form `pymobiledevice3` wants and it carries ~10× the
+traffic. Do **not** re-export it. The libimobiledevice tools (`idevice*`) want the **`UNIX:`**-prefixed
+form instead, so prefix those calls inline — and only those. Getting it backwards is not a visible
+error: libusbmuxd parses a bare path as `host:port`, fails to connect, and reports **"No device
+found"**, which reads exactly like an unplugged phone. `scripts/device-guard` therefore refuses an
+`idevice*` command carrying no `UNIX:`, rather than letting it fail that way.
+
+Lockdown-level tools (no developer tunnel needed) — note the inline prefix:
 
 ```
-export USBMUXD_SOCKET_ADDRESS=UNIX:/run/host/run/usbmuxd
+export USBMUXD_SOCKET_ADDRESS=UNIX:$USBMUXD_SOCKET_ADDRESS   # this shell only; idevice* tools only
 idevice_id -l          # list connected devices
 ideviceinfo            # device details (UDID, model, iOS version)
 idevicesyslog          # live device log — watch the app/extension at runtime
@@ -221,12 +265,11 @@ idevicecrashreport .   # pull crash reports
 surface need iOS 17+'s RemoteXPC tunnel + a mounted DeveloperDiskImage, which normally want root
 and **hang over the usbmux bridge** (`idevicescreenshot`/`idevicedebug` fail here for this reason).
 `pymobiledevice3 --userspace` builds the tunnel **in-process — no root** — and auto-mounts the DDI;
-it needs **Python ≥3.14**, so pin it via `uvx --python 3.14`. Use the **bare** socket path (no
-`UNIX:` prefix). Verified on the SE2 (iOS 26.5):
+it needs **Python ≥3.14**, so pin it via `uvx --python 3.14`. It wants the **bare** socket path (no
+`UNIX:` prefix) — which is the preset default, so nothing to export. Verified on the SE2 (iOS 26.5):
 
 ```
-export USBMUXD_SOCKET_ADDRESS=/run/host/run/usbmuxd
-P="uvx --python 3.14 pymobiledevice3"
+P="uvx --python 3.14 pymobiledevice3"    # define it in the SAME call that uses it — see Build & test
 $P developer dvt launch app.snapsync --userspace                 # launch (prints the pid)
 $P developer dvt screenshot shot.png --userspace                 # real screen capture (auto-mounts the DDI)
 $P developer dvt launch app.snapsync \                           # subscribe to an event headlessly:
@@ -641,10 +684,9 @@ One-time setup (per device):
   **Developer Mode menu only appears after a dev-signed app is installed** — so install a dev IPA
   first, then toggle Developer Mode on in Settings (software restart, no hardware buttons).
 
-Install a dev IPA you already have (run Python tools via `uvx`, never a global install — pymobiledevice3
-wants the **bare** socket path, no `UNIX:` prefix):
+Install a dev IPA you already have (run Python tools via `uvx`, never a global install —
+pymobiledevice3 wants the **bare** socket path, which is the preset default; nothing to export):
 ```
-export USBMUXD_SOCKET_ADDRESS=/run/host/run/usbmuxd
 uvx pymobiledevice3 apps install <path>/SnapSync.ipa   # ⚠️ only when the app is NOT running — see below
 ```
 (Install goes over `installation_proxy`/lockdownd — no developer tunnel needed. Launch, screenshot,
@@ -655,7 +697,6 @@ yet). SnapSync ignores SIGTERM (see the black-screen trap), so **SIGKILL it firs
 **three** answers, not two — running, not running, and *couldn't tell* — and collapsing the third into
 the second is precisely what let a dead guard pass for a clean device:
 ```
-export USBMUXD_SOCKET_ADDRESS=/run/host/run/usbmuxd
 P="uvx --python 3.14 pymobiledevice3"
 OUT=$(timeout 3 $P developer dvt process-id-for-bundle-id app.snapsync 2>&1)
 PID=$(printf '%s\n' "$OUT" | grep -oE '^[0-9]+$' | tail -1)   # a pid, `0`, or NOTHING (= it failed)
@@ -687,7 +728,6 @@ holds only the dev cert plus a pre-generated dev provisioning profile baked in a
 `cloudflared` is fetched to the scratchpad, **not** globally installed.
 
 ```
-export USBMUXD_SOCKET_ADDRESS=/run/host/run/usbmuxd
 S=/tmp/.../scratchpad                                          # session scratchpad
 # 1. Ephemeral keypair (public half goes to CI; private half stays here)
 ssh-keygen -q -t ed25519 -N '' -f "$S/ssh-mac"
