@@ -6,15 +6,23 @@
 #
 # Why it exists: up to a dozen CodeHydra workspaces run in parallel against ONE SE2. Two of them
 # installing at once wedges the installer ("Coordinator superseded"), which cost ~2 h on
-# 2026-08-09. And device work needs the operator present anyway — the phone must be plugged in,
-# unlocked, and sometimes tapped. Both facts want the same object: a lease.
+# 2026-08-09. The lease is the mutex; this hook is what makes it unavoidable.
 #
 # It answers every Bash call with one of:
 #   defer  — not a device command, or a pure connectivity probe            (the overwhelming case)
-#   ask    — the lease acquisition itself; this is the ONE confirmation
-#   allow  — a device command while THIS workspace holds the lease (skips the classifier too)
-#   deny   — no lease, a foreign live lease, a malformed acquire, or an idevice* call whose
-#            USBMUXD_SOCKET_ADDRESS lacks the UNIX: prefix
+#   allow  — the wait, the acquire, and every device command while THIS workspace holds the lease
+#   ask    — `--steal`, and ONLY against a live foreign holder. The one confirmation in the whole
+#            fence, because it kills another workspace's session. Taking a FREE phone asks
+#            nothing: "is it taken?" is a fact this hook READS off the lock file, not a judgement
+#            an operator has to make. A prompt that sometimes guards nothing trains you to click
+#            through the one that guards something.
+#   deny   — no lease, a foreign live lease, a wrongly-shaped lease call, a pointless steal, or an
+#            idevice* call whose USBMUXD_SOCKET_ADDRESS lacks the UNIX: prefix
+#
+# The three lease shapes, and why each is what it is:
+#   scripts/device-lease --wait                 background, NOT ch-bg   waiting IS being busy
+#   ch-bg scripts/device-lease "<why>"          background AND ch-bg    holding must not read busy
+#   ch-bg scripts/device-lease --steal "<why>"  background AND ch-bg    same, plus the confirmation
 #
 # Default-deny by construction: the fence is decided by REDUCING the command — probe forms are
 # stripped, and anything that still names a device tool is fenced. A pymobiledevice3 subcommand
@@ -47,40 +55,82 @@ bg=$(printf '%s' "$input" | jq -r '.tool_input.run_in_background // false')
 hook_cwd=$(printf '%s' "$input" | jq -r '.cwd // ""')
 ws="${_CH_WORKSPACE_PATH:-$hook_cwd}"
 
-# ---------------------------------------------------------------- acquiring the lease
+lock_get() { sed -n "s/^$1=//p" "$LOCK" 2>/dev/null | head -1; }
+
+# ---------------------------------------------------------------- the lease calls themselves
 # Only when the script is actually INVOKED — in command position, after stripping env assignments
 # and wrappers. `git add scripts/device-lease`, `cat`, `chmod` and friends merely name the path and
 # must fall straight through; matching the bare substring would fence editing the guard's own repo.
 lease=$(printf '%s' "$cmd" \
   | sed -e 's/&&/\n/g' -e 's/||/\n/g' -e 's/[;|]/\n/g' \
   | awk '
-      BEGIN { found = 0; wrapped = 0 }
+      BEGIN { found = 0; wrapped = 0; mode = "acquire" }
       {
         seg = $0; chbg = 0
         sub(/^[ \t]+/, "", seg)
         while (1) {
           if (match(seg, /^[A-Za-z_][A-Za-z0-9_]*=[^ \t]*[ \t]+/)) { seg = substr(seg, RSTART + RLENGTH); continue }
-          if (match(seg, /^ch-bg[ \t]+/))                          { chbg = 1; seg = substr(seg, RSTART + RLENGTH); continue }
+          if (match(seg, /^([^ \t]*\/)?ch-bg[ \t]+/))              { chbg = 1; seg = substr(seg, RSTART + RLENGTH); continue }
           if (match(seg, /^(timeout[ \t]+[0-9.]+|time|nice|nohup|stdbuf|env|sh|bash)[ \t]+/)) { seg = substr(seg, RSTART + RLENGTH); continue }
           break
         }
         tok = seg; sub(/[ \t].*$/, "", tok)
-        if (tok ~ /device-lease$/) { found = 1; if (chbg) wrapped = 1 }
+        if (tok ~ /device-lease$/) {
+          found = 1
+          if (chbg) wrapped = 1
+          if (seg ~ /(^|[ \t])--steal([ \t]|$)/)     mode = "steal"
+          else if (seg ~ /(^|[ \t])--wait([ \t]|$)/) mode = "wait"
+          else                                       mode = "acquire"
+        }
       }
-      END { print found "," wrapped }')
+      END { print found "," wrapped "," mode }')
 
-case "$lease" in
-  1,*)
-    case "$lease" in
-      1,1) ;;
-      *) decide deny "Run the lease under ch-bg: \`ch-bg scripts/device-lease \"<why>\"\`. The ch-bg marker is what keeps this workspace able to go idle while it holds the phone; without it the workspace reads as busy for the whole device session." ;;
-    esac
-    if [ "$bg" != "true" ]; then
-      decide deny "Run the lease as a BACKGROUND Bash call (run_in_background: true). It blocks until killed by design — in the foreground it would hang this turn until the tool timeout, and the lease would evaporate with it."
-    fi
-    decide ask "About to take the connected iPhone for this workspace. Nothing has touched it yet."
-    ;;
-esac
+l_found=${lease%%,*}
+l_rest=${lease#*,}
+l_wrapped=${l_rest%%,*}
+l_mode=${l_rest#*,}
+
+if [ "$l_found" = 1 ]; then
+  # All three shapes are background calls: the wait is unbounded and holding is forever, so in the
+  # foreground either one would hang the turn until the harness's 10-minute clamp kills it — and a
+  # lease killed mid-turn evaporates.
+  if [ "$bg" != "true" ]; then
+    decide deny "Run this as a BACKGROUND Bash call (run_in_background: true). The wait blocks until the phone is free and the acquire blocks for as long as it holds the lease — in the foreground either would hang this turn until the tool timeout."
+  fi
+
+  case "$l_mode" in
+    wait)
+      if [ "$l_wrapped" = 1 ]; then
+        decide deny "Do NOT run the wait under ch-bg. Waiting for the phone IS this workspace being busy, and the ch-bg marker is exactly what tells CodeHydra otherwise. Plain:  scripts/device-lease --wait"
+      fi
+      decide allow "Waiting for the phone. Touches no device — it watches the lock file and exits when the lease is free."
+      ;;
+    acquire | steal)
+      if [ "$l_wrapped" != 1 ]; then
+        decide deny "Run the lease under ch-bg: \`ch-bg scripts/device-lease \"<why>\"\`. The ch-bg marker is what keeps this workspace able to go idle while it holds the phone; without it the workspace reads as busy for the whole device session."
+      fi
+      ;;
+  esac
+
+  if [ "$l_mode" = acquire ]; then
+    decide allow "Taking the connected iPhone for this workspace. It refuses on its own if a live holder or an unplugged phone says otherwise."
+  fi
+
+  # --- steal: the fence's one confirmation, and only when there is something to steal ---
+  h_ws=$(lock_get workspace)
+  h_pid=$(lock_get pid)
+  h_reason=$(lock_get reason)
+  h_when=$(lock_get acquired_human)
+
+  if [ ! -f "$LOCK" ] || [ -z "$h_pid" ] || ! kill -0 "$h_pid" 2>/dev/null; then
+    decide deny "Nothing to steal: the phone is free (or its holder, pid ${h_pid:-?}, is dead and the lease is reclaimable). Take it plainly:  ch-bg scripts/device-lease \"<why>\""
+  fi
+  if [ "$h_ws" = "$ws" ]; then
+    decide deny "This workspace already holds the lease (pid $h_pid, since ${h_when:-?}). Nothing to steal — just run the device command."
+  fi
+
+  decide ask "STEAL: this KILLS workspace '$(basename "${h_ws:-unknown}")'s lease (pid $h_pid, alive since ${h_when:-?}) mid-session — reason: \"${h_reason:-none given}\" — and takes the phone. If that workspace is installing, both of you wedge the installer. Confirm only if that session is genuinely abandoned."
+fi
 
 # ---------------------------------------------------------------- the UNIX: prefix trap
 # libimobiledevice parses a bare path as host:port, fails to connect, and reports "No device
@@ -116,10 +166,9 @@ esac
 
 # ---------------------------------------------------------------- the lease
 if [ ! -f "$LOCK" ]; then
-  decide deny "The connected iPhone is leased, and this workspace holds no lease. Take it first, as a BACKGROUND call:  ch-bg scripts/device-lease \"<why you need the phone>\"  — you will be asked to confirm once, then every device command in this workspace runs without further prompting until you kill that shell."
+  decide deny "The connected iPhone is leased, and this workspace holds no lease. Take it first, as a BACKGROUND call:  ch-bg scripts/device-lease \"<why you need the phone>\"  — no confirmation is asked for a free phone, and every device command in this workspace then runs without prompting until you kill that shell."
 fi
 
-lock_get() { sed -n "s/^$1=//p" "$LOCK" | head -1; }
 h_ws=$(lock_get workspace)
 h_pid=$(lock_get pid)
 h_reason=$(lock_get reason)
@@ -130,7 +179,7 @@ if [ -z "$h_pid" ] || ! kill -0 "$h_pid" 2>/dev/null; then
 fi
 
 if [ "$h_ws" != "$ws" ]; then
-  decide deny "The SE2 is held by workspace '$(basename "${h_ws:-unknown}")' since ${h_when:-?} — reason: \"${h_reason:-none given}\" (lease pid $h_pid, alive). Do NOT race it: a concurrent install wedges the installer for both of you. Either wait and tell the operator, or steal it deliberately:  ch-bg scripts/device-lease --steal \"<why>\""
+  decide deny "The SE2 is held by workspace '$(basename "${h_ws:-unknown}")' since ${h_when:-?} — reason: \"${h_reason:-none given}\" (lease pid $h_pid, alive). Do NOT race it: a concurrent install wedges the installer for both of you. Queue for it as a BACKGROUND call, NOT under ch-bg:  scripts/device-lease --wait  — it exits when the phone is free (printing DEVICE-LEASE WAIT RESULT), and you then run the acquire. Steal it only if that session is genuinely abandoned:  ch-bg scripts/device-lease --steal \"<why>\""
 fi
 
 decide allow "Lease held by this workspace since ${h_when:-?} — \"${h_reason:-none given}\"."

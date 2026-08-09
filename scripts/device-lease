@@ -1,41 +1,111 @@
 #!/bin/sh
-# Hold the lease on the one physically-connected iPhone, for as long as this process lives.
+# The lease on the one physically-connected iPhone — TWO deliberately separate invocations.
 #
 # Dev infrastructure: non-gating, no spec. Enforced by scripts/device-guard (see .claude/settings.json).
 #
-#   ch-bg scripts/device-lease "<why you need the phone>"          # take it
-#   ch-bg scripts/device-lease --steal "<why>"                     # take it from a live holder
+#   scripts/device-lease --wait                    # background, NOT ch-bg; exits 0 when the phone is free
+#   ch-bg scripts/device-lease "<why>"             # background + ch-bg; claims and HOLDS (this process IS the lease)
+#   ch-bg scripts/device-lease --steal "<why>"     # same, taken from a LIVE holder — confirmed once
 #
-# ALWAYS as a BACKGROUND Bash call, ALWAYS under ch-bg:
-#   - background, because this blocks until killed — that IS the lease;
-#   - ch-bg, because its marker excludes this shell from keeping the workspace busy, so the
-#     workspace can still go idle while it holds the phone.
-# The guard refuses both mistakes rather than letting you find out by hanging a turn.
+# Why the shapes differ, and why the guard refuses the wrong one rather than letting you find out
+# by hanging a turn:
+#   - all three are BACKGROUND calls: the wait is unbounded and holding is forever, and a
+#     foreground Bash call dies at the harness's 10-minute clamp;
+#   - the ACQUIRE runs under ch-bg, whose marker excludes the shell from keeping the workspace
+#     busy — a workspace may hold the phone and still go idle;
+#   - the WAIT runs WITHOUT ch-bg, because waiting IS this workspace being busy.
 #
-# Release = kill this shell (it shows in the CodeHydra sidebar for exactly as long as the lease
-# lasts). Session death releases it too. A SIGKILL cannot run the trap, so the guard also treats a
-# lease whose pid is dead as reclaimable — liveness is checked, never a guessed timeout.
+# Release = kill the holding shell (it shows in the CodeHydra sidebar for exactly as long as the
+# lease lasts). Session death releases it too. A SIGKILL cannot run the trap, so a lease whose pid
+# is dead is reclaimed automatically — liveness is checked, never a guessed timeout.
+#
+# The claim is atomic: the lock is written to a temp file and hard-LINKED into place, so it appears
+# fully formed and exactly one of N racing workspaces wins. The loser exits 1 and waits again; it
+# never blocks here, because waiting lives in --wait alone.
 set -u
 
 LOCK="${SNAPSYNC_DEVICE_LOCK:-$HOME/.snapsync-device.lock}"
 PROBE_TIMEOUT=5
+POLL_INTERVAL="${SNAPSYNC_DEVICE_POLL_INTERVAL:-5}"
+STATUS_EVERY="${SNAPSYNC_DEVICE_STATUS_EVERY:-60}"
 
-steal=0
-if [ "${1:-}" = "--steal" ]; then steal=1; shift; fi
-reason="${1:-}"
-
-if [ -z "$reason" ]; then
-  echo "usage: ch-bg scripts/device-lease [--steal] \"<why you need the phone>\"" >&2
+usage() {
+  echo "usage: scripts/device-lease --wait                    (background, NOT under ch-bg)" >&2
+  echo "       ch-bg scripts/device-lease [--steal] \"<why you need the phone>\"" >&2
   exit 2
-fi
+}
+
+mode=acquire
+case "${1:-}" in
+  --wait) mode=wait; shift ;;
+  --steal) mode=steal; shift ;;
+  -*) usage ;;
+esac
 
 ws="${_CH_WORKSPACE_PATH:-$(pwd)}"
 owned=0
 
+lock_get() { sed -n "s/^$1=//p" "$LOCK" 2>/dev/null | head -1; }
+
+# A holder counts only while its process lives. No timeouts anywhere in this script.
+holder_alive() {
+  [ -f "$LOCK" ] || return 1
+  p=$(lock_get pid)
+  [ -n "$p" ] && kill -0 "$p" 2>/dev/null
+}
+
+age_of() {
+  a=$(lock_get acquired)
+  [ -n "$a" ] || { echo "?"; return; }
+  d=$(($(date +%s) - a))
+  if [ "$d" -lt 60 ]; then echo "${d}s"
+  elif [ "$d" -lt 3600 ]; then echo "$((d / 60))m"
+  else echo "$((d / 3600))h $(((d % 3600) / 60))m"
+  fi
+}
+
+# ============================================================ --wait
+# Watches the lock file and NOTHING else: it touches no device, so it needs no phone connected and
+# runs no probe. "Is a phone plugged in?" is answered one call later, by the acquire.
+if [ "$mode" = wait ]; then
+  started=$(date +%s)
+  last_status=""
+  prev=none
+
+  while :; do
+    if ! holder_alive; then
+      break
+    fi
+    h_ws=$(lock_get workspace)
+    if [ "$h_ws" = "$ws" ]; then
+      prev="this workspace (already yours)"
+      break
+    fi
+    prev=$(basename "${h_ws:-unknown}")
+    now=$(date +%s)
+    if [ -z "$last_status" ] || [ $((now - last_status)) -ge "$STATUS_EVERY" ]; then
+      # The ageing status line IS the escalation signal: a holder that never releases shows up as a
+      # wait that keeps growing, and the answer to that is a --steal you confirm.
+      echo "device-lease: waiting for '$prev' (pid $(lock_get pid), held $(age_of)) — \"$(lock_get reason)\""
+      last_status=$now
+    fi
+    sleep "$POLL_INTERVAL"
+  done
+
+  # One greppable last line, so "no line" stays distinguishable from "it failed".
+  printf 'DEVICE-LEASE WAIT RESULT: free (previous holder %s, waited %ss)\n' \
+    "$prev" "$(($(date +%s) - started))"
+  exit 0
+fi
+
+# ============================================================ acquire / steal
+reason="${1:-}"
+[ -n "$reason" ] || usage
+
 cleanup() {
   st=$?
   # Only remove a lock we still own — never one that superseded ours.
-  if [ "$owned" = 1 ] && [ -f "$LOCK" ] && [ "$(sed -n 's/^pid=//p' "$LOCK" | head -1)" = "$$" ]; then
+  if [ "$owned" = 1 ] && [ -f "$LOCK" ] && [ "$(lock_get pid)" = "$$" ]; then
     rm -f "$LOCK"
     echo "device-lease: released ($reason)"
   fi
@@ -46,11 +116,8 @@ cleanup() {
 }
 trap cleanup EXIT INT TERM HUP
 
-lock_get() { sed -n "s/^$1=//p" "$LOCK" | head -1; }
-
 # --- 1. Is a phone actually connected? -------------------------------------------------------
-# First act, deliberately: "no device connected" is a far better answer than a lease on nothing —
-# and it is the state the operator has been announcing by hand ("device is connected") all along.
+# First act, deliberately: "no device connected" is a far better answer than a lease on nothing.
 # usbmux list talks to usbmuxd on the host, not to the phone; it is outside the guard's fence.
 if [ "${SNAPSYNC_DEVICE_SKIP_PROBE:-0}" != "1" ]; then
   probe=$(timeout "$PROBE_TIMEOUT" uvx --python 3.14 pymobiledevice3 usbmux list 2>&1) || probe=""
@@ -64,33 +131,22 @@ if [ "${SNAPSYNC_DEVICE_SKIP_PROBE:-0}" != "1" ]; then
   esac
 fi
 
-# --- 2. Take the lock ------------------------------------------------------------------------
-claim() {
-  umask 077
-  {
-    echo "workspace=$ws"
-    echo "pid=$$"
-    echo "reason=$reason"
-    echo "acquired=$(date +%s)"
-    echo "acquired_human=$(date '+%Y-%m-%d %H:%M')"
-  } > "$LOCK"
-  owned=1
-}
-
+# --- 2. Clear the way ------------------------------------------------------------------------
 if [ -f "$LOCK" ]; then
   h_ws=$(lock_get workspace)
   h_pid=$(lock_get pid)
   h_reason=$(lock_get reason)
   if [ -n "$h_pid" ] && kill -0 "$h_pid" 2>/dev/null; then
-    if [ "$steal" = 1 ]; then
+    if [ "$mode" = steal ]; then
       echo "device-lease: stealing from '$(basename "${h_ws:-unknown}")' (pid $h_pid — \"${h_reason:-none given}\")"
       kill "$h_pid" 2>/dev/null || true
       # Give its trap a moment to release; then take it regardless.
-      i=0; while [ -f "$LOCK" ] && [ "$i" -lt 20 ]; do sleep 0.25; i=$((i + 1)); done
+      i=0
+      while [ -f "$LOCK" ] && [ "$i" -lt 20 ]; do sleep 0.25; i=$((i + 1)); done
       rm -f "$LOCK"
     else
       echo "device-lease: held by '$(basename "${h_ws:-unknown}")' (pid $h_pid) — \"${h_reason:-none given}\"" >&2
-      echo "device-lease: wait for it, or: ch-bg scripts/device-lease --steal \"<why>\"" >&2
+      echo "device-lease: wait for it:  scripts/device-lease --wait   (background, NOT under ch-bg)" >&2
       exit 1
     fi
   else
@@ -99,11 +155,37 @@ if [ -f "$LOCK" ]; then
   fi
 fi
 
-claim
+# --- 3. Claim it, atomically -----------------------------------------------------------------
+# Write whole, then hard-link into place: `ln` fails if the target exists, so exactly one of N
+# racing claimants wins, and the file never exists half-written for the guard to misread as dead.
+tmp="$LOCK.$$.tmp"
+umask 077
+{
+  echo "workspace=$ws"
+  echo "pid=$$"
+  echo "reason=$reason"
+  echo "acquired=$(date +%s)"
+  echo "acquired_human=$(date '+%Y-%m-%d %H:%M')"
+} > "$tmp"
+
+if ! ln "$tmp" "$LOCK" 2>/dev/null; then
+  rm -f "$tmp"
+  echo "device-lease: lost the race — '$(basename "$(lock_get workspace)")' (pid $(lock_get pid)) claimed it first — \"$(lock_get reason)\"" >&2
+  echo "device-lease: wait again:  scripts/device-lease --wait   (background, NOT under ch-bg)" >&2
+  exit 1
+fi
+rm -f "$tmp"
+
+if [ "$(lock_get pid)" != "$$" ]; then
+  echo "device-lease: claimed the lock but it does not read back as ours — refusing to act as holder." >&2
+  exit 1
+fi
+owned=1
+
 echo "device-lease: held by '$(basename "$ws")' (pid $$) — \"$reason\""
 echo "device-lease: release by killing this shell."
 
-# --- 3. Block. This process IS the lease. ----------------------------------------------------
+# --- 4. Block. This process IS the lease. ----------------------------------------------------
 # `sleep & wait` rather than a bare sleep, so a signal is handled immediately instead of after
 # the current sleep completes.
 while :; do
