@@ -1115,6 +1115,10 @@ object SnapSyncRoot {
             // The walk-vs-snapshot decision, derived by the app graph from current permission + the
             // latest snapshot (capability `limited-photo-access`).
             selectionScope = { app.selectionScope() },
+            // Where this session's OS completion handler is released — the main lane, because UIKit
+            // owns that handler and requires it (capability `ios-app-shell`). Named here, in the one
+            // app-process file the lane gate permits to name it.
+            uiLane = Dispatchers.Main,
         )
     }
 

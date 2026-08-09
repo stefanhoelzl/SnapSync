@@ -3,10 +3,18 @@ package app.snapsync.feature.upload
 import app.snapsync.ports.BackgroundScheduler
 import app.snapsync.ports.CycleResult
 
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeout
+import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
+import kotlin.time.Duration.Companion.seconds
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
+import kotlin.test.assertTrue
 
+@OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class) // runCurrent on the test scheduler
 class BackgroundUploadPumpTest {
 
     private class FakeScheduler : BackgroundScheduler {
@@ -82,21 +90,141 @@ class BackgroundUploadPumpTest {
     }
 
     /** A trigger arriving mid-cycle coalesces into exactly one trailing re-run — never a parallel cycle. */
+    /**
+     * The trigger arrives from **another coroutine**, as every real one does — an OS callback, a
+     * delegate queue, a push. It used to be invoked from inside `runCycle`, which no production path
+     * does and which a coalesced caller that awaits the drain would deadlock on: it would be waiting
+     * for the very cycle whose body is doing the waiting.
+     */
     @Test
     fun coalescesConcurrentTriggersIntoOneRerun() = runTest {
         val scheduler = FakeScheduler()
         var runs = 0
-        lateinit var pump: BackgroundUploadPump
-        pump = BackgroundUploadPump(
+        val firstCycle = CompletableDeferred<Unit>()
+        val pump = BackgroundUploadPump(
             runCycle = {
                 runs++
-                if (runs == 1) pump.onUploadCompleted() // arrives while the first cycle is running
+                if (runs == 1) firstCycle.await() // hold the first cycle open
                 CycleResult.COMPLETED
             },
             scheduler = scheduler,
         )
-        pump.onForeground()
+
+        val drain = launch { pump.onForeground() }
+        runCurrent() // the first cycle is now in flight, parked
+
+        var coalescedReturned = false
+        val coalesced = launch {
+            pump.onUploadCompleted()
+            coalescedReturned = true
+        }
+        runCurrent()
+        assertFalse(coalescedReturned, "a coalesced trigger returned while the drain it extended ran on")
+
+        firstCycle.complete(Unit)
+        drain.join()
+        coalesced.join()
+
         assertEquals(2, runs) // the mid-run trigger produced one extra pass, not two cycles at once
+        assertTrue(coalescedReturned, "the coalesced trigger must return once the drain has ended")
+    }
+
+    /**
+     * A drain that is cancelled mid-cycle must not wedge the pump.
+     *
+     * Coalescing callers now *await* the in-flight drain instead of returning, which changes what a lost
+     * cleanup costs: a `drainDone` left non-null is no longer "work silently dropped" but "every trigger
+     * blocks forever" — foreground, start, push, selection, session events and heartbeat alike.
+     */
+    @Test
+    fun aCancelledDrainDoesNotWedgeTheNextTrigger() = runTest {
+        val scheduler = FakeScheduler()
+        val firstCycle = CompletableDeferred<Unit>()
+        var runs = 0
+        val pump = BackgroundUploadPump(
+            runCycle = {
+                runs++
+                if (runs == 1) firstCycle.await()
+                CycleResult.COMPLETED
+            },
+            scheduler = scheduler,
+        )
+
+        val drain = launch { pump.onForeground() }
+        runCurrent()
+        drain.cancel() // the drain's coroutine dies mid-cycle
+        runCurrent()
+
+        // If the cleanup was lost, this parks on a deferred nothing can complete and the timeout fires.
+        withTimeout(10.seconds) { pump.onBackgroundTask() }
+        assertEquals(2, runs, "the later trigger must run its own drain, not inherit the dead one")
+        assertEquals(1, scheduler.scheduled, "and keep its own re-arm")
+    }
+
+    /**
+     * The heartbeat's re-arm is unconditional and the `BGProcessingTask` is one-shot, so a coalesced
+     * fire that re-submitted nothing severed the chain until the user next foregrounded the app. Seen
+     * in the field: `← pump.onBackgroundTask (2ms)` with no cycle between entry and exit and no
+     * `scheduleNext` after it.
+     */
+    @Test
+    fun coalescedBackgroundTaskStillResubmits() = runTest {
+        val scheduler = FakeScheduler()
+        val firstCycle = CompletableDeferred<Unit>()
+        var runs = 0
+        val pump = BackgroundUploadPump(
+            runCycle = {
+                runs++
+                if (runs == 1) firstCycle.await()
+                CycleResult.COMPLETED
+            },
+            scheduler = scheduler,
+        )
+
+        // A completion-driven drain: its own policy schedules nothing, so any re-arm below is the
+        // coalesced heartbeat's and nothing else's.
+        val drain = launch { pump.onUploadCompleted() }
+        runCurrent()
+        val heartbeat = launch { pump.onBackgroundTask() }
+        runCurrent()
+
+        firstCycle.complete(Unit)
+        drain.join()
+        heartbeat.join()
+
+        assertEquals(1, scheduler.scheduled, "the coalesced heartbeat did not re-submit the next task")
+    }
+
+    /** A coalesced trigger re-arms on the drain's result, not on an assumption about it. */
+    @Test
+    fun coalescedRelaunchTriggerRearmsOnlyOnRemainingWork() = runTest {
+        val testScope = this
+        suspend fun scheduledAfterDrainEnding(result: CycleResult): Int {
+            val scheduler = FakeScheduler()
+            val firstCycle = CompletableDeferred<Unit>()
+            var runs = 0
+            val pump = BackgroundUploadPump(
+                runCycle = {
+                    runs++
+                    if (runs == 1) firstCycle.await()
+                    result
+                },
+                scheduler = scheduler,
+            )
+            val drain = testScope.launch { pump.onUploadCompleted() }
+            testScope.runCurrent()
+            val coalesced = testScope.launch { pump.onSessionEvents() }
+            testScope.runCurrent()
+            firstCycle.complete(Unit)
+            drain.join()
+            coalesced.join()
+            return scheduler.scheduled
+        }
+
+        assertEquals(1, scheduledAfterDrainEnding(CycleResult.PROCESSING), "work remained; nothing re-armed")
+        assertEquals(0, scheduledAfterDrainEnding(CycleResult.COMPLETED), "nothing remained; it re-armed anyway")
+        // SKIPPED overrides every trigger's own policy, coalesced or not.
+        assertEquals(0, scheduledAfterDrainEnding(CycleResult.SKIPPED), "a declining membership was re-armed")
     }
 
     /** Every cycle triggers the status refresh (the in-process liveness signal), once per pass. */
@@ -105,17 +233,25 @@ class BackgroundUploadPumpTest {
         val scheduler = FakeScheduler()
         var runs = 0
         var refreshes = 0
-        lateinit var pump: BackgroundUploadPump
-        pump = BackgroundUploadPump(
+        val firstCycle = CompletableDeferred<Unit>()
+        val pump = BackgroundUploadPump(
             runCycle = {
                 runs++
-                if (runs == 1) pump.onUploadCompleted() // force a trailing re-run → two cycles
+                if (runs == 1) firstCycle.await()
                 CycleResult.COMPLETED
             },
             scheduler = scheduler,
             onCycleComplete = { refreshes++ },
         )
-        pump.onForeground()
+
+        val drain = launch { pump.onForeground() }
+        runCurrent()
+        val coalesced = launch { pump.onUploadCompleted() } // force a trailing re-run → two cycles
+        runCurrent()
+        firstCycle.complete(Unit)
+        drain.join()
+        coalesced.join()
+
         assertEquals(2, runs)
         assertEquals(2, refreshes) // one refresh per cycle, both passes
     }
@@ -264,18 +400,33 @@ class BackgroundUploadPumpTest {
     fun onSilentPush_coalesces_with_an_in_flight_cycle() = runTest {
         val scheduler = FakeScheduler()
         var runs = 0
-        lateinit var pump: BackgroundUploadPump
-        pump = BackgroundUploadPump(
+        val firstCycle = CompletableDeferred<Unit>()
+        val pump = BackgroundUploadPump(
             runCycle = {
                 runs++
-                if (runs == 1) pump.onSilentPush() // arrives while the first cycle is running
+                if (runs == 1) firstCycle.await()
                 CycleResult.COMPLETED
             },
             scheduler = scheduler,
         )
 
-        pump.onBackgroundTask()
+        val drain = launch { pump.onBackgroundTask() }
+        runCurrent()
+
+        // The push arrives from its own coroutine, as APNs delivery does.
+        var pushReturned = false
+        val push = launch {
+            pump.onSilentPush()
+            pushReturned = true
+        }
+        runCurrent()
+        assertFalse(pushReturned, "the push returned while the drain it extended was still running")
+
+        firstCycle.complete(Unit)
+        drain.join()
+        push.join()
 
         assertEquals(2, runs) // one trailing re-run, not two concurrent cycles
+        assertTrue(pushReturned)
     }
 }

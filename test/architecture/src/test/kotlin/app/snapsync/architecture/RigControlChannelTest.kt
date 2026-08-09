@@ -131,7 +131,7 @@ class RigControlChannelTest {
     // ── 3. The receipt's expiry line is pinned ────────────────────────────────────────────────────
 
     /**
-     * The invariant substring of the line `OsReceipt` emits **only** when its deadline fires.
+     * The invariant substring every OS-handler receipt emits **only** when its deadline fires.
      *
      * Consumers read the line's PRESENCE as "the bound engaged" and therefore its ABSENCE as "the work
      * finished" — so a reword turns every consumer green while hiding exactly the defect class it watches
@@ -143,28 +143,76 @@ class RigControlChannelTest {
      */
     private val expiryLine = "OS handler released on its"
 
+    /**
+     * Every file that may emit [expiryLine], each with the expiry it reports.
+     *
+     * **Derived and compared in both directions**, not read from one hard-coded path. This started as a
+     * single-file check on `OsReceipt`, which was exactly right while `OsReceipt` was the only receipt —
+     * and went quietly wrong the moment a second one appeared: `BackgroundEventsReceipts` bounds a wait
+     * for a drain signal, and a reword of ITS line would have blinded every consumer for the two
+     * background-`URLSession` handlers while this guard stayed green. The set is what needs pinning, not
+     * the file.
+     *
+     * A new emitter therefore fails the build until it is declared here with the expiry it reports, which
+     * is the same bargain the trigger-coverage gate above imposes.
+     */
+    private val expiryEmitters = mapOf(
+        "domain/src/commonMain/kotlin/app/snapsync/ports/OsReceipt.kt" to
+            "the receipt's own deadline, released while its work runs on",
+        "domain/src/commonMain/kotlin/app/snapsync/ports/BackgroundEventsReceipts.kt" to
+            "the bound on a wait for a drain signal that never came",
+    )
+
+    /** Production Kotlin, excluding build output and test sources (which quote the line in prose). */
+    private fun productionKotlin(): List<File> = repoRoot.walkTopDown()
+        .filter { it.isFile && it.extension == "kt" }
+        .filterNot { it.path.contains("/build/") }
+        .filterNot { it.path.contains("/test/") }
+        .filterNot { it.name.endsWith("Test.kt") }
+        .toList()
+
     @Test
-    fun `the OsReceipt deadline-expiry line is pinned`() {
-        val source = read("domain/src/commonMain/kotlin/app/snapsync/ports/OsReceipt.kt")
-        assertTrue(
-            source.contains(expiryLine),
-            "the OsReceipt deadline-expiry log line changed. Its presence is the ONLY authoritative " +
-                "answer to whether a handler was released because the work finished or because the bound " +
-                "fired, and the rig's consumers read its ABSENCE as \"finished\" — so a reword makes every " +
-                "receipted scenario pass while hiding the regressions it watches for. Expected to find: " +
-                "\"$expiryLine\"",
+    fun `every declared expiry emitter still emits the pinned line`() {
+        expiryEmitters.forEach { (path, expiry) ->
+            assertTrue(
+                read(path).contains(expiryLine),
+                "the deadline-expiry log line changed in $path (which reports $expiry). Its presence is " +
+                    "the ONLY authoritative answer to whether a handler was released because the work " +
+                    "finished or because the bound fired, and the rig's consumers read its ABSENCE as " +
+                    "\"finished\" — so a reword makes every receipted scenario pass while hiding the " +
+                    "regressions it watches for. Expected to find: \"$expiryLine\"",
+            )
+        }
+    }
+
+    @Test
+    fun `the set of expiry emitters is exactly the declared one`() {
+        val sources = productionKotlin()
+        assertTrue(sources.size >= 100, "scanned only ${sources.size} files — this gate proves nothing")
+
+        val found = sources.filter { it.readText().contains(expiryLine) }
+            .map { it.relativeTo(repoRoot).path }
+            .toSet()
+        assertEquals(
+            expiryEmitters.keys,
+            found,
+            "the set of files emitting the expiry line drifted from the pinned inventory. An UNDECLARED " +
+                "emitter is the dangerous one: consumers read the line's absence as \"the work finished\", " +
+                "so an emitter nobody pinned can be reworded without any guard noticing. Declare it with " +
+                "the expiry it reports, or remove it.",
         )
     }
 
     @Test
-    fun `the expiry line is emitted on the expiry path only`() {
-        val source = read("domain/src/commonMain/kotlin/app/snapsync/ports/OsReceipt.kt")
-        assertEquals(
-            1,
-            Regex(Regex.escape(expiryLine)).findAll(source).count(),
-            "the expiry line appears more than once in OsReceipt. Absence of the line must remain " +
-                "equivalent to \"the handler was released because the work completed\" — a second " +
-                "emission site destroys that equivalence for every consumer.",
-        )
+    fun `each emitter emits the line exactly once`() {
+        expiryEmitters.keys.forEach { path ->
+            assertEquals(
+                1,
+                Regex(Regex.escape(expiryLine)).findAll(read(path)).count(),
+                "the expiry line appears more than once in $path. Absence of the line must remain " +
+                    "equivalent to \"the handler was released because the work completed\" — a second " +
+                    "emission site within one file destroys that equivalence for every consumer.",
+            )
+        }
     }
 }

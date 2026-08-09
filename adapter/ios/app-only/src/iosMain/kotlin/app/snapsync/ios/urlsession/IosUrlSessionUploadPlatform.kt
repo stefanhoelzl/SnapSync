@@ -74,10 +74,18 @@ class IosUrlSessionUploadPlatform(
     // Fired after each task reaches a terminal state — the composition root wires this to the pump's
     // `onUploadCompleted` (a slot just freed → top up).
     private val onTerminal: () -> Unit,
+    // Fired when the session reports every enqueued event delivered (the background-session relaunch
+    // delegate callback) — the composition root wires this to the receipts' `drained()`.
+    //
+    // A constructor `val`, like `onTerminal` beside it, not the settable `var` it used to be. Two
+    // reasons, and the second is the load-bearing one. It is set exactly once, by the one root that
+    // builds this platform, so nothing needed the mutability. And the `var` form — a mutable field of
+    // type `(() -> Unit)?` — is the shape a `:test:architecture` guard now confines to
+    // `BackgroundEventsReceipts`, because that is the shape a stored OS completion handler takes. This
+    // slot is NOT an OS handler, merely identical in type; allowlisting it would have put a non-handler
+    // in a handler guard's exemption list and invited the next one. Cheaper to not be that shape.
+    private val onEventsFinished: () -> Unit,
 ) : BackgroundTransfer {
-
-    /** Set by the composition root: invoked from the background-session relaunch delegate callback. */
-    var onBackgroundEventsFinished: (() -> Unit)? = null
 
     private class InFlight(val task: NSURLSessionUploadTask, val resource: PHAssetResource?, val fileUrl: NSURL)
     private class Terminal(val key: String, val success: Boolean, val error: UploadError?, val resource: PHAssetResource?)
@@ -88,7 +96,7 @@ class IosUrlSessionUploadPlatform(
 
     private val delegate = SessionDelegate(
         onComplete = ::recordTerminal,
-        onEventsFinished = { onBackgroundEventsFinished?.invoke() },
+        onEventsFinished = { onEventsFinished() },
     )
 
     private val sessionId = sessionIdentifier

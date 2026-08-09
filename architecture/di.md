@@ -21,6 +21,7 @@ Roots found:
 | `AlbumCoordinator` | | x | |
 | `ApnsPushToken` | x | | |
 | `AppPorts` | x | | |
+| `BackgroundEventsReceipts` | | | x |
 | `BackgroundUploadPump` | | | x |
 | `CutoffFormatter` | x | | |
 | `EventNotifier` | | x | x |
