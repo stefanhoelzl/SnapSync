@@ -7,6 +7,7 @@ import app.snapsync.config.FileBackedConfigStore
 import app.snapsync.engine.LEDGER_APP_GROUP
 import app.snapsync.feature.album.AlbumCoordinator
 import app.snapsync.model.SelectionScope
+import app.snapsync.ports.BackgroundEventsReceipts
 import app.snapsync.ports.OsReceipt
 import app.snapsync.ports.ReceiptDeadlines
 import app.snapsync.ports.LedgerStore
@@ -35,6 +36,7 @@ import co.touchlab.kermit.Logger
 import io.ktor.client.HttpClient
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
+import kotlin.coroutines.CoroutineContext
 
 /**
  * The app-driven (iOS 18–26.0) upload tier's composition root — the app-process analogue of
@@ -95,6 +97,16 @@ class UrlSessionUploadController(
     // opt-in is applied by the cycle, which reads it from the gate; the `assetId` denormalization
     // is `uploadCore`'s shared translation.
     private val albumCoordinator: AlbumCoordinator,
+    // The main lane, for releasing this session's OS completion handler and nothing else (capability
+    // `ios-app-shell`). Required by UIKit — `URLSessionDelegate.urlSessionDidFinishEvents` says
+    // *"Because the provided completion handler is part of UIKit, you must call it on your main
+    // thread"* — and the drain that triggers the release is delivered on a session-owned queue, so
+    // without this the release lands wherever the wait happened to be (until now, the composition lane).
+    //
+    // It is the **`uiLane`** and not a lane of its own: the same doc says the handler is executed
+    // *"so that the app can take a new snapshot of your user interface"*, so this is platform UI by the
+    // platform's own account, which is exactly what that lane is reserved for.
+    private val uiLane: CoroutineContext,
 ) : UploadProducer {
     companion object {
         const val SESSION_IDENTIFIER = "app.snapsync.upload.session"
@@ -119,6 +131,9 @@ class UrlSessionUploadController(
         pendingKeys = { ledgerStore.pendingResources().map { it.key }.toSet() },
         // A slot just freed → top up (single-flight in the pump serialises it).
         onTerminal = { scope.launch { pump.onUploadCompleted() } },
+        // The session delivered every event it had. Same lazy-capture shape as `onTerminal`: the
+        // lambda body runs long after construction, so it may name a property declared below.
+        onEventsFinished = { backgroundEvents.drained() },
     )
 
     /**
@@ -145,30 +160,26 @@ class UrlSessionUploadController(
         onCycleComplete = onCycleComplete,
     )
 
-    // The OS completion handler from `handleEventsForBackgroundURLSession`, held until the session
-    // reports all events delivered (then invoked exactly once).
-    private var backgroundEventsCompletion: (() -> Unit)? = null
-
-    init {
-        platform.onBackgroundEventsFinished = {
-            val completion = backgroundEventsCompletion
-            backgroundEventsCompletion = null
-            scope.launch {
-                // The session drained ITS events; the cycle those events feed has not run yet. Releasing
-                // the OS handler here — which is what this did — reported work that was merely queued
-                // (capability `ios-app-shell`). With no handler (a foreground drain) the pump still runs.
-                if (completion == null) {
-                    pump.onSessionEvents()
-                } else {
-                    OsReceipt(
-                        entryPoint = "url-session.onBackgroundSessionEvents",
-                        deadline = ReceiptDeadlines.URL_SESSION_EVENTS,
-                        release = completion,
-                    ).heldFor { pump.onSessionEvents() }
-                }
-            }
-        }
-    }
+    /**
+     * This tier's OS completion handlers from `handleEventsForBackgroundURLSession` (capability
+     * `ios-app-shell`). Wiring only: the holding, the bound, and the release lane are the shared
+     * `:domain` type's, which is why this class no longer stores a handler of its own.
+     *
+     * The work a drain feeds is a pump drain — which is zero cycles of its own when it coalesces into
+     * one already running, and an arbitrary number when that drain keeps re-running; either way it now
+     * returns only when the drain has ended. Both halves used to be wrong here: the receipt was created
+     * at the *drain* rather than the handover, so the gap in which the drain might never arrive was
+     * outside the bound; and `pump.onSessionEvents()` coalesced into a drain a completion had already
+     * started and returned in 0-2 ms, so the receipt held for nothing.
+     */
+    private val backgroundEvents = BackgroundEventsReceipts(
+        scope = scope,
+        entryPoint = "url-session.onBackgroundSessionEvents",
+        deadline = ReceiptDeadlines.BACKGROUND_EVENTS,
+        work = { pump.onSessionEvents() },
+        releaseLane = uiLane,
+        log = log,
+    )
 
     /**
      * The cycle — assembled by the SHARED composition `uploadCore` (spec `module-architecture`, "One
@@ -282,9 +293,12 @@ class UrlSessionUploadController(
 
     /** The OS relaunched us to finish background transfers — hold the completion, let the session drain. */
     fun onBackgroundSessionEvents(completion: () -> Unit) = log.invocation("url-session.onBackgroundSessionEvents") {
-        backgroundEventsCompletion = completion
+        // Adopt BEFORE reattaching, so the reattach is inside the bound: a session that never reports is
+        // exactly the case the deadline exists for. (The clock starts a dispatch later, not on this line
+        // — see `BackgroundEventsReceipts`.)
+        backgroundEvents.adopt(completion)
         // Touch the session so it re-attaches and begins delivering its completion callbacks (which
-        // fire onBackgroundEventsFinished, invoking `completion` + pumping onSessionEvents).
+        // fire onEventsFinished → drained(), pumping a cycle and releasing what is held).
         platform.reattach()
     }
 

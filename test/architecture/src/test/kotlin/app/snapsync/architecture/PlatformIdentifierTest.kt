@@ -116,10 +116,13 @@ class PlatformIdentifierTest {
      * **Deferred debt**, kept separate from [accepted] on purpose: these are real violations of the
      * law, left standing deliberately, and reading them as "accepted" would launder them.
      *
-     * - `ports/OsReceipt.kt` — `ReceiptDeadlines.URL_SESSION_EVENTS` names the OS entry point whose
-     *   handler budget it holds. `OsReceipt` is the port *for* OS entry points, and its two siblings
-     *   (`SILENT_PUSH`, `BACKGROUND_TASK`) are already neutral, so this is a naming slip rather than a
-     *   structural one. **Expiry:** dies with the iOS 18–26.0 app-driven tier.
+     * The map is **empty**, and that is a state to keep rather than a gap to fill. Its last entry was
+     * `ports/OsReceipt.kt`'s `URL_SESSION_EVENTS`, filed with the expiry *"dies with the iOS 18–26.0
+     * app-driven tier"*. Giving the **download** session the same budget invalidated that expiry rather
+     * than postponing it — downloads run a background session on every iOS version, so the debt would
+     * have outlived the tier it was charged against. Renaming it `BACKGROUND_EVENTS` repaid the debt
+     * instead of re-filing it under a weaker one: a deferred pin is a receipt with an expiry, and it
+     * stops being one once the expiry is fiction.
      *
      * A pin here is not permission. It is a receipt, exact in both directions (below), so the debt
      * cannot quietly outlive the code that owes it.
@@ -147,9 +150,7 @@ class PlatformIdentifierTest {
      * three the moment the reshape landed. The `Keychain` token stays in [appleForms] with no pin
      * naming it, so a reintroduction fails rather than arriving unpinned.
      */
-    private val deferred: Map<String, Set<String>> = mapOf(
-        "domain/src/commonMain/kotlin/app/snapsync/ports/OsReceipt.kt" to setOf("URL_SESSION"),
-    )
+    private val deferred: Map<String, Set<String>> = emptyMap()
 
     private val pins: Map<String, Set<String>> = accepted + deferred
 

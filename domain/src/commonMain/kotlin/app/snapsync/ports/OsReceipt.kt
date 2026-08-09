@@ -1,9 +1,13 @@
 package app.snapsync.ports
 
 import co.touchlab.kermit.Logger
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
+import kotlin.coroutines.CoroutineContext
+import kotlin.coroutines.EmptyCoroutineContext
 import kotlin.time.Duration
 import kotlin.time.Duration.Companion.seconds
 
@@ -41,6 +45,19 @@ class OsReceipt(
     /** The raw OS handler. Invoked at most once, on every path including a throw. */
     private val release: () -> Unit,
     private val log: Logger = Logger.withTag("OsReceipt"),
+    /**
+     * Where [release] is invoked — **the release only**, never the hold (capability `ios-app-shell`).
+     *
+     * Defaults to "wherever this receipt is held", which is right for every handler whose owning API
+     * states no thread requirement. The background-`URLSession` handler is the one that does:
+     * `URLSessionDelegate.urlSessionDidFinishEvents(forBackgroundURLSession:)` says *"Because the
+     * provided completion handler is part of UIKit, you must call it on your main thread"* — and its
+     * drain signal is delivered on a session-owned queue, so without a lane the release lands wherever
+     * the wait happened to be. Held separately from the wait because the two answer different questions:
+     * the wait must not sit on a lane a platform call can block, and the release must satisfy whatever
+     * the handler's owner demands.
+     */
+    private val releaseLane: CoroutineContext = EmptyCoroutineContext,
 ) {
 
     /**
@@ -75,10 +92,18 @@ class OsReceipt(
         }
     }
 
-    private fun releaseOnce() {
+    /**
+     * `NonCancellable`, because this also runs from the `finally` above: if the caller's job was
+     * cancelled, a plain hop onto [releaseLane] would fail immediately and the handler would go
+     * unanswered — trading a cancelled coroutine for the app's future background wakes.
+     *
+     * The once-only flag is still read and written in the calling coroutine, before any hop, so the
+     * "same coroutine, cannot interleave" argument above survives the lane unchanged.
+     */
+    private suspend fun releaseOnce() {
         if (released) return
         released = true
-        release()
+        withContext(NonCancellable + releaseLane) { release() }
     }
 }
 
@@ -94,8 +119,16 @@ object ReceiptDeadlines {
     /** A `content-available` push: answered with real margin inside the commonly-cited ~30 s. */
     val SILENT_PUSH: Duration = 20.seconds
 
-    /** A background-`URLSession` events wake — same budget shape as the push. */
-    val URL_SESSION_EVENTS: Duration = 20.seconds
+    /**
+     * A wake that delivers a background transfer session's queued events — same budget shape as the push.
+     *
+     * Need-named, not technology-named. It was `URL_SESSION_EVENTS`, pinned as deferred debt in the
+     * platform-identifier gate under the expiry *"dies with the iOS 18–26.0 app-driven tier"*. Giving the
+     * **download** session the same budget — which the change that renamed this did — invalidates that
+     * expiry rather than merely postponing it: downloads run a background session on every iOS version,
+     * so the debt would have outlived the tier it was charged against. Repaid rather than re-filed.
+     */
+    val BACKGROUND_EVENTS: Duration = 20.seconds
 
     /**
      * A `BGTask`. Generous on purpose: the download backstop is a `BGProcessingTask` and can

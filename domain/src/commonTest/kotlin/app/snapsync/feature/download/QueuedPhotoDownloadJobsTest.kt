@@ -16,8 +16,11 @@ import kotlin.test.assertNull
 import kotlin.test.assertTrue
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.advanceUntilIdle
+import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
+import kotlin.time.Duration.Companion.seconds
 
 /**
  * The download client's orchestration, exercised without an iOS runtime (capability `photo-download`):
@@ -341,14 +344,44 @@ class QueuedPhotoDownloadJobsTest {
         h.transport.finish(encodeTag(AssetRef("DEVICE-A", "A"), "a-primary.heic"))
         h.transport.finish(encodeTag(AssetRef("DEVICE-A", "B"), "b-primary.heic"))
         h.transport.eventsFinished()
-        advanceUntilIdle()
+        // `runCurrent`, NOT `advanceUntilIdle`: the handler is now bounded, and advancing virtual time
+        // freely would jump past that deadline and release it — proving nothing about the imports.
+        runCurrent()
 
         assertEquals(listOf("a-primary.heic", "b-primary.heic"), importsStarted, "both imports started")
         assertFalse(released, "the OS handler must NOT be released while its imports are still running")
 
         gate.complete(Unit)
-        advanceUntilIdle()
+        runCurrent()
         assertTrue(released, "released once the imports it announced actually finished")
+    }
+
+    /**
+     * The other half of the same guarantee, and the one this side never had: awaiting the imports is
+     * correct, awaiting them **unboundedly** is not. An import that never reports used to leave the
+     * handler unanswered for the process's life, and an unanswered handler costs the app the very
+     * download wakes this capability runs on (capability `ios-app-shell`).
+     */
+    @Test
+    fun a_stalled_import_does_not_strand_the_os_handler() = runTest {
+        // `backgroundScope`, because this test deliberately parks an import that never reports: the
+        // deadline must release the handler and leave that import running, so it is still alive when the
+        // test body ends and must not be something runTest waits on.
+        val h = Harness(backgroundScope)
+        var released = false
+        val neverImports = kotlinx.coroutines.CompletableDeferred<Unit>()
+        var importFinished = false
+        h.jobs.onStaged = { _, _, _ -> neverImports.await(); importFinished = true }
+        h.jobs.adoptBackgroundEvents { released = true }
+
+        h.transport.finish(encodeTag(AssetRef("DEVICE-A", "A"), "a-primary.heic"))
+        h.transport.eventsFinished()
+        runCurrent()
+        assertFalse(released, "released before its deadline")
+
+        advanceTimeBy(21.seconds)
+        assertTrue(released, "a stalled import must not hold the OS handler forever")
+        assertFalse(importFinished, "the deadline must release the handler, never cancel the import")
     }
 
     @Test

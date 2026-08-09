@@ -406,7 +406,15 @@ class AppCore internal constructor(
     val downloadJobs: QueuedPhotoDownloadJobs by lazy {
         // The staging root is read from the port that also releases those bytes, at first use rather
         // than at composition — on iOS it is an App-Group container lookup (capability `download-store`).
-        QueuedPhotoDownloadJobs(scope, ports.stagedBytes.stagingRoot(), ports.newDownloadTransport)
+        QueuedPhotoDownloadJobs(
+            scope = scope,
+            stagingRoot = ports.stagedBytes.stagingRoot(),
+            newTransport = ports.newDownloadTransport,
+            // UIKit owns this session's completion handler and requires the main thread for it
+            // (capability `ios-app-shell`); the harness binds its own lane.
+            uiLane = ports.uiLane,
+            logScope = ports.logScope,
+        )
     }
 
     // The download orchestrator: union → foreign selection → download → import → suppression.

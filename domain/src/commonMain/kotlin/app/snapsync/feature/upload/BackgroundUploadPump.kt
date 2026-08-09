@@ -6,6 +6,9 @@ import app.snapsync.ports.CycleResult
 import app.snapsync.ports.LogScope
 import app.snapsync.ports.invocation
 import co.touchlab.kermit.Logger
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 
@@ -18,8 +21,24 @@ import kotlinx.coroutines.sync.withLock
  * concurrent cycles would double-write. A trigger arriving while a cycle is running does not start a
  * second cycle — it sets a trailing re-run, so the in-flight drain loops exactly once more after it
  * finishes (coalescing any number of overlapping triggers into one extra pass). Exit and the
- * `draining` reset happen in one critical section, so a trigger cannot slip into the gap between
+ * clearing of [drainDone] happen in one critical section, so a trigger cannot slip into the gap between
  * "decide to stop" and "clear the flag" and be lost.
+ *
+ * **Coalescing does not discard the caller.** A coalesced trigger *awaits* the drain it extended and
+ * then applies its own re-arm policy to that drain's result. It is not merely tidier: a caller that
+ * returned immediately could not be the work an OS completion handler is held for, and it skipped a
+ * `BGProcessingTask` re-submission that nothing else was going to make. Both were measured in the
+ * field; see [drive].
+ *
+ * ⚠️ The await spans the **whole** drain loop, including the re-run it requested, so a coalesced caller
+ * must never be re-entered from inside [runCycle] or [onCycleComplete] — that self-join would deadlock.
+ * Nothing does: every trigger arrives from an OS callback on its own coroutine, and [onCycleComplete] is
+ * a ledger-counts re-read with no route back here.
+ *
+ * The pump does not bound the wait, and nothing else bounds it either — a receipt bounds when the OS
+ * *handler* is released, not how long this call takes. So a caller awaiting a drain that never ends waits
+ * forever; what the receipt guarantees is only that the OS is answered on time regardless
+ * (capability `ios-app-shell`).
  *
  * **PROCESSING never busy-loops.** A cycle that returns [CycleResult.PROCESSING] (cap reached /
  * backpressure) is *not* immediately re-run — that would spin against a full cap. Instead an external
@@ -65,7 +84,13 @@ class BackgroundUploadPump(
     private val onCycleComplete: suspend () -> Unit = {},
 ) {
     private val mutex = Mutex()
-    private var draining = false
+
+    /**
+     * The in-flight drain's result, or `null` when none is running — so "is a drain running" and "what
+     * do coalescing callers await" are **one** fact rather than two that can disagree. Completed exactly
+     * once, under [mutex], on every exit path the drain has.
+     */
+    private var drainDone: CompletableDeferred<CycleResult>? = null
     private var retrigger = false
 
     /**
@@ -159,12 +184,36 @@ class BackgroundUploadPump(
 
     private suspend fun drive(scheduleOnProcessing: Boolean, alwaysScheduleNext: Boolean) {
         // Single-flight admission: only one drain runs; overlapping triggers coalesce into a re-run.
-        mutex.withLock {
-            if (draining) {
+        val inFlight = mutex.withLock {
+            val running = drainDone
+            if (running != null) {
                 retrigger = true
-                return
+                running
+            } else {
+                drainDone = CompletableDeferred()
+                null
             }
-            draining = true
+        }
+
+        // Coalesced: await the drain we just extended, then re-arm on ITS result with OUR policy.
+        //
+        // This used to `return` here, and that one statement dropped two obligations at once — both of
+        // which cost the app future background wakes. (1) A caller that awaited nothing cannot be the
+        // work an OS completion handler is held for: measured in the field, `pump.onSessionEvents`
+        // exited in 0-2 ms on 30 of 30 background-relaunch wakes (27x 0 ms, 2x 1 ms, 1x 2 ms) while the
+        // cycle it "drained" ran on for seconds, so the receipt around it held for nothing. (2) The re-arm was skipped, and the
+        // `BGProcessingTask` is one-shot — an observed heartbeat fire coalesced, returned in 2 ms, and
+        // re-submitted nothing, leaving the chain dead until the user next foregrounded the app.
+        //
+        // The result must come from the drain, not be assumed: this caller ran no cycle of its own, and
+        // only that result answers "is there work left". A SKIPPED drain still arms nothing, from any
+        // trigger, because [shouldSchedule] says so uniformly.
+        if (inFlight != null) {
+            val last = inFlight.await()
+            if (shouldSchedule(last, scheduleOnProcessing, alwaysScheduleNext)) {
+                scheduler.scheduleNext()
+            }
+            return
         }
 
         var last = CycleResult.COMPLETED
@@ -175,20 +224,53 @@ class BackgroundUploadPump(
                 runCatching { onCycleComplete() }
                     .onFailure { log.w(it) { "status refresh after cycle failed" } }
                 // Decide-and-exit atomically so a trigger arriving now is never lost: if one queued a
-                // re-run, consume it and loop; otherwise clear `draining` and stop — both under the lock.
+                // re-run, consume it and loop; otherwise publish the result and stop — both under the
+                // lock, so a coalescing caller either extends this drain or starts its own, never both.
                 val stop = mutex.withLock {
                     if (retrigger) {
                         retrigger = false
                         false
                     } else {
-                        draining = false
+                        drainDone?.complete(last)
+                        drainDone = null
                         true
                     }
                 }
                 if (stop) break
             }
         } catch (t: Throwable) {
-            mutex.withLock { draining = false }
+            // `NonCancellable` as defence in depth, and the honest status is: this does not fix a
+            // reachable bug today, it removes a way for one to appear.
+            //
+            // [t] may itself be a `CancellationException`. If `Mutex.lock` had to suspend here it would
+            // then throw before the cleanup ran, and [drainDone] would stay non-null for the process's
+            // life — after which every later trigger, coalescing onto a deferred nothing can complete,
+            // blocks forever. That is a far worse degradation than the flag-only version it replaced
+            // ("work silently dropped"), which is why it is worth defending against cheaply.
+            //
+            // It is currently **unreachable**: no critical section in this class suspends while holding
+            // the lock, and every composition injects a serial scope, so `lock()` always takes its
+            // uncontended fast path, which does not check cancellation. Both halves of that are needed —
+            // a multi-threaded scope would make contention possible, and a `suspend` call added inside
+            // any `withLock` below would too. Neither is enforced by a compiler, so the wrapper stays.
+            // No test covers this: with the invariant holding, the failure cannot be provoked through
+            // this class's public surface (a mutation removing this wrapper survives the suite).
+            withContext(NonCancellable) {
+                mutex.withLock {
+                    // Fail the waiters rather than leaving them parked forever: their work is this
+                    // drain's work, and it did not happen. Where it surfaces differs by caller, and the
+                    // two OS-wake shapes differ: `onBackgroundTask` and the silent push call `drive`
+                    // from INSIDE their `OsReceipt.heldFor`, so the throw unwinds through the receipt
+                    // and its `finally` releases; the background-session wake does not — its
+                    // `onSessionEvents` runs as `BackgroundEventsReceipts`' drain work, which catches
+                    // the throwable and releases from its own `finally` instead.
+                    drainDone?.completeExceptionally(t)
+                    drainDone = null
+                    // Consume the trailing re-run too: it belonged to this drain, which is over.
+                    // Leaving it set armed a phantom extra pass on whichever trigger came next.
+                    retrigger = false
+                }
+            }
             throw t
         }
 

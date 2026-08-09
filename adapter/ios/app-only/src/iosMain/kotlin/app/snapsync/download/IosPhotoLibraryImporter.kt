@@ -34,7 +34,7 @@ import kotlin.time.Duration.Companion.seconds
  * (below), and removing the lock from around the platform call is a separate change.
  *
  * ⚠️ **30 s now exceeds two of the three receipt budgets** (`ReceiptDeadlines.SILENT_PUSH` and
- * `URL_SESSION_EVENTS` are 20 s). At 5 s a stalled import was abandoned *inside* the wake with budget left
+ * `BACKGROUND_EVENTS` are 20 s). At 5 s a stalled import was abandoned *inside* the wake with budget left
  * to make progress; at 30 s a stall is structurally guaranteed to outlive its receipt, so the OS handler
  * goes out while the transaction is still open. That is safe *because of this capability's guard* — the
  * ref is recorded as unreported, so nothing acts on the library's absent answer — and it would not have
