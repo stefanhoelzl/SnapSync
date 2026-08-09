@@ -86,8 +86,12 @@ P="uvx --python 3.14 pymobiledevice3"    # define it in the SAME call that uses 
 $P developer dvt launch app.snapsync --userspace                 # launch (prints the pid)
 $P developer dvt screenshot shot.png --userspace                 # real screen capture (auto-mounts the DDI)
 $P developer dvt process-id-for-bundle-id app.snapsync --userspace # the app's pid, or `0` when not running
-uvx pymobiledevice3 apps pull app.snapsync Documents/debug.log   # pull the file logger
+uvx pymobiledevice3 apps pull app.snapsync Documents/debug.log ./debug.log  # pull the file logger
 ```
+
+⚠️ **`apps pull` takes THREE arguments** — bundle id, device path, **and a local destination**. The
+two-argument form fails outright with `Missing argument 'local_file'`, and a polling loop that swallows
+that error reads as "the device wrote no log" — a very different diagnosis from the truth.
 
 (`--userspace` is applied **automatically** for developer commands on iOS 17+ — without it you get one
 failed lockdown attempt, a `WARNING Trying again over a no-root userspace tunnel`, then the same result.
@@ -276,7 +280,7 @@ a QR uses, landing a live membership in one launch (cutoff clamped to the floor 
 d=$(python3 -c "import json,base64;print(base64.urlsafe_b64encode(json.dumps(
   {'name':'Test Party','autoJoin':True,'direction':'both'}).encode()).decode().rstrip('='))")
 $P developer dvt launch app.snapsync --env SNAPSYNC_CREATE_EVENT="$d" --userspace
-uvx pymobiledevice3 apps pull app.snapsync Documents/debug.log   # read `created eventId=…` (mint-only)
+uvx pymobiledevice3 apps pull app.snapsync Documents/debug.log ./debug.log  # `created eventId=…` (mint-only)
 ```
 
 ⚠️ **`SNAPSYNC_CREATE_EVENT` is NON-idempotent — every cold launch mints a NEW backend event** (the
@@ -450,9 +454,9 @@ The app and extension are separate processes, each writing its **own** verbatim,
 (capability `diagnostic-logging`). Each rolls to a `.1` sibling past 10 MB.
 
 ```
-uvx pymobiledevice3 apps pull app.snapsync Documents/debug.log        # the APP's log
+uvx pymobiledevice3 apps pull app.snapsync Documents/debug.log ./debug.log          # the APP's log
 $P developer dvt launch app.snapsync --env SNAPSYNC_EXPORT_LOGS=1 --userspace
-uvx pymobiledevice3 apps pull app.snapsync Documents/ext-debug.log    # the EXTENSION's, after the export
+uvx pymobiledevice3 apps pull app.snapsync Documents/ext-debug.log ./ext-debug.log  # the EXTENSION's, after the export
 ```
 
 The extension writes `ext-debug.log` into the shared App Group, which is **not** pullable — hence the
