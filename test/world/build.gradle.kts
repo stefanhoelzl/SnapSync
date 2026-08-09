@@ -39,8 +39,13 @@ kotlin {
             implementation(libs.coroutines.test)
         }
         // kotlin-test's @Test on JVM comes from a framework artifact; the Kotlin plugin attaches it
-        // automatically to TEST compilations only, so a main-source-set contract names it explicitly
-        // (JUnit 4 — the framework every jvm test task in this build runs on).
+        // automatically to TEST compilations only, so a main-source-set contract names it explicitly.
+        //
+        // JUnit 4 specifically, because that is what the CONSUMERS of these contracts run on — this is
+        // NOT the build-wide default, and the comment used to claim it was ("the framework every jvm
+        // test task in this build runs on"). It isn't: `:test:architecture` and `:tools:diagrams` both
+        // call `useJUnitPlatform()` (JUnit 5), and the Compose UI tests pull JUnit 4 separately via
+        // `compose.desktop.uiTestJUnit4`. Match whichever framework the consuming task actually uses.
         jvmMain.dependencies {
             implementation(kotlin("test-junit"))
         }
