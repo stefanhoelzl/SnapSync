@@ -15,19 +15,16 @@ kotlin {
         }
     }
 
-    // Sentry test-link (capability `crash-reporting`): this module's simulator TEST binary links
-    // :adapter:ios:ext-safe and therefore Sentry symbols; reuse the Sentry-Dynamic framework that
-    // module provisions (see its build script for why the DYNAMIC variant) — same -F for the link,
-    // same -rpath for the simulator-process load.
-    val sentrySimulatorSlice = project(":adapter:ios:ext-safe").layout.buildDirectory
-        .dir("sentry-cocoa/${libs.versions.sentry.cocoa.get()}/Sentry-Dynamic.xcframework/ios-arm64_x86_64-simulator")
-        .get().asFile.toString()
-    iosSimulatorArm64().binaries.all {
-        if (this is org.jetbrains.kotlin.gradle.plugin.mpp.TestExecutable) {
-            linkTaskProvider.configure { dependsOn(":adapter:ios:ext-safe:provisionSentryCocoa") }
-            linkerOpts("-F$sentrySimulatorSlice", "-rpath", sentrySimulatorSlice)
-        }
-    }
+    // This module has NO test sources, by rule: `:app:*` is wiring-only and untested (root
+    // `CLAUDE.md`), and the one test that used to sit here — the PhotoKit smoke test — moved to
+    // `:adapter:ios:ext-safe`, beside the adapter it actually smoke-tests.
+    //
+    // The Sentry test-link provisioning that used to live here went with it. With no test sources
+    // Kotlin/Native reports `compileTestKotlinIosSimulatorArm64` and `linkDebugTestIosSimulatorArm64`
+    // as NO-SOURCE and skips `iosSimulatorArm64Test` outright — it does NOT link an empty test.kexe —
+    // so the `-F`/`-rpath` for Sentry and the `commonTest` dependencies had nothing left to serve
+    // (verified on a macOS-26 runner, 2026-08-09). Should a test ever belong here again, copy the
+    // provisioning back from `:adapter:ios:app-only`, which needs it for exactly that reason.
 
     sourceSets {
         commonMain.dependencies {
@@ -49,9 +46,6 @@ kotlin {
             implementation(libs.coroutines.core)
             implementation(libs.kermit)
         }
-        commonTest.dependencies {
-            implementation(kotlin("test"))
-            implementation(libs.coroutines.test)
-        }
+        // No commonTest block: see the note above — this module has no test sources by rule.
     }
 }

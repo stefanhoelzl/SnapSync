@@ -57,6 +57,11 @@ tasks.test {
             // exists to catch is exactly the kind of edit that touches nothing else. Verified: changing
             // `LINK_DOMAIN` alone left the task UP-TO-DATE until they were declared here.
             include("gradle.properties")
+            // The platform-vocabulary pin's subject is Apple's declared enum set, which ships inside
+            // the Kotlin/Native distribution — so it changes with the KOTLIN VERSION, declared here.
+            // Without this, the one edit that can move that vocabulary (a Kotlin bump) leaves this task
+            // UP-TO-DATE and the pin silently stops pinning, which is the failure mode it exists for.
+            include("gradle/libs.versions.toml")
             include("api/src/config.ts")
             // The laws-digest guard's subjects (capability `module-architecture`): CLAUDE.md's digest
             // must name exactly the spec's requirement set. Without these declared, editing either side

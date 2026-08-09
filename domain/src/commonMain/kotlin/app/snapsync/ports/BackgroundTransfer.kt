@@ -8,7 +8,8 @@ import app.snapsync.model.UploadRequest
 
 /**
  * The platform seam for one background-upload cycle — everything PhotoKit-specific lives behind it.
- * The iOS implementation ([IosBackgroundTransfer]) is the only place that touches PhotoKit, so the
+ * The iOS implementations (`IosPhotoKitUploadPlatform` on the OS-driven tier,
+ * `IosUrlSessionUploadPlatform` on the app-driven one) are the only places that touch PhotoKit, so the
  * orchestration in [UploadCycle] stays pure and testable on the simulator with a fake.
  *
  * Returned system jobs are surfaced as [PlatformUploadJob]s whose [PlatformUploadJob.key] the

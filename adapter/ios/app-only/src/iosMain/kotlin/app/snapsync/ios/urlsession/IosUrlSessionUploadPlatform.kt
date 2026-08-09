@@ -52,7 +52,14 @@ import kotlin.coroutines.resume
  * is a transient executor reconciled by `taskDescription == key`. Delegate callbacks arrive on the
  * session's delegate queue (via [SessionDelegate], a separate `NSObject` — a Kotlin-interface class
  * cannot also be an ObjC supertype) while seam methods run on the cycle coroutine, so shared state
- * ([inFlight], [terminal]) is guarded by [lock]. Not unit-tested (device-verified); faked in the harness.
+ * ([inFlight], [terminal]) is guarded by [lock].
+ *
+ * **What is tested and what is not.** The two decisions this tier makes — how a delivered task
+ * completion maps to a ledger outcome, and which `REQUESTED` keys count as stranded — live in
+ * `UrlSessionOutcome.kt` beside this file and are exercised by `UrlSessionOutcomeTest`. What remains
+ * here is mechanism: the lock, the in-flight registry, byte staging, the orphan sweep, and the
+ * session/delegate lifecycle. Those are device-verified and faked in the harness; their correctness is
+ * concurrency and filesystem behaviour, which extraction does not make more provable.
  */
 @OptIn(ExperimentalForeignApi::class)
 class IosUrlSessionUploadPlatform(
@@ -170,7 +177,7 @@ class IosUrlSessionUploadPlatform(
         // the ledger flips REQUESTED→FAILED and a later full enumeration re-uploads it (idempotent PUT).
         val live = liveTaskKeys()
         val drainedKeys = drained.mapTo(HashSet()) { it.key }
-        val stranded = pendingKeys().filter { it !in live && it !in drainedKeys }
+        val stranded = strandedKeys(pending = pendingKeys(), live = live, drained = drainedKeys)
         val strandedJobs = stranded.map {
             log.i { "reconcile: stranded REQUESTED $it (no live task) — surfacing FAILED to re-upload" }
             PlatformUploadJob(it, "application/octet-stream", PlatformJobState.FAILED, UploadError.Unknown("stranded"), data = null, handle = Unit)
@@ -298,12 +305,13 @@ private class SessionDelegate(
         }
 
     private fun onTaskComplete(task: NSURLSessionTask, didCompleteWithError: NSError?) {
-        val key = task.taskDescription ?: return log.w { "upload task carried no description — nothing to record" }
         val status = (task.response as? NSHTTPURLResponse)?.statusCode ?: 0L
-        val success = didCompleteWithError == null && status in 200L..299L
-        val error = if (success) null
-        else UploadError.Unknown(didCompleteWithError?.let { "${it.domain}:${it.code}" } ?: "http:$status")
-        onComplete(key, success, error)
+        when (val outcome = classifyUrlSessionCompletion(task.taskDescription, status, didCompleteWithError)) {
+            TaskCompletion.NoLedgerKey ->
+                log.w { "upload task carried no description — nothing to record" }
+            is TaskCompletion.Record ->
+                onComplete(outcome.key, outcome.success, outcome.error)
+        }
     }
 
     // Session-level, once per OS re-attach: INFO.

@@ -2,12 +2,10 @@ package app.snapsync.ios.upload
 
 import app.snapsync.model.SelectionPolicy
 import app.snapsync.model.Resource
-import app.snapsync.model.UploadError
 import app.snapsync.model.UploadRequest
 import app.snapsync.ios.discovery.IosDiscovery
 import app.snapsync.ports.CreateResult
 import app.snapsync.ports.Discovery
-import app.snapsync.ports.PlatformJobState
 import app.snapsync.ports.PlatformUploadJob
 import app.snapsync.ports.BackgroundTransfer
 import app.snapsync.logging.invocation
@@ -28,13 +26,7 @@ import platform.Photos.PHAssetResourceUploadJobAction
 import platform.Photos.PHAssetResourceUploadJobActionAcknowledge
 import platform.Photos.PHAssetResourceUploadJobActionRetry
 import platform.Photos.PHAssetResourceUploadJobChangeRequest
-import platform.Photos.PHAssetResourceUploadJobState
-import platform.Photos.PHAssetResourceUploadJobStateCancelled
-import platform.Photos.PHAssetResourceUploadJobStateFailed
-import platform.Photos.PHAssetResourceUploadJobStateRegistered
-import platform.Photos.PHAssetResourceUploadJobStateSucceeded
 import platform.Photos.PHPhotoLibrary
-import platform.Photos.PHPhotosErrorLimitExceeded
 
 /**
  * The PhotoKit (iOS ≥26.1) implementation of [BackgroundTransfer] — the OS-owned upload-job queue:
@@ -46,11 +38,21 @@ import platform.Photos.PHPhotosErrorLimitExceeded
  * "Ports are the I/O boundary named for the need": adapters are named for the technology, placed by
  * linkage, and MAY branch on technology vocabulary). Seated in `:adapter:ios:ext-safe` at the
  * migration finale — the extension process is its only linker, and its former `:app:ios:extension`
- * seat put adapter branching inside the zero-decision shell gate's scope. A returned job's ledger
- * key is read from its **destination URL** (the last path segment) — the only field reliably
- * present for every job state (`resource` is nil for succeeded jobs); the `resource`, when still
- * available, is reused to re-create a retry-spent job. Not unit-tested (the upload-job subsystem is
- * device-only); verified on a real device.
+ * seat put adapter branching inside the zero-decision shell gate's scope.
+ *
+ * **What is tested and what is not.** Every mapping and per-job decision now lives in
+ * `PhotoKitJobMapping.kt` beside this file and is exercised by `PhotoKitJobMappingTest` — including
+ * the two nil cases that shipped as bugs. What remains here is OS **effect**: `performChangesAndWait`,
+ * the acknowledge/retry change requests, job creation, and the fetch loop's iteration. Those are
+ * verified on a real device; a `PHAssetResourceUploadJob` has no public initializer and only ever
+ * arrives from a fetch, so no host can drive this loop with synthetic jobs.
+ *
+ * A returned job's ledger key is read from its **destination URL** (the last path segment) — the only
+ * field reliably present for every job state (`resource` is nil for succeeded jobs); the `resource`,
+ * when still available, is reused to re-create a retry-spent job. Both are captured as **nullable
+ * locals** before use: cinterop declares them non-null and they are nil at runtime, and a null check
+ * against a non-null-typed value may be elided (`05435ff9`, `8c8dbe28`). Do not "simplify" those two
+ * locals away — see `PhotoKitJobMapping.kt`'s KDoc for the full account.
  */
 @OptIn(ExperimentalForeignApi::class, BetaInteropApi::class)
 class IosPhotoKitUploadPlatform(
@@ -77,35 +79,30 @@ class IosPhotoKitUploadPlatform(
         while (index < jobs.count) {
             val job = jobs.objectAtIndex(index) as PHAssetResourceUploadJob
             index++
-            // Map the job to its ledger key via the destination URL's last path segment — the ONLY
-            // field reliably present for every state. `resource` is **nil for succeeded jobs** (the
-            // system releases it after upload), so it can't be the key source; keep it only as an
-            // optional payload for re-creating a retry-spent job.
+            // Capture both ObjC-nonnull-but-nilable values as nullable locals FIRST, so the runtime
+            // null checks below are real rather than elided (see the class KDoc).
             val destination: NSURLRequest? = job.destination
-            val key = destination?.URL?.lastPathComponent
-            if (key == null) {
-                // Unmappable — but EVERY presented job must be acknowledged or the system reports
-                // `appex failed to acknowledge jobs for processing state` (error 50008).
-                log.w { "upload job without destination URL — acknowledging to drain" }
-                acknowledgeJob(job)
-                continue
-            }
             val resource: PHAssetResource? = job.resource
-            out += PlatformUploadJob(
-                key = key,
-                contentType = resource?.uniformTypeIdentifier ?: "application/octet-stream",
-                state = mapState(job.state),
-                error = job.error?.let(::mapError),
-                data = resource,
-                handle = job,
-            )
+            when (val classified = classifyPhotoKitJob(destination, job.state, job.error)) {
+                FetchedJob.AcknowledgeToDrain -> {
+                    // Unmappable — but EVERY presented job must be acknowledged or the system reports
+                    // `appex failed to acknowledge jobs for processing state` (error 50008).
+                    log.w { "upload job without destination URL — acknowledging to drain" }
+                    acknowledgeJob(job)
+                }
+                is FetchedJob.Emit -> out += PlatformUploadJob(
+                    key = classified.key,
+                    contentType = photoKitContentType(resource),
+                    state = classified.state,
+                    error = classified.error,
+                    data = resource,
+                    handle = job,
+                )
+            }
         }
         // (count is logged by the wrapping `platform.fetch*` invocation's exit line)
         return out
     }
-
-    private fun actionName(action: PHAssetResourceUploadJobAction): String =
-        if (action == PHAssetResourceUploadJobActionRetry) "retry" else "acknowledge"
 
     private fun acknowledgeJob(job: PHAssetResourceUploadJob) {
         library.performChangesAndWait(
@@ -152,21 +149,18 @@ class IosPhotoKitUploadPlatform(
                 error = errorVar.ptr,
             )
             val error = errorVar.value
-            when {
-                error == null -> CreateResult.CREATED
-                error.code == PHPhotosErrorLimitExceeded -> {
-                    log.w { "job limit exceeded — deferring remaining work this cycle" }
-                    CreateResult.LIMIT_EXCEEDED
-                }
-                else -> {
-                    // A non-limit error means the job was NOT created; surface it and return FAILED so
-                    // the cycle re-creates it next discovery, rather than recording a phantom REQUESTED
-                    // row for a job that never materialised.
-                    log.w {
+            createResultFor(error?.code).also { result ->
+                when (result) {
+                    CreateResult.CREATED -> Unit
+                    CreateResult.LIMIT_EXCEEDED ->
+                        log.w { "job limit exceeded — deferring remaining work this cycle" }
+                    // A non-limit error means the job was NOT created; surface it so the cycle
+                    // re-creates it next discovery, rather than recording a phantom REQUESTED row for
+                    // a job that never materialised.
+                    CreateResult.FAILED -> log.w {
                         "createJob failed for ${request.resource.filename}: " +
-                            "code=${error.code} ${error.localizedDescription}"
+                            "code=${error?.code} ${error?.localizedDescription}"
                     }
-                    CreateResult.FAILED
                 }
             }
         }
@@ -176,14 +170,4 @@ class IosPhotoKitUploadPlatform(
         log.invocation("platform.discoverResources", result = { "${it.candidates.size} candidate(s)" }) {
             discovery.discover(sinceToken, policy)
         }
-
-    private fun mapState(state: PHAssetResourceUploadJobState): PlatformJobState = when (state) {
-        PHAssetResourceUploadJobStateSucceeded -> PlatformJobState.SUCCEEDED
-        PHAssetResourceUploadJobStateFailed -> PlatformJobState.FAILED
-        PHAssetResourceUploadJobStateCancelled -> PlatformJobState.CANCELLED
-        PHAssetResourceUploadJobStateRegistered -> PlatformJobState.REGISTERED
-        else -> PlatformJobState.PENDING
-    }
-
-    private fun mapError(error: NSError): UploadError = UploadError.Unknown("${error.domain}:${error.code}")
 }
