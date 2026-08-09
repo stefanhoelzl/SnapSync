@@ -117,6 +117,18 @@ class InMemoryDownloadStore : DownloadStore {
         assets[ref]?.createdLocalId = null
     }
 
+    /**
+     * The success mirror, lock-free for the same reason. Guarded on the marker exactly like the real
+     * store's `WHERE` clause: a completion arriving after the row's marker moved on settles nothing.
+     */
+    override fun confirmCreatedLocalId(ref: AssetRef, createdLocalId: String) {
+        assets[ref]?.takeIf { it.createdLocalId == createdLocalId }?.let { it.state = DownloadState.IMPORTED }
+    }
+
+    override suspend fun isUnconfirmedWith(ref: AssetRef, createdLocalId: String): Boolean = lock.withLock {
+        assets[ref]?.let { it.state != DownloadState.IMPORTED && it.createdLocalId == createdLocalId } ?: false
+    }
+
     override suspend fun importedCount(): Int = lock.withLock {
         assets.values.count { it.state == DownloadState.IMPORTED }
     }

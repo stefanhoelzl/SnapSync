@@ -183,6 +183,69 @@ abstract class DownloadStoreContract {
         assertEquals(setOf("LOCAL-CREATED"), s.suppressedLocalIds())
     }
 
+    /**
+     * The completion's own confirming write (capability `download-store`). The callback that learns the
+     * outcome settles the row, so an import whose wait was abandoned needs no later library lookup to
+     * discover what the completion already knew.
+     */
+    @Test
+    fun a_completion_settles_its_row_against_the_marker_it_holds() = runTest {
+        val s = createStore()
+        s.plan(ref, "2026-06-30T10:00:00Z", resources())
+        s.recordCreatedLocalId(ref, "LOCAL-CREATED")
+
+        s.confirmCreatedLocalId(ref, "LOCAL-CREATED")
+
+        assertTrue(s.isImported(ref), "settled by the party that learned the outcome")
+        assertEquals(setOf("LOCAL-CREATED"), s.suppressedLocalIds(), "against the marker it already held")
+        assertTrue(s.unconfirmedImports().isEmpty(), "and it no longer awaits adjudication")
+    }
+
+    /**
+     * The guard on that write. A completion arriving after its marker was cleared and the asset
+     * re-imported must not mark the row terminal against an identifier it no longer describes — that
+     * would drop the asset the row NOW points at out of the suppression set.
+     */
+    @Test
+    fun a_late_completion_cannot_settle_a_row_whose_marker_moved_on() = runTest {
+        val s = createStore()
+        s.plan(ref, "2026-06-30T10:00:00Z", resources())
+        s.recordCreatedLocalId(ref, "FIRST")
+        s.clearCreatedLocalId(ref)
+        s.recordCreatedLocalId(ref, "SECOND")
+
+        s.confirmCreatedLocalId(ref, "FIRST") // the abandoned transaction reports at last
+
+        assertFalse(s.isImported(ref), "the stale completion settled nothing")
+        assertEquals(
+            listOf(ref to "SECOND"),
+            s.unconfirmedImports().map { it.ref to it.createdLocalId },
+            "and the marker the row now holds is intact",
+        )
+    }
+
+    /** The re-check a presence verdict is applied through (capability `photo-download`). */
+    @Test
+    fun unconfirmed_with_answers_the_marker_the_row_actually_holds() = runTest {
+        val s = createStore()
+        s.plan(ref, "2026-06-30T10:00:00Z", resources())
+        s.recordCreatedLocalId(ref, "LOCAL-CREATED")
+
+        assertTrue(s.isUnconfirmedWith(ref, "LOCAL-CREATED"), "the verdict's own marker still stands")
+        assertFalse(s.isUnconfirmedWith(ref, "SOME-OTHER-ID"), "a different marker is a different fact")
+
+        s.markImported(ref, "LOCAL-CREATED")
+        assertFalse(s.isUnconfirmedWith(ref, "LOCAL-CREATED"), "a settled row is no longer unconfirmed")
+    }
+
+    /** A ref with no row at all answers false rather than throwing — an unknown ref is not unconfirmed. */
+    @Test
+    fun unconfirmed_with_is_false_for_a_ref_the_store_never_saw() = runTest {
+        val s = createStore()
+
+        assertFalse(s.isUnconfirmedWith(AssetRef("DEVICE-Z", "NEVER"), "ANY"))
+    }
+
     @Test
     fun prune_drops_non_terminal_keeps_imported() = runTest {
         val s = createStore()

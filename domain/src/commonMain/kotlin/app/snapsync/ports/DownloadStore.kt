@@ -113,6 +113,40 @@ interface DownloadStore : SuppressionSource {
      */
     fun clearCreatedLocalId(ref: AssetRef)
 
+    /**
+     * The **success** mirror of [recordCreatedLocalId]: settle the row against the marker it already
+     * holds, from the platform's completion callback itself (capability `download-store`).
+     *
+     * Written here rather than left to the caller because the completion is the party that LEARNS the
+     * outcome, and it runs whether or not anything is still awaiting the transaction. An import whose
+     * wait was abandoned on its deadline therefore settles itself, instead of staying unconfirmed until
+     * some later pass pays for a synchronous, thread-blocking library lookup to discover what this
+     * callback already knew.
+     *
+     * **Guarded on the marker.** A completion that arrives after the row's marker was cleared and
+     * replaced SHALL NOT settle that row: it would mark it terminal against an identifier it no longer
+     * describes, and the asset the row now points at would drop out of the suppression set. The guard
+     * belongs in the store — in the `WHERE` clause, not in a caller's `if` — because two writers reach
+     * this without a shared lock.
+     *
+     * Non-suspending, like its two siblings, because the platform's completion callback cannot call a
+     * suspending function.
+     */
+    fun confirmCreatedLocalId(ref: AssetRef, createdLocalId: String)
+
+    /**
+     * Is [ref] still unconfirmed **with exactly [createdLocalId]** — non-terminal, and carrying that
+     * marker and no other?
+     *
+     * The re-check a presence verdict is applied through (capability `photo-download`). Verdicts are
+     * computed OUTSIDE the download controller's lock — deliberately, because the lookup blocks — and
+     * applied under it, so the row can settle in between. Asking merely "is this row unconfirmed" cannot
+     * tell a row still awaiting this verdict's own marker from one that has since been cleared and
+     * re-imported under a different marker; applying a stale verdict to the latter overwrites a live
+     * suppression handle with a dead one.
+     */
+    suspend fun isUnconfirmedWith(ref: AssetRef, createdLocalId: String): Boolean
+
     /** Count of imported foreign assets (the download-progress numerator). */
     suspend fun importedCount(): Int
 

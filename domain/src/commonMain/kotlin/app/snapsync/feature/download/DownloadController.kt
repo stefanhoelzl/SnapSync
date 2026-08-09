@@ -34,6 +34,11 @@ class DownloadController(
     // assets that exist, clear their markers, and re-import them — which is the defect this guard is
     // here to prevent, reintroduced by the thing meant to prevent it.
     private val presence: ImportedAssetPresence,
+    // The refs whose import outcome the library has not reported (capability `photo-download`). Required,
+    // with no default, for the same reason [presence] is: a permissive stand-in would answer "everything
+    // has been reported", so every stale ABSENT verdict would be acted on and the defect this gate exists
+    // to prevent would be reintroduced by the thing meant to prevent it.
+    private val unreported: UnreportedImports,
     // Releases the staged bytes of settled rows (capability `download-store`). Defaulted to a no-op
     // because failing to free disk is harmless, unlike every other port here — and a composition with no
     // staging of its own genuinely has nothing to release.
@@ -141,8 +146,13 @@ class DownloadController(
      * the exact pathology that bounding each import's wait exists to prevent. Off the lock it parks one
      * background thread instead.
      *
-     * Staleness between the phases is harmless: [DownloadStore.markImported] is idempotent, and a row
-     * settled in between is simply no longer importable.
+     * **Staleness between the phases is NOT harmless**, and both branches re-check for it under the lock
+     * before writing. A row can settle between the lookup and the write — the completion callback runs on
+     * the platform's queue and takes no lock — and applying either verdict to a row that has moved on
+     * overwrites a live suppression handle: the asset stays in the library with nothing recording that it
+     * must not be uploaded. (This paragraph used to claim the opposite, on the strength of
+     * `markImported` being idempotent. Idempotent it is; harmless it is not, because the identifier it
+     * writes may no longer be the row's.)
      *
      * Costs nothing in the ordinary case — no row carries a marker, so this is one store read that
      * returns nothing and no platform call at all.
@@ -157,13 +167,64 @@ class DownloadController(
                 // The asset is really there. Settle the row against the marker it already holds — never
                 // against a fresh one, which is what overwrote the first copy's handle and orphaned it.
                 AssetPresence.PRESENT -> mutex.withLock {
+                    // Re-checked UNDER the lock: this verdict was computed outside it, and the row may
+                    // have settled in between. `markImported` overwrites `createdLocalId`, so applying a
+                    // stale PRESENT would replace a live suppression handle with a dead one — the same
+                    // harm as a stale ABSENT, by a different route.
+                    if (!store.isUnconfirmedWith(row.ref, row.createdLocalId)) {
+                        log.i { "adjudicated ${row.ref.sourceAssetId}: verdict went stale — row already settled, discarded" }
+                        return@withLock
+                    }
                     store.markImported(row.ref, row.createdLocalId)
                     log.i { "adjudicated ${row.ref.sourceAssetId}: asset ${row.createdLocalId} exists — settled, not re-imported" }
                     releaseStagedBytes(row.ref) // settled by adjudication is still settled
                 }
-                // Nothing was created after all. Clear the marker FIRST: an import that fails before
-                // reaching the change block would otherwise leave it in place and skip the row forever.
+                // "Absent" is honest and WRONG to act on while this ref's outcome is unreported: the
+                // library answers about COMMITTED state, so it cannot see an asset whose change block has
+                // not committed. Clearing the marker of a live one drops it from the suppression set, so
+                // the device re-uploads a photo it downloaded (Bugsink SNAPSYNC-9: 19 such clears, each
+                // 9-44 ms after that same asset was created).
+                //
+                // The gate is the reported/unreported FACT, never an elapsed-time estimate of it: the
+                // process is suspended for arbitrary spans between a change block and its completion
+                // (measured 116 s and 254 s), so any wall-clock bound expires against transactions that
+                // are alive — which is exactly what the import deadline did.
                 AssetPresence.ABSENT -> mutex.withLock {
+                    // THE GATE IS READ UNDER THE LOCK, and that placement is the whole fix.
+                    //
+                    // Reading it before the lock reproduces the defect on real hardware. Measured on an
+                    // SE2: an import held the lock for its full 30 s deadline while three other staged
+                    // resources each ran adjudication, saw `holds` answer false — the deadline had not
+                    // fired yet, so nothing was recorded — and then queued on the mutex. The import then
+                    // timed out, recorded its ref, and released; the first queued adjudication woke with
+                    // a gate answer that was 30 s stale and cleared the marker of an asset that had been
+                    // created 30 s earlier. The photo was re-imported as a second asset and the first was
+                    // left in the library unsuppressed. That is SNAPSYNC-9, through the guard meant to
+                    // prevent it.
+                    //
+                    // The row-staleness re-check below cannot substitute: at that instant the row really
+                    // IS still unconfirmed with that marker, so it passes. Only re-reading the gate here
+                    // sees the record the timeout just wrote.
+                    if (unreported.holds(row.ref)) {
+                        log.i { "adjudicated ${row.ref.sourceAssetId}: absent, but its outcome is unreported — left unconfirmed" }
+                        return@withLock
+                    }
+                    // Re-checked under the lock, for the SAME reason the PRESENT branch is — and this is
+                    // the branch that does the damage. Both the verdict AND the `holds` gate above were
+                    // read outside the lock, and the completion callback runs on the platform's queue
+                    // taking no lock at all. So between them the completion can forget this ref and settle
+                    // its row: `holds` then answers false, and an unguarded clear strips the marker off a
+                    // row that is already IMPORTED. That row is terminal, so it is never adjudicated or
+                    // re-imported again — the asset stays in the library permanently unsuppressed, and
+                    // upload discovery sends the downloaded photo back into the event. That is SNAPSYNC-9
+                    // itself, through a narrower window: the field clears landed 9-44 ms after creation,
+                    // so adjudication and the completion genuinely race at this granularity.
+                    if (!store.isUnconfirmedWith(row.ref, row.createdLocalId)) {
+                        log.i { "adjudicated ${row.ref.sourceAssetId}: verdict went stale — row already settled, discarded" }
+                        return@withLock
+                    }
+                    // Nothing was created after all. Clear the marker FIRST: an import that fails before
+                    // reaching the change block would otherwise leave it in place and skip the row forever.
                     store.clearCreatedLocalId(row.ref)
                     log.i { "adjudicated ${row.ref.sourceAssetId}: asset ${row.createdLocalId} is gone — marker cleared, will re-import" }
                 }
@@ -180,6 +241,12 @@ class DownloadController(
             val ref = importable.ref
             when (val result = importer.import(ref, store.stagedResources(ref), importable.creationDate)) {
                 is ImportResult.Imported -> {
+                    // Reported, so absence is trustworthy about this ref again. A no-op in the ordinary
+                    // case — nothing recorded it — but not when a PREVIOUS attempt was abandoned and this
+                    // one succeeded: the completion's own `forget` covers the row settling off-lane, and
+                    // this covers the report we are holding in our hand. Leaving it to the adapter alone
+                    // puts the only write on the one path no test can reach.
+                    unreported.forget(ref)
                     store.markImported(ref, result.createdLocalId)
                     log.i { "imported foreign asset ${ref.sourceAssetId} as ${result.createdLocalId}" }
                     // AFTER the confirming write, never before: a crash between them must leave extra
@@ -195,7 +262,12 @@ class DownloadController(
                 // abandoned transaction may still commit, which is a duplicate photo. Stop; the assets
                 // stay importable and the next wake drains them.
                 is ImportResult.TimedOut -> {
-                    log.w { "import timed out for ${ref.sourceAssetId}: ${result.message} — stopping this wake's drain" }
+                    // We stopped waiting and never learned the outcome, so this ref's transaction may
+                    // still commit. Recorded BEFORE returning, because the very next pass may adjudicate
+                    // it — in the field the stale clears landed 9-44 ms after the asset was created — and
+                    // an "absent" answer about a live transaction is what re-uploads a downloaded photo.
+                    unreported.record(ref)
+                    log.w { "import timed out for ${ref.sourceAssetId}: ${result.message} — outcome unreported, stopping this wake's drain" }
                     return
                 }
             }

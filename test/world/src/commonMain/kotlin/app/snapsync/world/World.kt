@@ -24,6 +24,7 @@ import app.snapsync.feature.creation.MutableCreationStatusSource
 import app.snapsync.feature.membership.MutableRenameStatusSource
 import app.snapsync.feature.download.DownloadController
 import app.snapsync.feature.download.StoreDownloadStatusSource
+import app.snapsync.feature.download.UnreportedImports
 import app.snapsync.feature.membership.JoinEvent
 import app.snapsync.feature.status.OwnDeviceGalleryStatusSource
 import app.snapsync.feature.status.ReadingLedgerCountsSource
@@ -58,6 +59,7 @@ import app.snapsync.model.RawResource
 import app.snapsync.model.ResourceRole
 import app.snapsync.model.UserCommands
 import app.snapsync.model.uploadKey
+import app.snapsync.ports.AssetRef
 import app.snapsync.ports.AttestClient
 import app.snapsync.ports.AttestKey
 import app.snapsync.ports.ConfigRead
@@ -126,6 +128,14 @@ class World(
     var downloadTransport: FakeDownloadTransport? = null
         private set
 
+    /**
+     * The refs whose import outcome the library has not reported (capability `photo-download`). Held by
+     * the world for the same reason the iOS shell holds it: the importer below and [core] must share ONE
+     * instance, and the importer is built first. A test can also read it to assert what the guard is
+     * distrusting.
+     */
+    val unreportedImports: UnreportedImports = UnreportedImports()
+
     // Wired to the store exactly as the iOS shell wires the real importer: the marker is written from
     // inside the "change block", before the created asset is observable. Without this the world cannot
     // reach an unconfirmed row — a marker written, the confirmation never arriving — which is the state
@@ -134,6 +144,8 @@ class World(
         gallery = gallery,
         recordCreatedLocalId = { ref, id -> downloadStore.recordCreatedLocalId(ref, id) },
         clearCreatedLocalId = { ref -> downloadStore.clearCreatedLocalId(ref) },
+        confirmCreatedLocalId = { ref, id -> downloadStore.confirmCreatedLocalId(ref, id) },
+        forgetUnreported = { ref -> unreportedImports.forget(ref) },
     )
     /**
      * Presence over the world's own gallery: an asset the importer created is visible here for exactly
@@ -245,6 +257,33 @@ class World(
     }
 
     /**
+     * The `SNAPSYNC-9` state: the marker is written, the commit has NOT landed, and the wait is abandoned
+     * — so the photo library answers *absent* about an asset whose transaction is still open.
+     */
+    fun abandonNextImportBeforeCommit() {
+        importer.abandonNextImportBeforeCommit = true
+    }
+
+    /**
+     * The completion finally arrives for a transaction abandoned by [abandonNextImportBeforeCommit]: the
+     * asset lands in the library, the row is settled against the marker it holds, and the ref stops being
+     * distrusted — the three things the real completion callback does, in its order.
+     */
+    fun deliverLateCompletion(ref: AssetRef, createdLocalId: String, creationDate: String) {
+        gallery.set(
+            gallery.current() + RawAsset(
+                assetId = createdLocalId,
+                creationDate = creationDate,
+                rawResources = listOf(
+                    RawResource(ResourceRole.PRIMARY, "image/heic", "IMG.HEIC", Unit),
+                ),
+            ),
+        )
+        downloadStore.confirmCreatedLocalId(ref, createdLocalId)
+        unreportedImports.forget(ref)
+    }
+
+    /**
      * Force the membership to read as **unreadable** (capability `upload-lifecycle`) — the state a real
      * device is in before its first unlock after a boot, where the Keychain cannot be read at all.
      *
@@ -327,8 +366,9 @@ class World(
      * command bundle all live on this — the world adds only operator levers and inspection around it.
      */
     val core: AppCore = snapSyncApp(
-        scope,
-        AppPorts(
+        unreportedImports = unreportedImports,
+        scope = scope,
+        ports = AppPorts(
             // The world's platform-UI ports are in-memory doubles, so there is no real main thread to
             // reach. It takes the SAME lane as the composition scope rather than an unconfined default:
             // a lane that means "wherever the caller happened to be" is precisely what this law ends.

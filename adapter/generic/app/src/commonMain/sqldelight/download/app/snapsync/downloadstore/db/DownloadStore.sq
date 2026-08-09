@@ -67,6 +67,32 @@ UPDATE downloadAsset
 SET createdLocalId = NULL
 WHERE sourceDeviceId = :sourceDeviceId AND sourceAssetId = :sourceAssetId;
 
+-- The SUCCESS mirror: the completion callback settles the row itself, against the marker it already
+-- holds. `createdLocalId` is deliberately NOT re-written — the guard below already proves the row carries
+-- it, and re-writing is how a stale completion could overwrite a newer marker.
+--
+-- The `createdLocalId = :createdLocalId` guard is what makes a LATE completion safe: if the marker was
+-- cleared and the asset re-imported under a new one, this matches no row and settles nothing. It lives
+-- in the WHERE clause rather than in a caller's `if` because two writers reach this with no shared lock.
+confirmCreatedLocalId:
+UPDATE downloadAsset
+SET state = 'IMPORTED'
+WHERE sourceDeviceId = :sourceDeviceId
+  AND sourceAssetId = :sourceAssetId
+  AND createdLocalId = :createdLocalId;
+
+-- The re-check a presence verdict is applied through (capability `photo-download`): is this row still
+-- non-terminal AND still carrying exactly the marker the verdict was computed for? A verdict is computed
+-- outside the download controller's lock and applied under it, so the row may have settled in between.
+isUnconfirmedWith:
+SELECT EXISTS(
+  SELECT 1 FROM downloadAsset
+  WHERE sourceDeviceId = :sourceDeviceId
+    AND sourceAssetId = :sourceAssetId
+    AND state != 'IMPORTED'
+    AND createdLocalId = :createdLocalId
+);
+
 isImported:
 SELECT EXISTS(
     SELECT 1 FROM downloadAsset
