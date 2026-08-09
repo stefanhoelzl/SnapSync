@@ -77,6 +77,33 @@ There is no narrative design doc. Two OpenSpec trees carry the whole design:
 
 Read the spec for the capability you are changing, then its decision record before altering behavior.
 
+## Agent harness limits
+
+Two harness facts that are invisible until they bite, and that no amount of local reasoning recovers.
+
+- ⏱️ **The Bash tool's `timeout` is capped at 600_000 ms (10 min), and larger values are clamped
+  SILENTLY.** You do not get an error, a warning, or a shorter-than-requested acknowledgement — you
+  get `Command timed out after 10m 0s` at exactly the cap, with the command killed mid-work. So a
+  command that needs longer than 10 minutes **cannot be run in the foreground at all**, and raising
+  the number is never the fix: it is the clamp, not the value. This is not hypothetical — `/ship`'s
+  15-minute merge wait was killed at 10 minutes on **26 consecutive ships** (July–August 2026), and
+  the escalating `timeout` values tried in response (1.2M, 1.5M, 1.8M, 3M ms) all clamped to the same
+  600_000. Sum inner `timeout`s to stay under it, or go background.
+- 🌙 **`run_in_background: true` is the escape, and it has no cap.** The shell is detached, survives
+  across turns, and the harness **re-invokes you when it exits** with a notification carrying the exit
+  code and an output-file path you `Read`. Cost: the work spans two turns. Have the background command
+  print a single greppable result line as its last act (`/ship` uses
+  `SHIP-WAIT RESULT: <status> (<reason>)`) — write it with `writeSync(1, …)` or an equivalent, because
+  a `console.log` immediately followed by `process.exit()` is truncated when stdout is a pipe. Then
+  "no line" stays distinguishable from "it failed".
+- 🏃 **`ch-bg`** (`~/.local/share/codehydra/bin/ch-bg`) runs a command transparently — same stdio, same
+  exit code — and exists only to put a marker in the command string so CodeHydra does **not** count
+  that background shell as keeping the workspace busy. Wrap long-lived processes that are *not* the
+  work itself: dev servers, watchers, `tail -f`. Do **not** wrap work the workspace is genuinely doing
+  (`/ship`'s merge wait rebases and force-pushes the worktree — it *should* read as busy), and note
+  the prefix changes the command string, so it can fall outside an `allowed-tools` grant like
+  `Bash(npx:*)` and start prompting.
+
 ## Build & test
 
 - `./gradlew build` — the canonical check (compiles all targets + runs JVM tests). **No display
@@ -237,9 +264,9 @@ an immediate, diagnosable error. Measured on the SE2 (iOS 26.6, 2026-08-09; 3–
 
 Pay the **cold `uvx` resolve once** — 12.9 s on an empty cache, which would blow every budget above:
 `timeout 40 uvx --python 3.14 pymobiledevice3 --version >/dev/null`. Set the **Bash tool's** timeout to
-the sum of the inner budgets + 5 s. It is **capped at 600 s**, so a larger request is silently clamped
-(ask for 900 s, get 600 s) — and an inner `timeout 600` then can never fire first, leaving you a bare
-`Exit code 143` instead of the command's own output.
+the sum of the inner budgets + 5 s — which must stay under the harness cap (*Agent harness limits*
+above: 600 s, silently clamped), or an inner `timeout 600` can never fire first and you are left with a
+bare `Exit code 143` instead of the command's own output.
 
 **Seeding a large photo library.** `SNAPSYNC_SEED_PHOTOS=<n>` is a second dev/test launch-env trigger
 (`app/ios/.../DevPhotoSeeder.kt`): on launch the app creates `<n>` synthetic `PHAsset`s dated from

@@ -1,6 +1,6 @@
 ---
 description: Create PR with auto-merge, wait for merge via client-side queue
-allowed-tools: Bash(git:*), Bash(gh:*), Bash(npx:*), Bash(openspec:*), Bash(./gradlew:*), mcp__codehydra__workspace_delete
+allowed-tools: Bash(git:*), Bash(gh:*), Bash(npx:*), Bash(./gradlew:*), mcp__codehydra__workspace_delete
 ---
 
 # /ship Command
@@ -24,6 +24,10 @@ $ARGUMENTS
 
 You are a BUILD AUTOMATION agent. Execute the workflow below. On FAILED or TIMEOUT,
 return immediately with a report - do NOT attempt to diagnose or fix issues.
+
+**This command spans two turns.** Step 9 launches the merge wait as a background shell and
+ends the turn; the harness re-invokes you when that shell exits, and you finish at step 10.
+The pause between them is the design, not a failure - do not restart the workflow.
 
 ### 0. Derive repo and default branch
 
@@ -76,10 +80,14 @@ If on `<default-branch>`: ABORT with "Cannot ship from <default-branch> branch"
 **1.3. Check for un-archived openspec changes:**
 
 ```bash
-openspec list --json
+npx --yes @fission-ai/openspec@1.5.0 list --json
 ```
 
-If the command fails: ABORT with "openspec list failed. Ensure openspec is installed and working."
+There is no global `openspec` binary in this repo and there should not be one - it runs via
+`npx`, pinned to the version CI uses (`.github/workflows/build.yml`). A bare `openspec ...`
+fails with "command not found".
+
+If the command fails: ABORT with "openspec list failed: <command output>."
 
 If the JSON array is non-empty: ABORT with:
 
@@ -110,7 +118,29 @@ Enable it once (repo settings, or:
 ), then run `/ship` again.
 ```
 
-### 2. Rebase onto default branch
+### 2. Check for existing PR (idempotency) - the route decision
+
+This runs BEFORE the rebase and build, because the common reason to re-run `/ship` is to
+confirm a ship whose wait timed out (see step 9) - and that confirmation must not pay for a
+rebase and a full `./gradlew build` on a commit CI has already validated.
+
+```bash
+gh pr list --repo <repo> --head <current-branch> --json number,url,state,headRefOid
+git rev-parse HEAD
+```
+
+Pick the route from the result. `headRefOid` matters: "a PR is open" and "a PR is open **and
+already carries exactly these commits**" are different answers, and only the second one is
+safe to resume without building.
+
+| PR state | `headRefOid` vs local `HEAD` | Route |
+| --- | --- | --- |
+| MERGED | - | Already shipped. Treat the result as `MERGED` and skip to step 10 (report + delete workspace) |
+| OPEN | same | Skip to step 9 (re-enter the wait). Nothing to rebuild |
+| OPEN | different | There is unshipped local work: continue to step 3, but skip step 5 (issue selection) and step 7 (PR creation); re-confirm auto-merge at step 8 |
+| CLOSED, or no PR | - | Continue to step 3 (full create path) |
+
+### 3. Rebase onto default branch
 
 ```bash
 git fetch origin <default-branch>
@@ -125,7 +155,7 @@ Rebase onto <default-branch> failed (conflicts?).
 Resolve conflicts manually, then run `/ship` again.
 ```
 
-### 3. Run checks
+### 4. Run checks
 
 ```bash
 ./gradlew build
@@ -139,7 +169,7 @@ Cannot ship: build failed.
 Fix the issues, then commit and run `/ship` again.
 ```
 
-### 4. Resolve issue selection (if --resolves ? was passed)
+### 5. Resolve issue selection (if --resolves ? was passed)
 
 If `--resolves ?` was provided:
 
@@ -168,18 +198,6 @@ If `--resolves ?` was provided:
    ```
 
 5. Wait for user response and store the issue number for step 7.
-
-### 5. Check for existing PR (idempotency)
-
-```bash
-gh pr list --repo <repo> --head <current-branch> --json number,url,state
-```
-
-If a PR already exists for this branch:
-
-- If state is OPEN: skip to step 9 (run ship-wait script)
-- If state is MERGED: skip to step 10 (report + delete workspace) with exit code 0
-- If state is CLOSED: continue to create new PR
 
 ### 6. Push
 
@@ -281,6 +299,19 @@ Capture the PR URL and number from output.
 
 ### 8. Enable Auto-merge
 
+On the resume route (step 2 found an OPEN PR with a differing head), first check whether
+auto-merge is already on:
+
+```bash
+gh pr view --repo <repo> <number> --json autoMergeRequest
+```
+
+If `autoMergeRequest` is non-null, SKIP this step. The client-side queue is ordered by
+`autoMergeRequest.enabledAt`, so re-enabling auto-merge sends an already-queued PR to the
+BACK of the queue - turning a resume into a fresh wait behind everyone else.
+
+Otherwise:
+
 ```bash
 gh pr merge --repo <repo> <number> --auto --rebase --delete-branch
 ```
@@ -291,11 +322,40 @@ This:
 - Uses **rebase** to maintain linear history
 - Sets branch to auto-delete after merge
 
-### 9. Run ship-wait script
+### 9. Run ship-wait script (BACKGROUND - this ends the turn)
+
+Run it with the Bash tool's `run_in_background: true`, and pass **no** `timeout` parameter:
 
 ```bash
 npx tsx .claude/commands/ship-wait.ts <repo> <number> <default-branch>
 ```
+
+⚠️ **Never run this in the foreground, and never "fix" it by raising `timeout`.** The Bash
+tool caps `timeout` at 600_000 ms and clamps anything larger **silently** - so a foreground
+call is killed at exactly `10m 0s` while the script is still mid-wait, and the merge outcome
+is never learned. Raising the value changes nothing; it is the clamp, not the number. (This
+happened on 26 consecutive ships. See "Agent harness limits" in CLAUDE.md.)
+
+Do **not** wrap the command in `ch-bg`. A ship is real work - the script rebases and
+force-pushes this very worktree - so the workspace should read as busy while it runs, and the
+`ch-bg` prefix would also fall outside this command's `Bash(npx:*)` grant, prompting on every
+ship.
+
+The Bash tool returns immediately with a task id and an **output file path**. Then:
+
+1. Emit one line of acknowledgement, e.g. `Waiting on PR #<number> (up to 20 min).`
+2. **End the turn.** The harness re-invokes you with a task notification when the shell exits.
+3. On re-invocation, `Read` the output file and find the final line:
+
+   ```
+   SHIP-WAIT RESULT: <MERGED|FAILED|TIMEOUT> (<reason>)
+   ```
+
+4. Report per that result (see Report Formats), then do step 10.
+
+If the output file has **no** `SHIP-WAIT RESULT:` line, the outcome is UNKNOWN - the process
+died without reaching any of its own exit paths. Report UNKNOWN and keep the workspace. Do
+not infer MERGED or FAILED from the absence of a line, and do not delete the workspace.
 
 The script handles:
 
@@ -308,7 +368,12 @@ The script handles:
 - Waiting for auto-merge to complete
 - Fetching latest default branch from origin
 
-**Exit codes:**
+**Budget:** 20 minutes for the whole run, with a 15-minute sub-budget on the CI watch (so a
+wedged required check is diagnosed there rather than absorbed by the overall budget). Measured
+over 80 merged PRs, 20 minutes covers ~84% of ships.
+
+**Exit codes** (redundant with the result line; the line is authoritative because it also
+carries the reason):
 
 - 0: MERGED
 - 1: FAILED
@@ -320,9 +385,13 @@ Deleting the workspace tears down this worktree (and the agent session running i
 nothing can execute after the delete call. Therefore the order is strict:
 
 1. **First**, emit the final report (see Report Formats below).
-2. **Then**, if `--keep-workspace` was NOT passed and merge succeeded (exit code 0):
+2. **Then**, if `--keep-workspace` was NOT passed and the result was `MERGED`:
    call `mcp__codehydra__workspace_delete` with `keepBranch: false` as the VERY LAST
    action — no tool calls or output after it.
+
+`MERGED` is the ONLY result that deletes the workspace. FAILED, TIMEOUT and UNKNOWN all keep
+it — a TIMEOUT in particular leaves a perfectly healthy PR that GitHub will merge on its own,
+and the kept workspace is what makes the cheap re-run in step 2 possible.
 
 If `--keep-workspace` was passed, do not delete; the report already says "kept".
 
@@ -344,18 +413,39 @@ PR merged successfully!
 PR failed to merge.
 
 **PR**: <url>
-**Reason**: <explanation from script output>
+**Reason**: <reason from the SHIP-WAIT RESULT line>
 
 Action required: Fix the issue and run `/ship` again.
 ```
 
 ### TIMEOUT (exit code 2)
 
+TIMEOUT means the **watcher stopped looking** - never that the merge failed. Auto-merge is
+still armed on GitHub, so the PR merges by itself once its required checks pass. Say so; do
+not send the user off to diagnose a healthy ship. Do NOT delete the workspace.
+
 ```
-PR still processing after 15 minutes.
+Stopped waiting after 20 minutes - the PR has not merged yet.
 
 **PR**: <url>
-**Status**: <from script output>
+**Reason**: <reason from the SHIP-WAIT RESULT line>
 
-Action required: Review the PR status and decide how to proceed.
+Auto-merge is still enabled, so GitHub will merge this PR on its own once its required
+checks pass. Nothing is broken and no action is needed to complete the merge.
+
+Re-run `/ship` when convenient to confirm the merge and delete the workspace (it takes
+seconds - it skips the rebase and build when the PR already carries these commits).
+```
+
+### UNKNOWN (no result line)
+
+```
+Could not determine the merge outcome.
+
+**PR**: <url>
+**Reason**: the ship-wait process exited without reporting a result
+
+The wait process died before reaching any of its own exit paths, so the outcome was never
+learned - this is NOT a report that the merge failed. Check the PR directly, then re-run
+`/ship` to resume. Workspace kept.
 ```
