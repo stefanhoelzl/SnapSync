@@ -8,22 +8,38 @@
  *
  * Usage: pnpx tsx .claude/commands/ship-wait.ts <repo> <pr-number> <default-branch>
  *
- * Exit codes:
+ * This script is invoked by /ship as a BACKGROUND shell (`run_in_background: true`), because
+ * the Bash tool caps a foreground call at 600_000 ms and clamps larger requests silently — a
+ * budget longer than that could never be observed. /ship reads the outcome back out of the
+ * background shell's output file via the single `SHIP-WAIT RESULT:` line printed by finish().
+ *
+ * Exit codes (and the matching result line):
  *   0 - MERGED: PR successfully merged
  *   1 - FAILED: PR failed (CI failed, conflicts, closed, etc.)
- *   2 - TIMEOUT: Still processing after 15 minutes
+ *   2 - TIMEOUT: the watcher stopped looking. NOT a merge failure — auto-merge stays armed
+ *       server-side, so the PR still lands on its own once its checks pass.
  *
  * Environment:
  *   Requires `gh` CLI to be authenticated.
  */
 
 import { spawn } from "node:child_process";
-import { existsSync, readdirSync, readFileSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync, writeSync } from "node:fs";
 import { join } from "node:path";
 
 const RULESETS_DIR = ".github/rulesets";
 const POLL_INTERVAL_MS = 30_000;
-const TIMEOUT_MS = 900_000; // 15 minutes
+// Measured over 80 merged PRs (createdAt→mergedAt, which is this script's own window):
+// p50 12 min, p75 16, p90 26, p95 34, max 51. 20 minutes covers ~84% of ships. It is
+// deliberately not set to cover the tail: exceeding it costs a TIMEOUT report, and a TIMEOUT
+// is cheap because auto-merge is already enabled on GitHub — the PR merges without us. Budget
+// for the common case and diagnose a wedge early, rather than stall on every wedge to spare
+// the occasional slow-but-healthy ship.
+const TIMEOUT_MS = 1_200_000; // 20 minutes, whole run
+// Sub-budget on the CI watch, the one phase with hard numbers: 19 successful non-main ios.yml
+// runs took 7–14 min. 15 min is ~1.1× the measured max, so a wedged required check is
+// diagnosed here rather than absorbed by the global budget.
+const CI_WATCH_TIMEOUT_MS = 900_000; // 15 minutes
 const MERGE_WAIT_TIMEOUT_MS = 120_000; // 2 minutes
 const MERGE_POLL_INTERVAL_MS = 5000;
 const COMMAND_TIMEOUT_MS = 60_000;
@@ -116,6 +132,28 @@ function classifyAhead(
 function log(message: string): void {
 	const timestamp = new Date().toISOString();
 	console.log(`[${timestamp}] ${message}`);
+}
+
+type ShipResult = "MERGED" | "FAILED" | "TIMEOUT";
+
+const EXIT_CODE: Record<ShipResult, number> = {
+	MERGED: 0,
+	FAILED: 1,
+	TIMEOUT: 2,
+};
+
+/**
+ * The one line /ship reads back out of the background shell's output file. EVERY exit routes
+ * through here — including the signal handlers and the catch-all — so a missing line means the
+ * process died without running its own code. /ship reports that as UNKNOWN rather than guessing,
+ * because "the wait failed" and "we never learned the outcome" have different consequences.
+ *
+ * writeSync, not console.log: when stdout is a pipe Node writes it asynchronously, and
+ * process.exit() would truncate the very line the whole mechanism depends on.
+ */
+function finish(result: ShipResult, reason: string): never {
+	writeSync(1, `SHIP-WAIT RESULT: ${result} (${reason})\n`);
+	process.exit(EXIT_CODE[result]);
 }
 
 function sleep(ms: number): Promise<void> {
@@ -421,8 +459,14 @@ async function waitForChecksToAppear(
 	return false;
 }
 
-function watchChecks(repo: string, prNumber: number): Promise<boolean> {
-	log("Watching CI checks...");
+type CiOutcome = "passed" | "failed" | "timeout";
+
+function watchChecks(
+	repo: string,
+	prNumber: number,
+	budgetMs: number,
+): Promise<CiOutcome> {
+	log(`Watching CI checks (up to ${Math.round(budgetMs / 60_000)} min)...`);
 
 	return new Promise((resolve) => {
 		const proc = spawn(
@@ -445,29 +489,55 @@ function watchChecks(repo: string, prNumber: number): Promise<boolean> {
 			},
 		);
 
+		// The watch had NO deadline before this: `gh pr checks --watch` blocks until the checks
+		// settle, so a wedged required check hung the whole script indefinitely. Killing the child
+		// on the budget is what makes the advertised bound real.
+		let timedOut = false;
+		const timer = setTimeout(() => {
+			timedOut = true;
+			proc.kill();
+		}, budgetMs);
+
 		proc.on("close", (code) => {
-			if (code === 0) {
+			clearTimeout(timer);
+			if (timedOut) {
+				log("CI watch budget exhausted - stopped watching");
+				resolve("timeout");
+			} else if (code === 0) {
 				log("All CI checks passed!");
-				resolve(true);
+				resolve("passed");
 			} else {
 				log("CI checks failed");
-				resolve(false);
+				resolve("failed");
 			}
 		});
 
 		proc.on("error", (err) => {
+			clearTimeout(timer);
 			log(`CI check error: ${err.message}`);
-			resolve(false);
+			resolve("failed");
 		});
 	});
 }
 
-async function waitForCi(repo: string, prNumber: number): Promise<boolean> {
+async function waitForCi(
+	repo: string,
+	prNumber: number,
+	startTime: number,
+): Promise<CiOutcome> {
 	const hasChecks = await waitForChecksToAppear(repo, prNumber);
 	if (!hasChecks) {
-		return true;
+		return "passed";
 	}
-	return watchChecks(repo, prNumber);
+	// Whichever bites first: the CI sub-budget, or what is left of the whole run's budget.
+	const budgetMs = Math.min(
+		CI_WATCH_TIMEOUT_MS,
+		TIMEOUT_MS - (Date.now() - startTime),
+	);
+	if (budgetMs <= 0) {
+		return "timeout";
+	}
+	return watchChecks(repo, prNumber, budgetMs);
 }
 
 async function waitForMerge(
@@ -524,17 +594,19 @@ function parseArgs(): {
 } {
 	const args = process.argv.slice(2);
 
+	// Through finish() like every other exit: a usage error must still leave the result line
+	// /ship greps for, or a mis-invocation reads as "the process vanished" (UNKNOWN) instead of
+	// the plain, fixable mistake it is.
 	if (args.length !== EXPECTED_ARGS) {
-		console.error(
-			"Usage: pnpx tsx ship-wait.ts <repo> <pr-number> <default-branch>",
+		finish(
+			"FAILED",
+			"usage: ship-wait.ts <repo> <pr-number> <default-branch>",
 		);
-		process.exit(1);
 	}
 
 	const prNumber = Number.parseInt(args[1], 10);
 	if (Number.isNaN(prNumber)) {
-		console.error(`Invalid PR number: ${args[1]}`);
-		process.exit(1);
+		finish("FAILED", `invalid PR number: ${args[1]}`);
 	}
 
 	return { repo: args[0], prNumber, defaultBranch: args[2] };
@@ -575,62 +647,59 @@ async function main(): Promise<void> {
 	if (state.state === "MERGED") {
 		log("PR is already merged!");
 		await fetchDefaultBranch(defaultBranch);
-		process.exit(0);
+		finish("MERGED", "PR was already merged");
 	}
 
 	if (state.state === "CLOSED") {
-		log("PR is closed");
-		process.exit(1);
+		finish("FAILED", "PR is closed");
 	}
 
 	const queueOutcome = await waitForQueueTurn(repo, prNumber, startTime);
 	if (queueOutcome.kind === "ours-merged") {
 		await fetchDefaultBranch(defaultBranch);
-		process.exit(0);
+		finish("MERGED", "merged while waiting in queue");
 	}
 	if (queueOutcome.kind === "ours-closed") {
-		process.exit(1);
+		finish("FAILED", "PR was closed while waiting in queue");
 	}
 	if (queueOutcome.kind === "timeout") {
-		log("Timeout waiting for PRs ahead");
-		process.exit(2);
+		finish("TIMEOUT", "still waiting on PRs ahead in queue");
 	}
 
 	if (!(await rebaseAndPush(defaultBranch))) {
-		log("Failed to rebase and push");
-		process.exit(1);
+		finish("FAILED", `could not rebase onto ${defaultBranch} and push`);
 	}
 
 	await applyRulesets(repo);
 
-	if (!(await waitForCi(repo, prNumber))) {
-		log("CI failed");
-		process.exit(1);
+	const ciOutcome = await waitForCi(repo, prNumber, startTime);
+	if (ciOutcome === "failed") {
+		finish("FAILED", "a required CI check failed");
+	}
+	if (ciOutcome === "timeout") {
+		finish("TIMEOUT", "required CI checks still running");
 	}
 
 	const mergeResult = await waitForMerge(repo, prNumber, startTime);
 
 	if (mergeResult === "merged") {
 		await fetchDefaultBranch(defaultBranch);
-		process.exit(0);
+		finish("MERGED", `merged into ${defaultBranch}`);
 	} else if (mergeResult === "failed") {
-		process.exit(1);
+		finish("FAILED", "PR closed or conflicted while awaiting merge");
 	} else {
-		process.exit(2);
+		finish("TIMEOUT", "CI passed but auto-merge has not completed yet");
 	}
 }
 
 process.on("SIGINT", () => {
-	log("Interrupted by user");
-	process.exit(1);
+	finish("FAILED", "interrupted");
 });
 
 process.on("SIGTERM", () => {
-	log("Terminated");
-	process.exit(1);
+	finish("FAILED", "terminated");
 });
 
 main().catch((err) => {
-	log(`Unexpected error: ${err.message}`);
-	process.exit(1);
+	finish("FAILED", `unexpected error: ${err.message}`);
 });
