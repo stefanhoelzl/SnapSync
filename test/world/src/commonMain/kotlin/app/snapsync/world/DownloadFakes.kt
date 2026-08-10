@@ -6,6 +6,7 @@ import app.snapsync.ports.DownloadTransportHost
 import app.snapsync.ports.ImportResult
 import app.snapsync.ports.ImportedAssetPresence
 import app.snapsync.ports.PhotoLibraryImporter
+import kotlinx.coroutines.CompletableDeferred
 import app.snapsync.ports.TransferOutcome
 import app.snapsync.ports.AssetRef
 import app.snapsync.ports.StagedResource
@@ -91,23 +92,27 @@ class FakeDownloadTransport(
  * Without that ordering the world cannot reach the state this capability's hard cases live in: a marker
  * written, and the confirmation never arriving.
  *
- * The levers ([failNextImport], [abandonNextImport], [failNextImportAfterCreating]) are what let a test
- * reach each of the three ways an import can end badly. They live here rather than in
+ * The levers ([failNextImport], [failNextImportAfterCreating], [suspendNextImport]) are what let a test
+ * reach each of the ways an import can end badly — including the one that has no ending at all, where the
+ * transaction is held open while other triggers run. They live here rather than in
  * `:adapter:generic:fake` because this class is world rigging, outside the fake-honesty gate.
  */
 class FakePhotoLibraryImporter(
     private val gallery: WorldGallery,
     /**
-     * The marker write, mirroring the real adapter's constructor lambda. Defaults to a no-op so existing
-     * world construction keeps working; `World` binds it to the download store.
+     * The marker write, mirroring the real adapter's constructor lambda.
+     *
+     * **Required, with no default.** A no-op default makes an importer that never records a marker look
+     * like a working one: the row stays importable, so every later pass imports the asset AGAIN while
+     * reporting success — an unbounded duplicate generator presented as a healthy path. That is exactly
+     * the failure `DownloadStore.markImported` exists to absorb, and a fixture must not be the thing that
+     * hides it.
      */
-    private val recordCreatedLocalId: (AssetRef, String) -> Unit = { _, _ -> },
+    private val recordCreatedLocalId: (AssetRef, String) -> Boolean,
     /** The mirror, invoked when a change is reported as failed *after* the marker was written. */
-    private val clearCreatedLocalId: (AssetRef) -> Unit = { },
+    private val clearCreatedLocalId: (AssetRef, String) -> Unit,
     /** The success mirror: the completion settles the row itself (capability `download-store`). */
-    private val confirmCreatedLocalId: (AssetRef, String) -> Unit = { _, _ -> },
-    /** The library reported, so absence is trustworthy about this ref again (capability `photo-download`). */
-    private val forgetUnreported: (AssetRef) -> Unit = { },
+    private val confirmCreatedLocalId: (AssetRef, String) -> Unit,
 ) : PhotoLibraryImporter {
 
     /** Inspection: the source refs imported, one entry per created asset (so a repeat shows up twice). */
@@ -127,22 +132,66 @@ class FakePhotoLibraryImporter(
     var failNextImportAfterCreating: Boolean = false
 
     /**
-     * Crash lever: the next import writes its marker and creates the asset in the gallery, then reports
-     * [ImportResult.TimedOut] without ever confirming — the shape a process death or an abandoned wait
-     * leaves behind. The asset exists; the row stays unconfirmed. Cleared after one firing.
+     * The lever the `SNAPSYNC-9` guard is about: the next import writes its marker — the change block ran
+     * — and then **suspends before the commit lands**, holding the transaction open until the test
+     * resolves it.
+     *
+     * Suspending, rather than returning a report about an abandonment, is the whole point. While it is
+     * parked the gallery does not hold the asset, so the photo library answers *absent* about a
+     * transaction that is still open — honest, and catastrophic to act on — and the ref is claimed. A
+     * lever that merely *returned* that state let a test observe the aftermath; only this one lets a
+     * second trigger run **while** the transaction is live, which is the interleaving the defect occurs
+     * in and the one the download controller's claim exists to close.
+     *
+     * Nothing is settled while it is parked: no gallery asset, no clear (it may still land), no confirm.
+     * All three are things the completion callback does, and supplying any of them would erase the very
+     * state under test. Cleared after one firing.
      */
-    var abandonNextImport: Boolean = false
+    var suspendNextImport: Boolean = false
 
     /**
-     * Crash lever, and the one the `SNAPSYNC-9` guard is about: the marker is written — the change block
-     * ran — but the **commit has not landed**, so the gallery does not hold the asset yet, and the wait is
-     * abandoned. The photo library then answers *absent* about an asset whose transaction is still open,
-     * which is honest and catastrophic to act on.
+     * The same hold, one step later: the marker is written, the commit **has** landed (the asset is in the
+     * gallery), and only the report is missing — so a presence lookup answers *present* about it.
      *
-     * Distinct from [abandonNextImport], where the asset IS created and presence answers *present*. Both
-     * leave an unconfirmed row; only this one makes the library lie by omission. Cleared after one firing.
+     * Distinct from [suspendNextImport], where the library answers *absent* about a transaction that is
+     * still open. Both leave an unconfirmed row and both stay claimed; only this one is recoverable by
+     * adjudication, and it is the shape a process death leaves behind. Cleared after one firing.
      */
-    var abandonNextImportBeforeCommit: Boolean = false
+    var suspendNextImportAfterCommit: Boolean = false
+
+    /** Signalled by [resumeSuspendedImport] to release a parked import with its chosen outcome. */
+    private var parked: CompletableDeferred<Boolean>? = null
+
+    /**
+     * Completes once an import has actually parked, so a test can await the live transaction rather than
+     * guessing at a delay — a race here would make every test built on this lever flaky.
+     *
+     * **Replaced on every park**, because a single completed deferred makes the lever single-shot in the
+     * worst way: a second `await` would return the STALE ref immediately, the test would drive its
+     * triggers before the second import had parked, and the resume would then find nothing suspended.
+     */
+    var suspendedImport: CompletableDeferred<AssetRef> = CompletableDeferred()
+        private set
+
+    /**
+     * Deliver the parked import's outcome, driving the real completion path for it: on [succeeded] the
+     * asset lands and the row is settled against the marker it holds; otherwise that marker is cleared.
+     */
+    fun resumeSuspendedImport(succeeded: Boolean) {
+        val gate = parked ?: error("no import is suspended")
+        parked = null
+        gate.complete(succeeded)
+    }
+
+    /**
+     * How many times ONE ref may be imported before this importer raises (capability
+     * `harness-world-model`).
+     *
+     * An unbounded re-selection of one ref is a live-lock, and a live-lock in a test is a HANG — which
+     * names no defect and proves nothing. The cap converts it into an assertion failure that names the
+     * count, so removing the drain's attempted-set produces a red test rather than a stuck one.
+     */
+    var attemptCap: Int = 50
 
     override suspend fun import(
         ref: AssetRef,
@@ -164,9 +213,12 @@ class FakePhotoLibraryImporter(
         // asset IS the harm.
         val attempt = attempts.getOrElse(ref) { 0 } + 1
         attempts[ref] = attempt
+        check(attempt <= attemptCap) {
+            "imported ${ref.sourceAssetId} $attempt times (cap $attemptCap) — the drain is live-locking " +
+                "on one ref instead of offering it once"
+        }
         if (failNextImport) {
             failNextImport = false
-            forgetUnreported(ref) // the library reported — a failure is an outcome
             return ImportResult.Failed("forced")
         }
         // The suppression handle: byte-identical to the enumerator's normalized `assetId` form, so the
@@ -179,14 +231,32 @@ class FakePhotoLibraryImporter(
         // existing expectations still read `imported-<device>-<asset>`.
         val suffix = if (attempt == 1) "" else "-$attempt"
         val createdLocalId = normalizeAssetId("imported-${ref.sourceDeviceId}-${ref.sourceAssetId}$suffix")
-        // INSIDE the change block, before anything is observable — the real adapter's ordering.
-        recordCreatedLocalId(ref, createdLocalId)
-        if (abandonNextImportBeforeCommit) {
-            abandonNextImportBeforeCommit = false
-            // The marker is written and nothing else is: no gallery asset (the commit has not landed), no
-            // clear (it may still land), no confirm and no forget (nothing reported). Exactly the state
-            // the field defect was adjudicated in.
-            return ImportResult.TimedOut("forced abandonment before the commit landed")
+        // INSIDE the change block, before anything is observable — the real adapter's ordering. The
+        // Boolean is the adapter's too: `false` means the row was pruned out from under this import, so
+        // the asset about to be created will have no suppression handle at all (capability
+        // `download-store`). The real adapter logs an error; the world raises, because a test that reaches
+        // this state has hit the defect the prune's `protecting` set exists to prevent.
+        check(recordCreatedLocalId(ref, createdLocalId)) {
+            "marker $createdLocalId for ${ref.sourceAssetId} landed on NO ROW — its row was pruned mid-import"
+        }
+        if (suspendNextImport) {
+            suspendNextImport = false
+            // Park with the marker written and NOTHING else: no gallery asset (the commit has not
+            // landed), no clear (it may still land), no confirm (nothing reported). Exactly the state the
+            // field defect was adjudicated in — and, because this suspends rather than returns, the state
+            // stays open while the test drives other triggers against it.
+            val gate = CompletableDeferred<Boolean>()
+            parked = gate
+            if (suspendedImport.isCompleted) suspendedImport = CompletableDeferred()
+            suspendedImport.complete(ref)
+            if (!gate.await()) {
+                // The completion reports failure: the mirror undoes the marker it wrote, and no asset ever
+                // existed, so the gallery stays untouched.
+                clearCreatedLocalId(ref, createdLocalId)
+                return ImportResult.Failed("suspended import resumed as failed")
+            }
+            // Falls through to the ordinary success path below: the asset lands and the row is settled
+            // against the marker it already holds, which is what the real completion does.
         }
         // Import into the gallery so the asset becomes enumerable (and thus visible to — but suppressed
         // from — the upload cycle).
@@ -206,32 +276,32 @@ class FakePhotoLibraryImporter(
         )
         gallery.set(gallery.current() + newAsset)
         imported += ref
+        if (suspendNextImportAfterCommit) {
+            suspendNextImportAfterCommit = false
+            // The asset EXISTS and the row is unconfirmed: no confirm, no clear. The library will answer
+            // *present* about it, which is the one verdict that can settle a row whose completion was lost.
+            val gate = CompletableDeferred<Boolean>()
+            parked = gate
+            if (suspendedImport.isCompleted) suspendedImport = CompletableDeferred()
+            suspendedImport.complete(ref)
+            if (!gate.await()) {
+                clearCreatedLocalId(ref, createdLocalId)
+                return ImportResult.Failed("suspended import resumed as failed")
+            }
+        }
         // The commit landed. What the platform reports about it is the lever's business.
         if (failNextImportAfterCreating) {
             failNextImportAfterCreating = false
-            forgetUnreported(ref) // reported, even though it reported failure
             // The mirror: an OBSERVED failure undoes the marker it wrote. (The gallery keeps the asset,
             // which is the honest shape — `performChanges` reporting failure after the block ran is
             // exactly the case where the store must not keep pointing at something that may not exist.)
-            clearCreatedLocalId(ref)
+            clearCreatedLocalId(ref, createdLocalId)
             return ImportResult.Failed("forced after creating")
         }
-        if (abandonNextImport) {
-            abandonNextImport = false
-            // Marker written, asset created, confirmation never delivered — and deliberately NO clear:
-            // the transaction may still commit, so clearing here is what orphans the created asset.
-            //
-            // Deliberately NO `confirmCreatedLocalId` and NO `forgetUnreported` either: this lever models
-            // a completion that never arrives, and both of those are things the completion does. Calling
-            // either would settle the very state the guard exists to reason about, and the world could no
-            // longer reach it.
-            return ImportResult.TimedOut("forced abandonment")
-        }
-        // The completion's own writes, mirroring the real adapter: settle the row against the marker it
-        // holds, then stop distrusting absence about this ref — both BEFORE returning, because on device
-        // they run in a callback that fires whether or not anything is still awaiting it.
+        // The completion's own write, mirroring the real adapter: settle the row against the marker it
+        // holds, BEFORE returning, because on device it runs in a callback that fires whether or not
+        // anything is still awaiting it.
         confirmCreatedLocalId(ref, createdLocalId)
-        forgetUnreported(ref)
         return ImportResult.Imported(createdLocalId)
     }
 }

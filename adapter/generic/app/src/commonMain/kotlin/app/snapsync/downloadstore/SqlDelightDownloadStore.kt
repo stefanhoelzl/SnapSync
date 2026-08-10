@@ -76,26 +76,38 @@ class SqlDelightDownloadStore(database: DownloadDatabase) : DownloadStore {
      * Synchronous (non-suspend) write of ONLY the created local id — callable from inside a PhotoKit
      * `performChanges` change block (which cannot call suspend funcs) so the asset is suppressed before
      * its creation commits. The native SQLite write is synchronous; the later [markImported] sets state.
+     *
+     * `false` means the row was pruned out from under this import — see the port's KDoc for why that is
+     * an emergency rather than a miss.
      */
-    override fun recordCreatedLocalId(ref: AssetRef, createdLocalId: String) {
+    override fun recordCreatedLocalId(ref: AssetRef, createdLocalId: String): Boolean = applied {
         q.recordCreatedLocalId(createdLocalId, ref.sourceDeviceId, ref.sourceAssetId)
     }
 
     /** The mirror of [recordCreatedLocalId], for a change the library reported as failed. */
-    override fun clearCreatedLocalId(ref: AssetRef) {
-        q.clearCreatedLocalId(ref.sourceDeviceId, ref.sourceAssetId)
+    override fun clearCreatedLocalId(ref: AssetRef, createdLocalId: String): Boolean = applied {
+        q.clearCreatedLocalId(ref.sourceDeviceId, ref.sourceAssetId, createdLocalId)
     }
 
     /**
      * The success mirror. The marker guard is in the SQL, so a completion whose marker has moved on
      * updates no row rather than settling one it no longer describes.
      */
-    override fun confirmCreatedLocalId(ref: AssetRef, createdLocalId: String) {
+    override fun confirmCreatedLocalId(ref: AssetRef, createdLocalId: String): Boolean = applied {
         q.confirmCreatedLocalId(ref.sourceDeviceId, ref.sourceAssetId, createdLocalId)
     }
 
-    override suspend fun isUnconfirmedWith(ref: AssetRef, createdLocalId: String): Boolean =
-        q.isUnconfirmedWith(ref.sourceDeviceId, ref.sourceAssetId, createdLocalId).executeAsOne()
+    /**
+     * Run [write] and report whether it changed a row, reading `changes()` inside the SAME transaction as
+     * the statement it describes — so nothing can run between the write and the question about it.
+     *
+     * Non-suspending, because all three of its callers are: they are invoked from PhotoKit's change and
+     * completion blocks, which cannot call a suspending function.
+     */
+    private fun applied(write: () -> Unit): Boolean = q.transactionWithResult {
+        write()
+        q.changedRows().executeAsOne() > 0L
+    }
 
     override suspend fun importedCount(): Int = q.countImported().executeAsOne().toInt()
 
@@ -103,18 +115,31 @@ class SqlDelightDownloadStore(database: DownloadDatabase) : DownloadStore {
 
     override suspend fun inFlightCount(): Int = q.countInFlightAssets().executeAsOne().toInt()
 
-    override suspend fun pruneNonTerminal() {
-        q.transaction {
-            q.deleteNonTerminalAssets()
-            q.deleteNonTerminalResources()
-        }
+    /**
+     * Read the prunable rows, subtract [protecting], drop what remains and return the staged paths those
+     * rows owned — all inside ONE transaction, so no writer can move a row between the read that decided
+     * its fate and the delete that carries it out.
+     *
+     * The refs are subtracted here rather than in SQL because the key is composite and a row-value `NOT IN`
+     * over a bound collection is not expressible in this dialect. Being inside the transaction is what makes
+     * that equivalent — and clearer to read than the alternative would have been.
+     */
+    override suspend fun pruneNonTerminal(protecting: Set<AssetRef>): List<String> = q.transactionWithResult {
+        val victims = q.selectPrunableAssets { device, asset -> AssetRef(device, asset) }
+            .executeAsList()
+            .filterNot { it in protecting }
+        victims.forEach { q.deletePrunableAsset(it.sourceDeviceId, it.sourceAssetId) }
+        // Read AFTER the deletes, from the rows they orphaned — so the paths returned are what this call
+        // really stranded, not what a pre-delete snapshot predicted it would. Getting that backwards frees
+        // the bytes of a row the delete spared, and a resource recorded as staged is never re-downloaded.
+        val stranded = q.selectStagedPathsOfOrphanedResources().executeAsList().filterNotNull()
+        // Sweeps those now-orphaned resource rows; a protected asset keeps both its row and its resources.
+        q.deleteNonTerminalResources()
+        stranded
     }
 
     override suspend fun stagedPathsOfImportedAssets(): List<String> =
         q.selectStagedPathsOfImportedAssets().executeAsList().filterNotNull()
-
-    override suspend fun stagedPathsOfPrunableAssets(): List<String> =
-        q.selectStagedPathsOfPrunableAssets().executeAsList().filterNotNull()
 
     override suspend fun dropResources(ref: AssetRef) {
         q.deleteResourcesForAsset(ref.sourceDeviceId, ref.sourceAssetId)

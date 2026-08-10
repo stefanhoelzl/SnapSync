@@ -3,7 +3,6 @@ package app.snapsync.feature.membership
 import app.snapsync.ports.ConfigStore
 import app.snapsync.ports.DownloadStore
 import app.snapsync.ports.LedgerStore
-import app.snapsync.ports.StagedBytes
 import co.touchlab.kermit.Logger
 
 /**
@@ -45,8 +44,8 @@ import co.touchlab.kermit.Logger
  * rows — an import interrupted between its commit and its confirmation holds a marker while still
  * looking non-terminal, and it is exactly the row a state-based prune would destroy.
  *
- * The staged bytes of the rows it does drop are released first: after the prune their paths are gone with
- * the rows, and the files are stranded with nothing referencing them.
+ * The staged bytes of the rows it does drop are freed by that same step: the prune returns the paths it
+ * stranded, so there is no second read at a second instant for a concurrent marker write to slip between.
  *
  * The attestation credential is **untouched**. A token minted by another backend is rejected there with
  * a `401`, and `DeviceAttestation.rejected()` already drops it and re-attests — so crossing backends
@@ -59,7 +58,21 @@ class ResetDeviceState(
     private val config: ConfigStore,
     private val ledger: LedgerStore,
     private val downloads: DownloadStore,
-    private val stagedBytes: StagedBytes = StagedBytes.None,
+    /**
+     * The download half of the reset — the non-terminal prune and the release of the bytes it strands,
+     * together.
+     *
+     * Injected as ONE effect rather than performed here, because it must run under the download
+     * controller's lock: a ref is claimed under that lock before its import's change block runs, and a
+     * reset that merely reads a snapshot of what is claimed leaves a window for a claim in between —
+     * whose row is then pruned, so the marker write lands on nothing and the created asset is uploaded
+     * back into the event (capability `download-store`). This feature cannot take that lock without
+     * reaching for its sibling, so the composition passes the critical section instead of the value.
+     *
+     * Required, with no default: a no-op default would make a reset that quietly prunes nothing look
+     * exactly like one that worked.
+     */
+    private val resetDownloads: suspend () -> Unit,
     private val clearDiscoveryCursor: () -> Unit,
 ) {
     private val log = Logger.withTag("ResetDeviceState")
@@ -72,8 +85,7 @@ class ResetDeviceState(
         step("clear ledger") { ledger.clear() }
         // Without this the ledger clear achieves nothing: no change token means no enumeration.
         step("clear discovery cursor") { clearDiscoveryCursor() }
-        step("release prunable staged bytes") { stagedBytes.release(downloads.stagedPathsOfPrunableAssets()) }
-        step("prune non-terminal downloads") { downloads.pruneNonTerminal() }
+        step("prune non-terminal downloads (and free the bytes it strands)") { resetDownloads() }
         // Local only — no backend is notified. See the class doc.
         step("clear config") { config.clear() }
 

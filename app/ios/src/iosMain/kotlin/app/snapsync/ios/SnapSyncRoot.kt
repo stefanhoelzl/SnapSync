@@ -11,7 +11,6 @@ import app.snapsync.model.resolveScene
 import app.snapsync.compose.AppCore
 import app.snapsync.compose.AppPorts
 import app.snapsync.compose.snapSyncApp
-import app.snapsync.feature.download.UnreportedImports
 import app.snapsync.config.FileBackedConfigStore
 import app.snapsync.eventcreation.HttpEventCreation
 import app.snapsync.eventcreation.HttpEventRename
@@ -334,18 +333,6 @@ object SnapSyncRoot {
      * The attest client's own HTTP client is deliberately UNauthenticated: the three `/attest/…`
      * routes are the ones that issue the token, so authenticating them would be a cycle.
      */
-    /**
-     * The refs whose import outcome the photo library has not reported (capability `photo-download`).
-     *
-     * Held HERE, by the shell, because two parties share it and neither can own it: the importer above is
-     * constructed as part of [AppPorts], before the core graph exists, and the core adjudicates against
-     * it afterwards. One instance, passed to both. With two, the controller's gate still works (it both
-     * records and reads) but the importer's `forget` lands nowhere, so a ref stays distrusted for the life
-     * of the process and its photo waits for the next launch — cautious rather than dangerous, and still
-     * wrong.
-     */
-    private val unreportedImports = UnreportedImports()
-
     // `internal`, not `private`, solely so the rig's contributed hook — compiled INTO this module under
     // `-Psnapsync.rig=true` — can pass it as a thunk without anything being widened to `public`.
     // `internal` is module-wide and is NOT exported to the `SnapSyncKit` ObjC header, so no framework
@@ -356,7 +343,6 @@ object SnapSyncRoot {
         // loudly) that a forge launch composes no live core.
         val live = shell as LiveShell
         snapSyncApp(
-            unreportedImports = unreportedImports,
             scope = scope,
             ports = AppPorts(
                 // The main lane (law "Dispatcher lanes are fixed by the composition"). This shell is
@@ -403,13 +389,12 @@ object SnapSyncRoot {
                 importer = IosPhotoLibraryImporter(
                     recordCreatedLocalId = { ref, id -> downloadStore.recordCreatedLocalId(ref, id) },
                     // The mirror, for a commit the library reports as failed (capability `download-store`).
-                    clearCreatedLocalId = { ref -> downloadStore.clearCreatedLocalId(ref) },
-                    // The success mirror: the completion settles the row itself, so an import whose wait
-                    // was abandoned records its own outcome (capability `download-store`).
+                    // Guarded on the marker in the store's own write, so a report that arrives after the
+                    // row moved on clears nothing.
+                    clearCreatedLocalId = { ref, id -> downloadStore.clearCreatedLocalId(ref, id) },
+                    // The success mirror: the completion settles the row itself, so an import whose
+                    // requester is gone records its own outcome (capability `download-store`).
                     confirmCreatedLocalId = { ref, id -> downloadStore.confirmCreatedLocalId(ref, id) },
-                    // The library reported, so absence is trustworthy about this ref again. The SAME
-                    // instance the core adjudicates against — see `unreportedImports` below.
-                    forgetUnreported = { ref -> unreportedImports.forget(ref) },
                     // The atomic import-time album lookup: the membership's opt-in gate is the
                     // coordinator's rule (capability `event-album`); this thunk only reads the
                     // current membership's facts. Deferred — it runs inside a PhotoKit change block,

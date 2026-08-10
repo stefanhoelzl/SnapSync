@@ -20,20 +20,16 @@ sealed interface ImportResult {
     /** The asset was created; [createdLocalId] is its sanitized local identifier (the suppression handle). */
     data class Imported(val createdLocalId: String) : ImportResult
 
-    /** The import did not complete; the asset stays importable and is retried (no terminal failure). */
-    data class Failed(val message: String) : ImportResult
-
     /**
-     * The import was still waiting on the photo library when its deadline expired, so the wait was
-     * abandoned (capability `photo-download`). Distinct from [Failed] because it says something about the
-     * DEVICE, not the photo: the one hang observed in the field (SNAPSYNC-6) was environmental — the same
-     * asset, from the same staged bytes, imported in under a second three minutes later in a fresh
-     * process. So the drain stops for this wake rather than working through the remaining assets and
-     * abandoning a transaction for each.
+     * The import did not complete; the asset stays importable and is retried (no terminal failure).
      *
-     * Like [Failed], the asset stays importable and is retried at a later wake.
+     * This is an OBSERVED outcome — the library reported the change failed — and it is the only kind of
+     * failure this seam reports. There is deliberately no "we stopped waiting" case: nothing bounds an
+     * import in time any more (capability `photo-download`), because a wall-clock bound expires against
+     * transactions that are alive, and the wake it would otherwise protect is bounded by `OsReceipt`
+     * instead. An import that never reports never returns, and stays claimed for the life of the process.
      */
-    data class TimedOut(val message: String) : ImportResult
+    data class Failed(val message: String) : ImportResult
 }
 
 /**

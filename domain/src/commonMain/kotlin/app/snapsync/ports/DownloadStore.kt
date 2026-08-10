@@ -101,17 +101,47 @@ interface DownloadStore : SuppressionSource {
      * the library commits, a created asset always has a marker — so this is a record of an irreversible
      * act, and [pruneNonTerminal] must not delete a row that carries one.
      *
+     * **Unguarded, alone among the three, and deliberately.** It *creates* the addressing the other two
+     * match; there is nothing for it to match against. The states that would make a guard meaningful are
+     * unreachable: a terminal row is excluded from importable work and no second import for a ref can run
+     * concurrently, and a row carrying an older marker is not importable until adjudication clears that
+     * marker — which is itself the decision that no asset exists for it. A clause here would protect
+     * against neither and would read as load-bearing to the next person.
+     *
+     * **Returns whether it updated a row, and `false` is an emergency.** The only way to match nothing is
+     * for the row to have been DELETED between this import being selected and its change block running —
+     * the failure [pruneNonTerminal]'s `protecting` set exists to prevent. Its consequence is an asset
+     * created with no suppression handle, which this device then uploads back into someone else's event
+     * days later with nothing anywhere recording why. The caller SHALL report that loudly: it is the only
+     * evidence that the protection failed, and without it a safety gate's failure is visible solely through
+     * its damage.
+     *
      * Idempotent; a marker written for a change that then fails is cleared by [clearCreatedLocalId].
      */
-    fun recordCreatedLocalId(ref: AssetRef, createdLocalId: String)
+    fun recordCreatedLocalId(ref: AssetRef, createdLocalId: String): Boolean
 
     /**
      * Undo [recordCreatedLocalId] for a change the platform reported as **failed** — the exact mirror,
-     * from the same completion callback. Never called when an import's wait is merely abandoned on its
-     * deadline: that transaction may still commit, and clearing the marker is what orphans the asset it
-     * creates (capability `photo-download`).
+     * from the same completion callback — and the write an *absent* verdict is applied through.
+     *
+     * A marker is cleared for exactly one reason: the library said its change failed, or said the asset
+     * it names does not exist. Never because time passed, because nothing is awaiting the transaction any
+     * longer, or because a lookup answered *absent* while that transaction was still open — it may still
+     * commit, and clearing the marker is what orphans the created asset (capability `photo-download`).
+     *
+     * **Guarded on [createdLocalId] AND on the row still being non-terminal**, and the guard is in the
+     * store's write rather than in a caller's preceding `if`, because two writers reach this with no shared
+     * lock: the completion callback runs on the platform's own queue. A read-then-write pair is not atomic
+     * against the writer that does not take the caller's lock, which is why the marker-scoped read this
+     * replaces never closed the window it was introduced for. Both halves of the guard earn their place —
+     * without the marker half a late failure clears a marker the row no longer holds, and without the state
+     * half it strips the marker off a row adjudication has already settled as *present*, which is permanent
+     * because a terminal row is never adjudicated or re-imported again.
+     *
+     * Returns whether it applied, so a caller can tell "the verdict landed" from "the row moved on" —
+     * different answers, and the second must not be acted on further.
      */
-    fun clearCreatedLocalId(ref: AssetRef)
+    fun clearCreatedLocalId(ref: AssetRef, createdLocalId: String): Boolean
 
     /**
      * The **success** mirror of [recordCreatedLocalId]: settle the row against the marker it already
@@ -131,21 +161,12 @@ interface DownloadStore : SuppressionSource {
      *
      * Non-suspending, like its two siblings, because the platform's completion callback cannot call a
      * suspending function.
-     */
-    fun confirmCreatedLocalId(ref: AssetRef, createdLocalId: String)
-
-    /**
-     * Is [ref] still unconfirmed **with exactly [createdLocalId]** — non-terminal, and carrying that
-     * marker and no other?
      *
-     * The re-check a presence verdict is applied through (capability `photo-download`). Verdicts are
-     * computed OUTSIDE the download controller's lock — deliberately, because the lookup blocks — and
-     * applied under it, so the row can settle in between. Asking merely "is this row unconfirmed" cannot
-     * tell a row still awaiting this verdict's own marker from one that has since been cleared and
-     * re-imported under a different marker; applying a stale verdict to the latter overwrites a live
-     * suppression handle with a dead one.
+     * Returns whether it applied — the same reason [clearCreatedLocalId] does. A *present* verdict that
+     * settled nothing must not go on to release that row's staged bytes: those files belong to whatever
+     * the row moved on to, and a live import is reading from them.
      */
-    suspend fun isUnconfirmedWith(ref: AssetRef, createdLocalId: String): Boolean
+    fun confirmCreatedLocalId(ref: AssetRef, createdLocalId: String): Boolean
 
     /** Count of imported foreign assets (the download-progress numerator). */
     suspend fun importedCount(): Int
@@ -156,8 +177,27 @@ interface DownloadStore : SuppressionSource {
     /** Count of foreign assets with a resource in flight — enqueued to the OS but not yet staged (the ↓-pulse signal). */
     suspend fun inFlightCount(): Int
 
-    /** Drop non-terminal rows on leave/switch; imported rows — and any row carrying a marker — are preserved. */
-    suspend fun pruneNonTerminal()
+    /**
+     * Drop non-terminal rows on leave/switch/reset, **returning the staged paths those rows owned** so the
+     * caller frees exactly the files it just stranded. Imported rows — and any row carrying a marker — are
+     * preserved regardless of [protecting].
+     *
+     * **One operation, in one transaction, deliberately.** Reading the paths and then pruning is two reads
+     * at two instants over a store that writers who structurally CANNOT take the caller's lock mutate in
+     * between — [recordCreatedLocalId] / [clearCreatedLocalId] / [confirmCreatedLocalId] are non-suspending
+     * because PhotoKit's change and completion blocks cannot call a suspending function. A marker cleared in
+     * that gap turns a row the read protected into a row the prune deletes, leaving its files on disk with
+     * no row referencing them: nothing can ever find them again, and the leak survives relaunch.
+     *
+     * [protecting] is the refs whose imports are **in flight**. It is needed because an import can be
+     * claimed BEFORE its change block runs, so its row legitimately carries no marker yet and no state-based
+     * predicate can tell it from ordinary prunable work. Dropping one makes that change block's marker write
+     * land on nothing, and the asset it creates is then uploaded back into the event.
+     *
+     * **Required, never defaulted**: a permissive default on a safety gate is how a caller ships without
+     * one. An empty set is a claim that nothing is in flight, not an omission.
+     */
+    suspend fun pruneNonTerminal(protecting: Set<AssetRef>): List<String>
 
     // --- staged-byte lifetime (capability `download-store`) ------------------------------------------
     //
@@ -166,12 +206,6 @@ interface DownloadStore : SuppressionSource {
 
     /** Staged paths of assets whose import is CONFIRMED — redundant bytes, feeding the release pass. */
     suspend fun stagedPathsOfImportedAssets(): List<String>
-
-    /**
-     * Staged paths of the rows a [pruneNonTerminal] is about to drop. Read **before** the prune: after
-     * it, the paths are gone with the rows and the files are stranded with nothing referencing them.
-     */
-    suspend fun stagedPathsOfPrunableAssets(): List<String>
 
     /**
      * Drop one asset's resource rows, once its bytes have been released — so the store never records a

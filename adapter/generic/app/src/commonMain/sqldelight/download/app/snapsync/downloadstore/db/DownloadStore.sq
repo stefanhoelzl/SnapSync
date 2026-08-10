@@ -59,13 +59,24 @@ UPDATE downloadAsset
 SET createdLocalId = :createdLocalId
 WHERE sourceDeviceId = :sourceDeviceId AND sourceAssetId = :sourceAssetId;
 
--- The mirror of `recordCreatedLocalId`, for a change the library reported as FAILED. Never used when an
--- import's wait is abandoned on its deadline: that transaction may still commit, and clearing the marker
--- is exactly what orphans the asset it creates.
+-- The mirror of `recordCreatedLocalId`, for a change the library reported as FAILED. A marker is cleared
+-- for exactly one reason: the library said its change failed. Never because time passed, because nothing
+-- is awaiting the transaction any longer, or because a presence lookup answered *absent* while that
+-- transaction was still open — it may still commit, and clearing it orphans the asset it creates.
+--
+-- GUARDED, exactly like `confirmCreatedLocalId` below and for the same reason: two writers reach this with
+-- no shared lock, so the guard belongs in the `WHERE` clause and not in a caller's `if`. It matches only a
+-- row that is still non-terminal AND still carries the marker this clear was computed for. Without the
+-- state guard a late failure completion strips the marker off a row that adjudication has already settled
+-- as PRESENT — and that row is terminal, so it is never adjudicated or re-imported again and its asset
+-- stays in the library permanently unsuppressed.
 clearCreatedLocalId:
 UPDATE downloadAsset
 SET createdLocalId = NULL
-WHERE sourceDeviceId = :sourceDeviceId AND sourceAssetId = :sourceAssetId;
+WHERE sourceDeviceId = :sourceDeviceId
+  AND sourceAssetId = :sourceAssetId
+  AND state != 'IMPORTED'
+  AND createdLocalId = :createdLocalId;
 
 -- The SUCCESS mirror: the completion callback settles the row itself, against the marker it already
 -- holds. `createdLocalId` is deliberately NOT re-written — the guard below already proves the row carries
@@ -81,17 +92,20 @@ WHERE sourceDeviceId = :sourceDeviceId
   AND sourceAssetId = :sourceAssetId
   AND createdLocalId = :createdLocalId;
 
--- The re-check a presence verdict is applied through (capability `photo-download`): is this row still
--- non-terminal AND still carrying exactly the marker the verdict was computed for? A verdict is computed
--- outside the download controller's lock and applied under it, so the row may have settled in between.
-isUnconfirmedWith:
-SELECT EXISTS(
-  SELECT 1 FROM downloadAsset
-  WHERE sourceDeviceId = :sourceDeviceId
-    AND sourceAssetId = :sourceAssetId
-    AND state != 'IMPORTED'
-    AND createdLocalId = :createdLocalId
-);
+-- How many rows the statement immediately before it changed, read INSIDE that statement's own transaction.
+--
+-- This is how a non-suspending marker write reports whether it applied (capability `download-store`). The
+-- three callback writes cannot suspend — PhotoKit's change and completion blocks cannot call a suspending
+-- function — and two of them are guarded, so "did this take effect?" is a real question with two different
+-- consequences: a guarded write that matched nothing means the row moved on and the caller must not act on
+-- its verdict, while `recordCreatedLocalId` matching nothing means the row was DELETED and the asset it is
+-- about to create will have no suppression handle at all.
+--
+-- It replaces a marker-scoped read the caller used to take before writing. That pair was never atomic
+-- against the photo library's completion callback, which writes from the platform's own queue and takes no
+-- lock; asking the database what it just did, in the same transaction, is.
+changedRows:
+SELECT changes();
 
 isImported:
 SELECT EXISTS(
@@ -113,17 +127,36 @@ SELECT COUNT(*) FROM downloadAsset WHERE state = 'IMPORTED';
 countAssets:
 SELECT COUNT(*) FROM downloadAsset;
 
--- Drop non-terminal rows (and their resources) on leave/switch — but NEVER a row that carries a
--- `createdLocalId`. The marker is the record that an asset was created for this ref, and it is the only
--- thing keeping that asset out of the upload universe; deleting the row destroys it, and the created
--- asset is then uploaded back into the event. The invariant is "handle-carrying rows are permanent",
--- not "terminal rows are permanent" (capability `download-store`).
-deleteNonTerminalAssets:
-DELETE FROM downloadAsset WHERE state != 'IMPORTED' AND createdLocalId IS NULL;
+-- The rows a prune would drop: non-terminal and carrying no `createdLocalId`. Read inside the prune's own
+-- transaction so the caller can subtract the refs whose imports are in flight and free exactly the files it
+-- strands (capability `download-store`).
+--
+-- A row that carries a marker is NEVER prunable. The marker is the record that an asset was created for
+-- this ref, and it is the only thing keeping that asset out of the upload universe; deleting the row
+-- destroys it, and the created asset is then uploaded back into the event. The invariant is
+-- "handle-carrying rows are permanent", not "terminal rows are permanent".
+selectPrunableAssets:
+SELECT sourceDeviceId, sourceAssetId FROM downloadAsset
+WHERE state != 'IMPORTED' AND createdLocalId IS NULL;
+
+-- Drop ONE prunable row. Per-row rather than one bulk delete because a prune must spare the refs whose
+-- imports are claimed but whose change blocks have not run yet: those rows carry no marker, so no
+-- state-based predicate can tell them from ordinary prunable ones, and deleting one makes its marker write
+-- land on nothing.
+--
+-- The predicate is restated so this can never delete a row that must be kept, whatever the caller passes.
+-- That is safe ONLY because the stranded paths are read AFTER these deletes, from the resource rows this
+-- delete orphaned — never from the pre-delete snapshot. Reading them first and re-checking here would be
+-- the worst of both: a row this predicate spared would still have its files freed, and a resource recorded
+-- as staged is never re-downloaded, so that photo would be permanently unimportable.
+deletePrunableAsset:
+DELETE FROM downloadAsset
+WHERE sourceDeviceId = :sourceDeviceId AND sourceAssetId = :sourceAssetId
+  AND state != 'IMPORTED' AND createdLocalId IS NULL;
 
 -- The rows whose import was never confirmed: an asset WAS created for them (the marker was written
 -- inside the change block, which always completes before the library commits) but the confirmation
--- never arrived — a process death, or a wait abandoned on its deadline. The import path adjudicates
+-- never arrived — a process death, or an import still running whose completion has not come. The import path adjudicates
 -- these against the photo library instead of importing them again.
 selectUnconfirmedAssets:
 SELECT sourceDeviceId, sourceAssetId, createdLocalId FROM downloadAsset
@@ -217,15 +250,21 @@ SELECT r.stagedPath FROM downloadResource r
 JOIN downloadAsset a ON a.sourceDeviceId = r.sourceDeviceId AND a.sourceAssetId = r.sourceAssetId
 WHERE a.state = 'IMPORTED' AND r.stagedPath IS NOT NULL;
 
--- The staged files of the rows a prune is about to drop. Read BEFORE the delete, or the paths are gone
--- with the rows and the files are stranded with nothing referencing them.
-selectStagedPathsOfPrunableAssets:
+-- The staged files of ONE asset, for the prune to return as it drops that asset's row. There is no
+-- "paths of every prunable row" read any more: it was taken before the delete, at a different instant, over
+-- a store the platform's change and completion blocks mutate without taking any lock — so a marker cleared
+-- in that gap turned a row the read had protected into a row the prune deleted, leaving its files on disk
+-- with nothing referencing them, unfindable and surviving relaunch. The prune now reads and deletes inside
+-- one transaction and returns what it stranded.
+-- The staged files of resource rows whose ASSET row is already gone — read after the prune's deletes, so
+-- it names exactly the files those deletes stranded rather than the ones a pre-delete snapshot predicted.
+selectStagedPathsOfOrphanedResources:
 SELECT r.stagedPath FROM downloadResource r
-JOIN downloadAsset a ON a.sourceDeviceId = r.sourceDeviceId AND a.sourceAssetId = r.sourceAssetId
-WHERE a.state != 'IMPORTED' AND a.createdLocalId IS NULL AND r.stagedPath IS NOT NULL;
-
--- (A per-asset path read needs no query of its own: `selectResourcesForAsset` already carries
--- `stagedPath`, and the store's `stagedResources` projection filters it.)
+WHERE r.stagedPath IS NOT NULL
+  AND NOT EXISTS (
+      SELECT 1 FROM downloadAsset a
+      WHERE a.sourceDeviceId = r.sourceDeviceId AND a.sourceAssetId = r.sourceAssetId
+  );
 
 -- Drop one asset's resource rows once its bytes are released, so the store never records a staged path
 -- for a file that no longer exists. Safe because no read consults an IMPORTED row's resources.

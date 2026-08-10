@@ -1,6 +1,7 @@
 package app.snapsync.world
 
 import app.snapsync.compose.AppCore
+import kotlinx.coroutines.CompletableDeferred
 import app.snapsync.compose.AppPorts
 import app.snapsync.compose.UploadPorts
 import app.snapsync.compose.snapSyncApp
@@ -24,7 +25,6 @@ import app.snapsync.feature.creation.MutableCreationStatusSource
 import app.snapsync.feature.membership.MutableRenameStatusSource
 import app.snapsync.feature.download.DownloadController
 import app.snapsync.feature.download.StoreDownloadStatusSource
-import app.snapsync.feature.download.UnreportedImports
 import app.snapsync.feature.membership.JoinEvent
 import app.snapsync.feature.status.OwnDeviceGalleryStatusSource
 import app.snapsync.feature.status.ReadingLedgerCountsSource
@@ -128,14 +128,6 @@ class World(
     var downloadTransport: FakeDownloadTransport? = null
         private set
 
-    /**
-     * The refs whose import outcome the library has not reported (capability `photo-download`). Held by
-     * the world for the same reason the iOS shell holds it: the importer below and [core] must share ONE
-     * instance, and the importer is built first. A test can also read it to assert what the guard is
-     * distrusting.
-     */
-    val unreportedImports: UnreportedImports = UnreportedImports()
-
     // Wired to the store exactly as the iOS shell wires the real importer: the marker is written from
     // inside the "change block", before the created asset is observable. Without this the world cannot
     // reach an unconfirmed row — a marker written, the confirmation never arriving — which is the state
@@ -143,9 +135,8 @@ class World(
     val importer: FakePhotoLibraryImporter = FakePhotoLibraryImporter(
         gallery = gallery,
         recordCreatedLocalId = { ref, id -> downloadStore.recordCreatedLocalId(ref, id) },
-        clearCreatedLocalId = { ref -> downloadStore.clearCreatedLocalId(ref) },
+        clearCreatedLocalId = { ref, id -> downloadStore.clearCreatedLocalId(ref, id) },
         confirmCreatedLocalId = { ref, id -> downloadStore.confirmCreatedLocalId(ref, id) },
-        forgetUnreported = { ref -> unreportedImports.forget(ref) },
     )
     /**
      * Presence over the world's own gallery: an asset the importer created is visible here for exactly
@@ -247,40 +238,36 @@ class World(
     }
 
     /**
-     * Arm the next foreign import to create its asset and write its marker, then never confirm it
-     * (`ImportResult.TimedOut`) — the shape a process death or an abandoned wait leaves behind. The asset
-     * exists in the gallery; the store row stays **unconfirmed**. This is the state the duplicate-import
-     * defect is reached through, and the only way for a test to get there.
+     * The `SNAPSYNC-9` state, held OPEN: the next import writes its marker, the commit does not land, and
+     * the import suspends until [resumeSuspendedImport] — so the photo library answers *absent* about an
+     * asset whose transaction is still open, for as long as the test needs.
+     *
+     * Await [importerSuspended] before driving anything against it, rather than assuming a delay: the
+     * import parks on the composition lane and a race here would make every test built on this flaky.
      */
-    fun abandonNextImport() {
-        importer.abandonNextImport = true
+    fun suspendNextImport() {
+        importer.suspendNextImport = true
     }
 
     /**
-     * The `SNAPSYNC-9` state: the marker is written, the commit has NOT landed, and the wait is abandoned
-     * — so the photo library answers *absent* about an asset whose transaction is still open.
+     * The process-death shape, held open: the marker is written, the asset IS created, and the report
+     * never comes — so a presence lookup answers *present*, which is the verdict that settles the row
+     * against the marker it already holds. The asset exists; the store row stays **unconfirmed**.
      */
-    fun abandonNextImportBeforeCommit() {
-        importer.abandonNextImportBeforeCommit = true
+    fun suspendNextImportAfterCommit() {
+        importer.suspendNextImportAfterCommit = true
     }
 
+    /** Completes with the ref whose import has actually parked — the signal to drive concurrent triggers. */
+    val importerSuspended: CompletableDeferred<AssetRef> get() = importer.suspendedImport
+
     /**
-     * The completion finally arrives for a transaction abandoned by [abandonNextImportBeforeCommit]: the
-     * asset lands in the library, the row is settled against the marker it holds, and the ref stops being
-     * distrusted — the three things the real completion callback does, in its order.
+     * Deliver the suspended import's outcome. `succeeded = true` lands the asset and settles the row
+     * against the marker it holds; `false` clears that marker — the two things the real completion
+     * callback does, on its two paths.
      */
-    fun deliverLateCompletion(ref: AssetRef, createdLocalId: String, creationDate: String) {
-        gallery.set(
-            gallery.current() + RawAsset(
-                assetId = createdLocalId,
-                creationDate = creationDate,
-                rawResources = listOf(
-                    RawResource(ResourceRole.PRIMARY, "image/heic", "IMG.HEIC", Unit),
-                ),
-            ),
-        )
-        downloadStore.confirmCreatedLocalId(ref, createdLocalId)
-        unreportedImports.forget(ref)
+    fun resumeSuspendedImport(succeeded: Boolean) {
+        importer.resumeSuspendedImport(succeeded)
     }
 
     /**
@@ -366,7 +353,6 @@ class World(
      * command bundle all live on this — the world adds only operator levers and inspection around it.
      */
     val core: AppCore = snapSyncApp(
-        unreportedImports = unreportedImports,
         scope = scope,
         ports = AppPorts(
             // The world's platform-UI ports are in-memory doubles, so there is no real main thread to

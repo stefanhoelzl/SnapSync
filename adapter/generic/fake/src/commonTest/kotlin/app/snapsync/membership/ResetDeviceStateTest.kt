@@ -35,10 +35,18 @@ class ResetDeviceStateTest {
         val downloads = InMemoryDownloadStore()
         var cursorCleared = false
 
+        /**
+         * Stands in for the download controller's lock-holding reset entry point. It prunes through the
+         * same store the real one does; what it cannot model here is the lock, which is exactly why that
+         * critical section is injected rather than performed in this feature.
+         */
+        var downloadsReset = false
+
         fun reset() = ResetDeviceState(
             config = config,
             ledger = ledger,
             downloads = downloads,
+            resetDownloads = { downloadsReset = true; downloads.pruneNonTerminal(protecting = emptySet()) },
             clearDiscoveryCursor = { cursorCleared = true },
         )
     }
@@ -53,6 +61,8 @@ class ResetDeviceStateTest {
         f.ledger.put(LedgerEntry("IMG_2.HEIC", "asset-2", LedgerState.COMPLETED, 0, "E1"))
 
         f.reset().reset()
+
+        assertTrue(f.downloadsReset, "the injected download reset really ran")
 
         val aggregates = f.ledger.aggregates()
         assertEquals(0, aggregates.completed)
@@ -114,6 +124,7 @@ class ResetDeviceStateTest {
             config = throwingConfig,
             ledger = f.ledger,
             downloads = f.downloads,
+            resetDownloads = { f.downloadsReset = true },
             clearDiscoveryCursor = { f.cursorCleared = true },
         ).reset()
 

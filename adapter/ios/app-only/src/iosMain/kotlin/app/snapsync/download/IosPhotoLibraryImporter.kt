@@ -9,7 +9,6 @@ import co.touchlab.kermit.Logger
 import kotlinx.cinterop.BetaInteropApi
 import kotlinx.cinterop.ExperimentalForeignApi
 import kotlinx.coroutines.suspendCancellableCoroutine
-import kotlinx.coroutines.withTimeoutOrNull
 import platform.Foundation.NSISO8601DateFormatter
 import platform.Foundation.NSMutableArray
 import platform.Foundation.NSURL
@@ -20,41 +19,7 @@ import platform.Photos.PHAssetCreationRequest
 import platform.Photos.PHAssetResourceCreationOptions
 import platform.Photos.PHPhotoLibrary
 import kotlin.coroutines.resume
-import kotlin.time.Duration
-import kotlin.time.Duration.Companion.seconds
 
-/**
- * How long one import may wait for the photo library's completion callback (capability `photo-download`).
- *
- * **What this really bounds is the LOCK.** The import runs under `DownloadController`'s mutex, so this is
- * how long a stalled photo library may block every other reconcile, import, leave, switch **and
- * `onResourceStaged`** in the process. That last one is the sharp edge: it is called from the background
- * `URLSession` delegate, inside an OS-granted wake, so blocking it can cost that wake its staging work. At
- * 30 s the exposure is six times what it was — accepted deliberately, because the alternative is worse
- * (below), and removing the lock from around the platform call is a separate change.
- *
- * ⚠️ **30 s now exceeds two of the three receipt budgets** (`ReceiptDeadlines.SILENT_PUSH` and
- * `BACKGROUND_EVENTS` are 20 s). At 5 s a stalled import was abandoned *inside* the wake with budget left
- * to make progress; at 30 s a stall is structurally guaranteed to outlive its receipt, so the OS handler
- * goes out while the transaction is still open. That is safe *because of this capability's guard* — the
- * ref is recorded as unreported, so nothing acts on the library's absent answer — and it would not have
- * been before it. Stated rather than left to be discovered: it is a real consequence of raising the bound.
- *
- * **Set from measurement of HEALTHY imports, not from the wake budget.** On an SE2 a single import takes
- * **1.0 s at 49 MB** and **5.2 s at 197 MB** — cost scales with resource size and library size — and the
- * device that reported `SNAPSYNC-9` (iPhone11,2 / iOS 18.7.9) runs roughly twice as slow, so ~10 s is a
- * legitimate worst case. 30 s is ~3× that.
- *
- * The previous value was **5 s**, derived from 250–600 ms single-HEIC imports, and it was firing on
- * healthy work: every expiry leaves an unconfirmed row, and unconfirmed rows are the entire population the
- * adjudication guard has to reason about. A bound that manufactures them is not a safety measure — it is
- * the supply line for `SNAPSYNC-9`, where 19 live markers were cleared because the library was asked about
- * transactions that were still open.
- *
- * ⏰ Re-set from the first field dump carrying the timeout line. Evidence is two devices and a synthetic
- * bench; if 197 MB imports get slower on a future iOS, this is the value to revisit.
- */
-private val IMPORT_DEADLINE: Duration = 30.seconds
 
 /**
  * The iOS [PhotoLibraryImporter] (capability `photo-download`): rebuilds one foreign asset from its
@@ -79,28 +44,25 @@ private val IMPORT_DEADLINE: Duration = 30.seconds
  */
 @OptIn(ExperimentalForeignApi::class, BetaInteropApi::class)
 class IosPhotoLibraryImporter(
-    private val recordCreatedLocalId: (AssetRef, String) -> Unit,
+    /**
+     * Writes the created-asset marker, and reports whether it landed on a row (capability
+     * `download-store`). `false` means the row was pruned out from under this import, so the asset this
+     * block is creating will have no suppression handle at all — logged as an error below, because it is
+     * the only evidence the prune's protection failed.
+     */
+    private val recordCreatedLocalId: (AssetRef, String) -> Boolean,
     /**
      * The mirror of [recordCreatedLocalId], invoked when the library reports the change **failed**.
-     * Never on a timeout — see the `TimedOut` branch.
+     * Guarded on the marker in the store's own write, so a report arriving after the row moved on clears
+     * nothing.
      */
-    private val clearCreatedLocalId: (AssetRef) -> Unit,
+    private val clearCreatedLocalId: (AssetRef, String) -> Unit,
     /**
      * The **success** mirror: settle the row against the marker it already holds, from the completion
      * itself (capability `download-store`). Written here rather than left to the caller because a
      * completion that arrives after its requester is gone still records the import.
      */
     private val confirmCreatedLocalId: (AssetRef, String) -> Unit,
-    /**
-     * The library has reported this import's outcome, so an *absent* answer about its asset is
-     * trustworthy again (capability `photo-download`).
-     *
-     * Invoked on **both** completion paths, success and reported failure. It matters most on failure:
-     * the marker is cleared, the row becomes importable, and a later import of the same ref mints a NEW
-     * marker — and a leftover entry here would gate that new import's own adjudication, stranding the
-     * photo.
-     */
-    private val forgetUnreported: (AssetRef) -> Unit,
     private val albumId: () -> String? = { null },
     private val log: Logger = Logger.withTag("PhotoImporter"),
 ) : PhotoLibraryImporter {
@@ -121,20 +83,25 @@ class IosPhotoLibraryImporter(
 
         var createdLocalId: String? = null
         var rawLocalId: String? = null
-        // The wait is bounded, the library call is NOT (capability `photo-download`).
+        // NOTHING BOUNDS THIS WAIT, and that is the decision, not an omission (capability
+        // `photo-download`).
         //
-        // `performChanges` returns to its caller and only this coroutine suspends — measured, not
-        // assumed: in SNAPSYNC-6 one import never received its completion, yet the main thread went on
-        // running for three minutes (`← onSilentPush (38ms)`, the next reconcile, a later burst). So
-        // abandoning the wait frees a continuation, not a thread, and `withTimeoutOrNull` is safe here
-        // in a way it would NOT be around a blocking call like the change-feed fetch, which is exactly
-        // why `IosDiscovery` hops off-main instead of timing out.
+        // The bound that used to sit here existed to protect `DownloadController`'s mutex: the import ran
+        // under it, and the SNAPSYNC-6 field hang held it from 09:03:37 until the process died. The import
+        // no longer runs under that lock, so there is nothing left for a per-import clock to protect — and
+        // the wake it would otherwise bound is bounded already by `OsReceipt`, which releases the OS
+        // handler on its own deadline and deliberately lets the work run on (capability `ios-app-shell`).
         //
-        // What this really rescues is the LOCK: the import runs under `DownloadController`'s mutex, and
-        // the field hang held it from 09:03:37 until the process died — every later reconcile, import,
-        // leave and switch in that process was queued behind it, permanently.
-        return withTimeoutOrNull(IMPORT_DEADLINE) {
-        suspendCancellableCoroutine { cont ->
+        // Keeping a clock here would restate the mistake this capability already names: the process is
+        // suspended for arbitrary spans between a change block and its completion (measured 116 s and
+        // 254 s), so a wall-clock bound expires against transactions that are ALIVE — and every expiry
+        // manufactured an unconfirmed row for the adjudication guard to reason about, which is the supply
+        // line for SNAPSYNC-9.
+        //
+        // An import that never reports therefore never returns. Its ref stays claimed for the life of the
+        // process, so no *absent* answer about it is ever acted on and no second asset is created; the
+        // enter/exit trace around the caller is what makes it visible (capability `diagnostic-logging`).
+        return suspendCancellableCoroutine { cont ->
             PHPhotoLibrary.sharedPhotoLibrary().performChanges(
                 {
                     // Traced INSIDE the block, not before the call (capability `diagnostic-logging`).
@@ -169,7 +136,19 @@ class IosPhotoLibraryImporter(
                         // gallery `normalizeAssetId` contract test.
                         val id = raw.replace('/', '_')
                         createdLocalId = id
-                        recordCreatedLocalId(ref, id)
+                        // `false` means the row was DELETED between this import being selected and this
+                        // block running — the failure the prune's `protecting` set exists to prevent
+                        // (capability `download-store`). The asset about to be created then has no
+                        // suppression handle at all, so this device uploads a downloaded photo back into
+                        // someone else's event days later. Logged at Error so it reaches Bugsink: this
+                        // line is the ONLY evidence the protection failed, and without it the failure is
+                        // visible solely through its damage.
+                        if (!recordCreatedLocalId(ref, id)) {
+                            log.e {
+                                "import: marker $id for ${ref.sourceAssetId} landed on NO ROW — its row was " +
+                                    "pruned mid-import, so the created asset has no suppression handle"
+                            }
+                        }
                     }
                     // Event album (capability `event-album`): add the just-created asset to the event
                     // album in THIS commit (atomic — never briefly loose). Best-effort: if the album no
@@ -210,7 +189,6 @@ class IosPhotoLibraryImporter(
                         // ago — which is what makes an abandoned import settle itself instead of waiting
                         // for a later pass to ask the library what this callback already knew.
                         confirmCreatedLocalId(ref, id)
-                        forgetUnreported(ref) // reported, and the row is terminal before we say so
                         logImportedDate(rawLocalId, creationDate)
                         cont.resume(ImportResult.Imported(id))
                     } else {
@@ -219,25 +197,17 @@ class IosPhotoLibraryImporter(
                         // exist — clear it, or the row is skipped as "already created" on every future
                         // pass and the photo never arrives.
                         //
-                        // Runs even when the wait was already abandoned: `performChanges`' completion is
-                        // an ObjC block, not tied to this coroutine, so it still fires after a
-                        // `TimedOut` (only `cont.resume` becomes a no-op). That is what makes an
-                        // abandoned import self-correcting — a late success keeps its marker for the
-                        // guard to settle, a late failure clears it here.
-                        if (id != null) clearCreatedLocalId(ref)
-                        forgetUnreported(ref) // reported, and the marker is gone before we say so
+                        // Runs whether or not anything is still awaiting it: `performChanges`' completion
+                        // is an ObjC block, not tied to this coroutine, so it fires even after the
+                        // requester is gone (only `cont.resume` becomes a no-op). That is what makes an
+                        // import whose requester died self-correcting — a late success keeps its marker
+                        // for the guard to settle, a late failure clears it here.
+                        if (id != null) clearCreatedLocalId(ref, id)
                         cont.resume(ImportResult.Failed(error?.localizedDescription ?: "performChanges failed / no placeholder"))
                     }
                 },
             )
         }
-        } ?: ImportResult.TimedOut(
-            // NO clear here, deliberately (capability `photo-download`): the transaction may still
-            // commit, and clearing a marker whose asset then appears is exactly what orphans it — the
-            // first copy loses its suppression and is uploaded back into the event. The row stays
-            // unconfirmed and the guard adjudicates it against the library on a later pass.
-            "no completion from the photo library within $IMPORT_DEADLINE for ${ref.sourceAssetId}",
-        )
     }
 
     /** Readback proof: fetch the created asset and log its actual creationDate vs the intended one. */

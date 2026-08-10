@@ -66,9 +66,9 @@ class RecordingDownloadStore(private val inner: DownloadStore) : DownloadStore b
         inner.markEnqueued(ref, resourceKey)
     }
 
-    override suspend fun pruneNonTerminal() {
+    override suspend fun pruneNonTerminal(protecting: Set<AssetRef>): List<String> {
         enqueueRequests.clear()
-        inner.pruneNonTerminal()
+        return inner.pruneNonTerminal(protecting)
     }
 }
 

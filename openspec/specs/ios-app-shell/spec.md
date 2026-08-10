@@ -20,6 +20,7 @@ production because a launch env var is only injectable via a developer launch.
 
 Decision record: `changes/archive/2026-06-17-ios-first-target`.
 ## Requirements
+
 ### Requirement: iOS application shell
 The system SHALL provide an iOS application built with Compose Multiplatform whose entry point is a
 `ComposeUIViewController` (in the `:app:ios` module) that hosts the shared `StatusScreen`. The screen
@@ -841,11 +842,26 @@ silently inert:
 - the **persisted membership config**, **locally only** — the trigger SHALL NOT notify any backend,
   because the event belongs to the backend the device is leaving behind and the newly baked backend
   never knew this device;
-- every **non-terminal** download row.
+- every **prunable** download row — non-terminal, carrying no created-asset marker, and not protected
+  (below).
 
 The trigger SHALL **retain** download rows in the terminal imported state. Their recorded local asset
 identifier is the suppression handle the upload path reads to avoid re-uploading a downloaded asset;
 discarding it would make the device re-upload photos it imported.
+
+It SHALL retain two further shapes, for the same reason and neither of them terminal
+(capability `download-store`):
+
+- a **non-terminal row carrying a created-asset marker** — an import that committed but was never
+  confirmed. The marker, not the state, is the record that an asset was created;
+- a row whose **import is in flight**, which carries no marker *yet* because its change block has not
+  run. Dropping it makes that block's marker write land on no row, so the asset it creates has no
+  suppression handle at all and is uploaded back into the event.
+
+Because the second shape is knowable only to the download feature, the reset SHALL perform its download
+half **through that feature's own lock** rather than by reading a snapshot of what is in flight: a reset
+suspends between its steps, so a snapshot leaves a window in which a row is claimed after the read and
+deleted by the prune.
 
 The trigger SHALL NOT clear the device's attestation credential: a rejected token is already dropped
 and re-minted on a `401` (capability `device-attestation`), so crossing backends heals it without
@@ -861,7 +877,7 @@ Decision record: `changes/archive/2026-07-23-add-local-backend-rig`.
 - **WHEN** the app is cold-launched with `SNAPSYNC_RESET_STATE` present on a device holding upload
   ledger rows, a discovery cursor, a membership config, and pending download rows
 - **THEN** the ledger is emptied, the discovery cursor is cleared, the membership config is cleared
-  with no backend notification, and non-terminal download rows are dropped — leaving the device in the
+  with no backend notification, and prunable download rows are dropped — leaving the device in the
   unjoined resting state
 
 #### Scenario: Imported downloads survive the reset
@@ -869,6 +885,12 @@ Decision record: `changes/archive/2026-07-23-add-local-backend-rig`.
   foreign photos
 - **THEN** those imported rows and their recorded local asset identifiers are retained, so the upload
   path still suppresses them and no downloaded photo is re-uploaded
+
+#### Scenario: An in-flight import survives the reset
+- **WHEN** a reset runs while an import for a foreign asset is in flight, so its row is non-terminal
+  and carries no marker yet
+- **THEN** that row is retained, and the marker its change block writes afterwards lands on a row that
+  still exists
 
 #### Scenario: Reset restores enumeration against a new backend
 - **WHEN** a device whose library was already fully uploaded is relaunched with

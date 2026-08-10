@@ -23,8 +23,8 @@ on drift; regenerate instead.
 
 ## `feature/download`
 
-- files: `DownloadController.kt`, `DownloadPushReceiver.kt`, `DownloadStatusSource.kt`, `QueuedPhotoDownloadJobs.kt`, `StoreDownloadStatusSource.kt`, `UnreportedImports.kt`
-- top-level types: `DownloadController (class)`, `DownloadProgress (class)`, `DownloadPushReceiver (class)`, `DownloadStatusSource (interface)`, `InMemoryDownloadStatusSource (class)`, `QueuedPhotoDownloadJobs (class)`, `StoreDownloadStatusSource (class)`, `TaskTag (class)`, `UnreportedImports (class)`
+- files: `DownloadController.kt`, `DownloadPushReceiver.kt`, `DownloadStatusSource.kt`, `QueuedPhotoDownloadJobs.kt`, `StoreDownloadStatusSource.kt`
+- top-level types: `DownloadController (class)`, `DownloadProgress (class)`, `DownloadPushReceiver (class)`, `DownloadStatusSource (interface)`, `InMemoryDownloadStatusSource (class)`, `QueuedPhotoDownloadJobs (class)`, `StoreDownloadStatusSource (class)`, `TaskTag (class)`
 
 ## `feature/membership`
 

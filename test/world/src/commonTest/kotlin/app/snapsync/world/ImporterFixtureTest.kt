@@ -34,10 +34,22 @@ class ImporterFixtureTest {
     private suspend fun FakePhotoLibraryImporter.importOnce(): ImportResult =
         import(ref, listOf(resource()), "2026-06-30T10:00:00Z")
 
+    /**
+     * The marker writes are REQUIRED collaborators now, so every construction here supplies them — which
+     * is the point of removing their defaults: a fixture that silently records no marker looks exactly
+     * like a working one while every pass creates another asset (capability `harness-world-model`).
+     */
+    private fun importer(gallery: WorldGallery = WorldGallery()) = FakePhotoLibraryImporter(
+        gallery = gallery,
+        recordCreatedLocalId = { _, _ -> true },
+        clearCreatedLocalId = { _, _ -> },
+        confirmCreatedLocalId = { _, _ -> },
+    )
+
     /** Every created asset gets its own identifier, exactly as PhotoKit mints a fresh one per request. */
     @Test
     fun a_repeat_import_mints_a_different_created_identifier() = runTest {
-        val importer = FakePhotoLibraryImporter(WorldGallery())
+        val importer = importer()
 
         val first = importer.importOnce() as ImportResult.Imported
         val second = importer.importOnce() as ImportResult.Imported
@@ -55,13 +67,13 @@ class ImporterFixtureTest {
      */
     @Test
     fun a_failed_attempt_still_consumes_an_identifier() = runTest {
-        val importer = FakePhotoLibraryImporter(WorldGallery())
+        val importer = importer()
         importer.failNextImport = true
 
         assertTrue(importer.importOnce() is ImportResult.Failed)
         val afterFailure = importer.importOnce() as ImportResult.Imported
 
-        val fresh = FakePhotoLibraryImporter(WorldGallery()).importOnce() as ImportResult.Imported
+        val fresh = importer().importOnce() as ImportResult.Imported
         assertNotEquals(
             fresh.createdLocalId, afterFailure.createdLocalId,
             "an import that follows a failure must not mint the identifier a first import would",
@@ -72,7 +84,7 @@ class ImporterFixtureTest {
     @Test
     fun each_created_asset_is_separately_visible_in_the_gallery() = runTest {
         val gallery = WorldGallery()
-        val importer = FakePhotoLibraryImporter(gallery)
+        val importer = importer(gallery)
 
         importer.importOnce()
         importer.importOnce()
