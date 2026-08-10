@@ -10,7 +10,7 @@ package app.snapsync.ports
  *
  * **When, and only when.** Bytes may be released once the row referencing them is *settled*: its import
  * is confirmed, or its row is about to be dropped. They SHALL NOT be released while an import is
- * unconfirmed, failed, or abandoned on its deadline — those bytes are the **only** source for the retry,
+ * unconfirmed, failed, or still claimed by a running import — those bytes are the **only** source for the retry,
  * because a resource already recorded as staged is never re-downloaded. Releasing early does not cost a
  * retry; it loses the photo permanently and silently.
  *

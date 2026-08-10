@@ -34,8 +34,11 @@ import kotlin.time.Duration.Companion.seconds
  * without a stall turning into a termination. Cancelling instead would abandon work mid-flight in a
  * process that is about to be suspended anyway, which is the failure this whole capability removes.
  *
- * Bounding a single unit of work is a *different* job with a different owner — see the import deadline
- * in `photo-download`, which exists so a hung import cannot hold the download controller's lock forever.
+ * Nothing bounds a single unit of work any more, and this is the only bound left in the system. The
+ * per-import deadline that used to sit in `photo-download` existed to stop a hung import holding the
+ * download controller's lock; the import no longer runs under that lock, and a wall-clock bound on one
+ * import expires against transactions that are alive. So a stalled import is answered HERE — the handler
+ * goes out on this deadline and the import runs on — and nowhere else.
  */
 class OsReceipt(
     /** The entry point this handler belongs to, for the diagnostic line. */

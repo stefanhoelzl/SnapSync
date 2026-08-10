@@ -1,7 +1,6 @@
 package app.snapsync.download
 
 import app.snapsync.feature.download.DownloadController
-import app.snapsync.feature.download.UnreportedImports
 import app.snapsync.ports.EventUnionSource
 import app.snapsync.ports.ImportedAssetPresence
 import app.snapsync.ports.ImportResult
@@ -20,8 +19,10 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
+import kotlin.test.fail
 import app.snapsync.ports.OsReceipt
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.yield
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -58,18 +59,46 @@ class DownloadControllerTest {
         override suspend fun cancelAll() { cancelled = true }
     }
 
-    /** Imports successfully, minting a deterministic created local id per asset; records nothing else. */
+    /**
+     * Imports successfully, minting a deterministic created local id per asset; records nothing else.
+     *
+     * [hangFor] holds an import open forever — the shape a stalled photo library produces now that nothing
+     * bounds the wait. A hung import never returns, so its ref stays claimed for the life of the process.
+     */
     private class FakeImporter : PhotoLibraryImporter {
         val imported = mutableListOf<AssetRef>()
         val attempted = mutableListOf<AssetRef>()
         var failNext = false
 
-        /** Assets whose import reports [ImportResult.TimedOut] — the device-unhealthy answer. */
-        val timeOutFor = mutableSetOf<String>()
+        /** Assets whose import never returns — the library is not answering about them. */
+        val hangFor = mutableSetOf<String>()
+
+        /**
+         * How many times ONE ref may be imported before this fake raises.
+         *
+         * An unbounded re-selection of one ref is a live-lock, and a live-lock in a test is a HANG — which
+         * names no defect and proves nothing. Without this, removing the drain's attempted-set makes the
+         * suite hang instead of go red, so the mutation could not be revert-proofed at all. Measured: it
+         * did exactly that on the first attempt.
+         */
+        var attemptCap: Int = 20
+
+        /** Completes once a hung import has actually entered, so a test never races the claim. */
+        val hanging = CompletableDeferred<AssetRef>()
+
+        private val never = CompletableDeferred<Unit>()
 
         override suspend fun import(ref: AssetRef, resources: List<StagedResource>, creationDate: String): ImportResult {
             attempted += ref
-            if (ref.sourceAssetId in timeOutFor) return ImportResult.TimedOut("forced timeout")
+            val forThisRef = attempted.count { it == ref }
+            check(forThisRef <= attemptCap) {
+                "imported ${ref.sourceAssetId} $forThisRef times (cap $attemptCap) — the drain is " +
+                    "live-locking on one ref instead of offering it once per pass"
+            }
+            if (ref.sourceAssetId in hangFor) {
+                hanging.complete(ref)
+                never.await() // no deadline anywhere: this is what a stalled library looks like
+            }
             if (failNext) return ImportResult.Failed("forced")
             imported += ref
             return ImportResult.Imported("LOCAL-${ref.sourceAssetId}_L0_001")
@@ -82,13 +111,11 @@ class DownloadControllerTest {
         jobs: RecordingJobs = RecordingJobs(),
         importer: FakeImporter = FakeImporter(),
         presence: ImportedAssetPresence = InMemoryAssetPresence(),
-        unreported: UnreportedImports = UnreportedImports(),
         downloadEnabled: () -> Boolean? = { true },
     ) = DownloadController(
         union, store, jobs, importer, presence,
         // Named from here on: this constructor has grown twice mid-change, and positional
         // arguments silently re-bind when it does.
-        unreported = unreported,
         myDeviceId = myDevice, downloadEnabled = downloadEnabled,
     )
 
@@ -225,80 +252,116 @@ class DownloadControllerTest {
     }
 
     /**
-     * A timeout says the DEVICE is not answering, not that this photo is bad — so the wake's drain
-     * stops rather than starting an import per remaining asset against a stalled library, each of which
-     * may still commit and become a duplicate. The stopped assets stay importable for the next wake.
+     * ONE stalled import strands no other ref (capability `photo-download`).
+     *
+     * This is what the claim buys, and it is the opposite of the rule it replaced. A per-import deadline
+     * used to stop the whole wake's drain, so that a stalled library did not have one transaction
+     * abandoned per remaining asset; nothing is abandoned any more, so the right behaviour is for every
+     * other trigger to keep going past the claimed ref.
+     *
+     * Claiming the whole importable batch up front would fail this: refs BBB and CCC would be claimed
+     * behind AAA and stay claimed until the process ended.
      */
     @Test
-    fun an_import_timeout_stops_this_wakes_drain_and_leaves_the_rest_importable() = runTest {
+    fun a_hung_import_strands_no_other_ref() = runTest {
         val store = InMemoryDownloadStore()
-        val importer = FakeImporter()
-        val union = FakeUnion(listOf(asset("DEVICE-A", "AAA"), asset("DEVICE-A", "BBB")))
+        val importer = FakeImporter().also { it.hangFor += "AAA" }
+        val union = FakeUnion(listOf(asset("DEVICE-A", "AAA"), asset("DEVICE-A", "BBB"), asset("DEVICE-A", "CCC")))
         val c = controller(union, store = store, importer = importer)
         c.reconcile("event")
-
-        // Both assets fully staged, so both are importable in one drain; the FIRST one times out.
-        for (id in listOf("AAA", "BBB")) {
+        for (id in listOf("AAA", "BBB", "CCC")) {
             val ref = AssetRef("DEVICE-A", id)
             store.markStaged(ref, "$id-primary.heic", "/stage/$id/p")
             store.markStaged(ref, "$id-live.mov", "/stage/$id/l")
         }
-        importer.timeOutFor += store.importableAssets().first().ref.sourceAssetId
 
-        c.importReady()
+        // The first trigger reaches AAA and parks inside the library, holding its claim.
+        val stalled = launch { c.importReady() }
+        importer.hanging.await()
 
-        assertEquals(1, importer.attempted.size, "the drain stopped at the timeout instead of continuing")
-        assertEquals(0, store.importedCount(), "nothing was imported in the stalled wake")
-        assertEquals(2, store.importableAssets().size, "both assets stay importable for the next wake")
+        // A second trigger — on device, another resource staging or a push. It must skip the claimed ref
+        // and import the rest, rather than queueing behind it or finding them claimed.
+        withTimeoutOrNull(5.seconds) { c.importReady() }
+            ?: fail("a second trigger queued behind the stalled import instead of skipping it")
 
-        // The next wake, with the library healthy again, drains both.
-        importer.timeOutFor.clear()
-        c.importReady()
-        assertEquals(2, store.importedCount())
+        assertEquals(
+            setOf("BBB", "CCC"), importer.imported.mapTo(mutableSetOf()) { it.sourceAssetId },
+            "every other ref imported while AAA's transaction stayed open",
+        )
+        assertFalse(store.isImported(AssetRef("DEVICE-A", "AAA")), "and AAA is still not imported")
+        stalled.cancel()
     }
 
     /**
-     * The two bounds together, over real parts (capability `ios-app-shell` + `photo-download`): a wake
-     * whose import never answers must still release its OS handler, and must leave the photo importable.
-     * This is the SNAPSYNC-6 shape — an import suspended in `performChanges` holding the controller's
-     * mutex when the process died — with both bounds in place.
+     * THE FLAGSHIP (`SNAPSYNC-6`). A stalled photo library must block nothing else.
      *
-     * The shell wiring that supplies the real handler is `:app:ios`, untested by rule; it is verified on
-     * device instead. What is testable here is that the pieces compose to the right outcome.
+     * The field hang held the controller's lock from 09:03:37 until the process died — every later
+     * reconcile, import, leave, switch and `onResourceStaged` in that process queued behind it,
+     * permanently. `onResourceStaged` is the sharp edge: it is called from the background `URLSession`
+     * delegate inside an OS-granted wake, so blocking it costs that wake its staging work.
+     *
+     * **Written to FAIL rather than hang.** Move the platform call back under the mutex and each
+     * `withTimeoutOrNull` below returns null, so this reports a named failure instead of a stuck suite —
+     * a mutation that merely hangs proves nothing.
      */
     @Test
-    fun a_hung_import_still_releases_the_receipt_and_leaves_the_asset_importable() = runTest {
+    fun a_stalled_import_blocks_no_other_operation() = runTest {
         val store = InMemoryDownloadStore()
-        val hang = CompletableDeferred<Unit>()
-        var released = false
+        val jobs = RecordingJobs()
+        val importer = FakeImporter().also { it.hangFor += "Q" }
         val ref = AssetRef("DEVICE-A", "Q")
-
-        val hangingImporter = object : PhotoLibraryImporter {
-            override suspend fun import(r: AssetRef, res: List<StagedResource>, creationDate: String): ImportResult {
-                // Exactly the production shape: bound the WAIT, never the library call.
-                return withTimeoutOrNull(5.seconds) { hang.await(); ImportResult.Imported("never") }
-                    ?: ImportResult.TimedOut("no completion within 5s")
-            }
-        }
-        val c = DownloadController(
-            FakeUnion(listOf(asset("DEVICE-A", "Q"))), store, RecordingJobs(),
-            hangingImporter, InMemoryAssetPresence(),
-            unreported = UnreportedImports(),
-            myDeviceId = myDevice, downloadEnabled = { true },
+        val other = AssetRef("DEVICE-B", "R")
+        val c = controller(
+            FakeUnion(listOf(asset("DEVICE-A", "Q"), asset("DEVICE-B", "R"))),
+            store = store, jobs = jobs, importer = importer,
         )
         c.reconcile("event")
         store.markStaged(ref, "Q-primary.heic", "/p")
         store.markStaged(ref, "Q-live.mov", "/l")
 
-        val receipt = OsReceipt("test-wake", 20.seconds, release = { released = true })
-        receipt.heldFor { c.importReady() }
+        val stalled = launch { c.importReady() }
+        importer.hanging.await() // the transaction is open and its claim is held
 
+        withTimeoutOrNull(5.seconds) { c.reconcile("event") }
+            ?: fail("reconcile queued behind the stalled import — the lock still spans the platform call")
+        withTimeoutOrNull(5.seconds) { c.onResourceStaged(other, "R-primary.heic", "/rp") }
+            ?: fail("onResourceStaged queued behind the stalled import — an OS wake would lose its staging")
+        withTimeoutOrNull(5.seconds) { c.onLeaveOrSwitch() }
+            ?: fail("leave queued behind the stalled import")
+
+        assertTrue(jobs.cancelled, "the leave really ran rather than merely returning")
+        stalled.cancel()
+    }
+
+    /**
+     * A wake whose import never answers must still release its OS handler, and must leave the photo
+     * importable (capability `ios-app-shell` + `photo-download`).
+     *
+     * Nothing bounds the import any more; `OsReceipt` bounds the HOLD and lets the work run on, which is
+     * the only bound left in the system. The shell wiring that supplies the real handler is `:app:ios`,
+     * untested by rule and verified on device.
+     */
+    @Test
+    fun a_hung_import_still_releases_the_receipt_and_leaves_the_asset_importable() = runTest {
+        val store = InMemoryDownloadStore()
+        var released = false
+        val ref = AssetRef("DEVICE-A", "Q")
+        val importer = FakeImporter().also { it.hangFor += "Q" }
+        val c = controller(FakeUnion(listOf(asset("DEVICE-A", "Q"))), store = store, importer = importer)
+        c.reconcile("event")
+        store.markStaged(ref, "Q-primary.heic", "/p")
+        store.markStaged(ref, "Q-live.mov", "/l")
+
+        val receipt = OsReceipt("test-wake", 1.seconds, release = { released = true })
+        val held = launch { receipt.heldFor { c.importReady() } }
+        importer.hanging.await()
+        // The receipt's deadline is the only clock left in the system; the import is still parked.
+        delay(2.seconds)
         assertTrue(released, "the OS handler must be released even though the import never answered")
-        assertFalse(store.isImported(ref), "a photo whose import was abandoned stays importable")
-        assertEquals(1, store.importableAssets().size)
 
-        // And the controller's lock was freed, so the next wake can drain at all.
-        c.onLeaveOrSwitch()
+        assertFalse(store.isImported(ref), "a photo whose import never reported stays importable")
+        assertEquals(1, store.importableAssets().size)
+        held.cancel()
     }
 
     @Test
@@ -320,46 +383,51 @@ class DownloadControllerTest {
      * 19 times, each 9-44 ms after that same asset was successfully created. Acting on that clears a live
      * marker, which drops the asset out of the suppression set, so the device re-uploads a photo it
      * downloaded and every member receives it again as new.
+     *
+     * The gate is now the CLAIM: a ref whose import is running in this process is exactly a ref whose
+     * transaction may still be open.
      */
     @Test
-    fun an_absent_verdict_never_clears_a_marker_while_the_outcome_is_unreported() = runTest {
+    fun an_absent_verdict_never_clears_a_marker_while_the_import_is_claimed() = runTest {
         val store = InMemoryDownloadStore()
-        val unreported = UnreportedImports()
         val ref = AssetRef("DEVICE-A", "Q")
+        val importer = FakeImporter().also { it.hangFor += "Q" }
         // The library sees nothing: the transaction has not committed yet.
         val c = controller(
-            FakeUnion(listOf(asset("DEVICE-A", "Q"))), store = store,
+            FakeUnion(listOf(asset("DEVICE-A", "Q"))), store = store, importer = importer,
             presence = InMemoryAssetPresence(present = MutableStateFlow(emptySet())),
-            unreported = unreported,
         )
         c.reconcile("event")
-        // An import that created its asset and never reported: marker written, row non-terminal.
-        store.recordCreatedLocalId(ref, "LOCAL-Q_L0_001")
-        unreported.record(ref)
+        store.markStaged(ref, "Q-primary.heic", "/p")
+        store.markStaged(ref, "Q-live.mov", "/l")
 
-        c.importReady() // adjudicates
+        val stalled = launch { c.importReady() }
+        importer.hanging.await()
+        // The change block ran and wrote its marker; the commit has not landed. On device this write comes
+        // from inside `performChanges`, which is why it is not the importer fake's business here.
+        store.recordCreatedLocalId(ref, "LOCAL-Q_L0_001")
+
+        c.importReady() // a second trigger adjudicates the unconfirmed row
 
         assertEquals(
             setOf("LOCAL-Q_L0_001"), store.suppressedLocalIds(),
             "the marker of a live transaction survives — clearing it is what re-uploads the photo",
         )
+        stalled.cancel()
     }
 
-    /** Once the library reports, its answer means what it says and the ordinary path resumes. */
+    /** Once the import reports, the claim is gone and the library's answer means what it says. */
     @Test
-    fun an_absent_verdict_clears_the_marker_once_the_outcome_has_been_reported() = runTest {
+    fun an_absent_verdict_clears_the_marker_once_the_import_is_no_longer_claimed() = runTest {
         val store = InMemoryDownloadStore()
-        val unreported = UnreportedImports()
         val ref = AssetRef("DEVICE-A", "Q")
         val c = controller(
             FakeUnion(listOf(asset("DEVICE-A", "Q"))), store = store,
             presence = InMemoryAssetPresence(present = MutableStateFlow(emptySet())),
-            unreported = unreported,
         )
         c.reconcile("event")
+        // A marker left by a PREVIOUS process: nothing is claimed here, so absence is trustworthy.
         store.recordCreatedLocalId(ref, "LOCAL-Q_L0_001")
-        unreported.record(ref)
-        unreported.forget(ref) // the completion arrived and reported failure
 
         c.importReady()
 
@@ -370,64 +438,130 @@ class DownloadControllerTest {
     }
 
     /**
-     * An abandoned wait is what MAKES a ref unreported. Without this the guard has nothing to consult and
-     * the very next pass — in the field, 9-44 ms later — acts on an absent answer about a live transaction.
-     */
-    @Test
-    fun an_abandoned_wait_records_the_ref_as_unreported() = runTest {
-        val store = InMemoryDownloadStore()
-        val unreported = UnreportedImports()
-        val importer = FakeImporter().also { it.timeOutFor += "Q" }
-        val ref = AssetRef("DEVICE-A", "Q")
-        val c = controller(
-            FakeUnion(listOf(asset("DEVICE-A", "Q"))), store = store, importer = importer,
-            unreported = unreported,
-        )
-        c.reconcile("event")
-        store.markStaged(ref, "Q-primary.heic", "/p")
-        store.markStaged(ref, "Q-live.mov", "/l")
-
-        c.importReady()
-
-        assertTrue(unreported.holds(ref), "we stopped waiting, so its outcome is unknown to us")
-    }
-
-    /**
-     * A later attempt that DOES report clears the distrust the earlier one caused.
+     * A *present* verdict releases the claim — the ONLY recovery for a completion that is never delivered.
      *
-     * Found by mutation: nothing pinned this, and the consequence is not cosmetic. A leftover entry gates
-     * the adjudication of the ref's NEXT import — a different transaction, under a different marker — so a
-     * photo whose second attempt genuinely failed would never be retried, for the life of the process.
+     * Without it the ref stays claimed for the life of the process: its row is never re-imported, its
+     * staged bytes are never freed, and the status total never reaches 100%.
      */
     @Test
-    fun a_ref_stops_being_distrusted_once_a_later_attempt_reports() = runTest {
+    fun a_present_verdict_settles_the_row_and_releases_the_claim() = runTest {
         val store = InMemoryDownloadStore()
-        val unreported = UnreportedImports()
-        val importer = FakeImporter().also { it.timeOutFor += "Q" }
         val ref = AssetRef("DEVICE-A", "Q")
+        val importer = FakeImporter().also { it.hangFor += "Q" }
+        val present = MutableStateFlow(emptySet<String>())
         val c = controller(
             FakeUnion(listOf(asset("DEVICE-A", "Q"))), store = store, importer = importer,
-            unreported = unreported,
+            presence = InMemoryAssetPresence(present = present),
         )
         c.reconcile("event")
         store.markStaged(ref, "Q-primary.heic", "/p")
         store.markStaged(ref, "Q-live.mov", "/l")
-        c.importReady()
-        assertTrue(unreported.holds(ref), "the abandoned wait recorded it")
 
-        importer.timeOutFor.clear() // the library is answering again
+        val stalled = launch { c.importReady() }
+        importer.hanging.await()
+        store.recordCreatedLocalId(ref, "LOCAL-Q_L0_001")
+        // The commit DID land; only the callback was lost. The library can see it.
+        present.value = setOf("LOCAL-Q_L0_001")
+
         c.importReady()
 
-        assertFalse(
-            unreported.holds(ref),
-            "the library reported, so absence is trustworthy about this ref again",
-        )
+        assertTrue(store.isImported(ref), "the row is settled against the marker it already held")
+        assertEquals(setOf("LOCAL-Q_L0_001"), store.suppressedLocalIds())
+        // The claim is released, so a leave's prune is no longer told to protect this ref — the
+        // observable consequence of the release, since the set itself is private.
+        c.onLeaveOrSwitch()
+        assertTrue(store.isImported(ref), "and the settled row survives the leave on its own merits")
+        stalled.cancel()
     }
 
     /**
-     * The re-check on the PRESENT branch. A verdict is computed outside the lock and applied under it, and
-     * `markImported` overwrites `createdLocalId` — so a stale PRESENT replaces a live suppression handle
-     * with a dead one. Same harm as a stale ABSENT, different route.
+     * Two triggers over ONE importable asset create exactly ONE asset (capability `photo-download`).
+     *
+     * This is the race the lock's *span* used to prevent and the claim now does. Asserted on the number of
+     * imports rather than on a marker's value: creating the second asset IS the harm, and an assertion on
+     * a marker can pass while the duplicate is being created.
+     */
+    @Test
+    fun two_concurrent_triggers_import_one_asset_once() = runTest {
+        val store = InMemoryDownloadStore()
+        val importer = FakeImporter().also { it.hangFor += "Q" }
+        val ref = AssetRef("DEVICE-A", "Q")
+        val c = controller(FakeUnion(listOf(asset("DEVICE-A", "Q"))), store = store, importer = importer)
+        c.reconcile("event")
+        store.markStaged(ref, "Q-primary.heic", "/p")
+        store.markStaged(ref, "Q-live.mov", "/l")
+
+        val first = launch { c.importReady() }
+        importer.hanging.await() // the first has claimed the ref and is inside the library
+        c.importReady()          // the second must find nothing to do
+
+        assertEquals(
+            listOf(ref), importer.attempted,
+            "the second trigger must not start a second import for a ref already being imported",
+        )
+        first.cancel()
+    }
+
+    /**
+     * A permanently failing asset is offered at most once per drain (capability `photo-download`).
+     *
+     * A `Failed` import leaves its row importable AND releases its claim, so without the drain's
+     * attempted-set the loop re-selects the same ref forever — spinning on any permanently bad resource.
+     * The importer's own attempt counter is what turns that live-lock into a named failure rather than a
+     * hang.
+     */
+    @Test
+    fun a_permanently_failing_asset_is_attempted_once_per_drain() = runTest {
+        val store = InMemoryDownloadStore()
+        val importer = FakeImporter().also { it.failNext = true } // stays armed: never cleared below
+        val ref = AssetRef("DEVICE-A", "Q")
+        val c = controller(FakeUnion(listOf(asset("DEVICE-A", "Q"))), store = store, importer = importer)
+        c.reconcile("event")
+        store.markStaged(ref, "Q-primary.heic", "/p")
+        store.markStaged(ref, "Q-live.mov", "/l")
+
+        c.importReady()
+
+        assertEquals(listOf(ref), importer.attempted, "offered once, not spun on")
+        assertEquals(1, store.importableAssets().size, "and still importable for a later wake")
+    }
+
+    /**
+     * A leave during a claimed import spares that row, and the import settles afterwards.
+     *
+     * The transaction may still commit, so the import is not cancelled and its row must survive the prune
+     * — otherwise the marker write lands on nothing and the created asset is uploaded back into the event.
+     * The consequence is deliberate: a leave no longer fully cleans, because the photo IS in the library
+     * and its handle is the only thing keeping it out of the upload universe.
+     */
+    @Test
+    fun a_leave_during_a_claimed_import_spares_its_row() = runTest {
+        val store = InMemoryDownloadStore()
+        val importer = FakeImporter().also { it.hangFor += "Q" }
+        val ref = AssetRef("DEVICE-A", "Q")
+        val c = controller(FakeUnion(listOf(asset("DEVICE-A", "Q"))), store = store, importer = importer)
+        c.reconcile("event")
+        store.markStaged(ref, "Q-primary.heic", "/p")
+        store.markStaged(ref, "Q-live.mov", "/l")
+
+        val stalled = launch { c.importReady() }
+        importer.hanging.await()
+
+        c.onLeaveOrSwitch()
+
+        // The change block runs after the leave — the whole point of protecting the row.
+        assertTrue(
+            store.recordCreatedLocalId(ref, "LOCAL-Q_L0_001"),
+            "the marker write must land on a row that still exists",
+        )
+        assertEquals(setOf("LOCAL-Q_L0_001"), store.suppressedLocalIds())
+        stalled.cancel()
+    }
+
+    /**
+     * The guard on the PRESENT branch. A verdict is computed outside the lock and applied under it, so a
+     * stale PRESENT must not settle a row whose marker has moved on — that would record an import against
+     * an identifier the row no longer describes. The guard lives in the store's write.
      */
     @Test
     fun a_present_verdict_that_went_stale_is_discarded() = runTest {
@@ -439,7 +573,7 @@ class DownloadControllerTest {
         // making the lookup itself the thing that moves the row, so the interleaving is deterministic.
         val lookupMovesTheRowOn = object : ImportedAssetPresence {
             override suspend fun presence(localIds: Set<String>): Map<String, AssetPresence> {
-                store.clearCreatedLocalId(ref)
+                store.clearCreatedLocalId(ref, "FIRST")
                 store.recordCreatedLocalId(ref, "SECOND")
                 return localIds.associateWith { AssetPresence.PRESENT }
             }
@@ -456,38 +590,36 @@ class DownloadControllerTest {
             setOf("SECOND"), store.suppressedLocalIds(),
             "the stale verdict did not overwrite the marker the row now holds",
         )
+        assertFalse(store.isImported(ref), "and it did not settle a row it no longer describes")
     }
 
     /**
-     * The ABSENT branch's under-lock re-check, and the reason it exists.
+     * The ABSENT branch's guard, and the reason it is in the store's write rather than in a re-check here.
      *
-     * Both the verdict AND the in-flight gate are read outside the lock; the completion callback runs on
-     * the platform's queue and takes no lock. So between them the completion can settle the row and forget
-     * the ref — `holds` then answers false, and an unguarded clear strips the marker off a row that is
-     * already IMPORTED. That row is terminal, so nothing ever adjudicates or re-imports it: the asset sits
-     * in the library permanently unsuppressed and upload discovery sends it back into the event.
+     * The verdict is read outside the lock and the completion callback runs on the platform's queue taking
+     * no lock, so between them the completion can settle the row. An unguarded clear then strips the marker
+     * off a row that is already IMPORTED — and that row is terminal, so nothing ever adjudicates or
+     * re-imports it: the asset sits in the library permanently unsuppressed and upload discovery sends it
+     * back into the event.
      */
     @Test
     fun an_absent_verdict_does_not_clear_a_marker_the_completion_settled_meanwhile() = runTest {
         val store = InMemoryDownloadStore()
-        val unreported = UnreportedImports()
         val ref = AssetRef("DEVICE-A", "Q")
         // The completion lands DURING the lookup — the real interleaving, made deterministic by hanging it
         // off the lookup itself (which on device is a blocking platform round-trip).
         val completionLandsDuringLookup = object : ImportedAssetPresence {
             override suspend fun presence(localIds: Set<String>): Map<String, AssetPresence> {
-                store.confirmCreatedLocalId(ref, "LOCAL-Q_L0_001") // the row settles...
-                unreported.forget(ref)                             // ...and stops being distrusted
+                store.confirmCreatedLocalId(ref, "LOCAL-Q_L0_001") // the row settles
                 return localIds.associateWith { AssetPresence.ABSENT }
             }
         }
         val c = controller(
             FakeUnion(listOf(asset("DEVICE-A", "Q"))), store = store,
-            presence = completionLandsDuringLookup, unreported = unreported,
+            presence = completionLandsDuringLookup,
         )
         c.reconcile("event")
         store.recordCreatedLocalId(ref, "LOCAL-Q_L0_001")
-        unreported.record(ref)
 
         c.importReady()
 
@@ -496,74 +628,6 @@ class DownloadControllerTest {
             "the settled row keeps its marker — clearing it leaves the asset permanently unsuppressed",
         )
         assertTrue(store.isImported(ref), "and the row stays settled")
-    }
-
-    /**
-     * The gate must be read UNDER the lock, not before it. **Reproduced on device before this test
-     * existed** (SE2, iOS 26.6): an import held the lock for its full 30 s deadline while three other
-     * staged resources each adjudicated the same row, each saw `holds` answer false — the deadline had
-     * not fired, so nothing was recorded yet — and each then queued on the mutex. The import timed out,
-     * recorded its ref, released; the first queued adjudication woke with a 30 s-stale gate answer and
-     * cleared the marker of an asset created 30 s earlier. The photo was re-imported as a second asset
-     * and the first was left unsuppressed.
-     *
-     * The row-staleness re-check cannot stand in for this: at that instant the row genuinely IS still
-     * unconfirmed with that marker, so it passes. Only re-reading the gate under the lock sees the record.
-     */
-    @Test
-    fun an_absent_verdict_rechecks_the_gate_after_waiting_for_the_lock() = runTest {
-        val store = InMemoryDownloadStore()
-        val unreported = UnreportedImports()
-        val ref = AssetRef("DEVICE-A", "Q")
-        val completionNeverComes = CompletableDeferred<Unit>()
-        // Holds the controller's lock for the whole import, exactly as a real one does, and records its
-        // marker from "inside the change block" before hanging.
-        val attempts = mutableListOf<String>()
-        val holdsTheLock = object : PhotoLibraryImporter {
-            override suspend fun import(r: AssetRef, res: List<StagedResource>, creationDate: String): ImportResult {
-                // A DISTINCT marker per attempt, because PhotoKit mints a fresh identifier per request.
-                // With one shared value this test passes over the very defect it exists to catch: the
-                // buggy path clears the marker, re-imports, and rewrites the identical string, so the
-                // assertion cannot tell "the marker survived" from "it was destroyed and remade".
-                val id = "LOCAL-Q_L0_00${attempts.size + 1}"
-                attempts += id
-                store.recordCreatedLocalId(r, id)
-                completionNeverComes.await()
-                return ImportResult.TimedOut("no completion within the deadline")
-            }
-        }
-        val c = DownloadController(
-            FakeUnion(listOf(asset("DEVICE-A", "Q"))), store, RecordingJobs(), holdsTheLock,
-            // An empty library: absent, honestly, because the transaction has not committed.
-            InMemoryAssetPresence(present = MutableStateFlow(emptySet())),
-            unreported = unreported,
-            myDeviceId = myDevice, downloadEnabled = { true },
-        )
-        c.reconcile("event")
-        store.markStaged(ref, "Q-primary.heic", "/p")
-        store.markStaged(ref, "Q-live.mov", "/l")
-
-        val importing = launch { c.importReady() } // takes the lock and hangs inside the importer
-        yield()
-        // A second trigger — on device this is another resource staging. It adjudicates OUTSIDE the lock,
-        // sees `holds` answer false because the deadline has not fired yet, and then queues on the mutex.
-        val adjudicating = launch { c.importReady() }
-        yield()
-        assertTrue(unreported.holds(ref).not(), "nothing is recorded yet — that is the point")
-
-        completionNeverComes.complete(Unit) // the deadline fires: TimedOut, ref recorded, lock released
-        importing.join()
-        adjudicating.join()
-
-        assertTrue(unreported.holds(ref), "the abandoned wait recorded it")
-        assertEquals(
-            listOf("LOCAL-Q_L0_001"), attempts,
-            "the photo was imported ONCE — a re-import here is the duplicate, and it is the harm",
-        )
-        assertEquals(
-            setOf("LOCAL-Q_L0_001"), store.suppressedLocalIds(),
-            "the queued adjudication re-read the gate under the lock, so the live marker survived",
-        )
     }
 
     /**
@@ -612,5 +676,45 @@ class DownloadControllerTest {
             setOf("LOCAL-Q_L0_001"), store.suppressedLocalIds(),
             "no entry is not an absent entry",
         )
+    }
+
+    /**
+     * THE RESIDUAL, pinned (capability `photo-download`). Measured on device 2026-08-09: a
+     * `performChanges` commit SURVIVES the death of the process that opened it, so the prior change's
+     * premise ("a transaction cannot outlive its process") is false. A relaunch is normally safe anyway —
+     * the commit has landed by the time adjudication asks, so the answer is *present* and the row settles.
+     *
+     * This pins what happens in the one window where it has NOT landed: a fresh process, no claim, and a
+     * library honestly answering *absent* about a commit still in flight. It documents accepted behaviour,
+     * not desired behaviour — the same bounded trade `photo-download` already takes for a deleted photo
+     * ("resurrects it at most once").
+     */
+    @Test
+    fun a_surviving_commit_still_in_flight_at_relaunch_is_the_accepted_residual() = runTest {
+        val store = InMemoryDownloadStore()
+        val importer = FakeImporter()
+        val ref = AssetRef("DEVICE-A", "Q")
+        // A previous process: the change block ran and recorded its marker; the process then died.
+        val c = controller(
+            FakeUnion(listOf(asset("DEVICE-A", "Q"))), store = store, importer = importer,
+            presence = InMemoryAssetPresence(present = MutableStateFlow(emptySet())), // commit in flight
+        )
+        c.reconcile("event")
+        store.markStaged(ref, "Q-primary.heic", "/p")
+        store.markStaged(ref, "Q-live.mov", "/l")
+        store.recordCreatedLocalId(ref, "FIRST-COPY")
+
+        c.importReady() // the relaunched process adjudicates
+
+        // What happens today, asserted so a future change cannot alter it silently: the marker is
+        // cleared, the asset is imported a SECOND time, and the suppression set holds only the second
+        // copy. When the surviving commit then lands, the first copy is in the library with nothing
+        // recording that it must not be uploaded — and upload discovery sends it back into the event.
+        assertEquals(1, importer.imported.size, "the row was re-imported")
+        assertEquals(
+            setOf("LOCAL-Q_L0_001"), store.suppressedLocalIds(),
+            "and the FIRST copy's handle is gone — this is the residual, not a desired outcome",
+        )
+        assertTrue("FIRST-COPY" !in store.suppressedLocalIds(), "the surviving commit's asset is unsuppressed")
     }
 }

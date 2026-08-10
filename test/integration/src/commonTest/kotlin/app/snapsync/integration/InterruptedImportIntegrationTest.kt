@@ -5,6 +5,7 @@ import app.snapsync.ports.AssetRef
 import app.snapsync.world.World
 import app.snapsync.world.worldTest
 
+import kotlinx.coroutines.launch
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
@@ -41,9 +42,14 @@ class InterruptedImportIntegrationTest {
     private suspend fun World.stageWithAbandonedImport(eventId: String) {
         provision(eventId)
         addForeignDevice(foreignDevice, eventId, listOf(World.foreignAsset(foreignAsset)))
-        abandonNextImport()
+        // The commit lands and the report never comes — the import is still parked inside the library, so
+        // the transaction is genuinely open while the rest of this test runs against it. Awaiting
+        // `importerSuspended` rather than assuming a delay is what keeps that deterministic.
+        suspendNextImportAfterCommit()
         downloadController.reconcile(eventId)
-        stageAllDownloads()
+        // The import fires from the staged-resource callback, so THAT is what parks.
+        scope.launch { stageAllDownloads() } // reaped by worldTest's scope cancel
+        importerSuspended.await()
     }
 
     @Test
@@ -186,6 +192,74 @@ class InterruptedImportIntegrationTest {
             w.downloadStore.assetCount(),
             w.downloadStore.importedCount(),
             "imported reaches total — the counter is not left stuck",
+        )
+    }
+
+    /**
+     * The whole change, end to end: a transaction held OPEN while a full trigger cycle runs against it
+     * (capability `photo-download`).
+     *
+     * This is the state the field defect was adjudicated in — the library answering *absent* about an
+     * asset whose change block has committed nothing yet — and the state no test could reach before,
+     * because the fixture could only report an abandonment after the fact. Every trigger must complete
+     * without waiting on it, nothing may act on that *absent* answer, and when the import finally lands
+     * there must be exactly ONE asset and ONE suppression handle.
+     *
+     * Asserted on how many assets EXIST, not on a marker's value: creating the second asset is the harm,
+     * and an assertion on a marker can pass while the duplicate is being made.
+     */
+    @Test
+    fun a_live_transaction_survives_a_full_trigger_cycle_without_a_duplicate() = worldTest {
+        val w = World(this)
+        w.provision("E")
+        w.addForeignDevice(foreignDevice, "E", listOf(World.foreignAsset(foreignAsset)))
+        // Park BEFORE the commit: the library will answer *absent* about a transaction that is alive.
+        w.suspendNextImport()
+        w.downloadController.reconcile("E")
+        val importing = launch { w.stageAllDownloads() }
+        w.importerSuspended.await()
+
+        val galleryBefore = w.gallery.current().size
+        assertTrue(
+            w.downloadStore.unconfirmedImports().isNotEmpty(),
+            "precondition: the change block wrote its marker and the commit has not landed",
+        )
+
+        // A full cycle of triggers against the live transaction. None may block, and none may act on the
+        // library's honest "absent" about it.
+        w.downloadController.reconcile("E")
+        w.downloadController.importReady()
+
+        assertEquals(
+            galleryBefore, w.gallery.current().size,
+            "no second asset was created while the first transaction was still open",
+        )
+        assertTrue(
+            w.downloadStore.unconfirmedImports().isNotEmpty(),
+            "and its marker survived — clearing it is what re-uploads the photo",
+        )
+
+        // The commit finally lands and reports.
+        w.resumeSuspendedImport(succeeded = true)
+        importing.join()
+
+        assertTrue(w.downloadStore.isImported(ref), "the row settles")
+        assertEquals(
+            1, w.gallery.current().count { it.assetId == firstCopy },
+            "exactly one asset for this photo",
+        )
+        assertEquals(
+            setOf(firstCopy), w.downloadStore.suppressedLocalIds(),
+            "and exactly one suppression handle, so nothing echoes back into the event",
+        )
+
+        // The REPORTED harm, asserted rather than inferred: run the real upload cycle and require that the
+        // downloaded photo produces no upload job. A suppression handle that exists but is not consulted
+        // would satisfy every assertion above and still send someone else's photo back into their event.
+        w.runUploadCycle()
+        assertTrue(
+            w.platform.created.none { it.assetId == firstCopy },
+            "the downloaded photo creates no upload job — the reported harm, asserted rather than inferred",
         )
     }
 }

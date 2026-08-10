@@ -144,16 +144,80 @@ abstract class DownloadStoreContract {
         assertFalse(s.isImported(ref), "still unconfirmed")
 
         // The marker is the only record that this asset must not be uploaded: a prune must not take it.
-        s.pruneNonTerminal()
+        assertTrue(s.pruneNonTerminal(protecting = emptySet()).isEmpty(), "it strands no files either")
         assertEquals(setOf("LOCAL-CREATED"), s.suppressedLocalIds(), "the marker survives a prune")
         assertEquals(listOf(ref), s.unconfirmedImports().map { it.ref }, "and so does the row")
         assertEquals(2, s.stagedResources(ref).size, "and its staged bytes stay reachable for the retry")
 
         // Cleared (the library says the asset never existed) → ordinary work again.
-        s.clearCreatedLocalId(ref)
+        assertTrue(s.clearCreatedLocalId(ref, "LOCAL-CREATED"), "the clear names the marker the row holds")
         assertTrue(s.unconfirmedImports().isEmpty())
         assertEquals(listOf(ref), s.importableAssets().map { it.ref })
         assertTrue(s.suppressedLocalIds().isEmpty())
+    }
+
+    /**
+     * The guard on the FAILURE mirror, and the harm it prevents (capability `download-store`).
+     *
+     * A row settled as *present* by adjudication is terminal while its transaction may still be open. If
+     * that transaction then reports failure, an unguarded clear strips the marker off a terminal row — and
+     * a terminal row is never adjudicated or re-imported again, so the asset stays in the library with
+     * nothing recording that it must not be uploaded. That loss is permanent.
+     */
+    @Test
+    fun a_late_clear_cannot_strip_a_settled_rows_marker() = runTest {
+        val s = createStore()
+        s.plan(ref, "2026-06-30T10:00:00Z", resources())
+        s.recordCreatedLocalId(ref, "LOCAL-CREATED")
+        s.confirmCreatedLocalId(ref, "LOCAL-CREATED") // adjudication (or the completion) settles it
+
+        assertFalse(
+            s.clearCreatedLocalId(ref, "LOCAL-CREATED"),
+            "a clear against a settled row applies to nothing",
+        )
+        assertTrue(s.isImported(ref), "the row is still terminal")
+        assertEquals(
+            setOf("LOCAL-CREATED"),
+            s.suppressedLocalIds(),
+            "and its asset is still suppressed — stripping this handle is unrecoverable",
+        )
+    }
+
+    /** The other half of the same guard: a clear naming a marker the row has moved on from. */
+    @Test
+    fun a_clear_naming_a_stale_marker_leaves_the_current_one_intact() = runTest {
+        val s = createStore()
+        s.plan(ref, "2026-06-30T10:00:00Z", resources())
+        s.recordCreatedLocalId(ref, "FIRST")
+        s.clearCreatedLocalId(ref, "FIRST")
+        s.recordCreatedLocalId(ref, "SECOND")
+
+        assertFalse(s.clearCreatedLocalId(ref, "FIRST"), "the abandoned transaction's clear applies to nothing")
+        assertEquals(
+            listOf(ref to "SECOND"),
+            s.unconfirmedImports().map { it.ref to it.createdLocalId },
+            "the marker the row now holds is intact",
+        )
+    }
+
+    /**
+     * The marker write's report, and why `false` is an emergency (capability `download-store`).
+     *
+     * Matching no row means the row was deleted between this import being selected and its change block
+     * running — the failure the prune's `protecting` set exists to prevent. The asset the block goes on to
+     * create then has no suppression handle at all, and this Boolean is the only evidence it ever happened.
+     */
+    @Test
+    fun a_marker_write_onto_a_row_that_is_gone_reports_it() = runTest {
+        val s = createStore()
+
+        assertFalse(
+            s.recordCreatedLocalId(AssetRef("DEVICE-Z", "NEVER-PLANNED"), "LOCAL-CREATED"),
+            "no row, so the marker landed on nothing",
+        )
+
+        s.plan(ref, "2026-06-30T10:00:00Z", resources())
+        assertTrue(s.recordCreatedLocalId(ref, "LOCAL-CREATED"), "an ordinary write reports that it landed")
     }
 
     /** Staged bytes are released only once a row is settled — releasing earlier loses the photo. */
@@ -167,7 +231,10 @@ abstract class DownloadStoreContract {
         // Unconfirmed: neither releasable as confirmed, nor as prunable — the retry needs these bytes.
         s.recordCreatedLocalId(ref, "LOCAL-CREATED")
         assertTrue(s.stagedPathsOfImportedAssets().isEmpty())
-        assertTrue(s.stagedPathsOfPrunableAssets().isEmpty(), "a marker-carrying row is never prunable")
+        assertTrue(
+            s.pruneNonTerminal(protecting = emptySet()).isEmpty(),
+            "a marker-carrying row is never prunable, so its bytes are never stranded",
+        )
 
         s.markImported(ref, "LOCAL-CREATED")
         assertEquals(
@@ -211,10 +278,13 @@ abstract class DownloadStoreContract {
         val s = createStore()
         s.plan(ref, "2026-06-30T10:00:00Z", resources())
         s.recordCreatedLocalId(ref, "FIRST")
-        s.clearCreatedLocalId(ref)
+        s.clearCreatedLocalId(ref, "FIRST")
         s.recordCreatedLocalId(ref, "SECOND")
 
-        s.confirmCreatedLocalId(ref, "FIRST") // the abandoned transaction reports at last
+        assertFalse(
+            s.confirmCreatedLocalId(ref, "FIRST"), // the abandoned transaction reports at last
+            "and it reports that it applied to nothing — the caller gates a byte release on this",
+        )
 
         assertFalse(s.isImported(ref), "the stale completion settled nothing")
         assertEquals(
@@ -222,28 +292,6 @@ abstract class DownloadStoreContract {
             s.unconfirmedImports().map { it.ref to it.createdLocalId },
             "and the marker the row now holds is intact",
         )
-    }
-
-    /** The re-check a presence verdict is applied through (capability `photo-download`). */
-    @Test
-    fun unconfirmed_with_answers_the_marker_the_row_actually_holds() = runTest {
-        val s = createStore()
-        s.plan(ref, "2026-06-30T10:00:00Z", resources())
-        s.recordCreatedLocalId(ref, "LOCAL-CREATED")
-
-        assertTrue(s.isUnconfirmedWith(ref, "LOCAL-CREATED"), "the verdict's own marker still stands")
-        assertFalse(s.isUnconfirmedWith(ref, "SOME-OTHER-ID"), "a different marker is a different fact")
-
-        s.markImported(ref, "LOCAL-CREATED")
-        assertFalse(s.isUnconfirmedWith(ref, "LOCAL-CREATED"), "a settled row is no longer unconfirmed")
-    }
-
-    /** A ref with no row at all answers false rather than throwing — an unknown ref is not unconfirmed. */
-    @Test
-    fun unconfirmed_with_is_false_for_a_ref_the_store_never_saw() = runTest {
-        val s = createStore()
-
-        assertFalse(s.isUnconfirmedWith(AssetRef("DEVICE-Z", "NEVER"), "ANY"))
     }
 
     @Test
@@ -255,11 +303,73 @@ abstract class DownloadStoreContract {
         s.markImported(imported, "LOCAL-DONE")
         s.plan(ref, "2026-06-30T10:00:00Z", resources()) // a fresh, non-terminal asset
 
-        s.pruneNonTerminal()
+        s.pruneNonTerminal(protecting = emptySet())
 
         assertTrue(s.isImported(imported)) // terminal row preserved (delete-proof, cross-event dedup)
         assertEquals(setOf("LOCAL-DONE"), s.suppressedLocalIds())
         assertFalse(s.isImported(ref))
         assertTrue(s.pendingDownloads().isEmpty()) // the non-terminal asset's resources were dropped
+    }
+
+    /**
+     * The prune frees exactly what it stranded (capability `download-store`). Read and delete are one
+     * operation, so the paths returned describe the rows this call actually dropped — not the rows that
+     * looked prunable at some earlier instant.
+     */
+    @Test
+    fun prune_returns_the_staged_paths_it_stranded() = runTest {
+        val s = createStore()
+        s.plan(ref, "2026-06-30T10:00:00Z", resources())
+        s.markStaged(ref, "ASSET-Q-primary.heic", "/stage/primary.heic")
+        s.markStaged(ref, "ASSET-Q-live.mov", "/stage/live.mov")
+
+        val stranded = s.pruneNonTerminal(protecting = emptySet())
+
+        assertEquals(setOf("/stage/primary.heic", "/stage/live.mov"), stranded.toSet())
+        // `pendingDownloads` would pass either way (it filters on stagedPath IS NULL, and both are staged),
+        // so assert on the resource rows themselves.
+        assertTrue(s.stagedResources(ref).isEmpty(), "and the rows that referenced them are gone")
+    }
+
+    /**
+     * The `protecting` set, and the state that makes it necessary (capability `download-store`).
+     *
+     * An import is claimed BEFORE its change block runs, so its row is non-terminal and carries no marker —
+     * indistinguishable, by state alone, from ordinary prunable work. Dropping it makes the change block's
+     * marker write land on nothing, and the asset it creates is then uploaded back into the event with no
+     * suppression handle. Nothing else in the store can express "this row's marker is still coming".
+     */
+    @Test
+    fun prune_spares_a_claimed_row_that_has_no_marker_yet() = runTest {
+        val s = createStore()
+        s.plan(ref, "2026-06-30T10:00:00Z", resources())
+        s.markStaged(ref, "ASSET-Q-primary.heic", "/stage/primary.heic")
+        s.markStaged(ref, "ASSET-Q-live.mov", "/stage/live.mov")
+
+        val stranded = s.pruneNonTerminal(protecting = setOf(ref))
+
+        assertTrue(stranded.isEmpty(), "a protected row's files are not stranded")
+        assertEquals(2, s.stagedResources(ref).size, "and its bytes are still there for the import to read")
+        // The whole point: the change block that runs next still finds a row to write its marker onto.
+        assertTrue(s.recordCreatedLocalId(ref, "LOCAL-CREATED"), "the marker write lands on a row that exists")
+        assertEquals(setOf("LOCAL-CREATED"), s.suppressedLocalIds())
+    }
+
+    /** An unprotected sibling is still dropped in the same call — protection is per-ref, not a global off. */
+    @Test
+    fun prune_protects_only_the_refs_it_was_given() = runTest {
+        val s = createStore()
+        val other = AssetRef("DEVICE-B", "ASSET-R")
+        s.plan(ref, "2026-06-30T10:00:00Z", resources())
+        s.markStaged(ref, "ASSET-Q-primary.heic", "/stage/primary.heic")
+        s.markStaged(ref, "ASSET-Q-live.mov", "/stage/live.mov")
+        s.plan(other, "2026-06-30T11:00:00Z", listOf(PlannedResource("ASSET-R-primary.heic", "u", "primary", "image/heic", "R.HEIC")))
+        s.markStaged(other, "ASSET-R-primary.heic", "/stage/r.heic")
+
+        val stranded = s.pruneNonTerminal(protecting = setOf(ref))
+
+        assertEquals(listOf("/stage/r.heic"), stranded, "only the unprotected row's files are stranded")
+        assertEquals(2, s.stagedResources(ref).size)
+        assertTrue(s.stagedResources(other).isEmpty(), "and only its rows are gone")
     }
 }

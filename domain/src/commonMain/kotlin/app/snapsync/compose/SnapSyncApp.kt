@@ -12,7 +12,6 @@ import app.snapsync.feature.download.DownloadPushReceiver
 import app.snapsync.feature.download.DownloadStatusSource
 import app.snapsync.feature.download.QueuedPhotoDownloadJobs
 import app.snapsync.feature.download.StoreDownloadStatusSource
-import app.snapsync.feature.download.UnreportedImports
 import app.snapsync.feature.membership.MembershipRefresh
 import app.snapsync.feature.membership.toJoinLoad
 import app.snapsync.feature.membership.JoinEvent
@@ -276,22 +275,6 @@ class AppPorts(
 class AppCore internal constructor(
     private val scope: CoroutineScope,
     private val ports: AppPorts,
-    /**
-     * The refs whose import outcome the photo library has not reported (capability `photo-download`).
-     *
-     * Taken as a parameter rather than built here because **two parties must share one instance**: the
-     * download controller reads it when adjudicating, and the platform importer's completion callback
-     * clears it — and that importer is constructed before this graph exists, so it cannot be handed an
-     * instance this class owns. A composition root builds one and passes it to both.
-     *
-     * Required, with no default: a default would let a root silently end up with two, and that failure is
-     * invisible to the shell, which is wiring-only and untested by rule — so the compiler is made to ask
-     * instead. The damage runs the *cautious* way, not the dangerous one: the controller both records and
-     * reads, so its gate still fires on every timeout it saw; what is lost is the importer's `forget`, so
-     * a ref stays distrusted for the life of the process and its photo is not re-imported until the next
-     * launch. Over-caution, not a re-upload.
-     */
-    val unreportedImports: UnreportedImports,
 ) {
 
     init {
@@ -425,7 +408,6 @@ class AppCore internal constructor(
             jobs = downloadJobs,
             importer = ports.importer,
             presence = assetPresence,
-            unreported = unreportedImports,
             stagedBytes = ports.stagedBytes,
             myDeviceId = ports.deviceId(),
             // Three-valued, no fallback (capability `photo-download`): no membership → `null` → no arm.
@@ -651,7 +633,15 @@ class AppCore internal constructor(
         ResetDeviceState(
             config = ports.configStore,
             ledger = ports.ledger,
+            // Read-only here now: the reset reports how many imported rows SURVIVED, which is the number
+            // that makes "imported rows were kept" verifiable rather than assumed.
             downloads = ports.downloadStore,
+            // The download half is the CONTROLLER's, not the store's: the prune must run under the
+            // controller's lock, because a ref is claimed under it and a reset that merely reads a
+            // snapshot of what is claimed leaves a window for a claim in between — whose row is then
+            // pruned, so its change block's marker write lands on nothing. Passing the critical section
+            // rather than the value is also what keeps the membership feature blind to its sibling.
+            resetDownloads = { downloadController.onDurableStateReset() },
             clearDiscoveryCursor = ports.clearDiscoveryCursor,
         )
     }
@@ -1007,6 +997,4 @@ class AppCore internal constructor(
 fun snapSyncApp(
     scope: CoroutineScope,
     ports: AppPorts,
-    /** Shared with the platform importer's completion callback — see [AppCore.unreportedImports]. */
-    unreportedImports: UnreportedImports,
-): AppCore = AppCore(scope, ports, unreportedImports)
+): AppCore = AppCore(scope, ports)

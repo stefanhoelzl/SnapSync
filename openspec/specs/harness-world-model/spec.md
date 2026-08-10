@@ -20,6 +20,7 @@ orchestration and not just for pure functions.
 
 Decision record: `changes/archive/2026-07-03-add-harness-world-model`.
 ## Requirements
+
 ### Requirement: Controllable in-memory world module
 
 The system SHALL provide a test-infra Kotlin Multiplatform module `:test:world` that runs the
@@ -266,7 +267,6 @@ own-device cycle.
 - **THEN** the resource is not staged, no import is attempted against it, and it remains PENDING for retry
   rather than entering a terminal failure state
 
-
 #### Scenario: The harness does not shadow the composed staged-resource hook
 
 - **WHEN** the world is constructed
@@ -298,25 +298,36 @@ The world SHALL expose controllable failure levers that drive the real stack's f
 reconcile-seed failure path and the download union-failure path), the **job-limit** (`LIMIT_EXCEEDED`),
 a **per-job `UploadError`** on the upload retry chain, and an **import failure** (`ImportResult.Failed`).
 
-It SHALL additionally expose the two ways an import can end **without the library reporting**, because
-they are different states and only the second is the one `SNAPSYNC-9` lives in (capability
-`photo-download`):
+It SHALL additionally expose an import that **suspends after writing its marker** and resumes with an
+outcome the test chooses, because that — not a report about it — is the state `SNAPSYNC-9` lives in
+(capability `photo-download`), in **two** variants that differ in what the photo library can see:
 
-- **abandoned after the commit landed** — the marker is written, the asset IS created, and the wait is
-  abandoned (`ImportResult.TimedOut`). A presence lookup then answers *present*, and adjudication settles
-  the row against the marker it already holds.
-- **abandoned before the commit landed** — the marker is written and the asset is **not** created yet, so
-  a presence lookup answers *absent* about a transaction that is still open. Acting on that answer is the
-  reported defect; the world must be able to reach the state in order to prove the guard.
+- **suspended before the commit** — the marker is written and the asset is **not** created, so a presence
+  lookup answers *absent* about a transaction that is still open. Acting on that answer is the reported
+  defect.
+- **suspended after the commit** — the marker is written, the asset **is** created, and only the report is
+  missing, so a presence lookup answers *present*. This is the shape a process death leaves behind, and the
+  only one adjudication can recover, since *present* is the verdict that settles a row against the marker it
+  already holds.
 
-A lever SHALL NOT settle the state it exists to create: the before-commit lever writes no confirmation,
-clears no marker, and reports no outcome, because all three are things the completion callback does and
-supplying any of them would erase the very state under test.
+Both leave an unconfirmed row and both keep the ref claimed. The world must be able to hold either state
+open, drive other triggers against it, and only then resolve it.
 
-The world SHALL also expose a **late completion** — the outcome arriving after its requester is gone —
-which lands the asset, settles the row against the marker it holds, and stops the ref being distrusted,
-in that order. Without it a test can reach the unreported state but never leave it, so the recovery path
-is unreachable.
+Holding the transaction open is what a report about it cannot do. A lever that merely *returns* an
+abandonment lets a test observe the aftermath, but never lets a second trigger run **while** the transaction
+is live — which is the interleaving the defect occurs in, and the one the download controller's claim exists
+to close.
+
+A lever SHALL NOT settle the state it exists to create: while suspended it writes no confirmation, clears no
+marker, and reports no outcome, because all three are things the completion callback does and supplying any
+of them would erase the very state under test. Resuming it SHALL drive the real completion path for the
+outcome chosen — landing the asset and settling the row against the marker it holds on success, or clearing
+that marker on failure — so a test can reach the recovery as well as the defect.
+
+The world SHALL also expose an **attempt cap** that raises once a ref has been imported more times than a
+test permits. An unbounded re-selection of one ref is a live-lock, and a live-lock in a test is a hang; a
+hang names no defect and proves nothing, so the cap converts it into an assertion failure that names the
+count.
 
 #### Scenario: Backend-offline leaves upload status untouched and fails the union
 
@@ -333,17 +344,39 @@ is unreachable.
 - **THEN** the real orchestration responds (deferred cycle, engine retry with incremented attempt, or a
   non-terminal import failure respectively)
 
-#### Scenario: An abandonment before the commit reaches the guarded state
+#### Scenario: A suspended import holds the guarded state open
 
-- **WHEN** the before-commit abandonment lever is armed and an asset is imported
+- **WHEN** the before-commit suspending lever is armed and an asset is imported
 - **THEN** the row carries a marker, the library holds no such asset, nothing has been reported, and a
-  presence lookup answers *absent*
+  presence lookup answers *absent* — and that remains true until the test resumes it
 
-#### Scenario: A late completion settles what it created
+#### Scenario: A suspension after the commit is recoverable by adjudication
 
-- **WHEN** a late completion is delivered for a ref abandoned before its commit
-- **THEN** the asset appears in the library, the row is settled against the marker it holds, and the ref
-  is no longer treated as unreported
+- **WHEN** the after-commit suspending lever is armed and an asset is imported
+- **THEN** the row carries a marker, the asset IS in the library, nothing has been reported, and a presence
+  lookup answers *present* — so a later pass settles the row without creating a second asset
+
+#### Scenario: Other triggers run while a transaction is live
+
+- **WHEN** an import is suspended and a reconcile, a staged-resource callback, a leave or a switch is
+  driven
+- **THEN** each completes without waiting for the suspended import
+
+#### Scenario: Resuming with success settles what it created
+
+- **WHEN** a suspended import is resumed with a successful outcome
+- **THEN** the asset appears in the library, the row is settled against the marker it holds, and the
+  ref's claim is released
+
+#### Scenario: Resuming with failure clears its own marker
+
+- **WHEN** a suspended import is resumed with a failed outcome
+- **THEN** the marker it wrote is cleared, the asset stays importable, and no unconfirmed row is left
+
+#### Scenario: A runaway drain fails rather than hangs
+
+- **WHEN** one ref is imported more times than the attempt cap permits
+- **THEN** the importer raises, naming the count, so the test reports a failure rather than hanging
 
 #### Scenario: A repeat import is distinguishable from the first
 
@@ -613,3 +646,17 @@ missing event is a `400` in both.
 #### Scenario: The rename echo matches the details fetch
 - **WHEN** a rename succeeds and `GET /events/<eventId>` is then requested
 - **THEN** both responses carry the same name and the same event facts
+### Requirement: The world's marker write is a required collaborator
+
+The marker write the world's importer performs SHALL be a **required** collaborator of that importer, with
+no default.
+
+A no-op default makes an importer that never records a marker look like a working one: the row stays
+importable, so every later pass imports the asset again while reporting success — an unbounded duplicate
+generator presented as a healthy path (capability `download-store`). This is a safety-relevant collaborator
+and takes the same posture as every other one in this project: supplied explicitly, or not at all.
+
+#### Scenario: A world importer cannot be built without its marker write
+
+- **WHEN** the world's importer is constructed
+- **THEN** the marker write must be supplied, rather than defaulting to a no-op

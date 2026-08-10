@@ -108,25 +108,33 @@ class InMemoryDownloadStore : DownloadStore {
      * synchronous SQLite write; this is a single field write, and the fake's consumers are tests driving
      * one dispatcher.
      */
-    override fun recordCreatedLocalId(ref: AssetRef, createdLocalId: String) {
-        assets[ref]?.createdLocalId = createdLocalId
+    override fun recordCreatedLocalId(ref: AssetRef, createdLocalId: String): Boolean {
+        val row = assets[ref] ?: return false // the row was pruned out from under this import
+        row.createdLocalId = createdLocalId
+        return true
     }
 
-    /** The mirror of [recordCreatedLocalId], lock-free for the same reason. */
-    override fun clearCreatedLocalId(ref: AssetRef) {
-        assets[ref]?.createdLocalId = null
+    /**
+     * The mirror of [recordCreatedLocalId], lock-free for the same reason. Guarded on the marker AND on the
+     * row still being non-terminal, exactly like the real store's `WHERE` clause: a clear arriving after
+     * the row settled strips the suppression handle off an asset that exists, permanently.
+     */
+    override fun clearCreatedLocalId(ref: AssetRef, createdLocalId: String): Boolean {
+        val row = assets[ref] ?: return false
+        if (row.state == DownloadState.IMPORTED || row.createdLocalId != createdLocalId) return false
+        row.createdLocalId = null
+        return true
     }
 
     /**
      * The success mirror, lock-free for the same reason. Guarded on the marker exactly like the real
      * store's `WHERE` clause: a completion arriving after the row's marker moved on settles nothing.
      */
-    override fun confirmCreatedLocalId(ref: AssetRef, createdLocalId: String) {
-        assets[ref]?.takeIf { it.createdLocalId == createdLocalId }?.let { it.state = DownloadState.IMPORTED }
-    }
-
-    override suspend fun isUnconfirmedWith(ref: AssetRef, createdLocalId: String): Boolean = lock.withLock {
-        assets[ref]?.let { it.state != DownloadState.IMPORTED && it.createdLocalId == createdLocalId } ?: false
+    override fun confirmCreatedLocalId(ref: AssetRef, createdLocalId: String): Boolean {
+        val row = assets[ref] ?: return false
+        if (row.createdLocalId != createdLocalId) return false
+        row.state = DownloadState.IMPORTED
+        return true
     }
 
     override suspend fun importedCount(): Int = lock.withLock {
@@ -142,23 +150,26 @@ class InMemoryDownloadStore : DownloadStore {
         }
     }
 
-    override suspend fun pruneNonTerminal() = lock.withLock {
+    override suspend fun pruneNonTerminal(protecting: Set<AssetRef>): List<String> = lock.withLock {
         // A row carrying a marker is NEVER dropped: the marker is the only record that its asset must
         // not be uploaded, and deleting it is what sends someone else's photo back into the event.
+        // Neither is a row whose import is in flight — its change block has not run, so it carries no
+        // marker yet, and dropping it makes that marker write land on nothing.
         val drop = assets
             .filter { it.value.state != DownloadState.IMPORTED && it.value.createdLocalId == null }
-            .keys.toList()
+            .keys
+            .filterNot { it in protecting }
+            .toList()
+        // The paths come from the rows this call REALLY removes — the same ordering the real store gets by
+        // reading orphaned resources after its deletes. Freeing the bytes of a row that was spared is how a
+        // photo becomes permanently unimportable (a staged resource is never re-downloaded).
+        val stranded = drop.flatMap { ref -> resources[ref].orEmpty().values.mapNotNull { it.second } }
         drop.forEach { assets.remove(it); resources.remove(it); enqueued.remove(it) }
+        stranded
     }
 
     override suspend fun stagedPathsOfImportedAssets(): List<String> = lock.withLock {
         assets.filter { it.value.state == DownloadState.IMPORTED }
-            .keys
-            .flatMap { ref -> resources[ref].orEmpty().values.mapNotNull { it.second } }
-    }
-
-    override suspend fun stagedPathsOfPrunableAssets(): List<String> = lock.withLock {
-        assets.filter { it.value.state != DownloadState.IMPORTED && it.value.createdLocalId == null }
             .keys
             .flatMap { ref -> resources[ref].orEmpty().values.mapNotNull { it.second } }
     }

@@ -29,6 +29,7 @@ required written description, the sheet that collects it, grouping by descriptio
 that record's constant-message decision), the tag-carried redaction exemption, and the full-height
 sheet the keyboard forced: `changes/archive/2026-07-31-add-bug-report-description`.
 ## Requirements
+
 ### Requirement: Per-process un-redacted device log
 
 Each process (the app and the upload extension) SHALL write its diagnostic log verbatim to its own
@@ -470,8 +471,7 @@ a distinction that had to be reconstructed by deduction from durations rather th
 ### Requirement: Deadline expiry is logged
 
 Every bounded wait that reaches its deadline SHALL be logged, naming what expired and what was still
-outstanding. Those waits are an OS completion handler released on its deadline (capability
-`ios-app-shell`) and an import abandoned on its deadline (capability `photo-download`).
+outstanding. That wait is an OS completion handler released on its deadline (capability `ios-app-shell`).
 A bound that fires silently
 is indistinguishable from work that completed, so the mechanism that protects the app would be invisible
 in exactly the dumps that exist to explain it.
@@ -481,11 +481,6 @@ in exactly the dumps that exist to explain it.
 - **WHEN** an OS completion handler is released because its deadline expired rather than because its
   work finished
 - **THEN** the log records the expiry and the entry point it belongs to
-
-#### Scenario: An abandoned import is attributable
-
-- **WHEN** an import is abandoned at its deadline
-- **THEN** the log records the expiry and the asset it applied to
 
 ### Requirement: Photo-library change blocks and completions are traced
 
@@ -503,3 +498,22 @@ the state that decides whether an abandoned import becomes a duplicate.
 
 - **WHEN** an asset-creation commit reports failure
 - **THEN** the completion's error is logged, not only the resulting import outcome
+### Requirement: An import that never returns is attributable
+
+Each per-asset photo-library import SHALL be traced with the uniform enter/exit invocation logging, naming
+the asset and reporting the duration on exit — so an import that entered and never exited is visible in a
+pulled log and in a diagnostic dump, and is distinguishable from one that was never attempted.
+
+This is the only route by which a never-reporting import becomes visible. Nothing bounds such an import in
+time (capability `photo-download`), so no expiry line will ever name it, and the OS-handler receipt's own
+expiry line reports that *something* outran the wake without saying what.
+
+#### Scenario: A stuck import is identifiable from the log
+
+- **WHEN** an import is entered and its completion never arrives
+- **THEN** the log carries that import's entry line naming the asset, with no matching exit line
+
+#### Scenario: An ordinary import reports its duration
+
+- **WHEN** an import completes normally
+- **THEN** the log carries matching entry and exit lines for it, the exit carrying the elapsed duration
