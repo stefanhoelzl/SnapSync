@@ -135,7 +135,7 @@ safe to resume without building.
 
 | PR state | `headRefOid` vs local `HEAD` | Route |
 | --- | --- | --- |
-| MERGED | - | Already shipped. Treat the result as `MERGED` and skip to step 10 (report + delete workspace) |
+| MERGED | - | Already shipped. Treat the result as `MERGED`: emit the MERGED report (9.1), then step 10 |
 | OPEN | same | Skip to step 9 (re-enter the wait). Nothing to rebuild |
 | OPEN | different | There is unshipped local work: continue to step 3, but skip step 5 (issue selection) and step 7 (PR creation); re-confirm auto-merge at step 8 |
 | CLOSED, or no PR | - | Continue to step 3 (full create path) |
@@ -351,11 +351,18 @@ The Bash tool returns immediately with a task id and an **output file path**. Th
    SHIP-WAIT RESULT: <MERGED|FAILED|TIMEOUT> (<reason>)
    ```
 
-4. Report per that result (see Report Formats), then do step 10.
+4. Report per that result (formats in 9.1) and take the workspace decision from this table.
+   The decision is made HERE, so step 10 has exactly one job left:
 
-If the output file has **no** `SHIP-WAIT RESULT:` line, the outcome is UNKNOWN - the process
-died without reaching any of its own exit paths. Report UNKNOWN and keep the workspace. Do
-not infer MERGED or FAILED from the absence of a line, and do not delete the workspace.
+   | result line | report format | workspace |
+   | --- | --- | --- |
+   | `MERGED` | MERGED | **delete** - continue to step 10 (unless `--keep-workspace`) |
+   | `FAILED` | FAILED | keep. The report is the whole turn |
+   | `TIMEOUT` | TIMEOUT | keep. The report is the whole turn |
+   | none present | UNKNOWN | keep. The report is the whole turn |
+
+   A missing `SHIP-WAIT RESULT:` line is its own outcome - the process died without reaching
+   any of its own exit paths. Do not infer MERGED or FAILED from the absence of a line.
 
 The script handles:
 
@@ -379,25 +386,9 @@ carries the reason):
 - 1: FAILED
 - 2: TIMEOUT
 
-### 10. Report, then delete workspace
+#### 9.1. Report formats
 
-Deleting the workspace tears down this worktree (and the agent session running in it), so
-nothing can execute after the delete call. Therefore the order is strict:
-
-1. **First**, emit the final report (see Report Formats below).
-2. **Then**, if `--keep-workspace` was NOT passed and the result was `MERGED`:
-   call `mcp__codehydra__workspace_delete` with `keepBranch: false` as the VERY LAST
-   action — no tool calls or output after it.
-
-`MERGED` is the ONLY result that deletes the workspace. FAILED, TIMEOUT and UNKNOWN all keep
-it — a TIMEOUT in particular leaves a perfectly healthy PR that GitHub will merge on its own,
-and the kept workspace is what makes the cheap re-run in step 2 possible.
-
-If `--keep-workspace` was passed, do not delete; the report already says "kept".
-
-## Report Formats
-
-### MERGED (exit code 0)
+##### MERGED (exit code 0)
 
 ```
 PR merged successfully!
@@ -407,7 +398,7 @@ PR merged successfully!
 **Workspace**: will be deleted now (or "kept" if --keep-workspace)
 ```
 
-### FAILED (exit code 1)
+##### FAILED (exit code 1)
 
 ```
 PR failed to merge.
@@ -418,11 +409,11 @@ PR failed to merge.
 Action required: Fix the issue and run `/ship` again.
 ```
 
-### TIMEOUT (exit code 2)
+##### TIMEOUT (exit code 2)
 
 TIMEOUT means the **watcher stopped looking** - never that the merge failed. Auto-merge is
 still armed on GitHub, so the PR merges by itself once its required checks pass. Say so; do
-not send the user off to diagnose a healthy ship. Do NOT delete the workspace.
+not send the user off to diagnose a healthy ship.
 
 ```
 Stopped waiting after 20 minutes - the PR has not merged yet.
@@ -437,7 +428,7 @@ Re-run `/ship` when convenient to confirm the merge and delete the workspace (it
 seconds - it skips the rebase and build when the PR already carries these commits).
 ```
 
-### UNKNOWN (no result line)
+##### UNKNOWN (no result line)
 
 ```
 Could not determine the merge outcome.
@@ -449,3 +440,25 @@ The wait process died before reaching any of its own exit paths, so the outcome 
 learned - this is NOT a report that the merge failed. Check the PR directly, then re-run
 `/ship` to resume. Workspace kept.
 ```
+
+### 10. Delete the workspace - MERGED only, and in the SAME message as the report
+
+Reached only when step 9's table says **delete**. Nothing follows this step, in this file or
+in the run: deleting tears down this worktree and the agent session inside it, so no tool
+call and no output can execute after it. (If `--keep-workspace` was passed, there is nothing
+to do here - the report already says "kept".)
+
+`mcp__codehydra__workspace_delete` is a **deferred** tool: it has no schema loaded and cannot
+be called until you fetch one with `ToolSearch({query:
+"select:mcp__codehydra__workspace_delete"})`. Do that first, so the call is available the
+moment the report is written.
+
+Then: **the MERGED report and the delete call go in ONE assistant message.** Emit the report
+text, and - without ending the turn - call `mcp__codehydra__workspace_delete` with
+`keepBranch: false` in that same message, as its final content block.
+
+⚠️ **A text-only message ENDS THE TURN, and the workspace survives.** This is the observed
+failure mode, not a hypothetical one: measured across 50 shipped PRs, every run whose report
+message stopped at text left the workspace behind, and every run that carried the call in
+the same message deleted it. Writing "will be deleted now" is not deleting it. Carry-forward
+notes belong inside that same report text - never in a message after it.
