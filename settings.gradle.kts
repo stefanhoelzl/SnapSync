@@ -23,6 +23,9 @@ rootProject.name = "snapsync"
 include(":app:desktop")
 include(":app:ios")
 include(":app:ios:extension")
+// Built only under `-Psnapsync.forge=true`; included unconditionally so the module set is stable and
+// `ModuleSetTest` has one answer rather than a property-dependent one.
+include(":app:ios:forge")
 include(":adapter:generic:app")
 include(":adapter:generic:fake")
 include(":adapter:ios:ext-safe")

@@ -53,7 +53,7 @@ on drift; regenerate instead.
 
 ## Forge name→sources map (`SNAPSYNC_FORGE_STATE`)
 
-Declared in `ui/presentation/src/commonMain/kotlin/app/snapsync/presentation/ForgeStatusHost.kt`.
+Declared in `ui/presentation/src/forge/kotlin/app/snapsync/presentation/ForgeStatusHost.kt`.
 
 | State | Forged inputs |
 |---|---|

@@ -8,6 +8,7 @@ module :adapter:ios:ext-safe
 module :app:desktop
 module :app:ios
 module :app:ios:extension
+module :app:ios:forge
 module :domain
 module :test:architecture
 module :test:harness-driver
@@ -40,6 +41,9 @@ edge :app:ios :ui:screens
 edge :app:ios:extension :adapter:generic:app
 edge :app:ios:extension :adapter:ios:ext-safe
 edge :app:ios:extension :domain
+edge :app:ios:forge :domain
+edge :app:ios:forge :ui:presentation
+edge :app:ios:forge :ui:screens
 edge :test:architecture :domain
 edge :test:harness-driver :app:desktop
 edge :test:integration :adapter:generic:app

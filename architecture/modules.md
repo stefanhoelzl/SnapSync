@@ -13,6 +13,7 @@ flowchart LR
   app_desktop[":app:desktop"]
   app_ios[":app:ios"]
   app_ios_extension[":app:ios:extension"]
+  app_ios_forge[":app:ios:forge"]
   domain[":domain"]
   test_architecture[":test:architecture"]
   test_harness_driver[":test:harness-driver"]
@@ -45,6 +46,9 @@ flowchart LR
   app_ios_extension --> adapter_generic_app
   app_ios_extension --> adapter_ios_ext_safe
   app_ios_extension --> domain
+  app_ios_forge --> domain
+  app_ios_forge --> ui_presentation
+  app_ios_forge --> ui_screens
   test_architecture --> domain
   test_harness_driver --> app_desktop
   test_integration --> adapter_generic_app

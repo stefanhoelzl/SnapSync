@@ -126,7 +126,7 @@ private fun triggers(): Map<String, RigTrigger> = mapOf(
     // Exercises the session-identifier ROUTING — one of only two pinned complexity suppressions in
     // `SnapSyncRoot`, and untestable by any other means.
     "handleBackgroundUrlSession" to
-        RigTrigger.Receipted(ReceiptDeadlines.URL_SESSION_EVENTS.inWholeMilliseconds) { arg, done ->
+        RigTrigger.Receipted(ReceiptDeadlines.BACKGROUND_EVENTS.inWholeMilliseconds) { arg, done ->
             SnapSyncRoot.handleBackgroundUrlSession(arg.orEmpty(), done)
         },
 )

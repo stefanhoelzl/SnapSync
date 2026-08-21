@@ -28,6 +28,17 @@ jobs:
       # (set on :domain:ui's test task), so no X server is needed.
       - run: ./gradlew build
 
+      # The build-property-gated trees, which `build` above compiles NONE of — that is the point of
+      # compile-time containment, and it is also a blind spot: source no build compiles is source that
+      # rots silently. It already did. `:test:rig`'s hook referenced a `ReceiptDeadlines` constant that
+      # does not exist, from the commit that introduced it until this one, and nothing noticed because
+      # nothing ever compiled it.
+      #
+      # Metadata only, deliberately: this is the Linux-runnable proxy, and the point is to catch a
+      # reference that stopped resolving, not to produce an artifact. Neither property may reach a
+      # shipped build, and neither does — a release archive is built without them.
+      - run: ./gradlew compileIosMainKotlinMetadata -Psnapsync.rig=true -Psnapsync.forge=true
+
   spec-validate:
     runs-on: ubuntu-latest
     steps:
