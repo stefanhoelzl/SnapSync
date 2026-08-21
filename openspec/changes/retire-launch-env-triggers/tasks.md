@@ -69,11 +69,11 @@
 
 ## 6. Forge containment
 
-- [ ] 6.1 Add the `:app:ios:forge` module with its own entry point and exported framework, depending on
+- [x] 6.1 Add the `:app:ios:forge` module with its own entry point and exported framework, depending on
       `:ui:screens` / `:ui:components` / `:ui:presentation` / `:domain` and **not** `:app:ios`
-- [ ] 6.2 Move `ForgeStatusHost.kt` behind `-Psnapsync.forge=true` so the preset table leaves production
+- [x] 6.2 Move `ForgeStatusHost.kt` behind `-Psnapsync.forge=true` so the preset table leaves production
       `:ui:presentation`
-- [ ] 6.3 Read the state selector in the forge module's own source — the `SNAPSYNC_RIG_PORT` precedent, inert
+- [x] 6.3 Read the state selector in the forge module's own source — the `SNAPSYNC_RIG_PORT` precedent, inert
       because the file does not exist in a production build
 - [ ] 6.4 Add the `SnapSyncForge` Xcode target: its own `Info.plist` with
       `CADisableMinimumFrameDurationOnPhone = true` (Compose MP hard-aborts at launch without it), its own

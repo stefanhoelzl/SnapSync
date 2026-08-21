@@ -131,6 +131,12 @@ class RunbookSkillsTest {
             .filterNot { it.path.contains("/build/") }
             .filterNot { it.path.contains("/commonTest/") || it.path.contains("/jvmTest/") }
             .filterNot { it.path.contains("Test/") || it.path.contains("/test/") }
+            // The build-property-gated trees. Not a loophole — it is the whole distinction: these files
+            // are absent from a build without their property, so a variable read there is inert BY
+            // CONSTRUCTION rather than by a runtime check. `SNAPSYNC_RIG_PORT` lives in the first;
+            // `SNAPSYNC_FORGE_STATE` lives in the second, whose binary is a separate Xcode target that
+            // does not link `:app:ios` at all.
+            .filterNot { it.path.contains("/app/ios/forge/") }
             .toList()
         scannedFileCount = files.size
         files.flatMap { file ->

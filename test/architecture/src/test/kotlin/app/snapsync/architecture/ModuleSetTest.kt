@@ -29,7 +29,7 @@ class ModuleSetTest {
         ":domain",
         ":ui:presentation", ":ui:screens", ":ui:components",
         ":adapter:ios:ext-safe", ":adapter:ios:app-only", ":adapter:generic:app", ":adapter:generic:fake",
-        ":app:ios", ":app:ios:extension", ":app:desktop",
+        ":app:ios", ":app:ios:extension", ":app:ios:forge", ":app:desktop",
         ":test:world", ":test:integration", ":test:architecture", ":test:harness-driver", ":test:rig",
         ":tools:diagrams",
     )
