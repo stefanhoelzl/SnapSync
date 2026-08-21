@@ -3,8 +3,6 @@ package app.snapsync.compose
 import app.snapsync.feature.album.AlbumCoordinator
 import app.snapsync.feature.creation.CreateEvent
 import app.snapsync.feature.creation.EventCreator
-import app.snapsync.feature.creation.HeadlessCreate
-import app.snapsync.feature.creation.LaunchEnvMembership
 import app.snapsync.feature.creation.MutableCreationStatusSource
 import app.snapsync.feature.diagnostics.CollectDiagnosticDump
 import app.snapsync.feature.download.DownloadController
@@ -315,8 +313,13 @@ class AppCore internal constructor(
      * The one read seam the app's consumers hold — the grant decides the backing, not the consumer
      * (capability `limited-photo-access`). Built here because choosing between ports by a third port's
      * state is composition.
+     *
+     * Public for the same reason [gallery] is: the dev/test control channel's gallery read asks THIS seam
+     * rather than walking PhotoKit itself, so what it reports is what the app would see — including the
+     * grant-dependent backing. A second walk would be a second answer, and the interesting failures are
+     * exactly the ones where the two would differ.
      */
-    private val candidates: CandidateSource by lazy {
+    val candidates: CandidateSource by lazy {
         PermissionAwareCandidateSource(
             permission = ports.photoAccess.permission,
             walk = ports.candidateSource,
@@ -592,44 +595,16 @@ class AppCore internal constructor(
     }
 
     /**
-     * The headless create-event use-case (capability `ios-app-shell`, `SNAPSYNC_CREATE_EVENT`): mint an
-     * event and either report its id (mint-only) or forward a synthesized `autoJoin` link the shell wires
-     * to `onOpenUrl`. Distinct from [eventCreator] (which routes into the interactive, tap-gated join
-     * gate). `now` supplies the canonical `…Z` default for a payload with no `startsAt`, derived from the
-     * same `ports.clock` every other seam uses.
+     * Voids this device's durable sync state (capability `device-state-reset`) so a build pointed at a
+     * different backend starts from nothing. The cursor invalidation reuses the SAME
+     * [AppPorts.clearDiscoveryCursor] effect `ReconfigureEvent` uses, so there is one surface for "make
+     * the next cycle re-enumerate" rather than two that could diverge.
+     *
+     * Public because the dev/test control channel drives it directly. It has no user path by design —
+     * `leave-event` deliberately keeps the ledger, and this is the one operation for which that reasoning
+     * stops holding — so there is no command-bundle entry to reach it through.
      */
-    val headlessCreate: HeadlessCreate by lazy {
-        HeadlessCreate(
-            client = ports.eventCreation,
-            log = ports.log,
-            now = { instantToCutoff(ports.clock.now()) },
-        )
-    }
-
-    /**
-     * The headless membership-trigger coordinator (capability `ios-app-shell`): applies
-     * `reset → leave → create → event-link` in order for the launch-env triggers. Owns the ordering the
-     * shell may not (`architecture-guards`); its effects are built here — [leave] the leave command, the
-     * best-effort attestation refresh, the durable-state reset — while the shell supplies its
-     * `onOpenUrl` join entry to `run`.
-     */
-    val launchEnvMembership: LaunchEnvMembership by lazy {
-        LaunchEnvMembership(
-            headlessCreate = headlessCreate,
-            log = ports.log,
-            leave = { userCommands.leave() },
-            ensureAttested = { runCatching { attestation.ensureFresh() } },
-            resetState = { resetDeviceState.reset() },
-        )
-    }
-
-    /**
-     * Voids this device's durable sync state (the `SNAPSYNC_RESET_STATE` trigger, capability
-     * `ios-app-shell`) so a build pointed at a different backend starts from nothing. The cursor
-     * invalidation reuses the SAME [AppPorts.clearDiscoveryCursor] effect `ReconfigureEvent` uses, so
-     * there is one surface for "make the next cycle re-enumerate" rather than two that could diverge.
-     */
-    private val resetDeviceState: ResetDeviceState by lazy {
+    val resetDeviceState: ResetDeviceState by lazy {
         ResetDeviceState(
             config = ports.configStore,
             ledger = ports.ledger,

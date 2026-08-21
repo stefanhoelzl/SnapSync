@@ -1,7 +1,6 @@
 package app.snapsync.ios
 
 import androidx.compose.runtime.CompositionLocalProvider
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.window.ComposeUIViewController
@@ -92,16 +91,6 @@ private fun composeScene(): UIViewController =
         val membership by host.membership.collectAsState()
         // The rename lifecycle for the heading's rename dialog (capability `event-rename`).
         val renameStatus by host.renameStatus.collectAsState()
-
-        // Dev/test: apply the membership-mutating launch-env triggers (leave → create → event-link) once
-        // per process (no-op in production, where no such env vars exist). Runs after `host` is realized;
-        // safe to repeat (guarded by a `by lazy`).
-        LaunchedEffect(Unit) { SnapSyncRoot.applyLaunchEnvMembership() }
-        // Dev/test: the photo-library triggers — wipe the library (`SNAPSYNC_WIPE_GALLERY`), then fill it
-        // with `SNAPSYNC_SEED_PHOTOS` / `SNAPSYNC_SEED_POLICY` synthetic assets, then probe it (no-op in
-        // production). The membership triggers above wait for this chain, so ordering does not depend on
-        // which effect runs first.
-        LaunchedEffect(Unit) { SnapSyncRoot.applyLaunchEnvPhotoLibrary() }
 
         // The transient invalid-link error — presentation-owned, self-clearing (see the host).
         val transientError by host.transientError.collectAsState()

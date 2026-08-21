@@ -7,8 +7,16 @@ import app.snapsync.feature.upload.clearRequestedOffMain
 import app.snapsync.feature.upload.UploadProducer
 import app.snapsync.logging.invocation
 import co.touchlab.kermit.Logger
+import kotlinx.cinterop.BetaInteropApi
 import kotlinx.cinterop.ExperimentalForeignApi
+import kotlinx.cinterop.ObjCObjectVar
+import kotlinx.cinterop.alloc
+import kotlinx.cinterop.memScoped
+import kotlinx.cinterop.ptr
+import kotlinx.cinterop.value
 import platform.Foundation.NSUserDefaults
+import app.snapsync.model.registrationOutcome
+import platform.Foundation.NSError
 import platform.Photos.PHPhotoLibrary
 
 /**
@@ -74,8 +82,44 @@ class PhotoKitUploadProducer(
         Unit
     }
 
-    @OptIn(ExperimentalForeignApi::class)
-    private fun setEnabled(enabled: Boolean) {
-        PHPhotoLibrary.sharedPhotoLibrary().setUploadJobExtensionEnabled(enabled, error = null)
+    /**
+     * Change the registration, and **report a failure instead of discarding it**.
+     *
+     * `setUploadJobExtensionEnabled` returns a `Boolean` and takes an `NSError**`, and this call site
+     * discarded both until now. That mattered because the failure it hid is invisible and terminal: if
+     * enabling fails, the extension is never registered, the OS never launches it, no cycle ever runs, and
+     * the screen sits at "Synchronization pending…" forever with nothing in the log, on the screen, or in
+     * crash reporting to say why.
+     *
+     * One helper for both halves, deliberately: this serves `start()` and `stop()`, and checking one but
+     * not the other would be a blind spot chosen on purpose.
+     *
+     * **`PHPhotosErrorIdentifierNotFound` (3201) on a DISABLE is not a failure.** `start()` is a
+     * disable→enable ritual, so its leading disable runs against no configuration record on any clean
+     * device — measured twice on an SE2 (iOS 26.6), reproducing as `returned=false` with that code. Raising
+     * on it would put a reporting event on the first join of every fresh install, burying the real signal in
+     * noise this very requirement created.
+     *
+     * The disable's return is also **evidence**, not just an error check: a disable that FINDS a record
+     * returns `true` with no error, so the write distinguishes "there was a registration" from "there was
+     * not" as a side effect of doing its job — which the read-back cannot reliably do, being grant-dependent.
+     */
+    @OptIn(ExperimentalForeignApi::class, BetaInteropApi::class)
+    private fun setEnabled(enabled: Boolean) = memScoped {
+        val errorVar = alloc<ObjCObjectVar<NSError?>>()
+        val ok = PHPhotoLibrary.sharedPhotoLibrary()
+            .setUploadJobExtensionEnabled(enabled, error = errorVar.ptr)
+        val error = errorVar.value
+        // Every branch is the tested classifier's; this reports the platform's raw facts and renders the
+        // answer. `Error` severity is what carries a failure to crash reporting.
+        val outcome = registrationOutcome(
+            enabling = enabled,
+            ok = ok,
+            errorDomain = error?.domain,
+            errorCode = error?.code,
+        )
+        // No branch: the outcome carries Kermit's own severity, so this renders without deciding. An
+        // `Error` here is what `crash-reporting` carries onward as field telemetry.
+        log.log(outcome.severity, log.tag, null, outcome.message)
     }
 }

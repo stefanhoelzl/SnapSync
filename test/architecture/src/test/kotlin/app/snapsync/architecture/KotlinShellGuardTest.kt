@@ -22,22 +22,21 @@ import kotlin.test.fail
  * rename is precisely how the flip would have passed vacuously).
  *
  * The pinned sites (each carries its forcing proof as a comment at the suppression):
- *  - `SnapSyncRoot.kt` ×2 — the background-`URLSession` callback routing (UIKit delivers ONE app
- *    delegate callback for every session identifier, and this app owns two OS-reattached sessions;
- *    expiry: dies with the 18–26.0 tier) and the dev policy probe (dev equipment driving the live
- *    graph from a launch-env trigger; inert in production).
- *  - `DevPhotoSeeder.kt` ×3 — dev equipment writing the real photo library from a launch-env
- *    trigger; operator-input validation plus platform-forced chunking.
- *  - `DevGalleryWiper.kt` ×2 — the same dev equipment DELETING from the real photo library
- *    (`SNAPSYNC_WIPE_GALLERY`): the gate in front of `access.request()`, which raises the system
- *    photo-access alert and so must not run on an unasked (production) launch; and the change block,
- *    where each fetch result is guarded on in-scope AND non-empty before a change request may take it
- *    (the non-empty half defensive — an empty deletion argument is not documented as a no-op). The
- *    scope decision is NOT pinned here — it is the tested `WipeRequest`, arriving as two booleans.
+ *  - `SnapSyncRoot.kt` ×1 — the background-`URLSession` callback routing. UIKit delivers ONE app
+ *    delegate callback for every session identifier, and this app owns two OS-reattached sessions.
+ *    Expiry: dies with the 18–26.0 tier.
  *  - `MainViewController.kt` ×1 — the one switch on the resolved `SceneMode`, which decides whether a
  *    Compose scene is composed at all (capability `ios-app-shell`). The DECIDING is `resolveScene`, pure
  *    and `commonTest`-covered; the sealed type exists so a third mode fails the compile. Expiry: dies
  *    with the deferral, when CMP-5978 is fixed upstream and the mitigation can be deleted.
+ *
+ * This table held **eight** entries until the launch-trigger retirement, and six of them were one thing:
+ * dev equipment sitting in a production, wiring-only module, each justified as "inert in production". The
+ * seeder (×3), the wiper (×2) and the policy probe (×1) now live in `:test:rig`, which a production build
+ * does not contain — so the suppressions are gone because the gate no longer scans that code, not because
+ * the branches went away. That distinction is worth keeping in view: the decisions still exist, they are
+ * simply no longer in the shipped shell, and they are no longer tested by anything either (a cost recorded
+ * deliberately in `test/rig/build.gradle.kts`).
  */
 class KotlinShellGuardTest {
 
@@ -57,9 +56,7 @@ class KotlinShellGuardTest {
 
     /** file (relative) → pinned `@Suppress("CyclomaticComplexMethod")` count. Exact, both directions. */
     private val pins: Map<String, Int> = mapOf(
-        "app/ios/src/iosMain/kotlin/app/snapsync/ios/SnapSyncRoot.kt" to 2,
-        "app/ios/src/iosMain/kotlin/app/snapsync/ios/DevPhotoSeeder.kt" to 3,
-        "app/ios/src/iosMain/kotlin/app/snapsync/ios/DevGalleryWiper.kt" to 2,
+        "app/ios/src/iosMain/kotlin/app/snapsync/ios/SnapSyncRoot.kt" to 1,
         "app/ios/src/iosMain/kotlin/app/snapsync/ios/MainViewController.kt" to 1,
     )
 

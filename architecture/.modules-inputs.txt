@@ -46,6 +46,8 @@ edge :test:integration :adapter:generic:app
 edge :test:integration :domain
 edge :test:integration :test:world
 edge :test:integration :ui:presentation
+edge :test:rig :adapter:ios:app-only
+edge :test:rig :adapter:ios:ext-safe
 edge :test:rig :domain
 edge :test:rig :ui:presentation
 edge :test:world :adapter:generic:app

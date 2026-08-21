@@ -40,7 +40,7 @@ class PushRegistrationTest {
     @Test
     fun register_puts_the_config_url_and_body() = runTest {
         val client = FakePushHttpClient()
-        PushRegistration(client, "https://edge.example", deviceId)
+        PushRegistration(client, "https://edge.example", deviceId = { deviceId })
             .register(ApnsPushToken("DEADBEEF", "sandbox"))
 
         assertEquals(1, client.calls.size)
@@ -54,7 +54,7 @@ class PushRegistrationTest {
     @Test
     fun trailing_slash_on_host_is_normalized() = runTest {
         val client = FakePushHttpClient()
-        PushRegistration(client, "https://edge.example/", deviceId)
+        PushRegistration(client, "https://edge.example/", deviceId = { deviceId })
             .register(ApnsPushToken("T", "production"))
         assertEquals("https://edge.example/devices/$deviceId", client.calls[0].url)
     }
@@ -62,7 +62,7 @@ class PushRegistrationTest {
     @Test
     fun request_carries_no_event_id() = runTest {
         val client = FakePushHttpClient()
-        PushRegistration(client, "https://edge.example", deviceId)
+        PushRegistration(client, "https://edge.example", deviceId = { deviceId })
             .register(ApnsPushToken("T", "sandbox"))
         assertFalse(client.calls[0].url.contains("event"))
         assertFalse(client.calls[0].body.contains("event"))
@@ -72,7 +72,7 @@ class PushRegistrationTest {
     fun failed_write_is_absorbed_not_thrown() = runTest {
         val client = FakePushHttpClient(Result.failure(RuntimeException("boom")))
         // Must not throw — a failed registration never disrupts the app.
-        PushRegistration(client, "https://edge.example", deviceId)
+        PushRegistration(client, "https://edge.example", deviceId = { deviceId })
             .register(ApnsPushToken("T", "sandbox"))
         assertEquals(1, client.calls.size)
     }
@@ -80,7 +80,7 @@ class PushRegistrationTest {
     @Test
     fun re_register_same_token_is_idempotent() = runTest {
         val client = FakePushHttpClient()
-        val reg = PushRegistration(client, "https://edge.example", deviceId)
+        val reg = PushRegistration(client, "https://edge.example", deviceId = { deviceId })
         val t = ApnsPushToken("SAME", "production")
         reg.register(t)
         reg.register(t)
@@ -95,7 +95,7 @@ class PushRegistrationTest {
         // Unconfined so each delivery synchronously drives the collector — no StateFlow conflation
         // between the two deliveries, so the rotation is observed deterministically.
         val job = launch(UnconfinedTestDispatcher(testScheduler)) {
-            PushRegistration(client, "https://edge.example", deviceId).run(source)
+            PushRegistration(client, "https://edge.example", deviceId = { deviceId }).run(source)
         }
 
         source.deliver("TOKEN1")
@@ -119,7 +119,7 @@ class PushRegistrationTest {
         val client = FakePushHttpClient().apply { failFirstPut = true }
         val source = PushTokenSource("sandbox")
         val credential = MutableSharedFlow<Unit>(extraBufferCapacity = 1)
-        val registration = PushRegistration(client, "https://edge.example", deviceId)
+        val registration = PushRegistration(client, "https://edge.example", deviceId = { deviceId })
 
         backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) {
             registration.run(source, credential)
@@ -140,7 +140,7 @@ class PushRegistrationTest {
         val credential = MutableSharedFlow<Unit>(extraBufferCapacity = 1)
 
         backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) {
-            PushRegistration(client, "https://edge.example", deviceId).run(PushTokenSource("sandbox"), credential)
+            PushRegistration(client, "https://edge.example", deviceId = { deviceId }).run(PushTokenSource("sandbox"), credential)
         }
 
         credential.emit(Unit) // attested, but the OS has delivered no APNs token yet

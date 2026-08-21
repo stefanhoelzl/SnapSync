@@ -18,22 +18,18 @@ import kotlin.test.fail
  *    safe. Nothing raises. That is the "absence is never silent" law (spec `module-architecture`)
  *    applied to the seam between the always-loaded file and the on-demand ones.
  *
- * 2. **An index that outlives its source.** The `ios-device` skill carries a compressed operator
- *    index of the `SNAPSYNC_*` launch triggers — a DUPLICATE, which this repo forbids unless it is
- *    loud-when-stale (see [LawsDigestTest], whose rationale records that "the previous CLAUDE.md
- *    module graph rotted silently for months precisely because nothing held it to anything"). The
- *    drift was already present when this guard was written: `SNAPSYNC_POLICY_PROBE` shipped in
- *    production Kotlin, was named in CLAUDE.md's ordering chain, and was documented nowhere.
+ * 2. **A launch trigger returning to production Kotlin.** Dev/test control of a device is the control
+ *    channel's surface (`:test:rig`), contained at compile time and absent from every shipped build. A
+ *    `SNAPSYNC_*` literal in production Kotlin is a regression to the surface this repo removed on
+ *    purpose: a remote-control affordance present in every binary, inert only because a SpringBoard
+ *    launch supplies no environment — a property of how the app is *started*, not of what it *contains*.
  *
- * Both comparisons are by NAME only. `ios-app-shell` remains the contract of record for every
- * trigger it specifies; the index says what to type, never what it guarantees. Two authorities for
- * semantics would be worse than one — the same line [LawsDigestTest] draws.
- *
- * The index is compared against **source**, not against `ios-app-shell`'s requirements, because four
- * triggers (`SEED_PHOTOS`, `SEED_POLICY`, `WIPE_GALLERY`, `POLICY_PROBE`) ship in production Kotlin
- * and appear in no spec at all. A spec-keyed guard would silently cover a subset — the failure mode
- * this capability exists to refuse. That those four are unspecified is a stated gap, named in the
- * decision record; this guard holds their documentation, not their contract.
+ * The second half used to be the opposite assertion. It held the `ios-device` skill's operator index
+ * EQUAL to the launch-trigger literals in production Kotlin, with a `>= 5` non-vacuity floor — which is
+ * the exact negation of the invariant that now holds, so it could not be retuned and was replaced
+ * (decision record: `…-retire-launch-env-triggers` D16). Deleting it outright was the alternative, and
+ * was rejected: nothing would then be watching, which is how the index it guarded drifted in the first
+ * place.
  */
 class RunbookSkillsTest {
 
@@ -116,58 +112,61 @@ class RunbookSkillsTest {
     // would make `openspec update`'s regenerated output fail the build. Only the dangling direction
     // can mislead an agent.
 
-    // ---------------------------------------------------------------- launch-trigger index
+    // ---------------------------------------------------------------- no launch triggers
 
-    /** Every `"SNAPSYNC_*"` literal in production Kotlin (main source sets; tests and `build/` out). */
-    private val sourceTriggers: Set<String> = run {
+    /**
+     * Every `"SNAPSYNC_*"` literal in production Kotlin.
+     *
+     * The gated trees are excluded, and that is not a loophole — it is the whole distinction. A file under
+     * `test/` is absent from a build without its build property, so a variable it reads is inert **by
+     * construction** rather than by a runtime check. `SNAPSYNC_RIG_PORT` and the forge target's state
+     * selector both live there.
+     */
+    private val sourceTriggers: Map<String, String> = run {
         val roots = listOf("domain", "app", "adapter", "ui").map { File(repoRoot, it) }
         roots.forEach { assertTrue(it.isDirectory, "guard is scanning nothing — ${it.name}/ not found") }
-        roots.asSequence()
+        val files = roots.asSequence()
             .flatMap { it.walkTopDown().asSequence() }
             .filter { it.isFile && it.extension == "kt" }
             .filterNot { it.path.contains("/build/") }
             .filterNot { it.path.contains("/commonTest/") || it.path.contains("/jvmTest/") }
             .filterNot { it.path.contains("Test/") || it.path.contains("/test/") }
-            .flatMap { TRIGGER_LITERAL.findAll(it.readText()) }
-            .map { it.groupValues[1] }
-            .toSet()
+            .toList()
+        scannedFileCount = files.size
+        files.flatMap { file ->
+            TRIGGER_LITERAL.findAll(file.readText()).map { it.groupValues[1] to file.relativeTo(repoRoot).path }
+        }.toMap()
     }
 
-    /** Every `SNAPSYNC_*` name the device skill's operator index documents. */
-    private val documentedTriggers: Set<String> =
-        Regex("""SNAPSYNC_[A-Z_]+""")
-            .findAll(read(skillPath(DEVICE_SKILL)))
-            .map { it.value }
-            .toSet()
+    private var scannedFileCount: Int = 0
 
     @Test
     fun `the trigger scan is not vacuous`() {
+        // The passing condition is an empty RESULT over a non-empty SCAN. An empty scan is not.
         assertTrue(
-            sourceTriggers.size >= 5,
-            "found only ${sourceTriggers.size} SNAPSYNC_* literals in production Kotlin — the source " +
-                "scan is broken, so the index would be held to nothing",
-        )
-        assertTrue(
-            documentedTriggers.size >= 5,
-            "found only ${documentedTriggers.size} SNAPSYNC_* names in ${skillPath(DEVICE_SKILL)} — the " +
-                "index extraction is broken",
+            scannedFileCount >= 100,
+            "the production-source scan resolved only $scannedFileCount Kotlin files — it is broken, so " +
+                "an empty result would prove nothing",
         )
     }
 
     @Test
-    fun `the launch-trigger index names exactly the triggers production source declares`() {
-        val undocumented = sourceTriggers - documentedTriggers
-        val stale = documentedTriggers - sourceTriggers
-        if (undocumented.isEmpty() && stale.isEmpty()) return
+    fun `production Kotlin declares no launch triggers`() {
+        if (sourceTriggers.isEmpty()) return
         fail(
             buildString {
-                appendLine("${skillPath(DEVICE_SKILL)}'s launch-trigger index has drifted from production Kotlin.")
-                if (undocumented.isNotEmpty()) appendLine("  in the source but not the index: $undocumented")
-                if (stale.isNotEmpty()) appendLine("  in the index but not the source: $stale")
+                appendLine("production Kotlin declares ${sourceTriggers.size} launch trigger(s):")
+                sourceTriggers.forEach { (name, path) -> appendLine("  $name  ($path)") }
                 appendLine(
-                    "Fix BOTH sides in one commit. The index is what an operator types; `ios-app-shell` " +
-                        "stays the contract of record for what a trigger guarantees — document the name and " +
-                        "the invocation there, not the semantics.",
+                    "Dev/test control of a device is the control channel's surface (`:test:rig`), which a " +
+                        "production build does not contain. A launch trigger here ships in every binary and " +
+                        "is inert only because a SpringBoard launch supplies no environment — which is a " +
+                        "fact about how the app is started, not about what it contains.",
+                )
+                appendLine(
+                    "If a build-property-gated tree genuinely needs an environment variable, put the read " +
+                        "there (as `SNAPSYNC_RIG_PORT` is) — those files are absent from a production build, " +
+                        "so their inertness is structural.",
                 )
             },
         )
@@ -175,7 +174,6 @@ class RunbookSkillsTest {
 
     private companion object {
         const val RUNBOOK_HEADING = "## Runbooks"
-        const val DEVICE_SKILL = "ios-device"
         val TRIGGER_LITERAL = Regex(""""(SNAPSYNC_[A-Z_]+)"""")
         fun skillPath(skill: String) = ".claude/skills/$skill/SKILL.md"
     }

@@ -33,7 +33,7 @@ class PushRegistrationIntegrationTest {
     @Test
     fun registration_writes_the_device_config_over_the_world() = worldTest {
         val store = BackendStore()
-        val reg = PushRegistration(KtorPushHttpClient(miniEdgeClient(store)), "https://edge.example", deviceId)
+        val reg = PushRegistration(KtorPushHttpClient(miniEdgeClient(store)), "https://edge.example", deviceId = { deviceId })
 
         reg.register(ApnsPushToken("DEADBEEF", "sandbox"))
 

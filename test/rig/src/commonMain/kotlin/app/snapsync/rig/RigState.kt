@@ -23,6 +23,41 @@ data class RigState(
     val inviteUrl: String?,
     val eventName: String?,
     val transientError: String?,
+    /**
+     * What this build IS — composition mode, upload tier, baked upload base. Moved here from `/health`,
+     * which now answers only "is the channel up": a caller reading state should not need a second request
+     * to learn which backend the build it is reading is pointed at.
+     */
+    val build: Map<String, String>,
+    /** What the OS says about the upload-job extension. See [OsExtensionView]. */
+    val osExtension: OsExtensionView,
+)
+
+/**
+ * The OS's own answer to "is the upload-job extension registered" — reported as **what the OS reports**,
+ * never as what the OS holds.
+ *
+ * Three-valued, and both of the reasons are measured rather than defensive.
+ *
+ * `isUploadJobExtensionEnabled` is a **26.1 selector** and the app deploys to min iOS 18, so calling it
+ * unconditionally traps as an unrecognized selector. [enabled] is therefore `null` — rendered as
+ * `notApplicable` — wherever the OS has no such selector. A bare `false` there would state "not registered"
+ * about an OS on which registration could never occur.
+ *
+ * And the read is **grant-dependent**: measured on an SE2 (iOS 26.6), the OS reported `false` under
+ * `NOT_DETERMINED` photo access for a record that was live in that same install and had survived a
+ * delete-and-reinstall, then `true` for that same record once access was granted — one install, one
+ * variable, minutes apart. So a `false` collapses "there is no record" with "I am not permitted to see one",
+ * and [grantDependent] marks the answers where that collapse is live rather than leaving a reader to join
+ * this field with `permission` themselves.
+ *
+ * ⏰ Two cells are unmeasured: `LIMITED` access, and a record left by a differently-signed build.
+ */
+@Serializable
+data class OsExtensionView(
+    val enabled: Boolean?,
+    val notApplicableReason: String?,
+    val grantDependent: Boolean,
 )
 
 /**
@@ -60,7 +95,7 @@ data class DownloadView(val downloaded: Int, val total: Int, val inFlight: Int)
  * whose `refresh()` performs the one consistent `aggregates()` read the status source performs — the
  * same seam, not a second query. Everything else is a flow's current value.
  */
-internal suspend fun readState(core: AppCore, host: StatusContainerHost): RigState {
+internal suspend fun readState(core: AppCore, host: StatusContainerHost, hooks: RigHooks): RigState {
     core.ledgerCounts.refresh()
     val counts = core.ledgerCounts.counts.value
     val progress = core.downloadStatus.progress.value
@@ -84,5 +119,9 @@ internal suspend fun readState(core: AppCore, host: StatusContainerHost): RigSta
         inviteUrl = host.inviteUrl.value,
         eventName = host.eventName.value,
         transientError = host.transientError.value,
+        build = hooks.buildFacts(),
+        // The grant is read from the same value reported above, so the two cannot disagree within one
+        // snapshot — which matters precisely because a `false` is only interpretable alongside it.
+        osExtension = hooks.readOsExtension(core.photoPermission.value.name),
     )
 }

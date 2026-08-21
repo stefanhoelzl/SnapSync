@@ -2,12 +2,11 @@ package app.snapsync.model
 
 /**
  * The upload tier a live composition runs (capability `upload-lifecycle`, "Exactly one producer per
- * process"). Selection is a **fact about the OS and the launch**, not a scattered runtime guard:
- * exactly one tier is chosen once per process, and the non-selected tier's mechanism is never
- * constructed.
+ * process"). Selection is a **fact about the OS**, not a scattered runtime guard: exactly one tier is
+ * chosen once per process, and the non-selected tier's mechanism is never constructed.
  *
  * - [PHOTOKIT] — the OS-driven `PHBackgroundResourceUploadExtension` registration (iOS ≥26.1).
- * - [URL_SESSION] — the in-app background `URLSession` pump (iOS 18–26.0, or the dev force flag).
+ * - [URL_SESSION] — the in-app background `URLSession` pump (iOS 18–26.0).
  */
 enum class UploadTier {
     PHOTOKIT,
@@ -19,71 +18,29 @@ enum class UploadTier {
 }
 
 /**
- * The resolved composition mode (spec `module-architecture`, "One shared composition"): a **sealed**
- * type so `composeRoot` switches once on it and the compiler fails closed when a new mode is added —
- * a data-class field would not. There are exactly two:
+ * The pure composition resolver (spec `module-architecture`, "One shared composition"; decision record
+ * `establish-target-architecture` D5).
  *
- * - [Forge] — render the shared `StatusScreen` over forged sources for a marketing screenshot; the
- *   live stack is **not** assembled (no ledger, App Attest, PhotoKit, or backend). Carries the
- *   recognized state name.
- * - [Live] — the real stack, on the resolved [UploadTier].
+ * It has exactly **one** input, and that is the whole point of it. One binary ships to iOS 18 and iOS 26
+ * devices alike, so the tier genuinely cannot be known before launch — but nothing else may influence it.
+ * There is no developer input here: no launch-environment variable, no build property, no runtime
+ * override. The tier a process runs is a function of the device it runs on, and a reader of this function
+ * can see that at a glance rather than having to prove it.
+ *
+ * It used to return a sealed `CompositionMode` with a second `Forge` case, so a marketing-screenshot run
+ * could render the shared `StatusScreen` over forged sources without booting the live stack. That case is
+ * gone, and with it the shell's outer mode switch and the ~15 no-op `Shell` members that had to keep it
+ * inert. Forge is now its own binary target, linking neither `:app:ios` nor the live graph, so its
+ * inertness is a thing the binary cannot express rather than a thing a delegate must perform correctly
+ * (decision record: `changes/archive/…-retire-launch-env-triggers` D11). What remains is one fact in, one
+ * tier out — which is why this returns [UploadTier] directly and the sealed wrapper is deleted rather
+ * than kept at one case.
+ *
+ * It also used to take the force flag (`SNAPSYNC_FORCE_URLSESSION_UPLOAD`), which could select
+ * [UploadTier.URL_SESSION] on a device whose OS supports the OS-driven tier. Note that its deletion does
+ * **not** delete that arm: iOS 18–26.0 devices resolve to it by version, and a partial photo grant selects
+ * the app-driven producer within the OS-driven tier (`ios-photokit-upload`). What is gone is any way to
+ * *force* it — see `ios-url-session-upload`, whose removed requirement names where that returns.
  */
-sealed interface CompositionMode {
-
-    /**
-     * How a diagnostic dump names the resolved composition (capability `diagnostic-logging`). Kept
-     * here so the shell transcribes one resolved fact instead of branching on the mode a second time
-     * (`module-architecture`, "Shells are wiring only").
-     */
-    val diagnosticTierName: String
-
-    data class Forge(val state: String) : CompositionMode {
-        override val diagnosticTierName: String get() = "forge"
-    }
-
-    data class Live(val tier: UploadTier) : CompositionMode {
-        override val diagnosticTierName: String get() = tier.diagnosticName
-    }
-}
-
-/**
- * The pure composition-mode resolver (spec `module-architecture`, "One shared composition"; decision
- * record `establish-target-architecture` D5). Its precedence is unit-tested (the shipped forge×link
- * interaction bug becomes a resolver test): **forge excludes the live-stack boot**.
- *
- * The forge decision comes first and wins **unconditionally over an event link** — a screenshot run
- * that also carries `SNAPSYNC_EVENT_LINK` must render the forged frame and provision **nothing**, or
- * a process rendering a forged frame would boot the live stack on an unsigned simulator with no
- * App-Group container, no App Attest, and no photo grant (incoherent before it is a crash). [forgeState]
- * is only honoured when [isForgeState] recognizes it (an unrecognized name falls through to [Live],
- * exactly as `SNAPSYNC_FORGE_STATE=nonsense` renders the live stack today).
- *
- * [isForgeState] is passed in — not imported — because recognition (mapping a name to forged sources)
- * is presentation's, unreachable from `model/`; the shell passes `presentation::isForgeState`, and the
- * precedence test passes a stub. Tier selection folds in here per the one-composition law: the
- * app-driven tier is chosen when the OS lacks the ≥26.1 API **or** the force flag is set.
- *
- * [backgroundUploadSupported] is the **only** OS input, and it is genuinely a runtime one: one binary
- * ships to iOS 18 and iOS 26 devices alike, so the tier cannot be known before launch. It arrives as a
- * bare `Boolean` rather than wrapped, an `OsFacts` value having been deleted once its second field went.
- * That second field was `isSimulator`, read from `SIMULATOR_DEVICE_NAME` to downgrade the URLSession
- * transport — a fact the **compilation target already fixes**, re-derived at runtime to serve a platform
- * claim that turned out to be false (`ios-url-session-upload`; decision record
- * `changes/archive/…-delete-simulator-session-downgrade`). A target-fixed fact does not belong here.
- */
-fun resolveComposition(
-    directives: LaunchDirectives,
-    backgroundUploadSupported: Boolean,
-    isForgeState: (String) -> Boolean,
-): CompositionMode {
-    // Forge excludes the live-stack boot — and it excludes an event link too (the forge×link bug).
-    if (directives.forgeState != null && isForgeState(directives.forgeState)) {
-        return CompositionMode.Forge(directives.forgeState)
-    }
-    val tier = if (!backgroundUploadSupported || directives.forceUrlSessionUpload) {
-        UploadTier.URL_SESSION
-    } else {
-        UploadTier.PHOTOKIT
-    }
-    return CompositionMode.Live(tier = tier)
-}
+fun resolveComposition(backgroundUploadSupported: Boolean): UploadTier =
+    if (backgroundUploadSupported) UploadTier.PHOTOKIT else UploadTier.URL_SESSION
