@@ -1,8 +1,6 @@
 package app.snapsync.ios
 
-import app.snapsync.model.CompositionMode
 import app.snapsync.model.EventConfig
-import app.snapsync.model.LaunchDirectives
 import app.snapsync.model.SceneMode
 import app.snapsync.model.UploadTier
 import app.snapsync.model.appVisibilityFrom
@@ -34,8 +32,6 @@ import app.snapsync.permission.PhotoSelectionSnapshotSource
 import app.snapsync.presentation.CutoffFormatter
 import app.snapsync.presentation.MutableAttestedSource
 import app.snapsync.presentation.StatusContainerHost
-import app.snapsync.presentation.forgeStatusHost
-import app.snapsync.presentation.isForgeState
 import app.snapsync.feature.membership.toJoinLoad
 import app.snapsync.push.KtorPushHttpClient
 import app.snapsync.feature.push.ApnsPushToken
@@ -70,14 +66,13 @@ import app.snapsync.feature.upload.UploadProducer
 import app.snapsync.logging.FileLogWriter
 import app.snapsync.logging.appLogDestination
 import app.snapsync.logging.IosDeviceLogSource
-import app.snapsync.logging.exportExtensionLogToDocuments
 import app.snapsync.logging.deviceDiagnosticEnvironment
 import app.snapsync.logging.SentryDiagnosticsReporter
 import app.snapsync.logging.appBuildVersion
 import app.snapsync.logging.IosLogScope
 import app.snapsync.logging.PublicNSLogWriter
 import app.snapsync.keychain.DeviceIdentityRole
-import app.snapsync.keychain.KeychainDeviceIdentity
+import app.snapsync.keychain.resolveDeviceIdentity
 import app.snapsync.logging.invocation
 import co.touchlab.kermit.Logger
 import io.ktor.client.HttpClient
@@ -172,76 +167,56 @@ object SnapSyncRoot {
             },
     )
 
-    // ── Launch directives → composition mode (spec `module-architecture`, "One shared composition") ──
-
-    /** Every dev/test launch-environment trigger, parsed ONCE through the one typed surface
-     *  (capability `ios-app-shell`). A production launch yields `LaunchDirectives.NONE`. */
-    private val directives: LaunchDirectives =
-        LaunchDirectives.from { name -> NSProcessInfo.processInfo.environment[name] as? String }
-
-    init {
-        // Dev/test: `SNAPSYNC_EXPORT_LOGS` copies the extension's App-Group log into THIS process's
-        // Documents, the only container a USB pull can reach (capability `diagnostic-logging`). A
-        // SEPARATE init block because it reads `directives`, which the first one runs before.
-        //
-        // Inert in production — a launch env var is only injectable by a developer launch — and
-        // independent of the membership triggers, so it neither waits on their ordering nor is
-        // skipped by a forge launch: copying a file reaches no live-stack seam.
-        Logger.withTag("SnapSyncRoot").i {
-            "[boot] exported logs = ${exportExtensionLogToDocuments(directives.exportLogs)}"
-        }
-    }
+    // ── The OS fact → the upload tier (spec `module-architecture`, "One shared composition") ──
 
     /**
-     * The composition mode, resolved **once per process** by the pure, unit-tested resolver
-     * (`model/CompositionMode.kt`). Forge excludes the live-stack boot — including an event link
-     * (the shipped forge×link bug is now a resolver precedence test, not a shell guard).
+     * The upload tier, resolved **once per process** by the pure, unit-tested resolver
+     * (`model/CompositionMode.kt`) from the single OS capability fact. No developer input reaches this:
+     * there is no launch variable, build property, or runtime override that can select the other tier.
      */
     // `internal` (not `private`) for the same single reason as [app]: the rig's contributed hook reports
-    // the resolved composition on `/health`, and reading the value the app actually resolved is the only
+    // the resolved tier on `/device/state`, and reading the value the app actually resolved is the only
     // way to report it without a second resolution that could disagree. `internal` is module-wide and is
     // not exported to the `SnapSyncKit` ObjC header.
-    internal val mode: CompositionMode =
-        resolveComposition(directives, backgroundUploadSupported(), ::isForgeState)
+    internal val tier: UploadTier = resolveComposition(backgroundUploadSupported())
 
     /**
-     * **THE one switch on the resolved mode** (spec `module-architecture`, "One shared composition":
-     * `composeRoot` switches once on the sealed type and invokes only the selected shell-supplied
-     * adapter thunks). Everything mode- or tier-dependent — the render host, every OS entry point's
-     * behavior, and the upload tier's mechanism thunks — is decided here, once; no entry point
-     * re-checks a flag. Forge inertness is **structural**: [ForgeShell] holds no reference to [app]
-     * or [host], so a forge launch cannot boot the live stack from any entry point (previously six
-     * separate `isForging` guards, one of which was added only after the forge×link bug shipped).
+     * **THE one switch on the resolved tier.** Everything tier-dependent — every OS entry point's
+     * behavior and the upload mechanism thunks — is decided here, once; no entry point re-checks a flag.
+     *
+     * There is no second arm for a forged composition any more. Forge is its own binary target that does
+     * not link this module, so a process rendering a forged frame cannot reach this switch, this graph, or
+     * any entry point on it. That inertness used to be ~15 no-op `Shell` members, each of which had to
+     * stay inert correctly; it is now a property of which binary is running.
      */
-    private val shell: Shell = when (val m = mode) {
-        is CompositionMode.Forge -> ForgeShell(m.state)
-        is CompositionMode.Live -> when (m.tier) {
-            // OS-driven PhotoKit tier (iOS ≥26.1): the OS owns upload scheduling — no foreground
-            // pump, no upload push receiver (only the download arm wakes), no app-driven heartbeat.
-            // OS-driven tier (iOS ≥26.1): BOTH producers are composed — the OS owns upload
-            // scheduling under a full grant, and the app-driven mechanism serves a partial one (the
-            // OS never invokes the extension there — measured; `ios-photokit-upload`). Which producer
-            // RUNS is the tested arm's permission decision, never this switch's.
-            UploadTier.PHOTOKIT -> LiveShell(
-                uploadProducer = { urlSessionUpload },
-                osUploadProducer = { photoKitProducer },
-                pumpForeground = {},
-                uploadSilentPush = { null },
-                pumpSelectionChanged = { urlSessionUpload.onSelectionChanged() },
-                heartbeat = { onComplete -> onComplete() },
-            )
-            // App-driven URLSession tier (iOS 18–26.0, or the dev force flag): the app process pumps.
-            UploadTier.URL_SESSION -> LiveShell(
-                uploadProducer = { urlSessionUpload },
-                // The OS-driven mechanism stays entirely unconstructed on this tier — the tier-force
-                // flag can therefore never register the PhotoKit extension (`upload-lifecycle`).
-                osUploadProducer = { null },
-                pumpForeground = { urlSessionUpload.onForeground() },
-                uploadSilentPush = { urlSessionUpload.pushReceiver::onSilentPush },
-                pumpSelectionChanged = { urlSessionUpload.onSelectionChanged() },
-                heartbeat = { onComplete -> urlSessionUpload.onBackgroundTask(onComplete) },
-            )
-        }
+    private val shell: Shell = when (tier) {
+        // OS-driven PhotoKit tier (iOS ≥26.1): the OS owns upload scheduling — no foreground
+        // pump, no upload push receiver (only the download arm wakes), no app-driven heartbeat.
+        // BOTH producers are composed — the OS owns upload scheduling under a full grant, and the
+        // app-driven mechanism serves a partial one (the OS never invokes the extension there —
+        // measured; `ios-photokit-upload`). Which producer RUNS is the tested arm's permission
+        // decision, never this switch's.
+        UploadTier.PHOTOKIT -> LiveShell(
+            uploadProducer = { urlSessionUpload },
+            osUploadProducer = { photoKitProducer },
+            pumpForeground = {},
+            uploadSilentPush = { null },
+            pumpSelectionChanged = { urlSessionUpload.onSelectionChanged() },
+            heartbeat = { onComplete -> onComplete() },
+        )
+        // App-driven URLSession tier (iOS 18–26.0): the app process pumps. Reached by OS VERSION only —
+        // the dev force flag that could also select it is gone, and its absence removes a way to *force*
+        // this tier, not the tier itself.
+        UploadTier.URL_SESSION -> LiveShell(
+            uploadProducer = { urlSessionUpload },
+            // The OS-driven mechanism stays entirely unconstructed on this tier, so nothing here can
+            // register the PhotoKit extension (`upload-lifecycle`).
+            osUploadProducer = { null },
+            pumpForeground = { urlSessionUpload.onForeground() },
+            uploadSilentPush = { urlSessionUpload.pushReceiver::onSilentPush },
+            pumpSelectionChanged = { urlSessionUpload.onSelectionChanged() },
+            heartbeat = { onComplete -> urlSessionUpload.onBackgroundTask(onComplete) },
+        )
     }
 
     /** BGTaskScheduler identifier for the download import-tail backstop — MUST match the Swift host's
@@ -310,7 +285,11 @@ object SnapSyncRoot {
 
     // The photo-library permission adapter, hoisted so the grant collector and a (re)provision share one
     // instance (both enable the extension; a provision must re-enable a producer a prior leave disabled).
-    private val permission: PhotoLibraryPermission by lazy { PhotoLibraryPermission() }
+    // `internal`, not `private`, for the same single reason as [app] and [host]: the rig's contributed hook
+    // needs the photo-access port to drive the gallery wipe, which must ask for access before fetching or
+    // its empty result is indistinguishable from an empty library. Module-wide, not exported to the ObjC
+    // header, and absent from any build without `-Psnapsync.rig=true`.
+    internal val permission: PhotoLibraryPermission by lazy { PhotoLibraryPermission() }
 
     // The stable per-install device id (the shared Keychain access group, addressed by name — the SAME
     // item the extension reads): the `/files/devices/<deviceId>/` partition the app's status lists.
@@ -319,8 +298,12 @@ object SnapSyncRoot {
     // shared group is empty but an id exists in a group an older build wrote to, that value is taken
     // over verbatim rather than re-minted — a second identity would orphan this device's byte
     // partition and make its own uploads read as another member's.
+    // `by lazy` and NOT memoizing a failure is load-bearing here: Kotlin's SynchronizedLazyImpl assigns
+    // its value only on success, so a resolve that throws is retried on the next access rather than fixed
+    // for the process. That is what lets an identity supplied after launch be picked up at all
+    // (capability `device-identity`), and `DeviceIdentityRetryTest` pins it rather than inheriting it.
     private val deviceId: String by lazy {
-        KeychainDeviceIdentity(DeviceIdentityRole.MINTING).deviceId()
+        resolveDeviceIdentity(DeviceIdentityRole.MINTING)
     }
 
     /**
@@ -338,9 +321,7 @@ object SnapSyncRoot {
     // `internal` is module-wide and is NOT exported to the `SnapSyncKit` ObjC header, so no framework
     // surface changes and no production build can reach it from outside this module.
     internal val app: AppCore by lazy {
-        // Only [LiveShell] entry points ever reach this graph — [ForgeShell] has no route here — so
-        // the tier thunks resolve through the one mode switch; the cast documents (and enforces,
-        // loudly) that a forge launch composes no live core.
+        // The tier thunks resolve through the one switch above; the cast is what lets this read them.
         val live = shell as LiveShell
         snapSyncApp(
             scope = scope,
@@ -354,7 +335,7 @@ object SnapSyncRoot {
                 // the two log files (this process's own, and the extension's in the App Group) and
                 // the build/OS/device facts. Both are adapter-resolved; the shell only names them.
                 deviceLogSource = IosDeviceLogSource(),
-                diagnosticEnvironment = deviceDiagnosticEnvironment(mode.diagnosticTierName),
+                diagnosticEnvironment = deviceDiagnosticEnvironment(tier.diagnosticName),
                 configSource = config,
                 configStore = config,
                 photoAccess = permission,
@@ -559,7 +540,7 @@ object SnapSyncRoot {
     // client — on launch delivery and each rotation. Best-effort: a failed write is absorbed and retried
     // on the next token, never blocking join/upload/download. The collector is launched from [host].
     private val pushRegistration: PushRegistration by lazy {
-        PushRegistration(KtorPushHttpClient(http), backendHost, deviceId)
+        PushRegistration(KtorPushHttpClient(http), backendHost, deviceId = { deviceId })
     }
 
     // The silent-push cross-arm fan-out (a push means "the event changed": foreign photos to pull, and —
@@ -618,10 +599,8 @@ object SnapSyncRoot {
 
     /**
      * The host [MainViewController] renders. Resolved **once per process** (`by lazy`) through the one
-     * mode switch: the forged host in [CompositionMode.Forge] (capability `ios-app-shell` — a marketing
-     * screenshot renders forged sources and MUST NOT boot the live stack: the unsigned simulator the
-     * screenshots run in has no App-Group ledger container, no App Attest, no PhotoKit grant, and no
-     * backend), else the live [host].
+     * switch above. There is only the live host now: a marketing screenshot is rendered by a separate
+     * binary that does not link this module at all.
      */
     val renderHost: StatusContainerHost by lazy { shell.renderHost() }
 
@@ -897,144 +876,6 @@ object SnapSyncRoot {
         app.provisionFlow.run(cfg)
     }
 
-    /**
-     * Realize [launchEnvMembershipApplied] once on first view creation (called from
-     * [MainViewController]). Touching the `by lazy` runs the env reads exactly once per process.
-     */
-    @PlatformEntry
-    fun applyLaunchEnvMembership() = log.invocation("applyLaunchEnvMembership") {
-        // The photo-library chain GATES this one (see [launchEnvPhotoLibraryApplied]), so realize it from
-        // here too: a membership trigger must never run ahead of — or, worse, wait forever on — a chain
-        // whose only other realization is a separate view effect.
-        launchEnvPhotoLibraryApplied
-        launchEnvMembershipApplied
-    }
-
-    /**
-     * Dev/test triggers: apply the membership-mutating launch-env variables in the fixed order
-     * `leave → create → event-link` (capability `ios-app-shell`), delegated to the mode-resolved
-     * [Shell] so a forge launch no-ops them **structurally** ([ForgeShell] holds no route to the live
-     * stack). The [LiveShell] runs the ordered, sequential application. Read **once per process**
-     * (`by lazy`): a fresh cold launch with a variable still set re-applies (the intended per-build
-     * re-trigger); a mere view recreation within the same process does not. Each variable is only
-     * injectable via a developer launch, so this is inert in production with no compile-time guard.
-     */
-    private val launchEnvMembershipApplied: Boolean by lazy {
-        shell.applyLaunchEnvMembership()
-        true
-    }
-
-    /**
-     * Realize [launchEnvPhotoLibraryApplied] once on first view creation (called from
-     * [MainViewController]).
-     */
-    @PlatformEntry
-    fun applyLaunchEnvPhotoLibrary() = log.invocation("applyLaunchEnvPhotoLibrary") {
-        launchEnvPhotoLibraryApplied
-    }
-
-    /**
-     * Dev/test triggers that touch the device's **photo library**, applied in the fixed order
-     * `wipe → SNAPSYNC_SEED_PHOTOS → SNAPSYNC_SEED_POLICY → SNAPSYNC_POLICY_PROBE`, sequentially inside
-     * one coroutine (capability `ios-app-shell`):
-     *
-     * - `SNAPSYNC_WIPE_GALLERY=all|assets|albums` empties the library (see [wipeGalleryFromLaunchEnv]) —
-     *   first, so one launch can wipe and then seed a known set;
-     * - `SNAPSYNC_SEED_PHOTOS` / `SNAPSYNC_SEED_POLICY` fill it with synthetic assets (see
-     *   [seedPhotoLibraryFromLaunchEnv]) so the capture-date-bounded walk and the selection policy can be
-     *   exercised on device;
-     * - `SNAPSYNC_POLICY_PROBE` then measures the resulting library.
-     *
-     * Like `SNAPSYNC_EVENT_LINK`, each variable is only injectable via a developer launch, so this is
-     * inert in production. Every step is a **blocking** `performChangesAndWait`, so the whole chain runs
-     * on `Dispatchers.Default`, never this scope's UI lane — the same reason the gallery walk hops off the
-     * main thread. The `Logger.invocation` wrap is *inside* the launch so its context spans the async body.
-     *
-     * The chain completes [photoLibraryTriggersDone], which the membership triggers await: a join must not
-     * enumerate a library that is being deleted or filled underneath it, and the wipe's system alert can
-     * sit unanswered for minutes. Completed in a `finally`, so a failure releases the gate rather than
-     * stranding the membership triggers behind it.
-     */
-    private val launchEnvPhotoLibraryApplied: Boolean by lazy {
-        scope.launch(Dispatchers.Default) {
-            log.invocation("photoLibraryTriggers") {
-                try {
-                    wipeGalleryFromLaunchEnv(log, directives.wipeGallery, permission)
-                    seedPhotoLibraryFromLaunchEnv(log)
-                    // Seeding is blocking, so the probe below is sequenced INSIDE this launch — it must read a
-                    // library the seed has already committed, or it measures the wrong thing.
-                    runLaunchEnvPolicyProbe()
-                } finally {
-                    photoLibraryTriggersDone.complete(Unit)
-                }
-            }
-        }
-        true
-    }
-
-    /**
-     * The gate the membership triggers await (see [launchEnvPhotoLibraryApplied]). A `CompletableDeferred`
-     * rather than a flag: the membership path awaits it unconditionally, so the shell carries no branch —
-     * and on a launch that requests no photo-library work the chain completes it immediately anyway.
-     */
-    private val photoLibraryTriggersDone = CompletableDeferred<Unit>()
-
-    /**
-     * Dev/test trigger: `SNAPSYNC_POLICY_PROBE=<cutoff>` runs the **real** own-device status refresh against
-     * that cutoff — the real `PhotoLibraryResourceEnumerator` (and so the real `PHFetchOptions` predicate),
-     * the real origin rules, the real denylisted-album lookup — and logs the result
-     * (capability `photo-selection-policy`).
-     *
-     * It exists because the policy is otherwise **unobservable on a device without a joined event**: the
-     * status total only refreshes for a membership, and event *creation* is attest-gated, so there is no
-     * headless route to one. But the policy's entire decision happens **before any HTTP call**, so a
-     * membership is not actually needed to test it — only a cutoff. This gives the cutoff directly.
-     *
-     * What it proves, in one line of `debug.log`: the fetch predicate returns assets at all (the wrong
-     * exclusion form returns **zero rows without raising**, which is the failure that would silently empty
-     * the library), how many the origin rules excluded, and the resulting `N`. Pair with
-     * `SNAPSYNC_SEED_POLICY`, whose assets straddle the resolution floor by construction.
-     */
-    // PINNED shell decision (spec `module-architecture`, "Shells are wiring only" — pinned forms;
-    // inventory gated by KotlinShellGuardTest). Forcing proof: dev equipment that must live in the
-    // app process — the probe exists because the selection policy is unobservable on a device
-    // without a joined event (the status total only refreshes for a membership, and event creation
-    // is attest-gated, so there is no headless route to one), and it drives the REAL PhotoKit fetch
-    // predicate + the live composed graph, which no tested module can reach from a launch-env
-    // trigger. Inert in production (a launch env var is only injectable via a developer launch).
-    // Expiry: dies with the probe itself if a headless event-creation route ever exists.
-    @Suppress("CyclomaticComplexMethod")
-    private suspend fun runLaunchEnvPolicyProbe() {
-        val cutoff = directives.policyProbe?.let(::captureCutoff) ?: return
-
-        // Subtype census, on the RAW library (no exclusion predicate) — this is the part the status refresh
-        // below cannot show, because the production predicate drops screenshots and screen recordings at the
-        // fetch, so they never reach the count `refresh` reads. Here we look for them directly:
-        //   - `total` is the whole library, so `total - enumerated(below)` is what the predicate dropped;
-        //   - the two SELECT counts confirm the subtype bits actually match real, OS-generated assets — the
-        //     one thing a synthesized library cannot prove (`PHAssetCreationRequest` cannot set a subtype).
-        // The SELECT form `(mediaSubtypes & N) != 0` is used, NOT the exclusion form; both use the plural key.
-        val total = PHAsset.fetchAssetsWithOptions(null).count.toLong()
-        val screenshots = PHAsset.fetchAssetsWithOptions(
-            PHFetchOptions().apply { predicate = NSPredicate.predicateWithFormat("(mediaSubtypes & 4) != 0", argumentArray = null) },
-        ).count.toLong()
-        val recordings = PHAsset.fetchAssetsWithOptions(
-            PHFetchOptions().apply { predicate = NSPredicate.predicateWithFormat("(mediaSubtypes & 524288) != 0", argumentArray = null) },
-        ).count.toLong()
-        log.i {
-            "policy probe: subtype census — library total=$total, screenshots=$screenshots, " +
-                "screen-recordings=$recordings (these are what the fetch predicate drops before enumeration)"
-        }
-
-        log.i { "policy probe: refreshing the own-device total against cutoff=$cutoff" }
-        // `Since` directly, NOT `Contribution.of(...)`: the probe runs with no membership by design (that is
-        // the whole point — the policy is otherwise unobservable without a joined event), so there is no
-        // direction to read. `None` would skip the walk and prove nothing; this probe exists to make the walk
-        // happen and report what it found.
-        app.gallery.refresh(SelectionPolicy.from(includesUpload = true, cutoff = cutoff, ceiling = null))
-        log.i { "policy probe: N=${app.gallery.size.value} (see the `gallery:` line above for the breakdown)" }
-    }
-
     // The permission-grant subscriptions (upload-arm start + event-album ensure) live in `compose/`
     // (`AppCore.installPermissionSubscriptions`, migration step 8) and are installed ONLY from the
     // [host] assembly above — never on mere [AppCore] construction, so a cold background wake starts
@@ -1123,15 +964,12 @@ object SnapSyncRoot {
             },
         )
 
-    /** The `onForeground` invocation params, byte-compatible with the pre-C3 wording; the values now
-     *  read from the resolved mode + parsed directives instead of being re-derived per call. */
-    private fun foregroundParams(): String {
-        val appDriven = (mode as? CompositionMode.Live)?.tier == UploadTier.URL_SESSION
-        return "useAppDrivenUpload=$appDriven force=${directives.forceUrlSessionUpload} " +
-            "osSupported=${backgroundUploadSupported()}"
-    }
+    /** The `onForeground` invocation params. `force=` is gone with the flag that set it — there is no
+     *  longer any way to select a tier the OS did not, so the two remaining values say everything. */
+    private fun foregroundParams(): String =
+        "useAppDrivenUpload=${tier == UploadTier.URL_SESSION} osSupported=${backgroundUploadSupported()}"
 
-    // ── The mode-resolved shell delegate (the target of THE one switch above) ────────────────────
+    // ── The tier-resolved shell delegate (the target of THE one switch above) ────────────────────
 
     /** What every OS entry point delegates to; implemented once per composition mode. */
     private interface Shell {
@@ -1142,9 +980,6 @@ object SnapSyncRoot {
 
         /** The photo grant, the count's recompute trigger; a constant in forge. */
         val photoPermission: StateFlow<PermissionStatus>
-        /** Apply the ordered `leave → create → event-link` membership launch-env triggers (live only;
-         *  forge no-ops). */
-        fun applyLaunchEnvMembership()
         fun onForeground()
         fun onBackground()
         fun onOpenUrl(url: String)
@@ -1156,74 +991,6 @@ object SnapSyncRoot {
     }
 
     /**
-     * The forge composition (capability `ios-app-shell`): render the shared screen over forged sources
-     * for a marketing screenshot and assemble NO live stack — the unsigned simulator the screenshots
-     * run in has no App-Group ledger container, no App Attest, no PhotoKit grant, and no backend.
-     * This class holds no reference to [app] or [host], so forge inertness is **structural** rather
-     * than guarded. OS completion handlers are still invoked — they are the OS's, and an unanswered
-     * one costs the app its future background wakes; everything else logs and returns.
-     */
-    private class ForgeShell(private val state: String) : Shell {
-        override fun renderHost(): StatusContainerHost {
-            log.i { "rendering SNAPSYNC_FORGE_STATE=$state" }
-            // Non-null by construction: the resolver only yields Forge for a recognized state.
-            return forgeStatusHost(state, scope, cutoffFormatter)!!
-        }
-
-        // No live core to count against — the join surface renders no count row in forge (structural).
-        override val shareableCount: suspend (cutoff: CaptureCutoff, until: CaptureCeiling?) -> Int? = { _, _ -> null }
-        override val photoPermission: StateFlow<PermissionStatus> = MutableStateFlow(PermissionStatus.GRANTED)
-
-        override fun applyLaunchEnvMembership() {
-            // Forge wins over the membership triggers too — provisioning a real event (or leaving one,
-            // or voiding this device's durable state) from a process rendering a forged frame is
-            // incoherent. Structural: this shell holds no route to the live stack. The log line keeps
-            // the debug.log trail.
-            log.i { "forge mode: ignoring membership launch triggers (reset/leave/create/event-link)" }
-        }
-
-        override fun onForeground() {
-            log.i { "forge mode: skipping live foreground work" }
-        }
-
-        override fun onBackground() = Unit
-
-        override fun onOpenUrl(url: String) {
-            // A screenshot run may also carry `SNAPSYNC_EVENT_LINK`; provisioning a real event from a
-            // process rendering a forged frame is incoherent before it is a crash. The resolver's
-            // precedence already excludes it (the forge×link bug, now a unit test); the log line keeps
-            // the debug.log trail.
-            log.i { "forge mode: ignoring event link" }
-        }
-
-        override fun onPushToken(hex: String) {
-            // `registerForRemoteNotifications()` is called unconditionally at launch, so this arrives
-            // on a screenshot run too. Registering a token for a process that exists only to render
-            // one frame buys nothing, so drop it.
-            log.i { "forge mode: ignoring push token" }
-        }
-
-        override fun onSilentPush(userInfo: Map<Any?, *>, completion: () -> Unit) {
-            // [completion] is still invoked, and that is not optional: an unanswered
-            // `content-available` push costs the app its future background wakes.
-            log.i { "forge mode: ignoring silent push" }
-            completion()
-        }
-
-        override fun runUploadHeartbeat(onComplete: () -> Unit) = onComplete()
-
-        override fun runDownloadBackstop(onComplete: () -> Unit) {
-            log.i { "forge mode: ignoring download backstop" }
-            onComplete()
-        }
-
-        override fun handleBackgroundUrlSession(identifier: String, completionHandler: () -> Unit) {
-            log.i { "forge mode: ignoring background URLSession events for $identifier" }
-            completionHandler()
-        }
-    }
-
-    /**
      * The live composition: the real stack, on the tier the mode switch selected. The four
      * constructor thunks are the ONLY tier-dependent seams — each decided once at the switch, so no
      * method here re-checks a flag; the bodies are the former entry-point bodies, verbatim, minus
@@ -1232,7 +999,7 @@ object SnapSyncRoot {
     private class LiveShell(
         /** The app-driven upload mechanism — composed on both tiers (capability `upload-lifecycle`). */
         val uploadProducer: () -> UploadProducer,
-        /** The OS-driven mechanism where it exists (iOS ≥26.1; never under the tier-force flag). */
+        /** The OS-driven mechanism where it exists (iOS ≥26.1); `{ null }` on the app-driven tier. */
         val osUploadProducer: () -> UploadProducer?,
         /** Foreground pump (app-driven tier); `{}` on iOS ≥26.1 where the OS owns scheduling. */
         val pumpForeground: suspend () -> Unit,
@@ -1250,28 +1017,6 @@ object SnapSyncRoot {
         override val shareableCount: suspend (cutoff: CaptureCutoff, until: CaptureCeiling?) -> Int? get() = app::loadShareableCount
         override val photoPermission: StateFlow<PermissionStatus> get() = app.photoPermission
 
-        override fun applyLaunchEnvMembership() {
-            // The ordering (reset → leave → create → event-link) is the tested `feature/creation`
-            // coordinator's — the shell may hold no branching or ordering (`architecture-guards`). This
-            // is straight-line wiring: assemble the live stack (touch [host]), then hand the coordinator
-            // the parsed triggers and this shell's join entry, in one awaited coroutine so each step
-            // observes the state the prior produced.
-            host
-            scope.launch {
-                // The photo-library chain first, always (capability `ios-app-shell`): a wipe deletes and a
-                // seed fills the very library a join would enumerate, and the wipe's system confirmation can
-                // sit unanswered for minutes. Awaited unconditionally — the gate is pre-completed when
-                // nothing was requested — so this stays a statement rather than a branch.
-                photoLibraryTriggersDone.await()
-                app.launchEnvMembership.run(
-                    leaveRequested = directives.leave,
-                    createEvent = directives.createEvent,
-                    eventLink = directives.eventLink,
-                    openUrl = ::onOpenUrl,
-                    resetRequested = directives.resetState,
-                )
-            }
-        }
 
         override fun onForeground() {
             // `scope.launch` because the flow is `suspend` now (law "A trigger flow never outlives its

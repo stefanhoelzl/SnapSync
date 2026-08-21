@@ -108,12 +108,21 @@ class RigServer(
     }
 
     private fun Application.routes() {
+        // Namespaced by WHO is on the other side of the call: `/os` is what the platform invokes, `/user`
+        // is what a finger reaches, `/device` is the machine under test. That is not taxonomy for its own
+        // sake — it decides how each namespace can be held honest. `/os` and `/user` have populations
+        // sitting in source (`@PlatformEntry` members; the host's public command surface), so a guard
+        // derives them and a hand-picked list would rot. `/device` has no population to derive from.
         routing {
             get("/health") { call.traced { call.respondText(hooks.health(port)) } }
-            get("/state") { call.traced { call.respondState() } }
-            get("/logs") { call.traced { call.respondLogs() } }
-            get("/triggers") { call.traced { call.respondText(triggerInventory()) } }
-            post("/trigger/{name}") { call.traced { call.respondTrigger() } }
+
+            post("/os/{name}") { call.traced { call.respondTrigger() } }
+            post("/user/{name}") { call.traced { call.respondUserCommand() } }
+
+            get("/device/state") { call.traced { call.respondState() } }
+            get("/device/logs") { call.traced { call.respondLogs() } }
+            get("/device/gallery") { call.traced { call.respondGallery() } }
+            post("/device/{name...}") { call.traced { call.respondDeviceCommand() } }
         }
     }
 
@@ -140,7 +149,7 @@ class RigServer(
     }
 
     private suspend fun ApplicationCall.respondState() =
-        respondText(json.encodeToString(RigState.serializer(), readState(core(), host())))
+        respondText(json.encodeToString(RigState.serializer(), readState(core(), host(), hooks)))
 
     /**
      * `/logs?process=app|extension&bytes=N` — a pass-through to [DeviceLogSource.tail].
@@ -166,20 +175,61 @@ class RigServer(
         respondText(tail)
     }
 
-    private fun triggerInventory(): String = buildString {
-        append("wired:\n")
-        hooks.triggers.forEach { (name, t) ->
-            append("  ").append(name).append("  ").append(describe(t)).append('\n')
-        }
-        append("excluded:\n")
-        hooks.excludedTriggers.forEach { (name, why) ->
-            append("  ").append(name).append("  — ").append(why).append('\n')
-        }
+    /**
+     * `POST /user/{name}?…` — invoke a real user command on the main lane.
+     *
+     * Answered `202` without waiting, because the command IS an Orbit intent: it returns a `Job`, and its
+     * effect is observed through `/device/state`, which is the same way the screen observes it. Inventing a
+     * completion signal here would be inventing one the UI does not have.
+     */
+    private suspend fun ApplicationCall.respondUserCommand() {
+        val name = parameters["name"].orEmpty()
+        val command = hooks.userCommands[name]
+            ?: return respondText(
+                excludedOrUnknown(name, hooks.excludedUserCommands, "user command"),
+                status = HttpStatusCode.NotFound,
+            )
+        val params = request.queryParameters.entries().associate { it.key to it.value.first() }
+        withContext(hooks.mainLane) { command.run(params) }
+        respondText(
+            "{\"command\":\"$name\",\"accepted\":true,\"waited\":false," +
+                "\"note\":\"a user command is an intent, exactly as a tap is — poll /device/state\"}\n",
+            status = HttpStatusCode.Accepted,
+        )
     }
 
-    private fun describe(t: RigTrigger): String = when (t) {
-        is RigTrigger.Fire -> "202 (the platform hands this entry no completion handler)"
-        is RigTrigger.Receipted -> "blocks until the OS handler is released (deadline ${t.deadlineMs}ms)"
+    /**
+     * `POST /device/{name}?…` — run a device command to completion and answer with what it did.
+     *
+     * NOT on [RigHooks.mainLane]: these block (a photo-library change block waits on the system's own
+     * confirmation, which can sit unanswered for minutes), and the launch-time chain they replace ran on
+     * `Dispatchers.Default` for that reason. Blocking here is the point — a launch variable that failed was
+     * a log line to go and find, and a command that answers is the whole reason these moved.
+     */
+    private suspend fun ApplicationCall.respondDeviceCommand() {
+        val name = parameters.getAll("name").orEmpty().joinToString("/")
+        val command = hooks.deviceCommands[name]
+            ?: return respondText(
+                excludedOrUnknown(name, emptyMap(), "device command"),
+                status = HttpStatusCode.NotFound,
+            )
+        val params = request.queryParameters.entries().associate { it.key to it.value.first() }
+        val result = command.run(params)
+        respondText(result.body, status = HttpStatusCode.fromValue(result.status))
+    }
+
+    /**
+     * `GET /device/gallery?cutoff=…&resources=…` — the library, read through the app's own policy.
+     *
+     * Its own route rather than a field of `/device/state`, for two reasons that both bite. Enumerating is
+     * expensive where reading state is not, and a caller polling state must not pay for it. And under a
+     * partial grant a `PHAsset` fetch can surface iOS's own limited-access alert — a `GET` that puts a modal
+     * on the device is surprising enough that it should at least be a `GET` the caller asked for by name.
+     */
+    private suspend fun ApplicationCall.respondGallery() {
+        val cutoff = request.queryParameters["cutoff"]
+        val resources = request.queryParameters["resources"].toBoolean()
+        respondText(hooks.readGallery(cutoff, resources))
     }
 
     /**
@@ -190,7 +240,10 @@ class RigServer(
         val name = parameters["name"].orEmpty()
         val arg = request.queryParameters["arg"]
         val trigger = hooks.triggers[name]
-            ?: return respondText(excludedOrUnknown(name), status = HttpStatusCode.NotFound)
+            ?: return respondText(
+                excludedOrUnknown(name, hooks.excludedTriggers, "entry point"),
+                status = HttpStatusCode.NotFound,
+            )
         when (trigger) {
             is RigTrigger.Fire -> {
                 withContext(hooks.mainLane) { trigger.run(arg) }
@@ -221,10 +274,18 @@ class RigServer(
         }
     }
 
-    private fun excludedOrUnknown(name: String): String =
-        hooks.excludedTriggers[name]
-            ?.let { "trigger '$name' is deliberately NOT wired: $it\n" }
-            ?: "unknown trigger '$name' — see GET /triggers\n"
+    /**
+     * The 404 body, which is the surface that replaced the inventory routes.
+     *
+     * Dropping `GET /triggers` cost nothing, because enumeration was never the part that carried
+     * information — the **reason** an excluded member is excluded was, and it is returned right here, to
+     * the caller who asked for that member. An inventory would have been a third copy of a list that the
+     * runbook already holds and a guard already pins to source, and the only copy nothing could hold.
+     */
+    private fun excludedOrUnknown(name: String, excluded: Map<String, String>, kind: String): String =
+        excluded[name]
+            ?.let { "$kind '$name' is deliberately NOT wired: $it\n" }
+            ?: "unknown $kind '$name' — see the `rig-channel` skill for what is driveable\n"
 
     private companion object {
         /** ~200 KB: comfortably more than a single cycle's lines, well under the port's 10 MB roll cap. */

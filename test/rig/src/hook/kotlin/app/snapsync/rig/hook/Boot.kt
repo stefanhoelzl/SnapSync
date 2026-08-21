@@ -6,11 +6,17 @@ import app.snapsync.config.bakedUploadBase
 import app.snapsync.ios.SnapSyncRoot
 import app.snapsync.logging.IosDeviceLogSource
 import app.snapsync.ports.ReceiptDeadlines
+import app.snapsync.rig.RigCommand
 import app.snapsync.rig.RigHooks
 import app.snapsync.rig.RigServer
 import app.snapsync.rig.RigTrigger
+import app.snapsync.rig.RigUserCommand
+import app.snapsync.rig.deviceCommands
+import app.snapsync.rig.galleryReader
+import app.snapsync.rig.osExtensionEnabled
 import app.snapsync.rig.rigPort
-import app.snapsync.rig.tierName
+import app.snapsync.rig.userCommands
+import app.snapsync.rig.excludedUserCommands
 import kotlin.native.EagerInitialization
 import kotlinx.coroutines.Dispatchers
 import platform.Foundation.NSDate
@@ -31,7 +37,7 @@ import platform.Foundation.NSUserActivityTypeBrowsingWeb
  * Being compiled INTO `:app:ios` is what lets this file reach those fields without widening anything to
  * `public`. It also means this directory is listed in the shell gate's scanned roots (`appShellSources`)
  * rather than exempted from them — so this file may hold **no decisions**. Every default, cast, fallback
- * and rendering lives on the far side of [RigHooks] / [rigPort] / [tierName], in `:test:rig`, where it is
+ * and rendering lives on the far side of [RigHooks] / [rigPort] / the `:test:rig` builders below, in `:test:rig`, where it is
  * ordinary ungated code. Keep it that way: if this file ever needs a branch, failing the build loudly is
  * the correct outcome. (It already caught two: an env-var parse and a fallback, on the first attempt.)
  *
@@ -67,8 +73,7 @@ private fun startRig() = RigServer(
  */
 private fun iosHooks() = RigHooks(
     bootedAt = NSDate().description,
-    compositionMode = SnapSyncRoot.mode.toString(),
-    uploadTier = tierName(SnapSyncRoot.mode),
+    uploadTier = SnapSyncRoot.tier.diagnosticName,
     uploadBase = bakedUploadBase(),
     // Swift calls entry points from the main thread; so does the rig. A trigger invoked on another lane
     // would not be the call the OS makes, which is the whole reason triggers are entry points.
@@ -76,6 +81,17 @@ private fun iosHooks() = RigHooks(
     deviceLog = IosDeviceLogSource(),
     triggers = triggers(),
     excludedTriggers = excludedTriggers(),
+    // The `/user` maps and the `/device` verbs are built in `:test:rig`, not here. Same reason every
+    // default and cast already lives there: this file is compiled INTO `:app:ios` and is scanned by the
+    // shell gate, which permits no decisions — and a command map's bodies are full of them.
+    userCommands = userCommands { SnapSyncRoot.host },
+    excludedUserCommands = excludedUserCommands(),
+    deviceCommands = deviceCommands(
+        core = { SnapSyncRoot.app },
+        photoAccess = SnapSyncRoot.permission,
+    ),
+    readGallery = galleryReader(core = { SnapSyncRoot.app }),
+    osExtensionEnabled = osExtensionEnabled(tier = SnapSyncRoot.tier),
 )
 
 /**
@@ -124,17 +140,12 @@ private fun excludedTriggers(): Map<String, String> = mapOf(
         "registers NSNotificationCenter observers documented as never removed — re-invoking " +
         "double-registers them and corrupts the process under test. Reset is a relaunch.",
     "onLaunchActivity" to
-        "the COLD universal-link delivery, which no in-process call can recreate; relaunch with " +
-        "SNAPSYNC_EVENT_LINK instead. Its warm twin onSceneContinueActivity is wired and exercises " +
-        "the same decode -> gate -> join path.",
+        "the COLD universal-link delivery, which no in-process call can recreate. Note this is a " +
+        "delivery gap, not a join gap: its warm twin onSceneContinueActivity IS wired and reaches the " +
+        "same decode -> gate -> join path, so joining is driveable and only the cold hand-off is not.",
     "onSceneActive" to
         "a launch-shape query, not a trigger: it returns the resolved scene mode and nothing " +
         "downstream changes on a second call. /health reports the composition facts directly.",
-    "applyLaunchEnvMembership" to
-        "reads the process environment, which is fixed for the life of the process — re-invoking " +
-        "either no-ops or re-applies stale directives. Relaunch with new --env instead.",
-    "applyLaunchEnvPhotoLibrary" to
-        "same as applyLaunchEnvMembership: the environment it reads cannot change in-process.",
 )
 
 /**

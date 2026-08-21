@@ -30,7 +30,7 @@ class MembershipRefresh(
     private val configSource: ConfigSource,
     private val store: ConfigStore,
     /** Canonical `…Z` "now" — the OFFLINE witness of the absence verdict. Injected as a `model`-typed
-     *  lambda over the composition's one clock, matching `HeadlessCreate`'s seam. */
+     *  lambda over the composition's one clock. */
     private val now: () -> CaptureDate,
     /**
      * The ordinary local teardown (capability `leave-event`), performed on a confirmed absence.

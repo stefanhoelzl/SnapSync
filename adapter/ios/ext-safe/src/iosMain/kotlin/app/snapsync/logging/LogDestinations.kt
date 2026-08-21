@@ -95,33 +95,3 @@ fun removeStaleExtensionDocumentsLog(destination: LogDestination) {
     mgr.removeItemAtPath("$docs/$APP_LOG_FILE_NAME", error = null)
     mgr.removeItemAtPath("$docs/$APP_LOG_FILE_NAME.1", error = null)
 }
-
-/**
- * Copy the extension's App-Group log (and its rolled sibling) into the **app's** `Documents/`, where
- * `pymobiledevice3 apps pull app.snapsync Documents/ext-debug.log` can reach it — the
- * `SNAPSYNC_EXPORT_LOGS` launch trigger (capability `ios-app-shell`).
- *
- * Called from the app process only: an App Group container is not USB-pullable, and the extension can
- * never observe a launch environment variable because the OS launches it. Overwrites any previous
- * export, so what lands is always this launch's snapshot rather than an older one silently kept.
- *
- * Takes [requested] rather than being called conditionally, so the shell that invokes it holds no
- * branch (`module-architecture`, "Shells are wiring only"); an unrequested export writes nothing.
- *
- * Returns the paths written, for the caller's boot line — an export that reports nothing looks
- * identical to one that silently failed.
- */
-@OptIn(ExperimentalForeignApi::class)
-fun exportExtensionLogToDocuments(requested: Boolean): List<String> {
-    if (!requested) return emptyList()
-    val group = appGroupDirectory() ?: return emptyList()
-    val docs = documentsDirectory() ?: return emptyList()
-    val mgr = NSFileManager.defaultManager
-    return listOf(EXTENSION_LOG_FILE_NAME, "$EXTENSION_LOG_FILE_NAME.1").mapNotNull { name ->
-        val source = "$group/$name"
-        val target = "$docs/$name"
-        if (!mgr.fileExistsAtPath(source)) return@mapNotNull null
-        mgr.removeItemAtPath(target, error = null) // copy refuses to overwrite
-        if (mgr.copyItemAtPath(source, toPath = target, error = null)) target else null
-    }
-}

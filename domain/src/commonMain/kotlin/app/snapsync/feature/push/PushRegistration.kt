@@ -43,14 +43,23 @@ internal fun deviceConfigJson(token: ApnsPushToken): String =
 class PushRegistration(
     private val client: PushHttpClient,
     host: String,
-    private val deviceId: String,
+    /**
+     * The device identity, as a **supplier** rather than a resolved value.
+     *
+     * This was the one consumer that took the value: every other call site already threads `{ deviceId }`.
+     * Taking it eagerly meant that constructing this feature resolved the identity, which matters on a host
+     * where the secure store cannot serve one — the resolution throws, and a value captured at construction
+     * has no way to be retried once the condition clears (capability `device-identity`). A supplier reaches
+     * the resolution per use, so a later attempt succeeds where an earlier one could not.
+     */
+    private val deviceId: () -> String,
     private val log: Logger = Logger.withTag("PushRegistration"),
 ) {
-    private val url = "${host.trimEnd('/')}/devices/$deviceId"
+    private val host = host.trimEnd('/')
 
     /** `PUT` the config for [token] now. Absorbs any failure (never throws to the caller). */
     suspend fun register(token: ApnsPushToken) {
-        client.put(url, deviceConfigJson(token))
+        client.put("$host/devices/${deviceId()}", deviceConfigJson(token))
             .onSuccess { log.i { "push token registered" } }
             .onFailure { log.w(it) { "push registration failed (will retry on next token)" } }
     }

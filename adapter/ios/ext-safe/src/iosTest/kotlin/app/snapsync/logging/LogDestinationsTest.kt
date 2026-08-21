@@ -16,13 +16,11 @@ import kotlin.test.assertTrue
  * anywhere, guarding the failure mode ("no log at all, indistinguishable from a process that never
  * ran") that is hardest to diagnose after the fact.
  *
- * **Deliberately not covered here**: `removeStaleExtensionDocumentsLog` and the copying half of
- * `exportExtensionLogToDocuments`. Both *delete and overwrite* files under this process's
- * `Documents/`, and a bundle-less Kotlin/Native binary resolves that to the real home directory of
- * whoever is running the tests — a CI runner or a developer's Mac. A test that removes
- * `~/Documents/debug.log` to prove a removal works is not a test worth having. Their arguments are
- * pure branches on inputs this file does assert (`fellBackToDocuments`, `requested`), and the
- * behaviour itself is evidenced by the runbook's `SNAPSYNC_EXPORT_LOGS` pull.
+ * **Deliberately not covered here**: `removeStaleExtensionDocumentsLog`. It *deletes* files under this
+ * process's `Documents/`, and a bundle-less Kotlin/Native binary resolves that to the real home
+ * directory of whoever is running the tests — a CI runner or a developer's Mac. A test that removes
+ * `~/Documents/debug.log` to prove a removal works is not a test worth having. Its argument is a pure
+ * branch on an input this file does assert (`fellBackToDocuments`).
  */
 class LogDestinationsTest {
 
@@ -89,26 +87,6 @@ class LogDestinationsTest {
         val banner = LogDestination("/tmp/x/ext-debug.log", fellBackToDocuments = false).bannerLine
 
         assertEquals("[boot] log destination = /tmp/x/ext-debug.log", banner)
-    }
-
-    /**
-     * The export takes its trigger as a parameter rather than being called conditionally, so the shell
-     * that invokes it holds no branch (`module-architecture`, "Shells are wiring only"). An
-     * unrequested export must therefore write nothing at all.
-     */
-    @Test
-    fun `an unrequested export writes nothing`() {
-        assertEquals(emptyList(), exportExtensionLogToDocuments(requested = false))
-    }
-
-    /**
-     * A requested export with no App Group container reports **nothing exported**, rather than a path
-     * it did not write. The return value is the caller's boot line, and an export that claims a file
-     * it never produced sends the reader to look for it over USB.
-     */
-    @Test
-    fun `a requested export with no container reports nothing rather than claiming success`() {
-        assertEquals(emptyList(), exportExtensionLogToDocuments(requested = true))
     }
 
     @Test

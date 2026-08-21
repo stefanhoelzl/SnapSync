@@ -51,6 +51,8 @@ flowchart LR
   test_integration --> domain
   test_integration --> test_world
   test_integration --> ui_presentation
+  test_rig --> adapter_ios_app_only
+  test_rig --> adapter_ios_ext_safe
   test_rig --> domain
   test_rig --> ui_presentation
   test_world --> adapter_generic_app

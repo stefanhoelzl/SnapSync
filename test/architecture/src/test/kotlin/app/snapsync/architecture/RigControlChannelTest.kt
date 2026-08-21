@@ -35,6 +35,17 @@ class RigControlChannelTest {
     private val hook = "test/rig/src/hook/kotlin/app/snapsync/rig/hook/Boot.kt"
 
     /**
+     * Where the `/user` maps live. NOT the hook: a command map's bodies are full of decisions, and the hook
+     * is compiled into `:app:ios` and scanned by the shell gate. So the hook names the builders and the
+     * builders hold the maps, one module across the seam.
+     */
+    private val builders = "test/rig/src/iosMain/kotlin/app/snapsync/rig/IosRigBuilders.kt"
+
+    /** The host whose public command surface `/user` is derived from. */
+    private val hostFile =
+        "ui/presentation/src/commonMain/kotlin/app/snapsync/presentation/StatusContainerHost.kt"
+
+    /**
      * The app-process platform-entry population, derived from the source.
      *
      * Deriving from the `@PlatformEntry` marker is sound HERE — unlike in `PlatformEntryLoggingTest`,
@@ -95,6 +106,74 @@ class RigControlChannelTest {
         val reasoned = Regex(""""(\w+)"\s+to\s*\n?\s*"([^"]{20,})""").findAll(text)
             .map { it.groupValues[1] }.toSet()
         val unreasoned = excludedTriggers() - reasoned
+        assertTrue(
+            unreasoned.isEmpty(),
+            "an exclusion with no stated reason is indistinguishable from an oversight: $unreasoned",
+        )
+    }
+
+    // ── 1b. The SAME bargain for `/user`, over a different derived population ─────────────────────
+
+    /**
+     * The host's public command surface, derived from source.
+     *
+     * `fun on…` only. `onSendDiagnostics` is a `val` holding a nullable lambda rather than a function, and
+     * it is excluded by name below — deriving `val`s too would drag in every read-model property the host
+     * exposes, which are not commands and have no business in a coverage assertion about commands.
+     */
+    private fun derivedUserCommands(): Set<String> =
+        Regex("""^\s{4}fun (on\w+)\(""", RegexOption.MULTILINE)
+            .findAll(read(hostFile))
+            .map { it.groupValues[1] }
+            .toSet() + "onSendDiagnostics"
+
+    /**
+     * Which host members the wired commands actually REACH — scraped from `host().onX(` in the builders,
+     * not from the URL each is published under.
+     *
+     * Deriving from the URL name was the first attempt and it was wrong: `/user/leave` reaches
+     * `onLeaveEvent`, so a name-based derivation reported `onLeave` unaccounted and `onLeaveEvent` missing,
+     * which is a mismatch in the guard rather than in the code. What the coverage question actually asks is
+     * "is every host command reachable or consciously not", and that is answered by the call, not the URL.
+     */
+    private fun wiredUserCommands(): Set<String> =
+        Regex("""host\(\)\.(on\w+)\(""").findAll(read(builders))
+            .map { it.groupValues[1] }.toSet()
+
+    private fun excludedUserCommands(): Set<String> =
+        Regex(""""(on\w+)"\s+to\s*\n?\s*"""").findAll(read(builders))
+            .map { it.groupValues[1] }.toSet()
+
+    @Test
+    fun `every host command is either wired or excluded with a reason`() {
+        val derived = derivedUserCommands()
+        assertTrue(
+            derived.size >= 15,
+            "derived only ${derived.size} commands from $hostFile — the derivation is broken, and a guard " +
+                "that scans nothing fails open",
+        )
+        val wired = wiredUserCommands()
+        val excluded = excludedUserCommands()
+
+        val accounted = wired + excluded
+        val overlap = wired intersect excluded
+        assertTrue(overlap.isEmpty(), "these are both wired AND excluded, which cannot both be true: $overlap")
+
+        assertEquals(
+            derived.sorted(),
+            accounted.sorted(),
+            "the rig's /user inventory drifted from the host's public command surface.\n" +
+                "  unaccounted (wire it, or exclude it WITH THE REASON that makes the omission safe): " +
+                "${(derived - accounted).sorted()}\n" +
+                "  named but no longer a host command (drop it): ${(accounted - derived).sorted()}",
+        )
+    }
+
+    @Test
+    fun `every user-command exclusion states a reason`() {
+        val reasoned = Regex(""""(on\w+)"\s+to\s*\n?\s*"([^"]{20,})""").findAll(read(builders))
+            .map { it.groupValues[1] }.toSet()
+        val unreasoned = excludedUserCommands() - reasoned
         assertTrue(
             unreasoned.isEmpty(),
             "an exclusion with no stated reason is indistinguishable from an oversight: $unreasoned",
