@@ -11,6 +11,7 @@ import app.snapsync.presentation.StatusContainerHost
 import app.snapsync.rig.gallery.GalleryReader
 import app.snapsync.rig.gallery.SeedKind
 import app.snapsync.rig.gallery.WipeScope
+import app.snapsync.rig.gallery.WipeWindow
 import app.snapsync.rig.gallery.plantFallbackIdentity
 import app.snapsync.rig.gallery.seedPhotos
 import app.snapsync.rig.gallery.wipeGallery
@@ -145,19 +146,35 @@ fun deviceCommands(
     },
     "gallery/wipe" to RigCommand { params ->
         // A VALUE, not presence, and the only command here that refuses on one — because a wipe cannot be
-        // undone, so a stale or mistyped scope must refuse rather than delete something.
-        when (val scope = WipeScope.parse(params["scope"])) {
-            null -> CommandResult.badRequest(
+        // undone, so a stale or mistyped scope must refuse rather than delete something. `limit`/`offset`
+        // are held to the same standard for the same reason: a mistyped `limit=al` must NOT fall back to
+        // "no window" and delete the whole library, which is what a plain `toLongOrNull()` would do.
+        val scope = WipeScope.parse(params["scope"])
+        val limitRaw = params["limit"]
+        val offsetRaw = params["offset"]
+        val limit = limitRaw?.toLongOrNull()?.takeIf { it >= 0L }
+        val offset = offsetRaw?.toLongOrNull()?.takeIf { it >= 0L }
+        when {
+            scope == null -> CommandResult.badRequest(
                 "scope must be one of ${WipeScope.entries.joinToString("|") { it.name.lowercase() }}, " +
                     "was '${params["scope"]}' — refusing rather than guessing, because this cannot be undone",
             )
+            limitRaw != null && limit == null ->
+                CommandResult.badRequest("limit must be a non-negative integer, was '$limitRaw'")
+            offsetRaw != null && offset == null ->
+                CommandResult.badRequest("offset must be a non-negative integer, was '$offsetRaw'")
             else -> {
-                val o = wipeGallery(log, scope, photoAccess, photoAccess)
+                val window =
+                    if (limit == null && offset == null) null else WipeWindow(offset ?: 0L, limit)
+                val o = wipeGallery(log, scope, photoAccess, photoAccess, window = window)
+                val windowJson =
+                    o.window?.let { """{"offset":${it.offset},"limit":${it.limit}}""" } ?: "null"
                 CommandResult.ok(
                     """{"scope":"${o.scope.name.lowercase()}","grant":"${o.grant}",""" +
                         """"matched":{"assets":${o.matchedAssets},"albums":${o.matchedAlbums},""" +
                         """"folders":${o.matchedFolders}},"deletable":${o.deletable},""" +
-                        """"bySource":${jsonMap(o.bySource)},"answered":${o.answered},""" +
+                        """"bySource":${jsonMap(o.bySource)},"selected":${o.selected},""" +
+                        """"window":$windowJson,"answered":${o.answered},""" +
                         """"committed":${o.committed},"errorCode":${o.errorCode},""" +
                         """"errorDescription":${quoted(o.errorDescription)}}""",
                 )

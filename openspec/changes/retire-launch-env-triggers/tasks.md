@@ -115,27 +115,36 @@
 
 - [x] 10.1 Take the device lease, build with `-Psnapsync.rig=true`, and exercise `/os`, `/user` and `/device`
       end to end — join, create, leave, reset, seed, gallery read
-- [ ] 10.2 PARTIALLY VERIFIED; the alert path is unexplained and the hang is the actionable finding.
-      VERIFIED on device: scope parsing, grant reporting, matched counts, blocking, and the full outcome
-      shape (`scope=albums` with none present returned `committed:true`, zeroed counts, 99ms). An
-      unrecognized scope returns 400 naming what is accepted.
-      NOT VERIFIED: the confirmation. Four attempts; the log reaches `matched 96 asset(s) — awaiting the
-      system confirmation` and parks indefinitely. Nothing was ever deleted (96 assets before and after).
-      RULED OUT BY MEASUREMENT, not by argument: (a) a blocked main thread — `POST /os/onForeground`
-      answered in 14ms while the wipe was parked, identical to its own 14ms baseline; (b) rig-lane
-      starvation — `/device/logs` answered in 1ms while parked; (c) a stale or locked screen — the
-      captured status-bar clock advances across screenshots, so the app is live and frontmost; (d) a
-      missing scene from `dvt launch` — a hand-opened launch behaved identically, and real UI renders, so
-      `MainViewController` had resolved `SceneMode.Live`. The device syslog carries ZERO photolibraryd or
-      SnapSync lines while parked, so PhotoKit is not working on it either.
-      Cause undetermined remotely; it needs someone at the phone with Xcode attached or a Console trace.
-      THE GAP, worth fixing regardless: a wipe whose confirmation never appears blocks FOREVER.
-      `RigServer` sets no request timeout deliberately — bounding below an OS receipt's deadline would
-      make a transport timeout indistinguishable from an expired receipt. That is right for a receipt,
-      which always fires, and wrong for an alert that may never be presented. With a deadline this would
-      have been a stated outcome in ten seconds rather than four hangs; without one, "not tapped yet" and
-      "cannot be presented" are the same observation. The launch-trigger form shared the flaw and hid it,
-      blocking a coroutine nobody awaited.
+- [ ] 10.2 PARTIALLY VERIFIED. The wipe's contract is verified; its confirmation is not, and the cause is
+      now narrowed to something specific enough to bisect.
+      VERIFIED on device: scope parsing, grant reporting, matched counts, blocking, the deadline, and the
+      full outcome shape. An unrecognized scope returns 400 naming what is accepted.
+      NOT VERIFIED: the confirmation. Every attempt reaches `matched 96 asset(s)` and then nothing — no
+      alert, no completion — until the 120 s deadline reports `answered:false`. Nothing was ever deleted
+      (96 assets before and after, every time).
+      ⚠️ AN EARLIER ROUND OF "ELIMINATIONS" HERE WAS WORTHLESS AND HAS BEEN REMOVED. Apple's own reports of
+      this symptom say a failed delete request can leak permanently, so every measurement taken after the
+      first failure was of a library already carrying one — seven hypotheses "ruled out" against a state
+      that could not have answered differently. They were re-run from a cold process on 2026-08-23 and are
+      only now actually ruled out: asset permission/ownership/source (96/96 `canPerformEditOperation`,
+      all `userLibrary`), a blocked main thread, channel-lane starvation, a stale or locked screen, a
+      scene-less `dvt launch` (the 2026-08-08 run that DID work was necessarily one), the blocking API,
+      background-thread submission, and running after other PhotoKit work.
+      THE FINDING, from one free probe: an EMPTY change block through this same function returns
+      `answered:true committed:true` in **48 ms**. So there is no wedged queue and no leaked request —
+      `performChanges` is healthy. The split is sharper than "delete is broken": a change needing no
+      confirmation completes; a change needing the confirmation never presents it. Apple documents that
+      alert as unconditional per call, so its absence is the platform failing a promise.
+      NEXT: `WipeWindow` (`limit`/`offset`) exists to bisect the 96 — every Apple report of this symptom
+      names a SPECIFIC asset, and one bad member sinks the whole transaction. Chunking may also be the fix
+      rather than only the probe; the 2026-08-08 run pushed 9525 assets through in one transaction, so
+      chunking has never been exercised here. Threads 840122 (Apple engineer confirms a fix in iOS 27.0
+      beta 3 for one asset kind), 806349, 732820.
+      THE GAP, fixed: a wipe whose confirmation never appears used to block FOREVER. `RigServer` sets no
+      request timeout deliberately — bounding below an OS receipt's deadline would make a transport
+      timeout indistinguishable from an expired receipt. That is right for a receipt, which always fires,
+      and wrong for an alert that may never be presented. The launch-trigger form shared the flaw and hid
+      it, blocking a coroutine nobody awaited.
 
 ## 11. Screenshots — its own gate, not a step that rides along
 
