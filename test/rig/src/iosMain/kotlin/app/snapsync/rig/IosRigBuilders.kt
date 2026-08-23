@@ -156,7 +156,8 @@ fun deviceCommands(
                 CommandResult.ok(
                     """{"scope":"${o.scope.name.lowercase()}","grant":"${o.grant}",""" +
                         """"matched":{"assets":${o.matchedAssets},"albums":${o.matchedAlbums},""" +
-                        """"folders":${o.matchedFolders}},"answered":${o.answered},""" +
+                        """"folders":${o.matchedFolders}},"deletable":${o.deletable},""" +
+                        """"bySource":${jsonMap(o.bySource)},"answered":${o.answered},""" +
                         """"committed":${o.committed},"errorCode":${o.errorCode},""" +
                         """"errorDescription":${quoted(o.errorDescription)}}""",
                 )
@@ -228,5 +229,9 @@ private fun captureCeiling(raw: String?): CaptureCeiling = CaptureCeiling(Captur
 private fun direction(raw: String?): Direction = requireNotNull(Direction.entries.firstOrNull {
     it.name.equals(raw, ignoreCase = true) || it.wire.equals(raw, ignoreCase = true)
 }) { "direction must be one of ${Direction.entries.joinToString("|") { it.wire }}, was '$raw'" }
+
+/** A tiny object renderer for the source census — the only map this file emits. */
+private fun jsonMap(m: Map<String, Long>): String =
+    m.entries.joinToString(prefix = "{", postfix = "}") { """"${it.key}":${it.value}""" }
 
 private fun quoted(value: String?): String = value?.let { "\"${it.replace("\"", "'")}\"" } ?: "null"
