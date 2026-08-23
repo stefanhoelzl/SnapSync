@@ -115,18 +115,27 @@
 
 - [x] 10.1 Take the device lease, build with `-Psnapsync.rig=true`, and exercise `/os`, `/user` and `/device`
       end to end — join, create, leave, reset, seed, gallery read
-- [ ] 10.2 PARTIALLY VERIFIED, and it exposed a gap. Verified on device: the command parses its scope,
-      reports the grant, reports matched counts, blocks, and answers with the full outcome shape
-      (`scope=albums` on a device with none returned `committed:true` with zeroed counts in 99ms). NOT
-      verified: the confirmation-alert path. Across three attempts the alert never appeared — the log
-      reached `matched 96 asset(s) — awaiting the system confirmation` and stayed there indefinitely, with
-      the app foregrounded both by `dvt launch` and by hand. Cause undetermined remotely; nothing was
-      deleted in any attempt (library 96 assets before and after).
-      THE GAP: a wipe whose confirmation never appears blocks FOREVER. `RigServer` deliberately sets no
-      request timeout ("nothing here bounds a request below the receipts' own deadlines"), which is right
-      for an OS receipt that always fires and wrong for an alert that may never be presented. The
-      launch-trigger form shared the flaw but hid it — it blocked a launch coroutine nobody was waiting on,
-      where this blocks a caller who is. Worth a deadline, or at least a stated bound, before merge.
+- [ ] 10.2 PARTIALLY VERIFIED; the alert path is unexplained and the hang is the actionable finding.
+      VERIFIED on device: scope parsing, grant reporting, matched counts, blocking, and the full outcome
+      shape (`scope=albums` with none present returned `committed:true`, zeroed counts, 99ms). An
+      unrecognized scope returns 400 naming what is accepted.
+      NOT VERIFIED: the confirmation. Four attempts; the log reaches `matched 96 asset(s) — awaiting the
+      system confirmation` and parks indefinitely. Nothing was ever deleted (96 assets before and after).
+      RULED OUT BY MEASUREMENT, not by argument: (a) a blocked main thread — `POST /os/onForeground`
+      answered in 14ms while the wipe was parked, identical to its own 14ms baseline; (b) rig-lane
+      starvation — `/device/logs` answered in 1ms while parked; (c) a stale or locked screen — the
+      captured status-bar clock advances across screenshots, so the app is live and frontmost; (d) a
+      missing scene from `dvt launch` — a hand-opened launch behaved identically, and real UI renders, so
+      `MainViewController` had resolved `SceneMode.Live`. The device syslog carries ZERO photolibraryd or
+      SnapSync lines while parked, so PhotoKit is not working on it either.
+      Cause undetermined remotely; it needs someone at the phone with Xcode attached or a Console trace.
+      THE GAP, worth fixing regardless: a wipe whose confirmation never appears blocks FOREVER.
+      `RigServer` sets no request timeout deliberately — bounding below an OS receipt's deadline would
+      make a transport timeout indistinguishable from an expired receipt. That is right for a receipt,
+      which always fires, and wrong for an alert that may never be presented. With a deadline this would
+      have been a stated outcome in ten seconds rather than four hangs; without one, "not tapped yet" and
+      "cannot be presented" are the same observation. The launch-trigger form shared the flaw and hid it,
+      blocking a coroutine nobody awaited.
 
 ## 11. Screenshots — its own gate, not a step that rides along
 
