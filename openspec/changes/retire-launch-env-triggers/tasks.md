@@ -121,11 +121,11 @@
 
 ## 11. Screenshots — its own gate, not a step that rides along
 
-- [ ] 11.1 Point `screenshots.yml` at the `SnapSyncForge` target, keeping its three-launch, six-capture shape
-- [ ] 11.2 Dispatch the workflow and download the raws
-- [ ] 11.3 **Look at all six.** A system notification has landed in a capture before (1 of 2 runs); re-dispatch
+- [x] 11.1 Point `screenshots.yml` at the `SnapSyncForge` target, keeping its three-launch, six-capture shape
+- [x] 11.2 Dispatch the workflow and download the raws
+- [x] 11.3 **Look at all six.** A system notification has landed in a capture before (1 of 2 runs); re-dispatch
       if one has. Only `create` should re-diff on an unchanged UI, in the 90×32 px wall-clock region
-- [ ] 11.4 Commit the raws only after that review, and only then open the PR
+- [x] 11.4 Commit the raws only after that review, and only then open the PR
 
 ## 12. Landing
 
