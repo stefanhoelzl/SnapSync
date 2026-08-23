@@ -156,8 +156,9 @@ fun deviceCommands(
                 CommandResult.ok(
                     """{"scope":"${o.scope.name.lowercase()}","grant":"${o.grant}",""" +
                         """"matched":{"assets":${o.matchedAssets},"albums":${o.matchedAlbums},""" +
-                        """"folders":${o.matchedFolders}},"committed":${o.committed},""" +
-                        """"errorCode":${o.errorCode},"errorDescription":${quoted(o.errorDescription)}}""",
+                        """"folders":${o.matchedFolders}},"answered":${o.answered},""" +
+                        """"committed":${o.committed},"errorCode":${o.errorCode},""" +
+                        """"errorDescription":${quoted(o.errorDescription)}}""",
                 )
             }
         }
