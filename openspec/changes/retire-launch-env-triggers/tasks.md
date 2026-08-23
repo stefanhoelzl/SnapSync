@@ -113,11 +113,12 @@
 
 ## 10. Verification on device
 
-- [ ] 10.1 Take the device lease, build with `-Psnapsync.rig=true`, and exercise `/os`, `/user` and `/device`
+- [x] 10.1 Take the device lease, build with `-Psnapsync.rig=true`, and exercise `/os`, `/user` and `/device`
       end to end — join, create, leave, reset, seed, gallery read
-- [ ] 10.2 Exercise the wipe deliberately, confirming it blocks, raises two confirmations for `all`, and
-      reports a tapped cancel as 3072
-- [ ] 10.3 Confirm a build **without** `-Psnapsync.rig=true` is undriveable and contains no rig or forge source
+- [ ] 10.2 BLOCKED — needs a human at the phone. The wipe raises iOS's own confirmation and blocks until
+      someone taps it; it is also irreversible, so it must not be started by an agent that cannot answer
+      the alert it raises. The refusal path (unrecognized `?scope=` -> 400) IS verified
+- [x] 10.3 Confirm a build **without** `-Psnapsync.rig=true` is undriveable and contains no rig or forge source
 
 ## 11. Screenshots — its own gate, not a step that rides along
 
@@ -130,7 +131,10 @@
 ## 12. Landing
 
 - [ ] 12.1 Open the PR with the `internal` changelog label
-- [ ] 12.2 Tell `os-producer-deregistration` it can proceed, and that `forced` must survive an OS-initiated
-      cold relaunch or `rig-simulator-host` stays blocked after it lands
-- [ ] 12.3 Tell `rig-simulator-host` that `POST /device/identity` exists, so it can drop its own rig-side plant
-      if it wants to
+- [x] 12.2 `os-producer-deregistration`'s session has ended, so this could not be delivered by message.
+      Recorded durably instead — design.md D14 states the requirement (`forced` must survive an
+      OS-initiated cold relaunch) and the proposal's Impact names the dependency, so it now lives in the
+      change rather than only in a transcript, which is where it was lost once already
+- [x] 12.3 `rig-simulator-host`'s session has ended too. `POST /device/identity` and the read-only
+      App-Group fallback are specified in the `device-identity` delta, which is where that workspace will
+      look
