@@ -9,6 +9,7 @@ import io.ktor.server.application.Application
 import io.ktor.server.application.ApplicationCall
 import io.ktor.server.cio.CIO
 import io.ktor.server.engine.embeddedServer
+import io.ktor.server.request.path
 import io.ktor.server.request.uri
 import io.ktor.server.response.respondText
 import io.ktor.server.routing.get
@@ -176,6 +177,22 @@ class RigServer(
     }
 
     /**
+     * The ROUTE segment, read from the request PATH and never from `parameters`.
+     *
+     * `call.parameters` merges the path and the query, so a command carrying a query argument of the same
+     * name shadows its own route. Measured on device: `POST /user/create?name=RigCheck2` answered
+     * `404 unknown user command 'RigCheck2'` — the route had resolved to the value of the query parameter
+     * rather than the path segment, so the command could not be reached at all.
+     *
+     * Reading the path is not merely the fix for `name`; it is the shape that cannot recur. A route
+     * placeholder and a query argument live in different namespaces, and any code that reads them from one
+     * merged bag will collide again the next time a command needs an argument called after its own
+     * placeholder.
+     */
+    private fun ApplicationCall.routeName(prefix: String): String =
+        request.path().removePrefix(prefix).trim('/')
+
+    /**
      * `POST /user/{name}?…` — invoke a real user command on the main lane.
      *
      * Answered `202` without waiting, because the command IS an Orbit intent: it returns a `Job`, and its
@@ -183,7 +200,7 @@ class RigServer(
      * completion signal here would be inventing one the UI does not have.
      */
     private suspend fun ApplicationCall.respondUserCommand() {
-        val name = parameters["name"].orEmpty()
+        val name = routeName("/user")
         val command = hooks.userCommands[name]
             ?: return respondText(
                 excludedOrUnknown(name, hooks.excludedUserCommands, "user command"),
@@ -207,7 +224,7 @@ class RigServer(
      * a log line to go and find, and a command that answers is the whole reason these moved.
      */
     private suspend fun ApplicationCall.respondDeviceCommand() {
-        val name = parameters.getAll("name").orEmpty().joinToString("/")
+        val name = routeName("/device")
         val command = hooks.deviceCommands[name]
             ?: return respondText(
                 excludedOrUnknown(name, emptyMap(), "device command"),
@@ -237,7 +254,7 @@ class RigServer(
      * whatever the platform gives back.
      */
     private suspend fun ApplicationCall.respondTrigger() {
-        val name = parameters["name"].orEmpty()
+        val name = routeName("/os")
         val arg = request.queryParameters["arg"]
         val trigger = hooks.triggers[name]
             ?: return respondText(
