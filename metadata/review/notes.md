@@ -25,7 +25,3 @@ from strangers — members only ever see photos from people they chose to share
 an event with. Only photos taken after the event starts are shared, a member
 can leave the event at any time (which stops all sharing), and any concern can
 be reported to the published support contact on this listing.
-
-UNLISTED DISTRIBUTION
-We intend to distribute this app using Unlisted App Distribution, and will
-submit an unlisted app request following this submission.
