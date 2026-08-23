@@ -1,11 +1,21 @@
 # App Store / landing-page marketing screenshots. DISPATCH-ONLY and NON-GATING dev infra — like
-# ssh-mac.yml, it posts no status check and never blocks a merge. It changes no product behavior; the
-# only product-facing part (the SNAPSYNC_FORGE_STATE launch trigger) is spec'd in ios-app-shell. Its
+# ssh-mac.yml, it posts no status check and never blocks a merge. It changes no product behavior. Its
 # rationale (why it exists at all, and every knob below) lives here so there is no separate capability.
+# The one product-facing PROPERTY — that a committed raw depicts the real screen in a state the real
+# reduction can reach — is spec'd in `ios-appstore-metadata`, beside the requirement making those raws
+# the source of truth for the listing.
 #
-# WHAT IT DOES: builds the app for the iOS simulator, boots a 6.9" iPhone, and launches the app once per
-# (appearance, marketing state) with SNAPSYNC_FORGE_STATE (which renders the shared StatusScreen over
-# forged sources — no backend, attestation, or photo access), capturing each with `simctl io screenshot`.
+# WHAT IT DOES: builds the SnapSyncForge target for the iOS simulator, boots a 6.9" iPhone, and launches
+# it once per (appearance, marketing state) with SNAPSYNC_FORGE_STATE, capturing each with
+# `simctl io screenshot`.
+#
+# WHY A SEPARATE TARGET: forge used to be a MODE of the shipped app, selected by a launch variable that
+# every binary read. That meant the preset table and a ~15-member inert shell delegate shipped to users.
+# `SnapSyncForge` is its own binary that links neither `:app:ios` nor any adapter, so it has no
+# SnapSyncRoot, no live graph, no backend client and no photo access — not because a delegate declines,
+# but because none of that code is in it (verified: 0 forge symbols in the shipped framework, 35 in this
+# one). SNAPSYNC_FORGE_STATE survives here because this binary's source does not exist in a production
+# build, which is the same footing SNAPSYNC_RIG_PORT stands on.
 # It uploads **6 RAW captures** (3 states x light/dark) as a workflow ARTIFACT and stops there.
 #
 # RAW ONLY, BY DESIGN. An operator commits these to `screenshots/` and they become the SINGLE SOURCE OF
@@ -69,20 +79,20 @@ jobs:
       # ios-app-shell "No code signing required for the simulator build"). Debug so the Kotlin/Native
       # framework link skips the LLVM optimizer — a screenshot needs no optimization.
       #
-      # This builds the whole `iosApp` scheme, so the PhotoKit BackgroundUploadExtension is in the closure
-      # (it compiles for the simulator SDK — proven by the predecessor change's spike).
+      # This used to build the whole `iosApp` scheme, dragging the PhotoKit BackgroundUploadExtension into
+      # the closure — irrelevant to a UI screenshot and ~78s of the ~368s build (21%). The comment here
+      # recorded that dropping it was NOT a one-word swap (`-target` is rejected alongside
+      # `-derivedDataPath`) and would need a dedicated scheme in the Xcode project.
       #
-      # The extension is irrelevant to a UI screenshot and costs ~78s of the ~368s build (21%; the other
-      # 79% is the Compose/Skiko framework link, which is not cacheable and genuinely needed). Dropping it
-      # is NOT the one-word swap this comment used to claim: `-target iosApp` in place of `-scheme iosApp`
-      # FAILS — `xcodebuild` rejects `-target` together with `-derivedDataPath` ("The flag -scheme,
-      # -testProductsPath, or -xctestrun is required when specifying -derivedDataPath"), which this step
-      # uses. Doing it properly needs a dedicated app-only scheme in the Xcode project.
-      - name: Build the app for the iOS simulator
+      # There is one now, for an unrelated reason: forge stopped being a mode of the shipped app and became
+      # its own target. So this builds a binary that contains no extension, no live graph and no adapters —
+      # the saving falls out of the containment rather than having been engineered for. What remains is the
+      # Compose/Skiko framework link, which is not cacheable and genuinely needed.
+      - name: Build the forge binary for the iOS simulator
         run: |
           xcodebuild \
             -project iosApp/iosApp.xcodeproj \
-            -scheme iosApp \
+            -scheme SnapSyncForge \
             -configuration Debug \
             -sdk iphonesimulator \
             -destination 'generic/platform=iOS Simulator' \
@@ -140,7 +150,7 @@ jobs:
           # it is both faster in the common case and actually correct in the slow one.
           wait_gone() {
             for _ in $(seq 1 40); do
-              xcrun simctl spawn "$DEVICE" launchctl list 2>/dev/null | grep -q app.snapsync || return 0
+              xcrun simctl spawn "$DEVICE" launchctl list 2>/dev/null | grep -q app.snapsync.forge || return 0
               sleep 0.5
             done
             echo "::warning::app still running after terminate"
@@ -171,11 +181,11 @@ jobs:
           # framework observes `traitCollectionDidChange`. So a running app re-themes when `simctl ui
           # appearance` flips. Halves the launches, and wait_stable proves the re-theme actually landed.
           for STATE in create joining in_sync; do
-            xcrun simctl terminate "$DEVICE" app.snapsync 2>/dev/null || true
+            xcrun simctl terminate "$DEVICE" app.snapsync.forge 2>/dev/null || true
             wait_gone
             xcrun simctl ui "$DEVICE" appearance light
             SIMCTL_CHILD_SNAPSYNC_FORGE_STATE="$STATE" \
-              xcrun simctl launch "$DEVICE" app.snapsync
+              xcrun simctl launch "$DEVICE" app.snapsync.forge
             wait_stable "shots/$STATE-light.png"
 
             xcrun simctl ui "$DEVICE" appearance dark
@@ -188,7 +198,7 @@ jobs:
             fi
             echo "captured $STATE (light + dark)"
           done
-          xcrun simctl terminate "$DEVICE" app.snapsync 2>/dev/null || true
+          xcrun simctl terminate "$DEVICE" app.snapsync.forge 2>/dev/null || true
           rm -rf tmp
           # Diagnostics: dump any crash reports so a launch-into-Joined crash is attributable, not guessed.
           echo "=== crash reports ==="
