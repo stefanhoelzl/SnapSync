@@ -16,7 +16,15 @@ module exporting its own **static** framework that the Xcode project links:
 ```
 :app:ios            → framework "SnapSyncKit"        ← app process (UI + ledger reader)
 :app:ios:extension  → framework "SnapSyncUploadKit"  ← extension process (discover→upload)
+:app:ios:forge      → framework "SnapSyncForgeKit"   ← marketing-screenshot binary, build-gated
 ```
+
+The third is **built only under `-Psnapsync.forge=true`** and links neither `:app:ios` nor any adapter: it
+renders the real `StatusScreen` over forged sources and has no `SnapSyncRoot`, no live graph, no backend
+client. Forge used to be a *mode* of the app — a `CompositionMode.Forge` case and a `ForgeShell`
+implementing ~15 `Shell` members whose only job was to keep every entry point inert — and all of that
+shipped. Now the inertness is a property of which binary is running rather than something a delegate has to
+keep performing correctly.
 
 Two frameworks, not one, for two real reasons: the **extension-safety line** (app-only API —
 UIKit/BGTask/URLSession adapters — must be structurally un-linkable from the appex, and
@@ -134,7 +142,7 @@ that `provisionEvent` → `enableBackgroundUpload()` → `disableExtension()` re
 to a **full leave** (cancel transfers, cancel the heartbeat, wipe ledger + cursor) followed by a no-op
 enable. Joining an event tore the upload arm down and started nothing. Selecting one producer also makes
 the two tiers mutually exclusive *structurally* — `setUploadJobExtensionEnabled` lives inside the PhotoKit
-producer, which is simply not constructed on the other tier, so not even the dev force flag can enable both.
+producer, which is simply not constructed on the other tier, so nothing can enable both.
 
 **Single-writer invariant — the writer's process depends on the tier** (`sync-ledger`: exactly one
 record-writer; its process placement is a platform binding). On **iOS ≥26.1** the **extension** is the
@@ -188,10 +196,11 @@ constructs no writer.
 
 ## iOS-version deviation & the two upload tiers
 
-App deploys **min iOS 18**. Upload runs on one of two tiers, selected **once per process** by the
-pure sealed resolver (`model/`'s `resolveComposition` over `LaunchDirectives` + one OS fact; that
-fact is `isOperatingSystemAtLeastVersion(26.1)`) — `SnapSyncRoot`'s one `when (mode)` switch picks
-the tier's mechanism thunks; no entry point re-checks a flag:
+App deploys **min iOS 18**. Upload runs on one of two tiers, selected **once per process** by the pure
+resolver (`model/`'s `resolveComposition`), whose **only** input is `isOperatingSystemAtLeastVersion(26.1)`
+— `SnapSyncRoot`'s one `when (tier)` switch picks the tier's mechanism thunks; no entry point re-checks a
+flag. There is no developer input to that resolution any more: no launch variable, no build property, no
+runtime override, so the tier a process runs is a function of the device it runs on.
 
 - **iOS ≥26.1 — PhotoKit (`ios-photokit-upload`).** The OS-driven upload extension, using the
   **deprecated 26.1** `PHBackgroundResourceUploadExtension` (the only protocol runnable on current GM
@@ -205,12 +214,13 @@ the tier's mechanism thunks; no entry point re-checks a flag:
   same `:domain` feature/upload `UploadCycle` through the `BackgroundUploadPump`. On this tier the **app**
   is the single `LedgerWriter` (no extension process exists).
 
-**Forcing the app-driven tier on a device** (`SNAPSYNC_FORCE_URLSESSION_UPLOAD=1`) is the only way to
-exercise the 18–26.0 tier on the agent-driveable SE2, which runs iOS 26.5. It selects the **tier and
-nothing else** — the transport is a background `URLSession` on every host, and the PhotoKit extension is
-never registered. It previously did both wrong — foreground transport, *and* it still enabled the
-extension, giving two `LedgerWriter`s over one App-Group ledger — which made the SE2 an unfaithful proxy
-that masked bugs rather than exposing them.
+**Forcing the app-driven tier on a device is not currently possible.**
+`SNAPSYNC_FORCE_URLSESSION_UPLOAD` was deleted with the rest of the launch-trigger surface, and its
+replacement — a runtime-selectable tier, from the producer-resolution work — has not landed. On the
+agent-driveable SE2 (iOS 26.5) the app-driven producer is reachable only under a **`LIMITED`** photo grant,
+where the OS never invokes the extension. That exercises the pump, the scheduler, the background
+`URLSession`, staging and ledger writing, but **not** the full-library discovery walk: a partial grant feeds
+discovery the in-memory selection snapshot instead of walking.
 
 There is **no host axis** any more: nothing reads `SIMULATOR_DEVICE_NAME`, and there is no
 simulator-specific session. The transport used to be downgraded to a foreground session on the
@@ -233,12 +243,16 @@ appex can exist at all.
   (its own `Documents/debug.log`, pullable as before), the extension `extensionLogDestination()`
   (`ext-debug.log` in the **App Group**, so the app can read it for a diagnostic dump; it falls back
   to its own Documents when the container is unavailable and says so in the boot banner). Verbatim,
-  10 MB roll. The os_log `PublicNSLogWriter` is redacted `<private>` on current iOS. To pull the
-  extension's log, relaunch the app with `SNAPSYNC_EXPORT_LOGS=1` (it copies the App-Group file into
-  the app's Documents) — the extension can never see a launch env var, since the OS launches it. Each root emits a boot banner and wraps
+  10 MB roll. The os_log `PublicNSLogWriter` is redacted `<private>` on current iOS. The extension's log
+  lives in the App Group, which is not USB-pullable; read it through the control channel
+  (`GET /device/logs?process=extension`, load `rig-channel`) — the copy-into-Documents launch trigger that
+  used to serve this is gone, along with every other one. Each root emits a boot banner and wraps
   its entry points with `Logger.invocation`, so every line carries a `[<entryPoint>]` prefix. Keep new
   entry points wrapped, or their downstream lines lose the trigger prefix.
-- **`-lsqlite3`:** required in each target's `OTHER_LDFLAGS` (above). A new linked target needs it.
+- **`-lsqlite3`:** required in each target's `OTHER_LDFLAGS` (above) for any target linking SQLDelight's
+  native driver. The forge target does **not** link it (no ledger, no download store), so it does not need
+  the flag — but check before assuming that of any other new target; the symbol resolves at link time, not
+  at call time, so the failure is a link error rather than a crash.
 - **In-memory SQLite on Native:** `NativeSqliteDriver` shares an in-memory DB across connections via
   shared-cache — give each backend a **unique db name** to avoid cross-test/instance leakage.
 - **Compose scope ownership:** `SnapSyncRoot` deliberately uses a process-lifetime `SupervisorJob`,

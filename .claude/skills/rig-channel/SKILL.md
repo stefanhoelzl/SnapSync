@@ -1,12 +1,15 @@
 ---
 name: rig-channel
 description: >-
-  Force an OS-callback entry point on the connected iPhone, and read the app's
-  real live state over HTTP — the build-time-only control channel (:test:rig,
-  -Psnapsync.rig=true). Use when the task means "make the app foreground /
-  silent-push / run the background task", "why did no upload cycle run", "read
-  the extension's log without a relaunch", "what is the app's UiState right
-  now", or anything touching /state, /logs, /trigger or usbmux forward 18099.
+  Drive the app running on the connected iPhone, over HTTP — the build-time-only
+  control channel (:test:rig, -Psnapsync.rig=true). This is how you join, create,
+  leave, reset device state, seed or wipe the photo library, read the selection
+  policy, force an OS callback, and read live UiState. Use when the task means
+  "join an event on device", "create an event", "seed photos", "wipe the
+  gallery", "reset the device", "make the app foreground / silent-push / run the
+  background task", "why did no upload cycle run", "read the extension's log", or
+  anything touching /os, /user, /device or usbmux forward 18099. To install or
+  launch a build first, load `ios-device`.
 ---
 
 # rig-channel — driving the app's entry points over HTTP
@@ -72,26 +75,121 @@ discovery. All simulators on a host **share the host's loopback**, so a simulato
 
 ## The endpoints
 
+Namespaced by **who is on the other side of the call**. That is not decoration: `/os` and `/user` have
+populations sitting in source, so a guard derives them and an unwired member is a red build; `/device` has
+no population to derive from, so it is hand-listed and small.
+
 ```
-GET  /health                       composition mode, upload tier, upload base, port, boot instant
-GET  /state                        the real UiState + readiness + ledger + download + read-models
-GET  /logs?process=app|extension   pass-through to DeviceLogSource.tail, BOTH processes
-GET  /triggers                     what is wired, and what is excluded WITH ITS REASON
-POST /trigger/<name>?arg=…         the real @PlatformEntry member, invoked as Swift invokes it
+GET  /health                            rig=up, port, boot instant — liveness ONLY
+
+POST /os/<entry>?arg=…                  the real @PlatformEntry member, invoked as Swift invokes it
+POST /user/<command>?…                  the real StatusContainerHost command, as a tap invokes it
+
+GET  /device/state                      the real UiState + readiness + ledger + downloads + build facts
+GET  /device/logs?process=app|extension pass-through to DeviceLogSource.tail, BOTH processes
+GET  /device/gallery[?cutoff=…][&resources=true]   the library, through the app's own policy
+POST /device/reset                      void durable sync state
+POST /device/gallery/seed?n=&kind=bulk|policy
+POST /device/gallery/wipe?scope=all|assets|albums
+POST /device/identity?id=…              plant a device id where the Keychain cannot serve one
 ```
 
-**`/state` is the reduced state, not a mirror of it** — `UiState` is `@Serializable` where it is
+There is **no inventory route**. Asking for a member that is excluded returns **the reason it is
+excluded**, which was the only part that carried information; the names live here.
+
+**`/device/state` is the reduced state, not a mirror of it** — `UiState` is `@Serializable` where it is
 declared, so the encoder is compiler-generated. It also carries what `UiState` deliberately omits: the
-ledger aggregates (the only assertion that proves bytes landed), download progress, and **readiness**.
+ledger aggregates (the only assertion that proves bytes landed), download progress, **readiness**, the
+build facts (which backend this build points at), and the OS's own view of the extension registration.
 
-📄 **`/logs?process=extension` needs no relaunch** — one request instead of `SNAPSYNC_EXPORT_LOGS=1` +
-relaunch + `apps pull`. An unreadable or absent log is a `404` with a stated reason, never an empty
-`200`.
+📄 **`/device/logs?process=extension` needs no relaunch, no copy step and no `apps pull`.** An unreadable
+or absent log is a `404` with a stated reason, never an empty `200`. It reads the **current** file only —
+a rolled `.1` sibling is not reachable this way.
+
+## Driving an event end to end
+
+Everything below assumes a rig build installed and launched (`ios-device`) and `usbmux forward 18099`.
+
+```
+# JOIN — the warm universal-link path, same decode -> gate -> join a scanned QR takes
+curl -X POST "localhost:18099/os/onSceneContinueActivity?arg=https://snapsync.stho.net/join%23v=3&d=<payload>"
+
+# CREATE — exactly as a user creates one: mint, then confirm the gate it opens
+curl -X POST "localhost:18099/user/create?name=Trip&startsAt=2026-08-23T00:00&endsAt=2026-08-30T00:00"
+curl -s localhost:18099/device/state | jq '.ui'      # wait for JoiningEvent(eventId, Ready)
+curl -X POST "localhost:18099/user/confirmJoin?cutoff=2026-08-23T00:00:00Z&until=2026-08-30T00:00:00Z&direction=upload&saveToAlbum=false"
+
+# MINT ONLY — create, read the id, then abandon the gate
+curl -X POST "localhost:18099/user/cancelJoin"
+
+# LEAVE
+curl -X POST localhost:18099/user/leave
+```
+
+⚠️ **`create` is non-idempotent** — every call mints a **new** backend event. There is no launch variable
+to forget to unset any more, but there is also nothing stopping a loop from minting a hundred.
+
+⚠️ **Never join an event you did not create.** A `direction=download` join imports that event's photos into
+this device's library and registers this device on someone's real membership.
+
+## The photo library
+
+```
+curl -s "localhost:18099/device/gallery" | jq                      # raw census: total, screenshots, recordings
+curl -s "localhost:18099/device/gallery?cutoff=2026-07-01T00:00:00Z" | jq   # + per-asset policy verdict
+curl -s "localhost:18099/device/gallery?cutoff=…&resources=true" | jq       # + each asset's resources
+
+curl -X POST "localhost:18099/device/gallery/seed?n=4000&kind=bulk"    # walk-cost: tiny 2001-dated assets
+curl -X POST "localhost:18099/device/gallery/seed?n=20&kind=policy"    # policy probe: +1h, straddling 3 MP
+```
+
+`kind=policy` seeds assets dated an hour ahead — past any cutoff an event created today can carry — and
+**alternating** above/below the 3 MP image floor, so the resolution rule is the only thing that can separate
+them. Expect exactly the even-indexed half admitted.
+
+The read reports **which rule refused** each excluded asset, in the rule's own vocabulary, so
+`refusedBy: "MinImageArea(3000000)"` sits in the same row as the `pixelArea` that triggered it.
+
+⚠️ **`resources=true` is ~110 ms per asset** (one PhotoKit round-trip each) — about 17 minutes across a
+9525-asset library. The response reports what it paid. Ask for it when you need a filename, which IS the
+upload/ledger key; otherwise don't.
+
+⚠️ Under a **`LIMITED`** grant, `total` is the hand-picked **selection**, not the library. The grant is in
+the response for that reason. A fetch under `.limited` can also surface iOS's own limited-access alert.
+
+## Emptying the library
+
+```
+curl -X POST "localhost:18099/device/gallery/wipe?scope=all"      # all | assets | albums
+```
+
+🚨 **IRREVERSIBLE, and NOT headless.** iOS raises its own confirmation and **someone must tap the device**.
+Measured (SE2, iOS 26.6): an `all` wipe raises **two** confirmations, one per kind — batching does not
+collapse them. The request **blocks** until you answer, then reports `committed` and the matched counts. A
+tapped Cancel comes back as `committed:false` with `errorCode:3072`, which is the operator answering, not a
+bug.
+
+An unrecognized `scope` is a `400` that names what is accepted — the only value-checked command here,
+because this is the only one that cannot be undone.
+
+## Resetting durable state
+
+```
+curl -X POST localhost:18099/device/reset
+```
+
+Voids the ledger, the discovery cursor, the membership config (**locally** — no backend is notified), and
+prunable download rows. **Keeps** every row carrying an import handle, so downloaded photos are not
+re-uploaded. Answers with the ledger counts after the fact, so "it cleared" is verifiable.
+
+⚠️ **Order matters and nothing enforces it any more.** Crossing backends, reset **before** leaving: after a
+reset the device is unjoined, so a leave is a no-op rather than a `DELETE` aimed at the backend you are
+leaving behind. There is no coordinator imposing that order now that each command is its own request.
 
 ## Triggers return what the PLATFORM returns
 
 ⚠️ **`onForeground` returns `202` and does NOT wait** — and it is the trigger you will reach for most.
-The platform hands it no completion handler, so neither does the rig. **Poll `/state`.**
+The platform hands it no completion handler, so neither does the rig. **Poll `/device/state`.**
 
 The four entries the OS *does* wait on — `onSilentPush`, `runDownloadBackstop`, `runUploadHeartbeat`,
 `handleBackgroundUrlSession` — block until the app releases the handler and return `heldMs` and
@@ -100,18 +198,21 @@ The four entries the OS *does* wait on — `onSilentPush`, `runDownloadBackstop`
 🧭 **The rig classifies nothing.** `OsReceipt.release` carries no outcome, so "released because the work
 finished" vs "released on the deadline" is **not** derivable from `heldMs`. The authoritative answer is
 the expiry line `… OS handler released on its <deadline> deadline …`, which `OsReceipt` emits on the
-expiry path and no other — read it via `/logs` after this request's `[rig] → /trigger/…` marker. Every
+expiry path and no other — read it via `/device/logs` after this request's `[rig] → /os/…` marker. Every
 request writes that marker, so it doubles as the log cursor.
 
-Excluded entry points answer with **the reason they are excluded**, not a bare 404 — `onLaunch`
-re-registers `NSNotificationCenter` observers documented as never removed, so re-invoking it corrupts
-the process under test. Reset is a relaunch.
+Excluded members answer with **the reason they are excluded**, not a bare 404 — `onLaunch` re-registers
+`NSNotificationCenter` observers documented as never removed, so re-invoking it corrupts the process under
+test (reset is a relaunch), and `onRequestPermission` raises a system alert only a finger can answer.
+
+⚠️ **`/user` commands are intents and return `202`, exactly as a tap does.** They start work and do not wait
+for it, because the UI itself has no completion signal to expose. Poll `/device/state`.
 
 ## Ordering trap
 
 `onForeground` fires **before** the membership config resolves — measured at 17:53:25.23 against
 17:53:27.45. A caller that triggers and then asserts reads a membership-less state and concludes
-nothing happened. Poll `/state`'s `ready.configResolved` instead of sleeping.
+nothing happened. Poll `/device/state`'s `ready.configResolved` instead of sleeping.
 
 ## If it does not answer
 
@@ -120,9 +221,18 @@ failed to bind". The rig logs a bind failure at `Error` naming the address and p
 pullable **without** the rig (`apps pull … Documents/debug.log`) — read it before guessing. The usual
 cause is a previous instance still alive holding the port; SIGKILL it (`ios-device` covers that).
 
-## 🚫 Do not force the URLSession tier on iOS ≥26.1 yet
+## 🚫 You cannot force the URLSession tier — the lever is gone
 
-The OS's extension registration survives relaunch **and** reinstall, and `UploadArm` cannot deregister
-it while the composition passes `osUploadProducer = { null }` under the force flag — so both tiers
-would write one App-Group ledger, breaching `sync-ledger`'s single-writer invariant. A follow-on change
-(`ComposedProducers` distinguishing selectable-from-stoppable) fixes it; until then, don't.
+`SNAPSYNC_FORCE_URLSESSION_UPLOAD` was deleted with the rest of the launch-trigger surface, and nothing
+replaces it yet. Its replacement is a runtime-selectable tier, which belongs to the producer-resolution work
+(`ComposedProducers` giving way to one resolved producer from a pure `resolve(osFacts, permission, forced)`)
+and has not landed.
+
+Until it does, the app-driven tier is reachable on a >=26.1 device **only under a `LIMITED` photo grant**,
+where the OS never invokes the extension (measured: zero `process()` invocations over 22 minutes) and the arm
+selects the app-driven producer. That exercises the pump, the `BGProcessingTask` scheduler, the background
+`URLSession`, staging and ledger writing — but **not** the full-library discovery walk, because a partial
+grant feeds discovery the in-memory selection snapshot instead of walking.
+
+When that endpoint arrives it will need a **durable** input, not an in-memory one: a process the OS
+relaunches to deliver `handleEventsForBackgroundURLSession` resolves its tier before any request can arrive.

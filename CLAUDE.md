@@ -83,9 +83,9 @@ tools/ config/ gradle/            more build tooling
 
 ## Runbooks (load the skill before you start)
 
-- **Touching the connected iPhone** - install, launch, screenshot, device logs, the `SNAPSYNC_*`
-  launch triggers, seeding, wiping, forcing the app-driven upload tier -> load **`ios-device`**. It
-  opens with the **device lease**, which `scripts/device-guard` requires before any of it will run.
+- **Touching the connected iPhone** - install, launch, screenshot, device logs -> load **`ios-device`**.
+  It opens with the **device lease**, which `scripts/device-guard` requires before any of it will run.
+  It stops at the running app: to *drive* one, see `rig-channel` below.
   (`pymobiledevice3`, `dvt`, the libimobiledevice tools)
 - **Seeing or clicking the app's UI without a device** -> load **`ui-harness`**. 🚫 **Never**
   `java.awt.Robot`, and never capture the real screen `:0` - it raises a portal consent prompt and
@@ -94,9 +94,11 @@ tools/ config/ gradle/            more build tooling
   `iosSimulatorArm64Test`s -> load **`ssh-mac-build`**. (`xcodebuild`, `ssh-mac.yml`)
 - **Testing a backend change against a real device** -> load **`local-backend`** first; it owns the
   three-hop chain and the one step whose omission is silent. (`deno task dev:local|dev:tunnel`)
-- **Forcing an OS callback on device, or reading live app state over HTTP** — the build-time-only
-  control channel (`-Psnapsync.rig=true`, `/state`, `/logs`, `/trigger/…`) -> load **`rig-channel`**.
-  It needs the same device lease as `ios-device`. (`:test:rig`, `usbmux forward`)
+- **Driving the app on device** — joining, creating, leaving, resetting, seeding, wiping, reading the
+  selection policy, forcing an OS callback, reading live state — over the build-time-only control channel
+  (`-Psnapsync.rig=true`, `/os`, `/user`, `/device`) -> load **`rig-channel`**. It needs the same device
+  lease as `ios-device`. **There are no `SNAPSYNC_*` launch triggers any more**: production Kotlin declares
+  none, and a guard fails the build if one returns. (`:test:rig`, `usbmux forward`)
 - **Apple portal chores** - certificates, device UDIDs, provisioning profiles, bundle-id
   capabilities, App Store / TestFlight text metadata -> load **`asc-portal`**. (`app-store-connect`)
 
