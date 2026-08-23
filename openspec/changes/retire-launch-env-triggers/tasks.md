@@ -103,13 +103,13 @@
 
 ## 9. Specs and runbooks
 
-- [ ] 9.1 Fix the stale cross-reference at `diagnostic-logging` line 216, which points `SNAPSYNC_RESET_STATE`
+- [x] 9.1 Fix the stale cross-reference at `diagnostic-logging` line 216, which points `SNAPSYNC_RESET_STATE`
       at `ios-app-shell`; it is now `device-state-reset`
-- [ ] 9.2 Re-cut `ios-device`: it keeps lease, install, launch, screenshot, restart, `apps pull`, link
+- [x] 9.2 Re-cut `ios-device`: it keeps lease, install, launch, screenshot, restart, `apps pull`, link
       verification and the per-build loop, and loses the entire launch-trigger index
-- [ ] 9.3 Re-cut `rig-channel`: the three namespaces, every command, the gallery read, and the
+- [x] 9.3 Re-cut `rig-channel`: the three namespaces, every command, the gallery read, and the
       reset-before-leave note that is no longer enforced by an ordering
-- [ ] 9.4 Update CLAUDE.md's runbook pointers and the two traps if the wording no longer matches
+- [x] 9.4 Update CLAUDE.md's runbook pointers and the two traps if the wording no longer matches
 
 ## 10. Verification on device
 
