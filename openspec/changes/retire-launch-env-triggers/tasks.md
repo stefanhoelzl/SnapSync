@@ -115,10 +115,18 @@
 
 - [x] 10.1 Take the device lease, build with `-Psnapsync.rig=true`, and exercise `/os`, `/user` and `/device`
       end to end — join, create, leave, reset, seed, gallery read
-- [ ] 10.2 BLOCKED — needs a human at the phone. The wipe raises iOS's own confirmation and blocks until
-      someone taps it; it is also irreversible, so it must not be started by an agent that cannot answer
-      the alert it raises. The refusal path (unrecognized `?scope=` -> 400) IS verified
-- [x] 10.3 Confirm a build **without** `-Psnapsync.rig=true` is undriveable and contains no rig or forge source
+- [ ] 10.2 PARTIALLY VERIFIED, and it exposed a gap. Verified on device: the command parses its scope,
+      reports the grant, reports matched counts, blocks, and answers with the full outcome shape
+      (`scope=albums` on a device with none returned `committed:true` with zeroed counts in 99ms). NOT
+      verified: the confirmation-alert path. Across three attempts the alert never appeared — the log
+      reached `matched 96 asset(s) — awaiting the system confirmation` and stayed there indefinitely, with
+      the app foregrounded both by `dvt launch` and by hand. Cause undetermined remotely; nothing was
+      deleted in any attempt (library 96 assets before and after).
+      THE GAP: a wipe whose confirmation never appears blocks FOREVER. `RigServer` deliberately sets no
+      request timeout ("nothing here bounds a request below the receipts' own deadlines"), which is right
+      for an OS receipt that always fires and wrong for an alert that may never be presented. The
+      launch-trigger form shared the flaw but hid it — it blocked a launch coroutine nobody was waiting on,
+      where this blocks a caller who is. Worth a deadline, or at least a stated bound, before merge.
 
 ## 11. Screenshots — its own gate, not a step that rides along
 
