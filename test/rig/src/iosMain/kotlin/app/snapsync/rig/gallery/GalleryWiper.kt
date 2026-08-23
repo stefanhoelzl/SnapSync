@@ -14,6 +14,10 @@ import kotlin.time.Duration
 import kotlin.time.Duration.Companion.seconds
 import platform.Foundation.NSError
 import platform.Photos.PHAsset
+import platform.Photos.PHAssetEditOperationDelete
+import platform.Photos.PHAssetSourceTypeCloudShared
+import platform.Photos.PHAssetSourceTypeUserLibrary
+import platform.Photos.PHAssetSourceTypeiTunesSynced
 import platform.Photos.PHAssetChangeRequest
 import platform.Photos.PHAssetCollection
 import platform.Photos.PHAssetCollectionChangeRequest
@@ -69,6 +73,18 @@ class WipeOutcome(
      * `false` therefore means exactly one thing worth acting on: nobody answered, and the caller should
      * look at the phone rather than wait longer.
      */
+    /**
+     * How many matched assets the app is actually ALLOWED to delete
+     * (`canPerformEditOperation(PHAssetEditOperationDelete)`).
+     *
+     * Asked before submitting, because PhotoKit does not refuse an impossible delete — it accepts the
+     * request and never completes it. An asset synced from iTunes or shared from iCloud is read-only to
+     * an app, so a library made of those produces exactly the symptom measured here: `assetsd` receives
+     * the request and nothing further ever happens.
+     */
+    val deletable: Long,
+    /** Matched assets by `PHAssetSourceType`, so a zero [deletable] says WHICH kind blocked it. */
+    val bySource: Map<String, Long>,
     val answered: Boolean,
     val committed: Boolean,
     val errorCode: Long?,
@@ -197,14 +213,61 @@ private suspend fun performWipe(
         options = null,
     ).takeIf { scope.includesAlbums }
 
+    // What the app may actually delete, and where the rest came from. Cheap: both are in-memory
+    // `PHAsset` properties, no round-trip per asset.
+    var deletable = 0L
+    val bySource = mutableMapOf<String, Long>()
+    assets?.let { result ->
+        for (i in 0uL until result.count) {
+            val asset = result.objectAtIndex(i) as PHAsset
+            if (asset.canPerformEditOperation(PHAssetEditOperationDelete)) deletable++
+            val source = when (asset.sourceType) {
+                PHAssetSourceTypeUserLibrary -> "userLibrary"
+                PHAssetSourceTypeCloudShared -> "cloudShared"
+                PHAssetSourceTypeiTunesSynced -> "iTunesSynced"
+                else -> "other(${asset.sourceType})"
+            }
+            bySource[source] = (bySource[source] ?: 0L) + 1L
+        }
+    }
+
     val matchedAssets = (assets?.count ?: 0uL).toLong()
     val matchedAlbums = (albums?.count ?: 0uL).toLong()
     val matchedFolders = (folders?.count ?: 0uL).toLong()
 
     log.i {
-        "wipe: matched $matchedAssets asset(s), $matchedAlbums album(s), $matchedFolders folder(s) — " +
-            "submitting the change on ${NSThread.currentThread.description}, then awaiting the system " +
-            "confirmation for up to $deadline"
+        "wipe: matched $matchedAssets asset(s) ($deletable deletable, by source $bySource), " +
+            "$matchedAlbums album(s), $matchedFolders folder(s)"
+    }
+
+    // REFUSE rather than submit an impossible request. PhotoKit accepts a delete of assets the app may
+    // not delete and then never completes it — no error, no presentation, no callback — which is the
+    // measured symptom this command spent an evening chasing. Asking first turns that silence into a
+    // stated answer, immediately, and it is the honest answer: nothing here was ever going to be deleted.
+    if (matchedAssets > 0L && deletable == 0L) {
+        log.e {
+            "wipe: REFUSING — none of the $matchedAssets matched asset(s) is deletable by this app " +
+                "(by source: $bySource). Assets synced from iTunes or shared from iCloud are read-only " +
+                "to an app; PhotoKit would accept the request and never complete it."
+        }
+        return WipeOutcome(
+            scope = scope,
+            matchedAssets = matchedAssets,
+            matchedAlbums = matchedAlbums,
+            matchedFolders = matchedFolders,
+            grant = grant,
+            deletable = deletable,
+            bySource = bySource,
+            answered = false,
+            committed = false,
+            errorCode = null,
+            errorDescription = "no matched asset is deletable by this app; none of this could ever be deleted",
+        )
+    }
+
+    log.i {
+        "wipe: submitting the change on ${NSThread.currentThread.description}, then awaiting the " +
+            "system confirmation for up to $deadline"
     }
 
     // `withTimeoutOrNull` returns null when the deadline passes: the coroutine resumes, the caller gets a
@@ -242,6 +305,8 @@ private suspend fun performWipe(
             matchedAlbums = matchedAlbums,
             matchedFolders = matchedFolders,
             grant = grant,
+            deletable = deletable,
+            bySource = bySource,
             answered = false,
             committed = false,
             errorCode = null,
@@ -261,6 +326,8 @@ private suspend fun performWipe(
         matchedAlbums = matchedAlbums,
         matchedFolders = matchedFolders,
         grant = grant,
+        deletable = deletable,
+        bySource = bySource,
         answered = true,
         committed = committed,
         errorCode = error?.code,
