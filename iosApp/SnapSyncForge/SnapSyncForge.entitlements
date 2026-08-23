@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<!--
+	  Deliberately empty of grants.
+
+	  The app's entitlements carry the App Group (the shared ledger container), the keychain group (the
+	  device identity and attestation token) and the associated domain (the event link). This target
+	  claims none of them, because it links none of the code that uses them — no ledger, no Keychain
+	  identity, no universal-link handler.
+
+	  That emptiness is a check, not an oversight: if a future edit to this target ever needs one of
+	  those grants, it means the forge binary has grown a route into the live stack, which is the exact
+	  thing giving it its own target was meant to make impossible.
+	-->
+</dict>
+</plist>

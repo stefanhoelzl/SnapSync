@@ -47,6 +47,12 @@ class SwiftShellGuardTest {
         "iosApp/iosApp/ContentView.swift" to mapOf("if" to 0, "guard" to 0, "switch" to 0, "??" to 0),
         "iosApp/BackgroundUploadExtension/BackgroundUploadExtension.swift" to
             mapOf("if" to 0, "guard" to 0, "switch" to 0, "??" to 1),
+        // The marketing-screenshot binary's shell. All zeros, and it should stay that way: this target
+        // exists to render one screen, and every OS callback the app's shell transcribes is one this
+        // binary has no entitlement to receive. A decision appearing here would mean forge has grown a
+        // second way to be driven.
+        "iosApp/SnapSyncForge/ForgeApp.swift" to
+            mapOf("if" to 0, "guard" to 0, "switch" to 0, "??" to 0),
     )
 
     private fun swiftFiles(): List<File> = File(repoRoot, "iosApp").walkTopDown()
@@ -109,7 +115,14 @@ class SwiftShellGuardTest {
      */
     @Test
     fun `every Swift shell function forwards to Kotlin`() {
-        val roots = listOf("SnapSyncRoot.shared", "UploadExtensionRoot.shared", "MainViewControllerKt")
+        // The forge binary has its own entry point because it links a different framework — it cannot
+        // reach `MainViewControllerKt`, which lives in `SnapSyncKit` and would drag `SnapSyncRoot` in.
+        val roots = listOf(
+            "SnapSyncRoot.shared",
+            "UploadExtensionRoot.shared",
+            "MainViewControllerKt",
+            "ForgeViewControllerKt",
+        )
         var checked = 0
         swiftFiles().forEach { file ->
             val relative = file.toRelativeString(repoRoot)

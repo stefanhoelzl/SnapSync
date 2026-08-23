@@ -75,10 +75,10 @@
       `:ui:presentation`
 - [x] 6.3 Read the state selector in the forge module's own source — the `SNAPSYNC_RIG_PORT` precedent, inert
       because the file does not exist in a production build
-- [ ] 6.4 Add the `SnapSyncForge` Xcode target: its own `Info.plist` with
+- [x] 6.4 Add the `SnapSyncForge` Xcode target: its own `Info.plist` with
       `CADisableMinimumFrameDurationOnPhone = true` (Compose MP hard-aborts at launch without it), its own
       `embedAndSignAppleFrameworkForXcode` phase, and a Swift shell that calls only its entry point
-- [ ] 6.5 Verify the new target does not change what `-scheme iosApp` produces for the simulator SDK
+- [x] 6.5 Verify the new target does not change what `-scheme iosApp` produces for the simulator SDK
 - [x] 6.6 Delete `CompositionMode.Forge`, `ForgeShell`, `isForgeState`'s shell call site and the outer
       `when (mode)`; `resolveComposition` reduces to a function of `backgroundUploadSupported()`
 - [x] 6.7 Delete `LaunchDirectives` and its tests; update `CompositionModeTest` for the reduced resolver
