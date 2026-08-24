@@ -115,36 +115,31 @@
 
 - [x] 10.1 Take the device lease, build with `-Psnapsync.rig=true`, and exercise `/os`, `/user` and `/device`
       end to end — join, create, leave, reset, seed, gallery read
-- [ ] 10.2 PARTIALLY VERIFIED. The wipe's contract is verified; its confirmation is not, and the cause is
-      now narrowed to something specific enough to bisect.
-      VERIFIED on device: scope parsing, grant reporting, matched counts, blocking, the deadline, and the
-      full outcome shape. An unrecognized scope returns 400 naming what is accepted.
-      NOT VERIFIED: the confirmation. Every attempt reaches `matched 96 asset(s)` and then nothing — no
-      alert, no completion — until the 120 s deadline reports `answered:false`. Nothing was ever deleted
-      (96 assets before and after, every time).
-      ⚠️ AN EARLIER ROUND OF "ELIMINATIONS" HERE WAS WORTHLESS AND HAS BEEN REMOVED. Apple's own reports of
-      this symptom say a failed delete request can leak permanently, so every measurement taken after the
-      first failure was of a library already carrying one — seven hypotheses "ruled out" against a state
-      that could not have answered differently. They were re-run from a cold process on 2026-08-23 and are
-      only now actually ruled out: asset permission/ownership/source (96/96 `canPerformEditOperation`,
-      all `userLibrary`), a blocked main thread, channel-lane starvation, a stale or locked screen, a
-      scene-less `dvt launch` (the 2026-08-08 run that DID work was necessarily one), the blocking API,
-      background-thread submission, and running after other PhotoKit work.
-      THE FINDING, from one free probe: an EMPTY change block through this same function returns
-      `answered:true committed:true` in **48 ms**. So there is no wedged queue and no leaked request —
-      `performChanges` is healthy. The split is sharper than "delete is broken": a change needing no
-      confirmation completes; a change needing the confirmation never presents it. Apple documents that
-      alert as unconditional per call, so its absence is the platform failing a promise.
-      NEXT: `WipeWindow` (`limit`/`offset`) exists to bisect the 96 — every Apple report of this symptom
-      names a SPECIFIC asset, and one bad member sinks the whole transaction. Chunking may also be the fix
-      rather than only the probe; the 2026-08-08 run pushed 9525 assets through in one transaction, so
-      chunking has never been exercised here. Threads 840122 (Apple engineer confirms a fix in iOS 27.0
-      beta 3 for one asset kind), 806349, 732820.
-      THE GAP, fixed: a wipe whose confirmation never appears used to block FOREVER. `RigServer` sets no
-      request timeout deliberately — bounding below an OS receipt's deadline would make a transport
-      timeout indistinguishable from an expired receipt. That is right for a receipt, which always fires,
-      and wrong for an alert that may never be presented. The launch-trigger form shared the flaw and hid
-      it, blocking a coroutine nobody awaited.
+- [x] 10.2 VERIFIED end to end. `POST /device/gallery/wipe?scope=all` took the library 96 → **0**, with the
+      system confirmation presented and tapped. Scope parsing, grant reporting, matched counts, the
+      deletable census, the window, the deadline and the full outcome shape all verified; an unrecognized
+      scope, limit or offset returns 400 naming what is accepted.
+      ⚠️ THE HANG WAS NOT THIS CODE. For an evening the confirmation never appeared, through every
+      combination of scope, count, lane, launch style and ordering. A `diagnostics restart` fixed it with
+      NOTHING else changed — same build, same 96 assets — and the alert appeared in under ten seconds. It
+      is transient state in the OS photo-library daemon; Apple's threads 840122 (an engineer confirms a fix
+      for one trigger in iOS 27.0 beta 3), 806349 and 732820 describe it exactly, including that it
+      survives app kills and reinstalls and clears on a restart. `GalleryWiper`'s header now opens with
+      RESTART THE DEVICE, because that is the whole fix and it is not discoverable from the symptom.
+      The cheap discriminator, kept because it is what made this diagnosable: an EMPTY change block through
+      the same function returns `committed=true` in 48 ms. It separates "the change pipeline is dead" from
+      "only the alert path is dead" — identical from outside, opposite responses.
+      An earlier round of "eliminations" here was worthless and was deleted rather than amended: Apple's
+      reports say a failed delete request leaks, so everything measured after the first failure was of a
+      library that could not have answered differently. All of it was re-run from a cold process with the
+      wipe as the first PhotoKit call.
+      A DEFECT THIS EXPOSED, fixed in the same commit: the timeout branch logged "and nothing was deleted",
+      which is false. The alert OUTLIVES the deadline — a `scope=all` run reported `answered=false`, the
+      alert stayed on screen, and a tap five minutes later deleted all 95 assets with nothing listening. So
+      `answered=false` means "no answer YET", never "nothing happened", and the gallery read is the truth.
+      That was the deadline's own absence-collapse reintroduced at the far end.
+      STILL OPEN, for the user to call: `WIPE_ANSWER_DEADLINE` is 120 s, which is too short for an operator
+      who is not already watching the phone. Raising it costs nothing but a longer worst case.
 
 ## 11. Screenshots — its own gate, not a step that rides along
 

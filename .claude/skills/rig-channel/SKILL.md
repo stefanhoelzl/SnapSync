@@ -90,7 +90,7 @@ GET  /device/logs?process=app|extension pass-through to DeviceLogSource.tail, BO
 GET  /device/gallery[?cutoff=…][&resources=true]   the library, through the app's own policy
 POST /device/reset                      void durable sync state
 POST /device/gallery/seed?n=&kind=bulk|policy
-POST /device/gallery/wipe?scope=all|assets|albums
+POST /device/gallery/wipe?scope=all|assets|albums[&limit=&offset=]
 POST /device/identity?id=…              plant a device id where the Keychain cannot serve one
 ```
 
@@ -164,10 +164,25 @@ curl -X POST "localhost:18099/device/gallery/wipe?scope=all"      # all | assets
 ```
 
 🚨 **IRREVERSIBLE, and NOT headless.** iOS raises its own confirmation and **someone must tap the device**.
-Measured (SE2, iOS 26.6): an `all` wipe raises **two** confirmations, one per kind — batching does not
-collapse them. The request **blocks** until you answer, then reports `committed` and the matched counts. A
-tapped Cancel comes back as `committed:false` with `errorCode:3072`, which is the operator answering, not a
-bug.
+Measured (SE2, iOS 26.6): an `all` wipe raises **one confirmation per kind** — batching does not collapse
+them. The request **blocks** until you answer, then reports `committed` and the matched counts. A tapped
+Cancel comes back as `committed:false` with `errorCode:3072`, which is the operator answering, not a bug.
+
+`limit`/`offset` carve a sub-range out of the matched assets — the only way to ask how many a device will
+delete in one transaction, and the way to bisect if one asset ever poisons a batch. Omitted, the whole
+match goes in one transaction, exactly as before.
+
+⚠️ **If the confirmation never appears, RESTART THE PHONE.** Measured 2026-08-24: this hung through every
+combination of scope, count, lane, launch style and ordering, and a `diagnostics restart` fixed it with
+nothing else changed. It is transient state in the OS photo-library daemon (Apple threads 840122 / 806349 /
+732820 — it survives app kills and reinstalls, and clears on a restart), not the command. Before rebooting,
+spend one call telling the two failures apart: **wipe with a window that selects nothing** (`&limit=0`, or
+`scope=albums` with no albums). That submits an empty change block, needs no confirmation, and answers in
+~50 ms. If THAT hangs too, the whole change pipeline is down and a restart is not the answer.
+
+⚠️ **`answered:false` does NOT mean nothing was deleted.** The alert **outlives** the 120 s deadline: a run
+can report `answered:false` and then delete everything when someone taps minutes later, with nothing
+listening. Treat it as "no answer yet", look at the phone, and read `GET /device/gallery` for the truth.
 
 An unrecognized `scope` is a `400` that names what is accepted — the only value-checked command here,
 because this is the only one that cannot be undone.

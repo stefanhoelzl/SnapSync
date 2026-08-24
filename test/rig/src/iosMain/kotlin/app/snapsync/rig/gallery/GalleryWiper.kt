@@ -91,8 +91,9 @@ class WipeOutcome(
      * an SE2 (iOS 26.6), the second case is real and reachable: see the header for the runs, including the
      * empty change block that commits in 48 ms while a 96-asset delete beside it never answers at all.
      *
-     * `false` therefore means exactly one thing worth acting on: nobody answered, and the caller should
-     * look at the phone rather than wait longer.
+     * `false` means "nobody answered YET" — it does NOT mean nothing was deleted. The alert outlives the
+     * deadline (measured; see [performWipe]), so the caller should look at the phone and then re-read the
+     * gallery, rather than treat this as a completed no-op.
      */
     /**
      * How many matched assets the app is actually ALLOWED to delete
@@ -154,45 +155,36 @@ val WIPE_ANSWER_DEADLINE: Duration = 120.seconds
  *   which is a blast radius no dev command on this phone should have;
  * - deleting a collection never deletes its members, so `albums` leaves every photo in place.
  *
- * ⚠️ **On this device the confirmation is never presented — but the change pipeline is healthy.**
- * Measured on the SE2 (iOS 26.6, 2026-08-23), all on ONE cold process with no membership, full `GRANTED`,
- * the wipe as the first PhotoKit call of the process:
+ * ⚠️ **If the confirmation never appears, RESTART THE DEVICE. That is the whole fix.**
  *
- *  - deleting 96 assets (all `userLibrary`, all reporting `canPerformEditOperation(delete) == true`): no
- *    alert, no completion, `answered=false` at the 120 s deadline;
- *  - an **empty** change block through this same function (`scope=albums` against 0 albums, 0 folders):
- *    `answered=true committed=true` in **48 ms**.
+ * Measured (SE2, iOS 26.6, 2026-08-24). For an evening this command reached `matched N asset(s)` and then
+ * nothing — no alert, no completion — through every combination of scope, count, lane, launch style and
+ * ordering. After a `diagnostics restart`, with NOTHING else changed — same build, same 96 assets, same
+ * code path — the alert appeared in under ten seconds and the library went 96 → 0.
  *
- * Those two together are the finding. There is no wedged serial queue, no leaked request and nothing that
- * needs a device restart: `performChanges` submits, commits and calls back normally. What fails is
- * narrower than "deleting is broken" — **a change needing no confirmation completes; a change needing the
- * confirmation never presents it.** Apple documents that alert as unconditional ("For each call to this
- * method, iOS shows an alert asking the user for permission to edit the contents of the photo library"),
- * so its absence is the platform failing a promise, not a precondition this code is missing.
- *
- * The device log adds only the system's own words, `Request sent ... on NON-BINDING PhotoKit client`,
- * followed by `assetsd` confirming read-write access and receiving the request. That phrase returns
- * nothing anywhere and led nowhere; do not spend another evening on it.
- *
- * Ruled out by measurement — and note that ALL of these were re-tested on the cold process above, because
- * an earlier round tested them against a library already carrying a failed request and was worthless:
- * asset permission, ownership and source; a blocked main thread; starvation of the channel's lane; a stale
- * or locked screen; a scene-less tooling launch (the 2026-08-08 run that DID work was necessarily a
- * `dvt launch --env`, which settles this outright); the blocking API itself; submission from a background
- * thread; and running after other PhotoKit work — the wipe now runs first and still fails.
- *
- * What has NOT been ruled out, and is what [WipeWindow] exists to test: **one poisoned asset among the
- * 96**. Every Apple report of this symptom names a specific asset — most concretely
- * [FB thread 840122](https://developer.apple.com/forums/thread/840122), where an Apple engineer confirms a
- * fix in iOS 27.0 beta 3 for deleting a 48 MP ProRAW shortly after capture. This SE2 cannot produce that
- * asset, so the trigger differs, but the shape is identical and one bad member sinks the whole
- * transaction. See also [806349](https://developer.apple.com/forums/thread/806349) and
+ * It is transient state in the OS's photo library daemon, not this code and not the assets. Apple's own
+ * reports describe it precisely: the delete path stops presenting its alert, survives app kills and
+ * reinstalls, and clears on a device restart —
+ * [840122](https://developer.apple.com/forums/thread/840122) (an Apple engineer confirms a fix for one
+ * trigger in iOS 27.0 beta 3), [806349](https://developer.apple.com/forums/thread/806349),
  * [732820](https://developer.apple.com/forums/thread/732820).
  *
- * ⏰ Re-measure at the next iOS major. The 2026-08-08 run deleted 9525 assets on this same device and OS,
- * so whatever this is, it is not a permanent property of the platform.
+ * **The cheap discriminator, if it happens again**: run this with `scope=albums` against a library with no
+ * albums, or any window selecting nothing. That submits an EMPTY change block — which needs no
+ * confirmation — and returned `committed=true` in **48 ms** while a one-asset delete beside it never
+ * answered at all. So it separates "the change pipeline is dead" from "only the alert path is dead", which
+ * look identical from outside and need opposite responses (the first is not something a restart fixes).
  *
- * What the deadline below buys is that none of this is a hang any more. It is an answer, in two minutes.
+ * Ruled out by measurement, from a COLD process with the wipe as the first PhotoKit call — worth listing
+ * only because an earlier round "ruled out" the same things against a library already carrying a failed
+ * request, which could not have answered differently: asset permission, ownership and source (96/96
+ * `canPerformEditOperation`, all `userLibrary`); a blocked main thread; channel-lane starvation; a stale or
+ * locked screen; a scene-less tooling launch; the blocking API; background-thread submission; running after
+ * other PhotoKit work; and the asset set itself (`limit=1`, one deletable asset, failed identically).
+ *
+ * What the deadline below buys is that none of this is a hang any more. It is an answer in two minutes —
+ * but read what [WipeOutcome.answered] actually claims: the alert outlives the deadline, so a wipe that
+ * reported nothing can still delete afterwards. The gallery read, not this outcome, is the truth.
  */
 suspend fun wipeGallery(
     log: Logger,
@@ -332,9 +324,14 @@ private suspend fun performWipe(
             "system confirmation for up to $deadline"
     }
 
-    // `withTimeoutOrNull` returns null when the deadline passes: the coroutine resumes, the caller gets a
-    // stated answer, and the platform's own change request is simply abandoned. Nothing is deleted by a
-    // timeout — the confirmation is what deletes, and it was never answered.
+    // `withTimeoutOrNull` returns null when the deadline passes: the coroutine resumes and the caller gets
+    // a stated answer. What it does NOT do is cancel anything on the platform's side.
+    //
+    // ⚠️ **A timed-out wipe can still delete, minutes later.** Measured (SE2, iOS 26.6, 2026-08-24): the
+    // system alert OUTLIVES this deadline — it stayed on screen after a `scope=all` run reported
+    // `answered=false`, and a tap five minutes later deleted all 95 assets with nothing listening. So
+    // `answered=false` means "no answer YET", never "nothing happened", and the caller must not be told
+    // otherwise. Only a tap or `Don't Allow` ends that alert; abandoning the continuation does not.
     val result: Pair<Boolean, NSError?>? = withTimeoutOrNull(deadline) {
         suspendCancellableCoroutine { cont ->
             PHPhotoLibrary.sharedPhotoLibrary().performChanges(
@@ -356,10 +353,11 @@ private suspend fun performWipe(
 
     if (result == null) {
         log.e {
-            "wipe: NOBODY ANSWERED within $deadline — the platform's confirmation was never answered, " +
-                "and nothing was deleted. Either it is still on the phone's screen waiting for a tap, or " +
-                "it was never presented at all; those look identical from here, which is why this is " +
-                "bounded rather than left to hang."
+            "wipe: NOBODY ANSWERED within $deadline. This does NOT mean nothing was deleted — the alert " +
+                "outlives this deadline, so if it is still on screen a later tap will still delete the " +
+                "$selected asset(s), and nothing will be listening. Either it is waiting for a tap or it " +
+                "was never presented; those look identical from here, which is why this is bounded rather " +
+                "than left to hang. LOOK AT THE PHONE, then re-read the gallery for the truth."
         }
         return WipeOutcome(
             scope = scope,
