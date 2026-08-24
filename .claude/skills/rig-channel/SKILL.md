@@ -160,8 +160,22 @@ the response for that reason. A fetch under `.limited` can also surface iOS's ow
 ## Emptying the library
 
 ```
-curl -X POST "localhost:18099/device/gallery/wipe?scope=all"      # all | assets | albums
+ch-bg curl -sS --max-time 960 -X POST "localhost:18099/device/gallery/wipe?scope=all"   # all|assets|albums
+ch-bg curl -sS --max-time 960 -X POST "…/wipe?scope=assets&limit=1"          # one asset — the smallest probe
+ch-bg curl -sS          --max-time 30 -X POST "…/wipe?scope=assets&limit=0"  # selects nothing — see below
 ```
+
+`limit`/`offset` are optional; **omit them entirely** rather than passing an empty value. `&limit=` is the
+empty string, not "unset", and it is refused with a `400` on purpose — a mistyped bound must never fall
+back to "no window" and delete the whole library.
+
+🏃 **Run it under `ch-bg`, backgrounded, and end your turn.** This is the one call in this channel where
+that is right, and it is not the usual `ch-bg` rule (CLAUDE.md: don't wrap work the workspace is genuinely
+doing). The wipe is not waiting on a machine — it is waiting for **a person to walk to the phone and tap**.
+That is the definition of idle: the workspace should go idle so CodeHydra *notifies* the operator they are
+needed, instead of showing busy for fifteen minutes while nothing happens and nobody is told. Foreground is
+not an option regardless: the deadline is **15 min** and the harness clamps a foreground Bash call at 10,
+so waiting it out inline gets you `Exit code 143` and no result. Give `curl` a `--max-time` above 900.
 
 🚨 **IRREVERSIBLE, and NOT headless.** iOS raises its own confirmation and **someone must tap the device**.
 Measured (SE2, iOS 26.6): an `all` wipe raises **one confirmation per kind** — batching does not collapse
@@ -180,9 +194,11 @@ spend one call telling the two failures apart: **wipe with a window that selects
 `scope=albums` with no albums). That submits an empty change block, needs no confirmation, and answers in
 ~50 ms. If THAT hangs too, the whole change pipeline is down and a restart is not the answer.
 
-⚠️ **`answered:false` does NOT mean nothing was deleted.** The alert **outlives** the 120 s deadline: a run
-can report `answered:false` and then delete everything when someone taps minutes later, with nothing
-listening. Treat it as "no answer yet", look at the phone, and read `GET /device/gallery` for the truth.
+⚠️ **`answered:false` does NOT mean nothing was deleted.** The alert **outlives** the deadline: a run can
+report `answered:false` and then delete everything when someone taps minutes later, with nothing listening.
+Treat it as "no answer yet", look at the phone, and read `GET /device/gallery` for the truth. The deadline
+is 15 min because it waits on a human — it was 120 s, and that expired twice on a correct, on-screen alert
+simply because nobody was standing at the phone.
 
 An unrecognized `scope` is a `400` that names what is accepted — the only value-checked command here,
 because this is the only one that cannot be undone.

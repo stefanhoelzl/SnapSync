@@ -11,7 +11,7 @@ import kotlinx.coroutines.withTimeoutOrNull
 import platform.Foundation.NSThread
 import kotlin.coroutines.resume
 import kotlin.time.Duration
-import kotlin.time.Duration.Companion.seconds
+import kotlin.time.Duration.Companion.minutes
 import platform.Foundation.NSError
 import platform.Foundation.NSFastEnumerationProtocol
 import platform.Foundation.NSMutableArray
@@ -125,8 +125,23 @@ class WipeOutcome(
  * indistinguishable from an expired receipt. That reasoning holds for a receipt, which the OS always
  * fires. It does not hold for an alert, which may never be presented at all, and where an unbounded wait
  * collapses two very different answers into one silence.
+ *
+ * **Fifteen minutes, because the thing being waited on is a person walking to a phone.** It was 120 s and
+ * that was measured wrong twice in one session: the alert was on screen and correct, and the deadline
+ * expired anyway because nobody was standing there. A deadline this generous costs nothing — the wait is
+ * a suspended coroutine holding no thread — while a short one manufactures exactly the false negative
+ * this field exists to prevent, and the resulting `answered=false` is the most misleading answer the
+ * command can give.
+ *
+ * Two consequences worth knowing before shortening it again:
+ *
+ * - **it is not a bound on the deletion**, only on how long we listen. The alert outlives it (measured),
+ *   so expiring early does not make a run safe — it makes it deaf;
+ * - **it deliberately exceeds the agent harness's 10-minute foreground cap**, so a caller cannot wait it
+ *   out in the foreground and must background the request. That is the correct shape anyway: the wait is
+ *   on a human, so the workspace should go idle and notify rather than sit there looking busy.
  */
-val WIPE_ANSWER_DEADLINE: Duration = 120.seconds
+val WIPE_ANSWER_DEADLINE: Duration = 15.minutes
 
 /**
  * **Empty this device's photo library.** Irreversible.
@@ -182,7 +197,7 @@ val WIPE_ANSWER_DEADLINE: Duration = 120.seconds
  * locked screen; a scene-less tooling launch; the blocking API; background-thread submission; running after
  * other PhotoKit work; and the asset set itself (`limit=1`, one deletable asset, failed identically).
  *
- * What the deadline below buys is that none of this is a hang any more. It is an answer in two minutes —
+ * What the deadline below buys is that none of this is a hang any more. It is an answer, eventually —
  * but read what [WipeOutcome.answered] actually claims: the alert outlives the deadline, so a wipe that
  * reported nothing can still delete afterwards. The gallery read, not this outcome, is the truth.
  */
