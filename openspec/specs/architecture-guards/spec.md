@@ -740,10 +740,10 @@ pinned, exactly in both directions, and every pin SHALL state its reason.
 The pinned baseline is **not zero**, and the pins SHALL be split into two kinds, because reading them
 as one launders debt into design:
 
-- **accepted** — a judgement the owner stands behind, with no expiry. `CompositionMode`'s tier
-  members (`PHOTOKIT`, `URL_SESSION`) are the only entry: they name upload tiers the pure resolver
-  selects, not platform APIs the core calls, and a second tier is a new member rather than a new
-  coupling.
+- **accepted** — a judgement the owner stands behind, with no expiry. `UploadTier`'s members
+  (`PHOTOKIT`, `URL_SESSION`) are the only entry: they name upload tiers the pure resolver
+  `resolveComposition` returns, not platform APIs the core calls, and a second tier is a new member
+  rather than a new coupling.
 - **deferred** — a real violation of the port law, left standing deliberately, which SHALL carry an
   expiry trigger. Today there are **none**. The list being empty is a state to hold, not a gap to
   fill: a deferred pin is a receipt with an expiry, and it stops being one once the expiry is
@@ -871,67 +871,6 @@ that demanded a pointer for each would make `openspec update`'s regenerated outp
 
 - **WHEN** `CLAUDE.md` is absent or renamed, its pointer-block marker is missing, or the derivation
   yields zero pointers
-- **THEN** the guard fails rather than passing while inspecting nothing
-
-### Requirement: The launch-trigger index agrees with production source
-
-A test-only JVM guard SHALL assert that the set of `SNAPSYNC_*` launch-trigger names documented in
-`.claude/skills/ios-device/SKILL.md` equals, exactly and in both directions, the set of
-`"SNAPSYNC_*"` string literals in production Kotlin source (main source sets; test sources and
-`build/` excluded).
-
-The device-driving skill carries a compressed operator index of the launch triggers — for each one,
-its name, its value shape, and the `dvt launch` invocation that applies it. That index is a
-**duplicate** of what production source declares, and this repo forbids a duplicate unless it is
-loud-when-stale (the rule `LawsDigestTest` was built on, and whose rationale records that "the
-previous CLAUDE.md module graph rotted silently for months precisely because nothing held it to
-anything"). This guard is that loudness: add, rename, or delete a launch trigger without touching
-the skill — or document one that no longer exists — and the build fails naming the delta.
-
-The comparison SHALL be by **name only**. The index's one-line effects are deliberately not the
-spec's normative text, and are not compared: two authorities for a trigger's semantics would be
-worse than one. `ios-app-shell` remains the contract of record for every trigger it specifies, and
-the skill SHALL point there rather than restate it.
-
-The guard SHALL compare against **source** rather than against `ios-app-shell`'s requirements,
-because four triggers — `SNAPSYNC_SEED_PHOTOS`, `SNAPSYNC_SEED_POLICY`, `SNAPSYNC_WIPE_GALLERY`
-and `SNAPSYNC_POLICY_PROBE` — ship in production Kotlin and appear in no spec. A spec-keyed guard
-would silently cover a subset, which is the failure mode this capability exists to refuse.
-That those four are unspecified is a **stated gap**, named here rather than left to be discovered;
-this guard holds their documentation, not their contract.
-
-The guard SHALL fail loudly rather than vacuously: if the skill file is absent, or the source scan
-resolves zero `SNAPSYNC_*` literals, it SHALL fail rather than pass while scanning nothing.
-
-#### Scenario: A new launch trigger is added without documenting it
-
-- **WHEN** production Kotlin gains a `"SNAPSYNC_*"` literal that the `ios-device` skill's index
-  does not name
-- **THEN** the guard fails, naming the undocumented trigger
-
-#### Scenario: A documented trigger no longer exists
-
-- **WHEN** a `"SNAPSYNC_*"` literal is removed from production Kotlin while the skill's index still
-  names it
-- **THEN** the guard fails, so the index cannot outlive the triggers it describes
-
-#### Scenario: A trigger is renamed
-
-- **WHEN** a launch trigger's literal is re-valued in production Kotlin
-- **THEN** the guard fails on both sides of the delta — the new name undocumented and the old name
-  documented but absent
-
-#### Scenario: Semantics are not compared
-
-- **WHEN** the skill's one-line description of a trigger's effect differs in wording from
-  `ios-app-shell`'s requirement for it
-- **THEN** the guard passes, because only names are compared and the spec remains the single
-  authority for meaning
-
-#### Scenario: The guard is not vacuous
-
-- **WHEN** `.claude/skills/ios-device/SKILL.md` is absent or renamed, or the production-source scan
-  resolves zero `SNAPSYNC_*` literals
 - **THEN** the guard fails rather than passing while inspecting nothing
 
 ### Requirement: The platform-vocabulary pin
@@ -1171,3 +1110,48 @@ rather than an exception added.
 
 - **WHEN** the scanned roots match no files
 - **THEN** the guard fails rather than reporting no violations
+
+### Requirement: Production Kotlin declares no launch triggers
+
+A test-only JVM guard SHALL assert that production Kotlin source declares **no** `"SNAPSYNC_*"` string
+literal at all.
+
+Dev/test control of a device is the control channel's surface (`:test:rig`), contained at compile time and
+absent from every production build. A `SNAPSYNC_*` literal in production Kotlin is therefore a regression to
+a surface this repo removed deliberately: a remote-control affordance present in every shipped binary, inert
+only because a SpringBoard launch supplies no process environment — which is a property of how the app is
+*started*, not of what it *contains*.
+
+The guard SHALL be an **exact inventory** whose permitted set is empty, and the failure SHALL name every
+literal found together with its file. It SHALL NOT be expressed as a maximum count: a count invites being
+raised, and the previous guard's floor is what this requirement replaces.
+
+Two readers are deliberately **out of scope**, both for the same reason — the file reading them does not
+exist in a production build, so their inertness is a property of the module graph rather than a runtime
+check:
+
+- `SNAPSYNC_RIG_PORT`, read in the source `:test:rig` contributes into the shell under its build property;
+- the forge target's state selector, read in the forge module's own source.
+
+The scan SHALL therefore cover the production main source sets under `domain/`, `app/`, `adapter/` and
+`ui/`, excluding test sources, `build/`, and the build-property-gated trees.
+
+The guard SHALL fail loudly rather than vacuously: an empty *result* over a non-empty *scan* is the passing
+condition, and a scan that resolves zero Kotlin files SHALL fail rather than pass while inspecting nothing.
+
+#### Scenario: A launch trigger is re-added to production Kotlin
+
+- **WHEN** a production main source set gains a `"SNAPSYNC_*"` literal
+- **THEN** the guard fails, naming the literal and its file, so the trigger must be argued rather than
+  landing unnoticed
+
+#### Scenario: A gated tree may read one
+
+- **WHEN** the source `:test:rig` contributes into the shell reads `SNAPSYNC_RIG_PORT`, or the forge module
+  reads its state selector
+- **THEN** the guard passes, because neither file is on a production build's compile path
+
+#### Scenario: The guard is not vacuous
+
+- **WHEN** the scanned roots are absent, renamed, or resolve to zero Kotlin files
+- **THEN** the guard fails rather than passing while inspecting nothing

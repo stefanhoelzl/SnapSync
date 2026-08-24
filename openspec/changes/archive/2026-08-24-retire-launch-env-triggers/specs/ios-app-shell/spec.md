@@ -132,7 +132,7 @@ The root SHALL resolve its composition **once per process** through the pure sea
 the ≥26.1 background-upload API is present. There SHALL be no developer input to this resolution: no
 launch-environment variable, no build property, and no runtime override, so the tier a process runs is a
 function of the device it runs on. The root SHALL switch
-on the resolved `CompositionMode` in exactly **one** place, selecting the live shell delegate with the
+on the resolved `UploadTier` in exactly **one** place, selecting the live shell delegate with the
 resolved tier's mechanism thunks bound in the same switch. Every OS entry
 point (`onForeground` / `onBackground` / `onOpenUrl` / `onPushToken` / `onSilentPush` /
 `runUploadHeartbeat` / `runDownloadBackstop` / `handleBackgroundUrlSession`) SHALL be a thin
