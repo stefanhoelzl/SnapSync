@@ -138,13 +138,22 @@
       alert stayed on screen, and a tap five minutes later deleted all 95 assets with nothing listening. So
       `answered=false` means "no answer YET", never "nothing happened", and the gallery read is the truth.
       That was the deadline's own absence-collapse reintroduced at the far end.
-      THE DEADLINE IS NOW 15 MIN, not 120 s. It expired twice in this session on an alert that was on
-      screen and correct, purely because nobody was standing at the phone — manufacturing exactly the false
-      negative the field exists to prevent. The wait is a suspended coroutine holding no thread, so a
-      generous bound costs nothing. It also deliberately exceeds the agent harness's 10-minute foreground
-      cap, which forces the caller to background the request — the correct shape anyway, since the wait is
-      on a human: under `ch-bg` the workspace goes idle and CodeHydra NOTIFIES the operator they are needed,
-      instead of reading busy for fifteen minutes while nobody is told. The runbook says so at the call.
+      THERE IS NOW NO DEADLINE AT ALL. It was 120 s, briefly 15 min, and the whole justification was that
+      "an unbounded wait collapses two very different answers into one silence" — not tapped yet, versus
+      never presented. That does not survive contact: a BOUNDED wait collapses the same two causes into one
+      `answered=false`. It never separated them; it only chose a moment to stop listening, and it expired
+      twice on an alert that was on screen and correct because nobody was standing at the phone.
+      What separates the causes is a measurement, not a timer: screenshot the device (is the alert up?), and
+      submit a window selecting nothing (`limit=0` — an empty change block, ~50 ms, needs no confirmation).
+      The answer to "never presented" is then to restart the device, which no deadline could have told you.
+      So the wait now returns only when the platform answers, matching `RigServer`, which sets no request
+      timeout on purpose; the bound belongs to the caller, where it can be chosen per situation. The
+      `answered` field is gone with it — `committed` plus `errorCode` say everything, and a tapped Cancel
+      is `committed:false` + `errorCode:3072`.
+      HOW TO CALL IT, and the runbook says so: under `ch-bg`, backgrounded, with NO `--max-time`. The wait
+      is on a human, so the workspace should go IDLE and let CodeHydra notify the operator that they are
+      needed, rather than read busy while nothing happens and nobody is told. This is the one place the
+      usual "don't `ch-bg` the real work" rule inverts, and it is flagged as such so nobody corrects it back.
 
 ## 11. Screenshots — its own gate, not a step that rides along
 

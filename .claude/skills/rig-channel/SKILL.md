@@ -160,9 +160,9 @@ the response for that reason. A fetch under `.limited` can also surface iOS's ow
 ## Emptying the library
 
 ```
-ch-bg curl -sS --max-time 960 -X POST "localhost:18099/device/gallery/wipe?scope=all"   # all|assets|albums
-ch-bg curl -sS --max-time 960 -X POST "…/wipe?scope=assets&limit=1"          # one asset — the smallest probe
-ch-bg curl -sS          --max-time 30 -X POST "…/wipe?scope=assets&limit=0"  # selects nothing — see below
+ch-bg curl -sS -X POST "localhost:18099/device/gallery/wipe?scope=all"   # all|assets|albums; NO --max-time
+ch-bg curl -sS -X POST "…/wipe?scope=assets&limit=1"           # one asset — the smallest thing that prompts
+      curl -sS --max-time 30 -X POST "…/wipe?scope=assets&limit=0"   # selects nothing — the probe, below
 ```
 
 `limit`/`offset` are optional; **omit them entirely** rather than passing an empty value. `&limit=` is the
@@ -173,9 +173,14 @@ back to "no window" and delete the whole library.
 that is right, and it is not the usual `ch-bg` rule (CLAUDE.md: don't wrap work the workspace is genuinely
 doing). The wipe is not waiting on a machine — it is waiting for **a person to walk to the phone and tap**.
 That is the definition of idle: the workspace should go idle so CodeHydra *notifies* the operator they are
-needed, instead of showing busy for fifteen minutes while nothing happens and nobody is told. Foreground is
-not an option regardless: the deadline is **15 min** and the harness clamps a foreground Bash call at 10,
-so waiting it out inline gets you `Exit code 143` and no result. Give `curl` a `--max-time` above 900.
+needed, instead of reading busy while nothing happens and nobody is told. Foreground is not an option
+anyway: **the request has no deadline** and the harness clamps a foreground Bash call at 10 min, so waiting
+inline gets you `Exit code 143` and no result.
+
+⏳ **Do not put a `--max-time` on it either** (except on the `limit=0` probe, which answers in ~50 ms). The
+wait is unbounded on purpose: a bound never distinguished "not tapped yet" from "never presented" — it only
+picked a moment to stop listening, and it expired twice on an alert that was on screen and correct because
+nobody was standing at the phone. Let it wait; the operator's tap ends it.
 
 🚨 **IRREVERSIBLE, and NOT headless.** iOS raises its own confirmation and **someone must tap the device**.
 Measured (SE2, iOS 26.6): an `all` wipe raises **one confirmation per kind** — batching does not collapse
@@ -194,11 +199,11 @@ spend one call telling the two failures apart: **wipe with a window that selects
 `scope=albums` with no albums). That submits an empty change block, needs no confirmation, and answers in
 ~50 ms. If THAT hangs too, the whole change pipeline is down and a restart is not the answer.
 
-⚠️ **`answered:false` does NOT mean nothing was deleted.** The alert **outlives** the deadline: a run can
-report `answered:false` and then delete everything when someone taps minutes later, with nothing listening.
-Treat it as "no answer yet", look at the phone, and read `GET /device/gallery` for the truth. The deadline
-is 15 min because it waits on a human — it was 120 s, and that expired twice on a correct, on-screen alert
-simply because nobody was standing at the phone.
+⚠️ **If YOU give up, the alert does not.** Killing the request, timing out, even killing the app leaves the
+confirmation on screen — a later tap still deletes, with nothing listening. Only a tap or `Don't Allow` ends
+it, and `GET /device/gallery` is the only truth about what happened. (There is no `answered` field any more:
+the response arrives when the platform answers, so `committed` plus `errorCode` say everything. A tapped
+Cancel is `committed:false` + `errorCode:3072`.)
 
 An unrecognized `scope` is a `400` that names what is accepted — the only value-checked command here,
 because this is the only one that cannot be undone.

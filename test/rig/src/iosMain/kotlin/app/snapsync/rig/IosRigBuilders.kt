@@ -174,7 +174,7 @@ fun deviceCommands(
                         """"matched":{"assets":${o.matchedAssets},"albums":${o.matchedAlbums},""" +
                         """"folders":${o.matchedFolders}},"deletable":${o.deletable},""" +
                         """"bySource":${jsonMap(o.bySource)},"selected":${o.selected},""" +
-                        """"window":$windowJson,"answered":${o.answered},""" +
+                        """"window":$windowJson,""" +
                         """"committed":${o.committed},"errorCode":${o.errorCode},""" +
                         """"errorDescription":${quoted(o.errorDescription)}}""",
                 )
