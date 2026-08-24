@@ -7,11 +7,8 @@ import co.touchlab.kermit.Logger
 import kotlinx.cinterop.ExperimentalForeignApi
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.suspendCancellableCoroutine
-import kotlinx.coroutines.withTimeoutOrNull
 import platform.Foundation.NSThread
 import kotlin.coroutines.resume
-import kotlin.time.Duration
-import kotlin.time.Duration.Companion.minutes
 import platform.Foundation.NSError
 import platform.Foundation.NSFastEnumerationProtocol
 import platform.Foundation.NSMutableArray
@@ -83,19 +80,6 @@ class WipeOutcome(
     val matchedFolders: Long,
     val grant: String,
     /**
-     * Whether the platform ANSWERED at all within [WIPE_ANSWER_DEADLINE].
-     *
-     * This is the field the first implementation could not have. It waited on
-     * `performChangesAndWait`, which blocks until the user taps — with no bound, and therefore no way to
-     * distinguish "not tapped yet" from "this confirmation is never going to be presented". Measured on
-     * an SE2 (iOS 26.6), the second case is real and reachable: see the header for the runs, including the
-     * empty change block that commits in 48 ms while a 96-asset delete beside it never answers at all.
-     *
-     * `false` means "nobody answered YET" — it does NOT mean nothing was deleted. The alert outlives the
-     * deadline (measured; see [performWipe]), so the caller should look at the phone and then re-read the
-     * gallery, rather than treat this as a completed no-op.
-     */
-    /**
      * How many matched assets the app is actually ALLOWED to delete
      * (`canPerformEditOperation(PHAssetEditOperationDelete)`).
      *
@@ -111,37 +95,10 @@ class WipeOutcome(
     val selected: Long,
     /** The window that produced [selected]; `null` when the whole match was submitted. */
     val window: WipeWindow?,
-    val answered: Boolean,
     val committed: Boolean,
     val errorCode: Long?,
     val errorDescription: String?,
 )
-
-/**
- * How long to wait for the operator to answer the platform's confirmation.
- *
- * A bound exists here and nowhere else in this channel deliberately. `RigServer` sets no request timeout
- * on purpose — bounding a trigger below its OS receipt's own deadline would make a transport timeout
- * indistinguishable from an expired receipt. That reasoning holds for a receipt, which the OS always
- * fires. It does not hold for an alert, which may never be presented at all, and where an unbounded wait
- * collapses two very different answers into one silence.
- *
- * **Fifteen minutes, because the thing being waited on is a person walking to a phone.** It was 120 s and
- * that was measured wrong twice in one session: the alert was on screen and correct, and the deadline
- * expired anyway because nobody was standing there. A deadline this generous costs nothing — the wait is
- * a suspended coroutine holding no thread — while a short one manufactures exactly the false negative
- * this field exists to prevent, and the resulting `answered=false` is the most misleading answer the
- * command can give.
- *
- * Two consequences worth knowing before shortening it again:
- *
- * - **it is not a bound on the deletion**, only on how long we listen. The alert outlives it (measured),
- *   so expiring early does not make a run safe — it makes it deaf;
- * - **it deliberately exceeds the agent harness's 10-minute foreground cap**, so a caller cannot wait it
- *   out in the foreground and must background the request. That is the correct shape anyway: the wait is
- *   on a human, so the workspace should go idle and notify rather than sit there looking busy.
- */
-val WIPE_ANSWER_DEADLINE: Duration = 15.minutes
 
 /**
  * **Empty this device's photo library.** Irreversible.
@@ -197,16 +154,16 @@ val WIPE_ANSWER_DEADLINE: Duration = 15.minutes
  * locked screen; a scene-less tooling launch; the blocking API; background-thread submission; running after
  * other PhotoKit work; and the asset set itself (`limit=1`, one deletable asset, failed identically).
  *
- * What the deadline below buys is that none of this is a hang any more. It is an answer, eventually —
- * but read what [WipeOutcome.answered] actually claims: the alert outlives the deadline, so a wipe that
- * reported nothing can still delete afterwards. The gallery read, not this outcome, is the truth.
+ * This command waits for the tap with NO deadline of its own (see [performWipe] for why the bound was
+ * removed rather than tuned). ⚠️ And whatever gives up first — the caller, or the app being killed — the
+ * alert itself survives, so a later tap still deletes with nothing listening. `GET /device/gallery` is the
+ * only truth about what happened.
  */
 suspend fun wipeGallery(
     log: Logger,
     scope: WipeScope,
     requester: PhotoAccessRequester,
     status: PhotoAccessStatusSource,
-    deadline: Duration = WIPE_ANSWER_DEADLINE,
     window: WipeWindow? = null,
 ): WipeOutcome {
     // Ask for access first. Without it the fetch returns an empty result and the command looks like it did
@@ -215,7 +172,7 @@ suspend fun wipeGallery(
     requester.request()
     val grant = status.permission.first { it != PermissionStatus.NOT_DETERMINED }
     log.i { "wipe: photo access = $grant (LIMITED scopes the wipe to the hand-picked selection)" }
-    return performWipe(log, scope, grant.name, deadline, window)
+    return performWipe(log, scope, grant.name, window)
 }
 
 /**
@@ -227,8 +184,26 @@ suspend fun wipeGallery(
  * precisely what suspension exists to avoid. Here the caller suspends and its thread is returned to the
  * pool; nothing is held while the alert is on screen.
  *
- * It is also the shape that can be bounded. A blocked thread has no deadline to apply; a suspended
- * coroutine does, so [deadline] can turn "nobody answered" into a stated outcome rather than a hang.
+ * **The wait is unbounded, deliberately.** It was bounded — 120 s, then 15 min — on the reasoning that
+ * "an unbounded wait collapses two very different answers into one silence": not tapped yet, versus never
+ * presented. That does not survive contact. A BOUNDED wait collapses those same two causes into one
+ * `answered=false`; it never separated them, it only chose a moment to stop listening. It bought nothing
+ * and cost plenty, expiring twice on an alert that was on screen and correct because nobody happened to be
+ * standing at the phone — reporting, each time, the most misleading answer this command can give.
+ *
+ * What separates the two causes is a measurement, not a timer: **screenshot the device** (is the alert
+ * up?), and **submit a window that selects nothing** (`limit=0` — an empty change block needs no
+ * confirmation and answers in ~50 ms; if THAT hangs, the problem is not the alert). The answer to "never
+ * presented" is then to restart the device — which no deadline could have told you.
+ *
+ * So this returns only when the platform answers, matching `RigServer`, which sets no request timeout on
+ * purpose. **The bound belongs to the caller**, chosen per situation (`curl --max-time`, or killing the
+ * request) — strictly better information, because the caller knows it gave up, whereas `answered=false`
+ * read like the device saying something.
+ *
+ * ⚠️ Abandoning the request, here or at the caller, does **not** dismiss the alert: it outlives any client
+ * (measured), so a later tap still deletes with nothing listening. Only a tap or `Don't Allow` ends it, and
+ * `GET /device/gallery` is the only truth about what happened.
  *
  * One transaction is still one transaction, not one prompt: the platform raises a confirmation **per
  * kind** (measured — see the file header), so an `all` wipe asks twice.
@@ -241,7 +216,6 @@ private suspend fun performWipe(
     log: Logger,
     scope: WipeScope,
     grant: String,
-    deadline: Duration,
     window: WipeWindow?,
 ): WipeOutcome {
     // PHFetchResult is lazy — these are cheap handles, not enumerations, and each conforms to
@@ -327,7 +301,6 @@ private suspend fun performWipe(
             bySource = bySource,
             selected = selected,
             window = window,
-            answered = false,
             committed = false,
             errorCode = null,
             errorDescription = "no matched asset is deletable by this app; none of this could ever be deleted",
@@ -335,63 +308,30 @@ private suspend fun performWipe(
     }
 
     log.i {
-        "wipe: submitting the change on ${NSThread.currentThread.description}, then awaiting the " +
-            "system confirmation for up to $deadline"
+        "wipe: submitting the change on ${NSThread.currentThread.description}, then awaiting the system " +
+            "confirmation — for as long as it takes. Someone must tap the phone; nothing here will give up."
     }
 
-    // `withTimeoutOrNull` returns null when the deadline passes: the coroutine resumes and the caller gets
-    // a stated answer. What it does NOT do is cancel anything on the platform's side.
-    //
-    // ⚠️ **A timed-out wipe can still delete, minutes later.** Measured (SE2, iOS 26.6, 2026-08-24): the
-    // system alert OUTLIVES this deadline — it stayed on screen after a `scope=all` run reported
-    // `answered=false`, and a tap five minutes later deleted all 95 assets with nothing listening. So
-    // `answered=false` means "no answer YET", never "nothing happened", and the caller must not be told
-    // otherwise. Only a tap or `Don't Allow` ends that alert; abandoning the continuation does not.
-    val result: Pair<Boolean, NSError?>? = withTimeoutOrNull(deadline) {
-        suspendCancellableCoroutine { cont ->
-            PHPhotoLibrary.sharedPhotoLibrary().performChanges(
-                changeBlock = {
-                    assetsToDelete?.let { PHAssetChangeRequest.deleteAssets(it) }
-                    albums?.takeIf { it.count > 0uL }
-                        ?.let { PHAssetCollectionChangeRequest.deleteAssetCollections(it) }
-                    folders?.takeIf { it.count > 0uL }
-                        ?.let { PHCollectionListChangeRequest.deleteCollectionLists(it) }
-                },
-                completionHandler = { success, error ->
-                    // `resume` is safe from whatever queue PhotoKit answers on, and this continuation is
-                    // resumed at most once by construction.
-                    if (cont.isActive) cont.resume(success to error)
-                },
-            )
-        }
-    }
-
-    if (result == null) {
-        log.e {
-            "wipe: NOBODY ANSWERED within $deadline. This does NOT mean nothing was deleted — the alert " +
-                "outlives this deadline, so if it is still on screen a later tap will still delete the " +
-                "$selected asset(s), and nothing will be listening. Either it is waiting for a tap or it " +
-                "was never presented; those look identical from here, which is why this is bounded rather " +
-                "than left to hang. LOOK AT THE PHONE, then re-read the gallery for the truth."
-        }
-        return WipeOutcome(
-            scope = scope,
-            matchedAssets = matchedAssets,
-            matchedAlbums = matchedAlbums,
-            matchedFolders = matchedFolders,
-            grant = grant,
-            deletable = deletable,
-            bySource = bySource,
-            selected = selected,
-            window = window,
-            answered = false,
-            committed = false,
-            errorCode = null,
-            errorDescription = null,
+    // Suspends until PhotoKit answers, with no deadline of our own — see the KDoc. `cancellable` still
+    // matters: the caller disconnecting, or the app being killed, unwinds this cleanly instead of pinning
+    // the coroutine forever.
+    val (committed, error) = suspendCancellableCoroutine { cont ->
+        PHPhotoLibrary.sharedPhotoLibrary().performChanges(
+            changeBlock = {
+                assetsToDelete?.let { PHAssetChangeRequest.deleteAssets(it) }
+                albums?.takeIf { it.count > 0uL }
+                    ?.let { PHAssetCollectionChangeRequest.deleteAssetCollections(it) }
+                folders?.takeIf { it.count > 0uL }
+                    ?.let { PHCollectionListChangeRequest.deleteCollectionLists(it) }
+            },
+            completionHandler = { success, error ->
+                // `resume` is safe from whatever queue PhotoKit answers on, and this continuation is
+                // resumed at most once by construction.
+                if (cont.isActive) cont.resume(success to error)
+            },
         )
     }
 
-    val (committed, error) = result
     // A tapped "Cancel" arrives as a failure carrying `PHPhotosError.userCancelled` (3072) — named here
     // because "committed=false" alone reads as a bug, and a cancel is the operator answering.
     log.i {
@@ -407,7 +347,6 @@ private suspend fun performWipe(
         bySource = bySource,
         selected = selected,
         window = window,
-        answered = true,
         committed = committed,
         errorCode = error?.code,
         errorDescription = error?.localizedDescription,
