@@ -116,9 +116,10 @@ present (else absent).
 
 The decoder SHALL match the origin **strictly**, as a single prefix, and SHALL NOT parse the URL with a
 structured URL type. A foreign origin cannot reach the decoder in production — `.onOpenURL` fires for a
-Universal Link only when the app's own entitlement names the domain, and the dev launch-environment
-trigger requires a developer launch — so strict matching is chosen for being *less* code than searching
-for the path inside an arbitrary string, not as a security control.
+Universal Link only when the app's own entitlement names the domain, and the only other way to deliver one
+is the build-time-only control channel, which a production build does not contain (capability
+`module-architecture`) — so strict matching is chosen for being *less* code than searching for the path
+inside an arbitrary string, not as a security control.
 
 #### Scenario: Well-formed payload decodes
 - **WHEN** a `https://snapsync.stho.net/join#v=3&d=…` URL whose payload carries a single non-empty
