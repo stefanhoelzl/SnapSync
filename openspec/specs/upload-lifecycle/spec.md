@@ -320,9 +320,14 @@ ledger (`sync-ledger`).
 This replaces the prior structural exclusion (only one producer constructed) because the mechanism
 choice is now an input of **runtime** permission, which no once-per-process construction decision can
 express. The invariant's essence — one writer at a time — is unchanged; its enforcement moves from the
-compiler to a `:test:architecture` guard (capability `architecture-guards`). The development
-tier-force flag retains its meaning: forcing the app-driven tier SHALL NOT register the PhotoKit
-extension.
+compiler to a `:test:architecture` guard (capability `architecture-guards`).
+
+The invariant holds **however** the app-driven tier comes to be selected: whenever it is the started
+producer on a device whose OS supports the OS-driven one, the PhotoKit extension SHALL NOT be registered.
+This was once stated against a development tier-force flag, which no longer exists — production Kotlin
+declares no launch triggers at all (capability `architecture-guards`). A **limited** photo grant now
+reaches that state instead, so the requirement is stated against the state rather than any mechanism that
+produces it, and survives the next mechanism too.
 
 #### Scenario: Only the permission-selected producer runs
 - **WHEN** the app runs on iOS ≥26.1 with both producers composed
@@ -334,6 +339,7 @@ extension.
 - **THEN** the outgoing producer is stopped (the OS-driven one deregistering its extension) before the
   incoming producer starts
 
-#### Scenario: Forcing the app-driven tier does not enable the extension
-- **WHEN** the app-driven tier is forced on a device whose OS supports the OS-driven tier
+#### Scenario: The app-driven producer runs without the extension registered
+- **WHEN** the app-driven producer is the selected one on a device whose OS supports the OS-driven tier —
+  as a limited photo grant makes it
 - **THEN** the PhotoKit upload extension is not registered, and only the app-driven producer is started
