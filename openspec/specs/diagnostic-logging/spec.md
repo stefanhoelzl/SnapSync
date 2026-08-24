@@ -9,8 +9,8 @@ writes `Documents/debug.log` inside its own container, still pullable directly o
 **extension** writes `ext-debug.log` into the **shared App Group container**, so the app process can
 read it — one process cannot read another bundle's `Documents/`, and that read is what an
 operator-initiated diagnostic dump needs; and because an App Group container is *not* USB-pullable,
-the `SNAPSYNC_EXPORT_LOGS` launch trigger (capability `ios-app-shell`) copies it into the app's
-`Documents/` when a cable is what you have. This capability defines those logs' guarantees: verbatim
+the `DeviceLogSource` port exposes its tail to the dev/test control channel when a cable is what you
+have. This capability defines those logs' guarantees: verbatim
 (no redaction), size-bounded (10 MB roll), and self-explaining — every platform invocation and app entry
 point logs enter/exit with parameters, result, and duration; every line carries a `[<entryPoint>]`
 ambient prefix tracing it to what triggered it; every HTTP request logs one line; and full-library
@@ -45,9 +45,12 @@ placement made impossible: the two processes have separate sandboxes, and an app
 bundle's `Documents/`. The app's own log SHALL NOT move — a process can always read its own
 `Documents/`, so relocating it would buy no capability while breaking every existing pull command.
 
-Because the App Group container is not USB-pullable, the extension's log SHALL be reachable over USB
-via the export trigger (`SNAPSYNC_EXPORT_LOGS`, capability `ios-app-shell`), which copies it into the
-app's `Documents/`.
+Because the App Group container is not USB-pullable, the extension's log SHALL be reachable through the
+`DeviceLogSource` port, which the dev/test control channel exposes over HTTP. That read is a pass-through:
+the port bounds the read in bytes and cuts at a line boundary, and the caller states the bound. It reads the
+**current** file only — a rolled `.1` sibling is **not** reachable this way, which is a deliberate reduction
+against the previous copy-the-whole-file route and is stated here rather than discovered: by the time anyone
+reads a log, a roll file is stale, and including it would halve the live tail.
 
 If the App Group container is unavailable, the extension SHALL fall back to its own
 `Documents/debug.log` and SHALL record the fallback in its boot banner — a writer that silently
@@ -69,6 +72,15 @@ against that path fails honestly rather than returning frozen content that reads
 - **WHEN** the app process assembles a diagnostic dump after the extension has run
 - **THEN** it reads the extension's `ext-debug.log` from the shared App Group container without any
   cross-process request, and the extension need not be running
+
+#### Scenario: An operator reads the extension's log without a relaunch
+- **WHEN** an operator reads the extension's log through the control channel on a build carrying it
+- **THEN** the current `ext-debug.log`'s tail is returned within the requested byte bound, with no copy
+  step, no relaunch, and no `apps pull`
+
+#### Scenario: A rolled sibling is not returned
+- **WHEN** the extension's log has rolled and an operator reads it through the port
+- **THEN** only the current file's tail is returned, and the `.1` sibling is not included
 
 #### Scenario: The app's own pull path is unchanged
 - **WHEN** an operator runs `pymobiledevice3 apps pull app.snapsync Documents/debug.log`
@@ -213,11 +225,11 @@ write a teardown line where a clean shutdown path exists.
 
 Each process SHALL additionally write, at boot, the **baked upload base** — the compile-time backend
 host that build targets. It names the one fact that makes an otherwise-invisible failure legible: a
-build pointed at a different backend without the `SNAPSYNC_RESET_STATE` reset (capability
-`ios-app-shell`) still holds a ledger claiming that library is uploaded, so it enumerates and uploads
-**nothing**, with no error, no failed request, and no other log line. Read beside the cycle's existing
-`enumeration: … seen, … new, … already-uploaded` summary, a changed host next to an unchanged ledger
-identifies the cause from the log alone.
+build pointed at a different backend that has not had its durable sync state voided (capability
+`device-state-reset`) still holds a ledger claiming that library is uploaded, so it enumerates and
+uploads **nothing**, with no error, no failed request, and no other log line. Read beside the cycle's
+existing `enumeration: … seen, … new, … already-uploaded` summary, a changed host next to an unchanged
+ledger identifies the cause from the log alone.
 
 The value SHALL be read from the **same** source the process's HTTP clients use, so the banner cannot
 disagree with the host actually being called — a banner that could lie about the destination would be

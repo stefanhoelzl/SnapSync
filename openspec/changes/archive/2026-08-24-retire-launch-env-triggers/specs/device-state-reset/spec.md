@@ -13,7 +13,7 @@ This is not "leave harder". `leave-event` deliberately keeps the ledger and is r
 not remove this device's bytes from its storage partition. The reset exists for the one case where that
 reasoning stops holding.
 
-Decision record: `changes/archive/2026-08-09-retire-launch-env-triggers`.
+Decision record: `changes/archive/2026-08-24-retire-launch-env-triggers`.
 
 ## ADDED Requirements
 
