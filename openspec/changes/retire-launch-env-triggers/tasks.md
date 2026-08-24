@@ -138,8 +138,13 @@
       alert stayed on screen, and a tap five minutes later deleted all 95 assets with nothing listening. So
       `answered=false` means "no answer YET", never "nothing happened", and the gallery read is the truth.
       That was the deadline's own absence-collapse reintroduced at the far end.
-      STILL OPEN, for the user to call: `WIPE_ANSWER_DEADLINE` is 120 s, which is too short for an operator
-      who is not already watching the phone. Raising it costs nothing but a longer worst case.
+      THE DEADLINE IS NOW 15 MIN, not 120 s. It expired twice in this session on an alert that was on
+      screen and correct, purely because nobody was standing at the phone — manufacturing exactly the false
+      negative the field exists to prevent. The wait is a suspended coroutine holding no thread, so a
+      generous bound costs nothing. It also deliberately exceeds the agent harness's 10-minute foreground
+      cap, which forces the caller to background the request — the correct shape anyway, since the wait is
+      on a human: under `ch-bg` the workspace goes idle and CodeHydra NOTIFIES the operator they are needed,
+      instead of reading busy for fifteen minutes while nobody is told. The runbook says so at the call.
 
 ## 11. Screenshots — its own gate, not a step that rides along
 
