@@ -5,6 +5,10 @@ snap-sync:
   BUNNY_API_KEY: bunny/api-key
   BUNNY_STORAGE_ACCESS_KEY: bunny/storage-access-key
   BUNNY_SCRIPT_DEPLOYMENT_KEY: bunny/script-deployment-key
+  BUNNY_DB_URL: bunny/db-url
+  BUNNY_DB_FULL_ACCESS_TOKEN: bunny/db-full-access-token
+  BUNNY_DB_READONLY_TOKEN: bunny/db-readonly-token
   ADMIN_NOTIFY_KEY: admin/notify
+  BUNNY_DB_URL: bunny/db-url
 Personal:
   BUGSINK_TOKEN: steho.bugsink.com/token

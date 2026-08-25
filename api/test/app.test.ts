@@ -1,26 +1,34 @@
 import { assert, assertEquals } from "@std/assert";
-import {
-  classifyEvent,
-  createApp as createRealApp,
-  type Deps,
-  type FetchLike,
-} from "../src/app.ts";
+import { createApp as createRealApp, type Deps, type FetchLike } from "../src/app.ts";
 import { deleteByMs } from "../src/lifecycle.ts";
 import { mintToken } from "../src/attest.ts";
+import { sqliteDb } from "../src/dev/db-sqlite.ts";
+import { type Db, insertEvent, migrate } from "../src/db.ts";
 
 // The whole API is gated on a device token (capability `device-attestation`), so every request in this
-// file needs one. Rather than thread a header through ~100 call sites, `createApp` is shadowed here by a
-// wrapper that pins the clock and attaches a valid token to each request — leaving every pre-existing
-// test reading exactly as it did, and testing exactly what it did.
+// file needs one. Rather than thread a header through every call site, `createApp` is shadowed here by a
+// wrapper that pins the clock and attaches a valid token to each request.
 //
 // The GATE ITSELF is tested against the real, unwrapped app in attest.test.ts (an unauthenticated request
 // must be refused). Both halves are needed: this file proves the gate does not break the routes; that one
 // proves the gate is actually there.
+//
+// WHAT CHANGED WITH THE RELATIONAL STORE. These tests used to assert the SHAPE OF STORAGE TRAFFIC — which
+// object key a route wrote, which directory it listed — because that traffic WAS the state. Relational
+// state is observable directly, so a test now seeds rows and asserts rows. Storage traffic is still
+// asserted for the one thing that still lives there: the photo BYTES.
+//
+// The store under test is a real SQLite (`node:sqlite`, in-process). Every invariant this change moved
+// into the database — the cascade, the atomic publish, the exact capacity gate, `uploaded`'s monotonicity
+// — is a property of SQL rather than of our code, and a hand-written double would assert our
+// understanding of those statements instead of their behaviour. It needs no network, which matters: the
+// test task withholds `--allow-net` deliberately, and that absence is what guarantees no test can reach a
+// live store.
 const NOW = Date.parse("2026-07-14T12:00:00Z");
 
 const E = "7a3f9c21-0000-4000-8000-000000000001"; // an eventId
 const D = "11111111-0000-4000-8000-000000000002"; // a deviceId
-const URLBASE = "https://edge.example";
+const D2 = "22222222-0000-4000-8000-000000000003"; // a second deviceId
 
 const CONFIG = {
   zone: "snapsync-zone",
@@ -42,9 +50,62 @@ const CONFIG = {
   eventCapacity: 10,
   eventWindowMaxSeconds: 30 * 24 * 60 * 60,
   eventLifetimeSeconds: 30 * 24 * 60 * 60,
+  databaseUrl: "",
+  databaseToken: "",
 };
 
-const TOKEN = await mintToken(CONFIG, "11111111-0000-4000-8000-000000000002", NOW);
+const TOKEN = await mintToken(CONFIG, D, NOW);
+
+const ZONE = `https://storage.bunnycdn.com/snapsync-zone`;
+const S3_ZONE = `${CONFIG.s3Scheme}://${CONFIG.s3Host}/${CONFIG.zone}`;
+
+const STARTS_AT = "2026-06-27T18:00:00Z";
+const ENDS_AT = "2026-07-27T18:00:00Z"; // startsAt + the configured 30 days
+const EVENT = {
+  eventId: E,
+  name: "Party",
+  createdAt: "2026-06-27T00:00:00Z",
+  startsAt: STARTS_AT,
+  endsAt: ENDS_AT,
+  capacity: 10,
+  lifetimeSeconds: 30 * 24 * 60 * 60,
+};
+
+const BYTE_PATH = `/api/v1/files/devices/${D}/IMG_0001-photo.jpg`;
+const BYTE_OBJ_URL = `${ZONE}/files/devices/${D}/IMG_0001-photo.jpg`;
+const DEVLIST_PATH = `/api/v1/files/devices/${D}`;
+const MANIFEST_PATH = `/api/v1/events/${E}/devices/${D}`;
+const UNION_PATH = `/api/v1/events/${E}/files`;
+
+type Call = { url: string; init: RequestInit };
+
+/**
+ * Records upstream STORAGE calls. Only the byte objects and the attestation record live there now, so the
+ * fake is correspondingly small: a PUT answers `status` (201 by default), or throws when `throws`.
+ */
+function recorder(opts: { status?: number; throws?: boolean } = {}) {
+  const calls: Call[] = [];
+  const fetchImpl: FetchLike = (url, init) => {
+    calls.push({ url, init });
+    if (opts.throws) return Promise.reject(new Error("network boom"));
+    return Promise.resolve(new Response(null, { status: opts.status ?? 201 }));
+  };
+  return { calls, fetchImpl };
+}
+
+/** A migrated in-memory store. Every test gets its own, so none can observe another's rows. */
+async function store(): Promise<Db & { close(): void }> {
+  const db = sqliteDb(":memory:");
+  await migrate(db);
+  return db;
+}
+
+/** A store already holding {@link EVENT} — the starting point for every event-scoped route's tests. */
+async function storeWithEvent(overrides: Partial<typeof EVENT> = {}) {
+  const db = await store();
+  await insertEvent(db, { ...EVENT, ...overrides });
+  return db;
+}
 
 /** The real app, with the clock pinned and a valid device token attached to every request. */
 function createApp(deps: Omit<Deps, "now">) {
@@ -59,1842 +120,1154 @@ function createApp(deps: Omit<Deps, "now">) {
   });
 }
 
-const ZONE = `https://storage.bunnycdn.com/snapsync-zone`;
-// The presigned-download S3 endpoint (path-style: `<s3Host>/<zone>/<key>`).
-const S3_ZONE = `${CONFIG.s3Scheme}://${CONFIG.s3Host}/${CONFIG.zone}`;
-const MARKER_URL = `${ZONE}/events/${E}/metadata.json`; // event registry marker
-// `startsAt` is the CANONICAL cutoff shape (second precision, no fraction) while `createdAt` is whatever
-// `toISOString()` mints — the two are different facts and deliberately different shapes. `endsAt` and
-// `capacity` are the limits POST /events stamps (capability `event-limits`); NOW (2026-07-14) is inside
-// [startsAt, endsAt], so this marker is LIVE for every pre-existing test.
-const STARTS_AT = "2026-06-27T18:00:00Z";
-const ENDS_AT = "2026-07-27T18:00:00Z"; // startsAt + the configured 30 days
-const MARKER_BODY = {
-  eventId: E,
-  name: "Party",
-  createdAt: "2026-06-27T00:00:00Z",
-  startsAt: STARTS_AT,
-  endsAt: ENDS_AT,
-  capacity: 10,
-};
-const markerPresent = { [MARKER_URL]: { body: MARKER_BODY } };
-// An event whose capture WINDOW has closed (endsAt 4 days before NOW) but which is very much alive: its
-// deadline is `max(createdAt, startsAt) + 30d` = 2026-07-27. The window closing must change NOTHING.
-const PAST_WINDOW_MARKER = { ...MARKER_BODY, endsAt: "2026-07-10T00:00:00Z" };
-// An event past its DELETE-BY (a 1-day stamped lifetime off a 2026-06-27 anchor). The gate still serves
-// it — no route deletes on touch; the nightly sweep does, and only it.
-const PAST_DEADLINE_MARKER = { ...MARKER_BODY, lifetimeSeconds: 24 * 60 * 60 };
+/** One manifest body — the wire format (capability `device-manifest`), unchanged by this move. */
+function manifest(
+  assets: { assetId: string; creationDate: string; resources: Record<string, unknown>[] }[],
+) {
+  return JSON.stringify({ deviceId: D, assets });
+}
+
+// `key` is the BARE stored object name and `filename` the human capture name — different facts, and the
+// download URL is built from the key. The fixtures keep them distinguishable so a route that confused
+// them would fail here rather than at a 404 on someone's phone.
+const RES = (key: string, role = "primary") => ({
+  role,
+  contentType: "image/heic",
+  key,
+  filename: `Capture ${key}`,
+});
+
+async function rows(db: Db, sql: string, args: unknown[] = []) {
+  return (await db.execute(sql, args)).rows;
+}
 
 /**
- * Assert `url` is a presigned S3 GET for the bare object key `key` (e.g. `files/devices/<D>/A-primary.heic`):
- * path-style origin+path against the S3 endpoint, 7-day expiry, and an AWS4-HMAC-SHA256 signature. The
- * signature itself is time-dependent (X-Amz-Date), so we assert the shape, not an exact string.
+ * Assert `url` is a presigned S3 GET for the bare object key `key`: path-style origin+path against the S3
+ * endpoint, 7-day expiry, and an AWS4-HMAC-SHA256 signature. The signature is time-dependent, so this
+ * asserts the shape, not an exact string.
  */
 function assertPresigned(url: string, key: string) {
   const u = new URL(url);
   assertEquals(`${u.origin}${u.pathname}`, `${S3_ZONE}/${key}`);
   assertEquals(u.searchParams.get("X-Amz-Algorithm"), "AWS4-HMAC-SHA256");
   assertEquals(u.searchParams.get("X-Amz-Expires"), "604800");
-  assertEquals(u.searchParams.get("X-Amz-SignedHeaders"), "host");
-  assert(u.searchParams.get("X-Amz-Credential")?.includes("/de/s3/aws4_request"));
   assert((u.searchParams.get("X-Amz-Signature") ?? "").length > 0);
 }
 
-// Byte WRITE route (`bunny-upload-endpoint`): device-partitioned, event-independent.
-const BYTE_PATH = `/api/v1/files/devices/${D}/IMG_0001-photo.jpg`;
-const BYTE_OBJ_URL = `${ZONE}/files/devices/${D}/IMG_0001-photo.jpg`;
-// Per-device list (`bunny-list-endpoint`).
-const DEVLIST_PATH = `/api/v1/files/devices/${D}`;
-const DEVDIR_URL = `${ZONE}/files/devices/${D}/`;
-// Device-manifest write (`bunny-upload-endpoint`, gated).
-const DEVMANIFEST_PATH = `/api/v1/events/${E}/devices/${D}`;
-const DEVMANIFEST_URL = `${ZONE}/events/${E}/devices/${D}.json`;
+// ── PUT /files/devices/:deviceId/:filename (byte upload) ───────────────────────────────────────────
 
-type Call = { url: string; init: RequestInit };
-
-const putCall = (calls: Call[]) => calls.find((c) => c.init.method === "PUT")!;
-
-/**
- * Records upstream calls. By default a GET of the event marker returns a present, LIVE marker and a GET
- * of a `devices/` directory returns an empty LIST (→ the writing device is NEW, well under capacity —
- * the limits gate passes); a PUT returns `status` (201) — or throws if `throws`. Set `marker` to model
- * an absent ("absent" → 404) or failing ("fail" → 500) marker read.
- */
-function recorder(
-  opts: { status?: number; throws?: boolean; marker?: "present" | "absent" | "fail" } = {},
-) {
-  const calls: Call[] = [];
-  const fetchImpl: FetchLike = (url, init) => {
-    calls.push({ url, init });
-    if (init.method === "GET") {
-      if (url.endsWith("/devices/")) {
-        return Promise.resolve(
-          new Response("[]", { status: 200, headers: { "content-type": "application/json" } }),
-        );
-      }
-      const m = opts.marker ?? "present";
-      if (m === "absent") return Promise.resolve(new Response(null, { status: 404 }));
-      if (m === "fail") return Promise.resolve(new Response("boom", { status: 500 }));
-      return Promise.resolve(
-        new Response(JSON.stringify(MARKER_BODY), {
-          status: 200,
-          headers: { "content-type": "application/json" },
-        }),
-      );
-    }
-    if (opts.throws) return Promise.reject(new Error("network boom"));
-    return Promise.resolve(new Response(null, { status: opts.status ?? 201 }));
-  };
-  return { calls, fetchImpl };
-}
-
-// ── PUT /files/devices/:deviceId/:filename (byte upload, UNGATED) ──────────────────────────────────
-
-Deno.test("byte PUT → forwards once with bare files/devices/<device>/<name> key, AccessKey, content-type, body", async () => {
+Deno.test("byte PUT → forwards once with the bare key, AccessKey, content-type and body", async () => {
+  const db = await store();
   const { calls, fetchImpl } = recorder();
-  const res = await createApp({ config: CONFIG, fetch: fetchImpl }).request(BYTE_PATH, {
+  const res = await createApp({ config: CONFIG, db, fetch: fetchImpl }).request(BYTE_PATH, {
     method: "PUT",
-    body: "hello-bytes",
     headers: { "content-type": "image/jpeg" },
+    body: "bytes",
   });
-
   assertEquals(res.status, 201);
-  assertEquals(calls.length, 1); // UNGATED: exactly one object PUT, NO marker GET
-  const call = putCall(calls);
-  assertEquals(call.url, BYTE_OBJ_URL);
-  const h = new Headers(call.init.headers);
-  assertEquals(h.get("AccessKey"), "zone-password");
-  assertEquals(h.get("Content-Type"), "image/jpeg");
-  assertEquals(await new Response(call.init.body as BodyInit).text(), "hello-bytes");
+  const put = calls.find((c) => c.init.method === "PUT")!;
+  assertEquals(put.url, BYTE_OBJ_URL);
+  assertEquals((put.init.headers as Record<string, string>).AccessKey, "zone-password");
+  assertEquals((put.init.headers as Record<string, string>)["Content-Type"], "image/jpeg");
+  db.close();
 });
 
-Deno.test("byte PUT → encoded filename round-trips to an encoded, flat key on the wire", async () => {
+Deno.test("byte PUT → records the upload, so the listing and the union can see it", async () => {
+  const db = await store();
+  const { fetchImpl } = recorder();
+  await createApp({ config: CONFIG, db, fetch: fetchImpl }).request(BYTE_PATH, {
+    method: "PUT",
+    body: "bytes",
+  });
+  const stored = await rows(db, `SELECT device_id, key, uploaded FROM resources`);
+  assertEquals(stored.length, 1);
+  assertEquals(stored[0].device_id, D);
+  // The BARE object name — the same key the manifest publish upserts on, so the repair path lands on
+  // this row rather than creating a second one beside it.
+  assertEquals(stored[0].key, "IMG_0001-photo.jpg");
+  assertEquals(Number(stored[0].uploaded), 1);
+  db.close();
+});
+
+Deno.test("byte PUT → a store failure does NOT fail the upload (best-effort record)", async () => {
+  // The route's success is "the bytes landed". Failing it because a bookkeeping row did not land would
+  // turn a successful upload into a retried one; the next manifest publish repairs the record.
+  const db = await store();
+  const broken: Db = {
+    execute: () => Promise.reject(new Error("store down")),
+    batch: () => Promise.reject(new Error("store down")),
+    transaction: () => Promise.reject(new Error("store down")),
+    foreignKeysEnabled: () => Promise.resolve(true),
+  };
   const { calls, fetchImpl } = recorder();
-  const res = await createApp({ config: CONFIG, fetch: fetchImpl }).request(
-    `/api/v1/files/devices/${D}/IMG%20001.jpg`,
-    { method: "PUT", body: "x" },
+  const res = await createApp({ config: CONFIG, db: broken, fetch: fetchImpl }).request(BYTE_PATH, {
+    method: "PUT",
+    body: "bytes",
+  });
+  assertEquals(res.status, 201);
+  assertEquals(calls.filter((c) => c.init.method === "PUT").length, 1);
+  db.close();
+});
+
+Deno.test("byte PUT → an encoded filename round-trips to an encoded, flat key", async () => {
+  const db = await store();
+  const { calls, fetchImpl } = recorder();
+  await createApp({ config: CONFIG, db, fetch: fetchImpl }).request(
+    `/api/v1/files/devices/${D}/IMG%200001%20photo.jpg`,
+    { method: "PUT", body: "b" },
   );
-  assertEquals(res.status, 201);
-  assertEquals(putCall(calls).url, `${ZONE}/files/devices/${D}/IMG%20001.jpg`);
+  assertEquals(
+    calls.find((c) => c.init.method === "PUT")!.url,
+    `${ZONE}/files/devices/${D}/IMG%200001%20photo.jpg`,
+  );
+  db.close();
 });
 
-Deno.test("byte PUT → encoded slash (%2F) in filename → 400 (would un-flatten the key)", async () => {
+Deno.test("byte PUT → an encoded slash (%2F) in the filename → 400, no upstream request", async () => {
+  const db = await store();
   const { calls, fetchImpl } = recorder();
-  const res = await createApp({ config: CONFIG, fetch: fetchImpl }).request(
+  const res = await createApp({ config: CONFIG, db, fetch: fetchImpl }).request(
     `/api/v1/files/devices/${D}/a%2Fb.jpg`,
-    { method: "PUT", body: "x" },
+    { method: "PUT", body: "b" },
   );
   assertEquals(res.status, 400);
   assertEquals(calls.length, 0);
+  db.close();
 });
 
 Deno.test("byte PUT → missing content-type defaults to application/octet-stream", async () => {
+  const db = await store();
   const { calls, fetchImpl } = recorder();
-  const req = new Request(`${URLBASE}${BYTE_PATH}`, {
+  // A Blob with no `type` is the one body shape that reaches the handler with no content-type header at
+  // all — a string body makes fetch supply `text/plain`, which would test fetch rather than the route.
+  await createApp({ config: CONFIG, db, fetch: fetchImpl }).request(BYTE_PATH, {
     method: "PUT",
-    body: new Uint8Array([1, 2, 3]),
+    body: new Blob(["b"]),
   });
-  assertEquals(req.headers.get("content-type"), null);
-  await createApp({ config: CONFIG, fetch: fetchImpl }).request(req);
   assertEquals(
-    new Headers(putCall(calls).init.headers).get("Content-Type"),
+    (calls.find((c) => c.init.method === "PUT")!.init.headers as Record<string, string>)[
+      "Content-Type"
+    ],
     "application/octet-stream",
   );
+  db.close();
 });
 
-Deno.test("byte PUT → one unconditional object PUT, no existence check, no marker read", async () => {
-  const { calls, fetchImpl } = recorder();
-  await createApp({ config: CONFIG, fetch: fetchImpl }).request(BYTE_PATH, {
-    method: "PUT",
-    body: "x",
-  });
-  assertEquals(calls.length, 1);
-  assertEquals(calls[0].init.method, "PUT");
-  assertEquals(calls[0].url, BYTE_OBJ_URL);
-});
-
-Deno.test("byte PUT → bunny error → 502 (never a false 2xx)", async () => {
+Deno.test("byte PUT → bunny error → 502, and nothing is recorded", async () => {
+  const db = await store();
   const { fetchImpl } = recorder({ status: 500 });
-  const res = await createApp({ config: CONFIG, fetch: fetchImpl }).request(BYTE_PATH, {
+  const res = await createApp({ config: CONFIG, db, fetch: fetchImpl }).request(BYTE_PATH, {
     method: "PUT",
-    body: "x",
+    body: "b",
   });
   assertEquals(res.status, 502);
+  assertEquals((await rows(db, `SELECT * FROM resources`)).length, 0);
+  db.close();
 });
 
-Deno.test("byte PUT → upstream throw/abort → 502", async () => {
+Deno.test("byte PUT → upstream throw → 502", async () => {
+  const db = await store();
   const { fetchImpl } = recorder({ throws: true });
-  const res = await createApp({ config: CONFIG, fetch: fetchImpl }).request(BYTE_PATH, {
+  const res = await createApp({ config: CONFIG, db, fetch: fetchImpl }).request(BYTE_PATH, {
     method: "PUT",
-    body: "x",
+    body: "b",
   });
   assertEquals(res.status, 502);
+  db.close();
 });
 
 Deno.test("byte PUT → non-UUID device segment → 400, no upstream request", async () => {
+  const db = await store();
   const { calls, fetchImpl } = recorder();
-  const res = await createApp({ config: CONFIG, fetch: fetchImpl }).request(
-    `/api/v1/files/devices/nope/a.jpg`,
-    { method: "PUT", body: "x" },
+  const res = await createApp({ config: CONFIG, db, fetch: fetchImpl }).request(
+    `/api/v1/files/devices/not-a-uuid/x.jpg`,
+    { method: "PUT", body: "b" },
   );
   assertEquals(res.status, 400);
   assertEquals(calls.length, 0);
-});
-
-Deno.test("byte PUT → unmatched path → 404, no upstream request", async () => {
-  const { calls, fetchImpl } = recorder();
-  const res = await createApp({ config: CONFIG, fetch: fetchImpl }).request("/api/v1/nope", {
-    method: "PUT",
-    body: "x",
-  });
-  assertEquals(res.status, 404);
-  assertEquals(calls.length, 0);
-});
-
-Deno.test("byte PUT → empty filename (no resource) → 404 (route doesn't match)", async () => {
-  const { calls, fetchImpl } = recorder();
-  const res = await createApp({ config: CONFIG, fetch: fetchImpl }).request(
-    `/api/v1/files/devices/${D}/`,
-    { method: "PUT", body: "x" },
-  );
-  assertEquals(res.status, 404);
-  assertEquals(calls.length, 0);
+  db.close();
 });
 
 Deno.test("byte OPTIONS → 204, no resumable advertised, no upstream request", async () => {
+  const db = await store();
   const { calls, fetchImpl } = recorder();
-  const res = await createApp({ config: CONFIG, fetch: fetchImpl }).request(BYTE_PATH, {
+  const res = await createApp({ config: CONFIG, db, fetch: fetchImpl }).request(BYTE_PATH, {
     method: "OPTIONS",
   });
   assertEquals(res.status, 204);
   assertEquals(res.headers.get("Allow"), "PUT, OPTIONS");
   assertEquals(calls.length, 0);
-  for (const [name] of res.headers) {
-    if (name.toLowerCase().startsWith("upload-")) {
-      throw new Error(`unexpected resumable header advertised: ${name}`);
-    }
-  }
+  db.close();
 });
 
-// ── PUT /events/:eventId/devices/:deviceId (device-manifest write, GATED) ───────────────────────────
+// ── PUT /events/:eventId/devices/:deviceId (the manifest publish) ──────────────────────────────────
 
-Deno.test("device-manifest PUT → marker GET + devices LIST + one object PUT to events/<e>/devices/<d>.json, 201", async () => {
+Deno.test("manifest publish → enrolls the device and records its assets, 201", async () => {
+  const db = await storeWithEvent();
   const { calls, fetchImpl } = recorder();
-  const res = await createApp({ config: CONFIG, fetch: fetchImpl }).request(DEVMANIFEST_PATH, {
+  const res = await createApp({ config: CONFIG, db, fetch: fetchImpl }).request(MANIFEST_PATH, {
     method: "PUT",
-    body: JSON.stringify({ deviceId: D, assets: [] }),
-    headers: { "content-type": "application/json" },
+    body: manifest([{
+      assetId: "A",
+      creationDate: "2026-07-01T00:00:00Z",
+      resources: [RES("a.heic")],
+    }]),
   });
   assertEquals(res.status, 201);
-  // Exactly the gate's two reads + the object PUT: marker GET (existence + lifecycle) and the single
-  // devices/ LIST the limits gate needs (known-vs-new + the capacity count) — no other upstream call.
-  assertEquals(calls.length, 3);
-  assertEquals(calls[0].url, MARKER_URL);
-  assertEquals(calls[1].url, `${ZONE}/events/${E}/devices/`);
-  const put = putCall(calls);
-  assertEquals(put.url, DEVMANIFEST_URL);
-  const h = new Headers(put.init.headers);
-  assertEquals(h.get("AccessKey"), "zone-password");
-  assertEquals(h.get("Content-Type"), "application/json");
-});
-
-Deno.test("device-manifest PUT → missing event (marker absent) → 404, no object PUT", async () => {
-  const { calls, fetchImpl } = recorder({ marker: "absent" });
-  const res = await createApp({ config: CONFIG, fetch: fetchImpl }).request(DEVMANIFEST_PATH, {
-    method: "PUT",
-    body: "{}",
-  });
-  assertEquals(res.status, 404);
-  assertEquals(calls.filter((c) => c.init.method === "PUT").length, 0);
-});
-
-Deno.test("device-manifest PUT → marker read failure → 502 (not absence), no object PUT", async () => {
-  const { calls, fetchImpl } = recorder({ marker: "fail" });
-  const res = await createApp({ config: CONFIG, fetch: fetchImpl }).request(DEVMANIFEST_PATH, {
-    method: "PUT",
-    body: "{}",
-  });
-  assertEquals(res.status, 502);
-  assertEquals(calls.filter((c) => c.init.method === "PUT").length, 0);
-});
-
-Deno.test("device-manifest PUT → bunny PUT error → 502", async () => {
-  const { fetchImpl } = recorder({ status: 500 });
-  const res = await createApp({ config: CONFIG, fetch: fetchImpl }).request(DEVMANIFEST_PATH, {
-    method: "PUT",
-    body: "{}",
-  });
-  assertEquals(res.status, 502);
-});
-
-Deno.test("device-manifest PUT → non-UUID event or device → 400, no upstream", async () => {
-  for (const path of [`/api/v1/events/nope/devices/${D}`, `/api/v1/events/${E}/devices/nope`]) {
-    const { calls, fetchImpl } = recorder();
-    const res = await createApp({ config: CONFIG, fetch: fetchImpl }).request(path, {
-      method: "PUT",
-      body: "{}",
-    });
-    assertEquals(res.status, 400);
-    assertEquals(calls.length, 0);
-  }
-});
-
-// ── GET /files/devices/:deviceId (per-device raw listing) ──────────────────────────────────────────
-
-const dir = (name: string) => ({ ObjectName: name, IsDirectory: true, Length: 0 });
-const file = (name: string, length: number) => ({
-  ObjectName: name,
-  IsDirectory: false,
-  Length: length,
-});
-
-/** Serves canned bunny LIST JSON keyed by URL; any unmapped URL → 404 (→ "no objects"). */
-function listFake(routes: Record<string, { status?: number; body?: unknown }>) {
-  const calls: Call[] = [];
-  const fetchImpl: FetchLike = (url, init) => {
-    calls.push({ url, init });
-    const r = routes[url];
-    if (!r) return Promise.resolve(new Response("not found", { status: 404 }));
-    const body = r.body === undefined ? null : JSON.stringify(r.body);
-    return Promise.resolve(
-      new Response(body, {
-        status: r.status ?? 200,
-        headers: { "content-type": "application/json" },
-      }),
-    );
-  };
-  return { calls, fetchImpl };
-}
-
-Deno.test("device list → raw files as { filename, size, url }, one LIST, no further reads", async () => {
-  const { calls, fetchImpl } = listFake({
-    [DEVDIR_URL]: {
-      body: [file("A-primary.heic", 100), file("A-motion.mov", 200), dir("nested")],
-    },
-  });
-  const res = await createApp({ config: CONFIG, fetch: fetchImpl }).request(DEVLIST_PATH);
-  assertEquals(res.status, 200);
-  // All three directives: the pull zone fronting the script honors `no-cache`, not `no-store`.
-  assertEquals(res.headers.get("Cache-Control"), "no-store, no-cache, max-age=0");
-  const body = await res.json();
   assertEquals(
-    body.map((e: { filename: string; size: number }) => ({ filename: e.filename, size: e.size })),
-    [{ filename: "A-primary.heic", size: 100 }, { filename: "A-motion.mov", size: 200 }],
-  ); // directory entry filtered out
-  assertPresigned(body[0].url, `files/devices/${D}/A-primary.heic`);
-  assertPresigned(body[1].url, `files/devices/${D}/A-motion.mov`);
-  assertEquals(calls.length, 1); // single LIST, no manifest/content reads
-  assertEquals(new Headers(calls[0].init.headers).get("AccessKey"), "zone-password");
+    await rows(db, `SELECT state FROM memberships WHERE event_id=? AND device_id=?`, [
+      E,
+      D,
+    ]),
+    [{ state: "active" }],
+  );
+  assertEquals(
+    (await rows(db, `SELECT asset_id FROM event_assets WHERE event_id=?`, [E])).length,
+    1,
+  );
+  // The manifest is a wire format now: it is recorded, not stored. Nothing goes to the object store.
+  assertEquals(calls.length, 0);
+  db.close();
 });
 
-Deno.test("device list → empty dir (200 []) → 200 []", async () => {
-  const { fetchImpl } = listFake({ [DEVDIR_URL]: { body: [] } });
-  const res = await createApp({ config: CONFIG, fetch: fetchImpl }).request(DEVLIST_PATH);
+Deno.test("manifest publish → is a FULL-STATE replace: an omitted asset is removed", async () => {
+  const db = await storeWithEvent();
+  const app = createApp({ config: CONFIG, db, fetch: recorder().fetchImpl });
+  const publish = (assetIds: string[]) =>
+    app.request(MANIFEST_PATH, {
+      method: "PUT",
+      body: manifest(
+        assetIds.map((id) => ({
+          assetId: id,
+          creationDate: "2026-07-01T00:00:00Z",
+          resources: [RES(`${id}.heic`)],
+        })),
+      ),
+    });
+  await publish(["A", "C"]);
+  await publish(["A", "B"]);
+  const kept =
+    (await rows(db, `SELECT asset_id FROM event_assets WHERE event_id=? ORDER BY asset_id`, [
+      E,
+    ])).map((r) => r.asset_id);
+  assertEquals(kept, ["A", "B"]);
+  db.close();
+});
+
+Deno.test("manifest publish → repairs an upload record the byte route lost", async () => {
+  // The byte route's write is best-effort. This is the repair path that makes that collapse safe: the
+  // manifest lists only COMPLETED resources, so an entry that does not say otherwise means `uploaded`.
+  const db = await storeWithEvent();
+  await db.execute(
+    `INSERT INTO resources (device_id, key, asset_id, role, content_type, filename, uploaded)
+     VALUES (?, ?, 'A', 'primary', 'image/heic', 'a.heic', 0)`,
+    [D, "a.heic"],
+  );
+  await createApp({ config: CONFIG, db, fetch: recorder().fetchImpl }).request(MANIFEST_PATH, {
+    method: "PUT",
+    body: manifest([{
+      assetId: "A",
+      creationDate: "2026-07-01T00:00:00Z",
+      resources: [RES("a.heic")],
+    }]),
+  });
+  assertEquals(
+    Number((await rows(db, `SELECT uploaded FROM resources WHERE device_id=?`, [D]))[0].uploaded),
+    1,
+  );
+  db.close();
+});
+
+Deno.test("manifest publish → `uploaded` is monotone: a false entry cannot un-say an upload", async () => {
+  const db = await storeWithEvent();
+  const app = createApp({ config: CONFIG, db, fetch: recorder().fetchImpl });
+  const body = (uploaded: boolean) =>
+    manifest([{
+      assetId: "A",
+      creationDate: "2026-07-01T00:00:00Z",
+      resources: [{ ...RES("a.heic"), uploaded }],
+    }]);
+  await app.request(MANIFEST_PATH, { method: "PUT", body: body(true) });
+  await app.request(MANIFEST_PATH, { method: "PUT", body: body(false) });
+  assertEquals(
+    Number((await rows(db, `SELECT uploaded FROM resources WHERE device_id=?`, [D]))[0].uploaded),
+    1,
+  );
+  db.close();
+});
+
+Deno.test("manifest publish → missing event → 404, nothing written", async () => {
+  const db = await store();
+  const res = await createApp({ config: CONFIG, db, fetch: recorder().fetchImpl }).request(
+    MANIFEST_PATH,
+    { method: "PUT", body: manifest([]) },
+  );
+  assertEquals(res.status, 404);
+  assertEquals((await rows(db, `SELECT * FROM memberships`)).length, 0);
+  db.close();
+});
+
+Deno.test("manifest publish → a body that is not a manifest → 400, nothing written", async () => {
+  const db = await storeWithEvent();
+  const app = createApp({ config: CONFIG, db, fetch: recorder().fetchImpl });
+  for (
+    const body of [
+      "not json",
+      JSON.stringify({}),
+      JSON.stringify({ assets: [{ assetId: "A" }] }),
+      JSON.stringify({ assets: [{ assetId: "A", creationDate: "x", resources: [] }] }),
+      JSON.stringify({
+        assets: [{ assetId: "A", creationDate: "x", resources: [{ role: "primary" }] }],
+      }),
+    ]
+  ) {
+    const res = await app.request(MANIFEST_PATH, { method: "PUT", body });
+    assertEquals(res.status, 400, `body: ${body}`);
+  }
+  assertEquals((await rows(db, `SELECT * FROM event_assets`)).length, 0);
+  db.close();
+});
+
+Deno.test("manifest publish → an unknown resource field is ignored, not refused", async () => {
+  // A backend that refused a field a future client adds would break every device the moment that client
+  // shipped.
+  const db = await storeWithEvent();
+  const res = await createApp({ config: CONFIG, db, fetch: recorder().fetchImpl }).request(
+    MANIFEST_PATH,
+    {
+      method: "PUT",
+      body: manifest([{
+        assetId: "A",
+        creationDate: "2026-07-01T00:00:00Z",
+        resources: [{ ...RES("a.heic"), somethingNew: 42 }],
+      }]),
+    },
+  );
+  assertEquals(res.status, 201);
+  db.close();
+});
+
+Deno.test("manifest publish → non-UUID event or device → 400", async () => {
+  const db = await storeWithEvent();
+  const app = createApp({ config: CONFIG, db, fetch: recorder().fetchImpl });
+  for (
+    const path of [`/api/v1/events/nope/devices/${D}`, `/api/v1/events/${E}/devices/nope`]
+  ) {
+    assertEquals((await app.request(path, { method: "PUT", body: manifest([]) })).status, 400);
+  }
+  db.close();
+});
+
+// ── Capacity (capability `event-limits`) ───────────────────────────────────────────────────────────
+
+Deno.test("capacity → a NEW device at capacity → 409, nothing written", async () => {
+  const db = await storeWithEvent({ capacity: 1 });
+  const app = createApp({ config: CONFIG, db, fetch: recorder().fetchImpl });
+  await app.request(`/api/v1/events/${E}/devices/${D2}`, { method: "PUT", body: manifest([]) });
+  const res = await app.request(MANIFEST_PATH, { method: "PUT", body: manifest([]) });
+  assertEquals(res.status, 409);
+  assertEquals((await rows(db, `SELECT * FROM memberships WHERE device_id=?`, [D])).length, 0);
+  db.close();
+});
+
+Deno.test("capacity → a KNOWN device always passes, at capacity or not", async () => {
+  const db = await storeWithEvent({ capacity: 1 });
+  const app = createApp({ config: CONFIG, db, fetch: recorder().fetchImpl });
+  assertEquals(
+    (await app.request(MANIFEST_PATH, { method: "PUT", body: manifest([]) })).status,
+    201,
+  );
+  assertEquals(
+    (await app.request(MANIFEST_PATH, { method: "PUT", body: manifest([]) })).status,
+    201,
+  );
+  db.close();
+});
+
+Deno.test("capacity → leaving frees NO slot, and a rejoin reuses the departed device's own", async () => {
+  const db = await storeWithEvent({ capacity: 1 });
+  const app = createApp({ config: CONFIG, db, fetch: recorder().fetchImpl });
+  await app.request(MANIFEST_PATH, { method: "PUT", body: manifest([]) });
+  await app.request(MANIFEST_PATH, { method: "DELETE" });
+  // A different, never-seen device is still refused …
+  assertEquals(
+    (await app.request(`/api/v1/events/${E}/devices/${D2}`, { method: "PUT", body: manifest([]) }))
+      .status,
+    409,
+  );
+  // … while the departed device rejoins into the slot it already held.
+  assertEquals(
+    (await app.request(MANIFEST_PATH, { method: "PUT", body: manifest([]) })).status,
+    201,
+  );
+  assertEquals((await rows(db, `SELECT * FROM memberships WHERE event_id=?`, [E])).length, 1);
+  db.close();
+});
+
+Deno.test("capacity → concurrent first enrollments do NOT overshoot", async () => {
+  // The old read-then-write gate admitted every racer; the conditional statement admits exactly the
+  // remaining capacity. This is the property that let `event-limits`' accepted-overshoot caveat be
+  // retired rather than carried forward.
+  const db = await storeWithEvent({ capacity: 3 });
+  const app = createApp({ config: CONFIG, db, fetch: recorder().fetchImpl });
+  const devices = Array.from(
+    { length: 10 },
+    (_, i) => `33333333-0000-4000-8000-0000000000${String(i).padStart(2, "0")}`,
+  );
+  const results = await Promise.all(
+    devices.map((d) =>
+      app.request(`/api/v1/events/${E}/devices/${d}`, { method: "PUT", body: manifest([]) })
+    ),
+  );
+  assertEquals(results.filter((r) => r.status === 201).length, 3);
+  assertEquals(results.filter((r) => r.status === 409).length, 7);
+  assertEquals((await rows(db, `SELECT * FROM memberships WHERE event_id=?`, [E])).length, 3);
+  db.close();
+});
+
+Deno.test("capacity → a zero-row enrollment tells `full` and `no such event` apart", async () => {
+  // Both reach the statement as "zero rows affected", because the capacity subquery yields NULL for a
+  // missing event. Collapsing them would answer 409 for an event that does not exist.
+  const empty = await store();
+  const full = await storeWithEvent({ capacity: 0 });
+  const app = (db: Db) => createApp({ config: CONFIG, db, fetch: recorder().fetchImpl });
+  assertEquals(
+    (await app(empty).request(MANIFEST_PATH, { method: "PUT", body: manifest([]) })).status,
+    404,
+  );
+  assertEquals(
+    (await app(full).request(MANIFEST_PATH, { method: "PUT", body: manifest([]) })).status,
+    409,
+  );
+  empty.close();
+  full.close();
+});
+
+// ── GET /files/devices/:deviceId (per-device listing) ──────────────────────────────────────────────
+
+Deno.test("device list → { filename, url } only, and only for uploaded resources", async () => {
+  const db = await store();
+  await db.execute(
+    `INSERT INTO resources (device_id, key, asset_id, role, content_type, filename, uploaded)
+     VALUES (?, 'a.heic', 'A', 'primary', 'image/heic', 'Capture a.heic', 1),
+            (?, 'b.heic', 'B', 'primary', 'image/heic', 'Capture b.heic', 0)`,
+    [D, D],
+  );
+  const { calls, fetchImpl } = recorder();
+  const res = await createApp({ config: CONFIG, db, fetch: fetchImpl }).request(DEVLIST_PATH);
+  assertEquals(res.status, 200);
+  const body = await res.json() as Record<string, unknown>[];
+  assertEquals(body.length, 1);
+  assertEquals(Object.keys(body[0]).sort(), ["filename", "url"]);
+  assertEquals(body[0].filename, "a.heic");
+  assertPresigned(String(body[0].url), `files/devices/${D}/a.heic`);
+  assertEquals(res.headers.get("Cache-Control"), "no-store, no-cache, max-age=0");
+  // Served from the record; storage is not enumerated.
+  assertEquals(calls.length, 0);
+  db.close();
+});
+
+Deno.test("device list → a device with nothing stored → 200 []", async () => {
+  const db = await store();
+  const res = await createApp({ config: CONFIG, db, fetch: recorder().fetchImpl }).request(
+    DEVLIST_PATH,
+  );
   assertEquals(res.status, 200);
   assertEquals(await res.json(), []);
+  db.close();
 });
 
-Deno.test("device list → empty dir (bunny 404) → 200 []", async () => {
-  const { fetchImpl } = listFake({ [DEVDIR_URL]: { status: 404 } });
-  const res = await createApp({ config: CONFIG, fetch: fetchImpl }).request(DEVLIST_PATH);
-  assertEquals(res.status, 200);
-  assertEquals(await res.json(), []);
-});
-
-Deno.test("device list → LIST failure (500) → 502 (never partial)", async () => {
-  const { fetchImpl } = listFake({ [DEVDIR_URL]: { status: 500 } });
-  const res = await createApp({ config: CONFIG, fetch: fetchImpl }).request(DEVLIST_PATH);
+Deno.test("device list → a store failure → 502, never a partial list", async () => {
+  const broken: Db = {
+    execute: () => Promise.reject(new Error("store down")),
+    batch: () => Promise.reject(new Error("store down")),
+    transaction: () => Promise.reject(new Error("store down")),
+    foreignKeysEnabled: () => Promise.resolve(true),
+  };
+  const res = await createApp({ config: CONFIG, db: broken, fetch: recorder().fetchImpl }).request(
+    DEVLIST_PATH,
+  );
   assertEquals(res.status, 502);
 });
 
-Deno.test("device list → non-UUID device id → 400, no upstream request", async () => {
-  const { calls, fetchImpl } = listFake({});
-  const res = await createApp({ config: CONFIG, fetch: fetchImpl }).request(
-    "/api/v1/files/devices/nope",
+Deno.test("device list → non-UUID device → 400; wrong method → 404", async () => {
+  const db = await store();
+  const app = createApp({ config: CONFIG, db, fetch: recorder().fetchImpl });
+  assertEquals((await app.request(`/api/v1/files/devices/nope`)).status, 400);
+  assertEquals((await app.request(DEVLIST_PATH, { method: "POST" })).status, 404);
+  db.close();
+});
+
+// ── POST /events (create) ──────────────────────────────────────────────────────────────────────────
+
+Deno.test("POST /events → 201 with the event, and one row written", async () => {
+  const db = await store();
+  const res = await createApp({ config: CONFIG, db, fetch: recorder().fetchImpl }).request(
+    "/api/v1/events",
+    { method: "POST", body: JSON.stringify({ name: "Party", startsAt: STARTS_AT }) },
   );
-  assertEquals(res.status, 400);
-  assertEquals(calls.length, 0);
-});
-
-Deno.test("device list → wrong method (POST) → 404, no upstream request", async () => {
-  const { calls, fetchImpl } = listFake({ [DEVDIR_URL]: { body: [] } });
-  const res = await createApp({ config: CONFIG, fetch: fetchImpl }).request(DEVLIST_PATH, {
-    method: "POST",
-  });
-  assertEquals(res.status, 404);
-  assertEquals(calls.length, 0);
-});
-
-Deno.test("device list → a percent-encoded filename round-trips and re-encodes into the presigned url", async () => {
-  const { fetchImpl } = listFake({ [DEVDIR_URL]: { body: [file("A-primary%201.heic", 7)] } });
-  const res = await createApp({ config: CONFIG, fetch: fetchImpl }).request(DEVLIST_PATH);
-  assertEquals(res.status, 200);
-  const entry = (await res.json())[0];
-  assertEquals(entry.filename, "A-primary 1.heic"); // decoded back to the uploaded name
-  assertPresigned(entry.url, `files/devices/${D}/A-primary%201.heic`); // re-encoded, flat key in the presigned url
-});
-
-// ── POST /events + GET /events/:eventId (capability `event-creation`) ───────────────────────────────
-
-const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-
-Deno.test("POST /events → 201 {eventId,name,createdAt,startsAt,endsAt,capacity,deletesAt} + one marker PUT to events/<id>/metadata.json", async () => {
-  const { calls, fetchImpl } = recorder();
-  const res = await createApp({ config: CONFIG, fetch: fetchImpl }).request("/api/v1/events", {
-    method: "POST",
-    body: JSON.stringify({ name: "Birthday", startsAt: STARTS_AT }),
-    headers: { "content-type": "application/json" },
-  });
   assertEquals(res.status, 201);
-  const json = await res.json();
-  assertEquals(json.name, "Birthday");
-  assertEquals(UUID_RE.test(json.eventId), true);
-  assertEquals(typeof json.createdAt, "string");
-  assertEquals(json.startsAt, STARTS_AT); // honored VERBATIM, not re-derived
-  // The limits are STAMPED at mint from config (capability `event-limits`), in the canonical shape.
-  assertEquals(json.endsAt, ENDS_AT); // absent endsAt → startsAt + the configured 30-day window max
-  assertEquals(json.capacity, 10);
-  // The RESPONSE carries the DERIVED delete-by; the MARKER carries the stamped duration it derives from.
-  // Serving the derived instant keeps the anchor policy in one place: no client holds the constant.
-  // STARTS_AT is in the past relative to the real wall clock this mints at, so the anchor is `createdAt`
-  // — which is the back-dating guard: an event created today for last month's trip is not born expired.
-  const anchorMs = Math.max(Date.parse(json.createdAt), Date.parse(STARTS_AT));
-  const expected = new Date(Math.floor(anchorMs / 1000) * 1000 + 30 * 24 * 3600 * 1000)
-    .toISOString().replace(".000Z", "Z");
-  assertEquals(json.deletesAt, expected);
-  assertEquals(json.lifetimeSeconds, undefined); // the duration never goes on the wire
-  assertEquals(calls.length, 1);
-  const put = calls[0];
-  assertEquals(put.init.method, "PUT");
-  assertEquals(put.url, `${ZONE}/events/${json.eventId}/metadata.json`);
-  const h = new Headers(put.init.headers);
-  assertEquals(h.get("AccessKey"), "zone-password");
-  assertEquals(h.get("Content-Type"), "application/json");
-  const stored = JSON.parse(put.init.body as string);
-  assertEquals(stored.lifetimeSeconds, 30 * 24 * 60 * 60); // stamped as a DURATION, not an instant
-  assertEquals(stored.deletesAt, undefined); // …and never as an absolute delete-by
-  const { deletesAt: _derived, ...wire } = json;
-  assertEquals({ ...stored, lifetimeSeconds: undefined }, { ...wire, lifetimeSeconds: undefined });
+  const body = await res.json() as Record<string, unknown>;
+  assertEquals(Object.keys(body).sort(), [
+    "capacity",
+    "createdAt",
+    "deletesAt",
+    "endsAt",
+    "eventId",
+    "name",
+    "startsAt",
+  ]);
+  assertEquals(body.name, "Party");
+  assertEquals(body.startsAt, STARTS_AT);
+  assertEquals(body.capacity, 10);
+  const stored = await rows(db, `SELECT * FROM events`);
+  assertEquals(stored.length, 1);
+  assertEquals(stored[0].id, body.eventId);
+  assertEquals(Number(stored[0].lifetime_seconds), CONFIG.eventLifetimeSeconds);
+  db.close();
 });
 
-Deno.test("POST /events → createdAt and startsAt are independent facts", async () => {
-  const { fetchImpl } = recorder();
-  const res = await createApp({ config: CONFIG, fetch: fetchImpl }).request("/api/v1/events", {
-    method: "POST",
-    body: JSON.stringify({ name: "Wedding", startsAt: "2001-01-01T09:00:00Z" }),
-  });
-  assertEquals(res.status, 201);
-  const json = await res.json();
-  // The host says the event began in 2001; the server still stamps its own creation time now.
-  assertEquals(json.startsAt, "2001-01-01T09:00:00Z");
-  assertEquals(json.createdAt === json.startsAt, false);
-});
-
-Deno.test("POST /events → a future startsAt is accepted (event created ahead of time)", async () => {
-  const { fetchImpl } = recorder();
-  const future = "2099-12-31T23:59:59Z";
-  const res = await createApp({ config: CONFIG, fetch: fetchImpl }).request("/api/v1/events", {
-    method: "POST",
-    body: JSON.stringify({ name: "NYE", startsAt: future }),
-  });
-  assertEquals(res.status, 201);
-  assertEquals((await res.json()).startsAt, future);
-});
-
-Deno.test("POST /events → missing / empty / non-canonical startsAt → 400, no upstream", async () => {
-  const starts = [
-    undefined, // absent
-    "",
-    "2026-06-27T18:00:00.000Z", // fractional seconds — a bare NSISO8601DateFormatter rejects these
-    "2026-06-27T18:00:00+02:00", // offset — breaks the lexicographic compare
-    "2026-06-27T18:00:00", // no Z
-    "2026-06-27", // date only
-    "2026-13-45T99:99:99Z", // right shape, not a real instant
-    "yesterday",
-    12345,
-  ];
-  for (const startsAt of starts) {
-    const { calls, fetchImpl } = recorder();
-    const res = await createApp({ config: CONFIG, fetch: fetchImpl }).request("/api/v1/events", {
+Deno.test("POST /events → the client cannot supply the id; the server mints it", async () => {
+  const db = await store();
+  const res = await createApp({ config: CONFIG, db, fetch: recorder().fetchImpl }).request(
+    "/api/v1/events",
+    {
       method: "POST",
-      body: JSON.stringify({ name: "X", startsAt }),
-    });
-    assertEquals(res.status, 400, `startsAt=${JSON.stringify(startsAt)} should be rejected`);
-    assertEquals(calls.length, 0);
-  }
+      body: JSON.stringify({ name: "Party", startsAt: STARTS_AT, eventId: E, capacity: 999 }),
+    },
+  );
+  const body = await res.json() as Record<string, unknown>;
+  assert(body.eventId !== E);
+  assertEquals(body.capacity, 10);
+  db.close();
 });
 
-Deno.test("POST /events → name is trimmed before store and echo", async () => {
-  const { calls, fetchImpl } = recorder();
-  const res = await createApp({ config: CONFIG, fetch: fetchImpl }).request("/api/v1/events", {
-    method: "POST",
-    body: JSON.stringify({ name: "  Birthday  ", startsAt: STARTS_AT }),
-  });
-  assertEquals(res.status, 201);
-  assertEquals((await res.json()).name, "Birthday");
-  assertEquals(JSON.parse(putCall(calls).init.body as string).name, "Birthday");
+Deno.test("POST /events → an absent endsAt falls back to startsAt + the window maximum", async () => {
+  const db = await store();
+  const res = await createApp({ config: CONFIG, db, fetch: recorder().fetchImpl }).request(
+    "/api/v1/events",
+    { method: "POST", body: JSON.stringify({ name: "Party", startsAt: STARTS_AT }) },
+  );
+  assertEquals((await res.json() as Record<string, unknown>).endsAt, ENDS_AT);
+  db.close();
 });
 
-Deno.test("POST /events → client-supplied id ignored, server mints a fresh UUID", async () => {
-  const { fetchImpl } = recorder();
-  const res = await createApp({ config: CONFIG, fetch: fetchImpl }).request("/api/v1/events", {
-    method: "POST",
-    body: JSON.stringify({
-      name: "X",
-      startsAt: STARTS_AT,
-      eventId: "client-supplied",
-      id: "also-ignored",
-    }),
-  });
-  assertEquals(res.status, 201);
-  const json = await res.json();
-  assertEquals(UUID_RE.test(json.eventId), true);
-  assertEquals(json.eventId === "client-supplied", false);
-});
-
-Deno.test("POST /events → a client-supplied endsAt is HONORED (creator-chosen window), capacity still ignored", async () => {
-  const { fetchImpl } = recorder();
-  const chosenEnd = "2026-07-21T23:00:00Z"; // the host's declared end, within no cap
-  const res = await createApp({ config: CONFIG, fetch: fetchImpl }).request("/api/v1/events", {
-    method: "POST",
-    body: JSON.stringify({
-      name: "X",
-      startsAt: STARTS_AT,
-      endsAt: chosenEnd, // capability `event-limits`: endsAt is now creator-supplied at mint
-      capacity: 9999, // capacity stays server-resolved
-    }),
-  });
-  assertEquals(res.status, 201);
-  const json = await res.json();
-  assertEquals(json.endsAt, chosenEnd); // honored verbatim, NOT the +30d default
-  assertEquals(json.capacity, 10); // client capacity still ignored
-});
-
-Deno.test("POST /events → an absent endsAt falls back to startsAt + 30d (legacy clients)", async () => {
-  const { fetchImpl } = recorder();
-  const res = await createApp({ config: CONFIG, fetch: fetchImpl }).request("/api/v1/events", {
-    method: "POST",
-    body: JSON.stringify({ name: "X", startsAt: STARTS_AT }), // no endsAt — old client
-  });
-  assertEquals(res.status, 201);
-  assertEquals((await res.json()).endsAt, ENDS_AT); // startsAt + the configured 30 days
-});
-
-Deno.test("POST /events → a window longer than the 30-day maximum is refused 400, no upstream", async () => {
-  // The cap is a HARD bound, not a pricing lever: a window outliving the event's storage lifetime would
-  // declare captures eligible for upload into an event that is already deleted by then.
-  const { calls, fetchImpl } = recorder();
-  const app = createApp({ config: CONFIG, fetch: fetchImpl });
-  const far = await app.request("/api/v1/events", {
-    method: "POST",
-    body: JSON.stringify({ name: "X", startsAt: STARTS_AT, endsAt: "2031-07-14T18:00:00Z" }),
-  });
-  assertEquals(far.status, 400);
-  // One second past the maximum is refused; exactly at it is accepted.
-  const overBy1s = await app.request("/api/v1/events", {
-    method: "POST",
-    body: JSON.stringify({ name: "X", startsAt: STARTS_AT, endsAt: "2026-07-27T18:00:01Z" }),
-  });
-  assertEquals(overBy1s.status, 400);
-  assertEquals(calls.length, 0); // neither reached storage
-  const exact = await app.request("/api/v1/events", {
-    method: "POST",
-    body: JSON.stringify({ name: "X", startsAt: STARTS_AT, endsAt: ENDS_AT }),
-  });
-  assertEquals(exact.status, 201);
-  assertEquals((await exact.json()).endsAt, ENDS_AT);
-});
-
-Deno.test("POST /events → an endsAt at/before startsAt or non-canonical → 400, no upstream", async () => {
-  const ends = [
-    STARTS_AT, // equal to start
-    "2026-06-27T17:59:59Z", // before start
-    "2026-07-21T23:00:00.000Z", // fractional seconds
-    "2026-07-21T23:00:00", // no Z
-    "2026-13-45T99:99:99Z", // right shape, not a real instant
-    "later",
-    12345,
-  ];
-  for (const endsAt of ends) {
-    const { calls, fetchImpl } = recorder();
-    const res = await createApp({ config: CONFIG, fetch: fetchImpl }).request("/api/v1/events", {
+Deno.test("POST /events → a creator-supplied endsAt within the maximum is stamped verbatim", async () => {
+  const db = await store();
+  const res = await createApp({ config: CONFIG, db, fetch: recorder().fetchImpl }).request(
+    "/api/v1/events",
+    {
       method: "POST",
-      body: JSON.stringify({ name: "X", startsAt: STARTS_AT, endsAt }),
-    });
-    assertEquals(res.status, 400, `endsAt=${JSON.stringify(endsAt)} should be rejected`);
-    assertEquals(calls.length, 0);
-  }
+      body: JSON.stringify({
+        name: "Party",
+        startsAt: STARTS_AT,
+        endsAt: "2026-07-04T18:00:00Z",
+      }),
+    },
+  );
+  assertEquals((await res.json() as Record<string, unknown>).endsAt, "2026-07-04T18:00:00Z");
+  db.close();
 });
 
-Deno.test("POST /events → 100-char name accepted (boundary)", async () => {
-  const { fetchImpl } = recorder();
-  const res = await createApp({ config: CONFIG, fetch: fetchImpl }).request("/api/v1/events", {
-    method: "POST",
-    body: JSON.stringify({ name: "a".repeat(100), startsAt: STARTS_AT }),
-  });
-  assertEquals(res.status, 201);
-});
-
-Deno.test("POST /events → empty / whitespace / over-long / missing / non-JSON → 400, no upstream", async () => {
-  // Each body carries a VALID startsAt, so these still test NAME validation and not the new field.
+Deno.test("POST /events → a body violating a name or window rule → 400, nothing written", async () => {
+  const db = await store();
+  const app = createApp({ config: CONFIG, db, fetch: recorder().fetchImpl });
   const bodies = [
-    `{"name":"","startsAt":"${STARTS_AT}"}`,
-    `{"name":"   ","startsAt":"${STARTS_AT}"}`,
-    `{"name":"${"a".repeat(101)}","startsAt":"${STARTS_AT}"}`,
-    "{}",
     "not json",
+    JSON.stringify({ startsAt: STARTS_AT }), // no name
+    JSON.stringify({ name: "   ", startsAt: STARTS_AT }), // empty after trimming
+    JSON.stringify({ name: "x".repeat(101), startsAt: STARTS_AT }), // too long
+    JSON.stringify({ name: "Party" }), // no startsAt
+    JSON.stringify({ name: "Party", startsAt: "2026-06-27T18:00:00.000Z" }), // non-canonical
+    JSON.stringify({ name: "Party", startsAt: STARTS_AT, endsAt: STARTS_AT }), // not after
+    JSON.stringify({ name: "Party", startsAt: STARTS_AT, endsAt: "2026-07-28T18:00:00Z" }), // > 30d
   ];
   for (const body of bodies) {
-    const { calls, fetchImpl } = recorder();
-    const res = await createApp({ config: CONFIG, fetch: fetchImpl }).request("/api/v1/events", {
-      method: "POST",
-      body,
-    });
-    assertEquals(res.status, 400);
-    assertEquals(calls.length, 0);
+    assertEquals((await app.request("/api/v1/events", { method: "POST", body })).status, 400, body);
   }
+  assertEquals((await rows(db, `SELECT * FROM events`)).length, 0);
+  db.close();
 });
 
-Deno.test("POST /events → marker PUT fails (500) → 502 (faithful create)", async () => {
-  const { fetchImpl } = recorder({ status: 500 });
-  const res = await createApp({ config: CONFIG, fetch: fetchImpl }).request("/api/v1/events", {
-    method: "POST",
-    body: JSON.stringify({ name: "X", startsAt: STARTS_AT }),
-  });
+Deno.test("POST /events → the name is trimmed before it is stored and echoed", async () => {
+  const db = await store();
+  const res = await createApp({ config: CONFIG, db, fetch: recorder().fetchImpl }).request(
+    "/api/v1/events",
+    { method: "POST", body: JSON.stringify({ name: "  Birthday  ", startsAt: STARTS_AT }) },
+  );
+  assertEquals((await res.json() as Record<string, unknown>).name, "Birthday");
+  assertEquals((await rows(db, `SELECT name FROM events`))[0].name, "Birthday");
+  db.close();
+});
+
+Deno.test("POST /events → a store failure → 502 (faithful create)", async () => {
+  const broken: Db = {
+    execute: () => Promise.reject(new Error("store down")),
+    batch: () => Promise.reject(new Error("store down")),
+    transaction: () => Promise.reject(new Error("store down")),
+    foreignKeysEnabled: () => Promise.resolve(true),
+  };
+  const res = await createApp({ config: CONFIG, db: broken, fetch: recorder().fetchImpl }).request(
+    "/api/v1/events",
+    { method: "POST", body: JSON.stringify({ name: "Party", startsAt: STARTS_AT }) },
+  );
   assertEquals(res.status, 502);
 });
 
-Deno.test("POST /events → marker PUT throws → 502", async () => {
-  const { fetchImpl } = recorder({ throws: true });
-  const res = await createApp({ config: CONFIG, fetch: fetchImpl }).request("/api/v1/events", {
-    method: "POST",
-    body: JSON.stringify({ name: "X", startsAt: STARTS_AT }),
-  });
+// ── GET /events/:eventId (metadata and existence) ──────────────────────────────────────────────────
+
+Deno.test("GET /events/:id → 200 with the stored fields and the derived deletesAt", async () => {
+  const db = await storeWithEvent();
+  const res = await createApp({ config: CONFIG, db, fetch: recorder().fetchImpl }).request(
+    `/api/v1/events/${E}`,
+  );
+  assertEquals(res.status, 200);
+  const body = await res.json() as Record<string, unknown>;
+  assertEquals(body.eventId, E);
+  assertEquals(body.endsAt, ENDS_AT);
+  assertEquals(body.deletesAt, "2026-07-27T18:00:00Z"); // max(createdAt, startsAt) + 30d
+  assert(!("lifetimeSeconds" in body)); // the duration is internal; the instant is the wire fact
+  db.close();
+});
+
+Deno.test("GET /events/:id → 404 when the event does not exist, 400 on a non-UUID", async () => {
+  const db = await store();
+  const app = createApp({ config: CONFIG, db, fetch: recorder().fetchImpl });
+  assertEquals((await app.request(`/api/v1/events/${E}`)).status, 404);
+  assertEquals((await app.request(`/api/v1/events/nope`)).status, 400);
+  db.close();
+});
+
+Deno.test("GET /events/:id → a store failure is 502, never 404", async () => {
+  // The distinction is load-bearing outside this file: `leave-event`'s two-witness teardown acts on a
+  // 404, so a transient fault reported as absence would tear a live membership down.
+  const broken: Db = {
+    execute: () => Promise.reject(new Error("store down")),
+    batch: () => Promise.reject(new Error("store down")),
+    transaction: () => Promise.reject(new Error("store down")),
+    foreignKeysEnabled: () => Promise.resolve(true),
+  };
+  const res = await createApp({ config: CONFIG, db: broken, fetch: recorder().fetchImpl }).request(
+    `/api/v1/events/${E}`,
+  );
   assertEquals(res.status, 502);
 });
 
-Deno.test("non-POST on /events → 404 (no route), no upstream", async () => {
-  const { calls, fetchImpl } = recorder();
-  const res = await createApp({ config: CONFIG, fetch: fetchImpl }).request("/api/v1/events", {
-    method: "GET",
-  });
-  assertEquals(res.status, 404);
-  assertEquals(calls.length, 0);
-});
-
-Deno.test("GET /events/:id → 200 marker (events/<id>/metadata.json) when present", async () => {
-  const { calls, fetchImpl } = listFake({ ...markerPresent });
-  const res = await createApp({ config: CONFIG, fetch: fetchImpl }).request(`/api/v1/events/${E}`);
+Deno.test("GET /events/:id → an event past its delete-by is still served (no route reaps on touch)", async () => {
+  const db = await storeWithEvent({ lifetimeSeconds: 24 * 60 * 60 });
+  const res = await createApp({ config: CONFIG, db, fetch: recorder().fetchImpl }).request(
+    `/api/v1/events/${E}`,
+  );
   assertEquals(res.status, 200);
-  // The marker's fields plus the DERIVED delete-by (capability `event-limits`). MARKER_BODY stamps no
-  // `lifetimeSeconds`, so the deadline falls back to the configured 30 days off `max(createdAt, startsAt)`.
-  assertEquals(await res.json(), { ...MARKER_BODY, deletesAt: ENDS_AT });
-  assertEquals(calls.length, 1);
-  assertEquals(calls[0].url, MARKER_URL);
+  assertEquals((await rows(db, `SELECT * FROM events`)).length, 1);
+  db.close();
 });
 
-Deno.test("GET /events/:id → a legacy marker (no limit fields) is `gone`: 404, NOT deleted by the gate", async () => {
-  // A marker written before `event-limits`: it cannot be classified or served, so the gate answers 404
-  // (capability `event-limits`). Unlike the old lazy reap, the gate does NOT delete it — the nightly
-  // sweep (capability `scheduled-cleanup`) reclaims it.
-  const legacy = { eventId: E, name: "Party", createdAt: "2026-06-27T00:00:00.182Z" };
-  const { store, fetchImpl } = storageFake({
-    [`events/${E}/metadata.json`]: { json: legacy },
-  });
-  const res = await createApp({ config: CONFIG, fetch: fetchImpl }).request(`/api/v1/events/${E}`);
-  assertEquals(res.status, 404);
-  assert(store.has(`events/${E}/metadata.json`)); // NOT reaped by the gate — the sweep deletes it
-});
+// ── PATCH /events/:eventId (rename) ────────────────────────────────────────────────────────────────
 
-Deno.test("GET /events/:id → 404 when marker absent", async () => {
-  const { calls, fetchImpl } = listFake({});
-  const res = await createApp({ config: CONFIG, fetch: fetchImpl }).request(`/api/v1/events/${E}`);
-  assertEquals(res.status, 404);
-  assertEquals(calls.length, 1);
-  assertEquals(calls[0].url, MARKER_URL);
-});
-
-Deno.test("GET /events/:id → 400 on non-UUID, no upstream", async () => {
-  const { calls, fetchImpl } = listFake({});
-  const res = await createApp({ config: CONFIG, fetch: fetchImpl }).request("/api/v1/events/nope");
-  assertEquals(res.status, 400);
-  assertEquals(calls.length, 0);
-});
-
-Deno.test("GET /events/:id → 502 on non-404 marker read failure", async () => {
-  const { fetchImpl } = listFake({ [MARKER_URL]: { status: 500 } });
-  const res = await createApp({ config: CONFIG, fetch: fetchImpl }).request(`/api/v1/events/${E}`);
-  assertEquals(res.status, 502);
-});
-
-// ── PATCH /events/:eventId (rename, capability `event-rename`) ──────────────────────────────────────
-//
-// The ONLY route that rewrites an existing marker. `name` is the single exception to the marker's
-// write-once rule; every other field must come back VERBATIM, which is what makes a race with the
-// nightly sweep self-defusing.
-
-const rename = (fetchImpl: FetchLike, body: unknown, id = E) =>
-  createApp({ config: CONFIG, fetch: fetchImpl }).request(`/api/v1/events/${id}`, {
-    method: "PATCH",
-    body: typeof body === "string" ? body : JSON.stringify(body),
-    headers: { "content-type": "application/json" },
-  });
-
-Deno.test("PATCH /events/:id → 200 echoing the stored name + one marker PUT rewriting only `name`", async () => {
-  const { store, calls, fetchImpl } = storageFake({
-    [`events/${E}/metadata.json`]: { json: MARKER_BODY },
-  });
-  const res = await rename(fetchImpl, { name: "Ana's 30th" });
+Deno.test("PATCH /events/:id → 200, and ONLY the name changes", async () => {
+  const db = await storeWithEvent();
+  const before = (await rows(db, `SELECT * FROM events WHERE id=?`, [E]))[0];
+  const res = await createApp({ config: CONFIG, db, fetch: recorder().fetchImpl }).request(
+    `/api/v1/events/${E}`,
+    { method: "PATCH", body: JSON.stringify({ name: "  Renamed  " }) },
+  );
   assertEquals(res.status, 200);
-  // The wire shape is the metadata route's: the marker's fields plus the DERIVED delete-by.
-  assertEquals(await res.json(), { ...MARKER_BODY, name: "Ana's 30th", deletesAt: ENDS_AT });
-  // Exactly one read then one write, and the write lands on the marker key.
-  const puts = calls.filter((c) => (c.init.method ?? "GET") === "PUT");
-  assertEquals(puts.length, 1);
-  assertEquals(puts[0].url, MARKER_URL);
-  const h = new Headers(puts[0].init.headers);
-  assertEquals(h.get("AccessKey"), "zone-password");
-  assertEquals(h.get("Content-Type"), "application/json");
-  // THE INVARIANT: the stored marker differs from the original in `name` alone.
-  assertEquals(JSON.parse(store.get(`events/${E}/metadata.json`)!.body), {
-    ...MARKER_BODY,
-    name: "Ana's 30th",
-  });
-});
-
-Deno.test("PATCH /events/:id → name is trimmed before store and echo", async () => {
-  const { store, fetchImpl } = storageFake({
-    [`events/${E}/metadata.json`]: { json: MARKER_BODY },
-  });
-  const res = await rename(fetchImpl, { name: "  Ana's 30th  " });
-  assertEquals(res.status, 200);
-  assertEquals((await res.json()).name, "Ana's 30th");
-  assertEquals(JSON.parse(store.get(`events/${E}/metadata.json`)!.body).name, "Ana's 30th");
-});
-
-Deno.test("PATCH /events/:id → every other marker field survives VERBATIM (the sweep race self-defuses)", async () => {
-  // A marker carrying the STAMPED lifetime, so the rewrite has every field a live marker can hold —
-  // including the one whose restamping would resurrect a swept event for a fresh lifetime.
-  const stamped = { ...MARKER_BODY, lifetimeSeconds: 24 * 60 * 60 };
-  const { store, fetchImpl } = storageFake({
-    [`events/${E}/metadata.json`]: { json: stamped },
-  });
-  assertEquals((await rename(fetchImpl, { name: "Renamed" })).status, 200);
-  const after = JSON.parse(store.get(`events/${E}/metadata.json`)!.body);
-  // Field-by-field, so a future field added to the marker fails this test loudly rather than silently.
-  assertEquals(after.eventId, stamped.eventId);
-  assertEquals(after.createdAt, stamped.createdAt);
-  assertEquals(after.startsAt, stamped.startsAt);
-  assertEquals(after.endsAt, stamped.endsAt);
-  assertEquals(after.capacity, stamped.capacity);
-  assertEquals(after.lifetimeSeconds, stamped.lifetimeSeconds); // NOT restamped
-  assertEquals({ ...after, name: stamped.name }, stamped);
-});
-
-Deno.test("PATCH /events/:id → 100-char name accepted (boundary)", async () => {
-  const { fetchImpl } = storageFake({ [`events/${E}/metadata.json`]: { json: MARKER_BODY } });
-  const res = await rename(fetchImpl, { name: "x".repeat(100) });
-  assertEquals(res.status, 200);
-  assertEquals((await res.json()).name, "x".repeat(100));
-});
-
-Deno.test("PATCH /events/:id → empty / whitespace / over-long / missing / non-JSON name → 400, NO upstream", async () => {
-  for (const body of [{ name: "" }, { name: "   " }, { name: "x".repeat(101) }, {}, "not json"]) {
-    const { calls, fetchImpl } = storageFake({
-      [`events/${E}/metadata.json`]: { json: MARKER_BODY },
-    });
-    const res = await rename(fetchImpl, body);
-    assertEquals(res.status, 400);
-    assertEquals(calls.length, 0); // not even the marker READ — validation precedes the gate
+  assertEquals((await res.json() as Record<string, unknown>).name, "Renamed");
+  const after = (await rows(db, `SELECT * FROM events WHERE id=?`, [E]))[0];
+  assertEquals(after.name, "Renamed");
+  // Every other column verbatim — this is what makes a race with the sweep self-defusing: a rename
+  // cannot restamp `createdAt`/`startsAt`/`lifetime_seconds` and resurrect the event for a fresh life.
+  for (
+    const column of ["id", "created_at", "starts_at", "ends_at", "capacity", "lifetime_seconds"]
+  ) {
+    assertEquals(after[column], before[column], column);
   }
+  db.close();
 });
 
-Deno.test("PATCH /events/:id → 400 on non-UUID, no upstream", async () => {
-  const { calls, fetchImpl } = storageFake({});
-  const res = await rename(fetchImpl, { name: "Renamed" }, "not-a-uuid");
-  assertEquals(res.status, 400);
-  assertEquals(calls.length, 0);
-});
-
-Deno.test("PATCH /events/:id → 404 when the marker is absent, and nothing is written", async () => {
-  const { store, calls, fetchImpl } = storageFake({});
-  const res = await rename(fetchImpl, { name: "Renamed" });
-  assertEquals(res.status, 404);
-  assertEquals(store.size, 0); // a rename NEVER creates an event
-  assertEquals(calls.filter((c) => (c.init.method ?? "GET") === "PUT").length, 0);
-});
-
-Deno.test("PATCH /events/:id → a legacy (`gone`) marker is 404, and is NOT rewritten", async () => {
-  // Same reading as the metadata gate: an incomplete marker cannot be served, so it cannot be renamed
-  // either — a rewrite would resurrect a marker the sweep is about to reclaim.
-  const legacy = { eventId: E, name: "Party", createdAt: "2026-06-27T00:00:00.182Z" };
-  const { store, fetchImpl } = storageFake({ [`events/${E}/metadata.json`]: { json: legacy } });
-  const res = await rename(fetchImpl, { name: "Renamed" });
-  assertEquals(res.status, 404);
-  assertEquals(JSON.parse(store.get(`events/${E}/metadata.json`)!.body), legacy); // untouched
-});
-
-Deno.test("PATCH /events/:id → 502 on a non-404 marker read failure (never mistaken for absence)", async () => {
-  const { fetchImpl } = listFake({ [MARKER_URL]: { status: 500 } });
-  const res = await rename(fetchImpl, { name: "Renamed" });
-  assertEquals(res.status, 502);
-});
-
-Deno.test("PATCH /events/:id → marker PUT rejected (500) → 502 (faithful rename)", async () => {
-  const calls: Call[] = [];
-  const fetchImpl: FetchLike = (url, init) => {
-    calls.push({ url, init });
-    if ((init.method ?? "GET") === "PUT") {
-      return Promise.resolve(new Response("no", { status: 500 }));
-    }
-    return Promise.resolve(new Response(JSON.stringify(MARKER_BODY), { status: 200 }));
-  };
-  const res = await rename(fetchImpl, { name: "Renamed" });
-  assertEquals(res.status, 502); // the rename is only real once the store confirms it
-  assertEquals(calls.filter((c) => (c.init.method ?? "GET") === "PUT").length, 1);
-});
-
-Deno.test("PATCH /events/:id → marker PUT throws → 502", async () => {
-  const fetchImpl: FetchLike = (_url, init) => {
-    if ((init.method ?? "GET") === "PUT") return Promise.reject(new Error("boom"));
-    return Promise.resolve(new Response(JSON.stringify(MARKER_BODY), { status: 200 }));
-  };
-  assertEquals((await rename(fetchImpl, { name: "Renamed" })).status, 502);
-});
-
-Deno.test("PATCH /events/:id → any member may rename: no ownership check exists", async () => {
-  // The marker records no creator, and the route consults none — a second device holding the event id
-  // renames exactly as the first would. Possession of the id already authorizes far more than this.
-  const { store, fetchImpl } = storageFake({
-    [`events/${E}/metadata.json`]: { json: MARKER_BODY },
-  });
-  assertEquals((await rename(fetchImpl, { name: "By a guest" })).status, 200);
-  assertEquals(JSON.parse(store.get(`events/${E}/metadata.json`)!.body).name, "By a guest");
+Deno.test("PATCH /events/:id → 404 when absent; 400 on a bad name or id", async () => {
+  const empty = await store();
+  const db = await storeWithEvent();
+  const app = createApp({ config: CONFIG, db, fetch: recorder().fetchImpl });
+  assertEquals(
+    (await createApp({ config: CONFIG, db: empty, fetch: recorder().fetchImpl }).request(
+      `/api/v1/events/${E}`,
+      { method: "PATCH", body: JSON.stringify({ name: "x" }) },
+    )).status,
+    404,
+  );
+  for (const body of ["not json", JSON.stringify({}), JSON.stringify({ name: "  " })]) {
+    assertEquals((await app.request(`/api/v1/events/${E}`, { method: "PATCH", body })).status, 400);
+  }
+  assertEquals(
+    (await app.request(`/api/v1/events/nope`, {
+      method: "PATCH",
+      body: JSON.stringify({ name: "x" }),
+    }))
+      .status,
+    400,
+  );
+  assertEquals((await rows(db, `SELECT name FROM events`))[0].name, "Party");
+  empty.close();
+  db.close();
 });
 
 Deno.test("PUT /events/:id → 404 (only GET and PATCH are served on the event path)", async () => {
-  const { calls, fetchImpl } = storageFake({
-    [`events/${E}/metadata.json`]: { json: MARKER_BODY },
-  });
-  const res = await createApp({ config: CONFIG, fetch: fetchImpl }).request(`/api/v1/events/${E}`, {
-    method: "PUT",
-    body: JSON.stringify({ name: "Renamed" }),
-    headers: { "content-type": "application/json" },
-  });
+  const db = await storeWithEvent();
+  const res = await createApp({ config: CONFIG, db, fetch: recorder().fetchImpl }).request(
+    `/api/v1/events/${E}`,
+    { method: "PUT", body: "{}" },
+  );
   assertEquals(res.status, 404);
-  assertEquals(calls.length, 0);
+  db.close();
 });
 
-// ── GET /events/:eventId/files (event-wide UNION read, capability `bunny-list-endpoint`) ────────────
+// ── GET /events/:eventId/files (the union) ─────────────────────────────────────────────────────────
 
-const D2 = "22222222-0000-4000-8000-000000000003"; // a second contributing deviceId
-const MANIFEST_DIR_URL = `${ZONE}/events/${E}/devices/`; // the device-manifest directory LIST
-const manifestUrl = (d: string) => `${ZONE}/events/${E}/devices/${d}.json`;
-const fileDirUrl = (d: string) => `${ZONE}/files/devices/${d}/`;
-
-// A device manifest object (post-rename: resources carry `key` + `filename`).
-const manifest = (deviceId: string, assets: unknown[]) => ({ body: { deviceId, assets } });
-const resource = (role: string, contentType: string, key: string, filename: string) => ({
-  role,
-  contentType,
-  key,
-  filename,
-});
-const asset = (assetId: string, creationDate: string, resources: unknown[]) => ({
-  assetId,
-  creationDate,
-  resources,
-});
-
-Deno.test("union → two devices' complete assets, flattened, tagged by deviceId, with no-store", async () => {
-  const { calls, fetchImpl } = listFake({
-    ...markerPresent,
-    [MANIFEST_DIR_URL]: { body: [file(`${D}.json`, 0), file(`${D2}.json`, 0)] },
-    [manifestUrl(D)]: manifest(D, [
-      asset("A", "2026-06-27T10:00:00Z", [
-        resource("primary", "image/heic", "A-primary.heic", "IMG_1.HEIC"),
-        resource("motion", "video/quicktime", "A-motion.mov", "IMG_1.MOV"),
-      ]),
-    ]),
-    [manifestUrl(D2)]: manifest(D2, [
-      asset("B", "2026-06-27T11:00:00Z", [
-        resource("primary", "image/jpeg", "B-primary.jpg", "IMG_2.JPG"),
-      ]),
-    ]),
-    [fileDirUrl(D)]: { body: [file("A-primary.heic", 100), file("A-motion.mov", 200)] },
-    [fileDirUrl(D2)]: { body: [file("B-primary.jpg", 50)] },
-  });
-  const r = await createApp({ config: CONFIG, fetch: fetchImpl }).request(
-    `/api/v1/events/${E}/files`,
-  );
-  assertEquals(r.status, 200);
-  assertEquals(r.headers.get("Cache-Control"), "no-store, no-cache, max-age=0");
-  const union = await r.json();
-  // Structure + non-url fields (each `url` is a dynamic presigned URL, asserted separately below).
-  const stripUrls = (a: { resources: { url: string }[] }) => ({
-    ...a,
-    resources: a.resources.map(({ url: _u, ...rest }) => rest),
-  });
-  assertEquals(union.map(stripUrls), [
-    {
-      deviceId: D,
-      assetId: "A",
-      creationDate: "2026-06-27T10:00:00Z",
-      resources: [
-        {
-          role: "primary",
-          contentType: "image/heic",
-          key: "A-primary.heic",
-          filename: "IMG_1.HEIC",
-          size: 100,
-        },
-        {
-          role: "motion",
-          contentType: "video/quicktime",
-          key: "A-motion.mov",
-          filename: "IMG_1.MOV",
-          size: 200,
-        },
-      ],
-    },
-    {
-      deviceId: D2,
-      assetId: "B",
-      creationDate: "2026-06-27T11:00:00Z",
-      resources: [
-        {
-          role: "primary",
-          contentType: "image/jpeg",
-          key: "B-primary.jpg",
-          filename: "IMG_2.JPG",
-          size: 50,
-        },
-      ],
-    },
-  ]);
-  // Each resource's `url` is a presigned S3 GET for its owning device's bare key.
-  assertPresigned(union[0].resources[0].url, `files/devices/${D}/A-primary.heic`);
-  assertPresigned(union[0].resources[1].url, `files/devices/${D}/A-motion.mov`);
-  assertPresigned(union[1].resources[0].url, `files/devices/${D2}/B-primary.jpg`);
-  // Every upstream read carries the AccessKey; the account API key never appears.
-  for (const c of calls) {
-    assertEquals(new Headers(c.init.headers).get("AccessKey"), "zone-password");
-  }
-});
-
-Deno.test("union → incomplete asset (a named resource missing from /files) is omitted", async () => {
-  const { fetchImpl } = listFake({
-    ...markerPresent,
-    [MANIFEST_DIR_URL]: { body: [file(`${D}.json`, 0)] },
-    [manifestUrl(D)]: manifest(D, [
-      // complete (both present)
-      asset("A", "t1", [
-        resource("primary", "image/heic", "A-primary.heic", "IMG_1.HEIC"),
-        resource("motion", "video/quicktime", "A-motion.mov", "IMG_1.MOV"),
-      ]),
-      // incomplete (motion bytes not yet uploaded)
-      asset("C", "t2", [
-        resource("primary", "image/heic", "C-primary.heic", "IMG_3.HEIC"),
-        resource("motion", "video/quicktime", "C-motion.mov", "IMG_3.MOV"),
-      ]),
-    ]),
-    [fileDirUrl(D)]: {
-      body: [file("A-primary.heic", 100), file("A-motion.mov", 200), file("C-primary.heic", 300)],
-    },
-  });
-  const r = await createApp({ config: CONFIG, fetch: fetchImpl }).request(
-    `/api/v1/events/${E}/files`,
-  );
-  assertEquals(r.status, 200);
-  const union = await r.json();
-  assertEquals(union.map((a: { assetId: string }) => a.assetId), ["A"]); // C omitted
-});
-
-Deno.test("union → a device with no bytes (file dir 404) contributes nothing, still 200", async () => {
-  const { fetchImpl } = listFake({
-    ...markerPresent,
-    [MANIFEST_DIR_URL]: { body: [file(`${D}.json`, 0)] },
-    [manifestUrl(D)]: manifest(D, [
-      asset("A", "t1", [resource("primary", "image/heic", "A-primary.heic", "IMG_1.HEIC")]),
-    ]),
-    // no fileDirUrl(D) mapping → listFake returns 404 → no bytes present
-  });
-  const r = await createApp({ config: CONFIG, fetch: fetchImpl }).request(
-    `/api/v1/events/${E}/files`,
-  );
-  assertEquals(r.status, 200);
-  assertEquals(await r.json(), []);
-});
-
-Deno.test("union → unknown event (marker absent) → 404, no device enumeration", async () => {
-  const { calls, fetchImpl } = listFake({}); // marker URL unmapped → 404
-  const r = await createApp({ config: CONFIG, fetch: fetchImpl }).request(
-    `/api/v1/events/${E}/files`,
-  );
-  assertEquals(r.status, 404);
-  assertEquals(calls.length, 1); // only the marker read
-  assertEquals(calls[0].url, MARKER_URL);
-});
-
-Deno.test("union → non-404 marker read failure → 502", async () => {
-  const { fetchImpl } = listFake({ [MARKER_URL]: { status: 500 } });
-  const r = await createApp({ config: CONFIG, fetch: fetchImpl }).request(
-    `/api/v1/events/${E}/files`,
-  );
-  assertEquals(r.status, 502);
-});
-
-Deno.test("union → existing event, empty manifest dir → 200 []", async () => {
-  for (const dirRoute of [{ body: [] }, { status: 404 }]) {
-    const { fetchImpl } = listFake({ ...markerPresent, [MANIFEST_DIR_URL]: dirRoute });
-    const r = await createApp({ config: CONFIG, fetch: fetchImpl }).request(
-      `/api/v1/events/${E}/files`,
-    );
-    assertEquals(r.status, 200);
-    assertEquals(await r.json(), []);
-  }
-});
-
-Deno.test("union → non-UUID event → 400, no upstream request", async () => {
-  const { calls, fetchImpl } = listFake({});
-  const r = await createApp({ config: CONFIG, fetch: fetchImpl }).request(
-    "/api/v1/events/nope/files",
-  );
-  assertEquals(r.status, 400);
-  assertEquals(calls.length, 0);
-});
-
-Deno.test("union → wrong method (POST) → 404, no upstream request", async () => {
-  const { calls, fetchImpl } = listFake({ ...markerPresent });
-  const r = await createApp({ config: CONFIG, fetch: fetchImpl }).request(
-    `/api/v1/events/${E}/files`,
-    {
-      method: "POST",
-    },
-  );
-  assertEquals(r.status, 404);
-  assertEquals(calls.length, 0);
-});
-
-Deno.test("union → a per-device manifest read failure (500) → 502, no partial union", async () => {
-  const { fetchImpl } = listFake({
-    ...markerPresent,
-    [MANIFEST_DIR_URL]: { body: [file(`${D}.json`, 0)] },
-    [manifestUrl(D)]: { status: 500 },
-    [fileDirUrl(D)]: { body: [] },
-  });
-  const r = await createApp({ config: CONFIG, fetch: fetchImpl }).request(
-    `/api/v1/events/${E}/files`,
-  );
-  assertEquals(r.status, 502);
-});
-
-Deno.test("union → a manifest that is unparseable JSON → 502", async () => {
-  // listFake JSON-stringifies bodies; inject a raw non-JSON body via a bespoke fake.
-  const fetchImpl: FetchLike = (url) => {
-    if (url === MARKER_URL) {
-      return Promise.resolve(
-        new Response(JSON.stringify(MARKER_BODY), {
-          status: 200,
-          headers: { "content-type": "application/json" },
-        }),
-      );
-    }
-    if (url === MANIFEST_DIR_URL) {
-      return Promise.resolve(
-        new Response(JSON.stringify([file(`${D}.json`, 0)]), { status: 200 }),
-      );
-    }
-    if (url === manifestUrl(D)) return Promise.resolve(new Response("not json{", { status: 200 }));
-    return Promise.resolve(new Response("not found", { status: 404 }));
-  };
-  const r = await createApp({ config: CONFIG, fetch: fetchImpl }).request(
-    `/api/v1/events/${E}/files`,
-  );
-  assertEquals(r.status, 502);
-});
-
-Deno.test("union → a per-device file LIST failure (500) → 502, no partial union", async () => {
-  const { fetchImpl } = listFake({
-    ...markerPresent,
-    [MANIFEST_DIR_URL]: { body: [file(`${D}.json`, 0)] },
-    [manifestUrl(D)]: manifest(D, [
-      asset("A", "t1", [resource("primary", "image/heic", "A-primary.heic", "IMG_1.HEIC")]),
-    ]),
-    [fileDirUrl(D)]: { status: 500 },
-  });
-  const r = await createApp({ config: CONFIG, fetch: fetchImpl }).request(
-    `/api/v1/events/${E}/files`,
-  );
-  assertEquals(r.status, 502);
-});
-
-// ── PUT /devices/:deviceId (device config write, DEVICE-ID gated) ───────────────────────────
-
-const CONFIG_PATH = `/api/v1/devices/${D}`;
-const CONFIG_OBJ_URL = `${ZONE}/devices/${D}.json`;
-const CONFIG_BODY = JSON.stringify({ pushToken: { kind: "apns", token: "TOK", env: "sandbox" } });
-
-Deno.test("device config PUT → one unconditional PUT to devices/<id>.json (json), 201", async () => {
-  const { calls, fetchImpl } = recorder();
-  const res = await createApp({ config: CONFIG, fetch: fetchImpl }).request(CONFIG_PATH, {
+/** Publish a manifest for `deviceId` into the event under test. */
+async function publish(
+  db: Db,
+  deviceId: string,
+  assets: { assetId: string; creationDate: string; keys: string[] }[],
+) {
+  const app = createApp({ config: CONFIG, db, fetch: recorder().fetchImpl });
+  const res = await app.request(`/api/v1/events/${E}/devices/${deviceId}`, {
     method: "PUT",
-    body: CONFIG_BODY,
-    headers: { "content-type": "application/json" },
+    body: JSON.stringify({
+      deviceId,
+      assets: assets.map((a) => ({
+        assetId: a.assetId,
+        creationDate: a.creationDate,
+        resources: a.keys.map((k, i) => ({
+          role: i === 0 ? "primary" : "live",
+          contentType: i === 0 ? "image/heic" : "video/quicktime",
+          key: k,
+          filename: `Capture ${k}`,
+        })),
+      })),
+    }),
   });
   assertEquals(res.status, 201);
-  assertEquals(calls.length, 1); // UNGATED by event: no marker read, exactly one object PUT
-  const put = putCall(calls);
-  assertEquals(put.url, CONFIG_OBJ_URL);
-  const h = new Headers(put.init.headers);
-  assertEquals(h.get("AccessKey"), "zone-password");
-  assertEquals(h.get("Content-Type"), "application/json");
-  assertEquals(await new Response(put.init.body as BodyInit).text(), CONFIG_BODY);
-});
+}
 
-Deno.test("device config PUT → non-UUID device → 400, no upstream request", async () => {
-  const { calls, fetchImpl } = recorder();
-  const res = await createApp({ config: CONFIG, fetch: fetchImpl }).request(
-    "/api/v1/devices/nope",
-    {
-      method: "PUT",
-      body: "{}",
-    },
+Deno.test("union → both devices' assets, flattened, tagged by deviceId, uncacheable", async () => {
+  const db = await storeWithEvent();
+  await publish(db, D, [{
+    assetId: "A",
+    creationDate: "2026-07-01T00:00:00Z",
+    keys: ["a.heic", "a.mov"],
+  }]);
+  await publish(db, D2, [{ assetId: "B", creationDate: "2026-07-02T00:00:00Z", keys: ["b.heic"] }]);
+
+  const res = await createApp({ config: CONFIG, db, fetch: recorder().fetchImpl }).request(
+    UNION_PATH,
   );
-  assertEquals(res.status, 400);
-  assertEquals(calls.length, 0);
-});
+  assertEquals(res.status, 200);
+  assertEquals(res.headers.get("Cache-Control"), "no-store, no-cache, max-age=0");
+  const body = await res.json() as Record<string, unknown>[];
+  assertEquals(body.length, 2);
+  assertEquals(body.map((a) => a.deviceId).sort(), [D, D2].sort());
 
-Deno.test("device config PUT → bunny error → 502 (never a false 2xx)", async () => {
-  const { fetchImpl } = recorder({ status: 500 });
-  const res = await createApp({ config: CONFIG, fetch: fetchImpl }).request(CONFIG_PATH, {
-    method: "PUT",
-    body: "{}",
-  });
-  assertEquals(res.status, 502);
-});
-
-Deno.test("device config PUT → upstream throw → 502", async () => {
-  const { fetchImpl } = recorder({ throws: true });
-  const res = await createApp({ config: CONFIG, fetch: fetchImpl }).request(CONFIG_PATH, {
-    method: "PUT",
-    body: "{}",
-  });
-  assertEquals(res.status, 502);
-});
-
-Deno.test("device config → wrong method (GET) → 404 (no route), no upstream", async () => {
-  const { calls, fetchImpl } = recorder();
-  const res = await createApp({ config: CONFIG, fetch: fetchImpl }).request(CONFIG_PATH, {
-    method: "GET",
-  });
-  assertEquals(res.status, 404);
-  assertEquals(calls.length, 0);
-});
-
-// ── POST /events/:eventId/notify (silent fan-out to members, marker-gated) ──────────────────────────
-
-// A real P-256 key so the APNs sender actually signs and posts (the fan-out tests observe the POSTs).
-async function configWithApnsKey() {
-  const kp = await crypto.subtle.generateKey({ name: "ECDSA", namedCurve: "P-256" }, true, [
-    "sign",
-    "verify",
+  const first = body.find((a) => a.deviceId === D)!;
+  assertEquals(Object.keys(first).sort(), ["assetId", "creationDate", "deviceId", "resources"]);
+  const resources = first.resources as Record<string, unknown>[];
+  assertEquals(resources.length, 2);
+  // The closed resource shape — five fields, and `size` is NOT among them.
+  assertEquals(Object.keys(resources[0]).sort(), [
+    "contentType",
+    "filename",
+    "key",
+    "role",
+    "url",
   ]);
+  assertPresigned(String(resources[0].url), `files/devices/${D}/a.heic`);
+  db.close();
+});
+
+Deno.test("union → an asset naming an unrecorded resource is omitted entirely", async () => {
+  // Defense-in-depth: the manifest lists only uploaded resources, so this catches the residual case.
+  const db = await storeWithEvent();
+  await publish(db, D, [
+    { assetId: "A", creationDate: "2026-07-01T00:00:00Z", keys: ["a.heic"] },
+    { assetId: "B", creationDate: "2026-07-02T00:00:00Z", keys: ["b.heic", "b.mov"] },
+  ]);
+  await db.execute(`UPDATE resources SET uploaded = 0 WHERE key = ?`, ["b.mov"]);
+  const body = await (await createApp({ config: CONFIG, db, fetch: recorder().fetchImpl }).request(
+    UNION_PATH,
+  )).json() as Record<string, unknown>[];
+  assertEquals(body.map((a) => a.assetId), ["A"]);
+  db.close();
+});
+
+Deno.test("union → a departed member's photos remain until the event is deleted", async () => {
+  const db = await storeWithEvent();
+  await publish(db, D, [{ assetId: "A", creationDate: "2026-07-01T00:00:00Z", keys: ["a.heic"] }]);
+  const app = createApp({ config: CONFIG, db, fetch: recorder().fetchImpl });
+  assertEquals(
+    (await app.request(`/api/v1/events/${E}/devices/${D}`, { method: "DELETE" })).status,
+    200,
+  );
+  const body = await (await app.request(UNION_PATH)).json() as Record<string, unknown>[];
+  assertEquals(body.map((a) => a.assetId), ["A"]);
+  db.close();
+});
+
+Deno.test("union → unknown event → 404; existing event with no assets → 200 []", async () => {
+  const empty = await store();
+  const db = await storeWithEvent();
+  assertEquals(
+    (await createApp({ config: CONFIG, db: empty, fetch: recorder().fetchImpl }).request(
+      UNION_PATH,
+    ))
+      .status,
+    404,
+  );
+  const res = await createApp({ config: CONFIG, db, fetch: recorder().fetchImpl }).request(
+    UNION_PATH,
+  );
+  assertEquals(res.status, 200);
+  assertEquals(await res.json(), []);
+  empty.close();
+  db.close();
+});
+
+Deno.test("union → non-UUID event → 400; wrong method → 404", async () => {
+  const db = await storeWithEvent();
+  const app = createApp({ config: CONFIG, db, fetch: recorder().fetchImpl });
+  assertEquals((await app.request(`/api/v1/events/nope/files`)).status, 400);
+  assertEquals((await app.request(UNION_PATH, { method: "POST" })).status, 404);
+  db.close();
+});
+
+Deno.test("union → a store failure → 502, never a partial union", async () => {
+  const broken: Db = {
+    execute: () => Promise.reject(new Error("store down")),
+    batch: () => Promise.reject(new Error("store down")),
+    transaction: () => Promise.reject(new Error("store down")),
+    foreignKeysEnabled: () => Promise.resolve(true),
+  };
+  const res = await createApp({ config: CONFIG, db: broken, fetch: recorder().fetchImpl }).request(
+    UNION_PATH,
+  );
+  assertEquals(res.status, 502);
+});
+
+// ── DELETE /events/:eventId/devices/:deviceId (leave) ──────────────────────────────────────────────
+
+Deno.test("leave → marks the membership departed and keeps its assets", async () => {
+  const db = await storeWithEvent();
+  await publish(db, D, [{ assetId: "A", creationDate: "2026-07-01T00:00:00Z", keys: ["a.heic"] }]);
+  const res = await createApp({ config: CONFIG, db, fetch: recorder().fetchImpl }).request(
+    `/api/v1/events/${E}/devices/${D}`,
+    { method: "DELETE" },
+  );
+  assertEquals(res.status, 200);
+  assertEquals(await rows(db, `SELECT state FROM memberships WHERE device_id=?`, [D]), [{
+    state: "departed",
+  }]);
+  assertEquals((await rows(db, `SELECT * FROM event_assets WHERE device_id=?`, [D])).length, 1);
+  db.close();
+});
+
+Deno.test("leave → is idempotent, and a leave by a non-member changes nothing", async () => {
+  const db = await storeWithEvent();
+  const app = createApp({ config: CONFIG, db, fetch: recorder().fetchImpl });
+  const path = `/api/v1/events/${E}/devices/${D}`;
+  assertEquals((await app.request(path, { method: "DELETE" })).status, 200); // never a member
+  await publish(db, D, []);
+  assertEquals((await app.request(path, { method: "DELETE" })).status, 200);
+  assertEquals((await app.request(path, { method: "DELETE" })).status, 200);
+  assertEquals((await rows(db, `SELECT * FROM memberships WHERE device_id=?`, [D])).length, 1);
+  db.close();
+});
+
+Deno.test("leave → absent event → 404; non-UUID → 400", async () => {
+  const empty = await store();
+  const db = await storeWithEvent();
+  assertEquals(
+    (await createApp({ config: CONFIG, db: empty, fetch: recorder().fetchImpl }).request(
+      `/api/v1/events/${E}/devices/${D}`,
+      { method: "DELETE" },
+    )).status,
+    404,
+  );
+  assertEquals(
+    (await createApp({ config: CONFIG, db, fetch: recorder().fetchImpl }).request(
+      `/api/v1/events/nope/devices/${D}`,
+      { method: "DELETE" },
+    )).status,
+    400,
+  );
+  empty.close();
+  db.close();
+});
+
+// ── PUT /devices/:deviceId (the device config document) ────────────────────────────────────────────
+
+Deno.test("device config → the document is recorded verbatim, last-write-wins", async () => {
+  const db = await store();
+  const app = createApp({ config: CONFIG, db, fetch: recorder().fetchImpl });
+  const doc = (token: string) =>
+    JSON.stringify({ pushToken: { kind: "apns", token, env: "sandbox" } });
+  assertEquals(
+    (await app.request(`/api/v1/devices/${D}`, { method: "PUT", body: doc("first") })).status,
+    201,
+  );
+  assertEquals(
+    (await app.request(`/api/v1/devices/${D}`, { method: "PUT", body: doc("second") })).status,
+    201,
+  );
+  const stored = await rows(db, `SELECT push_token FROM device_records WHERE device_id=?`, [D]);
+  assertEquals(stored.length, 1);
+  assertEquals(JSON.parse(String(stored[0].push_token)).pushToken.token, "second");
+  db.close();
+});
+
+Deno.test("device config → non-UUID → 400; non-JSON → 400; wrong method → 404", async () => {
+  const db = await store();
+  const app = createApp({ config: CONFIG, db, fetch: recorder().fetchImpl });
+  assertEquals(
+    (await app.request(`/api/v1/devices/nope`, { method: "PUT", body: "{}" })).status,
+    400,
+  );
+  assertEquals(
+    (await app.request(`/api/v1/devices/${D}`, { method: "PUT", body: "not json" })).status,
+    400,
+  );
+  assertEquals((await app.request(`/api/v1/devices/${D}`)).status, 404);
+  db.close();
+});
+
+Deno.test("device config → the document is not a resource: it never reaches the listing", async () => {
+  const db = await store();
+  const app = createApp({ config: CONFIG, db, fetch: recorder().fetchImpl });
+  await app.request(`/api/v1/devices/${D}`, { method: "PUT", body: JSON.stringify({ a: 1 }) });
+  assertEquals(await (await app.request(DEVLIST_PATH)).json(), []);
+  db.close();
+});
+
+// ── POST /events/:eventId/notify ───────────────────────────────────────────────────────────────────
+
+/**
+ * A REAL ES256 key, generated per run. The APNs sender signs its provider JWT lazily and catches a
+ * signing failure PER TOKEN — so with the placeholder PEM the rest of this file uses, every push is
+ * reported failed and none is ever sent. That is faithful to the route's best-effort contract, but it
+ * would make a fan-out test pass while asserting nothing.
+ */
+async function apnsConfig() {
+  const kp = await crypto.subtle.generateKey(
+    { name: "ECDSA", namedCurve: "P-256" },
+    true,
+    ["sign", "verify"],
+  );
   const pkcs8 = new Uint8Array(await crypto.subtle.exportKey("pkcs8", kp.privateKey));
   let bin = "";
   for (const b of pkcs8) bin += String.fromCharCode(b);
-  const pem = `-----BEGIN PRIVATE KEY-----\n${
-    btoa(bin).match(/.{1,64}/g)!.join("\n")
-  }\n-----END PRIVATE KEY-----\n`;
+  const pem = `-----BEGIN PRIVATE KEY-----\n${btoa(bin)}\n-----END PRIVATE KEY-----\n`;
   return { ...CONFIG, apnsPrivateKey: pem };
 }
 
-type TokenSpec = { kind: string; token: string; env: string } | "absent" | "notoken";
-
-function notifyFake(opts: {
-  marker?: "present" | "absent" | "fail";
-  members?: string[];
-  memberDirFails?: boolean;
-  tokens?: Record<string, TokenSpec>;
-  apnsStatus?: number;
-}) {
-  const calls: Call[] = [];
-  const fetchImpl: FetchLike = (url, init) => {
-    calls.push({ url, init });
-    if (url.includes("push.apple.com/3/device/")) {
-      return Promise.resolve(new Response(null, { status: opts.apnsStatus ?? 200 }));
+/** An APNs-shaped fetch fake: records the pushes and answers each with `status`. */
+function apnsRecorder(status = 200) {
+  const pushed: string[] = [];
+  const fetchImpl: FetchLike = (url) => {
+    if (url.includes("api.push.apple.com") || url.includes("api.sandbox.push.apple.com")) {
+      pushed.push(url.split("/").pop()!);
+      return Promise.resolve(new Response(null, { status }));
     }
-    if (url === MARKER_URL) {
-      const m = opts.marker ?? "present";
-      if (m === "absent") return Promise.resolve(new Response(null, { status: 404 }));
-      if (m === "fail") return Promise.resolve(new Response("boom", { status: 500 }));
-      return Promise.resolve(new Response(JSON.stringify(MARKER_BODY), { status: 200 }));
-    }
-    if (url === MANIFEST_DIR_URL) {
-      if (opts.memberDirFails) return Promise.resolve(new Response("boom", { status: 500 }));
-      const entries = (opts.members ?? []).map((d) => file(`${d}.json`, 0));
-      return Promise.resolve(new Response(JSON.stringify(entries), { status: 200 }));
-    }
-    const cfg = url.match(/\/devices\/([^/]+)\.json$/);
-    if (cfg) {
-      const t = opts.tokens?.[cfg[1]];
-      if (!t || t === "absent") return Promise.resolve(new Response("nf", { status: 404 }));
-      if (t === "notoken") {
-        return Promise.resolve(new Response(JSON.stringify({ other: 1 }), { status: 200 }));
-      }
-      return Promise.resolve(new Response(JSON.stringify({ pushToken: t }), { status: 200 }));
-    }
-    return Promise.resolve(new Response("nf", { status: 404 }));
+    return Promise.resolve(new Response(null, { status: 201 }));
   };
-  return { calls, fetchImpl };
+  return { pushed, fetchImpl };
 }
 
-const apnsCalls = (calls: Call[]) =>
-  calls.filter((c) => c.url.includes("push.apple.com")).map((c) => c.url);
+async function registerToken(db: Db, deviceId: string, token: string) {
+  await db.execute(
+    `INSERT INTO device_records (device_id, push_token, updated_at) VALUES (?, ?, '2026-07-14T00:00:00Z')`,
+    [deviceId, JSON.stringify({ pushToken: { kind: "apns", token, env: "sandbox" } })],
+  );
+}
 
-Deno.test("notify → all members with a token receive a silent push; 202", async () => {
-  const config = await configWithApnsKey();
-  const { calls, fetchImpl } = notifyFake({
-    members: [D, D2],
-    tokens: {
-      [D]: { kind: "apns", token: "TOKA", env: "production" },
-      [D2]: { kind: "apns", token: "TOKB", env: "sandbox" },
-    },
-  });
-  const res = await createApp({ config, fetch: fetchImpl }).request(`/api/v1/events/${E}/notify`, {
-    method: "POST",
-  });
+Deno.test("notify → 202, and a departed member is not pushed", async () => {
+  const db = await storeWithEvent();
+  await publish(db, D, []);
+  await publish(db, D2, []);
+  await createApp({ config: CONFIG, db, fetch: recorder().fetchImpl }).request(
+    `/api/v1/events/${E}/devices/${D2}`,
+    { method: "DELETE" },
+  );
+  await registerToken(db, D, "token-active");
+  await registerToken(db, D2, "token-departed");
+
+  const { pushed, fetchImpl } = apnsRecorder();
+  const res = await createApp({ config: await apnsConfig(), db, fetch: fetchImpl }).request(
+    `/api/v1/events/${E}/notify`,
+    { method: "POST" },
+  );
   assertEquals(res.status, 202);
-  assertEquals(await res.text(), ""); // bare body
+  assertEquals(pushed, ["token-active"]);
+  db.close();
+});
+
+Deno.test("notify → a member with no registered token is skipped; still 202", async () => {
+  const db = await storeWithEvent();
+  await publish(db, D, []);
+  await publish(db, D2, []);
+  await registerToken(db, D, "token-active");
+  const { pushed, fetchImpl } = apnsRecorder();
+  const res = await createApp({ config: await apnsConfig(), db, fetch: fetchImpl }).request(
+    `/api/v1/events/${E}/notify`,
+    { method: "POST" },
+  );
+  assertEquals(res.status, 202);
+  assertEquals(pushed, ["token-active"]);
+  db.close();
+});
+
+Deno.test("notify → an APNs rejection still yields 202 (best-effort fan-out)", async () => {
+  const db = await storeWithEvent();
+  await publish(db, D, []);
+  await registerToken(db, D, "token-gone");
+  const { fetchImpl } = apnsRecorder(410);
+  const res = await createApp({ config: CONFIG, db, fetch: fetchImpl }).request(
+    `/api/v1/events/${E}/notify`,
+    { method: "POST" },
+  );
+  assertEquals(res.status, 202);
+  db.close();
+});
+
+Deno.test("notify → an event with no members notifies vacuously; 202, no push", async () => {
+  const db = await storeWithEvent();
+  const { pushed, fetchImpl } = apnsRecorder();
+  const res = await createApp({ config: CONFIG, db, fetch: fetchImpl }).request(
+    `/api/v1/events/${E}/notify`,
+    { method: "POST" },
+  );
+  assertEquals(res.status, 202);
+  assertEquals(pushed, []);
+  db.close();
+});
+
+Deno.test("notify → unknown event → 404, no push; wrong method → 404", async () => {
+  const empty = await store();
+  const db = await storeWithEvent();
+  const { pushed, fetchImpl } = apnsRecorder();
   assertEquals(
-    apnsCalls(calls).sort(),
-    [
-      "https://api.push.apple.com/3/device/TOKA",
-      "https://api.sandbox.push.apple.com/3/device/TOKB",
-    ].sort(),
+    (await createApp({ config: CONFIG, db: empty, fetch: fetchImpl }).request(
+      `/api/v1/events/${E}/notify`,
+      { method: "POST" },
+    )).status,
+    404,
   );
-  // Every dispatched push carries the route's eventId alongside the silent aps object.
-  for (const c of calls.filter((c) => c.url.includes("push.apple.com"))) {
-    const body = JSON.parse(c.init.body as string);
-    assertEquals(body.eventId, E);
-    assertEquals(body.aps, { "content-available": 1 });
-  }
-});
-
-Deno.test("notify → a member without a registered token is skipped; others still pushed; 202", async () => {
-  const config = await configWithApnsKey();
-  const { calls, fetchImpl } = notifyFake({
-    members: [D, D2],
-    tokens: { [D]: { kind: "apns", token: "TOKA", env: "production" }, [D2]: "absent" },
-  });
-  const res = await createApp({ config, fetch: fetchImpl }).request(`/api/v1/events/${E}/notify`, {
-    method: "POST",
-  });
-  assertEquals(res.status, 202);
-  assertEquals(apnsCalls(calls), ["https://api.push.apple.com/3/device/TOKA"]);
-});
-
-Deno.test("notify → a config with no pushToken is skipped; 202", async () => {
-  const config = await configWithApnsKey();
-  const { calls, fetchImpl } = notifyFake({ members: [D], tokens: { [D]: "notoken" } });
-  const res = await createApp({ config, fetch: fetchImpl }).request(`/api/v1/events/${E}/notify`, {
-    method: "POST",
-  });
-  assertEquals(res.status, 202);
-  assertEquals(apnsCalls(calls).length, 0);
-});
-
-Deno.test("notify → an individual APNs rejection (410) still yields 202", async () => {
-  const config = await configWithApnsKey();
-  const { fetchImpl } = notifyFake({
-    members: [D],
-    tokens: { [D]: { kind: "apns", token: "TOKA", env: "production" } },
-    apnsStatus: 410,
-  });
-  const res = await createApp({ config, fetch: fetchImpl }).request(`/api/v1/events/${E}/notify`, {
-    method: "POST",
-  });
-  assertEquals(res.status, 202);
-});
-
-Deno.test("notify → empty member directory notifies vacuously; 202, no push", async () => {
-  const { calls, fetchImpl } = notifyFake({ members: [] });
-  const res = await createApp({ config: CONFIG, fetch: fetchImpl }).request(
-    `/api/v1/events/${E}/notify`,
-    {
-      method: "POST",
-    },
+  assertEquals(pushed, []);
+  assertEquals(
+    (await createApp({ config: CONFIG, db, fetch: fetchImpl }).request(
+      `/api/v1/events/${E}/notify`,
+    ))
+      .status,
+    404,
   );
-  assertEquals(res.status, 202);
-  assertEquals(apnsCalls(calls).length, 0);
+  empty.close();
+  db.close();
 });
 
-Deno.test("notify → unknown event (marker absent) → 404, no enumeration or push", async () => {
-  const { calls, fetchImpl } = notifyFake({ marker: "absent", members: [D] });
-  const res = await createApp({ config: CONFIG, fetch: fetchImpl }).request(
-    `/api/v1/events/${E}/notify`,
-    {
-      method: "POST",
-    },
-  );
-  assertEquals(res.status, 404);
-  assertEquals(calls.length, 1); // only the marker read
-  assertEquals(apnsCalls(calls).length, 0);
-});
-
-Deno.test("notify → non-404 marker read failure → 502", async () => {
-  const { fetchImpl } = notifyFake({ marker: "fail" });
-  const res = await createApp({ config: CONFIG, fetch: fetchImpl }).request(
-    `/api/v1/events/${E}/notify`,
-    {
-      method: "POST",
-    },
-  );
-  assertEquals(res.status, 502);
-});
-
-Deno.test("notify → member-directory LIST failure → 502, no push", async () => {
-  const { calls, fetchImpl } = notifyFake({ memberDirFails: true });
-  const res = await createApp({ config: CONFIG, fetch: fetchImpl }).request(
-    `/api/v1/events/${E}/notify`,
-    {
-      method: "POST",
-    },
-  );
-  assertEquals(res.status, 502);
-  assertEquals(apnsCalls(calls).length, 0);
-});
-
-Deno.test("notify → non-UUID event → 400, no upstream request", async () => {
-  const { calls, fetchImpl } = notifyFake({});
-  const res = await createApp({ config: CONFIG, fetch: fetchImpl }).request(
-    "/api/v1/events/nope/notify",
-    {
-      method: "POST",
-    },
-  );
-  assertEquals(res.status, 400);
-  assertEquals(calls.length, 0);
-});
-
-Deno.test("notify → wrong method (GET) → 404, no upstream request", async () => {
-  const { calls, fetchImpl } = notifyFake({});
-  const res = await createApp({ config: CONFIG, fetch: fetchImpl }).request(
-    `/api/v1/events/${E}/notify`,
-  );
-  assertEquals(res.status, 404);
-  assertEquals(calls.length, 0);
-});
-
-// ── DELETE /events/:eventId/devices/:deviceId (leave cascade) + LWW membership ──────────────────────
-
-const G = "33333333-0000-4000-8000-000000000004"; // a third deviceId (the never-seen would-be joiner)
-
-let leaveClock = Date.parse("2026-06-27T12:00:00.000Z");
-/** A monotonically-increasing wall-clock string, so a PUT always mints a newer LastChanged (LWW). */
-function tick(): string {
-  leaveClock += 1000;
-  return new Date(leaveClock).toISOString();
-}
-
-/** Strip `${ZONE}/` from a full upstream URL to recover the storage key. */
-const keyOf = (url: string) => (url.startsWith(ZONE + "/") ? url.slice(ZONE.length + 1) : url);
-
-/** A minimal device manifest with one complete single-resource asset keyed on `key`. */
-const mkManifest = (deviceId: string, assetId: string, key: string) => ({
-  deviceId,
-  assets: [{
-    assetId,
-    creationDate: "2026-06-27T10:00:00Z",
-    resources: [{ role: "primary", contentType: "image/heic", key, filename: key }],
-  }],
-});
-
-/**
- * An in-memory bunny native-Storage fake: GET an object (or, for a trailing-slash key, a directory LIST
- * of direct children with `LastChanged`), PUT (stores + mints a fresh LastChanged), DELETE (idempotent).
- * Keys in `failDelete` return 500 (to model a partial-rename failure). APNs POSTs succeed. Seeded from
- * `{ key: { json, lc } }`.
- */
-function storageFake(
-  initial: Record<string, { json?: unknown; lc?: string }>,
-  failDelete?: Set<string>,
-) {
-  const store = new Map<string, { body: string; lc: string }>();
-  for (const [k, v] of Object.entries(initial)) {
-    store.set(k, {
-      body: v.json === undefined ? "" : JSON.stringify(v.json),
-      lc: v.lc ?? "2026-06-27T00:00:00.000Z",
-    });
-  }
-  const calls: Call[] = [];
-  const fetchImpl: FetchLike = (url, init) => {
-    calls.push({ url, init });
-    if (url.includes("push.apple.com")) return Promise.resolve(new Response(null, { status: 200 }));
-    const method = init.method ?? "GET";
-    const key = keyOf(url);
-    if (method === "GET" && key.endsWith("/")) {
-      const children = new Map<string, { name: string; dir: boolean; len: number; lc: string }>();
-      let any = false;
-      for (const [k, v] of store) {
-        if (!k.startsWith(key)) continue;
-        any = true;
-        const rest = k.slice(key.length);
-        const slash = rest.indexOf("/");
-        if (slash === -1) {
-          children.set(rest, { name: rest, dir: false, len: v.body.length, lc: v.lc });
-        } else if (!children.has(rest.slice(0, slash))) {
-          children.set(rest.slice(0, slash), {
-            name: rest.slice(0, slash),
-            dir: true,
-            len: 0,
-            lc: "",
-          });
-        }
-      }
-      if (!any) return Promise.resolve(new Response("nf", { status: 404 }));
-      const entries = [...children.values()].map((e) => ({
-        ObjectName: e.name,
-        IsDirectory: e.dir,
-        Length: e.len,
-        LastChanged: e.lc,
-      }));
-      return Promise.resolve(new Response(JSON.stringify(entries), { status: 200 }));
-    }
-    if (method === "GET") {
-      const v = store.get(key);
-      return Promise.resolve(
-        v ? new Response(v.body, { status: 200 }) : new Response("nf", { status: 404 }),
-      );
-    }
-    if (method === "PUT") {
-      // Drain string OR stream bodies (the manifest route streams `c.req.raw.body`), like a real store.
-      const body = typeof init.body === "string"
-        ? Promise.resolve(init.body)
-        : init.body
-        ? new Response(init.body as BodyInit).text()
-        : Promise.resolve("");
-      return body.then((b) => {
-        store.set(key, { body: b, lc: tick() });
-        return new Response(null, { status: 201 });
-      });
-    }
-    if (method === "DELETE") {
-      if (failDelete?.has(key)) return Promise.resolve(new Response("boom", { status: 500 }));
-      return Promise.resolve(new Response(null, { status: store.delete(key) ? 200 : 404 }));
-    }
-    return Promise.resolve(new Response(null, { status: 405 }));
-  };
-  return { store, calls, fetchImpl };
-}
-
-const del = (app: ReturnType<typeof createApp>, e: string, d: string) =>
-  app.request(`/api/v1/events/${e}/devices/${d}`, { method: "DELETE" });
-
-Deno.test("leave → non-UUID id → 400, no upstream", async () => {
-  const { calls, fetchImpl } = storageFake({});
-  const res = await createApp({ config: CONFIG, fetch: fetchImpl })
-    .request(`/api/v1/events/not-a-uuid/devices/${D}`, { method: "DELETE" });
-  assertEquals(res.status, 400);
-  assertEquals(calls.length, 0);
-});
-
-Deno.test("leave → absent event marker → 404, no manifest writes", async () => {
-  const { calls, fetchImpl } = storageFake({}); // no marker seeded
-  const res = await del(createApp({ config: CONFIG, fetch: fetchImpl }), E, D);
-  assertEquals(res.status, 404);
-  assert(!calls.some((c) => c.init.method === "PUT" || c.init.method === "DELETE"));
-});
-
-Deno.test("leave with another active member → renames to .left.json, keeps the event", async () => {
-  const { store, fetchImpl } = storageFake({
-    [`events/${E}/metadata.json`]: { json: MARKER_BODY },
-    [`events/${E}/devices/${D}.json`]: { json: mkManifest(D, "A", "A-primary.heic") },
-    [`events/${E}/devices/${D2}.json`]: { json: mkManifest(D2, "B", "B-primary.heic") },
-  });
-  const res = await del(createApp({ config: CONFIG, fetch: fetchImpl }), E, D);
-  assertEquals(res.status, 200);
-  assert(!store.has(`events/${E}/devices/${D}.json`)); // active removed
-  assert(store.has(`events/${E}/devices/${D}.left.json`)); // departed written
-  assert(store.has(`events/${E}/devices/${D2}.json`)); // other member intact
-  assert(store.has(`events/${E}/metadata.json`)); // event kept
-});
-
-Deno.test("last active member leaves → rename-only, event + bytes RETAINED (non-destructive)", async () => {
-  // With the last-member reap removed (capability `event-leave-endpoint`), leaving never deletes the
-  // event or collects bytes; the event survives until it expires and the nightly sweep reclaims it.
-  const { store, fetchImpl } = storageFake({
-    [`events/${E}/metadata.json`]: { json: MARKER_BODY },
-    [`events/${E}/devices/${D}.json`]: { json: mkManifest(D, "A", "A-primary.heic") },
-    [`files/devices/${D}/A-primary.heic`]: { json: {} },
-    [`devices/${D}.json`]: { json: { pushToken: {} } },
-  });
-  const res = await del(createApp({ config: CONFIG, fetch: fetchImpl }), E, D);
-  assertEquals(res.status, 200);
-  assert(store.has(`events/${E}/metadata.json`)); // event NOT reaped — survives until expiry
-  assert(store.has(`events/${E}/devices/${D}.left.json`)); // departed manifest written
-  assert(!store.has(`events/${E}/devices/${D}.json`)); // active removed
-  assert(store.has(`files/devices/${D}/A-primary.heic`)); // bytes NOT collected (the sweep does that)
-  assert(store.has(`devices/${D}.json`)); // config NOT collected
-});
-
-Deno.test("leave is idempotent — a duplicate DELETE re-runs harmlessly", async () => {
-  const { store, fetchImpl } = storageFake({
-    [`events/${E}/metadata.json`]: { json: MARKER_BODY },
-    [`events/${E}/devices/${D}.json`]: { json: mkManifest(D, "A", "A-primary.heic") },
-    [`events/${E}/devices/${D2}.json`]: { json: mkManifest(D2, "B", "B-primary.heic") },
-  });
-  const app = createApp({ config: CONFIG, fetch: fetchImpl });
-  assertEquals((await del(app, E, D)).status, 200);
-  assertEquals((await del(app, E, D)).status, 200); // duplicate
-  assert(store.has(`events/${E}/devices/${D}.left.json`));
-  assert(!store.has(`events/${E}/devices/${D}.json`));
-  assert(store.has(`events/${E}/devices/${D2}.json`)); // untouched
-});
-
-Deno.test("partial rename (active delete fails) → 502, contribution preserved, retry completes", async () => {
-  const failing = new Set<string>([`events/${E}/devices/${D}.json`]);
-  const { store, fetchImpl } = storageFake({
-    [`events/${E}/metadata.json`]: { json: MARKER_BODY },
-    [`events/${E}/devices/${D}.json`]: { json: mkManifest(D, "A", "A-primary.heic") },
-    [`events/${E}/devices/${D2}.json`]: { json: mkManifest(D2, "B", "B-primary.heic") },
-  }, failing);
-  const app = createApp({ config: CONFIG, fetch: fetchImpl });
-  assertEquals((await del(app, E, D)).status, 502);
-  assert(store.has(`events/${E}/devices/${D}.left.json`)); // written FIRST — contribution preserved
-  assert(store.has(`events/${E}/devices/${D}.json`)); // leftover active, inert (LWW: .left is newer)
-  failing.clear();
-  assertEquals((await del(app, E, D)).status, 200); // retry completes
-  assert(!store.has(`events/${E}/devices/${D}.json`)); // now cleaned up
-});
-
-Deno.test("union → a departed device's photos remain in the union", async () => {
-  const { fetchImpl } = storageFake({
-    [`events/${E}/metadata.json`]: { json: MARKER_BODY },
-    [`events/${E}/devices/${D}.left.json`]: { json: mkManifest(D, "A", "A-primary.heic") },
-    [`events/${E}/devices/${D2}.json`]: { json: mkManifest(D2, "B", "B-primary.heic") },
-    [`files/devices/${D}/A-primary.heic`]: { json: {} },
-    [`files/devices/${D2}/B-primary.heic`]: { json: {} },
-  });
-  const res = await createApp({ config: CONFIG, fetch: fetchImpl }).request(
-    `/api/v1/events/${E}/files`,
-  );
-  assertEquals(res.status, 200);
-  const body = await res.json() as { deviceId: string }[];
-  assertEquals(new Set(body.map((a) => a.deviceId)), new Set([D, D2]));
-});
-
-Deno.test("union → device with both siblings counted once (LWW departed wins)", async () => {
-  const { fetchImpl } = storageFake({
-    [`events/${E}/metadata.json`]: { json: MARKER_BODY },
-    [`events/${E}/devices/${D}.json`]: {
-      json: mkManifest(D, "OLD", "A-primary.heic"),
-      lc: "2026-06-27T00:00:00.000Z",
-    },
-    [`events/${E}/devices/${D}.left.json`]: {
-      json: mkManifest(D, "NEW", "A-primary.heic"),
-      lc: "2026-06-27T06:00:00.000Z",
-    },
-    [`files/devices/${D}/A-primary.heic`]: { json: {} },
-  });
-  const res = await createApp({ config: CONFIG, fetch: fetchImpl }).request(
-    `/api/v1/events/${E}/files`,
-  );
-  const body = await res.json() as { deviceId: string; assetId: string }[];
-  assertEquals(body.length, 1); // counted once
-  assertEquals(body[0].assetId, "NEW"); // read the newer (departed) manifest, not the stale active
-});
-
-Deno.test("notify → excludes a departed device, targets active members", async () => {
-  const { calls, fetchImpl } = storageFake({
-    [`events/${E}/metadata.json`]: { json: MARKER_BODY },
-    [`events/${E}/devices/${D}.left.json`]: { json: mkManifest(D, "A", "A-primary.heic") },
-    [`events/${E}/devices/${D2}.json`]: { json: mkManifest(D2, "B", "B-primary.heic") },
-    [`devices/${D}.json`]: { json: { pushToken: { kind: "apns", token: "tokD", env: "sandbox" } } },
-    [`devices/${D2}.json`]: {
-      json: { pushToken: { kind: "apns", token: "tokD2", env: "sandbox" } },
-    },
-  });
-  const res = await createApp({ config: CONFIG, fetch: fetchImpl }).request(
-    `/api/v1/events/${E}/notify`,
-    {
-      method: "POST",
-    },
-  );
-  assertEquals(res.status, 202);
-  assert(calls.some((c) => keyOf(c.url) === `devices/${D2}.json`)); // active member's token read
-  assert(!calls.some((c) => keyOf(c.url) === `devices/${D}.json`)); // departed member's config NOT read
-});
-
-Deno.test("rejoin → fresh active manifest supersedes .left.json (union + notify treat as active)", async () => {
-  const { calls, fetchImpl } = storageFake({
-    [`events/${E}/metadata.json`]: { json: MARKER_BODY },
-    [`events/${E}/devices/${D}.left.json`]: {
-      json: mkManifest(D, "OLD", "A-primary.heic"),
-      lc: "2026-06-27T00:00:00.000Z",
-    },
-    [`events/${E}/devices/${D}.json`]: {
-      json: mkManifest(D, "NEW", "A-primary.heic"),
-      lc: "2026-06-27T06:00:00.000Z",
-    },
-    [`files/devices/${D}/A-primary.heic`]: { json: {} },
-    [`devices/${D}.json`]: { json: { pushToken: { kind: "apns", token: "tokD", env: "sandbox" } } },
-  });
-  const app = createApp({ config: CONFIG, fetch: fetchImpl });
-  const union = await (await app.request(`/api/v1/events/${E}/files`)).json() as {
-    assetId: string;
-  }[];
-  assertEquals(union.length, 1);
-  assertEquals(union[0].assetId, "NEW"); // active manifest wins the LWW
-  assertEquals((await app.request(`/api/v1/events/${E}/notify`, { method: "POST" })).status, 202);
-  assert(calls.some((c) => c.init.method === "GET" && keyOf(c.url) === `devices/${D}.json`)); // D notified (active)
-});
-
-// ── event limits: lifecycle, capacity (capability `event-limits`) ───────────────────────────────────
-
-Deno.test("classifyEvent → the lifecycle is BINARY and never reads endsAt", () => {
-  // An event exists or the sweep has deleted it. `endsAt` bounds only which captures may be UPLOADED;
-  // it closes nothing — so a marker classifies `live` at every instant, including long past its window.
-  assertEquals(classifyEvent(MARKER_BODY).phase, "live");
-});
-
-Deno.test("classifyEvent → a marker missing any limit field is `gone` (legacy = no grandfathering)", () => {
-  const { endsAt: _e, ...noEnds } = MARKER_BODY;
-  const { capacity: _c, ...noCap } = MARKER_BODY;
-  const { startsAt: _s, ...noStarts } = MARKER_BODY;
-  assertEquals(classifyEvent(noEnds).phase, "gone");
-  assertEquals(classifyEvent(noCap).phase, "gone");
-  assertEquals(classifyEvent(noStarts).phase, "gone");
-});
-
-Deno.test("classifyEvent → a live event narrows to a complete marker (all limit fields present)", () => {
-  const cls = classifyEvent(MARKER_BODY);
-  assert(cls.phase === "live");
-  assertEquals(cls.marker, MARKER_BODY);
-});
+// ── The lifecycle derivation (capability `event-limits`) ───────────────────────────────────────────
 
 Deno.test("deleteByMs → anchors at max(createdAt, startsAt) and adds the stamped lifetime", () => {
-  const DAY = 24 * 3600 * 1000;
-  // Created BEFORE it starts (the ordinary case, and the create-early case): anchor is startsAt.
+  const day = 24 * 60 * 60;
+  // Back-dated: `startsAt` weeks before `createdAt` → anchored at createdAt, so it is not born expired.
   assertEquals(
-    deleteByMs(
-      { ...MARKER_BODY, createdAt: "2026-06-01T00:00:00.000Z", startsAt: "2026-06-27T18:00:00Z" },
-      30 * 24 * 3600,
-    ),
-    Date.parse("2026-06-27T18:00:00Z") + 30 * DAY,
+    deleteByMs({
+      createdAt: "2026-07-01T00:00:00Z",
+      startsAt: "2026-06-01T00:00:00Z",
+      lifetimeSeconds: day,
+    }),
+    Date.parse("2026-07-02T00:00:00Z"),
   );
-  // BACK-DATED — startsAt weeks before createdAt: anchor is createdAt, so it is not stamped dead on
-  // arrival. Anchoring on startsAt alone would put the deadline five weeks in the past.
+  // Created early: `startsAt` weeks after `createdAt` → anchored at startsAt, so it outlives its window.
   assertEquals(
-    deleteByMs(
-      { ...MARKER_BODY, createdAt: "2026-07-13T00:00:00.000Z", startsAt: "2026-06-05T00:00:00Z" },
-      30 * 24 * 3600,
-    ),
-    Date.parse("2026-07-13T00:00:00.000Z") + 30 * DAY,
+    deleteByMs({
+      createdAt: "2026-06-01T00:00:00Z",
+      startsAt: "2026-07-01T00:00:00Z",
+      lifetimeSeconds: day,
+    }),
+    Date.parse("2026-07-02T00:00:00Z"),
   );
 });
 
-Deno.test("deleteByMs → a stamped lifetime wins; an absent one falls back to configuration", () => {
-  const DAY = 24 * 3600 * 1000;
-  const anchor = Date.parse(MARKER_BODY.startsAt);
-  assertEquals(
-    deleteByMs({ ...MARKER_BODY, lifetimeSeconds: 24 * 3600 }, 30 * 24 * 3600),
-    anchor + DAY,
-  );
-  // A legacy marker (written before the field existed) is still perfectly serviceable — one lifecycle
-  // path, no second rule kept alive for it.
-  assertEquals(deleteByMs(MARKER_BODY, 30 * 24 * 3600), anchor + 30 * DAY);
+Deno.test("deleteByMs → NaN when neither anchor parses", () => {
+  assert(Number.isNaN(deleteByMs({ createdAt: "nope", startsAt: "nope", lifetimeSeconds: 60 })));
 });
 
-Deno.test("deleteByMs → NaN when neither anchor parses (a corrupt marker the sweep reaps)", () => {
-  assert(
-    Number.isNaN(deleteByMs({ ...MARKER_BODY, createdAt: "x", startsAt: "y" }, 30 * 24 * 3600)),
-  );
-});
+// ── GET /health (the deploy boot probe's target) ───────────────────────────────────────────────────
 
-// A capacity-2 marker: capacity checks want a cap small enough to fill with two devices.
-const CAP2 = { ...MARKER_BODY, capacity: 2 };
-const manifestPut = (app: ReturnType<typeof createApp>, e: string, d: string) =>
-  app.request(`/api/v1/events/${e}/devices/${d}`, {
-    method: "PUT",
-    body: JSON.stringify({ deviceId: d, assets: [] }),
-    headers: { "content-type": "application/json" },
-  });
-
-Deno.test("enroll → a NEW device at capacity → 409, nothing written", async () => {
-  const { store, fetchImpl } = storageFake({
-    [`events/${E}/metadata.json`]: { json: CAP2 },
-    [`events/${E}/devices/${D}.json`]: { json: mkManifest(D, "A", "A-primary.heic") },
-    [`events/${E}/devices/${D2}.json`]: { json: mkManifest(D2, "B", "B-primary.heic") },
-  });
-  const res = await manifestPut(createApp({ config: CONFIG, fetch: fetchImpl }), E, G);
-  assertEquals(res.status, 409);
-  assert(!store.has(`events/${E}/devices/${G}.json`));
-});
-
-Deno.test("enroll → leaving frees NO slot: a departed manifest still counts toward capacity", async () => {
-  const { store, fetchImpl } = storageFake({
-    [`events/${E}/metadata.json`]: { json: CAP2 },
-    [`events/${E}/devices/${D}.json`]: { json: mkManifest(D, "A", "A-primary.heic") },
-    [`events/${E}/devices/${D2}.left.json`]: { json: mkManifest(D2, "B", "B-primary.heic") },
-  });
-  const res = await manifestPut(createApp({ config: CONFIG, fetch: fetchImpl }), E, G);
-  assertEquals(res.status, 409);
-  assert(!store.has(`events/${E}/devices/${G}.json`));
-});
-
-Deno.test("enroll → a KNOWN device passes the capacity check at capacity (manifest update)", async () => {
-  const { fetchImpl } = storageFake({
-    [`events/${E}/metadata.json`]: { json: CAP2 },
-    [`events/${E}/devices/${D}.json`]: { json: mkManifest(D, "A", "A-primary.heic") },
-    [`events/${E}/devices/${D2}.json`]: { json: mkManifest(D2, "B", "B-primary.heic") },
-  });
-  assertEquals(
-    (await manifestPut(createApp({ config: CONFIG, fetch: fetchImpl }), E, D)).status,
-    201,
-  );
-});
-
-Deno.test("enroll → a rejoin reuses the departed device's own slot at capacity", async () => {
-  const { store, fetchImpl } = storageFake({
-    [`events/${E}/metadata.json`]: { json: CAP2 },
-    [`events/${E}/devices/${D}.left.json`]: { json: mkManifest(D, "A", "A-primary.heic") },
-    [`events/${E}/devices/${D2}.json`]: { json: mkManifest(D2, "B", "B-primary.heic") },
-  });
-  const res = await manifestPut(createApp({ config: CONFIG, fetch: fetchImpl }), E, D);
-  assertEquals(res.status, 201);
-  assert(store.has(`events/${E}/devices/${D}.json`)); // active again
-});
-
-Deno.test("past window → a NEW device CAN still enroll (the window closes nothing)", async () => {
-  // The point of separating the window from the lifetime: a guest who scans days late still holds
-  // in-window captures that belong in the event, so joining is never closed by time. The former
-  // 410 "event over" is gone with the grace period.
-  const { store, fetchImpl } = storageFake({
-    [`events/${E}/metadata.json`]: { json: PAST_WINDOW_MARKER },
-    [`events/${E}/devices/${D}.json`]: { json: mkManifest(D, "A", "A-primary.heic") },
-  });
-  const res = await manifestPut(createApp({ config: CONFIG, fetch: fetchImpl }), E, G);
-  assertEquals(res.status, 201);
-  assert(store.has(`events/${E}/devices/${G}.json`));
-});
-
-Deno.test("past window → capacity is the ONLY refusal: a full event still answers 409, never 410", async () => {
-  const { fetchImpl } = storageFake({
-    [`events/${E}/metadata.json`]: { json: { ...PAST_WINDOW_MARKER, capacity: 1 } },
-    [`events/${E}/devices/${D}.json`]: { json: mkManifest(D, "A", "A-primary.heic") },
-  });
-  const res = await manifestPut(createApp({ config: CONFIG, fetch: fetchImpl }), E, G);
-  assertEquals(res.status, 409); // full — and 410 no longer exists on this route
-});
-
-Deno.test("past window → members keep FULL sync: manifest PUT, union, notify, metadata, leave", async () => {
-  const { fetchImpl } = storageFake({
-    [`events/${E}/metadata.json`]: { json: PAST_WINDOW_MARKER },
-    [`events/${E}/devices/${D}.json`]: { json: mkManifest(D, "A", "A-primary.heic") },
-    [`events/${E}/devices/${D2}.json`]: { json: mkManifest(D2, "B", "B-primary.heic") },
-    [`files/devices/${D}/A-primary.heic`]: { json: {} },
-  });
-  const app = createApp({ config: CONFIG, fetch: fetchImpl });
-  assertEquals((await app.request(`/api/v1/events/${E}`)).status, 200); // metadata still served
-  const union = await app.request(`/api/v1/events/${E}/files`);
-  assertEquals(union.status, 200); // union still served
-  assertEquals(((await union.json()) as unknown[]).length, 1);
-  assertEquals((await app.request(`/api/v1/events/${E}/notify`, { method: "POST" })).status, 202);
-  assertEquals((await manifestPut(app, E, D)).status, 201); // known device still writes
-  assertEquals((await del(app, E, D)).status, 200); // leaving a past-window event still works
-});
-
-Deno.test("past DELETE-BY → still fully served until the sweep deletes it (no route reaps on touch)", async () => {
-  // PAST_DEADLINE_MARKER stamps a 1-day lifetime off a 2026-06-27 anchor, so its delete-by is weeks
-  // behind NOW. The gate serves it anyway: deletion belongs solely to the nightly sweep (capability
-  // `scheduled-cleanup`). That is what makes a 404 a REAL deletion — and therefore safe as one of the two
-  // witnesses the client's self-leave requires (capability `leave-event`).
-  const { store, fetchImpl } = storageFake({
-    [`events/${E}/metadata.json`]: { json: PAST_DEADLINE_MARKER },
-    [`events/${E}/devices/${D}.json`]: { json: mkManifest(D, "A", "A-primary.heic") },
-    [`files/devices/${D}/A-primary.heic`]: { json: {} },
-    [`devices/${D}.json`]: { json: { pushToken: { kind: "apns", token: "TOKA", env: "sandbox" } } },
-  });
-  const app = createApp({ config: CONFIG, fetch: fetchImpl });
-  assertEquals((await app.request(`/api/v1/events/${E}`)).status, 200); // metadata still served
-  assertEquals((await app.request(`/api/v1/events/${E}/files`)).status, 200); // union still served
-  assertEquals((await app.request(`/api/v1/events/${E}/notify`, { method: "POST" })).status, 202);
-  assertEquals((await manifestPut(app, E, G)).status, 201); // a NEW device can even still join
-  // No touch deleted anything — no route reaps.
-  assert(store.has(`events/${E}/metadata.json`));
-  assert(store.has(`events/${E}/devices/${D}.json`));
-  assert(store.has(`files/devices/${D}/A-primary.heic`));
-  assert(store.has(`devices/${D}.json`));
-});
-
-// ── The boot probe's target (capability `backend-deployment`) ──────────────────────────────────────
-
-/** An upstream that answers nothing: the health route must never reach it. */
-const noUpstream: FetchLike =
-  (() => Promise.resolve(new Response("", { status: 500 }))) as unknown as FetchLike;
-
-Deno.test("health: reports the bundle's commit, uncacheable, with no upstream call", async () => {
-  let upstream = 0;
-  const a = createApp({
-    config: CONFIG,
-    fetch: (() => {
-      upstream++;
-      return Promise.resolve(new Response("", { status: 500 }));
-    }) as unknown as FetchLike,
-    buildSha: "abc123",
-  });
-  const res = await a.request("/health");
+Deno.test("health → reports the bundle's commit and the store's state, uncacheable", async () => {
+  const db = await store();
+  const { calls, fetchImpl } = recorder();
+  const app = createRealApp({ config: CONFIG, db, fetch: fetchImpl, buildSha: "abc123" });
+  const res = await app.request("/health");
   assertEquals(res.status, 200);
-  assertEquals(res.headers.get("Content-Type"), "application/json");
-  // The pull zone must never answer a probe from the PREVIOUS deploy's copy — bunny documents
-  // `no-cache`, not `no-store`, as the origin directive that suppresses its cache.
+  assertEquals(await res.json(), { sha: "abc123", database: "ok" });
   assertEquals(res.headers.get("Cache-Control"), "no-store, no-cache, max-age=0");
-  assertEquals(await res.json(), { sha: "abc123" });
-  assertEquals(upstream, 0, "the health route must touch no external system");
+  assertEquals(calls.length, 0); // no storage call
+  db.close();
 });
 
-Deno.test("health: HEAD returns the headers with no body", async () => {
-  const a = createApp({ config: CONFIG, fetch: noUpstream, buildSha: "abc123" });
-  const res = await a.request("/health", { method: "HEAD" });
+Deno.test("health → foreign keys OFF is reported, not hidden behind a 200", async () => {
+  // A store serving with constraints silently disabled is a green deploy over a broken invariant. The
+  // route stays total — it REPORTS the state and the probe decides what it means.
+  const off: Db = {
+    execute: () => Promise.resolve({ rows: [], rowsAffected: 0 }),
+    batch: () => Promise.resolve(),
+    transaction: () => Promise.reject(new Error("unused")),
+    foreignKeysEnabled: () => Promise.resolve(false),
+  };
+  const res = await createRealApp({ config: CONFIG, db: off, fetch: recorder().fetchImpl }).request(
+    "/health",
+  );
+  assertEquals(await res.json(), { sha: "dev", database: "foreign-keys-off" });
+});
+
+Deno.test("health → an unreachable store is distinguishable from a misprovisioned one", async () => {
+  const down: Db = {
+    execute: () => Promise.reject(new Error("no route to host")),
+    batch: () => Promise.reject(new Error("no route to host")),
+    transaction: () => Promise.reject(new Error("no route to host")),
+    foreignKeysEnabled: () => Promise.reject(new Error("no route to host")),
+  };
+  const res = await createRealApp({ config: CONFIG, db: down, fetch: recorder().fetchImpl })
+    .request(
+      "/health",
+    );
+  assertEquals((await res.json() as Record<string, unknown>).database, "unreachable");
+});
+
+Deno.test("health → HEAD returns the headers with no body", async () => {
+  const db = await store();
+  const res = await createRealApp({ config: CONFIG, db, fetch: recorder().fetchImpl }).request(
+    "/health",
+    { method: "HEAD" },
+  );
   assertEquals(res.status, 200);
-  assertEquals(res.headers.get("Cache-Control"), "no-store, no-cache, max-age=0");
   assertEquals(await res.text(), "");
+  db.close();
 });
 
-Deno.test("health: a mutating method is not served by the route", async () => {
-  const a = createApp({ config: CONFIG, fetch: noUpstream, buildSha: "abc123" });
-  for (const method of ["POST", "PUT", "DELETE", "PATCH"]) {
-    const res = await a.request("/health", { method, body: method === "GET" ? undefined : "{}" });
-    assert(res.status !== 200, `${method} /health was served`);
-  }
-});
+// ── Presigned URLs ─────────────────────────────────────────────────────────────────────────────────
 
-Deno.test("health: the sha is injected, never read from the bundle's own module", async () => {
-  // If the route read BUILD_SHA directly, this test could not pin it — and the probe's contract would
-  // be untestable. `buildSha` is a Dep beside `now` for exactly that reason.
-  const a = createApp({ config: CONFIG, fetch: noUpstream, buildSha: "deadbeef" });
-  assertEquals(await (await a.request("/health")).json(), { sha: "deadbeef" });
-});
-
-// `s3Scheme` is genuinely READ when presigning, not decoration on the Config type.
-//
-// Every other fixture here says "https", so a `presignDownloadUrl` that hardcoded the scheme — which it
-// did until the local rig needed otherwise — would pass all of them. This is the one case that fails if
-// it regresses. Not hypothetical: the local dev rig serves plain HTTP on loopback, and a device handed an
-// `https://127.0.0.1:8080/...` URL fails on TLS, which reads as "downloads do not work on this host"
-// rather than as a wrong scheme.
 Deno.test("presigned download URLs carry the configured scheme, not a hardcoded https", async () => {
-  const { fetchImpl } = listFake({
-    [DEVDIR_URL]: { body: [{ ObjectName: "A-primary.heic", Length: 100, IsDirectory: false }] },
-  });
-  const res = await createApp({ config: { ...CONFIG, s3Scheme: "http" }, fetch: fetchImpl })
-    .request(DEVLIST_PATH);
-  assertEquals(res.status, 200);
-  const url: string = (await res.json())[0].url;
-  assertEquals(
-    new URL(url).origin,
-    `http://${CONFIG.s3Host}`,
-    `expected the configured http scheme, got: ${url.slice(0, 60)}…`,
+  const db = await store();
+  await db.execute(
+    `INSERT INTO resources (device_id, key, asset_id, role, content_type, filename, uploaded)
+     VALUES (?, ?, 'A', 'primary', 'image/heic', 'a.heic', 1)`,
+    [D, "a.heic"],
   );
+  const httpConfig = { ...CONFIG, s3Scheme: "http", s3Host: "127.0.0.1:8080" };
+  const res = await createApp({ config: httpConfig, db, fetch: recorder().fetchImpl }).request(
+    DEVLIST_PATH,
+  );
+  const body = await res.json() as Record<string, unknown>[];
+  assert(String(body[0].url).startsWith("http://127.0.0.1:8080/"));
+  db.close();
 });

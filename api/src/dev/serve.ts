@@ -27,6 +27,8 @@
 import { createApp } from "../app.ts";
 import { mintToken } from "../attest.ts";
 import { DEV_TOKEN_DEVICE_ID, devConfig } from "./config.ts";
+import { sqliteDb } from "./db-sqlite.ts";
+import { migrate } from "../db.ts";
 import { fsFetch } from "./fs-storage.ts";
 import { startTunnel, type Tunnel } from "./tunnel.ts";
 
@@ -63,7 +65,16 @@ const publicScheme = new URL(origin).protocol.replace(":", "");
 
 const config = devConfig(publicHost, publicScheme);
 const storage = fsFetch(config, options.store);
-const app = createApp({ config, fetch: storage });
+// The rig's relational store (capability `database`): a real SQLite file beside the object store, so a
+// local run exercises the same statements the deployed store runs — cascades, the conditional capacity
+// insert, the atomic publish — with no credential and no network. It lives INSIDE the store directory so
+// `rm -rf` clears both halves at once: clearing one and not the other is the state where the rig looks
+// broken for no visible reason.
+await Deno.mkdir(options.store, { recursive: true });
+const db = sqliteDb(`${options.store}/api.db`);
+await migrate(db);
+
+const app = createApp({ config, db, fetch: storage });
 
 // One long-lived token for unauthenticated callers. `verifyToken` does not bind a token to the route's
 // device id, so this single token authorizes a curl against any device's partition.

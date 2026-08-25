@@ -52,6 +52,7 @@ import app.snapsync.model.captureCutoff
 import app.snapsync.model.eventStart
 import app.snapsync.model.toFacts
 import app.snapsync.model.DENYLISTED_ALBUM_TITLES
+import app.snapsync.model.DeviceManifest
 import app.snapsync.model.DeviceManifestAsset
 import app.snapsync.model.Direction
 import app.snapsync.model.EventConfig
@@ -597,6 +598,21 @@ class World(
         saveToAlbum: Boolean = false,
     ) {
         store.registerEvent(eventId, name, startsAt.at.iso)
+        // ENROLL the own device, as a real join does: `join-event`'s enrollment publishes a register-only
+        // empty manifest before any photo exists, so a joined device always holds a membership. Setting
+        // only the config would forge a device that is joined on-device and unknown to the backend — a
+        // state no join produces, and one in which a later leave has no membership to depart.
+        //
+        // An EXISTING membership is re-activated rather than emptied. A real re-enrollment does write an
+        // empty manifest and relies on the cycle's skip-if-unchanged record being invalidated to restore
+        // the projection; this operator shortcut writes no such record, so emptying here would model a
+        // rejoin that silently loses its own contributions — a state the real path does not produce.
+        val existing = store.manifestOf(eventId, ownDeviceId)
+        store.putManifest(
+            eventId,
+            ownDeviceId,
+            existing ?: DeviceManifest(deviceId = ownDeviceId, assets = emptyList()),
+        )
         configCell.value = EventConfig(
             eventId = eventId,
             name = name,

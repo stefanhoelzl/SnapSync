@@ -1,3 +1,5 @@
+import { emptyStore } from "./support/db.ts";
+import { insertEvent } from "../src/db.ts";
 import { assert, assertEquals } from "@std/assert";
 import { createApp, type FetchLike } from "../src/app.ts";
 import {
@@ -28,6 +30,8 @@ const APPLE_ROOT_CA = readConfig({
   BUNNY_STORAGE_ACCESS_KEY: "k",
   APNS_PRIVATE_KEY: "p",
   ATTEST_TOKEN_KEY: "t",
+  BUNNY_DATABASE_URL: "libsql://example.invalid",
+  BUNNY_DATABASE_AUTH_TOKEN: "dbt",
   ADMIN_NOTIFY_KEY: "a",
 }).appAttestRootCa;
 
@@ -43,6 +47,8 @@ const CONFIG: Config = {
   apnsPrivateKey: "-----BEGIN PRIVATE KEY-----\nMIG...\n-----END PRIVATE KEY-----\n",
   apnsTopic: "app.snapsync",
   attestTokenKey: "test-attest-token-key",
+  databaseUrl: "",
+  databaseToken: "",
   appAttestRootCa: APPLE_ROOT_CA,
   attestTokenTtlSeconds: 30 * DAY / 1000,
   attestAppId: "E9Z8BADH58.app.snapsync",
@@ -66,6 +72,8 @@ const SAMPLE_CHALLENGE = new TextDecoder().decode(b64ToBytes(SAMPLE.clientDataBa
 type Call = { url: string; init: RequestInit };
 
 /** Records upstream calls; every GET 404s and every write succeeds, unless `objects` says otherwise. */
+const DB = await emptyStore();
+
 function recorder(objects: Record<string, string> = {}) {
   const calls: Call[] = [];
   const fetchImpl: FetchLike = (url, init) => {
@@ -86,7 +94,7 @@ function recorder(objects: Record<string, string> = {}) {
 
 const app = (objects: Record<string, string> = {}) => {
   const { calls, fetchImpl } = recorder(objects);
-  return { calls, app: createApp({ config: CONFIG, fetch: fetchImpl, now: () => NOW }) };
+  return { calls, app: createApp({ config: CONFIG, db: DB, fetch: fetchImpl, now: () => NOW }) };
 };
 
 const token = await mintToken(CONFIG, D, NOW);
@@ -495,66 +503,51 @@ Deno.test("renew: a device that never attested must attest, not renew", async ()
 
 // ── Leave is rename-only (capability `event-leave-endpoint`) ─────────────────────────────────────────
 
-Deno.test("leave: the departing device's config + attestation record are RETAINED (no leave-time GC)", async () => {
-  // Leaving is non-destructive now: it renames the active manifest to `.left.json` and returns 200,
-  // touching neither the config nor the attestation record. A fully-orphaned device is collected only by
-  // the nightly sweep (capability `scheduled-cleanup`), not by leave.
+Deno.test("leave: the departing device's record + attestation are RETAINED (no leave-time GC)", async () => {
+  // Leaving is non-destructive: it marks the membership `departed` and returns 200, touching neither the
+  // device's record nor its attestation. A fully-orphaned device is collected only by the nightly sweep
+  // (capability `scheduled-cleanup`), never by leave — which is what lets a device rejoin, or join a
+  // different event, without re-attesting.
+  const db = await emptyStore();
+  const E2 = "7a3f9c21-0000-4000-8000-0000000000ee";
+  await insertEvent(db, {
+    eventId: E2,
+    name: "x",
+    createdAt: "2026-07-01T00:00:00.000Z",
+    startsAt: "2026-07-01T00:00:00Z",
+    endsAt: "2026-07-31T00:00:00Z",
+    capacity: 10,
+    lifetimeSeconds: 30 * 24 * 60 * 60,
+  });
+  await db.execute(
+    `INSERT INTO memberships (event_id, device_id, state, joined_at) VALUES (?, ?, 'active', 'x')`,
+    [E2, D],
+  );
+  await db.execute(
+    `INSERT INTO device_records (device_id, push_token, updated_at) VALUES (?, '{}', 'x')`,
+    [D],
+  );
+
   const calls: Call[] = [];
-  const store = new Map<string, string>([
-    [
-      `events/${E}/metadata.json`,
-      JSON.stringify({
-        eventId: E,
-        name: "x",
-        createdAt: "t",
-        startsAt: "2026-07-01T00:00:00Z",
-        endsAt: "2026-07-31T00:00:00Z",
-        capacity: 10,
-      }),
-    ],
-    [`events/${E}/devices/${D}.json`, JSON.stringify({ deviceId: D, assets: [] })],
-    [`devices/${D}.json`, "{}"],
-    [`devices/${D}.attest.json`, JSON.stringify({ publicKey: "AA==", environment: "production" })],
-  ]);
   const fetchImpl: FetchLike = (url, init) => {
     calls.push({ url, init });
-    const key = url.split("/snapsync-zone/")[1] ?? "";
-    const method = init.method ?? "GET";
-    if (method === "GET" && key.endsWith("/")) {
-      const children = [...store.keys()]
-        .filter((k) => k.startsWith(key))
-        .map((k) => ({
-          ObjectName: k.slice(key.length),
-          Length: 1,
-          IsDirectory: false,
-          LastChanged: "2026-07-14T00:00:00.000Z",
-        }));
-      return Promise.resolve(new Response(JSON.stringify(children), { status: 200 }));
-    }
-    if (method === "GET") {
-      const body = store.get(key);
-      return Promise.resolve(
-        body === undefined
-          ? new Response(null, { status: 404 })
-          : new Response(body, { status: 200 }),
-      );
-    }
-    if (method === "PUT") store.set(key, typeof init.body === "string" ? init.body : "{}");
-    if (method === "DELETE") store.delete(key);
     return Promise.resolve(new Response(null, { status: 200 }));
   };
-
-  const res = await createApp({ config: CONFIG, fetch: fetchImpl, now: () => NOW })
-    .request(`/api/v1/events/${E}/devices/${D}`, { method: "DELETE", headers: bearer });
-  assertEquals(res.status, 200);
-
-  const deleted = calls.filter((c) => c.init.method === "DELETE").map((c) =>
-    c.url.split("/snapsync-zone/")[1]
+  const res = await createApp({ config: CONFIG, db, fetch: fetchImpl, now: () => NOW }).request(
+    `/api/v1/events/${E2}/devices/${D}`,
+    { method: "DELETE", headers: { authorization: `Bearer ${await mintToken(CONFIG, D, NOW)}` } },
   );
-  // The ONLY delete leave performs is the active manifest (renamed to .left.json). Nothing else.
-  assertEquals(deleted, [`events/${E}/devices/${D}.json`]);
-  assert(store.has(`devices/${D}.attest.json`), "attestation record must be retained by leave");
-  assert(store.has(`devices/${D}.json`), "config must be retained by leave");
-  assert(store.has(`events/${E}/devices/${D}.left.json`), "departed manifest must be written");
-  assert(store.has(`events/${E}/metadata.json`), "event marker must survive leave");
+  assertEquals(res.status, 200);
+  assertEquals(
+    (await db.execute(`SELECT state FROM memberships WHERE device_id = ?`, [D])).rows,
+    [{ state: "departed" }],
+  );
+  // The record survives …
+  assertEquals(
+    (await db.execute(`SELECT * FROM device_records WHERE device_id = ?`, [D])).rows.length,
+    1,
+  );
+  // … and nothing was deleted from storage, where the attestation record lives.
+  assert(!calls.some((c) => (c.init.method ?? "GET") === "DELETE"));
+  db.close();
 });

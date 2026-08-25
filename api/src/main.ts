@@ -14,7 +14,13 @@
 import * as BunnySDK from "@bunny.net/edgescript-sdk";
 import { createApp } from "./app.ts";
 import { readConfig } from "./config.ts";
+import { libsqlDb } from "./db-libsql.ts";
 
-const app = createApp({ config: readConfig(Deno.env.toObject()), fetch });
+// The relational store (capability `database`). Its credentials are validated by `readConfig` above, so
+// a deployment that cannot reach its store fails HERE, at boot, rather than serving requests whose
+// relational writes go nowhere. This is the ONLY module that constructs the remote driver — the local rig
+// and the tests build a `node:sqlite` one over the same port.
+const config = readConfig(Deno.env.toObject());
+const app = createApp({ config, db: libsqlDb(config.databaseUrl, config.databaseToken), fetch });
 
 BunnySDK.net.http.serve(app.fetch);

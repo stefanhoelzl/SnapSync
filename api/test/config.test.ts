@@ -14,6 +14,8 @@ const SECRETS = {
   BUNNY_STORAGE_ACCESS_KEY: "k",
   APNS_PRIVATE_KEY: PEM,
   ATTEST_TOKEN_KEY: "t",
+  BUNNY_DATABASE_URL: "libsql://example.invalid",
+  BUNNY_DATABASE_AUTH_TOKEN: "dbt",
 };
 
 Deno.test("readConfig: the secrets → Config, with every non-secret from the resolved deployment", () => {
@@ -36,6 +38,8 @@ Deno.test("readConfig: the secrets → Config, with every non-secret from the re
     // The push topic IS the bundle id, derived rather than restated.
     apnsTopic: D.bundleId,
     attestTokenKey: "t",
+    databaseUrl: "libsql://example.invalid",
+    databaseToken: "dbt",
     appAttestRootCa: D.appAttestRootCa,
     attestTokenTtlSeconds: D.attestTokenTtlSeconds,
     // Derived from the team + bundle ids, so the gate's app id and the push topic cannot drift apart.
@@ -73,19 +77,33 @@ Deno.test("readConfig: a retired admin key in the environment is simply unread",
   assertEquals(Object.hasOwn(c, "adminKey"), false);
 });
 
-Deno.test("readSweepConfig: needs ONLY the storage AccessKey (edge-only secrets blank)", () => {
+Deno.test("readSweepConfig: the storage key AND the store's credentials, and nothing else", () => {
   // The nightly sweep (capability `scheduled-cleanup`) makes no request to the Edge Script, so it holds
-  // no credential authorizing one — just the storage key it reads and deletes with.
-  const c = readSweepConfig({ BUNNY_STORAGE_ACCESS_KEY: "k" });
+  // no credential authorizing one. It DOES hold the relational store's: it marks from the database and
+  // deletes from storage, and its deletion decision runs against the primary inside an interactive
+  // transaction (capability `database`).
+  const c = readSweepConfig({
+    BUNNY_STORAGE_ACCESS_KEY: "k",
+    BUNNY_DATABASE_URL: "libsql://example.invalid",
+    BUNNY_DATABASE_AUTH_TOKEN: "dbt",
+  });
   assertEquals(c.accessKey, "k");
+  assertEquals(c.databaseUrl, "libsql://example.invalid");
+  assertEquals(c.databaseToken, "dbt");
   assertEquals(c.apnsPrivateKey, ""); // never used by the sweep
   assertEquals(c.attestTokenKey, "");
   assertEquals(c.zone, D.storage.zone); // the resolved deployment is still present
   assertEquals(c.eventLifetimeSeconds, D.eventLifetimeSeconds);
 });
 
-Deno.test("readSweepConfig: a missing storage AccessKey throws naming it", () => {
+Deno.test("readSweepConfig: a missing secret throws naming it", () => {
   assertThrows(() => readSweepConfig({}), Error, "BUNNY_STORAGE_ACCESS_KEY");
+  // A sweep that cannot reach the store would mark nothing and collect nothing while reporting success.
+  assertThrows(
+    () => readSweepConfig({ BUNNY_STORAGE_ACCESS_KEY: "k" }),
+    Error,
+    "BUNNY_DATABASE_URL",
+  );
 });
 
 Deno.test("readConfig: blank token signing key → throws (treated as missing)", () => {

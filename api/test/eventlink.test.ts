@@ -1,3 +1,4 @@
+import { emptyStore } from "./support/db.ts";
 import { assert, assertEquals } from "@std/assert";
 import { createApp, type FetchLike } from "../src/app.ts";
 import { DEPLOYMENT, readConfig } from "../src/config.ts";
@@ -11,6 +12,8 @@ const CONFIG = readConfig({
   BUNNY_STORAGE_ACCESS_KEY: "k",
   APNS_PRIVATE_KEY: "p",
   ATTEST_TOKEN_KEY: "t",
+  BUNNY_DATABASE_URL: "libsql://example.invalid",
+  BUNNY_DATABASE_AUTH_TOKEN: "dbt",
   ADMIN_NOTIFY_KEY: "a",
 });
 
@@ -18,7 +21,8 @@ const CONFIG = readConfig({
 const noFetch: FetchLike = () => {
   throw new Error("serving the AASA must make no upstream request");
 };
-const app = () => createApp({ config: CONFIG, fetch: noFetch });
+const DB = await emptyStore();
+const app = () => createApp({ config: CONFIG, db: DB, fetch: noFetch });
 
 // `/join` is now built by `site/` and PROXIED from the constant `site/join/index.html` object; this app
 // injects a fake storage that serves it (capability `web-site`).
@@ -30,7 +34,7 @@ const siteApp = () => {
         ? new Response(JOIN_HTML, { status: 200 })
         : new Response("nf", { status: 404 }),
     );
-  return createApp({ config: CONFIG, fetch });
+  return createApp({ config: CONFIG, db: DB, fetch });
 };
 
 const AASA = "/.well-known/apple-app-site-association";

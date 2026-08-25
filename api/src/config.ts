@@ -71,6 +71,15 @@ export type Config = {
    * environment, never in source.
    */
   attestTokenKey: string;
+  /**
+   * libSQL/HTTP URL of this deployment's relational store (capability `database`). A SECRET in the same
+   * sense the storage `AccessKey` is: it addresses a live store holding real events, and EACH DEPLOYMENT
+   * ADDRESSES ITS OWN — a dev run that wrote or deleted rows in the production store would corrupt live
+   * events, and unlike the storage zone there is no per-object blast radius to fall back on.
+   */
+  databaseUrl: string;
+  /** Access token for {@link databaseUrl}. A SECRET: read from the environment, never in source. */
+  databaseToken: string;
   /** Apple's App Attest root CA (PEM) — the trust anchor for every attestation chain. */
   appAttestRootCa: string;
   /** Device-token lifetime, in seconds. */
@@ -136,7 +145,10 @@ function secret(
 /** Every non-secret field, shared by {@link readConfig}, {@link readSweepConfig} and {@link storageConfig}. */
 function publicFields(
   d: BunnyDeployment,
-): Omit<Config, "accessKey" | "apnsPrivateKey" | "attestTokenKey"> {
+): Omit<
+  Config,
+  "accessKey" | "apnsPrivateKey" | "attestTokenKey" | "databaseUrl" | "databaseToken"
+> {
   const storage = d.storage;
   return {
     zone: storage.zone,
@@ -193,12 +205,23 @@ export function readConfig(env: Record<string, string | undefined>): Config {
   const accessKey = secret(d.storage.accessKey, env, missing);
   const apnsPrivateKey = secret(d.apnsPrivateKey, env, missing, false);
   const attestTokenKey = secret(d.attestTokenKey, env, missing);
+  // Validated with every other secret, so a deployment that cannot reach its store fails to BOOT rather
+  // than serving requests whose relational writes silently go nowhere (capability `backend-deployment`).
+  const databaseUrl = secret(d.databaseUrl, env, missing);
+  const databaseToken = secret(d.databaseToken, env, missing);
 
   if (missing.length > 0) {
     throw new Error(`missing configuration: ${missing.join(", ")}`);
   }
 
-  return { ...publicFields(d), accessKey, apnsPrivateKey, attestTokenKey };
+  return {
+    ...publicFields(d),
+    accessKey,
+    apnsPrivateKey,
+    attestTokenKey,
+    databaseUrl,
+    databaseToken,
+  };
 }
 
 /**
@@ -213,6 +236,8 @@ export function readSweepConfig(env: Record<string, string | undefined>): Config
   const d = deployed();
   const missing: string[] = [];
   const accessKey = secret(d.storage.accessKey, env, missing);
+  const databaseUrl = secret(d.databaseUrl, env, missing);
+  const databaseToken = secret(d.databaseToken, env, missing);
   if (missing.length > 0) {
     throw new Error(`missing configuration: ${missing.join(", ")}`);
   }
@@ -221,6 +246,10 @@ export function readSweepConfig(env: Record<string, string | undefined>): Config
     accessKey,
     apnsPrivateKey: "", // unused by the sweep (the edge holds the real APNs key)
     attestTokenKey: "", // unused by the sweep (the edge holds the real token-signing key)
+    // The sweep DOES hold these: it marks from the database and deletes from storage, and its deletion
+    // decision runs against the primary inside an interactive transaction (capability `database`).
+    databaseUrl,
+    databaseToken,
   };
 }
 
@@ -236,5 +265,7 @@ export function storageConfig(accessKey: string): Config {
     accessKey,
     apnsPrivateKey: "",
     attestTokenKey: "",
+    databaseUrl: "",
+    databaseToken: "",
   };
 }
