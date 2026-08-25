@@ -256,8 +256,24 @@ class RenderingTest(unittest.TestCase):
         types = rd.render_types(Tree().standard().resolve())
         self.assertIn('readonly kind: "bunny";', types)
         self.assertIn('readonly kind: "filesystem";', types)
-        self.assertIn("export type ResolvedStorage = BunnyStorage | FilesystemStorage;", types)
+        # The union spans the WHOLE deployment, not just `storage`: apnsPrivateKey/attestTokenKey are
+        # kind==bunny keys, so a storage-only union would type a filesystem deployment as carrying them.
+        self.assertIn("export type ResolvedDeployment = BunnyDeployment | FilesystemDeployment;", types)
         self.assertIn("readonly accessKey: { readonly env: string };", types)
+
+    def test_the_bunny_branch_alone_carries_the_deployed_secrets(self):
+        types = rd.render_types(Tree().standard().resolve())
+        bunny = types.split("export type BunnyDeployment")[1].split("export type FilesystemDeployment")[0]
+        fs = types.split("export type FilesystemDeployment")[1].split("export type ResolvedDeployment")[0]
+        for key in ("apnsPrivateKey", "attestTokenKey"):
+            self.assertIn(key, bunny)
+            self.assertNotIn(key, fs)
+
+    def test_narrowing_is_offered_as_type_guards(self):
+        # A nested discriminant does not narrow the outer type, so the guards are the only safe way in.
+        types = rd.render_types(Tree().standard().resolve())
+        self.assertIn("export function isBunnyDeployment(", types)
+        self.assertIn("export function isFilesystemDeployment(", types)
 
 
 class AtomicityTest(unittest.TestCase):

@@ -71,6 +71,14 @@ jobs:
       - name: Resolve the deployment
         run: python3 scripts/resolve-deployment.py prod
 
+      # The resolver decides what ships inside the bundle AND what every other toolchain reads, so its
+      # own suite is a gate like any other. Nothing else runs it: `./gradlew build` does not, and
+      # `deno task test` does not — so without this step a broken resolver reaches main silently. (It
+      # did: a rename left an assertion stale for several commits, caught only by a manual run.)
+      # Stdlib unittest, no install step.
+      - name: Test the deployment resolver
+        run: python3 scripts/resolve_deployment_test.py
+
       # --- Test gate: deploy runs only if these pass ---
       - name: Format check
         working-directory: api
