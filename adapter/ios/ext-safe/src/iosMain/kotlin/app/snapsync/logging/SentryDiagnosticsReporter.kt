@@ -1,5 +1,7 @@
 package app.snapsync.logging
 
+import app.snapsync.config.bakedSentryDsn
+import app.snapsync.config.bakedSentryEnvironment
 import app.snapsync.model.DiagnosticDump
 import app.snapsync.model.NON_REDACTED_TAG
 import app.snapsync.model.redactUuids
@@ -13,11 +15,16 @@ import platform.Foundation.NSBundle
 
 /**
  * The Sentry seat of the [DiagnosticsReporter] port (capability `crash-reporting`) — a NO-OP unless this
- * process's bundle carries a `SENTRY_DSN`. Only CI Release archives bake the DSN (capability
- * `ios-testflight-delivery`), so dev-sideload/simulator builds never start the SDK and never open a
- * connection to the reporting host. `SENTRY_ENVIRONMENT` is baked beside it (`production` in CI;
- * the `Config.xcconfig` default is `development`, so a deliberately DSN-injected dev build — the
- * on-device verification path — reports honestly).
+ * process's generated `Deployment.plist` carries a `sentryDsn`. Only CI Release archives resolve one
+ * (capability `ios-testflight-delivery`), so dev-sideload/simulator builds never start the SDK and never
+ * open a connection to the reporting host. `sentryEnvironment` is baked beside it, derived from the same
+ * build-channel discriminant, so the two cannot disagree.
+ *
+ * ⚠️ A DSN can no longer be injected on an `xcodebuild` line: a build-setting override cannot substitute
+ * into a generated bundle resource. An on-device build that reports is a `workflow_dispatch` of
+ * `ios.yml`. The DSN lived in the xcconfig fragment for one day and was silently truncated at its `//`
+ * to `https:` — non-empty, so this class reported itself configured and the dialog opened while every
+ * dump was lost. That is why the value is rendered into a grammar that escapes.
  *
  * Idempotent across the whole process, not just this instance (the port contract): in the app
  * process both `snapSyncApp` and the app-driven tier's `uploadCore` start the port, and the roots
@@ -47,7 +54,7 @@ import platform.Foundation.NSBundle
  */
 class SentryDiagnosticsReporter : DiagnosticsReporter {
 
-    override val isConfigured: Boolean get() = bundleValue("SENTRY_DSN") != null
+    override val isConfigured: Boolean get() = bakedSentryDsn() != null
 
     /**
      * The operator-initiated dump (capability `diagnostic-logging`): ONE event titled by **what the
@@ -89,11 +96,11 @@ class SentryDiagnosticsReporter : DiagnosticsReporter {
 
     override fun start() {
         if (processStarted) return
-        val dsn = bundleValue("SENTRY_DSN") ?: return
+        val dsn = bakedSentryDsn() ?: return
         processStarted = true
         Sentry.init { options ->
             options.dsn = dsn
-            options.environment = bundleValue("SENTRY_ENVIRONMENT") ?: "development"
+            options.environment = bakedSentryEnvironment()
             // The version line this build carries. Set only when present and non-blank: an
             // empty-string release is worse than none, because it creates a release record that
             // looks real. The build number is NOT folded in — it rides as `dist` (below), which is
@@ -138,6 +145,7 @@ internal const val DIAGNOSTIC_DUMP_MESSAGE_PREFIX: String = "Bug Report:"
 
 private var processStarted = false
 
+/** Apple's OWN Info.plist keys only. Deployment values come from [bakedSentryDsn] and friends. */
 private fun bundleValue(key: String): String? =
     (NSBundle.mainBundle.objectForInfoDictionaryKey(key) as? String)?.takeIf { it.isNotBlank() }
 

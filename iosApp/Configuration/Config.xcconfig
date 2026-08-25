@@ -4,14 +4,21 @@
 // deployment by `scripts/resolve-deployment.py` (capability `deployment-configuration`):
 //
 //   APP_NAME  BUNDLE_ID  TEAM_ID          — Apple identity
-//   ASSOCIATED_DOMAIN  BACKGROUND_UPLOAD_URL_BASE
-//                                          — the device-facing domain, one value shared with the app's
+//   ASSOCIATED_DOMAIN                      — the device-facing domain, one value shared with the app's
 //                                            LINK_ORIGIN, the AASA the backend serves, and the site
-//   APS_ENVIRONMENT  APNS_ENV  SENTRY_ENVIRONMENT  SENTRY_DSN
-//                                          — all DERIVED from one `channel` discriminator, so the three
-//                                            environments can no longer disagree (they previously had to
-//                                            agree with nothing but a comment saying so), and the DSN is
-//                                            emitted only for a distributed build
+//   APS_ENVIRONMENT                        — DERIVED from the one `channel` discriminator
+//
+// The fragment carries BUILD SETTINGS and ENTITLEMENT INPUTS ONLY. Every value the app or the extension
+// READS at runtime — the upload base, the APNs environment, and the crash-reporting environment and DSN —
+// lives in the sibling generated `Deployment.plist`, bundled as a resource into BOTH targets.
+//
+// That split is not organisational. `//` opens a comment ANYWHERE on an xcconfig line and the grammar
+// offers no escape, so a value carrying a scheme is truncated silently: the crash-reporting DSN became
+// `https:`, which is non-empty, so the SDK failed to start while the in-app bug-report dialog kept
+// opening and losing every dump — four mute TestFlight builds. A property list escapes. What remains
+// here is only values sourced from literals in authored files, which a human reviewed in a pull request;
+// the per-line `$()` comment guard this file used to rely on is GONE rather than generalised, because a
+// per-site escape covers what someone remembered.
 //
 // WHY GENERATED RATHER THAN GUARDED. This file used to hold `ASSOCIATED_DOMAIN` and
 // `BACKGROUND_UPLOAD_URL_BASE` as literals, and the :test:architecture guard checked only the first —
@@ -27,8 +34,9 @@
 //
 // Retargeting a development build at a different backend is therefore selecting a different DEPLOYMENT
 // (`python3 scripts/resolve-deployment.py <name>`), not overriding a host string on the xcodebuild line:
-// the one fragment feeds BOTH targets' Info.plists, so a single selection covers the app and the
-// background-upload extension together. Any host reached over the NETWORK must be HTTPS — default ATS
+// one resolution feeds BOTH targets — this fragment their build settings, the generated Deployment.plist
+// the values they read — so a single selection covers the app and the background-upload extension
+// together. Any host reached over the NETWORK must be HTTPS — default ATS
 // applies and no NSAllowsLocalNetworking exception ships, so a baked `http://` network host fails
 // silently on device. LOOPBACK is the exception, and it is not one we granted: ATS exempts 127.0.0.1
 // itself, so plain HTTP works there with no Info.plist key at all. Measured 2026-08-09 from a real app

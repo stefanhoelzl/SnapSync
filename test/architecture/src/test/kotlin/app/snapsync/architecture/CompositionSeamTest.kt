@@ -157,7 +157,7 @@ class CompositionSeamTest {
                 "build constant of the running process rather than another system's state, which cannot " +
                 "change while it runs. A thunk because the extension re-reads its bundle per gate call " +
                 "and an absent host must skip the cycle, not crash it. EXPIRY: if the destination ever " +
-                "becomes runtime-resolved (the open BackgroundUploadURLBase question), it is a port",
+                "becomes runtime-resolved (the open uploadBase question), it is a port",
             "selectionScope" to
                 "what discovery may read right now (capability `limited-photo-access`), derived by the " +
                 "app composition from current permission plus the in-memory snapshot — a call and not a " +

@@ -250,36 +250,65 @@ jobs:
       # or symlinks. Restoring a .app through that round-trip would corrupt the signed bundle and break
       # `xcodebuild -exportArchive`. tar preserves the modes, so the archive survives the hand-off
       # byte-for-byte.
-      # Assert the archive actually BAKED the resolved deployment. This is the standing answer to the one
-      # thing that could otherwise fail silently: `Config.xcconfig` hard-`#include`s the generated
-      # fragment, and if that include ever stopped resolving, every value it owns would be empty or stale.
-      # Signing would probably catch it (BUNDLE_ID and TEAM_ID live only in the fragment) — but "probably"
-      # is not a gate, and the upload host and APNs environment would not be caught at all: a build
-      # pointed at the wrong backend, or a TestFlight build on sandbox APNs, looks completely normal until
-      # a user's photos silently stop arriving. Capability `deployment-configuration`.
+      # Assert the built BUNDLES carry the resolved deployment — read back out of the archive, not
+      # checked on the generator's output. That distinction is the whole point of this step, and it has
+      # been paid for twice: a renderer test proves the intended bytes were emitted, and cannot see a
+      # grammar that reinterprets them (the crash-reporting DSN was truncated at its `//` to `https:` and
+      # shipped four mute TestFlight builds, with every unit test green) nor a resource that never
+      # reached a bundle.
+      #
+      # BOTH bundles, because each process reads its OWN. The device-facing values now ride in the
+      # generated `Deployment.plist`, copied into the .app AND the nested .appex, and a copy that landed
+      # in only one of them fails ALL FOUR values in that process at once: uploads go nowhere
+      # (`uploadBase` blank -> buildUploadConfig returns null), a Release build registers sandbox APNs,
+      # events are mislabelled, and no crash reporting is left to report any of it. Every symptom is
+      # silent. The on-device check — sending a diagnostic dump — exercises the APP process only, so it
+      # cannot tell a complete success from an extension that reached none of this.
+      #
+      # Capability `deployment-configuration`; the four-value contract is `ios-testflight-delivery`.
       - name: Verify the archive baked the resolved deployment
         run: |
           set -euo pipefail
-          PLIST="$RUNNER_TEMP/SnapSync.xcarchive/Products/Applications/SnapSync.app/Info.plist"
-          [ -f "$PLIST" ] || { echo "::error::no Info.plist at $PLIST"; exit 1; }
-          read_key() { /usr/libexec/PlistBuddy -c "Print :$1" "$PLIST"; }
+          APP="$RUNNER_TEMP/SnapSync.xcarchive/Products/Applications/SnapSync.app"
+          APPEX="$APP/Extensions/BackgroundUploadExtension.appex"   # iOS 26 uses Extensions/, not PlugIns/
           prop() { sed -n "s/^$1=//p" build/deployment.properties; }
+          pb() { /usr/libexec/PlistBuddy -c "Print :$2" "$1" 2>/dev/null || true; }
 
           DOMAIN="$(prop domain)"
           [ -n "$DOMAIN" ] || { echo "::error::the resolver produced no domain"; exit 1; }
+          if [ "$SNAPSYNC_CHANNEL" = "release" ]; then EXPECT_APNS=production; EXPECT_ENV=production
+          else EXPECT_APNS=sandbox; EXPECT_ENV=development; fi
 
-          BASE="$(read_key BackgroundUploadURLBase)"
-          BUNDLE="$(read_key CFBundleIdentifier)"
-          APNS="$(read_key APNS_ENV)"
-          echo "baked: base=$BASE bundle=$BUNDLE apns=$APNS (domain=$DOMAIN, channel=$SNAPSYNC_CHANNEL)"
+          for BUNDLE_DIR in "$APP" "$APPEX"; do
+            NAME="$(basename "$BUNDLE_DIR")"
+            DEP="$BUNDLE_DIR/Deployment.plist"
+            [ -f "$DEP" ] || { echo "::error::$NAME carries no Deployment.plist — the resource did not reach this bundle"; exit 1; }
 
-          case "$BASE" in
-            "https://$DOMAIN/api/v1") ;;
-            *) echo "::error::baked upload base '$BASE' is not https://$DOMAIN/api/v1"; exit 1 ;;
-          esac
-          [ -n "$BUNDLE" ] || { echo "::error::CFBundleIdentifier is empty — the fragment did not resolve"; exit 1; }
-          if [ "$SNAPSYNC_CHANNEL" = "release" ]; then EXPECT_APNS=production; else EXPECT_APNS=sandbox; fi
-          [ "$APNS" = "$EXPECT_APNS" ] || { echo "::error::APNS_ENV is '$APNS', expected '$EXPECT_APNS'"; exit 1; }
+            BASE="$(pb "$DEP" uploadBase)"
+            APNS="$(pb "$DEP" apnsEnv)"
+            SENV="$(pb "$DEP" sentryEnvironment)"
+            ID="$(pb "$BUNDLE_DIR/Info.plist" CFBundleIdentifier)"
+            echo "$NAME: base=$BASE apns=$APNS sentryEnv=$SENV id=$ID"
+
+            [ "$BASE" = "https://$DOMAIN/api/v1" ] || { echo "::error::$NAME upload base '$BASE' is not https://$DOMAIN/api/v1"; exit 1; }
+            [ "$APNS" = "$EXPECT_APNS" ] || { echo "::error::$NAME apnsEnv is '$APNS', expected '$EXPECT_APNS'"; exit 1; }
+            [ "$SENV" = "$EXPECT_ENV" ] || { echo "::error::$NAME sentryEnvironment is '$SENV', expected '$EXPECT_ENV'"; exit 1; }
+            [ -n "$ID" ] || { echo "::error::$NAME CFBundleIdentifier is empty — the fragment did not resolve"; exit 1; }
+
+            # The DSN is COMPARED, never echoed. Absence is the off-switch, so an undistributed build
+            # must carry none: a stray secret arming crash reporting on a discarded gate archive is the
+            # failure this half exists to stop.
+            DSN="$(pb "$DEP" sentryDsn)"
+            if [ "$SNAPSYNC_CHANNEL" = "release" ]; then
+              if [ -z "$DSN" ] || [ "$DSN" != "$SENTRY_DSN" ]; then
+                echo "::error::$NAME sentryDsn does not match the resolved DSN (present=$([ -n "$DSN" ] && echo yes || echo no))"; exit 1
+              fi
+              echo "$NAME: sentryDsn matches the resolved value"
+            else
+              [ -z "$DSN" ] || { echo "::error::$NAME carries a DSN on an undistributed build"; exit 1; }
+              echo "$NAME: no sentryDsn, as expected off a distributed channel"
+            fi
+          done
 
       - name: Pack the signed archive for delivery
         if: ${{ github.ref == 'refs/heads/main' || github.event_name == 'workflow_dispatch' }}

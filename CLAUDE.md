@@ -406,8 +406,11 @@ with the proxy task above).
   at the top of any screen → a confirm dialog → one diagnostic dump reaches Bugsink (state + counts +
   the tail of BOTH logs, ~700 KB total, sent **verbatim** — ids intact, unlike automatic crash
   events). It is deliberately invisible: no button, no semantics, and on a build with no baked
-  `SENTRY_DSN` (every dev/sideload build) **no dialog opens at all**. To exercise it on device, inject
-  a DSN into the ssh-mac `xcodebuild` line. Measured against the hosted instance (2026-07-29):
+  DSN (every dev/sideload build) **no dialog opens at all**. To exercise it on device, **dispatch the
+  branch** — `gh workflow run ios.yml --ref <branch>` — which builds the release channel and delivers to
+  internal TestFlight. ⚠️ Injecting `SENTRY_DSN` on the ssh-mac `xcodebuild` line **no longer works**:
+  the DSN rides in the generated `Deployment.plist` bundled as a resource, and a build-setting override
+  cannot substitute into a resource file. Measured against the hosted instance (2026-07-29):
   Bugsink **drops attachments entirely**, caps events at `MAX_EVENT_SIZE` = 1 MiB (a `413` the SDK
   swallows — an over-budget dump is silently lost), and stores 340 KB context strings **byte-identical**.
   Dumps group as one issue (`diagnostic dump`); read them with `/bugsink`.
@@ -425,8 +428,12 @@ with the proxy task above).
   Bugsink instance, in **both** processes, via the `CrashReporting` port both shared compositions
   start first. Every UUID-shaped token is scrubbed before send (an eventId IS the upload
   capability); the SDK's random per-install `user.id` is the one deliberate exception — do not
-  "fix" it into the scrub. The DSN exists only as the `SENTRY_DSN` CI secret, baked into Release
-  archives (`ios-archive`) — dev/sideload builds carry none, so the SDK never starts there. Bugsink
+  "fix" it into the scrub. The DSN exists only as the `SENTRY_DSN` CI secret, resolved into the
+  generated **`Deployment.plist`** (capability `deployment-configuration`) that both bundles carry —
+  never into `Deployment.xcconfig`, where `//` opens a comment and silently truncated it to `https:`,
+  shipping four mute TestFlight builds (644-673). `ios.yml` reads all four deployment values back out of
+  the app **and** the `.appex` after archiving, so a truncated value or a resource that missed a bundle
+  fails the run. Dev/sideload builds carry no DSN, so the SDK never starts there. Bugsink
   ingests no dSYMs: `ios-deliver` parks each main build's dSYMs as a `dsyms-<build>` artifact for
   offline `atos` symbolication (90-day cap; park longer-lived versions' dSYMs elsewhere at promote
   time). **Triage these crashes with the `/bugsink` skill** (`.claude/skills/bugsink/`, non-gating

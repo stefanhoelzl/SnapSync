@@ -11,7 +11,7 @@ import kotlinx.serialization.json.Json
  * The `https://<domain>/join#v=3&d=<base64url(json)>` wire format (spec: event-link): the runtime config
  * payload — just the **event id** — carried in a single opaque, versioned param. The device holds no
  * storage credential; the event id is the upload capability. The upload **host** is not here: it is
- * fixed at compile time by the extension's `BackgroundUploadURLBase`. This file is the one
+ * fixed at compile time by the extension's baked `uploadBase`. This file is the one
  * authoritative codec: the QR generator encodes with [encodeEventUrl] and the app decodes with
  * [decodeEventUrl], so the format cannot drift between producer and consumer. [EventLinkPayload]
  * is the wire DTO (its property name is the JSON key).

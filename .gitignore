@@ -25,6 +25,7 @@ api/.localdev/
 # (build/deployment.properties and build/metadata/ are already covered by `build/` above.)
 api/src/deployment.ts
 iosApp/Configuration/Deployment.xcconfig
+iosApp/Configuration/Deployment.plist
 site/src/deployment.json
 
 # Python bytecode caches (e.g. .github/scripts/) — build output, never committed.

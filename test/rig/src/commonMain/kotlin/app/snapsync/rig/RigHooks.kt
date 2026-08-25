@@ -28,7 +28,7 @@ class RigHooks(
      * forge moved to its own binary that mode has one case, so the two were the same fact twice.
      */
     private val uploadTier: String,
-    /** The baked `BackgroundUploadURLBase` — the oracle for "which backend is this build pointed at". */
+    /** The baked `uploadBase` — the oracle for "which backend is this build pointed at". */
     private val uploadBase: String,
     /**
      * The lane platform entry points are invoked on. Swift calls them from the **main** thread, so the rig

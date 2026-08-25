@@ -8,6 +8,7 @@ import app.snapsync.compose.AppCore
 import app.snapsync.compose.AppPorts
 import app.snapsync.compose.snapSyncApp
 import app.snapsync.config.FileBackedConfigStore
+import app.snapsync.config.bakedApnsEnv
 import app.snapsync.eventcreation.HttpEventCreation
 import app.snapsync.eventcreation.HttpEventRename
 import app.snapsync.attest.HttpAttestClient
@@ -91,7 +92,6 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import platform.BackgroundTasks.BGProcessingTaskRequest
 import platform.BackgroundTasks.BGTaskScheduler
-import platform.Foundation.NSBundle
 import platform.Foundation.NSDate
 import platform.Foundation.NSNotificationCenter
 import platform.Foundation.NSOperationQueue
@@ -539,13 +539,11 @@ object SnapSyncRoot {
     }
 
     // --- Push notifications (capability `push-registration`) ---
-    // The compile-time APNs environment (Config.xcconfig → Info.plist `APNS_ENV`): `sandbox` for
+    // The compile-time APNs environment (the generated Deployment.plist's `apnsEnv`): `sandbox` for
     // dev/sideloaded builds, `production` for TestFlight/App Store. The token itself is OS-delivered
-    // (the Swift AppDelegate forwards it via [onPushToken]); a rotation re-registers.
-    private val pushTokenSource: PushTokenSource by lazy {
-        val env = NSBundle.mainBundle.objectForInfoDictionaryKey("APNS_ENV") as? String ?: "sandbox"
-        PushTokenSource(env)
-    }
+    // (the Swift AppDelegate forwards it via [onPushToken]); a rotation re-registers. Read through the
+    // adapter, not inline: what an absent key becomes is a decision, and this shell holds none.
+    private val pushTokenSource: PushTokenSource by lazy { PushTokenSource(bakedApnsEnv()) }
 
     // Registers the device APNs token with the backend (PUT devices/<id>/config) over the shared Darwin
     // client — on launch delivery and each rotation. Best-effort: a failed write is absorbed and retried
