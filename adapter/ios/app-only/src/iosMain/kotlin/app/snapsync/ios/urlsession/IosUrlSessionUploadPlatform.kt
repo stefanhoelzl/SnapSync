@@ -124,20 +124,36 @@ class IosUrlSessionUploadPlatform(
      * One transport, every host — a **background** session, so transfers survive suspension
      * (`ios-url-session-upload`).
      *
-     * This used to be a choice: the simulator was downgraded to a foreground session on the belief that
-     * "the iOS simulator does not support background NSURLSession — `getAllTasks` never calls back and
-     * transfers never run". **That was never measured, and it is false.** Measured 2026-08-09 on
-     * `iosSimulatorArm64` (macOS 26.5.2 / Xcode 26.6): a session built from
-     * `backgroundSessionConfigurationWithIdentifier` answered `getAllTasksWithCompletionHandler`, and an
-     * `uploadTaskWithRequest(…, fromFile:)` executed through to `didCompleteWithError` with the task
-     * ending `NSURLSessionTaskStateCompleted`. The spec had said so in two places the whole time.
+     * This used to be a choice: the simulator was downgraded to a foreground session. The downgrade was
+     * deleted 2026-08-09 on the strength of a probe that was read as showing background sessions working
+     * here. **That reading was wrong**, and this comment asserted it as fact for sixteen days. The probe
+     * aimed an upload task at a *closed* port and took the delegate's `(unknown error)` as proof the task
+     * had executed; its own stated criterion — "a refusal still proves the session executed the task" —
+     * needed `NSURLErrorCannotConnectToHost` (-1004). "unknown error" is `NSURLErrorUnknown` (**-1**).
      *
-     * ⚠️ What that measurement covers is the **transport**. Whether the OS relaunches a terminated app to
-     * deliver `handleEventsForBackgroundURLSession` on a simulator is **NOT** evidenced by it — the probe
-     * ran in an `xctest` host that stayed alive and had no app bundle — and remains unproven. Do not read
-     * this note as "background `URLSession` works on the simulator, full stop".
+     * **Measured 2026-08-25** (macOS 26.5.2 / Xcode 26.6, iOS 26.2 and 26.5), with a foreground control
+     * succeeding against the same URL in the same process: a background `URLSession` **transfers nothing
+     * on a simulator**, for any third-party process. `nsurlsessiond` resolves each client's bundle
+     * identifier as it evaluates the XPC connection and drops the connection when it is `(null)` — which
+     * it is for everything an app author can build there, including a real installed app declaring a valid
+     * `CFBundleIdentifier`. Hence `NSCocoaErrorDomain` 4097 (`NSXPCConnectionInterrupted`: accepted, then
+     * torn down — *not* 4099 `Invalid`, *not* 4102 `CodeSigningRequirementFailure`), then "failed to create
+     * a background NSURLSessionDownloadTask, as remote session is unavailable", and `NSURLErrorDomain/-1`
+     * at the delegate. Apple's own simulator processes resolve to real bundle identifiers and theirs work.
      *
-     * Decision record: `changes/archive/…-delete-simulator-session-downgrade`.
+     * **The single transport is kept anyway, and that is now a deliberate trade, not host equivalence.** A
+     * simulator-only foreground session would make that host appear to work while removing the only host
+     * that exercises `__NSURLBackgroundSession` — the class `fix-download-session-lifecycle` D5's defect
+     * lives in. Six candidate fixes were tested (ad-hoc signature, an Apple Development identity, no
+     * signature at all, `application-identifier`/`team-identifier`/`get-task-allow`, a second runtime, any
+     * entitlement); none works, so do not spend time on them. ⏰ Re-measure at the next iOS major.
+     *
+     * ⚠️ Whether the OS relaunches a terminated app to deliver `handleEventsForBackgroundURLSession` on a
+     * simulator remains unproven — and is now **unmeasurable** there, since it needs a transfer that
+     * outlives the process and none can exist.
+     *
+     * Decision record: `changes/correct-simulator-background-session-claims` (superseding
+     * `changes/archive/2026-08-09-delete-simulator-session-downgrade` D1, which is not edited).
      */
     private val session: NSURLSession by lazy {
         NSURLSession.sessionWithConfiguration(
