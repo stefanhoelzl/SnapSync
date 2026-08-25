@@ -320,8 +320,6 @@ object SnapSyncRoot {
     // `internal` is module-wide and is NOT exported to the `SnapSyncKit` ObjC header, so no framework
     // surface changes and no production build can reach it from outside this module.
     internal val app: AppCore by lazy {
-        // The tier thunks resolve through the one switch above; the cast is what lets this read them.
-        val live = shell as LiveShell
         snapSyncApp(
             scope = scope,
             ports = AppPorts(
@@ -607,25 +605,18 @@ object SnapSyncRoot {
     }
 
     /**
-     * The host [MainViewController] renders. Resolved **once per process** (`by lazy`) through the one
-     * switch above. There is only the live host now: a marketing screenshot is rendered by a separate
-     * binary that does not link this module at all.
+     * The host [MainViewController] renders. Built **once per process** (`by lazy`). There is only the
+     * live host: a marketing screenshot is rendered by a separate binary that does not link this module
+     * at all.
      */
     val renderHost: StatusContainerHost by lazy { shell.renderHost() }
 
-    /** The join surface's shareable-count query (capability `join-share-count`) — live or forge, one switch. */
+    /** The join surface's shareable-count query (capability `join-share-count`) — the live query. */
     val shareableCount: suspend (cutoff: CaptureCutoff, until: CaptureCeiling?) -> Int? get() = shell.shareableCount
 
     /** The photo grant, the count's recompute trigger. */
     val photoPermission: StateFlow<PermissionStatus> get() = shell.photoPermission
 
-    /**
-     * The app became active (observed from Kotlin via `UIApplicationDidBecomeActive` — see
-     * [onLaunch]): refresh the status sources and start the foreground-gated ledger-counts poll so
-     * upload status moves live while the screen is shown (capability `sync-status`). Delegated
-     * through the one mode switch — every OS entry point below is a thin pass-through to [shell];
-     * the forge/live decision was made once, at resolve time.
-     */
     /**
      * Wrap a platform entry point that lives outside this object — today only
      * [app.snapsync.ios.MainViewController], the Compose door Swift's `ContentView` calls. The
@@ -677,6 +668,12 @@ object SnapSyncRoot {
         SCENE_GENERATION_ACTIVE
     }
 
+    /**
+     * The app became active (observed from Kotlin via `UIApplicationDidBecomeActive` — see
+     * [onLaunch]): refresh the status sources and start the foreground-gated ledger-counts poll so
+     * upload status moves live while the screen is shown (capability `sync-status`). Like every OS
+     * entry point here it is a thin pass-through to [shell], deciding nothing.
+     */
     @PlatformEntry
     fun onForeground() = log.invocation("onForeground", params = foregroundParams()) {
         everActive = true
@@ -973,23 +970,31 @@ object SnapSyncRoot {
             },
         )
 
-    /** The `onForeground` invocation params. `force=` is gone with the flag that set it — there is no
-     *  longer any way to select a tier the OS did not, so the two remaining values say everything. */
+    /** The `onForeground` invocation params. `force=` is gone with the launch flag that set it; a rig
+     *  build can still pin a mechanism, but it pins what these two values already report, so they say
+     *  everything either way. */
     private fun foregroundParams(): String =
         "mechanism=" +
             resolveUploadMechanism(osSupportsOsDrivenUpload, permission.permission.value).diagnosticName +
             " osSupported=$osSupportsOsDrivenUpload"
 
-    // ── The tier-resolved shell delegate (the target of THE one switch above) ────────────────────
+    // ── The shell delegate every OS entry point passes through ──────────────────────────────────
 
-    /** What every OS entry point delegates to; implemented once per composition mode. */
+    /**
+     * What every OS entry point delegates to.
+     *
+     * **One implementation** ([LiveShell]). It was once implemented per composition mode; the forge is a
+     * separate binary now and no switch chooses between them. What it still buys is enumerating the OS
+     * entry-point surface in one place, which is why it is kept — see the decision record
+     * `correct-superseded-composition-claims` (D2).
+     */
     private interface Shell {
         fun renderHost(): StatusContainerHost
 
-        /** The join-time shareable-count query (capability `join-share-count`); `{ null }` in forge. */
+        /** The join-time shareable-count query (capability `join-share-count`). */
         val shareableCount: suspend (cutoff: CaptureCutoff, until: CaptureCeiling?) -> Int?
 
-        /** The photo grant, the count's recompute trigger; a constant in forge. */
+        /** The photo grant, the count's recompute trigger. */
         val photoPermission: StateFlow<PermissionStatus>
         fun onForeground()
         fun onBackground()

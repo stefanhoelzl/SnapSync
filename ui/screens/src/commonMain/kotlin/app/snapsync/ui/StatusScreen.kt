@@ -347,13 +347,11 @@ fun StatusScreen(
 }
 
 /**
- * The loaded `createdAt` default, carried by the two phases that have one. `null` everywhere else
- * (`Loading` before the fetch resolves; `NotFound`/`LoadFailed`; `Committing`/`CommitFailed` after the
- * confirm) — which is why the cutoff row seeds from the first phase that *does* carry one, not from
- * whichever phase the screen happened to mount at.
- */
-/**
  * The event's start, from whichever phase carries it (capability `photo-selection-policy`).
+ *
+ * `null` on the phases that carry none (`Loading` before the fetch resolves; `NotFound`/`LoadFailed`),
+ * which is why the cutoff row seeds from the first phase that *does* carry one, rather than from
+ * whichever phase the screen happened to mount at.
  *
  * Unlike the seed it replaces, this covers **Committing and CommitFailed too**. Those phases carry
  * `startsAt` precisely because a Retry commits WITHOUT passing back through the loaded phase — reading it
