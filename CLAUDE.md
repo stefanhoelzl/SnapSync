@@ -51,7 +51,9 @@ happen ONLY on the cold-launch baseline and the `PhotoSelectionChangeSource` obs
 upload cycle's discovery is fed the in-memory snapshot (`SelectionScopedTransfer` in `uploadCore`), never a
 walk. ⏰ Re-measure at the next iOS major; evidence is one device, one point release, n=1 change.
 ② **the ≥26.1 PhotoKit
-extension is never invoked by the OS under `.limited`** (registration succeeds and lies) — both producers
+extension cannot be REGISTERED under `.limited`** (`setUploadJobExtensionEnabled` is refused in *both*
+directions with `PHPhotosErrorAccessUserDenied` 3311 — measured, SE2/26.6; the older "registration
+succeeds and lies" reading is contradicted by measurement), so the OS never invokes it there — both producers
 are composed there and the permission-aware `UploadArm` starts exactly one (guarded by
 `ProducerExclusivityTest`); ③ asset/album **creation is unrestricted** under `.limited`, so downloads and
 the event album need no special handling (the album **denylist**, though, is inert — album structure is
