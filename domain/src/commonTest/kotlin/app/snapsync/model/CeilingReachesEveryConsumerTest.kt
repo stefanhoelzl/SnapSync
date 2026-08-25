@@ -31,8 +31,12 @@ class CeilingReachesEveryConsumerTest {
     private val postCeiling = "2026-07-20T12:00:00Z" // the event's window closed twelve days earlier
     private val preCutoff = "2026-06-01T12:00:00Z"
 
-    /** The membership under test: a **closed** capture window, exactly as a late joiner's would be. */
-    /** The membership's policyOf(). A `suspend fun` rather than a `val`: the one derivation reads two ports. */
+    /**
+     * The membership under test: a **closed** capture window, exactly as a late joiner's would be.
+     *
+     * A `suspend fun` rather than a `val` because the one derivation reads two ports
+     * (capability `photo-selection-policy`).
+     */
     private suspend fun policyOf(ceiling: CaptureCeiling? = this.ceiling): SelectionPolicy = SelectionPolicy(
         selectionRulesFor(
             includesUpload = true,
