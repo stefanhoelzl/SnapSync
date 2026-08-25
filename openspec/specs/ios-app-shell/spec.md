@@ -22,7 +22,6 @@ binary target rather than remaining a mode of it.
 Decision record: `changes/archive/2026-06-17-ios-first-target`; the retirement of the launch triggers and
 the forge target's extraction: `changes/archive/2026-08-24-retire-launch-env-triggers`.
 ## Requirements
-
 ### Requirement: iOS application shell
 The system SHALL provide an iOS application built with Compose Multiplatform whose entry point is a
 `ComposeUIViewController` (in the `:app:ios` module) that hosts the shared `StatusScreen`. The screen
@@ -209,8 +208,8 @@ live stack **through the shared composition** `snapSyncApp` (`:domain` `compose/
 `module-architecture` "One shared composition"): the root constructs the platform adapters and
 supplies them as `AppPorts` — platform effect lambdas included (the trigger-time membership
 re-read `reloadConfig` (bound to the config adapter's `reload()`), the backstop scheduling, and the
-resolved
-tier's mechanism thunks). Every platform touch the root once supplied as an inline lambda SHALL be a
+upload mechanisms this OS can carry). Every platform touch the root once supplied as an inline lambda
+SHALL be a
 port instead: the share sheet (`SharePresenter`), the limited-library picker
 (`PhotoAccessRequester.choosePhotos`), the download-staging root (`StagedBytes.stagingRoot`), the
 wall clock (`Clock`), and the backend leave (`LeaveNotifier`) — a lambda in any of those places is an
@@ -240,21 +239,22 @@ adapters (`:adapter:generic:app`'s `SystemClock`/`SystemTimeZone`) into the **on
 the host and the screen. The composed graph SHALL construct the iOS
 `LedgerCountsSource` as a **read-only** reader of the shared App-Group ledger — supplying a
 `suspend () -> LedgerCounts` that calls only `iosLedgerStore().aggregates()` (never a write) — and
-SHALL issue **no** storage LIST for upload status. On the OS-driven tier the composed graph SHALL
-construct **no `LedgerWriter`** (the ledger read is read-only; the extension is the sole writer)
-and **no `EventStatusSource`** (the ledger is private to the extension, which also owns
-reconciliation — see `event-rejoin-reconciliation`).
+SHALL issue **no** storage LIST for upload status. While the **OS-driven mechanism** is the resolved
+one the composed graph SHALL construct **no `LedgerWriter`** (the ledger read is read-only; the
+extension is the sole writer) and **no `EventStatusSource`** (the ledger is private to the extension,
+which also owns reconciliation — see `event-rejoin-reconciliation`). Constructing the app-driven
+mechanism is what brings a writer into this process, so the single-writer invariant (`sync-ledger`)
+holds by which mechanism is resolved, not by which OS this is.
 
-The root SHALL resolve its composition **once per process** through the pure sealed resolver
-(`model/`'s `resolveComposition`), whose **only** input SHALL be the one OS capability fact — whether
-the ≥26.1 background-upload API is present. There SHALL be no developer input to this resolution: no
-launch-environment variable, no build property, and no runtime override, so the tier a process runs is a
-function of the device it runs on. The root SHALL switch
-on the resolved `UploadTier` in exactly **one** place, selecting the live shell delegate with the
-resolved tier's mechanism thunks bound in the same switch. Every OS entry
+The root SHALL **supply the inputs to mechanism resolution and select no mechanism itself.** It
+supplies the mechanisms this OS can carry, the plain fact of whether the OS carries the OS-driven one,
+and the source of any development override; which mechanism runs is `upload-lifecycle`'s
+("The upload mechanism is resolved, never selected"), re-read at every transition, and this spec SHALL
+NOT restate that rule. The root SHALL construct the OS-driven mechanism **only** where its
+registration selector exists, so a lower system cannot reach a trapping call. Every OS entry
 point (`onForeground` / `onBackground` / `onOpenUrl` / `onPushToken` / `onSilentPush` /
 `runUploadHeartbeat` / `runDownloadBackstop` / `handleBackgroundUrlSession`) SHALL be a thin
-delegator to that resolved delegate, re-checking no tier flag.
+delegator to a single live shell delegate, re-checking no tier and re-resolving nothing.
 
 The permission-grant subscriptions (upload-arm start on grant; sole-creator album ensure — see
 `event-album`) SHALL be installed by an explicit `AppCore.installPermissionSubscriptions()`
@@ -287,18 +287,18 @@ reaches the container's `onOpenUrl` intent (through the live delegate).
 #### Scenario: The root assembles the real stack
 
 - **WHEN** the iOS app starts
-- **THEN** a single `SnapSyncRoot` resolves the composition mode once, constructs the platform
+- **THEN** a single `SnapSyncRoot` constructs the platform
   adapters and calls `snapSyncApp`, which composes the ledger-backed `SyncStatusSource` (with the
   read-only `LedgerCountsSource`), the flows, and the user-tap command bundle over the PhotoKit
   permission adapter and the file-backed config store; the root wires the result into one
-  `StatusContainerHost` — constructing no `LedgerWriter` on the OS-driven tier and no
-  `EventStatusSource`, and issuing no storage LIST for upload status
+  `StatusContainerHost` — constructing no `LedgerWriter` while the OS-driven mechanism is resolved,
+  no `EventStatusSource`, and issuing no storage LIST for upload status
 
-#### Scenario: The tier is resolved once, from the OS alone
+#### Scenario: The root supplies resolution's inputs and selects no mechanism
 
-- **WHEN** the process starts on a device whose OS supports the OS-driven tier
-- **THEN** the resolver yields the OS-driven tier, and no launch variable, build property, or runtime
-  request can select the other one
+- **WHEN** the root assembles the graph on a device whose OS carries the OS-driven mechanism
+- **THEN** it supplies both mechanisms, the OS-presence fact and the override source as inputs, and
+  selects none of them itself — the resolver owned by `upload-lifecycle` decides, at every transition
 
 #### Scenario: The foreground poll keeps status live while foreground
 
@@ -694,3 +694,4 @@ answer that question at all.
 
 - **WHEN** the shell's upload-driving entry points are inspected
 - **THEN** none of them branches on an upload tier, and none binds a per-tier thunk
+

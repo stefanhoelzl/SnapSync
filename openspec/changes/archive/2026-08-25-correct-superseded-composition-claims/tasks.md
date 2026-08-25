@@ -67,15 +67,16 @@
 ## 4. The spec
 
 > 4.1-4.3 merge the deltas into `openspec/specs/`, which is the **sync** phase's job, not apply's.
-> Left unchecked deliberately — run `/opsx:sync` for them. 4.4 is a read-only check and is done.
+> They were left unchecked through apply and then performed by `openspec archive`, which syncs main
+> specs as it archives (`+ 1 added`, `~ 1 modified`). 4.4 was a read-only check, done during apply.
 
-- [ ] 4.1 Apply the `ios-app-shell` delta: replace the once-per-process / single-input /
+- [x] 4.1 Apply the `ios-app-shell` delta: replace the once-per-process / single-input /
       no-runtime-override / `UploadTier`-switch paragraph with the shell-owes version citing
       `upload-lifecycle`, and make the `LedgerWriter` sentence mechanism-precise (design D1b).
-- [ ] 4.2 Apply the `ios-app-shell` scenario changes: correct "The root assembles the real stack", and
+- [x] 4.2 Apply the `ios-app-shell` scenario changes: correct "The root assembles the real stack", and
       replace "The tier is resolved once, from the OS alone" with "The root supplies resolution's inputs
       and selects no mechanism".
-- [ ] 4.3 Apply the `architecture-guards` delta: add "A KDoc block is never silently dropped".
+- [x] 4.3 Apply the `architecture-guards` delta: add "A KDoc block is never silently dropped".
 - [x] 4.4 Confirm the two specs no longer contradict each other: `ios-app-shell` must not forbid the
       runtime override `upload-lifecycle` blesses, and must not require a tier switch its own "OS entry
       points delegate upload triggers to the resolved mechanism" forbids.
