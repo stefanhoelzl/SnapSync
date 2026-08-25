@@ -1,0 +1,261 @@
+# deployment configuration Specification
+
+## Purpose
+
+How a **deployment** is declared, composed, resolved and rendered — the one upstream source for every
+value that identifies *which* backend, *which* Apple identity and *which* build channel an artifact is
+built for. Four toolchains hold these facts (Deno, Gradle, Xcode, Astro) plus the App Store listing, and
+none can import another's source.
+
+**Why this exists.** Before it, the device-facing domain lived in **nine** production homes; two were
+guarded, one was generated, and **six were pinned by nothing** — including `BACKGROUND_UPLOAD_URL_BASE`,
+the device-facing upload host itself, whose own comment called it *"the SINGLE SOURCE of the deployed
+device-facing host"* while another file twenty lines away claimed the same title. The Apple team id and
+bundle id were written twice in two languages with nothing checking they agreed, while composing the App
+Attest `rpIdHash` and the AASA `appIDs` — where drift fails every attestation and stops every universal
+link matching, **silently**. The lesson is not that guards are bad but that **guards are opt-in**: they
+cover what someone remembered. Generation is total.
+
+**What it preserves.** `backend-deployment` establishes that CI ships code but cannot ship platform
+config, because bunny issues no scoped API key — so config must travel in the same artifact as the code
+that reads it, or it drifts. Resolving a declared deployment at build time keeps that property exactly
+while removing the cost the previous answer paid for it: values pinned into one toolchain's source, so
+that reaching a different account meant editing code.
+
+Decision record: `changes/archive/2026-08-25-add-deployment-resolver-and-boot-probe`.
+
+## Requirements
+
+### Requirement: A deployment is a composition of declared components
+
+A **deployment** SHALL be a JSON file declaring an `extends` list of component files plus its own keys.
+The composition rule SHALL be a **shallow merge of top-level keys, in list order, with the deployment's
+own keys last**. Components SHALL NOT themselves declare `extends`; nesting, deep merge, interpolation and
+conditionals SHALL NOT be supported.
+
+The rule is deliberately too weak to grow a templating language: anything it cannot express is a signal to
+restructure the data. Deep merge is specifically excluded because it is the point at which a resolved value
+can no longer be predicted by reading one file, which for configuration deciding which bucket holds users'
+photos is the wrong trade.
+
+Deploying to a different account SHALL therefore require **adding a deployment file and selecting it**, not
+editing code.
+
+#### Scenario: A deployment resolves to the merge of its components
+
+- **WHEN** a deployment declares `extends: [A, B]` and its own key `k`
+- **THEN** the resolved configuration is A's keys, overridden by B's, overridden by the deployment's own
+
+#### Scenario: A component may not extend
+
+- **WHEN** a component file declares `extends`
+- **THEN** resolution fails, naming the file
+
+#### Scenario: A new deployment needs no code change
+
+- **WHEN** a deployment file is added and selected
+- **THEN** every consumer targets it with no change to any source file
+
+### Requirement: One resolver, one invocation, every rendering
+
+A single resolver SHALL resolve a named deployment and emit **all** renderings in one invocation, at fixed
+paths. There SHALL NOT be a per-rendering invocation mode.
+
+This is what makes it impossible for two artifacts to be rendered from **different** deployments — an
+xcconfig built from one and a bundle from another would disagree, which is the exact failure class this
+capability exists to remove. It also gives "has the resolver run?" a single answer for the whole repository.
+
+The resolver SHALL be implemented in a runtime available to **every** consumer's toolchain without an
+install step, because no CI job carries both the backend's runtime and the Gradle toolchain.
+
+#### Scenario: One invocation produces every rendering
+
+- **WHEN** the resolver is invoked for a deployment
+- **THEN** every rendering is written, all derived from that one resolution
+
+#### Scenario: Renderings cannot disagree
+
+- **WHEN** any two renderings are compared
+- **THEN** they reflect the same resolved deployment, because no invocation can produce only one of them
+
+#### Scenario: The resolver runs on every consumer's toolchain
+
+- **WHEN** the resolver is invoked from the backend's CI job, the Gradle CI job, or the macOS build job
+- **THEN** it runs with no toolchain installation step in any of them
+
+### Requirement: The key inventory is the contract of record
+
+The resolver SHALL hold an inventory declaring, for every configuration key: the **renderings** it appears
+in, its **scope**, its **required-if** condition, its **default** where absence has a defined meaning, and
+its **rationale**.
+
+The inventory SHALL be the documented contract for these values. Rationale that today lives as comments in
+backend source SHALL move here, because the values are consumed by several toolchains and a comment in one
+of them is invisible to the others.
+
+#### Scenario: The inventory documents every key
+
+- **WHEN** a configuration key exists
+- **THEN** the inventory declares its renderings, scope, required-if condition, default where applicable,
+  and rationale
+
+#### Scenario: An undeclared key is rejected
+
+- **WHEN** a deployment or component declares a key the inventory does not name
+- **THEN** resolution fails, naming the key and the file
+
+### Requirement: A value is a literal or an environment reference, and baking is explicit
+
+A configuration value SHALL be either a **literal** or an **environment reference** of the form
+`{ "env": "<NAME>", "scope"?: "build" | "runtime" }`. `scope` SHALL default to **`runtime`**.
+
+The default is deliberately asymmetric: baking a value into a build artifact SHALL always be the explicit
+act, because a value that is not baked cannot leak into an artifact.
+
+A **build**-scope reference SHALL be resolved by the resolver, which reads the environment at resolution
+time and emits the value. A **runtime**-scope reference SHALL be copied into the rendering **verbatim** —
+the rendering carries the variable's **name**, never its value — and resolved by the consuming program when
+it runs.
+
+The resolver SHALL NOT read the environment for a runtime-scope key. Doing so would place the value in the
+deployed artifact and would require CI to hold runtime secrets it is forbidden to hold.
+
+#### Scenario: A runtime reference reaches the artifact as a name
+
+- **WHEN** a key declares `{ "env": "X" }` with no scope
+- **THEN** the rendering contains the name `X` and not its value, and the consuming program resolves it at
+  run time
+
+#### Scenario: A build reference is resolved and baked
+
+- **WHEN** a key declares `{ "env": "X", "scope": "build" }`
+- **THEN** the resolver reads `X` from its own environment and emits the value into the rendering
+
+#### Scenario: An absent build variable takes its declared default
+
+- **WHEN** a build-scope key's environment variable is absent and the inventory declares a default
+- **THEN** the default is emitted, and the inventory states what that default means
+
+#### Scenario: Omitting scope never bakes
+
+- **WHEN** a value declares an environment reference without `scope`
+- **THEN** it is treated as runtime-scope and its value is never placed in any artifact
+
+### Requirement: The rendering set bounds where a value can reach
+
+Each key's inventory entry SHALL name the renderings it appears in, and the resolver SHALL emit a key only
+into those renderings. **This is the whole containment guarantee** — there SHALL be no separate
+secret/non-secret classification governing where values may appear.
+
+A **runtime**-scope key SHALL name no baked rendering. A baked rendering has no run time in which to
+resolve a reference, so a runtime-scope key appearing in one could not be honoured.
+
+#### Scenario: A value reaches only its declared renderings
+
+- **WHEN** a key's inventory entry names a set of renderings
+- **THEN** the key appears in exactly those renderings and in no other
+
+#### Scenario: A runtime key in a baked rendering is rejected
+
+- **WHEN** a runtime-scope key names a rendering that is baked at build time
+- **THEN** resolution fails, naming the key and the rendering
+
+### Requirement: Storage is a sealed kind, not an overridden shape
+
+The storage configuration SHALL be a **sealed, discriminated union** over a closed set of kinds, resolved
+by a pure, tested resolver. A deployment SHALL declare exactly one kind, and which secrets are required
+SHALL follow from that kind.
+
+A deployment whose storage kind cannot run in the deployed runtime SHALL therefore be **structurally unable
+to boot there**, rather than booting and behaving wrongly.
+
+#### Scenario: An unknown storage kind fails resolution
+
+- **WHEN** a deployment declares a storage kind outside the sealed set
+- **THEN** resolution fails, naming the kind and the permitted set
+
+#### Scenario: Required secrets follow the kind
+
+- **WHEN** a deployment declares a storage kind that authenticates against no external system
+- **THEN** no storage credential is required of it, and resolution succeeds with none declared
+
+#### Scenario: A local-kind deployment cannot serve as the deployed runtime
+
+- **WHEN** a deployment whose storage kind is unavailable in the deployed runtime is deployed there
+- **THEN** it fails to start, rather than starting and operating against the wrong target
+
+### Requirement: Resolution is validated and fails closed
+
+Resolution SHALL fail, naming the file and the key, when: a declared key is not in the inventory; a
+required key is absent after merging; a referenced component cannot be found; a component declares
+`extends`; a storage kind is outside the sealed set; or a runtime-scope key names a baked rendering.
+
+A resolution that fails SHALL write **no** rendering, so a partially-updated set of artifacts cannot exist.
+
+#### Scenario: A misspelled key is an error, not a silent absence
+
+- **WHEN** a deployment declares a key whose name differs from an inventory key by a typo
+- **THEN** resolution fails naming that key, rather than resolving to a configuration missing the intended
+  one
+
+#### Scenario: A failed resolution writes nothing
+
+- **WHEN** resolution fails for any reason
+- **THEN** no rendering is written and any previously written renderings are left untouched
+
+### Requirement: Renderings are generated, never committed
+
+Every rendering SHALL be generated and SHALL NOT be committed. A consumer that reads a rendering without
+the resolver having run SHALL fail loudly — a missing input, not a stale or placeholder value.
+
+Committing a rendering would create an artifact that can silently disagree with the authored files it
+derives from; generating it means "the resolver has not run" is indistinguishable from nothing at all, and
+therefore cannot be mistaken for a correct value.
+
+#### Scenario: A consumer without a rendering fails loudly
+
+- **WHEN** a build or check runs without the resolver having produced its rendering
+- **THEN** it fails naming the missing input, rather than proceeding with a default
+
+#### Scenario: No rendering is committed
+
+- **WHEN** the repository is inspected
+- **THEN** no rendering is present in version control
+
+### Requirement: Renderers may derive; composition may not
+
+A **renderer** MAY derive an output value from resolved values, deterministically. **Composition** SHALL
+NOT: merging performs no computation.
+
+Where several outputs must agree, they SHALL be derived from **one** resolved value rather than stated
+separately and checked, so that they cannot disagree.
+
+#### Scenario: Outputs that must agree are derived from one value
+
+- **WHEN** two or more build settings are required to agree with one another
+- **THEN** they are derived by a renderer from a single resolved value, and no combination exists in which
+  they disagree
+
+#### Scenario: Merging computes nothing
+
+- **WHEN** a deployment is resolved
+- **THEN** every resolved value is a value present in an authored file or an environment reference, with no
+  value computed during merging
+
+### Requirement: The deployment is selected explicitly at every call site
+
+Every invocation of the resolver SHALL name the deployment it resolves. There SHALL be no implicit default
+deployment, and omitting the name SHALL be an error.
+
+Naming an unknown deployment SHALL fail closed. Reading any single call site SHALL therefore tell a reader
+which deployment that path targets, without consulting shared state.
+
+#### Scenario: Omitting the deployment is an error
+
+- **WHEN** the resolver is invoked with no deployment named
+- **THEN** it fails rather than resolving some default
+
+#### Scenario: An unknown deployment fails closed
+
+- **WHEN** a call site names a deployment that does not exist
+- **THEN** resolution fails naming it, and no rendering is written

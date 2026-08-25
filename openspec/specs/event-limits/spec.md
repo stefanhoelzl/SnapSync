@@ -32,21 +32,26 @@ membership down (capability `leave-event`).
 lifetime are fixed for every event, permanently; the sole future paid-tier lever is device count, which is
 already per-event and stamped, so raising it needs no schema or enforcement change.
 
-Decision record: `changes/archive/2026-07-21-add-event-limits`;
+Decision record: `changes/archive/2026-08-25-add-deployment-resolver-and-boot-probe` (the limits become
+resolved deployment values); `changes/archive/2026-07-21-add-event-limits`;
 `changes/archive/…-add-event-date-range` (`endsAt` becomes creator-supplied at mint);
 `changes/archive/…-decouple-event-window-from-lifetime` (the window and the lifetime become independent).
 
 ## Requirements
+
 ### Requirement: Limit values from backend configuration
 
-The backend SHALL define three event-limit constants in its configuration module — the event device
+The backend SHALL define three event-limit values in its configuration — the event device
 **capacity** (initial value `10`), the maximum event **window** (initial value 30 days), and the event
-**lifetime** (initial value 30 days) — as source constants carried on the runtime `Config`, per the
-module's config-in-source law (capability `backend-deployment`: the environment is never consulted for a
-non-secret; tests inject shortened values by constructing a `Config` directly). The window maximum and
-the lifetime SHALL be **two distinct constants** even while they hold the same value: they answer
-different questions, only the lifetime is stamped, and collapsing them would make a future divergence a
-silent behavior change in two places. There SHALL be **no** grace-period constant.
+**lifetime** (initial value 30 days) — resolved from the deployment (capability
+`deployment-configuration`) and carried on the runtime `Config`, per the module's config-in-the-artifact
+law (capability `backend-deployment`: the environment is never consulted for a non-secret; tests inject
+shortened values by constructing a `Config` directly). They are **product policy**, not deployment-varying
+facts: every deployment resolves the same component, so declaring them as data organizes them without
+making them differ between environments. The window maximum and the lifetime SHALL be **two distinct
+values** even while they hold the same number: they answer different questions, only the lifetime is
+stamped, and collapsing them would make a future divergence a silent behavior change in two places. There
+SHALL be **no** grace-period value.
 
 `POST /api/v1/events` SHALL resolve `capacity` and `lifetimeSeconds` from this configuration **at mint time**
 and stamp both onto the marker (capability `event-creation`).
@@ -100,6 +105,12 @@ of seconds.
 - **THEN** that event's enforcement still uses the `endsAt`, `lifetimeSeconds`, and `capacity` stamped on
   its own marker, unchanged
 
+#### Scenario: The limits do not vary between deployments
+
+- **WHEN** any deployment is resolved
+- **THEN** it carries the same capacity, window maximum and lifetime, because every deployment extends the
+  one policy component
+
 #### Scenario: The window bounds uploads only
 
 - **WHEN** an event-scoped request arrives after the event's `endsAt` has passed
@@ -109,8 +120,8 @@ of seconds.
 #### Scenario: Tests inject shortened values through Config
 
 - **WHEN** a test constructs a `Config` carrying a shortened window maximum or lifetime
-- **THEN** the app built over it mints and enforces with those values — no environment variable and no
-  clock mocking involved
+- **THEN** the app built over it mints and enforces with those values — no environment variable, no
+  deployment resolution, and no clock mocking involved
 
 ### Requirement: Event lifecycle from the marker alone
 
