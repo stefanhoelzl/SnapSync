@@ -58,6 +58,15 @@ watches the lock file, not the phone). Everything else that speaks to
 the phone — `apps install`/`pull`/`list`/`uninstall`, every `developer` subcommand, the syslog and
 crash-report tools — is inside.
 
+🚫 **Never pattern-kill on `usbmux`.** The HOST's `usbmuxd` daemon (`/usr/bin/usbmuxd --user usbmuxd
+--systemd`, bridged in at `/run/host/run/usbmuxd`) shares that substring with your own
+`pymobiledevice3 usbmux forward`. A `pkill -f usbmux` during cleanup kills the daemon, and **the phone
+then becomes unreachable for every workspace**, not just yours — the socket file survives, so it looks
+like an unplugged device. You cannot restart it from inside the container; it needs
+`systemctl restart usbmuxd` on the host, or a replug. `scripts/device-guard` fences device *commands*
+and does not see a `pkill`. Kill your own processes by pid, or match the full
+`pymobiledevice3 usbmux forward`. (Learned the hard way, 2026-08-25.)
+
 ⚠️ **The fence matches tool names as SUBSTRINGS, deliberately** — over-matching costs one denied call,
 under-matching costs a wedged installer. So a command that merely *writes* one of those names is
 denied too: a heredoc editing a doc that mentions them, or a `git commit -m` describing device work.
@@ -214,12 +223,12 @@ Two variables survive, and neither is read by shipped code:
 
 Both live in build-property-gated source, so a production build contains neither the file nor the read.
 
-⚠️ **Forcing the app-driven upload tier is currently NOT possible.** `SNAPSYNC_FORCE_URLSESSION_UPLOAD` is
-gone, and its replacement — a runtime-selectable tier — belongs to the producer-resolution work, which has
-not landed. Until it does, the app-driven tier is reachable on a >=26.1 device only under a **`LIMITED`**
-photo grant, where the OS never invokes the extension and the arm selects the app-driven producer. What that
-does **not** exercise is the full-library discovery walk, since a partial grant feeds discovery the
-in-memory selection snapshot instead.
+**Forcing the app-driven upload tier is a channel call.** `SNAPSYNC_FORCE_URLSESSION_UPLOAD` is gone, and
+its replacement landed in `d21a511e`: `POST /device/upload-mechanism?value=photokit|url_session|idle|none`
+pins the resolved mechanism, clamped by the resolver to what this OS can actually run. Load `rig-channel`.
+(The old `LIMITED`-grant route still works and is what you need if the pin is unavailable — but it
+exercises less, since a partial grant feeds discovery the in-memory selection snapshot rather than walking
+the library.)
 
 ## Reading the logs
 
