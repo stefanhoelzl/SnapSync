@@ -5,7 +5,7 @@
 	<!-- TestFlight / App Store distribution export. -->
 	<key>method</key>
 	<string>app-store-connect</string>
-	<!-- Apple Team ID (same value as TEAM_ID in Config.xcconfig). -->
+	<!-- Apple Team ID (same value as TEAM_ID in the generated Configuration/Deployment.xcconfig). -->
 	<key>teamID</key>
 	<string>E9Z8BADH58</string>
 	<!-- Auto-managed signing (xcodebuild -allowProvisioningUpdates picks the imported Distribution cert). -->

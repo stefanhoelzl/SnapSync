@@ -18,8 +18,8 @@ import platform.Foundation.NSUUID
  * **silently** — the item is simply written to a different real group, where every read still
  * succeeds and merely returns a different item.
  *
- * The guard composes it from `TEAM_ID` in `Config.xcconfig` plus the group declared in the two
- * entitlements files, so the three cannot drift apart unnoticed.
+ * The guard composes it from `TEAM_ID` in the GENERATED `Deployment.xcconfig` plus the group declared
+ * in the two entitlements files, so the three cannot drift apart unnoticed.
  */
 const val SHARED_KEYCHAIN_ACCESS_GROUP: String = "E9Z8BADH58.app.snapsync.shared"
 
