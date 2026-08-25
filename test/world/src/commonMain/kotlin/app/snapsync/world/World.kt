@@ -45,7 +45,7 @@ import app.snapsync.model.EventEnd
 import app.snapsync.model.CaptureDate
 import app.snapsync.model.EventStart
 import app.snapsync.model.SelectionPolicy
-import app.snapsync.model.SelectionRule
+import app.snapsync.model.noContribution
 import app.snapsync.model.selectionPolicyFor
 import app.snapsync.model.captureCeiling
 import app.snapsync.model.captureCutoff
@@ -655,7 +655,7 @@ class World(
             }
             // An UNJOINED world contributes nothing, expressed the way every non-contributor is: the
             // deny-everything rule, not an absent policy and not a default cutoff.
-            ?: SelectionPolicy(listOf(SelectionRule.DenyAll))
+            ?: noContribution()
 
     /**
      * Every event this world's cycles notified (capability `upload-completion-notify`), in order.

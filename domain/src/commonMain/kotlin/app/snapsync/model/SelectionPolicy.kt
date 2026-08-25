@@ -59,8 +59,9 @@ package app.snapsync.model
  * the simulator. The platform may narrow what a walk *returns* by pattern-matching [SelectionRule]s
  * (capability `photo-selection-policy`, *Selection filter*), but that is an optimization which can
  * neither widen nor narrow the admitted set — [admits] stays authoritative.
- */
-/**
+ *
+ * ## One value, one derivation
+ *
  * The membership contributes every asset **all** of its [rules] admit.
  *
  * It is a conjunction of rules and nothing else. It special-cases no rule, and it asserts that no
@@ -78,8 +79,15 @@ package app.snapsync.model
  * was the only thing it could still justify withholding.
  *
  * The cost is stated rather than hidden: `SelectionPolicy(listOf(ExcludeScreenshots))` compiles. The one
- * derivation cannot produce it, and a guard keeps construction to that derivation, but the type no longer
- * refuses it.
+ * derivation cannot produce it, and `SelectionPolicyConstructionTest` keeps production construction to the
+ * doors below ([selectionPolicyFor], [noContribution]) — but the type no longer refuses it. Tests and
+ * harnesses construct freely, because a translator test exists to present rule sets the derivation would
+ * never emit.
+ *
+ * Rules are gathered asynchronously (two of them are read from ports) and the policy is a plain value over
+ * the finished list. There is no second step that completes a partially-built policy: a half-built policy
+ * is a value a consumer can hold and act on, and holding one is why the capture floor kept having to be
+ * extracted back out of it to scope an album fetch.
  */
 class SelectionPolicy(val rules: List<SelectionRule>) {
 
@@ -177,13 +185,41 @@ suspend fun selectionRulesFor(
     albumExcludedAssetIds = albumExcludedAssetIds,
 )
 
-/** [selectionRulesFor], wrapped. The rules are gathered asynchronously; the policy is a plain value. */
+/**
+ * [selectionRulesFor], wrapped. The rules are gathered asynchronously; the policy is a plain value.
+ *
+ * This — and its named-parameter sibling below, and [noContribution] — are the doors production code uses.
+ * A guard keeps `SelectionPolicy(...)` itself to this file (`SelectionPolicyConstructionTest`): the type
+ * asserts nothing about its contents, so a hand-assembled rule list could omit the capture floor, and a
+ * floorless policy is an unbounded library walk. Tests and harnesses construct freely — a translator test
+ * exists precisely to present rule sets the derivation would never emit.
+ */
 suspend fun selectionPolicyFor(
     config: EventConfig,
     suppressedAssetIds: suspend () -> Set<String>,
     albumExcludedAssetIds: suspend (CaptureCutoff) -> Set<String>,
 ): SelectionPolicy =
     SelectionPolicy(selectionRulesFor(config, suppressedAssetIds, albumExcludedAssetIds))
+
+/** The named-parameter door, for a caller holding the bounds rather than a persisted config. */
+suspend fun selectionPolicyFor(
+    includesUpload: Boolean,
+    cutoff: CaptureCutoff,
+    ceiling: CaptureCeiling?,
+    suppressedAssetIds: suspend () -> Set<String>,
+    albumExcludedAssetIds: suspend (CaptureCutoff) -> Set<String>,
+): SelectionPolicy = SelectionPolicy(
+    selectionRulesFor(includesUpload, cutoff, ceiling, suppressedAssetIds, albumExcludedAssetIds),
+)
+
+/**
+ * The policy of something that contributes nothing and has no membership to derive from — an unjoined
+ * device, or a harness with no event.
+ *
+ * Named rather than spelled out at each site, so "contributes nothing" reads the same everywhere and a
+ * reader never has to check whether a bare rule list was meant to carry a floor as well.
+ */
+fun noContribution(): SelectionPolicy = SelectionPolicy(listOf(SelectionRule.DenyAll))
 
 /**
  * One rule of the [SelectionPolicy]. Sealed so the platform can pattern-match the set and translate the

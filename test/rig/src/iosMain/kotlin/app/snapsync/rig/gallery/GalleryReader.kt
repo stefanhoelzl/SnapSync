@@ -3,7 +3,7 @@ package app.snapsync.rig.gallery
 import app.snapsync.model.CaptureCutoff
 import app.snapsync.model.CaptureDate
 import app.snapsync.model.SelectionPolicy
-import app.snapsync.model.selectionRulesFor
+import app.snapsync.model.selectionPolicyFor
 import app.snapsync.model.SelectionRule
 import app.snapsync.ports.CandidateSource
 import app.snapsync.rig.AssetView
@@ -64,8 +64,7 @@ class GalleryReader(
         val census = census()
         if (cutoff == null) return GalleryView(census = census, grant = grant(), policy = null)
 
-        val policy = SelectionPolicy(
-            selectionRulesFor(
+        val policy = selectionPolicyFor(
                 includesUpload = true,
                 cutoff = CaptureCutoff(CaptureDate(cutoff)),
                 ceiling = null,
@@ -73,7 +72,6 @@ class GalleryReader(
                 // answers "what would this cutoff admit", so the two port-read exclusions are out of scope.
                 suppressedAssetIds = { emptySet() },
                 albumExcludedAssetIds = { emptySet() },
-            ),
         )
         val mark = TimeSource.Monotonic.markNow()
         val found = candidates.candidates(policy)

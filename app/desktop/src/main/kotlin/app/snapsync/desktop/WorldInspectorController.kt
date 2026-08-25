@@ -29,7 +29,7 @@ import app.snapsync.model.CaptureCeiling
 import app.snapsync.model.CaptureCutoff
 import app.snapsync.model.SelectionPolicy
 import app.snapsync.model.EventPhotoSet
-import app.snapsync.model.SelectionRule
+import app.snapsync.model.noContribution
 import app.snapsync.model.selectionPolicyFor
 import app.snapsync.model.captureCutoff
 import app.snapsync.feature.download.DownloadStatusSource
@@ -463,7 +463,7 @@ class WorldInspectorController(private val scope: CoroutineScope) {
                 )
             }
             // Unjoined: nothing to contribute, said the way every non-contributor says it.
-            ?: SelectionPolicy(listOf(SelectionRule.DenyAll))
+            ?: noContribution()
         val candidates = world.enumerator.candidates(policy)
         val admitted = EventPhotoSet(policy) { candidates }
             .assets().mapTo(mutableSetOf()) { it.facts.assetId }
