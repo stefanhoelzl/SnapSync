@@ -63,7 +63,7 @@ class RigHooks(
      * verdict per asset. Separate from [deviceCommands] because it is a read, and separate from
      * `/device/state` because it can be expensive and, under a partial grant, can surface a system alert.
      */
-    val readGallery: suspend (cutoff: String?, resources: Boolean) -> String,
+    val readGallery: suspend (cutoff: String?, resources: Boolean, includesUpload: Boolean) -> String,
     /**
      * The OS's view of the upload-job extension registration, or `null` where the OS has no such selector.
      *
