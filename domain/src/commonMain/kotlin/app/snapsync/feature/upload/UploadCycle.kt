@@ -428,18 +428,6 @@ class UploadCycle(
     )
 
     /**
-     * Phase 2 — terminal jobs. EVERY job MUST be acknowledged (the system errors 50008 —
-     * "appex failed to acknowledge jobs for processing state" — for any it presents that we leave
-     * un-acknowledged), so all arms acknowledge, and so does a cycle the direction gate declines: the
-     * obligation is owed to the OS for jobs it already presented, and it does not depend on whether this
-     * membership still contributes.
-     *
-     * Creates no upload job for work not already in flight, writes no manifest, enumerates nothing, and
-     * touches no discovery cursor — which is what lets a declined cycle run it without taking anything
-     * the direction gate withholds. The only jobs it CAN create are replacements for retry-spent
-     * failures the OS handed back, which are continuations of work already begun.
-     */
-    /**
      * Publish the device manifest for [eventId] under [policy] — or **suppress the write** when
      * [ledgerSettled] is false (capability `device-manifest`).
      *
@@ -476,6 +464,18 @@ class UploadCycle(
             .onFailure { log.w(it) { "device.json production failed/timed out this cycle" } }
     }
 
+    /**
+     * Phase 2 — terminal jobs. EVERY job MUST be acknowledged (the system errors 50008 —
+     * "appex failed to acknowledge jobs for processing state" — for any it presents that we leave
+     * un-acknowledged), so all arms acknowledge, and so does a cycle the direction gate declines: the
+     * obligation is owed to the OS for jobs it already presented, and it does not depend on whether this
+     * membership still contributes.
+     *
+     * Creates no upload job for work not already in flight, writes no manifest, enumerates nothing, and
+     * touches no discovery cursor — which is what lets a declined cycle run it without taking anything
+     * the direction gate withholds. The only jobs it CAN create are replacements for retry-spent
+     * failures the OS handed back, which are continuations of work already begun.
+     */
     private suspend fun settleTerminalJobs(engine: SyncEngine): Settlement {
         var capHit = false
         // Real completions THIS cycle (a succeeded job with a recoverable key). Re-acks of an
