@@ -168,15 +168,10 @@ object SnapSyncRoot {
             },
     )
 
-    // ── The OS fact → the upload tier (spec `module-architecture`, "One shared composition") ──
+    // ── The OS fact → upload-mechanism PRESENCE (spec `module-architecture`, "One shared composition") ──
 
-    /**
-     * The upload tier, resolved **once per process** by the pure, unit-tested resolver
-     * (`model/CompositionMode.kt`) from the single OS capability fact. No developer input reaches this:
-     * there is no launch variable, build property, or runtime override that can select the other tier.
-     */
     // `internal` (not `private`) for the same single reason as [app]: the rig's contributed hook reports
-    // the resolved tier on `/device/state`, and reading the value the app actually resolved is the only
+    // this OS fact on `/device/state`, and reading the value the app actually resolved is the only
     // way to report it without a second resolution that could disagree. `internal` is module-wide and is
     // not exported to the `SnapSyncKit` ObjC header.
     /**
@@ -897,20 +892,16 @@ object SnapSyncRoot {
     // can rescue a membership provisioned while access was already granted — the provision flow owns
     // that case.
 
-    // The upload tier's two candidate mechanisms. Both are `by lazy`, and only the tier the mode
-    // switch selected ever *thunks* one into the composed graph — `PhotoKitUploadProducer` simply is
-    // not constructed on the app-driven tier, so no code path (including the dev force flag, which
-    // previously walked straight past the version guard and enabled BOTH tiers) can register the
-    // PhotoKit extension. (The tier-neutral `UploadArm` — which verb fires on which membership
-    // transition — is composed in the app graph as `app.uploadArm`, over the selected thunk.)
+    // The two candidate mechanisms this OS can carry. Both are `by lazy`: `PhotoKitUploadProducer` is
+    // constructed only where its registration selector exists (≥26.1), so no code path can trap on a
+    // lower system. Which one RUNS is `resolveUploadMechanism`'s answer, re-read at every transition —
+    // on ≥26.1 under a partial grant BOTH are constructed and only the app-driven one is started.
+    // (The tier-neutral `UploadArm` — which verb fires on which membership transition — is composed in
+    // the app graph as `app.uploadArm`, over the resolved mechanism.)
     private val photoKitProducer: PhotoKitUploadProducer by lazy {
         PhotoKitUploadProducer(ledgerStore, log)
     }
 
-    // The app-driven (iOS 18–26.0) upload tier's composition root. Built lazily; reached only through
-    // the URL_SESSION branch of the mode switch — plus the background-session drain, which may adopt an
-    // old upload session on any live tier. On iOS ≥26.1 without the force flag it is otherwise never
-    // touched (the extension runs).
     // The ONE PhotoKit read seam this process holds (shared by the gallery walk and the
     // selection-snapshot mapping — one mapping, one place).
     // One instance serves every reader — the status total, the join preview, both upload tiers, and the
@@ -929,6 +920,9 @@ object SnapSyncRoot {
         PhotoSelectionSnapshotSource(permission.permission, scope, candidateSource)
     }
 
+    // The app-driven mechanism's composition root. Built lazily; reached whenever resolution yields
+    // URL_SESSION — every OS below 26.1, and ≥26.1 under a partial grant — plus the background-session
+    // drain, which may adopt an old upload session whichever mechanism is live.
     private val urlSessionUpload: UrlSessionUploadController by lazy {
         UrlSessionUploadController(
             scope, ledgerStore, config,
