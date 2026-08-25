@@ -36,8 +36,3 @@
       Lockstep means equal within noise in every frame. (Judging live is what this step exists to avoid —
       anti-phase and lockstep look alike at a glance, and a crossover instant looks identical either way.)
 
-## 4. Ship
-
-- [ ] 4.1 Run `/ship` with the `bug` changelog label.
-- [ ] 4.2 After merge, run the `sync`/`archive` phases **only when asked** — every OpenSpec phase
-      boundary is the user's call.

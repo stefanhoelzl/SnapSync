@@ -147,6 +147,17 @@ component SHALL animate a `Pulsing` arrow and render a `Static` arrow without mo
 two **attention** states (`NeedsAccess` and `CannotVerifyDevice`) as the **only** variants carrying a
 background, and SHALL respect reduced-motion preferences. It SHALL surface **no numeric counts**.
 
+When **both** arrows are `Pulsing` they SHALL animate **in lockstep** — identical opacity at every
+instant — **regardless of when each arrow began pulsing**. The two arrows rarely begin together: uploads
+start at join while the download arm's total is populated only by the later reconcile, so without this
+guarantee the arrows settle into opposite halves of the fade and visibly beat against each other
+(reported from a device as *"arrows are not pulsing in sync"*, and measured there: with the two arrows
+entering apart, the arrows' opacity difference reached **98% of the full pulse swing** — near
+anti-phase — against **0.09%** once they share one phase). An arrow that begins pulsing while the other
+already is SHALL adopt the in-progress opacity immediately, rather than starting its own fade — being
+briefly out of phase is the very defect this forbids. The animation remains internal: this guarantee SHALL NOT introduce any opacity, animation,
+or appearance parameter on the component's signature.
+
 The two attention states are not peers, and the component SHALL distinguish them: `NeedsAccess` is
 **tappable** and carries a chevron, because the member can fix it; `CannotVerifyDevice` is **not** tappable
 and carries **no** chevron, because they cannot (capability `sync-status-screen`). Background means "look at
@@ -178,6 +189,12 @@ mappings are skin-local and SHALL NOT appear on any `App*` signature.
 - **WHEN** the status line is given `Syncing(upload = Pulsing, download = Hidden)`
 - **THEN** it shows the upload arrow animating in the brand primary, no download arrow, and the
   "Synchronization ongoing…" label, with no counts and no exposed appearance parameters
+
+#### Scenario: Two pulsing arrows beat together however far apart they started
+- **WHEN** the status line is given `Syncing(upload = Pulsing, download = Hidden)` and, part-way through
+  the upload arrow's fade, the value changes to `Syncing(upload = Pulsing, download = Pulsing)`
+- **THEN** at every instant from then on both arrows render the **same** opacity — the download arrow
+  adopts the fade already in progress rather than starting its own
 
 #### Scenario: Static-only arrows drive the pending label
 - **WHEN** the status line is given `Syncing(upload = Static, download = Hidden)`
