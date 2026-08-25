@@ -159,7 +159,8 @@ handles **both** halves of universal-link delivery and forwards to the Kotlin en
 1. installs a scene delegate via the app delegate's `application(_:configurationForConnecting:options:)`
    (setting `delegateClass`) — without this the delegate is inert;
 2. implements `scene(_:willConnectTo:options:)` — the **cold** half, reading the launching link from the
-   connection options;
+   connection options — and forwards the **count** of delivered activities to Kotlin **before** iterating
+   them, so a scene that connects carrying none is still recorded;
 3. implements `scene(_:continue:)` — the **warm** half; and
 4. forwards the delivered `NSUserActivity` **whole** from that delegate, with each hook forwarding
    under its **own** Kotlin entry-point name (cold and warm are distinguishable in a device log, which
@@ -197,9 +198,15 @@ only thing standing between the next reader and re-introducing the bug. The evid
   SwiftUI's — which feeds that modifier — is never created. Measured on device 2026-08-04: 8 warm
   deliveries, 8 hits on `scene(_:continue:)`, **zero** on the modifier. The 2026-07-16 matrix measured
   it in the opposite configuration; those rows are mutually exclusive setups, not composable features.
-- Whether iOS 18 calls `scene(_:continue:)` at all is **unmeasured** and not measurable without an iOS
-  18 device: a simulator does not route universal links (on an iOS 26.5 simulator, where a device shows
-  8/8, the app received zero).
+- **iOS 18.7.9 does NOT call `scene(_:continue:)`.** Measured from a pair of device dumps (Bugsink
+  `SNAPSYNC-25` + `SNAPSYNC-26`, iPhone XS, build 607, one 80-second window): three warm taps each
+  brought the app to the front — `onForeground` fired every time, so iOS *did* activate the app from
+  the link — and none produced an `onSceneContinueActivity` line; the third was while the device was
+  **unjoined**, which rules out join and switch logic. The cold entry then fired first try on a fresh
+  process, proving the delegate IS the scene's delegate on 18 and is not inert. What remains unknown is
+  *why*, not *whether*. Expiry: re-measure at the next iOS 18 point release — the evidence is one
+  device. This is also why a simulator cannot substitute: it does not route universal links at all (on
+  an iOS 26.5 simulator, where a device shows 8/8, the app received zero).
 
 #### Scenario: Removing the scene delegate fails the build
 
@@ -207,6 +214,15 @@ only thing standing between the next reader and re-introducing the bug. The evid
   `scene(_:willConnectTo:options:)` or `scene(_:continue:)`, or no longer forwards the activity to
   `onUserActivity`
 - **THEN** the guard test fails, naming what is missing and why it matters
+
+#### Scenario: A cold connection with no activity is still recorded
+
+- **WHEN** the cold half no longer forwards the delivered-activity count before iterating, so its only
+  Kotlin call sits inside the loop and an empty `userActivities` records nothing
+- **THEN** the guard test fails. The forwarding rule below cannot catch this on its own — the call is
+  lexically present and merely never runs — and the consequence is measured: on `SNAPSYNC-25` a
+  delegate that was installed and handed nothing was indistinguishable from a delegate that was never
+  installed, and that ambiguity was the whole investigation
 
 #### Scenario: The guard is not vacuous
 

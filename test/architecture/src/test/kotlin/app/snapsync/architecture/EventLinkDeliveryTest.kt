@@ -113,6 +113,37 @@ class EventLinkDeliveryTest {
         )
     }
 
+    /**
+     * The cold half records the connection even when it carries NOTHING (spec `architecture-guards`,
+     * "The Swift shell keeps the event link's delivery seam"; law "Absence is never silent").
+     *
+     * The forwarding rule below cannot express this: it asks whether a Kotlin call is *present* in the
+     * function, and the cold hook's `onLaunchActivity` call is present while sitting inside a `forEach`
+     * that runs zero times for an empty `userActivities`. So a scene that connected carrying no
+     * activity logged nothing at all, and on Bugsink `SNAPSYNC-25` "the delegate is installed and iOS
+     * handed it nothing" was byte-identical to "the delegate was never installed" — the ambiguity that
+     * was the entire investigation. Ordering is the assertion: the count must be forwarded BEFORE the
+     * iteration, or it inherits the same hole.
+     */
+    @Test
+    fun `the COLD half records a connection carrying no activity`() {
+        val count = code.indexOf("SnapSyncRoot.shared.onSceneWillConnect")
+        val loop = code.indexOf("userActivities.forEach")
+        assertTrue(
+            count >= 0,
+            "$shellPath no longer forwards SnapSyncRoot.shared.onSceneWillConnect from the cold half. " +
+                "Without it a scene that connects carrying NO activity records nothing, and a delegate " +
+                "iOS handed nothing cannot be told apart from a delegate that was never installed — " +
+                "which is exactly what made Bugsink SNAPSYNC-25 undiagnosable.$whyItMatters",
+        )
+        assertTrue(
+            loop >= 0 && count < loop,
+            "$shellPath forwards onSceneWillConnect but not BEFORE iterating userActivities. Inside " +
+                "the loop it inherits the very hole it exists to close: the call is lexically present " +
+                "and runs zero times when the array is empty.$whyItMatters",
+        )
+    }
+
     @Test
     fun `the scene delegate handles the WARM half`() {
         assertTrue(
@@ -135,8 +166,10 @@ class EventLinkDeliveryTest {
         // (`eventLinkFromUserActivity`), routed on to `onOpenUrl` in Kotlin. A Swift-side field read
         // would be an unpinned decision (SwiftShellGuardTest).
         // Each hook forwards under its OWN Kotlin entry name. That is not tidiness: it is the only
-        // way a device log can say WHICH hook the platform invoked, and the iOS-18 warm gap is
-        // currently unmeasured precisely because the old shared name could not.
+        // way a device log can say WHICH hook the platform invoked, and it is what MEASURED the
+        // iOS-18 warm gap — on Bugsink SNAPSYNC-25/26 the cold entry fired and the warm one did not,
+        // in the same 80-second window on one device. Under the old shared name that pair would have
+        // read as "a link arrived once" and settled nothing.
         listOf("onLaunchActivity", "onSceneContinueActivity").forEach { entry ->
             assertTrue(
                 code.contains("SnapSyncRoot.shared.$entry"),

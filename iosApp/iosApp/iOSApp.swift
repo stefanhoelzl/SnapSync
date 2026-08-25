@@ -142,13 +142,24 @@ final class AppDelegate: NSObject, UIApplicationDelegate {
 //     configurations, not features that compose. We cannot drop the scene delegate to make room,
 //     because `willConnectTo` is the only COLD path.
 //
-// THE OPEN QUESTION. On iOS 18.7.9 a warm-opened link reached NOTHING: the app came to the front and
-// the join gate never opened, so switching events required a force-quit (Bugsink SNAPSYNC-3, four
-// days of debug.log with not one warm delivery). Whether iOS 18 calls `scene(_:continue:)` at all is
-// STILL UNMEASURED — there is no iOS 18 device here, and a simulator cannot stand in (on an iOS 26.5
-// simulator, where the device shows 8/8, the app received zero: simulators do not route universal
-// links). The next thing to try is `scene(_:willContinueUserActivityWithType:)`, which UIKit offers
-// BEFORE `scene(_:continue:)` — see the change's Open Questions.
+// THE iOS 18 GAP, NOW MEASURED (Bugsink SNAPSYNC-25 + SNAPSYNC-26, one 80-second window on an
+// iPhone XS running 18.7.9, build 607). It is no longer an open question in the "unmeasured"
+// sense — what remains open is only WHICH hook works there, not whether this one does:
+//   * COLD works. `=== app process start ===` at 19:05:47.773 is followed 33 ms later by
+//     `onLaunchActivity(type=NSUserActivityTypeBrowsingWeb url=present)` and a forwarded
+//     `onOpenUrl`, fragment intact. So `willConnectTo` fires on 18, and OUR delegate is the
+//     scene's delegate there — the runtime install below is not inert on 18.
+//   * WARM does not. Three consecutive warm taps (19:04:40, 19:05:12, 19:05:31) each brought the
+//     app to the front — `onForeground` fired every time, so iOS DID activate us from the link —
+//     and not one produced an `onSceneContinueActivity` line. The third was while UNJOINED, so
+//     this is the platform hook and nothing about join or switch logic.
+// A universal link on iOS 18.7.9 therefore activates the app and never delivers the activity to
+// `scene(_:continue:)`. Re-measure at the next iOS 18 point release; evidence is one device.
+//
+// WHAT IS STILL UNKNOWN is why, and the observation-only hooks below exist to narrow it on the
+// next dump rather than by guessing: `willContinueUserActivityWithType` separates "UIKit never
+// started a continuation" from "UIKit started one our delegate did not receive", and the scene
+// lifecycle forwards prove the delegate is being talked to warm at all.
 //
 // Why this cost a whole device session to find: the failure is SILENT and looks like success. iOS still
 // matches the AASA and still foregrounds the app, so the link "works" — it just drops the URL. On an
@@ -162,11 +173,19 @@ final class AppDelegate: NSObject, UIApplicationDelegate {
 // dropping it drops the event id).
 final class SnapSyncSceneDelegate: NSObject, UIWindowSceneDelegate {
     // COLD: the link that launched us arrives in the connection options.
+    //
+    // The COUNT is reported BEFORE the loop, always, zero included. Until now the only Kotlin call
+    // here sat INSIDE the forEach, so a scene connecting with an empty `userActivities` recorded
+    // nothing at all — and "the delegate is installed and iOS handed it nothing" was byte-identical
+    // to "the delegate was never installed". SwiftShellGuardTest's forwarding rule cannot catch
+    // that: the call is lexically present, it merely never runs. SNAPSYNC-25 is what that
+    // ambiguity costs (spec `module-architecture`, "Absence is never silent").
     func scene(
         _ scene: UIScene,
         willConnectTo session: UISceneSession,
         options connectionOptions: UIScene.ConnectionOptions
     ) {
+        SnapSyncRoot.shared.onSceneWillConnect(activities: Int32(connectionOptions.userActivities.count))
         connectionOptions.userActivities.forEach { SnapSyncRoot.shared.onLaunchActivity(activity: $0) }
     }
 
@@ -174,6 +193,41 @@ final class SnapSyncSceneDelegate: NSObject, UIWindowSceneDelegate {
     // must say WHICH hook the platform invoked, or the iOS-18 question stays exactly as open as it is.
     func scene(_ scene: UIScene, continue userActivity: NSUserActivity) {
         SnapSyncRoot.shared.onSceneContinueActivity(activity: userActivity)
+    }
+
+    // OBSERVATION ONLY. UIKit offers this BEFORE `scene(_:continue:)` and hands over only the
+    // activity TYPE, never the activity — so it can deliver no URL and cannot fix anything. Its
+    // entire value is diagnostic: on the next iOS 18 dump, this line present with no
+    // `onSceneContinueActivity` after it means UIKit started a continuation our delegate did not
+    // receive; this line absent means UIKit never started one.
+    func scene(_ scene: UIScene, willContinueUserActivityWithType userActivityType: String) {
+        SnapSyncRoot.shared.onSceneWillContinueActivity(activityType: userActivityType)
+    }
+
+    // OBSERVATION ONLY: the scene lifecycle, so a warm link activation is visible as SOMETHING even
+    // when no continuation arrives. Without these, a warm delivery that fails looks exactly like a
+    // link iOS never routed to us — which is the pair SNAPSYNC-25 could not tell apart. Distinct
+    // from Kotlin's own UIApplicationDidBecomeActive observer (`onForeground`): these fire on the
+    // DELEGATE, so they answer "is our delegate live warm?", which the application-wide
+    // notification cannot.
+    func sceneWillEnterForeground(_ scene: UIScene) {
+        SnapSyncRoot.shared.onSceneWillEnterForeground()
+    }
+
+    func sceneDidBecomeActive(_ scene: UIScene) {
+        SnapSyncRoot.shared.onSceneDidBecomeActive()
+    }
+
+    func sceneDidDisconnect(_ scene: UIScene) {
+        SnapSyncRoot.shared.onSceneDidDisconnect()
+    }
+
+    // OBSERVATION ONLY: the custom-scheme delivery path. The `snapsync` scheme is RETIRED and the
+    // Info.plist declares no CFBundleURLTypes, so nothing should ever arrive here — which is
+    // precisely the point of forwarding it. Should iOS 18 turn out to route a universal link
+    // through this hook, the log says so instead of the URL vanishing.
+    func scene(_ scene: UIScene, openURLContexts URLContexts: Set<UIOpenURLContext>) {
+        SnapSyncRoot.shared.onSceneOpenUrlContexts(urls: URLContexts.map { $0.url.absoluteString })
     }
 }
 
