@@ -603,6 +603,12 @@ object SnapSyncRoot {
             loadJoinDetails = { eventId -> app.joinEvent.loadDetails(eventId).toJoinLoad() },
             cutoffFormatter = cutoffFormatter,
             log = { message -> log.i { message } },
+            // The container's error seam (capability `sync-status-screen`): a throwable escaping a user
+            // command lands here instead of propagating. `Error` severity deliberately — that is the
+            // threshold at which a Kermit line becomes a crash-reporting EVENT rather than a breadcrumb
+            // (capability `crash-reporting`), and a command that failed outright is exactly what should
+            // reach the operator. It also keeps the line in `debug.log`, the un-redacted channel.
+            onIntentError = { throwable -> log.e(throwable) { "user command failed" } },
             downloadSource = app.downloadStatusSource,
             attested = app.attestation.attested,
         )

@@ -32,6 +32,8 @@ import app.snapsync.feature.download.InMemoryDownloadStatusSource
 import app.snapsync.model.SyncStatus
 import app.snapsync.model.SyncProgress
 import app.snapsync.feature.status.SyncStatusSource
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineExceptionHandler
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.Job
@@ -100,6 +102,19 @@ class StatusContainerHost(
     // has no UI to show a load/commit failure, and a gate parked on a failed details load has no one
     // watching its dialog). No-op by default; iOS wires it into `debug.log`.
     private val log: (String) -> Unit = {},
+    // The container's ERROR seam (spec `sync-status-screen`, "A failing command never disables the status
+    // container"): every throwable that escapes an intent arrives here instead of propagating.
+    //
+    // It is separate from [log] rather than folded into it because the two carry different severities and
+    // [log] is bound to an INFO logger for the dev-path autoJoin abort lines. This one must reach the crash
+    // reporter (capability `crash-reporting`, `Error` and above become events), so the composition binds it
+    // to `log.e`. Keeping severity out of this module's vocabulary is the other half: presentation names a
+    // need, not a level.
+    //
+    // No-op by default, so the harnesses and every existing test construct unchanged — but note that the
+    // DEFAULT still keeps the container alive, because it is the handler's PRESENCE that stops the rethrow.
+    // A host binding nothing loses the report, never the liveness.
+    private val onIntentError: (Throwable) -> Unit = {},
     // Download progress for the joined-layer "downloaded X of Y" line (capability `photo-download`).
     // Exposed as a screen-level StateFlow (like `inviteUrl`), NOT folded into `UiState` — it's an
     // independent indicator that doesn't gate upload classification. Defaults to inert (always 0 of 0)
@@ -167,7 +182,7 @@ class StatusContainerHost(
         scope.container(
             // All seams hold their current truth synchronously, so the first state the screen can ever
             // render derives from real values — never a guess or a placeholder.
-            reduceFrom(
+            initialState = reduceFrom(
                 config.value,
                 permission.value,
                 syncSource.status.value,
@@ -177,6 +192,25 @@ class StatusContainerHost(
                 cutoffFormatter.nowCutoff(),
                 attested.value,
             ),
+            // The container SURVIVES a throwing intent (spec `sync-status-screen`) — and this handler is the
+            // whole of what makes it so. It is not a logging convenience: Orbit runs each intent as
+            // `runCatching { … }.exceptionOrNull()?.let { settings.exceptionHandler?.handleException(…) ?: throw it }`,
+            // so with NO handler configured it RE-THROWS, which cancels `RealContainer.intentJob` — a plain
+            // `Job(parent)`, not a `SupervisorJob` — after which every later `orbit()` call is a child of a
+            // cancelled job and silently never runs. Measured on orbit-core 10.0.0: without a handler a
+            // second intent issued after a throwing one never lands; with one, it does.
+            //
+            // What that costs in the field is every user tap, not just the one that failed: leave, share,
+            // settings save, rename, join confirm, cancel, create all cross this container, so the screen
+            // keeps rendering its last state, looks alive, and answers nothing until the process restarts.
+            //
+            // Necessity + expiry (law "Necessity claims carry forcing proofs"): the forcing fact is Orbit's
+            // own `?: throw` above, which is library behaviour and could change on a version bump — so
+            // `StatusContainerHostTest`'s liveness pin asserts a later intent still lands, and a bump that
+            // changes the semantics fails the build rather than quietly restoring the dead container.
+            buildSettings = {
+                exceptionHandler = CoroutineExceptionHandler { _, throwable -> onIntentError(throwable) }
+            },
         ) {
             intent {
                 // The sources combine into a holder; each new value reduces straight to a UI state.
@@ -511,7 +545,29 @@ class StatusContainerHost(
      * date; erring toward whole-library cannot be undone.
      */
     private suspend fun loadInto(eventId: String) {
-        val load = loadJoinDetails(eventId)
+        val load = try {
+            loadJoinDetails(eventId)
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (t: Throwable) {
+            // The `Loading` twin of `commit()`'s repair (capability `join-event`): `Loading` pins no action
+            // either, so a throw here would park a full-screen spinner with no Cancel — or, while joined, an
+            // invisible pending join — until the process restarts. `LoadFailed` is exactly where a details
+            // source REPORTING a transient failure lands, so a throwing source and a reporting one converge
+            // on the same retryable surface.
+            //
+            // ⚠️ Defence in depth: UNREACHABLE through the production binding today, and knowingly kept.
+            // `HttpEventDirectory.fetch` is `runCatching { … }.getOrDefault(EventDetails.Failed)` and
+            // `toJoinLoad` is pure, so the bound lambda cannot throw — but `loadJoinDetails` is an injected
+            // `suspend (String) -> JoinLoad` and nothing here can know that. It stays because the invariant
+            // is one adapter change away from being false, and the cost of it being false is a screen no
+            // one can leave. Unlike `BackgroundUploadPump`'s comparable wrapper, this one IS covered: the
+            // seam is a constructor parameter, so a test injects a throwing loader directly.
+            if (pending.state.value?.eventId == eventId) {
+                pending.state.value?.let { pending.set(it.copy(phase = JoinPhase.LoadFailed)) }
+            }
+            throw t
+        }
         // The headless negative oracle (mirrors autoConfirm's abort line): a gate parked on a failed
         // details load shows a dialog, but a `SNAPSYNC_EVENT_LINK` launch has no one watching the
         // screen — without this line, `debug.log` shows only the HTTP `404` and the run reads as if
@@ -595,10 +651,38 @@ class StatusContainerHost(
         }
         val (name, startsAt, endsAt, deletesAt) = loaded
         pending.set(p.copy(phase = JoinPhase.Committing(name, startsAt, endsAt, deletesAt)))
-        if (commands.commitJoin(
+        val committed = try {
+            commands.commitJoin(
                 p.eventId, name, startsAt, endsAt, deletesAt, cutoff, until, direction, saveToAlbum,
             )
-        ) {
+        } catch (cancelled: CancellationException) {
+            // Cancellation is teardown, not failure: rethrow before the repair below, or a cancelled
+            // commit would rewrite the phase on its way out (the `LedgerCountsPoller` shape).
+            throw cancelled
+        } catch (t: Throwable) {
+            // `Committing` pins NO action (`JoiningEventScreen`: "In-flight phases offer no actions"), so a
+            // throw here would otherwise park the gate on a dead-end spinner for the life of the process —
+            // capability `join-event`, "The join gate never rests in a phase that offers no action".
+            //
+            // Which phase is right depends on whether the membership was PERSISTED, because `flow/Provision`
+            // saves the config at step 2 of 6 and everything after it is follow-up the next foreground
+            // repeats. So the config decides, and it is the only thing that can:
+            //  · it names this event  → the join LANDED; drop the pending join, and the joined screen is the
+            //    truth. Retrying would hit `JoinEvent`'s `AlreadyJoined` no-op anyway.
+            //  · otherwise            → it never landed; `CommitFailed` pins the Retry that re-runs it.
+            if (pending.state.value?.eventId == p.eventId) {
+                if (config.value?.eventId == p.eventId) {
+                    pending.set(null)
+                } else {
+                    pending.set(p.copy(phase = JoinPhase.CommitFailed(name, startsAt, endsAt, deletesAt)))
+                }
+            }
+            // Rethrown, never swallowed: the container's `exceptionHandler` reports it at `Error`, which is
+            // what reaches the crash reporter. That handler is also why rethrowing is safe here — without it
+            // Orbit's re-throw would cancel the intent job and take every later command with it.
+            throw t
+        }
+        if (committed) {
             // Success: config flips present via ConfigSource → reduces to Joined; drop the overlay.
             if (pending.state.value?.eventId == p.eventId) pending.set(null)
         } else if (pending.state.value?.eventId == p.eventId) {

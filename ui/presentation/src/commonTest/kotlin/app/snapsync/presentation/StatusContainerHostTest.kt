@@ -34,8 +34,16 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 import kotlin.time.Duration
+import kotlin.time.Duration.Companion.seconds
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeout
 import kotlinx.coroutines.channels.Channel
 import kotlin.time.Clock
 import kotlin.time.Instant
@@ -52,6 +60,9 @@ import kotlinx.coroutines.test.runTest
 import org.orbitmvi.orbit.test.test
 
 private const val EVENT_ID = "11111111-1111-4111-8111-111111111111"
+
+/** Real-time budget for the liveness pin's awaits — generous, because it waits on real dispatchers. */
+private val LIVENESS_TIMEOUT = 10.seconds
 
 // Joined-state helpers keep the assertions readable.
 private fun syncing(up: Arrow, down: Arrow = Arrow.HIDDEN) = UiState.Joined(SyncHealth.Syncing(up, down))
@@ -184,6 +195,7 @@ private fun host(
     ) -> Boolean = { _, _, _, _, _, _, _, _, _ -> false },
     leave: suspend () -> Unit = {},
     attested: MutableStateFlow<Boolean> = MutableStateFlow(true),
+    onIntentError: (Throwable) -> Unit = {},
 ) = StatusContainerHost(
     source, permission.permission, configFake.config, scope,
     loadJoinDetails = loadJoinDetails,
@@ -193,6 +205,7 @@ private fun host(
     ),
     cutoffFormatter = fixedCutoffFormatter(),
     attested = attested,
+    onIntentError = onIntentError,
 )
 
 class StatusContainerHostTest {
@@ -1574,5 +1587,151 @@ class StatusContainerHostTest {
                 expectState(needsAccess(PermissionStatus.DENIED))
                 cancelAndIgnoreRemainingItems()
 }
+    }
+
+    // ── the gate never rests in a phase with no action (spec `join-event`) ───────────────────────
+
+    /**
+     * `Loading` and `Committing` pin NO action — `JoiningEventScreen`: "In-flight phases offer no actions"
+     * — so a throw that parks the gate on one is a dead-end the member cannot leave without force-quitting.
+     * These three pin the repair.
+     *
+     * Which phase a failed commit lands on turns on whether the membership was PERSISTED, because
+     * `flow/Provision` saves the config at step 2 of 6 and the four steps after it are follow-up the next
+     * foreground repeats.
+     *
+     * The gate is driven to `Ready` via `expectState` (which waits for it) and the settled state is read
+     * afterwards, rather than expecting each emission: the injected seams here do not suspend, so the
+     * `Loading` and `Committing` frames conflate away.
+     */
+    @Test
+    fun `a commit that throws after the membership was persisted lands on the joined screen`() = runTest {
+        val configFake = FakeConfig(null)
+        firstJoinGate(
+            PermissionStatus.GRANTED, SpyRequester(), configFake = configFake,
+            // Exactly what `Provision` does: persist at step 2, then fail in one of the steps that follow.
+            commitJoin = { _, _, _, _, _, _, _, _, _ ->
+                configFake.save(SAMPLE_CONFIG)
+                throw IllegalStateException("provision blew up after saveConfig")
+            },
+        ).test(this) {
+            runOnCreate()
+            containerHost.onOpenUrl(encodeEventUrl(EventLinkPayload(EVENT_ID)))
+            expectState(
+                UiState.JoiningEvent(
+                    EVENT_ID,
+                    JoinPhase.Ready("My Party", eventStart("2026-07-06T00:00:00Z"), ENDS_AT, DELETES_AT),
+                ),
+            )
+            containerHost.onConfirmJoin(CUTOFF, CEILING, Direction.Both, saveToAlbum = false)
+            // The pending join is discarded, so the persisted config alone decides the state: the joined
+            // layer, with no overlay and no spinner. `Committing` conflates away — nothing here suspends.
+            expectState(joinedLoading)
+            cancelAndIgnoreRemainingItems()
+        }
+    }
+
+    @Test
+    fun `a commit that throws before the membership was persisted stays retryable`() = runTest {
+        firstJoinGate(
+            PermissionStatus.GRANTED, SpyRequester(), configFake = FakeConfig(null),
+            commitJoin = { _, _, _, _, _, _, _, _, _ -> throw IllegalStateException("enroll blew up") },
+        ).test(this) {
+            runOnCreate()
+            containerHost.onOpenUrl(encodeEventUrl(EventLinkPayload(EVENT_ID)))
+            expectState(
+                UiState.JoiningEvent(
+                    EVENT_ID,
+                    JoinPhase.Ready("My Party", eventStart("2026-07-06T00:00:00Z"), ENDS_AT, DELETES_AT),
+                ),
+            )
+            containerHost.onConfirmJoin(CUTOFF, CEILING, Direction.Both, saveToAlbum = false)
+            // The retryable phase, not a parked `Committing` spinner with no button on it.
+            expectState(
+                UiState.JoiningEvent(
+                    EVENT_ID,
+                    JoinPhase.CommitFailed("My Party", eventStart("2026-07-06T00:00:00Z"), ENDS_AT, DELETES_AT),
+                ),
+            )
+            cancelAndIgnoreRemainingItems()
+        }
+    }
+
+    /**
+     * The `Loading` twin. Unreachable through the production binding — `HttpEventDirectory.fetch` is
+     * `runCatching { … }.getOrDefault(Failed)` — but `loadJoinDetails` is a constructor seam, so the guard
+     * is covered directly rather than left to a mutation that would survive the suite.
+     */
+    @Test
+    fun `a details load that throws is retryable rather than a parked spinner`() = runTest {
+        host(
+            FakeSyncStatusSource(SyncStatus.Loading), backgroundScope,
+            configFake = FakeConfig(null),
+            loadJoinDetails = { throw IllegalStateException("the details client threw") },
+        ).test(this) {
+            runOnCreate()
+            containerHost.onOpenUrl(encodeEventUrl(EventLinkPayload(EVENT_ID)))
+            expectState(UiState.JoiningEvent(EVENT_ID, JoinPhase.LoadFailed))
+            cancelAndIgnoreRemainingItems()
+        }
+    }
+
+    // ── container liveness (spec `sync-status-screen`) ───────────────────────────────────────────
+
+    /**
+     * The pin behind "A failing command never disables the status container", and the reason the
+     * container configures an Orbit `exceptionHandler` at all.
+     *
+     * Orbit runs each intent as `runCatching { … }.exceptionOrNull()?.let { handler?.handleException(…)
+     * ?: throw it }`. With **no** handler it re-throws, which cancels `RealContainer.intentJob` — a plain
+     * `Job(parent)`, not a `SupervisorJob` — and from then on every `orbit()` call is a child of a
+     * cancelled job and silently never runs. Every user tap crosses this one container, so the screen
+     * would keep rendering its last state, look alive, and answer nothing for the rest of the process.
+     *
+     * ⚠️ It deliberately does **not** use `orbit-test`'s `test()` harness, which every other test here
+     * uses. Measured while writing this: the harness substitutes an exception handler of its own when the
+     * container carries none, so under it a later intent runs whether or not production configures one —
+     * i.e. the harness MASKS exactly the defect this pins, and a `test()`-based version passes on the
+     * container it is meant to be guarding. So this drives the real container on a real scope with real
+     * dispatchers, and awaits real signals rather than the test scheduler.
+     *
+     * This is an **upstream-behaviour pin**: remove the `buildSettings` block and it fails, and an Orbit
+     * upgrade that changes the semantics fails the build rather than quietly restoring the dead container.
+     */
+    @Test
+    fun `a throwing command neither stops later commands nor kills the scope`() = runTest {
+        withContext(Dispatchers.Default) {
+            val boom = IllegalStateException("boom")
+            val reported = CompletableDeferred<Throwable>()
+            val laterCommandRan = CompletableDeferred<Unit>()
+            // The container's own scope, shaped like the composition's: supervised, off the test scheduler.
+            val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+            try {
+                val host = StatusContainerHost(
+                    FakeSyncStatusSource(), FakePermissionSource().permission, FakeConfig().config, scope,
+                    commands = UserCommands(
+                        leave = { throw boom },
+                        requestAccess = { laterCommandRan.complete(Unit) },
+                    ),
+                    cutoffFormatter = fixedCutoffFormatter(),
+                    onIntentError = { reported.complete(it) },
+                )
+
+                host.onLeaveEvent()
+                // Let the failure LAND before issuing the next command. Queuing both first would prove
+                // nothing: an intent's `Job` is created when `orbit()` is called, so a pair dispatched
+                // together survives a cancellation arriving afterwards. The regression only shows up when
+                // the later command is issued after the earlier one has already thrown.
+                val throwable = withTimeout(LIVENESS_TIMEOUT) { reported.await() }
+                assertEquals(boom, throwable, "the throwable must be reported, not swallowed")
+
+                host.onRequestPermission()
+                withTimeout(LIVENESS_TIMEOUT) { laterCommandRan.await() }
+
+                assertTrue(scope.isActive, "the composition scope must survive")
+            } finally {
+                scope.cancel()
+            }
+        }
     }
 }
