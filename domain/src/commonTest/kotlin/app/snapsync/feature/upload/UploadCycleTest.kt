@@ -13,7 +13,6 @@ import app.snapsync.model.LedgerEntry
 import app.snapsync.model.LedgerState
 import app.snapsync.feature.upload.LedgerWriter
 import app.snapsync.model.Resource
-import app.snapsync.model.excluding
 import app.snapsync.model.projectDeviceManifest
 import app.snapsync.model.ResourceRole
 import app.snapsync.feature.upload.SyncEngine
@@ -22,6 +21,8 @@ import app.snapsync.model.UploadRequest
 import app.snapsync.model.UploadRequestProvider
 import app.snapsync.model.CaptureCutoff
 import app.snapsync.model.SelectionPolicy
+import app.snapsync.model.selectionRulesFor
+import app.snapsync.model.SelectionRule
 import app.snapsync.model.captureCutoff
 import app.snapsync.model.RESOURCE_META_CREATION_DATE
 import app.snapsync.model.RESOURCE_META_IS_EDITED
@@ -52,9 +53,28 @@ class UploadCycleTest {
     private companion object {
         const val TEST_CUTOFF = "2026-01-01T00:00:00Z"
 
+        /**
+         * An admitting policy carrying the two port-read exclusions. They used to be injected into the
+         * cycle and applied by it; the one derivation now folds them into the rule list, so a fixture
+         * states them here (capability `photo-selection-policy`).
+         */
+        suspend fun admittingWith(
+            cutoff: String = TEST_CUTOFF,
+            echo: Set<String> = emptySet(),
+            albumExcluded: Set<String> = emptySet(),
+        ): SelectionPolicy = SelectionPolicy(
+            selectionRulesFor(
+                includesUpload = true,
+                cutoff = captureCutoff(cutoff),
+                ceiling = null,
+                suppressedAssetIds = { echo },
+                albumExcludedAssetIds = { albumExcluded },
+            ),
+        )
+
         /** An admitting policy over [cutoff], unbounded above — the shape every cycle fixture wants. */
-        fun admitting(cutoff: String): SelectionPolicy =
-            SelectionPolicy.from(includesUpload = true, cutoff = captureCutoff(cutoff), ceiling = null)
+        suspend fun admitting(cutoff: String): SelectionPolicy =
+            SelectionPolicy(selectionRulesFor(includesUpload = true, cutoff = captureCutoff(cutoff), ceiling = null, suppressedAssetIds = { emptySet() }, albumExcludedAssetIds = { emptySet() }))
         const val IN_SCOPE_DATE = "2026-06-01T10:00:00Z"
         const val TEST_HOST = "https://edge.example"
         const val TEST_EVENT = "event-1"
@@ -138,27 +158,27 @@ class UploadCycleTest {
      * phases, not the entry gate, and the gate's own three outcomes are covered in [CycleGateTest] and in
      * the entry-gate tests below.
      */
-    private fun cycle(
+    private suspend fun cycle(
         backend: InMemoryLedgerStore,
         platform: FakePlatform,
         store: DiscoveryStore = FakeStore(),
-        policy: SelectionPolicy = admitting(TEST_CUTOFF),
+        // Nullable rather than defaulted: a suspend call is not allowed in a default value.
+        policy: SelectionPolicy? = null,
         saveToAlbum: Boolean = true,
         readGate: (() -> CycleGate)? = null,
         reconcile: suspend (String?) -> Boolean = { true }, // a settled join unless a test says otherwise
         onDiscovery: suspend (String, SelectionPolicy) -> Unit = { _, _ -> },
-        suppressedAssetIds: suspend () -> Set<String> = { emptySet() },
-        albumExcludedAssetIds: suspend (CaptureCutoff) -> Set<String> = { emptySet() },
         onBatchUploaded: suspend (String) -> Unit = {},
         placeInAlbum: suspend (String, Set<String>) -> Unit = { _, _ -> },
         log: Logger = Logger.withTag("UploadCycleTest"),
     ): UploadCycle {
+        val effectivePolicy = policy ?: admitting(TEST_CUTOFF)
         val ledger = LedgerWriter(backend)
         return UploadCycle(
             readGate = readGate ?: {
                 CycleGate.Run(
                     UploadConfig(host = TEST_HOST, eventId = TEST_EVENT),
-                    JoinedMembership(eventId = TEST_EVENT, policy = policy, saveToAlbum = saveToAlbum),
+                    JoinedMembership(eventId = TEST_EVENT, policy = { effectivePolicy }, saveToAlbum = saveToAlbum),
                 )
             },
             engineFor = { config -> SyncEngine(StubUploadRequestProvider(), ledger, config.eventId) },
@@ -167,15 +187,13 @@ class UploadCycleTest {
             store = store,
             reconcile = reconcile,
             onDiscovery = onDiscovery,
-            suppressedAssetIds = suppressedAssetIds,
-            albumExcludedAssetIds = albumExcludedAssetIds,
             onBatchUploaded = onBatchUploaded,
             placeInAlbum = placeInAlbum,
             log = log,
         )
     }
 
-    private fun cycleOver(
+    private suspend fun cycleOver(
         backend: InMemoryLedgerStore,
         platform: FakePlatform,
         store: DiscoveryStore = FakeStore(),
@@ -309,7 +327,7 @@ class UploadCycleTest {
                 if (joined) {
                     CycleGate.Run(
                         UploadConfig(TEST_HOST, TEST_EVENT),
-                        JoinedMembership(TEST_EVENT, admitting(TEST_CUTOFF), saveToAlbum = false),
+                        JoinedMembership(TEST_EVENT, { admitting(TEST_CUTOFF) }, saveToAlbum = false),
                     )
                 } else {
                     CycleGate.NotJoined
@@ -334,14 +352,14 @@ class UploadCycleTest {
     // every foreground, while the join gate promised "you won't share yours".
 
     /** Builds a cycle for a membership that contributes nothing, recording anything it dares to do. */
-    private fun decliningCycle(
+    private suspend fun decliningCycle(
         backend: InMemoryLedgerStore,
         platform: FakePlatform,
         store: DiscoveryStore,
         order: MutableList<String> = mutableListOf(),
     ): UploadCycle = cycle(
         backend, platform, store,
-        policy = SelectionPolicy.None,
+        policy = SelectionPolicy(listOf(SelectionRule.DenyAll)),
         onDiscovery = { _, _ -> order += "discovery" },
         onBatchUploaded = { order += "notify" },
         reconcile = { order += "reconcile"; true },
@@ -426,7 +444,7 @@ class UploadCycleTest {
 
         val result = cycle(
             InMemoryLedgerStore(), platform, FakeStore(),
-            policy = SelectionPolicy.None,
+            policy = SelectionPolicy(listOf(SelectionRule.DenyAll)),
             log = Logger(loggerConfigInit(recorder), "UploadCycleTest"),
         ).run()
 
@@ -483,7 +501,7 @@ class UploadCycleTest {
     // app-driven tier shipped with none, re-uploading the whole post-cutoff library after a reinstall.
 
     /** Builds a cycle whose reconcile gate is [gate], recording call order into [order]. */
-    private fun gatedCycle(
+    private suspend fun gatedCycle(
         backend: InMemoryLedgerStore,
         platform: FakePlatform,
         store: DiscoveryStore = FakeStore(),
@@ -591,7 +609,7 @@ class UploadCycleTest {
             discovered = listOf(resource("FOREIGN-primary.heic", "FOREIGN"), resource("MINE-primary.heic", "MINE")),
             fullEnumeration = true,
         )
-        val cycle = cycle(backend, platform, suppressedAssetIds = { setOf("FOREIGN") })
+        val cycle = cycle(backend, platform, policy = admittingWith(echo = setOf("FOREIGN")))
 
         cycle.run()
 
@@ -604,9 +622,8 @@ class UploadCycleTest {
         // suppression, an id set supplied per cycle, is what keeps it unlisted. Pruning used to do this.
         val rows = backend.completedManifestRows()
         assertEquals(listOf("FOREIGN"), rows.map { it.assetId }, "the stale row is present to be filtered")
-        val listed = projectDeviceManifest(
-            "D", rows, admitting(TEST_CUTOFF).excluding(setOf("FOREIGN"), emptySet()),
-        ).assets.map { it.assetId }
+        val listed = projectDeviceManifest("D", rows, admittingWith(echo = setOf("FOREIGN")))
+            .assets.map { it.assetId }
         assertTrue(listed.isEmpty(), "and the echo suppression keeps it out of the manifest")
     }
 
@@ -621,7 +638,7 @@ class UploadCycleTest {
         val cycle = cycle(
             backend, platform,
             // The importer stored the '/'→'_' createdLocalId — the same normalized string.
-            suppressedAssetIds = { setOf("ABC_L0_001") },
+            policy = admittingWith(echo = setOf("ABC_L0_001")),
         )
 
         cycle.run()
@@ -884,7 +901,7 @@ class UploadCycleTest {
     // ── Notify hook (capability `upload-completion-notify`) ──────────────────────────────────────────
 
     /** Build a cycle recording the order its best-effort hooks fire, so the manifest→notify order is asserted. */
-    private fun cycleWithHooks(
+    private suspend fun cycleWithHooks(
         backend: InMemoryLedgerStore,
         platform: FakePlatform,
         order: MutableList<String>,
@@ -995,7 +1012,7 @@ class UploadCycleTest {
             metadata = mapOf(RESOURCE_META_CREATION_DATE to creationDate), data = Unit,
         )
 
-    private fun cycleWithCutoff(
+    private suspend fun cycleWithCutoff(
         backend: InMemoryLedgerStore,
         platform: FakePlatform,
         cutoff: String,
@@ -1042,9 +1059,9 @@ class UploadCycleTest {
         // The POLICY reaches the platform, not a bound flattened out of it — which is what lets the
         // fetch predicate be derived by translating the rules (capability `photo-selection-policy`).
         assertEquals(
-            captureCutoff("2026-07-06T14:32:11Z"),
-            (platform.discoverPolicyArg as? SelectionPolicy.Admitting)?.cutoff,
-            "the platform receives the membership's policy, carrying its capture floor",
+            SelectionRule.CaptureAfter(captureCutoff("2026-07-06T14:32:11Z")),
+            platform.discoverPolicyArg?.rules?.filterIsInstance<SelectionRule.CaptureAfter>()?.single(),
+            "the platform receives the membership's policy, carrying its capture floor as a rule",
         )
     }
 
@@ -1111,8 +1128,12 @@ class UploadCycleTest {
         platform.discovered.forEach { writer.recordCompleted(it, attempt = 0, eventId = TEST_EVENT) }
     }
 
-    /** A cycle with an album-exclusion port, and a manifest hook recording what the manifest actually saw. */
-    private fun originCycle(
+    /**
+     * A cycle whose POLICY carries the album exclusion, and a manifest hook recording what the manifest
+     * actually saw. The exclusion used to be an injected port on the cycle; it is a rule in the policy now
+     * (capability `photo-selection-policy`), which is why this is `suspend` — the one derivation reads it.
+     */
+    private suspend fun originCycle(
         backend: InMemoryLedgerStore,
         platform: FakePlatform,
         albumExcluded: Set<String> = emptySet(),
@@ -1130,7 +1151,8 @@ class UploadCycleTest {
             manifestSaw += projectDeviceManifest("D", backend.completedManifestRows(), policy)
                 .assets.map { it.assetId }
         },
-        albumExcludedAssetIds = { albumExcluded },
+        // The album denylist is a rule in the policy now, not a port the cycle reads.
+        policy = admittingWith(albumExcluded = albumExcluded),
     )
 
     @Test
@@ -1370,9 +1392,8 @@ class UploadCycleTest {
 
         cycle(
             backend, platform,
-            policy = SelectionPolicy.from(
-                includesUpload = false, cutoff = captureCutoff(TEST_CUTOFF), ceiling = null,
-            ),
+            policy = SelectionPolicy(selectionRulesFor(
+                includesUpload = false, cutoff = captureCutoff(TEST_CUTOFF), ceiling = null, suppressedAssetIds = { emptySet() }, albumExcludedAssetIds = { emptySet() })),
         ).run()
 
         assertTrue(
@@ -1414,7 +1435,7 @@ class UploadCycleTest {
 
         val result = cycle(
             InMemoryLedgerStore(), platform,
-            policy = SelectionPolicy.None,
+            policy = SelectionPolicy(listOf(SelectionRule.DenyAll)),
             reconcile = { false },
             onDiscovery = { _, _ -> order += "discovery" },
         ).run()
@@ -1434,7 +1455,7 @@ class UploadCycleTest {
 
         val result = cycle(
             backend, FakePlatform(),
-            policy = SelectionPolicy.None,
+            policy = SelectionPolicy(listOf(SelectionRule.DenyAll)),
             reconcile = { true },
             onDiscovery = { _, policy ->
                 order += "discovery"

@@ -1,7 +1,10 @@
 package app.snapsync.feature.upload
 
 import app.snapsync.model.SelectionPolicy
+import app.snapsync.model.selectionRulesFor
+import app.snapsync.model.SelectionRule
 import app.snapsync.model.captureCutoff
+import kotlinx.coroutines.runBlocking
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertIs
@@ -21,11 +24,24 @@ class CycleGateTest {
     private val host = "https://edge.example"
     private val eventId = "event-1"
     private val cutoff = captureCutoff("2026-07-01T00:00:00Z")
-    private val admitting = SelectionPolicy.from(includesUpload = true, cutoff = cutoff, ceiling = null)
+    // The membership carries a SUPPLIER, not a built policy: the one derivation reads two ports and this
+    // gate's translation must stay port-pure (capability `upload-lifecycle`). These fixtures never invoke
+    // it — the gate decides without consulting the policy, which is the point.
+    private val admitting: suspend () -> SelectionPolicy = {
+        SelectionPolicy(
+            selectionRulesFor(
+                includesUpload = true,
+                cutoff = cutoff,
+                ceiling = null,
+                suppressedAssetIds = { emptySet() },
+                albumExcludedAssetIds = { emptySet() },
+            ),
+        )
+    }
 
     private fun joined(
         eventId: String = this.eventId,
-        policy: SelectionPolicy = admitting,
+        policy: suspend () -> SelectionPolicy = admitting,
         saveToAlbum: Boolean = false,
     ) = JoinedMembership(eventId = eventId, policy = policy, saveToAlbum = saveToAlbum)
 
@@ -115,12 +131,18 @@ class CycleGateTest {
     fun `a non-contributing membership is Run and declines later at the direction gate`() {
         val gate = cycleGate(
             configReadable = true,
-            membership = joined(policy = SelectionPolicy.None),
+            membership = joined(policy = { SelectionPolicy(listOf(SelectionRule.DenyAll)) }),
             host = host,
         )
 
         assertIs<CycleGate.Run>(gate)
-        assertEquals(SelectionPolicy.None, gate.membership.policy)
+        // The gate does NOT invoke the supplier — it decides whether to run, and the direction gate inside
+        // the cycle is what consults the policy. That is the whole reason this is a supplier: the
+        // derivation reads two ports, and this translation must stay port-pure.
+        assertEquals(
+            SelectionPolicy(listOf(SelectionRule.DenyAll)),
+            runBlocking { gate.membership.policy() },
+        )
     }
 
     @Test

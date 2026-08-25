@@ -46,7 +46,7 @@ class SelectionPolicyTest {
      * rules from the range, exactly as it did when they were a separate function.
      */
     private suspend fun excluded(resources: List<Resource>): Set<String> {
-        val policy = SelectionPolicy.from(includesUpload = true, cutoff = captureCutoff(""), ceiling = null)
+        val policy = SelectionPolicy(selectionRulesFor(includesUpload = true, cutoff = captureCutoff(""), ceiling = null, suppressedAssetIds = { emptySet() }, albumExcludedAssetIds = { emptySet() }))
         val admitted = EventPhotoSet(policy) { candidatesFromResources(resources) }
             .assets().mapTo(mutableSetOf()) { it.facts.assetId }
         return resources.mapTo(mutableSetOf()) { it.assetId } - admitted

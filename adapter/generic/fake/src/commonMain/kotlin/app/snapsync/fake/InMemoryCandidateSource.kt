@@ -4,6 +4,7 @@ import app.snapsync.model.Candidate
 import app.snapsync.model.RawAsset
 import app.snapsync.model.Resource
 import app.snapsync.model.SelectionPolicy
+import app.snapsync.model.SelectionRule
 import app.snapsync.model.resourcesFrom
 import app.snapsync.model.toFacts
 import app.snapsync.ports.CandidateSource
@@ -14,7 +15,8 @@ import kotlinx.coroutines.flow.MutableStateFlow
  * (a test, the world's gallery wrapper) adds and removes assets — the fake itself exposes only the port
  * (the honesty gate).
  *
- * **It narrows by the capture floor and nothing else**, and that is deliberate rather than lazy. The real
+ * **It translates only the two REQUIRED narrowings** — the capture floor and the deny-everything rule —
+ * and nothing else, which is deliberate rather than lazy. The real
  * adapter's `PHFetchOptions` predicate is an *optimization* the authoritative in-memory admission must be
  * proven to work without (capability `photo-selection-policy`: a platform fetch can neither widen nor
  * narrow the admitted set). A fake that mirrored the predicate would hide exactly the bug that matters —
@@ -33,13 +35,17 @@ class InMemoryCandidateSource(private val state: MutableStateFlow<List<RawAsset>
     constructor(initial: List<RawAsset> = emptyList()) : this(MutableStateFlow(initial))
 
     override suspend fun candidates(policy: SelectionPolicy): List<Candidate> {
-        // Exhausting the sealed policy rather than testing an absent floor: the non-contributing case is
-        // its own branch, and a contributing one always carries a bound.
-        val floor = when (policy) {
-            SelectionPolicy.None -> return emptyList()
-            is SelectionPolicy.Admitting -> policy.cutoff.at.iso
-        }
-        return state.value.filter { it.creationDate >= floor }.map(::InMemoryCandidate)
+        // Stands in for a platform's NARROWED fetch, so it translates the policy's rules the way a real
+        // translator does (capability `photo-selection-policy`) rather than reading a bound off the policy
+        // — which is no longer a thing a policy offers. Only the two narrowings that are REQUIRED are
+        // modelled; every other rule is left to the caller's authoritative admission, exactly as an
+        // untranslatable rule is on device.
+        if (policy.rules.any { it.deniesEverything }) return emptyList()
+        val floor = policy.rules.filterIsInstance<SelectionRule.CaptureAfter>()
+            .maxOfOrNull { it.cutoff.at.iso }
+        return state.value
+            .filter { floor == null || it.creationDate >= floor }
+            .map(::InMemoryCandidate)
     }
 }
 

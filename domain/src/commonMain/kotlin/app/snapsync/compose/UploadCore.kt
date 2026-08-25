@@ -13,6 +13,7 @@ import app.snapsync.feature.upload.cycleGate
 import app.snapsync.model.SelectionScope
 import app.snapsync.model.CaptureCutoff
 import app.snapsync.model.SelectionPolicy
+import app.snapsync.model.selectionPolicyFor
 import app.snapsync.model.EdgeUploadRequestProvider
 import app.snapsync.model.denormalizeAssetId
 import app.snapsync.ports.BackgroundTransfer
@@ -152,8 +153,6 @@ fun uploadCore(scope: CoroutineScope, ports: UploadPorts): UploadCycle {
                 rows = ledger.completedManifestRows(),
             )
         },
-        suppressedAssetIds = { ports.suppression.suppressedLocalIds() },
-        albumExcludedAssetIds = ports.albumExcludedAssetIds,
         onBatchUploaded = ports.onBatchUploaded,
         // The cycle applies the membership's opt-in (it arrived with the gate); this translation
         // only reverses the normalized `assetId` (`_`→`/`) — previously copied identically at all
@@ -207,7 +206,15 @@ private fun readGate(ports: UploadPorts): CycleGate {
         membership = payload?.let {
             JoinedMembership(
                 eventId = it.eventId,
-                policy = SelectionPolicy.from(it),
+                // A supplier, not a value: the derivation reads two ports and this translation must stay
+                // port-pure. Closing over them is not calling them (capability `upload-lifecycle`).
+                policy = {
+                    selectionPolicyFor(
+                        config = it,
+                        suppressedAssetIds = { ports.suppression.suppressedLocalIds() },
+                        albumExcludedAssetIds = ports.albumExcludedAssetIds,
+                    )
+                },
                 saveToAlbum = it.saveToAlbum,
             )
         },

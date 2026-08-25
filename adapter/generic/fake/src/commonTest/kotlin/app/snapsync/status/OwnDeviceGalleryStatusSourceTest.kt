@@ -7,6 +7,8 @@ import app.snapsync.model.RESOURCE_META_IS_VIDEO
 import app.snapsync.model.RESOURCE_META_PIXEL_AREA
 import app.snapsync.model.Resource
 import app.snapsync.model.SelectionPolicy
+import app.snapsync.model.selectionRulesFor
+import app.snapsync.model.SelectionRule
 import app.snapsync.model.captureCutoff
 import app.snapsync.feature.status.OwnDeviceGalleryStatusSource
 import app.snapsync.ports.CandidateSource
@@ -19,8 +21,25 @@ import kotlinx.coroutines.test.runTest
 /** Every membership carries a cutoff (capability `photo-selection-policy`); there is no whole-library total. */
 private val CUTOFF = captureCutoff("2026-07-06T00:00:00Z")
 
-/** The admitting policy every test here drives, bounded below by [CUTOFF] and unbounded above. */
-private val ADMITTING = SelectionPolicy.from(includesUpload = true, cutoff = CUTOFF, ceiling = null)
+/**
+ * The admitting policy every test here drives, bounded below by [CUTOFF] and unbounded above.
+ *
+ * A `suspend fun` rather than a `val`: the one derivation reads two ports (capability
+ * `photo-selection-policy`). The two exclusion sets are parameters because they used to be injected into
+ * this status source and applied by it — the source now receives a finished policy and applies nothing.
+ */
+private suspend fun admitting(
+    echo: Set<String> = emptySet(),
+    albumExcluded: Set<String> = emptySet(),
+): SelectionPolicy = SelectionPolicy(
+    selectionRulesFor(
+        includesUpload = true,
+        cutoff = CUTOFF,
+        ceiling = null,
+        suppressedAssetIds = { echo },
+        albumExcludedAssetIds = { albumExcluded },
+    ),
+)
 
 /** After [CUTOFF], so a default-dated resource is in scope. */
 private const val IN_SCOPE = "2026-07-10T00:00:00Z"
@@ -59,12 +78,16 @@ class OwnDeviceGalleryStatusSourceTest {
         )
         val source = OwnDeviceGalleryStatusSource(enumerator)
 
-        source.refresh(SelectionPolicy.None)
+        source.refresh(SelectionPolicy(listOf(SelectionRule.DenyAll)))
 
         assertEquals(0, source.size.value, "a member who shares nothing has nothing to count")
-        // The load-bearing half. Counting 0 by walking 4000 assets would be ~7 minutes of PhotoKit XPC to
-        // learn what the direction already said. The gate must precede the walk, not filter it.
-        assertEquals(0, enumerator.walks, "the library is never enumerated for a non-contributor")
+        // The load-bearing half, and where it now lives. Counting 0 by walking 4000 assets would be ~7
+        // minutes of PhotoKit XPC to learn what the direction already said — so the deny-everything rule
+        // is translated into a fetch predicate matching NO asset (capability `gallery-status`), and the
+        // cost is removed at the fetch rather than by this source refusing to start one. Exactly one
+        // fetch is issued, per refresh rather than per asset; this fake does not translate rules, so its
+        // list comes back and is refused by `admits`.
+        assertEquals(1, enumerator.walks, "one fetch, which a real platform narrows to nothing")
     }
 
     @Test
@@ -78,7 +101,7 @@ class OwnDeviceGalleryStatusSourceTest {
         )
         val source = OwnDeviceGalleryStatusSource(enumerator)
 
-        source.refresh(ADMITTING)
+        source.refresh(admitting())
 
         assertEquals(2, source.size.value)
         assertEquals(1, enumerator.walks)
@@ -102,20 +125,9 @@ class OwnDeviceGalleryStatusSourceTest {
         )
         val source = OwnDeviceGalleryStatusSource(snapshot)
 
-        source.refresh(ADMITTING)
+        source.refresh(admitting())
 
         assertEquals(1, source.size.value, "the snapshot is counted through the same admission")
-    }
-
-    @Test
-    fun `a non-contributing membership totals zero whatever the source holds`() = runTest {
-        val enumerator = RecordingEnumerator(ResourceCandidates(listOf(resource("A-primary.jpg", "A"))))
-        val source = OwnDeviceGalleryStatusSource(enumerator)
-
-        source.refresh(SelectionPolicy.None)
-
-        assertEquals(0, source.size.value)
-        assertEquals(0, enumerator.walks, "a non-contributor is answered without consulting the source")
     }
 
     private fun resource(filename: String, assetId: String) =
@@ -160,7 +172,7 @@ class OwnDeviceGalleryStatusSourceTest {
         )
         val source = OwnDeviceGalleryStatusSource(enumerator)
 
-        source.refresh(ADMITTING)
+        source.refresh(admitting())
 
         assertEquals(1, source.size.value, "only the camera photo counts toward N")
     }
@@ -170,9 +182,9 @@ class OwnDeviceGalleryStatusSourceTest {
         val enumerator = ResourceCandidates(
             listOf(originResource("cam.heic", "CAM"), originResource("wa.heic", "WA")),
         )
-        val source = OwnDeviceGalleryStatusSource(enumerator, albumExcludedAssetIds = { setOf("WA") })
+        val source = OwnDeviceGalleryStatusSource(enumerator)
 
-        source.refresh(ADMITTING)
+        source.refresh(admitting(albumExcluded = setOf("WA")))
 
         assertEquals(1, source.size.value)
     }
@@ -188,7 +200,7 @@ class OwnDeviceGalleryStatusSourceTest {
         )
         val source = OwnDeviceGalleryStatusSource(enumerator)
 
-        source.refresh(ADMITTING)
+        source.refresh(admitting())
 
         assertEquals(2, source.size.value) // A and B — counted by photo, not resource row
     }
@@ -203,9 +215,9 @@ class OwnDeviceGalleryStatusSourceTest {
                 resource("B-primary.jpg", "B"), // downloaded foreign (suppressed)
             ),
         )
-        val source = OwnDeviceGalleryStatusSource(enumerator, suppressedLocalIds = { setOf("B") })
+        val source = OwnDeviceGalleryStatusSource(enumerator)
 
-        source.refresh(ADMITTING)
+        source.refresh(admitting(echo = setOf("B")))
 
         assertEquals(1, source.size.value, "total counts only own assets (A), not the downloaded B")
     }
@@ -216,11 +228,11 @@ class OwnDeviceGalleryStatusSourceTest {
         val cell = MutableStateFlow(listOf(resource("A-primary.jpg", "A")))
         val enumerator = ResourceCandidates(cell)
         val source = OwnDeviceGalleryStatusSource(enumerator)
-        source.refresh(ADMITTING)
+        source.refresh(admitting())
         assertEquals(1, source.size.value)
 
         cell.value = listOf(resource("A-primary.jpg", "A"), resource("C-primary.jpg", "C"))
-        source.refresh(ADMITTING)
+        source.refresh(admitting())
         assertEquals(2, source.size.value)
     }
 
@@ -236,7 +248,7 @@ class OwnDeviceGalleryStatusSourceTest {
         )
         val source = OwnDeviceGalleryStatusSource(enumerator)
 
-        source.refresh(ADMITTING)
+        source.refresh(admitting())
 
         assertEquals(1, source.size.value, "only the post-cutoff asset (NEW) counts toward the total")
     }
@@ -246,7 +258,7 @@ class OwnDeviceGalleryStatusSourceTest {
         val enumerator = ResourceCandidates(listOf(undatedResource("U-primary.jpg", "U")))
         val source = OwnDeviceGalleryStatusSource(enumerator)
 
-        source.refresh(ADMITTING)
+        source.refresh(admitting())
 
         assertEquals(0, source.size.value, "an asset with no creationDate is out of scope under a cutoff")
     }

@@ -58,29 +58,31 @@ ever changing the listing, which is the manifest's job.
 
 ## 5. Collapse the policy type
 
-- [ ] 5.1 Add `SelectionRule.DenyAll` (`admits = false`) to the sealed rule set.
-- [ ] 5.2 Replace `SelectionPolicy.None` / `Admitting` with a single policy over `rules`, with
+- [x] 5.1 Add `SelectionRule.DenyAll` (`admits = false`) to the sealed rule set.
+- [x] 5.2 Replace `SelectionPolicy.None` / `Admitting` with a single policy over `rules`, with
       `admits(facts) = rules.all { it.admits(facts) }` and no special-cased member.
-- [ ] 5.3 Replace `from()` + `excluding()` with the single suspend rule-builder that gates on
+- [x] 5.3 Replace `from()` + `excluding()` with the single suspend rule-builder that gates on
       `config.direction.includesUpload` internally and invokes neither exclusion source when it excludes
       upload. Delete `excluding()`.
 - [ ] 5.4 Decide and implement the mechanism that keeps the derivation the only construction site — private
-      constructor with factory doors, or a `:test:architecture` gate. (Open question in design; settle it
-      here and record which was chosen and why.)
-- [ ] 5.5 Delete `enumerates` and update its two readers (`ShareableCount`, `EventPhotoSet`).
-- [ ] 5.6 Update the consumers that exhaust the sealed type today — `UploadCycle`,
-      `OwnDeviceGalleryStatusSource`, `InMemoryCandidateSource` — to take any capture bound they need from
-      the membership rather than from the policy.
-- [ ] 5.7 Update `projectDeviceManifest` for the new policy type.
+      constructor with factory doors, or a `:test:architecture` gate. **Still open.** The constructor is
+      public today: the translator tests and the harnesses need to present arbitrary rule lists, which a
+      private constructor forbids. A textual guard over `src/*Main` is the codebase's established fallback.
+- [x] 5.5 Delete `enumerates` and update its two readers (`ShareableCount`, `EventPhotoSet`).
+- [x] 5.6 Update the consumers that exhausted the sealed type. Went further than planned: none of them
+      needs a capture bound any more. `UploadCycle` reads the membership's policy supplier and gates on
+      `contributes`; `OwnDeviceGalleryStatusSource` receives a finished policy and lost both exclusion
+      readers; `InMemoryCandidateSource` translates rules like the real adapter does.
+- [x] 5.7 Update `projectDeviceManifest` for the new policy type.
 - [ ] 5.8 Update `SelectionPolicy.kt`'s KDoc: it currently documents the two-variant rationale and the
       derived-`CaptureAfter` decision at length, and both are superseded.
 
 ## 6. Translate the deny-everything rule
 
-- [ ] 6.1 Add the `DenyAll` arm to `predicateFor`, emitting `creationDate < <distant past>`. Do **not** use
+- [x] 6.1 Add the `DenyAll` arm to `predicateFor`, emitting `creationDate < <distant past>`. Do **not** use
       the `(mediaSubtypes & N) == 0` zero-row form — see design D4.
-- [ ] 6.2 Extend `PhotoKitCandidateSourceTest` (iosTest, macOS CI) to pin the new arm.
-- [ ] 6.3 Verify `:adapter:ios:ext-safe:compileIosMainKotlinMetadata` passes on Linux.
+- [x] 6.2 Extend `PhotoKitCandidateSourceTest` (iosTest, macOS CI) to pin the new arm.
+- [x] 6.3 Verify `:adapter:ios:ext-safe:compileIosMainKotlinMetadata` passes on Linux.
 
 ## 7. Reconfigure surface
 
@@ -92,12 +94,12 @@ ever changing the listing, which is the manifest's job.
 
 ## 8. Test-only consumers
 
-- [ ] 8.1 Fix `:test:rig`'s `GalleryReader` to take `admitted` from `policy.admits(facts)` rather than
+- [x] 8.1 Fix `:test:rig`'s `GalleryReader` to take `admitted` from `policy.admits(facts)` rather than
       re-running the rule list, and to name the refusing rule from the list only as a label. Non-gating, so
       it will not fail the build if missed.
-- [ ] 8.2 Update `describe()` for the `DenyAll` rule.
-- [ ] 8.3 Verify `:test:rig:compileIosMainKotlinMetadata` passes on Linux.
-- [ ] 8.4 Update the world harness and `:test:integration` for the new policy construction.
+- [x] 8.2 Update `describe()` for the `DenyAll` rule.
+- [x] 8.3 Verify `:test:rig:compileIosMainKotlinMetadata` passes on Linux.
+- [x] 8.4 Update the world harness and `:test:integration` for the new policy construction.
 
 ## 9. Verify
 

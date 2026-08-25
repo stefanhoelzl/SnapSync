@@ -32,7 +32,16 @@ class CeilingReachesEveryConsumerTest {
     private val preCutoff = "2026-06-01T12:00:00Z"
 
     /** The membership under test: a **closed** capture window, exactly as a late joiner's would be. */
-    private val policy = SelectionPolicy.from(includesUpload = true, cutoff = cutoff, ceiling = ceiling)
+    /** The membership's policyOf(). A `suspend fun` rather than a `val`: the one derivation reads two ports. */
+    private suspend fun policyOf(ceiling: CaptureCeiling? = this.ceiling): SelectionPolicy = SelectionPolicy(
+        selectionRulesFor(
+            includesUpload = true,
+            cutoff = cutoff,
+            ceiling = ceiling,
+            suppressedAssetIds = { emptySet() },
+            albumExcludedAssetIds = { emptySet() },
+        ),
+    )
 
     private fun resource(assetId: String, creationDate: String) = Resource(
         filename = "$assetId-primary.heic",
@@ -56,8 +65,8 @@ class CeilingReachesEveryConsumerTest {
     )
 
     /** The admitted set, asked exactly as every production consumer asks for it. */
-    private suspend fun admitted(p: SelectionPolicy = policy): Set<String> =
-        EventPhotoSet(p) { candidatesFromResources(discovered) }
+    private suspend fun admitted(p: SelectionPolicy? = null): Set<String> =
+        EventPhotoSet(p ?: policyOf()) { candidatesFromResources(discovered) }
             .assets().mapTo(mutableSetOf()) { it.facts.assetId }
 
     @Test
@@ -70,7 +79,7 @@ class CeilingReachesEveryConsumerTest {
         // The projection used to take a bare `startDate` and apply the floor alone — so AFTER was listed
         // in `device.json`, entered the event union, and was offered to every other member as bytes that
         // were never uploaded. A 404 for everyone.
-        val manifest = projectDeviceManifest("dev", ledgerRows(), policy)
+        val manifest = projectDeviceManifest("dev", ledgerRows(), policyOf())
         assertEquals(listOf("IN"), manifest.assets.map { it.assetId })
     }
 
@@ -103,8 +112,8 @@ class CeilingReachesEveryConsumerTest {
         // The property the whole change exists to make true. Stated over the SAME inputs the four
         // consumers see, so a future rule added to one of them fails here rather than on a device.
         val fromResources = admitted()
-        val fromFacts = factsFromResources(discovered).filter { policy.admits(it) }.map { it.assetId }.toSet()
-        val fromManifest = projectDeviceManifest("dev", ledgerRows(), policy)
+        val fromFacts = factsFromResources(discovered).filter { policyOf().admits(it) }.map { it.assetId }.toSet()
+        val fromManifest = projectDeviceManifest("dev", ledgerRows(), policyOf())
             .assets.map { it.assetId }.toSet()
 
         assertEquals(fromResources, fromFacts)
@@ -116,7 +125,7 @@ class CeilingReachesEveryConsumerTest {
     fun `an unbounded ceiling still admits the post-window asset`() = runTest {
         // The control. Without it the tests above would pass just as well against a policy that dropped
         // the asset for some unrelated reason — which is precisely how the original bug hid.
-        val unbounded = SelectionPolicy.from(includesUpload = true, cutoff = cutoff, ceiling = null)
+        val unbounded = policyOf(ceiling = null)
         assertEquals(setOf("IN", "AFTER"), admitted(unbounded))
     }
 }

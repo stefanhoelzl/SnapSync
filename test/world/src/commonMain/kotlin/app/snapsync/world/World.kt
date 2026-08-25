@@ -45,6 +45,8 @@ import app.snapsync.model.EventEnd
 import app.snapsync.model.CaptureDate
 import app.snapsync.model.EventStart
 import app.snapsync.model.SelectionPolicy
+import app.snapsync.model.SelectionRule
+import app.snapsync.model.selectionPolicyFor
 import app.snapsync.model.captureCeiling
 import app.snapsync.model.captureCutoff
 import app.snapsync.model.eventStart
@@ -640,8 +642,20 @@ class World(
      * An **unjoined** world yields [SelectionPolicy.None], not a default cutoff — there is no membership,
      * so there is nothing to contribute and `N` is 0, the same answer the cycle reaches.
      */
-    fun selectionPolicy(): SelectionPolicy =
-        configCell.value?.let { SelectionPolicy.from(it) } ?: SelectionPolicy.None
+    suspend fun selectionPolicy(): SelectionPolicy =
+        configCell.value
+            ?.let {
+                // The SAME derivation the shell and the cycle use — this world composes production
+                // instances, so a policy built any other way here would not be the one under test.
+                selectionPolicyFor(
+                    config = it,
+                    suppressedAssetIds = { downloadStore.suppressedLocalIds() },
+                    albumExcludedAssetIds = { emptySet() },
+                )
+            }
+            // An UNJOINED world contributes nothing, expressed the way every non-contributor is: the
+            // deny-everything rule, not an absent policy and not a default cutoff.
+            ?: SelectionPolicy(listOf(SelectionRule.DenyAll))
 
     /**
      * Every event this world's cycles notified (capability `upload-completion-notify`), in order.

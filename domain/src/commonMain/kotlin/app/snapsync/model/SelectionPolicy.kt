@@ -60,143 +60,130 @@ package app.snapsync.model
  * (capability `photo-selection-policy`, *Selection filter*), but that is an optimization which can
  * neither widen nor narrow the admitted set — [admits] stays authoritative.
  */
-sealed interface SelectionPolicy {
-
-    /**
-     * The membership contributes nothing — its participation direction excludes upload (`DownloadOnly`),
-     * or the surface is previewing a candidate with sharing off.
-     *
-     * Carries no bounds: a non-contributor has none to speak of. It admits nothing, and — critically —
-     * every consumer reaches the empty answer **without enumerating**. The walk costs one synchronous
-     * PhotoKit round-trip per asset (~110 ms on an SE2), so expressing "contributes nothing" as a
-     * per-asset filter would spend minutes of XPC on a 4000-photo library to arrive at the empty set.
-     * [enumerates] is what callers check before starting one.
-     */
-    data object None : SelectionPolicy
-
-    /**
-     * The membership contributes every asset that satisfies **all** [rules].
-     *
-     * The capture-date **lower** bound is a field, not one rule among the rest, and [rules] derives its
-     * [SelectionRule.CaptureAfter] from it. That makes "contributes, but with no capture floor"
-     * unrepresentable — closing *A lower bound `from` SHALL be required: a membership without one is not
-     * a representable state* at the type rather than at each consumer.
-     *
-     * It is the one bound a platform walk MUST push into its native fetch (capability
-     * `photo-selection-policy`). That is a **liveness** property of the walk, not a correctness property
-     * of admission: every rule is equally load-bearing for what is admitted, but an unbounded walk is
-     * watchdog-killed before [admits] ever runs. Every *other* narrowing is advisory — omit it and you
-     * pay only performance, because [admits] re-filters.
-     *
-     * [rest] holds every other rule. [rules] is computed once here rather than on each read, because
-     * [admits] runs per asset across a walk; equality keys on the two constructor parameters, which is
-     * exactly right — two policies with the same cutoff and the same rest are the same policy.
-     */
-    data class Admitting(
-        val cutoff: CaptureCutoff,
-        val rest: List<SelectionRule>,
-    ) : SelectionPolicy {
-        val rules: List<SelectionRule> = listOf(SelectionRule.CaptureAfter(cutoff)) + rest
-    }
+/**
+ * The membership contributes every asset **all** of its [rules] admit.
+ *
+ * It is a conjunction of rules and nothing else. It special-cases no rule, and it asserts that no
+ * particular rule is present — the capture floor included. That invariant lives at the one place a
+ * membership becomes a policy ([selectionRulesFor]), which always emits the floor because the persisted
+ * `minPhotoDate` is non-null. "Contributes nothing" is likewise a rule ([SelectionRule.DenyAll]) rather
+ * than a second kind of value.
+ *
+ * This replaced a two-variant sealed type — a non-contributing variant carrying no rules, and a
+ * contributing one carrying the capture floor as a non-null field with its `CaptureAfter` rule derived
+ * from it. That shape answered "does this contribute?" and "is there a floor?" by construction, which is
+ * genuinely stronger than answering them by inspection. It was collapsed because both questions stopped
+ * needing an answer here: the floor invariant moved to the build site deliberately, and the consumer that
+ * needed the direction question — the upload cycle's gate — no longer withholds the manifest write, which
+ * was the only thing it could still justify withholding.
+ *
+ * The cost is stated rather than hidden: `SelectionPolicy(listOf(ExcludeScreenshots))` compiles. The one
+ * derivation cannot produce it, and a guard keeps construction to that derivation, but the type no longer
+ * refuses it.
+ */
+class SelectionPolicy(val rules: List<SelectionRule>) {
 
     /** Does the policy admit this asset? The single admission decision in the system. */
-    fun admits(facts: AssetFacts): Boolean = when (this) {
-        None -> false
-        is Admitting -> rules.all { it.admits(facts) }
-    }
+    fun admits(facts: AssetFacts): Boolean = rules.all { it.admits(facts) }
 
     /**
-     * Whether a library walk should begin at all. `false` for [None] — see its doc for why this is a
-     * short-circuit and not a filter.
+     * Does this membership contribute at all?
+     *
+     * Not a shortcut for `admits` — it is the question the upload cycle's direction gate asks, and the
+     * gate withholds far more than a walk: upload job creation and the retry pass. A membership that
+     * contributes nothing needs none of that, and answering it per-asset would mean discovering the fact
+     * once per photo instead of once per cycle.
+     *
+     * Derived by asking the rules rather than by testing for `DenyAll` by identity, so a rule added later
+     * that can never admit anything declares itself instead of being silently missed
+     * ([SelectionRule.deniesEverything]).
      */
-    val enumerates: Boolean get() = this !is None
+    val contributes: Boolean get() = rules.none { it.deniesEverything }
 
-    // There is deliberately NO `walkFloor: CaptureCutoff?` accessor. It answered "what is the capture
-    // floor" with an absent value whose two causes — "this membership contributes nothing" and "this
-    // policy has no floor" — have opposite consequences, and it invited a consumer to branch on the
-    // floor BEFORE checking the direction. `UploadCycle` did exactly that: because `None.walkFloor` was
-    // `null`, every download-only cycle took the malformed-policy branch and logged at `Error`, which
-    // the reporting seam turns into a crash report, while the branch that names the real reason sat
-    // one line below, unreachable. A consumer needing the bound exhausts this sealed type instead:
-    // `None` is handled on its own branch, and `Admitting` yields a non-null [Admitting.cutoff].
+    override fun equals(other: Any?): Boolean = other is SelectionPolicy && rules == other.rules
 
-    companion object {
-        /**
-         * The **one** derivation of a membership's policy, from named fields.
-         *
-         * Named, typed parameters rather than positional strings: the four-site positional construction
-         * this replaces is what made the date-role swap possible in the first place (passing `startsAt`
-         * where `minPhotoDate` was wanted *lowers* the capture floor and leaks excluded photos). Now both
-         * the role and the name have to be right.
-         *
-         * **No default, in either polarity** — this is not fastidiousness; both defaults are catastrophic
-         * in opposite directions. A permissive default uploads the entire library from the beginning of
-         * time; a fail-closed default is *worse* because it is silent — a contributing member would share
-         * nothing, `N` would read `0`, and the screen would read "In sync" while nothing happened.
-         *
-         * [ceiling] is nullable only for a membership persisted before the capture-date range existed and
-         * not yet reconciled (capability `event-rejoin-reconciliation`); `null` means unbounded above,
-         * the admit-on-doubt direction. It becomes required once every device has reconciled.
-         */
-        fun from(
-            includesUpload: Boolean,
-            cutoff: CaptureCutoff,
-            ceiling: CaptureCeiling?,
-        ): SelectionPolicy {
-            if (!includesUpload) return None
-            // [cutoff] is stored verbatim on the variant; its `CaptureAfter` rule is derived there, so
-            // the bound and the rule cannot drift apart.
-            return Admitting(
-                cutoff = cutoff,
-                rest = buildList {
-                    if (ceiling != null) add(SelectionRule.CaptureBefore(ceiling))
-                    add(SelectionRule.ExcludeScreenshots)
-                    add(SelectionRule.ExcludeScreenRecordings)
-                    add(SelectionRule.MinImageArea(MIN_IMAGE_PIXEL_AREA))
-                    add(SelectionRule.MinVideoArea(MIN_VIDEO_PIXEL_AREA))
-                },
-            )
-        }
+    override fun hashCode(): Int = rules.hashCode()
 
-        /**
-         * The committed-membership overload: reads the bounds off [config] **by name**, so a role swap is
-         * a compile error and a name swap is visible at the one site it can happen.
-         */
-        fun from(config: EventConfig): SelectionPolicy = from(
-            includesUpload = config.direction.includesUpload,
-            cutoff = config.minPhotoDate,
-            ceiling = config.maxPhotoDate,
-        )
+    override fun toString(): String = "SelectionPolicy($rules)"
+}
+
+/**
+ * The **one** derivation from a membership to a rule list.
+ *
+ * Rule construction is `suspend` because two of the rules are read from ports — the download store's
+ * imported ids (echo suppression) and the platform album lookup (denylisted-album membership). **Policy**
+ * construction is not: a [SelectionPolicy] is a plain value over an already-finished list. That split is
+ * the point. There is no second step that completes a partially-built policy, because a partially-built
+ * policy is a value a consumer can hold and act on — and holding one is how the cutoff kept having to be
+ * extracted back out of it.
+ *
+ * **The direction is resolved first**, and a non-contributor invokes neither reader: the album lookup is a
+ * platform fetch, and paying for it to learn that a membership contributes nothing is exactly the cost the
+ * old two-variant type existed to avoid.
+ *
+ * **The floor is always emitted** for a contributing membership, from [cutoff], which is non-null. This is
+ * where *A lower bound `from` SHALL be required* is enforced — not in the policy type, which asserts
+ * nothing about its contents.
+ *
+ * **No default, in either polarity** — this is not fastidiousness; both defaults are catastrophic in
+ * opposite directions. A permissive default uploads the entire library from the beginning of time; a
+ * fail-closed default is *worse* because it is silent — a contributing member would share nothing, `N`
+ * would read `0`, and the screen would read "In sync" while nothing happened.
+ *
+ * [ceiling] is nullable only for a membership persisted before the capture-date range existed and not yet
+ * reconciled (capability `event-rejoin-reconciliation`); `null` means unbounded above, the admit-on-doubt
+ * direction. It becomes required once every device has reconciled.
+ */
+suspend fun selectionRulesFor(
+    includesUpload: Boolean,
+    cutoff: CaptureCutoff,
+    ceiling: CaptureCeiling?,
+    suppressedAssetIds: suspend () -> Set<String>,
+    albumExcludedAssetIds: suspend (CaptureCutoff) -> Set<String>,
+): List<SelectionRule> {
+    // The direction, first and cheaply: neither reader is consulted for a non-contributor.
+    if (!includesUpload) return listOf(SelectionRule.DenyAll)
+    return buildList {
+        // The floor, always. `cutoff` is non-null, so no contributing rule list this derivation produces
+        // can lack one.
+        add(SelectionRule.CaptureAfter(cutoff))
+        if (ceiling != null) add(SelectionRule.CaptureBefore(ceiling))
+        add(SelectionRule.ExcludeScreenshots)
+        add(SelectionRule.ExcludeScreenRecordings)
+        add(SelectionRule.MinImageArea(MIN_IMAGE_PIXEL_AREA))
+        add(SelectionRule.MinVideoArea(MIN_VIDEO_PIXEL_AREA))
+        // The two effectful sets, read at the one moment whoever holds those ports can read them.
+        suppressedAssetIds().takeIf { it.isNotEmpty() }?.let { add(SelectionRule.NotEcho(it)) }
+        albumExcludedAssetIds(cutoff).takeIf { it.isNotEmpty() }
+            ?.let { add(SelectionRule.NotInDenylistedAlbum(it)) }
     }
 }
 
 /**
- * Complete a config-derived policy with the two exclusion sets that are **not** on the config: the echo
- * suppression (the download store's imported ids) and the denylisted-album members (a platform lookup).
- *
- * They arrive separately because they are read from ports, per query, by whoever is holding those ports —
- * while [SelectionPolicy.from] is pure and derives from the membership alone. Splitting the assembly this
- * way keeps the rule *list* a single derivation while letting each consumer supply the effectful sets at
- * the moment it can read them. [SelectionPolicy.None] stays [SelectionPolicy.None]: a membership that
- * contributes nothing does not become a membership that contributes nothing-except.
+ * The committed-membership overload: reads the bounds off [config] **by name**, so a role swap is a
+ * compile error and a name swap is visible at the one site it can happen. The four-site positional
+ * construction this replaces is what made the date-role swap possible (passing `startsAt` where
+ * `minPhotoDate` was wanted *lowers* the capture floor and leaks excluded photos).
  */
-fun SelectionPolicy.excluding(
-    suppressedAssetIds: Set<String>,
-    albumExcludedAssetIds: Set<String>,
-): SelectionPolicy = when (this) {
-    SelectionPolicy.None -> SelectionPolicy.None
-    // The cutoff carries through untouched — completing a policy adds exclusions, it never moves the
-    // capture floor.
-    is SelectionPolicy.Admitting -> SelectionPolicy.Admitting(
-        cutoff = cutoff,
-        rest = rest + buildList {
-            if (suppressedAssetIds.isNotEmpty()) add(SelectionRule.NotEcho(suppressedAssetIds))
-            if (albumExcludedAssetIds.isNotEmpty()) {
-                add(SelectionRule.NotInDenylistedAlbum(albumExcludedAssetIds))
-            }
-        },
-    )
-}
+suspend fun selectionRulesFor(
+    config: EventConfig,
+    suppressedAssetIds: suspend () -> Set<String>,
+    albumExcludedAssetIds: suspend (CaptureCutoff) -> Set<String>,
+): List<SelectionRule> = selectionRulesFor(
+    includesUpload = config.direction.includesUpload,
+    cutoff = config.minPhotoDate,
+    ceiling = config.maxPhotoDate,
+    suppressedAssetIds = suppressedAssetIds,
+    albumExcludedAssetIds = albumExcludedAssetIds,
+)
+
+/** [selectionRulesFor], wrapped. The rules are gathered asynchronously; the policy is a plain value. */
+suspend fun selectionPolicyFor(
+    config: EventConfig,
+    suppressedAssetIds: suspend () -> Set<String>,
+    albumExcludedAssetIds: suspend (CaptureCutoff) -> Set<String>,
+): SelectionPolicy =
+    SelectionPolicy(selectionRulesFor(config, suppressedAssetIds, albumExcludedAssetIds))
 
 /**
  * One rule of the [SelectionPolicy]. Sealed so the platform can pattern-match the set and translate the
@@ -211,6 +198,34 @@ fun SelectionPolicy.excluding(
 sealed interface SelectionRule {
 
     fun admits(facts: AssetFacts): Boolean
+
+    /**
+     * Whether this rule refuses **every** asset, whatever the facts.
+     *
+     * Declared rather than inferred: a caller that tested for [DenyAll] by identity would silently miss a
+     * second always-refusing rule added later, and the consequence of missing one is not a wrong admitted
+     * set (the conjunction still refuses) but a cycle that does a library's worth of work to discover it
+     * contributes nothing.
+     */
+    val deniesEverything: Boolean get() = false
+
+    /**
+     * The membership contributes **nothing** — its participation direction excludes upload
+     * (`DownloadOnly`), or a surface is previewing a candidate with sharing off.
+     *
+     * A rule rather than a second kind of policy. It admits no asset, so it needs no bounds: the
+     * conjunction is false whatever else is in the list, and a consumer asks [SelectionPolicy.admits]
+     * exactly as it would for any other rule.
+     *
+     * The platform translator MUST express it as a query matching no asset (capability `gallery-status`).
+     * That is a liveness property, not a correctness one — [admits] returns false regardless — but without
+     * it a non-contributing membership pays a whole-library walk on every cold start to reach the empty
+     * set its own configuration already stated.
+     */
+    data object DenyAll : SelectionRule {
+        override fun admits(facts: AssetFacts): Boolean = false
+        override val deniesEverything: Boolean get() = true
+    }
 
     /**
      * The capture-date **lower** bound: at or after [cutoff]. An asset with no `creationDate` (the empty

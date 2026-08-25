@@ -3,6 +3,7 @@ package app.snapsync.rig.gallery
 import app.snapsync.model.CaptureCutoff
 import app.snapsync.model.CaptureDate
 import app.snapsync.model.SelectionPolicy
+import app.snapsync.model.selectionRulesFor
 import app.snapsync.model.SelectionRule
 import app.snapsync.ports.CandidateSource
 import app.snapsync.rig.AssetView
@@ -63,19 +64,30 @@ class GalleryReader(
         val census = census()
         if (cutoff == null) return GalleryView(census = census, grant = grant(), policy = null)
 
-        val policy = SelectionPolicy.from(
-            includesUpload = true,
-            cutoff = CaptureCutoff(CaptureDate(cutoff)),
-            ceiling = null,
+        val policy = SelectionPolicy(
+            selectionRulesFor(
+                includesUpload = true,
+                cutoff = CaptureCutoff(CaptureDate(cutoff)),
+                ceiling = null,
+                // The operator reads the POLICY here, not the device's echo/album state — this route
+                // answers "what would this cutoff admit", so the two port-read exclusions are out of scope.
+                suppressedAssetIds = { emptySet() },
+                albumExcludedAssetIds = { emptySet() },
+            ),
         )
         val mark = TimeSource.Monotonic.markNow()
         val found = candidates.candidates(policy)
-        val rules = (policy as? SelectionPolicy.Admitting)?.rules.orEmpty()
+        val rules = policy.rules
         val assets = found.map { candidate ->
             val facts = candidate.facts
+            // Admission comes from the POLICY — the single decision (capability
+            // `photo-selection-policy`). This used to re-run the rule list itself and call the result
+            // `admitted`, which is a second implementation of the one thing the policy exists to decide.
+            // The rule scan below now only NAMES the reason, and never decides.
+            val admitted = policy.admits(facts)
             // The FIRST rule that refuses is the reported reason. Reporting all of them would read as
             // "these all applied" when only one had to.
-            val refusedBy = rules.firstOrNull { !it.admits(facts) }
+            val refusedBy = if (admitted) null else rules.firstOrNull { !it.admits(facts) }
             AssetView(
                 assetId = facts.assetId,
                 captureDate = facts.creationDate.iso,
@@ -84,9 +96,9 @@ class GalleryReader(
                 isScreenRecording = facts.isScreenRecording,
                 isVideo = facts.isVideo,
                 isEdited = facts.isEdited,
-                admitted = refusedBy == null,
+                admitted = admitted,
                 refusedBy = refusedBy?.let(::describe),
-                resources = if (resources && refusedBy == null) {
+                resources = if (resources && admitted) {
                     candidate.resources().map { ResourceView(it.contentType, it.filename) }
                 } else {
                     null
@@ -112,6 +124,7 @@ class GalleryReader(
      * who sees `MinImageArea(3000000)` can check the asset's `pixelArea` in the same row.
      */
     private fun describe(rule: SelectionRule): String = when (rule) {
+        SelectionRule.DenyAll -> "DenyAll"
         is SelectionRule.CaptureAfter -> "CaptureAfter(${rule.cutoff.at.iso})"
         is SelectionRule.CaptureBefore -> "CaptureBefore(${rule.ceiling.at.iso})"
         SelectionRule.ExcludeScreenshots -> "ExcludeScreenshots"

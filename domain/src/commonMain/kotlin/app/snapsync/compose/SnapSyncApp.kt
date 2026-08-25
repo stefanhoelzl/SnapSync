@@ -42,6 +42,7 @@ import app.snapsync.flow.Provision
 import app.snapsync.flow.SilentPush
 import app.snapsync.model.AssetFacts
 import app.snapsync.model.SelectionPolicy
+import app.snapsync.model.selectionPolicyFor
 import app.snapsync.model.CaptureCeiling
 import app.snapsync.model.CaptureCutoff
 import app.snapsync.model.EventConfig
@@ -351,11 +352,9 @@ class AppCore internal constructor(
     }
 
     val gallery: OwnDeviceGalleryStatusSource by lazy {
-        OwnDeviceGalleryStatusSource(
-            candidates,
-            suppressedLocalIds = { ports.downloadStore.suppressedLocalIds() },
-            albumExcludedAssetIds = ports.albumExcludedAssetIds,
-        )
+        // The two exclusion readers moved to the one derivation below — this source now receives a
+        // finished policy (capability `photo-selection-policy`).
+        OwnDeviceGalleryStatusSource(candidates)
     }
 
     // The join-time shareable-count preview (capability `join-share-count`): the SAME policy the cycle and
@@ -695,13 +694,28 @@ class AppCore internal constructor(
     // (completed + in-flight), and the foreign download line (capability `sync-status`). No membership
     // → nothing to count; a download-only membership counts 0 too — the source's decision from the
     // Contribution, not a branch here (the roots pass facts, never branches).
+    /**
+     * The one derivation, for this composition's status readers (capability `photo-selection-policy`).
+     *
+     * Both `N` and the join preview must admit exactly what the upload cycle admits, so all three reach
+     * the policy the same way — through `selectionPolicyFor`, with the same two port readers. The cycle
+     * gets there via the membership's supplier; these two call it directly, because they already hold the
+     * config and are already in a coroutine.
+     */
+    private suspend fun selectionPolicyForMembership(config: EventConfig): SelectionPolicy =
+        selectionPolicyFor(
+            config = config,
+            suppressedAssetIds = { ports.downloadStore.suppressedLocalIds() },
+            albumExcludedAssetIds = ports.albumExcludedAssetIds,
+        )
+
     suspend fun refreshStatusSources() {
         ports.configSource.config.value?.let { cfg ->
             // The own-device walk enumerates the library — GRANTED exactly, per the read discipline
             // (`limited-photo-access`): under LIMITED the total derives from the selection-driven
             // discovery instead of an autonomous enumeration.
             if (ports.photoAccess.permission.value == PermissionStatus.GRANTED) {
-                gallery.refresh(SelectionPolicy.from(cfg))
+                gallery.refresh(selectionPolicyForMembership(cfg))
             }
         }
         ledgerCounts.refresh()
@@ -988,7 +1002,7 @@ class AppCore internal constructor(
             // no snapshot-specific entry point for the total to drift through.
             ports.selectionChanges.snapshots.collect { snapshot ->
                 latestSelectionSnapshot.value = snapshot
-                ports.configSource.config.value?.let { cfg -> gallery.refresh(SelectionPolicy.from(cfg)) }
+                ports.configSource.config.value?.let { cfg -> gallery.refresh(selectionPolicyForMembership(cfg)) }
                 uploadArm.triggers.onSelectionChanged()
             }
         }

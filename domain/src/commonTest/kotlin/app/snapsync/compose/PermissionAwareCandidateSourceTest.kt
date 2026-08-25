@@ -7,6 +7,7 @@ import app.snapsync.model.PermissionStatus
 import app.snapsync.model.RESOURCE_META_CREATION_DATE
 import app.snapsync.model.Resource
 import app.snapsync.model.SelectionPolicy
+import app.snapsync.model.selectionRulesFor
 import app.snapsync.model.captureCutoff
 import app.snapsync.ports.CandidateSource
 import kotlin.test.Test
@@ -18,19 +19,23 @@ import kotlinx.coroutines.test.runTest
 /**
  * The grant decides **where candidates come from**, and no consumer branches on it
  * (capability `limited-photo-access`, D10: *"the mode difference is one source impl, not a branch in the
- * policy or its consumers"*).
+ * policy() or its consumers"*).
  *
- * That principle was already true of the policy and false of the consumers: the status total had two
+ * That principle was already true of the policy() and false of the consumers: the status total had two
  * entry points (`refresh` / `refreshFrom`) and the join preview a `when (permission)`, so each restated
  * the distinction — and it is the restatement, not the reading, that lets two paths drift. This pins that
  * the restatement is gone, and that the `LIMITED` path still never walks.
  */
 class PermissionAwareCandidateSourceTest {
 
-    private val policy = SelectionPolicy.from(
-        includesUpload = true,
-        cutoff = captureCutoff("2026-01-01T00:00:00Z"),
-        ceiling = null,
+    private suspend fun policy(): SelectionPolicy = SelectionPolicy(
+        selectionRulesFor(
+            includesUpload = true,
+            cutoff = captureCutoff("2026-01-01T00:00:00Z"),
+            ceiling = null,
+            suppressedAssetIds = { emptySet() },
+            albumExcludedAssetIds = { emptySet() },
+        ),
     )
 
     /** Counts walks, because "counted from the snapshot" and "did not look" are different claims. */
@@ -70,7 +75,7 @@ class PermissionAwareCandidateSourceTest {
     @Test
     fun `GRANTED walks the library`() = runTest {
         val (walk, source) = source(PermissionStatus.GRANTED)
-        assertEquals(listOf("W"), source.candidates(policy).map { it.facts.assetId })
+        assertEquals(listOf("W"), source.candidates(policy()).map { it.facts.assetId })
         assertEquals(1, walk.walks)
     }
 
@@ -81,7 +86,7 @@ class PermissionAwareCandidateSourceTest {
         // wrong universe — it could surface photos the member never chose to share. (Not an alert
         // argument: iOS's limited-access alert is armed per out-of-scope library change, not per read.)
         val (walk, source) = source(PermissionStatus.LIMITED, snapshot = snapshotOf("S1", "S2"))
-        assertEquals(listOf("S1", "S2"), source.candidates(policy).map { it.facts.assetId })
+        assertEquals(listOf("S1", "S2"), source.candidates(policy()).map { it.facts.assetId })
         assertEquals(0, walk.walks, "no autonomous library read under a partial grant")
     }
 
@@ -90,7 +95,7 @@ class PermissionAwareCandidateSourceTest {
         // The honest state between a grant turning partial and the first observer emission: there is
         // nothing selected that we know of, and we may not go looking for it.
         val (walk, source) = source(PermissionStatus.LIMITED, snapshot = null)
-        assertTrue(source.candidates(policy).isEmpty())
+        assertTrue(source.candidates(policy()).isEmpty())
         assertEquals(0, walk.walks)
     }
 
@@ -98,7 +103,7 @@ class PermissionAwareCandidateSourceTest {
     fun `an unusable grant yields nothing and never walks`() = runTest {
         for (status in listOf(PermissionStatus.DENIED, PermissionStatus.NOT_DETERMINED)) {
             val (walk, source) = source(status, snapshot = snapshotOf("S"))
-            assertTrue(source.candidates(policy).isEmpty(), "$status yields no candidates")
+            assertTrue(source.candidates(policy()).isEmpty(), "$status yields no candidates")
             assertEquals(0, walk.walks, "$status never walks")
         }
     }
@@ -109,7 +114,7 @@ class PermissionAwareCandidateSourceTest {
         // candidate for them must therefore issue nothing: a deferred read here would have to reach the
         // assets again later, off-flow, which is the measured storm (capability `limited-photo-access`).
         val (_, source) = source(PermissionStatus.LIMITED, snapshot = snapshotOf("S1"))
-        val resources = source.candidates(policy).single().resources()
+        val resources = source.candidates(policy()).single().resources()
         assertEquals(listOf("S1-primary.jpg"), resources.map { it.filename })
     }
 }

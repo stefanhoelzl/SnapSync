@@ -27,7 +27,16 @@ class FactsOnlyAdmissionTest {
     private val ceiling = captureCeiling("2026-06-30T00:00:00Z")
     private val inWindow = "2026-06-15T12:00:00Z"
 
-    private val policy = SelectionPolicy.from(includesUpload = true, cutoff = cutoff, ceiling = ceiling)
+    /** The membership's policyOf(). A `suspend fun` rather than a `val`: the one derivation reads two ports. */
+    private suspend fun policyOf(ceiling: CaptureCeiling? = this.ceiling): SelectionPolicy = SelectionPolicy(
+        selectionRulesFor(
+            includesUpload = true,
+            cutoff = cutoff,
+            ceiling = ceiling,
+            suppressedAssetIds = { emptySet() },
+            albumExcludedAssetIds = { emptySet() },
+        ),
+    )
 
     /** One asset with its resources present — what the eager walk produces. */
     private fun withResources(
@@ -87,9 +96,9 @@ class FactsOnlyAdmissionTest {
             factsOnly("AFTER", creationDate = "2026-07-15T12:00:00Z"),
         )
 
-        val fromEager = EventPhotoSet(policy) { candidatesFromResources(eager) }
+        val fromEager = EventPhotoSet(policyOf()) { candidatesFromResources(eager) }
             .assets().mapTo(mutableSetOf()) { it.facts.assetId }
-        val fromCheap = EventPhotoSet(policy) { candidatesFromFacts(cheap) }
+        val fromCheap = EventPhotoSet(policyOf()) { candidatesFromFacts(cheap) }
             .assets().mapTo(mutableSetOf()) { it.facts.assetId }
 
         assertEquals(setOf("CAM"), fromEager)
@@ -102,8 +111,8 @@ class FactsOnlyAdmissionTest {
         val gif = withResources("GIF", width = 480, height = 270, mime = "image/gif")
         val cam = withResources("CAM")
 
-        val eagerCount = EventPhotoSet(policy) { candidatesFromResources(listOf(cam, gif)) }.count()
-        val cheapCount = EventPhotoSet(policy) {
+        val eagerCount = EventPhotoSet(policyOf()) { candidatesFromResources(listOf(cam, gif)) }.count()
+        val cheapCount = EventPhotoSet(policyOf()) {
             candidatesFromFacts(listOf(factsOnly("CAM"), factsOnly("GIF", width = 480, height = 270)))
         }.count()
 
@@ -128,6 +137,6 @@ class FactsOnlyAdmissionTest {
             },
         )
 
-        assertEquals(1, EventPhotoSet(policy) { exploding }.count())
+        assertEquals(1, EventPhotoSet(policyOf()) { exploding }.count())
     }
 }

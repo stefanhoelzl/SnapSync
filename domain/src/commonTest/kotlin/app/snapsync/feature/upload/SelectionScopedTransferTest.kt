@@ -2,6 +2,7 @@ package app.snapsync.feature.upload
 
 import app.snapsync.model.captureCutoff
 import app.snapsync.model.SelectionPolicy
+import app.snapsync.model.selectionRulesFor
 import app.snapsync.model.Resource
 import app.snapsync.model.SelectionScope
 import app.snapsync.model.UploadRequest
@@ -24,8 +25,8 @@ import kotlinx.coroutines.test.runTest
  * never a full enumeration (it must not drive ledger pruning).
  */
 /** An admitting policy over [cutoff] — the shape the cycle hands the transfer. */
-private fun admitting(cutoff: String): SelectionPolicy =
-    SelectionPolicy.from(includesUpload = true, cutoff = captureCutoff(cutoff), ceiling = null)
+private suspend fun admitting(cutoff: String): SelectionPolicy =
+    SelectionPolicy(selectionRulesFor(includesUpload = true, cutoff = captureCutoff(cutoff), ceiling = null, suppressedAssetIds = { emptySet() }, albumExcludedAssetIds = { emptySet() }))
 
 class SelectionScopedTransferTest {
 
