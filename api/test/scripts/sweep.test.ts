@@ -413,6 +413,10 @@ Deno.test("dry-run → deletes NOTHING, but counts the same candidates a real ru
 
 Deno.test("summary → file bytes are the SUM of each entry's Length, not the object count", async () => {
   const d = await db();
+  await d.execute(
+    `INSERT INTO device_records (device_id, push_token, updated_at) VALUES (?, '{}', '2026-07-01T00:00:00Z')`,
+    [ORPHAN],
+  );
   const store = fake({
     [`files/devices/${ORPHAN}/a.heic`]: { lc: "2026-06-01T00:00:00.000Z", len: 1500 },
     [`files/devices/${ORPHAN}/b.heic`]: { lc: "2026-06-01T00:00:00.000Z", len: 2500 },
@@ -422,10 +426,77 @@ Deno.test("summary → file bytes are the SUM of each entry's Length, not the ob
   d.close();
 });
 
+Deno.test("an EMPTY store with bytes in the zone is REFUSED, not swept", async () => {
+  // The un-backfilled state. An empty store says "nothing is referenced", and the asset phase would
+  // then read every byte as unreferenced with every floor `+∞` — deleting the whole zone. This is the
+  // guard that makes a failed cutover a loud, harmless failure instead of a silent mass deletion.
+  const d = await db();
+  const store = fake({
+    [`files/devices/${D}/a.heic`]: { lc: "2026-06-01T00:00:00.000Z", len: 10 },
+    [`files/devices/${D2}/b.heic`]: { lc: "2026-06-01T00:00:00.000Z", len: 10 },
+  });
+  let threw = "";
+  try {
+    await run(d, store);
+  } catch (e) {
+    threw = String(e);
+  }
+  assertStringIncludes(threw, "refusing to sweep");
+  assertStringIncludes(threw, "un-backfilled");
+  assertEquals(store.deletes, []); // nothing collected
+  d.close();
+});
+
+Deno.test("a DRY RUN over an empty store is refused too", async () => {
+  // A dry run reporting "would delete every byte in the zone" is a report nobody should have to
+  // interpret, and treating it as informational invites someone to re-run it for real.
+  const d = await db();
+  const store = fake({ [`files/devices/${D}/a.heic`]: { lc: "2026-06-01T00:00:00.000Z", len: 1 } });
+  let threw = "";
+  try {
+    await run(d, store, true);
+  } catch (e) {
+    threw = String(e);
+  }
+  assertStringIncludes(threw, "refusing to sweep");
+  d.close();
+});
+
+Deno.test("an empty store with an EMPTY zone sweeps normally", async () => {
+  // The guard keys on the CONTRADICTION, not on emptiness: a genuinely empty world has no bytes either,
+  // and must not be blocked from running.
+  const d = await db();
+  const { summary } = await run(d, fake({}));
+  assertEquals(summary.errors, 0);
+  assertEquals(summary.files.deleted.count, 0);
+  d.close();
+});
+
+Deno.test("a POPULATED store still collects an orphaned device's bytes", async () => {
+  // The guard must not have disabled the fully-orphaned collection it sits next to.
+  const d = await db();
+  const E = "cccccccc-0000-4000-8000-000000000003";
+  await insertEvent(d, event(E, LIVE_STARTS));
+  await member(d, E, D, [`files/devices/${D}/keep.heic`]);
+  const store = fake({
+    [`files/devices/${D}/keep.heic`]: { lc: "2026-06-01T00:00:00.000Z", len: 1 },
+    [`files/devices/${ORPHAN}/gone.heic`]: { lc: "2026-06-01T00:00:00.000Z", len: 1 },
+  });
+  const { summary } = await run(d, store);
+  assertEquals(summary.files.deleted.count, 1);
+  assert(!store.store.has(`files/devices/${ORPHAN}/gone.heic`));
+  assert(store.store.has(`files/devices/${D}/keep.heic`));
+  d.close();
+});
+
 Deno.test("site/ prefix is never touched by the sweep", async () => {
   // The storage zone is a co-tenant: the public `site/` prefix lives beside private user data
   // (capability `backend-deployment`). The sweep enumerates `files/devices/` and nothing else.
   const d = await db();
+  await d.execute(
+    `INSERT INTO device_records (device_id, push_token, updated_at) VALUES (?, '{}', '2026-07-01T00:00:00Z')`,
+    [ORPHAN],
+  );
   const store = fake({
     "site/index.html": {},
     "site/_astro/app.abc123.js": {},

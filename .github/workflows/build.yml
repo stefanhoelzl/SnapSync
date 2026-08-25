@@ -50,3 +50,15 @@ jobs:
       # carry a normative (SHALL/MUST) requirement + a scenario. Pinned so an
       # upstream rule change can't turn CI red without a deliberate bump.
       - run: npx --yes @fission-ai/openspec@1.5.0 validate --specs --strict
+
+  resolver-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7.0.0
+      # The deployment resolver's own suite (capability `deployment-configuration`). It also runs in
+      # `api-deploy.yml`, but that workflow triggers on PUSH TO MAIN — so until this job existed the
+      # suite could only fail AFTER a merge, blocking the deploy while the PR that broke it went green.
+      # That is not hypothetical: adding two required inventory keys broke 20 of these 30 tests, the PR
+      # merged clean, and the deploy failed on main with production still serving the previous bundle.
+      # A test that can only fail after merge is not a gate.
+      - run: python3 scripts/resolve_deployment_test.py

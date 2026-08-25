@@ -60,6 +60,7 @@ import {
   eventsWithCounts,
   knownDevices,
   referencedKeys,
+  storeIsEmpty,
 } from "../db.ts";
 import { eventIsStale } from "../lifecycle.ts";
 import type { Config } from "../config.ts";
@@ -159,6 +160,28 @@ export async function runSweep(deps: SweepDeps): Promise<SweepSummary> {
   // Walk every device's byte partition and collect the unreferenced, below-floor bytes.
   const deviceDirEntries = await listDir(f, config, `files/devices/`);
   const deviceIds = deviceDirEntries.filter((e) => e.IsDirectory).map((e) => e.ObjectName);
+
+  // ⚠️ THE REFUSAL. An EMPTY store says "nothing is referenced", and this phase would then read every
+  // byte in the zone as unreferenced with every device's floor `+∞` — deleting the entire zone. That is
+  // a correct reading of a store that is genuinely empty and a catastrophic reading of one that has not
+  // been BACKFILLED yet, and from inside the store the two are identical.
+  //
+  // Storage tells them apart. A legitimately emptied world has no bytes left either — the sweep collects
+  // a fully-orphaned device's bytes as it empties it — so "zero rows AND bytes present" cannot describe a
+  // store that was ever populated. It describes a deploy whose cutover has not run.
+  //
+  // This is a SYSTEMIC failure, not a per-object one: it throws, fails the job loudly, and deletes
+  // nothing. Fail toward reclamation is the right instinct for one unreadable event; it is the wrong
+  // instinct for the whole world at once, which is why this check sits outside that rule rather than
+  // inside it. Dry-run is not exempt — a dry run reporting "would delete everything" is a report nobody
+  // should have to interpret.
+  if (deviceIds.length > 0 && await storeIsEmpty(db)) {
+    throw new Error(
+      `refusing to sweep: the database holds no rows at all while storage holds ${deviceIds.length} ` +
+        `device partition(s). That is the un-backfilled state, not an empty world — running would ` +
+        `collect every byte in the zone. Run the cutover backfill and verify it before sweeping.`,
+    );
+  }
   for (const deviceId of deviceIds) {
     // A device with no active surviving membership has floor `+∞`: nothing of its is above the floor.
     const floorMs = floors.has(deviceId) ? ms(floors.get(deviceId)) : Infinity;
