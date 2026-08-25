@@ -77,11 +77,16 @@ instead: it exercises decode → gate → join without OS delivery.
 
 ## ⚠️ `simctl launch <dev> <bundle> KEY=VAL` passes ARGV, not environment
 
-Every `SNAPSYNC_*` trigger silently does nothing that way. Use `SIMCTL_CHILD_<VAR>`:
+It silently does nothing that way. Use `SIMCTL_CHILD_<VAR>`:
 
 ```
-SIMCTL_CHILD_SNAPSYNC_CREATE_EVENT="$payload" xcrun simctl launch "$DEVICE" app.snapsync
+SIMCTL_CHILD_SNAPSYNC_RIG_PORT=18101 xcrun simctl launch "$DEVICE" app.snapsync
 ```
+
+`SNAPSYNC_RIG_PORT` is the **only** variable left, and it is read by the rig's hook — a file that does not
+exist in a non-rig build. **There are no `SNAPSYNC_*` launch triggers any more**: production Kotlin declares
+none and a guard fails the build if one returns. Everything they used to do — join, create, leave, reset,
+seed, wipe — is now a channel verb. Load `rig-channel` for the full surface.
 
 ## ⚠️ Photo permission: `grant photos` does NOT hold, and the failure looks like a boot hang
 
@@ -104,13 +109,18 @@ xcrun simctl launch "$DEVICE" app.snapsync
 
 ## Seeding a library
 
-`SNAPSYNC_SEED_POLICY` is **unusable here**: it logs `seeding N POLICY-PROBE asset(s)` and never
-finishes, because the app suspends ~4 s after launch and the async `PHPhotoLibrary.performChanges` never
-completes. Use the simulator's own path instead:
+Use the simulator's own path:
 
 ```
 xcrun simctl addmedia "$DEVICE" shot1.jpg shot2.jpg shot3.jpg
 ```
+
+The channel's `POST /device/gallery/seed` exists and may well work here, but it is **unmeasured on a
+simulator** — say so rather than assuming. What *was* measured (2026-08-09) is that the retired
+`SNAPSYNC_SEED_POLICY` launch trigger never finished: it logged `seeding N POLICY-PROBE asset(s)` and
+stopped, because the app suspends ~4 s after launch and the async `PHPhotoLibrary.performChanges` never
+completed. A channel request may hold the app alive where a launch variable did not — that is the thing to
+check, not to presume. `addmedia` needs neither and is the known-good path.
 
 Generate them at **2400×2000** (4.8 MP) so they clear the 3 MP resolution floor in the selection policy.
 They land dated ~now, so they are in scope for an event started earlier in the same session.
@@ -170,11 +180,30 @@ SIMCTL_CHILD_SNAPSYNC_RIG_PORT=18102 xcrun simctl launch "$DEV_B" app.snapsync
 Everything past `/health` — `/state`, `/logs`, `/triggers`, `POST /trigger/<name>`, the receipted-vs-202
 split, the `onForeground`-before-membership ordering trap — is in `rig-channel` and is identical here.
 
+## Driving an event
+
+There is no launch variable for this any more. Create and join through the channel, exactly as a user does
+(`rig-channel` has the full vocabulary):
+
+```
+P=$(cat "$(xcrun simctl get_app_container "$DEVICE" app.snapsync data)/Documents/rig.port")
+curl -X POST "localhost:$P/user/create?name=SimRig&startsAt=2026-08-24T00:00&endsAt=2026-08-30T00:00"
+curl -s "localhost:$P/device/state" | jq '.ui'          # wait for JoiningEvent(eventId, Ready)
+curl -X POST "localhost:$P/user/confirmJoin?cutoff=2026-08-24T00:00:00Z&until=2026-08-30T00:00:00Z&direction=upload&saveToAlbum=false"
+```
+
+To put a SECOND instance on the same event, drive its channel through the warm universal-link entry —
+`POST /os/onSceneContinueActivity?arg=<link>` — which takes the same decode → gate → join path a scanned QR
+does. `simctl openurl` cannot be used for this (see the entitlement note above).
+
+⚠️ **Never join an event you did not create.**
+
 ## Device identity
 
-Each simulator mints and keeps its own id in its App-Group container, so two instances are two members
-with no operator input, and an id survives relaunch of its own instance. `xcrun simctl erase` discards it,
-which is the intended way to get a fresh member.
+Each simulator **mints and keeps its own id** in its App-Group container, so two instances are two members
+with no operator input, and an id survives a relaunch of its own instance (`via=read` in `debug.log` on the
+second launch). `xcrun simctl erase` discards it, which is the intended way to get a fresh member.
 
-If the app reports its identity as unavailable, the build is not signed: the store says so and names
-`scripts/sim-sign` in the message.
+Nothing plants it. The store is chosen by compilation target, so on this host the app simply mints into a
+file the way it would mint into the Keychain on a device. If the app reports its identity as unavailable,
+the build is not signed — the store's message says so and names `scripts/sim-sign`.

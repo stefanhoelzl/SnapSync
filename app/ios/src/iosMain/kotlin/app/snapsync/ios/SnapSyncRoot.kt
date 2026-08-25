@@ -73,7 +73,7 @@ import app.snapsync.logging.appBuildVersion
 import app.snapsync.logging.IosLogScope
 import app.snapsync.logging.PublicNSLogWriter
 import app.snapsync.keychain.DeviceIdentityRole
-import app.snapsync.keychain.resolveDeviceIdentity
+import app.snapsync.keychain.KeychainDeviceIdentity
 import app.snapsync.logging.invocation
 import co.touchlab.kermit.Logger
 import io.ktor.client.HttpClient
@@ -299,10 +299,15 @@ object SnapSyncRoot {
     // partition and make its own uploads read as another member's.
     // `by lazy` and NOT memoizing a failure is load-bearing here: Kotlin's SynchronizedLazyImpl assigns
     // its value only on success, so a resolve that throws is retried on the next access rather than fixed
-    // for the process. That is what lets an identity supplied after launch be picked up at all
-    // (capability `device-identity`), and `DeviceIdentityRetryTest` pins it rather than inheriting it.
+    // for the process. On a LOCKED device the store raises `SecureStoreUnavailable` rather than serving an
+    // id, and without the retry one early touch would poison the identity for the life of the process —
+    // silently, since nothing would re-attempt. `DeviceIdentityRetryTest` pins it rather than inheriting it.
+    //
+    // The store itself is chosen by COMPILATION TARGET (`deviceIdPrimaryStore`, capability
+    // `device-identity`): the addressed Keychain on `iosArm64`, an App-Group file on `iosSimulatorArm64`
+    // where that group cannot exist. Nothing here decides which — that is the point.
     private val deviceId: String by lazy {
-        resolveDeviceIdentity(DeviceIdentityRole.MINTING)
+        KeychainDeviceIdentity(DeviceIdentityRole.MINTING).deviceId()
     }
 
     /**

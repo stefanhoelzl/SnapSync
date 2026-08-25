@@ -73,6 +73,7 @@ class RigHooks(
      * path.
      */
     val osExtensionEnabled: () -> Boolean?,
+    /**
      * Publish the port this instance actually bound, so a caller can discover it instead of assuming it.
      *
      * Called **only after the bind succeeds**, which is the whole point: on a simulator the file's
@@ -226,17 +227,6 @@ class CommandResult(val status: Int, val body: String) {
  */
 fun rigPort(raw: Any?): Int = (raw as? String)?.toIntOrNull() ?: DEFAULT_RIG_PORT
 
-/**
- * The resolved upload tier's name, or `forge` when no live stack was composed.
- *
- * Lives here rather than in the hook for the usual reason: the `when` is a decision, and the hook file is
- * scanned by the shell gate. Reads the mode the shell already resolved — never a second resolution, which
- * could disagree with the one the app is actually running.
- */
-fun tierName(mode: CompositionMode): String = when (mode) {
-    is CompositionMode.Live -> mode.tier.name
-    is CompositionMode.Forge -> "forge"
-}
 
 /**
  * Where the bound port is published, given this process's documents directory — `null` when the OS

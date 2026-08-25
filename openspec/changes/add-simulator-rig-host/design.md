@@ -266,7 +266,13 @@ On a locked device the wrong answer mints a second identity and orphans that dev
 ledger.
 
 *Rejected — a rig-planted identity file that production reads.* Carried through most of this change's
-design. Production would gain a fallback consulted on `Absent` or `Unavailable`, adopted verbatim, never
+design, and **subsequently merged to `main` by the `triggers-into-channel` change** while this one was
+being built: `SuppliedDeviceIdentity` (the read), `IdentityPlant` + `POST /device/identity` (the write),
+and a `device-identity` requirement describing it. This change **removes all three** — the two solve one
+problem, and shipping both would give the simulator two identity mechanisms. The removal is a
+`REMOVED Requirements` delta rather than a silent deletion, and it records what the two designs agree on
+(the whole diagnosis) as carefully as where they differ (the remedy), because the agreement is the part a
+later reader is most likely to need. Production would gain a fallback consulted on `Absent` or `Unavailable`, adopted verbatim, never
 persisted, with **presence** as the discriminator since no production build writes it. It works, and it
 was rejected for three reasons that only became clear once the target axis was noticed. It puts a
 read path in shipped code whose only writer is test equipment. It is one implementation with **two

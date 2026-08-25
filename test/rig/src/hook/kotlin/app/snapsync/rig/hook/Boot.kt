@@ -22,7 +22,6 @@ import app.snapsync.rig.rigPort
 import app.snapsync.rig.userCommands
 import app.snapsync.rig.excludedUserCommands
 import app.snapsync.rig.rigPortFilePath
-import app.snapsync.rig.tierName
 import kotlin.native.EagerInitialization
 import kotlinx.cinterop.ExperimentalForeignApi
 import kotlinx.coroutines.Dispatchers

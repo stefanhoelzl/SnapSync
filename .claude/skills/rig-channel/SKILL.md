@@ -97,7 +97,6 @@ GET  /device/gallery[?cutoff=…][&resources=true]   the library, through the ap
 POST /device/reset                      void durable sync state
 POST /device/gallery/seed?n=&kind=bulk|policy
 POST /device/gallery/wipe?scope=all|assets|albums[&limit=&offset=]
-POST /device/identity?id=…              plant a device id where the Keychain cannot serve one
 ```
 
 There is **no inventory route**. Asking for a member that is excluded returns **the reason it is
