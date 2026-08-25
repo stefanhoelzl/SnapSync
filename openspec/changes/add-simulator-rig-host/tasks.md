@@ -41,8 +41,8 @@
 
 ## 6. Measurements
 
-- [ ] 6.1 BLOCKED — not by the measurement, by reaching it. A download needs a membership with a download direction; a membership needs the join gate; at `NOT_DETERMINED` the gate is `ExplainAccess` (`StatusContainerHost.kt:560`) whose only exit is `onRequestPermission`, deliberately excluded from the channel because it raises an alert only a finger can answer; and photo permission is NOT grantable headlessly (TCC probe above). The one path that used to work — the retired `SNAPSYNC_EVENT_LINK`/`SNAPSYNC_CREATE_EVENT` `autoJoin`, which applied a membership directly and bypassed the gate — was deleted by `triggers-into-channel`. Needs a rig-side headless-membership verb before it can run
-- [ ] 6.2 BLOCKED — same chain as 6.1, same missing step
+- [ ] 6.1 UNBLOCKED, not yet run. The blocker was never the platform: `simctl privacy grant photos` does not work for PhotoKit, but `applesimutils --setPermissions "photos=YES"` does — verified, the app reads GRANTED and a simulator now joins (`configResolved: true`, direction Both). What remains is the measurement itself: seed a foreign device's photos into the backend, start a download, terminate the app, and watch for an OS relaunch into `handleEventsForBackgroundURLSession`
+- [ ] 6.2 UNBLOCKED, not yet run — same setup as 6.1 and shares its in-flight download
 - [ ] 6.3 Record the supersession of `fix-download-session-lifecycle` D5's closing limitation in this change's design record; do not edit the archive
 - [x] 6.4 SETTLED, decisively against the hopeful reading: an unprovisioned `associated-domains` makes the app UN-LAUNCHABLE with the same `SBMainWorkspace` refusal as `keychain-access-groups`. `openurl` was accepted but no link entry point fired (0 occurrences). So the 2026-08-09 negative is explained rather than overturned — a simulator cannot carry the entitlement at all, and SNAPSYNC-3 gains no repro path here. Variant discarded; working signature restored and verified
 
