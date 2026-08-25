@@ -11,6 +11,7 @@ import app.snapsync.rig.RigHooks
 import app.snapsync.rig.RigServer
 import app.snapsync.rig.RigTrigger
 import app.snapsync.rig.RigUserCommand
+import app.snapsync.rig.UploadMechanismPin
 import app.snapsync.rig.deviceCommands
 import app.snapsync.rig.galleryReader
 import app.snapsync.model.PermissionStatus
@@ -52,6 +53,22 @@ import platform.Foundation.NSUserActivityTypeBrowsingWeb
  * captures lambdas and binds a socket; the graph is forced by the first request that needs it, which forces
  * exactly what a real entry point would.
  */
+/**
+ * The upload-mechanism pin's **only** touch on production: point the composition root's override thunk at
+ * the channel's holder, before anything forces the graph.
+ *
+ * A bare assignment, deliberately — this file is inside the shell gate's scanned roots and may hold no
+ * decisions. Everything the pin does (parsing, clamping, reporting what actually resolves) is in
+ * `:test:rig`, on the far side of the seam. `SnapSyncRoot.uploadMechanismOverrideSource` defaults to
+ * `{ null }` and this line is its only assigner anywhere, so a build compiled without
+ * `-Psnapsync.rig=true` — which contains none of this file — cannot carry a pin at all.
+ */
+@EagerInitialization
+@Suppress("unused")
+private val uploadMechanismPin: Unit = run {
+    SnapSyncRoot.uploadMechanismOverrideSource = UploadMechanismPin::pinned
+}
+
 @EagerInitialization
 @Suppress("unused")
 private val rigBoot: Unit = startRig()
@@ -96,6 +113,7 @@ private fun iosHooks() = RigHooks(
     deviceCommands = deviceCommands(
         core = { SnapSyncRoot.app },
         photoAccess = SnapSyncRoot.permission,
+        osSupportsOsDrivenUpload = SnapSyncRoot.osSupportsOsDrivenUpload,
     ),
     readGallery = galleryReader(core = { SnapSyncRoot.app }),
     osExtensionEnabled = osExtensionEnabled(osSupportsOsDrivenUpload = SnapSyncRoot.osSupportsOsDrivenUpload),
