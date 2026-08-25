@@ -2,11 +2,12 @@
 name: bugsink
 description: >-
   Triage SnapSync crash reports from the operator's Bugsink instance
-  (steho.bugsink.com). Read-only: list unresolved issues ranked by last-seen,
-  drill into one issue for the full context (symbolicated stacktrace,
-  breadcrumbs, device/OS/app context). Use when the user asks what's crashing,
-  to look at a Bugsink issue/crash, to triage errors, or names an issue like
-  SNAPSYNC-3.
+  (steho.bugsink.com). List unresolved issues ranked by last-seen, drill into one
+  issue for the full context (symbolicated stacktrace, breadcrumbs,
+  device/OS/app context), and resolve an issue a shipped fix closes - the one
+  write, and only on confirmation. Use when the user asks what's crashing, to
+  look at a Bugsink issue/crash, to triage errors, names an issue like
+  SNAPSYNC-3, or when a merged PR carries a `Bugsink-Resolves:` trailer.
 ---
 
 # bugsink — crash triage
@@ -14,8 +15,10 @@ description: >-
 Read-only triage of the crashes both SnapSync iOS processes report to the operator's
 **Bugsink** instance (capability `crash-reporting`). Dev/operator infrastructure:
 non-gating, no spec, no shipped-code change — same posture as `ssh-mac`,
-`harness-driver`, and the local backend rig. This skill only ever issues `GET`s;
-it never resolves, mutes, comments, or deletes.
+`harness-driver`, and the local backend rig. **Triage is read-only**: every step below
+issues `GET`s. There is exactly **one** write — resolving an issue a shipped fix closes
+(§4), through `resolve/` or `resolve-next/`, and never without the operator confirming
+first. Muting, reopening, commenting and deleting stay out of scope entirely.
 
 - **Instance:** `https://steho.bugsink.com` — **project 1** (`snapsync`). Both the app
   and the background-upload extension report to this one project/DSN.
@@ -32,6 +35,12 @@ it never resolves, mutes, comments, or deletes.
 - `/bugsink` (no arg) → **list unresolved issues**, newest-crash first.
 - `/bugsink SNAPSYNC-3` or `/bugsink <issue-uuid>` → **drill into one issue** with full
   context and a symbolicated stacktrace.
+- Loaded by **`/ship`** after a PR merges, when its commits carry a `Bugsink-Resolves:`
+  trailer → **§4**, the resolve.
+
+**If you are here to FIX an issue, not just read it: write the trailer into your FIRST fix
+commit** (§4). This skill will not be in context when the branch finally ships, and the
+trailer is the only thing `/ship` reads.
 
 Issues have two ids: a UUID (`id`) and a friendly id (`friendly_id`, e.g.
 `SNAPSYNC-3`). The list shows both; the friendly id is what a human will paste. The API
@@ -209,6 +218,98 @@ Show the raw frames (from `stacktrace_md`), state the build number and that its
 ("park longer-lived versions' dSYMs elsewhere at promote time"). Never symbolicate against
 a *different* build's dSYMs — that produces subtly-wrong frames.
 
+## 4. Resolve an issue a shipped fix closes
+
+**Write the trailer as soon as the fix exists** — into the FIRST commit of the fix, not the
+last:
+
+```
+Bugsink-Resolves: SNAPSYNC-9
+```
+
+One line per issue; repeat the trailer when one branch closes several. Use the **friendly
+id** — the thing you and the Bugsink UI both speak.
+
+This is deliberately a trailer and not a bare mention. This repo's history cites issues as
+*evidence* as well as as fixes — `bd5c113e` cites SNAPSYNC-6 for a field measurement while
+fixing SNAPSYNC-9 — and a mention cannot tell those two apart. Write it early: by the time
+the branch ships, this skill is long out of context, and an unmarked fix is resolved by hand.
+
+`/ship` does the rest, after the PR **merges** (its step 9.2). Nothing here fires before a
+merge: a fix that never lands never closes an issue.
+
+### Which endpoint
+
+| the issue | endpoint | why |
+|---|---|---|
+| `calculated_value` starts with `Bug Report:` | `POST issues/<uuid>/resolve/` | a dump can never recur — the description IS the grouping key, so a re-report arrives as a **new** issue. Regression protection would be a claim about nothing. |
+| anything else — a real crash | `POST issues/<uuid>/resolve-next/` | resolved as of the next release; a recurrence in that release or later reopens it. |
+
+A third endpoint, `resolve-latest/`, stamps `fixed_at` to the newest release that exists
+right now. It is not used here.
+
+⚠️ **`resolve-next/` under-delivers today, by decision — do not silently "fix" it.** It means
+"resolved as of the next value of the `release` field", and this app sends the **marketing
+version** (`0.4`), which changes only when a `vX.Y` tag is pushed at App Store promote — not
+per merge, not per TestFlight build. So it currently reads as *"closed until the next App
+Store version"*, and a crash recurring on a TestFlight build in between does **not** reopen
+its issue. Sending `0.4.<build>` instead would make it exact — strict `MAJOR.MINOR.PATCH`, so
+Bugsink orders by semver rather than falling back to date order, which is already scrambled
+here (release `0.1` is dated 2026-07-31, *after* `0.2`'s 2026-07-29). That changes what crash
+events carry — capability `crash-reporting` — so it is a separate change nobody has proposed.
+
+### The procedure
+
+**Confirm with the operator before any write — every id, every time.** Look the issue up
+first, so the question names what is actually being closed:
+
+```bash
+proton-env -- python3 - "SNAPSYNC-9" <<'PY'
+import json, os, sys, urllib.request
+
+friendly = sys.argv[1]
+hdr = {"Authorization": "Bearer " + os.environ["BUGSINK_TOKEN"]}
+url = "https://steho.bugsink.com/api/canonical/0/issues/?project=1"
+while url:                                    # the board paginates - walk it, do not
+    req = urllib.request.Request(url, headers=hdr)   # trust the first page
+    with urllib.request.urlopen(req) as r:
+        page = json.load(r)
+    for i in page["results"]:
+        if i["friendly_id"] == friendly:
+            kind = "dump" if i["calculated_value"].startswith("Bug Report:") else "crash"
+            state = "RESOLVED" if i["is_resolved"] else "OPEN"
+            print(i["id"], state, kind, i["calculated_value"][:60])
+            raise SystemExit
+    url = page.get("next")
+print("MISSING")
+PY
+```
+
+Then POST the endpoint that the kind selects — `resolve/` for a dump, `resolve-next/` for a
+crash:
+
+```bash
+proton-env -- bash -s <<'SH'
+set -euo pipefail
+curl -sS -o /tmp/resolved.json -w 'HTTP %{http_code}\n' \
+  -X POST -H "Authorization: Bearer $BUGSINK_TOKEN" -H 'Content-Type: application/json' \
+  "https://steho.bugsink.com/api/canonical/0/issues/<uuid>/resolve-next/"
+cat /tmp/resolved.json
+SH
+```
+
+Read the outcome honestly:
+
+- **`200`** — resolved. Name the friendly id and which endpoint was used.
+- **`400 {"detail":"Issue is already resolved."}`** — **success, not an error.** Someone got
+  there first; say so and move on.
+- **`MISSING`** — the trailer names an issue this project does not have: a typo, or another
+  instance's id. Report it and resolve nothing.
+- anything else — report the status and the body verbatim. Do not retry, do not diagnose.
+
+Undo is `POST issues/<uuid>/reopen/`, which this skill does **not** issue. If a resolve was
+wrong, say so and let the operator reopen it in the web UI.
+
 ## Notes & gotchas
 
 - **Privacy by construction:** every UUID-shaped token is scrubbed before an **automatically
@@ -217,8 +318,9 @@ a *different* build's dSYMs — that produces subtly-wrong frames.
   membership. **Diagnostic dumps are the deliberate exception** and DO carry real ids (see 2b):
   they are operator-triggered and confirmed, and are worthless without them.
 - **Token scope:** the injected token is `org:ci` (broad — it *could* mutate). This skill's
-  read-only guarantee is enforced by only ever issuing `GET`s, not by the token. If a
-  narrower credential is wanted, mint a read-only Bugsink token and repoint the proton path.
+  narrow write surface — resolve only, on confirmation (§4) — is enforced by what it issues,
+  not by the token. If a narrower credential is wanted, mint a Bugsink token scoped to reads
+  plus resolve and repoint the proton path.
 - **First real crash validates symbolication.** At authoring time the only stored event was a
   `WatchdogTermination` (no frames), so the exact `debug_meta.images` / frame
   `instruction_addr` field names in `symbolicate.py` are written to the standard Sentry-cocoa
