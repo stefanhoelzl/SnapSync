@@ -170,7 +170,6 @@ fun StatusScreen(
         var renaming by remember { mutableStateOf(false) }
 
         val joined = state is UiState.Joined
-        val pendingSwitch = (state as? UiState.Joined)?.pendingSwitch != null
         // The reconfigure surface renders only while joined with a known membership; if the config drops
         // (a leave lands) the flag is reset so a later rejoin does not reopen it.
         val reconfigureActive = joined && reconfiguring && membership != null
@@ -181,13 +180,23 @@ fun StatusScreen(
             }
         }
 
-        // The joined-layer action cluster: settings · share · leave. Settings is suppressed during a
-        // pending switch (a reconfigure must not race the switch's config write) and needs a known
-        // membership; sharing needs no photo access, and leave always shows. Hidden while the reconfigure
-        // surface is open (it pins its own Save/Cancel). Loading and the create layer show none.
+        // The joined-layer action cluster: settings · share · leave. Settings needs a known membership;
+        // sharing needs no photo access, and leave always shows. Hidden while the reconfigure surface is
+        // open (it pins its own Save/Cancel). Loading and the create layer show none.
+        //
+        // Settings is deliberately NOT suppressed while a `pendingSwitch` is carried, though it once was.
+        // The race that justified suppressing it — a reconfigure landing across a switch's config write —
+        // is already prevented downstream by `ReconfigureEvent`'s own `eventId` guard (a surface opened for
+        // a different membership persists nothing) and by the `LaunchedEffect(joined)` above, which closes
+        // the surface the moment a config clears. It was inconsistent besides: share hands out an invite
+        // URL from the same about-to-be-replaced config and leave ends the very membership a switch ends,
+        // and neither was ever suppressed. And it cost more than it bought — a `pendingSwitch` is carried
+        // for the whole of a JOIN's own commit too (the commit holds a pending join for the event being
+        // joined, which is not a switch), so this gear vanished from the joined screen for as long as
+        // provisioning took: the reported symptom in `SNAPSYNC-26`.
         val bottomActions: (@Composable () -> Unit)? = if (joined && !reconfigureActive) {
             {
-                if (!pendingSwitch && membership != null) {
+                if (membership != null) {
                     SettingsButton(description = "Event settings", onClick = { reconfiguring = true })
                 }
                 if (inviteUrl != null) {
@@ -211,11 +220,13 @@ fun StatusScreen(
             // Hidden, and only where there is a channel to send to.
             onTitleDoubleTap = onSendDiagnostics?.let { { reportingBug = true } },
             // The rename pen, beside the heading — so only where a heading renders, which is the joined
-            // layer outside the reconfigure surface. Suppressed during a pending switch for the same
-            // reason the settings gear is: a rename must not race the switch's config write. Unlike the
-            // hidden double-tap above, this is a real control and appears in the accessibility tree.
+            // layer outside the reconfigure surface. Unlike the hidden double-tap above, this is a real
+            // control and appears in the accessibility tree. Not suppressed during a pending switch, for
+            // the same reasons the settings gear is not (see the action cluster above): `RenameEvent`
+            // guards the `eventId` itself, and suppressing here also hid the pen for the whole of a join's
+            // own commit.
             onEditHeading =
-                if (joined && !reconfigureActive && !pendingSwitch && membership != null) {
+                if (joined && !reconfigureActive && membership != null) {
                     { renaming = true }
                 } else {
                     null

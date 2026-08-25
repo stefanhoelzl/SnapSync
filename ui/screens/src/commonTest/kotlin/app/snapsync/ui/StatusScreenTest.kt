@@ -559,8 +559,10 @@ class StatusScreenTest {
     }
 
     @Test
-    fun `the rename pen is suppressed during a pending switch`() = runComposeUiTest {
-        // Same reason the settings gear is: a rename must not race the switch's config write.
+    fun `the rename pen stays offered while a pending switch is carried`() = runComposeUiTest {
+        // It used to be suppressed here. `RenameEvent` guards the `eventId` itself, so a rename landing
+        // across a switch renames nothing; hiding the control bought nothing, and it cost the pen for the
+        // whole of every join's commit, which carries a pending join for the event being joined.
         setContent {
             StatusScreen(
                 UiState.Joined(
@@ -580,7 +582,7 @@ class StatusScreenTest {
                 cutoff = fixedCutoff(),
             )
         }
-        onNodeWithContentDescription("Rename event").assertDoesNotExist()
+        onNodeWithContentDescription("Rename event").assertExists()
     }
 
     @Test
@@ -743,7 +745,8 @@ class StatusScreenTest {
     }
 
     @Test
-    fun `the settings action is suppressed during a pending switch`() = runComposeUiTest {
+    fun `the settings action stays offered while a pending switch is carried`() = runComposeUiTest {
+        // The mirror of the rename pen above, retired for the same reason.
         setContent {
             StatusScreen(
                 UiState.Joined(
@@ -762,7 +765,43 @@ class StatusScreenTest {
                 cutoff = fixedCutoff(),
             )
         }
-        onNodeWithContentDescription("Event settings").assertDoesNotExist()
+        onNodeWithContentDescription("Event settings").assertExists()
+    }
+
+    /**
+     * The exact shape reported in `SNAPSYNC-26`. A join's own commit carries a pending join for the event
+     * being joined, so the reduction hands the screen a `Joined` with a `pendingSwitch` for the SAME event,
+     * in the `Committing` phase, for as long as provisioning takes (3.26 s in the reported log).
+     * `SwitchDialog` renders nothing for `Committing`, so the only thing that state ever changed was these
+     * two controls — which is the whole of the reported symptom.
+     */
+    @Test
+    fun `a join's own commit leaves the heading and cluster controls in place`() = runComposeUiTest {
+        setContent {
+            StatusScreen(
+                UiState.Joined(
+                    SyncHealth.InSync,
+                    PendingSwitch(
+                        MEMBERSHIP.eventId,
+                        JoinPhase.Committing(
+                            "Anna's Birthday",
+                            eventStart("2026-07-06T00:00:00Z"),
+                            eventEnd("2026-07-16T00:00:00Z"),
+                            deletesAt("2026-08-05T00:00:00Z"),
+                        ),
+                    ),
+                ),
+                membership = MEMBERSHIP,
+                eventName = "Anna's Birthday",
+                inviteUrl = "https://snapsync.stho.net/join#v=3&d=x",
+                cutoff = fixedCutoff(),
+            )
+        }
+        onNodeWithContentDescription("Event settings").assertExists()
+        onNodeWithContentDescription("Rename event").assertExists()
+        // The two neighbours that were never suppressed, asserted alongside so the row is checked whole.
+        onNodeWithContentDescription("Share invite link").assertExists()
+        onNodeWithContentDescription("Leave event").assertExists()
     }
 
     @Test
