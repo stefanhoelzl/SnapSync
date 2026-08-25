@@ -66,12 +66,12 @@ these outcomes:
   body), with the confirm action (Join) enabled. The loaded `startsAt` SHALL be the cutoff row's
   **default** *and* its **floor** (see capability `photo-selection-policy`). `startsAt` is **always present**
   on a 200 — the backend synthesizes it from `createdAt` for markers written before it existed
-  (capability `event-creation`) — so the loaded phase SHALL carry it non-null and there is **no**
+  (capability `api-endpoints`) — so the loaded phase SHALL carry it non-null and there is **no**
   seed-from-`createdAt` fallback and **no** seed-to-now fallback;
 - **200 without a name, or whose name is blank** → treated as a **failed** phase with a **Retry** action
   — a loaded event SHALL
   always carry a name (the backend enforces name-required on create, trimming and rejecting an empty or
-  whitespace-only value, capability `event-creation`), so a
+  whitespace-only value, capability `api-endpoints`), so a
   nameless or blank-named 200 is a malformed/transient response, never a loaded phase with a null or
   blank name. This is the **only** guard against a blank name entering the persisted membership: the
   membership type requires the name to be present, not to be non-blank (capability `event-link`), and no
@@ -802,7 +802,7 @@ informs the cutoff choice, and confirming still crosses the chosen cutoff and de
 ### Requirement: The join surface states how long the event's photos are kept
 
 The join surface's **loaded** phase SHALL carry the event's **`deletesAt`**, read from the details body
-(capability `event-creation`), and SHALL present, before the confirm action, both:
+(capability `api-endpoints`), and SHALL present, before the confirm action, both:
 
 - the **deadline** — the loaded `deletesAt`, rendered as a date, stating when the event's shared photos
   are removed; and

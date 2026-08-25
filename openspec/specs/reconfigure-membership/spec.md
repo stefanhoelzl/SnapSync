@@ -294,7 +294,7 @@ change reaches it. A narrowing change stops future receipt and removes the listi
 from a member who already holds the photo.
 
 **Leaving the event SHALL NOT retract.** A departing member's manifest is preserved as the departed
-manifest (capability `event-leave-endpoint`), so their contributions remain available to the remaining
+manifest (capability `api-endpoints`), so their contributions remain available to the remaining
 members. Narrowing says "this is what I share now"; leaving says "I am done", and the second is not a
 retraction request. An option to remove a manifest on leave is a possible future addition and is not part of
 this behaviour.

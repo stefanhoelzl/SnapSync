@@ -3,7 +3,7 @@
 ## Purpose
 
 The per-event device manifest: one mutable JSON object per (event, device) at
-`/events/<eventId>/devices/<deviceId>.json` that projects all of a device's uploaded, not-deleted
+published to `PUT /api/v1/events/<eventId>/devices/<deviceId>` that projects all of a device's uploaded, not-deleted
 resources — original-only, each typed by a generic `role` — into a single full-state snapshot. It
 supersedes the per-asset manifest: the upload extension is its sole writer, PUTting it synchronously
 in-cycle as a per-event projection of the upload ledger's `COMPLETED` rows (capability `sync-ledger`),
@@ -12,22 +12,27 @@ exists as forward-preparation for restore and event-wide union.
 ## Requirements
 ### Requirement: Per-event device manifest document
 
-For each (event, device) pair it backs up, the producer SHALL maintain exactly one device manifest
-object at the key `/events/<eventId>/devices/<deviceId>.json` with `Content-Type: application/json`. The
-manifest SHALL be a UTF-8 JSON object carrying `deviceId` (the stable per-install device id) and
+For each (event, device) pair it backs up, the producer SHALL publish exactly one device manifest **as the
+request body** of `PUT /api/v1/events/<eventId>/devices/<deviceId>` (capability `api-endpoints`). The
+manifest is a **wire format**, not a stored object: the backend records it relationally (capability
+`database`) and writes no manifest object to storage.
+
+The manifest SHALL be a UTF-8 JSON object carrying `deviceId` (the stable per-install device id) and
 `assets` (an array). Each `assets` element SHALL carry `assetId` (the device-local asset identity),
-`creationDate` (the asset's capture timestamp as an ISO-8601 string), and `resources` (a non-empty
-array). Each `resources` element SHALL carry `role`, `contentType` (the resource's MIME type), `key`
-(the resource's object name — the byte-store key under its device partition, capability
-`bunny-upload-endpoint`, the fetch handle), and `filename` (the resource's human filename as captured). The field names `key` and
-`filename` are shared verbatim with the event-wide union read (`bunny-list-endpoint`), so the union is
-a straight projection of the manifest.
+`creationDate` (the asset's capture timestamp as an ISO-8601 string), and `resources` (a non-empty array).
+Each `resources` element SHALL carry `role`, `contentType` (the resource's MIME type), `key` (the
+resource's object name — the byte-store key under its device partition, the fetch handle), and `filename`
+(the resource's human filename as captured). The field names `key` and `filename` are shared verbatim with
+the event-wide union read, so the union projects them unchanged.
+
+The document shape is **unchanged by the move to a database**. That is deliberate: it is what lets the
+backend flip its storage without a client change, and be rolled back against a shipped app.
 
 #### Scenario: One manifest per event and device
 
 - **WHEN** a device backs up assets for event `E`
-- **THEN** exactly one object `/events/E/devices/<deviceId>.json` exists for that device, with
-  `Content-Type: application/json`, carrying `deviceId` and an `assets` array
+- **THEN** it publishes exactly one manifest for `(E, deviceId)` via the manifest route, carrying
+  `deviceId` and an `assets` array, and no manifest object is written to storage
 
 #### Scenario: Fields present on each entry
 
@@ -83,9 +88,12 @@ An **empty** projection SHALL be a valid manifest and SHALL be published. A memb
 nothing — because its direction excludes upload, or because its range admits none of its uploaded assets —
 publishes an empty document rather than leaving a stale one in place.
 
-Because the manifest lists only `COMPLETED` resources, the event union's byte-presence check (capability
-`bunny-list-endpoint`) is not the mechanism that hides not-yet-uploaded assets; it is defense-in-depth
-against a `COMPLETED`-but-absent byte.
+Because the manifest lists only `COMPLETED` resources, the event union's completeness check (capability
+`api-endpoints`) is not the mechanism that hides not-yet-uploaded assets; it is defense-in-depth against a
+`COMPLETED`-but-unrecorded resource. Under the relational store that check reads the resource row's
+`uploaded` flag rather than a storage listing, so the two witnesses are now two writes rather than two
+systems; the guarantee is unchanged, because the sweep still protects a referenced byte from collection
+(capability `scheduled-cleanup`).
 
 #### Scenario: The manifest lists completed rows in the event window
 
@@ -172,23 +180,35 @@ only from `COMPLETED` rows is what forecloses that.
 
 ### Requirement: Sole writer, synchronous in-cycle upload
 
-The upload extension SHALL be the **sole** writer of the *projected* device manifest. It SHALL PUT the
+The upload extension SHALL be the **sole** writer of the *projected* device manifest. It SHALL publish the
 manifest **synchronously within the upload cycle** — no background `URLSession` and no app involvement.
-The extension MAY skip the PUT when the projected snapshot is unchanged since the last successful write.
-A kill mid-PUT SHALL be tolerated: the partial write is lost and recomputed on the next cycle (benign,
-because the manifest is write-only in v1 and converges).
+The extension MAY skip the publish when the projected snapshot is unchanged since the last **successful**
+write. A kill mid-publish SHALL be tolerated: the write is atomic at the backend (capability `database`),
+so a killed cycle leaves the previous state intact and the projection is recomputed next cycle.
 
-Enrollment (capability `join-event`) writes a **register-only empty** manifest to the same resource, so
-the skip-if-unchanged record is a belief about the server that a second writer can falsify. Any
-successful register-only write SHALL therefore **invalidate** that record, so the next cycle re-PUTs the
-projection rather than skipping it. A **failed** register-only write SHALL leave the record intact — the
-server was not changed, so the belief is still true.
+**The word "successful" is load-bearing beyond this capability.** The byte upload route records
+`uploaded = 1` best-effort and relies on the next manifest publish to repair a lost record (capability
+`api-endpoints`). If an unchanged projection could be skipped after a *failed* publish, a doubly-failed
+write would strand `uploaded` at `0` while the device believed it had published — an uploaded photo
+invisible to every other member, with no error anywhere. These two requirements SHALL NOT be edited
+independently.
 
-#### Scenario: Synchronous PUT with skip-if-unchanged
+Enrollment (capability `join-event`) writes a **register-only empty** manifest, so the skip-if-unchanged
+record is a belief about the server that a second writer can falsify. Any successful register-only write
+SHALL therefore **invalidate** that record, so the next cycle re-publishes the projection rather than
+skipping it. A **failed** register-only write SHALL leave the record intact — the server was not changed,
+so the belief is still true.
+
+#### Scenario: Synchronous publish with skip-if-unchanged
 
 - **WHEN** the upload cycle has produced the projected snapshot
-- **THEN** the extension PUTs the manifest synchronously in-cycle, or skips the PUT when the snapshot is
+- **THEN** the extension publishes the manifest synchronously in-cycle, or skips it when the snapshot is
   unchanged since the last successful write
+
+#### Scenario: A failed publish is retried rather than skipped
+
+- **WHEN** a manifest publish fails and the next cycle's projection is unchanged
+- **THEN** the next cycle publishes again rather than skipping, because the last write was not successful
 
 #### Scenario: Re-joining an event does not empty this device's manifest
 
@@ -197,15 +217,16 @@ server was not changed, so the belief is still true.
 - **THEN** the enrollment's empty manifest is overwritten by the projection on the next cycle, so the
   event union still lists this device's uploaded photos
 
-#### Scenario: A failed enrollment does not force a redundant PUT
+#### Scenario: A failed enrollment does not force a redundant publish
 
-- **WHEN** a register-only enrollment write is not confirmed by the edge
-- **THEN** the skip-if-unchanged record is unchanged, and an unchanged projection still skips its PUT
+- **WHEN** a register-only enrollment write is not confirmed by the backend
+- **THEN** the skip-if-unchanged record is unchanged, and an unchanged projection still skips its publish
 
-#### Scenario: Kill mid-PUT is caught next cycle
+#### Scenario: Kill mid-publish leaves the previous state intact
 
-- **WHEN** the extension is killed during a manifest PUT
-- **THEN** the partial write is discarded and the manifest is recomputed and rewritten on the next cycle
+- **WHEN** the extension is killed during a manifest publish
+- **THEN** the backend applies none of that publish, and the manifest is recomputed and re-published on the
+  next cycle
 
 ### Requirement: Deletion-aware manifest
 
@@ -253,40 +274,6 @@ listing), and the manifest SHALL exist solely as forward-preparation for restore
 - **THEN** it reads the gallery enumeration seam and the per-device file listing, and never reads the
   device manifest
 
-### Requirement: Departed manifest and last-write-wins membership
-
-A device's per-event membership SHALL be represented by two possible sibling objects under
-`events/<eventId>/devices/`: the **active** manifest `<deviceId>.json` and the **departed** manifest
-`<deviceId>.left.json`. Leaving renames active → departed (see `event-leave-endpoint`); rejoining writes
-a fresh active `<deviceId>.json`. Both carry the same manifest document shape; the departed sibling is a
-snapshot of the device's contributions at leave time, retained so the event union can still serve them.
-Membership state SHALL be resolved **last-write-wins** by the two siblings' last-modified times:
-
-- `active(device)` = `<deviceId>.json` present AND (`<deviceId>.left.json` absent OR
-  `<deviceId>.json` is newer than `<deviceId>.left.json`).
-- `departed(device)` = `<deviceId>.left.json` present AND NOT `active(device)`.
-
-An exact-tie of last-modified times (not producible in practice — the two writes are on different keys
-separated by a human gesture) SHALL resolve to `active`. Consumers that enumerate membership
-(`bunny-list-endpoint` union, `event-notify-endpoint` fan-out, the `event-leave-endpoint` reap) SHALL
-apply this rule over the last-modified time already present in the directory `LIST`, requiring no
-per-object follow-up read. A device SHALL NOT be counted twice when both siblings are present.
-
-#### Scenario: Newer departed sibling wins after a leave
-
-- **WHEN** both `<deviceId>.json` and `<deviceId>.left.json` exist and the `.left.json` is newer
-- **THEN** the device resolves to `departed` (its photos stay in the union; it is not an active member)
-
-#### Scenario: Newer active sibling wins after a rejoin
-
-- **WHEN** both siblings exist and the `<deviceId>.json` is newer (a rejoin superseding a prior leave)
-- **THEN** the device resolves to `active` (it is an active member and is notified)
-
-#### Scenario: Membership resolved from the directory listing alone
-
-- **WHEN** a consumer enumerates `events/<eventId>/devices/`
-- **THEN** it resolves each device's active/departed state from the two siblings' last-modified times in that one listing, with no extra per-object read
-
 ### Requirement: The manifest is published only from a ledger believed complete
 
 The cycle SHALL publish a manifest only on a path where it believes the ledger settled for that event, and
@@ -319,3 +306,4 @@ deliberate withdrawal.
 - **WHEN** a cycle suppresses the manifest write, and another cycle publishes an empty manifest
 - **THEN** the two are recorded distinctly in the diagnostic log, so "could not tell" is never read as
   "shares nothing"
+

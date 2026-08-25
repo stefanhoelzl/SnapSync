@@ -51,7 +51,7 @@ completeness computation of its own.
 
 Selected resources SHALL be downloaded via a background `URLSession` (so transfers continue while the
 app is suspended), fetching each resource **directly** from the presigned S3 URL carried in its union
-`resource.url` (capability `bunny-list-endpoint`) — i.e. straight from bunny's S3 endpoint, not through
+`resource.url` (capability `api-endpoints`) — i.e. straight from bunny's S3 endpoint, not through
 the backend. The session SHALL allow **both Wi-Fi and cellular** (not Wi-Fi-only) and SHALL NOT be
 discretionary, so downloads make progress on mobile networks too, with a bounded number of in-flight
 tasks (enqueue more as tasks complete). A transfer failure SHALL leave the resource pending for retry (no

@@ -4,8 +4,8 @@
 
 The stable per-install device id: a UUID minted once and persisted in the shared Keychain access
 group, read identically by the app process and the upload extension. It is the partition segment for
-the device-global byte store (capability `bunny-upload-endpoint`) and the key for the per-event device
-manifest (`/events/<eventId>/devices/<deviceId>.json`). Exposed to consumers as a plain `() -> String`
+the device-global byte store (capability `api-endpoints`) and the key for the per-event device
+manifest (the `(eventId, deviceId)` membership it is published under). Exposed to consumers as a plain `() -> String`
 supplier (tests inject a lambda), backed by `KeychainDeviceIdentity` in `:domain:keychain` and wired
 only in the iOS composition roots.
 ## Requirements

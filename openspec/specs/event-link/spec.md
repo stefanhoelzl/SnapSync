@@ -212,7 +212,7 @@ defaults, and a field whose absence would silently move a bound or a scope does 
 - `name` is the human-readable event name — **required, with no default**. A persisted payload lacking
   the key SHALL fail to decode. It SHALL NOT default to the empty string: the join gate only provisions
   from a loaded phase that carries a name (capability `join-event`) and the backend enforces
-  name-required on create (capability `event-creation`), so a nameless membership is not a representable
+  name-required on create (capability `api-endpoints`), so a nameless membership is not a representable
   state, and a default that can never fire is an invitation for each reader to decide separately what an
   empty name means. Requiring it also makes `name` a required **constructor** parameter, so every present
   and future construction site must supply one under compiler enforcement. Note that this requires the
@@ -371,7 +371,7 @@ and `createdAt` and provisions on confirm — the create path itself SHALL save 
 paths the fetched `createdAt` SHALL seed the default cutoff (capability `photo-selection-policy`). The event
 `name` is **required and non-null**: the join gate treats a details response lacking a name as a
 retryable failure, never a loaded phase, so a provisioned `EventConfig` always carries a real name (the
-backend enforces name-required on create, capability `event-creation`). The name SHALL be refreshed by
+backend enforces name-required on create, capability `api-endpoints`). The name SHALL be refreshed by
 re-fetching `GET /events/:id` on **foreground entry**. A failed or unreachable fetch SHALL leave the
 last-known name unchanged and SHALL NOT affect syncing.
 

@@ -7,7 +7,7 @@ a host who mistyped it — or named an event before it took its real shape — w
 on every member's status screen and on the web download page for the event's whole lifetime.
 
 The name is the one marker field whose immutability bought nothing. The write-once rule on the event
-marker (`event-creation`) names its threats precisely: a mutation route would let anyone holding the
+marker (`api-endpoints`) names its threats precisely: a mutation route would let anyone holding the
 event id "retroactively widen every future joiner's default scope — or extend an event's own limits". A
 name does neither. It is cosmetic to the upload gate, cosmetic to the extension, and load-bearing for
 display alone — so it, and only it, became writable.
@@ -36,7 +36,7 @@ the backend marker, and other members receive it through the existing membership
 
 Renaming SHALL require no ownership, role, or creator match. Possession of the event id already grants
 uploading into the event and downloading every photo in it, so a rename is strictly weaker than what a
-holder already has; the backend route's device-token gate (capability `event-creation`) is the only
+holder already has; the backend route's device-token gate (capability `api-endpoints`) is the only
 authorization.
 
 The rename SHALL change **nothing else**: not the `eventId`, the capture-date range, the direction, the

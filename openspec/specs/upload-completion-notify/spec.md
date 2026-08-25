@@ -3,7 +3,7 @@
 ## Purpose
 
 The trigger that closes the sharing loop: after an uploading device drains a cycle in which at least one
-upload completed, it pokes `event-notify-endpoint`, which wakes every other member device to pull the new
+upload completed, it pokes `api-endpoints`, which wakes every other member device to pull the new
 photos.
 
 Without it the push pipe exists but nothing calls it, so a co-contributor's photos are discovered only when
@@ -83,7 +83,7 @@ no signing — reusing the shared injected HTTP client, and SHALL treat any 2xx 
 outcome as an absorbed failure.
 
 The request carries the device's App Attest token, because it rides the shared client and the endpoint
-requires it (capabilities `device-attestation`, `event-notify-endpoint`). The notifier does not attach it
+requires it (capabilities `device-attestation`, `api-endpoints`). The notifier does not attach it
 itself — the shared client appends `Authorization: Bearer <token>` to every request through it — so a
 notify built here is authorized by construction rather than by the event id.
 

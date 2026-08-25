@@ -403,7 +403,7 @@ the app-driven tier, which has no OS registration record to re-create (see `ios-
 
 On this tier the re-provision's `start()` SHALL re-register the extension (the disable→enable toggle).
 On its next cycle the extension reconciles against the per-device file listing (capability
-`bunny-list-endpoint`, see `event-rejoin-reconciliation`): it **`resetTo`s** (atomic clear-and-seed)
+`api-endpoints`, see `event-rejoin-reconciliation`): it **`resetTo`s** (atomic clear-and-seed)
 the ledger to one already-uploaded row per stored file and **clears the discovery cursor** (forcing a
 full re-enumeration). The device-global listing re-seeds the same files as already-uploaded, so
 **nothing already stored re-uploads**, while the clear drops stale/phantom rows and the cursor clear
@@ -428,7 +428,7 @@ ledger they leave intact is what knows the work is already done.
 
 #### Scenario: Already-stored photos do not re-upload on a switch
 - **WHEN** the device switches to an event whose photos are already present in its device
-  byte-partition (capability `bunny-upload-endpoint`)
+  byte-partition (capability `api-endpoints`)
 - **THEN** the clear-and-seed reconcile re-seeds them as already-uploaded and the extension creates no
   new upload jobs for them
 
