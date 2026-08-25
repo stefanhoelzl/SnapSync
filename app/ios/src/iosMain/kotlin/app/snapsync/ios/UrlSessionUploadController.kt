@@ -28,7 +28,8 @@ import app.snapsync.ports.CycleResult
 import app.snapsync.feature.upload.UploadCycle
 import app.snapsync.ports.SuppressionSource
 import app.snapsync.feature.upload.UploadPushReceiver
-import app.snapsync.feature.upload.UploadProducer
+import app.snapsync.feature.upload.UploadMechanismRuntime
+import app.snapsync.model.PermissionStatus
 import app.snapsync.logging.IosLogScope
 import app.snapsync.logging.SentryDiagnosticsReporter
 import app.snapsync.logging.invocation
@@ -107,7 +108,10 @@ class UrlSessionUploadController(
     // *"so that the app can take a new snapshot of your user interface"*, so this is platform UI by the
     // platform's own account, which is exactly what that lane is reserved for.
     private val uiLane: CoroutineContext,
-) : UploadProducer {
+    // Current photo access. Only ever FORWARDED — the read discipline it feeds is decided in the tested
+    // `UploadPushReceiver`, never branched on here, because this module is wiring-only by project rule.
+    private val permission: () -> PermissionStatus,
+) : UploadMechanismRuntime {
     companion object {
         const val SESSION_IDENTIFIER = "app.snapsync.upload.session"
         const val HEARTBEAT_TASK_IDENTIFIER = "app.snapsync.upload.heartbeat"
@@ -149,6 +153,7 @@ class UrlSessionUploadController(
         UploadPushReceiver(
             activeEventId = { configSource.config.value?.eventId },
             pump = pump,
+            permission = permission,
         )
     }
 
@@ -266,29 +271,30 @@ class UrlSessionUploadController(
      * OS (law "A trigger flow never outlives its own run"). A `scope.launch` here made that report a
      * statement about work that had not started.
      */
-    suspend fun onForeground() {
+    override suspend fun onForeground() {
         log.invocation("url-session.onForeground") { pump.onForeground() }
     }
 
     /** The photo selection changed under a partial grant — pump a cycle over the new snapshot. */
-    suspend fun onSelectionChanged() {
+    override suspend fun onSelectionChanged() {
         log.invocation("url-session.onSelectionChanged") { pump.onSelectionChanged() }
     }
 
-    /** The `BGProcessingTask` heartbeat handler fired — top up and re-arm. Call [done] when finished. */
-    fun onBackgroundTask(done: () -> Unit) {
-        scope.launch {
-            // Already awaited its work before this change (the one receipt in the app that was correct);
-            // routed through [OsReceipt] anyway so every OS handler in the app is released by the same
-            // bounded, release-exactly-once path rather than by four hand-written `finally`s.
-            OsReceipt(
-                entryPoint = "url-session.onBackgroundTask",
-                deadline = ReceiptDeadlines.BACKGROUND_TASK,
-                release = done,
-            ).heldFor {
-                log.invocation("url-session.onBackgroundTask") { pump.onBackgroundTask() }
-            }
-        }
+    /**
+     * The `BGProcessingTask` heartbeat fired — top up and re-arm.
+     *
+     * It **holds no OS completion handler**. The entry point that received one holds the `OsReceipt`
+     * across this call, for the deadline named for that wake (`ios-app-shell`), so a mechanism cannot
+     * fail to release one — it never has one to release. This returns when the drain it triggered has
+     * ended, which is what lets the receipt be held for real work rather than for a queued intention.
+     */
+    override suspend fun onBackgroundTask() {
+        log.invocation("url-session.onBackgroundTask") { pump.onBackgroundTask() }
+    }
+
+    /** A silent push named this device's active event. The guards are the receiver's, and tested there. */
+    override suspend fun onSilentPush(eventId: String) {
+        pushReceiver.onSilentPush(eventId)
     }
 
     /** The OS relaunched us to finish background transfers — hold the completion, let the session drain. */

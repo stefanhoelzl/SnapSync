@@ -6,7 +6,7 @@ import app.snapsync.model.RawAsset
 import app.snapsync.ports.AssetRef
 import app.snapsync.ports.DownloadStore
 import app.snapsync.ports.PhotoAccessStatusSource
-import app.snapsync.feature.upload.UploadProducer
+import app.snapsync.feature.upload.UploadMechanismRuntime
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -77,7 +77,15 @@ class RecordingDownloadStore(private val inner: DownloadStore) : DownloadStore b
  * the world (spec `full-stack-harness`), and a cycle happens only when the operator invokes it. The
  * composed `UploadArm` still drives the real lifecycle verbs against this on join/leave/grant.
  */
-class OperatorUploadProducer : UploadProducer {
+class OperatorUploadProducer : UploadMechanismRuntime {
     override suspend fun start() {}
     override suspend fun stop() {}
+
+    // The operator IS the trigger in the world harness: cycles happen when invoked by hand from the
+    // inspector, never off an OS callback, so every trigger answer here is "nothing" — stated rather
+    // than inherited, exactly as a device mechanism must state its own (`upload-lifecycle`).
+    override suspend fun onForeground() {}
+    override suspend fun onSilentPush(eventId: String) {}
+    override suspend fun onBackgroundTask() {}
+    override suspend fun onSelectionChanged() {}
 }

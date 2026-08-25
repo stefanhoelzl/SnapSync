@@ -92,12 +92,26 @@ class CompositionSeamTest {
                 "over the Keychain port. A thunk so the resolve happens at first use, never while " +
                 "assembling a locked background launch, where the Keychain read would throw out of the " +
                 "composition",
-            "uploadProducer" to
-                "hands back core machinery (a feature/upload type). A thunk so only the resolved tier's " +
-                "mechanism is ever constructed (the pure CompositionMode switch)",
-            "osUploadProducer" to
-                "the same, and `null` where that tier was not composed — the nullability IS the tier " +
-                "answer, so it must be a call rather than a value the bundle carries",
+            "appDrivenUpload" to
+                "hands back core machinery (a feature/upload type). A thunk so the mechanism is " +
+                "constructed at first use rather than while the graph is being assembled",
+            "osDrivenUpload" to
+                "the same, and `null` where this OS does not carry that mechanism at all — the " +
+                "nullability IS that OS answer, and it must be a call rather than a value the bundle " +
+                "carries so the mechanism is never constructed where its registration selector does " +
+                "not exist",
+            "relinquishOsRegistration" to
+                "a platform effect: it deregisters the OS's upload-job configuration record. " +
+                "Deliberately NARROWER than that mechanism's own `stop()`, whose ledger clear and " +
+                "cursor reset would wipe rows the incoming mechanism reconciles precisely — which is " +
+                "why it is a lambda bound at the composition site and not a second seam verb",
+            "uploadMechanismOverride" to
+                "reads a development pin on the resolved mechanism, re-read per resolution so the pin " +
+                "can change without rebuilding the graph. `null` in a production build not by " +
+                "convention but by CONSTRUCTION: the only writer of the root thunk behind it is the " +
+                "control channel's boot hook, whose source is absent from a build made without the " +
+                "channel's build property — so a shipped binary has nothing able to assign it, and the " +
+                "mechanism it runs stays a function of the device alone",
             // The lambda carries the tier's FAILURE POSTURE, which a shared port would erase: the app
             // admits on doubt, the extension lets a throw fail the cycle (stated at the field).
             "albumExcludedAssetIds" to
@@ -125,19 +139,10 @@ class CompositionSeamTest {
                 "the refresh VERB, deliberately (see readGate in UploadCore.kt: `reload()` is a " +
                 "read-model side effect, not gate logic, and the spec names the gate's inputs " +
                 "exhaustively). Give it a port the moment it grows a second reason to exist",
-            "pumpForeground" to
-                "runs one app-driven UploadCycle — the shared uploadCore assembly, i.e. core machinery " +
-                "reached through the tier controller; `{}` on iOS >=26.1, where the OS owns scheduling",
             "scheduleBackstop" to
                 "submits a BGProcessingTaskRequest: ARRANGING TO BE CALLED BACK, which is where this " +
                 "gate's scope stops (see the blind spot above). Nothing is read out and no value comes " +
                 "back into the core — the work happens later, in a flow the OS triggers",
-            "uploadSilentPush" to
-                "returns the upload arm's own receiver, or `null` on the tier that has none; a thunk " +
-                "because the tier controller depends on this graph and so cannot resolve at composition",
-            "pumpSelectionChanged" to
-                "the same tier controller as pumpForeground, on the partial-grant path — read-free by " +
-                "construction (its discovery consumes the selection snapshot, never a library walk)",
             "registerPush" to
                 "re-PUTs the token the OS already delivered (an in-memory PushTokenSource read) through " +
                 "PushRegistration over the PushHttpClient port — both ends are ports",

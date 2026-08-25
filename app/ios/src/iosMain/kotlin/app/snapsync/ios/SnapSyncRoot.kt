@@ -2,9 +2,7 @@ package app.snapsync.ios
 
 import app.snapsync.model.EventConfig
 import app.snapsync.model.SceneMode
-import app.snapsync.model.UploadTier
 import app.snapsync.model.appVisibilityFrom
-import app.snapsync.model.resolveComposition
 import app.snapsync.model.resolveScene
 import app.snapsync.compose.AppCore
 import app.snapsync.compose.AppPorts
@@ -52,6 +50,9 @@ import app.snapsync.download.PhotoKitAssetPresence
 import app.snapsync.share.IosShareSheet
 import app.snapsync.downloadstore.SqlDelightDownloadStore
 import app.snapsync.downloadstore.iosDownloadStore
+import app.snapsync.feature.upload.UploadMechanismRuntime
+import app.snapsync.model.UploadMechanism
+import app.snapsync.model.resolveUploadMechanism
 import app.snapsync.ports.OsReceipt
 import app.snapsync.ports.ReceiptDeadlines
 import app.snapsync.ports.LedgerStore
@@ -178,46 +179,49 @@ object SnapSyncRoot {
     // the resolved tier on `/device/state`, and reading the value the app actually resolved is the only
     // way to report it without a second resolution that could disagree. `internal` is module-wide and is
     // not exported to the `SnapSyncKit` ObjC header.
-    internal val tier: UploadTier = resolveComposition(backgroundUploadSupported())
+    /**
+     * Whether this OS carries the OS-driven upload mechanism at all (iOS ≥26.1).
+     *
+     * This is the whole of what the shell still decides about uploads. It is **presence**, not behaviour:
+     * which mechanism *runs* is resolved from this fact plus the current permission plus any development
+     * override, by the pure `resolveUploadMechanism` in `:domain model/`, re-evaluated on every transition
+     * — because the OS never invokes the extension under a partial grant, so the mechanism genuinely
+     * changes when permission does, and a once-per-process answer could not say that.
+     */
+    internal val osSupportsOsDrivenUpload: Boolean = backgroundUploadSupported()
 
     /**
-     * **THE one switch on the resolved tier.** Everything tier-dependent — every OS entry point's
-     * behavior and the upload mechanism thunks — is decided here, once; no entry point re-checks a flag.
+     * Where a development pin on the upload mechanism comes from (capability `upload-lifecycle`).
      *
-     * There is no second arm for a forged composition any more. Forge is its own binary target that does
-     * not link this module, so a process rendering a forged frame cannot reach this switch, this graph, or
-     * any entry point on it. That inertness used to be ~15 no-op `Shell` members, each of which had to
-     * stay inert correctly; it is now a property of which binary is running.
+     * **A shipped build cannot carry one, and that is structural rather than probable.** The only writer
+     * is the control channel's boot hook, whose source is not compiled into a build made without
+     * `-Psnapsync.rig=true` — so in a production binary nothing can assign this and it stays the inert
+     * default forever. The mechanism a shipped process runs is a function of the device it runs on.
+     *
+     * It is a **thunk, replaced once at boot**, not a value: the arm re-resolves on every transition and
+     * reads through it each time, so the channel can change the pin live without touching this field
+     * again, and without the graph being rebuilt. It is deliberately assignable *before* `app` is forced —
+     * the hook must not force the graph on a cold background wake (`ios-app-shell`).
+     *
+     * This replaced a design where production read a planted file from the App Group. That version could
+     * be handed an override it never established — the container survives an application update, measured
+     * on device — and needed a process-scoping rule to refuse one. Here the hazard cannot arise: the code
+     * that writes this does not exist in the binary that must not honour it.
      */
-    private val shell: Shell = when (tier) {
-        // OS-driven PhotoKit tier (iOS ≥26.1): the OS owns upload scheduling — no foreground
-        // pump, no upload push receiver (only the download arm wakes), no app-driven heartbeat.
-        // BOTH producers are composed — the OS owns upload scheduling under a full grant, and the
-        // app-driven mechanism serves a partial one (the OS never invokes the extension there —
-        // measured; `ios-photokit-upload`). Which producer RUNS is the tested arm's permission
-        // decision, never this switch's.
-        UploadTier.PHOTOKIT -> LiveShell(
-            uploadProducer = { urlSessionUpload },
-            osUploadProducer = { photoKitProducer },
-            pumpForeground = {},
-            uploadSilentPush = { null },
-            pumpSelectionChanged = { urlSessionUpload.onSelectionChanged() },
-            heartbeat = { onComplete -> onComplete() },
-        )
-        // App-driven URLSession tier (iOS 18–26.0): the app process pumps. Reached by OS VERSION only —
-        // the dev force flag that could also select it is gone, and its absence removes a way to *force*
-        // this tier, not the tier itself.
-        UploadTier.URL_SESSION -> LiveShell(
-            uploadProducer = { urlSessionUpload },
-            // The OS-driven mechanism stays entirely unconstructed on this tier, so nothing here can
-            // register the PhotoKit extension (`upload-lifecycle`).
-            osUploadProducer = { null },
-            pumpForeground = { urlSessionUpload.onForeground() },
-            uploadSilentPush = { urlSessionUpload.pushReceiver::onSilentPush },
-            pumpSelectionChanged = { urlSessionUpload.onSelectionChanged() },
-            heartbeat = { onComplete -> urlSessionUpload.onBackgroundTask(onComplete) },
-        )
-    }
+    internal var uploadMechanismOverrideSource: () -> UploadMechanism? = { null }
+
+    /**
+     * The OS-driven mechanism, composed **only where its API exists**.
+     *
+     * The one remaining switch, and it earns its place: `setUploadJobExtensionEnabled` does not exist
+     * below iOS 26.1, so constructing this object there would put a trapping selector one call away. Below
+     * 26.1 the thunk never touches it, which is what keeps that structural rather than guarded. It decides
+     * nothing else — it does not say which mechanism runs, only which one this OS *has*.
+     */
+    private val osDrivenUploadThunk: () -> UploadMechanismRuntime? =
+        if (osSupportsOsDrivenUpload) ({ photoKitProducer }) else ({ null })
+
+    private val shell: Shell = LiveShell()
 
     /** BGTaskScheduler identifier for the download import-tail backstop — MUST match the Swift host's
      * `register(forTaskWithIdentifier:)` and the Info.plist `BGTaskSchedulerPermittedIdentifiers`. */
@@ -335,7 +339,14 @@ object SnapSyncRoot {
                 // the two log files (this process's own, and the extension's in the App Group) and
                 // the build/OS/device facts. Both are adapter-resolved; the shell only names them.
                 deviceLogSource = IosDeviceLogSource(),
-                diagnosticEnvironment = deviceDiagnosticEnvironment(tier.diagnosticName),
+                // The tier this OS is on — the same OS fact this field has always carried, so a dump
+                // reads as it always did. Which mechanism is RUNNING is a newer, runtime-varying thing
+                // that a value computed once could not tell the truth about; `foregroundParams` reports
+                // that per trigger instead. Written as the resolver under a nominal full grant rather
+                // than a branch, so this module keeps deciding nothing.
+                diagnosticEnvironment = deviceDiagnosticEnvironment(
+                    resolveUploadMechanism(osSupportsOsDrivenUpload, PermissionStatus.GRANTED).diagnosticName,
+                ),
                 configSource = config,
                 configStore = config,
                 photoAccess = permission,
@@ -356,7 +367,6 @@ object SnapSyncRoot {
                 // observes only while LIMITED; each emission is one in-flow read serving N and the
                 // cycle's discovery alike.
                 selectionChanges = selectionSource,
-                pumpSelectionChanged = live.pumpSelectionChanged,
                 ledger = ledgerStore,
                 downloadStore = downloadStore,
                 // Full-access presence for the import guard; composition wraps it so a partial or
@@ -401,10 +411,16 @@ object SnapSyncRoot {
                 attestStore = KeychainAttestStore(),
                 deviceId = { deviceId },
                 clock = SystemClock,
-                // The tier's mechanism, selected ONCE per process by the mode switch above
-                // (capability `upload-lifecycle`): exactly one producer, the other never constructed.
-                uploadProducer = live.uploadProducer,
-                osUploadProducer = live.osUploadProducer,
+                // The mechanisms this OS carries. WHICH one runs is resolution's answer, re-evaluated on
+                // every transition (capability `upload-lifecycle`) — this root supplies only facts.
+                appDrivenUpload = { urlSessionUpload },
+                osDrivenUpload = osDrivenUploadThunk,
+                osSupportsOsDrivenUpload = osSupportsOsDrivenUpload,
+                // Deregistration ONLY — deliberately narrower than the OS-driven mechanism's `stop()`,
+                // whose ledger clear and cursor reset would wipe rows the incoming mechanism reconciles
+                // precisely (`upload-lifecycle`, `RelinquishThenRun`).
+                relinquishOsRegistration = { photoKitProducer.deregister() },
+                uploadMechanismOverride = uploadMechanismOverrideSource,
                 albumManager = albumManager,
                 albumMapStore = albumMapStore,
                 albumExcludedAssetIds = { cutoff -> albumExcludedAssetIds(cutoff) },
@@ -420,7 +436,6 @@ object SnapSyncRoot {
                 // never notify this process's StateFlow, and the reload retains the last good value
                 // on an unreadable read (the pure `configAfterReload` rule).
                 reloadConfig = { config.reload() },
-                pumpForeground = live.pumpForeground,
                 scheduleBackstop = ::scheduleDownloadBackstop,
                 // Re-register the APNs token on join (capability `push-registration`): re-`PUT`s the
                 // current OS-delivered token so a device whose config the nightly sweep collected
@@ -434,7 +449,6 @@ object SnapSyncRoot {
                 },
                 // The upload arm's push receiver on the app-driven tier (a thunk — the tier controller
                 // depends on this graph, so it must resolve lazily); null on iOS ≥26.1.
-                uploadSilentPush = live.uploadSilentPush,
                 log = log,
                 // Drive the shared iOS ambient log context (the process-global the device-log writers
                 // read) so the tier-neutral features' lines carry the triggering entry point's prefix.
@@ -918,6 +932,7 @@ object SnapSyncRoot {
     private val urlSessionUpload: UrlSessionUploadController by lazy {
         UrlSessionUploadController(
             scope, ledgerStore, config,
+            permission = { permission.permission.value },
             // A supplier, not the resolved id: the cycle's gate probes it each run, so an unreadable
             // Keychain skips the cycle cleanly instead of throwing out of it. The lazy caches the first
             // success, so this is one read per process, as before.
@@ -967,7 +982,9 @@ object SnapSyncRoot {
     /** The `onForeground` invocation params. `force=` is gone with the flag that set it — there is no
      *  longer any way to select a tier the OS did not, so the two remaining values say everything. */
     private fun foregroundParams(): String =
-        "useAppDrivenUpload=${tier == UploadTier.URL_SESSION} osSupported=${backgroundUploadSupported()}"
+        "mechanism=" +
+            resolveUploadMechanism(osSupportsOsDrivenUpload, permission.permission.value).diagnosticName +
+            " osSupported=$osSupportsOsDrivenUpload"
 
     // ── The tier-resolved shell delegate (the target of THE one switch above) ────────────────────
 
@@ -991,25 +1008,15 @@ object SnapSyncRoot {
     }
 
     /**
-     * The live composition: the real stack, on the tier the mode switch selected. The four
-     * constructor thunks are the ONLY tier-dependent seams — each decided once at the switch, so no
-     * method here re-checks a flag; the bodies are the former entry-point bodies, verbatim, minus
-     * their forge guards.
+     * The live composition: the real stack.
+     *
+     * It takes **no tier thunks any more**. It used to take six, of which two were already identical
+     * between the tiers and the rest said "how is this mechanism kicked" — a question belonging to the
+     * mechanism, not to a table in a wiring-only module. Every OS entry point below now delegates to the
+     * *resolved* mechanism, which answers or declines for its own stated reason, so adding a third
+     * mechanism is a new producer rather than a new branch here.
      */
-    private class LiveShell(
-        /** The app-driven upload mechanism — composed on both tiers (capability `upload-lifecycle`). */
-        val uploadProducer: () -> UploadProducer,
-        /** The OS-driven mechanism where it exists (iOS ≥26.1); `{ null }` on the app-driven tier. */
-        val osUploadProducer: () -> UploadProducer?,
-        /** Foreground pump (app-driven tier); `{}` on iOS ≥26.1 where the OS owns scheduling. */
-        val pumpForeground: suspend () -> Unit,
-        /** The upload arm's silent-push receiver (app-driven tier); `{ null }` on iOS ≥26.1. */
-        val uploadSilentPush: () -> (suspend (eventId: String) -> Unit)?,
-        /** A selection change under a partial grant pumps the app-driven tier; `{}` where it is not composed. */
-        val pumpSelectionChanged: suspend () -> Unit,
-        /** The BGProcessingTask heartbeat handler (app-driven tier); completes immediately on ≥26.1. */
-        private val heartbeat: (onComplete: () -> Unit) -> Unit,
-    ) : Shell {
+    private class LiveShell : Shell {
         /** Touching [host] assembles the live stack (and installs the grant subscriptions). */
         override fun renderHost(): StatusContainerHost = host
 
@@ -1079,7 +1086,22 @@ object SnapSyncRoot {
             }
         }
 
-        override fun runUploadHeartbeat(onComplete: () -> Unit) = heartbeat(onComplete)
+        /**
+         * The `BGProcessingTask` heartbeat. The **entry point** holds the OS handler, for the deadline
+         * named for this wake, and the mechanism receives a plain `suspend` trigger — so no mechanism can
+         * fail to release a handler, because none ever holds one. Moved here from inside the app-driven
+         * controller: same scope, same deadline constant, same `heldFor`; only the construction site
+         * changed, and now a mechanism that declines still answers the OS.
+         */
+        override fun runUploadHeartbeat(onComplete: () -> Unit) {
+            scope.launch {
+                OsReceipt(
+                    entryPoint = "runUploadHeartbeat",
+                    deadline = ReceiptDeadlines.BACKGROUND_TASK,
+                    release = onComplete,
+                ).heldFor { app.uploadArm.triggers.onBackgroundTask() }
+            }
+        }
 
         override fun runDownloadBackstop(onComplete: () -> Unit) {
             scope.launch {

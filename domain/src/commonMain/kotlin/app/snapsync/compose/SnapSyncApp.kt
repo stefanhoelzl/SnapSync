@@ -28,7 +28,11 @@ import app.snapsync.feature.status.ReadingLedgerCountsSource
 import app.snapsync.feature.status.ShareableCountSource
 import app.snapsync.feature.status.SyncStatusSource
 import app.snapsync.feature.trust.DeviceAttestation
-import app.snapsync.feature.upload.ComposedProducers
+import app.snapsync.feature.upload.RelinquishThenRun
+import app.snapsync.feature.upload.IdleUploadMechanism
+import app.snapsync.feature.upload.UploadMechanismRuntime
+import app.snapsync.model.UploadMechanism
+import app.snapsync.model.resolveUploadMechanism
 import app.snapsync.feature.upload.UploadArm
 import app.snapsync.feature.upload.UploadProducer
 import app.snapsync.flow.Background
@@ -192,12 +196,24 @@ class AppPorts(
      *  formatter, and a test could pin one and leave the other running. */
     val clock: Clock,
     /** The **app-driven** upload mechanism — always composed (it serves iOS 18–26.0 fully and every
-     *  OS under a partial grant); a thunk so it resolves lazily. Which composed producer RUNS is the
-     *  tested arm's decision, by current permission (`upload-lifecycle`). */
-    val uploadProducer: () -> UploadProducer,
-    /** The **OS-driven** upload mechanism where this process composed one (iOS ≥26.1; never under the
-     *  tier-force flag) — `null` elsewhere, keeping that mechanism entirely unconstructed there. */
-    val osUploadProducer: () -> UploadProducer? = { null },
+     *  OS under a partial grant); a thunk so it resolves lazily. Which mechanism RUNS is resolution's
+     *  answer, not this port's (`upload-lifecycle`, "The upload mechanism is resolved, never selected"). */
+    val appDrivenUpload: () -> UploadMechanismRuntime,
+    /** The **OS-driven** upload mechanism where this OS carries one (iOS ≥26.1) — `null` elsewhere,
+     *  keeping that mechanism entirely unconstructed where its registration selector does not exist. */
+    val osDrivenUpload: () -> UploadMechanismRuntime? = { null },
+    /** Whether this OS carries the OS-driven mechanism at all — an input to resolution, kept a plain
+     *  fact rather than derived from [osDrivenUpload] so resolving never has the side effect of
+     *  constructing a mechanism it is only asking about. */
+    val osSupportsOsDrivenUpload: Boolean = false,
+    /** Deregister a surviving OS-driven registration — **deregistration only**, no ledger clear and no
+     *  cursor reset (`upload-lifecycle`, [DeregisterThenRun]). Inert where no such registration exists. */
+    val relinquishOsRegistration: suspend () -> Unit = {},
+    /** A development pin on the resolved mechanism, read fresh at every resolution. **Always `null` in a
+     *  production build**: its source exists only in a build made with the rig, so the mechanism a
+     *  shipped process runs is still a function of the device it runs on. It restores the deleted
+     *  `SNAPSYNC_FORCE_URLSESSION_UPLOAD` (decision record `2026-08-24-retire-launch-env-triggers`, D14). */
+    val uploadMechanismOverride: () -> UploadMechanism? = { null },
     val albumManager: AlbumManager,
     val albumMapStore: AlbumMapStore,
     val albumExcludedAssetIds: suspend (cutoff: CaptureCutoff) -> Set<String>,
@@ -240,19 +256,14 @@ class AppPorts(
      *  flow re-reads before acting — cross-process writes and a pre-first-unlock seed never notify
      *  this process's StateFlow). The default is inert: world/tests hold their config in-process. */
     val reloadConfig: suspend () -> Unit = {},
-    /** Pump the app-driven upload tier on foreground; a no-op on iOS ≥26.1 (`ios-url-session-upload`). */
-    val pumpForeground: suspend () -> Unit = {},
+
     /** Queue the download import-tail backstop `BGProcessingTask` (`photo-download` 5.4). */
     val scheduleBackstop: suspend () -> Unit = {},
-    /** The upload arm's silent-push receiver on the app-driven tier, or `null` on iOS ≥26.1. A thunk so
-     *  the tier controller (which depends on this graph) resolves lazily, never at composition time. */
-    val uploadSilentPush: () -> (suspend (eventId: String) -> Unit)? = { null },
+
     /** Selection snapshots under a partial grant (capability `limited-photo-access`); the inert default
      *  serves every composition that never sees one (world by default, desktop harnesses). */
     val selectionChanges: PhotoSelectionChangeSource = PhotoSelectionChangeSource.None,
-    /** Drive one app-driven upload cycle for a selection change (the pump's `onSelectionChanged`),
-     *  wired by the shell to the tier controller; inert where no app-driven tier exists. */
-    val pumpSelectionChanged: suspend () -> Unit = {},
+
     /** Re-register the device's APNs push token on join (capability `push-registration`): the shell
      *  builds it from its `PushRegistration` + `PushTokenSource`. Inert by default (world/tests hold no
      *  push stack). Closes the warm-rejoin window the nightly sweep's config collection opens. */
@@ -446,18 +457,60 @@ class AppCore internal constructor(
     // The tier-neutral upload lifecycle (capability `upload-lifecycle`): which producer verb fires on
     // which membership transition. The root defaults nothing — an absent membership is `null`, and
     // the decision lives in the tested arm.
+    /**
+     * Kind → instance (capability `upload-lifecycle`, "The upload mechanism is resolved, never selected").
+     *
+     * Built **once**, and that is a platform requirement rather than an optimisation: the app-driven
+     * mechanism owns a background `URLSession` whose identifier must stay stable for the OS to re-adopt
+     * it across launches, and whose invalidation is terminal — an uncatchable `NSException` that aborts
+     * the process (`ios-url-session-upload`, "Cancellation never invalidates the background session").
+     * So resolving away from it and back returns the *same* instance; "instantiate" here means "obtain
+     * the mechanism for this kind", never "construct a second one".
+     *
+     * On an OS that carries both, the app-driven cell is wrapped so it gives the OS back a registration
+     * this process must not run behind. That is what makes the deregistration a consequence of the table
+     * rather than a case to remember, and it serves the development override and a downgrade to a partial
+     * grant with one rule instead of two.
+     */
+    private val uploadMechanisms: (UploadMechanism) -> UploadMechanismRuntime by lazy {
+        val osDriven = ports.osDrivenUpload()
+        val appDriven = ports.appDrivenUpload()
+        // Each cell relinquishes what the OTHER mechanism left behind, because both leave state the OS
+        // keeps across process death — a configuration record on one side, in-flight transfers and a
+        // submitted background task on the other. Symmetric structure, deliberately asymmetric content:
+        // giving up the OS-driven mechanism here is deregistration ONLY (its full stop would wipe ledger
+        // rows the incoming mechanism is about to reconcile precisely), while giving up the app-driven
+        // one is exactly its ordinary stop.
+        val appDrivenHere =
+            if (osDriven == null) appDriven else RelinquishThenRun(ports.relinquishOsRegistration, appDriven)
+        val osDrivenHere = osDriven?.let { RelinquishThenRun({ appDriven.stop() }, it) }
+        ({ kind ->
+            when (kind) {
+                // Unreachable unless this OS composed the mechanism: resolution clamps PHOTOKIT to what
+                // the device can run, and `:test:architecture` asserts no cell escapes that clamp.
+                UploadMechanism.PHOTOKIT -> osDrivenHere ?: appDrivenHere
+                UploadMechanism.URL_SESSION -> appDrivenHere
+                UploadMechanism.IDLE -> IdleUploadMechanism
+            }
+        })
+    }
+
+    // The tier-neutral upload lifecycle (capability `upload-lifecycle`): which verb fires on which
+    // membership transition, over the mechanism resolution yields. The root defaults nothing — an absent
+    // membership is `null`, and both the resolution rule and the transition table live in tested code.
     val uploadArm: UploadArm by lazy {
         UploadArm(
-            // Every composed producer; which one RUNS is the arm's permission decision — the OS-driven
-            // mechanism under GRANTED (where composed), the app-driven one under LIMITED (the OS never
-            // invokes the extension there — measured; `ios-photokit-upload`). A cycle started under
-            // LIMITED is read-free by construction: its discovery consumes the selection snapshot
-            // (`SelectionScopedTransfer`), never a library walk.
-            producers = ComposedProducers(
-                osDriven = ports.osUploadProducer(),
-                appDriven = ports.uploadProducer(),
-            ),
-            permission = { ports.photoAccess.permission.value },
+            // Read fresh at every transition: the mechanism is a function of runtime permission (the OS
+            // never invokes the extension under a partial grant — measured; `ios-photokit-upload`), so a
+            // captured answer would be stale exactly when it mattered.
+            resolve = {
+                resolveUploadMechanism(
+                    backgroundUploadSupported = ports.osSupportsOsDrivenUpload,
+                    permission = ports.photoAccess.permission.value,
+                    override = ports.uploadMechanismOverride(),
+                )
+            },
+            mechanismFor = uploadMechanisms,
             membershipIncludesUpload = { ports.configSource.config.value?.direction?.includesUpload },
             log = ports.log,
             logScope = ports.logScope,
@@ -673,20 +726,17 @@ class AppCore internal constructor(
             membershipRefresh = membershipRefresh,
             statusPoller = ledgerCountsPoller,
             reloadConfig = ports.reloadConfig,
-            // Permission routes the foreground pump: under GRANTED the tier's own thunk (which walks —
-            // and is `{}` on iOS ≥26.1, where the OS owns upload scheduling); under LIMITED the
-            // app-driven selection drain, which is read-free by construction (its discovery consumes
-            // the snapshot — `SelectionScopedTransfer`), so the read discipline holds
-            // (`limited-photo-access`, "No autonomous library reads") while a reopened app still
-            // catches up on pending uploads. Everything else this flow coordinates (reconcile, poller,
-            // attestation) runs under any permission.
-            pumpForeground = {
-                when (ports.photoAccess.permission.value) {
-                    PermissionStatus.GRANTED -> ports.pumpForeground()
-                    PermissionStatus.LIMITED -> ports.pumpSelectionChanged()
-                    PermissionStatus.NOT_DETERMINED, PermissionStatus.DENIED -> Unit
-                }
-            },
+            // Delivered unconditionally to whichever mechanism is resolved; the mechanism declines if it
+            // has nothing to add (`upload-lifecycle`, "Triggers are delivered to the mechanism and
+            // declined explicitly").
+            //
+            // This used to branch on permission here — GRANTED to the tier's pump, LIMITED to the
+            // selection drain — and that branch was compensating for thunks that could not see the
+            // permission. It said exactly one thing: on an OS carrying the OS-driven mechanism under a
+            // full grant, do not pump, because the OS owns scheduling. That IS the resolution, so
+            // resolving says it once instead. (The two pump entry points it chose between have identical
+            // bodies; the choice was never between them.)
+            pumpForeground = { uploadArm.triggers.onForeground() },
             refreshStatus = { refreshStatusSources() },
             activeEventId = { ports.configSource.config.value?.eventId },
             fetchEventDetails = fetchEventDetails,
@@ -705,16 +755,15 @@ class AppCore internal constructor(
             // Download arm first, then the upload arm on the app-driven tier (order preserved from the
             // former FanOutPushReceiver). The upload receiver is a thunk so the tier controller resolves
             // lazily; on iOS ≥26.1 it is null and only the download arm is woken.
-            receivers = buildList {
-                add(downloadPushReceiver::onSilentPush)
-                // The upload receiver drives a cycle (a library walk) — GRANTED exactly, per the read
-                // discipline (`limited-photo-access`): under LIMITED only the download arm is woken.
-                ports.uploadSilentPush()?.let { receiver ->
-                    add { eventId ->
-                        if (ports.photoAccess.permission.value == PermissionStatus.GRANTED) receiver(eventId)
-                    }
-                }
-            },
+            // The upload receiver is no longer conditional here. It used to be a nullable thunk wrapped in
+            // a `GRANTED`-exactly check, which made this fan-out an **invoker-gate** — sound only while it
+            // enumerated everyone who might read, an enumeration a new mechanism or trigger invalidates in
+            // silence (`upload-lifecycle`, "…never at the invoker"). Both guards now live in the tested
+            // `UploadPushReceiver`, and a mechanism with nothing to do declines for its own stated reason.
+            receivers = listOf(
+                downloadPushReceiver::onSilentPush,
+                { eventId -> uploadArm.triggers.onSilentPush(eventId) },
+            ),
         )
     }
 
@@ -942,7 +991,7 @@ class AppCore internal constructor(
             ports.selectionChanges.snapshots.collect { snapshot ->
                 latestSelectionSnapshot.value = snapshot
                 ports.configSource.config.value?.let { cfg -> gallery.refresh(SelectionPolicy.from(cfg)) }
-                ports.pumpSelectionChanged()
+                uploadArm.triggers.onSelectionChanged()
             }
         }
         scope.launch {
