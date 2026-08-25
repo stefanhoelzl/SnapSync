@@ -177,7 +177,7 @@ class DeviceManifestProducerTest {
         // record survives that, the next cycle projects the identical snapshot, matches, skips — and the
         // event union hides every photo this device uploaded, forever, with no error anywhere.
         //
-        // Found on device: SNAPSYNC_RESET_STATE + re-join left the server holding an empty manifest. But
+        // Found on device: a device reset + re-join left the server holding an empty manifest. But
         // a plain leave → rejoin reaches it too, which is why the fix is at the enroller and not the
         // reset. Pre-existing — the accumulator-backed producer had the same record and the same enroll.
         val store = FakeStore()

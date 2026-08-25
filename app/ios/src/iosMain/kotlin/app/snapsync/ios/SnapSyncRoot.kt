@@ -144,7 +144,7 @@ object SnapSyncRoot {
         Logger.withTag("SnapSyncRoot").i { "=== app process start build=${appBuildVersion()} ===" }
         // The BAKED backend this build talks to. Cheap (one Info.plist read) and it names the one fact
         // that makes an otherwise-silent failure legible: point a build at a different backend without
-        // `SNAPSYNC_RESET_STATE` and the ledger still says COMPLETED, so the device uploads nothing —
+        // a device reset and the ledger still says COMPLETED, so the device uploads nothing —
         // no error, no failed request. Read together with the cycle's own
         // `enumeration: N seen, X new, Y already-uploaded`, a changed host beside an unchanged ledger
         // names the cause immediately. Diagnostic only: no behaviour, no state, no extra I/O.

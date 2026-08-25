@@ -6,7 +6,7 @@ import app.snapsync.ports.LedgerStore
 import co.touchlab.kermit.Logger
 
 /**
- * Void this device's durable sync state (the `SNAPSYNC_RESET_STATE` dev/test launch trigger, capability
+ * Void this device's durable sync state (the control channel's `POST /device/reset`, capability
  * `ios-app-shell`), so a build pointed at a **different backend** starts from nothing.
  *
  * ## Why this is not just "leave harder"

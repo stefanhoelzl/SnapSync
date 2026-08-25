@@ -36,22 +36,27 @@ of it can ship.
    `deployments/local.json` and re-running the resolver. Load **`ssh-mac-build`** → *Pointing a build at
    a local backend* for the exact commands. A quick tunnel's hostname is random per session, so the IPA
    is rebuilt per session (~1 min incremental Debug).
-3. **Install and launch with `SNAPSYNC_RESET_STATE=1`** — load **`ios-device`**, which also owns the
-   device lease every phone command now requires. This step is not optional; see below.
+3. **Install, launch, then RESET over the channel** — load **`ios-device`** (which owns the device lease
+   every phone command requires) to install and launch, then **`rig-channel`** for
+   `POST /device/reset`. The reset is not optional; see below.
 
 Reset is `rm -rf api/.localstore`. This is the deliberate **inverse** of the production rule: no
 whole-zone reset tool exists for bunny because that one zone holds real users' photos; the local store
 holds nothing.
 
-## ⚠️ Crossing backends REQUIRES `SNAPSYNC_RESET_STATE` — or nothing uploads, silently
+## ⚠️ Crossing backends REQUIRES a device reset — or nothing uploads, silently
 
-Launch the swapped build with `SNAPSYNC_RESET_STATE=1` **every time you change which backend is baked
-in — in both directions**, including going back to production:
+Reset the swapped build **every time you change which backend is baked in — in both directions**,
+including going back to production. `SNAPSYNC_RESET_STATE` is **gone**: production Kotlin declares no
+`SNAPSYNC_*` launch trigger any more, and a build guard fails if one returns. It is the control channel's
+job now, on a build made with `-Psnapsync.rig=true` (load **`rig-channel`**):
 
 ```bash
-$P developer dvt launch app.snapsync --env SNAPSYNC_RESET_STATE=1 \
-   --env SNAPSYNC_CREATE_EVENT="$d" --userspace
+curl -X POST localhost:18099/device/reset
 ```
+
+⚠️ Order matters and nothing enforces it: reset **before** leaving. After a reset the device is unjoined,
+so a leave becomes a no-op rather than a `DELETE` aimed at the backend you are departing.
 
 **Why it is not optional:** the upload ledger's key is the **bare filename**, event-independent, and a
 *leave* deliberately keeps it (a `COMPLETED` row stays true across a leave — `sync-ledger`). Point the

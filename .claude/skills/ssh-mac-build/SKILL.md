@@ -230,9 +230,14 @@ sshmac "cd snapsync && xcodebuild -project iosApp/iosApp.xcodeproj -scheme iosAp
 lands in the repo.
 
 A quick tunnel's hostname is **random per session**, so the IPA is rebuilt per session (~1 min
-incremental Debug). There is no CI path for this: `ios.yml` has no `workflow_dispatch`. ⚠️ Crossing
-backends needs `SNAPSYNC_RESET_STATE` in **both** directions or nothing uploads, silently — load
-`local-backend` before doing this.
+incremental Debug). ⚠️ Crossing backends needs a **device reset** (`POST /device/reset` over the control
+channel — the `SNAPSYNC_RESET_STATE` launch trigger is gone) in **both** directions or nothing uploads,
+silently — load `local-backend` before doing this.
+
+`ios.yml` DOES carry a `workflow_dispatch` now: it archives Release and delivers the branch to internal
+TestFlight, which is the route to a phone with no cable. It does not replace this loop — it produces no
+IPA you can sideload, and a TestFlight build carries no control channel — but it is the way to get a
+DSN-carrying build onto a device (capability `ios-ci`).
 
 ## Provisioning profiles
 

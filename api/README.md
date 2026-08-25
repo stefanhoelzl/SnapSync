@@ -276,7 +276,8 @@ verification oracle; reset is `rm -rf api/.localstore`. The attestation gate sta
 token still `401`s), but a request arriving with **no** `authorization` header gets a dev token
 attached, so bare `curl` works. Presigned download URLs are minted with the real production shape,
 pointed at the rig. Full runbook — including pointing a device build at it, and the mandatory
-`SNAPSYNC_RESET_STATE` when crossing backends — is in the root `CLAUDE.md`.
+device reset (`POST /device/reset` over the control channel) when crossing backends — is in the root
+`CLAUDE.md`.
 
 `src/dev/` **cannot ship**: `deno bundle src/main.ts` roots the deployed bundle at `main.ts`, which
 imports nothing under it.
