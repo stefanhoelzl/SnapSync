@@ -80,8 +80,19 @@ export function classify(status: number, body: string, expectedSha: string): Cau
     return "unparseable";
   }
   if (typeof sha !== "string" || sha.length === 0) return "unparseable";
+  // ⚠️ THE ORDER MATTERS, and getting it wrong turns a healthy deploy red. `dev` on the wire has TWO
+  // causes with opposite actions, and only the EXPECTED sha separates them:
+  //
+  //   * we asked for `dev` and got it → THIS run built an unstamped bundle. Terminal, our bug.
+  //   * we asked for a commit and got `dev` → the bundle answering is not ours. It is a previous
+  //     deployment that predates stamping, still being served while ours propagates. That is exactly
+  //     `stale-sha`, and time fixes it.
+  //
+  // Checking `sha === UNSTAMPED` FIRST collapsed the second into the first: the probe failed at attempt
+  // one, without retrying, on a deploy that was live and healthy a minute later (2026-08-25, run
+  // 32901373285 — `{"sha":"dev"}` at 21:45:14, the real commit serving by 21:47).
+  if (sha !== expectedSha) return expectedSha === UNSTAMPED ? "unstamped" : "stale-sha";
   if (sha === UNSTAMPED) return "unstamped";
-  if (sha !== expectedSha) return "stale-sha";
 
   // This IS the bundle we deployed. Now the second question the probe exists to answer (capability
   // `backend-deployment`): can it reach its relational store, and are FOREIGN KEYS enforced there? A
@@ -194,7 +205,9 @@ export function explain(cause: Cause): string {
     case "stale-sha":
       return "a different bundle is serving — this deploy never propagated";
     case "unstamped":
-      return "the live bundle carries the unstamped placeholder — CI supplied no commit to the resolver";
+      return "THIS run built an unstamped bundle — CI supplied no commit to the resolver. (A `dev` " +
+        "reply while a real commit was expected is `stale-sha`, not this: it means a previous " +
+        "deployment is still answering while ours propagates.)";
     case "unparseable":
       return "something other than this backend answered — check DNS and the pull zone";
   }
