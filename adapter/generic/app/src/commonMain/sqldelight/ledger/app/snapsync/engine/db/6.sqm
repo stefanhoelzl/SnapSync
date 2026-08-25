@@ -1,0 +1,22 @@
+-- v6 -> v7: record that an asset has LEFT the library instead of deleting its rows (capability
+-- `sync-ledger`).
+--
+-- A ledger row states that a resource's bytes are on the backend. Nothing on the device can make that
+-- false: no local action deletes an uploaded object (`scheduled-cleanup` owns the only deletion, and it
+-- deletes whole events). So a row is true for the event's whole life, and "the asset is gone from this
+-- library" is a SECOND, separate fact — which this column carries.
+--
+-- What this replaces is a DELETE. Pruning conflated two things: it was the deletion signal AND the only
+-- way an asset the policy stopped admitting left the manifest. Because the prune was fed the
+-- policy-admitted set, raising a capture cutoff discarded the COMPLETED rows for photos that were still
+-- in the library and still uploaded — making the narrowing irreversible, since those rows are exactly
+-- what suppresses re-upload. Marking is idempotent and non-destructive; deleting was neither.
+--
+-- Row-preserving, like 2.sqm/3.sqm/4.sqm/5.sqm, and here for the same load-bearing reason: a surviving
+-- COMPLETED row is what stops the next cycle re-uploading an already-stored resource.
+-- `ALTER TABLE ... ADD COLUMN` is catalog-only, so no row is touched.
+--
+-- `DEFAULT 0` must match Ledger.sq exactly (the verify task compares migrated vs created schemas). It is
+-- the correct resting value for every existing row: a row recorded before this column existed was, by
+-- construction, not marked absent.
+ALTER TABLE ledgerRow ADD COLUMN absent INTEGER NOT NULL DEFAULT 0;

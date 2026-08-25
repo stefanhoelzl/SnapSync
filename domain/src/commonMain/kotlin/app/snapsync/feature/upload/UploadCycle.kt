@@ -104,7 +104,7 @@ class UploadCycle(
     private val suppressedAssetIds: suspend () -> Set<String>,
     // Denylisted-album membership (capability `photo-selection-policy`): the normalized `assetId`s that sit
     // in an album a messaging/social app made (WhatsApp, Telegram, …). Read once per cycle and dropped
-    // alongside the other origin exclusions, BEFORE the engine and before `retainAssets`. Takes the cutoff,
+    // alongside the other origin exclusions, BEFORE the engine. Takes the cutoff,
     // which scopes the album member fetch.
     //
     // An injected port rather than a rule in the pure filter, because album membership is the one origin
@@ -297,11 +297,19 @@ class UploadCycle(
                 }
             }
 
-        // Prune rows for assets the change feed reported removed (incremental, every cycle — even a
-        // cap-truncated one — so a mid-upload deletion's stuck row is cleared promptly).
+        // Record that the change feed reported these assets removed (incremental, every cycle — even a
+        // cap-truncated one — so a mid-upload deletion is reflected promptly). This is the ONLY deletion
+        // input: it names the departed assets exactly, where an enumeration can only fail to mention one.
+        //
+        // A MARK, not a delete. The row's statement — these bytes are on the backend — stays true, because
+        // nothing on the device deletes an uploaded object (capability `scheduled-cleanup` owns the only
+        // deletion, and it deletes whole events). Keeping the row is what stops a restored asset
+        // re-uploading, and iOS keeps a deleted photo recoverable for 30 days: the same order as an
+        // event's whole life. The manifest stops listing it because the projection excludes absent rows
+        // (capability `device-manifest`), which is where a change in what this device SHARES belongs.
         for (assetId in discovery.removedAssetIds) {
-            log.i { "pruning deleted asset $assetId" }
-            ledger.deleteByAssetId(assetId)
+            log.i { "asset $assetId left the library — marking its rows absent" }
+            ledger.markAbsent(assetId)
         }
 
         var newWork = 0
@@ -334,13 +342,18 @@ class UploadCycle(
         // skip stays silent). A cap-truncated cycle returns above, so this reflects a drained pass.
         log.i { "enumeration: ${liveResources.size} seen, $newWork new, $alreadyUploaded already-uploaded" }
 
-        // Reconcile only on a fully-drained full enumeration (the same gate that advances the
-        // cursor): `resources` then covers every current asset, so retainAssets prunes rows for assets
-        // no longer present — the backstop for deletions missed while the change token was expired.
-        // Skipped on incremental cycles and on cap-truncated ones (which returned PROCESSING above).
-        if (discovery.fullEnumeration) {
-            ledger.retainAssets(liveResources.mapTo(mutableSetOf()) { it.assetId })
-        }
+        // There is deliberately NO retain-live reconcile here any more (capability `sync-ledger`). It used
+        // to prune every row outside this enumeration's admitted set, as a backstop for deletions missed
+        // while the change token was expired — and that is the conflation this change removes. The set it
+        // was handed is the POLICY-ADMITTED one, so raising a capture cutoff discarded the COMPLETED rows
+        // of photos that were still in the library and still uploaded. Those rows are exactly what
+        // suppresses re-upload, so the narrowing became irreversible; a membership turned download-only
+        // admits nothing at all, which would have wiped the event's rows and defeated the drain that
+        // exists so re-enabling re-uploads nothing (capability `reconfigure-membership`).
+        //
+        // Losing the backstop costs only this: a deletion the change feed never reported leaves the asset
+        // listed for the event's remaining life. Its bytes are still on the backend, so a member still
+        // downloads it — the photo simply stays in the event, exactly as it does when a member leaves.
 
         // Write the device manifest (capability `device-manifest`). It is a PROJECTION of the ledger's
         // COMPLETED rows, so nothing is handed over here but the event and the admission: every row this

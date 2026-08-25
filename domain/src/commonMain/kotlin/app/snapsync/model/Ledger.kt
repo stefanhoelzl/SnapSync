@@ -35,6 +35,21 @@ class LedgerEntry(
     val role: ResourceRole? = null,
     val contentType: String = "",
     val originalFilename: String = "",
+    /**
+     * Whether the asset has left this device's library.
+     *
+     * The row is **kept** when that happens, because what it records — these bytes are on the backend —
+     * is still true: nothing on the device deletes an uploaded object (capability `scheduled-cleanup`
+     * owns the only deletion, and it deletes whole events). Keeping it is also what stops a restored
+     * asset re-uploading, and iOS keeps a deleted photo recoverable for 30 days — the same order as an
+     * event's whole life.
+     *
+     * It replaces a `DELETE`. Pruning conflated the deletion signal with "the policy stopped admitting
+     * this", and because the prune was fed the policy-admitted set, raising a capture cutoff discarded
+     * the `COMPLETED` rows of photos still in the library and still uploaded — making the narrowing
+     * irreversible, since those rows are exactly what suppresses re-upload.
+     */
+    val absent: Boolean = false,
 ) {
     /** Whether this row still needs the manifest-detail backfill. */
     val needsManifestDetail: Boolean get() = creationDate.isEmpty()
@@ -43,7 +58,22 @@ class LedgerEntry(
         key == other.key && assetId == other.assetId && state == other.state &&
         attempt == other.attempt && eventId == other.eventId &&
         creationDate == other.creationDate && role == other.role &&
-        contentType == other.contentType && originalFilename == other.originalFilename
+        contentType == other.contentType && originalFilename == other.originalFilename &&
+        absent == other.absent
+
+    /** The same row, recorded as having left the library. Pure: nothing else about the row changes. */
+    fun markedAbsent(): LedgerEntry = LedgerEntry(
+        key = key,
+        assetId = assetId,
+        state = state,
+        attempt = attempt,
+        eventId = eventId,
+        creationDate = creationDate,
+        role = role,
+        contentType = contentType,
+        originalFilename = originalFilename,
+        absent = true,
+    )
 
     override fun hashCode(): Int = key.hashCode()
 

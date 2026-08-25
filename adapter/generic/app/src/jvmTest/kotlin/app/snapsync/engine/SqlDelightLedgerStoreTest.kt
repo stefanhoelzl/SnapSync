@@ -180,18 +180,21 @@ class SqlDelightLedgerStoreTest : LedgerStoreContract() {
     }
 
     @Test
-    fun `retainAssets over a keep-set past the bind-variable limit deletes the complement`() = runTest {
+    fun `markAbsent flags one asset's rows across a large table`() = runTest {
+        // What this replaces: `retainAssets` took a keep-set, so it had to avoid binding a
+        // multi-thousand-element `NOT IN` (sqlite's limit is 32766) by diffing in Kotlin. `markAbsent`
+        // takes ONE assetId and rides the assetId index, so no such hazard exists — this only holds that
+        // the indexed UPDATE still finds its row in a table large enough to matter.
         val backend = createBackend()
-        // Far past sqlite's single-statement bind-variable limit (32766): a naive
-        // `WHERE assetId NOT IN (…)` would throw. retainAssets must never bind the keep-set into
-        // one statement — it diffs in Kotlin and deletes the (small) complement per assetId.
-        val keep = (0 until 40_000).mapTo(mutableSetOf()) { "k$it" }
-        keep.forEach { backend.put(LedgerEntry(it, it, LedgerState.REQUESTED, 0, eventId = "E1")) }
-        backend.put(LedgerEntry("straggler", "straggler", LedgerState.REQUESTED, 0, eventId = "E1"))
+        val others = (0 until 40_000).map { "k$it" }
+        others.forEach { backend.put(LedgerEntry(it, it, LedgerState.REQUESTED, 0, eventId = "E1")) }
+        backend.put(LedgerEntry("gone", "gone", LedgerState.COMPLETED, 0, eventId = "E1"))
 
-        backend.retainAssets(keep)
+        backend.markAbsent("gone")
 
-        assertNull(backend.get("straggler"))
-        assertEquals(keep.size, backend.aggregates().pending)
+        val row = backend.get("gone")
+        assertEquals(true, row?.absent)
+        assertEquals(LedgerState.COMPLETED, row?.state) // the row survives, so re-upload stays suppressed
+        assertEquals(false, backend.get("k0")?.absent)
     }
 }

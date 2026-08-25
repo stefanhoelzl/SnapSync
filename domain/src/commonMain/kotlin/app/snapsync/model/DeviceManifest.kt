@@ -81,7 +81,11 @@ suspend fun projectDeviceManifest(
     rows: Collection<LedgerEntry>,
     policy: SelectionPolicy,
 ): DeviceManifest {
-    val byAsset = rows.groupBy { it.assetId }
+    // Absent rows are excluded here, not deleted upstream (capability `sync-ledger`): the asset has left
+    // the library, so this device no longer SHARES it — but its bytes are still on the backend, so the row
+    // stays and keeps suppressing re-upload if the asset is restored. This is the one place a row's
+    // absence changes what other members see.
+    val byAsset = rows.filterNot { it.absent }.groupBy { it.assetId }
     val admitted = EventPhotoSet(policy) {
         candidatesFromFacts(
             byAsset.map { (assetId, group) ->

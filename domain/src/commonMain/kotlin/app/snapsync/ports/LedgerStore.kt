@@ -78,19 +78,22 @@ interface LedgerStore {
     suspend fun resetTo(entries: List<LedgerEntry>)
 
     /**
-     * Delete every row whose [LedgerEntry.assetId] equals [assetId]. The backend matches by
-     * equality and never interprets the value — `assetId` is a second opaque grouping field (it
-     * does not know what an "asset" means). Dings [changes] like a [put].
+     * Mark every row whose [LedgerEntry.assetId] equals [assetId] as [LedgerEntry.absent] — the asset has
+     * left this device's library. The rows are **kept**: what they record (these bytes are on the
+     * backend) is still true, and keeping them is what stops a restored asset re-uploading. The backend
+     * matches by equality and never interprets the value — `assetId` is a second opaque grouping field
+     * (it does not know what an "asset" means). Idempotent. Dings [changes] like a [put].
+     *
+     * There is deliberately **no** `retainAssets`, and no delete-by-asset at all. Retention used to prune
+     * every row outside a supplied keep-set, and the cycle supplied the **policy-admitted** set — so
+     * raising a capture cutoff discarded the `COMPLETED` rows of photos that were still in the library
+     * and still uploaded. Those rows are exactly what suppresses re-upload, so the narrowing became
+     * irreversible, and a membership turned download-only would have lost the event's rows entirely,
+     * defeating the drain that exists so re-enabling re-uploads nothing (capability
+     * `reconfigure-membership`). A scope change belongs to the manifest projection (capability
+     * `device-manifest`), never to this record.
      */
-    suspend fun deleteByAssetId(assetId: String)
-
-    /**
-     * Delete every row whose [LedgerEntry.assetId] is **not** in [keep] (retain the intersection).
-     * Dings [changes] like a [put]. The keep-set is used only to compute the complement — it is
-     * never bound into a single SQL statement, so an arbitrarily large set stays within driver
-     * bind-variable limits.
-     */
-    suspend fun retainAssets(keep: Set<String>)
+    suspend fun markAbsent(assetId: String)
 
     /**
      * Rewrite the [LedgerEntry.eventId] of every row whose value is the pre-provenance sentinel
