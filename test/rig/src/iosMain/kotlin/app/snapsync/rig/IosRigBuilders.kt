@@ -57,6 +57,19 @@ fun userCommands(host: () -> StatusContainerHost): Map<String, RigUserCommand> =
         )
     },
     "cancelJoin" to RigUserCommand { host().onCancelJoin() },
+    // The membership change this channel could not previously express. Narrowing a scope — raising the
+    // cutoff, or turning the share direction off — is what re-projects the device manifest (capability
+    // `reconfigure-membership`), so without this the one behaviour that change turns on is undriveable
+    // on a device.
+    "reconfigure" to RigUserCommand { params ->
+        host().onReconfigure(
+            eventId = params["eventId"].orEmpty(),
+            direction = direction(params["direction"]),
+            minPhotoDate = captureCutoff(params["cutoff"]),
+            maxPhotoDate = captureCeiling(params["until"]),
+            saveToAlbum = params["saveToAlbum"].toBoolean(),
+        )
+    },
 )
 
 /**
@@ -87,10 +100,9 @@ fun excludedUserCommands(): Map<String, String> = mapOf(
     "onOpenUrl" to
         "the join-link entry, reachable with full fidelity as POST /os/onSceneContinueActivity, which " +
         "additionally exercises the real NSUserActivity decode and activity-type filter.",
-    "onReconfigure" to
-        "changes a live membership's settings; wired nowhere yet because no scenario needs it driven, and " +
-        "an unexercised destructive command is worse than an absent one.",
-    "onRenameEvent" to "same as onReconfigure: no scenario drives it yet.",
+    "onRenameEvent" to
+        "changes a live membership's name; no scenario drives it yet, and an unexercised destructive " +
+        "command is worse than an absent one.",
     "onRenameStatusConsumed" to
         "a latch reset the screen fires after acting on a terminal value — driving it would desynchronise " +
         "the container from the UI that owns the latch.",
@@ -192,12 +204,13 @@ fun deviceCommands(
 )
 
 /** The gallery read, bound to the app's own permission-aware candidate seam rather than a second walk. */
-fun galleryReader(core: () -> AppCore): suspend (String?, Boolean) -> String = { cutoff, resources ->
+fun galleryReader(core: () -> AppCore): suspend (String?, Boolean, Boolean) -> String =
+    { cutoff, resources, includesUpload ->
     val reader = GalleryReader(
         candidates = core().candidates,
         grant = { core().photoPermission.value.name },
     )
-    json.encodeToString(GalleryView.serializer(), reader.read(cutoff, resources))
+    json.encodeToString(GalleryView.serializer(), reader.read(cutoff, resources, includesUpload))
 }
 
 /**

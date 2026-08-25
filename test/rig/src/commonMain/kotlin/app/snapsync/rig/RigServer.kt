@@ -249,7 +249,7 @@ class RigServer(
     }
 
     /**
-     * `GET /device/gallery?cutoff=…&resources=…` — the library, read through the app's own policy.
+     * `GET /device/gallery?cutoff=…&resources=…&direction=…` — the library, through the app's own policy.
      *
      * Its own route rather than a field of `/device/state`, for two reasons that both bite. Enumerating is
      * expensive where reading state is not, and a caller polling state must not pay for it. And under a
@@ -259,7 +259,10 @@ class RigServer(
     private suspend fun ApplicationCall.respondGallery() {
         val cutoff = request.queryParameters["cutoff"]
         val resources = request.queryParameters["resources"].toBoolean()
-        respondText(hooks.readGallery(cutoff, resources))
+        // `direction=download` reads the library through a NON-contributing policy — the deny-everything
+        // rule. Defaults to contributing, which is what every existing caller wants.
+        val includesUpload = request.queryParameters["direction"] != "download"
+        respondText(hooks.readGallery(cutoff, resources, includesUpload))
     }
 
     /**

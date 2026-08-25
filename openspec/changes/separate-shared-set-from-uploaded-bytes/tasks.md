@@ -116,9 +116,12 @@ ever changing the listing, which is the manifest's job.
 
 ## 10. Measure on device before shipping
 
-- [ ] 10.1 Confirm on the connected iPhone that the `DenyAll` predicate returns **zero** rows — load the
-      `rig-channel` skill, set a download-only membership, and read the gallery route. Every one of the
-      three constraints already documented above `predicateFor` is a case where a plausible predicate did
-      something else; this one is reasoned, not measured.
-- [ ] 10.2 Confirm a download-only membership publishes an empty manifest and that its ledger rows survive.
-- [ ] 10.3 Record the measurement in the change directory before archiving.
+- [x] 10.1 **CONFIRMED on device** (SE2, iOS 26.6). Same 768-asset library: contributing fetched 768 in
+      118 ms, `DenyAll` fetched **0 in 3 ms**, contributing again fetched 768 — so it neither aborts the
+      process nor is ignored. See `DEVICE-MEASUREMENT.md`.
+- [x] 10.2 **CONFIRMED on device.** The extension cycle PUT a 63-byte manifest — exactly
+      `{"deviceId":"<uuid>","assets":[]}` — and *then* reported SKIPPED, where the old code returned
+      before the write. The 125 completed ledger rows survived the direction-off and the cycle.
+- [x] 10.3 Recorded in `DEVICE-MEASUREMENT.md`, including the two rig gaps the measurement exposed
+      (the gallery route could not express a non-contributing policy; `/user/reconfigure` was unwired)
+      and an unrelated transient backend outage that the client reports as "invalid name".

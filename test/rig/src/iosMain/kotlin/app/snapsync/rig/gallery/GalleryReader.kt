@@ -60,12 +60,15 @@ class GalleryReader(
     private val grant: () -> String,
 ) {
 
-    suspend fun read(cutoff: String?, resources: Boolean): GalleryView {
+    suspend fun read(cutoff: String?, resources: Boolean, includesUpload: Boolean = true): GalleryView {
         val census = census()
         if (cutoff == null) return GalleryView(census = census, grant = grant(), policy = null)
 
         val policy = selectionPolicyFor(
-                includesUpload = true,
+                // A non-contributing membership is a policy this route must be able to READ, not just one
+                // the app can hold. Without it the deny-everything narrowing — the one that keeps a
+                // download-only member off a whole-library walk — is unobservable on a device.
+                includesUpload = includesUpload,
                 cutoff = CaptureCutoff(CaptureDate(cutoff)),
                 ceiling = null,
                 // The operator reads the POLICY here, not the device's echo/album state — this route
