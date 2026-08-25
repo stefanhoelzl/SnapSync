@@ -395,7 +395,17 @@ PR merged successfully!
 
 **PR**: <url>
 **Commit**: <sha> merged to <default-branch>
+**Bugsink**: <one line per id - omit this field entirely when no trailer was found>
 **Workspace**: will be deleted now (or "kept" if --keep-workspace)
+```
+
+The `**Bugsink**` field is present only when step 9.2 found a `Bugsink-Resolves:` trailer.
+One line per id, saying what actually happened:
+
+```
+**Bugsink**: SNAPSYNC-9 resolved (resolve-next)
+             SNAPSYNC-21 already resolved
+             SNAPSYNC-14 NOT resolved: operator declined
 ```
 
 ##### FAILED (exit code 1)
@@ -441,11 +451,51 @@ learned - this is NOT a report that the merge failed. Check the PR directly, the
 `/ship` to resume. Workspace kept.
 ```
 
+#### 9.2. Resolve Bugsink issues - MERGED only, and BEFORE the report
+
+Run this on a `MERGED` result, **before** emitting the MERGED report - because step 10 deletes
+the workspace in that same message, and nothing can follow it, a question least of all.
+
+1. **Detect.** Read the trailers of the commits this PR shipped:
+
+   ```bash
+   git log origin/<default-branch>..HEAD --pretty=format:%b \
+     | { grep -oP '^Bugsink-Resolves:\s*\K[A-Z]+-[0-9]+' || true; } | sort -u
+   ```
+
+   The `|| true` is load-bearing: `grep` exits **1** when it matches nothing, which is the
+   normal case, and under `set -e` that would abort the run over a ship that simply fixed no
+   Bugsink issue.
+
+   **No matches - do nothing at all.** No lookup, no question, no `**Bugsink**` field in the
+   report. Most ships fix no Bugsink issue and must stay silent about it.
+
+   If that range is empty because the PR was already merged on an earlier run (the
+   already-MERGED route at step 2), read the merged commits from the default branch instead:
+   `git log <default-branch>@{u}~1..<default-branch>@{u} --pretty=format:%b`.
+
+2. **Look up, then confirm.** Load the `bugsink` skill and follow its **§4**: it maps each
+   friendly id to a UUID, reports whether the issue is still open and whether it is a
+   diagnostic dump or a real crash, and owns the choice between `resolve/` and
+   `resolve-next/`. Then **ask the operator to confirm** - every id, every time. A declined
+   confirmation resolves nothing and is not an error.
+
+3. **Resolve** what was confirmed, per §4.
+
+4. **Report** each id on its own line in the MERGED report (9.1).
+
+⚠️ **This step NEVER fails the ship.** The PR is already merged; the resolve is bookkeeping
+after the fact. A declined proton sign-off, an API error, an id that does not exist, an
+unattended run with nobody there to confirm - each is one honest line in the report and
+nothing more. Do not retry, do not diagnose, and do not let any of it change the exit path or
+the workspace-delete decision.
+
 ### 10. Delete the workspace - MERGED only, and in the SAME message as the report
 
-Reached only when step 9's table says **delete**. Nothing follows this step, in this file or
-in the run: deleting tears down this worktree and the agent session inside it, so no tool
-call and no output can execute after it. (If `--keep-workspace` was passed, there is nothing
+Reached only when step 9's table says **delete**, and only once step 9.2 is done. Nothing
+follows this step, in this file or in the run: deleting tears down this worktree and the
+agent session inside it, so no tool call and no output can execute after it - which is
+exactly why 9.2's confirmation happens before the report rather than after it. (If `--keep-workspace` was passed, there is nothing
 to do here - the report already says "kept".)
 
 `mcp__codehydra__workspace_delete` is a **deferred** tool: it has no schema loaded and cannot

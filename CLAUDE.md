@@ -429,8 +429,10 @@ with the proxy task above).
   archives (`ios-archive`) — dev/sideload builds carry none, so the SDK never starts there. Bugsink
   ingests no dSYMs: `ios-deliver` parks each main build's dSYMs as a `dsyms-<build>` artifact for
   offline `atos` symbolication (90-day cap; park longer-lived versions' dSYMs elsewhere at promote
-  time). **Triage these crashes with the `/bugsink` skill** (`.claude/skills/bugsink/`, read-only,
-  non-gating dev infra): it lists unresolved issues from `steho.bugsink.com` (project 1, API
+  time). **Triage these crashes with the `/bugsink` skill** (`.claude/skills/bugsink/`, non-gating
+  dev infra; read-only apart from ONE write — resolving an issue a shipped fix closes, on
+  confirmation, which `/ship` fires from a `Bugsink-Resolves:` commit trailer): it lists
+  unresolved issues from `steho.bugsink.com` (project 1, API
   `/api/canonical/0/`, `BUGSINK_TOKEN` via proton-env) and drills into one for the symbolicated
   stacktrace — symbolication runs **on Linux** via the `symbolic` lib against the `dsyms-<data.dist>`
   artifact (no Mac/atos needed), and fails loud when that artifact has expired.
