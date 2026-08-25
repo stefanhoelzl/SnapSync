@@ -326,7 +326,8 @@ async function presignDownloadUrl(
   deviceId: string,
   filename: string,
 ): Promise<string> {
-  const url = `${config.s3Scheme}://${config.s3Host}/${config.zone}/${byteKey(deviceId, filename)}` +
+  const url =
+    `${config.s3Scheme}://${config.s3Host}/${config.zone}/${byteKey(deviceId, filename)}` +
     `?X-Amz-Expires=${PRESIGN_EXPIRY_SECONDS}`;
   const signed = await aws.sign(url, { method: "GET", aws: { signQuery: true } });
   return signed.url;
