@@ -33,7 +33,12 @@ class InMemoryCandidateSource(private val state: MutableStateFlow<List<RawAsset>
     constructor(initial: List<RawAsset> = emptyList()) : this(MutableStateFlow(initial))
 
     override suspend fun candidates(policy: SelectionPolicy): List<Candidate> {
-        val floor = policy.walkFloor?.at?.iso ?: return emptyList()
+        // Exhausting the sealed policy rather than testing an absent floor: the non-contributing case is
+        // its own branch, and a contributing one always carries a bound.
+        val floor = when (policy) {
+            SelectionPolicy.None -> return emptyList()
+            is SelectionPolicy.Admitting -> policy.cutoff.at.iso
+        }
         return state.value.filter { it.creationDate >= floor }.map(::InMemoryCandidate)
     }
 }

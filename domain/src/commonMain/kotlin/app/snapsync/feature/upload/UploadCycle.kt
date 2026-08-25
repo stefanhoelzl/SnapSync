@@ -171,29 +171,42 @@ class UploadCycle(
             is CycleGate.Run -> gate.config to gate.membership
         }
 
-        // THE DIRECTION GATE (capability `upload-lifecycle`) — ahead of the reconcile, the walk, job
-        // creation, the manifest write, and the notify: a non-contributor must not enumerate its library to
-        // discover it contributes nothing (the walk costs ~110 ms of PhotoKit XPC per asset). Nothing below
-        // this line runs, and the discovery cursor is left exactly where it was.
-        //
-        // Skipping the acknowledgement pass is safe on both tiers: on iOS ≥26.1 the OS presents no jobs
-        // because `stop()` deregistered the extension (`setUploadJobExtensionEnabled(false)` wipes the
-        // configuration and every in-flight job), and the app-driven tier has no appex, so there is no
-        // "acknowledge or the system errors 50008" obligation to honour here.
         val configPolicy = membership.policy
-        // The walk's lower bound. `None` never reaches here (it returned above), and an admitting policy
-        // always carries a cutoff — a membership without one is not a representable state.
-        val cutoff = configPolicy.walkFloor ?: run {
-            log.e { "admitting policy carries no capture floor — refusing an unbounded walk" }
-            return CycleResult.SKIPPED
-        }
-        if (!configPolicy.enumerates) {
-            log.i { "cycle skipped — this membership contributes nothing (direction excludes upload)" }
-            return CycleResult.SKIPPED
-        }
-
         val eventId = config.eventId
         val engine = engineFor(config)
+
+        // THE DIRECTION GATE (capability `upload-lifecycle`) — ahead of the reconcile, the walk, job
+        // creation, the manifest write, and the notify: a non-contributor must not enumerate its library to
+        // discover it contributes nothing (the walk costs ~110 ms of PhotoKit XPC per asset). The discovery
+        // cursor is left exactly where it was.
+        //
+        // The gate bounds NEW WORK, not settlement. A declined cycle still runs the terminal-job pass,
+        // because acknowledging a job the OS ALREADY PRESENTED creates nothing, writes no manifest,
+        // enumerates nothing and issues no network call — it takes none of what this gate withholds.
+        //
+        // This pass used to sit below the gate, justified by "on iOS >=26.1 the OS presents no jobs because
+        // `stop()` deregistered the extension". That premise holds only where a producer's `stop()` ran,
+        // and a reconfigure to a download-only direction deliberately does NOT stop its producer — it
+        // leaves in-flight uploads to drain (capability `reconfigure-membership`). Measured on iOS 26.6
+        // with the extension still registered and jobs outstanding: a cycle returning before this pass
+        // made the system report `com.apple.photos.error Code=50008` ("appex failed to acknowledge jobs
+        // for processing state"), DISCARD the outstanding jobs, and record a failed attempt against the
+        // upload-job configuration that deferred the extension ~300 s and escalates. Re-measure at the
+        // next iOS major.
+        //
+        // The declined branch settles and acknowledges only: no album placement and no notify fan-out,
+        // because no device manifest is written for a non-contributor, so there is nothing for another
+        // member to be woken for.
+        val cutoff = when (configPolicy) {
+            SelectionPolicy.None -> {
+                settleTerminalJobs(engine)
+                log.i { "cycle skipped — this membership contributes nothing (direction excludes upload)" }
+                return CycleResult.SKIPPED
+            }
+            // An admitting policy carries its capture floor as a field, so there is no absent-bound case
+            // to guard here — the type closes it (capability `photo-selection-policy`).
+            is SelectionPolicy.Admitting -> configPolicy.cutoff
+        }
         // Phase 0 — re-join reconciliation (capability `event-rejoin-reconciliation`), BEFORE any upload
         // job is created. On a marker mismatch it seeds the ledger from the device's stored-file listing
         // so nothing already contributed re-uploads; on a settled join it is a no-op. A `false` return is
@@ -227,51 +240,14 @@ class UploadCycle(
             engine.handle(SyncEvent.UploadStarted(retry.job))
         }
 
-        // Phase 2 — terminal jobs. EVERY job MUST be acknowledged (the system errors 50008 —
-        // "appex failed to acknowledge jobs for processing state" — for any it presents that we
-        // leave un-acknowledged), so all arms acknowledge.
-        var capHit = false
-        // Real completions THIS cycle (a succeeded job with a recoverable key). Re-acks of an
-        // already-COMPLETED key do NOT count — they are not new work. Gates the notify fan-out below.
-        var completedThisCycle = 0
-        // The `assetId`s (normalized) that genuinely completed this cycle — added to the event album
-        // (capability `event-album`) once the terminal-job pass finishes.
-        val completedAssetIds = mutableSetOf<String>()
-        for (job in platform.fetchAckJobs()) {
-            when {
-                job.state == PlatformJobState.SUCCEEDED -> {
-                    // Record COMPLETED only for a recoverable key: a blank/unrecoverable key would
-                    // reconstruct a phantom `assetId=""` row. Acknowledge regardless — never leave a
-                    // presented job un-acknowledged (the system errors 50008).
-                    if (job.key.isNotBlank()) {
-                        // Count only a GENUINELY-new completion: at-least-once delivery means the OS can
-                        // re-hand a job whose key is already COMPLETED — that duplicate must not fire a
-                        // spurious notify. Read the prior state before the (idempotent) engine write.
-                        val wasCompleted = ledger.entry(job.key)?.state == LedgerState.COMPLETED
-                        engine.handle(SyncEvent.UploadCompleted(reconstruct(job)))
-                        if (!wasCompleted) {
-                            completedThisCycle++
-                            completedAssetIds.add(assetIdFromUploadKey(job.key))
-                        }
-                    }
-                    platform.acknowledge(job)
-                }
-                ledger.entry(job.key)?.state == LedgerState.COMPLETED -> platform.acknowledge(job)
-                else -> {
-                    // Retry-spent failure: record FAILED, then re-create a fresh job — but only if the
-                    // resource is still available (nil for released jobs) and the cap is not yet hit.
-                    val retry = adjudicateFailure(engine, job)
-                    if (retry != null && job.data != null && !capHit) {
-                        when (platform.createJob(retry.job.request, retry.job.request.resource)) {
-                            CreateResult.CREATED -> engine.handle(SyncEvent.UploadStarted(retry.job))
-                            CreateResult.LIMIT_EXCEEDED -> capHit = true // rediscovery retries this key
-                            CreateResult.FAILED -> Unit // not created → no UploadStarted; job acked below
-                        }
-                    }
-                    platform.acknowledge(job) // always — never leave a presented job un-acknowledged
-                }
-            }
-        }
+        // Phase 2 — terminal jobs, in its usual position for a contributing membership: AFTER the
+        // reconcile has settled, so the rows it writes are labelled with a membership the marker agrees
+        // with (see the backfill note above). A declined cycle runs the same pass at the gate instead.
+        val settled = settleTerminalJobs(engine)
+        val capHit = settled.capHit
+        val completedThisCycle = settled.completedThisCycle
+        val completedAssetIds = settled.completedAssetIds
+
         // Event album (capability `event-album`): add this cycle's genuinely-new completions to the
         // event album, best-effort, before any early return. Runs in whichever process ran the cycle.
         // The opt-in arrived with the gate, so it is checked once here rather than inside each root's
@@ -430,4 +406,70 @@ class UploadCycle(
         )
         return UploadJob(UploadRequest(url = "", headers = emptyMap(), resource = resource), entry?.attempt ?: 0)
     }
+
+    /** What a terminal-job pass produced, for the caller that needs it. */
+    private class Settlement(
+        val capHit: Boolean,
+        val completedThisCycle: Int,
+        val completedAssetIds: Set<String>,
+    )
+
+    /**
+     * Phase 2 — terminal jobs. EVERY job MUST be acknowledged (the system errors 50008 —
+     * "appex failed to acknowledge jobs for processing state" — for any it presents that we leave
+     * un-acknowledged), so all arms acknowledge, and so does a cycle the direction gate declines: the
+     * obligation is owed to the OS for jobs it already presented, and it does not depend on whether this
+     * membership still contributes.
+     *
+     * Creates no upload job for work not already in flight, writes no manifest, enumerates nothing, and
+     * touches no discovery cursor — which is what lets a declined cycle run it without taking anything
+     * the direction gate withholds. The only jobs it CAN create are replacements for retry-spent
+     * failures the OS handed back, which are continuations of work already begun.
+     */
+    private suspend fun settleTerminalJobs(engine: SyncEngine): Settlement {
+        var capHit = false
+        // Real completions THIS cycle (a succeeded job with a recoverable key). Re-acks of an
+        // already-COMPLETED key do NOT count — they are not new work. Gates the notify fan-out.
+        var completedThisCycle = 0
+        // The `assetId`s (normalized) that genuinely completed this cycle — added to the event album
+        // (capability `event-album`) once the terminal-job pass finishes.
+        val completedAssetIds = mutableSetOf<String>()
+        for (job in platform.fetchAckJobs()) {
+            when {
+                job.state == PlatformJobState.SUCCEEDED -> {
+                    // Record COMPLETED only for a recoverable key: a blank/unrecoverable key would
+                    // reconstruct a phantom `assetId=""` row. Acknowledge regardless — never leave a
+                    // presented job un-acknowledged (the system errors 50008).
+                    if (job.key.isNotBlank()) {
+                        // Count only a GENUINELY-new completion: at-least-once delivery means the OS can
+                        // re-hand a job whose key is already COMPLETED — that duplicate must not fire a
+                        // spurious notify. Read the prior state before the (idempotent) engine write.
+                        val wasCompleted = ledger.entry(job.key)?.state == LedgerState.COMPLETED
+                        engine.handle(SyncEvent.UploadCompleted(reconstruct(job)))
+                        if (!wasCompleted) {
+                            completedThisCycle++
+                            completedAssetIds.add(assetIdFromUploadKey(job.key))
+                        }
+                    }
+                    platform.acknowledge(job)
+                }
+                ledger.entry(job.key)?.state == LedgerState.COMPLETED -> platform.acknowledge(job)
+                else -> {
+                    // Retry-spent failure: record FAILED, then re-create a fresh job — but only if the
+                    // resource is still available (nil for released jobs) and the cap is not yet hit.
+                    val retry = adjudicateFailure(engine, job)
+                    if (retry != null && job.data != null && !capHit) {
+                        when (platform.createJob(retry.job.request, retry.job.request.resource)) {
+                            CreateResult.CREATED -> engine.handle(SyncEvent.UploadStarted(retry.job))
+                            CreateResult.LIMIT_EXCEEDED -> capHit = true // rediscovery retries this key
+                            CreateResult.FAILED -> Unit // not created → no UploadStarted; job acked below
+                        }
+                    }
+                    platform.acknowledge(job) // always — never leave a presented job un-acknowledged
+                }
+            }
+        }
+        return Settlement(capHit, completedThisCycle, completedAssetIds)
+    }
+
 }

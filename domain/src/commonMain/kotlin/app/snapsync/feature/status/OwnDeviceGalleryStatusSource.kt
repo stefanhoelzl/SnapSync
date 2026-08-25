@@ -78,11 +78,17 @@ class OwnDeviceGalleryStatusSource(
      * unbounded fetch differ only in how many assets they touch.
      */
     suspend fun refresh(configPolicy: SelectionPolicy) {
-        val cutoff = configPolicy.walkFloor
-        if (!configPolicy.enumerates || cutoff == null) {
-            _size.value = 0
-            log.i { "gallery: this membership contributes nothing → N=0 (no enumeration)" }
-            return
+        // Exhausting the sealed policy: the non-contributing case is recognised as itself, before any
+        // bound is read. It is deliberately NOT reached by way of an absent floor — a contributing
+        // policy carries its cutoff as a field, so there is no second cause for "no bound" to hide
+        // behind (capability `photo-selection-policy`).
+        val cutoff = when (configPolicy) {
+            SelectionPolicy.None -> {
+                _size.value = 0
+                log.i { "gallery: this membership contributes nothing → N=0 (no enumeration)" }
+                return
+            }
+            is SelectionPolicy.Admitting -> configPolicy.cutoff
         }
         val started = timeSource.markNow()
         val policy = configPolicy.excluding(

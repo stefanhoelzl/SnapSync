@@ -39,12 +39,18 @@ pegs the screen below 100% forever.
 
 `SelectionPolicy` SHALL be a **required** parameter of the count, with no default and no "unscoped" value.
 This is a privacy requirement, not an ergonomic one: no value and no absent-argument fallback may scope the
-count to the whole library. A default is prohibited in both polarities — a permissive one (an `Admitting`
-policy carrying no capture-date lower bound) spans the entire library from the beginning of time, and a
-fail-closed one (`None`) makes a contributing member's screen read "In sync" over a count of nothing. A
-`SelectionPolicy.None` membership counts `0` **without enumerating the library**, and a device with no
-membership has no scope to count at all — the composition root simply does not refresh, and `N` remains at
-its seeded `0`.
+count to the whole library. A default is prohibited in both polarities — a permissive one admitting every
+capture date spans the entire library from the beginning of time, and a fail-closed one (`None`) makes a
+contributing member's screen read "In sync" over a count of nothing. A `SelectionPolicy.None` membership
+counts `0` **without enumerating the library**, and a device with no membership has no scope to count at
+all — the composition root simply does not refresh, and `N` remains at its seeded `0`.
+
+The permissive polarity is now unrepresentable rather than merely prohibited: a contributing policy carries
+its capture-date lower bound as a non-null field (capability `photo-selection-policy`), so there is no
+`Admitting` value spanning every capture date for a default to select. The count SHALL obtain its bound by
+exhausting the sealed policy — handling the non-contributing membership on its own branch and receiving a
+non-null bound otherwise — rather than by testing an accessor that could report an absent floor for either
+reason.
 
 #### Scenario: Current size is available synchronously
 
@@ -72,6 +78,12 @@ its seeded `0`.
 
 - **WHEN** the count is refreshed for a `SelectionPolicy.None` membership whose library holds photos
 - **THEN** `size.value` is `0` and no library enumeration is performed
+
+#### Scenario: The non-contributing case is distinguished from the bound, not merged with it
+
+- **WHEN** the count resolves the capture-date bound it will walk with
+- **THEN** the non-contributing membership is recognised as its own case before any bound is read, so
+  "contributes nothing" is never reached by way of an absent floor
 
 ### Requirement: Live re-emission on library change
 

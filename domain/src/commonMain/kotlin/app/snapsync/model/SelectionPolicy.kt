@@ -74,8 +74,30 @@ sealed interface SelectionPolicy {
      */
     data object None : SelectionPolicy
 
-    /** The membership contributes every asset that satisfies **all** [rules]. */
-    data class Admitting(val rules: List<SelectionRule>) : SelectionPolicy
+    /**
+     * The membership contributes every asset that satisfies **all** [rules].
+     *
+     * The capture-date **lower** bound is a field, not one rule among the rest, and [rules] derives its
+     * [SelectionRule.CaptureAfter] from it. That makes "contributes, but with no capture floor"
+     * unrepresentable — closing *A lower bound `from` SHALL be required: a membership without one is not
+     * a representable state* at the type rather than at each consumer.
+     *
+     * It is the one bound a platform walk MUST push into its native fetch (capability
+     * `photo-selection-policy`). That is a **liveness** property of the walk, not a correctness property
+     * of admission: every rule is equally load-bearing for what is admitted, but an unbounded walk is
+     * watchdog-killed before [admits] ever runs. Every *other* narrowing is advisory — omit it and you
+     * pay only performance, because [admits] re-filters.
+     *
+     * [rest] holds every other rule. [rules] is computed once here rather than on each read, because
+     * [admits] runs per asset across a walk; equality keys on the two constructor parameters, which is
+     * exactly right — two policies with the same cutoff and the same rest are the same policy.
+     */
+    data class Admitting(
+        val cutoff: CaptureCutoff,
+        val rest: List<SelectionRule>,
+    ) : SelectionPolicy {
+        val rules: List<SelectionRule> = listOf(SelectionRule.CaptureAfter(cutoff)) + rest
+    }
 
     /** Does the policy admit this asset? The single admission decision in the system. */
     fun admits(facts: AssetFacts): Boolean = when (this) {
@@ -89,16 +111,14 @@ sealed interface SelectionPolicy {
      */
     val enumerates: Boolean get() = this !is None
 
-    /**
-     * The capture-date **lower** bound, if any — the one bound a platform walk MUST push into its native
-     * fetch (capability `photo-selection-policy`). That is a **liveness** property of the walk, not a
-     * correctness property of admission: every rule here is equally load-bearing for what is admitted,
-     * but an unbounded walk is watchdog-killed before [admits] ever runs. Every *other* narrowing is
-     * advisory — omit it and you pay only performance, because [admits] re-filters.
-     */
-    val walkFloor: CaptureCutoff?
-        get() = (this as? Admitting)?.rules
-            ?.filterIsInstance<SelectionRule.CaptureAfter>()?.firstOrNull()?.cutoff
+    // There is deliberately NO `walkFloor: CaptureCutoff?` accessor. It answered "what is the capture
+    // floor" with an absent value whose two causes — "this membership contributes nothing" and "this
+    // policy has no floor" — have opposite consequences, and it invited a consumer to branch on the
+    // floor BEFORE checking the direction. `UploadCycle` did exactly that: because `None.walkFloor` was
+    // `null`, every download-only cycle took the malformed-policy branch and logged at `Error`, which
+    // the reporting seam turns into a crash report, while the branch that names the real reason sat
+    // one line below, unreachable. A consumer needing the bound exhausts this sealed type instead:
+    // `None` is handled on its own branch, and `Admitting` yields a non-null [Admitting.cutoff].
 
     companion object {
         /**
@@ -124,9 +144,11 @@ sealed interface SelectionPolicy {
             ceiling: CaptureCeiling?,
         ): SelectionPolicy {
             if (!includesUpload) return None
+            // [cutoff] is stored verbatim on the variant; its `CaptureAfter` rule is derived there, so
+            // the bound and the rule cannot drift apart.
             return Admitting(
-                buildList {
-                    add(SelectionRule.CaptureAfter(cutoff))
+                cutoff = cutoff,
+                rest = buildList {
                     if (ceiling != null) add(SelectionRule.CaptureBefore(ceiling))
                     add(SelectionRule.ExcludeScreenshots)
                     add(SelectionRule.ExcludeScreenRecordings)
@@ -163,8 +185,11 @@ fun SelectionPolicy.excluding(
     albumExcludedAssetIds: Set<String>,
 ): SelectionPolicy = when (this) {
     SelectionPolicy.None -> SelectionPolicy.None
+    // The cutoff carries through untouched — completing a policy adds exclusions, it never moves the
+    // capture floor.
     is SelectionPolicy.Admitting -> SelectionPolicy.Admitting(
-        rules + buildList {
+        cutoff = cutoff,
+        rest = rest + buildList {
             if (suppressedAssetIds.isNotEmpty()) add(SelectionRule.NotEcho(suppressedAssetIds))
             if (albumExcludedAssetIds.isNotEmpty()) {
                 add(SelectionRule.NotInDenylistedAlbum(albumExcludedAssetIds))

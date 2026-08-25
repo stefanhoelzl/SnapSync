@@ -96,6 +96,51 @@ class SentryLogWriterTest {
         )
     }
 
+    // ---- what groups with what ------------------------------------------------------------------
+
+    /**
+     * The ambient `[entryPoint]` prefix is context about WHICH TRIGGER was running, not about what went
+     * wrong — and the backend groups by message text. Leaving it in the message split one cause into one
+     * issue per trigger: a single wrong `Error` in the upload cycle arrived as `SNAPSYNC-27/28/29/30`,
+     * one each for `upload.didComplete`, `pump.onUploadCompleted`, `pump.onSessionEvents` and
+     * `url-session.onForeground`. So the event carries the bare message and the entry point rides as a
+     * tag.
+     */
+    @Test
+    fun `the entry point rides as a tag rather than splitting the message`() {
+        val owned = LogContext.enter("url-session.onForeground")
+        val captured = try {
+            captureWith { writer.log(Severity.Error, "the cycle aborted", "engine", null) }
+        } finally {
+            LogContext.exit(owned)
+        }
+
+        val event = assertNotNull(captured)
+        val text = event.text()
+        assertTrue("the cycle aborted" in text, "the message must still arrive: $text")
+        assertTrue(
+            "url-session.onForeground" !in text,
+            "the prefix in the message is what grouped one cause as four issues: $text",
+        )
+        assertEquals(
+            "url-session.onForeground", event.tags["entry_point"],
+            "and it must remain recoverable — dropping it from the message may not lose it",
+        )
+    }
+
+    /** Same rule on the exception path: one rule is easier to keep true than two. */
+    @Test
+    fun `a captured throwable carries the entry point tag too`() {
+        val owned = LogContext.enter("process")
+        val captured = try {
+            captureWith { writer.log(Severity.Error, "process cycle failed", "engine", IllegalStateException("boom")) }
+        } finally {
+            LogContext.exit(owned)
+        }
+
+        assertEquals("process", assertNotNull(captured).tags["entry_point"])
+    }
+
     // ---- what must not leave ---------------------------------------------------------------------
 
     @Test
