@@ -65,4 +65,4 @@
 - [x] 9.1 `./gradlew build` green; `architectureDiagrams` regenerated and produced NO change (the new files are adapter/test sources the diagrams do not project)
 - [x] 9.2 `openspec validate --specs --strict` → 62 passed, 0 failed
 - [x] 9.3 CONFIRMED, no change needed: `UploadExtensionRoot` constructs `KeychainDeviceIdentity(READ_ONLY)` with DEFAULT stores, and `:app:ios:extension` declares both targets — so on `iosSimulatorArm64` it links the same App-Group file store the app writes, and both processes observe one id. NB `READ_ONLY` never mints, so the app must resolve first; on this host it always does, since the OS never invokes the extension there at all
-- [ ] 9.4 Open the PR with the `internal` changelog label
+- [x] 9.4 PR #207 opened with the `internal` label. Body states plainly that 6.1/6.2 are not taken, so a reviewer is not left to discover it
