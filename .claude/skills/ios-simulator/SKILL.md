@@ -87,8 +87,11 @@ xcodebuild -project iosApp/iosApp.xcodeproj -scheme iosApp \
   -destination 'generic/platform=iOS Simulator' \
   -derivedDataPath build/ios \
   CODE_SIGNING_ALLOWED=NO \
-  BACKGROUND_UPLOAD_URL_BASE=http://127.0.0.1:8080/api/v1 \
   build
+# NO host override: `BACKGROUND_UPLOAD_URL_BASE=` cannot reach the generated Deployment.plist and is
+# silently ignored, baking the PRODUCTION host. Run `python3 scripts/resolve-deployment.py local`
+# first instead — its 127.0.0.1:8080 host renders `http://127.0.0.1:8080/api/v1`, the scheme derived
+# from the loopback literal (ATS exempts it; nothing else).
 
 APP="$(find build/ios/Build/Products -maxdepth 2 -name '*.app' -path '*-iphonesimulator*' | head -1)"
 scripts/sim-sign "$APP"          # appex first, then the .app; no --deep

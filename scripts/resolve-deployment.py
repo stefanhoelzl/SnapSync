@@ -483,7 +483,7 @@ def render_plist(flat: dict) -> str:
     p = project(flat, PLIST)
     distributed = p.get("channel") == "release"
     values = {
-        "uploadBase": f"https://{p['domain']}/api/v1",
+        "uploadBase": f"{upload_scheme(p['domain'])}://{p['domain']}/api/v1",
         "apnsEnv": "production" if distributed else "sandbox",
         "sentryEnvironment": "production" if distributed else "development",
     }
@@ -503,6 +503,31 @@ def render_plist(flat: dict) -> str:
         "</dict>\n"
         "</plist>\n"
     )
+
+
+def upload_scheme(domain: str) -> str:
+    """`http` for a LOOPBACK literal, `https` for everything else.
+
+    Not a preference — a platform constraint, derived rather than declared so the two cannot disagree.
+    Default ATS applies to the app and the extension and NO `NSAppTransportSecurity` exception ships, so
+    a plaintext host reached over the network fails SILENTLY on device. ATS exempts the loopback IP
+    LITERAL, and only that: measured 2026-08-09 from a real bundle on an iOS 26.5 simulator, a build
+    baked with `http://127.0.0.1:8080/api/v1` reached the local rig and got a 201.
+
+    `localhost` is deliberately NOT loopback here. It is a NAME, resolved through DNS, and ATS's
+    exemption is documented for the address literal — treating it as exempt would produce a build that
+    fails the way this function exists to prevent. An IPv6 literal is read from its BRACKETED form, the
+    only form valid in a URL host; splitting a bare `::1` on its first colon yields `""` and would
+    silently classify it as non-loopback.
+
+    This is what lets the local rig be SELECTED rather than overridden: an operator points a build at
+    `deno task dev:local` by editing `deployments/local.json` and re-running the resolver, with no
+    `BACKGROUND_UPLOAD_URL_BASE=` on the xcodebuild line — which could not reach the plist anyway. A
+    cloudflared tunnel is not loopback and correctly stays `https`.
+    """
+    host = domain[1:domain.index("]")] if domain.startswith("[") and "]" in domain \
+        else domain.split(":", 1)[0]
+    return "http" if host in ("127.0.0.1", "::1") else "https"
 
 
 def xml_escape(value: str) -> str:

@@ -48,7 +48,7 @@
 
 ## 7. Device verification
 
-- [ ] 7.1 `gh workflow run ios.yml --ref <branch>`; confirm the archive-verification step passed for both bundles in the run log
-- [ ] 7.2 Install the delivered build, double-tap the "SnapSync" label, send a diagnostic dump
-- [ ] 7.3 Confirm the dump in Bugsink via `/bugsink`, with `data.dist` equal to that run number — the first positive evidence since build 644
-- [ ] 7.4 Confirm the extension reports too: force an upload cycle and check the run's `dsyms-<build>` artifact exists and that extension-process events carry the `process` tag for the `.appex` bundle id
+- [x] 7.1 `gh workflow run ios.yml --ref <branch>`; confirm the archive-verification step passed for both bundles in the run log
+- [x] 7.2 Install the delivered build, double-tap the "SnapSync" label, send a diagnostic dump
+- [x] 7.3 Confirm the dump in Bugsink via `/bugsink`, with `data.dist` equal to that run number — the first positive evidence since build 644
+- [x] 7.4 Confirm the extension carries the DSN — AMENDED. The original wording ("force an upload cycle", read extension-process events) is not performable on a TestFlight build: the control channel exists only under `-Psnapsync.rig=true`, and an extension event requires the extension to log `Error`/`Assert` or crash, which cannot be forced. Verified instead by downloading the `ios-archive` artifact and reading `Deployment.plist` out of `SnapSync.app/Extensions/BackgroundUploadExtension.appex` directly — independent of the CI step that asserts the same thing. `dsyms-675` parked (13.2 MB)

@@ -195,24 +195,39 @@ installs and launches on the SE2.
 
 ## Pointing a build at a local backend
 
-The upload host is **compile-time** (PhotoKit forces it), so this needs a rebuild. One xcconfig setting
-feeds **both** targets' `Info.plist`, so one override covers the app and the extension.
+The upload host is **compile-time** (PhotoKit forces it), so this needs a rebuild. One generated
+`Deployment.plist` is copied into **both** bundles, so one re-resolve covers the app and the extension.
 
-⚠️ This is the **one** place a bare host string is still correct. Every other build derives
-`BACKGROUND_UPLOAD_URL_BASE` from the resolved deployment (capability `deployment-configuration`), and
-retargeting normally means selecting a different deployment. It cannot work here: a quick tunnel's
-hostname is minted by cloudflared **inside the running rig**, after the resolver has already run, and is
-random per session — no declared file can hold a value that does not exist yet. So the override stays,
-scoped to this loop, which is also the only path that produces an installable dev IPA.
+🚫 **`BACKGROUND_UPLOAD_URL_BASE=` on the xcodebuild line does nothing.** It has not worked since the
+device-facing values moved out of the xcconfig into that bundled resource (capability
+`deployment-configuration`) — an `xcodebuild` build setting cannot substitute into a resource file. The
+override is **accepted and ignored**, and the build silently bakes the *production* host instead, which
+is the exact silent-misdirection failure that move existed to remove. Do not reach for it.
+
+Retarget by **selecting the deployment**: write the rig's host into `deployments/local.json` and re-run
+the resolver. That runs *after* cloudflared has minted the tunnel hostname, which is what the old
+override was working around. The scheme is derived from the host — `http` for a loopback literal,
+`https` for a tunnel — so you never state it.
 
 ```bash
-H=$(cat api/.localdev/host)
+H=$(cat api/.localdev/host)      # e.g. random-words.trycloudflare.com  (no scheme)
+python3 - "$H" <<'EOF'
+import json, pathlib, sys
+p = pathlib.Path("deployments/local.json"); d = json.loads(p.read_text())
+d["domain"] = sys.argv[1].replace("https://", "").replace("http://", "").rstrip("/")
+p.write_text(json.dumps(d, indent=2) + "\n")
+EOF
+python3 scripts/resolve-deployment.py local     # renders Deployment.plist with that host
 sshmac "cd snapsync && xcodebuild -project iosApp/iosApp.xcodeproj -scheme iosApp \
           -configuration Debug -destination 'generic/platform=iOS' \
           -archivePath \"\$HOME/artifacts/SnapSync.xcarchive\" \
-          BACKGROUND_UPLOAD_URL_BASE=$H/api/v1 CODE_SIGNING_ALLOWED=NO archive"
+          CODE_SIGNING_ALLOWED=NO archive"
 # then the unchanged 6b re-sign + install steps above
 ```
+
+⚠️ `deployments/local.json` is COMMITTED — the edit above is a working-tree change. Revert it
+(`git checkout deployments/local.json`) before you commit anything, or a session's tunnel hostname
+lands in the repo.
 
 A quick tunnel's hostname is **random per session**, so the IPA is rebuilt per session (~1 min
 incremental Debug). There is no CI path for this: `ios.yml` has no `workflow_dispatch`. ⚠️ Crossing

@@ -50,7 +50,6 @@ and the boot probe),
 `changes/archive/2026-07-14-migrate-runtime-to-bunny` (bunny as the sole runtime; config into source;
 the fold of the former `backend-config` capability into this one).
 ## Requirements
-
 ### Requirement: Path-scoped, isolated workflow; deploy on main only
 
 The system SHALL provide a GitHub Actions workflow that runs the checks on **every push** touching the
@@ -107,7 +106,7 @@ The device-facing origin SHALL be a **custom domain we control** through our own
 zone) — not a runtime-provider vanity hostname. It SHALL be `CNAME`'d to the bunny pull zone fronting
 the Edge Script and served with a **publicly-trusted TLS certificate** (default ATS applies; no
 `NSAppTransportSecurity` exception ships, so a non-HTTPS or privately-signed origin is unacceptable).
-The compile-time baked host (`BACKGROUND_UPLOAD_URL_BASE` / `BackgroundUploadURLBase`) SHALL be **this
+The compile-time baked host (`uploadBase` in the generated `Deployment.plist`) SHALL be **this
 custom domain**, so device→backend traffic for uploads, event creation, and listings shares one origin
 we own. Photo **download** bytes do **not** share this origin — they are served by bunny's S3 endpoint
 (`<region>-s3.storage.bunnycdn.com`) against a presigned URL, itself a publicly-trusted HTTPS host
@@ -443,7 +442,7 @@ token, and the ungated attest bootstrap routes (`attest/*`) SHALL remain ungated
 the prefix version-agnostically, so a future `/api/vN` mount is gated identically with no change to it.
 
 The compile-time device-facing base host baked into the app
-(`BACKGROUND_UPLOAD_URL_BASE` / `BackgroundUploadURLBase`) SHALL carry the current version prefix, so that
+(`uploadBase` in the generated `Deployment.plist`) SHALL carry the current version prefix, so that
 every device-API request the app and upload extension compose from that base targets `/api/v1`. The
 separate web/link origin constant SHALL NOT carry the prefix.
 
@@ -651,3 +650,4 @@ strictly less work than routes that are already ungated and uncacheable.
 
 - **WHEN** the health route is requested with a method other than `GET` or `HEAD`
 - **THEN** it is not served by that route
+
