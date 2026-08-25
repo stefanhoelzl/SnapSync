@@ -112,7 +112,9 @@ renderer set to `{xcconfig}` is a one-line inventory edit if a reviewer objects.
 itself is a deliberate follow-up against `crash-reporting`. `web-site` and `ci-build` are touched but
 their requirements are unchanged.
 
-**Verification gap.** Everything here is Linux-verifiable except the iOS leg, which reaches signing
-identity, build numbers and crash reporting — the path that ships to real users. Two facts remain
-unmeasured and are settleable only on a Mac: whether xcconfig's `#include` hard-errors or merely warns
-on a missing file, and whether the generated fragment resolves correctly in a real Xcode build.
+**Verification.** Everything here is Linux-verifiable except the iOS leg, which reaches signing identity,
+build numbers and crash reporting — the path that ships to real users. Both of its Mac-only facts are now
+measured on `macos-26`: the hard `#include` resolves (run 32797542771 — a signed archive built with
+`BUNDLE_ID`/`TEAM_ID` living only in the fragment), and the archive bakes the resolved values (run
+32798482386, observed `base=https://snapsync.stho.net/api/v1 bundle=app.snapsync apns=sandbox`). The
+second is a standing `ios.yml` assertion rather than a one-off check.

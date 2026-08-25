@@ -110,15 +110,15 @@ Kotlin. Duplicating a *resolver* is tolerable; duplicating a *deployment definit
 
 ### 3. Resolve once, emit every rendering
 
-The CLI is `resolve-deployment.py <deployment>` with no `--emit`. Six renderings are produced together at
-fixed paths: `api/src/deployment.json`, `api/src/deployment.d.ts`, `build/deployment.properties`,
+The CLI is `resolve-deployment.py <deployment>` with no `--emit`. Five renderings are produced together at
+fixed paths: `api/src/deployment.ts`, `build/deployment.properties`,
 `iosApp/Configuration/Deployment.xcconfig`, `build/metadata/…`, `site/src/deployment.json`.
 
 Per-rendering invocation would allow `ios.yml` to render the xcconfig from `prod` while something else
 rendered the json from `local` — **artifacts that disagree**, precisely the bug class this change exists to
 remove. Emit-all makes that unrepresentable, and gives *"did you run the resolver?"* one answer for the
 whole repo. The cost — a consumer writes files it does not read, so a Gradle build overwrites a
-`deployment.json` the rig resolved as `local` — is benign: the rig imports its config at startup, and the
+`deployment.ts` the rig resolved as `local` — is benign: the rig imports its config at startup, and the
 next `deno task check` wants `prod` anyway.
 
 ### 4. Values are `string | { "env": NAME, "scope"?: "build" }`, and the renderer set is the guarantee
@@ -193,14 +193,22 @@ This also removed a mechanism: with nothing committed, a workflow that skips the
 module — loud, at every consumer. The "placeholder that cannot work" sentinel we were designing around
 became unnecessary.
 
-### 8. The type is generated from the inventory, not inferred from one resolved file
+### 8. The type is generated from the inventory, in the SAME module as the value
 
 `typeof resolved` would reflect whichever deployment happened to be on disk, so under `prod` the type is
 the bunny shape and the sealed union means nothing to the compiler — `dev/serve.ts`, which must work with
-the filesystem shape, would be type-checked against the wrong one. The resolver emits `deployment.d.ts`
-from the inventory instead: a real discriminated union that forces narrowing on `kind`, carrying the
-inventory's rationale as JSDoc. No hand-written `Config` to duplicate, and CI still type-checks `prod`
-alone.
+the filesystem shape, would be type-checked against the wrong one. The resolver emits the union from the
+inventory instead: a real discriminated union that forces narrowing on `kind`, carrying the inventory's
+rationale as JSDoc. No hand-written `Config` to duplicate, and CI still type-checks `prod` alone.
+
+**Implementation correction: one `.ts`, not `.json` + `.d.ts`.** The design first paired a JSON rendering
+with a declaration file. That does not work — a `.d.ts` beside a `.json` does not type a JSON import,
+because Deno infers the type from the JSON itself, so applying the union would have needed an unchecked
+`as` assertion. Emitting a typed `const` in one module makes the **compiler check the emitted data against
+the emitted type**, and it earned that immediately: it caught `sha` leaking into `ResolvedDeployment` (it
+belongs beside `config`, not inside it) and then caught the union needing to span the whole deployment
+rather than just `storage`, since `apnsPrivateKey`/`attestTokenKey` are `kind==bunny` keys. Narrowing uses
+exported type guards, because a nested discriminant does not narrow the outer type.
 
 `buildSha` goes in `Deps` beside `now` — not in `Config`, which means configuration, and not a bare import,
 which `app.test.ts` could not override.
@@ -297,10 +305,15 @@ itself wrong is worse than no probe because it manufactures confidence.
   makes anything living there permanently un-diffable.
 - **[This reaches the iOS release path]** → *Accepted, unmitigated.* Signing identity, build numbers and
   crash reporting all ship to real users, and that leg is the only part not verifiable on Linux.
-- **[Two Mac-only facts are unmeasured]** → *Gated.* Whether xcconfig `#include` hard-errors or merely warns
-  on a missing file, and whether the fragment resolves in a real Xcode build. If `#include` only warns, the
-  fallback is a `__UNRESOLVED__` sentinel plus a guard asserting no built `Info.plist` contains it — absence
-  stays loud either way, but which mechanism is a measurement.
+- **[Two Mac-only facts]** → *MEASURED, and now permanently gated.* Run 32797542771 built a signed archive
+  with `BUNDLE_ID`/`TEAM_ID` living only in the generated fragment, so the hard `#include` resolves —
+  provisioning could not have succeeded otherwise, and no `__UNRESOLVED__` sentinel is needed. Run
+  32798482386 then turned that inference into an observation *and* a standing assertion: `ios.yml` reads the
+  archive's `Info.plist` and checks the baked values against the resolved deployment
+  (`base=https://snapsync.stho.net/api/v1 bundle=app.snapsync apns=sandbox`, channel `dev`). The assertion
+  exists because signing only *probably* catches a broken fragment; the upload host and the APNs
+  environment it would NOT catch are the dangerous pair — a build pointed at the wrong backend, or a
+  TestFlight build left on sandbox APNs, looks entirely normal until photos silently stop arriving.
 - **[`deno lsp` reports a missing module on a fresh clone]** → *Accepted.* Gitignored renderings mean editor
   errors until a task has run once.
 - **[`python3` enters `api/`'s check path]** → *Accepted.* It softens the standing property that the
@@ -341,7 +354,8 @@ source constants — safe, because nothing external holds state this change crea
 
 ## Open Questions
 
-- The two Mac-only measurements in Risks. Both gate step 8.
+- ~~The two Mac-only measurements.~~ Settled on `macos-26` (runs 32797542771 and 32798482386) and converted
+  into a standing CI assertion; see Risks.
 - Does bunny now issue **compute-scoped subuser API keys**? If so, the "no scoped API key" premise under
   the whole config-in-source argument has softened, and rollback becomes reachable without the account key.
   Deliberately deferred.
