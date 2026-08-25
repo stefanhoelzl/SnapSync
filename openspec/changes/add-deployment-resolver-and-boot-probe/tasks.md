@@ -57,7 +57,7 @@
 
 ## 8. Xcode — needs a Mac to verify
 
-- [ ] 8.1 **Measure first:** does xcconfig `#include` hard-error or only warn on a missing file? If it only warns, fall back to a `__UNRESOLVED__` sentinel plus a guard asserting no built `Info.plist` contains it
+- [x] 8.1 **MEASURED** (run 32797542771, macos-26): the hard `#include` resolves — the signed archive built, and `BUNDLE_ID`/`TEAM_ID` now live only in the generated fragment, so provisioning could not have succeeded otherwise. No sentinel needed; 8.5 turns the inference into a standing assertion
 - [x] 8.2 Strip `BUNDLE_ID`, `TEAM_ID`, `APP_NAME`, `MARKETING_VERSION`, `ASSOCIATED_DOMAIN`, `BACKGROUND_UPLOAD_URL_BASE`, `APS_ENVIRONMENT`, `APNS_ENV`, `SENTRY_DSN` and `SENTRY_ENVIRONMENT` from `Config.xcconfig`; add the hard `#include` of `Deployment.xcconfig`
 - [x] 8.3 Add the resolver step to `ios.yml`, before "Archive signed device app", and pass the computed `MARKETING_VERSION` and `SENTRY_DSN` into it as build-scope environment values
 - [x] 8.4 Document why the ssh-mac tunnel override STAYS a bare `BACKGROUND_UPLOAD_URL_BASE` string — a quick tunnel's hostname is minted after the resolver runs and is random per session, so no declared file can hold it (the same timing fact that kept `domain` literal-only); runbook and the `ios-ci` delta updated to admit the one forced exception

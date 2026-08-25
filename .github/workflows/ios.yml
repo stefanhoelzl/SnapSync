@@ -216,6 +216,37 @@ jobs:
       # or symlinks. Restoring a .app through that round-trip would corrupt the signed bundle and break
       # `xcodebuild -exportArchive`. tar preserves the modes, so the archive survives the hand-off
       # byte-for-byte.
+      # Assert the archive actually BAKED the resolved deployment. This is the standing answer to the one
+      # thing that could otherwise fail silently: `Config.xcconfig` hard-`#include`s the generated
+      # fragment, and if that include ever stopped resolving, every value it owns would be empty or stale.
+      # Signing would probably catch it (BUNDLE_ID and TEAM_ID live only in the fragment) — but "probably"
+      # is not a gate, and the upload host and APNs environment would not be caught at all: a build
+      # pointed at the wrong backend, or a TestFlight build on sandbox APNs, looks completely normal until
+      # a user's photos silently stop arriving. Capability `deployment-configuration`.
+      - name: Verify the archive baked the resolved deployment
+        run: |
+          set -euo pipefail
+          PLIST="$RUNNER_TEMP/SnapSync.xcarchive/Products/Applications/SnapSync.app/Info.plist"
+          [ -f "$PLIST" ] || { echo "::error::no Info.plist at $PLIST"; exit 1; }
+          read_key() { /usr/libexec/PlistBuddy -c "Print :$1" "$PLIST"; }
+          prop() { sed -n "s/^$1=//p" build/deployment.properties; }
+
+          DOMAIN="$(prop domain)"
+          [ -n "$DOMAIN" ] || { echo "::error::the resolver produced no domain"; exit 1; }
+
+          BASE="$(read_key BackgroundUploadURLBase)"
+          BUNDLE="$(read_key CFBundleIdentifier)"
+          APNS="$(read_key APNS_ENV)"
+          echo "baked: base=$BASE bundle=$BUNDLE apns=$APNS (domain=$DOMAIN, channel=$SNAPSYNC_CHANNEL)"
+
+          case "$BASE" in
+            "https://$DOMAIN/api/v1") ;;
+            *) echo "::error::baked upload base '$BASE' is not https://$DOMAIN/api/v1"; exit 1 ;;
+          esac
+          [ -n "$BUNDLE" ] || { echo "::error::CFBundleIdentifier is empty — the fragment did not resolve"; exit 1; }
+          if [ "$SNAPSYNC_CHANNEL" = "release" ]; then EXPECT_APNS=production; else EXPECT_APNS=sandbox; fi
+          [ "$APNS" = "$EXPECT_APNS" ] || { echo "::error::APNS_ENV is '$APNS', expected '$EXPECT_APNS'"; exit 1; }
+
       - name: Pack the signed archive for delivery
         if: github.ref == 'refs/heads/main'
         run: tar -czf "$RUNNER_TEMP/SnapSync.xcarchive.tar.gz" -C "$RUNNER_TEMP" SnapSync.xcarchive
