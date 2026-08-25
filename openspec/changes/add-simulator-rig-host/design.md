@@ -48,10 +48,12 @@ landing in `api/.localstore`. The same run proved the null-token path.
 
 - `simctl launch <dev> <bundle> KEY=VAL` passes **argv, not environment**; `SIMCTL_CHILD_<VAR>` is
   required (`screenshots.yml:177` already does this correctly).
-- `simctl privacy <dev> grant photos app.snapsync` **does not hold**. The app still raised the system
-  full-access alert, which then sat **modally** and blocked every subsequent launch at
-  `MainViewController(mode=deferred)` — five consecutive launches reading exactly like "the app hangs on
-  boot". What worked: `terminate` → `shutdown` → `boot` → `privacy grant all` → launch.
+- `simctl privacy <dev> grant photos app.snapsync` **does not grant anything PhotoKit reads** — see the
+  Non-Goals for the 2026-08-25 follow-up, which found the tool at fault rather than the platform
+  (`applesimutils` works). What was observed here in August was the consequence: the app, still seeing
+  `notDetermined`, raised the system alert, which then sat **modally** and blocked every subsequent
+  launch at `MainViewController(mode=deferred)` — five consecutive launches reading exactly like "the app
+  hangs on boot". The shutdown/boot dance cleared the pending alert; it never granted access.
 - `SNAPSYNC_SEED_POLICY` is unusable there: it logs "seeding N POLICY-PROBE asset(s)" and never
   completes, because the app suspends ~4 s after launch and the async `PHPhotoLibrary.performChanges`
   never finishes. Substitute: `xcrun simctl addmedia` with pre-generated 2400×2000 JPEGs (4.8 MP, clearing
@@ -88,17 +90,30 @@ are constructed.
 - **Scenarios, a scenario vocabulary, or Gherkin.** #6.
 - **A two-member *scenario*.** #7. This change proves only that two instances are independently
   addressable and identified.
-- **`PermissionStatus.LIMITED` on a simulator.** Not grantable headlessly; accepted as an everywhere-gap,
-  since the device needs taps too, so nothing regresses.
+- **`PermissionStatus.LIMITED` on a simulator.** Not known to be grantable headlessly. `simctl privacy`
+  has no `photos-limited` (though `contacts-limited` exists); whether `applesimutils` can set it is
+  **untested** and now worth testing, since that tool turned out to grant FULL access where `simctl`
+  could not (below).
 
-  **The `TCC.db` back door is now PROBED, and it does not work** (2026-08-25, iOS 26.2 simulator). Three
-  shapes, all rejected by PhotoKit: `simctl privacy grant photos` writes
-  `kTCCServicePhotos|app.snapsync|2|4` and the app still reads `NOT_DETERMINED`; a direct
-  `sqlite3` write of `auth_value=2, auth_reason=2, auth_version=1` performed while the device was
-  **shut down** (so photod could not be caching) reads `NOT_DETERMINED` after boot; and
-  `grant all` plus a restart reads **`DENIED`**. TCC is set — the row is there — and PhotoKit's
-  `authorizationStatus` does not honour it. So **FULL access is not grantable headlessly either**, which
-  is worse than the `LIMITED` gap and was not known when this change was scoped.
+  **Photo permission IS grantable headlessly — with the right tool.** `xcrun simctl privacy grant photos`
+  does **not** work for PhotoKit: measured 2026-08-25 on iOS 26.2, it writes the TCC row
+  (`kTCCServicePhotos|app.snapsync|2|4`) and `PHPhotoLibrary.authorizationStatus(for: .readWrite)` still
+  reports `notDetermined`. Nor does a direct `sqlite3` write of `auth_value=2, auth_reason=2,
+  auth_version=1` performed while the device is **shut down**; `grant all` plus a restart reports
+  **`DENIED`**. TCC is not honoured at *request* time either — calling the real request through a
+  temporarily-wired channel command raised the system alert on screen ("SnapSync would like full access
+  to your Photo Library"), captured in a screenshot.
+
+  **`applesimutils --byId <udid> --bundle app.snapsync --setPermissions "photos=YES"` works**, and the
+  app then reads `GRANTED` on the next launch. With it, the join gate clears and a simulator reaches
+  `configResolved: true` — verified end to end. It is a Homebrew formula (`wix/brew/applesimutils`), so
+  it is a host-side tool, not a change to the app.
+
+  An earlier revision of this record concluded that full access was ungrantable and that 6.1/6.2 were
+  therefore blocked. That was wrong, and wrong in the expensive direction: it inferred a platform
+  limitation from three failures of **one** tool. The failures were real and are kept above, because
+  `simctl privacy` is the obvious thing to reach for and its silence is the trap.
+
 - **A CI workflow.** D1.
 - **Exercising the shipped identity path.** The simulator binds a different `SecureStore`
   implementation (D6), so identity there is a **precondition**, not something the host validates. A

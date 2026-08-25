@@ -88,24 +88,36 @@ exist in a non-rig build. **There are no `SNAPSYNC_*` launch triggers any more**
 none and a guard fails the build if one returns. Everything they used to do — join, create, leave, reset,
 seed, wipe — is now a channel verb. Load `rig-channel` for the full surface.
 
-## ⚠️ Photo permission: `grant photos` does NOT hold, and the failure looks like a boot hang
+## ⚠️ Photo permission: use `applesimutils`, NOT `simctl privacy`
 
-`xcrun simctl privacy <dev> grant photos app.snapsync` leaves the app still raising the system
-full-access alert — which then sits **modally** and blocks *every subsequent launch* at
-`MainViewController(mode=deferred)`. Five consecutive launches read exactly like "the app hangs on boot".
+**`xcrun simctl privacy <dev> grant photos app.snapsync` does not work for PhotoKit.** It writes the TCC
+row and the app still reads `notDetermined` — measured 2026-08-25 on iOS 26.2, along with two other
+shapes that also fail: a direct `sqlite3` write of `auth_value=2, auth_reason=2, auth_version=1` with the
+device **shut down**, and `grant all` plus a restart (which reads **`DENIED`**). TCC is not consulted at
+*request* time either: asking for access raises the system alert regardless.
 
-**RULE: on any `mode=deferred` stall, SCREENSHOT FIRST.** The alert is instantly visible and invisible in
-every log.
+The trap is that it looks like it worked. `simctl` prints nothing, the TCC row is really there, and the
+app simply behaves as though you never granted anything.
 
-What works:
+**This works:**
 
 ```
+brew install wix/brew/applesimutils
 xcrun simctl terminate "$DEVICE" app.snapsync
-xcrun simctl shutdown "$DEVICE"
-xcrun simctl boot "$DEVICE" && xcrun simctl bootstatus "$DEVICE" -b
-xcrun simctl privacy "$DEVICE" grant all app.snapsync
-xcrun simctl launch "$DEVICE" app.snapsync
+applesimutils --byId "$DEVICE" --bundle app.snapsync --setPermissions "photos=YES"
+xcrun simctl launch "$DEVICE" app.snapsync           # reads GRANTED on this launch
 ```
+
+Verified end to end: the app reads `GRANTED`, the join gate clears, and the simulator reaches
+`configResolved: true`.
+
+**Why this matters more than it looks.** Without granted access the join parks in `ExplainAccess`
+(`StatusContainerHost.kt:560`), whose only exit is `onRequestPermission` — deliberately **not** wired into
+the channel, because on a device it raises an alert only a finger can answer. A simulator has no finger,
+so `applesimutils` is what makes a headless join possible at all.
+
+⚠️ **On any `mode=deferred` stall, SCREENSHOT FIRST.** A pending system alert blocks every subsequent
+launch and is instantly visible in a screenshot while being invisible in every log.
 
 ## Seeding a library
 
