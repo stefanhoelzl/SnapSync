@@ -330,68 +330,61 @@ range bounds **when** a photo was taken, the origin exclusions bound **what it i
 **whether at all**. A `DownloadOnly` membership contributes the **empty set**.
 
 All three SHALL be carried to every policy consumer as one already-decided value, `SelectionPolicy`, defined
-in `:domain`'s `model/` zone (package `app.snapsync.model`, seated there by migration step 3a — the only
-zone visible to every consumer, `feature/upload` and `feature/status` being mutually blind). It is the
-rules, not the inputs from which rules could be derived: a consumer receives the decision, never the
-material to re-decide (see *The admitted set is a single derivation every consumer receives*).
+in `:domain`'s `model/` zone (package `app.snapsync.model` — the only zone visible to every consumer,
+`feature/upload` and `feature/status` being mutually blind). It is the rules, not the inputs from which rules
+could be derived: a consumer receives the decision, never the material to re-decide (see *The admitted set is
+a single derivation every consumer receives*).
 
-- `SelectionPolicy.None` — the membership contributes nothing (`DownloadOnly`). It carries **no** rules and
-  therefore **no** bounds, because a non-contributor has none to speak of.
-- `SelectionPolicy.Admitting` — the membership contributes every asset **all** of its rules admit. It SHALL
-  carry the capture-date **lower bound as a non-null field of the variant**, and SHALL derive its
-  `CaptureAfter` rule from that field rather than accepting the rule as input. A contributing membership
-  therefore always carries the lower bound **by construction**, not by convention.
+`SelectionPolicy` SHALL be **a conjunction of selection rules and nothing else**: it carries a list of rules
+and answers `admits(facts)` as "every rule admits". It SHALL NOT special-case any individual rule, and it
+SHALL NOT itself assert that any particular rule is present. The direction is expressed **as a rule**: a
+membership that contributes nothing carries the `DenyAll` rule, which admits no asset.
+
+This replaces the prior two-variant formulation (a non-contributing variant carrying no rules, and a
+contributing variant carrying the capture-date lower bound as a non-null field). The invariant that formerly
+lived in the type now lives at the **single derivation** (see *One derivation builds a membership's rule
+list*): because the persisted membership's lower-bound field is non-null, the derivation always emits the
+lower-bound rule, so a contributing membership always carries its floor.
 
 `SelectionPolicy` SHALL be a **required** argument on every consumer, with **no default value**. This is a
 privacy requirement, not an ergonomic one: there SHALL be no value, and no absent-argument fallback, under
 which a membership admits the whole library. A default is prohibited in both polarities: a permissive
 default admitting every capture date uploads the entire library from the beginning of time, and a
-fail-closed default (`None`) makes a contributing member silently share nothing while the screen reads
-"In sync" — the invisible failure this capability exists to prevent.
+fail-closed default makes a contributing member silently share nothing while the screen reads "In sync" —
+the invisible failure this capability exists to prevent.
 
-**Two states SHALL be unrepresentable**, not merely guarded against, because each was reachable in the type
-and each cost a shipped defect:
+The policy SHALL NOT expose an accessor that answers "what is the capture floor" with an absent value. Such
+an accessor collapses "this membership contributes nothing" and "this policy has no floor" into one answer
+whose two causes have opposite consequences, and it invites a consumer to branch on the floor before checking
+the direction. A consumer needing a capture-date bound in order to scope a platform query SHALL take it from
+the **membership** it already holds, not from the policy.
 
-- "contributes nothing, and here are the rules it is not using" — prevented by the two states being
-  **distinct variants** rather than a rule list plus a boolean.
-- "contributes, but with no capture-date lower bound" — prevented by the bound being a **non-null field**
-  of the contributing variant. This closes the requirement *A lower bound `from` SHALL be required: a
-  membership without one is not a representable state* at the type level rather than at each consumer.
-
-Consequently the policy SHALL NOT expose an accessor that answers "what is the capture floor" with an
-absent value. Such an accessor collapses "this membership contributes nothing" and "this policy has no
-floor" into one answer whose two causes have opposite consequences, and it invites a consumer to branch on
-the floor before checking the direction. A consumer needing the floor SHALL obtain it by exhausting the
-sealed policy, so the non-contributing case is handled explicitly and the contributing case yields a
-non-null bound.
-
-The direction is a **per-membership** input, not a per-asset rule: it SHALL be applied **before** any
-library walk, never as a rule evaluated within one. The walk costs one synchronous PhotoKit round-trip per
-asset, so a non-contributor must never begin one to conclude it contributes nothing.
+The direction SHALL be resolved **before** any port read the derivation would otherwise perform: a
+non-contributing membership SHALL NOT pay a download-store read or a platform album lookup in order to learn
+that it contributes nothing.
 
 #### Scenario: A download-only membership contributes the empty set
 - **WHEN** the membership's participation direction excludes upload
 - **THEN** the selection policy admits no asset, regardless of any asset's capture date or origin
 
-#### Scenario: The non-contributing case carries no bounds
+#### Scenario: Contributing nothing is expressed as a rule
 - **WHEN** a membership contributes nothing
-- **THEN** it is expressed as `SelectionPolicy.None`, which carries no rules and no capture-date bounds —
-  the combination "contributes nothing, and here is the cutoff it is not using" cannot be constructed
+- **THEN** its rule list carries the `DenyAll` rule, and `admits` returns false for every asset because that
+  rule is part of the conjunction — not because the policy is a distinct kind of value
 
-#### Scenario: A contributing policy without a capture floor cannot be constructed
-- **WHEN** any code attempts to express a contributing membership that admits every capture date
-- **THEN** there is no such value: the contributing variant requires the lower bound, so the state is a
-  compile error rather than a condition a consumer must detect at run time
+#### Scenario: The derivation always emits the capture floor
+- **WHEN** the single derivation builds the rule list for a contributing membership
+- **THEN** it emits the capture-date lower-bound rule from the membership's persisted lower bound, which is
+  non-null, so no contributing rule list produced by the derivation lacks a floor
 
-#### Scenario: Reading the floor forces the non-contributing case to be handled
-- **WHEN** a consumer needs the capture-date lower bound in order to bound a walk or a count
-- **THEN** it obtains the bound by exhausting the sealed policy — receiving a non-null bound for a
-  contributing membership, and handling the non-contributing membership on its own branch — and no
-  accessor offers an absent floor that both cases could produce
+#### Scenario: No accessor offers an absent floor
+- **WHEN** a consumer needs a capture-date bound to scope a platform query
+- **THEN** it takes that bound from the membership it already holds, and the policy offers no accessor whose
+  absent value both the contributing and non-contributing cases could produce
 
-#### Scenario: A non-contributor never walks the library
-- **WHEN** the selection policy is applied for a `SelectionPolicy.None` membership
-- **THEN** no library enumeration is performed — the empty result is reached before any per-asset walk begins
+#### Scenario: A non-contributor pays no I/O to learn it contributes nothing
+- **WHEN** the rule list is derived for a membership whose direction excludes upload
+- **THEN** neither the download-store read nor the platform album lookup is performed
 
 ### Requirement: The admitted set is a single derivation every consumer receives
 
@@ -507,7 +500,9 @@ album denylist by deriving from that set, so an asset the policy excludes never 
 Counting an excluded asset would peg completeness permanently below 100% and hold the screen at "pending"
 forever — which is the concrete failure a floor-only `N` produced.
 
-A `SelectionPolicy.None` (non-contributing) membership SHALL report `N = 0` without enumerating the library.
+A **non-contributing** membership — one whose rule list carries the deny-everything rule — SHALL report
+`N = 0`. It reaches that answer through the same admission as every other, and the platform query is
+narrowed to match no asset (capability `gallery-status`), so no per-asset round-trip is paid for it.
 
 #### Scenario: N counts the admitted set, ceiling included
 
@@ -549,10 +544,17 @@ correctness, because the authoritative filter runs over whatever the fetch retur
 never widen or narrow the admitted set.** Because the rule set is a sealed type, adding a rule SHALL force
 each platform translator to state explicitly whether it can express it.
 
-Exactly one narrowing is **required** rather than advisory: the capture-date **lower bound** SHALL be pushed
-into the platform query. That is a **liveness** property of the walk, not a correctness property of
-admission — every rule is equally load-bearing for what is admitted, but an unbounded walk is watchdog-killed
-before the authoritative filter ever runs.
+Two narrowings are **required** rather than advisory, and both are **liveness** properties of the walk rather
+than correctness properties of admission — every rule is equally load-bearing for what is admitted, but an
+unbounded walk is watchdog-killed before the authoritative filter ever runs:
+
+- The capture-date **lower bound** SHALL be pushed into the platform query.
+- The **deny-everything** rule SHALL be translated into a query that matches **no** asset, so a
+  non-contributing membership's enumeration returns nothing rather than the whole library. That translation
+  SHALL be built from a comparison that is simply never satisfiable on a key the platform is known to
+  evaluate correctly; it SHALL NOT rely on any query form whose emptiness is an artefact of the platform's
+  parser rather than its semantics, because such a form would begin admitting the whole library if the
+  platform ever evaluated it correctly.
 
 The origin exclusions SHALL be applied before a resource reaches the ledger, so an origin-excluded asset
 never gains a ledger row and therefore cannot appear in any device manifest — the manifest being a
@@ -580,8 +582,8 @@ NOT take the ledger's contents for the admitted set.
 #### Scenario: Origin-excluded resources never reach the engine
 
 - **WHEN** the cycle discovers a resource whose owning asset an origin rule rejects
-- **THEN** the resource is dropped before the engine and before `retainAssets`, so no upload job is created
-  and the ledger gains no entry for it
+- **THEN** the resource is dropped before the engine, so no upload job is created and the ledger gains no
+  entry for it
 
 #### Scenario: The filter covers the incremental walk
 
@@ -599,6 +601,19 @@ NOT take the ledger's contents for the admitted set.
   predicate was deliberately widened, or because it cannot express an exclusion the policy makes)
 - **THEN** the cycle's filter still excludes every non-admitted resource, so the admitted set is identical to
   that of an unnarrowed fetch
+
+#### Scenario: A deny-everything policy narrows the platform query to nothing
+
+- **WHEN** a full platform enumeration is performed for a membership whose rule list carries the
+  deny-everything rule
+- **THEN** the query returns no asset, so no per-asset platform round-trip is paid to reach the empty
+  admitted set
+
+#### Scenario: The deny-everything translation does not rest on a parser artefact
+
+- **WHEN** the deny-everything rule is translated into a platform query
+- **THEN** the query is an unsatisfiable comparison on a key the platform evaluates correctly, so a platform
+  fixing an unrelated parser defect can never turn that query into one that matches every asset
 
 #### Scenario: A new rule forces a translation decision
 
@@ -811,3 +826,44 @@ A host cannot cause any photo captured after `endsAt` to be uploaded, listed, co
 - **WHEN** a membership is persisted
 - **THEN** it carries a concrete capture-date upper bound; no membership is unbounded above
 
+### Requirement: One derivation builds a membership's rule list
+
+There SHALL be exactly **one** derivation from a membership to a selection-policy rule list. It SHALL take
+the persisted membership and the two effectful exclusion sources — the download store's imported-asset ids
+(echo suppression) and the platform album lookup (denylisted-album membership) — and return the complete
+rule list. There SHALL NOT be a second construction step that completes a partially-built policy, because a
+partially-built policy is a value a consumer can hold and act on.
+
+Rule construction MAY be asynchronous, because two of the rules are read from ports. **Policy** construction
+SHALL NOT be: a policy is a value over an already-finished rule list.
+
+The derivation SHALL resolve the participation direction **first**, and SHALL return the deny-everything rule
+without consulting either exclusion source when the direction excludes upload.
+
+The derivation SHALL always emit the capture-date lower-bound rule for a contributing membership, taken from
+the membership's persisted lower bound. This is where the requirement *A lower bound `from` SHALL be
+required* is enforced: the persisted field is non-null, so the derivation cannot produce a contributing rule
+list without a floor.
+
+Because the policy type no longer asserts the presence of the lower-bound rule, the system SHALL
+mechanically enforce that a rule list reaching a consumer came from this derivation — by constructor
+visibility, or by a build-gating check that no policy is constructed elsewhere. A rule list assembled by hand
+is otherwise an unbounded scope, and an unbounded scope is the failure this capability exists to prevent.
+
+#### Scenario: A contributing membership's rule list always carries its floor
+- **WHEN** the derivation runs for a membership whose direction includes upload
+- **THEN** the returned rule list contains the capture-date lower-bound rule built from the membership's
+  persisted lower bound
+
+#### Scenario: The direction is resolved before any port read
+- **WHEN** the derivation runs for a membership whose direction excludes upload
+- **THEN** it returns the deny-everything rule and neither exclusion source is consulted
+
+#### Scenario: Completing a policy in a second step is not possible
+- **WHEN** a consumer holds a selection policy
+- **THEN** that policy is complete — there is no operation that adds further rules to an existing policy, so
+  no consumer can hold or act on a partially-built one
+
+#### Scenario: A policy built outside the derivation is rejected
+- **WHEN** a selection policy is constructed anywhere other than the single derivation
+- **THEN** the build fails, so a hand-assembled rule list with no capture floor cannot reach a consumer

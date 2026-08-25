@@ -25,17 +25,17 @@ The **Lifecycle transitions never clear the ledger** requirement was added in
 The ledger SHALL access storage exclusively through a `LedgerStore` interface with the row
 operations `get(key): LedgerEntry?` and `put(entry)` (a single-row upsert), the aggregate read
 `aggregates(): LedgerAggregates`, a change signal `changes: Flow<Unit>`, `clear()` — a
-delete-all reset, `resetTo(entries)` — an **atomic** delete-all-then-insert-all replacement, two
-asset-targeted bulk removals: `deleteByAssetId(assetId)` — delete every row whose `assetId` equals
-the argument — and `retainAssets(keep)` — delete every row whose `assetId` is not in the `keep` set —
-and the provenance sweep `backfillEventId(eventId)` (see "Event provenance and the backfill sweep").
+delete-all reset, `resetTo(entries)` — an **atomic** delete-all-then-insert-all replacement, the
+asset-targeted bulk mark `markAbsent(assetId)` — set the **absent** flag on every row whose `assetId`
+equals the argument, without deleting it — and the provenance sweep `backfillEventId(eventId)` (see
+"Event provenance and the backfill sweep").
 Backends SHALL store entries verbatim (no interpretation, no precedence logic, last write wins, no
 clocks of their own). A `LedgerEntry` SHALL carry `key`, `assetId`, `state` (`REQUESTED` |
-`COMPLETED` | `FAILED`), `attempt`, and `eventId` — the event that was joined when the row was
-recorded. `clear()`, `resetTo`,
-`deleteByAssetId`, and `retainAssets` SHALL each remove (and, for `resetTo`, then insert) the matching
+`COMPLETED` | `FAILED`), `attempt`, `eventId` — the event that was joined when the row was
+recorded — and `absent`, whether the asset has since left the device's library. `clear()`, `resetTo`,
+and `markAbsent` SHALL each remove, insert, or update the matching
 rows and signal `changes` **once** like a `put` (so watchers re-read the now-current truth).
-`clear()`, `resetTo`, `deleteByAssetId`, and `retainAssets` are **reset/bulk** operations, not the
+`clear()`, `resetTo`, and `markAbsent` are **reset/bulk** operations, not the
 per-key **record** operations; recording per-upload facts remains the single-record-writer's job
 (`LedgerWriter`), so a non-writer holder of the backend may reset the store without breaching the
 single-record-writer invariant. `assetId` is a second opaque field: the backend stores, groups, and
@@ -43,11 +43,18 @@ matches it by equality but never interprets it (it does not know what an "asset"
 valid, set by the caller), so the ledger remains a dumb, platform-neutral row store. `eventId` is a
 third opaque field with the same posture: the backend stores it verbatim and matches it by equality
 only where an operation's contract says so (the backfill's sentinel match); it does not know what an
-"event" means.
+"event" means. `absent` is a stored flag the backend also never interprets: it sets it on `markAbsent`
+and returns it verbatim, and no backend operation filters on it.
+
+There SHALL be **no** operation that deletes rows by asset. A row records that a resource's bytes are
+on the backend, and nothing on the device can make that false — no local action deletes an uploaded
+object (capability `scheduled-cleanup` owns the only deletion, and it deletes whole events). Absence
+from the library is therefore recorded, not enacted by removal.
 
 #### Scenario: Put then get round-trips
 - **WHEN** `put(entry)` is called and then `get(entry.key)`
-- **THEN** the returned entry equals the one put, field for field — including `assetId` and `eventId`
+- **THEN** the returned entry equals the one put, field for field — including `assetId`, `eventId`, and
+  `absent`
 
 #### Scenario: Put overwrites unconditionally
 - **WHEN** `put` is called twice for the same key with different states
@@ -67,19 +74,20 @@ only where an operation's contract says so (the backfill's sentinel match); it d
 - **THEN** every prior key not in `entries` returns null, every key in `entries` returns its supplied
   entry verbatim, and exactly one `changes` signal is emitted
 
-#### Scenario: Delete by assetId removes only that asset's rows and signals
+#### Scenario: Mark absent flags only that asset's rows and signals
 - **WHEN** the store holds rows for assetId `A` (keys `A-photo.jpg`, `A-video.mov`) and assetId `B`
-  (key `B-photo.jpg`), and `deleteByAssetId("A")` is called
-- **THEN** `get("A-photo.jpg")` and `get("A-video.mov")` return null, `get("B-photo.jpg")` is
-  unchanged, and a `changes` signal is emitted
+  (key `B-photo.jpg`), and `markAbsent("A")` is called
+- **THEN** `get("A-photo.jpg")` and `get("A-video.mov")` return rows whose `absent` is set and whose
+  other fields are unchanged, `get("B-photo.jpg")` is unchanged, and a `changes` signal is emitted
 
-#### Scenario: Retain assets removes the complement and signals
-- **WHEN** the store holds rows for assetIds `A`, `B`, and `C`, and `retainAssets({"A", "C"})` is called
-- **THEN** the `B` rows return null, the `A` and `C` rows are unchanged, and a `changes` signal is emitted
+#### Scenario: Marking absent is idempotent
+- **WHEN** `markAbsent` is called twice for the same assetId
+- **THEN** the rows are unchanged after the second call and remain readable
 
-#### Scenario: Retain with empty set empties the store
-- **WHEN** `retainAssets(emptySet)` is called on a store holding rows
-- **THEN** every subsequent `get` returns null and a `changes` signal is emitted
+#### Scenario: An absent row keeps its upload state
+- **WHEN** a `COMPLETED` row is marked absent
+- **THEN** `get` still returns it with `state = COMPLETED`, so it continues to suppress re-upload of the
+  same key
 
 #### Scenario: eventId is stored verbatim including the sentinel
 - **WHEN** one entry is put with a real `eventId` and another with the pre-provenance sentinel `""`
@@ -178,8 +186,12 @@ A SQLDelight-backed `LedgerStore` SHALL be provided in `:adapter:generic:app` co
 package `app.snapsync.engine.db`; moved from `:domain:engine` at migration step 4, whose module
 died at step 10) with the schema
 `key TEXT PRIMARY KEY, assetId TEXT NOT NULL, state TEXT NOT NULL, attempt INTEGER NOT NULL,
-eventId TEXT NOT NULL DEFAULT ''`
-plus an index on `assetId` (backing `deleteByAssetId` and the `assetId`-grouped aggregate). `state`
+eventId TEXT NOT NULL DEFAULT '', absent INTEGER NOT NULL DEFAULT 0`
+plus an index on `assetId` (backing `markAbsent` and the `assetId`-grouped aggregate). The `absent`
+column records that an asset has left the library; its `DEFAULT 0` SHALL be present in **both** the
+migration and the CREATE statement, like `eventId`'s, and it is the correct resting value for a row
+written before the column existed. Reads that answer *what does this device hold or share* SHALL
+exclude marked rows; `get` SHALL NOT, so upload suppression survives a deletion. `state`
 SHALL be a SQLDelight typed column (`AS LedgerState` via the built-in enum adapter); adapter wiring
 SHALL be hidden in a single factory function so construction sites never see it. The schema carries
 no timestamp column. The `eventId` column's `DEFAULT ''` SHALL be present in **both** the migration
@@ -231,6 +243,14 @@ writer's backfill sweep (see "Event provenance and the backfill sweep"). The pri
 remain `key`. Because a surviving `COMPLETED` row is what stops re-upload, an update-in-place
 over a joined install SHALL create **zero** new upload jobs from this migration alone.
 
+The migration that adds the `absent` column (`6.sqm`, v6 -> v7) SHALL likewise be **row-preserving**,
+and here that matters more than usual: a surviving `COMPLETED` row is exactly what stops the next cycle
+re-uploading an already-stored resource, so losing them would re-upload every member's whole in-window
+library. `ALTER TABLE ... ADD COLUMN` is a catalog-only change, so no row is touched. Every migrated row
+SHALL land with `absent` unset, which is correct by construction: a row recorded before the column
+existed was not marked absent. The `DEFAULT 0` SHALL be present in **both** the migration and the CREATE
+statement, so the migration-verify task finds the two schemas identical.
+
 A fresh install SHALL create the current schema (no
 timestamp column, `eventId` present with its DEFAULT) directly.
 
@@ -253,51 +273,31 @@ timestamp column, `eventId` present with its DEFAULT) directly.
 - **THEN** it has the `assetId` index, no `updatedAt` column, an `eventId` column defaulting to
   `''`, and needs no migration step
 
+#### Scenario: Adding absent preserves the rows unmarked
+- **WHEN** a v6 database holding a `COMPLETED` row is migrated to the current schema
+- **THEN** the row survives with its `key`, `assetId`, `state`, `eventId` and manifest detail intact and
+  its `absent` unset, so it still suppresses re-upload and still projects into the manifest
+
 ### Requirement: Prune operations are writer-only
 
-The two asset-keyed bulk removals (`deleteByAssetId`, `retainAssets`) SHALL be exposed on
+The asset-keyed bulk mark (`markAbsent`) SHALL be exposed on
 `LedgerWriter` (delegating to the backend) and SHALL NOT be exposed on any other app-facing ledger
-surface. They are sync writes by the single ledger writer, not the app-side `clear()` reset, and at
-the writer layer they consult no engine state first (a backend may read its own rows to compute a
-complement — an implementation detail, not part of the seam contract). Because only the engine's
-composition root constructs a `LedgerWriter`, prune access is confined to the single-writer process,
+surface. It is a sync write by the single ledger writer, not the app-side `clear()` reset, and at
+the writer layer it consults no engine state first. Because only the engine's
+composition root constructs a `LedgerWriter`, mark access is confined to the single-writer process,
 preserving the single-writer invariant.
 
-#### Scenario: Writer prunes by assetId
+#### Scenario: Writer marks an asset absent
 
 - **WHEN** a `LedgerWriter` records a row for assetId `X` (key `X-photo.jpg`) and then calls
-  `deleteByAssetId("X")`
-- **THEN** `entry("X-photo.jpg")` returns null
+  `markAbsent("X")`
+- **THEN** `entry("X-photo.jpg")` returns a row whose `absent` is set
 
-#### Scenario: Writer retains an asset set
-
-- **WHEN** a `LedgerWriter` holds rows for assetIds `X` and `Y` and calls `retainAssets({"X"})`
-- **THEN** the `Y` rows return null and the `X` rows are unchanged
-
-#### Scenario: Prune is absent from the non-writer surface
+#### Scenario: The mark is absent from the non-writer surface
 
 - **WHEN** a component holds the ledger only as a `LedgerStore` reader (no writer)
-- **THEN** neither `deleteByAssetId` nor `retainAssets` is part of its sanctioned surface — prune
-  reaches the backend only through the root-constructed `LedgerWriter`
-
-### Requirement: Prune operations hold on the SQLDelight backend
-The SQLDelight-backed `LedgerStore` SHALL implement `deleteByAssetId` and `retainAssets`.
-`deleteByAssetId` SHALL be an indexed `DELETE … WHERE assetId = ?`. `retainAssets` SHALL delete
-the complement of the supplied set without relying on an unbounded SQL `IN`/`NOT IN` parameter
-list (so a multi-thousand-asset library does not exceed the driver's bind-variable limit) — e.g.
-read the present assetIds, diff against `keep` in Kotlin, and delete each straggler. The
-storage-seam scenarios for both operations SHALL pass against the SQLDelight backend on the JVM
-sqlite driver via the shared backend contract.
-
-#### Scenario: Backend prune contract holds on SQLite
-- **WHEN** the delete-by-assetId and retain-assets storage-seam scenarios run against the
-  SQLDelight backend on a JVM sqlite driver
-- **THEN** they pass unchanged
-
-#### Scenario: Retain assets over a large library stays within bind limits
-- **WHEN** `retainAssets` is called on the SQLDelight backend with a keep-set larger than the
-  driver's single-statement bind-variable limit
-- **THEN** the complement is deleted with no bind-variable error
+- **THEN** `markAbsent` is not part of its sanctioned surface — it reaches the backend only through the
+  root-constructed `LedgerWriter`
 
 ### Requirement: Pending-resource read
 
@@ -400,7 +400,7 @@ signal on success (like `clear`/`resetTo`). On the SQLDelight backend it SHALL b
 -state `DELETE … WHERE state = 'REQUESTED'`.
 
 `clearRequested` is an **app-side reset-family** operation — in the same family as `clear()` and
-`resetTo()`, **not** one of the writer-only prunes (`deleteByAssetId`/`retainAssets`). It SHALL be
+`resetTo()`, **not** the writer-only mark (`markAbsent`). It SHALL be
 callable on the `LedgerStore` **without** a `LedgerWriter`, so a non-writer holder of the backend may
 invoke it without breaching the **single-record-writer invariant** (exactly one holder records per-key
 upload facts; *which process* holds that writer is a platform binding, not a ledger concern).
@@ -532,3 +532,43 @@ Decision record: `changes/archive/2026-07-18-add-ledger-event-provenance`, D4–
 - **THEN** every seeded `COMPLETED` row carries the reconciled event's id — no seeded row is a
   sentinel row
 
+### Requirement: The ledger is never pruned by the selection policy
+
+The ledger SHALL record every resource whose bytes are on the backend for an event, and that record
+SHALL NOT depend on the membership's current selection policy. A member narrowing their scope changes
+**what they share** (capability `device-manifest`); it SHALL NOT change **what they have uploaded**.
+
+No operation SHALL remove a row because the current policy stopped admitting its asset. Doing so
+discards the record that suppresses re-upload, which makes a narrowing irreversible: re-widening would
+re-upload bytes already present on the backend. In the limit — a membership whose direction excludes
+upload, admitting nothing — a policy-derived removal would discard the **entire** event's rows,
+defeating the drain requirement (capability `reconfigure-membership`), which exists so that a settled
+upload is recorded and re-enabling the direction re-uploads nothing.
+
+Deletion from the library SHALL be recorded by the **precise** signal — the asset identifiers the
+platform change feed reports removed — and SHALL mark the rows absent rather than removing them. There
+SHALL be no full-enumeration retain-live reconcile: a deletion the change feed missed leaves a row
+listed, whose bytes are still on the backend, so a member still downloads it successfully. The photo
+remains in the event, which is what already happens when a member leaves. Exhaustive deletion-tracking
+is therefore not required.
+
+#### Scenario: A narrowing scope removes no rows
+- **WHEN** the membership's capture cutoff is raised and a fully-drained full enumeration then runs
+- **THEN** every ledger row is retained, including those for assets now outside the range
+
+#### Scenario: Turning the direction off removes no rows
+- **WHEN** a contributing membership's direction is turned off and a cycle runs
+- **THEN** the event's ledger rows are retained in full, so re-enabling the direction re-uploads nothing
+
+#### Scenario: A deletion reported by the change feed marks the rows
+- **WHEN** the platform change feed reports an asset removed
+- **THEN** that asset's rows are marked absent and remain readable, so the next manifest projection stops
+  listing it while re-upload stays suppressed
+
+#### Scenario: Narrow then widen re-lists without re-uploading
+- **WHEN** a member narrows their scope, a full enumeration runs, and the member then widens it back
+- **THEN** the previously-uploaded assets are listed again and no byte is re-uploaded
+
+#### Scenario: A restored asset does not re-upload
+- **WHEN** an asset marked absent is restored to the library and discovered again
+- **THEN** its `COMPLETED` row still suppresses re-upload of the same key

@@ -192,8 +192,8 @@ cycles then skip on the absent config, so the work is inert but the wake is not.
 
 An upload arm's participation-direction gate SHALL live at the **choke point** — the one function every
 trigger, on every tier, funnels through (`UploadCycle.run()`) — and SHALL NOT be placed at the arm's
-**invoker**. No upload job SHALL be created, and no device manifest written, for a membership whose
-direction excludes upload, at **any** trigger and on **any** tier.
+**invoker**. No upload job SHALL be created for a membership whose direction excludes upload, at **any**
+trigger and on **any** tier.
 
 An invoker-gate is only as sound as its enumeration of invokers, and that enumeration is invalidated
 silently by a new tier or a new trigger. This is not hypothetical. `changes/archive/2026-07-07-add-join-direction-mode`,
@@ -209,20 +209,36 @@ Placing the gate at the choke point is what makes the cheap mistake impossible. 
 in the untested composition root and looks obviously correct; bypassing the choke point means building a
 parallel upload path, which nobody does by accident.
 
+**The gate withholds job creation and the discovery walk.** It SHALL NOT withhold the device manifest
+write. A membership that contributes nothing shares nothing, and the honest expression of that is an
+**empty published manifest** (capability `device-manifest`), not a stale manifest left in place from when
+the membership did contribute. Withholding the write was previously justified by three consequences; two of
+them do not hold — the completion notify is already conditioned on at least one real completion, and an
+empty manifest is already what a contributing membership with nothing in range publishes — and the third,
+not silently blanking a previous manifest, is now the *intended* behaviour of a narrowing change
+(capability `reconfigure-membership`).
+
 **The gate bounds new work, not settlement.** A cycle the gate declines SHALL, before returning, run the
 acknowledgement of terminal upload jobs the OS has **already presented** to this invocation. That pass
-creates no upload job, writes no device manifest, enumerates no library, advances no discovery cursor and
-issues no network request — so it takes nothing the gate exists to withhold — and it is the only way the
-platform's acknowledgement obligation can be discharged on a tier whose extension is still registered.
-Everything else SHALL remain behind the gate: the re-join reconciliation, the retry pass, the discovery
-walk, the manifest write and the completion notify.
+creates no upload job, enumerates no library, advances no discovery cursor and issues no network request —
+so it takes nothing the gate exists to withhold — and it is the only way the platform's acknowledgement
+obligation can be discharged on a tier whose extension is still registered.
 
-For a **contributing** membership the pass SHALL keep its existing position, after the re-join
-reconciliation has settled. Its ledger writes record the membership this cycle runs under, and a
+**The re-join reconciliation SHALL likewise run ahead of the gate.** It establishes which of this device's
+uploaded resources are already on the backend — a fact about bytes, which this system defines as
+independent of the selection policy (capability `sync-ledger`) — so gating it on direction would make a
+policy-independent fact wait on a policy-dependent branch. It is marker-gated and a no-op on a settled
+join, so the cost is bounded to the first cycle after a join, switch, or reinstall. Running it early also
+means a member who later re-enables their direction re-uploads nothing.
+
+What SHALL remain behind the gate: upload job creation, the retry pass, and the discovery walk.
+
+For a **contributing** membership the acknowledgement pass SHALL keep its existing position, after the
+re-join reconciliation has settled. Its ledger writes record the membership this cycle runs under, and a
 reconciliation that has not yet settled may still re-baseline (a switch's `resetTo`), so hoisting the pass
 above the reconcile for every cycle would risk labelling rows against the wrong event. The declined cycle
-has no such hazard: it performs no reconciliation at all, and the drained jobs it settles were created
-under the same event by the same membership, whose direction — not whose identity — changed.
+has no such hazard: the drained jobs it settles were created under the same event by the same membership,
+whose direction — not whose identity — changed.
 
 Placing the acknowledgement behind the gate was justified by the premise that a non-contributing
 membership's extension has been deregistered, so the OS presents nothing. That premise SHALL NOT be relied
@@ -249,7 +265,12 @@ enforcement is how this capability's own history records the lifecycle shipping 
 #### Scenario: A download-only membership creates no upload job at any trigger
 - **WHEN** a cycle is driven for a membership whose direction excludes upload — by foreground entry, a
   background task, a silent push, a producer start, or an upload completion
-- **THEN** no upload job is created and no device manifest is written, for every one of those triggers
+- **THEN** no upload job is created, for every one of those triggers
+
+#### Scenario: A download-only membership publishes an empty manifest
+- **WHEN** a cycle runs for a membership whose direction excludes upload
+- **THEN** an empty device manifest is published for that event, replacing any manifest published while the
+  membership did contribute
 
 #### Scenario: The gate holds on a tier whose invoker is the app
 - **WHEN** the tier in use invokes the upload cycle from the app process rather than being invoked by the OS
@@ -266,8 +287,17 @@ enforcement is how this capability's own history records the lifecycle shipping 
 - **WHEN** the OS invokes the cycle for a membership whose direction excludes upload, presenting terminal
   upload jobs created before the direction changed
 - **THEN** every presented job is acknowledged and its outcome settled in the ledger, and the cycle still
-  creates no upload job, writes no device manifest, performs no library enumeration and leaves the
-  discovery cursor untouched
+  creates no upload job, performs no library enumeration and leaves the discovery cursor untouched
+
+#### Scenario: A declined cycle still reconciles the re-join
+- **WHEN** a cycle runs for a membership whose direction excludes upload on the first cycle after a re-join,
+  switch, or reinstall
+- **THEN** the re-join reconciliation runs and seeds the ledger, so re-enabling the direction later
+  re-uploads nothing
+
+#### Scenario: A declined cycle whose reconcile defers writes no manifest
+- **WHEN** a cycle for a non-contributing membership runs while the re-join reconciliation defers
+- **THEN** no manifest is written that cycle, so an unseeded ledger is never published as an empty one
 
 #### Scenario: A declined cycle reports no fault
 - **WHEN** a cycle is declined because the membership's direction excludes upload

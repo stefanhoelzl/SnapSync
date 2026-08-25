@@ -94,6 +94,144 @@ preserving the single-writer invariant.
 - **THEN** `markAbsent` is not part of its sanctioned surface — it reaches the backend only through the
   root-constructed `LedgerWriter`
 
+### Requirement: SQLDelight backend
+
+A SQLDelight-backed `LedgerStore` SHALL be provided in `:adapter:generic:app` commonMain (SQLDelight
+package `app.snapsync.engine.db`; moved from `:domain:engine` at migration step 4, whose module
+died at step 10) with the schema
+`key TEXT PRIMARY KEY, assetId TEXT NOT NULL, state TEXT NOT NULL, attempt INTEGER NOT NULL,
+eventId TEXT NOT NULL DEFAULT '', absent INTEGER NOT NULL DEFAULT 0`
+plus an index on `assetId` (backing `markAbsent` and the `assetId`-grouped aggregate). The `absent`
+column records that an asset has left the library; its `DEFAULT 0` SHALL be present in **both** the
+migration and the CREATE statement, like `eventId`'s, and it is the correct resting value for a row
+written before the column existed. Reads that answer *what does this device hold or share* SHALL
+exclude marked rows; `get` SHALL NOT, so upload suppression survives a deletion. `state`
+SHALL be a SQLDelight typed column (`AS LedgerState` via the built-in enum adapter); adapter wiring
+SHALL be hidden in a single factory function so construction sites never see it. The schema carries
+no timestamp column. The `eventId` column's `DEFAULT ''` SHALL be present in **both** the migration
+and the CREATE statement (the SQLDelight migration-verify task proves the two schemas identical),
+and SHALL NOT be removed while any shipped build may write a 4-column row (see "Event provenance
+and the backfill sweep", staged revert). `put` SHALL be a single SQL upsert statement;
+`aggregates()` SHALL be a single
+SQL round-trip (an `assetId`-grouped query). Every `LedgerStore` implementation SHALL satisfy the
+shared `LedgerStoreContract` (hosted in `:test:world` commonMain since step 10): the JVM/sqlite and
+native (simulator) driver tests extend it from `:adapter:generic:app`'s test source sets, and
+`:adapter:generic:fake`'s honest `InMemoryLedgerStore` — the store the world harness runs on — extends it
+from `:test:world`'s own tests. The native (iOS) driver is wired by `:adapter:ios:ext-safe`'s
+factory over the App-Group container.
+
+#### Scenario: Backend contract holds on SQLite
+- **WHEN** the storage-seam, aggregate, and change-signal scenarios run against the SQLDelight
+  backend on a JVM sqlite driver
+- **THEN** they pass unchanged
+
+#### Scenario: Every backend satisfies one contract
+- **WHEN** the shared `LedgerStoreContract` scenarios run
+- **THEN** they pass unchanged against the SQLDelight store (JVM and native drivers) and against
+  `:adapter:generic:fake`'s in-memory store
+
+#### Scenario: A pre-provenance column-explicit insert still works
+- **WHEN** a 4-column column-explicit `INSERT OR REPLACE INTO ledgerRow (key, assetId, state,
+  attempt)` — the shape a staged-revert build's generated queries emit — executes against the
+  current 5-column schema
+- **THEN** the row lands with `eventId = ''` (the DEFAULT fills the omitted column) and reads back
+  through `get` as a sentinel row
+
+### Requirement: Requested-state reset
+
+`LedgerStore` SHALL provide `clearRequested()`: a bulk delete of **every row whose state is
+`REQUESTED`**, leaving `COMPLETED` and `FAILED` rows untouched. It SHALL emit exactly one `changes`
+signal on success (like `clear`/`resetTo`). On the SQLDelight backend it SHALL be a single indexed-by
+-state `DELETE … WHERE state = 'REQUESTED'`.
+
+`clearRequested` is an **app-side reset-family** operation — in the same family as `clear()` and
+`resetTo()`, **not** the writer-only mark (`markAbsent`). It SHALL be
+callable on the `LedgerStore` **without** a `LedgerWriter`, so a non-writer holder of the backend may
+invoke it without breaching the **single-record-writer invariant** (exactly one holder records per-key
+upload facts; *which process* holds that writer is a platform binding, not a ledger concern).
+
+`clearRequested` is a **blanket** recovery for stranded `REQUESTED` rows on a platform that **cannot
+enumerate its in-flight jobs**: those resources remain `REQUESTED` in the ledger, the engine never
+re-issues a `REQUESTED` key, and with no way to detect which are genuinely in flight a bulk `REQUESTED`
+clear is the only way to let the next discovery re-create them. Its canonical use is the iOS ≥26.1
+PhotoKit tier, where disabling the extension wipes **all** in-flight OS jobs at once (so no
+genuinely-in-flight row is lost by clearing all `REQUESTED`) — see `ios-photokit-upload`. A platform
+whose upload queue **is** enumerable (e.g. the iOS 18–26.0 background-`URLSession` tier, which can list
+its live tasks) MAY instead reconcile stranded rows **precisely** and need not use this blanket clear;
+`clearRequested` remains available but is not required on such a platform.
+
+#### Scenario: clearRequested removes only REQUESTED rows
+
+- **WHEN** the store holds a `REQUESTED` row, a `COMPLETED` row, and a `FAILED` row, and
+  `clearRequested()` is called
+- **THEN** the `REQUESTED` row is gone and the `COMPLETED` and `FAILED` rows are unchanged
+
+#### Scenario: clearRequested emits one change signal
+
+- **WHEN** `clearRequested()` succeeds over a store containing at least one `REQUESTED` row
+- **THEN** exactly one `changes` signal is emitted, so a watcher re-reads the now-cleared truth
+
+#### Scenario: A re-created key uploads again after a clear
+
+- **WHEN** a key is `REQUESTED`, `clearRequested()` drops it, and the next discovery re-derives that
+  key (`ResourceChanged`)
+- **THEN** the engine answers `Work` (the key is now absent), not `AlreadyUploaded`
+
+### Requirement: Ledger schema migration
+The SQLDelight schema SHALL be versioned and ship migrations that bring an existing on-device
+`ledger.db` (in the App-Group container, which survives app reinstall) to the current schema. The
+migration that drops the `updatedAt` column SHALL be **row-preserving** — existing rows, including
+`COMPLETED` ones, SHALL survive it (the dropped column is neither the primary key nor indexed), so an
+app update keeps the ledger's recorded state and forces no re-enumeration or re-reconcile. It is a
+single `ALTER TABLE ledgerRow DROP COLUMN updatedAt`; the SQLite 3.35+ grammar this requires is
+already satisfied by the dialect floor raised for the preceding column-drop migration (a build
+detail, not part of the on-device contract).
+
+The migration that adds the `eventId` column (`4.sqm`, v4 → v5) SHALL likewise be
+**row-preserving**: a single catalog-only
+`ALTER TABLE ledgerRow ADD COLUMN eventId TEXT NOT NULL DEFAULT ''`, after which every
+pre-existing row — including every `COMPLETED` row — survives with all prior fields intact and
+`eventId = ''` (the pre-provenance sentinel). The migration SHALL NOT attempt to fill the true
+event id: that value lives in config, which migration SQL cannot reach; filling it is the
+writer's backfill sweep (see "Event provenance and the backfill sweep"). The primary key SHALL
+remain `key`. Because a surviving `COMPLETED` row is what stops re-upload, an update-in-place
+over a joined install SHALL create **zero** new upload jobs from this migration alone.
+
+The migration that adds the `absent` column (`6.sqm`, v6 -> v7) SHALL likewise be **row-preserving**,
+and here that matters more than usual: a surviving `COMPLETED` row is exactly what stops the next cycle
+re-uploading an already-stored resource, so losing them would re-upload every member's whole in-window
+library. `ALTER TABLE ... ADD COLUMN` is a catalog-only change, so no row is touched. Every migrated row
+SHALL land with `absent` unset, which is correct by construction: a row recorded before the column
+existed was not marked absent. The `DEFAULT 0` SHALL be present in **both** the migration and the CREATE
+statement, so the migration-verify task finds the two schemas identical.
+
+A fresh install SHALL create the current schema (no
+timestamp column, `eventId` present with its DEFAULT) directly.
+
+#### Scenario: Dropping updatedAt preserves the rows
+- **WHEN** a database holding `ledgerRow` records with an `updatedAt` column is opened under the
+  schema version that removes it
+- **THEN** the `ALTER TABLE … DROP COLUMN updatedAt` migration runs without error, every row's
+  `key`, `assetId`, `state`, and `attempt` are preserved, and `ledgerRow` no longer has an
+  `updatedAt` column
+
+#### Scenario: Adding eventId preserves the rows and fills the sentinel
+- **WHEN** a database holding v4 `ledgerRow` records (including `COMPLETED` ones) is opened under
+  the schema version that adds `eventId`
+- **THEN** the `ALTER TABLE … ADD COLUMN eventId` migration runs without error, every row's
+  `key`, `assetId`, `state`, and `attempt` are preserved, every row reads `eventId = ''`, and a
+  subsequent `put` carrying a real `eventId` round-trips
+
+#### Scenario: Fresh database is created at the current schema
+- **WHEN** a database is created from scratch
+- **THEN** it has the `assetId` index, no `updatedAt` column, an `eventId` column defaulting to
+  `''`, and needs no migration step
+
+#### Scenario: Adding absent preserves the rows unmarked
+- **WHEN** a v6 database holding a `COMPLETED` row is migrated to the current schema
+- **THEN** the row survives with its `key`, `assetId`, `state`, `eventId` and manifest detail intact and
+  its `absent` unset, so it still suppresses re-upload and still projects into the manifest
+
 ## ADDED Requirements
 
 ### Requirement: The ledger is never pruned by the selection policy
