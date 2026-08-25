@@ -333,9 +333,9 @@ The invariant holds **however** the app-driven tier comes to be selected: whenev
 producer on a device whose OS supports the OS-driven one, the PhotoKit extension SHALL NOT be registered.
 This was once stated against a development tier-force flag, which no longer exists — production Kotlin
 declares no launch triggers at all (capability `architecture-guards`). A **limited** photo grant reaches
-that state, and so does a development mechanism override ("A mechanism override is re-read at every
-resolution and available before the first one"); the requirement is stated against the state rather than
-any mechanism that produces it, and survives the next mechanism too.
+that state, and so does a development mechanism override ("A mechanism override is a runtime input a
+shipped build cannot carry"); the requirement is stated against the state rather than any mechanism that
+produces it, and survives the next mechanism too.
 
 Not registering is **not sufficient**. The OS's upload-job configuration record is keyed by bundle id and
 survives relaunch and reinstall, so a process that merely declines to register still runs behind a live

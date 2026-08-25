@@ -502,13 +502,23 @@ again. No `DELETED` state is introduced and the upload decision is unchanged.
 The app SHALL recover the in-flight jobs wiped by a disable. Disabling the upload extension
 (`setUploadJobExtensionEnabled(false)`) deletes the system's `AssetResourceUploadJobConfiguration` and
 therefore **wipes every in-flight OS upload job**. Whenever
-the app disables the extension it SHALL, immediately after the disable, **both** (a) call the ledger's
+the app disables the extension **and this tier runs again afterwards**, it SHALL, immediately after the
+disable, **both** (a) call the ledger's
 `clearRequested()` (`sync-ledger`) to drop the now-orphaned `REQUESTED` rows, and (b) **reset the
 discovery cursor** (clear the App-Group change-token) so the next cycle does a **full re-enumeration**.
 Both are required: `clearRequested()` only makes the keys *absent*, but a settled cursor scans
 incrementally and would never re-surface them — so without the cursor reset the cleared photos are
-re-discovered only when the library next changes. This SHALL apply to **both** disable paths: the
-disable half of the `disable→enable` re-register, and the leave use-case's extension-disable.
+re-discovered only when the library next changes. This SHALL apply to the disable half of the
+`disable→enable` re-register, and to the leave use-case's extension-disable.
+
+The repair SHALL NOT run when the disable is a **switch to the app-driven tier**. That tier reconciles
+stranded `REQUESTED` rows precisely from `getAllTasks` and, by its own contract, "SHALL NOT depend on
+`clearRequested`" (`ios-url-session-upload`, "Precise in-flight reconciliation replaces blanket clear"),
+so the blanket clear is redundant there **and blunter than the reconciliation that immediately follows
+it**: `clearRequested()` is ledger-wide and the discovery cursor is shared, so running it would delete
+in-flight rows belonging to the tier about to start and force it into a full re-enumeration it does not
+need. The repair belongs to **re-registering** this tier — where no API can enumerate the vanished jobs —
+not to every disable.
 
 The disable-and-clear SHALL be **awaited off the main thread and completed before any re-enable**. The
 `clearRequested()` write SHALL run on `Dispatchers.Default` (Kotlin/Native has no `Dispatchers.IO`),
@@ -548,6 +558,14 @@ reset-family operation.
 - **WHEN** a disable triggers `clearRequested()`
 - **THEN** the SQLite delete executes on `Dispatchers.Default` (not the `Dispatchers.Main` scope) with
   a bounded retry, and is awaited rather than launched fire-and-forget
+
+#### Scenario: A switch to the app-driven tier does not run the blanket repair
+
+- **WHEN** the extension is disabled as part of a switch to the app-driven tier (a mechanism override, or
+  a downgrade to a limited grant) while `REQUESTED` rows exist
+- **THEN** the extension is deregistered, `clearRequested()` and the cursor reset do **not** run, and the
+  app-driven tier's own `getAllTasks` reconciliation surfaces each stranded row as terminal `FAILED` so it
+  is recreated — leaving rows whose transfers are still live untouched
 
 #### Scenario: Leave clears REQUESTED
 

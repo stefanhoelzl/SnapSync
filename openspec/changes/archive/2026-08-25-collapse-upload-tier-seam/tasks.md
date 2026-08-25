@@ -60,5 +60,5 @@
 
 ## 8. Close out
 
-- [ ] 8.1 Apply exactly one changelog label — `internal` unless 1.3/1.4 surfaced a user-facing behaviour change — and ship via `/ship`
-- [ ] 8.2 Tell `triggers-into-channel` and `rig-simulator-host` that the resolve override seam has landed — the first to close the full-grant walk-path window, the second because its change is blocked on it
+- [ ] 8.1 Apply exactly one changelog label and ship via `/ship`. **`internal`**: the one user-facing piece surfaced here — the 3311 crash-reporting noise on a Limited Access switch — was routed to `limited-grant-registration-noise`, so nothing customer-visible remains in this change. Note that change also sweeps `ios-photokit-upload`'s two false scenarios, which this change measured but deliberately does not correct
+- [x] 8.2 Peers told — but note both premises this task was written on expired. `triggers-into-channel` is gone and its change archived; the full-grant walk-path window is closed by **this change landing**, not by telling anyone, so notification was never the mechanism. `rig-simulator-host` is no longer blocked on this change either (it took the download route), and has had the seam's shape plus the ordering constraint on its boot property. `limited-grant-registration-noise` has the 3311 enable measurement it asked for

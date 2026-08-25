@@ -533,27 +533,38 @@ the text gates, not by `buildHealth` (no upstream iOS-target support).
 
 ### Requirement: The upload producers are never both started
 
-A `:test:architecture` guard SHALL pin the exactly-one-started invariant of `upload-lifecycle`: with
-both upload producers composed (iOS ≥26.1), no path through the tier-neutral orchestrator starts both
-producers, and every mechanism switch stops the outgoing producer before starting the incoming one.
-The guard SHALL drive the orchestrator over fake producers through every transition row of the
-lifecycle table — provision under each permission, the `GRANTED` ↔ `LIMITED` flips in both directions,
-grant-with-no-membership, and leave — asserting after each step that at most one producer is in the
-started state and that a switch observed stop-before-start.
+A `:test:architecture` guard SHALL pin the invariants of `upload-lifecycle` that the compiler cannot,
+at the two places the risk lives once exclusion is structural again:
 
-This guard is the enforcement half of the structural→behavioral move recorded in `upload-lifecycle`
-("Exactly one producer started per process"): construction-time exclusion was the previous guarantee,
-runtime permission-dependence made it inexpressible, and a build-gating test is what replaces the
-compile error.
+- **The resolver's cells.** The guard SHALL drive the pure mechanism resolution over **every**
+  combination of OS facts, permission, and override, asserting that no combination yields a mechanism the
+  OS cannot run. This is the sharper risk: a wrong cell yields the OS-driven kind below iOS 26.1, where
+  its registration selector does not exist, and the process aborts.
+- **The orchestrator's transitions.** The guard SHALL drive the orchestrator over fake producers through
+  every transition row of the lifecycle table — provision under each permission, the `GRANTED` ↔
+  `LIMITED` flips in both directions, grant-with-no-membership, and leave — asserting after each step
+  that its held producer is the one resolution yielded, that every change of kind observed
+  stop-before-start, and that no transition leaves a producer started.
 
-#### Scenario: No transition sequence starts both producers
+The guard SHALL NOT be retired on the grounds that "both started" became a compile error again.
+Exclusion moving back to the compiler removed one failure mode and introduced two others: an unrunnable
+resolved kind, and sequence bugs in an orchestrator that now holds mutable state where it previously held
+none. The guard follows the risk rather than the original wording.
+
+#### Scenario: No transition sequence leaves the wrong producer held or started
 - **WHEN** the guard drives the orchestrator through every lifecycle transition row, in sequence and in
   permission-flip combinations
-- **THEN** at no observed point are both producers started, and the build fails if any sequence
-  violates this
+- **THEN** the held producer always matches the resolved kind, no transition leaves a producer started
+  that should not be, and the build fails if any sequence violates this
+
+#### Scenario: A resolver cell that cannot run on its OS fails the build
+- **WHEN** any combination of OS facts, permission and override resolves to a mechanism whose platform
+  API does not exist on that OS
+- **THEN** the guard fails the build
+
 
 #### Scenario: A switch that starts before stopping fails the build
-- **WHEN** an orchestrator change makes a permission flip start the incoming producer before the
+- **WHEN** an orchestrator change makes a resolution change start the incoming producer before the
   outgoing producer's stop completes
 - **THEN** the guard fails the build
 
@@ -740,10 +751,11 @@ pinned, exactly in both directions, and every pin SHALL state its reason.
 The pinned baseline is **not zero**, and the pins SHALL be split into two kinds, because reading them
 as one launders debt into design:
 
-- **accepted** — a judgement the owner stands behind, with no expiry. `UploadTier`'s members
-  (`PHOTOKIT`, `URL_SESSION`) are the only entry: they name upload tiers the pure resolver
-  `resolveComposition` returns, not platform APIs the core calls, and a second tier is a new member
-  rather than a new coupling.
+- **accepted** — a judgement the owner stands behind, with no expiry. the upload **mechanism kind**'s
+  members (`PHOTOKIT`, `URL_SESSION`) are the only entry: they name upload mechanisms the pure resolver
+  yields, not platform APIs the core calls, and a third mechanism is a new member rather than a new
+  coupling. (These members were `UploadTier`'s until mechanism resolution absorbed `resolveComposition`;
+  the pin follows them to the kind — the judgement is unchanged, only the type carrying it.)
 - **deferred** — a real violation of the port law, left standing deliberately, which SHALL carry an
   expiry trigger. Today there are **none**. The list being empty is a state to hold, not a gap to
   fill: a deferred pin is a receipt with an expiry, and it stops being one once the expiry is
