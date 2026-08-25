@@ -391,30 +391,17 @@ async function presignDownloadUrl(
 }
 
 /**
- * Read a device's stored config document and return its `pushToken`, or `null` when the device has no
- * record, its document is unparseable, or it carries no usable token. Used by the notify fan-out, which
- * is **best-effort** — a member without a registered token is simply skipped, so this NEVER throws.
+ * The device's registered push token, or `null` when it has none. Used by the notify fan-out, which is
+ * **best-effort** — a member without a registered token is simply skipped, so this NEVER throws.
+ *
+ * There is no parsing left to do: the columns ARE the shape (capability `database`), so a malformed
+ * registration cannot reach here — it is refused at the write, by the route that made it.
  */
 async function readPushToken(db: Db, deviceId: string): Promise<PushToken | null> {
-  let raw: string | null;
   try {
-    raw = await readDeviceRecord(db, deviceId);
+    return await readDeviceRecord(db, deviceId);
   } catch {
     return null; // store unreachable → skip this member (best-effort)
-  }
-  if (raw === null) return null; // never registered → skip
-  try {
-    const doc = JSON.parse(raw) as { pushToken?: Partial<PushToken> };
-    const pt = doc.pushToken;
-    if (
-      pt && typeof pt.kind === "string" && typeof pt.token === "string" &&
-      typeof pt.env === "string"
-    ) {
-      return { kind: pt.kind, token: pt.token, env: pt.env };
-    }
-    return null; // no / malformed pushToken → skip
-  } catch {
-    return null; // unparseable config → skip
   }
 }
 
@@ -1208,16 +1195,26 @@ export function createApp(
     if (!validateUUID(deviceId)) {
       return c.text("invalid device", 400);
     }
-    let document: string;
+    let push: { kind: string; token: string; env: string } | null;
     try {
-      // Stored verbatim: `push-registration` decides the document's shape, and re-encoding it here would
-      // put a second opinion about that shape in a module that has none.
-      document = JSON.stringify(await c.req.json());
+      const body = await c.req.json() as { pushToken?: Record<string, unknown> };
+      const pt = body.pushToken;
+      if (pt === undefined || pt === null) {
+        // An explicit absence: the device is telling us it has no registration. Distinct from a
+        // malformed body, and a legitimate thing to record.
+        push = null;
+      } else if (
+        typeof pt.kind === "string" && typeof pt.token === "string" && typeof pt.env === "string"
+      ) {
+        push = { kind: pt.kind, token: pt.token, env: pt.env };
+      } else {
+        return c.text("invalid pushToken", 400);
+      }
     } catch {
       return c.text("invalid body", 400);
     }
     try {
-      await putDeviceRecord(db, deviceId, document, new Date(now()).toISOString());
+      await putDeviceRecord(db, deviceId, push, new Date(now()).toISOString());
     } catch (e) {
       console.error(`config: device record write failed for ${deviceId}: ${e}`);
       return c.text("upstream error", 502);

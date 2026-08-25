@@ -109,9 +109,21 @@ export const SCHEMA: readonly string[] = [
      PRIMARY KEY (device_id, key)
    ) STRICT`,
   `CREATE INDEX IF NOT EXISTS resources_by_asset ON resources (device_id, asset_id)`,
+  // The push token is THREE columns, not a document. It began as one `push_token TEXT` holding the
+  // config body verbatim, on the reasoning that the shape is `push-registration`'s to decide and the
+  // backend should hold no second opinion. That reasoning was wrong: `readPushToken` reads exactly
+  // `kind`, `token` and `env` and ignores everything else, so the opinion existed either way — it was
+  // just buried in a parser instead of declared here, where STRICT can type it and a malformed write
+  // fails at the endpoint that made it rather than on the notify path days later. It also nested a
+  // token three deep: column `push_token` → key `pushToken` → field `token`.
+  //
+  // Nullable TOGETHER: a device with no registered token is an ordinary state (it has not launched
+  // since joining), and is why notify is best-effort.
   `CREATE TABLE IF NOT EXISTS device_records (
      device_id  TEXT PRIMARY KEY NOT NULL,
+     push_kind  TEXT,
      push_token TEXT,
+     push_env   TEXT,
      updated_at TEXT NOT NULL
    ) STRICT`,
 ];
@@ -437,28 +449,47 @@ export async function deviceFiles(db: Db, deviceId: string): Promise<{ key: stri
 
 // ── Device records ────────────────────────────────────────────────────────────────────────────────
 
-/** Last-write-wins, by construction: the upsert replaces the stored document. */
+/** A device's registered push token, as the notify fan-out needs it (capability `apns-push-sender`). */
+export type DevicePushToken = { kind: string; token: string; env: string };
+
+/**
+ * Last-write-wins, by construction: the upsert replaces all three columns. Passing `null` clears the
+ * registration, which is a real state and distinct from "this device has no record at all".
+ */
 export async function putDeviceRecord(
   db: Db,
   deviceId: string,
-  document: string,
+  push: DevicePushToken | null,
   at: string,
 ): Promise<void> {
   await db.execute(
-    `INSERT INTO device_records (device_id, push_token, updated_at) VALUES (?, ?, ?)
-     ON CONFLICT (device_id) DO UPDATE SET push_token = excluded.push_token,
-                                          updated_at = excluded.updated_at`,
-    [deviceId, document, at],
+    `INSERT INTO device_records (device_id, push_kind, push_token, push_env, updated_at)
+     VALUES (?, ?, ?, ?, ?)
+     ON CONFLICT (device_id) DO UPDATE SET push_kind  = excluded.push_kind,
+                                           push_token = excluded.push_token,
+                                           push_env   = excluded.push_env,
+                                           updated_at = excluded.updated_at`,
+    [deviceId, push?.kind ?? null, push?.token ?? null, push?.env ?? null, at],
   );
 }
 
-export async function readDeviceRecord(db: Db, deviceId: string): Promise<string | null> {
-  const { rows } = await db.execute(`SELECT push_token FROM device_records WHERE device_id = ?`, [
-    deviceId,
-  ]);
+/**
+ * The device's registered token, or `null` when it has no record or no registration. The two collapse
+ * deliberately: the only caller is the best-effort notify fan-out, which skips the device either way,
+ * and no consequence distinguishes them.
+ */
+export async function readDeviceRecord(
+  db: Db,
+  deviceId: string,
+): Promise<DevicePushToken | null> {
+  const { rows } = await db.execute(
+    `SELECT push_kind, push_token, push_env FROM device_records WHERE device_id = ?`,
+    [deviceId],
+  );
   if (rows.length === 0) return null;
-  const v = rows[0].push_token;
-  return v === null || v === undefined ? null : String(v);
+  const { push_kind: kind, push_token: token, push_env: env } = rows[0];
+  if (typeof kind !== "string" || typeof token !== "string" || typeof env !== "string") return null;
+  return { kind, token, env };
 }
 
 // ── The nightly sweep's queries (capability `scheduled-cleanup`) ───────────────────────────────────
