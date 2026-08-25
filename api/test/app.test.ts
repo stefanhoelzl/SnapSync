@@ -1896,4 +1896,5 @@ Deno.test("presigned download URLs carry the configured scheme, not a hardcoded 
     new URL(url).origin,
     `http://${CONFIG.s3Host}`,
     `expected the configured http scheme, got: ${url.slice(0, 60)}…`,
-  );});
+  );
+});
