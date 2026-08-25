@@ -79,7 +79,7 @@ fun ForgeHarnessRoot() {
                     darkThemeOverride = dark,
                     // The forge's join/switch and attestation cells, so the panel can forge the
                     // join gate (JoiningEvent / pendingSwitch) and SyncHealth.Unattested.
-                    attestedSource = controller.attestedSource,
+                    attested = controller.attestedState,
                     pending = controller.pendingJoinSource,
                 )
                 ControlPanel(controller, dark = dark, onDarkChange = { dark = it })

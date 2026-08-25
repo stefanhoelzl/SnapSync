@@ -18,8 +18,6 @@ import app.snapsync.ports.PhotoAccessRequester
 import app.snapsync.ports.PhotoAccessStatusSource
 import app.snapsync.model.JoinLoad
 import app.snapsync.model.UserCommands
-import app.snapsync.presentation.AlwaysAttested
-import app.snapsync.presentation.AttestedSource
 import app.snapsync.presentation.CutoffFormatter
 import app.snapsync.presentation.MutablePendingJoinSource
 import app.snapsync.feature.membership.MutableRenameStatusSource
@@ -33,6 +31,8 @@ import kotlin.time.Clock
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
 import kotlinx.datetime.TimeZone
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
 
 /**
  * The shared left pane both desktop harnesses reuse: construct a [StatusContainerHost] from the
@@ -88,9 +88,9 @@ fun StatusPane(
     // which is the same structural rule a build with no reporting channel relies on.
     sendDiagnostics: (suspend (note: String, screen: String) -> Unit)? = null,
     // Attestation health (capability `device-attestation`): defaulted to always-attested so the
-    // full-stack harness constructs unchanged; the forge harness injects a MutableAttestedSource so
+    // full-stack harness constructs unchanged; the forge harness injects its own cell so
     // `SyncHealth.Unattested` is forgeable.
-    attestedSource: AttestedSource = AlwaysAttested,
+    attested: StateFlow<Boolean> = MutableStateFlow(true),
     // The join/switch overlay cell (capability `join-event`): defaulted to a fresh internal instance so
     // the full-stack harness's real gate drives it as before; the forge harness injects its own so any
     // `JoinPhase` is forgeable by writing this cell.
@@ -142,7 +142,7 @@ fun StatusPane(
             loadJoinDetails = loadJoinDetails,
             cutoffFormatter = cutoffFormatter,
             downloadSource = downloadSource,
-            attestedSource = attestedSource,
+            attested = attested,
             pending = pending,
         ).also(onHostReady)
     }

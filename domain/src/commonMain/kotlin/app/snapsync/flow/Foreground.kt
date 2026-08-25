@@ -80,7 +80,7 @@ class Foreground(
         // Wake point (capability `device-attestation`): renew the token if stale. Also covers launch.
         // BEFORE the network-bearing work below, not after it: this used to be a fire-and-forget launch
         // fired alongside them, so a refresh and the fetches it exists to authorize raced, and a fetch
-        // could go out carrying the very token being replaced. `refreshOutcome` short-circuits on a
+        // could go out carrying the very token being replaced. `refresh()` short-circuits on a
         // fresh token, so the sequencing costs nothing in the common case.
         refreshAttestation()
         // App-driven upload tier (iOS 18–26.0): foreground entry pumps an upload cycle. No-op on ≥26.1.

@@ -183,7 +183,7 @@ private fun host(
         String, String, EventStart, EventEnd, DeletesAt, CaptureCutoff, CaptureCeiling, Direction, Boolean,
     ) -> Boolean = { _, _, _, _, _, _, _, _, _ -> false },
     leave: suspend () -> Unit = {},
-    attested: AttestedSource = AlwaysAttested,
+    attested: MutableStateFlow<Boolean> = MutableStateFlow(true),
 ) = StatusContainerHost(
     source, permission.permission, configFake.config, scope,
     loadJoinDetails = loadJoinDetails,
@@ -192,7 +192,7 @@ private fun host(
         requestAccess = requester::request, openSettings = requester::openSettings,
     ),
     cutoffFormatter = fixedCutoffFormatter(),
-    attestedSource = attested,
+    attested = attested,
 )
 
 class StatusContainerHostTest {
@@ -1525,13 +1525,13 @@ class StatusContainerHostTest {
         // Without this, a device whose token died shows "Syncing…" forever while every upload 401s. The
         // engine retries and loses nothing — but nothing ever arrives either, and nothing says so.
         val source = FakeSyncStatusSource()
-        val attested = MutableAttestedSource(true)
+        val attested = MutableStateFlow(true)
         host(source, backgroundScope, attested = attested).test(this) {
             runOnCreate()
             source.value = snapshot(pending = 5, completed = 0, total = 5)
             expectState(syncing(up = Arrow.PULSING))
 
-            attested.set(false) // a renewal was attempted while the app was open — and it failed
+            attested.value = false // a renewal was attempted while the app was open — and it failed
 
             expectState(UiState.Joined(SyncHealth.Unattested))
             cancelAndIgnoreRemainingItems()
@@ -1543,14 +1543,14 @@ class StatusContainerHostTest {
         // This is why a user should essentially never see it: opening the app IS a wake, and every wake
         // renews. The state exists to catch the case where that renewal keeps failing.
         val source = FakeSyncStatusSource()
-        val attested = MutableAttestedSource(false)
+        val attested = MutableStateFlow(false)
         host(source, backgroundScope, attested = attested).test(this) {
             // The initial state is already Unattested (asserted by the test above), so nothing is emitted
             // until the flag flips — Orbit only re-emits on a CHANGE.
             runOnCreate()
             source.value = snapshot(pending = 5, completed = 0, total = 5)
 
-            attested.set(true) // the next wake renewed successfully
+            attested.value = true // the next wake renewed successfully
 
             expectState(syncing(up = Arrow.PULSING))
             cancelAndIgnoreRemainingItems()
@@ -1563,7 +1563,7 @@ class StatusContainerHostTest {
         // problem — and two attention states at once would just be confusing.
         val source = FakeSyncStatusSource()
         val permission = FakePermissionSource(PermissionStatus.GRANTED)
-        host(source, backgroundScope, permission = permission, attested = MutableAttestedSource(false))
+        host(source, backgroundScope, permission = permission, attested = MutableStateFlow(false))
             .test(this) {
                 // Starts Unattested (no token, granted permission); revoking access must OUTRANK it.
                 runOnCreate()

@@ -12,6 +12,7 @@ import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.async
 import kotlinx.coroutines.flow.toList
 import kotlinx.coroutines.launch
@@ -56,7 +57,13 @@ private class FakeClient(
     var mintCalls = 0
     var renewCalls = 0
 
-    override suspend fun challenge(): String? = challenge
+    /** When set, `challenge()` suspends on it, so a test can observe a refresh while it is in flight. */
+    var challengeGate: CompletableDeferred<Unit>? = null
+
+    override suspend fun challenge(): String? {
+        challengeGate?.await()
+        return challenge
+    }
     override suspend fun mintToken(
         deviceId: String,
         keyId: String,
@@ -85,28 +92,104 @@ private fun attestation(
 
 class DeviceAttestationTest {
 
-    // ---- refreshOutcome: the SyncHealth.Unattested rule (drained from the shell at the finale) ----
+    // ---- attested: the SyncHealth.Unattested rule (the trust feature's, not the shell's) ----
 
     @Test
-    fun `refreshOutcome is true when the refresh obtains a token`() = runTest {
+    fun `attested is true when the refresh obtains a token`() = runTest {
         val (attestation, _, _) = attestation()
-        assertTrue(attestation.refreshOutcome())
+        attestation.refresh()
+        assertTrue(attestation.attested.value)
     }
 
     @Test
-    fun `refreshOutcome is true for a fresh token even if a concurrent path reported no refresh`() = runTest {
+    fun `attested is true for a usable token even if a concurrent path reported no refresh`() = runTest {
         // A fresh token short-circuits ensureFresh to true anyway; the second clause additionally
         // covers any path where the refresh reports false while the stored token is still usable.
         val (attestation, client, _) = attestation(store = InMemoryAttestStore(token(20), "k"))
         client.challenge = null // even with no network, a fresh token is a non-event
-        assertTrue(attestation.refreshOutcome())
+        attestation.refresh()
+        assertTrue(attestation.attested.value)
     }
 
     @Test
-    fun `refreshOutcome is false only when the device lacks a usable token AND could not get one`() = runTest {
+    fun `attested is false when there is no token at all and none can be obtained`() = runTest {
         val (attestation, client, _) = attestation()
         client.challenge = null // offline: no challenge, nothing stored
-        assertFalse(attestation.refreshOutcome())
+        attestation.refresh()
+        assertFalse(attestation.attested.value)
+    }
+
+    // The SNAPSYNC-20 correction. `isStale` fires a full week before expiry because renewing eagerly is
+    // the only thing that keeps the token alive across iOS starving the app's background wakes. Reusing
+    // it as the SURFACING rule told a member on 2026-08-18 that sharing was paused while their token had
+    // six days left and every upload was authorized. The test that was here asserted the opposite in its
+    // NAME -- "false only when the device lacks a usable token AND could not get one" -- while passing an
+    // EMPTY store, so the word "only" was carried by the name and by nothing else.
+    @Test
+    fun `attested stays true for a token inside the renewal margin whose renewal fails`() = runTest {
+        val (attestation, client, _) = attestation(store = InMemoryAttestStore(token(3), "k"))
+        client.challenge = null // offline, exactly as on 2026-08-17
+        attestation.refresh()
+
+        assertTrue(attestation.isStale(token(3)), "the token IS due for renewal - that is why we tried")
+        assertFalse(attestation.isUnusable(token(3)), "but it still authorizes every gated request")
+        assertTrue(attestation.attested.value, "so nothing is surfaced: no upload is stalled")
+    }
+
+    @Test
+    fun `attested is false for an expired token that could not be replaced`() = runTest {
+        val (attestation, client, _) = attestation(store = InMemoryAttestStore(token(-1), "k"))
+        client.challenge = null
+        attestation.refresh()
+        assertFalse(attestation.attested.value)
+    }
+
+    @Test
+    fun `an unreadable token counts as unusable - never usable-until-proven-otherwise`() = runTest {
+        // Its expiry cannot be read, so it cannot be shown to be valid and the backend will reject it.
+        // Calling it usable would put the member back behind a screen reading "Syncing" while every
+        // upload 401s -- the lie the Unattested rung exists to prevent.
+        val (attestation, client, _) = attestation(store = InMemoryAttestStore("not-a-token", "k"))
+        client.challenge = null
+        attestation.refresh()
+        assertFalse(attestation.attested.value)
+    }
+
+    @Test
+    fun `narrowing what is SURFACED did not narrow when the app renews`() = runTest {
+        val key = FakeKey()
+        val (attestation, client, _) = attestation(key, store = InMemoryAttestStore(token(3), "k"))
+
+        attestation.refresh()
+
+        assertEquals(1, client.renewCalls, "a margin token must still renew at every wake")
+        assertEquals(1, key.asserted)
+    }
+
+    @Test
+    fun `a verdict is cleared when the next refresh BEGINS - not when it ends`() = runTest {
+        // The other half of SNAPSYNC-20. A background wake with no network wrote `false` on 2026-08-17
+        // 13:37; the process stayed alive but suspended, and the member saw that verdict rendered as the
+        // first frame of a foreground entry 25 h 47 min later, under conditions that no longer held.
+        val (attestation, client, _) = attestation(store = InMemoryAttestStore(token(-1), "k"))
+        client.challenge = null
+        attestation.refresh()
+        assertFalse(attestation.attested.value, "the offline wake concluded the device is stuck")
+
+        // The next wake, held inside the challenge fetch so the refresh is provably still in flight.
+        val gate = CompletableDeferred<Unit>()
+        client.challengeGate = gate
+        val running = launch { attestation.refresh() }
+        runCurrent()
+
+        assertTrue(
+            attestation.attested.value,
+            "the earlier wake's verdict must be gone the moment this refresh starts, not when it finishes",
+        )
+
+        gate.complete(Unit) // still offline, so this attempt fails too
+        running.join()
+        assertFalse(attestation.attested.value, "and this attempt's own answer replaces it")
     }
 
     @Test

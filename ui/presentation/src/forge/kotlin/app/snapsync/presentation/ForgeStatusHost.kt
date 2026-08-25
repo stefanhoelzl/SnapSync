@@ -28,7 +28,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
  * what keeps a shot honest: a preset can only reach a frame the production reduction can itself emit,
  * so an impossible state is unrepresentable here (the App-Store-honesty constraint).
  *
- * The container's benign defaults carry the rest: `AlwaysAttested` clears the attestation gate and
+ * The container's benign defaults carry the rest: an always-true `attested` clears the attestation gate and
  * `InMemoryDownloadStatusSource` (0/0) hides the download arm — so a settled `Joined(InSync)` is
  * reached with only permission, config, and sync-status forged. The [cutoffFormatter] arrives from
  * the shell (migration step 9: presentation constructs no system-clock-reading formatter — the

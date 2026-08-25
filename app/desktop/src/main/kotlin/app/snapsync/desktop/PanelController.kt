@@ -11,7 +11,6 @@ import app.snapsync.ports.PhotoAccessRequester
 import app.snapsync.model.PermissionStatus
 import app.snapsync.ports.PhotoAccessStatusSource
 import app.snapsync.presentation.JoinPhase
-import app.snapsync.presentation.MutableAttestedSource
 import app.snapsync.presentation.MutablePendingJoinSource
 import app.snapsync.presentation.PendingJoin
 import app.snapsync.model.EventConfig
@@ -53,7 +52,7 @@ class PanelController {
     // into the container via StatusPane. Because `!attested` outranks the sync states, every other
     // precondition-forcing preset resets it to attested (see `resetOverlays`), so it can't stick and
     // mask a later screen.
-    val attestedSource = MutableAttestedSource()
+    val attestedState = MutableStateFlow(true)
 
     // The join/switch overlay cell (capability `join-event`): forge any `JoinPhase` by writing it here.
     // Only the join and switch presets set it non-null; every other preset clears it (see
@@ -188,7 +187,7 @@ class PanelController {
     private fun forgeJoin(phase: JoinPhase) {
         configState.value = null
         creationState.value = CreationStatus.Idle
-        attestedSource.set(true)
+        attestedState.value = true
         pendingJoinSource.set(PendingJoin(JOIN_EVENT_ID, phase))
     }
 
@@ -211,7 +210,7 @@ class PanelController {
         permissionState.value = PermissionStatus.GRANTED
         configState.value = CANNED_CONFIG
         syncState.value = SyncStatus.Ready(progress(completed = 34, total = 34))
-        attestedSource.set(true)
+        attestedState.value = true
         pendingJoinSource.set(PendingJoin(JOIN_EVENT_ID, phase))
     }
 
@@ -222,7 +221,7 @@ class PanelController {
         pendingJoinSource.set(null)
         permissionState.value = PermissionStatus.GRANTED
         configState.value = CANNED_CONFIG
-        attestedSource.set(false)
+        attestedState.value = false
     }
 
     // Loading has no SyncProgress payload, so it bypasses forgeSync; like the others it forces
@@ -317,7 +316,7 @@ class PanelController {
     // intended screen and `Unattested` never sticks and masks a later screen.
     private fun resetOverlays() {
         pendingJoinSource.set(null)
-        attestedSource.set(true)
+        attestedState.value = true
     }
 
     private fun progress(pending: Int = 0, completed: Int, total: Int) = SyncProgress(
