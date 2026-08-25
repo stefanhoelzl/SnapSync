@@ -48,6 +48,16 @@ Nothing in the config migration — the write-through's end, the read-only fallb
 eventual deletion — applies to this item: the device id stays a Keychain item precisely so it
 survives reinstall.
 
+The **store** these SHALLs are satisfied against is bound per **compilation target**, never chosen at
+runtime. `iosArm64` — every shipped binary — uses the addressed Keychain group described above.
+`iosSimulatorArm64`, whose output only ever runs on a simulator, uses an App-Group file store, because
+`keychain-access-groups` makes an ad-hoc-signed simulator app un-launchable in every signing form
+measured, and omitting it yields `errSecMissingEntitlement` (-34018) — a read **error**, not
+`errSecItemNotFound`, so the adapter's adopt and mint branches fail too. A device binary contains **no
+route** to the file store, so there is no runtime discriminator that could be taken wrongly on a locked
+device. Every SHALL above holds identically on both targets. Decision record:
+`changes/archive/2026-08-25-add-simulator-rig-host` D6.
+
 "No persisted value" SHALL mean **exactly** that the Keychain reports the item as not found. A read
 that fails for any other reason — notably because protected data is unavailable on a locked device —
 SHALL NOT be treated as "no persisted value", SHALL NOT mint, and SHALL NOT write. It SHALL surface as
