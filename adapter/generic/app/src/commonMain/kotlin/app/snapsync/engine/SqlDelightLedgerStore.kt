@@ -40,13 +40,15 @@ class SqlDelightLedgerStore(
     override val changes: Flow<Unit> = dings
 
     override suspend fun get(key: String): LedgerEntry? =
-        queries.get(key) { _, assetId, state, attempt, eventId, creationDate, role, contentType, filename ->
+        queries.get(key) { _, assetId, state, attempt, eventId, creationDate, role, contentType, filename,
+                           absent ->
             LedgerEntry(
                 key, assetId, state, attempt.toInt(), eventId,
                 creationDate = creationDate,
                 role = roleOrNull(role),
                 contentType = contentType,
                 originalFilename = filename,
+                absent = absent != 0L,
             )
         }.executeAsOneOrNull()
 
@@ -54,6 +56,7 @@ class SqlDelightLedgerStore(
         queries.put(
             entry.key, entry.assetId, entry.state, entry.attempt.toLong(), entry.eventId,
             entry.creationDate, entry.role?.wire ?: "", entry.contentType, entry.originalFilename,
+            if (entry.absent) 1L else 0L,
         )
         dings.tryEmit(Unit)
     }
@@ -113,24 +116,17 @@ class SqlDelightLedgerStore(
                 queries.put(
                     it.key, it.assetId, it.state, it.attempt.toLong(), it.eventId,
                     it.creationDate, it.role?.wire ?: "", it.contentType, it.originalFilename,
+                    if (it.absent) 1L else 0L,
                 )
             }
         }
         dings.tryEmit(Unit)
     }
 
-    override suspend fun deleteByAssetId(assetId: String) {
-        queries.deleteByAssetId(assetId)
-        dings.tryEmit(Unit)
-    }
-
-    override suspend fun retainAssets(keep: Set<String>) {
-        // Delete the complement, one assetId per statement, so the (possibly huge) keep-set is
-        // never bound into a single SQL `IN`/`NOT IN` — it stays in Kotlin set math. The complement
-        // is small in practice (only the assets removed since the last reconcile).
-        val toDelete = queries.selectAllAssetIds().executeAsList().filterNot(keep::contains)
-        if (toDelete.isEmpty()) return
-        queries.transaction { toDelete.forEach { queries.deleteByAssetId(it) } }
+    override suspend fun markAbsent(assetId: String) {
+        // An indexed UPDATE over one asset — no keep-set, so no bind-variable limit to work around, which
+        // is what the deleted `retainAssets` needed its per-straggler loop for.
+        queries.markAbsent(assetId)
         dings.tryEmit(Unit)
     }
 

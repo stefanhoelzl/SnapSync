@@ -4,6 +4,10 @@ import app.snapsync.model.LedgerState;
 -- `DEFAULT ''` must match 4.sqm exactly (the verify task compares migrated vs created schemas);
 -- `''` is the pre-provenance sentinel the writer's per-cycle backfill sweeps to the live event id.
 -- The last four columns carry the DEVICE MANIFEST's presentation detail (capability `sync-ledger`),
+-- `absent` records that the asset has LEFT the library; the row itself is kept, because its bytes are
+-- still on the backend and that row is what suppresses re-upload if the asset is restored. `DEFAULT 0`
+-- must match 6.sqm exactly. Reads that answer "what does this device currently hold or share" exclude
+-- absent rows; `get` does NOT, so suppression survives a deletion.
 -- so the manifest is a projection of this table's COMPLETED rows rather than a parallel accumulator
 -- that tracked the same deletion-aware asset set with different columns. `DEFAULT ''` must match
 -- 5.sqm exactly (the verify task compares migrated vs created schemas); `''` is the "not yet
@@ -18,22 +22,27 @@ CREATE TABLE ledgerRow (
     creationDate TEXT NOT NULL DEFAULT '',
     role TEXT NOT NULL DEFAULT '',
     contentType TEXT NOT NULL DEFAULT '',
-    originalFilename TEXT NOT NULL DEFAULT ''
+    originalFilename TEXT NOT NULL DEFAULT '',
+    absent INTEGER NOT NULL DEFAULT 0
 );
 
 CREATE INDEX ledgerRow_assetId ON ledgerRow(assetId);
 
+-- Deliberately does NOT filter `absent`: a row for a departed asset still records that its bytes are on
+-- the backend, which is what suppresses re-upload should the asset be restored (iOS keeps deleted photos
+-- recoverable for 30 days - the same order as an event's life).
 get:
-SELECT key, assetId, state, attempt, eventId, creationDate, role, contentType, originalFilename
+SELECT key, assetId, state, attempt, eventId, creationDate, role, contentType, originalFilename, absent
 FROM ledgerRow
 WHERE key = :key;
 
 put:
 INSERT OR REPLACE INTO ledgerRow (
-    key, assetId, state, attempt, eventId, creationDate, role, contentType, originalFilename
+    key, assetId, state, attempt, eventId, creationDate, role, contentType, originalFilename, absent
 )
 VALUES (
-    :key, :assetId, :state, :attempt, :eventId, :creationDate, :role, :contentType, :originalFilename
+    :key, :assetId, :state, :attempt, :eventId, :creationDate, :role, :contentType, :originalFilename,
+    :absent
 );
 
 -- Fill the manifest detail of ONE already-recorded row, without touching its state or attempt.
@@ -54,7 +63,7 @@ WHERE key = :key AND creationDate = '';
 selectCompletedManifestRows:
 SELECT key, assetId, creationDate, role, contentType, originalFilename
 FROM ledgerRow
-WHERE state = 'COMPLETED' AND creationDate != '';
+WHERE state = 'COMPLETED' AND creationDate != '' AND absent = 0;
 
 -- Rewrite the provenance of every pre-provenance row (`eventId = ''` — rows recorded by a build
 -- before 4.sqm, or by a staged-revert build) to the live event id. Touches ONLY the sentinel:
@@ -74,23 +83,20 @@ deleteRequested:
 DELETE FROM ledgerRow
 WHERE state = 'REQUESTED';
 
--- Prune one asset's rows by equality (rides the assetId index). Used for the incremental
--- deletion path and, per-straggler, by retainAssets.
-deleteByAssetId:
-DELETE FROM ledgerRow
+-- Record that one asset has left the library (rides the assetId index). An UPDATE, never a DELETE: the
+-- row's statement — "these bytes are on the backend" — stays true, and keeping it is what stops a
+-- restored asset re-uploading. Idempotent, so re-running on an already-marked asset is free.
+markAbsent:
+UPDATE ledgerRow
+SET absent = 1
 WHERE assetId = :assetId;
-
--- The distinct assets currently present — read by retainAssets to compute the complement in
--- Kotlin (so an arbitrarily large keep-set is never bound into one statement).
-selectAllAssetIds:
-SELECT DISTINCT assetId FROM ledgerRow;
 
 -- The non-COMPLETED rows (the backlog) as (assetId, key) pairs. The status overlay groups these by
 -- photo in Kotlin to intersect outstanding resources with observed completions, without
 -- materializing the (large, static) completed set. Shrinks as sync drains.
 selectPending:
 SELECT assetId, key FROM ledgerRow
-WHERE state != 'COMPLETED';
+WHERE state != 'COMPLETED' AND absent = 0;
 
 -- Aggregates counted by PHOTO (assetId), not resource row: collapse rows to assets first, then
 -- count. A photo is complete only when none of its rows is non-COMPLETED.
@@ -99,6 +105,7 @@ WITH perAsset AS (
     SELECT assetId,
            SUM(CASE WHEN state != 'COMPLETED' THEN 1 ELSE 0 END) AS notDone
     FROM ledgerRow
+    WHERE absent = 0
     GROUP BY assetId
 )
 SELECT

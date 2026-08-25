@@ -31,14 +31,11 @@ class LedgerWriter(
         record(resource, LedgerState.FAILED, attempt, eventId)
 
     /**
-     * Prune every row for [assetId] — a sync write by the single writer (distinct from the app-side
-     * [LedgerStore.clear] reset). At the writer layer it consults no engine state; it just
-     * removes.
+     * Record that [assetId] has left the library — a sync write by the single writer (distinct from the
+     * app-side [LedgerStore.clear] reset). At the writer layer it consults no engine state; it just
+     * marks. The rows survive, so a restored asset re-uploads nothing.
      */
-    suspend fun deleteByAssetId(assetId: String) = backend.deleteByAssetId(assetId)
-
-    /** Prune every row whose assetId is not in [keep] (writer-only; see [deleteByAssetId]). */
-    suspend fun retainAssets(keep: Set<String>) = backend.retainAssets(keep)
+    suspend fun markAbsent(assetId: String) = backend.markAbsent(assetId)
 
     /**
      * Sweep every pre-provenance row (`eventId = ""` — recorded before the ledger carried the

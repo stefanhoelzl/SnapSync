@@ -247,68 +247,55 @@ abstract class LedgerStoreContract {
     }
 
     @Test
-    fun `deleteByAssetId removes only that asset's rows`() = runTest {
+    fun `markAbsent flags only that asset's rows and keeps them readable`() = runTest {
         val backend = createBackend()
         backend.put(entry(key = "A-photo.jpg", assetId = "A"))
         backend.put(entry(key = "A-video.mov", assetId = "A"))
         backend.put(entry(key = "B-photo.jpg", assetId = "B"))
 
-        backend.deleteByAssetId("A")
+        backend.markAbsent("A")
 
-        assertNull(backend.get("A-photo.jpg"))
-        assertNull(backend.get("A-video.mov"))
-        assertEquals("B-photo.jpg", backend.get("B-photo.jpg")?.key)
+        // The rows SURVIVE: what they record — these bytes are on the backend — is still true, and
+        // keeping them is what stops a restored asset re-uploading.
+        assertEquals(true, backend.get("A-photo.jpg")?.absent)
+        assertEquals(true, backend.get("A-video.mov")?.absent)
+        assertEquals(false, backend.get("B-photo.jpg")?.absent)
     }
 
     @Test
-    fun `deleteByAssetId dings an active changes collector`() = runTest {
+    fun `markAbsent preserves every other field of the row`() = runTest {
+        val backend = createBackend()
+        val before = entry(key = "A-photo.jpg", assetId = "A")
+        backend.put(before)
+
+        backend.markAbsent("A")
+
+        val after = backend.get("A-photo.jpg")
+        assertEquals(before.state, after?.state)
+        assertEquals(before.attempt, after?.attempt)
+        assertEquals(before.eventId, after?.eventId)
+        assertEquals(before.creationDate, after?.creationDate)
+    }
+
+    @Test
+    fun `markAbsent is idempotent`() = runTest {
+        val backend = createBackend()
+        backend.put(entry(key = "A-photo.jpg", assetId = "A"))
+
+        backend.markAbsent("A")
+        backend.markAbsent("A")
+
+        assertEquals(true, backend.get("A-photo.jpg")?.absent)
+    }
+
+    @Test
+    fun `markAbsent dings an active changes collector`() = runTest {
         val backend = createBackend()
         backend.put(entry(key = "A-photo.jpg", assetId = "A"))
         var dings = 0
         backgroundScope.launch(start = CoroutineStart.UNDISPATCHED) { backend.changes.collect { dings++ } }
 
-        backend.deleteByAssetId("A")
-        runCurrent()
-
-        assertEquals(1, dings)
-    }
-
-    @Test
-    fun `retainAssets removes the complement and keeps the members`() = runTest {
-        val backend = createBackend()
-        backend.put(entry(key = "a-1", assetId = "a"))
-        backend.put(entry(key = "a-2", assetId = "a"))
-        backend.put(entry(key = "b-1", assetId = "b"))
-        backend.put(entry(key = "c-1", assetId = "c"))
-
-        backend.retainAssets(setOf("a", "c"))
-
-        assertEquals("a-1", backend.get("a-1")?.key)
-        assertEquals("a-2", backend.get("a-2")?.key)
-        assertNull(backend.get("b-1"))
-        assertEquals("c-1", backend.get("c-1")?.key)
-    }
-
-    @Test
-    fun `retainAssets with empty set empties the store`() = runTest {
-        val backend = createBackend()
-        backend.put(entry(key = "a", assetId = "a"))
-        backend.put(entry(key = "b", assetId = "b"))
-
-        backend.retainAssets(emptySet())
-
-        assertEquals(LedgerAggregates(0, 0), backend.aggregates())
-    }
-
-    @Test
-    fun `retainAssets dings an active changes collector`() = runTest {
-        val backend = createBackend()
-        backend.put(entry(key = "a", assetId = "a"))
-        backend.put(entry(key = "b", assetId = "b"))
-        var dings = 0
-        backgroundScope.launch(start = CoroutineStart.UNDISPATCHED) { backend.changes.collect { dings++ } }
-
-        backend.retainAssets(setOf("a"))
+        backend.markAbsent("A")
         runCurrent()
 
         assertEquals(1, dings)
@@ -385,22 +372,33 @@ abstract class LedgerStoreContract {
     }
 
     @Test
-    fun `writer prunes by assetId and retains an asset set - reader cannot`() = runTest {
+    fun `writer marks an asset absent - reader cannot`() = runTest {
         val backend = createBackend()
         val writer = LedgerWriter(backend)
         writer.recordRequested(res("X-photo.jpg", "X"), attempt = 0, eventId = "E1")
         writer.recordRequested(res("X-video.mov", "X"), attempt = 0, eventId = "E1")
         writer.recordRequested(res("Y-photo.jpg", "Y"), attempt = 0, eventId = "E1")
 
-        writer.deleteByAssetId("X")
-        assertNull(writer.entry("X-photo.jpg"))
-        assertNull(writer.entry("X-video.mov"))
-        assertEquals("Y-photo.jpg", writer.entry("Y-photo.jpg")?.key)
+        writer.markAbsent("X")
 
-        writer.recordRequested(res("Z-photo.jpg", "Z"), attempt = 0, eventId = "E1")
-        writer.retainAssets(setOf("Y"))
-        assertNull(writer.entry("Z-photo.jpg"))
-        assertEquals("Y-photo.jpg", writer.entry("Y-photo.jpg")?.key)
+        assertEquals(true, writer.entry("X-photo.jpg")?.absent)
+        assertEquals(true, writer.entry("X-video.mov")?.absent)
+        assertEquals(false, writer.entry("Y-photo.jpg")?.absent)
+    }
+
+    @Test
+    fun `an absent row still suppresses re-upload`() = runTest {
+        // The point of marking rather than deleting: the bytes are still on the backend, so a restored
+        // asset must not re-upload (capability `sync-ledger`).
+        val backend = createBackend()
+        val writer = LedgerWriter(backend)
+        writer.recordCompleted(res("X-photo.jpg", "X"), attempt = 0, eventId = "E1")
+
+        writer.markAbsent("X")
+
+        val row = writer.entry("X-photo.jpg")
+        assertEquals(LedgerState.COMPLETED, row?.state)
+        assertEquals(true, row?.absent)
     }
 
     @Test

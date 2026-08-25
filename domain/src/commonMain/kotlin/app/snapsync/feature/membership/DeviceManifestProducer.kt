@@ -25,9 +25,12 @@ import app.snapsync.ports.Enrollment
  * the mechanism that hides not-yet-uploaded assets and becomes defense-in-depth against a
  * COMPLETED-but-absent byte.
  *
- * Deletion-awareness comes from the ledger's own pruning: a deleted asset's rows are dropped by the
- * cycle (incrementally from the change feed, and by `retainAssets` on a drained full enumeration), so
- * they leave the projection with no second structure to keep in step.
+ * Deletion-awareness comes from the ledger's **absence mark**: an asset the change feed reports removed
+ * has its rows marked (never deleted — their bytes are still on the backend, and the rows are what stop a
+ * restored asset re-uploading), and the projection excludes marked rows, so they leave it with no second
+ * structure to keep in step. There is no full-enumeration retain-live backstop: it was fed the
+ * policy-admitted set, so a raised capture cutoff discarded rows for photos still present and still
+ * uploaded (capability `sync-ledger`).
  *
  * A kill mid-PUT loses nothing durable (the snapshot recomputes next cycle); the manifest is write-only
  * in v1 so transient staleness is benign and self-heals.

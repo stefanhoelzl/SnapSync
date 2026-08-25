@@ -25,17 +25,19 @@ class FakeLedgerStore : LedgerStore {
         rows.clear(); rows.putAll(next); dings.tryEmit(Unit)
     }
 
-    override suspend fun deleteByAssetId(assetId: String) { rows.values.removeAll { it.assetId == assetId } }
-    override suspend fun retainAssets(keep: Set<String>) { rows.values.removeAll { it.assetId !in keep } }
+    override suspend fun markAbsent(assetId: String) {
+        for ((key, row) in rows) if (row.assetId == assetId && !row.absent) rows[key] = row.markedAbsent()
+    }
 
     override suspend fun aggregates(): LedgerAggregates {
-        val byAsset = rows.values.groupBy { it.assetId }
+        val byAsset = rows.values.filterNot { it.absent }.groupBy { it.assetId }
         val complete = byAsset.values.filter { g -> g.all { it.state == LedgerState.COMPLETED } }
         return LedgerAggregates(byAsset.size - complete.size, complete.size)
     }
 
     override suspend fun pendingResources(): List<PendingResource> =
-        rows.values.filter { it.state != LedgerState.COMPLETED }.map { PendingResource(it.assetId, it.key) }
+        rows.values.filter { it.state != LedgerState.COMPLETED && !it.absent }
+            .map { PendingResource(it.assetId, it.key) }
 
     override suspend fun backfillEventId(eventId: String) {
         for ((key, entry) in rows) {

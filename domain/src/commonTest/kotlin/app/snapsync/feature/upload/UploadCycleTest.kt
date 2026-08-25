@@ -13,6 +13,9 @@ import app.snapsync.model.LedgerEntry
 import app.snapsync.model.LedgerState
 import app.snapsync.feature.upload.LedgerWriter
 import app.snapsync.model.Resource
+import app.snapsync.model.excluding
+import app.snapsync.model.projectDeviceManifest
+import app.snapsync.model.ResourceRole
 import app.snapsync.feature.upload.SyncEngine
 import app.snapsync.model.UploadError
 import app.snapsync.model.UploadRequest
@@ -572,9 +575,12 @@ class UploadCycleTest {
     }
 
     @Test
-    fun suppressed_downloaded_assets_create_no_job_and_are_pruned_from_retain() = runTest {
+    fun suppressed_downloaded_assets_create_no_job_and_are_not_listed() = runTest {
         // FOREIGN is an asset this device downloaded + imported (in the suppression set). A stale
-        // COMPLETED row stands in for a pre-suppression echo; it must be pruned and never re-uploaded.
+        // COMPLETED row stands in for a pre-suppression echo: it must never be re-uploaded, and must not
+        // be listed to the event. It is no longer PRUNED to achieve that — the echo suppression is an
+        // id set supplied per cycle, so the projection re-applies it (capability `device-manifest`), and
+        // the row stays where it belongs: a true record that those bytes are on the backend.
         val backend = InMemoryLedgerStore()
         LedgerWriter(backend).recordCompleted(resource("FOREIGN-primary.heic", "FOREIGN"), attempt = 0, eventId = TEST_EVENT)
         val platform = FakePlatform(
@@ -586,7 +592,18 @@ class UploadCycleTest {
         cycle.run()
 
         assertEquals(listOf("MINE-primary.heic"), platform.created.map { it.filename }) // FOREIGN suppressed
-        assertNull(backend.get("FOREIGN-primary.heic"), "suppressed asset's stale row pruned by retainAssets")
+        assertEquals(
+            LedgerState.COMPLETED, backend.get("FOREIGN-primary.heic")?.state,
+            "the stale row survives — it is a true statement about bytes on the backend",
+        )
+        // MINE is only REQUESTED this cycle, so the projection holds just FOREIGN's row — and the echo
+        // suppression, an id set supplied per cycle, is what keeps it unlisted. Pruning used to do this.
+        val rows = backend.completedManifestRows()
+        assertEquals(listOf("FOREIGN"), rows.map { it.assetId }, "the stale row is present to be filtered")
+        val listed = projectDeviceManifest(
+            "D", rows, admitting(TEST_CUTOFF).excluding(setOf("FOREIGN"), emptySet()),
+        ).assets.map { it.assetId }
+        assertTrue(listed.isEmpty(), "and the echo suppression keeps it out of the manifest")
     }
 
     @Test
@@ -740,7 +757,7 @@ class UploadCycleTest {
     }
 
     @Test
-    fun removed_asset_rows_are_pruned_incrementally_by_assetId() = runTest {
+    fun removed_asset_rows_are_marked_absent_incrementally_by_assetId() = runTest {
         val backend = InMemoryLedgerStore()
         LedgerWriter(backend).recordCompleted(resource("A_1-photo.jpg", "A_1"), attempt = 0, eventId = TEST_EVENT)
         LedgerWriter(backend).recordRequested(resource("A_1-video.mov", "A_1"), attempt = 0, eventId = TEST_EVENT)
@@ -749,9 +766,12 @@ class UploadCycleTest {
 
         cycleOver(backend, platform).run()
 
-        assertNull(backend.get("A_1-photo.jpg"), "deleted asset's rows are pruned")
-        assertNull(backend.get("A_1-video.mov"))
-        assertEquals(LedgerState.COMPLETED, backend.get("B-photo.jpg")?.state, "other assets untouched")
+        // MARKED, not deleted: the bytes are still on the backend, so the row stays true and keeps
+        // suppressing re-upload if the asset comes back (capability `sync-ledger`).
+        assertEquals(true, backend.get("A_1-photo.jpg")?.absent, "departed asset's rows are marked")
+        assertEquals(true, backend.get("A_1-video.mov")?.absent)
+        assertEquals(LedgerState.COMPLETED, backend.get("A_1-photo.jpg")?.state, "and keep their state")
+        assertEquals(false, backend.get("B-photo.jpg")?.absent, "other assets untouched")
     }
 
     @Test
@@ -765,22 +785,30 @@ class UploadCycleTest {
         val result = cycleOver(backend, platform).run()
 
         assertEquals(CycleResult.COMPLETED, result)
-        assertNull(backend.get("gone-photo.jpg"))
+        assertEquals(true, backend.get("gone-photo.jpg")?.absent, "the stuck row is marked, not deleted")
         assertEquals(0, backend.aggregates().pending, "no phantom pending pins the extension awake")
     }
 
     @Test
-    fun full_enumeration_reconciles_the_ledger_against_the_live_library() = runTest {
+    fun a_full_enumeration_no_longer_reconciles_rows_away() = runTest {
+        // The retain-live reconcile is GONE (capability `sync-ledger`). It was fed the POLICY-ADMITTED
+        // set, so it could not tell "deleted from the library" from "outside the current capture window"
+        // — and raising a cutoff therefore discarded the COMPLETED rows that suppress re-upload. Deletion
+        // now arrives only via the change feed's precise signal, which names the departed assets.
         val backend = InMemoryLedgerStore()
-        LedgerWriter(backend).recordCompleted(resource("old-photo.jpg", "old"), attempt = 0, eventId = TEST_EVENT) // absent now
+        LedgerWriter(backend).recordCompleted(resource("old-photo.jpg", "old"), attempt = 0, eventId = TEST_EVENT)
         val platform = FakePlatform(discovered = listOf(resource("a-photo.jpg")), fullEnumeration = true)
         val store = FakeStore()
 
         val result = cycleOver(backend, platform, store).run()
 
         assertEquals(CycleResult.COMPLETED, result)
-        assertNull(backend.get("old-photo.jpg"), "row for an asset no longer present is reconciled away")
-        assertEquals(LedgerState.REQUESTED, backend.get("a-photo.jpg")?.state, "live resource kept/uploaded")
+        assertEquals(
+            LedgerState.COMPLETED, backend.get("old-photo.jpg")?.state,
+            "a row the enumeration did not return is NOT removed — its absence is not evidence",
+        )
+        assertEquals(false, backend.get("old-photo.jpg")?.absent, "and it is not marked either")
+        assertEquals(LedgerState.REQUESTED, backend.get("a-photo.jpg")?.state, "live resource uploaded")
     }
 
     @Test
@@ -815,9 +843,10 @@ class UploadCycleTest {
     }
 
     @Test
-    fun pruned_then_rediscovered_asset_is_uploaded_fresh() = runTest {
+    fun a_marked_then_rediscovered_asset_is_not_re_uploaded() = runTest {
         val backend = InMemoryLedgerStore()
-        // Was uploaded, then deleted (pruned), then recovered from "Recently Deleted" (re-appears).
+        // Uploaded, deleted, then recovered from iOS's "Recently Deleted" — which holds 30 days, the same
+        // order as an event's whole life, so this is an ordinary sequence rather than an exotic one.
         LedgerWriter(backend).recordCompleted(resource("x-photo.jpg", "x"), attempt = 0, eventId = TEST_EVENT)
         val platform = FakePlatform(
             discovered = listOf(resource("x-photo.jpg")),
@@ -826,9 +855,10 @@ class UploadCycleTest {
 
         cycleOver(backend, platform).run()
 
-        // Prune dropped the COMPLETED proof, so the re-discovered key is fresh work, not AlreadyUploaded.
-        assertEquals(listOf("x-photo.jpg"), platform.created.map { it.filename })
-        assertEquals(LedgerState.REQUESTED, backend.get("x-photo.jpg")?.state)
+        // The COMPLETED row survived the deletion as a MARK, so the re-discovered key is AlreadyUploaded.
+        // Under the old prune it was fresh work and the identical bytes were uploaded again.
+        assertTrue(platform.created.isEmpty(), "the surviving row suppresses re-upload of identical bytes")
+        assertEquals(LedgerState.COMPLETED, backend.get("x-photo.jpg")?.state)
     }
 
     @Test
@@ -1089,7 +1119,13 @@ class UploadCycleTest {
         // `device-manifest`), so what it "sees" is read from the ledger at hook time rather than
         // handed over. These fixtures record COMPLETED rows for the admitted set first, so the
         // projection has something to list — see `completing`.
-        onDiscovery = { _, _ -> manifestSaw += backend.completedManifestRows().map { it.key } },
+        // The REAL projection, not the raw rows. These used to agree only because `retainAssets` pruned
+        // every row the policy stopped admitting; with the ledger no longer policy-pruned they differ, and
+        // what other members see is the projection (capability `device-manifest`).
+        onDiscovery = { _, policy ->
+            manifestSaw += projectDeviceManifest("D", backend.completedManifestRows(), policy)
+                .assets.map { it.assetId }
+        },
         albumExcludedAssetIds = { albumExcluded },
     )
 
@@ -1178,10 +1214,22 @@ class UploadCycleTest {
     }
 
     @Test
-    fun an_excluded_asset_never_reaches_the_device_manifest() = runTest {
-        // THE leak this change closes. The manifest hook used to be handed the RAW discovery, so an
-        // excluded asset landed in the device-global accumulator, projected into device.json, entered the
-        // event union — and every other member tried to download bytes that were never uploaded.
+    fun the_projection_re_applies_only_the_rules_a_ledger_row_can_answer() = runTest {
+        // The original leak stays closed: the manifest hook is handed the POLICY, not raw discovery, so it
+        // can never list bytes that were never uploaded (rows are COMPLETED or they are not there).
+        //
+        // What this now pins is the boundary of what the projection can re-decide. A ledger row carries an
+        // assetId and a capture date — nothing about the asset's ORIGIN — and `AssetFacts` defaults land on
+        // the admitted side of every rule. So the projection re-applies the capture-date bounds and the two
+        // id-set exclusions (echo, denylisted album — both supplied per cycle), and cannot re-apply the
+        // origin rules, which were decided at upload time.
+        //
+        // Consequence, accepted deliberately (capability `sync-ledger`): a row whose asset an origin rule
+        // would NOW reject keeps its listing. Reaching that state needs a row written before that rule
+        // existed, and every origin rule predates any event that can still be live (≤30-day lifetime).
+        // It also lands on the harmless side of this capability's asymmetry — a stray visible photo, not
+        // an invisible failure. Previously `retainAssets` swept such rows, at the cost of also discarding
+        // rows for photos merely outside the current capture window.
         val manifestSaw = mutableListOf<String>()
         val platform = FakePlatform(
             discovered = listOf(
@@ -1198,11 +1246,15 @@ class UploadCycleTest {
         completing(backend, platform)
         originCycle(backend, platform, albumExcluded = setOf("wa"), manifestSaw = manifestSaw).run()
 
-        assertEquals(listOf("cam.heic"), manifestSaw, "the manifest sees only the admitted set")
+        assertEquals(
+            listOf("cam", "shot"), manifestSaw.sorted(),
+            "the album denylist IS re-applied (its id set is supplied per cycle); the screenshot rule is " +
+                "NOT (the row carries no origin facts)",
+        )
     }
 
     @Test
-    fun the_manifest_hook_sees_the_admitted_set_and_nothing_else() = runTest {
+    fun the_projection_re_applies_the_capture_date_bounds() = runTest {
         // BOTH exclusions now land on the SAME side of the manifest hook — it is handed the admitted set
         // itself, not the inputs to compute one from. This REVERSES the earlier split, deliberately: the
         // capture-date bounds used to be withheld from the accumulator as forward-prep for multi-event
@@ -1223,15 +1275,22 @@ class UploadCycleTest {
         completing(backend, platform)
         originCycle(backend, platform, manifestSaw = manifestSaw).run()
 
-        assertTrue(manifestSaw.isEmpty(), "neither the pre-cutoff asset nor the screenshot is admitted")
-        assertTrue(platform.created.isEmpty(), "…and neither is uploaded")
+        // The capture-date bound IS re-applied at projection — the row carries its creation date — so the
+        // pre-cutoff asset is not listed. The screenshot is, for the reason given in the test above.
+        assertEquals(listOf("shot"), manifestSaw, "the pre-cutoff asset is excluded by the date bound")
+        assertTrue(platform.created.isEmpty(), "and neither is uploaded")
     }
 
     @Test
-    fun an_excluded_asset_is_pruned_from_the_ledger_on_a_full_enumeration() = runTest {
-        // The free retroactive cleanup: a previously-uploaded screenshot loses its ledger row the next time
-        // a full enumeration runs (token expiry, re-join, reinstall), so it drops out of device.json and
-        // leaves the event union. Its bytes stay in storage — no object is ever deleted.
+    fun an_origin_excluded_row_is_no_longer_swept_by_a_full_enumeration() = runTest {
+        // The retroactive cleanup is GONE, deliberately. A full enumeration used to prune every row outside
+        // the ADMITTED set, which swept a previously-uploaded screenshot — but the same sweep discarded
+        // rows for photos that were merely outside the current capture window, and those rows are what
+        // suppress re-upload. Narrowing therefore became irreversible, and a download-only membership would
+        // have lost the event's rows entirely (capability `sync-ledger`).
+        //
+        // What is lost is only the sweep. Reaching this state needs a row written before the screenshot
+        // rule existed, and that rule predates any event that can still be live.
         val backend = InMemoryLedgerStore()
         backend.put(
             LedgerEntry(key = "shot.png", assetId = "shot", state = LedgerState.COMPLETED, attempt = 0, eventId = TEST_EVENT),
@@ -1246,7 +1305,76 @@ class UploadCycleTest {
 
         originCycle(backend, platform).run()
 
-        assertNull(backend.get("shot.png"), "retainAssets prunes the now-excluded asset's row")
+        assertEquals(
+            LedgerState.COMPLETED, backend.get("shot.png")?.state,
+            "the row survives a full enumeration — its absence from the admitted set is not evidence " +
+                "that the asset left the library",
+        )
         assertTrue(backend.get("cam.heic") != null, "the admitted asset keeps its row")
+    }
+
+    // ---- Narrowing must not prune upload-suppression state -------------------------------------------
+    // Change `separate-shared-set-from-uploaded-bytes`, tasks 1.2/1.3. Pins the claim that a NARROWING of
+    // the membership's scope prunes ledger rows it has no business touching. Expected to FAIL on the code
+    // as it stands: `retainAssets` is fed the policy-ADMITTED set, so an asset that is still in the library
+    // and still uploaded loses its row merely because the cutoff moved past it.
+
+    @Test
+    fun raising_the_cutoff_does_not_prune_an_already_uploaded_row() = runTest {
+        val backend = InMemoryLedgerStore()
+        // Already contributed under the old, lower cutoff.
+        backend.put(
+            LedgerEntry(
+                key = "old-primary.jpg", assetId = "old", state = LedgerState.COMPLETED,
+                attempt = 0, eventId = TEST_EVENT, creationDate = "2026-07-01T00:00:00Z",
+                role = ResourceRole.PRIMARY, contentType = "image/jpeg", originalFilename = "IMG_old.JPG",
+            ),
+        )
+        // Both assets are still in the library; the member simply raised their cutoff past the older one.
+        val platform = FakePlatform(
+            discovered = listOf(
+                datedResource("old-primary.jpg", "2026-07-01T00:00:00Z", "old"),
+                datedResource("new-primary.jpg", "2026-07-10T00:00:00Z", "new"),
+            ),
+            fullEnumeration = true,
+        )
+
+        cycleWithCutoff(backend, platform, "2026-07-06T00:00:00Z").run()
+
+        assertTrue(
+            backend.get("old-primary.jpg") != null,
+            "sync-ledger: retention is a fact about the library, not about the policy - the asset is " +
+                "still present and still uploaded, so raising the cutoff must not prune its row " +
+                "(pruning it makes the narrowing irreversible: re-widening would re-upload).",
+        )
+    }
+
+    @Test
+    fun turning_the_direction_off_does_not_prune_the_events_rows() = runTest {
+        val backend = InMemoryLedgerStore()
+        backend.put(
+            LedgerEntry(
+                key = "old-primary.jpg", assetId = "old", state = LedgerState.COMPLETED,
+                attempt = 0, eventId = TEST_EVENT, creationDate = IN_SCOPE_DATE,
+                role = ResourceRole.PRIMARY, contentType = "image/jpeg", originalFilename = "IMG_old.JPG",
+            ),
+        )
+        val platform = FakePlatform(
+            discovered = listOf(datedResource("old-primary.jpg", IN_SCOPE_DATE, "old")),
+            fullEnumeration = true,
+        )
+
+        cycle(
+            backend, platform,
+            policy = SelectionPolicy.from(
+                includesUpload = false, cutoff = captureCutoff(TEST_CUTOFF), ceiling = null,
+            ),
+        ).run()
+
+        assertTrue(
+            backend.get("old-primary.jpg") != null,
+            "reconfigure-membership: a drained upload is recorded so that re-enabling the direction " +
+                "re-uploads nothing - turning the direction off must not wipe the event's ledger.",
+        )
     }
 }

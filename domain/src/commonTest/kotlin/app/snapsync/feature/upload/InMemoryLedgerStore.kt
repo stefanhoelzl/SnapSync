@@ -44,19 +44,16 @@ class InMemoryLedgerStore : LedgerStore {
         dings.tryEmit(Unit)
     }
 
-    override suspend fun deleteByAssetId(assetId: String) {
-        entries.values.removeAll { it.assetId == assetId }
-        dings.tryEmit(Unit)
-    }
-
-    override suspend fun retainAssets(keep: Set<String>) {
-        entries.values.removeAll { it.assetId !in keep }
+    override suspend fun markAbsent(assetId: String) {
+        for ((key, row) in entries) {
+            if (row.assetId == assetId && !row.absent) entries[key] = row.markedAbsent()
+        }
         dings.tryEmit(Unit)
     }
 
     override suspend fun aggregates(): LedgerAggregates {
         // Counted by photo (assetId): a photo is complete only when all its rows are COMPLETED.
-        val byAsset = entries.values.groupBy { it.assetId }
+        val byAsset = entries.values.filterNot { it.absent }.groupBy { it.assetId }
         val complete = byAsset.values.filter { group -> group.all { it.state == LedgerState.COMPLETED } }
         return LedgerAggregates(
             pending = byAsset.size - complete.size,
@@ -65,7 +62,8 @@ class InMemoryLedgerStore : LedgerStore {
     }
 
     override suspend fun pendingResources(): List<PendingResource> =
-        entries.values.filter { it.state != LedgerState.COMPLETED }.map { PendingResource(it.assetId, it.key) }
+        entries.values.filter { it.state != LedgerState.COMPLETED && !it.absent }
+            .map { PendingResource(it.assetId, it.key) }
 
     override suspend fun backfillEventId(eventId: String) {
         for ((key, entry) in entries) {
@@ -90,7 +88,7 @@ class InMemoryLedgerStore : LedgerStore {
     }
 
     override suspend fun completedManifestRows(): List<LedgerEntry> =
-        entries.values.filter { it.state == LedgerState.COMPLETED && !it.needsManifestDetail }
+        entries.values.filter { it.state == LedgerState.COMPLETED && !it.needsManifestDetail && !it.absent }
 
     override suspend fun backfillManifestDetail(entry: LedgerEntry) {
         val current = entries[entry.key] ?: return
@@ -105,6 +103,7 @@ class InMemoryLedgerStore : LedgerStore {
             role = entry.role,
             contentType = entry.contentType,
             originalFilename = entry.originalFilename,
+            absent = current.absent, // enriching detail never changes whether the asset is still here
         )
     }
 }

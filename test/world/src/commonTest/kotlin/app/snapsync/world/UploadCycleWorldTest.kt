@@ -53,7 +53,7 @@ class UploadCycleWorldTest {
     }
 
     @Test
-    fun full_enumeration_reconciles_removed_asset() = worldTest {
+    fun a_reported_removal_marks_the_row_absent() = worldTest {
         val w = World(this)
         w.provision("E")
         w.addOwnAsset("A")
@@ -62,10 +62,40 @@ class UploadCycleWorldTest {
         w.runUploadCycle()
         assertEquals(LedgerState.COMPLETED, w.ledgerBackend.get("A-primary.jpg")?.state)
 
-        // Remove the asset and force a full enumeration → retainAssets prunes its row.
+        // The change feed names the departed asset — the precise signal, and the only deletion input
+        // (capability `sync-ledger`). The row is MARKED, never deleted: its bytes are still on the
+        // backend, so it stays true and keeps suppressing re-upload if the asset comes back.
+        w.removeAsset("A")
+        w.runUploadCycle()
+
+        val row = w.ledgerBackend.get("A-primary.jpg")
+        assertEquals(true, row?.absent, "the departed asset's row is marked")
+        assertEquals(LedgerState.COMPLETED, row?.state, "and keeps its upload state")
+    }
+
+    @Test
+    fun a_removal_the_change_feed_never_reported_leaves_the_row_alone() = worldTest {
+        val w = World(this)
+        w.provision("E")
+        w.addOwnAsset("A")
+        w.runUploadCycle()
+        w.platform.completeJob("A-primary.jpg")
+        w.runUploadCycle()
+
+        // The token expires, so the removal is never reported. There is no full-enumeration retain-live
+        // backstop any more (capability `sync-ledger`): it was fed the POLICY-ADMITTED set, so it could
+        // not tell "gone from the library" from "outside the current capture window", and discarded the
+        // rows that suppress re-upload whenever a member raised their cutoff.
+        //
+        // The accepted cost is exactly this: the asset stays listed for the event's remaining life. Its
+        // bytes are still on the backend, so a member still downloads it — the photo simply stays in the
+        // event, as it does when a member leaves.
         w.removeAsset("A")
         w.platform.expireToken()
         w.runUploadCycle()
-        assertNull(w.ledgerBackend.get("A-primary.jpg"))
+
+        val row = w.ledgerBackend.get("A-primary.jpg")
+        assertEquals(LedgerState.COMPLETED, row?.state, "the row survives — absence is not evidence")
+        assertEquals(false, row?.absent, "and it is not marked, because nothing reported it gone")
     }
 }
