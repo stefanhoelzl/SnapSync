@@ -97,6 +97,7 @@ GET  /device/gallery[?cutoff=…][&resources=true]   the library, through the ap
 POST /device/reset                      void durable sync state
 POST /device/gallery/seed?n=&kind=bulk|policy
 POST /device/gallery/wipe?scope=all|assets|albums[&limit=&offset=]
+POST /device/upload-mechanism?value=…   pin the resolved upload tier (see below)
 ```
 
 There is **no inventory route**. Asking for a member that is excluded returns **the reason it is
@@ -262,18 +263,33 @@ failed to bind". The rig logs a bind failure at `Error` naming the address and p
 pullable **without** the rig (`apps pull … Documents/debug.log`) — read it before guessing. The usual
 cause is a previous instance still alive holding the port; SIGKILL it (`ios-device` covers that).
 
-## 🚫 You cannot force the URLSession tier — the lever is gone
+## Pinning the upload tier
 
-`SNAPSYNC_FORCE_URLSESSION_UPLOAD` was deleted with the rest of the launch-trigger surface, and nothing
-replaces it yet. Its replacement is a runtime-selectable tier, which belongs to the producer-resolution work
-(`ComposedProducers` giving way to one resolved producer from a pure `resolve(osFacts, permission, forced)`)
-and has not landed.
+`SNAPSYNC_FORCE_URLSESSION_UPLOAD` was deleted with the rest of the launch-trigger surface. Its
+replacement landed in `d21a511e` as a channel verb — a development pin on the *resolved* mechanism,
+with no production writer:
 
-Until it does, the app-driven tier is reachable on a >=26.1 device **only under a `LIMITED` photo grant**,
-where the OS never invokes the extension (measured: zero `process()` invocations over 22 minutes) and the arm
-selects the app-driven producer. That exercises the pump, the `BGProcessingTask` scheduler, the background
-`URLSession`, staging and ledger writing — but **not** the full-library discovery walk, because a partial
-grant feeds discovery the in-memory selection snapshot instead of walking.
+```
+POST /device/upload-mechanism?value=photokit|url_session|idle|none
+```
 
-When that endpoint arrives it will need a **durable** input, not an in-memory one: a process the OS
-relaunches to deliver `handleEventsForBackgroundURLSession` resolves its tier before any request can arrive.
+It answers with what you asked for AND what the app will actually do, because a pin naming a mechanism
+this OS cannot run is clamped by the resolver:
+
+```json
+{"pinned":"url_session","resolves":"url_session","permission":"GRANTED","osSupportsOsDriven":true}
+```
+
+Verified 2026-08-25 on the SE2 (iOS 26.5.2): pinning `url_session` on a ≥26.1 device under a **full**
+grant drove real uploads through the app-driven pump. Fire `POST /os/runUploadHeartbeat` to kick it —
+`runUploadHeartbeat` is the app-driven tier's entry point and does nothing for the OS-driven one, whose
+extension the OS invokes on its own cadence.
+
+Note `/device/state`'s `build.uploadTier` is a **build fact** and does not move with the pin; the pin
+response's `resolves` is the live answer.
+
+(Before this verb existed, the app-driven tier was reachable only under a `LIMITED` grant, where the
+extension **cannot be registered at all** — `setUploadJobExtensionEnabled` is refused in both
+directions with `PHPhotosErrorAccessUserDenied` 3311, so `resolveUploadMechanism` yields the
+app-driven mechanism there. That route still works but exercises less: a partial grant feeds discovery
+the in-memory selection snapshot instead of walking the library.)

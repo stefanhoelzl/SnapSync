@@ -66,7 +66,9 @@ sshmac() { "$S/sshmac.sh" runner@$HOST "$@"; }
 # 6. Iterate. NB: $RUNNER_TEMP is UNSET in an ssh shell (it is a GH-Actions-step var) — write outputs
 #    under $HOME, not $RUNNER_TEMP, or paths resolve to read-only "/".
 rsync -a --delete --protocol=29 -e "$S/sshmac.sh" \
-  --exclude .git --exclude build --exclude .gradle --exclude .kotlin ./ runner@$HOST:snapsync/
+  --exclude .git --exclude build --exclude .gradle --exclude .kotlin \
+  --exclude gradle.properties --exclude iosApp/Configuration/Deployment.xcconfig \
+  ./ runner@$HOST:snapsync/
 sshmac 'cd snapsync && ./gradlew iosSimulatorArm64Test'
 ```
 
@@ -85,6 +87,22 @@ Nothing in that says "different rsync implementation" — it reads as a bad flag
 invites you to go hunting through your own options. `-z` is one of the casualties, hence `-a` above
 rather than `-az`. Measured 2026-08-25 on macos-26 / Xcode 26.6; check `rsync --version` on the runner
 before assuming otherwise, since this is an image property and Apple may move again.
+
+⚠️ **Exclude the two files the RUNNER owns, or every iterate after the first breaks silently.**
+
+- **`gradle.properties`** — you append `snapsync.rig=true` to it on the runner (below). A later rsync
+  overwrites it with your local copy, which does not carry that line, so the rebuild quietly drops
+  `:test:rig` and the channel never binds. Measured 2026-08-25: the app installed and launched fine and
+  the rig was simply absent, whose only symptom is `curl` returning *"Empty reply from server"*.
+  ⚠️ On a **fresh** runner the exclusion means the file is not there at all, so the documented append
+  CREATES it holding only that one line — and the build dies on `Cannot query the value of Gradle
+  property 'snapsync.deployment'`. `scp` your copy over once, then append. (Measured 2026-08-25.)
+- **`iosApp/Configuration/Deployment.xcconfig`** — GENERATED and gitignored, so `git status` shows a
+  clean tree while the file holds whatever deployment was last resolved locally. If you ran
+  `deno task dev:tunnel`, that is the **local** deployment. On a fresh runner, generate it there
+  instead: `python3 scripts/resolve-deployment.py prod --quiet`.
+
+Both are invisible to `git status`, which is exactly why they bite.
 
 Do **not** wrap the `until gh run download` poll in `ch-bg`: that poll is the workspace genuinely
 waiting on its own build, so it *should* read as busy (CLAUDE.md, *Agent harness limits*). `ch-bg` is

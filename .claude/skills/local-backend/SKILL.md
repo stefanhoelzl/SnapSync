@@ -52,8 +52,11 @@ including going back to production. `SNAPSYNC_RESET_STATE` is **gone**: producti
 job now, on a build made with `-Psnapsync.rig=true` (load **`rig-channel`**):
 
 ```bash
-curl -X POST localhost:18099/device/reset
+curl -X POST --max-time 180 localhost:18099/device/reset
 ```
+
+It answers with the ledger counts after the fact — `{"reset":true,"ledgerCompleted":0,"ledgerPending":0}`
+— so "it cleared" is verifiable rather than assumed. Needs `usbmux forward 18099`; see `rig-channel`.
 
 ⚠️ Order matters and nothing enforces it: reset **before** leaving. After a reset the device is unjoined,
 so a leave becomes a no-op rather than a `DELETE` aimed at the backend you are departing.
@@ -63,17 +66,23 @@ so a leave becomes a no-op rather than a `DELETE` aimed at the backend you are d
 build at a different backend and the bytes are on the one you left while the ledger still says
 `COMPLETED`, so the device uploads **nothing** — no error, no failed request, no log line. Clearing the
 ledger alone is **not enough** either: the discovery cursor is a `PHPersistentChangeToken`, and with it
-retained the next cycle sees no changes and enumerates nothing. The trigger clears both, plus the
-membership config (**locally**, notifying no backend) and non-terminal download rows; it **keeps**
+retained the next cycle sees no changes and enumerates nothing. `/device/reset` clears both, plus the
+membership config (**locally**, notifying no backend) and prunable download rows; it **keeps**
 imported download rows, whose `createdLocalId` suppresses re-uploading photos this device downloaded.
 
 **The oracle when you forget:** each process logs `[boot] upload base = …` in `debug.log`. A tunnel
 host there beside a cycle reporting `enumeration: 0 seen` (or `N seen, 0 new, N already-uploaded`)
-means the reset did not run. Ordering is `reset → leave → create → event-link`, so a reset in the same
-launch as a create lands clean; after a reset the device is unjoined, so a paired `SNAPSYNC_LEAVE` is a
-no-op rather than a `DELETE` aimed at the wrong backend.
+means the reset did not run. ⚠️ **Order matters and nothing enforces it any more** — each command is
+its own request now, so reset **before** leaving: after a reset the device is unjoined, so a leave is
+a no-op rather than a `DELETE` aimed at the backend you are leaving behind.
 
-Going **back to production** is the direction with no automatic protection and it needs the same flag;
+⚠️ **`api/.localstore` survives across sessions.** If it still holds objects from an earlier run, the
+re-join reconcile (`event-rejoin-reconciliation`) seeds them as `COMPLETED` from the device's
+stored-file listing and they never re-upload. `rm -rf api/.localstore` when you want a clean slate —
+measured 2026-08-25: a rejoin seeded 167 rows this way, which is correct behaviour and looks exactly
+like "nothing uploaded".
+
+Going **back to production** is the direction with no automatic protection and it needs the same reset;
 `event-rejoin-reconciliation` then re-seeds already-stored photos as `COMPLETED`, so the cost is one
 reconcile, not a re-upload of the library.
 

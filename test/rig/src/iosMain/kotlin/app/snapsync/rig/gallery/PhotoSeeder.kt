@@ -54,6 +54,12 @@ private const val SEED_POLICY_LEAD_SECONDS = 3600.0
 private const val SEED_CHUNK = 250
 private const val SEED_CHUNK_ABOVE_FLOOR = 10
 
+/** SPIKE: noise images are 4096x3072 (~50 MB live each), so only a couple may be held per transaction. */
+private const val SEED_CHUNK_NOISE = 2
+private const val SEED_NOISE_WIDTH = 4096.0
+private const val SEED_NOISE_HEIGHT = 3072.0
+private const val SEED_NOISE_TILE = 4.0
+
 /**
  * What a seed is *for*. Two shapes, because they answer different questions and neither substitutes.
  *
@@ -90,6 +96,18 @@ enum class SeedKind {
      * only the rest, and only the rest uploads.
      */
     POLICY,
+
+    /**
+     * SPIKE (throwaway): `n` assets dated an hour ahead, all **above** the floor, rendered as high-frequency
+     * NOISE rather than a flat colour — so the JPEG does not compress and each asset lands in the megabytes
+     * instead of ~51 KB.
+     *
+     * Every other kind renders a flat fill, which encodes to ~51 KB regardless of pixel dimensions. That is
+     * deliberate and right for the questions they answer (walk cost, policy admission), but it makes them
+     * useless for any question about BYTES ON THE WIRE: at 51 KB a request body is delivered before a server
+     * could plausibly answer, so upload timing, early responses and resumability are all unmeasurable.
+     */
+    NOISE,
 }
 
 /** What a seed did, for the command's response. */
@@ -109,8 +127,10 @@ class SeedOutcome(val requested: Int, val created: Int, val kind: SeedKind, val 
 @OptIn(ExperimentalForeignApi::class)
 fun seedPhotos(log: Logger, count: Int, kind: SeedKind): SeedOutcome {
     val policyProbe = kind == SeedKind.POLICY
-    val chunkSize = if (policyProbe) SEED_CHUNK_ABOVE_FLOOR else SEED_CHUNK
-    val base0 = if (policyProbe) NSDate().timeIntervalSince1970 + SEED_POLICY_LEAD_SECONDS else SEED_EPOCH_SECONDS
+    val noise = kind == SeedKind.NOISE
+    val recent = policyProbe || noise
+    val chunkSize = if (noise) SEED_CHUNK_NOISE else if (recent) SEED_CHUNK_ABOVE_FLOOR else SEED_CHUNK
+    val base0 = if (recent) NSDate().timeIntervalSince1970 + SEED_POLICY_LEAD_SECONDS else SEED_EPOCH_SECONDS
     if (policyProbe) {
         val above = (count + 1) / 2 // even indices are above the floor
         log.i {
@@ -130,8 +150,8 @@ fun seedPhotos(log: Logger, count: Int, kind: SeedKind): SeedOutcome {
                 repeat(size) { i ->
                     val index = base + i
                     // In probe mode the EVEN indices are above the floor, the odd ones below it.
-                    val aboveFloor = policyProbe && index % 2 == 0
-                    val image = solidColorImage(index, aboveFloor)
+                    val aboveFloor = (policyProbe && index % 2 == 0) || noise
+                    val image = if (noise) noiseImage(index) else solidColorImage(index, aboveFloor)
                     if (image != null) {
                         PHAssetCreationRequest.creationRequestForAssetFromImage(image)?.apply {
                             // One minute apart, so every asset has a distinct, deterministic capture date.
@@ -155,9 +175,47 @@ fun seedPhotos(log: Logger, count: Int, kind: SeedKind): SeedOutcome {
 }
 
 /**
+ * An above-floor image of high-frequency NOISE per [index], so the JPEG encoder cannot compress it and the
+ * stored resource is **megabytes** rather than the ~51 KB a flat fill yields at any dimensions. That is the
+ * whole point of the kind: it is the only seed that can exercise a question about bytes on the wire.
+ *
+ * Deterministic per [index] (a plain LCG, no platform RNG), so a seed is reproducible and two assets never
+ * share bytes — the same distinctness [solidColorImage] needs, for the same reason.
+ *
+ * Absence: null means the image could not be rendered, and the seeder skips that asset — see
+ * [solidColorImage] for why that is safe.
+ */
+@OptIn(ExperimentalForeignApi::class)
+private fun noiseImage(index: Int): UIImage? {
+    val w = SEED_NOISE_WIDTH
+    val h = SEED_NOISE_HEIGHT
+    val tile = SEED_NOISE_TILE
+    UIGraphicsBeginImageContextWithOptions(CGSizeMake(w, h), true, 1.0)
+    var seed = (index + 1) * 2_654_435_761L
+    var y = 0.0
+    while (y < h) {
+        var x = 0.0
+        while (x < w) {
+            seed = (seed * 6_364_136_223_846_793_005L + 1_442_695_040_888_963_407L)
+            val r = ((seed ushr 16) and 0xFFL).toDouble() / 255.0
+            val g = ((seed ushr 24) and 0xFFL).toDouble() / 255.0
+            val b = ((seed ushr 32) and 0xFFL).toDouble() / 255.0
+            UIColor(red = r, green = g, blue = b, alpha = 1.0).setFill()
+            UIRectFill(CGRectMake(x, y, tile, tile))
+            x += tile
+        }
+        y += tile
+    }
+    val image = UIGraphicsGetImageFromCurrentImageContext()
+    UIGraphicsEndImageContext()
+    return image
+}
+
+/**
  * A distinct solid-colour image per [index] — distinct bytes, so PhotoKit stores a separate asset rather
  * than deduplicating. [aboveFloor] sizes it over the policy's 3 MP image floor; a flat colour encodes to a
- * small JPEG regardless of dimensions, so the on-disk cost stays modest either way.
+ * small JPEG regardless of dimensions, so the on-disk cost stays modest either way. That last property is
+ * what [noiseImage] exists to escape.
  *
  * Absence: null means the image could not be rendered, and the seeder skips that asset. The consequence of
  * every cause is the same — one fewer synthetic asset in a library being filled for an experiment — and the
