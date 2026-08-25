@@ -124,6 +124,12 @@ export const SCHEMA: readonly string[] = [
      push_kind  TEXT,
      push_token TEXT,
      push_env   TEXT,
+     -- ISO-8601 UTC with milliseconds and a literal Z — what new Date().toISOString() mints, and the
+     -- ONLY shape this column may hold. The cutover backfill wrote bunny storage LastChanged instead
+     -- (…362813+00:00: microseconds, numeric offset), so one column carried two spellings of the same
+     -- instant. Nothing read it, which is what let it survive — and what made it cheap to correct.
+     -- The trap: + is 0x2B and Z is 0x5A, so the lexicographic comparison every other date in this
+     -- codebase relies on orders …+00:00 BEFORE …Z for the same moment.
      updated_at TEXT NOT NULL
    ) STRICT`,
 ];
